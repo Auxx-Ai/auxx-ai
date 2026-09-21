@@ -81,6 +81,7 @@ function stubDb(queue: unknown[][]): Database {
   let index = 0
   const chain: Record<string, unknown> = {
     from: () => chain,
+    $dynamic: () => chain,
     innerJoin: () => chain,
     where: () => {
       const rows = queue[index++] ?? []
@@ -152,7 +153,7 @@ describe('readFulfillmentsForOrders', () => {
   it('assembles one fulfillment with two lines from its cells and its lines', async () => {
     const db = stubDb([
       // Which fulfillments point at these orders.
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       // Those instances.
       [instance('ful_1')],
       // Their cells.
@@ -173,7 +174,10 @@ describe('readFulfillmentsForOrders', () => {
         { entityId: 'ful_1', fieldId: 'fld_recorded_at', valueDate: '2026-09-03T00:00:00.000Z' },
       ],
       // Which lines point at those fulfillments.
-      [{ entityId: 'fl_1' }, { entityId: 'fl_2' }],
+      [
+        { entityId: 'fl_1', key: 'k' },
+        { entityId: 'fl_2', key: 'k' },
+      ],
       [instance('fl_1'), instance('fl_2')],
       [
         {
@@ -255,7 +259,7 @@ describe('readFulfillmentsForOrders', () => {
   it('still returns an archived fulfillment and its archived lines', async () => {
     const archived = (id: string) => ({ ...instance(id), archivedAt: new Date('2026-09-04') })
     const db = stubDb([
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       [archived('ful_1')],
       [
         {
@@ -266,7 +270,7 @@ describe('readFulfillmentsForOrders', () => {
         },
         { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
       ],
-      [{ entityId: 'fl_1' }],
+      [{ entityId: 'fl_1', key: 'k' }],
       [archived('fl_1')],
       [
         {
@@ -300,7 +304,7 @@ describe('readFulfillmentsForOrders', () => {
 
   it('reads an order edge whose row carries no relatedEntityDefinitionId', async () => {
     const db = stubDb([
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       [instance('ful_1')],
       // No `relatedEntityDefinitionId`: `related()` reads null and the raw
       // column is the fallback, rather than the shipment vanishing.
@@ -321,7 +325,10 @@ describe('readFulfillmentsForOrders', () => {
 
   it('sorts an order with several fulfillments by sequence, not by write order', async () => {
     const db = stubDb([
-      [{ entityId: 'ful_2' }, { entityId: 'ful_1' }],
+      [
+        { entityId: 'ful_2', key: 'k' },
+        { entityId: 'ful_1', key: 'k' },
+      ],
       [instance('ful_2'), instance('ful_1')],
       [
         {
@@ -352,7 +359,7 @@ describe('readFulfillmentsForOrders', () => {
 
   it('drops a fulfillment_line row with no line_item edge rather than crashing', async () => {
     const db = stubDb([
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       [instance('ful_1')],
       [
         {
@@ -363,7 +370,7 @@ describe('readFulfillmentsForOrders', () => {
         },
         { entityId: 'ful_1', fieldId: 'fld_sequence', valueNumber: 1 },
       ],
-      [{ entityId: 'fl_1' }],
+      [{ entityId: 'fl_1', key: 'k' }],
       [instance('fl_1')],
       // fl_1 carries a quantity but no line_item edge - unusable, not a crash.
       [
@@ -387,7 +394,7 @@ describe('readFulfillmentsForOrders', () => {
 
   it('reads glPosting and docNumber off the live subject claim, never a stamp field', async () => {
     const db = stubDb([
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       [instance('ful_1')],
       [
         {
@@ -417,7 +424,7 @@ describe('readFulfillmentsForOrders', () => {
 describe('readFulfillmentsForOrder', () => {
   it('is readFulfillmentsForOrders for a single order id', async () => {
     const db = stubDb([
-      [{ entityId: 'ful_1' }],
+      [{ entityId: 'ful_1', key: 'k' }],
       [instance('ful_1')],
       [
         {

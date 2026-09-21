@@ -66,14 +66,15 @@ type ReceiptAttribute = (typeof RECEIPT_PICK)[number]
 const DEFAULT_LIMIT = 50
 
 /** The `stock_movement` def and fields, or `null` when the org has no ledger — or no `type` to tell a receipt from a scrap. */
-async function loadFieldContext(
+function loadFieldContext(
   db: Database,
   organizationId: string
 ): Promise<SystemFieldContext<ReceiptAttribute> | null> {
-  const ctx = await systemFields(db, organizationId, 'stock_movement', RECEIPT_PICK)
   // Without a `type` field there is no way to tell a receipt from a scrap, and a
   // read that guessed would report shipments as purchases.
-  return ctx?.fields.stock_movement_type ? ctx : null
+  return systemFields(db, organizationId, 'stock_movement', RECEIPT_PICK, {
+    required: ['stock_movement_type'],
+  })
 }
 
 /**
@@ -406,9 +407,7 @@ export async function readPartKind(
  * needs to name the part — "this part has no standard cost" is unactionable
  * when a form is showing a name and the error is showing a cuid.
  *
- * Deliberately not on `readSystemRecords`: the `displayName` is an
- * `EntityInstance` column the reader does not return, so the query below would
- * survive anyway and the reader's own two would be added on top.
+ * Archived parts are included: a caller refusing one still has to name it.
  */
 export async function readPartStandardCost(
   db: Database,
@@ -417,38 +416,17 @@ export async function readPartStandardCost(
 ): Promise<Result<{ standardCost: number | null; displayName: string | null }, Error>> {
   return guard(
     async () => {
-      const [instance] = await db
-        .select({ displayName: schema.EntityInstance.displayName })
-        .from(schema.EntityInstance)
-        .where(
-          and(
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.id, partInstanceId)
-          )
-        )
-        .limit(1)
+      const ctx = await systemFields(db, organizationId, 'part', PART_STANDARD_COST_PICK)
+      if (!ctx) return { standardCost: null, displayName: null }
 
-      const fields = await systemFieldMap(db, organizationId, PART_STANDARD_COST_PICK)
-      const standardField = fields.part_standard_cost
-      if (!standardField) {
-        return { standardCost: null, displayName: instance?.displayName ?? null }
-      }
-
-      const [row] = await db
-        .select({ valueNumber: schema.FieldValue.valueNumber })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.entityId, partInstanceId),
-            eq(schema.FieldValue.fieldId, standardField.id)
-          )
-        )
-        .limit(1)
+      const [record] = await readSystemRecords(db, organizationId, ctx, {
+        ids: [partInstanceId],
+        includeArchived: true,
+      })
 
       return {
-        standardCost: row?.valueNumber ?? null,
-        displayName: instance?.displayName ?? null,
+        standardCost: record?.number('part_standard_cost') ?? null,
+        displayName: record?.displayName ?? null,
       }
     },
     'Failed to read part standard cost',

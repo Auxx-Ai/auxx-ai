@@ -29,7 +29,12 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
+import {
+  readSystemRecords,
+  systemDefId,
+  systemFieldMap,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { guard } from './guard'
 import type { OpeningStockCandidate } from './types'
 
@@ -90,38 +95,7 @@ export async function listOpeningStockCandidates(
       const fields = await systemFieldMap(db, organizationId, PART_ATTRIBUTES)
       const subpartFields = await systemFieldMap(db, organizationId, SUBPART_PICK)
 
-      // A field the org has not materialised joins on a sentinel that matches
-      // nothing, so its column comes back NULL rather than the query failing.
-      // The same shape `batchRecalculateQoH` uses for its optional flag field.
-      const skuValue = alias(schema.FieldValue, 'osc_sku')
-      const kindValue = alias(schema.FieldValue, 'osc_kind')
-      const standardValue = alias(schema.FieldValue, 'osc_standard')
-      const productValue = alias(schema.FieldValue, 'osc_product')
-
-      const rows = await db
-        .select({
-          partId: schema.EntityInstance.id,
-          title: schema.EntityInstance.displayName,
-          sku: skuValue.valueText,
-          partKind: kindValue.optionId,
-          standardCost: standardValue.valueNumber,
-          productId: productValue.relatedEntityId,
-        })
-        .from(schema.EntityInstance)
-        .leftJoin(skuValue, systemValueJoin(skuValue, fields.part_sku?.id ?? ''))
-        .leftJoin(kindValue, systemValueJoin(kindValue, fields.part_kind?.id ?? ''))
-        .leftJoin(
-          standardValue,
-          systemValueJoin(standardValue, fields.part_standard_cost?.id ?? '')
-        )
-        .leftJoin(productValue, systemValueJoin(productValue, fields.part_product?.id ?? ''))
-        .where(
-          and(
-            eq(schema.EntityInstance.organizationId, organizationId),
-            eq(schema.EntityInstance.entityDefinitionId, partDefId),
-            isNull(schema.EntityInstance.archivedAt)
-          )
-        )
+      const rows = await readSystemRecords(db, organizationId, { defId: partDefId, fields })
 
       const movements = await readMovementCoverage(db, organizationId)
       const subpartChildren = await readSubpartChildPartIds(
@@ -131,17 +105,17 @@ export async function listOpeningStockCandidates(
       )
 
       return rows.map((row) => {
-        const coverage = movements.get(row.partId)
+        const coverage = movements.get(row.id)
         return {
-          partId: row.partId,
-          title: row.title ?? '',
-          sku: row.sku,
-          partKind: row.partKind,
-          standardCost: row.standardCost,
+          partId: row.id,
+          title: row.displayName ?? '',
+          sku: row.text('part_sku'),
+          partKind: row.option('part_kind'),
+          standardCost: row.number('part_standard_cost'),
           hasMovements: coverage != null,
           hasInitialMovement: coverage?.hasInitial ?? false,
-          hasProduct: row.productId != null,
-          isSubpartOfAssembly: subpartChildren.has(row.partId),
+          hasProduct: row.related('part_product') != null,
+          isSubpartOfAssembly: subpartChildren.has(row.id),
         }
       })
     },

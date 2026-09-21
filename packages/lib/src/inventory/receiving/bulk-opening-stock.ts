@@ -85,7 +85,12 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
-import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
+import {
+  readSystemRecords,
+  systemDefId,
+  systemFieldMap,
+  systemValueJoin,
+} from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { buildStockMovementValues } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -437,9 +442,6 @@ interface PartRow {
  *
  * Archived parts are excluded: giving an opening balance to a part somebody
  * removed writes a ledger row nothing will ever look at.
- *
- * Deliberately not on `readSystemRecords`: the `displayName` is an
- * `EntityInstance` column the reader does not return.
  */
 async function readParts(
   db: Database,
@@ -451,27 +453,15 @@ async function readParts(
   if (partIds.length === 0) return parts
 
   const fields = await systemFieldMap(db, organizationId, PART_KIND_PICK)
-  const kindValue = alias(schema.FieldValue, 'bos_kind')
-
-  const rows = await db
-    .select({
-      partId: schema.EntityInstance.id,
-      displayName: schema.EntityInstance.displayName,
-      kind: kindValue.optionId,
-    })
-    .from(schema.EntityInstance)
-    .leftJoin(kindValue, systemValueJoin(kindValue, fields.part_kind?.id ?? ''))
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, partDefId),
-        isNull(schema.EntityInstance.archivedAt),
-        inArray(schema.EntityInstance.id, partIds)
-      )
-    )
+  const rows = await readSystemRecords(
+    db,
+    organizationId,
+    { defId: partDefId, fields },
+    { ids: partIds }
+  )
 
   for (const row of rows) {
-    parts.set(row.partId, { displayName: row.displayName, kind: row.kind })
+    parts.set(row.id, { displayName: row.displayName, kind: row.option('part_kind') })
   }
   return parts
 }

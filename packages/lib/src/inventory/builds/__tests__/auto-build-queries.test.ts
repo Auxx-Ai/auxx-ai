@@ -70,13 +70,22 @@ function next(queue: unknown[][], index: 'instanceIndex' | 'projectedIndex' | 'v
 
 const db = {
   select: (columns?: unknown) => ({
-    from: (table: unknown) => ({
-      where: () => {
-        if (table === schema.EntityInstance) return chain(next(h.instanceReads, 'instanceIndex'))
-        if (columns) return chain(next(h.projectedReads, 'projectedIndex'))
-        return chain(next(h.valueReads, 'valueIndex'))
-      },
-    }),
+    from: (table: unknown) => {
+      const builder = {
+        $dynamic: () => builder,
+        innerJoin: () => builder,
+        where: () => {
+          // `findSystemRecordIdsByValue` is the only read that projects a `key`
+          // beside the instance id; it is the child-by-parent lookup here.
+          const keyed = !!columns && typeof columns === 'object' && 'key' in columns
+          if (keyed) return chain(next(h.projectedReads, 'projectedIndex'))
+          if (table === schema.EntityInstance) return chain(next(h.instanceReads, 'instanceIndex'))
+          if (columns) return chain(next(h.projectedReads, 'projectedIndex'))
+          return chain(next(h.valueReads, 'valueIndex'))
+        },
+      }
+      return builder
+    },
   }),
 } as never
 
@@ -128,7 +137,7 @@ function lineValues(lineId: string, partId: string | null, quantity: number | nu
 
 /** Queue the three reads `readSystemRecords(..., { by })` issues for a set of lines. */
 function queueLines(lines: { id: string; partId: string | null; quantity: number | null }[]) {
-  h.projectedReads = [lines.map((line) => ({ entityId: line.id }))]
+  h.projectedReads = [lines.map((line) => ({ entityId: line.id, key: 'ord_1' }))]
   h.instanceReads[1] = lines.map((line) => ({ id: line.id, createdAt: CREATED_AT }))
   h.valueReads[1] = lines.flatMap((line) => lineValues(line.id, line.partId, line.quantity))
 }

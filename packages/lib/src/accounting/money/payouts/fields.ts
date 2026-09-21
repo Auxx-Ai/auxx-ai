@@ -18,7 +18,11 @@ import { UnprocessableEntityError } from '../../../errors'
 import { BANK_ACCOUNT_FIELDS } from '../../../resources/registry/resources/bank-account-fields'
 import { PAYOUT_FIELDS } from '../../../resources/registry/resources/payout-fields'
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
-import { type SystemFieldContext, systemFields } from '../../../resources/system-records'
+import {
+  requireSystemFields,
+  type SystemFieldContext,
+  systemFields,
+} from '../../../resources/system-records'
 
 type ReadDb = Database | Transaction | undefined
 
@@ -83,39 +87,36 @@ export type PayoutBankAccountFieldContext = SystemFieldContext<PayoutBankAccount
  * worse than a refusal, because the clearing account would keep filling and
  * nobody would be told why.
  */
-export async function loadPayoutFieldContext(
+export function loadPayoutFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<PayoutFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'payout', PAYOUT_ATTRIBUTES)
-  // Without the gateway id there is no idempotency key, and without the status
-  // there is nothing to transition. Either missing means the def is half-seeded.
-  if (!ctx?.fields.payout_gateway_id || !ctx.fields.payout_status) return null
-  return ctx
+  return systemFields(db, organizationId, 'payout', PAYOUT_ATTRIBUTES, PAYOUT)
 }
 
 /** {@link loadPayoutFieldContext}, as the refusal a write path needs. */
-export async function requirePayoutFieldContext(
+export function requirePayoutFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<PayoutFieldContext> {
-  const ctx = await loadPayoutFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Payouts are not available until the payout entity and its fields are provisioned ' +
-        '(entity migration 133)'
-    )
-  }
-  return ctx
+  return requireSystemFields(db, organizationId, 'payout', PAYOUT_ATTRIBUTES, PAYOUT)
 }
 
+// Without the gateway id there is no idempotency key, and without the status
+// there is nothing to transition. Either missing means the def is half-seeded.
+const PAYOUT = {
+  required: ['payout_gateway_id', 'payout_status'],
+  message:
+    'Payouts are not available until the payout entity and its fields are provisioned ' +
+    '(entity migration 133)',
+} as const
+
 /** The `bank_account` context, or `null` unless BOTH halves of the destination check exist. */
-export async function loadPayoutBankAccountFieldContext(
+export function loadPayoutBankAccountFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<PayoutBankAccountFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'bank_account', PAYOUT_BANK_ACCOUNT_ATTRIBUTES)
-  if (!ctx?.fields.bank_account_gl_account || !ctx.fields.bank_account_settlement_destinations)
-    return null
-  return ctx
+  return systemFields(db, organizationId, 'bank_account', PAYOUT_BANK_ACCOUNT_ATTRIBUTES, {
+    required: ['bank_account_gl_account', 'bank_account_settlement_destinations'],
+  })
 }

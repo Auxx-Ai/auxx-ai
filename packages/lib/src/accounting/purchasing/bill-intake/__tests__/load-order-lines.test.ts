@@ -111,7 +111,10 @@ describe('loadOrderLineFacts', () => {
   it('returns lines in sortOrder order, with sku/title/vendorSku joined', async () => {
     h.results = [
       // 1. the lines whose own parent relation names this order.
-      [{ entityId: 'line_b' }, { entityId: 'line_a' }],
+      [
+        { entityId: 'line_b', key: 'k' },
+        { entityId: 'line_a', key: 'k' },
+      ],
       // 2. those lines' instance rows.
       [instance('line_a'), instance('line_b')],
       // 3. line cells.

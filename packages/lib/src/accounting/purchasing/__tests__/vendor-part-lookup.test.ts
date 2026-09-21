@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('findVendorPartForLine', () => {
   it('returns the supplier row and its price as a prefill', async () => {
-    h.results = [[{ id: 'vp_1' }], [{ valueNumber: 1250 }]]
+    h.results = [[{ entityId: 'vp_1', key: 'part_1' }], [{ valueNumber: 1250 }]]
 
     const result = await findVendorPartForLine(db, 'org_1', PARAMS)
 
@@ -83,7 +83,7 @@ describe('findVendorPartForLine', () => {
   // link is still worth stamping — there is simply nothing to prefill with. The
   // caller must not read this as "no supplier row".
   it('returns the link with a null price when the row carries no price', async () => {
-    h.results = [[{ id: 'vp_1' }], []]
+    h.results = [[{ entityId: 'vp_1', key: 'part_1' }], []]
 
     const result = await findVendorPartForLine(db, 'org_1', PARAMS)
 
@@ -125,7 +125,7 @@ describe('findVendorPartForLine', () => {
     'vendor_part_contact',
   ])('refuses to query when %s is not materialised', async (missing) => {
     h.materialised.delete(missing)
-    h.results = [[{ id: 'vp_1' }], [{ valueNumber: 1250 }]]
+    h.results = [[{ entityId: 'vp_1', key: 'part_1' }], [{ valueNumber: 1250 }]]
 
     const result = await findVendorPartForLine(db, 'org_1', PARAMS)
 
@@ -138,7 +138,7 @@ describe('findVendorPartForLine', () => {
   // the link rather than nothing.
   it('still returns the link when the price field is not materialised', async () => {
     h.materialised.delete('vendor_part_unit_price')
-    h.results = [[{ id: 'vp_1' }]]
+    h.results = [[{ entityId: 'vp_1', key: 'part_1' }]]
 
     const result = await findVendorPartForLine(db, 'org_1', PARAMS)
 

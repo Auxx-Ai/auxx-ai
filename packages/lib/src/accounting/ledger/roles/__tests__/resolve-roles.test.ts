@@ -32,7 +32,12 @@ vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.has(a) ? { id: h.fields.get(a) } : null])),
+        Object.fromEntries(
+          attrs.map((a) => [
+            a,
+            h.fields.has(a) ? { id: h.fields.get(a), entityDefinitionId: 'def_gl_account' } : null,
+          ])
+        ),
     }),
   }),
 }))
@@ -74,6 +79,9 @@ interface Account {
 function stubDb(assignments: Assignment[], accounts: Account[]) {
   let call = 0
   const chain = (rows: unknown[]) => ({
+    $dynamic: () => chain(rows),
+    innerJoin: () => chain(rows),
+    orderBy: () => chain(rows),
     where: () => chain(rows),
     limit: () => chain(rows),
     // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
@@ -385,6 +393,9 @@ describe('resolveRoles - the impossible case, asserted anyway', () => {
 function stubLineDb(assignments: Assignment[], accounts: Account[]) {
   const live = accounts.filter((a) => !a.archived)
   const chain = (rows: unknown[]) => ({
+    $dynamic: () => chain(rows),
+    innerJoin: () => chain(rows),
+    orderBy: () => chain(rows),
     where: () => chain(rows),
     limit: () => chain(rows),
     // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
@@ -410,7 +421,7 @@ function stubLineDb(assignments: Assignment[], accounts: Account[]) {
   })
 
   return {
-    select: () => ({
+    select: (columns?: unknown) => ({
       from: (table: unknown) => {
         if (table === schema.GlRoleAssignment) {
           return chain(
@@ -421,10 +432,15 @@ function stubLineDb(assignments: Assignment[], accounts: Account[]) {
             }))
           )
         }
+        // The by-code lookup is the only read projecting a `key` beside the id.
+        if (columns && typeof columns === 'object' && 'key' in columns) {
+          return chain(
+            values
+              .filter((row) => row.fieldId === CODE_FIELD)
+              .map((row) => ({ entityId: row.entityId, key: row.valueText }))
+          )
+        }
         if (table === schema.EntityInstance) return chain(live.map((a) => ({ id: a.id })))
-        // Both the by-code lookup and the value decode read `FieldValue`. The
-        // by-code lookup asks for `entityId` only and ignores the rest, so one
-        // answer serves both.
         return chain(values)
       },
     }),

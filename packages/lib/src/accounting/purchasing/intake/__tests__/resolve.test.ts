@@ -139,7 +139,7 @@ describe('resolveQuoteLines — the ladder', () => {
   })
 
   it('tier 2: our own SKU matches the printed code and auto-links', async () => {
-    h.results = [[], [{ partInstanceId: 'part_1', key: 'hb-m8x40' }], [], LABELS]
+    h.results = [[], [{ entityId: 'part_1', key: 'hb-m8x40' }], [], LABELS]
 
     const result = await resolveQuoteLines(db, 'org_1', {
       vendorRecordId: VENDOR,
@@ -156,7 +156,7 @@ describe('resolveQuoteLines — the ladder', () => {
   })
 
   it('🛑 tier 3 offers candidates and NEVER auto-links', async () => {
-    h.results = [[], [], [{ partInstanceId: 'part_1', key: 'hex bolt m8x40 zinc' }], LABELS]
+    h.results = [[], [], [{ entityId: 'part_1', key: 'hex bolt m8x40 zinc' }], LABELS]
 
     const result = await resolveQuoteLines(db, 'org_1', {
       vendorRecordId: VENDOR,
@@ -190,7 +190,7 @@ describe('resolveQuoteLines — the ladder', () => {
   it('tier 1 outranks tier 2 for the same printed code', async () => {
     h.results = [
       [{ vendorPartInstanceId: 'vp_1', partInstanceId: 'part_1', code: 'af-4420' }],
-      [{ partInstanceId: 'part_2', key: 'af-4420' }],
+      [{ entityId: 'part_2', key: 'af-4420' }],
       [],
       LABELS,
     ]
@@ -207,7 +207,7 @@ describe('resolveQuoteLines — the ladder', () => {
   })
 
   it('with no vendor picked, tier 1 is skipped entirely', async () => {
-    h.results = [[{ partInstanceId: 'part_1', key: 'hb-m8x40' }], [], LABELS]
+    h.results = [[{ entityId: 'part_1', key: 'hb-m8x40' }], [], LABELS]
 
     const result = await resolveQuoteLines(db, 'org_1', {
       vendorRecordId: null,
@@ -226,7 +226,7 @@ describe('resolveQuoteLines — the ladder', () => {
     const lines = Array.from({ length: 40 }, (_, i) =>
       line({ lineNumber: i + 1, vendorCode: `HB-${i}`, description: `Part ${i}` })
     )
-    h.results = [[], [{ partInstanceId: 'part_1', key: 'hb-7' }], [], LABELS]
+    h.results = [[], [{ entityId: 'part_1', key: 'hb-7' }], [], LABELS]
 
     const result = await resolveQuoteLines(db, 'org_1', {
       vendorRecordId: VENDOR,

@@ -66,6 +66,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, type AuxxErrorDetails, UnprocessableEntityError } from '../../../errors'
+import { findSystemRecordIdsByValue } from '../../../resources/system-records'
 import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
@@ -821,25 +822,19 @@ async function loadAccountsByCode(
     db instanceof PgTransaction ? db : undefined
   )
 
-  const rows = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, fields.code.id),
-        inArray(schema.FieldValue.valueText, codes)
-      )
-    )
+  const defId = fields.code.entityDefinitionId
+  if (!defId) return new Map()
+  const holders = await findSystemRecordIdsByValue(
+    db,
+    organizationId,
+    { defId, fields: { gl_account_code: fields.code } },
+    { attribute: 'gl_account_code', text: codes }
+  )
 
   // Through the shared reader rather than a second decode, so this and the role
   // resolver cannot come to disagree about what one account says - and so the
   // archived-excluded-by-the-query rule is applied in exactly one place.
-  const accounts = await loadAccounts(
-    db,
-    organizationId,
-    rows.map((row) => row.entityId)
-  )
+  const accounts = await loadAccounts(db, organizationId, [...holders.values()].flat())
 
   const byCode = new Map<string, ResolvedAccount[]>()
   for (const account of accounts.values()) {

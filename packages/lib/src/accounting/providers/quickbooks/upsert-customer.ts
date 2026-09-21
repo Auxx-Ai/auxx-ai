@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
+import { getRelatedDisplayName } from '../../../field-values/field-value-helpers'
 import type { UnifiedCrudHandler } from '../../../resources/crud'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { readQuickbooksIdField, writeQuickbooksIdField } from './identity-field'
@@ -530,14 +531,8 @@ async function readCompanyName(
   companyInstanceId: string
 ): Promise<string | undefined> {
   try {
-    const row = await database.query.EntityInstance.findFirst({
-      where: and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.id, companyInstanceId)
-      ),
-      columns: { displayName: true },
-    })
-    return row?.displayName?.trim() || undefined
+    const displayName = await getRelatedDisplayName(database, organizationId, companyInstanceId)
+    return displayName?.trim() || undefined
   } catch (error) {
     logger.debug('Could not read the contact company name for the label ladder', {
       organizationId,

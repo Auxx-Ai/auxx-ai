@@ -52,8 +52,10 @@ function database(results: unknown[][]) {
     const rows = results.shift() ?? []
     const chain = {
       from: () => chain,
+      $dynamic: () => chain,
       innerJoin: () => chain,
       where: () => chain,
+      orderBy: () => chain,
       // biome-ignore lint/suspicious/noThenProperty: Drizzle query builders are awaitable.
       then: (resolve: (value: unknown[]) => void) => Promise.resolve(rows).then(resolve),
     }
@@ -101,7 +103,7 @@ describe('the authorize_net entry reference resolver', () => {
 
   it('names the transaction whose gateway id is the transId', async () => {
     const { db } = database([
-      [{ entityId: 'ct-1', value: '60000001' }], // by gateway transaction id
+      [{ entityId: 'ct-1', key: '60000001' }], // by gateway transaction id
       [], // by customer_transaction_order_external_id
       [], // by order_number
       storedTransaction('ct-1', '5544332211'), // the pivot
@@ -116,8 +118,8 @@ describe('the authorize_net entry reference resolver', () => {
     const { db } = database([
       [], // no gateway id stored yet
       [], // no transaction carries the order id verbatim
-      [{ entityId: 'order-9', value: '#1234' }], // the order, found by its name
-      [{ entityId: 'ct-2', relatedEntityId: 'order-9' }], // its one transaction
+      [{ entityId: 'order-9', key: '#1234' }], // the order, found by its name
+      [{ entityId: 'ct-2', key: 'order-9' }], // its one transaction
       storedTransaction('ct-2', '5544332299'),
     ])
     const resolved = await resolve(db, 'org', [
@@ -130,10 +132,10 @@ describe('the authorize_net entry reference resolver', () => {
     // No transId on the entry, so the gateway-id read is skipped entirely.
     const { db } = database([
       [],
-      [{ entityId: 'order-9', value: '#1234' }],
+      [{ entityId: 'order-9', key: '#1234' }],
       [
-        { entityId: 'ct-receipt', relatedEntityId: 'order-9' },
-        { entityId: 'ct-refund', relatedEntityId: 'order-9' },
+        { entityId: 'ct-receipt', key: 'order-9' },
+        { entityId: 'ct-refund', key: 'order-9' },
       ],
       [
         ...storedTransaction('ct-receipt', '5544332211'),
@@ -147,10 +149,10 @@ describe('the authorize_net entry reference resolver', () => {
   it('leaves an order with two captures unreferenced rather than guessing', async () => {
     const { db } = database([
       [],
-      [{ entityId: 'order-9', value: '#1234' }],
+      [{ entityId: 'order-9', key: '#1234' }],
       [
-        { entityId: 'ct-a', relatedEntityId: 'order-9' },
-        { entityId: 'ct-b', relatedEntityId: 'order-9' },
+        { entityId: 'ct-a', key: 'order-9' },
+        { entityId: 'ct-b', key: 'order-9' },
       ],
       [...storedTransaction('ct-a', '1'), ...storedTransaction('ct-b', '2')],
     ])
@@ -175,7 +177,7 @@ describe('the authorize_net entry reference resolver', () => {
 
   it('refuses a candidate whose stored source account is incomplete', async () => {
     const { db } = database([
-      [{ entityId: 'ct-1', value: '60000001' }],
+      [{ entityId: 'ct-1', key: '60000001' }],
       [],
       [],
       [value('ct-1', 'customer_transaction_external_id', '5544332211')],

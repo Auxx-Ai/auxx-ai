@@ -19,12 +19,15 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { UnprocessableEntityError } from '../../errors'
 import { BANK_ACCOUNT_FIELDS } from '../../resources/registry/resources/bank-account-fields'
 import { BANK_RULE_FIELDS } from '../../resources/registry/resources/bank-rule-fields'
 import { BANK_TRANSACTION_FIELDS } from '../../resources/registry/resources/bank-transaction-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import { type SystemFieldContext, systemFields } from '../../resources/system-records'
+import {
+  requireSystemFields,
+  type SystemFieldContext,
+  systemFields,
+} from '../../resources/system-records'
 
 type ReadDb = Database | Transaction | undefined
 
@@ -189,46 +192,50 @@ export type BankRuleFieldContext = SystemFieldContext<BankRuleAttribute>
  * {@link requireBankAccountFieldContext} instead: a write that silently did
  * nothing would be worse than a refusal.
  */
-export async function loadBankAccountFieldContext(
+export function loadBankAccountFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankAccountFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'bank_account', BANK_ACCOUNT_ATTRIBUTES)
-  // Without `name` and `status` there is no account at all: the display value
-  // and the "is this feed live" question both reduce to nothing.
-  if (!ctx?.fields.bank_account_name || !ctx.fields.bank_account_status) return null
-  return ctx
+  return systemFields(db, organizationId, 'bank_account', BANK_ACCOUNT_ATTRIBUTES, BANK_ACCOUNT)
 }
 
 /** {@link loadBankAccountFieldContext}, as the refusal a write path needs. */
-export async function requireBankAccountFieldContext(
+export function requireBankAccountFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankAccountFieldContext> {
-  const ctx = await loadBankAccountFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank accounts are not available until the bank account entity and its fields are ' +
-        'provisioned (entity migration 125)'
-    )
-  }
-  return ctx
+  return requireSystemFields(
+    db,
+    organizationId,
+    'bank_account',
+    BANK_ACCOUNT_ATTRIBUTES,
+    BANK_ACCOUNT
+  )
 }
 
+// Without `name` and `status` there is no account at all: the display value and
+// the "is this feed live" question both reduce to nothing.
+const BANK_ACCOUNT = {
+  required: ['bank_account_name', 'bank_account_status'],
+  message:
+    'Bank accounts are not available until the bank account entity and its fields are ' +
+    'provisioned (entity migration 125)',
+} as const
+
 /** The coverage slice of `bank_transaction`, or `null` on an unmigrated org. */
-export async function loadBankTransactionFieldContext(
+export function loadBankTransactionFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankTransactionFieldContext | null> {
-  const ctx = await systemFields(
+  return systemFields(
     db,
     organizationId,
     'bank_transaction',
-    BANK_TRANSACTION_COVERAGE_ATTRIBUTES
+    BANK_TRANSACTION_COVERAGE_ATTRIBUTES,
+    {
+      required: ['bank_transaction_posted_at', 'bank_transaction_bank_account'],
+    }
   )
-  if (!ctx?.fields.bank_transaction_posted_at || !ctx.fields.bank_transaction_bank_account)
-    return null
-  return ctx
 }
 
 /** The pinnable slice of `bank_transaction`; no field is required, because the pin loop skips a missing one. */
@@ -245,93 +252,89 @@ export function loadBankTransactionPinContext(
  * `null` rather than a throw so the queue on an unmigrated org renders an empty
  * state instead of 500ing. The WRITE paths call {@link requireReviewFieldContext}.
  */
-export async function loadReviewFieldContext(
+export function loadReviewFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<ReviewFieldContext | null> {
-  const ctx = await systemFields(
-    db,
-    organizationId,
-    'bank_transaction',
-    BANK_TRANSACTION_REVIEW_ATTRIBUTES
-  )
-  // Without `review_status` and `amount` there is no queue at all: the state
-  // filter and every figure on the stat strip both reduce to nothing.
-  if (!ctx?.fields.bank_transaction_review_status || !ctx.fields.bank_transaction_amount)
-    return null
-  return ctx
+  return systemFields(db, organizationId, 'bank_transaction', BANK_TRANSACTION_REVIEW_ATTRIBUTES, {
+    required: REVIEW_REQUIRED,
+  })
 }
 
 /** {@link loadReviewFieldContext}, as the refusal a write path needs. */
-export async function requireReviewFieldContext(
+export function requireReviewFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<ReviewFieldContext> {
-  const ctx = await loadReviewFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'The bank review queue is not available until the bank transaction entity and its ' +
-        'fields are provisioned (entity migration 125)'
-    )
-  }
-  return ctx
-}
-
-/** The matching slice of `bank_transaction`, or `null` on an unmigrated org. */
-export async function loadRuleTransactionFieldContext(
-  db: ReadDb,
-  organizationId: string
-): Promise<RuleTransactionFieldContext | null> {
-  const ctx = await systemFields(
+  return requireSystemFields(
     db,
     organizationId,
     'bank_transaction',
-    BANK_TRANSACTION_MATCH_ATTRIBUTES
+    BANK_TRANSACTION_REVIEW_ATTRIBUTES,
+    {
+      required: REVIEW_REQUIRED,
+      message:
+        'The bank review queue is not available until the bank transaction entity and its ' +
+        'fields are provisioned (entity migration 125)',
+    }
   )
-  if (!ctx?.fields.bank_transaction_review_status || !ctx.fields.bank_transaction_amount)
-    return null
-  return ctx
+}
+
+// Without `review_status` and `amount` there is no queue at all: the state
+// filter and every figure on the stat strip both reduce to nothing.
+const REVIEW_REQUIRED = ['bank_transaction_review_status', 'bank_transaction_amount'] as const
+
+/** The matching slice of `bank_transaction`, or `null` on an unmigrated org. */
+export function loadRuleTransactionFieldContext(
+  db: ReadDb,
+  organizationId: string
+): Promise<RuleTransactionFieldContext | null> {
+  return systemFields(db, organizationId, 'bank_transaction', BANK_TRANSACTION_MATCH_ATTRIBUTES, {
+    required: REVIEW_REQUIRED,
+  })
 }
 
 /** {@link loadRuleTransactionFieldContext}, as the refusal a write path needs. */
-export async function requireRuleTransactionFieldContext(
+export function requireRuleTransactionFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<RuleTransactionFieldContext> {
-  const ctx = await loadRuleTransactionFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank transactions are not available until the bank_transaction entity is provisioned ' +
-        '(entity migration 125)'
-    )
-  }
-  return ctx
+  return requireSystemFields(
+    db,
+    organizationId,
+    'bank_transaction',
+    BANK_TRANSACTION_MATCH_ATTRIBUTES,
+    {
+      required: REVIEW_REQUIRED,
+      message:
+        'Bank transactions are not available until the bank_transaction entity is provisioned ' +
+        '(entity migration 125)',
+    }
+  )
 }
 
 /** The `bank_rule` context, or `null` when the org has not run migration 125 yet. */
-export async function loadBankRuleFieldContext(
+export function loadBankRuleFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankRuleFieldContext | null> {
-  const ctx = await systemFields(db, organizationId, 'bank_rule', BANK_RULE_ATTRIBUTES)
-  if (!ctx?.fields.bank_rule_name || !ctx.fields.bank_rule_enabled) return null
-  return ctx
+  return systemFields(db, organizationId, 'bank_rule', BANK_RULE_ATTRIBUTES, BANK_RULE)
 }
 
 /** {@link loadBankRuleFieldContext}, as the refusal a write path needs. */
-export async function requireBankRuleFieldContext(
+export function requireBankRuleFieldContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankRuleFieldContext> {
-  const ctx = await loadBankRuleFieldContext(db, organizationId)
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank rules are not available until the bank_rule entity is provisioned (entity ' +
-        'migration 125)'
-    )
-  }
-  return ctx
+  return requireSystemFields(db, organizationId, 'bank_rule', BANK_RULE_ATTRIBUTES, BANK_RULE)
 }
+
+const BANK_RULE = {
+  required: ['bank_rule_name', 'bank_rule_enabled'],
+  message:
+    'Bank rules are not available until the bank_rule entity is provisioned (entity ' +
+    'migration 125)',
+} as const
 
 /**
  * The importer's slice of `bank_transaction`, or refuse.
@@ -340,29 +343,22 @@ export async function requireBankRuleFieldContext(
  * write would do, and both are worse silent. The unmigrated-org empty state is
  * the settings page's job ({@link loadBankAccountFieldContext}).
  */
-export async function requireBankTransactionImportContext(
+export function requireBankTransactionImportContext(
   db: ReadDb,
   organizationId: string
 ): Promise<BankTransactionImportContext> {
-  const ctx = await systemFields(
+  return requireSystemFields(
     db,
     organizationId,
     'bank_transaction',
-    BANK_TRANSACTION_IMPORT_ATTRIBUTES
+    BANK_TRANSACTION_IMPORT_ATTRIBUTES,
+    {
+      // Without the account link and the date there is no statement line at
+      // all: nothing could be scoped to an account or placed in a period.
+      required: ['bank_transaction_bank_account', 'bank_transaction_posted_at'],
+      message:
+        'Bank transactions are not available until the bank transaction entity is provisioned ' +
+        '(entity migration 125)',
+    }
   )
-  if (!ctx) {
-    throw new UnprocessableEntityError(
-      'Bank transactions are not available until the bank transaction entity is provisioned ' +
-        '(entity migration 125)'
-    )
-  }
-  // Without the account link and the date there is no statement line at all:
-  // nothing could be scoped to an account or placed in a period.
-  if (!ctx.fields.bank_transaction_bank_account || !ctx.fields.bank_transaction_posted_at) {
-    throw new UnprocessableEntityError(
-      'The bank transaction entity is missing its account link or its date field. Re-run entity ' +
-        'migration 125 for this organization.'
-    )
-  }
-  return ctx
 }

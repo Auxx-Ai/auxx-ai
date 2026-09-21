@@ -211,19 +211,17 @@ async function hydrateReceipts(
     defId && instanceId ? toRecordId(defId, instanceId) : null
 
   const invoiceIds = [...new Set(invoiceIdByTransaction.values())]
-  const invoiceNames = new Map<string, string | null>()
-  if (invoiceIds.length > 0) {
-    const invoices = await db
-      .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          inArray(schema.EntityInstance.id, invoiceIds)
+  // Archived invoices included: a deposit line still names the invoice it paid.
+  const invoices =
+    invoiceDefId && invoiceIds.length > 0
+      ? await readSystemRecords(
+          db,
+          organizationId,
+          { defId: invoiceDefId, fields: {} },
+          { ids: invoiceIds, includeArchived: true, cells: false }
         )
-      )
-    for (const invoice of invoices) invoiceNames.set(invoice.id, invoice.displayName)
-  }
+      : []
+  const invoiceNames = new Map(invoices.map((invoice) => [invoice.id, invoice.displayName]))
 
   return page.map((row) => {
     const invoiceInstanceId = invoiceIdByTransaction.get(row.id) ?? null

@@ -2,7 +2,11 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
-import { systemFieldMap } from '../../../resources/system-records'
+import {
+  findSystemRecordIdsByValue,
+  systemDefId,
+  systemFieldMap,
+} from '../../../resources/system-records'
 
 const attributes = [
   'order_subtotal',
@@ -50,28 +54,25 @@ export async function readOrderRecognitionFactsInTx(
       )
     )
   if (order.length !== 1) throw new UnprocessableEntityError('Receipt order is missing or archived')
-  const edges = await tx
-    .select({ id: schema.FieldValue.entityId, fieldId: schema.FieldValue.fieldId })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
+  // Two calls, not one: the order's lines and its tax lines are different defs,
+  // and a def-less value read would return either org's rows for any of them.
+  const childIds = async (entityType: string, attribute: 'line_item_order' | 'tax_line_order') => {
+    const defId = await systemDefId(tx, organizationId, entityType)
+    if (!defId) return []
+    const found = await findSystemRecordIdsByValue(
+      tx,
+      organizationId,
+      { defId, fields: { [attribute]: fields[attribute] } },
+      { attribute, related: [orderId] }
     )
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.relatedEntityId, orderId),
-        inArray(schema.FieldValue.fieldId, [fields.line_item_order!.id, fields.tax_line_order!.id])
-      )
-    )
+    return found.get(orderId) ?? []
+  }
+  const lineIds = await childIds('line_item', 'line_item_order')
+  const taxLineIds = await childIds('tax_line', 'tax_line_order')
   const rows = await tx.query.FieldValue.findMany({
     where: and(
       eq(schema.FieldValue.organizationId, organizationId),
-      inArray(schema.FieldValue.entityId, [orderId, ...edges.map((e) => e.id)]),
+      inArray(schema.FieldValue.entityId, [orderId, ...lineIds, ...taxLineIds]),
       inArray(
         schema.FieldValue.fieldId,
         attributes.flatMap((a) => (fields[a] ? [fields[a]!.id] : []))
@@ -102,23 +103,24 @@ export async function readOrderRecognitionFactsInTx(
     throw new UnprocessableEntityError('Order subtotal, shipping and tax do not equal its total')
   if (cell(orderId, 'order_currency')?.valueText !== 'USD')
     throw new UnprocessableEntityError('Order requires explicit USD currency evidence')
-  const lineIds = edges.filter((e) => e.fieldId === fields.line_item_order!.id).map((e) => e.id)
   if (
     !lineIds.length ||
     lineIds.reduce((sum, id) => sum + amount(id, 'line_item_net_total'), 0n) !== subtotal
   )
     throw new UnprocessableEntityError('Order lines need exact net totals matching the subtotal')
-  const taxComponents = edges
-    .filter((e) => e.fieldId === fields.tax_line_order!.id)
-    .map((e) => {
-      const value = amount(e.id, 'tax_line_price')
-      const title = cell(e.id, 'tax_line_title')?.valueText
-      if (value > 0n && (!title || cell(e.id, 'tax_line_channel_liable')?.valueBoolean !== false))
+  const taxComponents = taxLineIds
+    .map((taxLineId) => {
+      const value = amount(taxLineId, 'tax_line_price')
+      const title = cell(taxLineId, 'tax_line_title')?.valueText
+      if (
+        value > 0n &&
+        (!title || cell(taxLineId, 'tax_line_channel_liable')?.valueBoolean !== false)
+      )
         throw new UnprocessableEntityError(
           'Tax jurisdiction or merchant remittance evidence is unresolved'
         )
       return {
-        componentKey: e.id,
+        componentKey: taxLineId,
         amountMinor: value.toString(),
         jurisdiction: title ?? null,
         collector: 'merchant' as const,

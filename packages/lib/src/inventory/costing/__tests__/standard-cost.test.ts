@@ -8,7 +8,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  queryQueue: [] as unknown[][],
+  partRows: [] as unknown[],
+  valueRows: [] as unknown[],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   publishFieldValueUpdates: vi.fn(async () => {}),
   recalculateAllPartCosts: vi.fn(async (_orgId: string) => [] as string[]),
@@ -21,15 +22,15 @@ const h = vi.hoisted(() => ({
   })),
 }))
 
-function nextRows(): unknown[] {
-  return h.queryQueue.shift() ?? []
-}
-
-/** Minimal drizzle-shaped stub: `select().from().where()` resolves the next queued rows. */
+/**
+ * Minimal drizzle-shaped stub, routed by TABLE rather than by call order: the
+ * part rows and the stored values are read inside one `Promise.all`, so which
+ * lands first is not a property worth pinning.
+ */
 const db = {
   select: () => ({
-    from: () => ({
-      where: () => Promise.resolve(nextRows()),
+    from: (table: { id?: string }) => ({
+      where: () => Promise.resolve(table?.id === 'id' ? h.partRows : h.valueRows),
     }),
   }),
 } as never
@@ -171,7 +172,8 @@ function queueOrg(
   parts: { id: string; displayName: string | null }[],
   fieldValues: ReturnType<typeof fv>[]
 ) {
-  h.queryQueue = [parts, fieldValues]
+  h.partRows = parts
+  h.valueRows = fieldValues
 }
 
 /** The lift graph: motor -> assembly -> lift, one of each. */
@@ -193,7 +195,8 @@ beforeEach(() => {
   // `clearAllMocks` clears calls but keeps implementations, so a test that made
   // a write fail would leak that failure into every test after it.
   h.setValueWithType.mockImplementation(async () => [])
-  h.queryQueue = []
+  h.partRows = []
+  h.valueRows = []
   h.subparts = []
   h.settings = {}
   h.callOrder = []
@@ -575,15 +578,13 @@ describe('rollStandardCost', () => {
 
 describe('readStandardCost', () => {
   it('omits a part that has never been rolled, so absence can never read as zero', async () => {
-    h.queryQueue = [
-      [
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2200 }),
-        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2200 }),
-        fv(MOTOR, FIELD.part_standard_cost_effective_at!.id, { date: '2026-08-27T00:00:00.000Z' }),
-        // The assembly has a material component but no standard — a half-written
-        // row is still not a standard.
-        fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 5000 }),
-      ],
+    h.valueRows = [
+      fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2200 }),
+      fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2200 }),
+      fv(MOTOR, FIELD.part_standard_cost_effective_at!.id, { date: '2026-08-27T00:00:00.000Z' }),
+      // The assembly has a material component but no standard — a half-written
+      // row is still not a standard.
+      fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 5000 }),
     ]
 
     const result = await readStandardCost(db, ORG, [MOTOR, ASSEMBLY, LIFT])
@@ -608,13 +609,11 @@ describe('readStandardCost', () => {
   // for the case it is named after, and `unitCost: 0` froze onto an append-only
   // movement. A zero only ever arrives from a part that could not be valued.
   it('omits a part rolled to ZERO, exactly like one never rolled at all', async () => {
-    h.queryQueue = [
-      [
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 0 }),
-        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 0 }),
-        fv(ASSEMBLY, FIELD.part_standard_cost!.id, { number: 2200 }),
-        fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 2200 }),
-      ],
+    h.valueRows = [
+      fv(MOTOR, FIELD.part_standard_cost!.id, { number: 0 }),
+      fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 0 }),
+      fv(ASSEMBLY, FIELD.part_standard_cost!.id, { number: 2200 }),
+      fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 2200 }),
     ]
 
     const result = await readStandardCost(db, ORG, [MOTOR, ASSEMBLY])
@@ -625,11 +624,9 @@ describe('readStandardCost', () => {
   })
 
   it('keeps a part standing at one minor unit, so the rule is > 0 and not a threshold', async () => {
-    h.queryQueue = [
-      [
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 1 }),
-        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 1 }),
-      ],
+    h.valueRows = [
+      fv(MOTOR, FIELD.part_standard_cost!.id, { number: 1 }),
+      fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 1 }),
     ]
 
     const result = await readStandardCost(db, ORG, [MOTOR])

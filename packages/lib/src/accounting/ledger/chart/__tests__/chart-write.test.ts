@@ -231,6 +231,14 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
         }))
     }
     if (table === schema.EntityInstance) {
+      // `assertCodeIsFree` joins the code value onto the instance, so its params
+      // carry CODE_FIELD as well as the def; it wants `(entityId, key)` rows.
+      if (params.includes(CODE_FIELD)) {
+        return allFieldValues()
+          .filter((row) => row.fieldId === CODE_FIELD && params.includes(row.valueText as string))
+          .filter((row) => liveAccounts().some((a) => a.id === row.entityId))
+          .map((row) => ({ entityId: row.entityId, key: row.valueText }))
+      }
       // `loadLiveChart` (assertParentAllowed's cycle/depth checks) reads EVERY
       // live account of the def, with no id filter at all - `entityDefinitionId`
       // in its `where` is what distinguishes it from every id-keyed lookup below,
@@ -267,8 +275,13 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
       from: (table: unknown) => {
         let params: string[] = []
         const chain: any = {
+          $dynamic: () => chain,
+          innerJoin: (_t: unknown, on: unknown) => {
+            params = [...params, ...whereValues(on)]
+            return chain
+          },
           where: (condition: unknown) => {
-            params = whereValues(condition)
+            params = [...params, ...whereValues(condition)]
             return chain
           },
           limit: () => chain,

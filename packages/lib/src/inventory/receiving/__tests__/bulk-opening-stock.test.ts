@@ -24,6 +24,7 @@
 //   - 🛑 QoH is the CREATE TRIGGER's job. This writes on the ordinary lane, so
 //     HANDOFF rule 5 does not apply and `batchRecalculateQoH` must NOT be called
 
+import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, NotFoundError } from '../../../errors'
 
@@ -57,7 +58,10 @@ vi.mock('../../../cache', () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
+          attrs.map((a) => [
+            a,
+            h.materialised.has(a) ? { id: `fld_${a}`, type: 'SINGLE_SELECT' } : null,
+          ])
         ),
     }),
   }),
@@ -92,20 +96,24 @@ const OCCURRED_AT = new Date('2026-01-01T00:00:00.000Z')
  * order changes the moment an earlier step empties the working set.
  *
  * - `selectDistinct` + `innerJoin` is the "has any movement?" probe
- * - `select` + `leftJoin` is the part/kind read
+ * - `select(columns)` on `EntityInstance` is the reader's instance read, and
+ *   `select()` with no projection is the reader's value read behind it
  * - anything else is the `part_standard_cost` read
  */
 const db = {
-  select: () => chain(false),
-  selectDistinct: () => chain(true),
+  select: (columns?: unknown) => chain(false, columns),
+  selectDistinct: () => chain(true, {}),
   // The run and its opening entry share one transaction.
   transaction: async (fn: (tx: unknown) => unknown) => fn(db),
 } as never
 
-function chain(distinct: boolean) {
-  const state = { distinct, joined: false }
+function chain(distinct: boolean, columns: unknown) {
+  const state = { distinct, joined: false, instances: false, values: columns === undefined }
   const link: Record<string, unknown> = {}
-  link.from = () => link
+  link.from = (table: unknown) => {
+    state.instances = table === schema.EntityInstance && !state.values
+    return link
+  }
   link.leftJoin = () => {
     state.joined = true
     return link
@@ -114,20 +122,45 @@ function chain(distinct: boolean) {
   link.where = () => link
   link.groupBy = () => link
   link.limit = () => link
+  link.orderBy = () => link
   // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
   link.then = (resolve: (rows: unknown[]) => unknown, reject: (error: unknown) => unknown) =>
     Promise.resolve(rowsFor(state)).then(resolve, reject)
   return link
 }
 
-function rowsFor(state: { distinct: boolean; joined: boolean }): unknown[] {
+function rowsFor(state: {
+  distinct: boolean
+  joined: boolean
+  instances: boolean
+  values: boolean
+}): unknown[] {
   if (state.distinct) return [...h.moved].map((partId) => ({ partId }))
-  if (state.joined) {
+  if (state.instances) {
     return [...h.parts].map(([partId, part]) => ({
-      partId,
+      id: partId,
+      organizationId: ORG,
+      entityDefinitionId: 'def_part',
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+      archivedAt: null,
       displayName: part.displayName,
-      kind: part.kind,
     }))
+  }
+  if (state.values) {
+    return [...h.parts].flatMap(([partId, part]) =>
+      part.kind === null
+        ? []
+        : [
+            {
+              id: `${partId}:kind`,
+              entityId: partId,
+              fieldId: 'fld_part_kind',
+              sortKey: 'a',
+              optionId: part.kind,
+            },
+          ]
+    )
   }
   return [...h.standards]
     .filter(([, standardCost]) => standardCost != null)

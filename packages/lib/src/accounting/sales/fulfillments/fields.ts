@@ -71,16 +71,17 @@ export async function loadFulfillmentFieldContext(
   db: Database | Transaction | undefined,
   organizationId: string
 ): Promise<FulfillmentFieldContext | null> {
+  // Without the order edge or the line edge there is nothing to join on - both
+  // reduce every read here to guessing.
   const [fulfillment, line] = await Promise.all([
-    systemFields(db, organizationId, 'fulfillment', FULFILLMENT_ATTRIBUTES),
-    systemFields(db, organizationId, 'fulfillment_line', FULFILLMENT_LINE_ATTRIBUTES),
+    systemFields(db, organizationId, 'fulfillment', FULFILLMENT_ATTRIBUTES, {
+      required: ['fulfillment_order'],
+    }),
+    systemFields(db, organizationId, 'fulfillment_line', FULFILLMENT_LINE_ATTRIBUTES, {
+      required: ['fulfillment_line_fulfillment'],
+    }),
   ])
-  if (!fulfillment || !line) return null
-  // Without the order edge or the line edge there is nothing to join on -
-  // both reduce every read here to guessing.
-  if (!fulfillment.fields.fulfillment_order || !line.fields.fulfillment_line_fulfillment)
-    return null
-  return { fulfillment, line }
+  return fulfillment && line ? { fulfillment, line } : null
 }
 
 /** {@link loadFulfillmentFieldContext}, as the refusal a write path needs. */

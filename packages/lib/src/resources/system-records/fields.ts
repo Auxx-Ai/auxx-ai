@@ -70,29 +70,59 @@ export async function systemFieldMap<A extends string>(
   ) as Record<A, CustomFieldEntity | null>
 }
 
-/** The def and fields for one system entity, or `null` when the org has not provisioned the def — a caller that must refuse wants {@link requireSystemFields}. */
+/** What makes a context unavailable beyond the def itself, and what to say when it is. */
+export interface SystemFieldsOptions<A extends string> {
+  /**
+   * Attributes whose field must exist. A surface whose required field is
+   * missing is a constant, not a partial answer: `systemFields` reads that as
+   * unavailable (`null`) and `requireSystemFields` refuses.
+   */
+  required?: readonly A[]
+  /** The domain refusal `requireSystemFields` throws instead of the generic sentence. */
+  message?: string
+}
+
+/** The def and fields for one system entity, or `null` when the def or a `required` field is missing — a caller that must refuse wants {@link requireSystemFields}. */
 export async function systemFields<A extends string>(
   db: Database | Transaction | undefined,
   organizationId: string,
   entityType: string,
-  attributes: readonly A[]
+  attributes: readonly A[],
+  options: SystemFieldsOptions<NoInfer<A>> = {}
 ): Promise<SystemFieldContext<A> | null> {
   const defId = await systemDefId(db, organizationId, entityType)
   if (!defId) return null
-  return { defId, fields: await systemFieldMap(db, organizationId, attributes) }
+  const fields = await systemFieldMap(db, organizationId, attributes)
+  if (missingRequired(fields, options.required).length > 0) return null
+  return { defId, fields }
 }
 
-/** {@link systemFields}, as the refusal a write path needs: `UnprocessableEntityError` naming the entity type. */
+/** {@link systemFields}, as the refusal a write path needs: `UnprocessableEntityError` naming the entity type and any missing required attribute. */
 export async function requireSystemFields<A extends string>(
   db: Database | Transaction | undefined,
   organizationId: string,
   entityType: string,
-  attributes: readonly A[]
+  attributes: readonly A[],
+  options: SystemFieldsOptions<NoInfer<A>> = {}
 ): Promise<SystemFieldContext<A>> {
-  const ctx = await systemFields(db, organizationId, entityType, attributes)
-  if (!ctx)
+  const defId = await systemDefId(db, organizationId, entityType)
+  if (!defId)
     throw new UnprocessableEntityError(
-      `The ${entityType} entity is not provisioned for this organization`
+      options.message ?? `The ${entityType} entity is not provisioned for this organization`
     )
-  return ctx
+  const fields = await systemFieldMap(db, organizationId, attributes)
+  const missing = missingRequired(fields, options.required)
+  if (missing.length > 0)
+    throw new UnprocessableEntityError(
+      options.message ??
+        `The ${entityType} entity is missing required fields: ${missing.join(', ')}`
+    )
+  return { defId, fields }
+}
+
+function missingRequired<A extends string>(
+  fields: Record<A, CustomFieldEntity | null>,
+  required: readonly A[] | undefined
+): A[] {
+  return required ? required.filter((attribute) => !fields[attribute]) : []
 }

@@ -69,22 +69,28 @@ function db(rows: { instances?: unknown[]; values?: unknown[]; children?: unknow
   const calls: { table: unknown; columns: unknown }[] = []
   h.select.mockImplementation((table: unknown, columns: unknown) => {
     calls.push({ table, columns })
+    // `findSystemRecordIdsByValue` projects a `key` beside the instance id; it
+    // is the only read that does, and it is the child-by-parent lookup here.
+    if (columns && typeof columns === 'object' && 'key' in columns) return rows.children ?? []
     if (table === schema.EntityInstance) return rows.instances ?? []
-    // A `{ entityId }` projection is the child-by-parent lookup; the values read
-    // takes whole rows.
-    if (columns) return rows.children ?? []
     return rows.values ?? []
   })
   const conn = {
-    select: (columns?: unknown) => ({
-      from: (table: unknown) => ({
-        where: () => {
-          const result = Promise.resolve(h.select(table, columns))
-          // The values read chains `.orderBy(sortKey)`; the others await here.
-          return Object.assign(result, { orderBy: () => result })
-        },
-      }),
-    }),
+    select: (columns?: unknown) => {
+      const from = (table: unknown) => {
+        const builder = {
+          $dynamic: () => builder,
+          innerJoin: () => builder,
+          where: () => {
+            const result = Promise.resolve(h.select(table, columns))
+            // The values read chains `.orderBy(sortKey)`; the others await here.
+            return Object.assign(result, { orderBy: () => result })
+          },
+        }
+        return builder
+      }
+      return { from }
+    },
   }
   // biome-ignore lint/suspicious/noExplicitAny: a query-builder stand-in
   return { conn: conn as any, calls }
@@ -98,6 +104,7 @@ function instance(id: string, extra: object = {}) {
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-02'),
     archivedAt: null,
+    displayName: null,
     ...extra,
   }
 }
@@ -119,6 +126,21 @@ describe('readSystemRecords', () => {
     expect(rows[0]?.recordId).toBe('def_1:a')
     // A record with no stored row reads as unset, never as another record's value.
     expect(rows[1]?.text('name')).toBeNull()
+  })
+
+  it('carries the instance displayName, so a refusal can name the record', async () => {
+    const { conn, calls } = db({
+      instances: [instance('a', { displayName: 'M400L Bracket' }), instance('b')],
+      values: [],
+    })
+
+    const rows = await readSystemRecords(conn, ORG, ctx)
+
+    expect(rows[0]?.displayName).toBe('M400L Bracket')
+    // An uncomposed name reads null, never the empty string or another row's.
+    expect(rows[1]?.displayName).toBeNull()
+    // Still the reader's two queries: it is a column, not a third read.
+    expect(calls).toHaveLength(2)
   })
 
   it('types a cell through rowsToTypedValues rather than guessing a column', async () => {
@@ -338,7 +360,10 @@ describe('readSystemRecords, cells: false', () => {
 describe('readSystemRecords, by parent', () => {
   it('reads the children of a set of parents through the relationship field', async () => {
     const { conn, calls } = db({
-      children: [{ entityId: 'line_1' }, { entityId: 'line_2' }],
+      children: [
+        { entityId: 'line_1', key: 'order_1' },
+        { entityId: 'line_2', key: 'order_2' },
+      ],
       instances: [instance('line_1'), instance('line_2')],
       values: [valueRow('line_1', 'f_name', 'a0', { valueText: 'Widget' })],
     })
@@ -349,7 +374,7 @@ describe('readSystemRecords, by parent', () => {
 
     // One extra query for the relation, then the same two.
     expect(calls).toHaveLength(3)
-    expect(calls[0]?.table).toBe(schema.FieldValue)
+    expect(calls[0]?.table).toBe(schema.EntityInstance)
     expect(rows.map((row) => row.id)).toEqual(['line_1', 'line_2'])
     expect(rows[0]?.text('name')).toBe('Widget')
   })
@@ -376,7 +401,10 @@ describe('readSystemRecords, by parent', () => {
 
   it('intersects `by` with `ids` rather than widening to either', async () => {
     const { conn } = db({
-      children: [{ entityId: 'line_1' }, { entityId: 'line_2' }],
+      children: [
+        { entityId: 'line_1', key: 'order_1' },
+        { entityId: 'line_2', key: 'order_2' },
+      ],
       instances: [instance('line_1')],
       values: [],
     })

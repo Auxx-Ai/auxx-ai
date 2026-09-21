@@ -74,7 +74,7 @@ function render(fragment: unknown): string {
  */
 function stage(rows: unknown[]): unknown {
   const chain: Record<string, unknown> = {}
-  for (const method of ['from', 'innerJoin', 'leftJoin', 'limit', 'orderBy']) {
+  for (const method of ['from', '$dynamic', 'innerJoin', 'leftJoin', 'limit', 'orderBy']) {
     chain[method] = () => stage(rows)
   }
   chain.where = (fragment: unknown) => {
@@ -162,7 +162,10 @@ describe('readRemovalFacts', () => {
       { entityId: 'acct_1', fieldId: 'bank_account_has_posted', valueBoolean: true },
     ])
     // 3. the account's lines, by the relationship field...
-    h.script.push([{ entityId: 'txn_1' }, { entityId: 'txn_2' }])
+    h.script.push([
+      { entityId: 'txn_1', key: 'acct_1' },
+      { entityId: 'txn_2', key: 'acct_1' },
+    ])
     // 4. ...the live instances behind them...
     h.script.push([{ id: 'txn_1' }, { id: 'txn_2' }])
     // 5. ...every one of which is back in `for_review` with no posting id, which
@@ -190,10 +193,10 @@ describe('readRemovalFacts', () => {
     h.script.push([{ id: 'acct_1', createdAt: null, archivedAt: null }])
     h.script.push([{ entityId: 'acct_1', fieldId: 'bank_account_name', valueText: 'Chequing' }])
     h.script.push([
-      { entityId: 'txn_1' },
-      { entityId: 'txn_2' },
-      { entityId: 'txn_3' },
-      { entityId: 'txn_4' },
+      { entityId: 'txn_1', key: 'acct_1' },
+      { entityId: 'txn_2', key: 'acct_1' },
+      { entityId: 'txn_3', key: 'acct_1' },
+      { entityId: 'txn_4', key: 'acct_1' },
     ])
     h.script.push([{ id: 'txn_1' }, { id: 'txn_2' }, { id: 'txn_3' }, { id: 'txn_4' }])
     h.script.push([
