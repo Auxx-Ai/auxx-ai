@@ -70,7 +70,7 @@ interface JournalEntryDrawerProps {
 
 /**
  * The journal entry drawer - HANDOFF slot 1B item 2. `DockableDrawer` in the
- * SAME dock slot `PostingDrawer` uses on the ledger page, opened by `?je=new`
+ * SAME dock slot `LedgerDrawerHost` uses on the ledger page, opened by `?je=new`
  * or `?je=<id>`.
  *
  * ⚠️ **The Attachment row is not a `FieldInputAdapter`**, alone among the rows
@@ -237,7 +237,7 @@ export function JournalEntryDrawer({
         ) : (
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
             {/* 🛑 No padding and no gap, deliberately - see the same note in
-                `posting-drawer.tsx`. `Section` draws its own `p-3 pb-4` and a
+                `posting-frame.tsx`. `Section` draws its own `p-3 pb-4` and a
                 full-width `border-b`, so sections stack FLUSH and that border is
                 the divider. This wrapper used to carry `gap-3 p-3`, which is
                 why the Lines section had grown a `-mx-3` bleed to claw itself

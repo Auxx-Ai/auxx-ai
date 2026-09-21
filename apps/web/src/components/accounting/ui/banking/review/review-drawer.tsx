@@ -76,7 +76,7 @@ interface ReviewDrawerProps {
  * reviewer's real decision, and a UI that leads with an account picker has
  * already assumed the answer is "code".
  *
- * Docked on desktop, exactly as `posting-drawer.tsx` is. The Banking layout owns
+ * Docked on desktop, exactly as `posting-frame.tsx` is. The Banking layout owns
  * the `MainPageContent`, so the page reaches its `dockedPanels` slot through
  * `docked-panels-outlet.tsx` rather than by rendering a second one.
  */

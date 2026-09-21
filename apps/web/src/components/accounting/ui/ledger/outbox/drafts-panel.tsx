@@ -22,6 +22,7 @@ import { useBulkMode, useListSelection, useSelectionIds } from '~/components/lis
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { MovementBadge } from '../../movement-badge'
 import { EntryBlockers } from '../entry-blockers'
 import { formatAccountingDate, formatMinor } from '../format'
 import { LedgerSourceLink } from '../ledger-source-link'
@@ -313,10 +314,15 @@ function DraftLinks({ glPostingId }: { glPostingId: string }) {
   const sources = sourcesQuery.data ?? []
   if (sources.length === 0) return null
   return (
-    <span className='flex min-w-0 items-center gap-1'>
+    // One badge row tall with `overflow-hidden`, so a badge that does not fit
+    // wraps onto a hidden second line and disappears whole rather than clipped.
+    // `box-content p-px` keeps the 1px ring inside the clip box.
+    <span className='box-content flex h-4 min-w-0 flex-wrap items-center gap-1 overflow-hidden p-px'>
       {sources.map((source) =>
         source.recordId ? (
           <RecordBadge key={source.id} recordId={source.recordId} size='sm' />
+        ) : source.movement ? (
+          <MovementBadge key={source.id} movement={source.movement} size='sm' detail='compact' />
         ) : (
           <LedgerSourceLink
             key={source.id}

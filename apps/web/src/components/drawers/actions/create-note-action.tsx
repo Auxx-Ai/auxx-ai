@@ -6,13 +6,14 @@ import { MessagesSquare } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { Tooltip } from '~/components/global/tooltip'
+import { useDrawerTabParam } from '~/components/records/record-drill-panels'
 import type { DrawerActionProps } from '../drawer-action-registry'
 
 /**
  * Generic header action: switches to the Comments tab and focuses the composer.
  */
 export function CreateNoteAction({ recordId, onCreateNote }: DrawerActionProps) {
-  const [, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
+  const [, setActiveTab] = useQueryState(useDrawerTabParam(), { defaultValue: 'overview' })
   const { canCompose } = useCommentAccess(recordId)
 
   const handleClick = () => {

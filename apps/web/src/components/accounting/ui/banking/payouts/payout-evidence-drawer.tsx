@@ -33,7 +33,7 @@ interface PayoutEvidenceDrawerProps {
  * slot through `docked-panels-outlet.tsx` rather than by rendering a second
  * one.
  *
- * The IDENTITY lives here, in `DrawerHeader`, the way `posting-drawer.tsx` and
+ * The IDENTITY lives here, in `DrawerHeader`, the way `posting-frame.tsx` and
  * `review-drawer.tsx` carry theirs: the external id, the source account, and
  * the status badges belong to the panel rather than to its first block, and the
  * "Open connector" link is a header action. `PayoutEvidenceDetail` is the body

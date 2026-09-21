@@ -2,7 +2,7 @@
 
 'use client'
 
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { PanelRight } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -74,8 +74,9 @@ export function OutboxRow({
   const picking = selectable && selecting
 
   return (
+    // No `TREE_SECONDARY_NOTRUNCATE` here: the secondary is the slot that must
+    // yield when the drawer takes width, and it sheds whole badges instead (83 §2.1).
     <TreeRow
-      className={TREE_SECONDARY_NOTRUNCATE}
       depth={depth}
       icon={icon}
       expandable={expandable}
@@ -107,7 +108,8 @@ export function OutboxRow({
               </span>
             )}
           </span>
-          <span className='min-w-0 truncate text-sm'>{title}</span>
+          {/* A floor, so the memo never collapses to `C...` while the badges keep every pixel. */}
+          <span className='min-w-40 truncate text-sm'>{title}</span>
         </span>
       }
       secondary={secondary}
