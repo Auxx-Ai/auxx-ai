@@ -16,6 +16,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../../../errors'
+import { readEntry } from './entry-reads'
 import type { MatchReason, MatchState } from './match-reasons'
 import { readFrozenEntryIds } from './match-sync'
 import { markPayoutForAssessment } from './payout-reconciler'
@@ -27,26 +28,6 @@ export interface MatchWriteResult {
   matchedMoneyTransactionId: string | null
   matchReason: MatchReason | null
   matchedBy: string | null
-}
-
-type Entry = typeof schema.ProcessorBalanceEntry.$inferSelect
-
-async function loadEntry(
-  db: Database,
-  organizationId: string,
-  entryId: string
-): Promise<Entry | null> {
-  const [row] = await db
-    .select()
-    .from(schema.ProcessorBalanceEntry)
-    .where(
-      and(
-        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
-        eq(schema.ProcessorBalanceEntry.id, entryId)
-      )
-    )
-    .limit(1)
-  return row ?? null
 }
 
 async function write(
@@ -80,7 +61,7 @@ export async function acceptMatch(
   db: Database,
   input: { organizationId: string; entryId: string; userId: string }
 ): Promise<Result<MatchWriteResult, Error>> {
-  const entry = await loadEntry(db, input.organizationId, input.entryId)
+  const entry = await readEntry(db, input.organizationId, input.entryId)
   if (!entry) return err(new NotFoundError('Processor entry not found'))
   if (entry.matchState !== 'suggested' || !entry.matchedMoneyTransactionId)
     return err(new ConflictError('This item has no suggested receipt to accept'))
@@ -107,7 +88,7 @@ export async function matchEntry(
     userId: string
   }
 ): Promise<Result<MatchWriteResult, Error>> {
-  const entry = await loadEntry(db, input.organizationId, input.entryId)
+  const entry = await readEntry(db, input.organizationId, input.entryId)
   if (!entry) return err(new NotFoundError('Processor entry not found'))
   const frozen = await readFrozenEntryIds(db, input.organizationId, [input.entryId])
   if (frozen.has(input.entryId))
@@ -143,7 +124,7 @@ export async function unmatchEntry(
   db: Database,
   input: { organizationId: string; entryId: string; userId: string }
 ): Promise<Result<MatchWriteResult, Error>> {
-  const entry = await loadEntry(db, input.organizationId, input.entryId)
+  const entry = await readEntry(db, input.organizationId, input.entryId)
   if (!entry) return err(new NotFoundError('Processor entry not found'))
   const frozen = await readFrozenEntryIds(db, input.organizationId, [input.entryId])
   if (frozen.has(input.entryId))

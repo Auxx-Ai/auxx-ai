@@ -12,7 +12,9 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
+import { readSourceAccounts } from '../customer-money/source-reads'
 import { type PayoutSplit, type StoredPayoutEntry, splitStoredEntries } from './client'
+import { listPayoutEntries } from './entry-reads'
 import { assessProcessorEntries, type MatchableProcessorEntry } from './match-entries'
 import { MATCH_STATE_FOR_REASON, type MatchReason, type MatchState } from './match-reasons'
 import { resolveEntryReferences, type UnreferencedEntry } from './reference-resolvers'
@@ -159,23 +161,7 @@ export async function syncStoredMatches(
   // 🛑 Every non-outgoing row, not only the matchable ones: the SPLIT is this
   // function's second answer (§11.3) and a fee or an adjustment is part of it,
   // unrecognised by construction. Only `charge` and `refund` reach the matcher.
-  const allRows = await tx
-    .select()
-    .from(schema.ProcessorBalanceEntry)
-    .where(
-      and(
-        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
-        eq(schema.ProcessorBalanceEntry.isOutgoingTransfer, false),
-        or(
-          ...scopes.map((scope) =>
-            and(
-              eq(schema.ProcessorBalanceEntry.sourceAccountId, scope.sourceAccountId),
-              eq(schema.ProcessorBalanceEntry.payoutExternalId, scope.payoutExternalId)
-            )
-          )
-        )
-      )
-    )
+  const allRows = await listPayoutEntries(tx, organizationId, scopes)
   const keyByScope = new Map(
     scopes.map((scope) => [`${scope.sourceAccountId}:${scope.payoutExternalId}`, scope.key])
   )
@@ -184,21 +170,12 @@ export async function syncStoredMatches(
   if (!allRows.length) return summaries
 
   const rows = allRows.filter((row) => row.type === 'charge' || row.type === 'refund')
-  const accounts = await tx
-    .select({
-      id: schema.FinancialSourceAccount.id,
-      providerKey: schema.FinancialSourceAccount.providerKey,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        inArray(schema.FinancialSourceAccount.id, [
-          ...new Set(allRows.map((row) => row.sourceAccountId)),
-        ])
-      )
-    )
-  const providerByAccount = new Map(accounts.map((row) => [row.id, row.providerKey]))
+  const accounts = await readSourceAccounts(
+    tx,
+    organizationId,
+    allRows.map((row) => row.sourceAccountId)
+  )
+  const providerByAccount = new Map([...accounts].map(([id, row]) => [id, row.providerKey]))
 
   const unreferenced = new Map<string, UnreferencedEntry[]>()
   for (const row of rows) {
@@ -350,6 +327,7 @@ export async function listTransfersWithOpenMatches(
         eq(schema.MoneyTransfer.externalId, schema.ProcessorBalanceEntry.payoutExternalId)
       )
     )
+    // Not `unmatchable`: that state is a person's answer, never retried by a sweep.
     .where(inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested']))
     .orderBy(schema.MoneyTransfer.organizationId, schema.MoneyTransfer.id)
     .limit(limit)

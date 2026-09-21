@@ -23,7 +23,9 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
+import { listLinkedFeeds } from '../../rails/reads'
 import { resolvePayoutStatus } from './client'
+import { listPayoutEntries } from './entry-reads'
 import {
   loadPayoutBankAccountFieldContext,
   loadPayoutFieldContext,
@@ -59,32 +61,12 @@ export async function listLinkedFeedAccounts(
   organizationId: string,
   providerKey: string
 ): Promise<LinkedFeedAccount[]> {
-  const rows = await db
-    .select({
-      id: schema.FinancialSourceAccount.id,
-      externalAccountId: schema.FinancialSourceAccount.externalAccountId,
-      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        eq(schema.FinancialSourceAccount.providerKey, providerKey),
-        isNotNull(schema.FinancialSourceAccount.paymentGatewayId),
-        isNull(schema.FinancialSourceAccount.archivedAt)
-      )
-    )
-  return rows.flatMap((row) =>
-    row.paymentGatewayId
-      ? [
-          {
-            id: row.id,
-            externalAccountId: row.externalAccountId,
-            paymentGatewayId: row.paymentGatewayId,
-          },
-        ]
-      : []
-  )
+  const rows = await listLinkedFeeds(db, organizationId, { providerKey })
+  return rows.map((row) => ({
+    id: row.id,
+    externalAccountId: row.externalAccountId,
+    paymentGatewayId: row.paymentGatewayId,
+  }))
 }
 
 /**
@@ -156,18 +138,11 @@ export async function listPayoutMemberEntryIds(
   }
 ): Promise<string[]> {
   const { organizationId, sourceAccountIds, payoutExternalId } = params
-  if (sourceAccountIds.length === 0) return []
-  const rows = await db
-    .select({ id: schema.ProcessorBalanceEntry.id })
-    .from(schema.ProcessorBalanceEntry)
-    .where(
-      and(
-        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
-        inArray(schema.ProcessorBalanceEntry.sourceAccountId, [...sourceAccountIds]),
-        eq(schema.ProcessorBalanceEntry.payoutExternalId, payoutExternalId),
-        eq(schema.ProcessorBalanceEntry.isOutgoingTransfer, false)
-      )
-    )
+  const rows = await listPayoutEntries(
+    db,
+    organizationId,
+    sourceAccountIds.map((sourceAccountId) => ({ sourceAccountId, payoutExternalId }))
+  )
   return rows.map((row) => row.id)
 }
 

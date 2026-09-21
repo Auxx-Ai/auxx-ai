@@ -7,6 +7,7 @@ import {
   type PayoutRecordEvidence,
   payoutRecordEvidenceSchema,
 } from '../customer-money/record-contracts'
+import { payoutMembershipWindowKey } from './client'
 import type { MatchReason, MatchState } from './match-reasons'
 import { syncStoredMatches } from './match-sync'
 import { reverseStalePayoutPosting } from './repost-writes'
@@ -111,7 +112,7 @@ async function assessTransfers(
     }
   })
   const windows = assessments.flatMap(({ header, transfer }) =>
-    header ? [`payout:${transfer.externalId}:acquisition:${header.acquisition.id}`] : []
+    header ? [payoutMembershipWindowKey(transfer.externalId, header.acquisition.id)] : []
   )
   const coverages = windows.length
     ? await tx
@@ -142,7 +143,7 @@ async function assessTransfers(
       coverageMap.get(
         JSON.stringify([
           transfer.sourceAccountId,
-          `payout:${transfer.externalId}:acquisition:${header.acquisition.id}`,
+          payoutMembershipWindowKey(transfer.externalId, header.acquisition.id),
         ])
       ) ?? null
     if (!assessment.coverage?.complete) assessment.reasons.add('Payout membership is incomplete')

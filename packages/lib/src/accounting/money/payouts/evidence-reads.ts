@@ -7,6 +7,8 @@ import { BadRequestError, ConflictError } from '../../../errors'
 import { systemDefId, systemRecordScope, systemValueJoin } from '../../../resources/system-records'
 import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import { payoutRecordEvidenceSchema } from '../customer-money/record-contracts'
+import { currentObservationFilter } from '../customer-money/source-reads'
+import { payoutMembershipWindowKey } from './client'
 import { loadPayoutFieldContext } from './fields'
 import { type CandidateDocument, readApplicationDocuments } from './match-candidates'
 import type { MatchReason } from './match-reasons'
@@ -703,7 +705,7 @@ async function membershipEntries(
         eq(schema.FinancialSourceCoverage.streamKey, 'payout_membership'),
         eq(
           schema.FinancialSourceCoverage.windowKey,
-          `payout:${transfer.externalId}:acquisition:${joined.acquisitionId}`
+          payoutMembershipWindowKey(transfer.externalId, String(joined.acquisitionId))
         )
       )
     )
@@ -902,7 +904,7 @@ export async function listRejectedProcessorEvidence(db: Database, input: PageInp
         eq(schema.FinancialSourceObservation.organizationId, input.organizationId),
         inArray(schema.FinancialSourceObject.objectType, ['balance_transaction', 'payout']),
         sql`COALESCE(${schema.FinancialSourceObservation.payload}->>'rejectionReason', ${schema.FinancialSourceObservation.reportingInstallationSnapshot}->>'rejectionReason') IS NOT NULL`,
-        sql`NOT EXISTS (SELECT 1 FROM "FinancialSourceObservation" newer WHERE newer."organizationId" = ${schema.FinancialSourceObservation.organizationId} AND newer."sourceObjectId" = ${schema.FinancialSourceObservation.sourceObjectId} AND (newer."observedAt", newer."id") > (${schema.FinancialSourceObservation.observedAt}, ${schema.FinancialSourceObservation.id}))`,
+        currentObservationFilter(),
         input.cursor ? lt(schema.FinancialSourceObservation.id, input.cursor) : undefined
       )
     )

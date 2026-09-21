@@ -45,6 +45,7 @@ import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNull } from 'drizzle-orm'
+import { listOrganizationsWithApp } from '../../../../apps/installations/organizations'
 import { type AppToolContext, resolveAppToolContext } from '../../../../apps/invoke-app-tool'
 import { BadRequestError, ForbiddenError, UnprocessableEntityError } from '../../../../errors'
 import type { PaymentGatewayRow } from '../../../rails/client'
@@ -113,12 +114,7 @@ function handleOf(ctx: PayoutSourceCtx): ShopifyPayoutsHandle {
  * is paid for only when a rail exists.
  */
 async function listOrganizations(db: Database): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ organizationId: schema.AppInstallation.organizationId })
-    .from(schema.AppInstallation)
-    .innerJoin(schema.App, eq(schema.App.id, schema.AppInstallation.appId))
-    .where(and(eq(schema.App.slug, SHOPIFY_APP_SLUG), isNull(schema.AppInstallation.uninstalledAt)))
-  return rows.map((row) => row.organizationId)
+  return listOrganizationsWithApp(db, [SHOPIFY_APP_SLUG])
 }
 
 /**

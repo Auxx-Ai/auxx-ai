@@ -14,6 +14,7 @@ import { readLedgerSummary } from '../ledger/reads/ledger-summary'
 import { avenueOfPostingType } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import type { CounterpartyType, PostingType } from '../ledger/types'
+import { readSourceAccounts } from '../money/customer-money/source-reads'
 import { readActiveBookConnection } from '../providers/book-connections'
 import { type AccountingProviderLimits, resolveAccountingProvider } from '../providers/provider'
 import { type ShapeForPostingLine, shapeForPosting, wantsSalesReceipt } from './object-shape'
@@ -134,20 +135,8 @@ async function readStoreExportSettings(
   organizationId: string,
   storeIds: string[]
 ): Promise<Map<string, StoreExportSetting>> {
-  if (storeIds.length === 0) return new Map()
-  const rows = await db
-    .select({
-      id: schema.FinancialSourceAccount.id,
-      exportShape: schema.FinancialSourceAccount.exportShape,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        inArray(schema.FinancialSourceAccount.id, storeIds)
-      )
-    )
-  return new Map(rows.map((row) => [row.id, { exportShape: row.exportShape }]))
+  const rows = await readSourceAccounts(db, organizationId, storeIds)
+  return new Map([...rows].map(([id, row]) => [id, { exportShape: row.exportShape }]))
 }
 
 /** Each posting's own `parent` link - a fulfillment's order, a receipt's order or invoice. */

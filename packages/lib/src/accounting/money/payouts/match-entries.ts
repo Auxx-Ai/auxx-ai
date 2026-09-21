@@ -3,6 +3,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { z } from 'zod'
 import { financialSourceReferenceSchema } from '../customer-money/record-contracts'
+import { readSourceAccounts } from '../customer-money/source-reads'
 import type { MatchReason } from './match-reasons'
 
 /** Evidence needed to link activity to an already recorded customer movement. */
@@ -47,23 +48,10 @@ async function readPaymentGatewayByAccount(
   organizationId: string,
   accountIds: readonly string[]
 ): Promise<Map<string, string>> {
-  const ids = [...new Set(accountIds)]
-  if (ids.length === 0) return new Map()
-  const rows = await db
-    .select({
-      id: schema.FinancialSourceAccount.id,
-      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
-    })
-    .from(schema.FinancialSourceAccount)
-    .where(
-      and(
-        eq(schema.FinancialSourceAccount.organizationId, organizationId),
-        inArray(schema.FinancialSourceAccount.id, ids)
-      )
-    )
+  const accounts = await readSourceAccounts(db, organizationId, accountIds)
   const result = new Map<string, string>()
-  for (const row of rows) {
-    if (row.paymentGatewayId) result.set(row.id, row.paymentGatewayId)
+  for (const [id, row] of accounts) {
+    if (row.paymentGatewayId) result.set(id, row.paymentGatewayId)
   }
   return result
 }

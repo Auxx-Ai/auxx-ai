@@ -22,7 +22,7 @@ import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import { listOpenDestinationMismatches } from '../money/payouts/reads'
 import { guard } from './guard'
-import { getPaymentGateway } from './reads'
+import { getPaymentGateway, listLinkedFeeds } from './reads'
 
 const logger = createScopedLogger('payment-gateways')
 
@@ -104,7 +104,8 @@ export async function unlinkFeed(
         .where(
           and(
             eq(schema.FinancialSourceAccount.id, sourceAccountId),
-            eq(schema.FinancialSourceAccount.organizationId, organizationId)
+            eq(schema.FinancialSourceAccount.organizationId, organizationId),
+            isNull(schema.FinancialSourceAccount.archivedAt)
           )
         )
         .returning({ id: schema.FinancialSourceAccount.id })
@@ -184,21 +185,9 @@ export async function readiness(
       const feeMapped = mine.some((row) => row.role === ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)
       const bankMapped = mine.some((row) => row.role === ACCOUNT_ROLES.BANK)
 
-      const feedRows = await db
-        .select({
-          id: schema.FinancialSourceAccount.id,
-          providerKey: schema.FinancialSourceAccount.providerKey,
-          externalAccountId: schema.FinancialSourceAccount.externalAccountId,
-          name: schema.FinancialSourceAccount.name,
-        })
-        .from(schema.FinancialSourceAccount)
-        .where(
-          and(
-            eq(schema.FinancialSourceAccount.organizationId, organizationId),
-            eq(schema.FinancialSourceAccount.paymentGatewayId, gatewayId),
-            isNull(schema.FinancialSourceAccount.archivedAt)
-          )
-        )
+      const feedRows = await listLinkedFeeds(db, organizationId, {
+        paymentGatewayIds: [gatewayId],
+      })
       const linkedFeeds = feedRows.map((row) => ({
         sourceAccountId: row.id,
         providerKey: row.providerKey,

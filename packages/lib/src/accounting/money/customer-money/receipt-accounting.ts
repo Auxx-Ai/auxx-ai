@@ -15,6 +15,7 @@ import {
 import { getPaymentGateway, listPaymentGateways } from '../../rails/reads'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
+import { readSourceAccount, readSourceObject } from './source-reads'
 
 /** Read the canonical movement and its accepted source evidence under the commit lock. */
 export async function readCustomerReceiptAccountingSource(
@@ -75,20 +76,8 @@ export async function readCustomerReceiptAccountingSource(
   })
   const evidence = []
   for (const acceptance of acceptances) {
-    const object = await tx.query.FinancialSourceObject.findFirst({
-      where: and(
-        eq(schema.FinancialSourceObject.organizationId, organizationId),
-        eq(schema.FinancialSourceObject.id, acceptance.sourceObjectId)
-      ),
-    })
-    const account =
-      object &&
-      (await tx.query.FinancialSourceAccount.findFirst({
-        where: and(
-          eq(schema.FinancialSourceAccount.organizationId, organizationId),
-          eq(schema.FinancialSourceAccount.id, object.sourceAccountId)
-        ),
-      }))
+    const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
+    const account = object && (await readSourceAccount(tx, organizationId, object.sourceAccountId))
     if (!account) continue
     if (
       acceptance.state !== 'accepted' ||
