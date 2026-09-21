@@ -18,7 +18,7 @@
 // got a banner reprinting its entire ledger, one button per row, on every
 // statement and in every statement PDF.
 //
-// The outbound copy is the outbox's subject (`?queue=` on the ledger page),
+// The outbound copy is the outbox's subject (`/app/accounting/outbox`),
 // which tallies the same rows by state and can act on them; the inbound half is
 // `ProviderSyncMarker`'s. A statement says what is missing from ITS OWN
 // figures, and nothing else.

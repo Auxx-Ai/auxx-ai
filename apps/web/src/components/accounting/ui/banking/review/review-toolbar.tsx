@@ -16,6 +16,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
 import { Ban, CircleX, Inbox, Link2, List, type LucideIcon, Sparkles, Tag } from 'lucide-react'
 import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
+import { Tooltip } from '~/components/global/tooltip'
 
 /** Every filter the queue narrows on. All of them run in SQL. */
 export interface ReviewFilters {
@@ -59,16 +60,12 @@ interface ReviewToolbarProps {
   filters: ReviewFilters
   onChange: (next: ReviewFilters) => void
   /**
-   * Actions that change the DATA, rendered on row one after the state tabs.
+   * The list's select-all box, FIRST in row two beside the search.
    *
-   * The page owns them, not this component: whatever runs here has to
-   * invalidate the queries the page holds, so the node arrives built.
-   */
-  actions?: React.ReactNode
-  /**
-   * The list's select-all box, first on row one and aligned with the rows' own
-   * checkboxes. A node for the same reason `actions` is: the selection store it
-   * reads belongs to the page.
+   * 🛑 First, or the alignment is wrong: the box's `marginLeft` is measured from
+   * `ListToolbar`'s own `px-3`, so it lands on the rows' checkboxes only when
+   * nothing precedes it in the bar. A node for the same reason `actions` was:
+   * the selection store it reads belongs to the page.
    */
   selectAll?: React.ReactNode
 }
@@ -98,9 +95,9 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * second on its row because the ACCOUNT is what a bookkeeper reconciles against
  * a statement.
  *
- * Row one also carries `actions` (the page's "apply rules" button), because
- * that button acts on the pile the tabs are selecting; row two is only ever
- * about narrowing what is already listed.
+ * 🛑 The state `RadioTab` stays here and not in the module topbar: it is what
+ * defines `SelectAllCheckbox`'s `BOX_PX = 48`, so lifting it re-heights the bar
+ * and every checkbox offset below is wrong (task 81 §3).
  *
  * Both rows are `sticky={false}` because the wrapper is the sticky element -
  * two sticky rows would pin to the same `top-0` and cover each other.
@@ -109,7 +106,7 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * that crosses the wire is integer minor units; this is the one boundary where
  * a person's `12.50` becomes `1250`, and it is deliberately not two conventions.
  */
-export function ReviewToolbar({ filters, onChange, actions, selectAll }: ReviewToolbarProps) {
+export function ReviewToolbar({ filters, onChange, selectAll }: ReviewToolbarProps) {
   const set = <K extends keyof ReviewFilters>(key: K, value: ReviewFilters[K]) =>
     onChange({ ...filters, [key]: value })
 
@@ -122,28 +119,30 @@ export function ReviewToolbar({ filters, onChange, actions, selectAll }: ReviewT
   const dirty =
     !!filters.search || !!filters.from || !!filters.to || !!filters.amountMin || !!filters.amountMax
 
+  // 🛑 Always rendered, disabled when there is nothing to clear. Gating it on
+  // `dirty` re-flowed the row on the first keystroke in the search beside it.
   const clear = (
-    <Button
-      variant='ghost'
-      size='sm'
-      className='h-7'
-      onClick={() =>
-        onChange({
-          ...EMPTY_REVIEW_FILTERS,
-          bankAccountId: filters.bankAccountId,
-          state: filters.state,
-        })
-      }>
-      <CircleX />
-      Clear
-    </Button>
+    <Tooltip content='Clear all'>
+      <Button
+        variant='ghost'
+        size='icon-sm'
+        aria-label='Clear all'
+        disabled={!dirty}
+        onClick={() =>
+          onChange({
+            ...EMPTY_REVIEW_FILTERS,
+            bankAccountId: filters.bankAccountId,
+            state: filters.state,
+          })
+        }>
+        <CircleX />
+      </Button>
+    </Tooltip>
   )
 
   return (
     <div className='sticky top-0 z-10 shrink-0 backdrop-blur-sm'>
       <ListToolbar sticky={false}>
-        {selectAll}
-
         <ListToolbarGroup className='shrink-0'>
           {/* The shared picker, so this filter groups by institution like every
               other bank-account list in the app. `allLabel` is what a filter
@@ -172,16 +171,11 @@ export function ReviewToolbar({ filters, onChange, actions, selectAll }: ReviewT
             ))}
           </RadioTab>
         </ListToolbarGroup>
-
-        {actions && (
-          <>
-            <Separator orientation='vertical' className='h-5 shrink-0' />
-            <ListToolbarGroup className='shrink-0'>{actions}</ListToolbarGroup>
-          </>
-        )}
       </ListToolbar>
 
       <ListToolbar sticky={false}>
+        {selectAll}
+
         <ListToolbarGroup className='min-w-40 flex-1'>
           <InputSearch
             value={filters.search}
@@ -227,7 +221,7 @@ export function ReviewToolbar({ filters, onChange, actions, selectAll }: ReviewT
           />
         </ListToolbarGroup>
 
-        {dirty && <ListToolbarGroup className='shrink-0'>{clear}</ListToolbarGroup>}
+        <ListToolbarGroup className='shrink-0'>{clear}</ListToolbarGroup>
       </ListToolbar>
     </div>
   )

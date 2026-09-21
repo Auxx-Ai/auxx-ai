@@ -106,12 +106,26 @@ if (!Element.prototype.hasPointerCapture) {
   Element.prototype.releasePointerCapture = () => {}
 }
 
-// Mock IntersectionObserver
-global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}))
+// Mock IntersectionObserver.
+//
+// 🛑 A CLASS, not `vi.fn().mockImplementation(() => …)`. An arrow function has no
+// [[Construct]], so the mock form throws "is not a constructor" the moment
+// anything does `new IntersectionObserver(…)` — base-ui's `ScrollArea` viewport
+// and `InfiniteListTail`'s sentinel both do. Several test files carried their
+// own local class to work around this; new ones should not need to.
+class MockIntersectionObserver implements IntersectionObserver {
+  readonly root: Element | Document | null = null
+  readonly rootMargin: string = ''
+  readonly thresholds: readonly number[] = []
+  readonly scrollMargin: string = ''
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return []
+  }
+}
+global.IntersectionObserver = MockIntersectionObserver
 
 // Mock the Web Animations API — jsdom implements none of it. `@base-ui-components`'
 // ScrollArea calls `viewport.getAnimations({ subtree: true })` from a timer, so the

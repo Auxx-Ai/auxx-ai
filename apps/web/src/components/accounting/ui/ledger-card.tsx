@@ -199,7 +199,7 @@ export function LedgerCard({ entityInstanceId, sourceKind, emptyLabel }: LedgerC
           onToggleOpen={() => setOpenPostingId(draft.id)}
           actions={
             <Button asChild variant='ghost' size='xs'>
-              <Link href={`/app/accounting?queue=drafts&posting=${draft.id}`}>
+              <Link href={`/app/accounting/outbox?tab=drafts&posting=${draft.id}`}>
                 <ExternalLink />
                 Open outbox
               </Link>

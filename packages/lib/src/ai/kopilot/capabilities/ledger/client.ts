@@ -11,9 +11,9 @@
  */
 
 /**
- * Page key the ledger console (`/app/accounting`) sends as `page`.
+ * Page key the ledger console (`/app/accounting/closeout`) sends as `page`.
  *
- * `LedgerPage` mounts `<KopilotContext page='accounting.ledger' />`, which is
+ * `CloseoutPage` mounts `<KopilotContext page='accounting.ledger' />`, which is
  * what puts {@link createLedgerCapabilities}' tools in scope for that turn.
  *
  * 🛑 The web component hardcodes the literal rather than importing this

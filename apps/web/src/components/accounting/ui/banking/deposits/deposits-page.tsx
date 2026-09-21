@@ -17,9 +17,9 @@
 //
 // ## Shape
 //
-// `SettingsPage` with a `ResponsiveTabs` subHeader (Undeposited · Deposits) in
-// `?s=`, exactly the `accounts-settings-page.tsx` shape. Both tabs render inside
-// ONE framed box, sized to the room left under the sticky header, so the split
+// The `Undeposited · Deposits` view switch is published into the accounting
+// topbar (81 §4); `?s=` still holds it. Both tabs render inside ONE framed box
+// filling the definite height the module layout hands the page, so the split
 // fills the page without the page itself scrolling. The Undeposited tab is a
 // `MasterDetailSplit`: the left column is a `TreeRow` list of what is waiting to
 // be banked, one parent row per day it was received with its payments nested at
@@ -49,17 +49,16 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Banknote, FileDown, Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
-import SettingsPage from '~/components/global/settings-page'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { RecordsView } from '~/components/records/records-view'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { BaseType } from '~/components/workflow/types'
-import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BankAccountPicker, bankAccountLabel, useBankAccounts } from '../../bank-account-picker'
@@ -72,15 +71,6 @@ const TABS = [
   { value: 'undeposited', label: 'Undeposited', icon: Banknote },
   { value: 'deposits', label: 'Deposits', icon: Landmark },
 ]
-
-const BREADCRUMBS = [
-  { title: 'Accounting', href: '/app/accounting' },
-  { title: 'Banking' },
-  { title: 'Deposits' },
-]
-
-const PAGE_DESCRIPTION =
-  'Money you have received but not yet banked, and the deposits that bank it. One deposit is one line on the statement, which is what makes a bank feed able to match rather than merely code.'
 
 /**
  * The ledger is pinned to USD for the cutover (`LEDGER_CURRENCY`), and
@@ -115,9 +105,6 @@ function formatDay(day: string): string {
     year: 'numeric',
   })
 }
-
-/** Below this the framed split is not worth filling - it just scrolls with the page. */
-const MIN_FRAME_HEIGHT = 320
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -289,199 +276,197 @@ export function DepositsPage() {
     })
   }
 
-  const frameRef = useRef<HTMLDivElement>(null)
-  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
+  // 🛑 The view switch is the whole of row 1, and lifting it is safe only
+  // because this page has no `SelectAllCheckbox` whose offsets the bar's height
+  // would move (81 §3, §4).
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <ResponsiveTabs
+            value={activeTab}
+            onValueChange={(next) => setTab(next)}
+            items={TABS}
+            size='sm'
+          />
+        ),
+      }),
+      [activeTab, setTab]
+    )
+  )
 
   return (
-    <SettingsPage
-      title='Deposits'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      subHeader={
-        <ResponsiveTabs
-          value={activeTab}
-          onValueChange={(next) => setTab(next)}
-          items={TABS}
-          size='sm'
-        />
-      }>
-      {/* The split is FRAMED rather than bled to the page edges: sized to the
-          room left under the header, padded away from the panel border, and
-          clipped so each column scrolls inside the frame instead of the page
-          scrolling past it. */}
-      <div
-        ref={frameRef}
-        className='p-4'
-        style={frameHeight ? { height: `${frameHeight}px` } : undefined}>
-        <div className='flex h-full flex-col overflow-hidden rounded-xl border bg-background'>
-          {activeTab === 'deposits' ? (
-            // Past deposits are records, so the list is a one-liner and the drawer,
-            // the columns and the filters all come from the registry.
-            <div className='flex min-h-0 flex-1 flex-col'>
-              <RecordsView slug='bank-deposits' basePath='/app/accounting/banking/deposits' />
-            </div>
-          ) : (
-            <MasterDetailSplit
-              id='bank-deposits'
-              scroll='columns'
-              paneOpen
-              paneTitle='Deposit'
-              pane={
-                <DepositPane
-                  selectedCount={selected.length}
-                  selectedTotal={selectedTotal}
-                  selected={selected}
-                  bankAccountId={bankAccountId}
-                  onBankAccountChange={setBankAccountId}
-                  hasBankAccounts={bankAccounts.length > 0}
-                  setupBlockers={setupBlockers}
-                  depositDate={depositDate}
-                  onDepositDateChange={setDepositDate}
-                  reference={reference}
-                  onReferenceChange={setReference}
-                  blockers={blockers}
-                  recordedId={recordedId}
-                  canRecord={canRecord}
-                  isRecording={createDeposit.isPending}
-                  onRecord={recordDeposit}
-                />
-              }>
-              {/* The column is a full-height flex stack so the selection strip
+    <div className='flex min-h-0 flex-1 flex-col p-4'>
+      {/* The split is FRAMED rather than bled to the page edges: padded away
+          from the panel border and clipped so each column scrolls inside the
+          frame instead of the page scrolling past it. `flex-1 min-h-0` is
+          enough now that the layout hands this page a definite height. */}
+      <div className='flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background'>
+        {activeTab === 'deposits' ? (
+          // Past deposits are records, so the list is a one-liner and the drawer,
+          // the columns and the filters all come from the registry.
+          <div className='flex min-h-0 flex-1 flex-col'>
+            <RecordsView slug='bank-deposits' basePath='/app/accounting/banking/deposits' />
+          </div>
+        ) : (
+          <MasterDetailSplit
+            id='bank-deposits'
+            scroll='columns'
+            paneOpen
+            paneTitle='Deposit'
+            pane={
+              <DepositPane
+                selectedCount={selected.length}
+                selectedTotal={selectedTotal}
+                selected={selected}
+                bankAccountId={bankAccountId}
+                onBankAccountChange={setBankAccountId}
+                hasBankAccounts={bankAccounts.length > 0}
+                setupBlockers={setupBlockers}
+                depositDate={depositDate}
+                onDepositDateChange={setDepositDate}
+                reference={reference}
+                onReferenceChange={setReference}
+                blockers={blockers}
+                recordedId={recordedId}
+                canRecord={canRecord}
+                isRecording={createDeposit.isPending}
+                onRecord={recordDeposit}
+              />
+            }>
+            {/* The column is a full-height flex stack so the selection strip
                   can sit on its floor: `min-h-full` on a short list, taller
                   than the column on a long one, strip pinned either way. */}
-              <div className={cn('flex min-h-full flex-col', TREE_SECONDARY_NOTRUNCATE)}>
-                <div className='flex flex-1 flex-col gap-4 p-4'>
-                  {undeposited.isLoading ? (
-                    <div className='flex flex-col gap-2'>
-                      <Skeleton className='h-6 w-40' />
-                      <Skeleton className='h-12 w-full' />
-                      <Skeleton className='h-12 w-full' />
-                    </div>
-                  ) : days.length === 0 ? (
-                    <EmptyState
-                      icon={Banknote}
-                      title='Nothing waiting to be banked'
-                      description={
-                        // Not "no payments": undeposited funds is meant to BE zero once
-                        // everything has cleared, so an empty list is the healthy state
-                        // and must not read as a failure.
-                        <span>
-                          Every payment routed through undeposited funds has been banked. Cash and
-                          cheques land here as they are received; ACH and card receipts never do,
-                          because each arrives at the bank on its own line.
-                        </span>
-                      }
-                    />
-                  ) : (
-                    days.map((day) => {
-                      const dayIds = day.rows.map((row) => row.paymentId)
-                      const allSelected = dayIds.every((id) => selectedIds.includes(id))
-                      return (
-                        // One day is one parent row with its payments nested at depth
-                        // 1, so the connector line does the grouping a bordered card
-                        // used to do - and the day's own checkbox banks the whole day.
-                        <TreeRow
-                          key={day.day}
-                          icon={
-                            <Checkbox
-                              checked={allSelected}
-                              onClick={(event) => event.stopPropagation()}
-                              onCheckedChange={() => toggleDay(dayIds, allSelected)}
-                              aria-label={`Select every payment received on ${formatDay(day.day)}`}
-                            />
-                          }
-                          title={
-                            <span className='truncate font-medium text-sm'>
-                              {formatDay(day.day)}
-                            </span>
-                          }
-                          secondary={
-                            <span className='text-muted-foreground text-xs'>
-                              {day.rows.length} payment{day.rows.length === 1 ? '' : 's'} ·{' '}
-                              <span className='font-mono tabular-nums'>
-                                {formatMinor(day.totalMinor, DISPLAY_CURRENCY)}
-                              </span>
-                            </span>
-                          }
-                          onToggleOpen={() => toggleDay(dayIds, allSelected)}
-                          rowClassName={cn(
-                            'bg-primary-100/50 hover:bg-primary-100',
-                            allSelected &&
-                              'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
-                          )}>
-                          <TreeRowList
-                            items={day.rows}
-                            getKey={(row) => row.paymentId}
-                            renderRow={(row) => (
-                              <TreeRow
-                                depth={1}
-                                icon={
-                                  <Checkbox
-                                    checked={selectedIds.includes(row.paymentId)}
-                                    onClick={(event) => event.stopPropagation()}
-                                    onCheckedChange={() => toggle(row.paymentId)}
-                                    aria-label={`Select payment ${row.paymentId}`}
-                                  />
-                                }
-                                title={<ReceiptIdentity row={row} />}
-                                secondary={
-                                  <span className='flex items-center gap-1.5'>
-                                    <Badge variant='outline' size='xs'>
-                                      {METHOD_LABELS[row.method ?? ''] ?? row.method ?? 'Channel'}
-                                    </Badge>
-                                    {row.reference ? (
-                                      <span className='text-muted-foreground text-xs'>
-                                        {row.reference}
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                }
-                                trailing={
-                                  <span className='px-1 font-mono text-sm tabular-nums'>
-                                    {formatMinor(row.amountMinor, DISPLAY_CURRENCY)}
-                                  </span>
-                                }
-                                onToggleOpen={() => toggle(row.paymentId)}
-                                rowClassName={cn(
-                                  'bg-primary-100/50 hover:bg-primary-100',
-                                  selectedIds.includes(row.paymentId) &&
-                                    'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
-                                )}
-                              />
-                            )}
-                          />
-                        </TreeRow>
-                      )
-                    })
-                  )}
-                </div>
-
-                {selectedIds.length > 0 && (
-                  // The sticky selection strip, copied from `billing-summary-strip.tsx`:
-                  // the count and the total have to stay visible while the list is
-                  // scrolled, because the number a person is checking is the SUM.
-                  <div className='sticky bottom-0 z-10 mt-auto flex items-center gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur'>
-                    <span className='text-sm'>
-                      {selectedIds.length} selected ·{' '}
-                      <span className='font-mono tabular-nums'>
-                        {formatMinor(selectedTotal, DISPLAY_CURRENCY)}
-                      </span>
-                    </span>
-                    <Button
-                      size='sm'
-                      className='ml-auto'
-                      disabled={!canRecord || createDeposit.isPending}
-                      onClick={recordDeposit}>
-                      Group into deposit
-                    </Button>
+            <div className={cn('flex min-h-full flex-col', TREE_SECONDARY_NOTRUNCATE)}>
+              <div className='flex flex-1 flex-col gap-4 p-4'>
+                {undeposited.isLoading ? (
+                  <div className='flex flex-col gap-2'>
+                    <Skeleton className='h-6 w-40' />
+                    <Skeleton className='h-12 w-full' />
+                    <Skeleton className='h-12 w-full' />
                   </div>
+                ) : days.length === 0 ? (
+                  <EmptyState
+                    icon={Banknote}
+                    title='Nothing waiting to be banked'
+                    description={
+                      // Not "no payments": undeposited funds is meant to BE zero once
+                      // everything has cleared, so an empty list is the healthy state
+                      // and must not read as a failure.
+                      <span>
+                        Every payment routed through undeposited funds has been banked. Cash and
+                        cheques land here as they are received; ACH and card receipts never do,
+                        because each arrives at the bank on its own line.
+                      </span>
+                    }
+                  />
+                ) : (
+                  days.map((day) => {
+                    const dayIds = day.rows.map((row) => row.paymentId)
+                    const allSelected = dayIds.every((id) => selectedIds.includes(id))
+                    return (
+                      // One day is one parent row with its payments nested at depth
+                      // 1, so the connector line does the grouping a bordered card
+                      // used to do - and the day's own checkbox banks the whole day.
+                      <TreeRow
+                        key={day.day}
+                        icon={
+                          <Checkbox
+                            checked={allSelected}
+                            onClick={(event) => event.stopPropagation()}
+                            onCheckedChange={() => toggleDay(dayIds, allSelected)}
+                            aria-label={`Select every payment received on ${formatDay(day.day)}`}
+                          />
+                        }
+                        title={
+                          <span className='truncate font-medium text-sm'>{formatDay(day.day)}</span>
+                        }
+                        secondary={
+                          <span className='text-muted-foreground text-xs'>
+                            {day.rows.length} payment{day.rows.length === 1 ? '' : 's'} ·{' '}
+                            <span className='font-mono tabular-nums'>
+                              {formatMinor(day.totalMinor, DISPLAY_CURRENCY)}
+                            </span>
+                          </span>
+                        }
+                        onToggleOpen={() => toggleDay(dayIds, allSelected)}
+                        rowClassName={cn(
+                          'bg-primary-100/50 hover:bg-primary-100',
+                          allSelected &&
+                            'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+                        )}>
+                        <TreeRowList
+                          items={day.rows}
+                          getKey={(row) => row.paymentId}
+                          renderRow={(row) => (
+                            <TreeRow
+                              depth={1}
+                              icon={
+                                <Checkbox
+                                  checked={selectedIds.includes(row.paymentId)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onCheckedChange={() => toggle(row.paymentId)}
+                                  aria-label={`Select payment ${row.paymentId}`}
+                                />
+                              }
+                              title={<ReceiptIdentity row={row} />}
+                              secondary={
+                                <span className='flex items-center gap-1.5'>
+                                  <Badge variant='outline' size='xs'>
+                                    {METHOD_LABELS[row.method ?? ''] ?? row.method ?? 'Channel'}
+                                  </Badge>
+                                  {row.reference ? (
+                                    <span className='text-muted-foreground text-xs'>
+                                      {row.reference}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              }
+                              trailing={
+                                <span className='px-1 font-mono text-sm tabular-nums'>
+                                  {formatMinor(row.amountMinor, DISPLAY_CURRENCY)}
+                                </span>
+                              }
+                              onToggleOpen={() => toggle(row.paymentId)}
+                              rowClassName={cn(
+                                'bg-primary-100/50 hover:bg-primary-100',
+                                selectedIds.includes(row.paymentId) &&
+                                  'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+                              )}
+                            />
+                          )}
+                        />
+                      </TreeRow>
+                    )
+                  })
                 )}
               </div>
-            </MasterDetailSplit>
-          )}
-        </div>
+
+              {selectedIds.length > 0 && (
+                // The sticky selection strip, copied from `billing-summary-strip.tsx`:
+                // the count and the total have to stay visible while the list is
+                // scrolled, because the number a person is checking is the SUM.
+                <div className='sticky bottom-0 z-10 mt-auto flex items-center gap-3 border-t bg-background/95 px-4 py-3 backdrop-blur'>
+                  <span className='text-sm'>
+                    {selectedIds.length} selected ·{' '}
+                    <span className='font-mono tabular-nums'>
+                      {formatMinor(selectedTotal, DISPLAY_CURRENCY)}
+                    </span>
+                  </span>
+                  <Button
+                    size='sm'
+                    className='ml-auto'
+                    disabled={!canRecord || createDeposit.isPending}
+                    onClick={recordDeposit}>
+                    Group into deposit
+                  </Button>
+                </div>
+              )}
+            </div>
+          </MasterDetailSplit>
+        )}
       </div>
-    </SettingsPage>
+    </div>
   )
 }
 

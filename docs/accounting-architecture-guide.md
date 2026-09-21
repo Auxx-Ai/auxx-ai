@@ -1482,7 +1482,7 @@ the header, and its empty states say so.
 🛑 **`sending` is a state, not a tab** (75 D6). A batch mid-send stays listed under Ready and spins
 there — a momentary state is not a place to stand, and a batch that vanished from the tab you were
 looking at read as a failure. `exportBatchTabAdmits` is what makes Ready admit both, and
-`parseOutboxTab` lands a pasted `?queue=sending` on Ready rather than an empty strip.
+`parseOutboxTab` lands a pasted `?tab=sending` on Ready rather than an empty strip.
 
 **Blocked is the money model's parked work** (75 D1). One row per `MoneyTransaction` carrying a
 `postingBlockedReason` with no live subject posting: the party, the amount, `postEntry`'s own words

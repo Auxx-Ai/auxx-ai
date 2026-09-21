@@ -11,7 +11,8 @@ import { todayInZone } from '@auxx/utils/calendar-day'
 import { Scale } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
@@ -26,7 +27,7 @@ import {
   toStatementTableRows,
 } from './report-helpers'
 import { reportAsOfPresets } from './report-range-presets'
-import { ReportToolbar } from './report-toolbar'
+import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { StatementNotices } from './statement-notices'
 import { StatementTable } from './statement-table'
 import { useReportAsOf } from './use-report-window'
@@ -65,28 +66,72 @@ export function BalanceSheetReportPage() {
   const compareAsOf = asOf ? compareAsOfFor(asOf, compare) : undefined
 
   const query = api.ledgerReports.balanceSheet.useQuery({ asOf, compareAsOf }, { enabled: !!asOf })
-  const columns = query.data ? balanceSheetColumns(query.data, period.bookTimeZone) : []
+  const data = query.data
+  const bookTimeZone = period.bookTimeZone
+  const columns = useMemo(
+    () => (data ? balanceSheetColumns(data, bookTimeZone) : []),
+    [data, bookTimeZone]
+  )
   const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
-  function handleDownloadPdf() {
-    renderPdf.mutate(
+  // The handlers are `useCallback`s only because the toolbar registration below
+  // is memoised over them - a fresh identity each render republishes forever.
+  const renderPdfMutate = renderPdf.mutate
+  const handleDownloadPdf = useCallback(() => {
+    renderPdfMutate(
       { kind: 'balance-sheet', asOf, compareAsOf },
       {
         onSuccess: ({ assetId }) =>
           window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
       }
     )
-  }
+  }, [renderPdfMutate, asOf, compareAsOf])
 
-  function handleDownloadCsv() {
-    if (!query.data) return
-    downloadCsv(
-      toCsvRows(query.data.rows, columns, period.currencyCode),
-      `balance-sheet-${asOf}.csv`
+  const currencyCode = period.currencyCode
+  const handleDownloadCsv = useCallback(() => {
+    if (!data) return
+    downloadCsv(toCsvRows(data.rows, columns, currencyCode), `balance-sheet-${asOf}.csv`)
+  }, [data, columns, currencyCode, asOf])
+
+  useRegisterAccountingToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <ReportToolbarControls
+            mode='asOf'
+            asOf={asOf}
+            onSelectAsOf={setAsOf}
+            asOfPresets={asOfPresets}
+            cutoff={cutoff}
+            compare={compare}
+            onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
+            disabled={!asOf}
+          />
+        ),
+        right: (
+          <ReportToolbarActions
+            onDownloadPdf={handleDownloadPdf}
+            onDownloadCsv={handleDownloadCsv}
+            through={asOf}
+            isDownloadingPdf={renderPdf.isPending}
+          />
+        ),
+      }),
+      [
+        asOf,
+        setAsOf,
+        asOfPresets,
+        cutoff,
+        compare,
+        setCompareParam,
+        handleDownloadPdf,
+        handleDownloadCsv,
+        renderPdf.isPending,
+      ]
     )
-  }
+  )
 
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   const isEmpty =
@@ -95,26 +140,11 @@ export function BalanceSheetReportPage() {
     query.data.liabilities.length === 0 &&
     query.data.equity.length === 0
 
-  // One `MainPageContent` per screen, and it is the reports LAYOUT's - see
-  // `accounting/settings/layout.tsx` for the same split. A second one here
-  // nested a `PanelFrame` inside a `PanelFrame`, which doubled the border and
-  // the padding on every report.
+  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
+  // also owns the topbar this page registers into (`tasks/81` §6): a document
+  // page is one `ScrollArea` over everything.
   return (
     <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ReportToolbar
-        mode='asOf'
-        asOf={asOf}
-        onSelectAsOf={setAsOf}
-        asOfPresets={asOfPresets}
-        cutoff={cutoff}
-        compare={compare}
-        onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
-        onDownloadPdf={handleDownloadPdf}
-        onDownloadCsv={handleDownloadCsv}
-        through={asOf}
-        isDownloadingPdf={renderPdf.isPending}
-        disabled={!asOf}
-      />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <StatementNotices through={asOf} />

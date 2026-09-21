@@ -320,6 +320,9 @@ export function BatchesPanel({
                   : () => toggleOpen(batch.id)
               }
               selectLabel={`Select ${exportAvenueLabel(batch.avenue)} batch of ${batchDateLabel(batch, bookTimeZone)}`}
+              // A batch of one IS the posting the drawer is showing, so the
+              // highlight belongs on this row - it has no child row to carry it.
+              active={!!onlyMember && activePostingId === onlyMember.glPostingId}
               // A batch of one is its posting: no chevron, and the row click
               // falls through to `onOpen` and opens it.
               expandable={!onlyMember}

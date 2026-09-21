@@ -10,6 +10,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
 import { CircleHelp, CircleX, List } from 'lucide-react'
+import { Tooltip } from '~/components/global/tooltip'
 
 /** What narrows the settlements list, beside the unidentified view itself. */
 export interface SettlementFilters {
@@ -41,8 +42,8 @@ interface SettlementsToolbarProps {
  * The settlements list's toolbar — the view tabs, then search and a date range,
  * the same shape and controls `payouts-toolbar.tsx` carries.
  *
- * `sticky={false}`: Settlements has no inner scroll frame, so a sticky row here
- * would pin against the `SettingsPage` header instead of a list viewport.
+ * `sticky={false}`: the bar sits ABOVE the list's `ScrollArea` rather than
+ * inside it, so it never scrolls and has nothing to pin against.
  */
 export function SettlementsToolbar({
   onlyUnidentified,
@@ -62,7 +63,7 @@ export function SettlementsToolbar({
   const dirty = !!filters.search || !!filters.from || !!filters.to
 
   return (
-    <ListToolbar sticky={false}>
+    <ListToolbar sticky={false} className='shrink-0'>
       {selectAll}
 
       <ListToolbarGroup className='shrink-0'>
@@ -105,18 +106,20 @@ export function SettlementsToolbar({
         />
       </ListToolbarGroup>
 
-      {dirty && (
-        <ListToolbarGroup className='shrink-0'>
+      <ListToolbarGroup className='shrink-0'>
+        {/* 🛑 Always rendered, disabled when there is nothing to clear. Gating it
+            on `dirty` re-flowed the row on the first keystroke in the search. */}
+        <Tooltip content='Clear all'>
           <Button
             variant='ghost'
-            size='sm'
-            className='h-7'
+            size='icon-sm'
+            aria-label='Clear all'
+            disabled={!dirty}
             onClick={() => onChange(EMPTY_SETTLEMENT_FILTERS)}>
             <CircleX />
-            Clear
           </Button>
-        </ListToolbarGroup>
-      )}
+        </Tooltip>
+      </ListToolbarGroup>
     </ListToolbar>
   )
 }

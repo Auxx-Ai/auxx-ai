@@ -21,6 +21,7 @@ import {
 import { type ReactNode, useState } from 'react'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { EmptyState } from '~/components/global/empty-state'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { formatEvidenceAmount, formatEvidenceDate, formatEvidenceDay } from './evidence-format'
@@ -315,15 +316,12 @@ export function ProcessorActivity({
           }}
         />
       )}
-      {query.hasNextPage && (
-        <Button
-          variant='outline'
-          loading={query.isFetchingNextPage}
-          loadingText='Loading...'
-          onClick={() => void query.fetchNextPage()}>
-          Load more activity
-        </Button>
-      )}
+      <InfiniteListTail
+        hasNextPage={query.hasNextPage}
+        isFetchingNextPage={query.isFetchingNextPage}
+        fetchNextPage={query.fetchNextPage}
+        loadingLabel='Loading more activity...'
+      />
       <MatchCandidateDialog
         entryId={pickerEntryId}
         onOpenChange={(open) => !open && setPickerEntryId(null)}

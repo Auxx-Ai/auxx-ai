@@ -360,6 +360,36 @@ The canonical sticky filter/search row above a list/grid page (`packages/ui/src/
 - `align='end'` on a `ListToolbarGroup` self-pins that group (and anything after it in source order) to the right via `ml-auto` — put right-aligned controls (view toggles, sort) in an `align='end'` group rather than manually spacing them.
 - Set `sticky={false}` only when the toolbar is already inside another sticky/fixed ancestor (avoid double-sticky stacking).
 
+### 12.1 🛑 Two bars, and what may not move between them
+
+A module whose layout owns a topbar (accounting is the reference —
+`apps/web/src/app/(protected)/app/accounting/layout.tsx`) has **two** control
+rows, and they are not interchangeable:
+
+| | Owner | Scope | Metric |
+| --- | --- | --- | --- |
+| Row 1 — module topbar | the layout | the **route**: rail toggle, period/identity, page-level actions, help | `gap-1 p-1`, `h-7` ghost |
+| Row 2 — `ListToolbar` | the page | the **list**: select-all, view tabs, search, filters | `px-3 py-2`, 48px row |
+
+Row 2 exists only on list pages. A page with no list has one bar, not an empty one.
+
+🛑 **`SelectAllCheckbox` may never move to row 1, and neither may a `RadioTab`
+that shares a bar with one.** `select-all-checkbox.tsx` computes
+`marginLeft = listPadding − TOOLBAR_INSET_PX(12) − BOX_PX/2(24) +
+ROW_CHECKBOX_INSET_PX(18)` so its box lands on the same x as the `TreeRow`
+checkboxes below it. `TOOLBAR_INSET_PX` is `ListToolbar`'s `px-3` and `BOX_PX` is
+*"a `size='sm'` `RadioTab` (`h-8`) inside the bar's `py-2`"*. A topbar is a
+different inset and a different row height, so moving either control breaks the
+alignment — and selection is per-`ListSelectionProvider`, which is per-list, not
+per-route. See `plans/accounting/tasks/81-one-accounting-shell.md` §3.
+
+⚠️ A page under such a layout must be given a **definite** height
+(`flex-1 min-h-0`) and must not be wrapped in `SettingsPage`: that component is
+itself a `ScrollArea` whose content wrapper is `min-h-full` with an auto height,
+so a `flex-1` child is sized by its own content and never scrolls. Four
+accounting pages once measured their way out of this with a `useViewportFill`
+hook; the hook is gone.
+
 ## 13. Detail side panels: `DockableDrawer`
 
 The sanctioned primitive for an entity-detail side panel that can either float as an overlay or dock inline next to the main content (`packages/ui/src/components/dockable-drawer.tsx`) — used across admin, workflows, participants, config, health, datasets, and workflow run/property/settings panels. **Reach for this instead of a raw `Drawer`/`Sheet` whenever the panel needs the docked-vs-floating duality** (most entity detail panels do, once the page is wide enough to dock).
