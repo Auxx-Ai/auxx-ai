@@ -40,7 +40,7 @@ import {
   postInvoiceIssuanceBuiltEntry,
 } from '../../sales/invoices/issuance-accounting'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
-import { listInvoiceEditPostings } from '../../sales/invoices/post-invoice'
+import { listInvoicePostings } from '../../sales/invoices/post-invoice'
 
 /** The registry entity types the lane knows. */
 export const DOCUMENT_EDIT_FAMILIES = ['vendor_bill', 'credit_memo', 'invoice'] as const
@@ -424,9 +424,9 @@ const invoiceRow: DocumentEditRow = {
   },
 
   listPostings(db, params) {
-    return listInvoiceEditPostings(db, {
+    return listInvoicePostings(db, {
       organizationId: params.organizationId,
-      entityInstanceId: params.entityInstanceId,
+      invoiceId: params.entityInstanceId,
     })
   },
 

@@ -85,6 +85,7 @@ import {
   markReversedInTx,
   type PreparedLine,
   readClaimHolderInTx,
+  releasePendingInTx,
   subjectOf,
 } from './insert-posting'
 
@@ -674,9 +675,9 @@ async function writePostingInTx(
   })
 
   if (mode === 'draft') {
-    await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources })
-    // The subject row of a DRAFT is not written: it is the claim, and a draft
-    // holds none. `postDraft` takes it.
+    // A draft's subject goes in as `pending`, not `subject`: the subject row is
+    // the claim, and a draft holds none until `postDraft` takes it.
+    await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources, mode })
     return { kind: 'drafted', glPostingId: row.id }
   }
 
@@ -687,7 +688,7 @@ async function writePostingInTx(
     throw new AlreadyClaimed(winner)
   }
 
-  await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources })
+  await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources, mode })
   if (reversesId) await markReversedInTx(tx, { organizationId, reversesId, entry, revision })
   return { kind: 'posted', claim: { kind: 'claimed', row } }
 }
@@ -1107,6 +1108,8 @@ export async function postDraftInTx(
     })
     return { status: 'already_posted', glPostingId: claimed.heldBy }
   }
+  // The claim is the subject row now; the `pending` row it replaces goes.
+  await releasePendingInTx(tx, { organizationId, glPostingId })
 
   // The claim above defends `GlPostingSource_claim_key` and nothing else. A
   // draft minted on a keyspace that is not one-per-subject still collides on

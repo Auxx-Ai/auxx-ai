@@ -17,6 +17,7 @@ import { AuxxError, UnprocessableEntityError } from '../../../errors'
 import { buildWriteOffEntry, WRITE_OFF_SOURCE_TYPE } from '../../ledger/builders/write-off'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
+import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -134,6 +135,14 @@ export async function reverseInvoiceWriteOffAccounting(
   input: { organizationId: string; invoiceId: string; attempt: number; actorUserId?: string }
 ): Promise<PostResult | null> {
   const { organizationId, invoiceId, attempt, actorUserId } = input
+  // A drafted write-off is thrown away rather than reversed; see tasks/77 §3.
+  const discarded = await discardDraftsForSource(db, {
+    organizationId,
+    sourceKind: WRITE_OFF_SOURCE_TYPE,
+    sourceId: invoiceId,
+    occurrence: writeOffOccurrence(attempt),
+  })
+  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: WRITE_OFF_SOURCE_TYPE,

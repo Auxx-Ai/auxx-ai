@@ -466,7 +466,9 @@ describe('postEntry in draft mode', () => {
     expect(row?.docNumber).toBeNull()
     expect(row?.postedAt).toBeNull()
     expect(fake.lines).toHaveLength(2)
-    expect(fake.sources.map((s) => s.linkRole)).toEqual(['parent'])
+    // The subject goes in as `pending` - the row its record finds the draft by,
+    // outside the claim index (tasks/77).
+    expect(fake.sources.map((s) => s.linkRole).sort()).toEqual(['parent', 'pending'])
   })
 
   it('refuses a closed period before writing anything', async () => {

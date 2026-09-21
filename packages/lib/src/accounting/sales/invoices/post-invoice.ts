@@ -29,7 +29,7 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { type DocumentPosting, foldDraftPosting } from '../../documents/document-ledger-state'
+import type { DocumentPosting } from '../../documents/document-ledger-state'
 import { INVOICE_SOURCE_TYPE } from '../../ledger/builders/invoice'
 import { didLedgerAccept, isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -114,12 +114,14 @@ export async function postInvoiceIssuance(
  * Every general-ledger entry sourced on one invoice, newest first.
  *
  * `sourceType: 'invoice'` covers the issuance entry AND the write-off entry,
- * which is what a void has to reckon with and what the delete guard reads.
+ * which is what a void has to reckon with and what the delete guard reads. A
+ * draft waiting in the outbox is in the list with `status: 'draft'` through its
+ * `pending` link.
  */
 export async function listInvoicePostings(
   db: Database,
   params: { organizationId: string; invoiceId: string }
-): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
+): Promise<DocumentPosting[]> {
   const result = await listPostingsForSource(db, {
     organizationId: params.organizationId,
     sourceKind: INVOICE_SOURCE_TYPE,
@@ -135,27 +137,10 @@ export async function listInvoicePostings(
 }
 
 /**
- * The same list plus the invoice's DRAFT entry, which holds no subject claim and
- * so is invisible to {@link listInvoicePostings} (74 §1.3).
- *
- * Read by the edit lane alone: `hasLiveInvoicePostings` and the delete guard
- * deliberately keep their claim-only view, where a draft is not yet a reason to
- * refuse anything.
- */
-export async function listInvoiceEditPostings(
-  db: Database,
-  params: { organizationId: string; entityInstanceId: string }
-): Promise<DocumentPosting[]> {
-  const { organizationId, entityInstanceId } = params
-  const claimed = await listInvoicePostings(db, { organizationId, invoiceId: entityInstanceId })
-  return foldDraftPosting(db, organizationId, entityInstanceId, claimed)
-}
-
-/**
  * True when this invoice has a general-ledger entry that is still standing.
  *
- * `reversed` has already been backed out and `failed` never reached the books,
- * so neither is a reason to refuse anything. Read by
+ * `reversed` has already been backed out, `failed` never reached the books and
+ * a `draft` is not in them yet, so none is a reason to refuse anything. Read by
  * `field-hooks/pre/invoice-delete-guard.ts`.
  */
 export async function hasLiveInvoicePostings(
@@ -164,7 +149,8 @@ export async function hasLiveInvoicePostings(
 ): Promise<{ live: boolean; docNumbers: string[] }> {
   const postings = await listInvoicePostings(db, params)
   const live = postings.filter(
-    (posting) => posting.status !== 'reversed' && posting.status !== 'failed'
+    (posting) =>
+      posting.status !== 'reversed' && posting.status !== 'failed' && posting.status !== 'draft'
   )
   return { live: live.length > 0, docNumbers: live.map((posting) => posting.docNumber) }
 }

@@ -68,7 +68,7 @@ vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: async () => h.issuance,
 }))
 vi.mock('../../../sales/invoices/post-invoice', () => ({
-  listInvoiceEditPostings: async () => h.postings,
+  listInvoicePostings: async () => h.postings,
 }))
 vi.mock('../../document-ledger-state', () => ({
   readDocumentLedgerState: async () => h.ledgerState,

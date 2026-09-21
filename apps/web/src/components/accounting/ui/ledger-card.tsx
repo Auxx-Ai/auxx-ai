@@ -69,14 +69,6 @@ export interface LedgerCardProps extends Partial<DrawerTabProps> {
    * the record itself.
    */
   sourceKind: string
-  /**
-   * A `draft` posting this record is waiting on in the outbox.
-   *
-   * Passed in rather than read here: `post-entry.ts` writes NO subject
-   * `GlPostingSource` row for a draft - the subject row IS the claim - so the
-   * read below cannot reach it, and the record itself holds the pointer.
-   */
-  draftPostingId?: string | null
   /** Overrides `Nothing posted yet` when this record's empty state means more. */
   emptyLabel?: string
 }
@@ -99,6 +91,7 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
   parent: 'Parent',
   counterparty: 'Counterparty',
   member: 'Member',
+  pending: 'Drafted',
 }
 
 /**
@@ -108,12 +101,7 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
  * renders), since these entries are not on the ledger page's own `?posting=`
  * deep link from here.
  */
-export function LedgerCard({
-  entityInstanceId,
-  sourceKind,
-  draftPostingId,
-  emptyLabel,
-}: LedgerCardProps) {
+export function LedgerCard({ entityInstanceId, sourceKind, emptyLabel }: LedgerCardProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
@@ -125,8 +113,12 @@ export function LedgerCard({
     { sourceKind, sourceId: entityInstanceId },
     { enabled: !!entityInstanceId }
   )
-  const postings = (postingsQuery.data ?? []) as SourcePosting[]
+  const allPostings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
+  // A `pending` row is a draft waiting in the outbox for this record: it holds no
+  // claim and no document number yet, so it gets its own row above the list.
+  const pendingDrafts = allPostings.filter((posting) => posting.linkRole === 'pending')
+  const postings = allPostings.filter((posting) => posting.linkRole !== 'pending')
 
   // The backward read of `plans/accounting/payout-links.md` §10.3: which payout
   // posting swept the receipts this document was paid by. Only orders and
@@ -169,13 +161,7 @@ export function LedgerCard({
     return `/app/accounting/reports/general-ledger?${params.toString()}`
   }, [postings, sourceKind, entityInstanceId])
 
-  // Once the outbox approves it the draft takes its claim and arrives above.
-  const pendingDraftId =
-    draftPostingId && !postings.some((posting) => posting.id === draftPostingId)
-      ? draftPostingId
-      : null
-
-  if (!loading && postings.length === 0 && sweeps.length === 0 && !pendingDraftId) {
+  if (!loading && allPostings.length === 0 && sweeps.length === 0) {
     return <EmptyRow label={emptyLabel ?? 'Nothing posted yet'} />
   }
 
@@ -191,28 +177,36 @@ export function LedgerCard({
           </Button>
         </DrawerCardActions>
       )}
-      {pendingDraftId && (
+      {pendingDrafts.map((draft) => (
         <TreeRow
+          key={draft.id}
           className={TREE_SECONDARY_NOTRUNCATE}
           icon={<BookOpenCheck className='size-4' />}
           title={
             <span className='truncate text-sm'>Drafted — awaiting approval in the outbox</span>
           }
+          description={formatAccountingDate(draft.txnDate, bookTimeZone)}
           secondary={
-            <Badge variant={STATUS_VARIANT.draft} size='xs'>
-              {STATUS_LABEL.draft}
-            </Badge>
+            <span className='flex items-center gap-1.5'>
+              <Badge variant='outline' size='xs'>
+                {humanizePostingType(draft.postingType)}
+              </Badge>
+              <Badge variant={STATUS_VARIANT.draft} size='xs'>
+                {STATUS_LABEL.draft}
+              </Badge>
+            </span>
           }
+          onToggleOpen={() => setOpenPostingId(draft.id)}
           actions={
             <Button asChild variant='ghost' size='xs'>
-              <Link href={`/app/accounting?queue=drafts&posting=${pendingDraftId}`}>
+              <Link href={`/app/accounting?queue=drafts&posting=${draft.id}`}>
                 <ExternalLink />
                 Open outbox
               </Link>
             </Button>
           }
         />
-      )}
+      ))}
 
       <TreeRowList
         items={postings}

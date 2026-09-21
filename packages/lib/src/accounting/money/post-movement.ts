@@ -56,25 +56,7 @@ async function markPostingBlock(
     )
 }
 
-/** Stamp the draft the movement now waits on; a draft is not a refusal, so the block clears. */
-async function markDrafted(
-  db: Database,
-  organizationId: string,
-  moneyTransactionId: string,
-  glPostingId: string
-): Promise<void> {
-  await db
-    .update(schema.MoneyTransaction)
-    .set({ draftGlPostingId: glPostingId, postingBlockedReason: null, postingBlockedAt: null })
-    .where(
-      and(
-        eq(schema.MoneyTransaction.organizationId, organizationId),
-        eq(schema.MoneyTransaction.id, moneyTransactionId)
-      )
-    )
-}
-
-/** The draft a movement waits on, when its stamp still points at a `draft` row. */
+/** The draft a movement waits on: its `pending` link onto a row still in `draft`. */
 async function findLiveDraft(
   db: Database,
   organizationId: string,
@@ -82,18 +64,20 @@ async function findLiveDraft(
 ): Promise<string | null> {
   const [row] = await db
     .select({ id: schema.GlPosting.id })
-    .from(schema.MoneyTransaction)
+    .from(schema.GlPostingSource)
     .innerJoin(
       schema.GlPosting,
       and(
-        eq(schema.GlPosting.organizationId, schema.MoneyTransaction.organizationId),
-        eq(schema.GlPosting.id, schema.MoneyTransaction.draftGlPostingId)
+        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
+        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
       )
     )
     .where(
       and(
-        eq(schema.MoneyTransaction.organizationId, organizationId),
-        eq(schema.MoneyTransaction.id, moneyTransactionId),
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, MOVEMENT_SOURCE_TYPE),
+        eq(schema.GlPostingSource.sourceId, moneyTransactionId),
+        eq(schema.GlPostingSource.linkRole, 'pending'),
         eq(schema.GlPosting.status, 'draft')
       )
     )
@@ -353,7 +337,9 @@ export async function postMovementEntry(
     mode: await readAutoPostMode(input.organizationId, input.avenue),
   })
   if (post.status === 'drafted' && post.glPostingId) {
-    await markDrafted(db, input.organizationId, input.moneyTransactionId, post.glPostingId)
+    // A draft is not a refusal, so the block clears; the draft's own `pending`
+    // link is what stops the sweep drafting it again.
+    await markPostingBlock(db, input.organizationId, input.moneyTransactionId, null)
     return { status: 'drafted', glPostingId: post.glPostingId }
   }
   if (!didLedgerAccept(post) || !post.glPostingId) {

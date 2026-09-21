@@ -302,9 +302,8 @@ export function DraftsPanel({
 }
 
 /**
- * The records a draft is about, as badges. A draft holds no subject claim yet
- * (`postDraft` takes it), so its `parent` and `counterparty` links are what
- * identify it - the order it settles and who paid.
+ * The records a draft is about, as badges: its `pending` subject (the claim
+ * `postDraft` will take), and its `parent` and `counterparty` links.
  */
 function DraftLinks({ glPostingId }: { glPostingId: string }) {
   const sourcesQuery = api.ledger.postingSources.useQuery({ glPostingId })

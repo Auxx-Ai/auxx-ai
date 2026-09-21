@@ -124,22 +124,47 @@ export async function claimSubjectInTx(
   return { heldBy: winner.glPostingId }
 }
 
-/** Write the non-subject links. The subject went in through {@link claimSubjectInTx}. */
+/**
+ * Write the links. A posted entry's subject went in through
+ * {@link claimSubjectInTx}; a draft's subject is written as `pending`, so the
+ * record it is about can find it without the draft holding a claim.
+ */
 export async function insertSourceLinksInTx(
   tx: Transaction,
-  input: { organizationId: string; glPostingId: string; sources: GlPostingSourceInput[] }
+  input: {
+    organizationId: string
+    glPostingId: string
+    sources: GlPostingSourceInput[]
+    mode: 'draft' | 'post'
+  }
 ): Promise<void> {
   const rows = input.sources
-    .filter((source) => source.linkRole !== 'subject')
+    .filter((source) => source.linkRole !== 'subject' || input.mode === 'draft')
     .map((source) => ({
       organizationId: input.organizationId,
       glPostingId: input.glPostingId,
       sourceKind: source.sourceKind,
       sourceId: source.sourceId,
-      linkRole: source.linkRole,
+      linkRole: source.linkRole === 'subject' ? ('pending' as const) : source.linkRole,
       occurrence: source.occurrence ?? 'original',
     }))
   if (rows.length > 0) await tx.insert(schema.GlPostingSource).values(rows)
+}
+
+/** Drop a draft's `pending` row - the claim replaces it, or the draft is discarded. */
+export async function releasePendingInTx(
+  tx: Transaction,
+  input: { organizationId: string; glPostingId: string }
+): Promise<void> {
+  await tx
+    .delete(schema.GlPostingSource)
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, input.organizationId),
+        eq(schema.GlPostingSource.glPostingId, input.glPostingId),
+        eq(schema.GlPostingSource.linkRole, 'pending')
+      )
+    )
 }
 
 /**

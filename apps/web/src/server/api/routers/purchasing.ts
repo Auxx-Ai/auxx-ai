@@ -1,7 +1,6 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
 import { type Database, schema } from '@auxx/database'
-import { readDocumentLedgerState } from '@auxx/lib/accounting/documents'
 import {
   allocateLandedCost,
   checkIntakeModelCapability,
@@ -475,17 +474,6 @@ export const purchasingRouter = createTRPCRouter({
         userId: ctx.session.userId,
         vendorBillInstanceId: input.vendorBillId,
       })
-    }),
-
-  /**
-   * Is this bill waiting on a drafted entry? A draft writes no subject
-   * `GlPostingSource` row, so the ledger card has no other way to find it. The
-   * edit stamp rides the record itself now (74 §1.2.1), not this query.
-   */
-  billLedgerState: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ vendorBillId: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      return readDocumentLedgerState(ctx.db, ctx.session.organizationId, input.vendorBillId)
     }),
 
   /**
