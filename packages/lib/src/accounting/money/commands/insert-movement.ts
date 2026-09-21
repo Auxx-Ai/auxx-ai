@@ -24,6 +24,12 @@ export interface InsertMovementInput {
   method: MovementRow['method']
   reference?: string | null
   note?: string | null
+  /** The quote a held deposit was collected against (MIGRATION follow-up 7). */
+  quoteInstanceId?: string | null
+  /** The work order that quote converted into, stamped after the fact. */
+  workOrderInstanceId?: string | null
+  /** Defaults to USD/2; the posters still refuse anything else (task 71 §2 Q5). */
+  currency?: { code: string; exponent: number }
 }
 
 /** One `MoneyTransaction` row, validated. The caller writes the application or settlement. */
@@ -32,7 +38,7 @@ export async function insertMovement(
   organizationId: string,
   commandId: string,
   input: InsertMovementInput
-): Promise<{ id: string }> {
+): Promise<MovementRow> {
   const amountMinor = BigInt(input.amountMinor)
   if (amountMinor <= 0n)
     throw new BadRequestError('An amount must be a positive whole number of cents')
@@ -46,9 +52,8 @@ export async function insertMovement(
       organizationId,
       purpose: input.purpose,
       amountMinor,
-      // USD-only until the posters' currency refusals lift; see task 71 §2 Q5.
-      currency: 'USD',
-      currencyExponent: 2,
+      currency: input.currency?.code ?? 'USD',
+      currencyExponent: input.currency?.exponent ?? 2,
       ...('date' in input.when
         ? { datePrecision: 'date' as const, occurredOn: input.when.date }
         : { datePrecision: 'instant' as const, occurredAt: input.when.instant }),
@@ -59,8 +64,10 @@ export async function insertMovement(
       recordedByCommandId: commandId,
       reference: input.reference?.trim() || null,
       note: input.note?.trim() || null,
+      quoteInstanceId: input.quoteInstanceId ?? null,
+      workOrderInstanceId: input.workOrderInstanceId ?? null,
     })
-    .returning({ id: schema.MoneyTransaction.id })
+    .returning()
   if (!money) throw new Error('Money transaction insert returned no row')
   return money
 }

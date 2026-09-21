@@ -44,8 +44,14 @@ vi.mock('../../../../field-values/read-field-scalars', () => ({
 }))
 vi.mock('drizzle-orm', () => ({
   and: () => undefined,
+  asc: () => undefined,
+  desc: () => undefined,
   eq: () => undefined,
+  inArray: () => undefined,
+  isNotNull: () => undefined,
   isNull: () => undefined,
+  or: () => undefined,
+  sql: Object.assign(() => undefined, { raw: () => undefined }),
 }))
 vi.mock('@auxx/database', () => {
   const tableName = (table: unknown) => (table as { __table: string }).__table

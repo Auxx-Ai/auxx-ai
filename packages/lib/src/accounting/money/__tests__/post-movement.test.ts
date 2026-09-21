@@ -53,7 +53,15 @@ const MOVEMENT = 'mt_1'
 
 function db(): Database {
   const base = {
-    query: { MoneyTransaction: { findFirst: async () => h.money } },
+    query: {
+      MoneyTransaction: {
+        findFirst: async () => h.money,
+        findMany: async () => {
+          const row = await h.money
+          return row ? [row] : []
+        },
+      },
+    },
     update: () => ({ set: (values: unknown) => ({ where: async () => h.updates.push(values) }) }),
   }
   // `findLiveDraft`'s select chain, answering `h.draft`.

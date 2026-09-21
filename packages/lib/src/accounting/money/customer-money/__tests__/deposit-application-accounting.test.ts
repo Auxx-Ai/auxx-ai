@@ -69,7 +69,13 @@ function stubDb() {
     select: () => chain,
     query: {
       MoneyApplication: { findFirst: async () => h.application },
-      MoneyTransaction: { findFirst: async () => h.money },
+      MoneyTransaction: {
+        findFirst: async () => h.money,
+        findMany: async () => {
+          const row = await h.money
+          return row ? [row] : []
+        },
+      },
     },
   }
   db.transaction = (fn: (tx: unknown) => unknown) => fn(db)

@@ -73,7 +73,15 @@ const moneyTransactionId = 'money_1'
 
 function db(): Database {
   const tx = {
-    query: { MoneyTransaction: { findFirst: async () => h.money } },
+    query: {
+      MoneyTransaction: {
+        findFirst: async () => h.money,
+        findMany: async () => {
+          const row = await h.money
+          return row ? [row] : []
+        },
+      },
+    },
     update: () => ({ set: (values: unknown) => ({ where: async () => h.updates.push(values) }) }),
   }
   return {

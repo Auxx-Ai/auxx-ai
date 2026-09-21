@@ -30,6 +30,7 @@ import {
 import { readVendorCreditControlAccount } from '../../purchasing/vendor-credit/accounting'
 import { loadVendorCredit } from '../../purchasing/vendor-credit/reads'
 import { type MovementPostingResult, postMovementEntry } from '../post-movement'
+import { listRefundSettlements } from '../reads'
 
 export interface VendorRefundAccountingInput {
   organizationId: string
@@ -89,12 +90,8 @@ export async function postVendorRefundAccounting(
     actorUserId: input.actorUserId,
     prepare: async (tx, loaded) => {
       const money = loaded.money
-      const settlements = (await tx.query.MoneyRefundSettlement.findMany({
-        where: and(
-          eq(schema.MoneyRefundSettlement.organizationId, input.organizationId),
-          eq(schema.MoneyRefundSettlement.refundTransactionId, money.id)
-        ),
-        orderBy: asc(schema.MoneyRefundSettlement.id),
+      const settlements = (await listRefundSettlements(tx, input.organizationId, {
+        refundTransactionId: money.id,
       })) as Settlement[]
       if (!settlements.length)
         throw new UnprocessableEntityError('Refund has no settlement partition')

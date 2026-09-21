@@ -39,7 +39,7 @@
  * liability - and they share nothing but the word.
  */
 
-import { type Database, schema } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isDayKeyShape } from '@auxx/utils/calendar-day'
 import { and, asc, eq, inArray } from 'drizzle-orm'
@@ -259,18 +259,12 @@ export async function createBankDeposit(
         })
         // MIGRATION follow-up 9: the link is a column on the receipt itself,
         // not a `payment_bank_deposit` FieldValue row.
-        await txDb
-          .update(schema.MoneyTransaction)
-          .set({ bankDepositInstanceId: created.instance.id })
-          .where(
-            and(
-              eq(schema.MoneyTransaction.organizationId, organizationId),
-              inArray(
-                schema.MoneyTransaction.id,
-                payments.map((payment) => payment.paymentId)
-              )
-            )
-          )
+        await setMovementBankDeposit(
+          txDb,
+          organizationId,
+          payments.map((payment) => payment.paymentId),
+          created.instance.id
+        )
         return {
           depositId: created.instance.id,
           totalMinor: total,
@@ -526,18 +520,12 @@ async function rollbackDeposit(
 ): Promise<void> {
   try {
     if (deposit.payments.length > 0) {
-      await db
-        .update(schema.MoneyTransaction)
-        .set({ bankDepositInstanceId: null })
-        .where(
-          and(
-            eq(schema.MoneyTransaction.organizationId, organizationId),
-            inArray(
-              schema.MoneyTransaction.id,
-              deposit.payments.map((payment) => payment.paymentId)
-            )
-          )
-        )
+      await setMovementBankDeposit(
+        db,
+        organizationId,
+        deposit.payments.map((payment) => payment.paymentId),
+        null
+      )
     }
     const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
     await crud.archive(deposit.recordId)
@@ -771,18 +759,12 @@ export async function unlinkPaymentsFromDeposit(
       }
 
       if (deposit.payments.length > 0) {
-        await db
-          .update(schema.MoneyTransaction)
-          .set({ bankDepositInstanceId: null })
-          .where(
-            and(
-              eq(schema.MoneyTransaction.organizationId, organizationId),
-              inArray(
-                schema.MoneyTransaction.id,
-                deposit.payments.map((payment) => payment.paymentId)
-              )
-            )
-          )
+        await setMovementBankDeposit(
+          db,
+          organizationId,
+          deposit.payments.map((payment) => payment.paymentId),
+          null
+        )
       }
 
       logger.info('Released the payments of a bank deposit', {
@@ -795,4 +777,24 @@ export async function unlinkPaymentsFromDeposit(
     'Failed to unlink payments from a bank deposit',
     { organizationId, depositId }
   )
+}
+
+/** Group these receipts into a bank deposit, or release them back to undeposited funds. */
+export async function setMovementBankDeposit(
+  db: Database | Transaction,
+  organizationId: string,
+  moneyTransactionIds: string[],
+  bankDepositInstanceId: string | null
+): Promise<void> {
+  const ids = [...new Set(moneyTransactionIds)]
+  if (ids.length === 0) return
+  await db
+    .update(schema.MoneyTransaction)
+    .set({ bankDepositInstanceId })
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        inArray(schema.MoneyTransaction.id, ids)
+      )
+    )
 }

@@ -24,6 +24,8 @@ import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import type { PaymentMethod } from '../client'
 import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'
+import { sumAppliedToInvoice } from '../reads'
+import { insertApplication } from '../writes'
 import { syncInvoicePaymentState } from './payment-state'
 
 export interface RecordInvoicePaymentInput {
@@ -91,16 +93,7 @@ async function readInvoiceBalance(
 
   // Settled is read from the applications themselves — the ledger is the record
   // of what is paid, and there is no `amountPaid` column to drift out of step.
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId)
-    ),
-  })
-  const settledMinor = applications.reduce(
-    (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
-    0n
-  )
+  const settledMinor = await sumAppliedToInvoice(tx, organizationId, invoiceInstanceId)
   return {
     totalMinor: BigInt(fields.totalMinor),
     outstandingMinor: BigInt(fields.totalMinor) - settledMinor,
@@ -168,21 +161,14 @@ export async function recordInvoicePayment(
         note: input.note,
       })
 
-      const [application] = await tx
-        .insert(schema.MoneyApplication)
-        .values({
-          organizationId: input.organizationId,
-          moneyTransactionId: money.id,
-          operation: 'apply',
-          amountMinor: BigInt(input.amountMinor),
-          invoiceInstanceId: input.invoiceInstanceId,
-          appliedAt: new Date(),
-          effectiveDate: input.date,
-          commandId,
-          commandItemKey: 'invoice_payment',
-        })
-        .returning({ id: schema.MoneyApplication.id })
-      if (!application) throw new Error('Money application insert returned no row')
+      const application = await insertApplication(tx, input.organizationId, commandId, {
+        moneyTransactionId: money.id,
+        operation: 'apply',
+        amountMinor: input.amountMinor,
+        invoiceInstanceId: input.invoiceInstanceId,
+        effectiveDate: input.date,
+        commandItemKey: 'invoice_payment',
+      })
 
       // Project the ledger truth onto the invoice's mirrored `amountPaid`/`balance`/
       // `status` fields, same call `totals-hooks.ts` makes on every total change.

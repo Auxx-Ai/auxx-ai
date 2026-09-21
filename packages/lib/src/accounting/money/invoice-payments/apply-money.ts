@@ -40,6 +40,8 @@ import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { acceptDepositApplicationAccounting } from '../customer-money/deposit-application-accounting'
+import { readMovement, sumAppliedToInvoice, sumAppliedToMovement } from '../reads'
+import { insertApplication } from '../writes'
 
 export interface ApplyMoneyToInvoiceInput {
   organizationId: string
@@ -78,26 +80,11 @@ async function readHeldMinor(
   organizationId: string,
   moneyTransactionId: string
 ): Promise<bigint> {
-  const money = await tx.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.id, moneyTransactionId),
-      eq(schema.MoneyTransaction.purpose, 'customer_receipt')
-    ),
+  const money = await readMovement(tx, organizationId, moneyTransactionId, {
+    purpose: 'customer_receipt',
   })
   if (!money) throw new UnprocessableEntityError('That money is not a customer receipt')
-
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.moneyTransactionId, moneyTransactionId)
-    ),
-  })
-  const spokenFor = applications.reduce(
-    (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
-    0n
-  )
-  return money.amountMinor - spokenFor
+  return money.amountMinor - (await sumAppliedToMovement(tx, organizationId, moneyTransactionId))
 }
 
 /** What the invoice still owes, netted from its own application rows. */
@@ -135,16 +122,7 @@ async function readInvoiceOutstanding(
   if (!fields?.totalMinor)
     throw new UnprocessableEntityError('That invoice has no total to apply against')
 
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId)
-    ),
-  })
-  const settled = applications.reduce(
-    (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
-    0n
-  )
+  const settled = await sumAppliedToInvoice(tx, organizationId, invoiceInstanceId)
   return BigInt(fields.totalMinor) - settled
 }
 
@@ -194,22 +172,15 @@ export async function applyMoneyToInvoice(
           `That is more than the ${outstanding} cents this invoice still owes`
         )
 
-      const [application] = await tx
-        .insert(schema.MoneyApplication)
-        .values({
-          organizationId: input.organizationId,
-          moneyTransactionId: input.moneyTransactionId,
-          operation: 'apply',
-          amountMinor: amount,
-          invoiceInstanceId: input.invoiceInstanceId,
-          appliedAt: new Date(),
-          effectiveDate: input.effectiveDate,
-          commandId,
-          commandItemKey: 'apply_to_invoice',
-          ...(input.quoteInstanceId ? { quoteInstanceId: input.quoteInstanceId } : {}),
-        })
-        .returning({ id: schema.MoneyApplication.id })
-      if (!application) throw new Error('Money application insert returned no row')
+      const application = await insertApplication(tx, input.organizationId, commandId, {
+        moneyTransactionId: input.moneyTransactionId,
+        operation: 'apply',
+        amountMinor: amount,
+        invoiceInstanceId: input.invoiceInstanceId,
+        effectiveDate: input.effectiveDate,
+        quoteInstanceId: input.quoteInstanceId,
+        commandItemKey: 'apply_to_invoice',
+      })
       return { moneyApplicationId: application.id }
     }
   )

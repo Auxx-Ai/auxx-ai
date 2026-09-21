@@ -5,10 +5,14 @@ import { recordAudit } from '../../../audit-log'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
+import { findMoneyCommandByKey } from '../commands/run-money-command'
+import { findSourceLink, readMovement } from '../reads'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 import { readSourceObject } from './source-reads'
 import { updateAcceptancesBySourceObjects } from './source-writes'
+
+const RESOLVE_COMMAND_KIND = 'resolve_money_references'
 
 /** Explicit verified source association; similarity is never evidence. */
 export interface ResolveImportedMoneyReferencesInput {
@@ -40,23 +44,12 @@ export async function resolveImportedMoneyReferences(
   })
   await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, input.organizationId)
-    const previous = await tx.query.MoneyCommand.findFirst({
-      where: and(
-        eq(schema.MoneyCommand.organizationId, input.organizationId),
-        eq(schema.MoneyCommand.commandKey, input.commandKey)
-      ),
+    const previous = await findMoneyCommandByKey(tx, input.organizationId, input.commandKey, {
+      kind: RESOLVE_COMMAND_KIND,
+      payloadHash: hash,
     })
-    if (previous) {
-      if (previous.payloadHash !== hash)
-        throw new ConflictError('Resolution command was reused with different evidence')
-      return
-    }
-    const money = await tx.query.MoneyTransaction.findFirst({
-      where: and(
-        eq(schema.MoneyTransaction.organizationId, input.organizationId),
-        eq(schema.MoneyTransaction.id, input.moneyTransactionId)
-      ),
-    })
+    if (previous) return
+    const money = await readMovement(tx, input.organizationId, input.moneyTransactionId)
     if (!money) throw new UnprocessableEntityError('Money transaction is not in this organization')
     for (const objectId of objectIds) {
       const object = await readSourceObject(tx, input.organizationId, objectId)
@@ -67,12 +60,7 @@ export async function resolveImportedMoneyReferences(
       ])
       if (!live.has(object.sourceAccountId))
         throw new UnprocessableEntityError('Test source evidence cannot bind operational money')
-      const link = await tx.query.MoneySourceLink.findFirst({
-        where: and(
-          eq(schema.MoneySourceLink.organizationId, input.organizationId),
-          eq(schema.MoneySourceLink.sourceObjectId, objectId)
-        ),
-      })
+      const link = await findSourceLink(tx, input.organizationId, objectId)
       if (link && link.moneyTransactionId !== money.id)
         throw new ConflictError(
           'Both source objects already materialized; duplicate resolution requires an explicit correction'
@@ -118,7 +106,7 @@ export async function resolveImportedMoneyReferences(
       .values({
         organizationId: input.organizationId,
         commandKey: input.commandKey,
-        kind: 'resolve_money_references',
+        kind: RESOLVE_COMMAND_KIND,
         payloadHash: hash,
         actorSnapshot: { userId: input.actorUserId, evidence: input.evidence },
         resultIds: { moneyTransactionId: money.id },

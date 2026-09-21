@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/money/customer-money/receipt-accounting.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
@@ -13,6 +13,7 @@ import {
   toGatewayRoutes,
 } from '../../rails/client'
 import { getPaymentGateway, listPaymentGateways } from '../../rails/reads'
+import { findSourceLink, listMovementApplications, readMovement } from '../reads'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 import { readSourceAccount, readSourceObject } from './source-reads'
@@ -24,12 +25,8 @@ export async function readCustomerReceiptAccountingSource(
   moneyTransactionId: string,
   bookTimeZone: string
 ) {
-  const money = await tx.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.id, moneyTransactionId),
-      eq(schema.MoneyTransaction.purpose, 'customer_receipt')
-    ),
+  const money = await readMovement(tx, organizationId, moneyTransactionId, {
+    purpose: 'customer_receipt',
   })
   if (!money || money.currency !== 'USD' || money.currencyExponent !== 2 || !money.occurredAt)
     throw new UnprocessableEntityError(
@@ -47,13 +44,7 @@ export async function readCustomerReceiptAccountingSource(
       'Receipt is linked to native payment accounting; repair its existing accounting membership before switching ownership'
     )
   const effectiveDate = periodKeyForDate(money.occurredAt, 'day', bookTimeZone)
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.moneyTransactionId, moneyTransactionId)
-    ),
-    orderBy: asc(schema.MoneyApplication.id),
-  })
+  const applications = await listMovementApplications(tx, organizationId, moneyTransactionId)
   const orderId = applications[0]?.orderInstanceId
   if (
     !orderId ||
@@ -111,14 +102,9 @@ export async function readCustomerReceiptAccountingSource(
       fact.occurredAt.getTime() !== money.occurredAt.getTime()
     )
       throw new UnprocessableEntityError('Receipt source no longer matches the canonical movement')
-    const link = await tx.query.MoneySourceLink.findFirst({
-      where: and(
-        eq(schema.MoneySourceLink.organizationId, organizationId),
-        eq(schema.MoneySourceLink.sourceObjectId, object!.id),
-        eq(schema.MoneySourceLink.moneyTransactionId, money.id)
-      ),
-    })
-    if (!link) throw new UnprocessableEntityError('Receipt source ownership is unresolved')
+    const link = await findSourceLink(tx, organizationId, object!.id)
+    if (link?.moneyTransactionId !== money.id)
+      throw new UnprocessableEntityError('Receipt source ownership is unresolved')
     evidence.push({
       object: object!,
       account,

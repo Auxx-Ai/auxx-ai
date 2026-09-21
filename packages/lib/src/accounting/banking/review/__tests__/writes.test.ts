@@ -139,6 +139,7 @@ const db = new Proxy({} as never, {
       return {
         MoneyTransaction: {
           findFirst: async () => [...h.movements.values()][0] ?? null,
+          findMany: async () => [...h.movements.values()].slice(0, 1),
         },
         MoneyCommand: { findFirst: async () => [...h.commands.values()][0] ?? null },
       }

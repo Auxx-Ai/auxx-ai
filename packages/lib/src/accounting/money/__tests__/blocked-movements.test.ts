@@ -47,7 +47,12 @@ function db(): Database {
     return self
   }
   return {
-    query: { MoneyTransaction: { findFirst: async () => h.money } },
+    query: {
+      MoneyTransaction: {
+        findMany: async () => (h.money ? [h.money] : []),
+      },
+      MoneyApplication: { findMany: async () => h.applications },
+    },
     select: () => chain(),
   } as unknown as Database
 }

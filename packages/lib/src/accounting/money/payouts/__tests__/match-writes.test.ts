@@ -10,7 +10,7 @@ vi.mock('../payout-reconciler', () => ({
 
 import { acceptMatch, matchEntry, unmatchEntry } from '../match-writes'
 
-function database(results: unknown[][], frozen: unknown[] = []) {
+function database(results: unknown[][], frozen: unknown[] = [], movements: unknown[] = []) {
   const updates: Array<Record<string, unknown>> = []
   const chain = (rows: unknown[]) => {
     const link: Record<string, unknown> = {}
@@ -26,6 +26,7 @@ function database(results: unknown[][], frozen: unknown[] = []) {
       return chain(rows)
     }),
     selectDistinct: vi.fn(() => chain(frozen)),
+    query: { MoneyTransaction: { findMany: async () => movements } },
     update: vi.fn(() => ({
       set: (values: Record<string, unknown>) => {
         updates.push(values)
@@ -80,8 +81,9 @@ describe('match writes', () => {
 
   it('records a manual match against an item the matcher had no code for', async () => {
     const { db, updates } = database(
-      [[entry({ matchState: 'pending', matchReason: null })], [{ id: 'mt-9' }]],
-      []
+      [[entry({ matchState: 'pending', matchReason: null })]],
+      [],
+      [{ id: 'mt-9' }]
     )
     const result = await matchEntry(db, {
       organizationId: 'org',

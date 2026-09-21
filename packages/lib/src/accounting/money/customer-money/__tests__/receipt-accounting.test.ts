@@ -53,7 +53,13 @@ const money = () => ({
 function tx(): Transaction {
   return {
     query: {
-      MoneyTransaction: { findFirst: async () => money() },
+      MoneyTransaction: {
+        findFirst: async () => money(),
+        findMany: async () => {
+          const row = await money()
+          return row ? [row] : []
+        },
+      },
       MoneyCommand: { findFirst: async () => null },
       MoneyApplication: {
         findMany: async () => [
@@ -99,7 +105,11 @@ function tx(): Transaction {
           },
         }),
       },
-      MoneySourceLink: { findFirst: async () => ({ id: 'link_1' }) },
+      MoneySourceLink: {
+        findMany: async () => [
+          { id: 'link_1', sourceObjectId: 'fo_1', moneyTransactionId: MOVEMENT },
+        ],
+      },
     },
   } as unknown as Transaction
 }

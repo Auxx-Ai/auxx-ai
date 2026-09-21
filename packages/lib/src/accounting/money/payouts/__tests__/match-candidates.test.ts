@@ -12,7 +12,7 @@ function mentions(value: unknown, needle: string): boolean {
   return false
 }
 
-function database(results: unknown[][]) {
+function database(results: unknown[][], applications: unknown[] = []) {
   const wheres: unknown[] = []
   const chain = (rows: unknown[]) => {
     const link: Record<string, unknown> = {}
@@ -31,6 +31,7 @@ function database(results: unknown[][]) {
       if (!rows) throw new Error('Unexpected extra query')
       return chain(rows)
     }),
+    query: { MoneyApplication: { findMany: async () => applications } },
   }
   return { db: db as unknown as Database, wheres }
 }

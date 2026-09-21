@@ -18,13 +18,14 @@
  * again.
  */
 
-import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import type { Database, Transaction } from '@auxx/database'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { reverseDepositApplicationAccounting } from '../customer-money/deposit-application-accounting'
+import { listLiveApplications } from '../reads'
+import { insertApplication } from '../writes'
 import { syncInvoicePaymentState } from './payment-state'
 
 export interface UnapplyMoneyFromInvoiceInput {
@@ -54,17 +55,9 @@ async function readLiveApplication(
   invoiceInstanceId: string,
   amountMinor: bigint
 ) {
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.moneyTransactionId, moneyTransactionId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId)
-    ),
+  const [live] = await listLiveApplications(tx, organizationId, moneyTransactionId, {
+    invoiceInstanceId,
   })
-  const reversed = new Set(
-    applications.flatMap((a) => (a.reversesApplicationId ? [a.reversesApplicationId] : []))
-  )
-  const live = applications.find((a) => a.operation === 'apply' && !reversed.has(a.id))
   if (!live) throw new UnprocessableEntityError('That payment is not applied to this invoice')
   // ⚠️ Whole rows only. A partial unapply would need the original application
   // split in two, and its posting cannot be split after the fact.
@@ -130,22 +123,15 @@ export async function unapplyMoneyFromInvoice(
       },
     },
     async (tx, commandId) => {
-      const [row] = await tx
-        .insert(schema.MoneyApplication)
-        .values({
-          organizationId: input.organizationId,
-          moneyTransactionId: input.moneyTransactionId,
-          operation: 'unapply',
-          amountMinor: BigInt(input.amountMinor),
-          invoiceInstanceId: input.invoiceInstanceId,
-          appliedAt: new Date(),
-          effectiveDate: input.effectiveDate,
-          reversesApplicationId: applicationId,
-          commandId,
-          commandItemKey: 'unapply_from_invoice',
-        })
-        .returning({ id: schema.MoneyApplication.id })
-      if (!row) throw new Error('Money unapplication insert returned no row')
+      const row = await insertApplication(tx, input.organizationId, commandId, {
+        moneyTransactionId: input.moneyTransactionId,
+        operation: 'unapply',
+        amountMinor: input.amountMinor,
+        invoiceInstanceId: input.invoiceInstanceId,
+        effectiveDate: input.effectiveDate,
+        reversesApplicationId: applicationId,
+        commandItemKey: 'unapply_from_invoice',
+      })
 
       await syncInvoicePaymentState({
         organizationId: input.organizationId,

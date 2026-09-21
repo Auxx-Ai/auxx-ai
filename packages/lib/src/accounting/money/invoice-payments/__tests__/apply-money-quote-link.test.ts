@@ -37,7 +37,9 @@ beforeEach(() => {
     async (_db: unknown, _command: unknown, body: (tx: unknown, commandId: string) => unknown) => {
       const tx = {
         query: {
-          MoneyTransaction: { findFirst: async () => ({ id: 'money-1', amountMinor: 50_000n }) },
+          MoneyTransaction: {
+            findMany: async () => [{ id: 'money-1', amountMinor: 50_000n }],
+          },
           MoneyApplication: { findMany: async () => [] },
         },
         select: () => {
@@ -75,5 +77,5 @@ it('stamps the quote on the application when one was supplied', async () => {
 it('leaves the column alone for an application with no quote behind it', async () => {
   await applyMoneyToInvoice({} as never, input)
 
-  expect(written).not.toHaveProperty('quoteInstanceId')
+  expect(written).toMatchObject({ quoteInstanceId: null })
 })

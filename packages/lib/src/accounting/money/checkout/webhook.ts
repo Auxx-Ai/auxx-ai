@@ -23,9 +23,11 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../../cache'
+import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { syncInvoicePaymentState } from '../invoice-payments/payment-state'
 import { acceptInvoiceReceiptAccounting } from '../invoice-payments/receipt-accounting'
+import { insertApplication } from '../writes'
 import { acceptQuoteDepositAccounting } from './deposit-accounting'
 import {
   INVOICE_CHECKOUT_COMMAND_KIND,
@@ -155,42 +157,36 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
       payload: { paymentIntentId: payment.paymentIntentId },
     },
     async (tx, commandId) => {
-      const [money] = await tx
-        .insert(schema.MoneyTransaction)
-        .values({
-          organizationId,
-          purpose: 'customer_receipt',
-          amountMinor: BigInt(payment.amountMinor),
-          currency: payment.currency,
-          currencyExponent: 2,
-          // `instant`: Stripe observed the moment the money moved.
-          datePrecision: 'instant',
-          occurredAt: payment.occurredAt,
-          partyInstanceId: target.contactInstanceId,
+      const money = await insertMovement(tx, organizationId, commandId, {
+        purpose: 'customer_receipt',
+        amountMinor: payment.amountMinor,
+        // `instant`: Stripe observed the moment the money moved.
+        when: { instant: payment.occurredAt },
+        partyInstanceId: target.contactInstanceId,
+        endpoint: {
           paymentGatewayId: rail?.paymentGatewayId ?? null,
-          method: 'card',
-          recordedByCommandId: commandId,
-          reference: payment.paymentIntentId,
-          // MIGRATION follow-up 7 - the durable link a held deposit needs to its
-          // quote/work order, on the row itself rather than the command's snapshot.
-          ...(payment.quoteInstanceId ? { quoteInstanceId: payment.quoteInstanceId } : {}),
-          ...(payment.workOrderInstanceId
-            ? { workOrderInstanceId: payment.workOrderInstanceId }
-            : {}),
-        })
-        .returning({ id: schema.MoneyTransaction.id })
-      if (!money) throw new Error('Money transaction insert returned no row')
+          cashAccountInstanceId: null,
+          currency: payment.currency,
+        },
+        method: 'card',
+        reference: payment.paymentIntentId,
+        // MIGRATION follow-up 7 - the durable link a held deposit needs to its
+        // quote/work order, on the row itself rather than the command's snapshot.
+        quoteInstanceId: payment.quoteInstanceId,
+        workOrderInstanceId: payment.workOrderInstanceId,
+        // Exponent 2 as this lane has always written it; Stripe's zero-decimal
+        // currencies are not offered at checkout.
+        currency: { code: payment.currency, exponent: 2 },
+      })
 
       if (appliesToInvoice) {
-        await tx.insert(schema.MoneyApplication).values({
-          organizationId,
+        await insertApplication(tx, organizationId, commandId, {
           moneyTransactionId: money.id,
           operation: 'apply',
-          amountMinor: BigInt(payment.amountMinor),
+          amountMinor: payment.amountMinor,
           invoiceInstanceId: payment.invoiceInstanceId!,
           appliedAt: payment.occurredAt,
           effectiveDate: payment.occurredAt.toISOString().slice(0, 10),
-          commandId,
           commandItemKey: 'checkout_payment',
         })
         await syncInvoicePaymentState({

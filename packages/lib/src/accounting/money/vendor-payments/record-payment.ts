@@ -24,6 +24,8 @@ import { listVendorBillPostings } from '../../purchasing/expense-bill/writes'
 import type { PaymentMethod } from '../client'
 import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'
+import { sumAppliedToVendorBill } from '../reads'
+import { insertApplication } from '../writes'
 import { syncVendorBillPaymentState } from './payment-state'
 
 export interface RecordVendorPaymentInput {
@@ -134,19 +136,9 @@ async function readVendorBillBalance(
   if (typeof total !== 'number' || total <= 0)
     throw new UnprocessableEntityError('That vendor bill has no total to pay against')
 
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.vendorBillInstanceId, vendorBillInstanceId)
-    ),
-  })
-  const settledMinor = applications.reduce(
-    (sum, a) =>
-      sum + (a.operation === 'apply' ? 1n : -1n) * (a.amountMinor + (a.discountMinor ?? 0n)),
-    0n
-  )
+  const settled = await sumAppliedToVendorBill(tx, organizationId, vendorBillInstanceId)
   return {
-    outstandingMinor: BigInt(Math.round(total)) - settledMinor,
+    outstandingMinor: BigInt(Math.round(total)) - (settled.amountMinor + settled.discountMinor),
     vendorInstanceId: vendorRow[0]?.relatedEntityId ?? null,
   }
 }
@@ -223,22 +215,15 @@ export async function recordVendorPayment(
         note: input.note,
       })
 
-      const [application] = await tx
-        .insert(schema.MoneyApplication)
-        .values({
-          organizationId: input.organizationId,
-          moneyTransactionId: money.id,
-          operation: 'apply',
-          amountMinor: BigInt(input.amountMinor),
-          discountMinor: BigInt(discountMinor),
-          vendorBillInstanceId: input.vendorBillInstanceId,
-          appliedAt: new Date(),
-          effectiveDate: input.date,
-          commandId,
-          commandItemKey: 'vendor_bill_payment',
-        })
-        .returning({ id: schema.MoneyApplication.id })
-      if (!application) throw new Error('Money application insert returned no row')
+      const application = await insertApplication(tx, input.organizationId, commandId, {
+        moneyTransactionId: money.id,
+        operation: 'apply',
+        amountMinor: input.amountMinor,
+        discountMinor,
+        vendorBillInstanceId: input.vendorBillInstanceId,
+        effectiveDate: input.date,
+        commandItemKey: 'vendor_bill_payment',
+      })
 
       await syncVendorBillPaymentState(tx as unknown as Database, {
         organizationId: input.organizationId,

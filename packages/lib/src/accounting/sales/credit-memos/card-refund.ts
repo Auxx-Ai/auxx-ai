@@ -14,6 +14,7 @@
 import { type Database, schema } from '@auxx/database'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { resolveStripeRail } from '../../money/checkout/reads'
+import { insertMovement } from '../../money/commands/insert-movement'
 import { runMoneyCommand } from '../../money/commands/run-money-command'
 import { postCustomerRefundAccounting } from '../../money/customer-money/refund-accounting'
 import { getPaymentAccount } from '../../money/stripe-connect/account'
@@ -121,24 +122,19 @@ export async function refundCreditMemoToCard(
       actorContext: { stripeRefundId: refund.id },
     },
     async (tx, commandId) => {
-      const [money] = await tx
-        .insert(schema.MoneyTransaction)
-        .values({
-          organizationId: input.organizationId,
-          purpose: 'customer_refund',
-          amountMinor: BigInt(input.amountMinor),
-          currency: 'USD',
-          currencyExponent: 2,
-          datePrecision: 'instant',
-          occurredAt: new Date((refund.created ?? Math.floor(Date.now() / 1000)) * 1000),
-          partyInstanceId: memo.contactInstanceId,
+      const money = await insertMovement(tx, input.organizationId, commandId, {
+        purpose: 'customer_refund',
+        amountMinor: input.amountMinor,
+        when: { instant: new Date((refund.created ?? Math.floor(Date.now() / 1000)) * 1000) },
+        partyInstanceId: memo.contactInstanceId,
+        endpoint: {
           paymentGatewayId: rail?.paymentGatewayId ?? null,
-          method: 'card',
-          recordedByCommandId: commandId,
-          reference: refund.id,
-        })
-        .returning({ id: schema.MoneyTransaction.id })
-      if (!money) throw new Error('Money transaction insert returned no row')
+          cashAccountInstanceId: null,
+          currency: 'USD',
+        },
+        method: 'card',
+        reference: refund.id,
+      })
 
       const [settlement] = await tx
         .insert(schema.MoneyRefundSettlement)

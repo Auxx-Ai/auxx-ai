@@ -44,6 +44,32 @@ export interface MoneyCommandOptions {
 }
 
 /**
+ * The command already written under this retry key, if any.
+ *
+ * Refuses on `kind` as well as the hash: one key worn by two different requests
+ * is a caller bug whichever half differs (LIB-READS §0.2).
+ */
+export async function findMoneyCommandByKey(
+  tx: Transaction,
+  organizationId: string,
+  commandKey: string,
+  expected: { kind: string; payloadHash: string }
+): Promise<typeof schema.MoneyCommand.$inferSelect | undefined> {
+  const previous = await tx.query.MoneyCommand.findFirst({
+    where: and(
+      eq(schema.MoneyCommand.organizationId, organizationId),
+      eq(schema.MoneyCommand.commandKey, commandKey)
+    ),
+  })
+  if (
+    previous &&
+    (previous.payloadHash !== expected.payloadHash || previous.kind !== expected.kind)
+  )
+    throw new ConflictError('This retry key already belongs to a different request')
+  return previous
+}
+
+/**
  * Run one money-moving command exactly once, inside the accounting commit lock.
  *
  * This is the single write door for `MoneyTransaction` / `MoneyApplication` and
@@ -88,17 +114,11 @@ export async function runMoneyCommand<T extends Record<string, string>>(
     runInTxWrite({ organizationId: input.organizationId, actorUserId: input.userId }, () =>
       runWithWriteDb(tx, async () => {
         await withAccountingCommitLock(tx, input.organizationId)
-        const previous = await tx.query.MoneyCommand.findFirst({
-          where: and(
-            eq(schema.MoneyCommand.organizationId, input.organizationId),
-            eq(schema.MoneyCommand.commandKey, input.commandKey)
-          ),
+        const previous = await findMoneyCommandByKey(tx, input.organizationId, input.commandKey, {
+          kind: input.kind,
+          payloadHash,
         })
-        if (previous) {
-          if (previous.payloadHash !== payloadHash || previous.kind !== input.kind)
-            throw new ConflictError('This retry key already belongs to a different request')
-          return previous.resultIds as T
-        }
+        if (previous) return previous.resultIds as T
         const [command] = await tx
           .insert(schema.MoneyCommand)
           .values({

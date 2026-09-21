@@ -30,6 +30,12 @@ import {
   systemFields,
   systemValueJoin,
 } from '../../../resources/system-records'
+import {
+  listInvoiceApplications,
+  listRefundSettlements,
+  readMovements,
+  selectLiveApplications,
+} from '../../money/reads'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
@@ -423,24 +429,14 @@ export async function listCreditMemoRefunds(
   organizationId: string,
   creditMemoId: string
 ): Promise<CreditMemoRefundRow[]> {
-  const settlements = await db.query.MoneyRefundSettlement.findMany({
-    where: and(
-      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-      eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditMemoId)
-    ),
+  const settlements = await listRefundSettlements(db, organizationId, {
+    customerCreditMemoInstanceId: creditMemoId,
   })
-  const money = settlements.length
-    ? await db.query.MoneyTransaction.findMany({
-        where: and(
-          eq(schema.MoneyTransaction.organizationId, organizationId),
-          inArray(
-            schema.MoneyTransaction.id,
-            settlements.map((row) => row.refundTransactionId)
-          )
-        ),
-      })
-    : []
-  const moneyById = new Map(money.map((row) => [row.id, row]))
+  const moneyById = await readMovements(
+    db,
+    organizationId,
+    settlements.map((row) => row.refundTransactionId)
+  )
   const rows: CreditMemoRefundRow[] = []
   for (const row of settlements) {
     const movement = moneyById.get(row.refundTransactionId)
@@ -1013,33 +1009,25 @@ export async function listRefundableReceipts(
   organizationId: string,
   invoiceInstanceId: string
 ): Promise<RefundableReceipt[]> {
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.invoiceInstanceId, invoiceInstanceId),
-      eq(schema.MoneyApplication.operation, 'apply')
-    ),
-  })
+  // Live rows only: a receipt whose application was already taken back is not
+  // refundable money on this invoice (LIB-READS §0.1 bug 1).
+  const applications = selectLiveApplications(
+    await listInvoiceApplications(db, organizationId, invoiceInstanceId)
+  )
   if (applications.length === 0) return []
-  const receipts = await db.query.MoneyTransaction.findMany({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-      inArray(
-        schema.MoneyTransaction.id,
-        applications.map((row) => row.moneyTransactionId)
+  const receipts = [
+    ...(
+      await readMovements(
+        db,
+        organizationId,
+        applications.map((row) => row.moneyTransactionId),
+        { purpose: 'customer_receipt' }
       )
-    ),
-  })
+    ).values(),
+  ]
   if (receipts.length === 0) return []
-  const settlements = await db.query.MoneyRefundSettlement.findMany({
-    where: and(
-      eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-      inArray(
-        schema.MoneyRefundSettlement.originalTransactionId,
-        receipts.map((row) => row.id)
-      )
-    ),
+  const settlements = await listRefundSettlements(db, organizationId, {
+    originalTransactionIds: receipts.map((row) => row.id),
   })
   const usedById = new Map<string, bigint>()
   for (const row of settlements)

@@ -41,8 +41,14 @@ vi.mock('@auxx/database', () => ({
 }))
 vi.mock('drizzle-orm', () => ({
   and: () => undefined,
+  asc: () => undefined,
+  desc: () => undefined,
   eq: () => undefined,
   inArray: () => undefined,
+  isNotNull: () => undefined,
+  isNull: () => undefined,
+  or: () => undefined,
+  sql: Object.assign(() => undefined, { raw: () => undefined }),
 }))
 vi.mock('../reads', () => ({
   readCreditMemoForRefund: async () => h.memo,

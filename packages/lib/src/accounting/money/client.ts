@@ -27,6 +27,16 @@ export function validateCashEndpointSource(source: CashEndpointSource): void {
     )
 }
 
+/** Applied minus unapplied, in minor units — the netting every money read shares. */
+export function netApplied(
+  rows: ReadonlyArray<{ operation: string; amountMinor: bigint }>
+): bigint {
+  return rows.reduce(
+    (sum, row) => sum + (row.operation === 'apply' ? row.amountMinor : -row.amountMinor),
+    0n
+  )
+}
+
 /** How a movement's money is held — the pure half of `resolveCashEndpoint`. */
 export function cashEndpointKind(source: CashEndpointSource): CashEndpointKind {
   if (source.paymentGatewayId?.trim()) return 'clearing'

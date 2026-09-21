@@ -52,7 +52,13 @@ const VENDOR = 'co_1'
 function db(): Database {
   const tx = {
     query: {
-      MoneyTransaction: { findFirst: async () => h.money },
+      MoneyTransaction: {
+        findFirst: async () => h.money,
+        findMany: async () => {
+          const row = await h.money
+          return row ? [row] : []
+        },
+      },
       MoneyApplication: { findMany: async () => h.applications },
     },
     update: () => ({ set: () => ({ where: async () => undefined }) }),

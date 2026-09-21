@@ -16,6 +16,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../../../errors'
+import { readMovement } from '../reads'
 import { readEntry } from './entry-reads'
 import type { MatchReason, MatchState } from './match-reasons'
 import { readFrozenEntryIds } from './match-sync'
@@ -95,16 +96,7 @@ export async function matchEntry(
     return err(
       new ConflictError('A posted payout entry already names this item. Reverse it to re-match.')
     )
-  const [money] = await db
-    .select({ id: schema.MoneyTransaction.id })
-    .from(schema.MoneyTransaction)
-    .where(
-      and(
-        eq(schema.MoneyTransaction.organizationId, input.organizationId),
-        eq(schema.MoneyTransaction.id, input.moneyTransactionId)
-      )
-    )
-    .limit(1)
+  const money = await readMovement(db, input.organizationId, input.moneyTransactionId)
   if (!money) return err(new NotFoundError('Customer movement not found'))
   return write(db, input.organizationId, input.userId, input.entryId, {
     matchState: 'matched',

@@ -47,6 +47,7 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { PostResult } from '../../ledger/types'
 import { clearBankDeposit } from '../../money/bank-deposits'
+import { readMovement } from '../../money/reads'
 import { acceptVendorPaymentAccounting } from '../../money/vendor-payments/payment-accounting'
 import { recordVendorPayment } from '../../money/vendor-payments/record-payment'
 import { voidVendorPayment } from '../../money/vendor-payments/void-payment'
@@ -1097,12 +1098,8 @@ async function wasRecordedByThisMatch(
   recordId: string
 ): Promise<boolean> {
   if (recordType !== 'money_transaction') return false
-  const movement = await db.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.id, recordId),
-      eq(schema.MoneyTransaction.purpose, 'vendor_payment')
-    ),
+  const movement = await readMovement(db, organizationId, recordId, {
+    purpose: 'vendor_payment',
   })
   if (!movement) return false
   const command = await db.query.MoneyCommand.findFirst({

@@ -13,7 +13,17 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@auxx/database', () => ({ database: {}, schema: new Proxy({}, { get: () => ({}) }) }))
-vi.mock('drizzle-orm', () => ({ and: () => undefined, eq: () => undefined }))
+vi.mock('drizzle-orm', () => ({
+  and: () => undefined,
+  asc: () => undefined,
+  desc: () => undefined,
+  eq: () => undefined,
+  inArray: () => undefined,
+  isNotNull: () => undefined,
+  isNull: () => undefined,
+  or: () => undefined,
+  sql: Object.assign(() => undefined, { raw: () => undefined }),
+}))
 vi.mock('../../../../cache', () => ({
   getEntityDefIdResolver: async () => () => 'def_vendor_bill',
   getOrgCache: () => ({
