@@ -1,6 +1,8 @@
 // packages/lib/src/field-hooks/pre/guest-order-contact.ts
 
+import { database, schema } from '@auxx/database'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { and, eq } from 'drizzle-orm'
 import { GUEST_CONTACT_SETTING_KEY } from '../../accounting/parties'
 import { getOrgCache } from '../../cache'
 import { ForbiddenError } from '../../errors'
@@ -9,6 +11,8 @@ import type { EntityPreCreateHandler, EntityPreDeleteHandler } from '../types'
 
 const CONTACT_ATTR = 'order_contact'
 const COMPANY_ATTR = 'order_company'
+const MEMO_CONTACT_ATTR = 'credit_memo_contact'
+const MEMO_ORDER_ATTR = 'credit_memo_order'
 
 /**
  * Name the org's guest customer on an order that arrives with neither a contact
@@ -45,6 +49,44 @@ export const fillGuestOrderContact: EntityPreCreateHandler = async (event) => {
 }
 
 /**
+ * The same stand-in for a credit memo (task 79, after G5). The Shopify connector
+ * binds `credit_memo_contact` from `refunds[].customerId` and clears the
+ * reference on a guest checkout, leaving the refund ingest's customer leg
+ * unsatisfiable; its own comment defers that to "the reviewer picks the
+ * contact", which nobody does at four hundred memos.
+ *
+ * Prefers the ORDER's contact over the guest: a memo belongs to whoever its
+ * order does, so this also covers a contactless memo on a real customer.
+ */
+export const fillGuestCreditMemoContact: EntityPreCreateHandler = async (event) => {
+  const { organizationId, values } = event
+
+  const guestId = await getOrganizationSetting({
+    organizationId,
+    key: GUEST_CONTACT_SETTING_KEY,
+  })
+  if (!guestId) return
+
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([MEMO_CONTACT_ATTR, MEMO_ORDER_ATTR, CONTACT_ATTR] as const)
+  const contactKeys = [MEMO_CONTACT_ATTR, fields.credit_memo_contact?.id]
+  if (contactKeys.some((key) => key && !isBlank(values[key]))) return
+
+  const orderRef = [MEMO_ORDER_ATTR, fields.credit_memo_order?.id]
+    .map((key) => (key ? values[key] : undefined))
+    .find((raw) => !isBlank(raw))
+  const orderContactFieldId = fields.order_contact?.id
+  const orderId = relatedInstanceId(orderRef)
+  const inherited =
+    orderId && orderContactFieldId
+      ? await readRelated(organizationId, orderId, orderContactFieldId)
+      : null
+
+  values[MEMO_CONTACT_ATTR] = toRecordId('contact', inherited ?? guestId)
+}
+
+/**
  * Refuse deleting the guest customer. One hook covers `deleteEntity` and
  * `bulkDeleteEntities` — they share `deleteRecords`, which resolves hooks per
  * definition.
@@ -68,4 +110,33 @@ function isBlank(raw: unknown): boolean {
   if (typeof raw === 'string') return raw.trim().length === 0
   if (Array.isArray(raw)) return raw.length === 0
   return false
+}
+
+/** The instance id behind a relationship value, when it is a plain RecordId. */
+function relatedInstanceId(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.includes(':')) return null
+  try {
+    return parseRecordId(raw as never).entityInstanceId
+  } catch {
+    return null
+  }
+}
+
+async function readRelated(
+  organizationId: string,
+  entityId: string,
+  fieldId: string
+): Promise<string | null> {
+  const [row] = await database
+    .select({ related: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, entityId),
+        eq(schema.FieldValue.fieldId, fieldId)
+      )
+    )
+    .limit(1)
+  return row?.related ?? null
 }

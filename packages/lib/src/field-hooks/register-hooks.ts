@@ -110,7 +110,11 @@ import {
   guardIssuedCreditMemoLineDelete,
   guardIssuedCreditMemoLineFields,
 } from './pre/credit-memo-lock'
-import { fillGuestOrderContact, guardGuestContactDelete } from './pre/guest-order-contact'
+import {
+  fillGuestCreditMemoContact,
+  fillGuestOrderContact,
+  guardGuestContactDelete,
+} from './pre/guest-order-contact'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import {
@@ -697,6 +701,9 @@ export function registerAllHooks(): void {
   // Fills `order_contact` with the guest when the order names neither a contact
   // nor a company, so no order exists customerless.
   registerEntityPreCreateHooks('orders', [fillGuestOrderContact])
+  // The same for a memo the connector leaves contactless on a guest checkout;
+  // it inherits its order's contact, falling back to the guest.
+  registerEntityPreCreateHooks('credit-memos', [fillGuestCreditMemoContact])
 
   // Inventory and purchasing (plans/money/tasks/20-part-delete-safety.md and
   // 21-money-parent-delete-safety.md). All four refuse on the same threshold,

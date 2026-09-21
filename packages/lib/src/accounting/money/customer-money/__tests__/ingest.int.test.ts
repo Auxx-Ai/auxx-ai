@@ -216,7 +216,6 @@ async function creditMemo(partyId: string, apiSlug: string) {
     .returning()
   for (const [attribute, value] of [
     ['credit_memo_total', 1000],
-    ['credit_memo_currency', 'USD'],
     ['credit_memo_contact', partyId],
   ] as const) {
     const [field] = await db()
@@ -510,7 +509,6 @@ describe('customer money source acceptance against PostgreSQL', () => {
       .returning()
     for (const [attribute, value] of [
       ['credit_memo_total', 1000],
-      ['credit_memo_currency', 'USD'],
       ['credit_memo_contact', receipt!.partyInstanceId!],
     ] as const) {
       const [field] = await db()
