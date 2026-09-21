@@ -46,9 +46,10 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
-import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './entry'
+import { sourceFactsMemo } from './source-facts-memo'
 import type { JurisdictionTaxLine } from './split-tax-by-jurisdiction'
 import { splitTaxByJurisdiction } from './split-tax-by-jurisdiction'
 
@@ -605,25 +606,13 @@ export interface BuiltFulfillmentEntry {
 }
 
 /**
- * `AUXX-FUL-` is nine characters and a reversal adds `-R<n>`, so the compacted
- * key has to leave room for both inside the 21-character cap.
- *
- * Checked HERE rather than left to `buildDocNumber`, because `buildDocNumber`
- * only sees revision 0 on the way in: an over-long key would post fine and then
- * refuse the day somebody tried to REVERSE it, which is the worst moment to
- * discover a keyspace problem.
- */
-const MAX_COMPACT_PERIOD_KEY = DOC_NUMBER_MAX_LENGTH - 'AUXX-FUL-'.length - '-R9'.length
-
-/**
  * The period key for one shipment: the order number plus its fulfillment
  * sequence.
  *
  * 🛑 **Not a date.** Two shipments of one order can leave on the same day, and
  * `(organizationId, postingType, periodKey, revision)` is the claim's unique
  * index - a date key would make the second shipment come back `already_posted`
- * and silently recognise nothing. Same rule `build` and `bank_deposit` follow.
- * Hyphens are stripped downstream, so `ORD-0012-F1` becomes `ORD0012F1`.
+ * and silently recognise nothing. The key is the document number, verbatim.
  */
 export function fulfillmentPeriodKey(orderNumber: string, sequence: number): string {
   const number = orderNumber.trim()
@@ -639,18 +628,12 @@ export function fulfillmentPeriodKey(orderNumber: string, sequence: number): str
       { sequence: String(sequence) }
     )
   }
-  const key = `${number}-F${sequence}`
-  const compact = key.replace(/-/g, '')
-  if (compact.length > MAX_COMPACT_PERIOD_KEY) {
-    throw new UnprocessableEntityError(
-      `Order number "${number}" is too long to key a fulfillment posting: "${key}" compacts to ` +
-        `${compact.length} characters and the document number allows ${MAX_COMPACT_PERIOD_KEY} ` +
-        '(21 characters total, less "AUXX-FUL-" and a reversal suffix). Shorten the order number, ' +
-        'or mint a short fulfillment id and key on that instead.',
-      { orderNumber: number, periodKey: key, length: String(compact.length) }
-    )
-  }
-  return key
+  return assertDocumentKey({
+    value: `${number}-F${sequence}`,
+    label: 'Fulfillment entry key',
+    remedy: 'Shorten the order number, or mint a short fulfillment id and key on that instead.',
+    context: { orderNumber: number },
+  })
 }
 
 /**
@@ -790,7 +773,8 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
 
   const periodKey = fulfillmentPeriodKey(orderNumber, sequence)
   const source = { sourceType: FULFILLMENT_SOURCE_TYPE, sourceId: orderId }
-  const shipmentLabel = `${orderNumber} shipment ${sequence}`
+  const facts = { order: orderNumber, channel }
+  const shipmentLabel = sourceFactsMemo(facts, `shipment ${sequence}`)
 
   const lines: GlPostingLineInput[] = []
   let sortOrder = 0
@@ -835,7 +819,10 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
     direction: 'credit',
     amount: subtotalMinor,
-    memo: `${shipmentLabel} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`,
+    memo: sourceFactsMemo(
+      facts,
+      `shipment ${sequence} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`
+    ),
     // Both axes on one line, and they are not the same question. `channel`
     // (DTC vs dealer) is an ATTRIBUTE of this sale and stays a dimension on one
     // account; the store is a different BUSINESS and may have an account of its
@@ -886,7 +873,10 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
           accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
           direction: 'credit',
           amount: amountMinor,
-          memo: `${shipmentLabel} - sales tax, ${jurisdiction} (${taxLabel})`,
+          memo: sourceFactsMemo(
+            facts,
+            `shipment ${sequence} - sales tax, ${jurisdiction} (${taxLabel})`
+          ),
           dimensions: { jurisdiction },
         })
       }
@@ -896,7 +886,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
         accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
         direction: 'credit',
         amount: taxMinor,
-        memo: `${shipmentLabel} - sales tax (${taxLabel})`,
+        memo: sourceFactsMemo(facts, `shipment ${sequence} - sales tax (${taxLabel})`),
       })
     }
   }
@@ -906,7 +896,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       accountRole: ACCOUNT_ROLES.REVENUE_SHIPPING,
       direction: 'credit',
       amount: shippingMinor,
-      memo: `${orderNumber} - shipping, recognised once on the first fulfillment`,
+      memo: sourceFactsMemo(facts, 'shipping, recognised once on the first fulfillment'),
       ...revenueScope,
     })
   }

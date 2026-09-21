@@ -66,9 +66,9 @@ describe('grouping', () => {
   it('takes the first non-null document number an entry renders', () => {
     const [entry] = groupProviderLedgerEntries([
       line({ txnId: '7', debitMinor: 500, docNumber: null }),
-      line({ txnId: '7', creditMinor: 500, docNumber: 'AUXX-FUL-202601' }),
+      line({ txnId: '7', creditMinor: 500, docNumber: 'ORD-0012-F1' }),
     ])
-    expect(entry?.docNumber).toBe('AUXX-FUL-202601')
+    expect(entry?.docNumber).toBe('ORD-0012-F1')
   })
 
   it('⚠️ drops a row carrying no transaction id, and it never reaches `theirs`', () => {

@@ -46,7 +46,7 @@ import {
 } from '../../../errors'
 import { buildExportBatches } from '../../export/build-batches'
 import { sendExportBatch } from '../../export/send'
-import { buildDocNumber } from '../builders/doc-number'
+import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../builders/doc-number'
 import { accountLabel } from '../chart/account-label'
 import { type CloseBlockerItem, describeUnmappedRoles } from '../periods/close-blockers'
 import { resolvePeriodLock } from '../periods/period-lock'
@@ -140,6 +140,12 @@ export interface PostEntryOptions {
    */
   reversesId?: string
   revision?: number
+  /**
+   * Set only by {@link reverseEntry}: the original's stored number plus `-R<n>`,
+   * so a pair matches in the register whichever format the original carries.
+   * Absent, the number is minted from the period key.
+   */
+  docNumber?: string
   /**
    * Balance assertions recorded on the draft envelope.
    *
@@ -350,6 +356,17 @@ export interface PreparedEntry {
   refusal?: Refusal
 }
 
+/** A supplied number gets the same cap the minted one does. */
+function assertDocNumberLength(docNumber: string): string {
+  if (docNumber.length > DOC_NUMBER_MAX_LENGTH) {
+    throw new UnprocessableEntityError(
+      `Document number '${docNumber}' is ${docNumber.length} characters, over the ${DOC_NUMBER_MAX_LENGTH}-character cap.`,
+      { docNumber, length: String(docNumber.length) }
+    )
+  }
+  return docNumber
+}
+
 /**
  * Everything that happens BEFORE anything is written, for both `postEntry` and
  * `previewEntry`.
@@ -368,6 +385,8 @@ export async function prepareEntry(
     revision: number
     /** See {@link PostEntryOptions.scope}. Absent means the org default. */
     scope?: RoleSourceScope
+    /** See {@link PostEntryOptions.docNumber}. */
+    docNumber?: string
   }
 ): Promise<PreparedEntry> {
   const { organizationId, entry, lock, revision, scope } = options
@@ -550,11 +569,13 @@ export async function prepareEntry(
   // ── 4. The deterministic keys ────────────────────────────────────────────
   let docNumber = ''
   try {
-    docNumber = buildDocNumber({
-      postingType: entry.postingType,
-      periodKey: entry.periodKey,
-      revision,
-    })
+    docNumber = options.docNumber
+      ? assertDocNumberLength(options.docNumber)
+      : buildDocNumber({
+          postingType: entry.postingType,
+          periodKey: entry.periodKey,
+          revision,
+        })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     refusal ??= { status: 'error', failureClass: 'data', error: message }
@@ -789,6 +810,7 @@ export async function postEntryInTx(
     lock: authoritativeLock,
     revision,
     scope: options.scope,
+    docNumber: options.docNumber,
   })
   if (prepared.refusal) {
     logger.warn('Refusing to post', {

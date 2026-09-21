@@ -361,7 +361,7 @@ describe('partial fulfillment', () => {
     expect(one.periodKey).toBe('ORD-0012-F1')
     expect(two.periodKey).toBe('ORD-0012-F2')
     expect(buildDocNumber({ postingType: 'fulfillment', periodKey: one.periodKey })).toBe(
-      'AUXX-FUL-ORD0012F1'
+      'ORD-0012-F1'
     )
   })
 
@@ -492,9 +492,15 @@ describe('the period key', () => {
   })
 
   it('refuses an order number too long to survive a reversal', () => {
-    // Compacts to 12, which fits revision 0 and blows up at revision 1 - which
-    // is why the check is here rather than in `buildDocNumber`.
-    expect(() => fulfillmentPeriodKey('ORDER-2026-0001', 1)).toThrowError(/too long to key/)
+    // `ORDER-2026-0001-F1` is 18: fits revision 0 and blows up at revision 1.
+    expect(() => fulfillmentPeriodKey('ORDER-2026-0001', 1)).toThrowError(/allows 15/)
+  })
+
+  it('is the document number verbatim', () => {
+    expect(fulfillmentPeriodKey('ORD-0012', 1)).toBe('ORD-0012-F1')
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey: 'ORD-0012-F1' })).toBe(
+      'ORD-0012-F1'
+    )
   })
 
   it('accepts a connector-supplied number like Shopify #13919', () => {
@@ -714,5 +720,17 @@ describe('the line total allocated by units (29 §12 item 6)', () => {
     expect(() => buildFulfillmentEntry({ ...order, shippedLines: [split(-1)] })).toThrowError(
       UnprocessableEntityError
     )
+  })
+})
+
+describe('line memos', () => {
+  it('carry the order number and channel ahead of the leg label on every line', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    const memos = built.entry.lines.map((row) => row.memo)
+    expect(memos).toContain('Order ORD-0012 · dtc · shipment 1 - 2 lines')
+    expect(memos).toContain(
+      'Order ORD-0012 · dtc · shipping, recognised once on the first fulfillment'
+    )
+    expect(memos.every((memo) => memo?.startsWith('Order ORD-0012 · dtc · '))).toBe(true)
   })
 })

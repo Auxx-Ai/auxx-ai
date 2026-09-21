@@ -57,7 +57,7 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import { assertCompactablePeriodKey } from '../periods/period-key'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
 import { toAmountMinor } from './fulfillment'
@@ -203,7 +203,7 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
 export function buildCreditMemoEntitlementEntry(
   input: BuildCreditMemoEntitlementEntryInput
 ): BuiltCreditMemoEntitlementEntry {
-  const number = assertCompactablePeriodKey({
+  const number = assertDocumentKey({
     value: input.number,
     label: 'Credit memo number',
     remedy: 'Shorten the credit memo number before posting the entitlement.',
@@ -368,7 +368,7 @@ export interface BuiltCreditMemoEntry {
 export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCreditMemoEntry {
   const { creditMemoId, issuedAt, reverseRevenue, memo, contactInstanceId } = input
 
-  const number = assertCompactablePeriodKey({
+  const number = assertDocumentKey({
     value: input.number,
     label: 'Credit memo number',
     remedy:
@@ -377,7 +377,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
   })
 
   const periodKey = input.periodKey?.trim()
-    ? assertCompactablePeriodKey({
+    ? assertDocumentKey({
         value: input.periodKey,
         label: 'Credit memo entry key',
         remedy: 'Shorten the credit memo number before re-posting it.',

@@ -1,8 +1,9 @@
 // packages/lib/src/records/record-numbering.ts
 
-import { database, schema } from '@auxx/database'
-import { and, eq, sql } from 'drizzle-orm'
-import { NotFoundError } from '../errors'
+import { type Database, database, type RecordSequenceEntity, schema } from '@auxx/database'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
+import { NotFoundError, UnprocessableEntityError } from '../errors'
 
 /**
  * Which record kinds a `RecordSequence` row can count.
@@ -56,6 +57,30 @@ export type InternalSequenceScope = (typeof INTERNAL_SEQUENCE_SCOPES)[number]
 /** Anything `recordNumbering.create` will count. */
 export type AnySequenceScope = SequenceScope | InternalSequenceScope
 
+/**
+ * Scopes whose number a ledger posting copies verbatim as its document number
+ * (plans/accounting/tasks/80 §4.1; the fulfillment and write-off key on the order
+ * and invoice numbers). Two of these sharing a prefix in one org would collide on
+ * `GlPosting_org_docNumber_key`, so {@link validateAccountingSequence} refuses it.
+ */
+export const ACCOUNTING_SEQUENCE_SCOPES = [
+  'invoice',
+  'order',
+  'vendor_bill',
+  'build',
+  'bank_deposit',
+  'journal_entry',
+  'payout',
+  'credit_memo',
+  'vendor_credit',
+] as const satisfies readonly SequenceScope[]
+
+export type AccountingSequenceScope = (typeof ACCOUNTING_SEQUENCE_SCOPES)[number]
+
+function isAccountingScope(scope: SequenceScope): scope is AccountingSequenceScope {
+  return (ACCOUNTING_SEQUENCE_SCOPES as readonly string[]).includes(scope)
+}
+
 const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   // `RMA-0001`. The industry term, and the one the warehouse already says out
   // loud on the phone, so it is what a customer sees on a return label.
@@ -74,17 +99,14 @@ const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   // starting with a B would read as the vendor bill's `BILL-0001` at a glance, and
   // these two numbers sit side by side on the same cost trail.
   build: { prefix: 'B' },
-  // `DEP-0001`. The posting's document number keys on this string
-  // (`postings/doc-number.ts`), so it must stay short: `AUXX-DEP-DEP0001` is 16
-  // of the 21 characters the cap allows.
+  // `DEP-0001`. The posting's document number IS this string
+  // (`ledger/builders/doc-number.ts`), inside a 15-character budget.
   bank_deposit: { prefix: 'DEP' },
-  // `JNL-0001`, matching `DOC_NUMBER_PREFIX.manual_journal`. The number IS the
-  // posting's `periodKey`, so it must stay short for the same reason:
-  // `AUXX-JNL-JNL0001` is 16 of the 21 characters the cap allows.
+  // `JNL-0001`. The number IS the posting's `periodKey` and document number, so
+  // it stays short for the same reason.
   journal_entry: { prefix: 'JNL' },
-  // `PAY-0001`, matching `DOC_NUMBER_PREFIX.payout`. Same constraint again: the
-  // number IS the posting's `periodKey`, and a Stripe `po_…` id is 27 characters
-  // against a 21-character cap. `AUXX-PAY-PAY0001` is 16.
+  // `PAY-0001`. Same constraint again: the number IS the posting's `periodKey`,
+  // and a Stripe `po_…` id is 27 characters against a 15-character budget.
   payout: { prefix: 'PAY' },
   // `CM-0001`. The issue entry keys its document number on this string too
   // (`postings/build-credit-memo-entry.ts`), so it stays short for the same
@@ -101,13 +123,23 @@ const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   build_batch: { prefix: 'BR' },
 }
 
+type SequenceFormat = Pick<
+  RecordSequenceEntity,
+  'prefix' | 'usePrefix' | 'separator' | 'suffix' | 'useSuffix'
+>
+
+/** The prefix as the generator renders it: empty when switched off or blank. */
+function effectivePrefix(seq: Pick<SequenceFormat, 'prefix' | 'usePrefix'>): string {
+  return seq.usePrefix ? seq.prefix || '' : ''
+}
+
 /** Format a record number from a sequence record */
 function formatRecordNumber(seq: typeof schema.RecordSequence.$inferSelect): string {
   const numericPart = String(seq.currentNumber).padStart(seq.paddingLength ?? 4, '0')
   const parts: string[] = []
 
   if (seq.usePrefix) {
-    let prefixPart = seq.prefix || ''
+    let prefixPart = effectivePrefix(seq)
     if (seq.useDateInPrefix) {
       const now = new Date()
       const dateFormat = seq.dateFormat || 'YYMM'
@@ -142,6 +174,64 @@ function formatRecordNumber(seq: typeof schema.RecordSequence.$inferSelect): str
 
   const separator = seq.separator || ''
   return parts.join(separator)
+}
+
+/**
+ * Refuses a sequence format that would make two ledger document numbers collide:
+ * a prefix another accounting scope in the org already renders (a scope with no
+ * row counts as its default), or a suffix ending in the `-R<n>`/`-G<n>` reversal
+ * and repost markers. Non-accounting scopes pass; the caller asserts access.
+ */
+export async function validateAccountingSequence(
+  db: Database,
+  params: { organizationId: string; scope: SequenceScope; format: Partial<SequenceFormat> }
+): Promise<Result<void, Error>> {
+  const { organizationId, scope } = params
+  if (!isAccountingScope(scope)) return ok(undefined)
+
+  // Missing keys take the column defaults in schema/record-sequence.ts.
+  const format: SequenceFormat = {
+    prefix: null,
+    usePrefix: true,
+    separator: '-',
+    suffix: null,
+    useSuffix: false,
+    ...params.format,
+  }
+
+  const tail = format.useSuffix && format.suffix ? `${format.separator}${format.suffix}` : ''
+  if (/-[RG]\d+$/.test(tail)) {
+    return err(
+      new UnprocessableEntityError(
+        `A number ending in "${tail}" would read as a ledger reversal or repost; choose another suffix`
+      )
+    )
+  }
+
+  const prefix = effectivePrefix(format)
+  const rows = await db.query.RecordSequence.findMany({
+    where: and(
+      eq(schema.RecordSequence.organizationId, organizationId),
+      inArray(schema.RecordSequence.scope, [...ACCOUNTING_SEQUENCE_SCOPES])
+    ),
+    columns: { scope: true, prefix: true, usePrefix: true },
+  })
+  const byScope = new Map(rows.map((row) => [row.scope, row]))
+
+  for (const other of ACCOUNTING_SEQUENCE_SCOPES) {
+    if (other === scope) continue
+    const row = byScope.get(other)
+    const otherPrefix = row ? effectivePrefix(row) : SCOPE_DEFAULTS[other].prefix
+    if (otherPrefix === prefix) {
+      return err(
+        new UnprocessableEntityError(
+          `Prefix "${prefix}" is already used by the ${other} sequence; ledger document numbers must not collide`
+        )
+      )
+    }
+  }
+
+  return ok(undefined)
 }
 
 /**

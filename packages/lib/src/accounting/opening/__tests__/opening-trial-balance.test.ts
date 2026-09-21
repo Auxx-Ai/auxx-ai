@@ -85,7 +85,7 @@ vi.mock('../../ledger/reads/read-posting', () => ({
     isErr: () => false,
     value: {
       id,
-      docNumber: 'AUXX-OPB-20261231',
+      docNumber: 'OPB-20261231',
       txnDate: '2026-12-31',
       status: 'posted',
       totalMinor: 500_00,
@@ -125,7 +125,7 @@ vi.mock('../../ledger/post/post-entry', () => ({
     postingType: 'opening_balance',
     periodKey: options.entry.periodKey,
     txnDate: options.entry.txnDate,
-    docNumber: 'AUXX-OPB-20261231',
+    docNumber: 'OPB-20261231',
     lines: [],
     totalMinor: 500_00,
   }),
@@ -333,7 +333,7 @@ describe('readOpeningTrialBalance', () => {
     h.entries = [draft([], { id: 'je_posted', status: 'posted', glPostingId: 'glp_9' })]
     const view = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
     expect(view.entry?.id).toBe('je_posted')
-    expect(view.posting?.docNumber).toBe('AUXX-OPB-20261231')
+    expect(view.posting?.docNumber).toBe('OPB-20261231')
   })
 
   it('has no posting while the entry is a draft', async () => {

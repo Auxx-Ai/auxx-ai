@@ -424,7 +424,7 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
   // keyed on the provider's payout id, and they reach the posting untouched.
   it('keys a re-post on its own document number, so the reversed entry does not block it', async () => {
     // 🛑 `GlPosting_org_docNumber_key` is a full unique index and the reversed
-    // entry keeps `AUXX-PAY-PAY0001`. Without the suffix the re-post T26 asks
+    // entry keeps `PAY-0001`. Without the suffix the re-post T26 asks
     // for refuses on the number, and the payout stays unbooked.
     h.countPayoutEntryAttempts.mockResolvedValue(1)
 

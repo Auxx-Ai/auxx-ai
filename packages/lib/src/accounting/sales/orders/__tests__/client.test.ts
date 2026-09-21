@@ -46,7 +46,7 @@ function shipment(overrides: Partial<Fulfillment> = {}): Fulfillment {
     totalMinor: 20_000,
     shippingRecognised: false,
     glPosting: 'gp_1',
-    docNumber: 'AUXX-FUL-ORD0012F1',
+    docNumber: 'ORD-0012-F1',
     recordedAt: '2026-09-04T00:00:00.000Z',
     ...overrides,
   }

@@ -577,7 +577,7 @@ describe('postEntry in post mode', () => {
     })
 
     expect(result.status).toBe('posted')
-    expect(result.docNumber).toBe('AUXX-INV-20260818')
+    expect(result.docNumber).toBe('2026-08-18')
 
     const [row] = fake.postings
     expect(row?.status).toBe('posted')
@@ -689,9 +689,9 @@ describe('postDraft', () => {
     })
 
     expect(result.status).toBe('posted')
-    expect(result.docNumber).toBe('AUXX-INV-20260818')
+    expect(result.docNumber).toBe('2026-08-18')
     expect(fake.postings[0]?.status).toBe('posted')
-    expect(fake.postings[0]?.docNumber).toBe('AUXX-INV-20260818')
+    expect(fake.postings[0]?.docNumber).toBe('2026-08-18')
     expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(1)
   })
 
@@ -758,7 +758,7 @@ describe('reverseEntry', () => {
     })
 
     expect(reversal.status).toBe('posted')
-    expect(reversal.docNumber).toBe('AUXX-INV-20260818-R1')
+    expect(reversal.docNumber).toBe('2026-08-18-R1')
     expect(fake.postings.find((p) => p.id === posted.glPostingId)?.status).toBe('reversed')
 
     // 🛑 The original's subject row is GONE and the reversal's own subject names
@@ -780,6 +780,30 @@ describe('reverseEntry', () => {
     })
     expect(again.status).toBe('posted')
     expect(again.glPostingId).not.toBe(posted.glPostingId)
+  })
+
+  // A pre-80 row keeps its composed number; the reversal appends to what the
+  // original carries rather than re-minting from the period key.
+  it('appends -R<n> to the number the original carries, whichever format that is', async () => {
+    const fake = createFakeDb(CHART)
+    const posted = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
+    })
+    const row = fake.postings.find((p) => p.id === posted.glPostingId)
+    if (row) row.docNumber = 'AUXX-INV-20260818'
+
+    const reversal = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: posted.glPostingId as string,
+      lock: OPEN,
+    })
+
+    expect(reversal.status).toBe('posted')
+    expect(reversal.docNumber).toBe('AUXX-INV-20260818-R1')
   })
 
   it('refuses to reverse anything but a posted entry', async () => {

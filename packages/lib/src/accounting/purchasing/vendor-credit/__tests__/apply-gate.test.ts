@@ -79,7 +79,7 @@ describe('applyVendorCredit ledger gate', () => {
     h.postings = [
       {
         glPostingId: 'gp_1',
-        docNumber: 'AUXX-BIL-BILL0007',
+        docNumber: 'BILL-0007',
         status: 'reversed',
         postingType: 'vendor_bill',
       },
@@ -93,7 +93,7 @@ describe('applyVendorCredit ledger gate', () => {
     h.postings = [
       {
         glPostingId: 'gp_1',
-        docNumber: 'AUXX-BIL-BILL0007',
+        docNumber: 'BILL-0007',
         status: 'posted',
         postingType: 'vendor_bill',
       },

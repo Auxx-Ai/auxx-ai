@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   order: {} as Record<string, unknown>,
   events: [] as string[],
-  postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' } as {
+  postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'ORD-0012-F1' } as {
     status: string
     glPostingId?: string
     docNumber?: string
@@ -236,7 +236,7 @@ beforeEach(() => {
     contactInstanceId: 'contact_1',
     taxLines: [],
   }
-  h.postResult = { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' }
+  h.postResult = { status: 'posted', glPostingId: 'glp_1', docNumber: 'ORD-0012-F1' }
   h.updated = []
   h.created = []
   h.built = []
@@ -319,7 +319,7 @@ describe('fulfillOrder', () => {
     const { fulfillment, fulfillmentStatus } = result._unsafeUnwrap()
     expect(fulfillment.id).toBe('ful_1')
     expect(fulfillment.glPosting).toBe('glp_1')
-    expect(fulfillment.docNumber).toBe('AUXX-FUL-ORD0012F1')
+    expect(fulfillment.docNumber).toBe('ORD-0012-F1')
     expect(fulfillment.lines).toEqual([
       {
         id: 'fl_1',

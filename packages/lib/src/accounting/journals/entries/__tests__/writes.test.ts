@@ -96,7 +96,7 @@ vi.mock('../../../ledger/post/post-entry', () => ({
     postingType: (options.entry as { postingType: string }).postingType,
     lines: [],
     totalMinor: 0,
-    docNumber: 'AUXX-JNL-JNL0007',
+    docNumber: 'JNL-0007',
     periodKey: 'JNL-0007',
     txnDate: '2026-08-31',
   }),

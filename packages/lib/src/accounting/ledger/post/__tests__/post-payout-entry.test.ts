@@ -49,7 +49,7 @@ beforeEach(() => {
   h.postEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gl_1',
-    docNumber: 'AUXX-PAY-PO0007',
+    docNumber: 'PO-0007',
   })
 })
 
@@ -60,7 +60,7 @@ describe('accounting enabled', () => {
     expect(h.buildPayoutEntry).toHaveBeenCalledTimes(1)
     expect(h.resolvePeriodLock).toHaveBeenCalledTimes(1)
     expect(h.postEntry).toHaveBeenCalledTimes(1)
-    expect(result).toEqual({ status: 'posted', glPostingId: 'gl_1', docNumber: 'AUXX-PAY-PO0007' })
+    expect(result).toEqual({ status: 'posted', glPostingId: 'gl_1', docNumber: 'PO-0007' })
   })
 
   // plans/accounting/payout-links.md §11.5: the subject is the RECORD, because

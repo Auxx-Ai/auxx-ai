@@ -38,7 +38,7 @@ describe('readLatestPostingsByType', () => {
       {
         postingType: 'fulfillment',
         txnDate: '2026-09-13',
-        docNumber: 'AUXX-FUL-20260913',
+        docNumber: 'ORD-0012-F1',
         status: 'posted',
       },
       {
@@ -55,7 +55,7 @@ describe('readLatestPostingsByType', () => {
       {
         postingType: 'fulfillment',
         txnDate: '2026-09-13',
-        docNumber: 'AUXX-FUL-20260913',
+        docNumber: 'ORD-0012-F1',
         status: 'posted',
       },
       { postingType: 'payout', txnDate: '2026-09-14', docNumber: 'PAY-0042', status: 'posted' },

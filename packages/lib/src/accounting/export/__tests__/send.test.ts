@@ -24,7 +24,7 @@ function batch(over: Partial<Record<string, unknown>> = {}) {
     organizationId: ORG,
     connectionId: 'conn_1',
     objectType: 'journal',
-    payload: { docNumber: 'AUXX-FUL-20260914' },
+    payload: { docNumber: 'FUL-20260914' },
     payloadHash: 'a'.repeat(64),
     state: 'ready',
     attempts: 0,
@@ -86,7 +86,7 @@ function provider(over: Partial<Record<string, unknown>> = {}) {
         status: 'found' as const,
         externalId: 'qbo_184',
         remoteVersion: '0',
-        docNumber: 'AUXX-FUL-20260914',
+        docNumber: 'FUL-20260914',
         totalMinor: null,
         payloadHash: null,
       })
@@ -226,7 +226,7 @@ describe('the readback', () => {
             status: 'found' as const,
             externalId: 'qbo_184',
             remoteVersion: '0',
-            docNumber: 'AUXX-FUL-19990101',
+            docNumber: 'FUL-19990101',
             totalMinor: null,
             payloadHash: null,
           })
@@ -261,7 +261,7 @@ describe('the readback', () => {
             status: 'found' as const,
             externalId: 'qbo_184',
             remoteVersion: '0',
-            docNumber: 'AUXX-FUL-20260914',
+            docNumber: 'FUL-20260914',
             totalMinor: null,
             payloadHash: 'b'.repeat(64),
           })
@@ -312,7 +312,7 @@ describe('the readback', () => {
             status: 'found' as const,
             externalId: 'qbo_184',
             remoteVersion: '0',
-            docNumber: 'AUXX-PAY-PAY0264',
+            docNumber: 'PAY-PAY0264',
             totalMinor,
             payloadHash: null,
           })
@@ -321,7 +321,7 @@ describe('the readback', () => {
     const deposit = () =>
       batch({
         totalMinor: 7714728,
-        payload: { docNumber: 'AUXX-PAY-PAY0264', totalMinor: netToBank },
+        payload: { docNumber: 'PAY-PAY0264', totalMinor: netToBank },
       })
 
     resolveAccountingProvider.mockResolvedValue(readsBack(netToBank))
@@ -427,7 +427,7 @@ describe('failure and backoff', () => {
             externalId: '',
             remoteVersion: null,
             providerId: 'quickbooks',
-            waitingReason: 'Waiting for invoice AUXX-INV-1 to send',
+            waitingReason: 'Waiting for invoice INV-1 to send',
           })
         ),
       })
@@ -440,7 +440,7 @@ describe('failure and backoff', () => {
     expect(sets[1]).toMatchObject({
       state: 'ready',
       attempts: 0,
-      lastError: 'Waiting for invoice AUXX-INV-1 to send',
+      lastError: 'Waiting for invoice INV-1 to send',
     })
   })
 

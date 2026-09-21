@@ -282,7 +282,7 @@ function summaryDocNumber(
   scope: string,
   limits: AccountingProviderLimits | undefined
 ): string {
-  const docNumber = `AUXX-SUM-${hashExportPayload([avenue, grainKey, scope]).slice(0, 12)}`
+  const docNumber = `SUM-${hashExportPayload([avenue, grainKey, scope]).slice(0, 12)}`
   if (docNumber.length > Math.min(DOC_NUMBER_MAX_LENGTH, limits?.docNumberLength ?? Infinity))
     throw new UnprocessableEntityError(`Summary document number '${docNumber}' is over the cap`)
   return docNumber

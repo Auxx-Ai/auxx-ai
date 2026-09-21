@@ -12,6 +12,7 @@
 // Pure, so no database, no doubles, no `vi.mock`.
 
 import { describe, expect, it } from 'vitest'
+import { MAX_COMPACT_PERIOD_KEY } from '../../../ledger/periods/period-key'
 import {
   bankLineFlow,
   bankTransactionPeriodKey,
@@ -362,7 +363,7 @@ describe('bankTransactionPeriodKey', () => {
   it('mints a hash when the external id is over the scoped budget', () => {
     const key = bankTransactionPeriodKey({
       transactionId: 'x',
-      externalId: 'bt-demo-001',
+      externalId: 'bt-demo-0000001',
       bankAccountId: 'acct_1',
     })
     expect(key).toMatch(/^BNK-[0-9A-Z]{6}$/)
@@ -385,16 +386,16 @@ describe('bankTransactionPeriodKey', () => {
     expect(bankTransactionPeriodKey({ transactionId: 'row_two' })).not.toBe(a)
   })
 
-  it('always compacts inside the nine-character budget the doc number leaves', () => {
+  it('always compacts inside the budget the doc number leaves', () => {
     for (let index = 0; index < 500; index++) {
       const key = bankTransactionPeriodKey({ transactionId: `cuid_${index}` })
-      expect(key.replace(/-/g, '').length).toBeLessThanOrEqual(9)
+      expect(key.replace(/-/g, '').length).toBeLessThanOrEqual(MAX_COMPACT_PERIOD_KEY)
       const scoped = bankTransactionPeriodKey({
         transactionId: `cuid_${index}`,
         externalId: `t${index}`,
         bankAccountId: `acct_${index}`,
       })
-      expect(scoped.replace(/-/g, '').length).toBeLessThanOrEqual(9)
+      expect(scoped.replace(/-/g, '').length).toBeLessThanOrEqual(MAX_COMPACT_PERIOD_KEY)
     }
   })
 

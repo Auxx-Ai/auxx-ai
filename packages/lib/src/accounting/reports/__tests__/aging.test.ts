@@ -646,7 +646,7 @@ describe('readAging', () => {
           sourceId: payableLine!.sourceId,
           direction: 'credit',
           amountMinor: payableLine!.amount,
-          docNumber: 'AUXX-EXB-BILL0011',
+          docNumber: 'BILL-0011',
         }),
       ],
       [{ id: 'company_2', displayName: 'Landlord LLC' }],

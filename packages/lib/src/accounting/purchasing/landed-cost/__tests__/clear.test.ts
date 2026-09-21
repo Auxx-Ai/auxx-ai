@@ -143,7 +143,7 @@ describe('clearLandedCost', () => {
 describe('reverseLandedCostClear', () => {
   it('reverses the attempt still standing, and answers null when none is', async () => {
     vi.mocked(findLiveSubjectPosting).mockResolvedValue(
-      ok({ id: 'glp_1', docNumber: 'AUXX-LCC-ABC123' }) as never
+      ok({ id: 'glp_1', docNumber: 'LCC-ABC123' }) as never
     )
     vi.mocked(reverseEntry).mockResolvedValue({ status: 'posted' } as never)
 

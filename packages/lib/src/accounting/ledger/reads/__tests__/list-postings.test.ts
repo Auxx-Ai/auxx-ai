@@ -59,7 +59,7 @@ function row(overrides: Partial<LinkedPosting> & { createdAt?: Date } = {}) {
     glPostingId: 'glp_1',
     postingType: 'credit_memo',
     status: 'posted',
-    docNumber: 'AUXX-CM-1',
+    docNumber: 'CM-0001',
     txnDate: '2026-09-14',
     totalMinor: 1000,
     createdAt: new Date('2026-09-14T00:00:00Z'),
@@ -134,7 +134,7 @@ describe('findLinkedPostings', () => {
       glPostingId: 'glp_1',
       postingType: 'credit_memo',
       status: 'posted',
-      docNumber: 'AUXX-CM-1',
+      docNumber: 'CM-0001',
       txnDate: '2026-09-14',
       totalMinor: 1000,
     })

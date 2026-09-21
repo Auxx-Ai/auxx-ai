@@ -572,7 +572,7 @@ describe('toGeneralLedgerRows', () => {
           lines: [1, 2, 3].map((lineNumber) => ({
             glPostingId: 'gl_batch',
             lineId: `ln_batch_${lineNumber}`,
-            docNumber: 'AUXX-FUL-fg_6e2b172a0',
+            docNumber: 'ORD-0012-F1',
             txnDate: '2026-08-19',
             memo: null,
             direction: 'credit' as const,

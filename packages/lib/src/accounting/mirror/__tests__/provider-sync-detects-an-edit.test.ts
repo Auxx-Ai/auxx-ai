@@ -19,7 +19,7 @@ import { accountMap, balancedEntryLines, ledger, ourEntry } from './support/fixt
 
 /** Our entry `6`, as both sides originally agreed it: Dr Mastercard 900.00 / Cr Checking 900.00. */
 function ourSide(over = {}) {
-  return ourEntry({ providerEntryId: '6', docNumber: 'AUXX-JNL-JE0006', ...over })
+  return ourEntry({ providerEntryId: '6', docNumber: 'JNL-0006', ...over })
 }
 
 function theirSide(amount: number, over: { txnDate?: string } = {}) {
@@ -44,7 +44,7 @@ describe('an untouched entry', () => {
       {
         glPostingId: 'post_1',
         providerEntryId: '6',
-        docNumber: 'AUXX-JNL-JE0006',
+        docNumber: 'JNL-0006',
         verdict: 'matches',
         differences: [],
       },
@@ -54,7 +54,7 @@ describe('an untouched entry', () => {
 
 describe('an edited entry', () => {
   it("answers 'edited' and names BOTH versions", () => {
-    // The accountant opened AUXX-JNL-JE0006 and changed 900.00 to 1,500.00.
+    // The accountant opened JNL-0006 and changed 900.00 to 1,500.00.
     const plan = planProviderSync({
       ledger: ledger(theirSide(150000)),
       ourProviderEntryIds: new Set(['6']),

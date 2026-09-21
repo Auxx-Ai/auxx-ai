@@ -71,7 +71,7 @@ function event(): EntityPreDeleteEvent {
 function posting(
   txnDate: string,
   status: 'posted' | 'reversed' = 'posted',
-  docNumber: string | null = `AUXX-FUL-${txnDate.replace(/-/g, '')}`
+  docNumber: string | null = `ORD-0012-F${Number(txnDate.slice(-2))}`
 ) {
   return { id: `gl-${txnDate}-${status}`, txnDate, status, docNumber }
 }
@@ -157,7 +157,7 @@ describe('guardOrderDelete: refusal', () => {
   it('refuses a live posting even with the books wide open', async () => {
     postings(posting('2026-08-15'))
 
-    await expect(guardOrderDelete(event())).rejects.toThrow(/AUXX-FUL-20260815/)
+    await expect(guardOrderDelete(event())).rejects.toThrow(/ORD-0012-F15/)
   })
 
   it('points at reversing the entry rather than at archiving, for a live posting', async () => {
@@ -170,7 +170,7 @@ describe('guardOrderDelete: refusal', () => {
     postings(posting('2026-08-15'), posting('2026-08-16'))
 
     await expect(guardOrderDelete(event())).rejects.toThrow(
-      /2 ledger entries that are still standing: AUXX-FUL-20260815, AUXX-FUL-20260816/
+      /2 ledger entries that are still standing: ORD-0012-F15, ORD-0012-F16/
     )
   })
 

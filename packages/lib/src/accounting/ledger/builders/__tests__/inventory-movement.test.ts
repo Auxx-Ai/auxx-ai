@@ -514,14 +514,14 @@ describe('the claim identity', () => {
 
     expect(built.entry.periodKey).toBe('INV-2U62A5')
     const original = buildDocNumber({ postingType: 'inventory_movement', periodKey: 'INV-2U62A5' })
-    expect(original).toBe('AUXX-INV-INV2U62A5')
+    expect(original).toBe('INV-2U62A5')
     // The reversal has to fit too, or the entry could never be taken back out.
     const reversal = buildDocNumber({
       postingType: 'inventory_movement',
       periodKey: 'INV-2U62A5',
       revision: 1,
     })
-    expect(reversal).toBe('AUXX-INV-INV2U62A5-R1')
+    expect(reversal).toBe('INV-2U62A5-R1')
     expect(reversal.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
@@ -533,11 +533,11 @@ describe('the claim identity', () => {
   it('leaves the number-keyed posting types byte-identical', () => {
     // A build keys on `build.number` and a fulfillment on its own number. The
     // hash is the inventory builder's, and reaches neither.
-    expect(buildDocNumber({ postingType: 'fulfillment', periodKey: 'FUL-0007' })).toBe(
-      'AUXX-FUL-FUL0007'
+    expect(buildDocNumber({ postingType: 'fulfillment', periodKey: 'ORD-0007-F1' })).toBe(
+      'ORD-0007-F1'
     )
-    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'BLD-0007' })).toBe(
-      'AUXX-JNL-BLD0007'
+    expect(buildDocNumber({ postingType: 'manual_journal', periodKey: 'JNL-0007' })).toBe(
+      'JNL-0007'
     )
   })
 

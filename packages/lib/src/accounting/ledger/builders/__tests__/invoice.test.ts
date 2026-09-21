@@ -181,12 +181,12 @@ describe('the period key', () => {
     expect(keys.size).toBe(4)
   })
 
-  it('refuses a number that compacts past the cap, rather than posting an unreversible entry', () => {
-    // Twelve compacted characters posts perfectly at revision 0 - `AUXX-INI-`
-    // plus twelve is exactly 21 - and then refuses the day somebody reverses
-    // it, at 24. The entry would be in the books with no way to take it out.
-    expect(() => buildInvoiceEntry({ ...BASE, invoiceNumber: 'INV-012345678' })).toThrowError(
-      /compacts to 12 characters/
+  it('refuses a number past the document budget, rather than posting an unreversible entry', () => {
+    // Sixteen characters fits the cap at revision 0 and refuses once a repost
+    // and a reversal suffix are on it. The entry would be in the books with no
+    // way to take it out.
+    expect(() => buildInvoiceEntry({ ...BASE, invoiceNumber: 'INV-012345678901' })).toThrowError(
+      /is 16 characters/
     )
   })
 
@@ -197,7 +197,7 @@ describe('the period key', () => {
       periodKey: built.periodKey,
       revision: 1,
     })
-    expect(reversal).toBe('AUXX-INI-INV0042-R1')
+    expect(reversal).toBe('INV-0042-R1')
     expect(reversal.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 

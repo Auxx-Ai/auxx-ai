@@ -124,13 +124,13 @@ beforeEach(() => {
     for (const source of options.sources as Array<Record<string, unknown>>)
       claims.push({
         id,
-        docNumber: `AUXX-INI-${id}`,
+        docNumber: `INV-${id}`,
         status: 'posted',
         postingType: 'invoice_issued',
         linkRole: source.linkRole,
         occurrence: source.occurrence ?? 'original',
       })
-    return { status: 'posted', glPostingId: id, docNumber: `AUXX-INI-${id}` }
+    return { status: 'posted', glPostingId: id, docNumber: `INV-${id}` }
   })
   h.reverseEntry.mockImplementation(async (_db: unknown, options: { glPostingId: string }) => {
     claims = claims.filter(

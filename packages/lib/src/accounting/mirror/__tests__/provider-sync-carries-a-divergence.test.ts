@@ -116,7 +116,7 @@ function theirCopyOfOurs(amount: number) {
 }
 
 function ourCopy() {
-  return { providerEntryId: '6', docNumber: 'AUXX-JNL-JE0006' }
+  return { providerEntryId: '6', docNumber: 'JNL-0006' }
 }
 
 async function sliceOnce() {
@@ -139,14 +139,14 @@ beforeEach(() => {
 
 describe('an edited entry of ours', () => {
   it('reaches the blob as a diverged sample naming the doc number and both versions', async () => {
-    // The accountant opened AUXX-JNL-JE0006 and changed 900.00 to 1,500.00.
+    // The accountant opened JNL-0006 and changed 900.00 to 1,500.00.
     fetchBatch.mockResolvedValueOnce(theirCopyOfOurs(150000))
 
     const slice = await sliceOnce()
 
     const diverged = slice.errorSample?.filter((sample) => sample.tier === 'diverged') ?? []
     expect(diverged).toHaveLength(1)
-    expect(diverged[0]?.externalId).toBe('AUXX-JNL-JE0006')
+    expect(diverged[0]?.externalId).toBe('JNL-0006')
     expect(diverged[0]?.error).toContain('Edited in the provider')
     // The differences verbatim, both versions named - not "these differ".
     expect(diverged[0]?.error).toContain('$900.00')

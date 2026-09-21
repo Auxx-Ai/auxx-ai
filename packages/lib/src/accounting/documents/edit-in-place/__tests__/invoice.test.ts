@@ -162,7 +162,7 @@ beforeEach(() => {
   h.postings = [
     {
       glPostingId: 'gp_1',
-      docNumber: 'AUXX-INI-INV0007',
+      docNumber: 'INV-0007',
       status: 'posted',
       postingType: 'invoice_issued',
     },
@@ -179,7 +179,7 @@ beforeEach(() => {
   h.postInvoiceIssuanceBuiltEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',
-    docNumber: 'AUXX-INI-0007G2',
+    docNumber: 'INV-0007-G2',
   })
 })
 
@@ -336,7 +336,7 @@ describe('the repost generation', () => {
 
     expect(postedEntry().periodKey).toBe('INV-0007')
     expect(buildDocNumber({ postingType: 'invoice_issued', periodKey: 'INV-0007' })).toBe(
-      'AUXX-INI-INV0007'
+      'INV-0007'
     )
     expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
   })
@@ -347,10 +347,10 @@ describe('the repost generation', () => {
     await saveDocumentEdit(db, target)
 
     const key = postedEntry().periodKey
-    expect(key).toBe('0007G2')
+    expect(key).toBe('INV-0007-G2')
     const docNumber = buildDocNumber({ postingType: 'invoice_issued', periodKey: key })
-    expect(docNumber).toBe('AUXX-INI-0007G2')
-    expect(docNumber).not.toBe('AUXX-INI-INV0007')
+    expect(docNumber).toBe('INV-0007-G2')
+    expect(docNumber).not.toBe('INV-0007')
     expect(
       buildDocNumber({ postingType: 'invoice_issued', periodKey: key, revision: 1 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)

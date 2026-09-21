@@ -69,9 +69,7 @@ describe('the entry', () => {
     // whose total ties to neither deposit.
     const built = buildPayoutEntry(BASE)
     expect(built.periodKey).toBe('PO-0007')
-    expect(buildDocNumber({ postingType: 'payout', periodKey: built.periodKey })).toBe(
-      'AUXX-PAY-PO0007'
-    )
+    expect(buildDocNumber({ postingType: 'payout', periodKey: built.periodKey })).toBe('PO-0007')
   })
 
   it('sources every line on the payout id', () => {
@@ -86,6 +84,18 @@ describe('the entry', () => {
     const built = buildPayoutEntry({ ...BASE, feesMinor: 0, netMinor: 500_000 })
     expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toBeUndefined()
     expect(built.entry.lines).toHaveLength(2)
+  })
+})
+
+describe('line memos', () => {
+  it("carry the gateway's payout id ahead of the leg label", () => {
+    const built = buildPayoutEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)?.memo).toBe(
+      'txn po_1AbCdEfGhIjKlMnOpQrStUvW · Payout PO-0007 - deposited'
+    )
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)?.memo).toBe(
+      'txn po_1AbCdEfGhIjKlMnOpQrStUvW · Payout PO-0007 - gross settled'
+    )
   })
 })
 
@@ -136,7 +146,7 @@ describe('refusals', () => {
 
   it('refuses a bare gateway id as the key, naming the length', () => {
     expect(() => buildPayoutEntry({ ...BASE, payoutNumber: BASE.payoutId })).toThrowError(
-      /compacts to 27 characters/
+      /is 27 characters/
     )
   })
 

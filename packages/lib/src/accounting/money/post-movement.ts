@@ -264,7 +264,7 @@ export async function postMovementEntry(
       const entry = buildEntry({
         postingType: isRefund ? REFUND_POSTING_TYPE : 'payment',
         // Both key on the MOVEMENT, never on the book date: two payments settle
-        // on one day routinely, and `AUXX-PMT-<yyyymmdd>` is one number for both.
+        // on one day routinely, and a date would be one number for both.
         periodKey: movementPeriodKey(isRefund ? 'refund' : 'payment', money.id),
         txnDate: effectiveDate,
         lines: prepared.lines,

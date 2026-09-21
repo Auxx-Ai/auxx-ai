@@ -169,7 +169,7 @@ beforeEach(() => {
   h.postings = [
     {
       glPostingId: 'gp_1',
-      docNumber: 'AUXX-CRM-CM0007',
+      docNumber: 'CM-0007',
       status: 'posted',
       postingType: 'credit_memo',
     },
@@ -185,7 +185,7 @@ beforeEach(() => {
   h.postCreditMemoEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',
-    docNumber: 'AUXX-CRM-0007G2',
+    docNumber: 'CM-0007-G2',
   })
 })
 
@@ -327,11 +327,8 @@ describe('saveDocumentEdit', () => {
 
 describe('the repost generation', () => {
   it('keys generation 1 on the memo number, unchanged', () => {
-    // `buildDocNumber` strips the hyphen; the key itself is the number verbatim.
     expect(currentEntry().periodKey).toBe('CM-0007')
-    expect(buildDocNumber({ postingType: 'credit_memo', periodKey: 'CM-0007' })).toBe(
-      'AUXX-CRM-CM0007'
-    )
+    expect(buildDocNumber({ postingType: 'credit_memo', periodKey: 'CM-0007' })).toBe('CM-0007')
   })
 
   it('keys the repost on a NEW document number, and leaves room for its own reversal', async () => {
@@ -340,10 +337,10 @@ describe('the repost generation', () => {
     await saveDocumentEdit(db, target)
 
     const key = postedEntry().periodKey
-    expect(key).toBe('0007G2')
+    expect(key).toBe('CM-0007-G2')
     const docNumber = buildDocNumber({ postingType: 'credit_memo', periodKey: key })
-    expect(docNumber).toBe('AUXX-CRM-0007G2')
-    expect(docNumber).not.toBe('AUXX-CRM-CM0007')
+    expect(docNumber).toBe('CM-0007-G2')
+    expect(docNumber).not.toBe('CM-0007')
     expect(
       buildDocNumber({ postingType: 'credit_memo', periodKey: key, revision: 1 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)

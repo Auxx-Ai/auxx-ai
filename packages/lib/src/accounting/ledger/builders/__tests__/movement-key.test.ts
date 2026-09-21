@@ -22,9 +22,8 @@ describe('movementPeriodKey', () => {
   it('survives a reversal inside the document-number cap', () => {
     const key = movementPeriodKey('refund', 'jselwbktodj6z813xmw4fmiv')
 
-    expect(buildDocNumber({ postingType: 'refund', periodKey: key, revision: 1 }).length).toBe(
-      DOC_NUMBER_MAX_LENGTH
-    )
+    expect(buildDocNumber({ postingType: 'refund', periodKey: key, revision: 1 })).toBe(`${key}-R1`)
+    expect(`${key}-R9`.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it('separates a payment from a refund of the same movement', () => {

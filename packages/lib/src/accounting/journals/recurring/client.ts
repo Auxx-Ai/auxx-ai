@@ -46,8 +46,8 @@ export const RECURRING_JOURNAL_SUBJECT_TYPE = 'journal_entries' as const
  *
  * Restated here so {@link recurringJournalPeriodKey} does not have to import
  * `doc-number.ts` for one string, and pinned to it by test: a prefix that
- * drifted from the document number's would mint keys that compose into
- * `AUXX-RJE-XYZ…`, i.e. a key naming one type inside a number naming another.
+ * drifted from the document number's would mint a key naming one type inside a
+ * number naming another.
  */
 export const RECURRING_JOURNAL_DOC_PREFIX = 'RJE' as const
 
@@ -81,11 +81,9 @@ export function recurringJournalSourceId(identity: RecurringJournalIdentity): st
  * `(organizationId, postingType, periodKey, revision)` does not, and this
  * function is what puts two runs of March on one tuple.
  *
- * Hashed rather than composed, because composition does not fit: `RT0007` plus
- * `202603` compacts to twelve characters, which posts perfectly at revision 0
- * (nine + twelve = 21) and then REFUSES the day somebody reverses it, at 24 -
- * an entry in the books with no way to take it out (`period-key.ts:51-56`).
- * The fold is nine: `AUXX-RJE-RJEA1B2C3` is 18, and `-R1` keeps it at 21.
+ * Hashed rather than composed: a rule number plus a month has no fixed width,
+ * and a hash is the shape the other hash-keyed types share (`period-key.ts`).
+ * `RJE-A1B2C3` is 10, and `-R1` keeps it well inside the 21-character cap.
  *
  * ⚠️ The fold's collision caveat is inherited in full. A caller that sees
  * `already_posted` owes a check that the winning posting fills the SAME SLOT

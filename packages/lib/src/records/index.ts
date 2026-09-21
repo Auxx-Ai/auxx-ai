@@ -10,12 +10,15 @@ export type {
 } from './name-case/backfill'
 export { backfillContactNameCasing } from './name-case/backfill'
 export type {
+  AccountingSequenceScope,
   AnySequenceScope,
   InternalSequenceScope,
   SequenceScope,
 } from './record-numbering'
 export {
+  ACCOUNTING_SEQUENCE_SCOPES,
   INTERNAL_SEQUENCE_SCOPES,
   recordNumbering,
   SEQUENCE_SCOPES,
+  validateAccountingSequence,
 } from './record-numbering'

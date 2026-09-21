@@ -71,12 +71,12 @@ describe('buildRefundEntry', () => {
   })
 
   it('keys the entry on a HASH of the movement, inside the document-number cap', () => {
-    // `refund:<cuid>` compacted to 31 characters and refused at `buildDocNumber`.
+    // `refund:<cuid>` is over the cap on its own and would be refused at `buildDocNumber`.
     expect(buildRefundEntry(BASE).periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
     expect(buildRefundEntry(BASE).entry.periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
     expect(
       buildDocNumber({ postingType: 'refund', periodKey: buildRefundEntry(BASE).periodKey })
-    ).toHaveLength(18)
+    ).toMatch(/^RFD-[0-9A-Z]{6}$/)
   })
 
   it('sources every line on the movement', () => {
@@ -103,5 +103,13 @@ describe('buildRefundEntry', () => {
         })
       ).toThrowError(/positive whole number/)
     }
+  })
+
+  it('memos every line with the movement id ahead of the leg label', () => {
+    const built = buildRefundEntry(BASE)
+    expect(built.entry.lines.map((row) => row.memo)).toEqual([
+      'txn mt_1 · Customer credit refund',
+      'txn mt_1 · Customer credit refund',
+    ])
   })
 })

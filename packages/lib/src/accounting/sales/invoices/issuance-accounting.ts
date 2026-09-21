@@ -33,12 +33,6 @@ import { type InvoiceForIssuance, loadInvoiceForIssuance } from './issuance-read
 
 const logger = createScopedLogger('money-invoice-issuance-accounting')
 
-/** How an invoice's repost key hashes when the generation marker will not fit beside its digits. */
-export const INVOICE_ENTRY_KEY_HASH = {
-  prefix: 'IGN',
-  label: 'invoice repost',
-} as const
-
 export interface InvoiceIssuanceEntrySource {
   /** The `invoice` EntityInstance id. The entry's subject and its claim. */
   invoiceId: string
@@ -62,7 +56,7 @@ export function buildEntryForInvoiceIssuance(
   return buildInvoiceEntry({
     invoiceId,
     invoiceNumber: invoice.number,
-    periodKey: documentEntryKey(invoice.number, source.generation ?? 1, INVOICE_ENTRY_KEY_HASH),
+    periodKey: documentEntryKey(invoice.number, source.generation ?? 1),
     issuedAt,
     subtotalMinor: invoice.subtotalMinor,
     taxTotalMinor: invoice.taxTotalMinor,

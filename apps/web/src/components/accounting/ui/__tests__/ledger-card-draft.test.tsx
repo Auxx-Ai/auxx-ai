@@ -90,13 +90,11 @@ describe('the ledger card and a drafted entry', () => {
   // Approved in the outbox: the draft took its claim, the `pending` row is gone
   // and the posting arrives through the ordinary read as a `subject` row.
   it('lists the posting once it is claimed, with no drafted notice', () => {
-    state.postings = [
-      { ...DRAFT, docNumber: 'AUXX-CM-0002', status: 'posted', linkRole: 'subject' },
-    ]
+    state.postings = [{ ...DRAFT, docNumber: 'CM-0002', status: 'posted', linkRole: 'subject' }]
     card()
 
     expect(screen.queryByText('Drafted — awaiting approval in the outbox')).not.toBeInTheDocument()
-    expect(screen.getByText('AUXX-CM-0002')).toBeInTheDocument()
+    expect(screen.getByText('CM-0002')).toBeInTheDocument()
   })
 
   // Two drafts on one record - an issuance and a write-off, say - are two rows.

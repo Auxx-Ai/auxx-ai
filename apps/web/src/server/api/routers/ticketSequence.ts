@@ -1,7 +1,7 @@
 // src/server/api/routers/ticketSequence.ts
 
 import { schema } from '@auxx/database'
-import { recordNumbering, SEQUENCE_SCOPES } from '@auxx/lib/records'
+import { recordNumbering, SEQUENCE_SCOPES, validateAccountingSequence } from '@auxx/lib/records'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -80,6 +80,13 @@ export const ticketSequenceRouter = createTRPCRouter({
           )
         )
         .limit(1)
+
+      const check = await validateAccountingSequence(ctx.db, {
+        organizationId,
+        scope,
+        format: { ...existing, ...setData },
+      })
+      if (check.isErr()) throw check.error
 
       if (existing) {
         const [updated] = await ctx.db

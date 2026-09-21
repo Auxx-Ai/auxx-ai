@@ -136,7 +136,7 @@ beforeEach(() => {
   h.postCreditMemoEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gl_1',
-    docNumber: 'AUXX-CRM-0001',
+    docNumber: 'CM-0001',
   })
   h.reverseCreditMemoEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_rev' })
   h.settleCreditMemo.mockResolvedValue({ status: 'issued' })
@@ -156,7 +156,7 @@ describe('issueCreditMemo', () => {
       orderInstanceId: null,
     })
     expect(result.postingId).toBe('gl_1')
-    expect(result.docNumber).toBe('AUXX-CRM-0001')
+    expect(result.docNumber).toBe('CM-0001')
   })
 
   it('writes the status with no posting stamp beside it', async () => {

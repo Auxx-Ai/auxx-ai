@@ -79,7 +79,7 @@ import {
 
 const ORG_ID = 'org1'
 const GL_POSTING_ID = 'glpost1'
-const DOC_NUMBER = 'AUXX-FUL-20260818'
+const DOC_NUMBER = 'ORD-0818-F1'
 /** The forensic stamp the batch builder composed. */
 const STAMP = `auxx:gl:fulfillment:2026-08-18:${GL_POSTING_ID}`
 /** Derived from the batch identity by `sendExportBatch`. No run salt. */
@@ -341,10 +341,10 @@ describe('layer 2 - heal rather than re-post', () => {
 
   it('queries by the docNumber the core minted, not one of its own', async () => {
     const callTool = connect()
-    await send(baseJournal({ docNumber: 'AUXX-REV-202607-R1' }))
+    await send(baseJournal({ docNumber: 'REV-202607-R1' }))
 
     expect(callTool).toHaveBeenCalledWith('find_quickbooks_journal_entry', {
-      docNumber: 'AUXX-REV-202607-R1',
+      docNumber: 'REV-202607-R1',
     })
   })
 })

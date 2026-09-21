@@ -128,13 +128,13 @@ describe('splitErrorSample', () => {
     const split = splitErrorSample(
       run({
         errorSample: [
-          { externalId: 'AUXX-JNL-JE0006', error: 'Edited…', tier: 'diverged' },
+          { externalId: 'JNL-0006', error: 'Edited…', tier: 'diverged' },
           { externalId: '2026-02', error: '2026-02 is closed…', tier: 'skipped' },
           { externalId: '2026-07-01..2026-07-31', error: 'unmapped account', tier: 'rejected' },
         ],
       })
     )
-    expect(split.diverged.map((s) => s.externalId)).toEqual(['AUXX-JNL-JE0006'])
+    expect(split.diverged.map((s) => s.externalId)).toEqual(['JNL-0006'])
     expect(split.deferred.map((s) => s.externalId)).toEqual(['2026-02'])
     expect(split.refused).toHaveLength(1)
   })

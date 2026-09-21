@@ -338,21 +338,18 @@ describe('the document number an occurrence claims', () => {
     occurrenceDate: '2026-03-31',
   })
 
-  it('compacts to nine, which is the whole budget', () => {
-    // §0.9: `AUXX-XXX-` is nine characters and `-R9` is three, so nine compact
-    // characters are left out of the 21-character cap. `RJE-<6 base36>` is
-    // exactly nine. A naively composed `RT0007` + `202603` would be TWELVE,
-    // which posts perfectly at revision 0 and then refuses the day somebody
-    // reverses it - an entry in the books with no way to take it out.
+  it('compacts within the budget', () => {
+    // `RJE-<6 base36>` renders verbatim as the document number, so the key
+    // must leave room for `-R9` under the 21-character cap.
     expect(key).toMatch(/^RJE-[0-9A-Z]{6}$/)
-    expect(key.replace(/-/g, '')).toHaveLength(MAX_COMPACT_PERIOD_KEY)
+    expect(key.replace(/-/g, '').length).toBeLessThanOrEqual(MAX_COMPACT_PERIOD_KEY)
   })
 
-  it('survives a reversal at exactly the cap', () => {
-    expect(buildDocNumber({ postingType: 'recurring_journal', periodKey: key })).toHaveLength(18)
+  it('survives a reversal under the cap', () => {
+    expect(buildDocNumber({ postingType: 'recurring_journal', periodKey: key })).toBe(key)
     expect(
-      buildDocNumber({ postingType: 'recurring_journal', periodKey: key, revision: 1 })
-    ).toHaveLength(DOC_NUMBER_MAX_LENGTH)
+      buildDocNumber({ postingType: 'recurring_journal', periodKey: key, revision: 1 }).length
+    ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it('carries the prefix the document number declares', () => {

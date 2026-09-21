@@ -64,7 +64,7 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
 vi.mock('../../../ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntry: h.postEntry,
-  previewEntry: vi.fn(async () => ({ docNumber: 'AUXX-BIL-BILL0007', lines: [] })),
+  previewEntry: vi.fn(async () => ({ docNumber: 'BILL-0007', lines: [] })),
 }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../../settings/settings-service', () => ({
@@ -146,7 +146,7 @@ beforeEach(() => {
   h.postEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_1',
-    docNumber: 'AUXX-BIL-BILL0007',
+    docNumber: 'BILL-0007',
   })
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
@@ -279,7 +279,7 @@ describe('postVendorBill', () => {
     h.postEntry.mockResolvedValue({
       status: 'already_posted',
       glPostingId: 'gp_1',
-      docNumber: 'AUXX-BIL-BILL0007',
+      docNumber: 'BILL-0007',
     })
 
     const result = await postVendorBill(db, {
@@ -360,7 +360,7 @@ describe('voidVendorBill', () => {
       value: [
         {
           id: 'gp_1',
-          docNumber: 'AUXX-BIL-BILL0007',
+          docNumber: 'BILL-0007',
           status: 'posted',
           postingType: 'vendor_bill',
         },
@@ -398,7 +398,7 @@ describe('voidVendorBill', () => {
       value: [
         {
           id: 'gp_1',
-          docNumber: 'AUXX-BIL-BILL0007',
+          docNumber: 'BILL-0007',
           status: 'reversed',
           postingType: 'vendor_bill',
         },

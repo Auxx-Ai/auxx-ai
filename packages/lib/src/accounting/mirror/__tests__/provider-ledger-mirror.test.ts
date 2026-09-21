@@ -67,9 +67,9 @@ describe('who authored an entry', () => {
     // The re-keyed case: the id moved, the number did not. Calling it theirs
     // would translate our own entry back into our own books.
     expect(
-      authorOf(entry({ docNumber: 'AUXX-FUL-ORD0012F1' }), {
+      authorOf(entry({ docNumber: 'ORD-0012-F1' }), {
         providerEntryIds: new Set<string>(),
-        docNumbers: new Set(['AUXX-FUL-ORD0012F1']),
+        docNumbers: new Set(['ORD-0012-F1']),
       })
     ).toBe('auxx')
   })

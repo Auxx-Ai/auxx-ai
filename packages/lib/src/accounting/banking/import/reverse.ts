@@ -15,7 +15,7 @@
  * So a reverse deletes the rows nobody has decided anything about, and REFUSES
  * the rest **by name**. Naming them is not a nicety: "3 rows could not be
  * removed" leaves a person with no way to find them, where "31 Jan, -$50.00,
- * FUEL STOP 12 - carries posting AUXX-BNK-0007" tells them exactly which
+ * FUEL STOP 12 - carries posting BNK-7Q2XZ1" tells them exactly which
  * decision to reverse first.
  *
  * ⚠️ It is not all-or-nothing. Refusing the whole batch because one row was
