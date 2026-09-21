@@ -81,10 +81,15 @@ function fakeDb(selects: unknown[][], options: { conflict?: boolean } = {}) {
   let call = 0
   const inserted: Array<Record<string, unknown>> = []
   const members: Array<Array<Record<string, unknown>>> = []
+  const wheres: unknown[] = []
   const selectChain: Record<string, unknown> = {}
   const passthrough = () => selectChain
-  for (const method of ['from', 'leftJoin', 'innerJoin', 'where', 'orderBy', 'limit'])
+  for (const method of ['from', 'leftJoin', 'innerJoin', 'orderBy', 'limit'])
     selectChain[method] = passthrough
+  selectChain.where = (condition: unknown) => {
+    wheres.push(condition)
+    return selectChain
+  }
   // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
   selectChain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
     const rows = selects[call] ?? []
@@ -119,7 +124,30 @@ function fakeDb(selects: unknown[][], options: { conflict?: boolean } = {}) {
     select: () => selectChain,
     transaction: (fn: (tx: unknown) => unknown) => fn(tx),
   } as unknown as Database
-  return { db, inserted, members }
+  return { db, inserted, members, wheres }
+}
+
+/** Every string bound into a drizzle condition, so a test can see what a `where` carried. */
+function boundValues(condition: unknown): string[] {
+  const out: string[] = []
+  const visit = (node: unknown): void => {
+    if (node == null) return
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child)
+      return
+    }
+    if (typeof node === 'string') {
+      out.push(node)
+      return
+    }
+    if (typeof node === 'object') {
+      const record = node as Record<string, unknown>
+      if ('queryChunks' in record) visit(record.queryChunks)
+      else if ('value' in record) visit(record.value)
+    }
+  }
+  visit(condition)
+  return out
 }
 
 beforeEach(() => {
@@ -552,6 +580,42 @@ describe('Transaction mode', () => {
       'Export batch fell back to a journal entry',
       expect.objectContaining({ glPostingId: 'glp_1' })
     )
+  })
+})
+
+describe('the posting read', () => {
+  // A batched row is not a candidate, so nothing downstream selects: every
+  // `where` captured here is the reader's own.
+  const batched = (n: number, from = 1) =>
+    Array.from({ length: n }, (_, i) =>
+      posting({ id: `glp_${from + i}`, txnDate: '2026-09-14', batchedId: 'ebp_x' })
+    )
+
+  it('pages by keyset to exhaustion: a full page is followed by a read after its last row', async () => {
+    const { db, wheres } = fakeDb([batched(5000), batched(12, 5001)])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(0)
+    expect(wheres).toHaveLength(2)
+    expect(boundValues(wheres[0])).not.toContain('glp_5000')
+    expect(boundValues(wheres[1])).toContain('glp_5000')
+  })
+
+  it('stops after one short page', async () => {
+    const { db, wheres } = fakeDb([batched(4999)])
+
+    await buildExportBatches(db, RANGE)
+
+    expect(wheres).toHaveLength(1)
+  })
+
+  it('reads only the named postings when the auto-send path names them', async () => {
+    const { db, wheres } = fakeDb([batched(1)])
+
+    await buildExportBatches(db, { ...RANGE, glPostingIds: ['glp_1'] })
+
+    expect(boundValues(wheres[0])).toContain('glp_1')
   })
 })
 

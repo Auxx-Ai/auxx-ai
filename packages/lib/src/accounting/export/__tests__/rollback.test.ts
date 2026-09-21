@@ -22,6 +22,7 @@ function batch(over: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'batch_1',
     organizationId: ORG,
+    bookId: 'book_1',
     connectionId: 'conn_1',
     objectType: 'journal',
     state: 'sent',
@@ -66,6 +67,29 @@ function fakeDb(row: unknown) {
     transaction: (fn: (tx: unknown) => unknown) => fn({ update }),
   } as unknown as Database
   return { db, sets }
+}
+
+/** Every string bound into a drizzle condition, so a test can see what a `where` carried. */
+function boundValues(condition: unknown): string[] {
+  const out: string[] = []
+  const visit = (node: unknown): void => {
+    if (node == null) return
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child)
+      return
+    }
+    if (typeof node === 'string') {
+      out.push(node)
+      return
+    }
+    if (typeof node === 'object') {
+      const record = node as Record<string, unknown>
+      if ('queryChunks' in record) visit(record.queryChunks)
+      else if ('value' in record) visit(record.value)
+    }
+  }
+  visit(condition)
+  return out
 }
 
 function provider(over: Partial<Record<string, unknown>> = {}) {
@@ -240,8 +264,13 @@ describe('refusals come back as results, with the reason on them', () => {
 function fakeSequentialDb(responses: unknown[][]) {
   let call = 0
   const sets: Array<Record<string, unknown>> = []
+  const wheres: unknown[] = []
   const selectChain: Record<string, unknown> = {}
-  for (const method of ['from', 'where', 'limit']) selectChain[method] = () => selectChain
+  for (const method of ['from', 'limit']) selectChain[method] = () => selectChain
+  selectChain.where = (condition: unknown) => {
+    wheres.push(condition)
+    return selectChain
+  }
   // biome-ignore lint/suspicious/noThenProperty: the fake must be awaitable
   selectChain.then = (resolve: (v: unknown) => unknown) => {
     const rows = responses[call] ?? []
@@ -273,7 +302,7 @@ function fakeSequentialDb(responses: unknown[][]) {
     select: () => selectChain,
     transaction: (fn: (tx: unknown) => unknown) => fn({ update }),
   } as unknown as Database
-  return { db, sets }
+  return { db, sets, wheres }
 }
 
 describe('the rollback order guard (plan 67 §5.4)', () => {
@@ -294,6 +323,20 @@ describe('the rollback order guard (plan 67 §5.4)', () => {
 
     expect(result._unsafeUnwrap()).toMatchObject({ status: 'refused' })
     expect(result._unsafeUnwrap().message).toContain('AUXX-PAY-1')
+  })
+
+  it("looks for the payment in the invoice's own book, not every book in the org", async () => {
+    resolveAccountingProvider.mockResolvedValue(provider())
+    const { db, wheres } = fakeSequentialDb([
+      [batch({ objectType: 'invoice', bookId: 'book_qbo' })],
+      [{ glPostingId: 'gp_1' }],
+      [],
+    ])
+
+    await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    // batch, members, then the payment read - the one that must carry the book.
+    expect(boundValues(wheres[2])).toContain('book_qbo')
   })
 
   it('allows the withdraw when no live payment applies to any of its members', async () => {

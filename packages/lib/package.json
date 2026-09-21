@@ -160,6 +160,12 @@
       "import": "./dist/accounting/opening/client.mjs",
       "default": "./src/accounting/opening/client.ts"
     },
+    "./accounting/parties": {
+      "types": "./src/accounting/parties/index.ts",
+      "source": "./src/accounting/parties/index.ts",
+      "import": "./dist/accounting/parties/index.mjs",
+      "default": "./src/accounting/parties/index.ts"
+    },
     "./accounting/providers": {
       "types": "./src/accounting/providers/index.ts",
       "source": "./src/accounting/providers/index.ts",
@@ -201,12 +207,6 @@
       "source": "./src/accounting/purchasing/intake/client.ts",
       "import": "./dist/accounting/purchasing/intake/client.mjs",
       "default": "./src/accounting/purchasing/intake/client.ts"
-    },
-    "./accounting/parties": {
-      "types": "./src/accounting/parties/index.ts",
-      "source": "./src/accounting/parties/index.ts",
-      "import": "./dist/accounting/parties/index.mjs",
-      "default": "./src/accounting/parties/index.ts"
     },
     "./accounting/rails": {
       "types": "./src/accounting/rails/index.ts",

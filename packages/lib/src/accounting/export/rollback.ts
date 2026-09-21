@@ -35,6 +35,7 @@ export interface RollbackExportBatchResult {
 async function findBlockingPayment(
   db: Database,
   organizationId: string,
+  bookId: string,
   invoiceBatchId: string
 ): Promise<{ id: string; docNumber: string | null } | null> {
   const members = await db
@@ -56,6 +57,7 @@ async function findBlockingPayment(
     .where(
       and(
         eq(schema.ExportBatch.organizationId, organizationId),
+        eq(schema.ExportBatch.bookId, bookId),
         eq(schema.ExportBatch.objectType, PAYMENT_OBJECT_TYPE),
         eq(schema.ExportBatch.state, 'sent')
       )
@@ -131,7 +133,7 @@ export async function rollbackExportBatch(
       })
 
     if (batch.objectType === INVOICE_OBJECT_TYPE) {
-      const blocking = await findBlockingPayment(db, organizationId, batchId)
+      const blocking = await findBlockingPayment(db, organizationId, batch.bookId, batchId)
       if (blocking)
         return ok({
           batchId,
