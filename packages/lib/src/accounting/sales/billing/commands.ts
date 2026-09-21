@@ -3,8 +3,9 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, ne } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
+import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import { BadRequestError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
@@ -27,6 +28,7 @@ import {
   allocateInvoiceVisit,
   allocateScheduleOccurrence,
   getActiveAllocatedAmounts,
+  setInstallmentStatus,
 } from './allocations'
 import {
   batchReadSystemValues,
@@ -359,10 +361,9 @@ export async function createFixedContractInvoice(
       })
     }
     if (installmentId) {
-      await db
-        .update(schema.WorkOrderBillingInstallment)
-        .set({ status: 'drafted', invoiceId: shell.instanceId })
-        .where(eq(schema.WorkOrderBillingInstallment.id, installmentId))
+      await setInstallmentStatus(db, input.organizationId, [installmentId], 'drafted', {
+        invoiceId: shell.instanceId,
+      })
     }
     return finishInvoice({
       ...input,
@@ -385,15 +386,10 @@ export async function createVisitInvoice(
     if (projection.basis !== 'per_visit') {
       throw new BadRequestError('This work order does not use per-visit billing')
     }
-    const visits = await db.query.WorkOrderVisit.findMany({
-      where: and(
-        eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-        eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
-        input.advance
-          ? ne(schema.WorkOrderVisit.status, 'canceled')
-          : eq(schema.WorkOrderVisit.status, 'done'),
-        inArray(schema.WorkOrderVisit.id, [...new Set(input.visitIds)])
-      ),
+    const visits = await listVisitsForWorkOrder(input.organizationId, input.workOrderInstanceId, {
+      db,
+      status: input.advance ? 'not_canceled' : 'done',
+      visitIds: [...new Set(input.visitIds)],
     })
     if (visits.length !== new Set(input.visitIds).size) {
       throw new BadRequestError(
@@ -529,13 +525,9 @@ export async function createExtraWorkInvoice(
     // a supported flow. Unpriced lines follow the other builders' `amount > 0` convention.
     const selectedVisitIds = [...new Set(selected.map((line) => line.visitId!))]
     const visitRows = selectedVisitIds.length
-      ? await db.query.WorkOrderVisit.findMany({
-          where: and(
-            eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-            eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
-            inArray(schema.WorkOrderVisit.id, selectedVisitIds)
-          ),
-          columns: { id: true, status: true },
+      ? await listVisitsForWorkOrder(input.organizationId, input.workOrderInstanceId, {
+          db,
+          visitIds: selectedVisitIds,
         })
       : []
     const visitStatusById = new Map(visitRows.map((row) => [row.id, row.status]))

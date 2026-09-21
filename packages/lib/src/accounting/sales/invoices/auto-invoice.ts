@@ -14,8 +14,9 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
-import { and, asc, eq, isNull, lt, or } from 'drizzle-orm'
+import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
+import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import {
   getWorkOrderStatus,
   systemActorUserId,
@@ -32,6 +33,11 @@ import {
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { getOrganizationSetting } from '../../../settings/settings-service'
+import {
+  listInstallments,
+  listVisitAllocationsForVisits,
+  listWorkOrderVisitAllocations,
+} from '../billing/allocations'
 import {
   createFixedContractInvoice,
   createRecurringCharge,
@@ -177,16 +183,10 @@ export async function generateInvoiceDraft(
 
   // ─── Step 1e: per_visit dedup (Q6a) ─────────────────────────────────────────
   if (trigger === 'per_visit' && visitId) {
-    const existing = await database.query.InvoiceVisitAllocation.findFirst({
-      where: and(
-        eq(schema.InvoiceVisitAllocation.organizationId, organizationId),
-        eq(schema.InvoiceVisitAllocation.visitId, visitId),
-        eq(schema.InvoiceVisitAllocation.kind, 'base'),
-        eq(schema.InvoiceVisitAllocation.status, 'active')
-      ),
-      columns: { id: true },
+    const existing = await listVisitAllocationsForVisits(database, organizationId, [visitId], {
+      visitKind: 'base',
     })
-    if (existing) return { created: false, reason: 'duplicate' }
+    if (existing.length > 0) return { created: false, reason: 'duplicate' }
   }
 
   const pricingModelTyped = cf.work_order_pricing_model
@@ -200,22 +200,12 @@ export async function generateInvoiceDraft(
     let visitIds = visitId ? [visitId] : []
     if (visitIds.length === 0) {
       const cutoff = occurrenceDate ?? '9999-12-31'
-      const visits = await database.query.WorkOrderVisit.findMany({
-        where: and(
-          eq(schema.WorkOrderVisit.organizationId, organizationId),
-          eq(schema.WorkOrderVisit.workOrderId, workOrderInstanceId),
-          eq(schema.WorkOrderVisit.status, 'done')
-        ),
-      })
-      const allocated = await database.query.InvoiceVisitAllocation.findMany({
-        where: and(
-          eq(schema.InvoiceVisitAllocation.organizationId, organizationId),
-          eq(schema.InvoiceVisitAllocation.workOrderId, workOrderInstanceId),
-          eq(schema.InvoiceVisitAllocation.kind, 'base'),
-          eq(schema.InvoiceVisitAllocation.status, 'active')
-        ),
-        columns: { visitId: true },
-      })
+      const [visits, allocated] = await Promise.all([
+        listVisitsForWorkOrder(organizationId, workOrderInstanceId, { status: 'done' }),
+        listWorkOrderVisitAllocations(database, organizationId, workOrderInstanceId, {
+          visitKind: 'base',
+        }),
+      ])
       const claimed = new Set(allocated.map((row) => row.visitId))
       visitIds = visits
         .filter((visit) => {
@@ -236,14 +226,12 @@ export async function generateInvoiceDraft(
   }
 
   if (pricingModel === 'fixed_contract') {
-    const pendingInstallments = await database.query.WorkOrderBillingInstallment.findMany({
-      where: and(
-        eq(schema.WorkOrderBillingInstallment.organizationId, organizationId),
-        eq(schema.WorkOrderBillingInstallment.workOrderId, workOrderInstanceId),
-        eq(schema.WorkOrderBillingInstallment.status, 'pending')
-      ),
-      orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
-    })
+    const pendingInstallments = await listInstallments(
+      database,
+      organizationId,
+      workOrderInstanceId,
+      { status: 'pending' }
+    )
     const pendingInstallment = pendingInstallments.find((installment) => {
       if (trigger === 'on_completion') return installment.trigger === 'work_order_completion'
       if (trigger !== 'custom_schedule') return installment.trigger === 'manual'

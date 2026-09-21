@@ -27,29 +27,10 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   /** Constructor arguments every `FieldValueService` was built with. */
   fieldValueServiceArgs: [] as unknown[][],
-  /** `WorkOrderBillingInstallment` rows the update statement claimed to touch. */
-  installmentUpdates: [] as unknown[],
+  markInstallmentsInvoiced: vi.fn(),
 }))
 
-vi.mock('@auxx/database', () => {
-  const chain = {
-    set: (values: unknown) => {
-      h.installmentUpdates.push(values)
-      return chain
-    },
-    where: () => Promise.resolve(),
-  }
-  return {
-    database: { update: () => chain },
-    schema: {
-      WorkOrderBillingInstallment: {
-        organizationId: 'organizationId',
-        invoiceId: 'invoiceId',
-        status: 'status',
-      },
-    },
-  }
-})
+vi.mock('@auxx/database', () => ({ database: {}, schema: {} }))
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
   getEntityDefIdResolver: async () => (slug: string) => `def-${slug}`,
@@ -72,6 +53,7 @@ vi.mock('../../../../field-values/field-value-service', () => ({
 }))
 vi.mock('../../billing/allocations', () => ({
   listInvoiceAllocations: h.listInvoiceAllocations,
+  markInstallmentsInvoiced: h.markInstallmentsInvoiced,
   releaseInvoiceAllocations: vi.fn(),
 }))
 vi.mock('../../billing/projection', () => ({
@@ -138,7 +120,6 @@ function bypass(): ReadonlySet<string> | undefined {
 beforeEach(() => {
   vi.clearAllMocks()
   h.fieldValueServiceArgs = []
-  h.installmentUpdates = []
   h.calls = []
   h.postInvoiceIssuance.mockImplementation(async () => {
     h.calls.push('post-issuance')
@@ -188,7 +169,7 @@ describe('markInvoiceSent', () => {
   it('flips the drafted installment to invoiced', async () => {
     wireInvoice('draft')
     await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
-    expect(h.installmentUpdates).toEqual([{ status: 'invoiced' }])
+    expect(h.markInstallmentsInvoiced).toHaveBeenCalledWith(expect.anything(), ORG, INVOICE)
   })
 
   // 🛑 Issuance is what raises the receivable every payment entry relieves. Before

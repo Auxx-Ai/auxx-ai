@@ -3,7 +3,7 @@
 import { database, schema } from '@auxx/database'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import type {
@@ -16,6 +16,7 @@ import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { recomputeTotals } from '../totals/totals-hooks'
 import type { WorkOrderBillingBasis, WorkOrderInvoiceTiming } from '../types'
+import { hasActiveAllocations, listInstallments, releaseLineAllocations } from './allocations'
 import { assertBillingConfigurationCompatible } from './config'
 // Only the (never-registered) `syncBillingOnContactChange` still calls a projector
 // directly; every live hook marks instead, and the drain imports them lazily.
@@ -149,46 +150,18 @@ export const guardBillingConfiguration: FieldPreHookHandler = async (event) => {
     basis !== currentBasis
   ) {
     const workOrderId = parseRecordId(event.recordId).entityInstanceId
-    const [lineAllocation, visitAllocation, scheduleAllocation, installment] = await Promise.all([
-      database.query.InvoiceLineAllocation.findFirst({
-        where: and(
-          eq(schema.InvoiceLineAllocation.organizationId, event.organizationId),
-          eq(schema.InvoiceLineAllocation.workOrderId, workOrderId),
-          eq(schema.InvoiceLineAllocation.status, 'active')
-        ),
-        columns: { id: true },
-      }),
-      database.query.InvoiceVisitAllocation.findFirst({
-        where: and(
-          eq(schema.InvoiceVisitAllocation.organizationId, event.organizationId),
-          eq(schema.InvoiceVisitAllocation.workOrderId, workOrderId),
-          eq(schema.InvoiceVisitAllocation.status, 'active')
-        ),
-        columns: { id: true },
-      }),
-      database.query.InvoiceScheduleAllocation.findFirst({
-        where: and(
-          eq(schema.InvoiceScheduleAllocation.organizationId, event.organizationId),
-          eq(schema.InvoiceScheduleAllocation.workOrderId, workOrderId),
-          eq(schema.InvoiceScheduleAllocation.status, 'active')
-        ),
-        columns: { id: true },
-      }),
-      database.query.WorkOrderBillingInstallment.findFirst({
-        where: and(
-          eq(schema.WorkOrderBillingInstallment.organizationId, event.organizationId),
-          eq(schema.WorkOrderBillingInstallment.workOrderId, workOrderId),
-          inArray(schema.WorkOrderBillingInstallment.status, ['pending', 'drafted', 'invoiced'])
-        ),
-        columns: { id: true },
+    const [allocated, installments] = await Promise.all([
+      hasActiveAllocations(database, event.organizationId, workOrderId),
+      listInstallments(database, event.organizationId, workOrderId, {
+        status: ['pending', 'drafted', 'invoiced'],
       }),
     ])
-    if (lineAllocation || visitAllocation || scheduleAllocation) {
+    if (allocated) {
       throw new BadRequestError(
         'This work order already has invoices billed under its current pricing model — void or delete them before changing it'
       )
     }
-    if (installment) {
+    if (installments.length > 0) {
       throw new BadRequestError('Clear the payment schedule before changing the pricing model')
     }
   }
@@ -325,10 +298,7 @@ export const guardAllocatedLineDelete: EntityPreDeleteHandler = async (event) =>
         'Lines on an issued invoice cannot be deleted — void and reissue the invoice instead'
       )
     }
-    await database
-      .update(schema.InvoiceLineAllocation)
-      .set({ status: 'released', releasedAt: new Date() })
-      .where(eq(schema.InvoiceLineAllocation.id, invoiceAllocation.id))
+    await releaseLineAllocations(database, event.organizationId, { ids: [invoiceAllocation.id] })
   }
 }
 

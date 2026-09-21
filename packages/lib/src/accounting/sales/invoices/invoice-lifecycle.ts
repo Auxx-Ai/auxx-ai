@@ -1,11 +1,10 @@
 // packages/lib/src/accounting/sales/invoices/invoice-lifecycle.ts
 
-import { database, schema } from '@auxx/database'
+import { database } from '@auxx/database'
 import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError } from '../../../errors'
@@ -13,7 +12,11 @@ import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { listInvoiceMoneyPayments } from '../../money/invoice-payments/payment-reads'
-import { listInvoiceAllocations, releaseInvoiceAllocations } from '../billing/allocations'
+import {
+  listInvoiceAllocations,
+  markInstallmentsInvoiced,
+  releaseInvoiceAllocations,
+} from '../billing/allocations'
 import { syncInvoiceBillingProjection, syncWorkOrderBillingProjection } from '../billing/projection'
 import type { InvoiceLifecycleInput } from '../types'
 import { postInvoiceIssuance, reverseInvoiceIssuance } from './post-invoice'
@@ -133,16 +136,7 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
     recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
     values: writes,
   })
-  await database
-    .update(schema.WorkOrderBillingInstallment)
-    .set({ status: 'invoiced' })
-    .where(
-      and(
-        eq(schema.WorkOrderBillingInstallment.organizationId, organizationId),
-        eq(schema.WorkOrderBillingInstallment.invoiceId, invoiceInstanceId),
-        eq(schema.WorkOrderBillingInstallment.status, 'drafted')
-      )
-    )
+  await markInstallmentsInvoiced(database, organizationId, invoiceInstanceId)
 
   // ── The general ledger, after every write above has committed ────────────
   //

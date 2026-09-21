@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/dispatch.ts
 
 import { schema } from '@auxx/database'
+import { listVisitAllocationsForVisits } from '@auxx/lib/accounting/sales'
 import { getOrgCache, isOrgMember } from '@auxx/lib/cache'
 import {
   addMyAdhocQcItem,
@@ -34,6 +35,7 @@ import {
   listVisitsForWorkOrder,
   pasteVisits,
   pauseEngagement,
+  readVisit,
   removeDispatchWorker,
   removeMyQcItemPhoto,
   removeVisitQcItemPhoto,
@@ -67,7 +69,7 @@ import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 
@@ -605,23 +607,12 @@ export const dispatchRouter = createTRPCRouter({
       // bare|enriched row arrays, which broke `JobVisit` consumers (plan 39 `mergeJobVisits`).
       if (visits.length === 0) return []
 
-      const allocations = await ctx.db
-        .select({
-          visitId: schema.InvoiceVisitAllocation.visitId,
-          invoiceId: schema.InvoiceVisitAllocation.invoiceId,
-        })
-        .from(schema.InvoiceVisitAllocation)
-        .where(
-          and(
-            eq(schema.InvoiceVisitAllocation.organizationId, ctx.session.organizationId),
-            eq(schema.InvoiceVisitAllocation.workOrderId, entityInstanceId),
-            eq(schema.InvoiceVisitAllocation.status, 'active'),
-            inArray(
-              schema.InvoiceVisitAllocation.visitId,
-              visits.map((visit) => visit.id)
-            )
-          )
-        )
+      const allocations = await listVisitAllocationsForVisits(
+        ctx.db,
+        ctx.session.organizationId,
+        visits.map((visit) => visit.id),
+        { visitKind: 'any' }
+      )
 
       const invoiceIds = [...new Set(allocations.map((allocation) => allocation.invoiceId))]
       const statusByInvoiceId = new Map<string, string>()
@@ -961,12 +952,7 @@ export const dispatchRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const visit = await ctx.db.query.WorkOrderVisit.findFirst({
-        where: and(
-          eq(schema.WorkOrderVisit.id, input.visitId),
-          eq(schema.WorkOrderVisit.organizationId, ctx.session.organizationId)
-        ),
-      })
+      const visit = await readVisit(ctx.db, ctx.session.organizationId, input.visitId)
       if (!visit?.recurrenceRuleId) {
         throw new NotFoundError('Visit is not part of a recurring series')
       }

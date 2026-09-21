@@ -1,10 +1,11 @@
 // packages/lib/src/accounting/sales/billing/installments.ts
 
 import { type Database, database, schema } from '@auxx/database'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
 import { BadRequestError } from '../../../errors'
 import { sumWorkOrderDeposits } from '../../money/checkout/reads'
 import type { BillingInstallmentInput, SaveBillingInstallmentsInput } from '../types'
+import { listInstallments } from './allocations'
 import { computeWorkOrderBillingProjection, syncWorkOrderBillingProjection } from './projection'
 
 function validateRow(row: BillingInstallmentInput): void {
@@ -69,13 +70,7 @@ export async function saveBillingInstallments(input: SaveBillingInstallmentsInpu
       if (projection.basis !== 'fixed_contract') {
         throw new BadRequestError('Payment schedules are only available for fixed contracts')
       }
-      const existing = await db.query.WorkOrderBillingInstallment.findMany({
-        where: and(
-          eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
-          eq(schema.WorkOrderBillingInstallment.workOrderId, input.workOrderInstanceId)
-        ),
-        orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
-      })
+      const existing = await listInstallments(db, input.organizationId, input.workOrderInstanceId)
       const locked = existing.filter((row) => row.status === 'drafted' || row.status === 'invoiced')
       const lockedAmount = locked.reduce((sum, row) => sum + row.amount, 0)
       const target = projection.billingAmount - lockedAmount
