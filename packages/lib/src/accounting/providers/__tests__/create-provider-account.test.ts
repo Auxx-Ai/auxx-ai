@@ -75,7 +75,7 @@ function provider(overrides: Record<string, unknown> = {}) {
     id: 'stub',
     listAccountMappings: vi.fn(async () => ok(new Map<string, string>())),
     setAccountMapping: vi.fn(async () => ok(undefined)),
-    createProviderAccount: vi.fn(async () =>
+    createProviderAccount: vi.fn(async (_input: { glAccountId: string }) =>
       ok({ account: CREATED, outcome: 'created' as const, numberDropped: false })
     ),
     ...overrides,
