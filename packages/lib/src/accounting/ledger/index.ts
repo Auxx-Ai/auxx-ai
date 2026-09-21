@@ -181,6 +181,7 @@ export {
   type DuplicateMovementFinding,
   didLedgerAccept,
   discardDraftPosting,
+  discardDraftsForSource,
   type EntryPreview,
   exportInventoryMovement,
   type FindDuplicateBankMovementsOptions,

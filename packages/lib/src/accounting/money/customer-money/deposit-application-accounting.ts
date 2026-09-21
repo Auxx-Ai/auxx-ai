@@ -23,6 +23,7 @@ import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import { buildDepositApplicationEntry } from '../../ledger/builders/deposit-application'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
+import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -200,6 +201,12 @@ export async function reverseDepositApplicationAccounting(
   }
 ): Promise<PostResult | null> {
   const { organizationId, moneyApplicationId, actorUserId, memo } = input
+  const discarded = await discardDraftsForSource(db, {
+    organizationId,
+    sourceKind: MONEY_APPLICATION_SOURCE_KIND,
+    sourceId: moneyApplicationId,
+  })
+  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: MONEY_APPLICATION_SOURCE_KIND,

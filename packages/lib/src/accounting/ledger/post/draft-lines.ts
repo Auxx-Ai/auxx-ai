@@ -1,8 +1,8 @@
 // packages/lib/src/accounting/ledger/post/draft-lines.ts
 //
-// Editing and discarding a DRAFT `GlPosting` - the two things a `journal_entry`
-// record's pointer needs beyond `postEntry`/`postDraft`/`reverseEntry` (TARGET
-// §1). A draft holds no claim, so neither of these touches `GlPostingSource`.
+// Editing and discarding a DRAFT `GlPosting` - what a record needs beyond
+// `postEntry`/`postDraft`/`reverseEntry` (TARGET §1). A draft holds no claim;
+// its `pending` link is how a source finds the drafts standing on it.
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
@@ -186,6 +186,37 @@ export async function discardDraftPosting(
     if (error instanceof AuxxError) return err(error)
     return err(new AuxxError(error instanceof Error ? error.message : String(error)))
   }
+}
+
+/**
+ * Throw away every draft standing on one source - what a void or a cancel calls
+ * so the outbox cannot approve an entry for a document that no longer stands.
+ * Returns the ids discarded; `[]` when nothing was waiting.
+ */
+export async function discardDraftsForSource(
+  db: Database,
+  input: { organizationId: string; sourceKind: string; sourceId: string; occurrence?: string }
+): Promise<Result<string[], AuxxError>> {
+  const { organizationId, sourceKind, sourceId, occurrence } = input
+  const rows = await db
+    .select({ glPostingId: schema.GlPostingSource.glPostingId })
+    .from(schema.GlPostingSource)
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, sourceKind),
+        eq(schema.GlPostingSource.sourceId, sourceId),
+        eq(schema.GlPostingSource.linkRole, 'pending'),
+        ...(occurrence ? [eq(schema.GlPostingSource.occurrence, occurrence)] : [])
+      )
+    )
+  const discarded: string[] = []
+  for (const row of rows) {
+    const result = await discardDraftPosting(db, { organizationId, glPostingId: row.glPostingId })
+    if (result.isErr()) return err(result.error)
+    discarded.push(row.glPostingId)
+  }
+  return ok(discarded)
 }
 
 /** The subject `postDraft` would claim, read back off the stored envelope. */

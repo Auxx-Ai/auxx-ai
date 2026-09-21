@@ -22,6 +22,9 @@ vi.mock('../../../ledger/setup/book-time-zone', () => ({ todayInBookTimeZone: vi
 vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
 vi.mock('../../../ledger/post/auto-post', () => ({ readAutoPostMode: vi.fn() }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: vi.fn() }))
+vi.mock('../../../ledger/post/draft-lines', () => ({
+  discardDraftsForSource: vi.fn(async () => ({ isErr: () => false, value: [] })),
+}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: vi.fn() }))
 vi.mock('../../../ledger/reads/list-postings', () => ({ findLiveSubjectPosting: vi.fn() }))
 

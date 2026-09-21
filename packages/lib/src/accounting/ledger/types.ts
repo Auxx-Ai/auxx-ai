@@ -435,9 +435,17 @@ export type PostingStatus = (typeof POSTING_STATUSES)[number]
  * `subject` is what the entry is OF, and its row IS the claim - one live
  * subject per `(sourceKind, sourceId, occurrence)`. `parent` lets an order list
  * its fulfillment, receipt and refund postings in one query; `member` names what
- * a posting summed. See plans/accounting/TARGET.md §1.
+ * a posting summed. `pending` is a draft's subject-to-be: written by the ledger
+ * in draft mode, never by a writer, and swapped for `subject` when the draft
+ * posts. See plans/accounting/TARGET.md §1 and tasks/77.
  */
-export const POSTING_LINK_ROLES = ['subject', 'parent', 'counterparty', 'member'] as const
+export const POSTING_LINK_ROLES = [
+  'subject',
+  'parent',
+  'counterparty',
+  'member',
+  'pending',
+] as const
 
 export type PostingLinkRole = (typeof POSTING_LINK_ROLES)[number]
 

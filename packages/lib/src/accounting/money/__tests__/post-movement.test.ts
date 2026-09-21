@@ -174,13 +174,12 @@ describe('postMovementEntry', () => {
     expect(h.postEntry).not.toHaveBeenCalled()
   })
 
-  it('answers drafted and stamps the draft when the avenue posts with autoPost off', async () => {
+  it('answers drafted and clears the block when the avenue posts with autoPost off', async () => {
     h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gl_draft' })
     await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
-    // A draft is not a refusal: the stamp names it and the block clears.
-    expect(h.marks).toEqual([
-      { draftGlPostingId: 'gl_draft', postingBlockedReason: null, postingBlockedAt: null },
-    ])
+    // A draft is not a refusal: the block clears, and the draft's own `pending`
+    // link is what the next sweep finds.
+    expect(h.marks).toEqual([{ postingBlockedReason: null, postingBlockedAt: null }])
   })
 
   it('answers drafted without building again while the movement waits on a live draft', async () => {

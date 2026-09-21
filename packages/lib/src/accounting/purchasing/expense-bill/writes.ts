@@ -40,10 +40,7 @@ import { getEntityDefIdResolver } from '../../../cache'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
-import {
-  readDocumentLedgerState,
-  writeDocumentDraftPosting,
-} from '../../documents/document-ledger-state'
+import { readDocumentLedgerState } from '../../documents/document-ledger-state'
 import type { BuiltVendorBillEntry } from '../../ledger/builders/entry'
 import { VENDOR_BILL_POSTING_TYPE, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
@@ -325,11 +322,9 @@ export interface VendorBillPosting {
  * One source type for both kinds of bill since 73 D3, which is what lets a void
  * and the delete guard reckon with the whole document rather than half of it.
  *
- * 🛑 A DRAFT is reached through the bill's own `metadata.ledger.draftGlPostingId`
- * and not through `GlPostingSource`: the subject row is the claim and a draft
- * holds none, so the link this read is built on does not exist yet. Callers that
- * need a LIVE payable must therefore test `status === 'posted'`, never merely
- * "a row came back".
+ * 🛑 A DRAFT waiting in the outbox is in the list through its `pending` link with
+ * `status: 'draft'` and no document number. Callers that need a LIVE payable must
+ * therefore test `status === 'posted'`, never merely "a row came back".
  */
 export async function listVendorBillPostings(
   db: Database,
@@ -341,61 +336,13 @@ export async function listVendorBillPostings(
     sourceKind: VENDOR_BILL_SOURCE_TYPE,
     sourceId: vendorBillInstanceId,
   })
-  const claimed: VendorBillPosting[] = result.isErr()
-    ? []
-    : result.value.map((posting) => ({
-        glPostingId: posting.id,
-        docNumber: posting.docNumber,
-        status: posting.status,
-        postingType: posting.postingType,
-      }))
-
-  const { draftGlPostingId } = await readDocumentLedgerState(
-    db,
-    organizationId,
-    vendorBillInstanceId
-  )
-  if (!draftGlPostingId) return claimed
-  // Promoted since the pointer was written: the subject link exists and the row
-  // is already above, so the pointer has nothing left to say.
-  if (claimed.some((posting) => posting.glPostingId === draftGlPostingId)) {
-    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
-    return claimed
-  }
-
-  const [row] = await db
-    .select({
-      id: schema.GlPosting.id,
-      docNumber: schema.GlPosting.docNumber,
-      status: schema.GlPosting.status,
-      postingType: schema.GlPosting.postingType,
-    })
-    .from(schema.GlPosting)
-    .where(
-      and(
-        eq(schema.GlPosting.id, draftGlPostingId),
-        eq(schema.GlPosting.organizationId, organizationId)
-      )
-    )
-    .limit(1)
-
-  // Discarded in the outbox (no row), or promoted and then reversed away (a row
-  // that is no longer a draft). Either way the pointer is stale; drop it rather
-  // than reading it again on every call.
-  if (!row || row.status !== 'draft') {
-    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
-    return claimed
-  }
-
-  return [
-    {
-      glPostingId: row.id,
-      docNumber: row.docNumber ?? '',
-      status: row.status,
-      postingType: row.postingType,
-    },
-    ...claimed,
-  ]
+  if (result.isErr()) return []
+  return result.value.map((posting) => ({
+    glPostingId: posting.id,
+    docNumber: posting.docNumber,
+    status: posting.status,
+    postingType: posting.postingType,
+  }))
 }
 
 export interface VoidVendorBillInput {
@@ -470,7 +417,6 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
             { vendorBillInstanceId, glPostingId: posting.glPostingId }
           )
         }
-        await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
         continue
       }
       const result = await reverseEntry(db, {

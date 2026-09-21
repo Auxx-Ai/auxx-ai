@@ -20,6 +20,7 @@ import {
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { withAccountingCommitLock } from '../../ledger/post/accounting-commit-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
+import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import {
   exportPostedEntry,
   type InTxPostResult,
@@ -339,7 +340,7 @@ async function postFulfillmentEntryInTx(
  * fulfillment record's own status - this function touches only the ledger.
  * A no-op, returning `null`, when the fulfillment never posted or its posting
  * was already reversed: cancelling an unposted or already-reversed shipment
- * has nothing left to back out.
+ * has nothing left to back out. A draft still in the outbox is discarded.
  */
 export async function reverseFulfillmentPosting(
   db: Database,
@@ -351,6 +352,12 @@ export async function reverseFulfillmentPosting(
   }
 ): Promise<PostResult | null> {
   const { organizationId, fulfillmentInstanceId, actorUserId, memo } = input
+  const discarded = await discardDraftsForSource(db, {
+    organizationId,
+    sourceKind: 'fulfillment',
+    sourceId: fulfillmentInstanceId,
+  })
+  if (discarded.isErr()) throw discarded.error
   const found = await listPostingsForSource(db, {
     organizationId,
     sourceKind: 'fulfillment',

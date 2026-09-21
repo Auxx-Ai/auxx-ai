@@ -13,7 +13,6 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { readSystemRecords, systemFields } from '../../resources/system-records'
 import { documentEntryKey } from '../documents/document-entry-key'
-import { writeDocumentDraftPosting } from '../documents/document-ledger-state'
 import {
   type BuiltVendorBillEntry,
   buildVendorBillEntry,
@@ -188,14 +187,6 @@ export async function postVendorBillEntry(
         : []),
     ],
   })
-
-  // A draft writes no subject row, so this pointer is the bill's only way back
-  // to the entry it is waiting on; a real post makes the subject link the truth.
-  if (result.status === 'drafted' && result.glPostingId) {
-    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, result.glPostingId)
-  } else if (result.status === 'posted' || result.status === 'already_posted') {
-    await writeDocumentDraftPosting(db, organizationId, vendorBillInstanceId, null)
-  }
 
   logger.info('Posted a vendor bill', {
     organizationId,

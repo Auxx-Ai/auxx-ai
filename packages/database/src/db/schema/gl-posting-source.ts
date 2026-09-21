@@ -13,9 +13,16 @@ import { Organization } from './organization'
  * `subject` is what the entry is OF and is the claim. `parent` lets an order
  * list its fulfillment, receipt and refund postings in one query. `member` names
  * what a posting summed - the movements behind a COGS entry, the receipts inside
- * a bank deposit.
+ * a bank deposit. `pending` is a DRAFT's subject: the claim it will take when
+ * posted, outside the claim index so the record can find its draft.
  */
-export const GL_POSTING_LINK_ROLES = ['subject', 'parent', 'counterparty', 'member'] as const
+export const GL_POSTING_LINK_ROLES = [
+  'subject',
+  'parent',
+  'counterparty',
+  'member',
+  'pending',
+] as const
 export type GlPostingLinkRole = (typeof GL_POSTING_LINK_ROLES)[number]
 
 export const GlPostingSource = pgTable(

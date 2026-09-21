@@ -66,9 +66,12 @@ export async function listMovementAccountingCandidates(
         AND link."sourceId" = ${schema.MoneyTransaction.id}
         AND link."linkRole" = 'subject')`,
     // Waiting on a draft in the Outbox: no claim yet, but nothing to do either.
-    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPosting} draft
-        WHERE draft."organizationId" = ${organizationId}
-        AND draft."id" = ${schema.MoneyTransaction.draftGlPostingId}
+    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} pending
+        JOIN ${schema.GlPosting} draft ON draft."id" = pending."glPostingId"
+        WHERE pending."organizationId" = ${organizationId}
+        AND pending."sourceKind" = 'money_transaction'
+        AND pending."sourceId" = ${schema.MoneyTransaction.id}
+        AND pending."linkRole" = 'pending'
         AND draft."status" = 'draft')`,
   ]
   if (window?.cutoffPeriod)

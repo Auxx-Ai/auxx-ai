@@ -22,7 +22,6 @@
 
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { api } from '~/trpc/react'
 import { LedgerCard } from './ledger-card'
 
 /** The fulfillment entries the order parents; its money is `order:payments`, its own card. */
@@ -64,14 +63,7 @@ export function PayoutLedgerCard(props: DrawerTabProps) {
   return <LedgerCard {...props} sourceKind='payout' />
 }
 
-// The one wrapper that reads something beyond `GlPostingSource`: under an
-// avenue with auto-post off a bill's entry is DRAFTED, and a draft writes no
-// subject link, so `billLedgerState` hands the card the pointer the bill holds.
 export function VendorBillLedgerCard(props: DrawerTabProps) {
-  const { data } = api.purchasing.billLedgerState.useQuery(
-    { vendorBillId: props.entityInstanceId },
-    { enabled: !!props.entityInstanceId }
-  )
   const { values } = useSystemValues(props.recordId, ['vendor_bill_status'], { autoFetch: true })
   // A `posted` bill with no entry lost its draft in the outbox. Post refuses a
   // bill that is not `draft`, so Save is the door back and the card says so.
@@ -80,7 +72,6 @@ export function VendorBillLedgerCard(props: DrawerTabProps) {
     <LedgerCard
       {...props}
       sourceKind='vendor_bill'
-      draftPostingId={data?.draftGlPostingId ?? null}
       emptyLabel={stranded ? 'No entry — Edit then Save to post it again' : undefined}
     />
   )

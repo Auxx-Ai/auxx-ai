@@ -27,6 +27,9 @@ vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
+vi.mock('../../../ledger/post/draft-lines', () => ({
+  discardDraftsForSource: async () => ({ isErr: () => false, value: [] }),
+}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,

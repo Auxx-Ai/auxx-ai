@@ -22,6 +22,7 @@ import { UnprocessableEntityError } from '../../../errors'
 import { VENDOR_CREDIT_SOURCE_TYPE } from '../../ledger/builders/vendor-credit'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
+import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { type InTxPostResult, postEntry, postEntryInTx } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -119,8 +120,9 @@ async function vendorCreditPostOptions(input: PostVendorCreditEntryInput) {
 }
 
 /**
- * Reverse the credit's live issue posting, freeing the claim. `null` when
- * nothing is standing — an unposted credit voids freely.
+ * Reverse the credit's live issue posting, freeing the claim. A draft still in
+ * the outbox is discarded instead. `null` when nothing is standing — an
+ * unposted credit voids freely.
  */
 export async function reverseVendorCreditEntry(
   db: Database,
@@ -132,6 +134,12 @@ export async function reverseVendorCreditEntry(
   }
 ): Promise<PostResult | null> {
   const { organizationId, vendorCreditInstanceId, actorUserId, memo } = input
+  const discarded = await discardDraftsForSource(db, {
+    organizationId,
+    sourceKind: VENDOR_CREDIT_SOURCE_TYPE,
+    sourceId: vendorCreditInstanceId,
+  })
+  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: VENDOR_CREDIT_SOURCE_TYPE,

@@ -34,7 +34,6 @@ async function movement(input: {
   purpose?: MovementPurpose
   postingBlockedAt?: Date | null
   postingBlockedReason?: string | null
-  draftGlPostingId?: string | null
 }): Promise<string> {
   const [money] = await db()
     .insert(schema.MoneyTransaction)
@@ -51,7 +50,6 @@ async function movement(input: {
       postingBlockedAt: input.postingBlockedAt ?? null,
       postingBlockedReason:
         input.postingBlockedReason ?? (input.postingBlockedAt ? 'unmapped handle' : null),
-      draftGlPostingId: input.draftGlPostingId ?? null,
     })
     .returning({ id: schema.MoneyTransaction.id })
   return money!.id
@@ -62,7 +60,6 @@ async function receipt(input: {
   occurredOn: string
   createdAt: Date
   postingBlockedAt?: Date | null
-  draftGlPostingId?: string | null
 }): Promise<string> {
   const moneyId = await movement(input)
   const [object] = await db()
@@ -230,7 +227,14 @@ describe('listMovementAccountingCandidates', () => {
     const waiting = await receipt({
       occurredOn: '2026-09-03',
       createdAt: new Date('2026-09-03T00:00:00Z'),
-      draftGlPostingId: draft!.id,
+    })
+    // The draft's `pending` link is what holds the movement back (tasks/77).
+    await db().insert(schema.GlPostingSource).values({
+      organizationId,
+      glPostingId: draft!.id,
+      sourceKind: 'money_transaction',
+      sourceId: waiting,
+      linkRole: 'pending',
     })
 
     const candidates = () =>
@@ -239,7 +243,7 @@ describe('listMovementAccountingCandidates', () => {
       )
     expect(await candidates()).not.toContain(waiting)
 
-    // Discarded: the stamp dangles and the movement is drafted again next sweep.
+    // Discarded: the link cascades away and the movement is drafted again next sweep.
     await db().delete(schema.GlPosting).where(eq(schema.GlPosting.id, draft!.id))
     expect(await candidates()).toContain(waiting)
   })

@@ -5,6 +5,5 @@ export {
   DOCUMENT_LEDGER_KEY,
   type DocumentLedgerState,
   readDocumentLedgerState,
-  writeDocumentDraftPosting,
   writeDocumentLedgerGeneration,
 } from './document-ledger-state'

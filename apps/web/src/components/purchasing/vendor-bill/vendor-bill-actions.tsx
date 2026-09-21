@@ -47,16 +47,15 @@ export function VendorBillActions({ billRecordId, status, editing }: VendorBillA
   const stampEdit = (edit: EditStamp | null) => {
     if (defId && vendorBillId) updateRecord(defId, vendorBillId, { edit })
   }
+  // The ledger card's own read; a post, a save and a void each change what it lists.
   const refreshLedgerState = () =>
-    utils.purchasing.billLedgerState
-      .invalidate({ vendorBillId: vendorBillId ?? '' })
+    utils.ledger.listPostingsForSource
+      .invalidate({ sourceKind: 'vendor_bill', sourceId: vendorBillId ?? '' })
       .catch(() => {})
 
   const target = { family: 'vendor_bill' as const, recordId: vendorBillId ?? '' }
 
   const postBill = api.purchasing.postVendorBill.useMutation({
-    // Under an avenue with auto-post off this leaves a DRAFT, and the ledger
-    // card reads the pointer to it off `billLedgerState`.
     onSuccess: refreshLedgerState,
     onError: (error) => toastError({ title: 'Error posting bill', description: error.message }),
   })
