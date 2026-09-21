@@ -20,6 +20,7 @@ import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields
 import { PAYOUT_SOURCE_FIELDS } from '../../../resources/registry/resources/payout-source-fields'
 import { PROCESSOR_BALANCE_ENTRY_FIELDS } from '../../../resources/registry/resources/processor-balance-entry-fields'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { readUniqueRecordIdentities } from './identity-reads'
 import type { PayoutRecordEvidence, ProcessorRecordEvidence } from './record-contracts'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from './record-evidence'
 import {
@@ -316,6 +317,22 @@ function storedTransactionFacts(values: RecordFields) {
     !fields.external_id
   )
     return null
+  const transaction: Record<string, unknown> = {
+    version: 2,
+    id: fields.external_id,
+    kind: fields.kind,
+    status: fields.status,
+    amount: fields.amount,
+    currency: fields.currency,
+    processedAt: fields.processed_at ?? null,
+    gateway: fields.gateway ?? null,
+    settlementCurrency: fields.settlement_currency ?? null,
+    parentTransactionId: fields.parent_transaction_id ?? null,
+    creditMemoExternalId: fields.credit_memo_id ?? null,
+    paymentId: fields.payment_id ?? null,
+    test: fields.test === true,
+    raw: fields.raw ?? null,
+  }
   return {
     sourceAccount: {
       providerKey: String(fields.provider_key),
@@ -324,22 +341,7 @@ function storedTransactionFacts(values: RecordFields) {
     },
     orderExternalId: String(fields.order_external_id),
     sourceUpdatedAt: fields.source_updated_at == null ? null : String(fields.source_updated_at),
-    transaction: {
-      version: 2,
-      id: fields.external_id,
-      kind: fields.kind,
-      status: fields.status,
-      amount: fields.amount,
-      currency: fields.currency,
-      processedAt: fields.processed_at ?? null,
-      gateway: fields.gateway ?? null,
-      settlementCurrency: fields.settlement_currency ?? null,
-      parentTransactionId: fields.parent_transaction_id ?? null,
-      creditMemoExternalId: fields.credit_memo_id ?? null,
-      paymentId: fields.payment_id ?? null,
-      test: fields.test === true,
-      raw: fields.raw ?? null,
-    },
+    transaction,
   }
 }
 
@@ -528,6 +530,37 @@ async function bridgeSourceBatch(
   }
 }
 
+/**
+ * Stamp the memo a refund names onto its evidence, so the ingest reads it off
+ * the acceptance instead of resolving it with a credential it does not have
+ * (task 79 §4.3). An id no unique record answers is left for the resolver.
+ */
+async function resolveCreditMemoInstances(
+  db: Database,
+  organizationId: string,
+  memos: Array<{ providerKey: string; externalId: string; transaction: RecordFields }>
+): Promise<void> {
+  const byProvider = new Map<string, Set<string>>()
+  for (const memo of memos)
+    byProvider.set(
+      memo.providerKey,
+      (byProvider.get(memo.providerKey) ?? new Set<string>()).add(memo.externalId)
+    )
+  const resolved = new Map<string, string>()
+  for (const [providerKey, externalIds] of byProvider) {
+    const rows = await readUniqueRecordIdentities(db, organizationId, {
+      source: providerKey,
+      kind: 'credit_memo',
+      externalIds: [...externalIds],
+    })
+    for (const [externalId, id] of rows) resolved.set(`${providerKey}:${externalId}`, id)
+  }
+  for (const memo of memos) {
+    const id = resolved.get(`${memo.providerKey}:${memo.externalId}`)
+    if (id) memo.transaction.creditMemoInstanceId = id
+  }
+}
+
 async function bridgeOrderBatch(
   db: Database,
   input: {
@@ -570,6 +603,7 @@ async function bridgeOrderBatch(
       transactions.set(id, values)
 
   const staged: Array<{ orderId: string; evidence: unknown }> = []
+  const memos: Array<{ providerKey: string; externalId: string; transaction: RecordFields }> = []
   for (const orderId of input.orderIds) {
     const order = orders.get(orderId) ?? {}
     const groups = new Map<
@@ -595,6 +629,12 @@ async function bridgeOrderBatch(
       }
       group.transactions.push(facts.transaction)
       groups.set(key, group)
+      if (facts.transaction.creditMemoExternalId)
+        memos.push({
+          providerKey: facts.sourceAccount.providerKey,
+          externalId: String(facts.transaction.creditMemoExternalId),
+          transaction: facts.transaction,
+        })
     }
     if (
       !groups.size &&
@@ -633,6 +673,7 @@ async function bridgeOrderBatch(
         },
       })
   }
+  await resolveCreditMemoInstances(db, input.organizationId, memos)
   if (!staged.length) return
   const stage = (rows: typeof staged) =>
     // One transaction for the batch: `stageOrderPaymentEvidenceInTx` takes the org

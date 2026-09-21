@@ -23,9 +23,10 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { EntryBlockers } from '../entry-blockers'
-import { formatAccountingDate, formatMinor, humanizePostingType } from '../format'
+import { formatAccountingDate, formatMinor } from '../format'
 import { LedgerSourceLink } from '../ledger-source-link'
 import { PostResultCallout } from '../post-result-callout'
+import { postingTypeLabel } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 
 interface DraftsPanelProps {
@@ -217,10 +218,12 @@ export function DraftsPanel({
                     id={posting.id}
                     icon={<FileClock className='size-4 text-muted-foreground' />}
                     date={formatAccountingDate(posting.txnDate, bookTimeZone)}
-                    title={posting.memo || humanizePostingType(posting.postingType)}
+                    typeLabel={postingTypeLabel(posting.postingType)}
+                    // A draft holds no document number yet, so the memo is its
+                    // only identity - and it no longer restates the badge.
+                    title={posting.docNumber || posting.memo || ''}
                     secondary={
                       <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
-                        <span className='shrink-0'>{humanizePostingType(posting.postingType)}</span>
                         <DraftLinks glPostingId={posting.id} />
                       </span>
                     }

@@ -19,6 +19,7 @@ import {
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { systemFieldMap } from '../../../resources/system-records'
+import { getOrganizationSetting } from '../../../settings'
 import {
   INVOICE_DRAFT_SUBJECT_TYPE,
   type InvoiceBillingKind,
@@ -644,6 +645,13 @@ export async function syncContactBillingProjection(input: {
   contactInstanceId: string
 }): Promise<void> {
   const db = input.db ?? database
+  // Task 79 §4.1: the guest carries every customerless order, and this lists a
+  // contact's documents at `limit: 1000` and loops per record.
+  const guestId = await getOrganizationSetting({
+    organizationId: input.organizationId,
+    key: 'accounting.guestContactId',
+  })
+  if (guestId === input.contactInstanceId) return
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId, db)
   const contactRecordId = toRecordId('contact', input.contactInstanceId)
   const [workOrders, invoices] = await Promise.all([

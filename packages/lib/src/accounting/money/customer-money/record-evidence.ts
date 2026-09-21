@@ -213,7 +213,8 @@ export async function stageOrderPaymentEvidenceInTx(
           ...input.provenance,
           creditMemoInstanceId: row.parsed.success ? row.parsed.data.creditMemoInstanceId : null,
         },
-        nextAttemptAt: unchanged ? old.acceptance.nextAttemptAt : null,
+        // A changed observation is due NOW; null means parked on a change (79 §4.2).
+        nextAttemptAt: unchanged ? old.acceptance.nextAttemptAt : new Date(),
         updatedAt: new Date(),
       })
     }

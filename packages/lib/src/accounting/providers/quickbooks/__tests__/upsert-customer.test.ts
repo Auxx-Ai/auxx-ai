@@ -388,6 +388,19 @@ describe('the label ladder (§2.6)', () => {
   })
 })
 
+describe('the guest customer (task 79 §4.1)', () => {
+  it('builds its label from first/last, with no email and no refusal', async () => {
+    const callTool = router({})
+
+    const result = await run(callTool, { firstName: 'Guest', lastName: 'customer' })
+
+    expect(result).toBe('101')
+    expect(createCalls(callTool)).toEqual([
+      expect.objectContaining({ displayName: 'Guest customer' }),
+    ])
+  })
+})
+
 describe('refusals', () => {
   it('refuses a contact with neither a name nor an email (§4.6)', async () => {
     const callTool = vi.fn()

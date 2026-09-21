@@ -75,6 +75,7 @@ const OBJECT_TYPE_LABELS: Record<string, string> = {
   refund_receipt: 'Refund receipt',
   deposit: 'Deposit',
   bill: 'Bill',
+  vendor_credit: 'Vendor credit',
 }
 
 /** Unknown `objectType` renders as the raw string - never a refusal on the queue row. */

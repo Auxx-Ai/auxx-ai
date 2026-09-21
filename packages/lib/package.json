@@ -202,6 +202,12 @@
       "import": "./dist/accounting/purchasing/intake/client.mjs",
       "default": "./src/accounting/purchasing/intake/client.ts"
     },
+    "./accounting/parties": {
+      "types": "./src/accounting/parties/index.ts",
+      "source": "./src/accounting/parties/index.ts",
+      "import": "./dist/accounting/parties/index.mjs",
+      "default": "./src/accounting/parties/index.ts"
+    },
     "./accounting/rails": {
       "types": "./src/accounting/rails/index.ts",
       "source": "./src/accounting/rails/index.ts",

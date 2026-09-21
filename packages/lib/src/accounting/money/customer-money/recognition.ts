@@ -109,7 +109,9 @@ export function allocateOrderRecognition(input: {
       const eventTax = exact(event.taxMinor)
       shippedNet += eventNet
       shippedTax += eventTax
-      if (shippedNet > net || shippedTax > tax || eventNet + eventTax === 0n)
+      if (eventNet + eventTax === 0n)
+        throw new UnprocessableEntityError(`fulfillment ${event.id} has no stamped totals`)
+      if (shippedNet > net || shippedTax > tax)
         throw new UnprocessableEntityError('Shipment components exceed the supported order basis')
       depositMinor = min(eventNet, deposits)
       deposits -= depositMinor

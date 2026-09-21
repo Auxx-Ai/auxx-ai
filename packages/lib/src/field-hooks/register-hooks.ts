@@ -1,6 +1,11 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import {
+  registerMoneyAcceptanceWakeReconcilers,
+  wakeAcceptancesOnCreditMemoChange,
+  wakeAcceptancesOnOrderChange,
+} from '../accounting/money/customer-money/acceptance-wake'
 import { registerFinancialRecordRules } from '../accounting/money/customer-money/record-events'
 import {
   rematchAfterBillLineDelete,
@@ -26,6 +31,11 @@ import {
   syncContactAfterWorkOrderDelete,
 } from '../accounting/sales/billing/hooks'
 import { registerBillingReconcilers } from '../accounting/sales/billing/reconciler'
+import {
+  registerFulfillmentTotalsReconcilers,
+  stampTotalsOnFulfillmentChange,
+  stampTotalsOnFulfillmentLineChange,
+} from '../accounting/sales/fulfillments/totals-reconciler'
 import { generateDraftOnCompletion } from '../accounting/sales/invoices/auto-invoice'
 import {
   pauseMarkupOnPriceEdit,
@@ -100,6 +110,7 @@ import {
   guardIssuedCreditMemoLineDelete,
   guardIssuedCreditMemoLineFields,
 } from './pre/credit-memo-lock'
+import { fillGuestOrderContact, guardGuestContactDelete } from './pre/guest-order-contact'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import {
@@ -215,6 +226,15 @@ export function registerAllHooks(): void {
   // below only MARK, so without this nothing rebuilds a projection.
   registerBillingReconcilers()
 
+  // The fulfillment-totals stamp's two drains (plan 78 §4.3, events/10 R4). The two
+  // hooks below only MARK, so without this a synced shipment's totals never get
+  // written and the recognition timeline keeps refusing it (78 §1.2).
+  registerFulfillmentTotalsReconcilers()
+
+  // The imported-money acceptance wake's two drains (79 §4.2). The two hooks below only
+  // MARK; without this a parked acceptance (`nextAttemptAt` null) is never re-queued.
+  registerMoneyAcceptanceWakeReconcilers()
+
   // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
   // hooks below only MARK, so without this an order's fingerprint goes stale —
   // which is a drift signal that lies. Writes one field on the ORDER and never
@@ -290,7 +310,19 @@ export function registerAllHooks(): void {
     stampOrderOnLineChange,
   ])
   registerMarkHooks('quotes', [recomputeOnQuoteBillingChange])
-  registerMarkHooks('orders', [recomputeOnOrderBillingChange, stampOrderOnOrderChange])
+  registerMarkHooks('orders', [
+    recomputeOnOrderBillingChange,
+    stampOrderOnOrderChange,
+    wakeAcceptancesOnOrderChange,
+  ])
+  registerMarkHooks('credit-memos', [wakeAcceptancesOnCreditMemoChange])
+
+  // Fulfillment totals for synced shipments (plan 78 §4.3): a Shopify-synced fulfillment
+  // writes only identity fields, never `fulfillment_subtotal` / `_total` /
+  // `_shipping_recognised`, so these two marks are what makes the stamp reach the sync
+  // and buffered lanes as well as the inline one.
+  registerMarkHooks('fulfillments', [stampTotalsOnFulfillmentChange])
+  registerMarkHooks('fulfillment-lines', [stampTotalsOnFulfillmentLineChange])
 
   // Buy-side totals engine (plans/purchasing/01-build-plan.md §4.1/§4.2). Same engine, a
   // different line entity and a different header shape — both named in
@@ -658,6 +690,13 @@ export function registerAllHooks(): void {
   // An order's fulfillment entry standing in a settled month. The line cascade
   // it used to run is `onDelete: 'cascade'` on `order_line_items`.
   registerEntityPreDeleteHooks('orders', [guardOrderDelete])
+  // Task 79 §4.1. The guest is a system record: the setting names it, every
+  // customerless order points at it, and its money transactions carry it on a
+  // COLUMN that nothing repoints.
+  registerEntityPreDeleteHooks('contacts', [guardGuestContactDelete])
+  // Fills `order_contact` with the guest when the order names neither a contact
+  // nor a company, so no order exists customerless.
+  registerEntityPreCreateHooks('orders', [fillGuestOrderContact])
 
   // Inventory and purchasing (plans/money/tasks/20-part-delete-safety.md and
   // 21-money-parent-delete-safety.md). All four refuse on the same threshold,

@@ -11,7 +11,11 @@
 // ledger's own drawer.
 
 import type { ExportBatchMember } from '@auxx/lib/accounting/export'
-import type { ExportBatchTab, OutboxTab } from '@auxx/lib/accounting/export/client'
+import {
+  type ExportBatchTab,
+  exportObjectTypeLabel,
+  type OutboxTab,
+} from '@auxx/lib/accounting/export/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
@@ -31,13 +35,8 @@ import {
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { exportAvenueLabel } from '../export-avenue-labels'
-import {
-  EMPTY_CELL,
-  formatAccountingDate,
-  formatMinor,
-  formatShortPeriodLabel,
-  humanizePostingType,
-} from '../format'
+import { EMPTY_CELL, formatAccountingDate, formatMinor, formatShortPeriodLabel } from '../format'
+import { postingTypeLabel } from '../type-labels'
 import { useLedgerSources } from '../use-ledger-sources'
 import { ExportBatchStateBadge } from './export-batch-badge'
 import { OutboxRow } from './outbox-row'
@@ -224,7 +223,15 @@ export function BatchesPanel({
               id={batch.id}
               icon={<StateIcon className='size-4 text-muted-foreground' />}
               date={batchDateLabel(batch, bookTimeZone)}
-              title={exportAvenueLabel(batch.avenue)}
+              typeLabel={exportObjectTypeLabel(batch.objectType)}
+              title={
+                <span className='flex min-w-0 items-center gap-1.5'>
+                  {batch.docNumber && (
+                    <span className='shrink-0 font-mono text-xs'>{batch.docNumber}</span>
+                  )}
+                  <span className='truncate'>{exportAvenueLabel(batch.avenue)}</span>
+                </span>
+              }
               description={batch.state === 'failed' ? (batch.lastError ?? undefined) : undefined}
               secondary={
                 <span className='flex flex-wrap items-center gap-1.5'>
@@ -238,9 +245,6 @@ export function BatchesPanel({
                       {sourceName(batch.railId)}
                     </Badge>
                   )}
-                  <Badge variant='outline' size='xs' className='font-mono'>
-                    {batch.objectType}
-                  </Badge>
                   {batch.attempts > 0 && (
                     <Badge variant='outline' size='xs'>
                       {batch.attempts} {batch.attempts === 1 ? 'attempt' : 'attempts'}
@@ -264,7 +268,9 @@ export function BatchesPanel({
                   {batch.state === 'sending' && (
                     <Loader className='size-3.5 animate-spin text-primary-400' />
                   )}
-                  <ExportBatchStateBadge state={batch.state} />
+                  {/* Silent when it would only restate the tab; `sending` rides
+                      the Ready tab (75-D6) and is the one that still says so. */}
+                  {batch.state !== tab && <ExportBatchStateBadge state={batch.state} />}
                   {tab === 'ready' && canRelease && (
                     <>
                       <TreeRowButton
@@ -314,9 +320,11 @@ export function BatchesPanel({
                   : () => toggleOpen(batch.id)
               }
               selectLabel={`Select ${exportAvenueLabel(batch.avenue)} batch of ${batchDateLabel(batch, bookTimeZone)}`}
-              expandable
+              // A batch of one is its posting: no chevron, and the row click
+              // falls through to `onOpen` and opens it.
+              expandable={!onlyMember}
               isOpen={openBatchIds.has(batch.id)}
-              onToggleOpen={() => toggleOpen(batch.id)}>
+              {...(onlyMember ? {} : { onToggleOpen: () => toggleOpen(batch.id) })}>
               <BatchMembers
                 members={batch.members}
                 currencyCode={batch.currency}
@@ -411,15 +419,11 @@ function BatchMembers({
           id={member.glPostingId}
           depth={1}
           selectable={false}
-          selectLabel={`Open ${member.docNumber ?? humanizePostingType(member.postingType)}`}
+          selectLabel={`Open ${member.docNumber ?? postingTypeLabel(member.postingType)}`}
           date={formatAccountingDate(member.txnDate, bookTimeZone)}
+          typeLabel={postingTypeLabel(member.postingType)}
           title={
-            <span className='flex min-w-0 items-center gap-1.5'>
-              <span className='shrink-0 font-mono text-xs'>{member.docNumber || EMPTY_CELL}</span>
-              <span className='truncate text-muted-foreground text-xs'>
-                {humanizePostingType(member.postingType)}
-              </span>
-            </span>
+            <span className='shrink-0 font-mono text-xs'>{member.docNumber || EMPTY_CELL}</span>
           }
           amount={formatMinor(member.totalMinor, currencyCode)}
           onOpen={() => onSelectPosting(member.glPostingId)}

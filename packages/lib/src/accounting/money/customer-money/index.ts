@@ -1,4 +1,12 @@
 // packages/lib/src/accounting/money/customer-money/index.ts
+
+export {
+  CREDIT_MEMO_ACCEPTANCE_WAKE_RECONCILER,
+  ORDER_ACCEPTANCE_WAKE_RECONCILER,
+  registerMoneyAcceptanceWakeReconcilers,
+  wakeAcceptancesOnCreditMemoChange,
+  wakeAcceptancesOnOrderChange,
+} from './acceptance-wake'
 export { postCustomerReceiptAccounting } from './accounting'
 export {
   type BridgeKindCounts,
@@ -55,6 +63,7 @@ export {
   type OrderAcceptanceCounts,
   refreshOrderCoverageCounts,
   refreshOrderCoverageCountsForOrders,
+  requeueAcceptancesForOrders,
   updateAcceptance,
   updateAcceptancesBySourceObjects,
   upsertAcceptances,

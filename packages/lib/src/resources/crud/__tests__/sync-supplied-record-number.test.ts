@@ -47,6 +47,12 @@ vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   findCachedResource: h.findCachedResource,
 }))
+// `createEntity` runs the guest-customer pre-create hook, which reads an org
+// setting; this file mocks the database, so there is nothing behind it.
+vi.mock('../../../settings', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getOrganizationSetting: async () => null,
+}))
 vi.mock('../../../comments', () => ({
   CommentService: class {
     deleteCommentsByRecordId = vi.fn(async () => {})

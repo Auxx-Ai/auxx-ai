@@ -55,8 +55,13 @@ vi.mock('../../../../cache', async () => {
   }
 })
 
-vi.mock('../../fulfillments', () => ({
+// The leaf submodules, matching what `reads.ts` now imports directly rather
+// than the `../fulfillments` barrel (that barrel re-exports `stamp-totals.ts`,
+// which would pull in the real field-value write chain).
+vi.mock('../../fulfillments/fields', () => ({
   requireFulfillmentFieldContext: async () => ({}),
+}))
+vi.mock('../../fulfillments/reads', () => ({
   readFulfillmentsForOrder: async () => [],
 }))
 

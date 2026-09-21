@@ -321,7 +321,9 @@ export async function postMovementEntry(
     entry: built.entry,
     actorUserId: input.actorUserId,
     lock,
-    memo: `${input.label} - movement ${input.moneyTransactionId}`,
+    // The movement id is not repeated here: it is already the `subject`/`pending`
+    // row on `GlPostingSource`, and this memo is what the Outbox renders as a title.
+    memo: input.label,
     sources: built.sources,
     ...(Object.keys(scope).length ? { scope } : {}),
     storeId: built.storeId,

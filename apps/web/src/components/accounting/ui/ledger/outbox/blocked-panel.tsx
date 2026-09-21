@@ -6,7 +6,7 @@
 // `MoneyTransaction` the ledger refused: the money moved, nothing was written,
 // and `postingBlockedReason` holds the reason.
 //
-// 🛑 The refusal is rendered in `postEntry`'s own words, never paraphrased -
+// 🛑 The refusal is rendered in the server's own words, never paraphrased -
 // on the row's help icon, and in full with the remedy card in the movement
 // drawer (`movement-drawer.tsx`) a row opens.
 
@@ -23,11 +23,18 @@ import { useBulkMode, useListSelection, useSelectionIds } from '~/components/lis
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
-import { MOVEMENT_PURPOSE_LABEL } from '../movement-drawer'
+import { MOVEMENT_PURPOSE_LABEL } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 
 /** The server's row, never rebuilt here - `listBlockedMovements` owns the shape. */
 type BlockedMovementRow = RouterOutputs['ledger']['listBlockedMovements']['items'][number]
+
+/** What the ingest acceptance behind the movement is waiting for, when there is one (79 §4.4). */
+function acceptanceWait(row: BlockedMovementRow): string | null {
+  if (!row.acceptanceWaitingOn) return null
+  const wait = row.acceptanceWaitingOn === 'change' ? 'Waiting on a change' : 'Waiting to try again'
+  return row.acceptanceAttempts ? `${wait} - ${row.acceptanceAttempts} attempts` : wait
+}
 
 interface BlockedPanelProps {
   /** Owned by `outbox-panel.tsx` so every tab's empty copy is written in one place. */
@@ -133,15 +140,25 @@ export function BlockedPanel({
                 row.partyDefinitionId && row.partyInstanceId
                   ? toRecordId(row.partyDefinitionId, row.partyInstanceId)
                   : null
+              const wait = acceptanceWait(row)
               return (
                 <OutboxRow
                   id={row.id}
                   icon={<CircleAlert className='size-4 text-destructive' />}
                   date={date ? formatAccountingDate(date, bookTimeZone) : ''}
-                  title={MOVEMENT_PURPOSE_LABEL[row.purpose]}
+                  typeLabel={MOVEMENT_PURPOSE_LABEL[row.purpose]}
+                  // The refusal, not the purpose: 135 of one dev org's 228 rows
+                  // share a purpose, and the reason is what decides what to do
+                  // next. `description` keeps it untruncated on the help icon.
+                  title={row.reason}
                   description={row.reason}
                   secondary={
-                    partyRecordId ? <RecordBadge recordId={partyRecordId} size='sm' /> : undefined
+                    partyRecordId || wait ? (
+                      <span className='flex items-center gap-2'>
+                        {partyRecordId && <RecordBadge recordId={partyRecordId} size='sm' />}
+                        {wait && <span className='text-muted-foreground text-xs'>{wait}</span>}
+                      </span>
+                    ) : undefined
                   }
                   amount={formatMinor(row.amountMinor, row.currency)}
                   actions={

@@ -10,7 +10,7 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import type {
   SourceAcceptanceRow,
   SourceAccountRow,
@@ -274,6 +274,31 @@ export async function updateAcceptance(
         eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
         eq(schema.FinancialSourceAcceptance.id, id),
         guard
+      )
+    )
+}
+
+/**
+ * Wake the acceptances parked on a change to these orders (79 §4.2): `nextAttemptAt`
+ * null → now. Scoped to the parked rows, so a backing-off row keeps its own schedule.
+ */
+export async function requeueAcceptancesForOrders(
+  tx: Db,
+  organizationId: string,
+  orderInstanceIds: readonly string[]
+): Promise<void> {
+  const ids = [...new Set(orderInstanceIds)]
+  if (!ids.length) return
+  const now = new Date()
+  await tx
+    .update(schema.FinancialSourceAcceptance)
+    .set({ nextAttemptAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
+        inArray(schema.FinancialSourceAcceptance.orderInstanceId, ids),
+        inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked']),
+        isNull(schema.FinancialSourceAcceptance.nextAttemptAt)
       )
     )
 }

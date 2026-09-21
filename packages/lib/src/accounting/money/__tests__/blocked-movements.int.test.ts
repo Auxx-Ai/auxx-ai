@@ -93,6 +93,46 @@ async function receipt(input: {
   return moneyId
 }
 
+/** The ingest acceptance behind a movement, blocked for its own reason (79 §1.3). */
+async function blockedAcceptance(input: {
+  moneyTransactionId: string
+  reason: string
+  attempts: number
+  nextAttemptAt: Date | null
+}): Promise<void> {
+  const [object] = await db()
+    .insert(schema.FinancialSourceObject)
+    .values({
+      organizationId,
+      sourceAccountId,
+      objectType: 'order_transaction',
+      externalId: `blocked_${input.moneyTransactionId}`,
+    })
+    .returning({ id: schema.FinancialSourceObject.id })
+  const [observation] = await db()
+    .insert(schema.FinancialSourceObservation)
+    .values({
+      organizationId,
+      sourceObjectId: object!.id,
+      contentHash: `blocked_hash_${input.moneyTransactionId}`,
+      observedAt: new Date('2026-09-19T00:00:00.000Z'),
+      payload: {},
+      reportingInstallationSnapshot: {},
+    })
+    .returning({ id: schema.FinancialSourceObservation.id })
+  await db().insert(schema.FinancialSourceAcceptance).values({
+    organizationId,
+    sourceObjectId: object!.id,
+    observationId: observation!.id,
+    state: 'blocked',
+    reason: input.reason,
+    orderExternalId: 'order_1',
+    moneyTransactionId: input.moneyTransactionId,
+    attempts: input.attempts,
+    nextAttemptAt: input.nextAttemptAt,
+  })
+}
+
 /** The claim a posted movement holds: one live `subject` row. */
 async function claim(moneyTransactionId: string, txnDate: string): Promise<void> {
   const [posting] = await db()
@@ -292,6 +332,59 @@ describe('listBlockedMovements', () => {
     expect(rows[1]!.reasonKind).toBe('other')
     expect(rows[0]!.amountMinor).toBe(1000)
     expect(await countBlockedMovements(db(), organizationId)).toBe(2)
+  })
+
+  it("carries the blocked acceptance's reason, not the poster's message about it", async () => {
+    const guest = await movement({
+      occurredOn: '2026-09-11',
+      createdAt: new Date('2026-09-11T00:00:00Z'),
+      postingBlockedAt: new Date('2026-09-19T07:00:00.000Z'),
+      postingBlockedReason: 'Receipt needs complete applications to one order on its book date',
+    })
+    await blockedAcceptance({
+      moneyTransactionId: guest,
+      reason: 'Order customer or currency is unresolved or incompatible',
+      attempts: 97,
+      nextAttemptAt: null,
+    })
+
+    const [row] = await listBlockedMovements(db(), organizationId, { limit: 50 })
+    expect(row!.reason).toBe('Order customer or currency is unresolved or incompatible')
+    expect(row!.acceptanceAttempts).toBe(97)
+    expect(row!.acceptanceWaitingOn).toBe('change')
+    expect(row!.reasonKind).toBe('other')
+  })
+
+  it('reports an acceptance with a next attempt as waiting on time', async () => {
+    const waiting = await movement({
+      occurredOn: '2026-09-12',
+      createdAt: new Date('2026-09-12T00:00:00Z'),
+      postingBlockedAt: new Date('2026-09-19T07:00:00.000Z'),
+    })
+    await blockedAcceptance({
+      moneyTransactionId: waiting,
+      reason: 'Transaction is not yet confirmed',
+      attempts: 3,
+      nextAttemptAt: new Date('2026-09-19T08:00:00.000Z'),
+    })
+
+    const [row] = await listBlockedMovements(db(), organizationId, { limit: 50 })
+    expect(row!.acceptanceWaitingOn).toBe('time')
+    expect(row!.acceptanceAttempts).toBe(3)
+  })
+
+  it("keeps the poster's refusal for a hand-recorded movement with no acceptance", async () => {
+    await movement({
+      occurredOn: '2026-09-13',
+      createdAt: new Date('2026-09-13T00:00:00Z'),
+      postingBlockedAt: new Date('2026-09-19T06:00:00.000Z'),
+      postingBlockedReason: 'Receipt needs complete applications to one order on its book date',
+    })
+
+    const [row] = await listBlockedMovements(db(), organizationId, { limit: 50 })
+    expect(row!.reason).toBe('Receipt needs complete applications to one order on its book date')
+    expect(row!.acceptanceAttempts).toBeNull()
+    expect(row!.acceptanceWaitingOn).toBeNull()
   })
 
   it('drops a parked movement once it holds a live subject posting', async () => {

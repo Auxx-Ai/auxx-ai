@@ -7,12 +7,19 @@ import { cn } from '@auxx/ui/lib/utils'
 import { PanelRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useBulkMode, useIsSelected, useListSelection } from '~/components/list-selection'
+import { recordBadgeVariants } from '~/components/resources/ui/record-badge'
 
 interface OutboxRowProps {
   id: string
   icon?: ReactNode
   /** Already formatted; width-pinned so every row's label starts at the same x. */
   date: string
+  /**
+   * What kind of thing this row is, already labelled. Each tab reads it off a
+   * different vocabulary - posting type, movement purpose, provider object -
+   * and they share the column so one tab's rows scan like the next one's.
+   */
+  typeLabel?: string
   title: ReactNode
   secondary?: ReactNode
   /** The help-icon tooltip beside the title - the place for a sentence too long for the line. */
@@ -45,6 +52,7 @@ export function OutboxRow({
   id,
   icon,
   date,
+  typeLabel,
   title,
   secondary,
   description,
@@ -83,6 +91,21 @@ export function OutboxRow({
         <span className='flex min-w-0 items-center gap-1.5'>
           <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
             {date}
+          </span>
+          {/* The CELL is pinned - held open on a child row too, so the title
+              column starts at the same x whether or not this row names a type.
+              The badge inside it sizes to its text, like every RecordBadge. */}
+          <span className='w-32 shrink-0'>
+            {typeLabel && (
+              <span
+                className={cn(
+                  recordBadgeVariants({ size: 'sm' }),
+                  // `ps-0.5 pe-1` is tuned for a badge that leads with an icon.
+                  'w-fit max-w-full px-1.5'
+                )}>
+                <span className='truncate'>{typeLabel}</span>
+              </span>
+            )}
           </span>
           <span className='min-w-0 truncate text-sm'>{title}</span>
         </span>

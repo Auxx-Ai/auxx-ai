@@ -21,15 +21,9 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { EntryBlockers } from './entry-blockers'
 import { formatAccountingDate, formatAuditTimestamp, formatMinor } from './format'
+import { MOVEMENT_PURPOSE_LABEL } from './type-labels'
 
 type BlockedMovementDetail = NonNullable<RouterOutputs['ledger']['getBlockedMovement']>
-
-export const MOVEMENT_PURPOSE_LABEL: Record<BlockedMovementDetail['purpose'], string> = {
-  customer_receipt: 'Customer payment',
-  customer_refund: 'Customer refund',
-  vendor_payment: 'Vendor payment',
-  vendor_refund: 'Vendor refund',
-}
 
 const LINK_ROLE_LABEL: Record<BlockedMovementDetail['links'][number]['role'] | 'party', string> = {
   party: 'party',
