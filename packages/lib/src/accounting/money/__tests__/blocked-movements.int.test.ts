@@ -15,6 +15,8 @@ import {
   listMovementAccountingCandidates,
   type MovementCandidateWindow,
   type MovementPurpose,
+  readBlockedMovement,
+  readMovementDetail,
 } from '../blocked-movements'
 
 const db = () => getTestDb()
@@ -397,5 +399,54 @@ describe('listBlockedMovements', () => {
 
     expect(await listBlockedMovements(db(), organizationId, { limit: 50 })).toEqual([])
     expect(await countBlockedMovements(db(), organizationId)).toBe(0)
+  })
+})
+
+describe('readMovementDetail', () => {
+  it('returns a posted movement with no refusal, where readBlockedMovement returns null', async () => {
+    const posted = await movement({
+      occurredOn: '2026-09-14',
+      createdAt: new Date('2026-09-14T00:00:00Z'),
+      // It WAS refused once; the claim is what makes it posted, not a cleared column.
+      postingBlockedAt: new Date('2026-09-19T05:00:00.000Z'),
+      postingBlockedReason: 'Receipt needs complete applications to one order on its book date',
+    })
+    await claim(posted, '2026-09-14')
+
+    const detail = await readMovementDetail(db(), organizationId, posted)
+    expect(detail?.id).toBe(posted)
+    expect(detail?.reason).toBeNull()
+    expect(detail?.reasonKind).toBeNull()
+    expect(detail?.blockedAt).toBeNull()
+    expect(detail?.acceptanceAttempts).toBeNull()
+    expect(detail?.acceptanceWaitingOn).toBeNull()
+    expect(detail?.amountMinor).toBe(1000)
+    expect(detail?.links).toEqual([])
+
+    expect(await readBlockedMovement(db(), organizationId, posted)).toBeNull()
+  })
+
+  it('still carries the refusal while the movement is parked', async () => {
+    const parked = await movement({
+      occurredOn: '2026-09-15',
+      createdAt: new Date('2026-09-15T00:00:00Z'),
+      postingBlockedAt: new Date('2026-09-19T04:00:00.000Z'),
+      postingBlockedReason:
+        "Cannot post: 1 line(s) do not resolve to a usable account. 'purchase_discounts' (Purchase Discounts) is not mapped to any account.",
+    })
+
+    const detail = await readMovementDetail(db(), organizationId, parked)
+    expect(detail?.reasonKind).toBe('account_unmapped')
+    expect(detail?.blockedAt).toEqual(new Date('2026-09-19T04:00:00.000Z'))
+    expect((await readBlockedMovement(db(), organizationId, parked))?.reason).toBe(detail?.reason)
+  })
+
+  it('returns null for a movement in another organization', async () => {
+    const mine = await movement({
+      occurredOn: '2026-09-16',
+      createdAt: new Date('2026-09-16T00:00:00Z'),
+    })
+    const other = (await createTestOrganization()).id
+    expect(await readMovementDetail(db(), other, mine)).toBeNull()
   })
 })

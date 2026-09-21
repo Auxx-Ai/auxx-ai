@@ -26,7 +26,7 @@ interface EntriesListProps {
    */
   periodKey?: string
   currencyCode: string
-  /** Row click on a posted/reversed entry - opens `PostingDrawer` via `?posting=`. */
+  /** Row click on a posted/reversed entry - opens the posting frame via `?posting=`. */
   onSelectPosting: (id: string) => void
   /** Row click on a draft - opens the JE drawer via `?je=<id>`. */
   onSelectJournalEntry: (id: string) => void

@@ -229,20 +229,72 @@ export function useRecordDrillStack(drillPanels: RecordDrillPanel[]) {
   return { panel, item, setItem, clear, activeDrillPanel, stack, onStackChange }
 }
 
+/**
+ * A frame of a drawer peek stack: a record, or one of the ledger's two
+ * table-backed detail frames (83 §2.4).
+ *
+ * The `~` prefix cannot open a `RecordId` (`<entityDefinitionId>:<instanceId>`,
+ * always a slug or a cuid), so `frameKind` can never misread one.
+ */
+export type DrawerFrame = RecordId | `~posting:${string}` | `~movement:${string}`
+
+/** Encode a ledger frame for a `DrawerFrame` stack. */
+export function toFrame(kind: 'posting' | 'movement', id: string): DrawerFrame {
+  return `~${kind}:${id}` as DrawerFrame
+}
+
+/** Decode a `DrawerFrame`; anything without a ledger prefix is a `RecordId`. */
+export function frameKind(
+  frame: string
+): { kind: 'record'; recordId: RecordId } | { kind: 'posting' | 'movement'; id: string } {
+  if (frame.startsWith('~posting:')) return { kind: 'posting', id: frame.slice('~posting:'.length) }
+  if (frame.startsWith('~movement:')) {
+    return { kind: 'movement', id: frame.slice('~movement:'.length) }
+  }
+  return { kind: 'record', recordId: frame as RecordId }
+}
+
 /** `useRecordPeekStack`'s return shape. */
-export interface RecordPeekStack {
+export interface RecordPeekStack<F extends string = RecordId> {
   /** `[base, ...peek]` — the full stack of frames, base first, top last. */
-  frames: RecordId[]
+  frames: F[]
   /** `frames[frames.length - 1]` — the frame currently on top. */
-  top: RecordId | null
+  top: F | null
   /** `frames.length`. */
   depth: number
-  /** Push a record onto the stack. Already-present (incl. the base) → truncate back to it. */
-  push: (recordId: RecordId) => void
+  /** Push a frame onto the stack. Already-present (incl. the base) → truncate back to it. */
+  push: (frame: F) => void
   /** Drop the top peek frame. No-op at depth 1 (base only). */
   pop: () => void
   /** Empty the peek stack entirely. */
   clear: () => void
+}
+
+/** `useRecordPeekStack`'s options. */
+export interface RecordPeekStackOptions {
+  /** The nuqs array param the stack lives on. For a page that hosts two stacks. */
+  paramKey?: string
+}
+
+const DrawerTabParamContext = React.createContext<string>('tab')
+
+/**
+ * Overrides the nuqs param a drawer frame keeps its active tab in, for a host
+ * page that already owns `?tab=` for something else (the Outbox's tab strip).
+ */
+export function DrawerTabParamProvider({
+  value,
+  children,
+}: {
+  value: string
+  children: React.ReactNode
+}) {
+  return <DrawerTabParamContext.Provider value={value}>{children}</DrawerTabParamContext.Provider>
+}
+
+/** The nuqs param key for a drawer frame's active tab — `'tab'` by default. */
+export function useDrawerTabParam(): string {
+  return React.useContext(DrawerTabParamContext)
 }
 
 /**
@@ -253,7 +305,7 @@ export interface RecordPeekStack {
  * base record stays the host's own param (`?record=`/`?id=`); this hook only
  * owns `peek`, so a host needs zero changes to adopt it.
  *
- * Push/pop/clear all write `peek` AND clear `tab`/`panel`/`item` in the SAME
+ * Push/pop/clear all write `peek` AND clear the frame tab param/`panel`/`item` in the SAME
  * `useQueryStates` batch — one history entry, no intermediate render with a
  * new top frame but a stale drill/tab from the frame it replaced.
  *
@@ -265,62 +317,70 @@ export interface RecordPeekStack {
  * re-bases in one update (a NavStack 'replace'); the ref initializes to the
  * first base, so a cold-load deep link (?id=…&peek=…) still hydrates its stack.
  */
-export function useRecordPeekStack(baseRecordId: RecordId | null): RecordPeekStack {
-  const [{ peek }, setState] = useQueryStates({
-    peek: parseAsArrayOf(parseAsString),
-    tab: parseAsString,
-    panel: parseAsString,
-    item: parseAsString,
-  })
+export function useRecordPeekStack<F extends string = RecordId>(
+  base: F | null,
+  options?: RecordPeekStackOptions
+): RecordPeekStack<F> {
+  const paramKey = options?.paramKey ?? 'peek'
+  const tabParam = useDrawerTabParam()
 
-  const prevBaseRef = React.useRef(baseRecordId)
+  const keyMap = React.useMemo(
+    () => ({
+      [paramKey]: parseAsArrayOf(parseAsString),
+      [tabParam]: parseAsString,
+      panel: parseAsString,
+      item: parseAsString,
+    }),
+    [paramKey, tabParam]
+  )
+  const [state, setState] = useQueryStates(keyMap)
+  const peek = state[paramKey] as string[] | null
+
+  const prevBaseRef = React.useRef(base)
   const peekStaleRef = React.useRef(false)
-  if (prevBaseRef.current !== baseRecordId) {
-    if (prevBaseRef.current !== null && baseRecordId !== null) peekStaleRef.current = true
-    prevBaseRef.current = baseRecordId
+  if (prevBaseRef.current !== base) {
+    if (prevBaseRef.current !== null && base !== null) peekStaleRef.current = true
+    prevBaseRef.current = base
   }
   if (!peek || peek.length === 0) peekStaleRef.current = false
   const livePeek = peekStaleRef.current ? null : peek
 
-  const frames = React.useMemo<RecordId[]>(() => {
-    if (!baseRecordId) return []
-    return [baseRecordId, ...((livePeek ?? []) as RecordId[])]
-  }, [baseRecordId, livePeek])
+  const frames = React.useMemo<F[]>(() => {
+    if (!base) return []
+    return [base, ...((livePeek ?? []) as F[])]
+  }, [base, livePeek])
 
   const depth = frames.length
   const top = frames[depth - 1] ?? null
 
-  const push = React.useCallback(
-    (recordId: RecordId) => {
-      const existingIndex = frames.indexOf(recordId)
-      // Already on the stack (including the base, index 0) — truncate back to
-      // it instead of appending a duplicate (decision #6, kills SR→QT→SR cycles).
-      const nextPeek =
-        existingIndex >= 0 ? frames.slice(1, existingIndex + 1) : [...frames.slice(1), recordId]
+  const write = React.useCallback(
+    (nextPeek: F[]) => {
       void setState({
-        peek: nextPeek.length > 0 ? nextPeek : null,
-        tab: null,
+        [paramKey]: nextPeek.length > 0 ? nextPeek : null,
+        [tabParam]: null,
         panel: null,
         item: null,
       })
     },
-    [frames, setState]
+    [paramKey, tabParam, setState]
+  )
+
+  const push = React.useCallback(
+    (frame: F) => {
+      const existingIndex = frames.indexOf(frame)
+      // Already on the stack (including the base, index 0) — truncate back to
+      // it instead of appending a duplicate (decision #6, kills SR→QT→SR cycles).
+      write(existingIndex >= 0 ? frames.slice(1, existingIndex + 1) : [...frames.slice(1), frame])
+    },
+    [frames, write]
   )
 
   const pop = React.useCallback(() => {
     if (depth <= 1) return
-    const nextPeek = frames.slice(1, -1)
-    void setState({
-      peek: nextPeek.length > 0 ? nextPeek : null,
-      tab: null,
-      panel: null,
-      item: null,
-    })
-  }, [depth, frames, setState])
+    write(frames.slice(1, -1))
+  }, [depth, frames, write])
 
-  const clear = React.useCallback(() => {
-    void setState({ peek: null, tab: null, panel: null, item: null })
-  }, [setState])
+  const clear = React.useCallback(() => write([]), [write])
 
   return { frames, top, depth, push, pop, clear }
 }
@@ -329,21 +389,28 @@ export function useRecordPeekStack(baseRecordId: RecordId | null): RecordPeekSta
  * enclosing `useRecordPeekStack`, so any nested card/row can push a related
  * record onto the stack without prop-threading. */
 interface RecordStackContextValue {
-  push: (recordId: RecordId) => void
+  push: (frame: DrawerFrame) => void
   depth: number
 }
 
 const RecordStackContext = React.createContext<RecordStackContextValue | null>(null)
 
-/** Provided by `BaseEntityDrawer` around its frame stack. */
-export function RecordStackProvider({
+/**
+ * Provided by a drawer host around its frame stack (`BaseEntityDrawer`,
+ * `LedgerDrawerHost`).
+ *
+ * Generic in the host's frame type so a `RecordId`-only stack can still be
+ * handed in: the stored `push` is contravariant, hence the one cast.
+ */
+export function RecordStackProvider<F extends string>({
   value,
   children,
 }: {
-  value: RecordStackContextValue
+  value: { push: (frame: F) => void; depth: number }
   children: React.ReactNode
 }) {
-  return <RecordStackContext.Provider value={value}>{children}</RecordStackContext.Provider>
+  const ctx = value as RecordStackContextValue
+  return <RecordStackContext.Provider value={ctx}>{children}</RecordStackContext.Provider>
 }
 
 /**
@@ -353,7 +420,7 @@ export function RecordStackProvider({
  * drills into it in place. Outside one → `null`, so the caller falls back to
  * its existing href/`router.push` navigation.
  */
-export function useOpenRecord(): ((recordId: RecordId) => void) | null {
+export function useOpenRecord(): ((frame: DrawerFrame) => void) | null {
   const ctx = React.useContext(RecordStackContext)
   return ctx?.push ?? null
 }

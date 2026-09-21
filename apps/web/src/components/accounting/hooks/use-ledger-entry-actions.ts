@@ -61,6 +61,8 @@ export function useLedgerEntryActions({
     void utils.ledger.outboxCounts.invalidate()
     void utils.ledger.verifyBalance.invalidate()
     void utils.ledger.closeBlockers.invalidate()
+    // A reversal moves every statement the reports draw from.
+    void utils.ledgerReports.invalidate()
   }, [utils])
 
   const reverseMutate = reversePosting.mutate

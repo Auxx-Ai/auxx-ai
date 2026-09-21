@@ -97,7 +97,7 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
 /**
  * `LedgerCard`: a record sidebar card listing every posting linked to this
  * record on `GlPostingSource`. Row click opens a `Dialog` with the posting's
- * lines (`EntryJournal`, the same journal table `posting-drawer.tsx`
+ * lines (`EntryJournal`, the same journal table `posting-frame.tsx`
  * renders), since these entries are not on the ledger page's own `?posting=`
  * deep link from here.
  */

@@ -83,6 +83,8 @@ import {
   listBlockedMovements,
   postBlockedMovement,
   readBlockedMovement,
+  readMovementDetail,
+  readMovements,
 } from '@auxx/lib/accounting/money'
 import { ensureGuestContact } from '@auxx/lib/accounting/parties'
 import {
@@ -115,6 +117,14 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
+
+/** What a posting's links are read in, so two postings of a kind read alike (task 83 §2.1). */
+const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'pending', 'subject', 'member']
+
+function sourceRoleRank(linkRole: string): number {
+  const rank = SOURCE_ROLE_ORDER.indexOf(linkRole)
+  return rank === -1 ? SOURCE_ROLE_ORDER.length : rank
+}
 
 /**
  * The general ledger's posting surface (plans/money/tasks/10-the-poster.md §6).
@@ -470,13 +480,41 @@ export const ledgerRouter = createTRPCRouter({
             eq(schema.GlPostingSource.glPostingId, input.glPostingId)
           )
         )
+      // One read for every movement on the posting, not one per badge - a Drafts
+      // page renders forty rows.
+      const movements = await readMovements(
+        ctx.db,
+        organizationId,
+        rows.filter((row) => row.sourceKind === 'money_transaction').map((row) => row.sourceId)
+      )
+
       // A `sourceKind` that is an entity type becomes a `RecordId` so the client
-      // renders a badge; ledger-only kinds (`money_transaction`, `payout`) stay text.
-      return Promise.all(
+      // renders a badge, a `money_transaction` a `MovementBadge`; the remaining
+      // ledger-only kinds (`gl_posting`, `payout`, …) stay text.
+      const hydrated = await Promise.all(
         rows.map(async (row) => {
           const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
-          return { ...row, recordId: defId ? toRecordId(defId, row.sourceId) : null }
+          const movement = movements.get(row.sourceId)
+          return {
+            ...row,
+            recordId: defId ? toRecordId(defId, row.sourceId) : null,
+            movement:
+              row.sourceKind === 'money_transaction' && movement
+                ? {
+                    id: movement.id,
+                    purpose: movement.purpose,
+                    // A string on the wire; the badge only formats it.
+                    amountMinor: movement.amountMinor.toString(),
+                    currency: movement.currency,
+                    currencyExponent: movement.currencyExponent,
+                  }
+                : null,
+          }
         })
+      )
+      return hydrated.sort(
+        (a, b) =>
+          sourceRoleRank(a.linkRole) - sourceRoleRank(b.linkRole) || a.id.localeCompare(b.id)
       )
     }),
 
@@ -1632,6 +1670,13 @@ export const ledgerRouter = createTRPCRouter({
     .input(z.object({ moneyTransactionId: z.string().min(1) }))
     .query(({ ctx, input }) =>
       readBlockedMovement(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
+    ),
+
+  /** One movement for the drawer, blocked or posted; `reason` is null once it posted (83 §2.3). */
+  getMovement: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ moneyTransactionId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      readMovementDetail(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
     ),
 
   /**

@@ -31,12 +31,14 @@ export {
   listBlockedMovements,
   listMovementAccountingCandidates,
   type MovementCandidateWindow,
+  type MovementDetail,
   type MovementLinkedRecord,
   type MovementPurpose,
   POSTING_RETRY_INTERVAL_MS,
   type PostBlockedMovementInput,
   postBlockedMovement,
   readBlockedMovement,
+  readMovementDetail,
   sweepMovementAccounting,
 } from './blocked-movements'
 export {

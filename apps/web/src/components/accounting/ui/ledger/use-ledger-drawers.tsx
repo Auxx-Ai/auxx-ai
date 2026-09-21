@@ -3,16 +3,15 @@
 'use client'
 
 import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
-import { useQueryState } from 'nuqs'
+import { parseAsArrayOf, parseAsString, useQueryStates } from 'nuqs'
 import { type ReactNode, useCallback, useMemo } from 'react'
-import { useLedgerEntryActions } from '~/components/accounting/hooks/use-ledger-entry-actions'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
+import { toFrame } from '~/components/records/record-drill-panels'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { MovementDrawer } from './movement-drawer'
-import { PostingDrawer } from './posting-drawer'
+import { LEDGER_RECORD_TAB_PARAM, LedgerDrawerHost } from './ledger-drawer-host'
 
 interface LedgerDrawersOptions {
   /** `''` when no month resolved; `useLedgerEntryActions` clears its result per month. */
@@ -44,7 +43,8 @@ export interface LedgerDrawers {
  * and Outbox alike, published into the layout's docked outlet.
  *
  * 🛑 They share ONE dock slot (ui-plan.md §2.1), so opening one closes the
- * others rather than letting the params coexist unrendered.
+ * others rather than letting the params coexist unrendered. A posting and a
+ * movement are two frames of ONE host (83 §2.4); only `?je=` is its own drawer.
  */
 export function useLedgerDrawers({
   periodKey,
@@ -60,102 +60,82 @@ export function useLedgerDrawers({
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
   // 🛑 The deep link. A ledger entry is the thing somebody pastes into Slack.
-  const [postingId, setPostingId] = useQueryState('posting')
-  // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
-  const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
-  // `?movement=<moneyTransactionId>` - a movement the ledger refused (75-D1).
-  const [movementId, setMovementId] = useQueryState('movement')
-
-  const openPosting = useCallback(
-    (id: string) => {
-      void setJournalEntryParam(null)
-      void setMovementId(null)
-      void setPostingId(id)
-    },
-    [setJournalEntryParam, setMovementId, setPostingId]
-  )
-  const openJournalEntry = useCallback(
-    (id: string) => {
-      void setPostingId(null)
-      void setMovementId(null)
-      void setJournalEntryParam(id)
-    },
-    [setJournalEntryParam, setMovementId, setPostingId]
-  )
-  const openMovement = useCallback(
-    (id: string) => {
-      void setPostingId(null)
-      void setJournalEntryParam(null)
-      void setMovementId(id)
-    },
-    [setJournalEntryParam, setMovementId, setPostingId]
-  )
-  const closeDrawers = useCallback(() => {
-    void setPostingId(null)
-    void setJournalEntryParam(null)
-    void setMovementId(null)
-  }, [setJournalEntryParam, setMovementId, setPostingId])
-
-  const actions = useLedgerEntryActions({
-    periodKey,
-    // Reverse acts on whichever posting is open in the drawer.
-    glPostingId: postingId ?? null,
+  // `je`/`movement` are the other two; `peek`/`panel`/`item`/`rtab` are the host's
+  // stack, cleared in the SAME write so a new base never inherits a stale frame.
+  // The page's own `tab` is deliberately absent: on the Outbox it is the tab strip.
+  const [params, setParams] = useQueryStates({
+    posting: parseAsString,
+    je: parseAsString,
+    movement: parseAsString,
+    peek: parseAsArrayOf(parseAsString),
+    panel: parseAsString,
+    item: parseAsString,
+    [LEDGER_RECORD_TAB_PARAM]: parseAsString,
   })
-  const { runReverse, isReversing } = actions
+  const { posting: postingId, je: journalEntryParam, movement: movementId } = params
 
-  const postingDrawer = useMemo(
+  const setBase = useCallback(
+    (next: { posting?: string | null; je?: string | null; movement?: string | null }) => {
+      void setParams({
+        posting: next.posting ?? null,
+        je: next.je ?? null,
+        movement: next.movement ?? null,
+        peek: null,
+        panel: null,
+        item: null,
+        [LEDGER_RECORD_TAB_PARAM]: null,
+      })
+    },
+    [setParams]
+  )
+
+  const openPosting = useCallback((id: string) => setBase({ posting: id }), [setBase])
+  const openJournalEntry = useCallback((id: string) => setBase({ je: id }), [setBase])
+  const openMovement = useCallback((id: string) => setBase({ movement: id }), [setBase])
+  const closeDrawers = useCallback(() => setBase({}), [setBase])
+
+  // `je` wins, then `movement`, then `posting` — the params are mutually
+  // exclusive by construction, so this only decides a hand-written URL.
+  const baseFrame = journalEntryParam
+    ? null
+    : movementId
+      ? toFrame('movement', movementId)
+      : postingId
+        ? toFrame('posting', postingId)
+        : null
+
+  const ledgerDrawer = useMemo(
     () => (
-      <PostingDrawer
-        postingId={postingId}
+      <LedgerDrawerHost
+        baseFrame={baseFrame}
         onOpenChange={(open) => {
-          if (!open) void setPostingId(null)
+          if (!open) setBase({})
         }}
-        onSelectPosting={openPosting}
         isDocked={isDesktop}
         width={dockedWidth}
         onWidthChange={setDockedWidth}
+        periodKey={periodKey}
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
         onOpenOutbox={(tab) => {
-          void setPostingId(null)
+          setBase({})
           onOpenOutbox(tab)
         }}
-        onReverse={runReverse}
-        isReversing={isReversing}
       />
     ),
     [
+      baseFrame,
       bookTimeZone,
       currencyCode,
       dockedWidth,
       isDesktop,
-      isReversing,
       onOpenOutbox,
-      openPosting,
-      postingId,
+      periodKey,
       providerLabel,
-      runReverse,
+      setBase,
       setDockedWidth,
-      setPostingId,
     ]
-  )
-
-  const movementDrawer = useMemo(
-    () => (
-      <MovementDrawer
-        movementId={movementId}
-        onOpenChange={(open) => {
-          if (!open) void setMovementId(null)
-        }}
-        onSelectPosting={openPosting}
-        isDocked={isDesktop}
-        width={dockedWidth}
-        onWidthChange={setDockedWidth}
-        bookTimeZone={bookTimeZone}
-      />
-    ),
-    [bookTimeZone, dockedWidth, isDesktop, movementId, openPosting, setDockedWidth, setMovementId]
   )
 
   const journalEntryDrawer = useMemo(
@@ -165,14 +145,14 @@ export function useLedgerDrawers({
         isNew={journalEntryParam === 'new'}
         open={!!journalEntryParam}
         onOpenChange={(open) => {
-          if (!open) void setJournalEntryParam(null)
+          if (!open) setBase({})
         }}
         isDocked={isDesktop}
         width={dockedWidth}
         onWidthChange={setDockedWidth}
         currencyCode={currencyCode}
         defaultDate={defaultEntryDate}
-        onCreated={(id) => void setJournalEntryParam(id)}
+        onCreated={(id) => openJournalEntry(id)}
         onPosted={(glPostingId) => {
           void utils.ledger.listPostings.invalidate()
           void utils.ledger.journalEntry.list.invalidate()
@@ -184,7 +164,7 @@ export function useLedgerDrawers({
           // The record is archived, so every read that could still be showing it
           // is stale - and the drawer itself is now open over a record no read
           // path returns. Close it.
-          void setJournalEntryParam(null)
+          setBase({})
           void utils.ledger.journalEntry.list.invalidate()
         }}
       />
@@ -195,23 +175,20 @@ export function useLedgerDrawers({
       dockedWidth,
       isDesktop,
       journalEntryParam,
+      openJournalEntry,
       openPosting,
+      setBase,
       setDockedWidth,
-      setJournalEntryParam,
       utils,
     ]
   )
 
   const panels = useMemo(() => {
-    if (!isDesktop || !(postingId || journalEntryParam || movementId)) return []
+    if (!isDesktop || !(baseFrame || journalEntryParam)) return []
     return [
       {
-        key: journalEntryParam ? 'je' : movementId ? 'movement' : 'posting',
-        content: journalEntryParam
-          ? journalEntryDrawer
-          : movementId
-            ? movementDrawer
-            : postingDrawer,
+        key: journalEntryParam ? 'je' : 'ledger',
+        content: journalEntryParam ? journalEntryDrawer : ledgerDrawer,
         width: dockedWidth,
         onWidthChange: setDockedWidth,
         minWidth: 380,
@@ -219,14 +196,12 @@ export function useLedgerDrawers({
       },
     ]
   }, [
+    baseFrame,
     dockedWidth,
     isDesktop,
     journalEntryDrawer,
     journalEntryParam,
-    movementDrawer,
-    movementId,
-    postingDrawer,
-    postingId,
+    ledgerDrawer,
     setDockedWidth,
   ])
 
@@ -240,9 +215,8 @@ export function useLedgerDrawers({
    */
   const overlays = (
     <>
-      {!isDesktop && !!postingId && postingDrawer}
+      {!isDesktop && !!baseFrame && ledgerDrawer}
       {!isDesktop && !!journalEntryParam && journalEntryDrawer}
-      {!isDesktop && !!movementId && movementDrawer}
     </>
   )
 

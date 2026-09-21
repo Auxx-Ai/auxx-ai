@@ -41,6 +41,7 @@ import {
   getRecordDrillPanels,
   type RecordDrillContext,
   RecordStackProvider,
+  useDrawerTabParam,
   useRecordDrillStack,
   useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
@@ -144,7 +145,7 @@ interface DrawerRecordFrameProps {
  * now it's per-frame so a peeked record (quote, work order, …) gets its own
  * independent copy of all of it, including its own `panel`/`item` drill.
  */
-function DrawerRecordFrame({
+export function DrawerRecordFrame({
   recordId,
   isBase,
   entityTypeOverride,
@@ -152,7 +153,9 @@ function DrawerRecordFrame({
   focusComposerTrigger = 0,
   readOnly,
 }: DrawerRecordFrameProps) {
-  const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
+  const [activeTab, setActiveTab] = useQueryState(useDrawerTabParam(), {
+    defaultValue: 'overview',
+  })
   const { hasAccess } = useFeatureFlags()
   const { can, canAdministerDef } = useAccess()
   const { canViewComments } = useCommentAccess(recordId)

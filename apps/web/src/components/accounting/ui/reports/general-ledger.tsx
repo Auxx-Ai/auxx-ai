@@ -275,11 +275,7 @@ export function GeneralLedgerReportPage() {
           )}
         </div>
       </ScrollArea>
-      <PostingDrawerHost
-        postingId={posting.postingId}
-        onClose={posting.close}
-        onSelectPosting={posting.open}
-      />
+      <PostingDrawerHost postingId={posting.postingId} onClose={posting.close} />
     </div>
   )
 }

@@ -15,8 +15,8 @@ import { toRecordId, useRecordLink, useResourceProperty } from '~/components/res
  * definition id and its `apiSlug`, so `sourceKind` values that are also
  * entity slugs (`order`, `invoice`, `credit_memo`, `vendor_bill`, …) resolve
  * straight through. Non-entity kinds (`gl_posting`, `stock_movement`,
- * `provider_ledger_entry`, `money_transaction`) have no definition and fall
- * back to plain text.
+ * `provider_ledger_entry`) have no definition and fall back to plain text; a
+ * `money_transaction` is a `MovementBadge` now, not a string.
  */
 export function LedgerSourceLink({
   sourceKind,

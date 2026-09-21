@@ -242,6 +242,15 @@ export interface BlockedMovementDetail extends BlockedMovementRow {
   links: MovementLinkedRecord[]
 }
 
+/** One movement in full whether or not it is parked - the movement drawer's read (83 §2.3). */
+export interface MovementDetail extends Omit<BlockedMovementRow, 'reason' | 'reasonKind'> {
+  /** The refusal, or `null` once the movement posted or was never parked. */
+  reason: string | null
+  reasonKind: 'account_unmapped' | 'other' | null
+  /** The cash account, then every document the money was applied to. */
+  links: MovementLinkedRecord[]
+}
+
 /**
  * The true refusal: a movement the ingest blocked waits on its acceptance's
  * reason, not on the poster's message about the application it never got (79 §1.3).
@@ -264,23 +273,34 @@ const ACCEPTANCE_WAITING_ON = sql<'change' | 'time' | null>`CASE
   WHEN ${schema.FinancialSourceAcceptance.nextAttemptAt} IS NULL THEN 'change'
   ELSE 'time' END`
 
+/** The movement holds no live `subject` posting: it never posted, or a reversal removed it. */
+function noSubjectPosting(organizationId: string) {
+  return sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
+      WHERE link."organizationId" = ${organizationId}
+      AND link."sourceKind" = 'money_transaction'
+      AND link."sourceId" = ${schema.MoneyTransaction.id}
+      AND link."linkRole" = 'subject')`
+}
+
 /** A movement is parked when it carries a reason and holds no live subject posting. */
 function blockedWhere(organizationId: string) {
   return and(
     eq(schema.MoneyTransaction.organizationId, organizationId),
     isNotNull(schema.MoneyTransaction.postingBlockedReason),
-    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
-        WHERE link."organizationId" = ${organizationId}
-        AND link."sourceKind" = 'money_transaction'
-        AND link."sourceId" = ${schema.MoneyTransaction.id}
-        AND link."linkRole" = 'subject')`
+    noSubjectPosting(organizationId)
   )
 }
 
-/** The row's columns with the party joined - the list and the detail select the same thing. */
-function selectBlockedRows(db: Database) {
+/**
+ * The row's columns with the party joined - the list and the detail select the same thing.
+ *
+ * `blocked` restates {@link blockedWhere} per row, because the detail read drops
+ * that predicate from its `WHERE` and still has to answer it (83 §2.3).
+ */
+function selectMovementRows(db: Database, organizationId: string) {
   return db
     .select({
+      blocked: sql<boolean>`(${schema.MoneyTransaction.postingBlockedReason} IS NOT NULL AND ${noSubjectPosting(organizationId)})`,
       id: schema.MoneyTransaction.id,
       purpose: schema.MoneyTransaction.purpose,
       amountMinor: schema.MoneyTransaction.amountMinor,
@@ -319,12 +339,25 @@ function selectBlockedRows(db: Database) {
     )
 }
 
-type SelectedBlockedRow = Awaited<
-  ReturnType<ReturnType<typeof selectBlockedRows>['execute']>
+type SelectedMovementRow = Awaited<
+  ReturnType<ReturnType<typeof selectMovementRows>['execute']>
 >[number]
 
-function toBlockedRow(row: SelectedBlockedRow): BlockedMovementRow {
+function toBlockedRow({ blocked: _blocked, ...row }: SelectedMovementRow): BlockedMovementRow {
   return { ...row, amountMinor: Number(row.amountMinor), reason: row.reason ?? '' }
+}
+
+/** A posted movement keeps its money columns and loses every refusal column. */
+function toMovementRow({ blocked, ...row }: SelectedMovementRow): Omit<MovementDetail, 'links'> {
+  return {
+    ...row,
+    amountMinor: Number(row.amountMinor),
+    reason: blocked ? (row.reason ?? '') : null,
+    reasonKind: blocked ? row.reasonKind : null,
+    blockedAt: blocked ? row.blockedAt : null,
+    acceptanceAttempts: blocked ? row.acceptanceAttempts : null,
+    acceptanceWaitingOn: blocked ? row.acceptanceWaitingOn : null,
+  }
 }
 
 /** Newest refusal first, so a role somebody just hit surfaces above a year of backlog. */
@@ -333,7 +366,7 @@ export async function listBlockedMovements(
   organizationId: string,
   options: { limit?: number; offset?: number } = {}
 ): Promise<BlockedMovementRow[]> {
-  const rows = await selectBlockedRows(db)
+  const rows = await selectMovementRows(db, organizationId)
     .where(blockedWhere(organizationId))
     .orderBy(
       sql`${schema.MoneyTransaction.postingBlockedAt} DESC NULLS LAST`,
@@ -344,14 +377,19 @@ export async function listBlockedMovements(
   return rows.map(toBlockedRow)
 }
 
-/** One parked movement with the records it points at, or `null` once it has posted or never was parked. */
-export async function readBlockedMovement(
+/** One movement with the records it points at, blocked or posted, or `null` if it does not exist. */
+async function readMovementWithLinks(
   db: Database,
   organizationId: string,
   moneyTransactionId: string
-): Promise<BlockedMovementDetail | null> {
-  const [row] = await selectBlockedRows(db)
-    .where(and(blockedWhere(organizationId), eq(schema.MoneyTransaction.id, moneyTransactionId)))
+): Promise<{ row: SelectedMovementRow; links: MovementLinkedRecord[] } | null> {
+  const [row] = await selectMovementRows(db, organizationId)
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.id, moneyTransactionId)
+      )
+    )
     .limit(1)
   if (!row) return null
 
@@ -394,13 +432,34 @@ export async function readBlockedMovement(
   const byId = new Map(instances.map((instance) => [instance.id, instance]))
 
   return {
-    ...toBlockedRow(row),
+    row,
     links: refs.map((ref) => ({
       ...ref,
       definitionId: byId.get(ref.instanceId)?.definitionId ?? null,
       displayName: byId.get(ref.instanceId)?.displayName ?? null,
     })),
   }
+}
+
+/** One movement with the records it points at, whether or not the ledger refused it. */
+export async function readMovementDetail(
+  db: Database,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<MovementDetail | null> {
+  const found = await readMovementWithLinks(db, organizationId, moneyTransactionId)
+  return found && { ...toMovementRow(found.row), links: found.links }
+}
+
+/** One parked movement with the records it points at, or `null` once it has posted or never was parked. */
+export async function readBlockedMovement(
+  db: Database,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<BlockedMovementDetail | null> {
+  const found = await readMovementWithLinks(db, organizationId, moneyTransactionId)
+  if (!found?.row.blocked) return null
+  return { ...toBlockedRow(found.row), links: found.links }
 }
 
 /** The tab's badge. SQL, because a dev org already holds ~1,100 of these. */

@@ -8,7 +8,7 @@
 //
 // 🛑 The refusal is rendered in the server's own words, never paraphrased -
 // on the row's help icon, and in full with the remedy card in the movement
-// drawer (`movement-drawer.tsx`) a row opens.
+// drawer (`movement-frame.tsx`) a row opens.
 
 import { toRecordId } from '@auxx/lib/resources/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
