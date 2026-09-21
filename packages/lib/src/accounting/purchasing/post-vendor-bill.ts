@@ -73,12 +73,6 @@ export interface VendorBillEntrySource {
   landedRemaining?: ReadonlyMap<string, LandedAccrualRemaining>
 }
 
-/** How a bill's repost key hashes when the generation marker will not fit beside its digits. */
-export const VENDOR_BILL_ENTRY_KEY_HASH = {
-  prefix: 'BGN',
-  label: 'vendor bill repost',
-} as const
-
 /**
  * The entry this bill's CURRENT values produce - pure, persists nothing.
  *
@@ -91,11 +85,7 @@ export function buildEntryForVendorBill(source: VendorBillEntrySource): BuiltVen
   return buildVendorBillEntry({
     vendorBillId: bill.id,
     internalNumber: bill.internalNumber,
-    periodKey: documentEntryKey(
-      bill.internalNumber,
-      source.generation ?? 1,
-      VENDOR_BILL_ENTRY_KEY_HASH
-    ),
+    periodKey: documentEntryKey(bill.internalNumber, source.generation ?? 1),
     billedAt,
     currency: bill.currency,
     ledgerCurrency: LEDGER_CURRENCY,

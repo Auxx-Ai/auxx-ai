@@ -130,7 +130,6 @@ describe('buildWriteOffEntry - refusals', () => {
 
 describe('the document-number keyspace', () => {
   it('accepts an invoice number that still leaves room for a reversal suffix', () => {
-    // `AUXX-WOF-` (9) + 9 compacted characters + `-R1` (3) = 21, the cap.
     const entry = buildWriteOffEntry({
       invoiceId: 'inv_1',
       invoiceNumber: 'INV-123456',
@@ -138,35 +137,31 @@ describe('the document-number keyspace', () => {
       txnDate: '2026-09-04',
     })
     expect(buildDocNumber({ postingType: 'write_off', periodKey: entry.periodKey })).toBe(
-      'AUXX-WOF-INV123456'
+      'INV-123456'
     )
     expect(
       buildDocNumber({ postingType: 'write_off', periodKey: entry.periodKey, revision: 1 })
-    ).toBe('AUXX-WOF-INV123456-R1')
+    ).toBe('INV-123456-R1')
   })
 
   it('refuses at BUILD time an invoice number that would only fail at reversal', () => {
-    // 🛑 Twelve compacted characters posts fine (`AUXX-WOF-` + 12 = 21) and then
-    // refuses at 24 when `-R1` is added - a write-off in the books that cannot
-    // be reversed. The refusal has to happen before anything is claimed.
+    // Sixteen characters fits the 21-character cap at revision 0 and refuses
+    // once `-G2-R1` is on it - a write-off in the books that cannot be
+    // reversed. The refusal has to happen before anything is claimed.
     const tooLong = {
       invoiceId: 'inv_1',
-      invoiceNumber: 'INV-202609-004',
+      invoiceNumber: 'INV-202609-00004',
       amountMinor: 20_000,
       txnDate: '2026-09-04',
     }
     expect(() => buildWriteOffEntry(tooLong)).toThrowError(UnprocessableEntityError)
-    expect(() => buildWriteOffEntry(tooLong)).toThrowError(/compacts to 12 characters/)
+    expect(() => buildWriteOffEntry(tooLong)).toThrowError(/is 16 characters/)
 
-    // And the thing it is protecting against really is a reversal-only failure:
-    // revision 0 on that key composes to exactly the cap, so the entry WOULD
-    // have posted; only the reversal blows it.
-    expect(buildDocNumber({ postingType: 'write_off', periodKey: 'INV-202609-004' })).toHaveLength(
-      21
-    )
+    // And `buildDocNumber` refuses the same number at revision 0 for the same
+    // reason, rather than posting it and refusing the reversal.
     expect(() =>
-      buildDocNumber({ postingType: 'write_off', periodKey: 'INV-202609-004', revision: 1 })
-    ).toThrowError(/over the 21-character cap/)
+      buildDocNumber({ postingType: 'write_off', periodKey: 'INV-202609-00004' })
+    ).toThrowError(/allows 15/)
   })
 })
 
@@ -201,12 +196,13 @@ describe('writeOffPeriodKey - the attempt counter', () => {
   })
 
   it('folds an invoice number with no room left for the attempt character', () => {
-    // Nine compacted characters is the whole budget, so a retry cannot append.
-    const key = writeOffPeriodKey({ invoiceNumber: 'INV-123456', attempt: 1 })
-    expect(key).toHaveLength(9)
+    // Fifteen characters is the whole budget, so a retry cannot append.
+    const key = writeOffPeriodKey({ invoiceNumber: 'INV-00000123456', attempt: 1 })
+    expect(key).toHaveLength(15)
+    expect(key).not.toMatch(/^INV-00000123456/)
     expect(key.endsWith('1')).toBe(true)
     expect(buildDocNumber({ postingType: 'write_off', periodKey: key, revision: 9 })).toHaveLength(
-      21
+      18
     )
   })
 

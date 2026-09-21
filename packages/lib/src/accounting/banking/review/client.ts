@@ -14,6 +14,7 @@
  * poster.
  */
 
+import { MAX_COMPACT_PERIOD_KEY } from '../../ledger/periods/period-key'
 import type { PostResultStatus } from '../../ledger/types'
 import type { PaymentGatewayFeeTreatmentValue, PaymentGatewayRow } from '../../rails/client'
 import { daysBetween } from '../client'
@@ -204,13 +205,6 @@ export function scoreCandidate(params: {
 export const BANK_PERIOD_KEY_PREFIX = 'BNK'
 
 /**
- * `AUXX-BNK-` is nine characters and a reversal adds `-R9`, so nine are left
- * for the compacted key. `doc-number.ts`'s cap, restated as the budget this
- * file has to mint inside.
- */
-const MAX_COMPACT_PERIOD_KEY = 21 - 'AUXX-BNK-'.length - '-R9'.length
-
-/**
  * How many base-36 characters of the compact key belong to the ACCOUNT.
  *
  * 🛑 An OFX `FITID` is unique PER ACCOUNT, never per institution and never per
@@ -224,11 +218,11 @@ const MAX_COMPACT_PERIOD_KEY = 21 - 'AUXX-BNK-'.length - '-R9'.length
  * AND sharing a FITID is not a case that occurs; and the fallback (a hash of the
  * row's own id) is unique outright, so an over-long external id is always safe.
  *
- * ⚠️ It costs the shortcut most of its reach: nine characters minus three leaves
- * SIX for the compacted external id, so a real OFX `FITID` (routinely twelve to
- * thirty) takes the hash path, as it already did. What still comes through is
- * the short hand-keyed reference - a cheque number, `TXN123` - which is where
- * reading the ledger against the statement actually pays.
+ * ⚠️ It costs the shortcut some reach: the budget minus three is what is left
+ * for the compacted external id, so a long OFX `FITID` takes the hash path, as
+ * it already did. What comes through is the short hand-keyed reference - a
+ * cheque number, `TXN123` - which is where reading the ledger against the
+ * statement actually pays.
  */
 const ACCOUNT_SCOPE_CHARS = 3
 
@@ -253,9 +247,9 @@ export const MAX_PERIOD_KEY_ATTEMPT = 35
  * lines minting one key converge the loser to `already_posted`, a SUCCESS, and
  * two bank lines silently become one entry.
  *
- * 🛑 Hyphens are the only separator `buildDocNumber` strips, so an external id
- * carrying anything else (`fctxn_…`'s underscore) is rejected here rather than
- * passed through to become an over-length or non-alphanumeric document number.
+ * 🛑 An external id carrying anything but letters, digits and hyphens
+ * (`fctxn_…`'s underscore) is rejected here rather than passed through to
+ * become a non-alphanumeric document number.
  */
 export function bankTransactionPeriodKey(params: {
   transactionId: string
@@ -304,8 +298,7 @@ export function bankTransactionPeriodKey(params: {
 
   const id = params.transactionId.trim()
   if (!id) throw new Error('A bank transaction entry needs the row id to key on')
-  // Six digits for a first posting, five plus the attempt for a retry: both
-  // compact to nine, which is the whole budget `AUXX-BNK-…-R9` leaves. Folded
+  // Six digits for a first posting, five plus the attempt for a retry. Folded
   // with a modulus rather than sliced, so all 32 bits reach the digits that
   // survive.
   if (attempt === 0) {

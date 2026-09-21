@@ -214,7 +214,7 @@ function row(over: Partial<BankTransactionRow> = {}): BankTransactionRow {
   // unless the test overrides `h.postingsBySource` itself afterwards.
   if (base.glPostingId) {
     h.postingsBySource.set(base.id, [
-      { id: base.glPostingId, status: 'posted', docNumber: 'AUXX-BNK-EXISTING' },
+      { id: base.glPostingId, status: 'posted', docNumber: 'BNK-EXISTING' },
     ])
   }
   return base
@@ -244,7 +244,7 @@ beforeEach(() => {
   h.postingCount = 0
   // Kept non-empty for queries unrelated to postings (e.g. `resolveDefIdForRecord`),
   // which only need SOME row back to avoid a spurious "not found" throw.
-  h.selectRows = [{ status: 'posted', docNumber: 'AUXX-BNK-EXISTING' }]
+  h.selectRows = [{ status: 'posted', docNumber: 'BNK-EXISTING' }]
   h.postingsBySource.clear()
   h.listPostingsForSource.mockImplementation(
     async (_db: unknown, params: { sourceId: string }) => ({
@@ -256,7 +256,7 @@ beforeEach(() => {
   h.postEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'post_1',
-    docNumber: 'AUXX-BNK-BT0001',
+    docNumber: 'BNK-BT0001',
   })
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'post_2' })
   h.clearBankDeposit.mockResolvedValue({ isErr: () => false, value: {} })
@@ -755,9 +755,7 @@ describe('undoReview', () => {
     // to reverse it a second time is right; stranding the line as `coded` with
     // no way back into the queue is not.
     row({ reviewStatus: 'coded', glPostingId: 'post_1' })
-    h.postingsBySource.set('txn_1', [
-      { id: 'post_1', status: 'reversed', docNumber: 'AUXX-BNK-OLD' },
-    ])
+    h.postingsBySource.set('txn_1', [{ id: 'post_1', status: 'reversed', docNumber: 'BNK-OLD' }])
     const result = await undoReview(db, {
       organizationId: ORG,
       actorUserId: ACTOR,

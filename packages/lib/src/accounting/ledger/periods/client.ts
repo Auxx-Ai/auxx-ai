@@ -17,7 +17,7 @@ export {
   monthLabel,
 } from './close-blockers'
 export {
-  assertCompactablePeriodKey,
+  assertDocumentKey,
   hashedPeriodKey,
   MAX_COMPACT_PERIOD_KEY,
 } from './period-key'

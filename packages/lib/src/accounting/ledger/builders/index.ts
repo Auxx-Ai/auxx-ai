@@ -30,9 +30,12 @@ export {
 } from './deposit-application'
 export {
   buildDocNumber,
+  DOC_NUMBER_KIND,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
+  DOCUMENT_KEY_MAX_LENGTH,
   type DocNumberInput,
+  type DocNumberKind,
 } from './doc-number'
 export {
   ACCOUNT_ROLE_LABELS,
@@ -113,6 +116,7 @@ export {
   buildPayoutEntry,
   PAYOUT_SOURCE_TYPE,
 } from './payout'
+export { LINE_MEMO_MAX_LENGTH, type SourceFacts, sourceFactsMemo } from './source-facts-memo'
 // -- task 71 U7: the supplier's credit note, the expense bill sides-flipped ---
 export {
   type BuildVendorCreditEntryInput,

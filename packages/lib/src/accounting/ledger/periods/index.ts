@@ -9,7 +9,7 @@ export {
   readMonthActivity,
 } from './month-activity'
 export {
-  assertCompactablePeriodKey,
+  assertDocumentKey,
   hashedPeriodKey,
   MAX_COMPACT_PERIOD_KEY,
 } from './period-key'

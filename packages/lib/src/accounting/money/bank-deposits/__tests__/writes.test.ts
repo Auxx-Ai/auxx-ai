@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
   payments: [] as Array<Record<string, unknown>>,
   deposit: null as Record<string, unknown> | null,
-  postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-DEP-DEP0001' } as {
+  postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'DEP-0001' } as {
     status: string
     glPostingId?: string
     docNumber?: string

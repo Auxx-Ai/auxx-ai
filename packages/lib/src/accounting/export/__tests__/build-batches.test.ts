@@ -42,7 +42,7 @@ function posting(over: Partial<Record<string, unknown>> = {}) {
     id: 'glp_1',
     postingType: 'fulfillment',
     txnDate: '2026-09-14',
-    docNumber: 'AUXX-FUL-20260914',
+    docNumber: 'FUL-20260914',
     currency: 'USD',
     storeId: null,
     railId: null,
@@ -250,7 +250,7 @@ describe('Transaction mode', () => {
       [
         posting({
           id: 'glp_rev',
-          docNumber: 'AUXX-FUL-20260914-R1',
+          docNumber: 'FUL-20260914-R1',
           txnDate: '2026-09-20',
           totalMinor: 5000,
         }),
@@ -272,7 +272,7 @@ describe('Transaction mode', () => {
     const { db, inserted, members } = fakeDb([
       [
         posting({ storeId: 'store_1' }),
-        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'AUXX-PMT-1' }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1' }),
       ],
       [{ id: 'store_1', exportShape: 'auto' }],
       [
@@ -320,7 +320,7 @@ describe('Transaction mode', () => {
         posting({
           id: 'glp_pay',
           postingType: 'payment',
-          docNumber: 'AUXX-PMT-1',
+          docNumber: 'PMT-1',
           totalMinor: 2000,
         }),
       ],
@@ -374,7 +374,7 @@ describe('Transaction mode', () => {
     const { db, inserted } = fakeDb([
       [
         posting({ storeId: 'store_1' }),
-        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'AUXX-PMT-1' }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1' }),
       ],
       [{ id: 'store_1', exportShape: 'invoice' }],
       [
@@ -419,7 +419,7 @@ describe('Transaction mode', () => {
         posting({
           id: 'glp_crm',
           postingType: 'credit_memo',
-          docNumber: 'AUXX-CRM-1',
+          docNumber: 'CRM-1',
           totalMinor: 1000,
         }),
       ],
@@ -454,7 +454,7 @@ describe('Transaction mode', () => {
         posting({
           id: 'glp_po1',
           postingType: 'payout',
-          docNumber: 'AUXX-PAY-1',
+          docNumber: 'PAY-1',
           totalMinor: 5000,
         }),
       ],
@@ -499,7 +499,7 @@ describe('Transaction mode', () => {
         posting({
           id: 'glp_bil1',
           postingType: 'vendor_bill',
-          docNumber: 'AUXX-BIL-1',
+          docNumber: 'BIL-1',
           totalMinor: 600,
         }),
       ],
@@ -534,7 +534,7 @@ describe('Transaction mode', () => {
         posting({
           id: 'glp_jnl1',
           postingType: 'manual_journal',
-          docNumber: 'AUXX-JNL-1',
+          docNumber: 'JNL-1',
           totalMinor: 100,
         }),
       ],

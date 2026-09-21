@@ -46,12 +46,6 @@ export async function organizationCurrency(organizationId: string): Promise<stri
   return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : LEDGER_CURRENCY
 }
 
-/** How a memo's repost key hashes when the generation marker will not fit beside its digits. */
-export const CREDIT_MEMO_ENTRY_KEY_HASH = {
-  prefix: 'CGN',
-  label: 'credit memo repost',
-} as const
-
 export interface CreditMemoEntrySource {
   memo: CreditMemoRecord
   lines: readonly CreditMemoLineRecord[]
@@ -80,7 +74,7 @@ export function buildEntryForCreditMemo(source: CreditMemoEntrySource): BuiltCre
   return buildCreditMemoEntry({
     creditMemoId: memo.id,
     number: memo.number,
-    periodKey: documentEntryKey(memo.number, source.generation ?? 1, CREDIT_MEMO_ENTRY_KEY_HASH),
+    periodKey: documentEntryKey(memo.number, source.generation ?? 1),
     issuedAt,
     currency,
     ledgerCurrency: LEDGER_CURRENCY,

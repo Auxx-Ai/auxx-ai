@@ -221,7 +221,7 @@ export async function previewVendorBill(
 
 export interface PostVendorBillResult {
   post: PostResult
-  /** `AUXX-BIL-BILL0007`, once the entry was built. */
+  /** `BILL-0007`, once the entry was built. */
   docNumber: string | null
   /** Integer minor units - the payable raised. */
   totalMinor: number

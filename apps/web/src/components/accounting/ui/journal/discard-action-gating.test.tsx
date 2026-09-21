@@ -96,7 +96,7 @@ const POSTING = {
   postingType: 'manual_journal',
   periodKey: 'JNL-0005',
   txnDate: '2026-08-31',
-  docNumber: 'AUXX-JNL-JNL0005',
+  docNumber: 'JNL-0005-R1',
   status: 'posted',
   revision: 1,
   reversesId: null,

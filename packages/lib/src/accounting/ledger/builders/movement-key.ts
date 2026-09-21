@@ -5,7 +5,7 @@
  *
  * PURE. Beside `inventoryPeriodKey` and `depositApplicationPeriodKey`, and for
  * the same reason: `MoneyTransaction` has no number column, its id is a
- * 24-character cuid, and `AUXX-PMT-<cuid>` is 33 against a 21-character cap.
+ * 24-character cuid, over the document-number budget on its own.
  */
 
 import { hashedPeriodKey } from '../periods/period-key'

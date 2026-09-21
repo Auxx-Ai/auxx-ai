@@ -158,7 +158,7 @@ function assertMinor(value: number, label: string): void {
  *
  * 🛑 Hashed, never verbatim: every subject an inventory document has is a
  * 24-character cuid (a movement, a build, a fulfillment, the org), and
- * `AUXX-INV-<cuid>` is 33 characters against a 21-character cap. It inherits
+ * a cuid is 24 characters against the document-number cap. It inherits
  * `hashedPeriodKey`'s collision caveat, which `postInventoryMovementInTx`
  * discharges on `already_posted`.
  */

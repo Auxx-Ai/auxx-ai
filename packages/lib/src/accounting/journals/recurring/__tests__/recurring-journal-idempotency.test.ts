@@ -224,7 +224,7 @@ describe('the sourceId check catches a hash collision rather than trusting alrea
     h.postResult = {
       status: 'already_posted',
       glPostingId: 'post_other',
-      docNumber: 'AUXX-RJE-RJEZZZZZZ',
+      docNumber: 'RJE-ZZZZZZ',
     }
   })
 

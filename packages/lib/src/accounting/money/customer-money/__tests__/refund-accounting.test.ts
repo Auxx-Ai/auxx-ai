@@ -169,7 +169,7 @@ beforeEach(() => {
         ? { isErr: () => false, value: null }
         : {
             isErr: () => false,
-            value: { id: 'gl_receipt', docNumber: 'AUXX-PMT-0001', txnDate: '2026-09-01' },
+            value: { id: 'gl_receipt', docNumber: 'PMT-80DBIZ', txnDate: '2026-09-01' },
           }
   )
   h.postingRows = [{ railId: 'pg_1' }]

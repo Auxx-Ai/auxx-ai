@@ -1,46 +1,31 @@
 // packages/lib/src/accounting/ledger/builders/doc-number.ts
 
 /**
- * The document number of one journal entry - **ours**.
+ * The document number of one journal entry. PURE: same posting identity in,
+ * same string out, forever. It is written to `GlPosting.docNumber` whether or
+ * not a provider is connected, and the QuickBooks adapter queries by it, so it
+ * is ledger vocabulary and the adapter a consumer of it.
  *
- * PURE. No database, no provider, no clock. Same posting identity in, same
- * string out, forever.
- *
- * ## Why this lives in `postings/` and not in the QuickBooks adapter
- *
- * It used to live in `money/quickbooks/post-journal-entry.ts`, which read as
- * reasonable while the only consumer was a QuickBooks push. It is not: a
- * document number is written to `GlPosting.docNumber` **whether or not a
- * provider exists**, it is decision `P2`'s deterministic natural key, and the
- * poster's layer-2 heal ("QuickBooks already holds this entry but our id map
- * does not") is a query BY this string. An org with nothing connected still
- * mints one, and an org that swaps QuickBooks for something else keeps every
- * one it has already minted. That makes it ledger vocabulary, beside the period
- * keyspace, and the adapter a consumer of it.
- *
- * The 21-character cap IS QuickBooks' `DocNumber` limit, adopted as ours on
- * purpose: a value that fits everywhere stays portable, and picking it up later
- * would mean re-minting keys that are already in a ledger.
- *
- * ## The shape
+ * Three kinds of period key, three renderings ({@link DOC_NUMBER_KIND}):
  *
  * ```
- *   AUXX-<TYPE>-<key>[-R<revision>]
- *   └─5─┘└─3──┘└────────12─────────┘   = 21 max
+ *   document  BILL-000123[-G<gen>][-R<rev>]   the record's own number, verbatim
+ *   hash      PMT-80DBIZ[-R<rev>]             `hashedPeriodKey` output, verbatim
+ *   calendar  DEF-202703[-R<rev>]             <PREFIX>-<key, dashes stripped>
  * ```
  *
- * @see plans/money/04-books.md for the posting model
+ * A row minted before plans/accounting/tasks/80 carries `AUXX-<PREFIX>-<key>`
+ * and keeps it; a reversal appends `-R<n>` to whatever the original carries.
  */
 
 import { UnprocessableEntityError } from '../../../errors'
 import type { PostingType } from '../types'
 
-/**
- * QuickBooks caps `DocNumber` at 21 characters, and we adopt that as OUR cap.
- *
- * 🛑 Over-length is a REFUSAL, not a truncation - see {@link buildDocNumber}.
- */
+/** QuickBooks caps `DocNumber` at 21 characters, adopted as ours. Over-length refuses, never truncates. */
 export const DOC_NUMBER_MAX_LENGTH = 21
+
+/** A document-keyed period key's budget: the cap less a repost (`-G9`) and a reversal (`-R9`) suffix. */
+export const DOCUMENT_KEY_MAX_LENGTH = DOC_NUMBER_MAX_LENGTH - '-G9'.length - '-R9'.length
 
 /**
  * Was this period key minted by the retired batch lanes' group hash?
@@ -53,131 +38,90 @@ export function isGroupPeriodKey(periodKey: string): boolean {
 }
 
 /**
- * Three letters per posting type.
- *
- * Pinned to `POSTING_TYPES` by an exact-key-equality test: a new posting
- * type with no prefix would otherwise mint `AUXX-undefined-…`, which is a
- * perfectly valid string that collides with every other new type.
+ * Three letters per posting type. Pinned to `POSTING_TYPES` by an exact-key
+ * test: a type with no prefix would mint `undefined-…` and collide with every
+ * other new type.
  */
 export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   fulfillment: 'FUL',
   payout: 'PAY',
   month_end_deferral: 'DEF',
   month_end_reversal: 'REV',
-  // An inventory document keys on a HASH of its own subject id, never on a
-  // month - `inventoryPeriodKey`, which carries the collision caveat.
   inventory_movement: 'INV',
   refund: 'RFD',
-  // 🛑 Keys on `vendor_bill_internal_number`, OURS, and never on
-  // `vendor_bill_number`, THEIRS: the vendor's number is not unique in our org,
-  // and two bills on one period key means the loser converges to
-  // `already_posted` - a SUCCESS - with its payable never recorded.
+  // Keys on `vendor_bill_internal_number`, ours: the vendor's own number is not
+  // unique in our org, and two bills on one key converge the loser to
+  // `already_posted` with its payable never recorded.
   vendor_bill: 'BIL',
-  // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
-  // and never a cuid - see `DocNumberInput.periodKey`.
   manual_journal: 'JNL',
   opening_balance: 'OPB',
   bank_transaction: 'BNK',
   bank_deposit: 'DEP',
   write_off: 'WOF',
-  // `PAY` is the payout's. A payment keys on a short hash of the transaction
-  // id (`PMT-<6 base36>`), never a counted sequence: two concurrent payments
-  // minting one key would converge the loser to `already_posted`, a SUCCESS,
-  // silently merging two payments into one entry.
+  // Hash-keyed types never use a counted sequence: two concurrent rows minting
+  // one key would converge the loser to `already_posted`, a SUCCESS, and merge
+  // two events into one entry. See `hashedPeriodKey` for the collision caveat.
   payment: 'PMT',
-  // 🛑 `INV` is `inventory_movement`'s and cannot be reused. An issuance entry keys on the INVOICE NUMBER, compacted,
-  // exactly as `manual_journal`, `bank_deposit` and `write_off` key on their
-  // own record's number, so one entry per invoice falls out of the claim index.
+  // `INV` is `inventory_movement`'s.
   invoice_issued: 'INI',
-  // A deposit application keys on a short hash of the ALLOCATION row's id
-  // (`DPA-<6 base36>`), for the reason spelled out at length in
-  // `build-payment-entry.ts`: a counted sequence lets two concurrent
-  // applications mint one key, and the loser converges to `already_posted` - a
-  // SUCCESS - with one customer's money folded into another's entry.
   deposit_application: 'DPA',
-  // A credit memo keys on the MEMO NUMBER, compacted, exactly as an invoice
-  // issuance keys on the invoice number: one entry per memo falls out of the
-  // claim index, and a void reverses it at `-R1`.
   credit_memo: 'CRM',
-  // The supplier's credit note. Keys on `vendor_credit_number` - OURS, `VC-0001`
-  // - and never on the supplier's own reference, for exactly the reason
-  // `vendor_bill` keys on the internal number: two suppliers may print the same
-  // credit-note string, and two entries on one period key means the loser
-  // converges to `already_posted` with its credit never recorded.
+  // Keys on `vendor_credit_number`, ours, for the reason `vendor_bill` does.
   vendor_credit: 'VCR',
-  // The accountant's own entry, synced in (brief 20 §6). Keys on the PROVIDER'S
-  // transaction id, which is the only identity it has - the claim index then
-  // gives per-transaction idempotency for free.
-  //
-  // ⚠️ The cap is the thing to watch here, because this is the one key whose
-  // length a third party chooses. `AUXX-SYN-` is 9 characters, so a transaction
-  // id may be 12 characters at revision 0 and only 9 once a `-R<n>` suffix is
-  // on it. QuickBooks' `Id` is numeric and capped at 11 characters, so an
-  // ORIGINAL always fits and a REVERSAL of a long id does not: `buildDocNumber`
-  // refuses at 10 digits with `-R1`. Brief 20 §7.1 reverses a synced entry that
-  // has vanished from the provider's ledger, so that refusal is reachable - see
-  // `__tests__/doc-number.test.ts`.
+  // Keys on the provider's own transaction id, the only identity an entry we
+  // did not author has. QuickBooks' `Id` is numeric and at most 11 characters,
+  // so `SYN-<id>-R9` always fits.
   provider_sync: 'SYN',
-  // brief 21 §1.4. Keys on `hashedPeriodKey({ prefix: 'RJE', sourceId:
-  // `${ruleId}:${occurrenceDate}` })`, NEVER a counted sequence: two sweeps
-  // racing on the March occurrence must converge on ONE key and let the loser
-  // read `already_posted`, which is the correct answer here.
-  //
-  // 🛑 `hashedPeriodKey`'s collision caveat is inherited: the caller owes a
-  // check on the winning posting's line `sourceId` before trusting
-  // `already_posted`, exactly as `postPaymentTransaction` does. Skip it and a
-  // one-in-2.2e9 fold silently swallows a real entry.
   recurring_journal: 'RJE',
-  // 74 D4. Keys on `hashedPeriodKey({ prefix: 'LCC', sourceId:
-  // `${goodsBillId}:${attempt}` })`: the goods bill's own number is not in this
-  // builder's reach and a clear is repeatable, so the attempt is in the key.
   landed_cost_clear: 'LCC',
+}
+
+/** Which rendering a posting type's period key takes. See the header. */
+export type DocNumberKind = 'document' | 'hash' | 'calendar'
+
+/**
+ * How each type keys, pinned to `POSTING_TYPES` like the prefix map.
+ * `document`: a `RecordSequence` number, possibly with a builder suffix
+ * (`ORD-0012-F1`). `hash`: a `hashedPeriodKey`-shaped `<PFX>-<fold>`, prefix
+ * included. `calendar`: a day, a month, or the provider's own id.
+ */
+export const DOC_NUMBER_KIND: Record<PostingType, DocNumberKind> = {
+  fulfillment: 'document',
+  payout: 'document',
+  month_end_deferral: 'calendar',
+  month_end_reversal: 'calendar',
+  inventory_movement: 'hash',
+  vendor_bill: 'document',
+  manual_journal: 'document',
+  opening_balance: 'calendar',
+  bank_transaction: 'hash',
+  bank_deposit: 'document',
+  write_off: 'document',
+  payment: 'hash',
+  refund: 'hash',
+  invoice_issued: 'document',
+  deposit_application: 'hash',
+  credit_memo: 'document',
+  provider_sync: 'calendar',
+  recurring_journal: 'hash',
+  vendor_credit: 'document',
+  landed_cost_clear: 'hash',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */
 export interface DocNumberInput {
   postingType: PostingType
   /**
-   * `GlPosting.periodKey` verbatim - and it is NOT always a period.
-   *
-   * 🛑 **Two types key on an id rather than a date, and both rules are
-   * load-bearing:**
-   *
-   * - **`build`** keys on the build's own **`build.number`** (`'BLD-0007'`),
-   *   never its cuid. Two builds can complete on one day, so a date key would
-   *   silently swallow the second - and `AUXX-BLD-<cuid>` is **33 characters**,
-   *   which this function refuses outright.
-   * - **`payout`** keys on the **payout id**, never a date. Shopify can issue
-   *   two payouts in a day; a date key merges them into one entry whose total
-   *   ties to neither deposit, and the reconciliation of 1200 Card Clearing
-   *   is exactly the thing that then cannot be done.
-   *
-   * - **`manual_journal`**, **`bank_deposit`**, **`write_off`** and
-   *   **`bank_transaction`** key on the source record's own **number**
-   *   (`'JE-0007'`, `'DEP-0003'`), for the same reason a build does: many can
-   *   post in one day, and a cuid is over the cap. `opening_balance` keys on
-   *   the cutover date, because an org has exactly one.
-   * - **`provider_sync`** keys on the PROVIDER'S transaction id - the only
-   *   identity an entry we did not author has. It is the one key whose length
-   *   somebody else chooses; see {@link DOC_NUMBER_PREFIX}'s note on it.
-   *
-   * Effect-backed fulfillment groups key on `fg_<membership hash prefix>`.
-   * Their accounting date remains in `txnDate`; the full hash is retained in
-   * the journal draft and compared on conflict by the acceptance boundary.
-   *
-   * Calendar-based entries key on a real period - `'2026-08-18'` for a day,
-   * `'2026-08'` for a month. Hyphens are stripped, so both compact to 8 and 6.
+   * `GlPosting.periodKey` verbatim. A document-keyed type carries its record's
+   * own number (`'BILL-0002'`, `'ORD-0012-F1'`); a hash-keyed type a
+   * `hashedPeriodKey`; a calendar-keyed type `'2026-08-18'`, `'2026-08'`, or
+   * the provider's transaction id.
    */
   periodKey: string
   /**
    * `GlPosting.revision`. 0 for the original; a reversal of revision N claims
-   * N+1.
-   *
-   * 🛑 **The `-R<revision>` suffix is REQUIRED, not cosmetic.**
-   * `GlPosting_org_docNumber_key` is unique per org, so a reversal sharing its
-   * original's document number is a constraint violation - the reversal simply
-   * cannot be written. It is also what a bookkeeper reads in the register to
-   * tell the pair apart.
+   * N+1 and renders `-R<N+1>`, which is what keeps `GlPosting_org_docNumber_key`
+   * satisfiable for the pair.
    */
   revision?: number
 }
@@ -185,30 +129,29 @@ export interface DocNumberInput {
 /**
  * Mint the deterministic document number for one entry.
  *
- * 🛑 **Refuses rather than truncates.** The old implementation ended in
- * `.slice(0, 21)`, which is the more dangerous half of the cap: a document
- * number is a natural key, two long keys can truncate to the SAME string, and
- * the unique index then rejects the second entry with a message about a
- * duplicate that a reader cannot connect to a length limit. Worse, a silent
- * truncation of a build number would make two builds' entries indistinguishable
- * in the provider's register. Failing here names the input.
+ * Refuses rather than truncates: two long keys can truncate to one string and
+ * the unique index then reports a duplicate a reader cannot connect to a
+ * length limit. A document-keyed key is checked against
+ * {@link DOCUMENT_KEY_MAX_LENGTH} at revision 0 so it still fits once reposted
+ * and reversed; the 21-character check on the final string is the backstop.
  *
  * @throws {UnprocessableEntityError} on an unknown posting type, a blank key, a
- * negative revision, or a composed value over {@link DOC_NUMBER_MAX_LENGTH}.
+ * negative revision, or a value over the cap.
  */
 export function buildDocNumber(input: DocNumberInput): string {
   const { postingType, periodKey, revision = 0 } = input
 
   const prefix = DOC_NUMBER_PREFIX[postingType]
-  if (!prefix) {
+  const kind = DOC_NUMBER_KIND[postingType]
+  if (!prefix || !kind) {
     throw new UnprocessableEntityError(
       `No document-number prefix is declared for posting type '${postingType}'`,
       { postingType }
     )
   }
 
-  const compact = periodKey.replace(/-/g, '')
-  if (compact.length === 0) {
+  const key = periodKey.trim()
+  if (key.length === 0) {
     throw new UnprocessableEntityError(
       `A ${postingType} posting needs a period key to key its document number on`,
       { postingType, periodKey }
@@ -222,15 +165,24 @@ export function buildDocNumber(input: DocNumberInput): string {
     )
   }
 
-  // Revision 0 carries NO suffix: it is the original, and every document number
-  // already minted is suffix-less. Adding one would re-key the whole ledger.
+  // The budget is the record's number alone: a repost arrives with `-G<n>` already on the key.
+  const number = kind === 'document' ? key.replace(/-G\d+$/, '') : key
+  if (kind === 'document' && revision === 0 && number.length > DOCUMENT_KEY_MAX_LENGTH) {
+    throw new UnprocessableEntityError(
+      `Document key '${number}' is ${number.length} characters and a document number allows ` +
+        `${DOCUMENT_KEY_MAX_LENGTH} (${DOC_NUMBER_MAX_LENGTH} total, less a repost and a reversal suffix).`,
+      { postingType, periodKey, length: String(number.length) }
+    )
+  }
+
   const suffix = revision > 0 ? `-R${revision}` : ''
-  const docNumber = `AUXX-${prefix}-${compact}${suffix}`
+  const base = kind === 'calendar' ? `${prefix}-${key.replace(/-/g, '')}` : key
+  const docNumber = `${base}${suffix}`
 
   if (docNumber.length > DOC_NUMBER_MAX_LENGTH) {
     throw new UnprocessableEntityError(
       `Document number '${docNumber}' is ${docNumber.length} characters, over the ${DOC_NUMBER_MAX_LENGTH}-character cap. ` +
-        'A build keys on `build.number` and a payout on the payout id - never on a cuid, which is 24 characters on its own.',
+        'Key on a short record number, never on a cuid.',
       { postingType, periodKey, revision: String(revision), length: String(docNumber.length) }
     )
   }

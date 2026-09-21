@@ -137,9 +137,7 @@ describe('the minted period key', () => {
 
   it('fits the document-number cap with room for a reversal suffix', () => {
     const key = buildDepositApplicationEntry(BASE).periodKey
-    expect(
-      `AUXX-${DOC_NUMBER_PREFIX.deposit_application}-${key.replace(/-/g, '')}-R9`.length
-    ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
+    expect(`${key}-R9`.length).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it('carries its own prefix rather than the payment prefix', () => {

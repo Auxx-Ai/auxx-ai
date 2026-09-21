@@ -314,7 +314,7 @@ describe('the rollback order guard (plan 67 §5.4)', () => {
       [
         {
           id: 'batch_payment_1',
-          payload: { appliesTo: { glPostingId: 'gp_1' }, docNumber: 'AUXX-PAY-1' },
+          payload: { appliesTo: { glPostingId: 'gp_1' }, docNumber: 'PAY-1' },
         },
       ],
     ])
@@ -322,7 +322,7 @@ describe('the rollback order guard (plan 67 §5.4)', () => {
     const result = await rollbackExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
 
     expect(result._unsafeUnwrap()).toMatchObject({ status: 'refused' })
-    expect(result._unsafeUnwrap().message).toContain('AUXX-PAY-1')
+    expect(result._unsafeUnwrap().message).toContain('PAY-1')
   })
 
   it("looks for the payment in the invoice's own book, not every book in the org", async () => {

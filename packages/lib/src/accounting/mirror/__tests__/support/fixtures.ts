@@ -190,7 +190,7 @@ export function ourEntry(over: Partial<OurPostedEntry> = {}): OurPostedEntry {
   return {
     glPostingId: 'post_1',
     providerEntryId: '6',
-    docNumber: 'AUXX-JNL-JE0007',
+    docNumber: 'JNL-0007',
     txnDate: '2026-02-15',
     lines: [
       {

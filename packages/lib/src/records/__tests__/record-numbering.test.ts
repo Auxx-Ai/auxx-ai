@@ -8,6 +8,7 @@
 // from the RecordSequence column defaults, and nothing asserts the three compose
 // unless something exercises the real function.
 
+import type { Database } from '@auxx/database'
 import { describe, expect, it, vi } from 'vitest'
 
 interface FakeRow {
@@ -75,7 +76,8 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 
-const { recordNumbering } = await import('../record-numbering')
+const { recordNumbering, validateAccountingSequence } = await import('../record-numbering')
+const { UnprocessableEntityError } = await import('../../errors')
 
 describe('recordNumbering — the `build` scope', () => {
   it('numbers the first build B-0001 and the next B-0002', async () => {
@@ -97,5 +99,80 @@ describe('recordNumbering — the `build` scope', () => {
   it('counts separately per organization', async () => {
     const other = await recordNumbering.create('org-2', 'build')
     expect(other).toEqual({ recordNumber: 'B-0001', sequenceNumber: 1 })
+  })
+})
+
+// The validator behind the sequence settings write (plans/accounting/tasks/80
+// §4.6): once a ledger posting copies the record number verbatim, two accounting
+// scopes rendering the same prefix in one org collide on the docNumber unique.
+describe('validateAccountingSequence', () => {
+  type OrgRow = { scope: string; prefix: string | null; usePrefix: boolean }
+  const dbWith = (rows: OrgRow[]) =>
+    ({ query: { RecordSequence: { findMany: async () => rows } } }) as unknown as Database
+
+  const refusal = async (result: Awaited<ReturnType<typeof validateAccountingSequence>>) => {
+    expect(result.isErr()).toBe(true)
+    const error = result._unsafeUnwrapErr()
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    return error.message
+  }
+
+  it('refuses a prefix another accounting scope in the org already renders', async () => {
+    const db = dbWith([{ scope: 'credit_memo', prefix: 'INV', usePrefix: true }])
+    const result = await validateAccountingSequence(db, {
+      organizationId: 'org-1',
+      scope: 'invoice',
+      format: { prefix: 'INV' },
+    })
+    expect(await refusal(result)).toContain('credit_memo')
+  })
+
+  it('refuses the default prefix of an accounting scope that has no row yet', async () => {
+    const result = await validateAccountingSequence(dbWith([]), {
+      organizationId: 'org-1',
+      scope: 'invoice',
+      format: { prefix: 'CM' },
+    })
+    expect(await refusal(result)).toContain('credit_memo')
+  })
+
+  it('lets a non-accounting scope share a prefix', async () => {
+    const db = dbWith([{ scope: 'invoice', prefix: 'INV', usePrefix: true }])
+    const result = await validateAccountingSequence(db, {
+      organizationId: 'org-1',
+      scope: 'ticket',
+      format: { prefix: 'INV' },
+    })
+    expect(result.isOk()).toBe(true)
+  })
+
+  it('refuses a suffix that renders as -R1 or -G2', async () => {
+    const dashed = await validateAccountingSequence(dbWith([]), {
+      organizationId: 'org-1',
+      scope: 'invoice',
+      format: { prefix: 'INV', useSuffix: true, suffix: 'R1', separator: '-' },
+    })
+    expect(await refusal(dashed)).toContain('-R1')
+
+    const bare = await validateAccountingSequence(dbWith([]), {
+      organizationId: 'org-1',
+      scope: 'invoice',
+      format: { prefix: 'INV', useSuffix: true, suffix: '-G2', separator: '' },
+    })
+    expect(await refusal(bare)).toContain('-G2')
+  })
+
+  it('passes a prefix nobody else in the org renders', async () => {
+    const db = dbWith([
+      { scope: 'credit_memo', prefix: 'CM', usePrefix: true },
+      // Switched off, so this row renders no prefix and `INV` is free.
+      { scope: 'vendor_bill', prefix: 'INV', usePrefix: false },
+    ])
+    const result = await validateAccountingSequence(db, {
+      organizationId: 'org-1',
+      scope: 'invoice',
+      format: { prefix: 'INV', useSuffix: true, suffix: 'A', separator: '-' },
+    })
+    expect(result.isOk()).toBe(true)
   })
 })

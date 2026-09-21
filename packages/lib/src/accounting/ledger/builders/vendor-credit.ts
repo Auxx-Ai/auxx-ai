@@ -19,7 +19,7 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import { assertCompactablePeriodKey } from '../periods/period-key'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
 import { toAmountMinor } from './fulfillment'
@@ -84,7 +84,7 @@ export interface BuiltVendorCreditEntry {
 export function buildVendorCreditEntry(input: BuildVendorCreditEntryInput): BuiltVendorCreditEntry {
   const { vendorCreditId, issuedAt, memo, vendorCompanyInstanceId } = input
 
-  const number = assertCompactablePeriodKey({
+  const number = assertDocumentKey({
     value: input.number,
     label: 'Vendor credit reference',
     remedy: 'Shorten the vendor credit sequence prefix.',

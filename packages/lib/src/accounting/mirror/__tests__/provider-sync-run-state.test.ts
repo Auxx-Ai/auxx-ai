@@ -143,9 +143,7 @@ describe('createProviderSyncRunLedger', () => {
     const ledger = createProviderSyncRunLedger(ORG, RUN_STARTED)
     await ledger.recordSlice({
       counters: { created: 4 },
-      errorSample: [
-        { externalId: 'AUXX-JNL-JE0006', error: 'Edited in the provider…', tier: 'diverged' },
-      ],
+      errorSample: [{ externalId: 'JNL-0006', error: 'Edited in the provider…', tier: 'diverged' }],
     })
     await ledger.finalize()
 
@@ -169,7 +167,7 @@ describe('createProviderSyncRunLedger', () => {
   it('holds the sample at the cap rather than growing it into a log', async () => {
     const ledger = createProviderSyncRunLedger(ORG, RUN_STARTED)
     const sample = (n: number) => ({
-      externalId: `AUXX-${n}`,
+      externalId: `JNL-${n}`,
       error: 'Edited in the provider…',
       tier: 'diverged' as const,
     })
@@ -180,7 +178,7 @@ describe('createProviderSyncRunLedger', () => {
     await ledger.recordSlice({ errorSample: [sample(99)] })
 
     expect(stored.blob?.currentRun?.errorSample).toHaveLength(50)
-    expect(stored.blob?.currentRun?.errorSample.some((s) => s.externalId === 'AUXX-99')).toBe(false)
+    expect(stored.blob?.currentRun?.errorSample.some((s) => s.externalId === 'JNL-99')).toBe(false)
   })
 
   it('closes a run as failed with the terminal message', async () => {

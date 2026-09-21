@@ -336,22 +336,22 @@ describe('the document number', () => {
   it('composes within the cap with room for the void reversal', () => {
     const built = buildCreditMemoEntry(BASE)
     expect(buildDocNumber({ postingType: 'credit_memo', periodKey: built.periodKey })).toBe(
-      'AUXX-CRM-CM0007'
+      'CM-0007'
     )
     expect(
       buildDocNumber({ postingType: 'credit_memo', periodKey: built.periodKey, revision: 1 })
-    ).toBe('AUXX-CRM-CM0007-R1')
+    ).toBe('CM-0007-R1')
     expect(
       buildDocNumber({ postingType: 'credit_memo', periodKey: built.periodKey, revision: 9 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
   })
 
   it('refuses at BUILD time a memo number that would only fail at reversal', () => {
-    // Twelve compacted characters posts fine at revision 0 (exactly the cap)
-    // and refuses at 24 the day the memo is voided. The refusal has to happen
+    // Sixteen characters fits the 21-character cap at revision 0 and refuses
+    // once a repost and a reversal suffix are on it. The refusal has to happen
     // before anything is claimed.
-    const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, number: 'CM-202609-0007' }))
-    expect(error.message).toMatch(/compacts to 12 characters/)
+    const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, number: 'CM-202609-000007' }))
+    expect(error.message).toMatch(/is 16 characters/)
     expect(error.message).toMatch(/manual journal entry/)
   })
 })

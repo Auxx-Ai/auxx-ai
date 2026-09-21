@@ -250,7 +250,7 @@ describe('reverseDepositApplicationAccounting', () => {
   it('reverses the application posting, freeing its claim', async () => {
     h.findLiveSubjectPosting.mockResolvedValue({
       isErr: () => false,
-      value: { id: 'gp_1', docNumber: 'AUXX-DPA-0001' },
+      value: { id: 'gp_1', docNumber: 'DPA-80DBIZ' },
     })
 
     const result = await reverseDepositApplicationAccounting(stubDb(), {

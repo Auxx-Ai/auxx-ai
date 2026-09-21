@@ -62,7 +62,7 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import { assertCompactablePeriodKey } from '../periods/period-key'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
 import { toAmountMinor } from './fulfillment'
@@ -152,7 +152,7 @@ export interface BuiltInvoiceEntry {
 export function buildInvoiceEntry(input: BuildInvoiceEntryInput): BuiltInvoiceEntry {
   const { invoiceId, issuedAt, memo, contactInstanceId } = input
 
-  const invoiceNumber = assertCompactablePeriodKey({
+  const invoiceNumber = assertDocumentKey({
     value: input.invoiceNumber,
     label: 'Invoice number',
     remedy:

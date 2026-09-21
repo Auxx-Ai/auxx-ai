@@ -183,7 +183,7 @@ beforeEach(() => {
   h.postings = [
     {
       glPostingId: 'gp_1',
-      docNumber: 'AUXX-BIL-BILL0007',
+      docNumber: 'BILL-0007',
       status: 'posted',
       postingType: 'vendor_bill',
     },
@@ -200,7 +200,7 @@ beforeEach(() => {
   h.postVendorBillEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',
-    docNumber: 'AUXX-BIL-BILL0007-R1',
+    docNumber: 'BILL-0007-R1',
   })
 })
 
@@ -369,7 +369,7 @@ describe('saveDocumentEdit', () => {
     const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('unchanged')
-    expect(result.docNumber).toBe('AUXX-BIL-BILL0007')
+    expect(result.docNumber).toBe('BILL-0007')
     expect(h.reverseEntry).not.toHaveBeenCalled()
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
@@ -434,7 +434,7 @@ describe('the repost generation', () => {
     h.postings = [
       {
         glPostingId: 'gp_1',
-        docNumber: 'AUXX-BIL-BILL0002',
+        docNumber: 'BILL-0002',
         status: 'posted',
         postingType: 'vendor_bill',
       },
@@ -445,10 +445,10 @@ describe('the repost generation', () => {
     await saveDocumentEdit(db, target)
 
     const key = postedEntry().periodKey
-    expect(key).toBe('0002G2')
+    expect(key).toBe('BILL-0002-G2')
     const docNumber = buildDocNumber({ postingType: 'vendor_bill', periodKey: key })
-    expect(docNumber).toBe('AUXX-BIL-0002G2')
-    expect(docNumber).not.toBe('AUXX-BIL-BILL0002')
+    expect(docNumber).toBe('BILL-0002-G2')
+    expect(docNumber).not.toBe('BILL-0002')
     expect(
       buildDocNumber({ postingType: 'vendor_bill', periodKey: key, revision: 1 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
@@ -461,7 +461,7 @@ describe('the repost generation', () => {
     h.postings = [
       {
         glPostingId: 'gp_3',
-        docNumber: 'AUXX-BIL-0002G2',
+        docNumber: 'BILL-0002-G2',
         status: 'posted',
         postingType: 'vendor_bill',
       },
@@ -471,7 +471,7 @@ describe('the repost generation', () => {
 
     await saveDocumentEdit(db, target)
 
-    expect(postedEntry().periodKey).toBe('0002G3')
+    expect(postedEntry().periodKey).toBe('BILL-0002-G3')
     expect(h.writeDocumentLedgerGeneration).toHaveBeenCalledWith(db, ORG, BILL_ID, 3)
   })
 })
@@ -530,7 +530,7 @@ describe('saving against a drafted entry', () => {
     h.postings = [
       {
         glPostingId: 'gp_1',
-        docNumber: 'AUXX-BIL-BILL0002',
+        docNumber: 'BILL-0002',
         status: 'reversed',
         postingType: 'vendor_bill',
       },
@@ -539,7 +539,7 @@ describe('saving against a drafted entry', () => {
     const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('reposted')
-    expect(postedEntry().periodKey).toBe('0002G2')
+    expect(postedEntry().periodKey).toBe('BILL-0002-G2')
     expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
     expect(h.reverseEntry).not.toHaveBeenCalled()
   })

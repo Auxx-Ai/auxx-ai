@@ -51,7 +51,7 @@ describe('the divergence card', () => {
     renderReport({
       errorSample: [
         {
-          externalId: 'AUXX-JNL-JE0006',
+          externalId: 'JNL-0006',
           error:
             'Edited in the provider since we exported it. Total: ours is $900.00, theirs is $1,500.00.',
           tier: 'diverged',
@@ -60,14 +60,14 @@ describe('the divergence card', () => {
     })
 
     expect(screen.getByText(/no longer matches QuickBooks/)).toBeDefined()
-    expect(screen.getByText('AUXX-JNL-JE0006')).toBeDefined()
+    expect(screen.getByText('JNL-0006')).toBeDefined()
     expect(screen.getByText(/Total: ours is \$900\.00, theirs is \$1,500\.00\./)).toBeDefined()
   })
 
   // 🛑 The negative half, and the one that matters most.
   it('offers nothing that would repair it', () => {
     renderReport({
-      errorSample: [{ externalId: 'AUXX-JNL-JE0006', error: 'Edited…', tier: 'diverged' }],
+      errorSample: [{ externalId: 'JNL-0006', error: 'Edited…', tier: 'diverged' }],
     })
 
     expect(screen.queryAllByRole('button')).toHaveLength(0)
@@ -84,7 +84,7 @@ describe('the divergence card', () => {
   // would tell a reader that something is missing from their books.
   it('keeps a divergence out of the refusal card', () => {
     renderReport({
-      errorSample: [{ externalId: 'AUXX-JNL-JE0006', error: 'Edited…', tier: 'diverged' }],
+      errorSample: [{ externalId: 'JNL-0006', error: 'Edited…', tier: 'diverged' }],
     })
 
     expect(screen.queryByText(/refused and are NOT in your books/)).toBeNull()

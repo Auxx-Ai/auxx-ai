@@ -63,9 +63,12 @@ export {
   DEPOSIT_APPLICATION_PERIOD_KEY_PREFIX,
   DEPOSIT_APPLICATION_POSTING_TYPE,
   DEPOSIT_APPLICATION_SOURCE_TYPE,
+  DOC_NUMBER_KIND,
   DOC_NUMBER_MAX_LENGTH,
   DOC_NUMBER_PREFIX,
+  DOCUMENT_KEY_MAX_LENGTH,
   type DocNumberInput,
+  type DocNumberKind,
   depositApplicationPeriodKey,
   extendRateToAmount,
   FULFILLMENT_SOURCE_TYPE,
@@ -147,7 +150,7 @@ export {
 } from './chart'
 export {
   assertAccountingSetupUnfrozen,
-  assertCompactablePeriodKey,
+  assertDocumentKey,
   assertPeriodOpen,
   type CloseBlockersResult,
   compareMonths,

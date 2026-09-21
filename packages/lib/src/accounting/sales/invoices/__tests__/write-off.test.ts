@@ -680,7 +680,7 @@ describe('previewWriteOffInvoice', () => {
       postingType: 'write_off',
       periodKey: 'INV-0042',
       txnDate: '2026-09-03',
-      docNumber: 'AUXX-WOF-INV0042',
+      docNumber: 'INV-0042',
       lines: [],
       totalMinor: 50_000,
     })

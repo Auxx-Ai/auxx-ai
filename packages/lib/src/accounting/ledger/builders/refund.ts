@@ -19,6 +19,7 @@ import { UnprocessableEntityError } from '../../../errors'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
 import { buildEntry } from './entry'
 import { movementPeriodKey } from './movement-key'
+import { sourceFactsMemo } from './source-facts-memo'
 
 /** The `sourceType` every refund line carries - the movement. */
 export const REFUND_SOURCE_TYPE = 'money_transaction'
@@ -80,7 +81,8 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
       moneyTransactionId,
     })
 
-  const memo = input.memo ?? 'Customer credit refund'
+  const memo =
+    input.memo ?? sourceFactsMemo({ transactionId: moneyTransactionId }, 'Customer credit refund')
   const lines: GlPostingLineInput[] = []
   let totalMinor = 0
   for (const settlement of input.settlements) {

@@ -90,9 +90,10 @@
 
 import { UnprocessableEntityError } from '../../../errors'
 import type { PaymentGatewayFeeTreatmentValue } from '../../rails/client'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput, RoleSourceScope } from '../types'
-import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
+import { sourceFactsMemo } from './source-facts-memo'
 
 /** The `sourceType` every payout line carries. */
 export const PAYOUT_SOURCE_TYPE = 'payout'
@@ -170,8 +171,6 @@ export interface BuiltPayoutEntry {
   depositedMinor: number
 }
 
-const MAX_COMPACT_PERIOD_KEY = DOC_NUMBER_MAX_LENGTH - 'AUXX-PAY-'.length - '-R9'.length
-
 function assertMinor(value: number, label: string, payoutNumber: string): number {
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
     throw new UnprocessableEntityError(
@@ -201,15 +200,12 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const currency = input.currency?.trim()
   const feeTreatment = input.feeTreatment ?? 'netted'
 
-  const number = payoutNumber.trim()
-  if (!number) {
-    throw new UnprocessableEntityError(
-      'A payout entry needs a short payout number to key its document number on - never a bare ' +
-        'gateway id, which is over the 21-character cap, and never a date, because two payouts ' +
-        'can settle on one day.',
-      { payoutId }
-    )
-  }
+  const number = assertDocumentKey({
+    value: payoutNumber,
+    label: 'Payout number',
+    remedy: 'Key on a short payout number rather than the gateway id, and never on a date.',
+    context: { payoutId },
+  })
   if (!rail) {
     throw new UnprocessableEntityError(
       `Payout ${number} has no rail. A payout with no rail cannot exist - it was read by a ` +
@@ -223,15 +219,6 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       payoutNumber: number,
     })
   }
-  const compact = number.replace(/-/g, '')
-  if (compact.length > MAX_COMPACT_PERIOD_KEY) {
-    throw new UnprocessableEntityError(
-      `Payout number "${number}" compacts to ${compact.length} characters and the document number ` +
-        `allows ${MAX_COMPACT_PERIOD_KEY}. Key on a short payout number rather than the gateway's id.`,
-      { payoutId, payoutNumber: number, length: String(compact.length) }
-    )
-  }
-
   const grossMinor = assertMinor(input.grossMinor, 'gross', number)
   const feesMinor = assertMinor(input.feesMinor, 'fees', number)
   const netMinor = assertMinor(input.netMinor, 'net', number)
@@ -307,6 +294,8 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const source = { sourceType: PAYOUT_SOURCE_TYPE, sourceId: payoutId }
   /** Every leg reads its account through this same rail scope (task 58 §5.3). */
   const sourceScope: RoleSourceScope = { rail, currency }
+  const leg = (detail: string) =>
+    sourceFactsMemo({ transactionId: payoutId }, `Payout ${number} - ${detail}`)
   const lines: GlPostingLineInput[] = [
     {
       ...source,
@@ -316,7 +305,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       // line matches against, and the bank shows one figure for the payout.
       direction: 'debit',
       amount: depositedMinor,
-      memo: memo ?? `Payout ${number} - deposited`,
+      memo: memo ?? leg('deposited'),
       sortOrder: 0,
     },
   ]
@@ -331,7 +320,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sourceScope,
       direction: 'debit',
       amount: feesMinor,
-      memo: `Payout ${number} - processor fees withheld`,
+      memo: leg('processor fees withheld'),
       sortOrder: 1,
     })
   }
@@ -345,7 +334,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sourceScope,
       direction: 'credit',
       amount: grossMinor,
-      memo: `Payout ${number} - gross settled`,
+      memo: leg('gross settled'),
       sortOrder: 2,
     })
   }
@@ -359,7 +348,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sourceScope,
       direction: 'credit',
       amount: unrecognisedNetMinor,
-      memo: `Payout ${number} - settled charges auxx has no payment for`,
+      memo: leg('settled charges auxx has no payment for'),
       sortOrder: 3,
     })
   }

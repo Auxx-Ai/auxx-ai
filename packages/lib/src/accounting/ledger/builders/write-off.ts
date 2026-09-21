@@ -15,8 +15,9 @@
 // plans/accounting/HANDOFF.md slot 2K; gap-analysis.md §3 item 9.
 
 import { UnprocessableEntityError } from '../../../errors'
-import { assertCompactablePeriodKey, MAX_COMPACT_PERIOD_KEY } from '../periods/period-key'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
+import { DOCUMENT_KEY_MAX_LENGTH } from './doc-number'
 import { ACCOUNT_ROLES, buildEntry } from './entry'
 
 /**
@@ -74,19 +75,14 @@ function fold36(value: string, width: number): string {
  *   uses - would make every write-off already in a ledger invisible to the
  *   idempotency check and let a duplicate post.
  * - **attempt 1..35** is that number plus one base-36 character, or - when the
- *   number is too long to leave room for one - an eight-character fold of its
- *   compacted form plus that character. Nine compacted characters either way,
- *   which is the whole budget `AUXX-WOF-…-R9` leaves.
+ *   number is too long to leave room for one - a fold of it plus that
+ *   character. Within `DOCUMENT_KEY_MAX_LENGTH` either way.
  *
- * ⚠️ `buildDocNumber` strips hyphens and nothing else, so there is no separator
- * that survives into the document number and the attempt is simply appended.
- * `INV-0042` attempt 1 therefore mints `INV-00421` and the document number
- * `AUXX-WOF-INV00421`, which an invoice literally numbered `INV-00421` would
- * also mint at attempt 0. Numbers off one sequence are uniform width, so
- * appending a character can never reproduce another one of them; this is the
- * same accepted trade the bank line's key makes, and the
- * alternative - a counted sequence - is the one shape that is actively
- * dangerous here.
+ * ⚠️ The attempt is simply appended: `INV-0042` attempt 1 mints `INV-00421`,
+ * which an invoice literally numbered `INV-00421` would also mint at attempt 0.
+ * Numbers off one sequence are uniform width, so appending a character can
+ * never reproduce another one of them; the alternative - a counted sequence -
+ * is the one shape that is actively dangerous here.
  *
  * @throws {UnprocessableEntityError} on a blank or over-long invoice number, or
  *   an attempt past {@link MAX_WRITE_OFF_ATTEMPT}.
@@ -100,19 +96,13 @@ export function writeOffPeriodKey(params: {
   const { invoiceNumber, invoiceId } = params
   const attempt = params.attempt ?? 0
 
-  // 🛑 The cap is checked with the REVERSAL suffix in the budget, not just the
-  // key: an invoice number that compacts to twelve characters posts perfectly
-  // at revision 0 (`AUXX-WOF-` plus twelve is exactly 21) and then refuses the
-  // day somebody reverses it, at 24 - a write-off in the books with no way to
-  // take it out. `period-key.ts` owns that arithmetic for every builder.
-  const number = assertCompactablePeriodKey({
+  const number = assertDocumentKey({
     value: invoiceNumber,
     label: "The invoice's own number",
     remedy:
       'Shorten the invoice number, or write the amount off with a manual journal entry instead.',
     context: invoiceId ? { invoiceId } : undefined,
   })
-  const compact = number.replace(/-/g, '')
 
   if (!Number.isInteger(attempt) || attempt < 0) {
     throw new UnprocessableEntityError(
@@ -131,8 +121,8 @@ export function writeOffPeriodKey(params: {
 
   if (attempt === 0) return number
 
-  const room = MAX_COMPACT_PERIOD_KEY - 1
-  const base = compact.length <= room ? number : fold36(compact, room)
+  const room = DOCUMENT_KEY_MAX_LENGTH - 1
+  const base = number.length <= room ? number : fold36(number, room)
   return `${base}${attempt.toString(36).toUpperCase()}`
 }
 
@@ -140,9 +130,7 @@ export interface BuildWriteOffEntryInput {
   /** The `invoice` EntityInstance id. Becomes every line's `sourceId`. */
   invoiceId: string
   /**
-   * The invoice's own number (`'INV-0042'`) - `periodKey` keys on this,
-   * compacted by `doc-number.ts` the same way `manual_journal`/`bank_deposit`
-   * key on their own record's number.
+   * The invoice's own number (`'INV-0042'`) - `periodKey` keys on this.
    */
   invoiceNumber: string
   /**

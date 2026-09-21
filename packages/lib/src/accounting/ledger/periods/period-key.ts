@@ -17,8 +17,8 @@
  * where the mechanism lives.
  *
  * `PaymentTransaction` and `PaymentAllocation` both have **no number column** -
- * nothing short and stable to key on. Their ids are 24-character cuids, and
- * `AUXX-PMT-<cuid>` blows the 21-character document-number cap on its own.
+ * nothing short and stable to key on. Their ids are 24-character cuids, over
+ * the 21-character document-number cap on their own.
  *
  * The obvious alternative - `PMT-0001`, `PMT-0002`, counted off the existing
  * postings - is the one shape that is actively dangerous. Two rows processed
@@ -40,22 +40,16 @@
  */
 
 import { UnprocessableEntityError } from '../../../errors'
-import { DOC_NUMBER_MAX_LENGTH } from '../builders/doc-number'
+import { DOC_NUMBER_MAX_LENGTH, DOCUMENT_KEY_MAX_LENGTH } from '../builders/doc-number'
 
 /**
- * How many characters of compacted period key fit inside a document number,
- * with room for a reversal suffix.
- *
- * `AUXX-XXX-` is nine characters and `-R9` is three, so nine are left.
- *
- * 🛑 The `-R9` headroom is the half that is easy to drop, and dropping it is
- * the worst possible bug: a key that compacts to twelve characters posts
- * perfectly at revision 0 (nine plus twelve is exactly 21) and then REFUSES the
- * day somebody reverses it, at 24. The entry would be in the books with no way
- * to take it out. Every builder in this folder checks the reversal-inclusive
- * cap up front for this reason.
+ * The budget for a hash- or calendar-keyed period key, compacted: the cap less
+ * a `XXX-` prefix and a `-R9` reversal suffix. The reversal headroom is
+ * reserved up front because `buildDocNumber` only sees revision 0 on the way
+ * in, and a key that fits there and refuses at `-R1` is an entry that cannot be
+ * taken out of the books.
  */
-export const MAX_COMPACT_PERIOD_KEY = DOC_NUMBER_MAX_LENGTH - 'AUXX-XXX-'.length - '-R9'.length
+export const MAX_COMPACT_PERIOD_KEY = DOC_NUMBER_MAX_LENGTH - 'XXX-'.length - '-R9'.length
 
 /** How many base-36 digits the folded hash renders as. */
 const HASH_DIGITS = 6
@@ -119,16 +113,13 @@ export function hashedPeriodKey(input: HashedPeriodKeyInput): string {
 }
 
 /**
- * Refuse a DOCUMENT NUMBER that would not survive a reversal.
- *
- * The other half of the keyspace: types that key on a record's own number
- * (`'INV-0042'`) rather than on a hash. Same cap, same `-R9` headroom, same
- * reason.
+ * Refuse a document-keyed period key (`'INV-0042'`, a record's own number,
+ * kept verbatim) that would not survive a repost and a reversal.
  *
  * @returns the number, trimmed, so a caller can use the result directly.
  * @throws {UnprocessableEntityError} on a blank or over-long number.
  */
-export function assertCompactablePeriodKey(input: {
+export function assertDocumentKey(input: {
   value: string | null | undefined
   /** What the value is, for the message - `'Invoice number'`. */
   label: string
@@ -144,13 +135,12 @@ export function assertCompactablePeriodKey(input: {
       context
     )
   }
-  const compact = value.replace(/-/g, '')
-  if (compact.length > MAX_COMPACT_PERIOD_KEY) {
+  if (value.length > DOCUMENT_KEY_MAX_LENGTH) {
     throw new UnprocessableEntityError(
-      `${label} "${value}" compacts to ${compact.length} characters and a document number ` +
-        `allows ${MAX_COMPACT_PERIOD_KEY} (${DOC_NUMBER_MAX_LENGTH} characters total, less the ` +
-        `"AUXX-XXX-" prefix and a reversal suffix). ${remedy}`,
-      { ...context, length: String(compact.length) }
+      `${label} "${value}" is ${value.length} characters and a document number ` +
+        `allows ${DOCUMENT_KEY_MAX_LENGTH} (${DOC_NUMBER_MAX_LENGTH} characters total, less a ` +
+        `repost and a reversal suffix). ${remedy}`,
+      { ...context, length: String(value.length) }
     )
   }
   return value

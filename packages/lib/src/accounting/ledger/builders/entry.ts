@@ -22,7 +22,7 @@ import type { GlAccountSubtypeValue } from '../chart/account-subtype'
 // Type-only, so this file stays pure: `default-chart.ts` imports the statement
 // classifications from the registry at runtime, and nothing of that reaches here.
 import type { GlAccountTypeValue } from '../chart/default-chart'
-import { assertCompactablePeriodKey } from '../periods/period-key'
+import { assertDocumentKey } from '../periods/period-key'
 import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } from '../types'
 // A cycle with `fulfillment.ts`, which imports this module: safe because every
 // use on both sides is inside a function body, never at module scope.
@@ -945,7 +945,7 @@ export interface BuiltVendorBillEntry {
 export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBillEntry {
   const { vendorBillId, billedAt, memo, vendorCompanyInstanceId } = input
 
-  const number = assertCompactablePeriodKey({
+  const number = assertDocumentKey({
     value: input.internalNumber,
     label: 'Bill reference',
     remedy:
@@ -954,7 +954,7 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
     context: { vendorBillId },
   })
   const periodKey = input.periodKey?.trim()
-    ? assertCompactablePeriodKey({
+    ? assertDocumentKey({
         value: input.periodKey,
         label: 'Bill entry key',
         remedy: 'Shorten the vendor bill sequence prefix.',

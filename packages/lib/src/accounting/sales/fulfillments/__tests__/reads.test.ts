@@ -407,7 +407,7 @@ describe('readFulfillmentsForOrders', () => {
       ],
       [], // no lines
       // `GlPostingSource` joined to `GlPosting` for this fulfillment's subject row.
-      [{ sourceId: 'ful_1', glPostingId: 'gp_1', docNumber: 'AUXX-FUL-ORD1F1' }],
+      [{ sourceId: 'ful_1', glPostingId: 'gp_1', docNumber: 'ORD-0001-F1' }],
     ])
 
     const result = await readFulfillmentsForOrders(db, {
@@ -416,7 +416,7 @@ describe('readFulfillmentsForOrders', () => {
     })
     expect(result.get('ord_1')?.[0]).toMatchObject({
       glPosting: 'gp_1',
-      docNumber: 'AUXX-FUL-ORD1F1',
+      docNumber: 'ORD-0001-F1',
     })
   })
 })
