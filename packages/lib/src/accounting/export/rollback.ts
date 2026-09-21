@@ -109,7 +109,9 @@ export async function rollbackExportBatch(
         message: 'This batch is being sent right now. Wait for it to settle, then roll it back.',
         postingsFreed: 0,
       })
-    if (batch.state !== 'sent' || !batch.providerObjectId)
+    // `failed` is withdrawable when it names an object: a create that landed and
+    // then failed its read-back is exactly the orphan this door exists to clear.
+    if ((batch.state !== 'sent' && batch.state !== 'failed') || !batch.providerObjectId)
       return ok({
         batchId,
         status: 'refused',
