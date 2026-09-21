@@ -1,11 +1,9 @@
 // scripts/ci/raw-query-ratchet.js
 //
-// A RATCHET, not a gate. `audit-log/` is the one module that should write
-// `AuditLog`; `connections/`/`credentials/` the only ones that should read
-// `Credential` (docs/lib-module-guide.md §8). Nine files still read `Credential`
-// directly pending a follow-up sweep, so this can't be a gate — it can ratchet: a
-// NEW bypass, or a listed file growing a second one, fails; the baseline only
-// ever shrinks.
+// A RATCHET, not a gate. A module that owns a table exports its reads and writes
+// (docs/lib-module-guide.md §8); every other file that still queries the table by
+// hand is baselined here, so a NEW bypass, or a listed file growing a second one,
+// fails, and the baseline only ever shrinks. Rules: plans/accounting/LIB-READS.md §5.
 //
 //   node scripts/ci/raw-query-ratchet.js
 //   node scripts/ci/raw-query-ratchet.js --update   # re-record the baseline
@@ -21,10 +19,17 @@ const ROOT = resolve(import.meta.dirname, '..', '..')
 const BASELINE_PATH = join(ROOT, 'scripts', 'ci', 'raw-query-baseline.json')
 const LIB_SRC = join(ROOT, 'packages', 'lib', 'src')
 
+/** `from|insert|update|delete((schema.)T)` and `query.T.<fn>(` for the named tables. */
+function tableAccess(tables) {
+  return new RegExp(
+    `\\b(from|insert|update|delete)\\((schema\\.)?(${tables})\\)|\\bquery\\.(${tables})\\.\\w+\\(`
+  )
+}
+
 /**
- * Each rule: a name, the pattern that marks a bypass, and the directories (relative
- * to `packages/lib/src`, matched as a path segment) that are exempt because they own
- * the table.
+ * Each rule: the pattern that marks a bypass, plus what is exempt because it owns the
+ * table — `exemptDirs` (a path segment) or `exempt` (a prefix relative to
+ * `packages/lib/src`). `scope` limits a rule to prefixes; everything else is ignored.
  */
 const RULES = [
   {
@@ -43,6 +48,80 @@ const RULES = [
     pattern: /from\((schema\.)?Credential\)|\bquery\.Credential\.\w+\(/,
     exemptDirs: ['connections', 'credentials'],
   },
+  {
+    name: 'moneyRaw',
+    label: 'raw money-table access outside accounting/money reads/writes',
+    pattern: tableAccess(
+      'MoneyTransaction|MoneyApplication|MoneyRefundSettlement|MoneySourceLink|MoneyCommand|MoneyTransfer'
+    ),
+    exempt: [
+      'accounting/money/reads.ts',
+      'accounting/money/writes.ts',
+      'accounting/money/commands/',
+      'accounting/money/bank-deposits/',
+      'accounting/money/blocked-movements.ts',
+      'accounting/money/post-movement.ts',
+    ],
+  },
+  {
+    name: 'ledgerRaw',
+    label: 'raw ledger-table access outside accounting/ledger reads, post, roles',
+    pattern: tableAccess('GlPosting|GlPostingLine|GlPostingSource|GlRoleAssignment'),
+    exempt: [
+      'accounting/ledger/reads/',
+      'accounting/ledger/post/',
+      'accounting/ledger/roles/',
+      'accounting/reports/',
+    ],
+  },
+  {
+    name: 'exportRaw',
+    label: 'raw ExportBatch access outside accounting/export',
+    pattern: tableAccess('ExportBatch|ExportBatchPosting'),
+    exempt: ['accounting/export/'],
+  },
+  {
+    name: 'sourceRaw',
+    label: 'raw financial-source access outside its owners',
+    pattern: tableAccess('FinancialSource\\w+|ProcessorBalanceEntry'),
+    exempt: [
+      'accounting/money/customer-money/source-reads.ts',
+      'accounting/money/customer-money/source-writes.ts',
+      'accounting/money/customer-money/record-storage.ts',
+      'accounting/money/customer-money/record-evidence.ts',
+      'accounting/ledger/roles/source-scope.ts',
+      'accounting/money/payouts/entry-reads.ts',
+    ],
+  },
+  {
+    name: 'recurrenceRaw',
+    label: 'raw RecurrenceRule access outside recurrence/',
+    pattern: tableAccess('RecurrenceRule'),
+    exempt: ['recurrence/'],
+  },
+  {
+    name: 'allocationRaw',
+    label:
+      'raw allocation/installment/visit access outside sales/billing/allocations.ts and dispatch/',
+    pattern: tableAccess(
+      'InvoiceLineAllocation|InvoiceVisitAllocation|InvoiceScheduleAllocation|WorkOrderBillingInstallment|WorkOrderVisit'
+    ),
+    exempt: ['accounting/sales/billing/allocations.ts', 'dispatch/'],
+  },
+  {
+    name: 'connectorRaw',
+    label: 'raw DataConnector access outside data-connectors/',
+    pattern: tableAccess('DataConnector'),
+    exempt: ['data-connectors/'],
+  },
+  {
+    name: 'fieldValueRaw',
+    label:
+      'raw FieldValue select in accounting/ and inventory/ (resources/system-records is the reader)',
+    pattern: /from\((schema\.)?FieldValue\)/,
+    scope: ['accounting/', 'inventory/'],
+    exempt: [],
+  },
 ]
 
 function isExempt(relPath, exemptDirs) {
@@ -59,7 +138,10 @@ function collect(rule) {
   for (const file of files) {
     const absPath = join(LIB_SRC, file)
     const relPath = relative(ROOT, absPath).replaceAll('\\', '/')
-    if (isExempt(relPath, rule.exemptDirs)) continue
+    const libRel = file.replaceAll('\\', '/')
+    if (rule.scope && !rule.scope.some((prefix) => libRel.startsWith(prefix))) continue
+    if (rule.exemptDirs && isExempt(relPath, rule.exemptDirs)) continue
+    if (rule.exempt?.some((prefix) => libRel.startsWith(prefix))) continue
     const text = readFileSync(absPath, 'utf8')
     const hits = text.match(new RegExp(rule.pattern, 'g'))
     if (hits?.length) counts[relPath] = hits.length
