@@ -59,7 +59,13 @@ vi.mock('~/components/permissions/ui/record-request-access-popover', async (impo
 
 vi.mock('~/trpc/react', () => ({
   api: {
-    useUtils: () => ({ approval: { recordAccessRequestPreflight: { invalidate: vi.fn() } } }),
+    useUtils: () => ({
+      approval: { recordAccessRequestPreflight: { invalidate: vi.fn() } },
+      // `ConnectorSourceBadge` reads these through `useExternalLink`.
+      record: {
+        getExternalLink: { fetch: vi.fn(), prefetch: vi.fn(), getData: vi.fn() },
+      },
+    }),
     approval: {
       recordAccessRequestPreflight: {
         useQuery: (input: unknown, opts: { enabled: boolean }) => {

@@ -268,6 +268,9 @@ export interface CatalogField {
   /** This field is an external-system identity (e.g. Shopify `customerId`) —
    *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
   identity?: boolean
+  /** Page-URL template for an identity field (`{externalId}`, `{connection.<key>}`,
+   *  `{via.<belongsTo>.<appFieldKey>}`, `{field.<key>}`) — see plans/data-connectors/external-record-link-plan.md. */
+  link?: string
   /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field (e.g. `['street', 'city', 'state', 'country']`). */

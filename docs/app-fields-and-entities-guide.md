@@ -89,6 +89,7 @@ interface FieldDecl {
   description?: string
   capabilities?: FieldCapabilities  // filterable, sortable, creatable, updatable, required, unique, computed, hidden
   identity?: boolean                // this value IS the external-system id of the record
+  link?: string                     // `identity` only: URL template for the record's page in the source
   options?: FieldSelectOption[]     // REQUIRED for SINGLE_SELECT / MULTI_SELECT / TAGS
   addressComponents?: string[]      // ADDRESS_STRUCT only
   relationship?: {                  // RELATIONSHIP only
@@ -154,6 +155,25 @@ and `ACTOR`, because `RecordIdentity` stores one scalar `externalId` per
 be `identity: true`: it is the record's external id, full stop. `defineFields` does not have an
 equivalent "at most one per entity" rule stated in the plan; an app is still expected to declare at
 most one identity field per target entity in practice.
+
+### `link`
+
+`link` is a URL template for the record's page in the source system, valid only next to
+`identity: true`. It is one string; nothing is stored per record. Four variables, nothing else:
+
+| Variable | Resolves to |
+| --- | --- |
+| `{externalId}` | the identity row's own `externalId` |
+| `{connection.<key>}` | plaintext `Credential.metadata[<key>]` of the identity's connection; `identity` aliases `__identity` (the handle the identify hook stamped: a shop domain, an `acct_…`, a `realmId`). Never the secret half |
+| `{via.<belongsTo>.<appFieldKey>}` | follow one belongs_to hop, then read the parent's identity row for the same app and connection. **One hop only** — two-hop templates are rejected at extraction |
+| `{field.<key>}` | a scalar value on the same record, by app field key or system attribute |
+
+The template must start with `https://` or `{field.` (the escape hatch for a source that ships the
+page URL itself, as GitHub's `html_url` does), and the resolved string must parse as `https:`. Any
+variable that resolves to nothing yields no link rather than a half URL. Resolution is lazy — the
+badge only flags a chip as linkable; the URL is composed on click by `record.getExternalLink`, so
+connection metadata never reaches the client. See
+`plans/data-connectors/external-record-link-plan.md` for the resolver and the render sites.
 
 ### Select options, address components, relationships, calc
 

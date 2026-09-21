@@ -41,6 +41,8 @@ export interface RecordSourceChip {
   appInstallationId: string
   /** Store/connection scope; null for installation-scoped identities. */
   connectionId: string | null
+  /** The app declares a page-URL template — the badge opens `record.getExternalLink`. */
+  linkable?: true
 }
 
 /**

@@ -199,6 +199,9 @@ export interface CatalogField {
   /** This field is an external-system identity (e.g. Shopify `customerId`) —
    *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
   identity?: boolean
+  /** Deep-link template to the record's page in the external system. Only set
+   *  beside `identity` — see plans/data-connectors/external-record-link-plan.md §2. */
+  link?: string
   /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field. */
@@ -774,6 +777,7 @@ export async function compileAndExtractCatalog(): Promise<
       description: field.description,
       capabilities: field.capabilities,
       identity: field.identity,
+      link: field.link,
       options: field.options,
       addressComponents: field.addressComponents,
       relationship: field.relationship,
@@ -1325,6 +1329,7 @@ interface RawFieldDecl {
   calc?: { expression: string }
   capabilities?: CatalogAppField['capabilities']
   identity?: boolean
+  link?: string
   pii?: boolean
 }
 

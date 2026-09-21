@@ -9,6 +9,7 @@
 // Consumed by `src/util/__tests__/compile-and-extract-catalog.test.ts` to pin
 // the catalog projection per impl plan §5.6.
 
+import { defineEntity } from '@auxx/sdk/entities'
 import { defineFields } from '@auxx/sdk/fields'
 import { z } from 'zod/v4'
 import sendMessage from './send-message.tool.server'
@@ -178,6 +179,8 @@ export const app = {
       scope: 'connection',
       name: 'Customer ID',
       capabilities: { hidden: true, updatable: false },
+      identity: true,
+      link: 'https://{connection.identity}/admin/customers/{externalId}',
     },
     {
       key: 'tier',
@@ -191,4 +194,26 @@ export const app = {
       ],
     },
   ]),
+  // An owned entity whose identity field carries a `link` — the entity-field
+  // half of the link projection.
+  entities: [
+    defineEntity({
+      key: 'issues',
+      apiSlug: 'fixture_issues',
+      singular: 'Issue',
+      plural: 'Issues',
+      primaryDisplayField: 'title',
+      fields: [
+        {
+          key: 'githubId',
+          type: 'TEXT',
+          name: 'GitHub Issue ID',
+          identity: true,
+          link: '{field.url}',
+        },
+        { key: 'title', type: 'TEXT', name: 'Title' },
+        { key: 'url', type: 'URL', name: 'URL' },
+      ],
+    }),
+  ],
 }

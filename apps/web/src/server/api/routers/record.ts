@@ -15,7 +15,7 @@ import {
   UnprocessableEntityError,
 } from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
-import { getRecordIdentityViews } from '@auxx/lib/identity'
+import { getRecordIdentityViews, resolveExternalLink } from '@auxx/lib/identity'
 import {
   type CapabilitySet,
   type InstanceAccessKey,
@@ -525,6 +525,42 @@ export const recordRouter = createTRPCRouter({
           message: `Failed to fetch record identities: ${message}`,
         })
       }
+    }),
+
+  /**
+   * The deep link for one record in one external system, composed at click time
+   * from the identity field's `link` template. Only the final URL crosses the
+   * wire — connection metadata never does. Same two guards as
+   * {@link recordRouter.getIdentities}, for the same reasons.
+   */
+  getExternalLink: capabilityProcedure
+    .input(
+      z.object({
+        recordId: recordIdSchema,
+        source: z.string(),
+        connectionId: z.string().nullable(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+      const recordId = input.recordId as RecordId
+      await assertNotInstanceAccessDefForRead(organizationId, recordIdDefParts([recordId]))
+      await assertCanViewRows(
+        new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+          requestPath: true,
+        }),
+        ctx.capabilities,
+        [recordId]
+      )
+      const result = await resolveExternalLink(ctx.db, {
+        organizationId,
+        recordId,
+        source: input.source,
+        connectionId: input.connectionId,
+      })
+      if (result.isErr()) throw result.error
+      return { href: result.value }
     }),
 
   /**

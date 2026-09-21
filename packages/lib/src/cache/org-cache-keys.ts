@@ -584,6 +584,13 @@ export interface CachedInstalledApp {
    * docs/app-fields-and-entities-guide.md.
    */
   entities?: CatalogEntity[]
+  /**
+   * Page-URL templates declared on this app's identity fields, flattened from
+   * `catalog.fields[]` + `catalog.entities[].fields[]`. The `(source,
+   * appFieldKey) → template` map behind `resolveExternalLink`. See
+   * plans/data-connectors/external-record-link-plan.md §4.
+   */
+  identityLinks?: Array<{ appFieldKey: string; link: string }>
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).
@@ -905,7 +912,10 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // every consumer (the app-connector adapter, the template projector, the install-consent
   // flow) and `entities` would be missing entirely, so this bump is required alongside the
   // deploy, not optional.
-  installedApps: { prefix: 'org:installed-apps:v9', ttlSeconds: 900 },
+  // v10: + `identityLinks` (the external-record-link templates). A v9 blob carries none,
+  // so every source badge would read as unlinkable for the full 900 s TTL — silent and
+  // indistinguishable from "this app declares no links".
+  installedApps: { prefix: 'org:installed-apps:v10', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).

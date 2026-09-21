@@ -429,6 +429,22 @@ export async function getCachedAppByInstallationId(
   return match ? { slug: match.app.slug, title: match.app.title } : null
 }
 
+/**
+ * The page-URL template an app declares on one identity field, or null when it
+ * declares none — the eager `linkable` flag and `resolveExternalLink` both key
+ * off this. `source` is the app slug as stored on `RecordIdentity.source`.
+ */
+export async function getCachedIdentityLink(
+  orgId: string,
+  source: string,
+  appFieldKey: string | null
+): Promise<string | null> {
+  if (!appFieldKey) return null
+  const apps = await getCachedInstalledApps(orgId)
+  const app = apps.find((a) => a.app.slug === source)
+  return app?.identityLinks?.find((l) => l.appFieldKey === appFieldKey)?.link ?? null
+}
+
 // ── Channel cache helpers ──
 
 /**

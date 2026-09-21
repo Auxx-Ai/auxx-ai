@@ -67,6 +67,7 @@ export {
   getCachedGoverningInstanceIds,
   getCachedGroups,
   getCachedHasPermissionGrants,
+  getCachedIdentityLink,
   getCachedInstalledApps,
   getCachedKbCatalog,
   getCachedKnowledgeBases,
