@@ -11,6 +11,7 @@ import type {
   EntityPostDeleteHandler,
   EntityPreDeleteHandler,
   FieldPreHookHandler,
+  MarkHandler,
 } from '../../../field-hooks'
 import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
@@ -302,7 +303,7 @@ export const guardAllocatedLineDelete: EntityPreDeleteHandler = async (event) =>
 }
 
 /** Recompute billing after a source line changes. */
-export const syncBillingOnLineChange: EntityFieldChangeHandler = async (event) => {
+export const syncBillingOnLineChange: MarkHandler = async (event) => {
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!LINE_ITEM_BILLING_TRIGGER_ATTRS.has(attribute)) return
@@ -314,7 +315,7 @@ export const syncBillingOnLineChange: EntityFieldChangeHandler = async (event) =
 }
 
 /** Recompute work-order billing after relevant work-order fields change. */
-export const syncBillingOnWorkOrderChange: EntityFieldChangeHandler = async (event) => {
+export const syncBillingOnWorkOrderChange: MarkHandler = async (event) => {
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!WORK_ORDER_BILLING_TRIGGER_ATTRS.has(attribute)) return
@@ -322,7 +323,7 @@ export const syncBillingOnWorkOrderChange: EntityFieldChangeHandler = async (eve
 }
 
 /** Recompute invoice context and its linked work order after lifecycle/payment changes. */
-export const syncBillingOnInvoiceChange: EntityFieldChangeHandler = async (event) => {
+export const syncBillingOnInvoiceChange: MarkHandler = async (event) => {
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!INVOICE_BILLING_TRIGGER_ATTRS.has(attribute)) return

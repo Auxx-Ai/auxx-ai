@@ -3,7 +3,7 @@
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EntityFieldChangeEvent } from '../../field-hooks/types'
+import type { EntityFieldChangeEvent, FieldChangeRef } from '../../field-hooks/types'
 import type { CachedField } from '../../field-values/types'
 
 // Mock the geocoder leaf module directly so the merge matrix is deterministic —
@@ -44,6 +44,7 @@ import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
 import { getValue } from '../../field-values/field-value-queries'
 import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
 import {
+  normalizeAddressBatch,
   normalizeAddressOnChange,
   registerAddressNormalizedListener,
 } from '../address-normalize-hook'
@@ -506,5 +507,90 @@ describe('normalizeAddressOnChange', () => {
     )
     await flush()
     expect(mockedPublish).not.toHaveBeenCalled()
+  })
+})
+
+// plans/events/10 §4.4: the sync lane's core. Ported from the retired pass 2 of
+// `events/handlers/__tests__/finalize-integrity-passes.test.ts`.
+describe('normalizeAddressBatch', () => {
+  function target(instanceId: string): FieldChangeRef {
+    return {
+      recordId: toRecordId('contact', instanceId),
+      entityDefinitionId: 'def-1',
+      entityType: 'contact',
+      entitySlug: 'contacts',
+      field: fieldFixture(),
+      organizationId: 'org-1',
+      userId: 'system',
+    } as FieldChangeRef
+  }
+
+  const batch = (targets: FieldChangeRef[]) =>
+    normalizeAddressBatch({
+      organizationId: 'org-1',
+      userId: 'system',
+      db: { tag: 'db' } as never,
+      targets,
+    })
+
+  beforeEach(() => {
+    mockedGeocode.mockReset()
+    mockedSetValue.mockReset()
+    mockedPublish.mockReset()
+    mockedGetValue.mockReset()
+    mockedPublish.mockResolvedValue(undefined)
+    mockedGeocode.mockResolvedValue(null)
+    mockedGetValue.mockResolvedValue(jsonValue({ street1: '123 Fresh St', city: 'Austin' }))
+  })
+
+  it('geocodes the RE-READ stored value, not anything carried on the target', async () => {
+    await batch([target('inst-1')])
+
+    expect(mockedGetValue).toHaveBeenCalledTimes(1)
+    expect(mockedGeocode).toHaveBeenCalledTimes(1)
+    expect(mockedGeocode.mock.calls[0]![0]).toContain('123 Fresh St')
+  })
+
+  it('skips a struct that already carries a geocode stamp (redelivery idempotency)', async () => {
+    mockedGetValue.mockResolvedValue(
+      jsonValue({ street1: '123 Main', lat: 30.1, lng: -97.1, geocodedAt: '2026-01-01T00:00:00Z' })
+    )
+
+    await batch([target('inst-1')])
+
+    expect(mockedGeocode).not.toHaveBeenCalled()
+  })
+
+  it('skips a value cleared after the manifest captured it', async () => {
+    mockedGetValue.mockResolvedValue(null)
+
+    await batch([target('inst-1')])
+
+    expect(mockedGeocode).not.toHaveBeenCalled()
+  })
+
+  it('geocodes under a bounded pool of 4', async () => {
+    let inflight = 0
+    let maxInflight = 0
+    mockedGeocode.mockImplementation(async () => {
+      inflight++
+      maxInflight = Math.max(maxInflight, inflight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inflight--
+      return null
+    })
+
+    await batch(Array.from({ length: 10 }, (_, i) => target(`inst-${i}`)))
+
+    expect(mockedGeocode).toHaveBeenCalledTimes(10)
+    expect(maxInflight).toBe(4)
+  })
+
+  it('one failing record never starves the rest, and never rejects', async () => {
+    mockedGetValue.mockRejectedValueOnce(new Error('read boom'))
+
+    await expect(batch([target('inst-1'), target('inst-2')])).resolves.toBeUndefined()
+
+    expect(mockedGeocode).toHaveBeenCalledTimes(1)
   })
 })

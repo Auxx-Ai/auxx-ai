@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   requireCachedEntityDefId: vi.fn(),
   setValueWithType: vi.fn(),
   publishFieldValueUpdates: vi.fn(),
+  /** How many `FieldValue` reads the batch actually issued (§4.5). */
+  reads: { n: 0 },
 }))
 
 vi.mock('../../../cache', () => ({
@@ -36,7 +38,16 @@ vi.mock('@auxx/database', async () => {
   const schema = await import('../../../../../database/src/db/schema/index')
   return {
     schema,
-    database: { select: () => ({ from: () => ({ where: () => storedRows() }) }) },
+    database: {
+      select: () => ({
+        from: () => ({
+          where: () => {
+            h.reads.n += 1
+            return storedRows()
+          },
+        }),
+      }),
+    },
   }
 })
 
@@ -44,6 +55,7 @@ import { runWithDirtyParents } from '../../../reconcilers/dirty-parents'
 import {
   recalculateBalanceOnBillChange,
   recalculateVendorBillBalance,
+  recalculateVendorBillBalances,
   registerVendorBillBalanceReconcilers,
   VENDOR_BILL_BALANCE_TRIGGER_ATTRS,
   vendorBillBalance,
@@ -76,6 +88,7 @@ function written(): unknown {
 beforeEach(() => {
   vi.clearAllMocks()
   stored = {}
+  h.reads.n = 0
   h.bySystemAttributes.mockImplementation(async (attrs: string[]) =>
     Object.fromEntries(attrs.filter((a) => FIELDS[a]).map((a) => [a, FIELDS[a]]))
   )
@@ -300,5 +313,15 @@ describe('coalescing', () => {
 
     expect(h.setValueWithType).toHaveBeenCalledTimes(1)
     expect(written()).toEqual({ type: 'number', value: 15000 })
+  })
+
+  it('reads every bill in the drain in ONE query (plans/events/10 §4.5)', async () => {
+    // A 500-bill CSV costs one read, not 500. The mock returns BILL's rows for any
+    // scope, so the second id contributes no values — the count is what is asserted.
+    stored = { 'f-total': 115000, 'f-paid': 100000 }
+
+    await recalculateVendorBillBalances('org_1', [BILL, 'bill-2'])
+
+    expect(h.reads.n).toBe(1)
   })
 })

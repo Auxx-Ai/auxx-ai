@@ -18,7 +18,12 @@ import { extractValue, type TypedFieldValue } from '@auxx/types'
 import type { FieldId } from '@auxx/types/field'
 import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { stableHash } from '@auxx/utils/hash'
-import type { EntityFieldChangeEvent, EntityFieldChangeHandler } from '../field-hooks/types'
+import { refToEvent, runWithPool } from '../field-hooks/batch-helpers'
+import type {
+  BatchCore,
+  EntityFieldChangeEvent,
+  EntityFieldChangeHandler,
+} from '../field-hooks/types'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
 import { getValue } from '../field-values/field-value-queries'
@@ -59,9 +64,7 @@ const ADDRESS_COMPONENT_KEYS = [
 export type AddressStructLike = Record<string, unknown>
 
 /** Extract the plain struct object out of the event's typed value (scalar JSON field — never
- * array-return — but tolerate an array shape defensively, matching visit-hooks.ts's pattern).
- * Exported for the finalize integrity passes, which re-read the stored value and need the
- * exact same unwrapping this hook applies. */
+ * array-return — but tolerate an array shape defensively, matching visit-hooks.ts's pattern). */
 export function extractStruct(value: unknown): AddressStructLike | null {
   const typed = value as TypedFieldValue | TypedFieldValue[] | null
   const first = Array.isArray(typed) ? typed[0] : typed
@@ -76,16 +79,14 @@ function isBlank(value: unknown): boolean {
   return typeof value !== 'string' || value.trim().length === 0
 }
 
-/** True when at least one of the six address components holds text. Exported for the
- * finalize integrity passes (same bail the hook applies before geocoding). */
+/** True when at least one of the six address components holds text. */
 export function isNonEmptyStruct(struct: AddressStructLike | null): struct is AddressStructLike {
   if (!struct) return false
   return ADDRESS_COMPONENT_KEYS.some((key) => !isBlank(struct[key]))
 }
 
 /** True when the struct already carries a completed geocode (numeric lat/lng + `geocodedAt`
- * stamp). Extracted from the hook's idempotence guard, unchanged; exported so the finalize
- * integrity passes can skip already-normalized structs on redelivery. */
+ * stamp). Extracted from the hook's idempotence guard, unchanged. */
 export function hasStampedGeocode(struct: AddressStructLike): boolean {
   return (
     typeof struct.lat === 'number' &&
@@ -191,12 +192,62 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
 }
 
 /**
+ * Bounded concurrency for the sync lane's geocodes. There is NO geocode job anywhere — the
+ * inline hook fire-and-forgets one MapTiler call per write (plan events/03 §3.5b) — so this
+ * core IS the batching: a small worker pool instead of job infra.
+ */
+const ADDRESS_GEOCODE_CONCURRENCY = 4
+
+/**
+ * The sync lane's core (plans/events/10 §4.4): normalize every ADDRESS_STRUCT target of one
+ * finalize under a pool of {@link ADDRESS_GEOCODE_CONCURRENCY} workers.
+ *
+ * The stored value is RE-READ per target — a later write may have superseded the manifest
+ * snapshot, and {@link runNormalize}'s stale-write guard compares against the value handed in,
+ * so it must be fresh. Idempotent on redelivery: a struct already carrying a geocode stamp
+ * (only ever written by this core — sync/import sources write raw components) is skipped.
+ */
+export const normalizeAddressBatch: BatchCore = async ({ organizationId, userId, db, targets }) => {
+  const ctx = createFieldValueContext(organizationId, userId, db, undefined, {
+    skipPreHooks: true,
+  })
+
+  let normalized = 0
+  await runWithPool(targets, ADDRESS_GEOCODE_CONCURRENCY, async (target) => {
+    try {
+      const stored = await getValue(
+        ctx,
+        { recordId: target.recordId, fieldId: target.field.id },
+        target.field
+      )
+      const current = extractStruct(stored)
+      if (!isNonEmptyStruct(current)) return
+      if (hasStampedGeocode(current)) return
+      await runNormalize(refToEvent(target, stored), current)
+      normalized++
+    } catch (error) {
+      logger.error('Address normalize batch: record failed', {
+        organizationId,
+        recordId: target.recordId,
+        fieldId: target.field.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  })
+
+  logger.info('address normalize batch done', {
+    organizationId,
+    targets: targets.length,
+    normalized,
+  })
+}
+
+/**
  * The normalize core: geocode the struct, merge per the `_source` policy, quietly write the
  * result back (stale-write guarded, declared quiet, hand-rolled realtime frame), and
- * notify normalized-address listeners. The inline hook fire-and-forgets this; the finalize
- * integrity passes (`events/handlers/finalize-integrity-passes.ts`) await it under bounded
- * concurrency — there is no geocode job, so the batch pass IS the batching (plan events/03
- * §3.5b). `event` may be a synthesized {@link EntityFieldChangeEvent}: only `organizationId`,
+ * notify normalized-address listeners. The inline hook fire-and-forgets this;
+ * {@link normalizeAddressBatch} awaits it under bounded concurrency.
+ * `event` may be a synthesized {@link EntityFieldChangeEvent}: only `organizationId`,
  * `userId`, `recordId`, and `field` are read here; listeners additionally see
  * `field.systemAttribute`. `struct` must be the value the caller wants normalized — the
  * write-back re-reads and bails unless the stored components still match it.

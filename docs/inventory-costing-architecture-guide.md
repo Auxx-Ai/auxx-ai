@@ -1204,7 +1204,10 @@ it VACATED holding a phantom quantity. `newValue` names only the destination, so
 reads `EntityFieldChangeEvent.oldValue` — the pre-write value, and the only place the vacated
 parent is still named — and marks both. This is why the reconciler is keyed on the PURCHASE ORDER
 LINE (the marked record IS the parent, no `resolve` step): one keyed on the bill line could only
-ever resolve the parent it now points at. ⚠️ A fix of this shape prevents new divergence and does
+ever resolve the parent it now points at. 🛑 On the **sync lane** the old value is not available —
+a `FieldChangeRef` replayed from the manifest carries no values — so a connector- or import-driven
+repoint marks only the current parent and leaves the vacated line stale. Documented residual; see
+`docs/entity-events-architecture-guide.md` §7.2. ⚠️ A fix of this shape prevents new divergence and does
 **not** repair rows that already diverged; whether that needs a backfill is a separate call, and
 for this one it did not (purchasing was pre-deployment, so the stale rows went with the dev seed).
 

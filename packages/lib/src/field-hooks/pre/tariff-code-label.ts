@@ -49,13 +49,13 @@ export const stampTariffCodeLabel: EntityPreCreateHandler = async (event) => {
  *
  * Never fails the edit that triggered it. A stale label is a display and import
  * defect; a refused code edit is a person's work lost.
+ *
+ * Registered with `skipOnCreate`: a create is stamped by {@link stampTariffCodeLabel} in the
+ * same write, so the adapter drops the event before it reaches here.
  */
 export const restampTariffCodeLabel: EntityFieldChangeHandler = async (event) => {
   const attribute = event.field.systemAttribute
   if (attribute !== CODE_ATTR && attribute !== COUNTRY_ATTR) return
-  // A create is stamped by `stampTariffCodeLabel` in the same write; a
-  // second write from here would only re-assert it.
-  if (event.isCreate) return
 
   const { organizationId, userId, recordId } = event
   try {

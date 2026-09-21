@@ -27,7 +27,7 @@ import {
   resolveParentsByRelation,
 } from '../../reconcilers/parent-reconciler'
 import { unwrapRelationId } from '../../resources/events/captured-values'
-import type { EntityFieldChangeHandler, EntityTriggerHandler } from '../types'
+import type { EntityTriggerHandler, MarkHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:purchase-order-line-rollups')
 
@@ -805,6 +805,11 @@ const BILLED_ROLLUP_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'vendor_bill_line_purchase_order_line',
 ])
 
+/** A mark's values are absent on the sync lane; `undefined` means unknown, not cleared. */
+function hasValues(event: { oldValue?: unknown; newValue?: unknown }): boolean {
+  return event.oldValue !== undefined || event.newValue !== undefined
+}
+
 /**
  * Re-SUM the billed roll-up after a bill line is EDITED.
  *
@@ -821,15 +826,16 @@ const BILLED_ROLLUP_TRIGGER_ATTRS = new Set<SystemAttribute>([
  * line; without `oldValue` the old one keeps the phantom quantity forever, which
  * is the same defect one level down. Both are marked.
  */
-export const recalculateBilledRollupOnBillLineChange: EntityFieldChangeHandler = async (event) => {
+export const recalculateBilledRollupOnBillLineChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !BILLED_ROLLUP_TRIGGER_ATTRS.has(attr)) return
 
   const lineInstanceIds = new Set<string>()
 
-  if (attr === 'vendor_bill_line_purchase_order_line') {
-    // Both sides come off the event — no read needed, and `oldValue` is the only
-    // place the vacated line is still named.
+  // Both sides come off the event — no read needed, and `oldValue` is the only place the
+  // vacated line is still named. A lane that carries no values falls through to the resolve
+  // below, which marks the CURRENT order line only.
+  if (attr === 'vendor_bill_line_purchase_order_line' && hasValues(event)) {
     for (const value of [event.oldValue, event.newValue]) {
       for (const recordId of extractRelationshipRecordIds(value)) {
         lineInstanceIds.add(parseRecordId(recordId).entityInstanceId)
@@ -871,16 +877,15 @@ const CREDIT_ROLLUP_TRIGGER_ATTRS = new Set<SystemAttribute>([
  * netting would only ever see a `1`. A reparent counts too — a line moved to
  * another credit changes whether the void filter drops it.
  */
-export const recalculateBilledRollupOnCreditLineChange: EntityFieldChangeHandler = async (
-  event
-) => {
+export const recalculateBilledRollupOnCreditLineChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !CREDIT_ROLLUP_TRIGGER_ATTRS.has(attr)) return
 
   const lineInstanceIds = new Set<string>()
 
-  if (attr === 'vendor_credit_line_purchase_order_line') {
-    // `oldValue` is the only place the vacated order line is still named.
+  // `oldValue` is the only place the vacated order line is still named; absent, the resolve
+  // below marks the CURRENT order line only.
+  if (attr === 'vendor_credit_line_purchase_order_line' && hasValues(event)) {
     for (const value of [event.oldValue, event.newValue]) {
       for (const recordId of extractRelationshipRecordIds(value)) {
         lineInstanceIds.add(parseRecordId(recordId).entityInstanceId)
@@ -912,9 +917,7 @@ export const recalculateBilledRollupOnCreditLineChange: EntityFieldChangeHandler
  * coming back out of `void` — has the same hole with the sign flipped, so the
  * handler fires on any status change rather than on the transition into `void`.
  */
-export const recalculateBilledRollupOnBillStatusChange: EntityFieldChangeHandler = async (
-  event
-) => {
+export const recalculateBilledRollupOnBillStatusChange: MarkHandler = async (event) => {
   if (event.field.systemAttribute !== 'vendor_bill_status') return
 
   const { entityInstanceId: billInstanceId } = parseRecordId(event.recordId)

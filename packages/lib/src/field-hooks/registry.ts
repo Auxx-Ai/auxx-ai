@@ -1,14 +1,20 @@
 // packages/lib/src/field-hooks/registry.ts
 
+import { FieldTypeValues } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { registerAllHooks } from './register-hooks'
 import type {
+  DeriveHandler,
+  DeriveOptions,
   EntityFieldChangeHandler,
   EntityPostDeleteHandler,
   EntityPreCreateHandler,
   EntityPreDeleteHandler,
   FieldPreHookHandler,
+  MarkHandler,
+  ReactHandler,
+  RegisteredFieldChangeHook,
 } from './types'
 
 // =============================================================================
@@ -40,22 +46,19 @@ const ENTITY_PRE_DELETE_HOOKS: Map<string, EntityPreDeleteHandler[]> = new Map()
 const ENTITY_POST_DELETE_HOOKS: Map<string, EntityPostDeleteHandler[]> = new Map()
 
 /**
- * Per-entity field-change post-hooks. Keyed by entitySlug, with the sentinel
- * `'*'` reserved for handlers that fire on every field write regardless of
- * entity. Entity-scoped handlers run before global handlers in the composed
- * chain.
+ * Per-entity field-change post-hooks, kinded (plans/events/10 §4.1). Keyed by entitySlug,
+ * with the sentinel `'*'` reserved for handlers that fire on every field write regardless
+ * of entity. Entity-scoped handlers run before global handlers in the composed chain.
  */
-const ENTITY_FIELD_CHANGE_HOOKS: Map<string, EntityFieldChangeHandler[]> = new Map()
+const ENTITY_FIELD_CHANGE_HOOKS: Map<string, RegisteredFieldChangeHook[]> = new Map()
 
 /**
- * Field-type-keyed field-change post-hooks (plans/address-field/01-single-input-address-field.md
- * §5 item 2, decision #13). Deliberately separate from `ENTITY_FIELD_CHANGE_HOOKS` and its `'*'`
- * sentinel: a handler registered here fires for every field of a given `fieldType` regardless of
- * entity, WITHOUT flipping `hasEntityFieldChangeHooks` (and its oldValue pre-fetch + snapshot
- * resolution cost) on for every entity the way a `'*'`-scoped entity hook would. No `'*'`
- * sentinel of its own — register per concrete `FieldType`.
+ * Field-type-keyed field-change post-hooks (plans/address-field/01 §5 item 2, decision #13).
+ * Separate from `ENTITY_FIELD_CHANGE_HOOKS` and its `'*'` sentinel so a handler for every
+ * ADDRESS_STRUCT field does not flip `hasEntityFieldChangeHooks` (and its oldValue pre-fetch)
+ * on for every entity. No `'*'` sentinel of its own — register per concrete `FieldType`.
  */
-const FIELD_TYPE_CHANGE_HOOKS: Map<FieldType, EntityFieldChangeHandler[]> = new Map()
+const FIELD_TYPE_CHANGE_HOOKS: Map<FieldType, RegisteredFieldChangeHook[]> = new Map()
 
 // =============================================================================
 // LAZY INIT
@@ -189,31 +192,100 @@ export function getEntityPostDeleteHooks(entitySlug: string): EntityPostDeleteHa
 // POST-WRITE FIELD-CHANGE HOOK ACCESSORS
 // =============================================================================
 
-/**
- * Register entity field-change handlers. Use the sentinel `'*'` for
- * `entitySlug` to register a global handler that fires on every field write
- * regardless of entity. Appends to any existing handlers.
- */
-export function registerEntityFieldChangeHooks(
-  entitySlug: string | '*',
-  handlers: EntityFieldChangeHandler[]
+/** Entity slug (or `'*'`) or a concrete `FieldType` — the two keyspaces post-hooks live in. */
+export type FieldChangeHookKey = string | FieldType
+
+// `FieldType` is a string union, so a slug and a type share one keyspace at runtime; the
+// enum's values are the discriminator.
+const FIELD_TYPE_KEYS: ReadonlySet<string> = new Set<string>(FieldTypeValues)
+
+function isFieldTypeKey(key: FieldChangeHookKey): key is FieldType {
+  return FIELD_TYPE_KEYS.has(key)
+}
+
+function appendHooks(key: FieldChangeHookKey, hooks: RegisteredFieldChangeHook[]): void {
+  if (hooks.length === 0) return
+  if (isFieldTypeKey(key)) {
+    FIELD_TYPE_CHANGE_HOOKS.set(key, [...(FIELD_TYPE_CHANGE_HOOKS.get(key) ?? []), ...hooks])
+    return
+  }
+  ENTITY_FIELD_CHANGE_HOOKS.set(key, [...(ENTITY_FIELD_CHANGE_HOOKS.get(key) ?? []), ...hooks])
+}
+
+/** Handlers that only mark a reconciler. Run on every lane, including sync from `touched` keys. */
+export function registerMarkHooks(key: FieldChangeHookKey, handlers: MarkHandler[]): void {
+  appendHooks(
+    key,
+    handlers.map((handler) => ({ kind: 'mark', handler }))
+  )
+}
+
+/** Handlers that read and write. Inline and post-commit; on sync only when `options.batch` is set. */
+export function registerDeriveHooks(
+  key: FieldChangeHookKey,
+  handlers: DeriveHandler[],
+  options: DeriveOptions = {}
 ): void {
-  if (handlers.length === 0) return
-  const existing = ENTITY_FIELD_CHANGE_HOOKS.get(entitySlug) ?? []
-  ENTITY_FIELD_CHANGE_HOOKS.set(entitySlug, [...existing, ...handlers])
+  appendHooks(
+    key,
+    handlers.map((handler) => ({ kind: 'derive', handler, options }))
+  )
+}
+
+/** Consumers (rules, cache invalidation). Inline and post-commit, never on sync. */
+export function registerReactHooks(key: FieldChangeHookKey, handlers: ReactHandler[]): void {
+  appendHooks(
+    key,
+    handlers.map((handler) => ({ kind: 'react', handler }))
+  )
 }
 
 /**
- * Get the composed field-change hook chain for a given entitySlug.
- * Entity-scoped handlers run first, global (`'*'`) handlers run after.
+ * The kinded chain for an entity slug: entity-scoped first, then global (`'*'`). This is what
+ * `dispatchFieldChanges` reads; the inline gate reads the adapted form below.
  */
-export function getEntityFieldChangeHooks(entitySlug: string): EntityFieldChangeHandler[] {
+export function getRegisteredEntityFieldChangeHooks(
+  entitySlug: string
+): RegisteredFieldChangeHook[] {
   ensureInitialized()
   const scoped = ENTITY_FIELD_CHANGE_HOOKS.get(entitySlug) ?? []
   const global = ENTITY_FIELD_CHANGE_HOOKS.get('*') ?? []
   if (scoped.length === 0) return global
   if (global.length === 0) return scoped
   return [...scoped, ...global]
+}
+
+/** The kinded field-type-keyed chain for a `fieldType`. */
+export function getRegisteredFieldTypeChangeHooks(
+  fieldType: FieldType
+): RegisteredFieldChangeHook[] {
+  ensureInitialized()
+  return FIELD_TYPE_CHANGE_HOOKS.get(fieldType) ?? []
+}
+
+/**
+ * One hook as the inline gate calls it. A mark's ref is a structural subset of the event, so
+ * it runs as-is; a derive honours `skipOnCreate` here so the flag means the same on every lane.
+ */
+export function toEntityFieldChangeHandler(
+  hook: RegisteredFieldChangeHook
+): EntityFieldChangeHandler {
+  if (hook.kind === 'derive' && hook.options.skipOnCreate) {
+    const { handler } = hook
+    return async (event) => {
+      if (event.isCreate) return
+      await handler(event)
+    }
+  }
+  return hook.handler
+}
+
+/**
+ * Get the composed field-change hook chain for a given entitySlug, as plain handlers in the
+ * order they run. Entity-scoped handlers run first, global (`'*'`) handlers run after.
+ */
+export function getEntityFieldChangeHooks(entitySlug: string): EntityFieldChangeHandler[] {
+  return getRegisteredEntityFieldChangeHooks(entitySlug).map(toEntityFieldChangeHandler)
 }
 
 /**
@@ -228,24 +300,9 @@ export function hasEntityFieldChangeHooks(entitySlug: string): boolean {
   )
 }
 
-/**
- * Register field-change post-hooks keyed by `fieldType` (decision #13) — fires for every field
- * of this type on every entity, in addition to (after) that entity's own entity-scoped chain.
- * Appends to any existing handlers.
- */
-export function registerFieldTypeChangeHooks(
-  fieldType: FieldType,
-  handlers: EntityFieldChangeHandler[]
-): void {
-  if (handlers.length === 0) return
-  const existing = FIELD_TYPE_CHANGE_HOOKS.get(fieldType) ?? []
-  FIELD_TYPE_CHANGE_HOOKS.set(fieldType, [...existing, ...handlers])
-}
-
-/** Get the field-type-keyed field-change hook chain for a given `fieldType`. */
+/** Get the field-type-keyed field-change hook chain for a given `fieldType`, as plain handlers. */
 export function getFieldTypeChangeHooks(fieldType: FieldType): EntityFieldChangeHandler[] {
-  ensureInitialized()
-  return FIELD_TYPE_CHANGE_HOOKS.get(fieldType) ?? []
+  return getRegisteredFieldTypeChangeHooks(fieldType).map(toEntityFieldChangeHandler)
 }
 
 /**
@@ -256,4 +313,10 @@ export function getFieldTypeChangeHooks(fieldType: FieldType): EntityFieldChange
 export function hasFieldTypeChangeHooks(fieldType: FieldType): boolean {
   ensureInitialized()
   return (FIELD_TYPE_CHANGE_HOOKS.get(fieldType)?.length ?? 0) > 0
+}
+
+/** Test seam. Never call from production code. */
+export function __resetFieldChangeHooksForTest(): void {
+  ENTITY_FIELD_CHANGE_HOOKS.clear()
+  FIELD_TYPE_CHANGE_HOOKS.clear()
 }

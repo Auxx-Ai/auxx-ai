@@ -16,6 +16,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import type { DispatchChange } from '../../field-hooks/dispatch'
 import { publishRecordLifecycleEvent } from './publish-record-event'
 import { assertTxWriteScopePure, type TxWriteCreate, type TxWriteScope } from './tx-write-scope'
 
@@ -46,8 +47,9 @@ function instanceIdOf(recordId: RecordId): string {
  * 4. the surviving (C2) field changes, per record;
  * 5. archives.
  *
- * Post-hooks are NEVER replayed (T-2): the composer already ran the ones that
- * matter, in-tx, in order, against transactional state.
+ * The registered post-hook chain IS replayed, from the scope, by
+ * `dispatchFieldChanges` on the buffered lane (plans/events/10 §4.3) — the composer
+ * does not know which hooks matter, the registry does.
  *
  * BEST-EFFORT (T-6). The transaction has committed; a failure here must never
  * surface as a command failure, so every step logs and continues — exactly what
@@ -71,90 +73,80 @@ export async function flushTxWriteScope(scope: TxWriteScope): Promise<void> {
   } catch (error) {
     logFailure('flush', scope.attemptId, error)
   }
-  // AFTER the doors, and inside its own guard: a reconciler reads current truth,
-  // so it must not run before the realtime/timeline replay that tells the rest of
-  // the system the transaction landed — and its failure must not swallow theirs.
+  // AFTER the doors, and inside its own guard: a hook and a reconciler read current
+  // truth, so they must not run before the realtime/timeline replay that tells the rest
+  // of the system the transaction landed — and their failure must not swallow its.
   try {
-    if (scope.dirtyParents.size > 0) {
-      const { drainDeferredDirtyParents } = await import('../../reconcilers/dirty-parents')
-      await drainDeferredDirtyParents({
-        organizationId: scope.organizationId,
-        userId: scope.actorUserId,
-        dirty: scope.dirtyParents,
-      })
-    }
+    await dispatchCommittedScope(scope)
   } catch (error) {
-    logFailure('dirty-parents', scope.attemptId, error)
-  }
-  // Money's totals engine, which the buffered lane's hook suppression silently
-  // switched off for the two entities the accounting guard wraps — see
-  // `recomputeTotalsForCommittedWrite`. Its own guard for the same reason as above.
-  try {
-    await replayMoneyTotals(scope)
-  } catch (error) {
-    logFailure('money-totals', scope.attemptId, error)
+    logFailure('field-hooks', scope.attemptId, error)
   }
 }
 
 /**
- * Re-run the money totals engine for every record this scope touched.
- *
- * Reads only what the scope already buffered — `TxWriteCreate.values` is keyed by
- * `systemAttribute ?? fieldId` and `changes` by the same outputKey — so deciding whether a
- * write moved a total costs no query. The two buckets never overlap: T-1 keeps a created
- * record's own field writes out of `changes`.
- *
- * `runWithDirtyParents` is what makes a paste cheap: 20 created lines mark 20 dirty lines
- * and the drain on the way out rebuilds their document ONCE, rather than each
- * `markOrRecomputeLine` falling through to its inline branch and rebuilding it 20 times.
+ * Replay the registered hook chain from what the scope buffered (plans/events/10 §4.3),
+ * then hand the in-tx marks to the same drain so a document marked in-tx AND by a hook
+ * rebuilds once.
  */
-async function replayMoneyTotals(scope: TxWriteScope): Promise<void> {
-  // The overflow lane already degraded to `records:invalidated`; the buckets it would read
-  // are partial, so a recompute driven off them would be arbitrary rather than wrong-ish.
-  if (scope.truncated) return
-  if (scope.created.length === 0 && Object.keys(scope.changes).length === 0) return
+async function dispatchCommittedScope(scope: TxWriteScope): Promise<void> {
+  const changes = scope.truncated ? [] : fromScope(scope)
+  // The overflow lane shed its keys, so it degrades to marks: a valueless change reaches
+  // no derive on this lane (batch cores are the sync lane's, and take a `db` we have none of).
+  const degraded = scope.truncated ? allRecordIds(scope) : undefined
+  if (changes.length === 0 && !degraded?.length && scope.dirtyParents.size === 0) return
 
-  const [{ recomputeTotalsForCommittedWrite }, { runWithDirtyParents }, { findCachedResource }] =
-    await Promise.all([
-      import('../../accounting/sales/totals/totals-hooks'),
-      import('../../reconcilers/dirty-parents'),
-      import('../../cache'),
-    ])
-
-  const touched = new Map<string, { entityType: string | null; attrs: Set<string> }>()
-  const record = (instanceId: string, entityType: string | null, attrs: string[]): void => {
-    const entry = touched.get(instanceId) ?? { entityType, attrs: new Set<string>() }
-    for (const attr of attrs) entry.attrs.add(attr)
-    touched.set(instanceId, entry)
-  }
-
-  for (const create of scope.created) {
-    record(instanceIdOf(create.recordId), create.entityType, Object.keys(create.values))
-  }
-
-  for (const [recordId, changes] of Object.entries(scope.changes)) {
-    // `findCachedResource`, not `getCachedResource`: a change's RecordId arrives in either
-    // keyspace (§ the note on `instanceIdOf`), and only this one resolves a type slug.
-    const { entityDefinitionId } = parseRecordId(recordId as RecordId)
-    const resource = await findCachedResource(scope.organizationId, entityDefinitionId)
-    record(instanceIdOf(recordId as RecordId), resource?.entityType ?? null, Object.keys(changes))
-  }
+  const [{ dispatchFieldChanges }, { markParentDirty, runWithDirtyParents }] = await Promise.all([
+    import('../../field-hooks/dispatch'),
+    import('../../reconcilers/dirty-parents'),
+  ])
 
   await runWithDirtyParents(scope.organizationId, scope.actorUserId, async () => {
-    for (const [instanceId, entry] of touched) {
-      try {
-        await recomputeTotalsForCommittedWrite({
-          organizationId: scope.organizationId,
-          userId: scope.actorUserId,
-          entityType: entry.entityType,
-          instanceId,
-          changedAttrs: [...entry.attrs],
-        })
-      } catch (error) {
-        logFailure('money-totals', instanceId, error)
-      }
-    }
+    await dispatchFieldChanges({
+      organizationId: scope.organizationId,
+      userId: scope.actorUserId,
+      lane: 'buffered',
+      changes,
+      degraded,
+      attemptId: scope.attemptId,
+    })
+    for (const [key, ids] of scope.dirtyParents) for (const id of ids) markParentDirty(key, id)
   })
+}
+
+/**
+ * The scope's two buckets as dispatch changes. A create's keys carry `o: null` — that is
+ * what the inline lane's oldValue is for a create write, and handlers test it.
+ */
+function fromScope(scope: TxWriteScope): DispatchChange[] {
+  const createdInstanceIds = new Set(scope.created.map((create) => instanceIdOf(create.recordId)))
+  const changes: DispatchChange[] = []
+
+  for (const create of scope.created) {
+    for (const [outputKey, value] of Object.entries(create.values)) {
+      changes.push({ recordId: create.recordId, outputKey, o: null, n: value, isCreate: true })
+    }
+  }
+
+  for (const [recordId, bucket] of Object.entries(scope.changes)) {
+    // T-1: a created record's own field writes are its initial state, not changes to it.
+    if (createdInstanceIds.has(instanceIdOf(recordId as RecordId))) continue
+    for (const [outputKey, change] of Object.entries(bucket)) {
+      changes.push({ recordId: recordId as RecordId, outputKey, ...change })
+    }
+  }
+
+  return changes
+}
+
+/** Every record a truncated scope touched, in the keyspace it was buffered under. */
+function allRecordIds(scope: TxWriteScope): RecordId[] {
+  return [
+    ...new Set<RecordId>([
+      ...scope.created.map((create) => create.recordId),
+      ...(Object.keys(scope.changes) as RecordId[]),
+      ...scope.archived.map((archive) => archive.recordId),
+    ]),
+  ]
 }
 
 async function replayTxWriteScope(scope: TxWriteScope): Promise<void> {

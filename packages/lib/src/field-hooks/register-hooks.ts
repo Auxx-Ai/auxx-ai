@@ -34,6 +34,7 @@ import {
 } from '../accounting/sales/totals/catalog-pricing'
 import {
   recomputeCreditMemoAfterLineDelete,
+  recomputeLineTotalsBatch,
   recomputeOnCreditMemoLineChange,
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
@@ -50,10 +51,12 @@ import {
   syncVisitPinsOnAddressNormalized,
 } from '../dispatch/visit-hooks'
 import {
+  normalizeAddressBatch,
   normalizeAddressOnChange,
   registerAddressNormalizedListener,
 } from '../geocoding/address-normalize-hook'
 import {
+  resolveInteractionsBatch,
   resolveInteractionsOnCompanyDomainChange,
   resolveInteractionsOnIdentifierChange,
 } from '../interactions/hooks'
@@ -64,7 +67,7 @@ import {
   stampOrderOnOrderChange,
 } from '../inventory/builds/drift-hooks'
 import { registerOrderDriftReconcilers } from '../inventory/builds/drift-reconciler'
-import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
+import { derivePhoneGeoBatch, derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
 import {
@@ -147,12 +150,13 @@ import {
 import { guardVendorCreditDelete } from './pre/vendor-credit-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
-  registerEntityFieldChangeHooks,
+  registerDeriveHooks,
   registerEntityPostDeleteHooks,
   registerEntityPreCreateHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
-  registerFieldTypeChangeHooks,
+  registerMarkHooks,
+  registerReactHooks,
 } from './registry'
 import { registerEntitySystemRules } from './system-entity-rules'
 import { registerFieldSystemRules } from './system-record-rules'
@@ -224,7 +228,7 @@ export function registerAllHooks(): void {
   // write path itself (`field-values/field-change-events.ts`,
   // `field-values/instance-derived.ts`), so a record write announces once and
   // stamps once instead of once per field.
-  registerEntityFieldChangeHooks('*', [handleRecordRulesOnFieldChange])
+  registerReactHooks('*', [handleRecordRulesOnFieldChange])
 
   // Inbox cache coherence (mail-permissions §7.1): the generic records path
   // (form edits, Kopilot record tools, workflow CRUD) bypasses InboxService
@@ -237,8 +241,8 @@ export function registerAllHooks(): void {
   // POST hook is shared: the `inbox_default_lens` PRE hook below is deliberately
   // NOT registered for `personal-inboxes`, because the new def has no lens field
   // (personal inboxes have no floor — 40a §1.2).
-  registerEntityFieldChangeHooks('inboxes', [invalidateInboxCacheOnFieldChange])
-  registerEntityFieldChangeHooks('personal-inboxes', [invalidateInboxCacheOnFieldChange])
+  registerReactHooks('inboxes', [invalidateInboxCacheOnFieldChange])
+  registerReactHooks('personal-inboxes', [invalidateInboxCacheOnFieldChange])
 
   // Dispatch (plans/dispatch §H.1): auto-create the unscheduled WorkOrderVisit row the
   // instant a work order is created, on every create path. Keyed off the first write of
@@ -248,22 +252,18 @@ export function registerAllHooks(): void {
   // `work_order_status` lands on `completed`/`ended` — catches the visit roll-up, M2c's
   // `endEngagement`, kanban drags, and manual drawer edits, all through this one hook.
   //
-  // `registerEntityFieldChangeHooks` appends per-call (registry.ts:137-144), so this could
-  // also be separate calls — combined into one array here since all these handlers share
-  // the 'work-orders' slug and read more naturally listed together.
-  //
   // Client-notifications plan §4.3: enroll the seeded `job_follow_up` sequence on the same
   // completion door (`enrollJobFollowUpOnCompletion` — independent handler, no recursion risk,
   // never writes `work_order_status` itself).
   //
   // (Route planner item 8's visit-pin geocode used to be a third handler here — it now rides
   // the ADDRESS_STRUCT normalize hook via `registerAddressNormalizedListener` below.)
-  registerEntityFieldChangeHooks('work-orders', [
+  registerDeriveHooks('work-orders', [
     ensureVisitOnWorkOrderCreate,
     generateDraftOnCompletion,
     enrollJobFollowUpOnCompletion,
-    syncBillingOnWorkOrderChange,
   ])
+  registerMarkHooks('work-orders', [syncBillingOnWorkOrderChange])
 
   // Money totals engine (money MQ1 build spec §F.2, generalized to invoices in MI1 build
   // spec §G.1): recompute the mirrored subtotal/tax_total/total whenever a line's
@@ -277,16 +277,20 @@ export function registerAllHooks(): void {
   // `fieldValue.set` → `FieldValueService`, which never reads the system-hook registry, so
   // re-pointing a line at another catalog item reaches only this handler. Verified against
   // the running app: without it, a re-point left `line_item_part` NULL.
-  registerEntityFieldChangeHooks('line-items', [
-    recomputeOnLineChange,
+  registerDeriveHooks('line-items', [recomputeOnLineChange], {
+    batch: recomputeLineTotalsBatch,
+  })
+  // `skipOnCreate` (plans/events/10 §5): on a composed create the pre-create system hook has
+  // already stamped the part, and re-resolving it per line duplicates that write.
+  registerDeriveHooks('line-items', [stampPartOnCatalogItemChange], { skipOnCreate: true })
+  registerMarkHooks('line-items', [
     syncBillingOnLineChange,
-    stampPartOnCatalogItemChange,
     // Model A+ (plans/products/13): a line's part, quantity or parent order
     // moved, so what the order asks production for may have moved with it.
     stampOrderOnLineChange,
   ])
-  registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
-  registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange, stampOrderOnOrderChange])
+  registerMarkHooks('quotes', [recomputeOnQuoteBillingChange])
+  registerMarkHooks('orders', [recomputeOnOrderBillingChange, stampOrderOnOrderChange])
 
   // Buy-side totals engine (plans/purchasing/01-build-plan.md §4.1/§4.2). Same engine, a
   // different line entity and a different header shape — both named in
@@ -296,7 +300,7 @@ export function registerAllHooks(): void {
   // 🛑 `vendor-bills` is deliberately absent: a bill's totals are TRANSCRIBED from the
   // supplier's document (01 §5.4b). Recomputing them would silently correct the vendor's
   // arithmetic — the exact discrepancy the three-way match exists to surface.
-  registerEntityFieldChangeHooks('purchase-order-lines', [recomputeOnPurchaseOrderLineChange])
+  registerDeriveHooks('purchase-order-lines', [recomputeOnPurchaseOrderLineChange])
   // ⚠️ `prefillContactOnVendorChange` is the SECOND door for the vendor -> contact default
   // (purchasing plan 07). The `purchase_order_vendor` system hook in
   // `resources/hooks/purchasing-hooks.ts` fires only for writes through
@@ -304,10 +308,8 @@ export function registerAllHooks(): void {
   // order at a different supplier goes through `fieldValue.set` and reaches only this
   // handler. It is also the only one of the two given `oldValue`, so it owns the rule that
   // replaces this hook's own prefill without ever discarding a human's pick.
-  registerEntityFieldChangeHooks('purchase-orders', [
-    recomputeOnPurchaseOrderBillingChange,
-    prefillContactOnVendorChange,
-  ])
+  registerMarkHooks('purchase-orders', [recomputeOnPurchaseOrderBillingChange])
+  registerDeriveHooks('purchase-orders', [prefillContactOnVendorChange])
 
   // The three-way match (plans/purchasing/01-build-plan.md §6.2). `vendor_bill_status`,
   // `_match_variance` and `_match_notes` all declare the match hook as their only writer,
@@ -324,7 +326,7 @@ export function registerAllHooks(): void {
   // derived from lines, so no bill-line door can move it either.
   // 73 D4: voiding a bill writes one field on the BILL and touches no line, so
   // the third handler is what returns the voided lines' units to billable.
-  registerEntityFieldChangeHooks('vendor-bills', [
+  registerMarkHooks('vendor-bills', [
     rematchOnBillChange,
     recalculateBalanceOnBillChange,
     recalculateBilledRollupOnBillStatusChange,
@@ -333,13 +335,13 @@ export function registerAllHooks(): void {
   // verdict, the roll-up writes the ORDER LINE's billed quantity. Both must be
   // here — a bill line is created at the default quantity `1` and the real
   // number typed in after, and only the second handler sees that edit.
-  registerEntityFieldChangeHooks('vendor-bill-lines', [
+  registerMarkHooks('vendor-bill-lines', [
     rematchOnBillLineChange,
     recalculateBilledRollupOnBillLineChange,
   ])
   // 73 §8.2: a credit line's quantity comes OFF the same order line's billed
   // total, and like a bill line it is created at the default `1`.
-  registerEntityFieldChangeHooks('vendor-credit-lines', [recalculateBilledRollupOnCreditLineChange])
+  registerMarkHooks('vendor-credit-lines', [recalculateBilledRollupOnCreditLineChange])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
   // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a
@@ -351,12 +353,8 @@ export function registerAllHooks(): void {
   // this same draft→sent door via `enqueueQuickbooksInvoiceSyncOnSent`. Removed 2026-09-10: the
   // invoice document mirror was retired on MK's decision (brief 14's DECIDED block). auxx
   // composes journal entries instead, and this door no longer has a second listener.
-  registerEntityFieldChangeHooks('invoices', [
-    recomputeOnInvoiceBillingChange,
-    enrollInvoiceReminderOnSent,
-    reanchorInvoiceOnDueDateChange,
-    syncBillingOnInvoiceChange,
-  ])
+  registerMarkHooks('invoices', [recomputeOnInvoiceBillingChange, syncBillingOnInvoiceChange])
+  registerDeriveHooks('invoices', [enrollInvoiceReminderOnSent, reanchorInvoiceOnDueDateChange])
 
   // Part cost sync + markup pricing (money plan 17 §3) — the three interactive
   // triggers: linking/unlinking a part syncs (or clears) `cost`; setting a markup
@@ -365,7 +363,7 @@ export function registerAllHooks(): void {
   // recurse into each other. The bulk-recalc ripple (vendor price / BOM composition
   // changes) chains in separately at the end of `recalculateAllPartCosts` /
   // `recalculateAffectedParts` (`bom/cost-calculator.ts`), not through this door.
-  registerEntityFieldChangeHooks('catalog-items', [
+  registerDeriveHooks('catalog-items', [
     syncCatalogCostOnPartChange,
     recomputePriceOnMarkupChange,
     pauseMarkupOnPriceEdit,
@@ -375,7 +373,9 @@ export function registerAllHooks(): void {
   // decision #5/#13): field-type-keyed (NOT entity-scoped) so it runs for every ADDRESS_STRUCT
   // field on every entity without flipping `hasEntityFieldChangeHooks` on for entities that have
   // no address fields.
-  registerFieldTypeChangeHooks(FieldTypeEnum.ADDRESS_STRUCT, [normalizeAddressOnChange])
+  registerDeriveHooks(FieldTypeEnum.ADDRESS_STRUCT, [normalizeAddressOnChange], {
+    batch: normalizeAddressBatch,
+  })
 
   // Phone geo derivation — same field-type-keyed reasoning as the address hook above: one
   // registration covers every PHONE_INTL field on every entity, so SMS ingest, panel edits, CSV
@@ -383,7 +383,9 @@ export function registerAllHooks(): void {
   // city/region/country/timezone (chat's visitor-IP geo and human input both outrank an area
   // code), and no-ops on entities that have no such fields. Unlike the address hook this needs
   // no fire-and-forget — the lookup is an in-memory table read, not a MapTiler call.
-  registerFieldTypeChangeHooks(FieldTypeEnum.PHONE_INTL, [derivePhoneGeoOnChange])
+  registerDeriveHooks(FieldTypeEnum.PHONE_INTL, [derivePhoneGeoOnChange], {
+    batch: derivePhoneGeoBatch,
+  })
 
   // Interaction resolution, interactive lane (plans/company/v5-interaction-resolution.md §7).
   // A contact created or edited by hand, by the API, by Kopilot or by a workflow never meets
@@ -392,11 +394,12 @@ export function registerAllHooks(): void {
   // them. Def-slug keyed rather than field-type keyed (unlike the two hooks above): an EMAIL
   // field on a purchase order must not adopt participants, so the handlers filter on
   // `systemAttribute` and no-op in one comparison for every other write.
-  //
-  // Deliberately NOT registered for the sync lane, which never runs post hooks: bulk runs
-  // reach the same core through pass 5 of `events/handlers/finalize-integrity-passes.ts`.
-  registerEntityFieldChangeHooks('contacts', [resolveInteractionsOnIdentifierChange])
-  registerEntityFieldChangeHooks('companies', [resolveInteractionsOnCompanyDomainChange])
+  registerDeriveHooks('contacts', [resolveInteractionsOnIdentifierChange], {
+    batch: resolveInteractionsBatch,
+  })
+  registerDeriveHooks('companies', [resolveInteractionsOnCompanyDomainChange], {
+    batch: resolveInteractionsBatch,
+  })
   // Deserialize the geocoding tables now rather than on the first phone write. Co-located with
   // the registration so the warm can never drift away from the hook that needs it; the worker
   // additionally calls this at boot. Idempotent and never throws.
@@ -596,7 +599,7 @@ export function registerAllHooks(): void {
   // the same value bag the create writes (task 30 §8). Edits to either leg
   // re-stamp it through the field-change door below.
   registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness, stampTariffCodeLabel])
-  registerEntityFieldChangeHooks('tariff-codes', [restampTariffCodeLabel])
+  registerDeriveHooks('tariff-codes', [restampTariffCodeLabel], { skipOnCreate: true })
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
@@ -706,7 +709,7 @@ export function registerAllHooks(): void {
   // still `draft`; the engine's `frozenStatus` skips the write once it is issued.
   // `credit_memo_subtotal`, `_tax_total` and `_total` are all `creatable: false`, so this
   // registration is their ONLY writer. Keyed by apiSlug: `credit-memo-lines`.
-  registerEntityFieldChangeHooks('credit-memo-lines', [recomputeOnCreditMemoLineChange])
+  registerDeriveHooks('credit-memo-lines', [recomputeOnCreditMemoLineChange])
 
   // The memo's own delete guard (section 2.6): refuses an issued or settled memo (void
   // first), a memo dated in a settled period, and a memo a refund row still references.
@@ -747,7 +750,7 @@ export function registerAllHooks(): void {
 
   // ─── Vendor credits (plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7) ──
   // The buy-side mirror of the block above, registration for registration.
-  registerEntityFieldChangeHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
+  registerDeriveHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
   registerEntityPostDeleteHooks('vendor-credit-lines', [recomputeVendorCreditAfterLineDelete])
   registerEntityPreDeleteHooks('vendor-credits', [guardVendorCreditDelete])
 }

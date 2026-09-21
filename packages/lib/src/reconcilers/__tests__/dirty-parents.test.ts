@@ -10,7 +10,6 @@ import type { WriteSession } from '../../resources/crud/write-origin'
 import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import {
   __resetReconcilersForTest,
-  drainDeferredDirtyParents,
   MAX_DIRTY_PARENTS_PER_KEY,
   markParentDirty,
   registerReconciler,
@@ -19,6 +18,13 @@ import {
 
 const ORG = 'org_1'
 const USER = 'usr_1'
+
+/** What `flushTxWriteScope` does post-commit: re-mark the scope's buffer into a fresh scope. */
+async function replayCommitted(dirty: Map<string, Set<string>>): Promise<void> {
+  await runWithDirtyParents(ORG, USER, async () => {
+    for (const [key, ids] of dirty) for (const id of ids) markParentDirty(key, id)
+  })
+}
 
 /** Ids handed to the drain for `key`, per call. */
 function spyReconciler(key: string) {
@@ -250,11 +256,7 @@ describe('the transaction exit', () => {
     await runWithWriteSession(buffered(tx), () =>
       runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'doc-1'))
     )
-    await drainDeferredDirtyParents({
-      organizationId: ORG,
-      userId: USER,
-      dirty: tx.dirtyParents,
-    })
+    await replayCommitted(tx.dirtyParents)
 
     expect(calls).toEqual([['doc-1']])
   })
@@ -267,11 +269,7 @@ describe('the transaction exit', () => {
       await runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'doc-1'))
       await runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'doc-2'))
     })
-    await drainDeferredDirtyParents({
-      organizationId: ORG,
-      userId: USER,
-      dirty: tx.dirtyParents,
-    })
+    await replayCommitted(tx.dirtyParents)
 
     expect(calls).toEqual([['doc-1', 'doc-2']])
   })

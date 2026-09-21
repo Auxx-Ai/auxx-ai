@@ -1,5 +1,6 @@
 // packages/lib/src/field-hooks/types.ts
 
+import type { Database } from '@auxx/database'
 import type { TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
@@ -249,3 +250,55 @@ export interface EntityFieldChangeEvent {
  * and swallowed by the dispatcher — handlers must not break the write.
  */
 export type EntityFieldChangeHandler = (event: EntityFieldChangeEvent) => Promise<void>
+
+// =============================================================================
+// POST-WRITE FIELD-CHANGE HOOK KINDS (plans/events/10 §4.1)
+// =============================================================================
+
+/**
+ * What changed, without the values a lane may not have. A mark handler sees this and may
+ * only mark a reconciler; `oldValue`/`newValue` are present inline and buffered, absent on
+ * sync, so a mark must still produce a correct (if wider) marking from the ref alone.
+ */
+export interface FieldChangeRef {
+  recordId: RecordId
+  entityDefinitionId: string
+  entityType: string | null
+  entitySlug: string
+  field: CachedField
+  organizationId: string
+  userId: string
+  isCreate?: boolean
+  oldValue?: unknown
+  newValue?: unknown
+}
+
+/** Safe on every lane by construction: reads the ref, marks a `defineParentReconciler`. */
+export type MarkHandler = (event: FieldChangeRef) => Promise<void>
+
+/** Reads and writes in the handler. Inline or post-commit; on sync only through `batch`. */
+export type DeriveHandler = EntityFieldChangeHandler
+
+/** A consumer, not a derivation (record rules, cache invalidation). Never on sync. */
+export type ReactHandler = EntityFieldChangeHandler
+
+/** The sync-lane core of a derive: every target of one finalize, grouped, in one call. */
+export type BatchCore = (input: {
+  organizationId: string
+  userId: string
+  /** The finalize's connection, so stand-down checks read what the run wrote. */
+  db: Database
+  targets: FieldChangeRef[]
+}) => Promise<void>
+
+export interface DeriveOptions {
+  /** Skip when the field was written as part of the record's creation; a pre-create hook already did the work. */
+  skipOnCreate?: boolean
+  /** How the sync finalize runs it. Absent = not on sync. */
+  batch?: BatchCore
+}
+
+export type RegisteredFieldChangeHook =
+  | { kind: 'mark'; handler: MarkHandler }
+  | { kind: 'derive'; handler: DeriveHandler; options: DeriveOptions }
+  | { kind: 'react'; handler: ReactHandler }

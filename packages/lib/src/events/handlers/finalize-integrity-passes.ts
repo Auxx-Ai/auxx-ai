@@ -1,67 +1,22 @@
 // packages/lib/src/events/handlers/finalize-integrity-passes.ts
 //
-// Phase 5 of plans/events/03-write-context-and-batch-lane-plan.md (§8 step 4): the
-// data-integrity batch passes, fixing bug B-1 — synced/imported writes never run the
-// field-change integrity hooks (`skipEvents` suppresses the whole post-hook chain), so
-// imported addresses never normalize/geocode, phone geo never derives, and imported
-// quote/invoice lines never recompute totals.
-//
-// STANDALONE module: it executes over a persisted sync-change manifest and is wired into
-// the finalize pass by its caller. The CALLER decides which lanes invoke it — per the door
-// matrix, integrity hooks are batched at finalize for sync-large AND seed runs (D-10),
-// while the small-lane / per-record story is the caller's decision; this module just runs
-// the four passes over whatever manifest it is handed. It reuses the hooks' own extracted
-// cores (`money/totals-hooks.ts`, `geocoding/address-normalize-hook.ts`,
-// `phone-geo/derive-geo-hook.ts`) — no math or merge policy is reimplemented here.
-//
-// Pass selection reads TIER-1 membership (`manifest.touched` — unconditional, every
-// changed record with its changed field keys), not the rule-gated tier-2 `deltas` —
-// reading deltas would under-select exactly the way B-1 described (an imported address
-// only geocoded when a rule happened to watch the field). Created records appear in
-// `touched` too (creates record their written keys). A record degraded to ids-only
-// (`touched[rid] === 1` — keys shed under the byte budget) is treated as "any pass may
-// apply": every field of the wanted type on its def becomes a target, and the totals
-// pass assumes its trigger attrs may have changed.
-//
-// Value freshness: the totals cores read every input from the store themselves; the
-// address and phone passes RE-READ the stored value per (record, field) instead of
-// trusting the manifest's `{o, n}` snapshot — a later write may have superseded it, and
-// the address core's own stale-write guard depends on comparing against the value the
-// run started from.
-//
-// Idempotency (these passes can re-run on rare redelivery): totals recompute from
-// current lines (pure re-derivation), the address pass skips structs that already carry
-// a geocode stamp and the core's write-back is guarded, and phone geo fills only blank
-// targets.
-//
-// Keep top-level imports to types/logger/pure constants only; lazy-import everything
-// else (the events ↔ money/geocoding/cache boundaries break vi.mock otherwise — same
-// rule as `sync-finalize.ts` next door).
+// The sync lane's replay of the registered field-change hook chain (plans/events/10 §4.4):
+// the manifest projects to VALUELESS changes, marks run from those alone and derives run
+// through their `batch` cores. Two hand-written passes survive because they key on
+// membership rather than on a field, and they run after the dispatch so the evidence rows
+// it writes are in place (`record-events.ts:185`). Lazy-import everything but types and the
+// logger — the events ↔ money/geocoding/cache boundaries break `vi.mock` otherwise.
 
 import type { Database } from '@auxx/database'
-import { FieldType } from '@auxx/database/enums'
-import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
-import type { SystemAttribute } from '@auxx/types/system-attribute'
-import type { TotalledDocumentType } from '../../accounting/sales/totals/totals-hooks'
-import type { EntityFieldChangeEvent } from '../../field-hooks/types'
-import type { CachedField } from '../../field-values/types'
-import type {
-  ManifestFieldChange,
-  SyncChangeManifest,
-} from '../../record-rules/sync-manifest-types'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import type { DispatchChange } from '../../field-hooks/dispatch'
+import type { SyncChangeManifest } from '../../record-rules/sync-manifest-types'
+import type { DefEntityTypeResolver } from './passes/fulfillment-log-pass'
 
 const logger = createScopedLogger('finalize-integrity')
 
-/**
- * Bounded concurrency for the geocode pass. There is NO geocode job anywhere — the inline
- * hook fire-and-forgets one MapTiler call per write (plan events/03 §3.5b) — so this pass
- * IS the batching: a small worker pool instead of job infra.
- */
-const ADDRESS_GEOCODE_CONCURRENCY = 4
-
-/** Actor for the passes' writes — same fallback the sync finalize doors use. */
+/** Actor for everything dispatched from a manifest — same fallback the sync finalize doors use. */
 const SYSTEM_ACTOR = 'system'
 
 export interface IntegrityPassesInput {
@@ -70,44 +25,18 @@ export interface IntegrityPassesInput {
 }
 
 /**
- * Run the six data-integrity batch passes over a sync-change manifest:
+ * Dispatch the hook chain for everything a sync run changed, then run the two membership-keyed
+ * passes.
  *
- * 1. Totals — changed line-item records map (via the hook's own parent resolution) to
- *    DISTINCT parent quotes/invoices, each recomputed once; lines whose qty/unitPrice
- *    changed get `line_item_line_total` rewritten first. Quote/invoice billing-field
- *    changes recompute that document directly.
- * 2. Address normalize + geocode — changed ADDRESS_STRUCT fields, normalized via the
- *    hook's core under a bounded-concurrency pool.
- * 3. Phone geo — changed PHONE_INTL fields, blank city/region/country/timezone filled
- *    via the hook's core (in-memory lookup, sequential).
- * 4. Order demand — changed order lines (and cancelled orders) map to DISTINCT orders,
- *    whose demand fingerprint is re-stamped and whose builds are converged onto it.
- *    This is events/08 R6(c), and it is the same class of bug as pass 1: the inline
- *    seam cannot see a sync write, so without it a Shopify order edited from 3 to 5
- *    keeps a build for 3 forever.
- * 5. Contact/company interaction resolution: every created or identifier-touched
- *    contact and company gets the correspondence history it already has.
- * 6. Fulfillment inventory relief trigger (`passes/fulfillment-log-pass.ts`, money plan
- *    50 §1.4): entity migration 153 made `fulfillment` / `fulfillment_line` real entities
- *    that the Shopify connector writes directly, so there is no shipment log left to
- *    DERIVE here. This pass relieves every live line of an order whose fulfillment (or
- *    fulfillment line) arrived in this sync's manifest. Its posting half is gone (step
- *    1b, TARGET §1): a native shipment now posts inside `money/orders/fulfill.ts`'s own
- *    write, and there is no batch/effect lane left for a connector-written fulfillment to
- *    be swept into.
- *
- * NEVER throws: each pass — and each record inside a pass — is individually guarded and
- * logged, so one bad record or one failing pass cannot starve the others (mirrors
- * `runSyncFinalize`'s contract).
+ * NEVER throws: `dispatchFieldChanges` guards every handler, both passes guard themselves, and
+ * this wraps the lot (mirrors `runSyncFinalize`'s contract).
  */
 export async function runIntegrityPasses(db: Database, input: IntegrityPassesInput): Promise<void> {
   const { organizationId, manifest } = input
   try {
-    // An archived-only manifest still has work: pass 4 reads `archivedRecordIds`
-    // (a deleted line means its order asks production for less), and a created-only one
-    // does too: pass 5 reads `createdRecordIds`, which is unconditional membership. A create
-    // normally also lands in `touched` (creates record their written keys), so the third arm
-    // is a guard against a writer that only reports the lifecycle array, not a live path.
+    // An archived-only manifest still has work (a deleted line means its order asks production
+    // for less), and a created-only one does too: the fulfillment pass reads `createdRecordIds`,
+    // the tier documented as unconditional.
     if (
       Object.keys(manifest.touched).length === 0 &&
       (manifest.archivedRecordIds?.length ?? 0) === 0 &&
@@ -116,17 +45,33 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
       return
     }
 
-    const resolveDef = await buildDefFieldResolver(organizationId)
-    await totalsPass(db, organizationId, manifest, resolveDef)
-    await addressPass(db, organizationId, manifest, resolveDef)
-    await phoneGeoPass(db, organizationId, manifest, resolveDef)
-    await orderDemandPass(organizationId, manifest, resolveDef)
-    await interactionPass(db, organizationId, manifest, resolveDef)
+    const resolveDef = await buildDefEntityTypeResolver(organizationId)
 
-    // Pass 6 lives in its own module, like pass 4/5's cores — the events ↔ money
-    // boundary is exactly the one this module's header says to lazy-import
-    // across. It carries its own try/catch (see the module), so nothing more
-    // is needed here.
+    const [{ dispatchFieldChanges }, { runWithDirtyParents }] = await Promise.all([
+      import('../../field-hooks/dispatch'),
+      import('../../reconcilers/dirty-parents'),
+    ])
+
+    // One scope around both, so the marks the dispatch makes and the ones the archived lines
+    // make coalesce into a single drain per reconciler.
+    await runWithDirtyParents(organizationId, SYSTEM_ACTOR, async () => {
+      await dispatchFieldChanges({
+        organizationId,
+        userId: SYSTEM_ACTOR,
+        lane: 'sync',
+        db,
+        changes: fromManifest(manifest),
+        degraded: idsOnly(manifest),
+      })
+      await markArchivedLines(organizationId, manifest, resolveDef)
+    })
+
+    // The one hole the manifest cannot close by itself: past `MAX_TOUCHED_RECORDS` it stops
+    // recording members at all, so the tail waits for the nightly sweep.
+    if (manifest.membershipTruncated) {
+      logger.warn('sync manifest membership truncated — hook tail deferred', { organizationId })
+    }
+
     const { fulfillmentPostingTriggerPass } = await import('./passes/fulfillment-log-pass')
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
 
@@ -143,622 +88,87 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
 }
 
 // =============================================================================
-// Manifest → def/field resolution (shared by all passes)
+// Manifest → dispatch input
 // =============================================================================
 
-/** Per-def index: canonical ids + the outputKey → field map the manifest keys resolve
- * through. Manifest change keys are outputKeys (`systemAttribute ?? fieldId`), matching
- * the record-rules consumer's convention. */
-interface DefFieldIndex {
-  entityDefinitionId: string
-  entityType: string | null
-  entitySlug: string
-  byOutputKey: Map<string, CustomFieldEntity>
+/**
+ * Tier-1 `touched` keys, no values. Tier-2 `deltas` are deliberately NOT read: they are gated
+ * on rule subscriptions and would under-select exactly the way bug B-1 described (an imported
+ * address only geocoded when a rule happened to watch the field).
+ */
+function fromManifest(manifest: SyncChangeManifest): DispatchChange[] {
+  const changes: DispatchChange[] = []
+  for (const [rid, touched] of Object.entries(manifest.touched) as [RecordId, string[] | 1][]) {
+    if (touched === 1) continue
+    for (const outputKey of touched) changes.push({ recordId: rid, outputKey })
+  }
+  return changes
 }
 
-type DefFieldResolver = (rawDefId: string) => Promise<DefFieldIndex | null>
+/** Records whose keys were shed under the byte budget — the dispatch degrades them to marks. */
+function idsOnly(manifest: SyncChangeManifest): RecordId[] {
+  const ids: RecordId[] = []
+  for (const [rid, touched] of Object.entries(manifest.touched) as [RecordId, string[] | 1][]) {
+    if (touched === 1) ids.push(rid)
+  }
+  return ids
+}
 
 /**
- * Memoizing resolver for the RecordId def prefix (slug for imports, CUID for connectors —
- * `findCachedResource` matches id, entityType, and apiSlug). Null for unknown defs and on
- * cache hiccups — a skipped record beats a thrown pass.
+ * An archived line asks its order for less, and archival fires no field change at all — so the
+ * one thing the manifest's `touched` keys cannot express is marked by hand here. The drift
+ * reconciler resolves the parents for the whole batch in one query at the drain.
  */
-async function buildDefFieldResolver(organizationId: string): Promise<DefFieldResolver> {
-  const { findCachedResource, getCachedCustomFields } = await import('../../cache')
-  const memo = new Map<string, Promise<DefFieldIndex | null>>()
+async function markArchivedLines(
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver
+): Promise<void> {
+  const lineInstanceIds: string[] = []
+  for (const rid of manifest.archivedRecordIds ?? []) {
+    const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid)
+    const def = await resolveDef(rawDefId)
+    if (def?.entityType === 'line_item') lineInstanceIds.push(entityInstanceId)
+  }
+  if (lineInstanceIds.length === 0) return
+
+  try {
+    const { markOrStampOrderLine } = await import('../../inventory/builds/drift-reconciler')
+    for (const lineInstanceId of lineInstanceIds) {
+      await markOrStampOrderLine(organizationId, lineInstanceId)
+    }
+  } catch (error) {
+    logger.error('archived line marking failed', {
+      organizationId,
+      lines: lineInstanceIds.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
+ * Memoizing entityType resolver over the RecordId def prefix (slug for imports, CUID for
+ * connectors — `findCachedResource` matches id, entityType and apiSlug). Null for unknown defs
+ * and on cache hiccups: a skipped record beats a thrown pass.
+ */
+async function buildDefEntityTypeResolver(organizationId: string): Promise<DefEntityTypeResolver> {
+  const { findCachedResource } = await import('../../cache')
+  const memo = new Map<string, Promise<{ entityType: string | null } | null>>()
   return (rawDefId: string) => {
     let pending = memo.get(rawDefId)
     if (!pending) {
-      pending = (async () => {
-        const resource = await findCachedResource(organizationId, rawDefId)
-        if (!resource?.entityDefinitionId) return null
-        const fields = await getCachedCustomFields(organizationId, resource.entityDefinitionId)
-        const byOutputKey = new Map<string, CustomFieldEntity>()
-        for (const field of fields) byOutputKey.set(field.systemAttribute ?? field.id, field)
-        return {
-          entityDefinitionId: resource.entityDefinitionId,
-          entityType: resource.entityType ?? null,
-          entitySlug: resource.apiSlug,
-          byOutputKey,
-        }
-      })().catch((error) => {
-        logger.warn('integrity passes: def resolution failed — skipping def', {
-          organizationId,
-          rawDefId,
-          error: error instanceof Error ? error.message : String(error),
+      pending = findCachedResource(organizationId, rawDefId)
+        .then((resource) => (resource ? { entityType: resource.entityType ?? null } : null))
+        .catch((error) => {
+          logger.warn('def resolution failed — skipping def', {
+            organizationId,
+            rawDefId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          return null
         })
-        return null
-      })
       memo.set(rawDefId, pending)
     }
     return pending
-  }
-}
-
-/** One changed field of a wanted type on one record, with canonical ids for the write path. */
-interface FieldTypeTarget {
-  /** Canonical-def RecordId (CUID keyspace) for the field-value read/write path. */
-  recordId: RecordId
-  entityDefinitionId: string
-  entityType: string | null
-  entitySlug: string
-  field: CustomFieldEntity
-  /** Tier-2 delta when one was captured for this record+key — values are rule-gated. */
-  change?: ManifestFieldChange
-}
-
-/**
- * Collect every touched (record, field) in the manifest whose resolved field is of
- * `fieldType`. An ids-only touched record (`1`) contributes EVERY field of the wanted
- * type on its def — its keys were shed, so any pass may apply.
- */
-async function collectFieldTypeTargets(
-  manifest: SyncChangeManifest,
-  fieldType: string,
-  resolveDef: DefFieldResolver
-): Promise<FieldTypeTarget[]> {
-  const targets: FieldTypeTarget[] = []
-  for (const [rid, touched] of Object.entries(manifest.touched)) {
-    const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
-    const def = await resolveDef(rawDefId)
-    if (!def) continue
-    const deltas = manifest.deltas[rid as RecordId]
-    const push = (key: string, field: CustomFieldEntity) =>
-      targets.push({
-        recordId: toRecordId(def.entityDefinitionId, entityInstanceId),
-        entityDefinitionId: def.entityDefinitionId,
-        entityType: def.entityType,
-        entitySlug: def.entitySlug,
-        field,
-        change: deltas?.[key],
-      })
-    if (touched === 1) {
-      for (const [key, field] of def.byOutputKey) {
-        if (field.type === fieldType) push(key, field)
-      }
-      continue
-    }
-    for (const key of touched) {
-      const field = def.byOutputKey.get(key)
-      if (field && field.type === fieldType) push(key, field)
-    }
-  }
-  return targets
-}
-
-/** Synthesize the slice of {@link EntityFieldChangeEvent} the extracted hook cores read.
- * `oldValue` carries the manifest's captured pre-write value when present; `newValue` the
- * freshly re-read stored value (the cores never read these two themselves — listeners might). */
-function buildSyntheticEvent(
-  organizationId: string,
-  target: FieldTypeTarget,
-  newValue: unknown
-): EntityFieldChangeEvent {
-  return {
-    recordId: target.recordId,
-    entityDefinitionId: target.entityDefinitionId,
-    entityType: target.entityType,
-    entitySlug: target.entitySlug,
-    field: target.field as unknown as CachedField,
-    oldValue: target.change?.o ?? null,
-    newValue,
-    oldDisplay: null,
-    newDisplay: null,
-    organizationId,
-    userId: SYSTEM_ACTOR,
-  }
-}
-
-/** Minimal worker pool: `limit` lanes pulling from one cursor. Workers guard themselves. */
-async function runWithPool<T>(
-  items: readonly T[],
-  limit: number,
-  worker: (item: T) => Promise<void>
-): Promise<void> {
-  if (items.length === 0) return
-  let next = 0
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const item = items[next++]!
-        await worker(item)
-      }
-    })
-  )
-}
-
-// =============================================================================
-// Pass 1: quote/invoice totals
-// =============================================================================
-
-/**
- * Recompute document totals for every quote/invoice a changed line contributes to —
- * DISTINCT parents, one recompute each (two changed lines of one invoice → one recompute).
- * Changed lines with a qty/unitPrice write get their own `line_item_line_total` rewritten
- * first, so the parent recompute sums fresh line totals. Quote/invoice billing-field
- * changes (discount/tax) recompute that document directly — same trigger vocabulary as the
- * inline hooks. Idempotent: `recomputeTotals` is a pure re-derivation from current lines +
- * billing fields; re-running writes the same mirrors.
- */
-async function totalsPass(
-  db: Database,
-  organizationId: string,
-  manifest: SyncChangeManifest,
-  resolveDef: DefFieldResolver
-): Promise<void> {
-  try {
-    const totalsHooks = await import('../../accounting/sales/totals/totals-hooks')
-    const hasAny = (keys: string[], set: ReadonlySet<SystemAttribute>) =>
-      keys.some((key) => set.has(key as SystemAttribute))
-
-    const lineWork: Array<{ lineInstanceId: string; rewriteLineTotal: boolean }> = []
-    const parents = new Map<
-      string,
-      { documentType: TotalledDocumentType; documentInstanceId: string }
-    >()
-    const addParent = (documentType: TotalledDocumentType, documentInstanceId: string) =>
-      parents.set(`${documentType}:${documentInstanceId}`, { documentType, documentInstanceId })
-
-    for (const [rid, touched] of Object.entries(manifest.touched)) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
-      // Ids-only degradation: the keys were shed, so any trigger attr may have
-      // changed — the record enters every arm its def qualifies for.
-      const idsOnly = touched === 1
-      const keys = idsOnly ? [] : touched
-      const hasTrigger = (set: ReadonlySet<SystemAttribute>) => idsOnly || hasAny(keys, set)
-      const def = await resolveDef(rawDefId)
-      // Def entityType, not systemAttribute alone, decides the arm — mirrors the hooks'
-      // per-apiSlug registration and keeps a stray attr on another def from mis-writing.
-      switch (def?.entityType) {
-        case 'line_item':
-          if (hasTrigger(totalsHooks.LINE_TRIGGER_ATTRS)) {
-            lineWork.push({
-              lineInstanceId: entityInstanceId,
-              rewriteLineTotal: hasTrigger(totalsHooks.LINE_TOTAL_TRIGGER_ATTRS),
-            })
-          }
-          break
-        case 'quote':
-          if (hasTrigger(totalsHooks.QUOTE_TRIGGER_ATTRS)) addParent('quote', entityInstanceId)
-          break
-        case 'invoice':
-          if (hasTrigger(totalsHooks.INVOICE_TRIGGER_ATTRS)) {
-            addParent('invoice', entityInstanceId)
-          }
-          break
-        case 'order':
-          if (hasTrigger(totalsHooks.ORDER_TRIGGER_ATTRS)) addParent('order', entityInstanceId)
-          break
-      }
-    }
-    if (lineWork.length === 0 && parents.size === 0) return
-
-    for (const line of lineWork) {
-      try {
-        if (line.rewriteLineTotal) {
-          // `db` threaded through so the totals stand-down's connector-managed check (money
-          // plan 37 §6) reads through the SAME connection this pass's manifest was built
-          // from, not a separate pool connection that may not see this run's writes yet.
-          await totalsHooks.recomputeLineTotal({
-            organizationId,
-            userId: SYSTEM_ACTOR,
-            lineInstanceId: line.lineInstanceId,
-            db,
-          })
-        }
-        const parent = await totalsHooks.resolveLineParentDocument({
-          organizationId,
-          userId: SYSTEM_ACTOR,
-          lineInstanceId: line.lineInstanceId,
-        })
-        if (parent) addParent(parent.documentType, parent.documentInstanceId)
-      } catch (error) {
-        logger.error('integrity totals: line handling failed', {
-          organizationId,
-          lineInstanceId: line.lineInstanceId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    for (const parent of parents.values()) {
-      try {
-        await totalsHooks.recomputeTotals({
-          organizationId,
-          userId: SYSTEM_ACTOR,
-          documentType: parent.documentType,
-          documentInstanceId: parent.documentInstanceId,
-          db,
-        })
-      } catch (error) {
-        logger.error('integrity totals: recompute failed', {
-          organizationId,
-          ...parent,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    logger.info('integrity totals pass done', {
-      organizationId,
-      lines: lineWork.length,
-      parents: parents.size,
-    })
-  } catch (error) {
-    logger.error('integrity totals pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-// =============================================================================
-// Pass 2: address normalize + geocode
-// =============================================================================
-
-/**
- * Normalize + geocode every changed ADDRESS_STRUCT value through the hook's core, under a
- * pool of {@link ADDRESS_GEOCODE_CONCURRENCY} workers. The stored value is RE-READ per
- * target — a later write may have superseded the manifest snapshot, and the core's own
- * stale-write guard compares against the value handed in, so it must be fresh. Idempotent
- * on redelivery: a struct already carrying a geocode stamp (only ever written by the
- * normalize core — sync/import sources write raw components) is skipped, and the core's
- * write-back re-reads before writing.
- */
-async function addressPass(
-  db: Database,
-  organizationId: string,
-  manifest: SyncChangeManifest,
-  resolveDef: DefFieldResolver
-): Promise<void> {
-  try {
-    const targets = await collectFieldTypeTargets(manifest, FieldType.ADDRESS_STRUCT, resolveDef)
-    if (targets.length === 0) return
-
-    const { extractStruct, hasStampedGeocode, isNonEmptyStruct, runNormalize } = await import(
-      '../../geocoding/address-normalize-hook'
-    )
-    const { createFieldValueContext } = await import('../../field-values/field-value-helpers')
-    const { getValue } = await import('../../field-values/field-value-queries')
-    const ctx = createFieldValueContext(organizationId, SYSTEM_ACTOR, db, undefined, {
-      skipPreHooks: true,
-    })
-
-    let normalized = 0
-    await runWithPool(targets, ADDRESS_GEOCODE_CONCURRENCY, async (target) => {
-      try {
-        const stored = await getValue(
-          ctx,
-          { recordId: target.recordId, fieldId: target.field.id },
-          target.field as unknown as CachedField
-        )
-        const current = extractStruct(stored)
-        if (!isNonEmptyStruct(current)) return
-        if (hasStampedGeocode(current)) return
-        await runNormalize(buildSyntheticEvent(organizationId, target, stored), current)
-        normalized++
-      } catch (error) {
-        logger.error('integrity address pass: record failed', {
-          organizationId,
-          recordId: target.recordId,
-          fieldId: target.field.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    })
-
-    logger.info('integrity address pass done', {
-      organizationId,
-      targets: targets.length,
-      normalized,
-    })
-  } catch (error) {
-    logger.error('integrity address pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-// =============================================================================
-// Pass 3: phone geo
-// =============================================================================
-
-/**
- * Derive geo fields for every changed PHONE_INTL value through the hook's core. Sequential —
- * the lookup is an in-memory table read; the only I/O is the core's fill-if-blank reads and
- * quiet writes. The phone number is RE-READ from the store (a later write wins over the
- * manifest snapshot). Idempotent: the core fills only BLANK targets, so a redelivered run
- * writes nothing the first run already filled.
- */
-async function phoneGeoPass(
-  db: Database,
-  organizationId: string,
-  manifest: SyncChangeManifest,
-  resolveDef: DefFieldResolver
-): Promise<void> {
-  try {
-    const targets = await collectFieldTypeTargets(manifest, FieldType.PHONE_INTL, resolveDef)
-    if (targets.length === 0) return
-
-    const { extractPrimaryPhone, fillBlankGeoFields } = await import(
-      '../../phone-geo/derive-geo-hook'
-    )
-    const { lookupPhoneGeo } = await import('../../phone-geo/lookup')
-    const { createFieldValueContext } = await import('../../field-values/field-value-helpers')
-    const { getValue } = await import('../../field-values/field-value-queries')
-    const ctx = createFieldValueContext(organizationId, SYSTEM_ACTOR, db, undefined, {
-      skipPreHooks: true,
-    })
-
-    let derived = 0
-    for (const target of targets) {
-      try {
-        const stored = await getValue(
-          ctx,
-          { recordId: target.recordId, fieldId: target.field.id },
-          target.field as unknown as CachedField
-        )
-        const phone = extractPrimaryPhone(stored)
-        if (!phone) continue
-        const geo = lookupPhoneGeo(phone)
-        if (!geo) continue
-        await fillBlankGeoFields(buildSyntheticEvent(organizationId, target, stored), geo)
-        derived++
-      } catch (error) {
-        logger.error('integrity phone-geo pass: record failed', {
-          organizationId,
-          recordId: target.recordId,
-          fieldId: target.field.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    logger.info('integrity phone-geo pass done', {
-      organizationId,
-      targets: targets.length,
-      derived,
-    })
-  } catch (error) {
-    logger.error('integrity phone-geo pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-// =============================================================================
-// Pass 4: order demand → build convergence
-// =============================================================================
-
-/**
- * Re-stamp the demand fingerprint of every order this run touched, and converge
- * its builds onto it.
- *
- * **This is R6(c) of `plans/events/08-derived-parent-reconciler-plan.md` §6.6**, and
- * it closes the same class of hole passes 1-3 close. `builds/drift-hooks.ts` marks an
- * order dirty from two seams — the field-change post hook and the post-delete handler
- * — and *neither can see a connector write*: the `sync` lane resolves to
- * `publishEvents: false`, which is precisely what the post-hook chain is gated on
- * (`field-value-mutations.ts`). So a Shopify order edited from 3 to 5 keeps a build
- * for 3 forever, with nothing on any screen saying so — plans/products/13 §0's defect,
- * arriving through the one door that plan never covered.
- *
- * ⚠️ **What saves the FIRST sync is a different lane, not this pass.** The connector's
- * relationship pass writes `line_item_order` through an `automation`-origin handler,
- * which is inline, so linking a line to its order does fire the hook. This pass is for
- * every sync after that one (products/13 §1.6 traces both).
- *
- * 🛑 **One resolve, one reconcile — never per record.** The lines are mapped to their
- * orders in ONE query and the whole deduped order set is handed over at once, because
- * `reconcileOrdersFromSync` does its settings read, order load, field lookup and
- * stored-fingerprint read once per BATCH. Marking each order separately would restore
- * the N+1 that events/08 exists to remove.
- *
- * Cheap when nothing moved: the reconciler's fingerprint compare drops an order whose
- * demand did not actually change before any write, so a large manifest that touched a
- * hundred order headers costs two reads and no writes.
- *
- * 🛑 **Known residual — a REPARENTED line marks its new order only.** The inline seam
- * marks both, because `EntityFieldChangeEvent` carries `oldValue`; here the old parent
- * is only in the tier-2 delta, which is rule-gated (so often absent) and stores a raw
- * value whose shape this pass would have to guess at. Guessing and silently getting it
- * wrong is worse than a documented gap, so: a line moved between orders under sync
- * leaves the OLD order holding a build for a part it no longer sells, until that order
- * is touched again. Connector runs do not reparent line items (a Shopify line belongs
- * to its order permanently); imports can. Recorded in events/08 §6.6.
- */
-async function orderDemandPass(
-  organizationId: string,
-  manifest: SyncChangeManifest,
-  resolveDef: DefFieldResolver
-): Promise<void> {
-  try {
-    const { LINE_DEMAND_TRIGGER_ATTRS, ORDER_DEMAND_TRIGGER_ATTRS } = await import(
-      '../../inventory/builds/drift-hooks'
-    )
-
-    const lineInstanceIds = new Set<string>()
-    const orderInstanceIds = new Set<string>()
-
-    for (const [rid, touched] of Object.entries(manifest.touched)) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
-      const def = await resolveDef(rawDefId)
-      if (!def) continue
-      // Ids-only degradation: the keys were shed under the byte budget, so any
-      // demand attribute may have moved and the record enters its def's arm.
-      const idsOnly = touched === 1
-      const keys = idsOnly ? [] : touched
-      const hasTrigger = (set: ReadonlySet<SystemAttribute>) =>
-        idsOnly || keys.some((key) => set.has(key as SystemAttribute))
-      // Def entityType decides the arm, never the attribute alone — the same rule
-      // pass 1 follows, and what keeps a stray key on another def out of here.
-      switch (def.entityType) {
-        case 'line_item':
-          if (hasTrigger(LINE_DEMAND_TRIGGER_ATTRS)) lineInstanceIds.add(entityInstanceId)
-          break
-        case 'order':
-          if (hasTrigger(ORDER_DEMAND_TRIGGER_ATTRS)) orderInstanceIds.add(entityInstanceId)
-          break
-      }
-    }
-
-    // A line archived during the run asks production for less, and archival fires no
-    // field change at all — the inline twin of this is `stampOrderAfterLineDelete`.
-    // The relation is still readable: `readFieldRelations` selects `FieldValue` rows
-    // directly and never joins `EntityInstance`, so a soft-archived line still resolves
-    // its order.
-    for (const rid of manifest.archivedRecordIds ?? []) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid)
-      const def = await resolveDef(rawDefId)
-      if (def?.entityType === 'line_item') lineInstanceIds.add(entityInstanceId)
-    }
-
-    if (lineInstanceIds.size > 0) {
-      const { resolveParentsByRelation } = await import('../../reconcilers/parent-reconciler')
-      const parents = await resolveParentsByRelation(organizationId, 'line_item_order', [
-        ...lineInstanceIds,
-      ])
-      for (const orderId of parents) orderInstanceIds.add(orderId)
-    }
-    if (orderInstanceIds.size === 0) return
-
-    const { reconcileOrdersFromSync } = await import('../../inventory/builds/drift-reconciler')
-    await reconcileOrdersFromSync(organizationId, [...orderInstanceIds])
-
-    logger.info('integrity order-demand pass done', {
-      organizationId,
-      lines: lineInstanceIds.size,
-      orders: orderInstanceIds.size,
-    })
-  } catch (error) {
-    logger.error('integrity order-demand pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-// =============================================================================
-// Pass 5: contact/company interaction resolution
-// =============================================================================
-
-/**
- * Contact and company attributes whose write can change which participants (or which
- * contacts) belong to a record. Mirrors `interactions/hooks.ts`, which is the same pass on
- * the interactive lane.
- */
-const INTERACTION_TRIGGER_ATTRS: ReadonlySet<string> = new Set([
-  'primary_email',
-  'phone',
-  'primary_phone',
-  'contact_employer',
-  'company_domain',
-])
-
-/**
- * Give the contacts and companies a bulk run touched the correspondence history they
- * already have.
- *
- * **Why this is a pass and not a record rule** (plans/company/v5-interaction-resolution.md
- * §4). A field rule would fire from the sync door too, but that door matches transitions
- * against TIER-2 deltas, which are capped at `MAX_DELTA_RECORDS` (5,000). The import this
- * was written for created 20,414 contacts, so a rule would have fired for a quarter of them
- * and silently skipped the rest — the exact under-selection this module's header describes.
- * Tier-1 `touched` membership is unconditional, and `createdRecordIds` more so.
- *
- * Selection therefore reads membership, never deltas:
- *  - every created record whose def is a contact or a company (an import's whole point),
- *  - plus touched records carrying one of {@link INTERACTION_TRIGGER_ATTRS},
- *  - plus ids-only degraded records (`touched[rid] === 1`), which may carry anything.
- *
- * The work itself is `resolveInteractions`, which batches internally and never throws. A run
- * that touched no contact and no company resolves zero ids and returns before any query,
- * which is how the other four passes guard themselves too.
- */
-async function interactionPass(
-  db: Database,
-  organizationId: string,
-  manifest: SyncChangeManifest,
-  resolveDef: DefFieldResolver
-): Promise<void> {
-  try {
-    const instanceIds = new Set<string>()
-
-    const wanted = async (rawDefId: string): Promise<boolean> => {
-      const def = await resolveDef(rawDefId)
-      return def?.entityType === 'contact' || def?.entityType === 'company'
-    }
-
-    // Creates first: an imported contact has no "changed keys" worth inspecting — its
-    // existence is the trigger.
-    for (const rid of manifest.createdRecordIds ?? []) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid)
-      if (await wanted(rawDefId)) instanceIds.add(entityInstanceId)
-    }
-
-    for (const [rid, touched] of Object.entries(manifest.touched)) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
-      if (instanceIds.has(entityInstanceId)) continue
-      // Ids-only degradation: the keys were shed under the byte budget, so any identifier
-      // may have moved and the record enters its def's arm.
-      const idsOnly = touched === 1
-      const hasTrigger =
-        idsOnly || (touched as string[]).some((key) => INTERACTION_TRIGGER_ATTRS.has(key))
-      if (!hasTrigger) continue
-      if (await wanted(rawDefId)) instanceIds.add(entityInstanceId)
-    }
-
-    if (instanceIds.size === 0) return
-
-    // Membership truncation is the one hole this pass cannot close by itself: past
-    // `MAX_TOUCHED_RECORDS` the manifest stops recording members at all, so the tail waits
-    // for the nightly sweep. Say so in the log rather than reporting a clean run.
-    if (manifest.membershipTruncated) {
-      logger.warn('integrity interaction pass: manifest membership truncated — tail deferred', {
-        organizationId,
-        selected: instanceIds.size,
-      })
-    }
-
-    const { resolveInteractions } = await import('../../interactions/resolve')
-    const summary = await resolveInteractions({
-      organizationId,
-      recordIds: [...instanceIds],
-      reason: 'sync',
-      db,
-    })
-
-    logger.info('integrity interaction pass done', {
-      organizationId,
-      selected: instanceIds.size,
-      ...summary,
-    })
-  } catch (error) {
-    logger.error('integrity interaction pass failed', {
-      organizationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
   }
 }

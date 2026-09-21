@@ -264,23 +264,3 @@ export async function drainDirtyParents(scope: DirtyParentScope): Promise<void> 
   }
   scope.dirty.clear()
 }
-
-/**
- * Drain a set collected inside a transaction, after it committed. The
- * `TxWriteScope` carries plain `Map<string, Set<string>>`, not a scope, so this
- * rebuilds the shape {@link drainDirtyParents} takes.
- */
-export async function drainDeferredDirtyParents(params: {
-  organizationId: string
-  userId: string
-  dirty: Map<string, Set<string>>
-}): Promise<void> {
-  if (params.dirty.size === 0) return
-  await drainDirtyParents({
-    organizationId: params.organizationId,
-    userId: params.userId,
-    dirty: params.dirty,
-    drained: false,
-    truncated: false,
-  })
-}
