@@ -30,6 +30,7 @@ import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
 import { FINALIZED_SETUP_STATE } from '../ledger/setup/setup-readiness'
 import type { GlPostingLineInput, GlPostingSourceInput, RoleSourceScope } from '../ledger/types'
 import { type CashEndpoint, cashEndpointSourceOf, resolveCashEndpoint } from './cash-endpoint'
+import { assertPostableMovement, type MovementRow, readMovement } from './reads'
 
 const logger = createScopedLogger('post-movement')
 
@@ -95,7 +96,7 @@ export type MovementPostingResult =
   | { status: 'blocked'; reason: string }
   | { status: 'skipped'; reason: string }
 
-export type MovementRow = typeof schema.MoneyTransaction.$inferSelect
+export type { MovementRow } from './reads'
 
 /** What every line of a movement's entry carries before its account and amount. */
 export interface MovementLineBase {
@@ -145,21 +146,12 @@ async function loadMovement(
   input: PostMovementInput,
   zone: string
 ): Promise<{ money: MovementRow; effectiveDate: string }> {
-  const money = await tx.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, input.organizationId),
-      eq(schema.MoneyTransaction.id, input.moneyTransactionId),
-      eq(schema.MoneyTransaction.purpose, input.purpose)
-    ),
-  })
-  if (!money) throw new UnprocessableEntityError(`${input.label} movement does not exist`)
-  if (money.currency !== 'USD' || money.currencyExponent !== 2)
-    throw new UnprocessableEntityError(`${input.label} requires a confirmed USD amount`)
-  if (
-    (money.datePrecision === 'instant' && !money.occurredAt) ||
-    (money.datePrecision === 'date' && !money.occurredOn)
+  const money = assertPostableMovement(
+    await readMovement(tx, input.organizationId, input.moneyTransactionId, {
+      purpose: input.purpose,
+    }),
+    input.label
   )
-    throw new UnprocessableEntityError(`${input.label} occurrence date is incomplete`)
   const effectiveDate =
     money.datePrecision === 'date'
       ? money.occurredOn!

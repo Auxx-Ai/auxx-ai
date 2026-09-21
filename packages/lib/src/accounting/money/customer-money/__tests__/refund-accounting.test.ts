@@ -90,7 +90,13 @@ function db(): Database {
     select: () => chain,
     update: () => ({ set: () => ({ where: async () => undefined }) }),
     query: {
-      MoneyTransaction: { findFirst: async () => h.money },
+      MoneyTransaction: {
+        findFirst: async () => h.money,
+        findMany: async () => {
+          const row = await h.money
+          return row ? [row] : []
+        },
+      },
       MoneyRefundSettlement: { findMany: async () => h.settlements },
     },
   }

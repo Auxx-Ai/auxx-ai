@@ -208,7 +208,7 @@ describe('a quote deposit paid online', () => {
 
     const money = h.inserts.find((row) => row.table === 'MoneyTransaction')!
     expect(money.values).toMatchObject({ quoteInstanceId: 'quote-1' })
-    expect(money.values).not.toHaveProperty('workOrderInstanceId')
+    expect(money.values).toMatchObject({ workOrderInstanceId: null })
   })
 
   it('carries the work order too, when the quote already converted', async () => {

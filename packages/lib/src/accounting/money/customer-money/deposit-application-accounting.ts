@@ -30,6 +30,7 @@ import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
+import { readMovement } from '../reads'
 
 const logger = createScopedLogger('money-deposit-application-accounting')
 
@@ -71,12 +72,8 @@ async function readApplicationSource(
     )
   const invoiceInstanceId = application.invoiceInstanceId!
 
-  const money = await tx.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, organizationId),
-      eq(schema.MoneyTransaction.id, application.moneyTransactionId),
-      eq(schema.MoneyTransaction.purpose, 'customer_receipt')
-    ),
+  const money = await readMovement(tx, organizationId, application.moneyTransactionId, {
+    purpose: 'customer_receipt',
   })
   if (!money || money.currency !== 'USD' || money.currencyExponent !== 2)
     throw new UnprocessableEntityError(

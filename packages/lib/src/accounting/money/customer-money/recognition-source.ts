@@ -6,6 +6,7 @@ import { UnprocessableEntityError } from '../../../errors'
 import { periodKeyForDate } from '../../ledger/periods/periods'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
+import { listOrderApplications, listRefundSettlements, readMovements } from '../reads'
 import { readOrderMoneyCoverage } from './reads'
 import {
   allocateOrderRecognition,
@@ -152,38 +153,23 @@ export async function readOrderRecognitionSource(
   )
     blockers.push('Source transaction evidence is pending, blocked, or rejected')
 
-  const allApplications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, input.organizationId),
-      eq(schema.MoneyApplication.orderInstanceId, input.orderId)
-    ),
-    orderBy: asc(schema.MoneyApplication.createdAt),
-  })
+  const allApplications = await listOrderApplications(db, input.organizationId, input.orderId)
   const applications = allApplications.filter((row) => row.operation === 'apply')
+  // Deliberate: an order whose receipts were ever taken back is not recognised
+  // from this timeline at all, netting or not.
   if (allApplications.some((row) => row.operation === 'unapply'))
     blockers.push('Receipt timeline contains an unapplied money application')
   const moneyIds = [...new Set(applications.map((row) => row.moneyTransactionId))]
-  const moneyRows = moneyIds.length
-    ? await db.query.MoneyTransaction.findMany({
-        where: and(
-          eq(schema.MoneyTransaction.organizationId, input.organizationId),
-          inArray(schema.MoneyTransaction.id, moneyIds),
-          eq(schema.MoneyTransaction.purpose, 'customer_receipt')
-        ),
-      })
-    : []
+  const moneyById = await readMovements(db, input.organizationId, moneyIds, {
+    purpose: 'customer_receipt',
+  })
   if (moneyIds.length) {
-    const refunds = await db.query.MoneyRefundSettlement.findMany({
-      where: and(
-        eq(schema.MoneyRefundSettlement.organizationId, input.organizationId),
-        inArray(schema.MoneyRefundSettlement.originalTransactionId, moneyIds)
-      ),
-      columns: { originalTransactionId: true },
+    const refunds = await listRefundSettlements(db, input.organizationId, {
+      originalTransactionIds: moneyIds,
     })
     for (const refund of refunds)
       blockers.push(`receipt ${refund.originalTransactionId} has a refund settlement`)
   }
-  const moneyById = new Map(moneyRows.map((row) => [row.id, row]))
   const events: OrderRecognitionEvent[] = []
   for (const application of applications) {
     const money = moneyById.get(application.moneyTransactionId)

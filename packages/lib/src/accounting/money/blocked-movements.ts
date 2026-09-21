@@ -22,6 +22,7 @@ import { postCustomerReceiptAccounting } from './customer-money/accounting'
 import { postCustomerRefundAccounting } from './customer-money/refund-accounting'
 import { acceptInvoiceReceiptAccounting } from './invoice-payments/receipt-accounting'
 import type { MovementPostingResult, MovementRow } from './post-movement'
+import { listLiveApplications, listMovementApplications, readMovement } from './reads'
 import { acceptVendorPaymentAccounting } from './vendor-payments/payment-accounting'
 import { postVendorRefundAccounting } from './vendor-payments/refund-accounting'
 
@@ -113,19 +114,7 @@ async function resolvePoster(
   if (money.purpose === 'vendor_refund') return postVendorRefundAccounting
   if (money.purpose === 'customer_refund') return postCustomerRefundAccounting
 
-  const applications = await db
-    .select({
-      invoiceInstanceId: schema.MoneyApplication.invoiceInstanceId,
-      orderInstanceId: schema.MoneyApplication.orderInstanceId,
-    })
-    .from(schema.MoneyApplication)
-    .where(
-      and(
-        eq(schema.MoneyApplication.organizationId, organizationId),
-        eq(schema.MoneyApplication.moneyTransactionId, money.id)
-      )
-    )
-    .orderBy(asc(schema.MoneyApplication.id))
+  const applications = await listMovementApplications(db, organizationId, money.id)
   if (applications.some((row) => row.invoiceInstanceId)) return acceptInvoiceReceiptAccounting
   if (applications.some((row) => row.orderInstanceId)) return postCustomerReceiptAccounting
   throw new UnprocessableEntityError(
@@ -150,12 +139,7 @@ export async function postBlockedMovement(
   db: Database,
   input: PostBlockedMovementInput
 ): Promise<MovementPostingResult> {
-  const money = await db.query.MoneyTransaction.findFirst({
-    where: and(
-      eq(schema.MoneyTransaction.organizationId, input.organizationId),
-      eq(schema.MoneyTransaction.id, input.moneyTransactionId)
-    ),
-  })
+  const money = await readMovement(db, input.organizationId, input.moneyTransactionId)
   if (!money) throw new NotFoundError('That movement does not exist')
   const post = await resolvePoster(db, input.organizationId, money)
   return post(db, input)
@@ -333,22 +317,7 @@ export async function readBlockedMovement(
     .limit(1)
   if (!row) return null
 
-  const applications = await db
-    .select({
-      orderInstanceId: schema.MoneyApplication.orderInstanceId,
-      invoiceInstanceId: schema.MoneyApplication.invoiceInstanceId,
-      vendorBillInstanceId: schema.MoneyApplication.vendorBillInstanceId,
-      quoteInstanceId: schema.MoneyApplication.quoteInstanceId,
-    })
-    .from(schema.MoneyApplication)
-    .where(
-      and(
-        eq(schema.MoneyApplication.organizationId, organizationId),
-        eq(schema.MoneyApplication.moneyTransactionId, moneyTransactionId),
-        eq(schema.MoneyApplication.operation, 'apply')
-      )
-    )
-    .orderBy(asc(schema.MoneyApplication.appliedAt))
+  const applications = await listLiveApplications(db, organizationId, moneyTransactionId)
 
   const refs: Array<{ role: MovementLinkedRecord['role']; instanceId: string }> = []
   const seen = new Set<string>()

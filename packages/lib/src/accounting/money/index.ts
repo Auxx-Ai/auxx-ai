@@ -64,8 +64,9 @@ export {
   sumUnappliedCustomerMoney,
   sumWorkOrderDeposits,
 } from './checkout'
-export { validateCashEndpointSource } from './client'
+export { netApplied, validateCashEndpointSource } from './client'
 export { type InsertMovementInput, insertMovement } from './commands/insert-movement'
+export { findMoneyCommandByKey } from './commands/run-money-command'
 export {
   type ApplyMoneyToInvoiceInput,
   type ApplyMoneyToInvoiceResult,
@@ -132,6 +133,30 @@ export {
   postMovementEntry,
 } from './post-movement'
 export {
+  assertPostableMovement,
+  findSourceLink,
+  findSourceLinks,
+  listApplicationsByMovement,
+  listInvoiceApplications,
+  listLiveApplications,
+  listMovementApplications,
+  listOrderApplications,
+  listRefundSettlements,
+  listVendorBillApplications,
+  type MoneyApplicationRow,
+  type MoneyRefundSettlementRow,
+  type MoneySourceLinkRow,
+  type RefundSettlementFilter,
+  readMovement,
+  readMovements,
+  selectLiveApplications,
+  sumAppliedByMovement,
+  sumAppliedToInvoice,
+  sumAppliedToMovement,
+  sumAppliedToOrder,
+  sumAppliedToVendorBill,
+} from './reads'
+export {
   disconnectPaymentAccount,
   getPaymentAccount,
   syncAccountState,
@@ -172,3 +197,4 @@ export {
   type VoidVendorPaymentResult,
   voidVendorPayment,
 } from './vendor-payments/void-payment'
+export { type InsertApplicationInput, insertApplication } from './writes'

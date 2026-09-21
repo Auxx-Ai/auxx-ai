@@ -15,8 +15,7 @@
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
-import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
+import type { Database, schema, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
@@ -27,6 +26,7 @@ import {
   type PreparedMovement,
   postMovementEntry,
 } from '../post-movement'
+import { listMovementApplications } from '../reads'
 
 export interface AcceptVendorPaymentInput {
   organizationId: string
@@ -41,13 +41,7 @@ async function readVendorPaymentSource(
   organizationId: string,
   money: typeof schema.MoneyTransaction.$inferSelect
 ) {
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.moneyTransactionId, money.id)
-    ),
-    orderBy: asc(schema.MoneyApplication.id),
-  })
+  const applications = await listMovementApplications(tx, organizationId, money.id)
   const vendorBillInstanceId = applications[0]?.vendorBillInstanceId
   if (
     !vendorBillInstanceId ||

@@ -30,6 +30,7 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../../resources/system-records'
+import { listApplicationsByMovement } from '../reads'
 import { resolveBankDepositStatus } from './client'
 import {
   type BankDepositAttribute,
@@ -200,12 +201,7 @@ async function hydrateReceipts(
   // A hand-recorded receipt applies to one invoice, a channel receipt to one
   // order; either way the apply/unapply pairs are netted per target and the one
   // still positive wins, the same rule `listInvoiceMoneyPayments` reads by.
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      inArray(schema.MoneyApplication.moneyTransactionId, ids)
-    ),
-  })
+  const applications = await listApplicationsByMovement(db, organizationId, ids)
   const invoiceIdByTransaction = netAppliedTarget(applications, 'invoiceInstanceId')
   const orderIdByTransaction = netAppliedTarget(applications, 'orderInstanceId')
   const [invoiceDefId, orderDefId, contactDefId] = await Promise.all(

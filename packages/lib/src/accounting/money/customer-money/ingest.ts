@@ -11,7 +11,17 @@ import {
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
 } from '../../sales/credit-memos/reads'
+import { insertMovement } from '../commands/insert-movement'
+import { findMoneyCommandByKey } from '../commands/run-money-command'
 import { pokePendingMatchesForSourceObject } from '../payouts/match-poke'
+import {
+  findSourceLink,
+  listRefundSettlements,
+  readMovement,
+  sumAppliedToMovement,
+  sumAppliedToOrder,
+} from '../reads'
+import { insertApplication } from '../writes'
 import { confirmedCustomerMovement } from './contracts'
 import {
   readStoredCustomerMoneyObservation,
@@ -24,6 +34,8 @@ import {
   readSourceObject,
 } from './source-reads'
 import { refreshOrderCoverageCounts, updateAcceptance } from './source-writes'
+
+const IMPORT_COMMAND_KIND = 'import_customer_money'
 
 async function typedDocument(
   tx: Transaction,
@@ -225,19 +237,9 @@ export async function materializeImportedMoneyInTx(
       creditMemoInstanceId?: string
     }),
   }
-  let linked = await tx.query.MoneySourceLink.findFirst({
-    where: and(
-      eq(schema.MoneySourceLink.organizationId, organizationId),
-      eq(schema.MoneySourceLink.sourceObjectId, object.id)
-    ),
-  })
+  let linked = await findSourceLink(tx, organizationId, object.id)
   let money = linked
-    ? await tx.query.MoneyTransaction.findFirst({
-        where: and(
-          eq(schema.MoneyTransaction.organizationId, organizationId),
-          eq(schema.MoneyTransaction.id, linked.moneyTransactionId)
-        ),
-      })
+    ? ((await readMovement(tx, organizationId, linked.moneyTransactionId)) ?? undefined)
     : undefined
   if (
     money &&
@@ -273,38 +275,38 @@ export async function materializeImportedMoneyInTx(
     occurredAt: movement.occurredAt.toISOString(),
   })
   const commandKey = `source-money:${object.id}`
-  let command = await tx.query.MoneyCommand.findFirst({
-    where: and(
-      eq(schema.MoneyCommand.organizationId, organizationId),
-      eq(schema.MoneyCommand.commandKey, commandKey)
-    ),
+  let command = await findMoneyCommandByKey(tx, organizationId, commandKey, {
+    kind: IMPORT_COMMAND_KIND,
+    payloadHash,
   })
-  if (command && command.payloadHash !== payloadHash)
-    throw new ConflictError('Source command has conflicting money evidence')
   if (!command)
     [command] = await tx
       .insert(schema.MoneyCommand)
       .values({
         organizationId,
         commandKey,
-        kind: 'import_customer_money',
+        kind: IMPORT_COMMAND_KIND,
         payloadHash,
         actorSnapshot: { kind: 'source_record', ...snapshot },
       })
       .returning()
   if (!money) {
-    ;[money] = await tx
-      .insert(schema.MoneyTransaction)
-      .values({
-        organizationId,
-        ...movement,
-        datePrecision: 'instant',
-        partyInstanceId: partyId,
-        recordedByCommandId: command!.id,
-        reference: source.data.paymentId,
-      })
-      .returning()
-    ;[linked] = await tx
+    money = await insertMovement(tx, organizationId, command!.id, {
+      purpose: movement.purpose,
+      amountMinor: movement.amountMinor,
+      when: { instant: movement.occurredAt },
+      partyInstanceId: partyId,
+      endpoint: {
+        paymentGatewayId: null,
+        cashAccountInstanceId: null,
+        currency: movement.currency,
+      },
+      // Channel money names no method; the feed link stamps the rail at post time.
+      method: null,
+      currency: { code: movement.currency, exponent: movement.currencyExponent },
+      reference: source.data.paymentId,
+    })
+    const [inserted] = await tx
       .insert(schema.MoneySourceLink)
       .values({
         organizationId,
@@ -313,6 +315,7 @@ export async function materializeImportedMoneyInTx(
         verifiedByCommandId: command!.id,
       })
       .returning()
+    linked = inserted ?? null
     await tx
       .update(schema.MoneyCommand)
       .set({ resultIds: { moneyTransactionId: money!.id } })
@@ -382,16 +385,7 @@ export async function materializeImportedMoneyInTx(
       ),
     })
     if (!existing) {
-      const movementApplications = await tx.query.MoneyApplication.findMany({
-        where: and(
-          eq(schema.MoneyApplication.organizationId, organizationId),
-          eq(schema.MoneyApplication.moneyTransactionId, money.id)
-        ),
-      })
-      const usedMoney = movementApplications.reduce(
-        (sum, row) => sum + (row.operation === 'apply' ? row.amountMinor : -row.amountMinor),
-        0n
-      )
+      const usedMoney = await sumAppliedToMovement(tx, organizationId, money.id)
       if (usedMoney !== 0n) {
         await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
@@ -409,16 +403,7 @@ export async function materializeImportedMoneyInTx(
         })
         return
       }
-      const applications = await tx.query.MoneyApplication.findMany({
-        where: and(
-          eq(schema.MoneyApplication.organizationId, organizationId),
-          eq(schema.MoneyApplication.orderInstanceId, orderId)
-        ),
-      })
-      const applied = applications.reduce(
-        (sum, row) => sum + (row.operation === 'apply' ? row.amountMinor : -row.amountMinor),
-        0n
-      )
+      const applied = await sumAppliedToOrder(tx, organizationId, orderId)
       if (applied + money.amountMinor > BigInt(total)) {
         await updateAcceptance(tx, organizationId, acceptance.id, {
           ...base,
@@ -427,24 +412,19 @@ export async function materializeImportedMoneyInTx(
         })
         return
       }
-      await tx.insert(schema.MoneyApplication).values({
-        organizationId,
+      await insertApplication(tx, organizationId, command!.id, {
         moneyTransactionId: money.id,
         operation: 'apply',
         amountMinor: money.amountMinor,
         orderInstanceId: orderId,
         appliedAt: money.occurredAt!,
         effectiveDate,
-        commandId: command!.id,
         commandItemKey: 'initial_order',
       })
     }
   } else {
-    const existing = await tx.query.MoneyRefundSettlement.findFirst({
-      where: and(
-        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-        eq(schema.MoneyRefundSettlement.refundTransactionId, money.id)
-      ),
+    const [existing] = await listRefundSettlements(tx, organizationId, {
+      refundTransactionId: money.id,
     })
     if (!existing) {
       const originalObject = source.data.parentTransactionId
@@ -456,13 +436,8 @@ export async function materializeImportedMoneyInTx(
           })
         : undefined
       const originalLink = originalObject
-        ? await tx.query.MoneySourceLink.findFirst({
-            where: and(
-              eq(schema.MoneySourceLink.organizationId, organizationId),
-              eq(schema.MoneySourceLink.sourceObjectId, originalObject.id)
-            ),
-          })
-        : undefined
+        ? await findSourceLink(tx, organizationId, originalObject.id)
+        : null
       const creditId =
         source.data.creditMemoInstanceId ||
         snapshot.creditMemoInstanceId ||
@@ -486,22 +461,12 @@ export async function materializeImportedMoneyInTx(
         })
         return
       }
-      const original = await tx.query.MoneyTransaction.findFirst({
-        where: and(
-          eq(schema.MoneyTransaction.organizationId, organizationId),
-          eq(schema.MoneyTransaction.id, originalLink.moneyTransactionId)
-        ),
-      })
+      const original = await readMovement(tx, organizationId, originalLink.moneyTransactionId)
       const creditFacts = await documentFacts(tx, organizationId, creditId)
       const creditTotal = creditFacts.get('credit_memo_total')?.amount
-      const settlements = await tx.query.MoneyRefundSettlement.findMany({
-        where: and(
-          eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-          or(
-            eq(schema.MoneyRefundSettlement.originalTransactionId, originalLink.moneyTransactionId),
-            eq(schema.MoneyRefundSettlement.customerCreditMemoInstanceId, creditId)
-          )
-        ),
+      const settlements = await listRefundSettlements(tx, organizationId, {
+        originalTransactionIds: [originalLink.moneyTransactionId],
+        customerCreditMemoInstanceId: creditId,
       })
       const originalUsed = settlements
         .filter((row) => row.originalTransactionId === originalLink.moneyTransactionId)

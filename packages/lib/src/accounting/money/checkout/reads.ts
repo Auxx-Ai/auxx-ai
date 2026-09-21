@@ -23,6 +23,8 @@ import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { listPaymentGateways } from '../../rails/reads'
 import { isPaymentsConnected } from '../../sales/public-token'
+import { netApplied } from '../client'
+import { sumAppliedByMovement } from '../reads'
 import { getPaymentAccount } from '../stripe-connect/account'
 
 /** The `MoneyCommand.kind` a quote-deposit checkout is recorded under. */
@@ -191,6 +193,28 @@ export async function listQuoteDepositReceipts(
   organizationId: string,
   quoteInstanceId: string
 ): Promise<QuoteDepositReceipt[]> {
+  return listDepositReceipts(db, organizationId, 'quoteInstanceId', quoteInstanceId)
+}
+
+/**
+ * Every deposit receipt held against a WORK ORDER, oldest first - the quotes
+ * that converted into it, read off `MoneyTransaction.workOrderInstanceId`.
+ */
+export async function listWorkOrderDepositReceipts(
+  db: Database,
+  organizationId: string,
+  workOrderInstanceId: string
+): Promise<QuoteDepositReceipt[]> {
+  return listDepositReceipts(db, organizationId, 'workOrderInstanceId', workOrderInstanceId)
+}
+
+/** The shared body of the two above: same read, different owning column. */
+async function listDepositReceipts(
+  db: Database,
+  organizationId: string,
+  owner: 'quoteInstanceId' | 'workOrderInstanceId',
+  ownerInstanceId: string
+): Promise<QuoteDepositReceipt[]> {
   const rows = await db
     .select({
       id: schema.MoneyTransaction.id,
@@ -198,6 +222,7 @@ export async function listQuoteDepositReceipts(
       occurredAt: schema.MoneyTransaction.occurredAt,
       occurredOn: schema.MoneyTransaction.occurredOn,
       reference: schema.MoneyTransaction.reference,
+      quoteInstanceId: schema.MoneyTransaction.quoteInstanceId,
       workOrderInstanceId: schema.MoneyTransaction.workOrderInstanceId,
     })
     .from(schema.MoneyTransaction)
@@ -205,26 +230,16 @@ export async function listQuoteDepositReceipts(
       and(
         eq(schema.MoneyTransaction.organizationId, organizationId),
         eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-        eq(schema.MoneyTransaction.quoteInstanceId, quoteInstanceId)
+        eq(schema.MoneyTransaction[owner], ownerInstanceId)
       )
     )
   if (rows.length === 0) return []
 
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      inArray(
-        schema.MoneyApplication.moneyTransactionId,
-        rows.map((row) => row.id)
-      )
-    ),
-  })
-  const appliedById = new Map<string, bigint>()
-  for (const row of applications) {
-    const delta = row.operation === 'apply' ? row.amountMinor : -row.amountMinor
-    appliedById.set(row.moneyTransactionId, (appliedById.get(row.moneyTransactionId) ?? 0n) + delta)
-  }
-
+  const appliedById = await sumAppliedByMovement(
+    db,
+    organizationId,
+    rows.map((row) => row.id)
+  )
   return rows
     .map((row) => ({
       moneyTransactionId: row.id,
@@ -233,7 +248,7 @@ export async function listQuoteDepositReceipts(
       occurredAt: row.occurredAt?.toISOString() ?? `${row.occurredOn}T00:00:00.000Z`,
       reference: row.reference,
       workOrderInstanceId: row.workOrderInstanceId,
-      quoteInstanceId,
+      quoteInstanceId: row.quoteInstanceId,
     }))
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
 }
@@ -244,14 +259,7 @@ export async function sumQuoteDeposits(
   organizationId: string,
   quoteInstanceId: string
 ): Promise<{ heldMinor: number; appliedMinor: number }> {
-  const receipts = await listQuoteDepositReceipts(db, organizationId, quoteInstanceId)
-  return receipts.reduce(
-    (sums, receipt) => ({
-      heldMinor: sums.heldMinor + (receipt.amountMinor - receipt.appliedMinor),
-      appliedMinor: sums.appliedMinor + receipt.appliedMinor,
-    }),
-    { heldMinor: 0, appliedMinor: 0 }
-  )
+  return sumDeposits(await listQuoteDepositReceipts(db, organizationId, quoteInstanceId))
 }
 
 /** Whether any deposit at all has been collected against a quote. */
@@ -264,69 +272,19 @@ export async function hasQuoteDeposit(
   return rows.length > 0
 }
 
-/**
- * Every deposit receipt held against a WORK ORDER, oldest first - the quotes
- * that converted into it, read off `MoneyTransaction.workOrderInstanceId`
- * (MIGRATION follow-up 7).
- */
-export async function listWorkOrderDepositReceipts(
-  db: Database,
-  organizationId: string,
-  workOrderInstanceId: string
-): Promise<QuoteDepositReceipt[]> {
-  const rows = await db
-    .select({
-      id: schema.MoneyTransaction.id,
-      amountMinor: schema.MoneyTransaction.amountMinor,
-      occurredAt: schema.MoneyTransaction.occurredAt,
-      occurredOn: schema.MoneyTransaction.occurredOn,
-      reference: schema.MoneyTransaction.reference,
-      quoteInstanceId: schema.MoneyTransaction.quoteInstanceId,
-    })
-    .from(schema.MoneyTransaction)
-    .where(
-      and(
-        eq(schema.MoneyTransaction.organizationId, organizationId),
-        eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-        eq(schema.MoneyTransaction.workOrderInstanceId, workOrderInstanceId)
-      )
-    )
-  if (rows.length === 0) return []
-
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      inArray(
-        schema.MoneyApplication.moneyTransactionId,
-        rows.map((row) => row.id)
-      )
-    ),
-  })
-  const appliedById = new Map<string, bigint>()
-  for (const row of applications) {
-    const delta = row.operation === 'apply' ? row.amountMinor : -row.amountMinor
-    appliedById.set(row.moneyTransactionId, (appliedById.get(row.moneyTransactionId) ?? 0n) + delta)
-  }
-  return rows
-    .map((row) => ({
-      moneyTransactionId: row.id,
-      amountMinor: Number(row.amountMinor),
-      appliedMinor: Number(appliedById.get(row.id) ?? 0n),
-      occurredAt: row.occurredAt?.toISOString() ?? `${row.occurredOn}T00:00:00.000Z`,
-      reference: row.reference,
-      workOrderInstanceId,
-      quoteInstanceId: row.quoteInstanceId ?? null,
-    }))
-    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
-}
-
 /** Held and applied deposit totals for a work order, integer minor units. */
 export async function sumWorkOrderDeposits(
   db: Database,
   organizationId: string,
   workOrderInstanceId: string
 ): Promise<{ heldMinor: number; appliedMinor: number }> {
-  const receipts = await listWorkOrderDepositReceipts(db, organizationId, workOrderInstanceId)
+  return sumDeposits(await listWorkOrderDepositReceipts(db, organizationId, workOrderInstanceId))
+}
+
+function sumDeposits(receipts: QuoteDepositReceipt[]): {
+  heldMinor: number
+  appliedMinor: number
+} {
   return receipts.reduce(
     (sums, receipt) => ({
       heldMinor: sums.heldMinor + (receipt.amountMinor - receipt.appliedMinor),
@@ -353,19 +311,12 @@ export async function sumUnappliedCustomerMoney(
     ),
   })
   if (receipts.length === 0) return 0
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      inArray(
-        schema.MoneyApplication.moneyTransactionId,
-        receipts.map((row) => row.id)
-      )
-    ),
-  })
-  const applied = applications.reduce(
-    (sum, row) => sum + (row.operation === 'apply' ? row.amountMinor : -row.amountMinor),
-    0n
+  const appliedById = await sumAppliedByMovement(
+    db,
+    organizationId,
+    receipts.map((row) => row.id)
   )
+  const applied = [...appliedById.values()].reduce((sum, net) => sum + net, 0n)
   const received = receipts.reduce((sum, row) => sum + row.amountMinor, 0n)
   return Math.max(0, Number(received - applied))
 }
@@ -407,10 +358,5 @@ export async function sumInvoiceDepositApplications(
         eq(schema.MoneyCommand.kind, QUOTE_DEPOSIT_COMMAND_KIND)
       )
     )
-  return Number(
-    rows.reduce(
-      (sum, row) => sum + (row.operation === 'apply' ? row.amountMinor : -row.amountMinor),
-      0n
-    )
-  )
+  return Number(netApplied(rows))
 }

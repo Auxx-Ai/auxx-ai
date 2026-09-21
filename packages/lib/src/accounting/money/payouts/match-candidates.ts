@@ -11,6 +11,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../../errors'
+import { listApplicationsByMovement } from '../reads'
 
 /** A document one candidate receipt is applied to — what the picker row shows. */
 export interface CandidateDocument {
@@ -182,24 +183,9 @@ export async function readApplicationDocuments(
   const ids = [...new Set(moneyTransactionIds)]
   const result = new Map<string, CandidateDocument[]>()
   if (!ids.length) return result
-  const rows = await db
-    .select({
-      moneyTransactionId: schema.MoneyApplication.moneyTransactionId,
-      orderInstanceId: schema.MoneyApplication.orderInstanceId,
-      invoiceInstanceId: schema.MoneyApplication.invoiceInstanceId,
-    })
-    .from(schema.MoneyApplication)
-    .where(
-      and(
-        eq(schema.MoneyApplication.organizationId, organizationId),
-        eq(schema.MoneyApplication.operation, 'apply'),
-        inArray(schema.MoneyApplication.moneyTransactionId, ids),
-        or(
-          isNotNull(schema.MoneyApplication.orderInstanceId),
-          isNotNull(schema.MoneyApplication.invoiceInstanceId)
-        )
-      )
-    )
+  const rows = (await listApplicationsByMovement(db, organizationId, ids)).filter(
+    (row) => row.operation === 'apply' && (row.orderInstanceId || row.invoiceInstanceId)
+  )
   const instanceIds = rows.flatMap((row) =>
     [row.orderInstanceId, row.invoiceInstanceId].filter((id): id is string => !!id)
   )

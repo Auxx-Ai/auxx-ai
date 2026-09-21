@@ -45,6 +45,7 @@ export {
   clearBankDeposit,
   createBankDeposit,
   hasBankDeposits,
+  setMovementBankDeposit,
   unlinkPaymentsFromDeposit,
   updateBankDeposit,
 } from './writes'

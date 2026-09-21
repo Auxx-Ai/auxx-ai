@@ -9,13 +9,14 @@
  * for the bill forever (73 §1.2).
  */
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
+import { netApplied } from '../client'
+import { listVendorBillApplications, sumAppliedToVendorBill } from '../reads'
 
 const STATE_ATTRS = [
   'vendor_bill_total',
@@ -38,18 +39,8 @@ export async function sumVendorBillPayments(
   organizationId: string,
   vendorBillInstanceId: string
 ): Promise<number> {
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.vendorBillInstanceId, vendorBillInstanceId)
-    ),
-  })
-  return Number(
-    applications.reduce(
-      (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
-      0n
-    )
-  )
+  const settled = await sumAppliedToVendorBill(db, organizationId, vendorBillInstanceId)
+  return Number(settled.amountMinor)
 }
 
 /**
@@ -62,18 +53,8 @@ export async function sumVendorBillDiscounts(
   organizationId: string,
   vendorBillInstanceId: string
 ): Promise<number> {
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.vendorBillInstanceId, vendorBillInstanceId)
-    ),
-  })
-  return Number(
-    applications.reduce(
-      (sum, a) => sum + (a.operation === 'apply' ? 1n : -1n) * (a.discountMinor ?? 0n),
-      0n
-    )
-  )
+  const settled = await sumAppliedToVendorBill(db, organizationId, vendorBillInstanceId)
+  return Number(settled.discountMinor)
 }
 
 /** Recompute one bill's settled amount, paid date and payment status. */
@@ -96,18 +77,8 @@ export async function syncVendorBillPaymentState(
   const amountDiscountedField = fields.vendor_bill_amount_discounted
   if (!totalField || !paymentStatusField || !amountPaidField || !paidAtField) return
 
-  const applications = await db.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.vendorBillInstanceId, vendorBillInstanceId)
-    ),
-  })
-  const amountPaid = Number(
-    applications.reduce(
-      (sum, a) => sum + (a.operation === 'apply' ? a.amountMinor : -a.amountMinor),
-      0n
-    )
-  )
+  const applications = await listVendorBillApplications(db, organizationId, vendorBillInstanceId)
+  const amountPaid = Number(netApplied(applications))
   // The forgiven part, netted the same way: a void's `unapply` row carries the
   // discount it takes back, so this returns to zero with the money.
   const amountDiscounted = Number(

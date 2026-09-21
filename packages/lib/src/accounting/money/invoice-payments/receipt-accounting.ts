@@ -23,7 +23,7 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
@@ -34,6 +34,7 @@ import {
   type PreparedMovement,
   postMovementEntry,
 } from '../post-movement'
+import { listMovementApplications } from '../reads'
 
 export interface AcceptInvoiceReceiptInput {
   organizationId: string
@@ -55,13 +56,7 @@ async function readInvoiceReceiptSource(
   organizationId: string,
   money: typeof schema.MoneyTransaction.$inferSelect
 ) {
-  const applications = await tx.query.MoneyApplication.findMany({
-    where: and(
-      eq(schema.MoneyApplication.organizationId, organizationId),
-      eq(schema.MoneyApplication.moneyTransactionId, money.id)
-    ),
-    orderBy: asc(schema.MoneyApplication.id),
-  })
+  const applications = await listMovementApplications(tx, organizationId, money.id)
   const invoiceInstanceId = applications[0]?.invoiceInstanceId
   // One invoice, all applies, summing to the whole movement. A partially applied
   // receipt is held money and belongs to `deposit_application`.

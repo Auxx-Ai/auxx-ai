@@ -20,6 +20,7 @@ import {
   type SystemRecord,
   systemFields,
 } from '../../../resources/system-records'
+import { listRefundSettlements, readMovements } from '../../money/reads'
 import type { VendorCreditSettlement } from './client'
 
 const CREDIT_ATTRIBUTES = pickSystemAttributes(VENDOR_CREDIT_FIELDS, [
@@ -263,35 +264,29 @@ export async function listVendorCreditRefunds(
     effectiveDate: string
   }>
 > {
-  const settlements = await db
-    .select({
-      refundTransactionId: schema.MoneyRefundSettlement.refundTransactionId,
-      amountMinor: schema.MoneyTransaction.amountMinor,
-      method: schema.MoneyTransaction.method,
-      reference: schema.MoneyTransaction.reference,
-      occurredOn: schema.MoneyTransaction.occurredOn,
-      occurredAt: schema.MoneyTransaction.occurredAt,
-    })
-    .from(schema.MoneyRefundSettlement)
-    .innerJoin(
-      schema.MoneyTransaction,
-      eq(schema.MoneyTransaction.id, schema.MoneyRefundSettlement.refundTransactionId)
-    )
-    .where(
-      and(
-        eq(schema.MoneyRefundSettlement.organizationId, organizationId),
-        eq(schema.MoneyRefundSettlement.disposition, 'vendor_credit'),
-        eq(schema.MoneyRefundSettlement.vendorCreditInstanceId, vendorCreditInstanceId)
-      )
-    )
+  const settlements = await listRefundSettlements(db, organizationId, {
+    vendorCreditInstanceId,
+    disposition: 'vendor_credit',
+  })
+  const movements = await readMovements(
+    db,
+    organizationId,
+    settlements.map((row) => row.refundTransactionId)
+  )
 
-  return settlements.map((row) => ({
-    moneyTransactionId: row.refundTransactionId,
-    amountMinor: Number(row.amountMinor),
-    method: row.method,
-    reference: row.reference,
-    effectiveDate: row.occurredOn ?? row.occurredAt?.toISOString().slice(0, 10) ?? '',
-  }))
+  return settlements.flatMap((row) => {
+    const money = movements.get(row.refundTransactionId)
+    if (!money) return []
+    return [
+      {
+        moneyTransactionId: row.refundTransactionId,
+        amountMinor: Number(money.amountMinor),
+        method: money.method,
+        reference: money.reference,
+        effectiveDate: money.occurredOn ?? money.occurredAt?.toISOString().slice(0, 10) ?? '',
+      },
+    ]
+  })
 }
 
 /** Integer minor units: everything the supplier has actually paid back on this credit. */

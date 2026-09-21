@@ -18,8 +18,7 @@
  * `unapply`/`apply` pair with the receipt left exactly as it stands.
  */
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
@@ -27,6 +26,8 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { runMoneyCommand } from '../commands/run-money-command'
+import { listLiveApplications } from '../reads'
+import { insertApplication } from '../writes'
 import { syncInvoicePaymentState } from './payment-state'
 
 export interface VoidInvoicePaymentInput {
@@ -97,26 +98,23 @@ export async function voidInvoicePayment(
       // 🔑 Free the invoice. Without this the receivable is relieved in the
       // ledger and still shows as settled on the document.
       const effectiveDate = new Date().toISOString().split('T')[0]!
-      const applications = await tx.query.MoneyApplication.findMany({
-        where: and(
-          eq(schema.MoneyApplication.organizationId, input.organizationId),
-          eq(schema.MoneyApplication.moneyTransactionId, input.moneyTransactionId),
-          eq(schema.MoneyApplication.operation, 'apply')
-        ),
-      })
+      // Live rows only: an application a move already took back off invoice A
+      // must not be reversed a second time (LIB-READS §0.1 bug 1).
+      const applications = await listLiveApplications(
+        tx,
+        input.organizationId,
+        input.moneyTransactionId
+      )
       for (const [index, application] of applications.entries())
-        await tx.insert(schema.MoneyApplication).values({
-          organizationId: input.organizationId,
+        await insertApplication(tx, input.organizationId, commandId, {
           moneyTransactionId: input.moneyTransactionId,
           operation: 'unapply',
           amountMinor: application.amountMinor,
           invoiceInstanceId: application.invoiceInstanceId,
           orderInstanceId: application.orderInstanceId,
           vendorBillInstanceId: application.vendorBillInstanceId,
-          appliedAt: new Date(),
           effectiveDate,
           reversesApplicationId: application.id,
-          commandId,
           commandItemKey: `unapply:${index}`,
         })
 
