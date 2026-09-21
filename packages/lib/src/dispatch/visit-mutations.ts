@@ -10,7 +10,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { maybeGenerateVisitInvoiceDraft } from '../accounting/sales/invoices/auto-invoice'
 import { BadRequestError, NotFoundError } from '../errors'
-import type { RecurrencePattern } from '../recurrence'
+import {
+  getRecurrenceRuleById,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+  updateRecurrencePattern,
+} from '../recurrence'
 import {
   enrollVisitEnRouteSequences,
   enrollVisitScheduledSequences,
@@ -264,17 +269,12 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
 
   // Verify the boundary condition server-side before any write — the client should never
   // offer "resume" elsewhere, and a stale client must not clear an unrelated end date.
-  let seriesRule: typeof schema.RecurrenceRule.$inferSelect | undefined
+  let seriesRule: RecurrenceRuleRow | null = null
   if (resumeSeries) {
     if (!existing.recurrenceRuleId || !existing.occurrenceDate) {
       throw new BadRequestError('Visit is not part of a recurring series')
     }
-    seriesRule = await database.query.RecurrenceRule.findFirst({
-      where: and(
-        eq(schema.RecurrenceRule.id, existing.recurrenceRuleId),
-        eq(schema.RecurrenceRule.organizationId, organizationId)
-      ),
-    })
+    seriesRule = await getRecurrenceRuleById(database, organizationId, existing.recurrenceRuleId)
     if (!seriesRule) throw new NotFoundError('Recurrence rule not found')
     const pattern = seriesRule.pattern as unknown as RecurrencePattern
     if (pattern.until !== existing.occurrenceDate) {
@@ -308,11 +308,12 @@ export async function restoreVisit(input: RestoreVisitInput): Promise<WorkOrderV
   // rule write — pause deleted the future rows and resume owns regeneration.
   if (resumeSeries && seriesRule) {
     const { until: _until, ...pattern } = seriesRule.pattern as unknown as RecurrencePattern
-    const [updatedRule] = await database
-      .update(schema.RecurrenceRule)
-      .set({ pattern: pattern as unknown as Record<string, unknown>, updatedAt: new Date() })
-      .where(eq(schema.RecurrenceRule.id, seriesRule.id))
-      .returning()
+    const updatedRule = await updateRecurrencePattern(
+      database,
+      organizationId,
+      seriesRule.id,
+      pattern
+    )
     const status = await getWorkOrderStatus(organizationId, userId, existing.workOrderId)
     if (updatedRule && status !== 'paused') {
       // `materializeVisits` broadcasts its own `kind: 'bulk'` event unconditionally at the end

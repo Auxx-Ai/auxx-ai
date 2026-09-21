@@ -24,10 +24,8 @@ export {
 } from './materialize'
 export {
   findGeneratedEntryIds,
-  getRecurringJournalRule,
   listRecurringJournalTemplates,
   planForRule,
-  type RecurrenceRuleRow,
   type RecurringJournalTemplate,
 } from './reads'
 export { type RecurringJournalSweepSummary, sweepRecurringJournals } from './sweep'

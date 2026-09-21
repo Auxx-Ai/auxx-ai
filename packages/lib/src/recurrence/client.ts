@@ -5,8 +5,8 @@
 // no `@auxx/database`/server deps — but per the repo's client-import convention (CLAUDE.md:
 // "never import from `@auxx/lib/<module>` in client-side code, use the `/client` subpath"),
 // client UI (the #7 schedule popover's Repeats row, the recurring Schedule section) imports
-// from here rather than the bare `@auxx/lib/recurrence` barrel. Same barrel, re-exported (the
-// `availability/client.ts` precedent).
+// from here rather than the bare `@auxx/lib/recurrence` barrel, which now also carries
+// `rules.ts` and its `@auxx/database` dependency.
 export { RECURRENCE_HORIZON_DAYS } from './constants'
 export type { DescribeRecurrenceOptions, RecurrenceDescriptionParts } from './describe'
 export { describeRecurrence, describeRecurrenceParts } from './describe'

@@ -4,6 +4,9 @@ import type { RecordId } from '@auxx/types/resource'
 import type { RecurrencePattern } from '../../recurrence'
 import type { LineItemUnit } from './totals/units'
 
+/** This lane's `RecurrenceRule.subjectType` — a work order's invoice-draft schedule. */
+export const INVOICE_DRAFT_SUBJECT_TYPE = 'invoice_drafts'
+
 /** Percent-of-subtotal vs flat-amount discount (mirrors `QUOTE_DISCOUNT_TYPE_OPTIONS`). */
 export type DiscountType = 'percent' | 'amount'
 

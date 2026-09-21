@@ -5,6 +5,9 @@ import type { RecordId } from '@auxx/types/resource'
 
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
+/** This lane's `RecurrenceRule.subjectType` — a work order's visit schedule. */
+export const VISIT_RECURRENCE_SUBJECT_TYPE = 'work_order_visits'
+
 /** Input for {@link createWorkOrderFromTicket} — the SECONDARY intake path (01 §8). */
 export interface CreateFromTicketInput {
   organizationId: string

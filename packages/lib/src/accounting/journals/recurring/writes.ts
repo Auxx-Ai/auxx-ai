@@ -12,17 +12,21 @@
  * closing a period takes.
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
-import { type RecurrencePattern, recurrencePatternSchema } from '../../../recurrence'
+import {
+  deleteRecurrenceRule,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+  recurrencePatternSchema,
+  upsertRecurrenceRule,
+} from '../../../recurrence'
 import { readBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { requireJournalEntry } from '../entries/reads'
 import { RECURRING_JOURNAL_SUBJECT_TYPE } from './client'
 import { guard } from './guard'
-import { getRecurringJournalRule, type RecurrenceRuleRow } from './reads'
 
 const logger = createScopedLogger('postings:recurring-journals')
 
@@ -103,41 +107,15 @@ export async function setRecurringJournalSchedule(
       assertLocalDate(anchor)
 
       const timezone = await readBookTimeZone(organizationId)
-      const existing = await getRecurringJournalRule(db, organizationId, template.id)
-      const today = todayInZone(timezone)
 
-      const [rule] = existing
-        ? await db
-            .update(schema.RecurrenceRule)
-            .set({
-              pattern: parsed.data as unknown as Record<string, unknown>,
-              timezone,
-              // `anchor` is the immutable expansion origin (the table says so),
-              // so an edit moves `effectiveFrom` and leaves it alone.
-              effectiveFrom: today,
-            })
-            .where(eq(schema.RecurrenceRule.id, existing.id))
-            .returning()
-        : await db
-            .insert(schema.RecurrenceRule)
-            .values({
-              organizationId,
-              subjectType: RECURRING_JOURNAL_SUBJECT_TYPE,
-              subjectId: template.id,
-              pattern: parsed.data as unknown as Record<string, unknown>,
-              timezone,
-              anchor,
-              effectiveFrom: anchor,
-              // Null on all three: a journal entry has no time of day, no
-              // duration and no assignee. The columns are nullable for exactly
-              // this reason (`recurrence-rule.ts:27-41`).
-              startMinute: null,
-              durationMinutes: null,
-              defaultAssigneeWorkerId: null,
-            })
-            .returning()
-
-      if (!rule) throw new UnprocessableEntityError('Failed to save the recurring schedule')
+      const { rule, previous } = await upsertRecurrenceRule(db, organizationId, {
+        subjectType: RECURRING_JOURNAL_SUBJECT_TYPE,
+        subjectId: template.id,
+        pattern: parsed.data,
+        timezone,
+        anchor,
+        effectiveFrom: todayInZone(timezone),
+      })
 
       logger.info('Saved recurring journal schedule', {
         organizationId,
@@ -145,7 +123,7 @@ export async function setRecurringJournalSchedule(
         ruleId: rule.id,
         frequency: parsed.data.frequency,
         interval: parsed.data.interval,
-        replaced: Boolean(existing),
+        replaced: Boolean(previous),
       })
 
       return rule
@@ -175,15 +153,10 @@ export async function clearRecurringJournalSchedule(
 ): Promise<Result<void, Error>> {
   return guard(
     async () => {
-      await db
-        .delete(schema.RecurrenceRule)
-        .where(
-          and(
-            eq(schema.RecurrenceRule.organizationId, organizationId),
-            eq(schema.RecurrenceRule.subjectType, RECURRING_JOURNAL_SUBJECT_TYPE),
-            eq(schema.RecurrenceRule.subjectId, templateId)
-          )
-        )
+      await deleteRecurrenceRule(db, organizationId, {
+        subjectType: RECURRING_JOURNAL_SUBJECT_TYPE,
+        subjectId: templateId,
+      })
       logger.info('Cleared recurring journal schedule', { organizationId, templateId })
     },
     'Failed to clear recurring journal schedule',

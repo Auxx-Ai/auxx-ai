@@ -11,16 +11,21 @@ import { and, eq, gt, gte, or } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
-import type { RecurrencePattern } from '../../recurrence'
+import {
+  getRecurrenceRule,
+  getRecurrenceRuleById,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+  updateRecurrencePattern,
+} from '../../recurrence'
 import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
+import { VISIT_RECURRENCE_SUBJECT_TYPE } from '../types'
 import { setVisitStatus } from '../visit-mutations'
 import { materializeVisits, maybeEndExhaustedEngagement, todayLocalDate } from './materialize'
 
 const logger = createScopedLogger('dispatch:recurring:engagement-actions')
-
-type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 
 /** Input shared by the three engagement actions. */
 export interface EngagementActionInput {
@@ -36,12 +41,9 @@ async function loadRule(
   organizationId: string,
   workOrderInstanceId: string
 ): Promise<RecurrenceRuleRow> {
-  const rule = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
-      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-    ),
+  const rule = await getRecurrenceRule(database, organizationId, {
+    subjectType: VISIT_RECURRENCE_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
   })
   if (!rule) throw new NotFoundError('No recurrence rule for this work order')
   return rule
@@ -213,25 +215,16 @@ export async function cancelVisitFollowing(input: CancelVisitFollowingInput): Pr
   if (!visit.recurrenceRuleId || !visit.occurrenceDate) {
     throw new BadRequestError('Visit is not part of a recurring series')
   }
-  const rule = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.id, visit.recurrenceRuleId),
-      eq(schema.RecurrenceRule.organizationId, organizationId)
-    ),
-  })
+  const rule = await getRecurrenceRuleById(database, organizationId, visit.recurrenceRuleId)
   if (!rule) throw new NotFoundError('Recurrence rule not found')
 
   await setVisitStatus({ organizationId, userId, visitId, status: 'canceled', excludeSocketId })
 
   const { count: _count, ...pattern } = rule.pattern as unknown as RecurrencePattern
-  const [updatedRule] = await database
-    .update(schema.RecurrenceRule)
-    .set({
-      pattern: { ...pattern, until: visit.occurrenceDate } as unknown as Record<string, unknown>,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.RecurrenceRule.id, rule.id))
-    .returning()
+  const updatedRule = await updateRecurrencePattern(database, organizationId, rule.id, {
+    ...pattern,
+    until: visit.occurrenceDate,
+  })
 
   const deleted = await database
     .delete(schema.WorkOrderVisit)

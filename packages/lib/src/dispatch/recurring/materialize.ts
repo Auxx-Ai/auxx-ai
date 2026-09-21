@@ -18,14 +18,16 @@ import { getEntityDefIdResolver, getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import {
+  advanceRecurrenceCursor,
   expandOccurrences,
+  listDueRecurrenceRules,
   RECURRENCE_HORIZON_DAYS,
   type RecurrencePattern,
+  type RecurrenceRuleRow,
 } from '../../recurrence'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
-
-type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
+import { VISIT_RECURRENCE_SUBJECT_TYPE } from '../types'
 
 /**
  * Local ISO date (`YYYY-MM-DD`) for "today" in `timezone` — the boundary/window anchor used
@@ -173,10 +175,7 @@ export async function materializeVisits(
       .onConflictDoNothing()
   }
 
-  await database
-    .update(schema.RecurrenceRule)
-    .set({ materializedUntil: to })
-    .where(eq(schema.RecurrenceRule.id, rule.id))
+  await advanceRecurrenceCursor(database, rule.organizationId, rule.id, to)
 
   const userId = opts.userId ?? (await systemActorUserId(rule.organizationId))
   await mirrorVisitOntoWorkOrder(rule.organizationId, userId, rule.subjectId)
@@ -269,8 +268,10 @@ export async function maybeEndExhaustedEngagement(rule: RecurrenceRuleRow): Prom
  * fine at this cardinality (no per-org fan-out job needed).
  */
 export async function sweepRecurringVisits(): Promise<void> {
-  const rules = await database.query.RecurrenceRule.findMany({
-    where: eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
+  // Every rule, not just the ones behind their cursor: exhaustion is checked below on
+  // rules whose horizon is already far enough out, and that is what ends an engagement.
+  const rules = await listDueRecurrenceRules(database, {
+    subjectType: VISIT_RECURRENCE_SUBJECT_TYPE,
   })
 
   const horizonThreshold = new Date(Date.now() + RECURRENCE_HORIZON_DAYS * 24 * 60 * 60 * 1000)

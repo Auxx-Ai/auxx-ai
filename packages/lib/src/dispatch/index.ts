@@ -144,7 +144,11 @@ export type {
   UnscheduleVisitInput,
   VisitStatus,
 } from './types'
-export { resolveVisitDurationMinutes, VISIT_STATUS_VALUES } from './types'
+export {
+  resolveVisitDurationMinutes,
+  VISIT_RECURRENCE_SUBJECT_TYPE,
+  VISIT_STATUS_VALUES,
+} from './types'
 export { ensureVisitOnWorkOrderCreate } from './visit-hooks'
 export {
   addVisit,

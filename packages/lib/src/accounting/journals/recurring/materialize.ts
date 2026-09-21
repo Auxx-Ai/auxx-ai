@@ -36,16 +36,15 @@
  */
 
 import type { Database } from '@auxx/database'
-import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../../cache'
+import { advanceRecurrenceCursor, type RecurrenceRuleRow } from '../../../recurrence'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { requireJournalEntry } from '../entries/reads'
 import { createJournalEntry } from '../entries/writes'
 import { guard } from './guard'
-import { findGeneratedEntryIds, planForRule, type RecurrenceRuleRow } from './reads'
+import { findGeneratedEntryIds, planForRule } from './reads'
 
 const logger = createScopedLogger('postings:recurring-journals')
 
@@ -118,7 +117,7 @@ export async function materializeRecurringJournals(
       }
 
       if (plan.due.length === 0) {
-        await writeCursor(db, rule.id, plan.cursor)
+        await advanceRecurrenceCursor(db, organizationId, rule.id, plan.cursor)
         return outcome
       }
 
@@ -189,12 +188,12 @@ export async function materializeRecurringJournals(
             occurrenceDate: occurrence.occurrenceDate,
             error: error instanceof Error ? error.message : String(error),
           })
-          await writeCursor(db, rule.id, cursor)
+          await advanceRecurrenceCursor(db, organizationId, rule.id, cursor)
           return outcome
         }
       }
 
-      await writeCursor(db, rule.id, cursor)
+      await advanceRecurrenceCursor(db, organizationId, rule.id, cursor)
 
       if (outcome.generated.length > 0 || outcome.held) {
         logger.info('Materialized recurring journal entries', {
@@ -212,12 +211,4 @@ export async function materializeRecurringJournals(
     'Failed to materialize recurring journal entries',
     { organizationId: rule.organizationId, ruleId: rule.id }
   )
-}
-
-/** The single writer of `materializedUntil` for this subject type. */
-async function writeCursor(db: Database, ruleId: string, cursor: Date): Promise<void> {
-  await db
-    .update(schema.RecurrenceRule)
-    .set({ materializedUntil: cursor })
-    .where(eq(schema.RecurrenceRule.id, ruleId))
 }

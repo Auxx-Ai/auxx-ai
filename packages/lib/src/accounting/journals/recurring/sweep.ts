@@ -15,9 +15,9 @@
  * that dropped mid-pass. Both are logged and neither escapes.
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, lt, or } from 'drizzle-orm'
+import { listDueRecurrenceRules } from '../../../recurrence'
 import { RECURRING_JOURNAL_SUBJECT_TYPE } from './client'
 import { materializeRecurringJournals } from './materialize'
 
@@ -62,20 +62,12 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
     failed: 0,
   }
 
-  const rules = await db
-    .select()
-    .from(schema.RecurrenceRule)
-    .where(
-      and(
-        eq(schema.RecurrenceRule.subjectType, RECURRING_JOURNAL_SUBJECT_TYPE),
-        // A cursor at or ahead of now has nothing to generate. Null is a rule
-        // that has never run.
-        or(
-          isNull(schema.RecurrenceRule.materializedUntil),
-          lt(schema.RecurrenceRule.materializedUntil, now)
-        )
-      )
-    )
+  // A cursor at or ahead of now has nothing to generate; null is a rule that
+  // has never run. Cross-org by design - one daily pass over every tenant.
+  const rules = await listDueRecurrenceRules(db, {
+    subjectType: RECURRING_JOURNAL_SUBJECT_TYPE,
+    now,
+  })
 
   for (const rule of rules) {
     summary.rulesEvaluated++

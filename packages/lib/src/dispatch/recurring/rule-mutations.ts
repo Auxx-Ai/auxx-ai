@@ -17,10 +17,18 @@ import { and, asc, eq, gt, gte, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { expandOccurrences, type RecurrencePattern } from '../../recurrence'
+import {
+  expandOccurrences,
+  getRecurrenceRule,
+  type RecurrencePattern,
+  type RecurrenceRuleRow,
+  updateRecurrencePattern,
+  upsertRecurrenceRule,
+} from '../../recurrence'
 import { exitRunsForDeadVisitSubjects } from '../../sequences/hooks'
 import { publishVisitChanged } from '../broadcast'
 import { mirrorVisitOntoWorkOrder } from '../mirror'
+import { VISIT_RECURRENCE_SUBJECT_TYPE } from '../types'
 import {
   getWorkOrderStatus,
   materializeVisits,
@@ -29,8 +37,6 @@ import {
 } from './materialize'
 
 const logger = createScopedLogger('dispatch:recurring:rule-mutations')
-
-type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 
 /** Visit template carried by the rule (§3.1) — the schedule shape each materialized
  * occurrence gets. */
@@ -138,45 +144,19 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
     excludeSocketId,
   } = input
 
-  const existing = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
-      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-    ),
+  const { rule, previous } = await upsertRecurrenceRule(database, organizationId, {
+    subjectType: VISIT_RECURRENCE_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
+    pattern,
+    timezone,
+    anchor: effectiveFrom,
+    effectiveFrom,
+    startMinute: template.startMinute,
+    durationMinutes: template.durationMinutes,
+    defaultAssigneeWorkerId: template.defaultAssigneeWorkerId ?? null,
   })
 
-  const patternChanged = !existing || !patternsEqual(existing.pattern, pattern)
-
-  const [rule] = existing
-    ? await database
-        .update(schema.RecurrenceRule)
-        .set({
-          pattern: pattern as unknown as Record<string, unknown>,
-          timezone,
-          effectiveFrom,
-          startMinute: template.startMinute,
-          durationMinutes: template.durationMinutes,
-          defaultAssigneeWorkerId: template.defaultAssigneeWorkerId ?? null,
-        })
-        .where(eq(schema.RecurrenceRule.id, existing.id))
-        .returning()
-    : await database
-        .insert(schema.RecurrenceRule)
-        .values({
-          organizationId,
-          subjectType: 'work_order_visits',
-          subjectId: workOrderInstanceId,
-          pattern: pattern as unknown as Record<string, unknown>,
-          timezone,
-          anchor: effectiveFrom,
-          effectiveFrom,
-          startMinute: template.startMinute,
-          durationMinutes: template.durationMinutes,
-          defaultAssigneeWorkerId: template.defaultAssigneeWorkerId ?? null,
-        })
-        .returning()
-  if (!rule) throw new Error('Failed to upsert recurrence rule')
+  const patternChanged = !previous || !patternsEqual(previous.pattern, pattern)
 
   // Regeneration (§4.3): boundary B = max(today, effectiveFrom). Rows before B, and any row
   // in en_route/on_site/done, are never touched (excluded by construction below — we only
@@ -239,7 +219,7 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
   // null, `startTime` null, `status: 'scheduled'`) is otherwise indistinguishable from a
   // deliberate `addVisit` "extra" row, which must survive every later regeneration, not be
   // re-swept by this cleanup on every edit.
-  if (!existing) {
+  if (!previous) {
     await database
       .delete(schema.WorkOrderVisit)
       .where(
@@ -257,7 +237,7 @@ export async function setRecurrenceRule(input: SetRecurrenceRuleInput): Promise<
   // being duplicated by `materializeVisits` below (which only sees rows already linked to
   // `rule.id`). Rule edits skip this: a standalone row on an existing recurring WO is a
   // deliberate "extra" visit (§1 Adoption boundary), never adopted.
-  if (!existing) {
+  if (!previous) {
     const standaloneVisits = await database
       .select({
         id: schema.WorkOrderVisit.id,
@@ -397,12 +377,9 @@ export interface SetSeriesEndInput {
 export async function setSeriesEnd(input: SetSeriesEndInput): Promise<RecurrenceRuleRow> {
   const { organizationId, userId, workOrderInstanceId, until, excludeSocketId } = input
 
-  const rule = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'work_order_visits'),
-      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-    ),
+  const rule = await getRecurrenceRule(database, organizationId, {
+    subjectType: VISIT_RECURRENCE_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
   })
   if (!rule) throw new NotFoundError('No recurrence rule for this work order')
 
@@ -430,11 +407,7 @@ export async function setSeriesEnd(input: SetSeriesEndInput): Promise<Recurrence
   const { count: _count, until: _until, ...rest } = rule.pattern as unknown as RecurrencePattern
   const pattern = (until === null ? rest : { ...rest, until }) as RecurrencePattern
 
-  const [updated] = await database
-    .update(schema.RecurrenceRule)
-    .set({ pattern: pattern as unknown as Record<string, unknown>, updatedAt: new Date() })
-    .where(eq(schema.RecurrenceRule.id, rule.id))
-    .returning()
+  const updated = await updateRecurrencePattern(database, organizationId, rule.id, pattern)
   if (!updated) throw new NotFoundError('Recurrence rule not found')
 
   if (until !== null) {

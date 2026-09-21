@@ -6,22 +6,24 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
 import { listVisitsForWorkOrder, readVisits } from '../../../dispatch/board'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import {
   expandOccurrences,
+  getRecurrenceRule,
   RECURRENCE_HORIZON_DAYS,
   type RecurrencePattern,
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import type {
-  InvoiceBillingKind,
-  WorkOrderBillingBasis,
-  WorkOrderBillingProjection,
-  WorkOrderInvoiceTiming,
+import {
+  INVOICE_DRAFT_SUBJECT_TYPE,
+  type InvoiceBillingKind,
+  type WorkOrderBillingBasis,
+  type WorkOrderBillingProjection,
+  type WorkOrderInvoiceTiming,
 } from '../types'
 import {
   listInstallments,
@@ -260,12 +262,9 @@ export async function computeWorkOrderBillingProjection(input: {
     }),
     // Recurring/per-visit custom-schedule visibility (plan §4.1/§5.3): the `invoice_drafts`
     // RecurrenceRule is the schedule cursor's home, not a source-line/installment table.
-    db.query.RecurrenceRule.findFirst({
-      where: and(
-        eq(schema.RecurrenceRule.organizationId, input.organizationId),
-        eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-        eq(schema.RecurrenceRule.subjectId, input.workOrderInstanceId)
-      ),
+    getRecurrenceRule(db, input.organizationId, {
+      subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+      subjectId: input.workOrderInstanceId,
     }),
   ])
   const { lineAllocations, visitAllocations, scheduleAllocations } = allocations

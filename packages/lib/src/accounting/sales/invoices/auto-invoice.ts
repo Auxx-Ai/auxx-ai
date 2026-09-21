@@ -14,7 +14,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
-import { and, eq, isNull, lt, or } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import {
@@ -27,9 +27,15 @@ import type { EntityFieldChangeHandler } from '../../../field-hooks/types'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import {
+  advanceRecurrenceCursor,
+  deleteRecurrenceRule,
   expandOccurrences,
+  getRecurrenceRule,
+  listDueRecurrenceRules,
   type RecurrencePattern,
+  type RecurrenceRuleRow,
   recurrencePatternSchema,
+  upsertRecurrenceRule,
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { getOrganizationSetting } from '../../../settings/settings-service'
@@ -44,16 +50,16 @@ import {
   createVisitInvoice,
 } from '../billing/commands'
 import { syncWorkOrderBillingProjection } from '../billing/projection'
-import type {
-  GenerateInvoiceDraftInput,
-  GenerateInvoiceDraftResult,
-  InvoiceScheduleQueryInput,
-  SetInvoiceScheduleInput,
+import {
+  type GenerateInvoiceDraftInput,
+  type GenerateInvoiceDraftResult,
+  INVOICE_DRAFT_SUBJECT_TYPE,
+  type InvoiceScheduleQueryInput,
+  type SetInvoiceScheduleInput,
 } from '../types'
 
 const logger = createScopedLogger('money:auto-invoice')
 
-type RecurrenceRuleRow = typeof schema.RecurrenceRule.$inferSelect
 type WorkOrderVisitRow = typeof schema.WorkOrderVisit.$inferSelect
 
 /** Local calendar date (`YYYY-MM-DD`, local midnight in `timezone`) as a UTC instant — the
@@ -398,40 +404,14 @@ export async function setInvoiceSchedule(
 
   const todayIso = todayLocalDate(timezone)
 
-  const existing = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-    ),
+  const { rule } = await upsertRecurrenceRule(database, organizationId, {
+    subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
+    pattern,
+    timezone,
+    anchor: todayIso,
+    effectiveFrom: todayIso,
   })
-
-  const [rule] = existing
-    ? await database
-        .update(schema.RecurrenceRule)
-        .set({
-          pattern: pattern as unknown as Record<string, unknown>,
-          timezone,
-          effectiveFrom: todayIso,
-        })
-        .where(eq(schema.RecurrenceRule.id, existing.id))
-        .returning()
-    : await database
-        .insert(schema.RecurrenceRule)
-        .values({
-          organizationId,
-          subjectType: 'invoice_drafts',
-          subjectId: workOrderInstanceId,
-          pattern: pattern as unknown as Record<string, unknown>,
-          timezone,
-          anchor: todayIso,
-          effectiveFrom: todayIso,
-          startMinute: null,
-          durationMinutes: null,
-          defaultAssigneeWorkerId: null,
-        })
-        .returning()
-  if (!rule) throw new Error('Failed to upsert invoice schedule rule')
 
   await materializeInvoiceDrafts(rule)
   return rule
@@ -443,15 +423,10 @@ export async function setInvoiceSchedule(
  */
 export async function clearInvoiceSchedule(input: InvoiceScheduleQueryInput): Promise<void> {
   const { organizationId, workOrderInstanceId } = input
-  await database
-    .delete(schema.RecurrenceRule)
-    .where(
-      and(
-        eq(schema.RecurrenceRule.organizationId, organizationId),
-        eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-        eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-      )
-    )
+  await deleteRecurrenceRule(database, organizationId, {
+    subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
+  })
 }
 
 /** Read a work order's invoice-draft schedule rule, or `null` if none is set (§F.1/§J). */
@@ -459,14 +434,10 @@ export async function getInvoiceSchedule(
   input: InvoiceScheduleQueryInput
 ): Promise<RecurrenceRuleRow | null> {
   const { organizationId, workOrderInstanceId } = input
-  const rule = await database.query.RecurrenceRule.findFirst({
-    where: and(
-      eq(schema.RecurrenceRule.organizationId, organizationId),
-      eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-      eq(schema.RecurrenceRule.subjectId, workOrderInstanceId)
-    ),
+  return getRecurrenceRule(database, organizationId, {
+    subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+    subjectId: workOrderInstanceId,
   })
-  return rule ?? null
 }
 
 /**
@@ -499,10 +470,7 @@ export async function materializeInvoiceDrafts(rule: RecurrenceRuleRow): Promise
     (!isRecurring && status === 'canceled')
 
   if (skipGeneration) {
-    await database
-      .update(schema.RecurrenceRule)
-      .set({ materializedUntil: now })
-      .where(eq(schema.RecurrenceRule.id, rule.id))
+    await advanceRecurrenceCursor(database, rule.organizationId, rule.id, now)
     await repairBillingProjection(rule, userId)
     return
   }
@@ -556,10 +524,7 @@ export async function materializeInvoiceDrafts(rule: RecurrenceRuleRow): Promise
     }
   }
 
-  await database
-    .update(schema.RecurrenceRule)
-    .set({ materializedUntil: now })
-    .where(eq(schema.RecurrenceRule.id, rule.id))
+  await advanceRecurrenceCursor(database, rule.organizationId, rule.id, now)
 
   if (!createdAny) {
     await repairBillingProjection(rule, userId)
@@ -592,14 +557,9 @@ async function repairBillingProjection(rule: RecurrenceRuleRow, userId: string):
  */
 export async function sweepInvoiceDrafts(): Promise<void> {
   const now = new Date()
-  const rules = await database.query.RecurrenceRule.findMany({
-    where: and(
-      eq(schema.RecurrenceRule.subjectType, 'invoice_drafts'),
-      or(
-        isNull(schema.RecurrenceRule.materializedUntil),
-        lt(schema.RecurrenceRule.materializedUntil, now)
-      )
-    ),
+  const rules = await listDueRecurrenceRules(database, {
+    subjectType: INVOICE_DRAFT_SUBJECT_TYPE,
+    now,
   })
 
   for (const rule of rules) {
