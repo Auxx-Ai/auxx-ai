@@ -28,7 +28,7 @@ export interface Migration179Result extends PerOrgMigrationResult {
 
 /**
  * Migration 179: remove `purchase_order_tax_recoverable`, the unread PO flag
- * 74-D8 deletes (`plans/accounting/tasks/74-what-73-left-open.md` §5).
+ * 74-D8 deletes (`plans/accounting/tasks/done/74-what-73-left-open.md` §5).
  *
  * Tax on a bill always debits `purchase_tax`, so nothing ever read the flag: a
  * person who ticked it was told the tax would be reclaimed and it was expensed
@@ -49,7 +49,7 @@ export const migration179RemovePurchaseOrderTaxRecoverable: PerOrgMigration = {
   description:
     'Removes purchase_order_tax_recoverable, the PO flag nothing read - tax on a bill always ' +
     'debits purchase_tax, so the tick was never honoured ' +
-    '(plans/accounting/tasks/74-what-73-left-open.md §5, 74-D8).',
+    '(plans/accounting/tasks/done/74-what-73-left-open.md §5, 74-D8).',
 
   async up(db: Database, organizationId: string): Promise<Migration179Result> {
     const state = { entityDefsCreated: 0, fieldsCreated: 0, relationshipsLinked: 0 }

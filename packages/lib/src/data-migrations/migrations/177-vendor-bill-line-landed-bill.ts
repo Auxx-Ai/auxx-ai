@@ -23,7 +23,7 @@ const CACHE_KEYS = ['customFields', 'resources'] as const
 
 /**
  * Migration 177: a landed-cost line names the goods bill it belongs to
- * (`plans/accounting/tasks/73-the-buy-side-against-the-ledger.md` §7.2).
+ * (`plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md` §7.2).
  *
  * `vendor_bill_line.landedBill` -> `vendor_bill`, beside the line's order-line
  * link, with `vendor_bill.landedCostLines` as its `unlink` inverse. A carrier's

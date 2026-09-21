@@ -35,7 +35,7 @@ const CACHE_KEYS = ['customFields', 'resources'] as const
 
 /**
  * Migration 173: a part's frozen standard learns where it came from
- * (`plans/accounting/tasks/73-the-buy-side-against-the-ledger.md` §6.4).
+ * (`plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md` §6.4).
  *
  * ## What it adds
  *

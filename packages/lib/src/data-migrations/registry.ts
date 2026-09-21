@@ -163,7 +163,7 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration171OneCashEndpoint,
   // One SINGLE_SELECT on an existing def, plus a value remap off a neighbouring
   // field and that field's option list re-materialised: the split shape
-  // (plans/accounting/tasks/73-the-buy-side-against-the-ledger.md §1.3 D1).
+  // (plans/accounting/tasks/done/73-the-buy-side-against-the-ledger.md §1.3 D1).
   migration172VendorBillMatchStatus,
   // One SINGLE_SELECT on the existing `part` def, no backfill: where a frozen
   // standard came from, so the first receipt of a typed guess replaces it

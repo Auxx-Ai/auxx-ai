@@ -178,7 +178,7 @@ export const ENTITY_DEFINITION_TYPES = [
   'credit_memo',
   'credit_memo_line',
   'credit_memo_application',
-  // plans/accounting/tasks/71-one-cash-endpoint.md §5 U7 — the purchase-side
+  // plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7 — the purchase-side
   // mirror, same three grains.
   'vendor_credit',
   'vendor_credit_line',

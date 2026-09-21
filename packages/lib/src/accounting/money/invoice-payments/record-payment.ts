@@ -14,7 +14,7 @@
  *
  * 🛑 Not a refund door. `purpose` is `customer_receipt` only.
  *
- * @see plans/accounting/tasks/71-one-cash-endpoint.md
+ * @see plans/accounting/tasks/done/71-one-cash-endpoint.md
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
