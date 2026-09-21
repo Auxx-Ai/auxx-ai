@@ -111,7 +111,8 @@ describe('the SYSTEM_ENTITIES rows the migration copies verbatim', () => {
       singular: 'Return',
       plural: 'Returns',
       icon: 'package-x',
-      color: 'orange',
+      // Sell side: a customer return is green (plans/icons/entity-def-palette.md §3).
+      color: 'green',
       isVisible: true,
     })
   })
@@ -119,11 +120,11 @@ describe('the SYSTEM_ENTITIES rows the migration copies verbatim', () => {
   it('ships both child defs HIDDEN, managed from their parent', () => {
     const line = SYSTEM_ENTITIES.find((e) => e.entityType === 'return_line')
     const partLine = SYSTEM_ENTITIES.find((e) => e.entityType === 'return_part_line')
-    expect(line).toMatchObject({ apiSlug: 'return-lines', isVisible: false, color: 'orange' })
+    expect(line).toMatchObject({ apiSlug: 'return-lines', isVisible: false, color: 'green' })
     expect(partLine).toMatchObject({
       apiSlug: 'return-part-lines',
       isVisible: false,
-      color: 'orange',
+      color: 'green',
     })
   })
 

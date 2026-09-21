@@ -3,6 +3,7 @@
 'use client'
 
 import { isNonEmptyDoc } from '@auxx/lib/tiptap'
+import { toEntityColor } from '@auxx/types/entity-color'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -53,7 +54,8 @@ type PromptFormDialogProps =
       onDeleted?: () => void
     }
 
-const DEFAULT_ICON: IconPickerValue = { icon: 'sparkles', color: 'violet' }
+// `violet` was never an ICON_COLORS id, so this default had been rendering gray.
+const DEFAULT_ICON: IconPickerValue = { icon: 'sparkles', color: 'purple' }
 
 // Templates share the persona editor's admin-only reference tabs — authors
 // want to drop tool / record / field chips into the prompt body.
@@ -95,7 +97,10 @@ export function PromptFormDialog(props: PromptFormDialogProps) {
         setPrompt(props.promptTemplate.prompt ?? emptyPromptDoc())
         setIconValue(
           props.promptTemplate.icon
-            ? { icon: props.promptTemplate.icon.iconId, color: props.promptTemplate.icon.color }
+            ? {
+                icon: props.promptTemplate.icon.iconId,
+                color: toEntityColor(props.promptTemplate.icon.color),
+              }
             : DEFAULT_ICON
         )
       } else {

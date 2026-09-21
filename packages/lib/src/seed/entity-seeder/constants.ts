@@ -12,7 +12,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Customer transaction',
     plural: 'Customer transactions',
     icon: 'banknote',
-    color: 'teal',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -21,7 +21,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Processor transaction',
     plural: 'Processor transactions',
     icon: 'banknote',
-    color: 'teal',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -30,7 +30,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Contact',
     plural: 'Contacts',
     icon: 'user',
-    color: 'indigo',
+    color: 'purple',
   },
   {
     entityType: 'ticket',
@@ -38,7 +38,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Ticket',
     plural: 'Tickets',
     icon: 'ticket',
-    color: 'blue',
+    color: 'indigo',
   },
   {
     entityType: 'part',
@@ -46,7 +46,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Part',
     plural: 'Parts',
     icon: 'package',
-    color: 'orange',
+    color: 'teal',
   },
   {
     entityType: 'entity_group',
@@ -84,7 +84,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Tag',
     plural: 'Tags',
     icon: 'tag',
-    color: 'amber',
+    color: 'gray',
     isVisible: false,
   },
   {
@@ -93,7 +93,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Thread',
     plural: 'Threads',
     icon: 'mail',
-    color: 'blue',
+    color: 'indigo',
     isVisible: false,
   },
   {
@@ -102,7 +102,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Signature',
     plural: 'Signatures',
     icon: 'pen-tool',
-    color: 'slate',
+    color: 'gray',
     isVisible: false, // Settings-only entity
   },
   {
@@ -114,7 +114,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Supplier Price',
     plural: 'Supplier Pricing',
     icon: 'package',
-    color: 'orange',
+    color: 'teal',
     isVisible: false, // Internal entity, managed from part drawer
   },
   {
@@ -123,7 +123,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Component',
     plural: 'Components',
     icon: 'layers',
-    color: 'orange',
+    color: 'teal',
     isVisible: false, // Internal entity, managed from part drawer's subparts tab
   },
   {
@@ -132,7 +132,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Stock Movement',
     plural: 'Stock Movements',
     icon: 'arrow-left-right',
-    color: 'emerald',
+    color: 'teal',
     isVisible: false, // Internal entity, managed from part drawer
   },
   {
@@ -141,7 +141,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Company',
     plural: 'Companies',
     icon: 'building-2',
-    color: 'blue',
+    color: 'purple',
   },
   {
     entityType: 'meeting',
@@ -149,7 +149,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Meeting',
     plural: 'Meetings',
     icon: 'calendar',
-    color: 'blue',
+    color: 'indigo',
     isVisible: false, // Accessed via dedicated Meetings page, not entity sidebar
   },
   {
@@ -158,7 +158,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Article',
     plural: 'Articles',
     icon: 'book-open',
-    color: 'cyan',
+    color: 'indigo',
     isVisible: false, // Backed by Article table; managed via the KB editor, not entity sidebar
   },
   {
@@ -167,7 +167,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Work Order',
     plural: 'Work Orders',
     icon: 'wrench',
-    color: 'amber',
+    color: 'indigo',
     isVisible: true,
   },
   {
@@ -176,7 +176,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Service Request',
     plural: 'Service Requests',
     icon: 'clipboard-list',
-    color: 'cyan',
+    color: 'indigo',
     isVisible: true,
   },
   {
@@ -203,7 +203,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Quote',
     plural: 'Quotes',
     icon: 'file-text',
-    color: 'violet',
+    color: 'green',
     isVisible: true,
   },
   {
@@ -221,7 +221,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Line Item',
     plural: 'Line Items',
     icon: 'list',
-    color: 'gray',
+    color: 'green',
     isVisible: false, // Internal entity, rendered only by the line-builder UIs
   },
   {
@@ -239,7 +239,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Order',
     plural: 'Orders',
     icon: 'shopping-bag',
-    color: 'amber',
+    color: 'green',
     isVisible: true,
   },
   {
@@ -248,7 +248,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Purchase Order',
     plural: 'Purchase Orders',
     icon: 'shopping-cart',
-    color: 'teal',
+    color: 'red',
     isVisible: true,
   },
   {
@@ -257,7 +257,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Purchase Order Line',
     plural: 'Purchase Order Lines',
     icon: 'clipboard-list',
-    color: 'teal',
+    color: 'red',
     isVisible: false, // Internal entity, managed from the purchase order
   },
   {
@@ -288,7 +288,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Vendor Credit',
     plural: 'Vendor Credits',
     icon: 'receipt-text',
-    color: 'orange',
+    color: 'red',
     isVisible: true,
   },
   {
@@ -297,7 +297,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Vendor Credit Line',
     plural: 'Vendor Credit Lines',
     icon: 'list',
-    color: 'orange',
+    color: 'red',
     isVisible: false, // Internal entity, rendered only by the line builder
   },
   {
@@ -307,8 +307,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     apiSlug: 'vendor-credit-applications',
     singular: 'Vendor Credit Application',
     plural: 'Vendor Credit Applications',
-    icon: 'arrow-left-right',
-    color: 'orange',
+    icon: 'link',
+    color: 'red',
     isVisible: false, // Internal entity, managed from the credit and bill drawers
   },
   {
@@ -321,8 +321,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     apiSlug: 'gl-accounts',
     singular: 'GL Account',
     plural: 'GL Accounts',
-    icon: 'book-open',
-    color: 'indigo',
+    icon: 'table',
+    color: 'gray',
     isVisible: false,
   },
   {
@@ -343,7 +343,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Journal Entry',
     plural: 'Journal Entries',
     icon: 'book-open',
-    color: 'indigo',
+    color: 'gray',
     isVisible: false,
   },
   {
@@ -366,7 +366,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Build',
     plural: 'Builds',
     icon: 'hammer',
-    color: 'orange',
+    color: 'teal',
     isVisible: true,
   },
   {
@@ -391,7 +391,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Bank Deposit',
     plural: 'Bank Deposits',
     icon: 'landmark',
-    color: 'emerald',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -419,7 +419,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Payout',
     plural: 'Payouts',
     icon: 'banknote-arrow-down',
-    color: 'teal',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -436,7 +436,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Bank Account',
     plural: 'Bank Accounts',
     icon: 'landmark',
-    color: 'sky',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -456,7 +456,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Bank Transaction',
     plural: 'Bank Transactions',
     icon: 'receipt',
-    color: 'sky',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -472,7 +472,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Payment Gateway',
     plural: 'Payment Gateways',
     icon: 'credit-card',
-    color: 'indigo',
+    color: 'blue',
     isVisible: false,
   },
   {
@@ -501,7 +501,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Shipment',
     plural: 'Shipments',
     icon: 'truck',
-    color: 'amber',
+    color: 'teal',
     isVisible: false,
   },
   {
@@ -518,7 +518,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Parcel',
     plural: 'Parcels',
     icon: 'box',
-    color: 'orange',
+    color: 'teal',
     isVisible: false,
   },
   {
@@ -562,7 +562,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Tariff Code',
     plural: 'Tariff Codes',
     icon: 'globe',
-    color: 'teal',
+    color: 'amber',
     isVisible: false,
   },
   {
@@ -578,7 +578,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Tariff Rate',
     plural: 'Tariff Rates',
     icon: 'percent',
-    color: 'teal',
+    color: 'amber',
     isVisible: false,
   },
   {
@@ -595,7 +595,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Credit Memo',
     plural: 'Credit Memos',
     icon: 'receipt-text',
-    color: 'red',
+    color: 'green',
     isVisible: true,
   },
   {
@@ -604,7 +604,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Credit Memo Line',
     plural: 'Credit Memo Lines',
     icon: 'list',
-    color: 'red',
+    color: 'green',
     isVisible: false, // Internal entity, rendered only by the line builder
   },
   {
@@ -614,8 +614,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     apiSlug: 'credit-memo-applications',
     singular: 'Credit Application',
     plural: 'Credit Applications',
-    icon: 'arrow-left-right',
-    color: 'red',
+    icon: 'link',
+    color: 'green',
     isVisible: false, // Internal entity, managed from the memo and invoice drawers
   },
   {
@@ -650,7 +650,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Fulfillment',
     plural: 'Fulfillments',
     icon: 'package-check',
-    color: 'blue',
+    color: 'green',
     isVisible: false,
   },
   {
@@ -663,7 +663,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Fulfillment Line',
     plural: 'Fulfillment Lines',
     icon: 'list',
-    color: 'blue',
+    color: 'green',
     isVisible: false,
   },
   {
@@ -681,7 +681,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Return',
     plural: 'Returns',
     icon: 'package-x',
-    color: 'orange',
+    color: 'green',
     isVisible: true,
   },
   {
@@ -694,7 +694,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Return Line',
     plural: 'Return Lines',
     icon: 'list',
-    color: 'orange',
+    color: 'green',
     isVisible: false,
   },
   {
@@ -706,7 +706,7 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     singular: 'Return Part Line',
     plural: 'Return Part Lines',
     icon: 'git-branch',
-    color: 'orange',
+    color: 'green',
     isVisible: false,
   },
 ]

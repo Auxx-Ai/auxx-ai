@@ -2,6 +2,7 @@
 
 'use client'
 
+import { toEntityColor } from '@auxx/types/entity-color'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -59,7 +60,9 @@ export function WorkflowFormDialog({ open, onOpenChange, workflow }: WorkflowFor
       setName(workflow.name)
       setDescription(workflow.description ?? '')
       setIconValue(
-        workflow.icon ? { icon: workflow.icon.iconId, color: workflow.icon.color } : DEFAULT_ICON
+        workflow.icon
+          ? { icon: workflow.icon.iconId, color: toEntityColor(workflow.icon.color) }
+          : DEFAULT_ICON
       )
     }
   }, [open])

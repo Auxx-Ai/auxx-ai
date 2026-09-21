@@ -14,6 +14,7 @@
 import type { CatalogEntity, CatalogField } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { RelationshipType, SelectOption } from '@auxx/types/custom-field'
+import { toEntityColor } from '@auxx/types/entity-color'
 import type { EntityTemplate, EntityTemplateField } from './types'
 
 /** Registry id for an app-projected entity template: `app:<appSlug>:<entityKey>`. */
@@ -90,7 +91,7 @@ export function projectAppEntityTemplate(appSlug: string, entity: CatalogEntity)
       singular: entity.singular,
       plural: entity.plural,
       icon: entity.icon ?? 'box',
-      color: entity.color ?? 'blue',
+      color: toEntityColor(entity.color ?? 'blue'),
       // The stable owner-scoped identity — strict adopt/dedupe key once owner-stamped.
       sourceKey: entity.key,
     },

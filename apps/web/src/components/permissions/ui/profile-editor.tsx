@@ -2,6 +2,7 @@
 'use client'
 
 import { Area } from '@auxx/lib/permissions/client'
+import { toEntityColor } from '@auxx/types/entity-color'
 import { AutosizeInput, type AutosizeInputRef } from '@auxx/ui/components/autosize-input'
 import { Button } from '@auxx/ui/components/button'
 import { IconPicker } from '@auxx/ui/components/icon-picker'
@@ -309,7 +310,7 @@ export function ProfileEditor({ profile, canEdit, onBack }: ProfileEditorProps) 
 
         {editable ? (
           <IconPicker
-            value={{ icon: icon.iconId, color: icon.color }}
+            value={{ icon: icon.iconId, color: toEntityColor(icon.color) }}
             onChange={(value) => patch({ icon: { iconId: value.icon, color: value.color } })}
             modal={false}>
             <button type='button' aria-label='Pick profile icon' className='shrink-0'>

@@ -1,6 +1,7 @@
 // packages/lib/src/entity-definitions/types.ts
 
 import { EntityTypeValues, StandardTypeValues } from '@auxx/database/enums'
+import { ENTITY_COLORS } from '@auxx/types/entity-color'
 import { z } from 'zod'
 
 export type { EntityType, StandardType } from '@auxx/database/types'
@@ -18,7 +19,7 @@ export const createEntityDefinitionSchema = z.object({
       message: 'API slug cannot start or end with a hyphen',
     }),
   icon: z.string().min(1, 'Icon is required').default('Box'),
-  color: z.string().min(1, 'Color is required').default('blue'),
+  color: z.enum(ENTITY_COLORS).default('blue'),
   singular: z.string().min(1, 'Singular name is required').max(100),
   plural: z.string().min(1, 'Plural name is required').max(100),
   entityType: z.enum(EntityTypeValues).nullable().optional(),
@@ -42,7 +43,7 @@ export type CreateEntityDefinitionInput = z.infer<typeof createEntityDefinitionS
  */
 export const updateEntityDefinitionSchema = z.object({
   icon: z.string().min(1).optional(),
-  color: z.string().min(1).optional(),
+  color: z.enum(ENTITY_COLORS).optional(),
   singular: z.string().min(1).max(100).optional(),
   plural: z.string().min(1).max(100).optional(),
   archivedAt: z.date().nullable().optional(),

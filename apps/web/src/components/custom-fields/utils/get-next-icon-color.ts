@@ -1,4 +1,5 @@
 // apps/web/src/components/custom-fields/utils/get-next-icon-color.ts
+import type { EntityColor } from '@auxx/types/entity-color'
 import { ICON_COLORS } from '@auxx/ui/components/icons'
 
 /**
@@ -6,7 +7,7 @@ import { ICON_COLORS } from '@auxx/ui/components/icons'
  * Cycles through ICON_COLORS in order, skipping colors already in use.
  * Wraps around if all colors are used.
  */
-export function getNextIconColor(usedColors: string[]): string {
+export function getNextIconColor(usedColors: string[]): EntityColor {
   const usedSet = new Set(usedColors)
 
   for (const color of ICON_COLORS) {

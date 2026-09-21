@@ -1,6 +1,7 @@
 // packages/ui/src/components/icon-picker.tsx
 'use client'
 
+import type { EntityColor } from '@auxx/types/entity-color'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
@@ -59,8 +60,8 @@ ColorButton.displayName = 'ColorButton'
 export interface IconPickerValue {
   /** Icon ID, e.g., "home", "settings", "user" */
   icon: string
-  /** Color ID, e.g., "blue", "red", "gray" */
-  color: string
+  /** Palette id — the picker only ever emits an `ICON_COLORS` id. */
+  color: EntityColor
 }
 
 /** Icon picker props */
@@ -160,7 +161,7 @@ export function IconPicker({
 
   // Handle color selection
   const handleColorSelect = useCallback(
-    (colorId: string) => {
+    (colorId: EntityColor) => {
       setSelectedColor(colorId)
       // If there's already a selected icon, update the value with new color
       if (value?.icon) {

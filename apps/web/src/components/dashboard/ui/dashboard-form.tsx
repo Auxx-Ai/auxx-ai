@@ -7,6 +7,7 @@
 // wraps this in a `Dialog`; the command palette hosts the create mode as a page.
 // Owns its own mutations + cache invalidation; create routes to the new dashboard.
 
+import { toEntityColor } from '@auxx/types/entity-color'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import {
@@ -150,7 +151,10 @@ export function DashboardForm({
               <FormItem>
                 <FormLabel>Name</FormLabel>
                 <div className='flex items-center gap-2'>
-                  <IconPicker value={icon} onChange={(v) => form.setValue('icon', v)} modal={false}>
+                  <IconPicker
+                    value={{ icon: icon.icon, color: toEntityColor(icon.color) }}
+                    onChange={(v) => form.setValue('icon', v)}
+                    modal={false}>
                     <button type='button' aria-label='Pick icon'>
                       <EntityIcon
                         iconId={icon.icon}

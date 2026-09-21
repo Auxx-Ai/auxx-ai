@@ -6,6 +6,7 @@ import {
   OrganizationRoleValues,
 } from '@auxx/database/enums'
 import { z } from 'zod'
+import { DEFAULT_ENTITY_COLOR, ENTITY_COLORS, type EntityColor } from '../entity-color'
 import { parseResourceFieldId, type ResourceFieldId } from '../field'
 import type { SystemAttribute } from '../system-attribute'
 
@@ -19,28 +20,14 @@ export { type ModelType, ModelTypeMeta, ModelTypes, ModelTypeValues } from '@aux
 // SELECT OPTION COLORS
 // =============================================================================
 
-/**
- * Available colors for select options
- * Matches ICON_COLORS from icon-picker for consistency
- */
-export const SELECT_OPTION_COLORS = [
-  'gray',
-  'red',
-  'orange',
-  'amber',
-  'green',
-  'forest',
-  'teal',
-  'blue',
-  'indigo',
-  'purple',
-  'pink',
-] as const
+/** The one palette — see `../entity-color`. Aliased, not re-declared: the two lists drifted
+ * apart on `forest`/`emerald` for exactly as long as they were two lists. */
+export const SELECT_OPTION_COLORS = ENTITY_COLORS
 
-export type SelectOptionColor = (typeof SELECT_OPTION_COLORS)[number]
+export type SelectOptionColor = EntityColor
 
 /** Default color for select options (used when no color is specified) */
-export const DEFAULT_SELECT_OPTION_COLOR: SelectOptionColor = 'gray'
+export const DEFAULT_SELECT_OPTION_COLOR: SelectOptionColor = DEFAULT_ENTITY_COLOR
 
 // =============================================================================
 // TARGET TIME IN STATUS (Kanban column time tracking)

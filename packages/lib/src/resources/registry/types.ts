@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/types.ts
 
+import type { EntityColor } from '@auxx/types/entity-color'
 import type { JoinScopingConfig } from './display-config'
 import { RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
@@ -23,7 +24,7 @@ interface BaseResource extends SystemEntityBehavior {
   label: string
   plural: string
   icon: string
-  color: string
+  color: EntityColor
   /** Field definitions for this resource */
   fields: ResourceField[]
   entityType?: string

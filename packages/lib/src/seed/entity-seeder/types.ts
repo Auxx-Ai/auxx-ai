@@ -1,6 +1,7 @@
 // packages/lib/src/seed/entity-seeder/types.ts
 
 import type { FieldType } from '@auxx/database/types'
+import type { EntityColor } from '@auxx/types/entity-color'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
@@ -16,7 +17,7 @@ export interface EntityDefRecord {
   singular: string
   plural: string
   icon: string
-  color: string
+  color: EntityColor
   isVisible: boolean
 }
 
@@ -50,7 +51,7 @@ export interface SystemEntityConfig {
   singular: string
   plural: string
   icon: string
-  color: string
+  color: EntityColor
   /** Seeds `EntityDefinition.isVisible` (default: true). 🛑 Does NOT control
    *  the sidebar any more — that is the `sidebar` axis of
    *  `SYSTEM_ENTITY_BEHAVIOR` (`../../resources/registry/system-entity-behavior.ts`).
