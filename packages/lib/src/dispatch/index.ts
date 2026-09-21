@@ -3,8 +3,20 @@
 // Server entrypoint for the dispatch (field-service work orders) feature.
 // Functional style, plain AuxxError throws, no model classes.
 
-export type { BoardResult, BoardWorkOrder, GetBoardRange, VisitDayMarker } from './board'
-export { getBoard, getVisitDayMarkers, listVisitsForWorkOrder } from './board'
+export type {
+  BoardResult,
+  BoardWorkOrder,
+  GetBoardRange,
+  ListWorkOrderVisitsOptions,
+  VisitDayMarker,
+} from './board'
+export {
+  getBoard,
+  getVisitDayMarkers,
+  listVisitsForWorkOrder,
+  readVisit,
+  readVisits,
+} from './board'
 export type { SerializedVisitRow, VisitChangedPayload } from './broadcast'
 export { publishVisitChanged, serializeVisitRow } from './broadcast'
 export { convertRequestToWorkOrder } from './convert-to-work-order'

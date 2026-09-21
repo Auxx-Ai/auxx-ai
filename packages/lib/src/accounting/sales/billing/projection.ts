@@ -8,6 +8,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { fromZonedTime } from 'date-fns-tz'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../../../cache'
+import { listVisitsForWorkOrder, readVisits } from '../../../dispatch/board'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import {
@@ -22,6 +23,12 @@ import type {
   WorkOrderBillingProjection,
   WorkOrderInvoiceTiming,
 } from '../types'
+import {
+  listInstallments,
+  listInvoiceAllocations,
+  listInvoiceInstallments,
+  listWorkOrderAllocations,
+} from './allocations'
 import { isBillingConfigurationCompatible } from './config'
 
 type WorkOrderVisitDateRow = { id: string; occurrenceDate: string | null; startTime: Date | null }
@@ -224,45 +231,15 @@ export async function computeWorkOrderBillingProjection(input: {
   const templateLines = lines.filter((line) => !line.visitId)
   const billingAmount = templateLines.reduce((total, line) => total + line.amount, 0)
 
-  const [
-    lineAllocations,
-    visitAllocations,
-    visits,
-    installments,
-    linkedInvoices,
-    scheduleRule,
-    scheduleAllocations,
-  ] = await Promise.all([
-    db.query.InvoiceLineAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceLineAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceLineAllocation.workOrderId, input.workOrderInstanceId),
-        eq(schema.InvoiceLineAllocation.status, 'active')
-      ),
+  const [allocations, visits, installments, linkedInvoices, scheduleRule] = await Promise.all([
+    listWorkOrderAllocations(db, input.organizationId, input.workOrderInstanceId, {
+      visitKind: 'base',
     }),
-    db.query.InvoiceVisitAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceVisitAllocation.workOrderId, input.workOrderInstanceId),
-        eq(schema.InvoiceVisitAllocation.status, 'active'),
-        eq(schema.InvoiceVisitAllocation.kind, 'base')
-      ),
+    listVisitsForWorkOrder(input.organizationId, input.workOrderInstanceId, {
+      db,
+      status: 'done',
     }),
-    db.query.WorkOrderVisit.findMany({
-      where: and(
-        eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-        eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId),
-        eq(schema.WorkOrderVisit.status, 'done')
-      ),
-      columns: { id: true, occurrenceDate: true, startTime: true },
-    }),
-    db.query.WorkOrderBillingInstallment.findMany({
-      where: and(
-        eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
-        eq(schema.WorkOrderBillingInstallment.workOrderId, input.workOrderInstanceId)
-      ),
-      orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
-    }),
+    listInstallments(db, input.organizationId, input.workOrderInstanceId),
     handler.listFiltered({
       entityDefinitionId: 'invoice',
       filters: [
@@ -290,15 +267,8 @@ export async function computeWorkOrderBillingProjection(input: {
         eq(schema.RecurrenceRule.subjectId, input.workOrderInstanceId)
       ),
     }),
-    db.query.InvoiceScheduleAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceScheduleAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceScheduleAllocation.workOrderId, input.workOrderInstanceId),
-        eq(schema.InvoiceScheduleAllocation.status, 'active')
-      ),
-      columns: { occurrenceDate: true },
-    }),
   ])
+  const { lineAllocations, visitAllocations, scheduleAllocations } = allocations
 
   let amountDrafted = 0
   let amountInvoiced = 0
@@ -589,35 +559,18 @@ export async function syncInvoiceBillingProjection(input: {
   invoiceInstanceId: string
 }): Promise<void> {
   const db = input.db ?? database
-  const [lines, visits, schedule, installment] = await Promise.all([
-    db.query.InvoiceLineAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceLineAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceLineAllocation.invoiceId, input.invoiceInstanceId),
-        eq(schema.InvoiceLineAllocation.status, 'active')
-      ),
+  const [allocations, installments] = await Promise.all([
+    listInvoiceAllocations({
+      db,
+      organizationId: input.organizationId,
+      invoiceId: input.invoiceInstanceId,
     }),
-    db.query.InvoiceVisitAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceVisitAllocation.invoiceId, input.invoiceInstanceId),
-        eq(schema.InvoiceVisitAllocation.status, 'active')
-      ),
-    }),
-    db.query.InvoiceScheduleAllocation.findFirst({
-      where: and(
-        eq(schema.InvoiceScheduleAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceScheduleAllocation.invoiceId, input.invoiceInstanceId),
-        eq(schema.InvoiceScheduleAllocation.status, 'active')
-      ),
-    }),
-    db.query.WorkOrderBillingInstallment.findFirst({
-      where: and(
-        eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
-        eq(schema.WorkOrderBillingInstallment.invoiceId, input.invoiceInstanceId)
-      ),
-    }),
+    listInvoiceInstallments(db, input.organizationId, input.invoiceInstanceId),
   ])
+  const lines = allocations.lineAllocations
+  const visits = allocations.visitAllocations
+  const schedule = allocations.scheduleAllocations[0]
+  const installment = installments[0]
   let kind: InvoiceBillingKind = 'standalone'
   if (installment) kind = 'progress'
   else if (schedule) kind = 'recurring_flat'
@@ -626,15 +579,11 @@ export async function syncInvoiceBillingProjection(input: {
     kind = 'extra_work'
   else if (lines.some((row) => row.kind === 'contract')) kind = 'full_contract'
 
-  const visitDates = visits.length
-    ? await db.query.WorkOrderVisit.findMany({
-        where: inArray(
-          schema.WorkOrderVisit.id,
-          visits.map((visit) => visit.visitId)
-        ),
-        columns: { occurrenceDate: true, startTime: true },
-      })
-    : []
+  const visitDates = await readVisits(
+    db,
+    input.organizationId,
+    visits.map((visit) => visit.visitId)
+  )
   const dates = visitDates
     .map((visit) => visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0])
     .filter(Boolean) as string[]

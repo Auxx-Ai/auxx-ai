@@ -5,13 +5,23 @@
 // settles against these documents lives in `accounting/money`.
 
 export { allocateProportionally, resolveFixedInvoiceAmount } from './billing/allocation-math'
+export type { InstallmentStatus, VisitAllocationScope } from './billing/allocations'
 export {
   allocateInvoiceLine,
   allocateInvoiceVisit,
   allocateScheduleOccurrence,
   getActiveAllocatedAmounts,
+  hasActiveAllocations,
+  listInstallments,
   listInvoiceAllocations,
+  listInvoiceInstallments,
+  listVisitAllocationsForVisits,
+  listWorkOrderAllocations,
+  listWorkOrderVisitAllocations,
+  markInstallmentsInvoiced,
   releaseInvoiceAllocations,
+  releaseLineAllocations,
+  setInstallmentStatus,
 } from './billing/allocations'
 export {
   addVisitExtrasToContract,

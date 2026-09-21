@@ -4,7 +4,7 @@
 // query for the visible work-order set — deliberately NOT the generic record-list machinery
 // (UnifiedCrudHandler), which fans out over every field/view config for a query this narrow.
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { and, eq, gte, inArray, isNull, lt, lte, ne, sql } from 'drizzle-orm'
@@ -254,22 +254,65 @@ export async function getVisitDayMarkers(
   }))
 }
 
+export interface ListWorkOrderVisitsOptions {
+  db?: Database
+  /** No default: callers disagreed on which statuses count, so each one says. */
+  status?: 'done' | 'not_canceled'
+  visitIds?: string[]
+}
+
 /**
  * All visits for one work order, oldest-scheduled-first (unscheduled rows last) — the M2b
  * job view's Schedule/Upcoming/History sections (07 §F.3). Uses the `(workOrderId)` index.
  */
 export async function listVisitsForWorkOrder(
   organizationId: string,
-  workOrderId: string
+  workOrderId: string,
+  options: ListWorkOrderVisitsOptions = {}
 ): Promise<WorkOrderVisitRow[]> {
-  return database
+  const db = options.db ?? database
+  return db
     .select()
     .from(schema.WorkOrderVisit)
     .where(
       and(
         eq(schema.WorkOrderVisit.organizationId, organizationId),
-        eq(schema.WorkOrderVisit.workOrderId, workOrderId)
+        eq(schema.WorkOrderVisit.workOrderId, workOrderId),
+        options.status === 'done'
+          ? eq(schema.WorkOrderVisit.status, 'done')
+          : options.status === 'not_canceled'
+            ? ne(schema.WorkOrderVisit.status, 'canceled')
+            : undefined,
+        options.visitIds ? inArray(schema.WorkOrderVisit.id, options.visitIds) : undefined
       )
     )
     .orderBy(sql`${schema.WorkOrderVisit.startTime} ASC NULLS LAST`)
+}
+
+/** Visits by id, org-scoped. Batch form; `readVisit` derives the single. */
+export async function readVisits(
+  db: Database,
+  organizationId: string,
+  visitIds: string[]
+): Promise<WorkOrderVisitRow[]> {
+  if (visitIds.length === 0) return []
+  return db
+    .select()
+    .from(schema.WorkOrderVisit)
+    .where(
+      and(
+        eq(schema.WorkOrderVisit.organizationId, organizationId),
+        inArray(schema.WorkOrderVisit.id, visitIds)
+      )
+    )
+}
+
+/** One visit by id, org-scoped; `undefined` when it is missing or another org's. */
+export async function readVisit(
+  db: Database,
+  organizationId: string,
+  visitId: string
+): Promise<WorkOrderVisitRow | undefined> {
+  const [row] = await readVisits(db, organizationId, [visitId])
+  return row
 }

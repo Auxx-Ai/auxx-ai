@@ -1,12 +1,11 @@
 // packages/lib/src/accounting/sales/gather.ts
 
-import { type Database, database, schema } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { firstTyped } from '../../field-values/client'
@@ -16,7 +15,11 @@ import { UnifiedCrudHandler } from '../../resources/crud'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { getOrganizationSetting } from '../../settings/settings-service'
-import { allocateInvoiceLine, getActiveAllocatedAmounts } from './billing/allocations'
+import {
+  allocateInvoiceLine,
+  getActiveAllocatedAmounts,
+  releaseLineAllocations,
+} from './billing/allocations'
 import {
   batchReadSystemValues,
   syncInvoiceBillingProjection,
@@ -590,16 +593,7 @@ export async function deleteInvoiceLine(input: DeleteInvoiceLineInput): Promise<
     )
   }
 
-  await database
-    .update(schema.InvoiceLineAllocation)
-    .set({ status: 'released', releasedAt: new Date() })
-    .where(
-      and(
-        eq(schema.InvoiceLineAllocation.organizationId, organizationId),
-        eq(schema.InvoiceLineAllocation.invoiceLineItemId, lineInstanceId),
-        eq(schema.InvoiceLineAllocation.status, 'active')
-      )
-    )
+  await releaseLineAllocations(database, organizationId, { invoiceLineItemId: lineInstanceId })
 
   // Suppress the line-level billing post-delete hook — this command performs the same
   // recompute + projection sync itself right below.

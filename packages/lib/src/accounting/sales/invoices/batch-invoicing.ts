@@ -9,6 +9,7 @@ import type { ConditionGroup } from '../../../conditions'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { expandOccurrences, type RecurrencePattern } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { listVisitAllocationsForVisits } from '../billing/allocations'
 import { createRecurringCharge, createVisitInvoice } from '../billing/commands'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from '../billing/projection'
 import { listUninvoicedLines } from '../gather'
@@ -182,17 +183,12 @@ async function loadUninvoicedVisitsByWorkOrder(input: {
     ),
   })
   const visitIds = rangeVisits.map((visit) => visit.id)
-  const activeBaseAllocations = visitIds.length
-    ? await database.query.InvoiceVisitAllocation.findMany({
-        where: and(
-          eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
-          inArray(schema.InvoiceVisitAllocation.visitId, visitIds),
-          eq(schema.InvoiceVisitAllocation.status, 'active'),
-          eq(schema.InvoiceVisitAllocation.kind, 'base')
-        ),
-        columns: { visitId: true },
-      })
-    : []
+  const activeBaseAllocations = await listVisitAllocationsForVisits(
+    database,
+    input.organizationId,
+    visitIds,
+    { visitKind: 'base' }
+  )
   const allocatedVisitIds = new Set(activeBaseAllocations.map((row) => row.visitId))
   const visitsByWorkOrder = new Map<string, (typeof schema.WorkOrderVisit.$inferSelect)[]>()
   for (const visit of rangeVisits) {

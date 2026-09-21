@@ -2,11 +2,13 @@
 
 import { database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { inArray } from 'drizzle-orm'
+import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { sumUnappliedCustomerMoney, sumWorkOrderDeposits } from '../../money/checkout/reads'
 import { listUninvoicedLines } from '../gather'
+import { listInstallments, listWorkOrderVisitAllocations } from './allocations'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from './projection'
 
 const INVOICE_ROW_ATTRS = [
@@ -73,27 +75,11 @@ export async function getWorkOrderBillingState(input: {
   const [visits, activeVisits, installments, linkedInvoices, uninvoicedLines] = await Promise.all([
     // All statuses — done visits feed eligibleVisits, the rest feed extra-work enrichment
     // (plan money/19 §B: the client needs visit status/date to split done vs upcoming extras).
-    database.query.WorkOrderVisit.findMany({
-      where: and(
-        eq(schema.WorkOrderVisit.organizationId, input.organizationId),
-        eq(schema.WorkOrderVisit.workOrderId, input.workOrderInstanceId)
-      ),
-      orderBy: [asc(schema.WorkOrderVisit.startTime)],
+    listVisitsForWorkOrder(input.organizationId, input.workOrderInstanceId),
+    listWorkOrderVisitAllocations(database, input.organizationId, input.workOrderInstanceId, {
+      visitKind: 'any',
     }),
-    database.query.InvoiceVisitAllocation.findMany({
-      where: and(
-        eq(schema.InvoiceVisitAllocation.organizationId, input.organizationId),
-        eq(schema.InvoiceVisitAllocation.workOrderId, input.workOrderInstanceId),
-        eq(schema.InvoiceVisitAllocation.status, 'active')
-      ),
-    }),
-    database.query.WorkOrderBillingInstallment.findMany({
-      where: and(
-        eq(schema.WorkOrderBillingInstallment.organizationId, input.organizationId),
-        eq(schema.WorkOrderBillingInstallment.workOrderId, input.workOrderInstanceId)
-      ),
-      orderBy: [asc(schema.WorkOrderBillingInstallment.sortOrder)],
-    }),
+    listInstallments(database, input.organizationId, input.workOrderInstanceId),
     handler.listFiltered({
       entityDefinitionId: 'invoice',
       filters: [
