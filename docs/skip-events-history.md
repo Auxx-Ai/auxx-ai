@@ -109,6 +109,10 @@ sequence hooks, **quote & invoice total recomputation** (`money/totals-hooks.ts`
 QuickBooks mirror enqueue, catalog markup pricing, `ADDRESS_STRUCT` normalization +
 geocoding, and `PHONE_INTL` geo derivation.
 
+⚠️ Lost **at write time** — since 2026-09-21 the registered chain is replayed once at sync
+finalize through `dispatchFieldChanges` (marks on every touched key, derives only through a
+`batch` core, reacts never). See `docs/entity-events-architecture-guide.md` §7.2.
+
 **Native field triggers** (`field-value-mutations.ts:2287-2296`), the door carrying
 system record rules with native actions: BOM cost recalc, stock status, the v9
 inventory→part deduction.

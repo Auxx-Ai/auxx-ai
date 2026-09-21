@@ -1,6 +1,6 @@
 # Entity Events & Record Rules Architecture Guide
 
-**Last Updated:** 2026-07-02
+**Last Updated:** 2026-09-21
 **Scope:** The reactive layer over the entity system — how "when a record/field changes, do
 something" works end-to-end: the **record-rules engine**, its dispatch **doors** (interactive
 writes, record lifecycle, and connector/import syncs), the **B2 sync-change manifest** that makes
@@ -25,6 +25,8 @@ compile-time `FIELD_TRIGGERS` / `ENTITY_TRIGGERS` onto the same engine.
 5. [Actions](#5-actions)
 6. [The Engine](#6-the-engine)
 7. [Dispatch Doors](#7-dispatch-doors)
+   - [7.1 The payload shape each door hands over](#71-the-payload-shape-each-door-hands-over)
+   - [7.2 The three write lanes and the hook chain](#72-the-three-write-lanes-and-the-hook-chain)
 8. [The Sync-Change Manifest (B2)](#8-the-sync-change-manifest-b2)
 9. [System Rules (the trigger unification)](#9-system-rules-the-trigger-unification)
 10. [Cache & Invalidation](#10-cache--invalidation)
@@ -63,7 +65,8 @@ the CSV importer write with `skipEvents: true`, which suppresses the entire per-
 (field hooks, activity, timeline, the BullMQ event bus, realtime). Without help, nothing reacts to
 synced data. **B2** fixes this by accumulating a per-run **change manifest** and publishing **one**
 `sync:records:changed` event per run that the engine consumes — storm-proof (O(1) events per sync,
-not O(records)).
+not O(records)). The same manifest replays the **field-change hook chain** at finalize, so derived
+fields stay current on synced data too (§7.2).
 
 ---
 
@@ -268,6 +271,40 @@ pinned by `resources/events/captured-shape.test.ts`; guard fixtures build it wit
 `field-hooks/__tests__/support/captured.ts` so a test cannot pass against a shape production never
 sends.
 
+### 7.2 The three write lanes and the hook chain
+
+The doors above carry *rules*. The field-change **post-hook** chain is a separate fan-out over the
+same writes, and it reaches all three lanes. See `plans/events/10-replay-hooks-from-the-committed-scope.md`.
+
+| Lane | Entered by | mark | derive | react + `field:updated` |
+| --- | --- | --- | --- | --- |
+| Inline | drawer, dialogs, API, Kopilot | yes | yes | yes |
+| Buffered | the six `runInTxWrite` composers below | yes | yes | yes |
+| Sync | connectors, CSV import, seeders | yes, from `touched` keys | only with a `batch` core | no |
+
+The buffered lane is every write inside a `TxWriteScope`: `accounting/money/commands/run-money-command.ts`,
+`accounting/sales/gather.ts`, `accounting/sales/billing/commands.ts`, `accounting/sales/orders/fulfill.ts`,
+`accounting/purchasing/bill-intake/fold.ts`, `accounting/money/payouts/sync.ts`. Their writes are
+suppressed in-transaction and replayed after commit.
+
+One function serves both post-commit lanes: `dispatchFieldChanges` (`field-hooks/dispatch.ts:108`).
+The flush calls it from the committed scope's buffered changes (`resources/crud/tx-write-flush.ts:91`);
+the sync finalize calls it from the manifest's `touched` keys, with ids-only records passed as
+`degraded` (every system-attribute field on the def becomes a valueless change, which only a mark —
+or a sync-lane batch derive — can consume). It resolves defs and fields from the org cache only, runs
+the whole pass inside one `runWithDirtyParents` so marks coalesce into a single drain, and guards
+every handler call so one failure cannot starve the rest.
+
+What a handler may do on a lane falls out of its **kind**, declared at registration (§13) and
+typed in `field-hooks/types.ts:255-305`. A `MarkHandler` sees a `FieldChangeRef` — values are
+present inline and buffered, **absent on sync** — so a mark must produce a correct (if wider)
+marking without them. `skipOnCreate` is honoured on every lane.
+
+Every dispatch logs one structured line, `field hooks dispatched` under
+`scope: 'field-hooks:dispatch'`, with `lane`, `attemptId` (the flush's `scope.attemptId`) and
+per-handler `{ fired, skipped, failed }`, and returns the same `DispatchReport`. A derivation
+that stops firing shows up in OpenObserve as a zero rather than in the next retest.
+
 ---
 
 ## 8. The Sync-Change Manifest (B2)
@@ -281,6 +318,10 @@ webhooks, analytics), and realtime. So synced data changes are invisible to the 
 
 Rather than un-suppress per-write events (a 50k-record sync would enqueue hundreds of thousands of
 jobs into concurrency-1 event workers), B2 **batches**: one aggregate event per run.
+
+The manifest carries a second consumer: the field-change hook chain, replayed from the same
+`touched` keys at finalize (§7.2). Rules go through door 3; derivations go through
+`dispatchFieldChanges`.
 
 ### The collector
 `record-rules/sync-manifest-collector.ts` builds a `SyncChangeManifest`
@@ -421,9 +462,12 @@ misses + 1 deduped recalc, not 500×).
   arrive as one-element arrays on the capture chain and as bare strings on create. Unwrap through
   `resources/events/captured-values.ts`; a `typeof === 'string'` test is silently always false.
   See §7.1 — this has shipped as a live defect twice.
-- **`skipEvents` suppresses everything.** Sync/import writes fire no per-write events, hooks, or
-  realtime. The **only** way to react to synced data is the sync-change manifest (door 3). Do not
-  add per-write hooks on the sync thread.
+- **`skipEvents` suppresses the per-write fan-out, not the hook chain.** Sync/import writes still
+  fire no per-write events, hooks or realtime *as they land*, and rules still react only through
+  the sync-change manifest (door 3). But the registered field-change chain IS replayed once at
+  finalize, from the manifest's `touched` keys, through `dispatchFieldChanges` — marks on every
+  key, derives only through a `batch` core, reacts never (§7.2). So do not add a per-write hook on
+  the sync thread; register the derivation by kind and it is covered.
 - **The manifest is at-most-once.** Lost firing = lost reaction, not retried. Ledger consumers need
   a cursor + a reconcile (see §8). For cosmetic reactions, at-most-once is fine.
 - **Direction is on the rule, not in conditions.** Use `on: increased|decreased|set|cleared`, never
@@ -449,7 +493,12 @@ misses + 1 deduped recalc, not 500×).
   `isCreate` so a hook that derives a sibling field can stand down on a create.
 - **The userId gate.** Door 1 requires `ctx.userId`; deliberate system writes without an actor skip
   interactive field hooks. (This gate was left in place; relaxing it is an audited, unshipped
-  change.)
+  change.) It is no longer the last word on derivation: the buffered and sync lanes replay the
+  chain post-commit regardless of the gate, so a write that skips inline still derives (§7.2).
+- **Register a post-hook by kind.** `registerMarkHooks` / `registerDeriveHooks` /
+  `registerReactHooks` (`field-hooks/registry.ts:216-241`); a mark runs on every lane, a derive
+  reaches sync only with a `batch` core, a react never does. A derive with no `batch` is dead on
+  connector/import writes — say so in its registration comment or add the core.
 - **Order matters in action arrays.** `[explodeBomMovement, recalculatePartQoH]` must stay ordered
   — explosion writes child movements before the parent QoH is recomputed. QoH correctness also
   depends on the **threaded original create values** (`eventData`), never a refetch.
@@ -486,6 +535,10 @@ misses + 1 deduped recalc, not 500×).
 | Payload unwrappers + the three-chain table (§7.1) | `packages/lib/src/resources/events/captured-values.ts` |
 | Retention | `packages/lib/src/record-rules/run-retention-job.ts` |
 | Door 1 (interactive field) | `packages/lib/src/record-rules/hook-handler.ts`, `field-hooks/register-hooks.ts` |
+| Post-hook kinds + registration (§7.2) | `packages/lib/src/field-hooks/types.ts`, `field-hooks/registry.ts` |
+| The one lane dispatch (§7.2) | `packages/lib/src/field-hooks/dispatch.ts` |
+| Buffered-lane caller | `packages/lib/src/resources/crud/tx-write-flush.ts` |
+| Sync-lane caller | `packages/lib/src/events/handlers/finalize-integrity-passes.ts` |
 | Door 1b (native field-trigger) | `packages/lib/src/field-hooks/collect-triggers.ts`, `field-hook-job.ts` |
 | Door 2 (lifecycle bus) | `packages/lib/src/events/handlers/handle-record-rules.ts` |
 | Door 3 (sync manifest) | `packages/lib/src/events/handlers/handle-sync-record-rules.ts` |

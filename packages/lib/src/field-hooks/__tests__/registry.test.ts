@@ -10,12 +10,16 @@ import {
   getEntityPreDeleteHooks,
   getFieldPreHooks,
   getFieldTypeChangeHooks,
+  getRegisteredEntityFieldChangeHooks,
+  getRegisteredFieldTypeChangeHooks,
   hasFieldPreHooks,
   hasFieldTypeChangeHooks,
-  registerEntityFieldChangeHooks,
+  registerDeriveHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
-  registerFieldTypeChangeHooks,
+  registerMarkHooks,
+  registerReactHooks,
+  toEntityFieldChangeHandler,
 } from '../registry'
 import type { EntityFieldChangeEvent, FieldPreHookEvent } from '../types'
 
@@ -134,15 +138,17 @@ function buildFieldChangeEvent(
 
 describe('field-hooks registry — field-type-keyed post-write hooks (decision #13)', () => {
   it('returns empty list / false when nothing registered for a fieldType', () => {
-    expect(getFieldTypeChangeHooks('fhk-empty-type' as FieldType)).toHaveLength(0)
-    expect(hasFieldTypeChangeHooks('fhk-empty-type' as FieldType)).toBe(false)
+    expect(getFieldTypeChangeHooks('JSON')).toHaveLength(0)
+    expect(hasFieldTypeChangeHooks('JSON')).toBe(false)
   })
 
   it('registers handlers keyed by fieldType, independent of entitySlug', async () => {
-    const fieldType = 'fhk-address-type' as FieldType
-    const otherType = 'fhk-other-type' as FieldType
+    // Real `FieldType` values: the one registration function discriminates on the enum's
+    // value set, so a made-up string would land in the ENTITY map instead.
+    const fieldType: FieldType = 'URL'
+    const otherType: FieldType = 'CALC'
     const handler = vi.fn(async () => undefined)
-    registerFieldTypeChangeHooks(fieldType, [handler])
+    registerDeriveHooks(fieldType, [handler])
 
     expect(getFieldTypeChangeHooks(fieldType)).toEqual([handler])
     expect(hasFieldTypeChangeHooks(fieldType)).toBe(true)
@@ -156,22 +162,22 @@ describe('field-hooks registry — field-type-keyed post-write hooks (decision #
   })
 
   it('appends multiple handlers under the same fieldType and preserves order', () => {
-    const fieldType = 'fhk-multi-type' as FieldType
+    const fieldType: FieldType = 'TIME'
     const a = vi.fn(async () => undefined)
     const b = vi.fn(async () => undefined)
-    registerFieldTypeChangeHooks(fieldType, [a])
-    registerFieldTypeChangeHooks(fieldType, [b])
+    registerDeriveHooks(fieldType, [a])
+    registerDeriveHooks(fieldType, [b])
 
     expect(getFieldTypeChangeHooks(fieldType)).toEqual([a, b])
   })
 
   it('composes entity-scoped hooks before field-type-keyed hooks (the fire-point pattern)', () => {
     const slug = 'fhk-compose-slug'
-    const fieldType = 'fhk-compose-type' as FieldType
+    const fieldType: FieldType = 'NAME'
     const entityHandler = vi.fn(async () => undefined)
     const typeHandler = vi.fn(async () => undefined)
-    registerEntityFieldChangeHooks(slug, [entityHandler])
-    registerFieldTypeChangeHooks(fieldType, [typeHandler])
+    registerDeriveHooks(slug, [entityHandler])
+    registerDeriveHooks(fieldType, [typeHandler])
 
     // Mirrors the fire-point composition in field-value-mutations.ts: entity chain first,
     // then the field's type-keyed chain (decision #13's ordering requirement) — NOT a '*'
@@ -200,5 +206,69 @@ describe('field-hooks registry — pre-delete hooks', () => {
     registerEntityPreDeleteHooks(slug, [a])
     registerEntityPreDeleteHooks(slug, [b])
     expect(getEntityPreDeleteHooks(slug)).toEqual([a, b])
+  })
+})
+
+describe('field-hooks registry — hook kinds (plans/events/10 §4.1)', () => {
+  it('round-trips each kind through getRegisteredEntityFieldChangeHooks', () => {
+    const slug = 'fhk-kinds-slug'
+    const mark = vi.fn(async () => undefined)
+    const derive = vi.fn(async () => undefined)
+    const react = vi.fn(async () => undefined)
+    registerMarkHooks(slug, [mark])
+    registerDeriveHooks(slug, [derive], { skipOnCreate: true })
+    registerReactHooks(slug, [react])
+
+    const scoped = getRegisteredEntityFieldChangeHooks(slug).filter((hook) =>
+      [mark, derive, react].includes(hook.handler as typeof mark)
+    )
+    expect(scoped).toEqual([
+      { kind: 'mark', handler: mark },
+      { kind: 'derive', handler: derive, options: { skipOnCreate: true } },
+      { kind: 'react', handler: react },
+    ])
+  })
+
+  it('routes a FieldType key into the field-type map and a slug into the entity map', () => {
+    // `ADDRESS_STRUCT` is a real `FieldType` value, which is the discriminator the one
+    // registration function uses — a slug that happens to look like one cannot exist.
+    const handler = vi.fn(async () => undefined)
+    registerDeriveHooks('ADDRESS_STRUCT' as FieldType, [handler])
+    expect(getRegisteredFieldTypeChangeHooks('ADDRESS_STRUCT' as FieldType)).toContainEqual({
+      kind: 'derive',
+      handler,
+      options: {},
+    })
+    expect(getRegisteredEntityFieldChangeHooks('ADDRESS_STRUCT')).not.toContainEqual({
+      kind: 'derive',
+      handler,
+      options: {},
+    })
+  })
+
+  it('toEntityFieldChangeHandler skips isCreate only for a skipOnCreate derive', async () => {
+    const skipping = vi.fn(async () => undefined)
+    const plain = vi.fn(async () => undefined)
+    const marking = vi.fn(async () => undefined)
+
+    const createEvent = buildFieldChangeEvent({ isCreate: true })
+    await toEntityFieldChangeHandler({
+      kind: 'derive',
+      handler: skipping,
+      options: { skipOnCreate: true },
+    })(createEvent)
+    await toEntityFieldChangeHandler({ kind: 'derive', handler: plain, options: {} })(createEvent)
+    await toEntityFieldChangeHandler({ kind: 'mark', handler: marking })(createEvent)
+
+    expect(skipping).not.toHaveBeenCalled()
+    expect(plain).toHaveBeenCalledTimes(1)
+    expect(marking).toHaveBeenCalledTimes(1)
+
+    await toEntityFieldChangeHandler({
+      kind: 'derive',
+      handler: skipping,
+      options: { skipOnCreate: true },
+    })(buildFieldChangeEvent())
+    expect(skipping).toHaveBeenCalledTimes(1)
   })
 })

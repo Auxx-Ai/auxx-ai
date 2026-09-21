@@ -17,10 +17,15 @@ import { createScopedLogger } from '@auxx/logger'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
 import type { FieldId } from '@auxx/types/field'
 import { getCachedCustomFields } from '../cache/org-cache-helpers'
-import type { EntityFieldChangeEvent, EntityFieldChangeHandler } from '../field-hooks/types'
+import { refToEvent } from '../field-hooks/batch-helpers'
+import type {
+  BatchCore,
+  EntityFieldChangeEvent,
+  EntityFieldChangeHandler,
+} from '../field-hooks/types'
 import { createFieldValueContext, getField } from '../field-values/field-value-helpers'
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
-import { getValues } from '../field-values/field-value-queries'
+import { getValue, getValues } from '../field-values/field-value-queries'
 import type { CachedField } from '../field-values/types'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
 import { quietSession } from '../resources/crud/write-origin'
@@ -55,8 +60,8 @@ const GEO_TARGETS = [
  *
  * Contact `phone` is `options: { multi: true }`, so a multi write arrives as an array ordered by
  * `sortKey` — index 0 is the primary, which is also what outbound SMS/voice dials. A cleared
- * field arrives as `null`. Exported for the finalize integrity passes, which re-read the stored
- * value (same `TypedFieldValue`/array shape) and need the exact same unwrapping.
+ * field arrives as `null`. Exported for {@link derivePhoneGeoBatch}, which re-reads the stored
+ * value (same `TypedFieldValue`/array shape) and needs the exact same unwrapping.
  */
 export function extractPrimaryPhone(value: unknown): string | null {
   const typed = value as TypedFieldValue | TypedFieldValue[] | null
@@ -101,11 +106,49 @@ export const derivePhoneGeoOnChange: EntityFieldChangeHandler = async (event) =>
 }
 
 /**
+ * The sync lane's core (plans/events/10 §4.4): derive geo for every PHONE_INTL target of one
+ * finalize. Sequential — the lookup is an in-memory table read; the only I/O is
+ * {@link fillBlankGeoFields}'s fill-if-blank reads and quiet writes. The number is RE-READ from
+ * the store (a later write wins over the manifest snapshot), and fill-if-blank makes a
+ * redelivered run write nothing the first one already filled.
+ */
+export const derivePhoneGeoBatch: BatchCore = async ({ organizationId, userId, db, targets }) => {
+  const ctx = createFieldValueContext(organizationId, userId, db, undefined, {
+    skipPreHooks: true,
+  })
+
+  let derived = 0
+  for (const target of targets) {
+    try {
+      const stored = await getValue(
+        ctx,
+        { recordId: target.recordId, fieldId: target.field.id },
+        target.field
+      )
+      const phone = extractPrimaryPhone(stored)
+      if (!phone) continue
+      const geo = lookupPhoneGeo(phone)
+      if (!geo) continue
+      await fillBlankGeoFields(refToEvent(target, stored), geo)
+      derived++
+    } catch (error) {
+      logger.error('Phone geo batch: record failed', {
+        organizationId,
+        recordId: target.recordId,
+        fieldId: target.field.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  logger.info('phone geo batch done', { organizationId, targets: targets.length, derived })
+}
+
+/**
  * The derivation core: resolve the entity's geo target fields, fill only the BLANK ones from
  * `geo`, write quietly (declared via `QUIET_DERIVED_GEO`), and publish one hand-rolled realtime frame.
- * The inline hook wraps this in its own try/catch; the finalize integrity passes
- * (`events/handlers/finalize-integrity-passes.ts`) call it directly with a synthesized event —
- * only `organizationId`, `entityDefinitionId`, `userId`, `recordId`, and
+ * The inline hook wraps this in its own try/catch; {@link derivePhoneGeoBatch} calls it with a
+ * synthesized event — only `organizationId`, `entityDefinitionId`, `userId`, `recordId`, and
  * `field.entityDefinitionId` are read. Fill-only-if-blank makes it idempotent by construction.
  */
 export async function fillBlankGeoFields(

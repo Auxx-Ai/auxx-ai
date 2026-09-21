@@ -3,7 +3,7 @@
  * Money MQ1 (Quoting Records) end-to-end verification (plans/dispatch/money/03-mq1-build.md §J).
  * Exercises the REAL write paths: UnifiedCrudHandler.create/update (QUO number pre-hook,
  * quote/request lifecycle-guard pre-hooks), the totals-engine field-change hooks
- * (registerEntityFieldChangeHooks on 'line-items'/'quotes'), the money lifecycle mutations
+ * (registerDeriveHooks on 'line-items', registerMarkHooks on 'quotes'), the money lifecycle mutations
  * (markQuoteSent/approveQuote/declineQuote/createQuoteFromRequest), convertQuoteToWorkOrder,
  * reorderLines, recomputeTotals, the dispatch convert-through-quote delegation, and the two
  * money settings keys.

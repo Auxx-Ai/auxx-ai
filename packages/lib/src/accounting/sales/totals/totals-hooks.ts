@@ -8,7 +8,12 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { isFieldConnectorManaged } from '../../../data-connectors/managed-fields'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError } from '../../../errors'
-import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../../field-hooks/types'
+import type {
+  BatchCore,
+  EntityFieldChangeHandler,
+  EntityPostDeleteHandler,
+  MarkHandler,
+} from '../../../field-hooks/types'
 import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { readFieldScalars } from '../../../field-values/read-field-scalars'
@@ -42,9 +47,7 @@ const logger = createScopedLogger('money:totals-hooks')
  * Fields on `line-items` whose write should trigger a recompute (money MQ1 build
  * spec §F.2). The rel triggers (`line_item_quote` / `line_item_work_order`) catch
  * attach/detach side effects — a line just linked to a quote needs its contribution
- * folded into that quote's totals. Exported so the finalize integrity passes
- * (`events/handlers/finalize-integrity-passes.ts`) can match manifest change keys
- * against the exact same trigger vocabulary as this hook.
+ * folded into that quote's totals.
  */
 export const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'line_item_qty',
@@ -902,15 +905,15 @@ function emptyLineForTotals(lineInstanceId: string): LineForTotalsWithTax {
 /**
  * Recompute + write a single line's `line_item_line_total` from its current qty/unitPrice
  * (`publishEvents` ON — the builder's lineTotal cell updates via realtime). Extracted from
- * {@link recomputeOnLineChange} step 1 so the finalize integrity passes can run it per
- * imported/synced line; behavior is identical to the hook's inline version. No-ops when the
- * org lacks the qty/unitPrice fields.
+ * {@link recomputeOnLineChange} step 1 so {@link recomputeLineTotalsBatch} can run it per
+ * synced line; behavior is identical to the hook's inline version. No-ops when the org lacks
+ * the qty/unitPrice fields.
  */
 export async function recomputeLineTotal(params: {
   organizationId: string
   userId: string
   lineInstanceId: string
-  /** Defaults to `line_item` — the finalize integrity passes call it that way. */
+  /** Defaults to `line_item` — {@link recomputeLineTotalsBatch} calls it that way. */
   line?: LineTotalsSpec
   db?: Database
 }): Promise<void> {
@@ -968,9 +971,8 @@ export async function recomputeLineTotal(params: {
  * parent invoice but ONLY when `line_item_work_order` is empty (§B.3/§G.1: a WO source
  * line stamped with `line_item_invoice` must never recompute the invoice; only the
  * invoice's own copies do). Extracted from {@link recomputeOnLineChange} steps 2-3 —
- * same reads, same precedence — so the finalize integrity passes can collect DISTINCT
- * parents across a run before recomputing each once. Returns null when the line hangs
- * off no recomputable document.
+ * same reads, same precedence. The sync lane does not use it — the drain resolves parents in
+ * one query for the whole batch. Returns null when the line hangs off no recomputable document.
  */
 export async function resolveLineParentDocument(params: {
   organizationId: string
@@ -1063,11 +1065,61 @@ export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => 
 }
 
 /**
+ * {@link recomputeOnLineChange}'s sync-lane core (plans/events/10 §4.4): every `line_item`
+ * target of one finalize, deduped.
+ *
+ * Same two steps in the same order as the hook — the line's own total is written INLINE first
+ * because the parent recompute reads `line_item_line_total`, then the line is marked and the
+ * drain resolves parents for the whole batch in one query. `db` is threaded into
+ * {@link recomputeLineTotal} so the totals stand-down's connector-managed check (money plan 37
+ * §6) reads through this run's connection. Idempotent: both halves are pure re-derivations.
+ */
+export const recomputeLineTotalsBatch: BatchCore = async ({
+  organizationId,
+  userId,
+  db,
+  targets,
+}) => {
+  const lineTotalIds = new Set<string>()
+  const markIds = new Set<string>()
+  for (const target of targets) {
+    const attr = target.field.systemAttribute as SystemAttribute | undefined
+    if (!attr || !LINE_TRIGGER_ATTRS.has(attr)) continue
+    const { entityInstanceId } = parseRecordId(target.recordId)
+    markIds.add(entityInstanceId)
+    if (LINE_TOTAL_TRIGGER_ATTRS.has(attr)) lineTotalIds.add(entityInstanceId)
+  }
+  if (markIds.size === 0) return
+
+  for (const lineInstanceId of lineTotalIds) {
+    try {
+      await recomputeLineTotal({ organizationId, userId, lineInstanceId, db })
+    } catch (error) {
+      logger.error('line total batch: line failed', {
+        organizationId,
+        lineInstanceId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  for (const lineInstanceId of markIds) {
+    await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, lineInstanceId)
+  }
+
+  logger.info('line totals batch done', {
+    organizationId,
+    lines: markIds.size,
+    lineTotals: lineTotalIds.size,
+  })
+}
+
+/**
  * Recompute hook for `quotes` (money MQ1 build spec §F.2, registered under the
  * `quotes` apiSlug). Fires when the quote's own billing fields change
  * (discount type/value, tax rate) and recomputes+writes its mirrored totals.
  */
-export const recomputeOnQuoteBillingChange: EntityFieldChangeHandler = async (event) => {
+export const recomputeOnQuoteBillingChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !QUOTE_TRIGGER_ATTRS.has(attr)) return
 
@@ -1080,7 +1132,7 @@ export const recomputeOnQuoteBillingChange: EntityFieldChangeHandler = async (ev
  * apiSlug). Fires when the invoice's own billing fields change (discount type/value, tax
  * rate) and recomputes+writes its mirrored totals.
  */
-export const recomputeOnInvoiceBillingChange: EntityFieldChangeHandler = async (event) => {
+export const recomputeOnInvoiceBillingChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !INVOICE_TRIGGER_ATTRS.has(attr)) return
 
@@ -1093,58 +1145,12 @@ export const recomputeOnInvoiceBillingChange: EntityFieldChangeHandler = async (
  * the order's own billing fields change (discount type/value, tax rate) and recomputes +
  * writes its mirrored totals.
  */
-export const recomputeOnOrderBillingChange: EntityFieldChangeHandler = async (event) => {
+export const recomputeOnOrderBillingChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !ORDER_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId: orderInstanceId } = parseRecordId(event.recordId)
   await markOrRecomputeDocument(event.organizationId, event.userId, 'order', orderInstanceId)
-}
-
-/**
- * {@link recomputeOnLineChange} and {@link recomputeOnOrderBillingChange}, driven by a
- * COMMITTED `TxWriteScope` instead of a field-change event.
- *
- * `line_item` and `order` are both on the accounting guard's `guardedTypes`
- * (`postings/source-write-guard.ts`), so every write to one runs inside that guard's
- * transaction — and a buffered write suppresses the field-change hook chain along with the
- * realtime frame (`create-values.ts`'s `announce`). On those two entities the totals engine
- * therefore never fires: a line lands with no `line_item_line_total` and its document keeps
- * whatever totals it had, which is a quote/invoice/order reading 0 against priced lines.
- *
- * `flushTxWriteScope` calls this per touched record after COMMIT — the first point the rows
- * are visible to the pool handle `recomputeLineTotal` and `recomputeTotals` read through.
- * The connector stand-down inside both is what keeps a transcribed Shopify order safe here,
- * exactly as it does on the inline path.
- *
- * Entities NOT covered, deliberately: `credit_memo_line` has the same defect but its lines
- * are composed by money's own commands, which recompute explicitly; `purchase_order_line`
- * and `vendor_bill_line` are on neither guard list and still fire their hooks inline.
- */
-export async function recomputeTotalsForCommittedWrite(params: {
-  organizationId: string
-  userId: string
-  entityType: string | null
-  instanceId: string
-  changedAttrs: readonly string[]
-}): Promise<void> {
-  const { organizationId, userId, entityType, instanceId } = params
-  const attrs = params.changedAttrs as readonly SystemAttribute[]
-
-  if (entityType === 'line_item') {
-    // Inline, and must be: the parent recompute reads `line_item_line_total`.
-    if (attrs.some((attr) => LINE_TOTAL_TRIGGER_ATTRS.has(attr))) {
-      await recomputeLineTotal({ organizationId, userId, lineInstanceId: instanceId })
-    }
-    if (attrs.some((attr) => LINE_TRIGGER_ATTRS.has(attr))) {
-      await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, instanceId)
-    }
-    return
-  }
-
-  if (entityType === 'order' && attrs.some((attr) => ORDER_TRIGGER_ATTRS.has(attr))) {
-    await markOrRecomputeDocument(organizationId, userId, 'order', instanceId)
-  }
 }
 
 /**
@@ -1189,7 +1195,7 @@ export const recomputeOnPurchaseOrderLineChange: EntityFieldChangeHandler = asyn
  * apiSlug). Fires when the order's own stated money fields change — the flat discount, the
  * freight and the supplier's stated tax — and rewrites `subtotal` + `total`.
  */
-export const recomputeOnPurchaseOrderBillingChange: EntityFieldChangeHandler = async (event) => {
+export const recomputeOnPurchaseOrderBillingChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !PURCHASE_ORDER_TRIGGER_ATTRS.has(attr)) return
 
@@ -1213,9 +1219,9 @@ export const recomputeOnPurchaseOrderBillingChange: EntityFieldChangeHandler = a
  * itself once the memo has left `draft` (`frozenStatus`), so a late line write cannot move
  * totals a posted entry tied to.
  *
- * 🛑 `recomputeLineTotal` stands down for a connector-managed line, and the sync lane fires
- * no post hooks at all, so a channel line's transcribed `subtotal` is never re-multiplied
- * from the unit price the connector derived by division.
+ * 🛑 `recomputeLineTotal` stands down for a connector-managed line, and this derive has no
+ * batch core so it does not run on sync — a channel line's transcribed `subtotal` is never
+ * re-multiplied from the unit price the connector derived by division.
  */
 export const recomputeOnCreditMemoLineChange: EntityFieldChangeHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined

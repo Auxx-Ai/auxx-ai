@@ -51,7 +51,10 @@ vi.mock('../../../events/publisher', () => ({
   publisher: { publishLater: h.publishLater, publish: h.publishLater },
 }))
 vi.mock('../../../dedup/enqueue-scan', () => ({ enqueueDuplicateScan: h.enqueueDuplicateScan }))
-vi.mock('../../../cache', () => ({ findCachedResource: h.findCachedResource }))
+vi.mock('../../../cache', () => ({
+  findCachedResource: h.findCachedResource,
+  getCachedCustomFields: async () => [],
+}))
 vi.mock('../../../entity-instances', () => ({
   getEntityInstance: h.getEntityInstance,
   getEntityInstanceRow: async () => {

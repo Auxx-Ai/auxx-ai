@@ -5,8 +5,8 @@
 // This is half of the same core-plus-two-callers shape `geocoding/address-normalize-hook.ts`
 // and `phone-geo/derive-geo-hook.ts` use. The post-hook chain is gated on `publishEvents`,
 // so it does NOT run for connector or import writes (`field-value-mutations.ts`) — that lane
-// is served by the integrity pass in `events/handlers/finalize-integrity-passes.ts`. One
-// mechanism per lane, both calling `resolveInteractions`.
+// runs `resolveInteractionsBatch` below, through the sync dispatch (plans/events/10 §4.4).
+// One mechanism per lane, both calling `resolveInteractions`.
 //
 // ⚠️ Def-slug keyed, NOT field-type keyed. The address and phone hooks key on their
 // `FieldType` because every ADDRESS_STRUCT / PHONE_INTL field anywhere wants the same
@@ -17,7 +17,11 @@
 // Fire-and-forget, like the address hook: a derivation must never fail, or slow, a save.
 
 import { createScopedLogger } from '@auxx/logger'
-import type { EntityFieldChangeEvent, EntityFieldChangeHandler } from '../field-hooks/types'
+import type {
+  BatchCore,
+  EntityFieldChangeEvent,
+  EntityFieldChangeHandler,
+} from '../field-hooks/types'
 import { parseRecordId } from '../resources/resource-id'
 import { resolveInteractions } from './resolve'
 
@@ -57,6 +61,49 @@ export const resolveInteractionsOnIdentifierChange: EntityFieldChangeHandler = a
 export const resolveInteractionsOnCompanyDomainChange: EntityFieldChangeHandler = async (event) => {
   if (!COMPANY_ATTRS.has(event.field?.systemAttribute ?? '')) return
   fireAndForget(event)
+}
+
+/**
+ * The sync lane's selection (plans/events/10 §4.4). `contact_employer` is here and not in the
+ * two inline sets because it moves which company a contact belongs to, which is a bulk run's
+ * whole point; the inline door reaches that through the company hook instead.
+ */
+const BATCH_TRIGGER_ATTRS = new Set([
+  ...CONTACT_IDENTIFIER_ATTRS,
+  ...COMPANY_ATTRS,
+  'contact_employer',
+])
+
+/**
+ * The sync lane's core: every identifier-touched contact and company of one finalize, resolved
+ * in ONE call.
+ *
+ * Selection reads membership, never deltas (plans/company/v5-interaction-resolution.md §4): the
+ * import this was written for created 20,414 contacts and tier-2 deltas cap at 5,000, so a rule
+ * would have fired for a quarter of them. A created record reaches here the same way an edited
+ * one does — a create records its written keys in `touched`
+ * (`field-values/create-values.ts` → `captureSyncFieldWrite`).
+ */
+export const resolveInteractionsBatch: BatchCore = async ({ organizationId, db, targets }) => {
+  const recordIds = new Set<string>()
+  for (const target of targets) {
+    if (!BATCH_TRIGGER_ATTRS.has(target.field?.systemAttribute ?? '')) continue
+    recordIds.add(parseRecordId(target.recordId).entityInstanceId)
+  }
+  if (recordIds.size === 0) return
+
+  const summary = await resolveInteractions({
+    organizationId,
+    recordIds: [...recordIds],
+    reason: 'sync',
+    db,
+  })
+
+  logger.info('interaction resolution batch done', {
+    organizationId,
+    selected: recordIds.size,
+    ...summary,
+  })
 }
 
 /**

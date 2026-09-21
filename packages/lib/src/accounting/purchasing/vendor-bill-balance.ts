@@ -6,7 +6,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { requireCachedEntityDefId } from '../../cache'
-import type { EntityFieldChangeHandler } from '../../field-hooks/types'
+import type { MarkHandler } from '../../field-hooks/types'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { readFieldScalars } from '../../field-values/read-field-scalars'
@@ -117,12 +117,6 @@ export function vendorBillBalance(
  * run it explicitly after `COMMIT`, and so a one-off backfill can reuse the one
  * implementation rather than restating the arithmetic in SQL.
  *
- * ⚡ Reads the stored balance in the same query as its two inputs and returns
- * before writing when they already agree — the "changes nothing → writes
- * nothing" case. Re-keying a total to the value it already had, or a second
- * attribute landing in a write whose first attribute already triggered the
- * recompute, must not cost a write, a realtime frame and a timeline entry.
- *
  * ⚠️ POST-COMMIT only, like every recompute in this subsystem: with no `db`
  * passed the read runs on the module-level connection and cannot see a caller's
  * open transaction.
@@ -135,6 +129,29 @@ export async function recalculateVendorBillBalance(
   vendorBillInstanceId: string,
   db?: Database
 ): Promise<boolean> {
+  const written = await recalculateVendorBillBalances(organizationId, [vendorBillInstanceId], db)
+  return written.length > 0
+}
+
+/**
+ * The batched form: every bill's inputs in ONE read (plans/events/10 §4.5), so a
+ * 500-bill import costs one query rather than 500.
+ *
+ * ⚡ Compares the stored balance against the recomputed one and skips the bills
+ * that already agree — the "changes nothing → writes nothing" case. Re-keying a
+ * total to the value it already had, or a second attribute landing in a write
+ * whose first attribute already triggered the recompute, must not cost a write, a
+ * realtime frame and a timeline entry.
+ *
+ * @returns the instance ids whose balance actually moved.
+ */
+export async function recalculateVendorBillBalances(
+  organizationId: string,
+  vendorBillInstanceIds: string[],
+  db?: Database
+): Promise<string[]> {
+  if (vendorBillInstanceIds.length === 0) return []
+
   const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...BALANCE_ATTRS])
 
   const totalField = fields.vendor_bill_total
@@ -153,73 +170,70 @@ export async function recalculateVendorBillBalance(
       amountPaid: !!amountPaidField,
       balance: !!balanceField,
     })
-    return false
+    return []
   }
 
-  const scalars = await readFieldScalars(
-    db,
-    organizationId,
-    [vendorBillInstanceId],
-    [
-      totalField.id,
-      amountPaidField.id,
-      balanceField.id,
-      ...(amountCreditedField ? [amountCreditedField.id] : []),
-      ...(amountDiscountedField ? [amountDiscountedField.id] : []),
-    ]
-  )
-  const values = scalars.get(vendorBillInstanceId)
-
-  const next = vendorBillBalance(
-    num(values, totalField.id),
-    num(values, amountPaidField.id),
-    amountCreditedField ? num(values, amountCreditedField.id) : null,
-    amountDiscountedField ? num(values, amountDiscountedField.id) : null
-  )
-  const stored = num(values, balanceField.id)
-
-  if (stored === next) {
-    logger.debug('Vendor bill balance unchanged — nothing written', {
-      vendorBillInstanceId,
-      balance: next,
-    })
-    return false
-  }
+  const scalars = await readFieldScalars(db, organizationId, vendorBillInstanceIds, [
+    totalField.id,
+    amountPaidField.id,
+    balanceField.id,
+    ...(amountCreditedField ? [amountCreditedField.id] : []),
+    ...(amountDiscountedField ? [amountDiscountedField.id] : []),
+  ])
 
   const billDefId = await requireCachedEntityDefId(organizationId, 'vendor_bill')
-  const recordId = toRecordId(billDefId, vendorBillInstanceId) as RecordId
+  const context = createFieldValueContext(organizationId, undefined, db)
+  const entries: FieldValueUpdateEntry[] = []
+  const written: string[] = []
 
-  // The low-level writer, deliberately — the same door
-  // `purchase-order-line-rollups.ts` uses. A context with no `userId` does not
-  // fire the field-change post-hook chain, which is what keeps a derived write
-  // from re-entering the hooks that produced it; the realtime frame the chain
-  // would have published is published explicitly below.
-  await setValueWithType(createFieldValueContext(organizationId, undefined, db), {
-    recordId,
-    fieldId: balanceField.id,
-    fieldType: toFieldType(balanceField.type),
-    value: next === null ? null : { type: 'number', value: next },
-  })
+  for (const vendorBillInstanceId of vendorBillInstanceIds) {
+    const values = scalars.get(vendorBillInstanceId)
+    const next = vendorBillBalance(
+      num(values, totalField.id),
+      num(values, amountPaidField.id),
+      amountCreditedField ? num(values, amountCreditedField.id) : null,
+      amountDiscountedField ? num(values, amountDiscountedField.id) : null
+    )
+    if (num(values, balanceField.id) === next) continue
 
-  // A cleared value publishes an entry with NO `value`, which is how the clear
-  // branch of `setValueWithType` signals it (`field-value-mutations.ts`).
-  const entry: FieldValueUpdateEntry =
-    next === null
-      ? { key: buildFieldValueKey(recordId, balanceField.id as FieldId) }
-      : {
-          key: buildFieldValueKey(recordId, balanceField.id as FieldId),
-          value: { type: 'number', value: next },
-        }
+    const recordId = toRecordId(billDefId, vendorBillInstanceId) as RecordId
 
-  publishFieldValueUpdates(getRealtimeService(), organizationId, [entry]).catch((err) => {
-    logger.error('Failed to publish vendor bill balance', {
-      vendorBillInstanceId,
-      error: err instanceof Error ? err.message : String(err),
+    // The low-level writer, deliberately — the same door
+    // `purchase-order-line-rollups.ts` uses. A context with no `userId` does not
+    // fire the field-change post-hook chain, which is what keeps a derived write
+    // from re-entering the hooks that produced it; the realtime frame the chain
+    // would have published is published explicitly below.
+    await setValueWithType(context, {
+      recordId,
+      fieldId: balanceField.id,
+      fieldType: toFieldType(balanceField.type),
+      value: next === null ? null : { type: 'number', value: next },
     })
-  })
 
-  logger.info('Vendor bill balance recalculated', { vendorBillInstanceId, balance: next })
-  return true
+    // A cleared value publishes an entry with NO `value`, which is how the clear
+    // branch of `setValueWithType` signals it (`field-value-mutations.ts`).
+    entries.push(
+      next === null
+        ? { key: buildFieldValueKey(recordId, balanceField.id as FieldId) }
+        : {
+            key: buildFieldValueKey(recordId, balanceField.id as FieldId),
+            value: { type: 'number', value: next },
+          }
+    )
+    written.push(vendorBillInstanceId)
+    logger.info('Vendor bill balance recalculated', { vendorBillInstanceId, balance: next })
+  }
+
+  if (entries.length > 0) {
+    publishFieldValueUpdates(getRealtimeService(), organizationId, entries).catch((err) => {
+      logger.error('Failed to publish vendor bill balances', {
+        organizationId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
+  }
+
+  return written
 }
 
 /** A number out of {@link readFieldScalars}' scalar map; anything else reads as absent. */
@@ -241,10 +255,10 @@ function num(values: Map<string, unknown> | undefined, fieldId: string): number 
  */
 const balanceReconciler = defineParentReconciler<string>({
   key: VENDOR_BILL_BALANCE_RECONCILER,
-  // The drain wants `Promise<void>`; the recompute reports whether it wrote so a
-  // backfill can count. Discarded here rather than widened there.
-  rebuild: async (organizationId, _userId, vendorBillInstanceId) => {
-    await recalculateVendorBillBalance(organizationId, vendorBillInstanceId)
+  // Batched (§4.5): one read for the whole drain, not one per bill. The written
+  // ids are for a backfill's count and are discarded here.
+  rebuildBatch: async (organizationId, _userId, vendorBillInstanceIds) => {
+    await recalculateVendorBillBalances(organizationId, vendorBillInstanceIds)
   },
 })
 
@@ -282,7 +296,7 @@ export function registerVendorBillBalanceReconcilers(): void {
  * connector or CSV gets its balance on the next interactive write. That is a gap
  * in the finalize pass, not in this hook.
  */
-export const recalculateBalanceOnBillChange: EntityFieldChangeHandler = async (event) => {
+export const recalculateBalanceOnBillChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !VENDOR_BILL_BALANCE_TRIGGER_ATTRS.has(attr)) return
 

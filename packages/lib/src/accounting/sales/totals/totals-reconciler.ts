@@ -47,6 +47,9 @@ const DOCUMENT_TYPES: TotalledDocumentType[] = [
   'order',
   'purchase_order',
   'credit_memo',
+  // `recomputeOnVendorCreditLineChange` marks this type; without the drain
+  // `markOrRecomputeDocument`'s optional chain dropped every mark silently.
+  'vendor_credit',
 ]
 
 /** A resolved parent, deduped by both halves. */

@@ -733,15 +733,17 @@ Four fixes land in Phase 2's files:
    today because RELATIONSHIP manifest fields are skipped at provisioning, required once §3's
    RELATIONSHIP fix lands.
 
-### Sync writes bypass inline hooks; totals recompute at finalize
+### Sync writes bypass inline hooks; the chain replays at finalize
 
 A connector sync write runs on a `sync`-origin `WriteSession`. Pre-hooks (`SystemHookRegistry`, e.g.
-auto-numbering) fire unconditionally and inline. **Per-field-change post hooks do not fire**:
+auto-numbering) fire unconditionally and inline. **Per-field-change post hooks do not fire inline**:
 timeline, realtime, the event bus are all suppressed (`skipEvents: true`) to stay storm-proof on
-large syncs. But the **totals recompute is not skipped**: it runs once, at sync finalize, over the
-run's change manifest (`packages/lib/src/events/handlers/finalize-integrity-passes.ts`), which
-rewrites `line_item_line_total` for every synced line whose qty or price changed and recomputes the
-parent document's totals from that.
+large syncs. But the registered chain **is replayed once, at sync finalize**, over the run's change
+manifest (`packages/lib/src/events/handlers/finalize-integrity-passes.ts` →
+`dispatchFieldChanges`): marks on every touched key, derives only through their `batch` core, reacts
+not at all (`docs/entity-events-architecture-guide.md` §7.2). Totals are one of those — the line
+total is rewritten for every synced line whose qty or price changed and the parent document's totals
+recompute from it.
 
 This matters for any connector that transcribes a vendor's own totals (the Shopify order stream
 above writes `order_subtotal`/`order_tax_total`/`order_shipping_total`/`order_total` directly, the

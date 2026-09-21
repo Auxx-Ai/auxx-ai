@@ -26,21 +26,23 @@ vi.mock('../../field-values/field-value-mutations', () => ({
     value: args.values[0] ?? null,
   }),
 }))
-vi.mock('../../field-values/field-value-queries', () => ({ getValues: vi.fn() }))
+vi.mock('../../field-values/field-value-queries', () => ({ getValues: vi.fn(), getValue: vi.fn() }))
 vi.mock('../../field-values/field-value-helpers', () => ({
   createFieldValueContext: vi.fn(() => ({ organizationId: 'org1' })),
   getField: vi.fn(async () => ({ id: 'f', type: 'TEXT' })),
 }))
 
 import { getCachedCustomFields } from '../../cache/org-cache-helpers'
+import type { FieldChangeRef } from '../../field-hooks/types'
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
-import { getValues } from '../../field-values/field-value-queries'
+import { getValue, getValues } from '../../field-values/field-value-queries'
 import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
-import { derivePhoneGeoOnChange } from '../derive-geo-hook'
+import { derivePhoneGeoBatch, derivePhoneGeoOnChange } from '../derive-geo-hook'
 
 const mockedFields = getCachedCustomFields as unknown as ReturnType<typeof vi.fn>
 const mockedSetValue = setValueWithBuiltIn as unknown as ReturnType<typeof vi.fn>
 const mockedGetValues = getValues as unknown as ReturnType<typeof vi.fn>
+const mockedGetValue = getValue as unknown as ReturnType<typeof vi.fn>
 const mockedPublish = publishFieldValueUpdates as unknown as ReturnType<typeof vi.fn>
 
 const CONTACT_DEF = 'contact'
@@ -199,5 +201,67 @@ describe('derivePhoneGeoOnChange', () => {
     mockedSetValue.mockRejectedValue(new Error('db down'))
 
     await expect(derivePhoneGeoOnChange(buildEvent('+13102030000'))).resolves.toBeUndefined()
+  })
+})
+
+// plans/events/10 §4.4: the sync lane's core. Ported from the retired pass 3 of
+// `events/handlers/__tests__/finalize-integrity-passes.test.ts`.
+describe('derivePhoneGeoBatch', () => {
+  function target(instanceId: string): FieldChangeRef {
+    return {
+      recordId: toRecordId(CONTACT_DEF, instanceId),
+      entityDefinitionId: CONTACT_DEF,
+      entityType: 'contact',
+      entitySlug: 'contacts',
+      field: { id: 'fld_phone', type: 'PHONE_INTL' } as unknown as CachedField,
+      organizationId: 'org1',
+      userId: 'system',
+    } as FieldChangeRef
+  }
+
+  const batch = (targets: FieldChangeRef[]) =>
+    derivePhoneGeoBatch({
+      organizationId: 'org1',
+      userId: 'system',
+      db: { tag: 'db' } as never,
+      targets,
+    })
+
+  beforeEach(() => {
+    mockedGetValue.mockResolvedValue([{ id: 'fv', type: 'text', value: '+13102030000' }])
+  })
+
+  it('derives from the RE-READ stored number, not from anything on the target', async () => {
+    await batch([target('inst1')])
+
+    expect(mockedGetValue).toHaveBeenCalledTimes(1)
+    expect(writtenValues().fld_city).toBe('Los Angeles')
+  })
+
+  it('fills only blank targets', async () => {
+    mockedGetValues.mockResolvedValue(
+      new Map([['fld_city', { type: 'text', value: 'Denver' }]] as Array<[string, unknown]>)
+    )
+
+    await batch([target('inst1')])
+
+    expect(writtenValues().fld_city).toBeUndefined()
+    expect(writtenValues().fld_region).toBe('California')
+  })
+
+  it('skips a number cleared after the manifest captured it', async () => {
+    mockedGetValue.mockResolvedValue(null)
+
+    await batch([target('inst1')])
+
+    expect(mockedSetValue).not.toHaveBeenCalled()
+  })
+
+  it('one failing record never starves the rest, and never rejects', async () => {
+    mockedGetValue.mockRejectedValueOnce(new Error('read boom'))
+
+    await expect(batch([target('inst1'), target('inst2')])).resolves.toBeUndefined()
+
+    expect(mockedSetValue.mock.calls.length).toBeGreaterThan(0)
   })
 })

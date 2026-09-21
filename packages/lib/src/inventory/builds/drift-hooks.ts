@@ -15,7 +15,7 @@
 
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../field-hooks/types'
+import type { EntityPostDeleteHandler, MarkHandler } from '../../field-hooks/types'
 import { markOrStampOrder, markOrStampOrderLine } from './drift-reconciler'
 
 /**
@@ -45,7 +45,7 @@ export const LINE_DEMAND_TRIGGER_ATTRS = new Set<SystemAttribute>([
 export const ORDER_DEMAND_TRIGGER_ATTRS = new Set<SystemAttribute>(['order_cancelled_at'])
 
 /** A line's part, quantity or parent order moved. */
-export const stampOrderOnLineChange: EntityFieldChangeHandler = async (event) => {
+export const stampOrderOnLineChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !LINE_DEMAND_TRIGGER_ATTRS.has(attr)) return
 
@@ -62,7 +62,7 @@ export const stampOrderOnLineChange: EntityFieldChangeHandler = async (event) =>
 }
 
 /** The order was cancelled. It now asks production for nothing. */
-export const stampOrderOnOrderChange: EntityFieldChangeHandler = async (event) => {
+export const stampOrderOnOrderChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !ORDER_DEMAND_TRIGGER_ATTRS.has(attr)) return
 

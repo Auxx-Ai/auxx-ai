@@ -6,7 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../../field-hooks/types'
+import type { EntityPostDeleteHandler, MarkHandler } from '../../field-hooks/types'
 import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
@@ -438,7 +438,7 @@ export async function rematchBill(params: {
 }
 
 /** Re-run the match when the bill's own PO link changes (§6.2). */
-export const rematchOnBillChange: EntityFieldChangeHandler = async (event) => {
+export const rematchOnBillChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !BILL_MATCH_TRIGGER_ATTRS.has(attr)) return
 
@@ -447,7 +447,7 @@ export const rematchOnBillChange: EntityFieldChangeHandler = async (event) => {
 }
 
 /** Re-run the parent bill's match when one of its lines changes (§6.2). */
-export const rematchOnBillLineChange: EntityFieldChangeHandler = async (event) => {
+export const rematchOnBillLineChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !BILL_LINE_MATCH_TRIGGER_ATTRS.has(attr)) return
 
