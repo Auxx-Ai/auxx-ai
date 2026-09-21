@@ -84,6 +84,7 @@ import {
   postBlockedMovement,
   readBlockedMovement,
 } from '@auxx/lib/accounting/money'
+import { ensureGuestContact } from '@auxx/lib/accounting/parties'
 import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
@@ -783,7 +784,12 @@ export const ledgerRouter = createTRPCRouter({
         ? await seedDefaultPaymentGateways(ctx.db, organizationId)
         : null
 
-      return { ...chart, paymentGateways }
+      // Task 79 §4.1: the org's one guest customer, so every order has a
+      // customer from here on. `ctx.db` is the pool, so the settings write busts
+      // the org cache itself and no explicit invalidation is needed.
+      const guestContact = await ensureGuestContact(ctx.db, organizationId)
+
+      return { ...chart, paymentGateways, guestContact }
     }),
 
   /**

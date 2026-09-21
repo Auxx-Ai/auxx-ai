@@ -34,7 +34,11 @@ import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { BuiltEntry, EntryPreview, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
-import { fulfillmentStatusFor, type OrderLineRemaining, shippedSubtotalMinor } from './client'
+// The leaf, not the barrel: `../fulfillments` re-exports `stamp-totals.ts`,
+// whose real dependency chain (field-value writes, realtime) is exactly what
+// `fulfill.test.ts` mocks the barrel to avoid pulling in.
+import { type ShipmentLine, shapeShipmentLine } from '../fulfillments/shipment-lines'
+import { fulfillmentStatusFor, shippedSubtotalMinor } from './client'
 import { guard } from './guard'
 import { type OrderForFulfillment, readOrderForFulfillment } from './reads'
 
@@ -76,59 +80,23 @@ function assertIsoDate(value: string, label: string): void {
 }
 
 /**
- * This line's tax for the units that actually shipped, or `undefined` when the
- * sales channel supplied no per-line tax at all.
- *
- * 🛑 `undefined` is the honest answer to "we were told nothing", and it is what
- * makes `buildFulfillmentEntry` fall back to allocating the ORDER's tax. Zero
- * would claim the channel said this line is untaxed, and one such line among
- * taxed ones would still count as "every line carries tax", so the entry would
- * switch to the per-line basis and under-credit `sales_tax_payable` silently.
- *
- * A partial shipment scales pro rata on units and rounds.
- */
-function shippedLineTaxMinor(line: OrderLineRemaining, quantity: number): number | undefined {
-  if (line.lineTaxMinor == null) return undefined
-  if (!Number.isFinite(line.quantity) || line.quantity <= 0) return undefined
-  if (quantity >= line.quantity) return line.lineTaxMinor
-  return Math.round((line.lineTaxMinor * quantity) / line.quantity)
-}
-
-/** One validated shipped line, in the shape `buildFulfillmentEntry` takes. */
-interface ResolvedShippedLine {
-  lineId: string
-  quantity: number
-  unitPriceMinor: number
-  /**
-   * The line's whole NET total, its ordered quantity and what earlier
-   * fulfillments already took of it - the builder allocates the total by units
-   * across a split line so a fractional rate still sums to the line
-   * (29 §12 item 6). `lineTotalMinor` is null for a line with no stored total,
-   * and the builder then extends the rate as before.
-   */
-  lineTotalMinor: number | null
-  orderedQuantity: number
-  priorShippedQuantity: number
-  /** Present only when the line carries `line_item_tax_total`. */
-  taxMinor?: number
-  name: string
-}
-
-/**
  * Validate what the caller says shipped against what is actually left, and
  * shape it for the builder.
  *
  * Refuses rather than clamps. Clamping a shipment of 5 down to a remainder of 3
  * would post an entry for a number the person never entered and leave them
- * believing 5 shipped.
+ * believing 5 shipped. The shaping itself - a request plus an order line into
+ * `computeShipmentTotals`'s input - is `shapeShipmentLine` (`../fulfillments`),
+ * shared with the derived stamp so the two lanes cannot compute a shipment's
+ * lines differently.
  */
 function resolveShippedLines(
   order: OrderForFulfillment,
   requested: FulfillOrderLine[]
-): ResolvedShippedLine[] {
+): ShipmentLine[] {
   const byId = new Map(order.lines.map((line) => [line.lineId, line]))
   const seen = new Set<string>()
-  const resolved: ResolvedShippedLine[] = []
+  const resolved: ShipmentLine[] = []
 
   for (const request of requested) {
     if (seen.has(request.lineId)) {
@@ -161,19 +129,10 @@ function resolveShippedLines(
         }
       )
     }
-    const taxMinor = shippedLineTaxMinor(line, request.quantity)
-    resolved.push({
-      lineId: line.lineId,
-      quantity: request.quantity,
-      unitPriceMinor: line.unitPriceMinor,
-      lineTotalMinor: line.lineTotalMinor ?? null,
-      orderedQuantity: line.quantity,
-      // Every earlier fulfillment of the order, the same population
-      // `shippedSubtotalMinor` sums for the tax allocation's prior.
-      priorShippedQuantity: line.shippedQuantity,
-      ...(taxMinor === undefined ? {} : { taxMinor }),
-      name: line.name,
-    })
+    // `line.shippedQuantity` is every EARLIER fulfillment of the order - the
+    // one being built here does not exist yet - the same population
+    // `shippedSubtotalMinor` sums for the tax allocation's prior.
+    resolved.push(shapeShipmentLine(line, request.quantity, line.shippedQuantity))
   }
 
   if (resolved.length === 0) {

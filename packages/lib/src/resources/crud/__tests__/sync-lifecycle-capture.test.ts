@@ -82,6 +82,12 @@ vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   findCachedResource: vi.fn(async () => undefined),
 }))
+// The guest-customer pre-delete guard on `contacts` reads an org setting; this
+// file mocks the database, so there is nothing behind it.
+vi.mock('../../../settings', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getOrganizationSetting: async () => null,
+}))
 vi.mock('../../../comments', () => ({
   CommentService: class {
     deleteCommentsByRecordId = h.deleteCommentsByRecordId
@@ -113,7 +119,12 @@ function ctx(session: WriteSession, fields: unknown[] = []): MutationContext {
     organizationId: 'org_1',
     userId: 'user_1',
     session,
-    fieldValueService: {} as never,
+    // The guest-customer pre-delete guard on `contacts` makes `deleteRecords`
+    // capture event data, which this stub previously never reached.
+    fieldValueService: {
+      getValues: async () => new Map(),
+      ctx: { bypassFieldGuards: new Set() },
+    } as never,
     resolveEntityDefinition: async () => ({
       id: 'def_1',
       entityType: 'contact',

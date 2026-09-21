@@ -34,6 +34,15 @@ export {
   requireFulfillmentFieldContext,
 } from './fields'
 export { readFulfillmentsForOrder, readFulfillmentsForOrders } from './reads'
+export { type ShipmentLine, shapeShipmentLine } from './shipment-lines'
+export { stampOrderShipmentTotals } from './stamp-totals'
+export {
+  FULFILLMENT_LINE_ORDER_TOTALS_RECONCILER,
+  FULFILLMENT_ORDER_TOTALS_RECONCILER,
+  registerFulfillmentTotalsReconcilers,
+  stampTotalsOnFulfillmentChange,
+  stampTotalsOnFulfillmentLineChange,
+} from './totals-reconciler'
 export type {
   CreatedFulfillment,
   CreateFulfillmentInput,

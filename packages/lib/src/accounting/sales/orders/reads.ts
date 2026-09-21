@@ -35,11 +35,12 @@ import {
   type SystemRecord,
   systemFields,
 } from '../../../resources/system-records'
-import {
-  type Fulfillment,
-  readFulfillmentsForOrder,
-  requireFulfillmentFieldContext,
-} from '../fulfillments'
+// Leaf submodules, not the `../fulfillments` barrel - that barrel re-exports
+// `stamp-totals.ts`, which reads an order through THIS file, so importing the
+// barrel here would cycle back to it.
+import { requireFulfillmentFieldContext } from '../fulfillments/fields'
+import { readFulfillmentsForOrder } from '../fulfillments/reads'
+import type { Fulfillment } from '../fulfillments/types'
 import {
   netLineTotalMinor,
   netUnitPriceMinor,

@@ -23,6 +23,10 @@ vi.mock('../../reconcilers/dirty-parents', async (importOriginal) => {
 })
 
 import {
+  CREDIT_MEMO_ACCEPTANCE_WAKE_RECONCILER,
+  ORDER_ACCEPTANCE_WAKE_RECONCILER,
+} from '../../accounting/money/customer-money/acceptance-wake'
+import {
   MATCH_VENDOR_BILL,
   MATCH_VENDOR_BILL_LINE,
 } from '../../accounting/purchasing/match-reconciler'
@@ -33,6 +37,10 @@ import {
   BILLING_LINE_ITEM,
   BILLING_WORK_ORDER,
 } from '../../accounting/sales/billing/reconciler'
+import {
+  FULFILLMENT_LINE_ORDER_TOTALS_RECONCILER,
+  FULFILLMENT_ORDER_TOTALS_RECONCILER,
+} from '../../accounting/sales/fulfillments/totals-reconciler'
 import {
   MONEY_TOTALS_LINE_ITEM,
   MONEY_TOTALS_PURCHASE_ORDER_LINE,
@@ -66,6 +74,10 @@ const MARKED_KEYS: Record<string, string> = {
   'recalculateBilledRollupOn*Change': PURCHASE_ORDER_LINE_BILLED_ROLLUP,
   stampOrderOnOrderChange: ORDER_DRIFT_ORDER,
   stampOrderOnLineChange: ORDER_DRIFT_LINE,
+  stampTotalsOnFulfillmentChange: FULFILLMENT_ORDER_TOTALS_RECONCILER,
+  stampTotalsOnFulfillmentLineChange: FULFILLMENT_LINE_ORDER_TOTALS_RECONCILER,
+  wakeAcceptancesOnOrderChange: ORDER_ACCEPTANCE_WAKE_RECONCILER,
+  wakeAcceptancesOnCreditMemoChange: CREDIT_MEMO_ACCEPTANCE_WAKE_RECONCILER,
 }
 
 beforeAll(() => {

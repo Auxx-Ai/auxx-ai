@@ -959,6 +959,19 @@ export const SETTINGS_CATALOG = {
       'The IANA timezone the books are kept in, e.g. America/New_York. Period keys are ' +
       'derived in it. Unset refuses to post rather than assuming UTC.',
   },
+  // Written once by `ensureGuestContact` (task 79 §4.1) and read on every order
+  // create, so it is a cached `orgSettings` hit rather than a query.
+  'accounting.guestContactId': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'The `contact` instance standing in as the customer on an order that has none — one ' +
+      'system record per org, minted when accounting is provisioned. Unset leaves guest ' +
+      'orders customerless, the way they were before.',
+  },
+
   // 🔑 A DEFAULT, unlike the two keys above, and deliberately. January is what
   // every report assumed before this key existed, so an org that never touches
   // it reads exactly as it did. It is also not frozen after the first posting:

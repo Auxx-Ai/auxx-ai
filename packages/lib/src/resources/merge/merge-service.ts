@@ -9,6 +9,7 @@ import { touchEntityActivity } from '../../entity-instances/activity'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
 import { formatToRawValue } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { getOrganizationSetting } from '../../settings'
 import { parseRecordId, type RecordId } from '../resource-id'
 import { mergeFieldValue } from './merge'
 import type { MergeEntitiesInput, MergeEntitiesResult } from './types'
@@ -191,6 +192,20 @@ export class EntityMergeService {
 
     if (instances.some((i) => i.archivedAt !== null)) {
       throw new BadRequestError('Cannot merge archived entities')
+    }
+
+    // Task 79 §4.1: merge repoints FieldValues and RecordIdentities, but a
+    // movement's party is a COLUMN it knows nothing about, so merging the guest
+    // away strands every guest movement on an archived instance.
+    const guestId = await getOrganizationSetting({
+      organizationId: this.organizationId,
+      key: 'accounting.guestContactId',
+    })
+    if (guestId && sourceRecordIds.some((rid) => parseRecordId(rid).entityInstanceId === guestId)) {
+      throw new BadRequestError(
+        'The guest customer cannot be merged into another contact: it is the customer on every order placed without one, and its money transactions would be stranded.',
+        { organizationId: this.organizationId, contactInstanceId: guestId }
+      )
     }
   }
 

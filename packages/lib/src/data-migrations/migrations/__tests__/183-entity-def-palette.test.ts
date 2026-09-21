@@ -6,15 +6,52 @@
 //  - a re-run must write nothing, because the runner retries a failed fleet from the top;
 //  - an org short of a def is a SKIP, never a throw — seeding is the seeder's job;
 //  - the `resources` cache must drop, or the sidebar shows the old palette for a day.
+//
+// It also carries task 79 §4.1's backfill: the guest customer for every org that
+// already provisioned a chart, and `order_contact` on every order that names
+// neither a contact nor a company.
 
-import type { Database } from '@auxx/database'
-import { describe, expect, it, vi } from 'vitest'
+import { type Database, schema } from '@auxx/database'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invalidateAndRecompute = vi.fn(async () => {})
+const h = vi.hoisted(() => ({
+  getCachedEntityDefId: vi.fn(),
+  bySystemAttributes: vi.fn(),
+  ensureGuestContact: vi.fn(),
+  updateRecord: vi.fn(),
+}))
+
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getOrgCache: () => ({ invalidateAndRecompute }),
+  getCachedEntityDefId: h.getCachedEntityDefId,
+  getOrgCache: () => ({
+    invalidateAndRecompute,
+    from: () => ({ bySystemAttributes: h.bySystemAttributes }),
+  }),
 }))
+vi.mock('../../../accounting/parties', () => ({ ensureGuestContact: h.ensureGuestContact }))
+vi.mock('../../../resources/crud', () => ({
+  seedSession: (reason: string) => ({ origin: 'seed', reason }),
+  UnifiedCrudHandler: class {
+    update = h.updateRecord
+  },
+}))
+vi.mock('../../../users/system-user-service', () => ({
+  SystemUserService: { getSystemUserForActions: async () => 'system-user' },
+}))
+
+// The restamp suites below want the backfill to skip: no `gl_account` def, no chart.
+beforeEach(() => {
+  h.getCachedEntityDefId.mockReset().mockResolvedValue(null)
+  h.bySystemAttributes
+    .mockReset()
+    .mockResolvedValue({ order_contact: { id: 'f-contact' }, order_company: { id: 'f-company' } })
+  h.ensureGuestContact
+    .mockReset()
+    .mockResolvedValue({ contactInstanceId: 'contact-guest', created: 1, requeued: 3 })
+  h.updateRecord.mockReset().mockResolvedValue(undefined)
+})
 
 const { migration183EntityDefPalette } = await import('../183-entity-def-palette')
 const { ALL_DATA_MIGRATIONS, PER_ORG_MIGRATIONS } = await import('../../registry')
@@ -146,5 +183,91 @@ describe('the restamp', () => {
     expect(writes).toHaveLength(3)
     expect(writes.every((w) => w.color === 'teal' || w.color === 'green')).toBe(true)
     expect(result.alreadyUpToDate).toBe(false)
+  })
+})
+
+/** A query result that answers `await …` and `await ….limit(n)` alike. */
+function result<T>(rows: T[]) {
+  return {
+    limit: async () => rows,
+    then: (onOk: (value: T[]) => unknown, onErr?: (reason: unknown) => unknown) =>
+      Promise.resolve(rows).then(onOk, onErr),
+  }
+}
+
+/**
+ * The backfill's reads, routed by table: definitions, then the chart probe and
+ * the order list (both `EntityInstance`), then the `FieldValue` party scan.
+ */
+function backfillDb(input: {
+  chart: boolean
+  orders: string[]
+  withParty: string[]
+  defRows?: Row[]
+}) {
+  let instanceCall = 0
+  const db = {
+    select: () => ({
+      from: (table: unknown) => {
+        if (table === schema.EntityDefinition) {
+          return { where: () => result(input.defRows ?? rowsAllCorrectExcept({})) }
+        }
+        const call = instanceCall++
+        return {
+          where: () =>
+            call === 0
+              ? result(input.chart ? [{ id: 'gl-1' }] : [])
+              : result(input.orders.map((id) => ({ id }))),
+        }
+      },
+    }),
+    selectDistinct: () => ({
+      from: () => ({ where: () => result(input.withParty.map((id) => ({ entityId: id }))) }),
+    }),
+    update: () => ({ set: () => ({ where: async () => {} }) }),
+  }
+  return db as unknown as Database
+}
+
+describe('the guest backfill (task 79 §4.1)', () => {
+  it('skips an org with no chart entirely', async () => {
+    h.getCachedEntityDefId.mockResolvedValue('def_gl_account')
+    const db = backfillDb({ chart: false, orders: ['o1'], withParty: [] })
+
+    const result = await migration183EntityDefPalette.up(db, ORG)
+
+    expect(h.ensureGuestContact).not.toHaveBeenCalled()
+    expect(result.alreadyUpToDate).toBe(true)
+  })
+
+  it('mints the guest and backfills only the orders with neither party', async () => {
+    h.getCachedEntityDefId.mockResolvedValue('def_order')
+    const db = backfillDb({
+      chart: true,
+      orders: ['o1', 'o2', 'o3'],
+      withParty: ['o2'],
+    })
+
+    const result = await migration183EntityDefPalette.up(db, ORG)
+
+    expect(h.ensureGuestContact).toHaveBeenCalledTimes(1)
+    expect(h.updateRecord.mock.calls.map((c) => c[0])).toEqual(['def_order:o1', 'def_order:o3'])
+    expect(h.updateRecord.mock.calls[0]?.[1]).toEqual({ order_contact: 'contact:contact-guest' })
+    expect(result.alreadyUpToDate).toBe(false)
+  })
+
+  it('writes nothing on a second pass, so the fleet retry is free', async () => {
+    h.getCachedEntityDefId.mockResolvedValue('def_order')
+    h.ensureGuestContact.mockResolvedValue({
+      contactInstanceId: 'contact-guest',
+      created: 0,
+      requeued: 0,
+    })
+    const db = backfillDb({ chart: true, orders: ['o1', 'o2'], withParty: ['o1', 'o2'] })
+
+    const result = await migration183EntityDefPalette.up(db, ORG)
+
+    expect(h.updateRecord).not.toHaveBeenCalled()
+    expect(result.alreadyUpToDate).toBe(true)
   })
 })

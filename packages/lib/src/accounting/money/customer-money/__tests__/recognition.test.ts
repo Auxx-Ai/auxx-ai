@@ -153,6 +153,12 @@ describe('payment and shipment component ownership', () => {
     expect(() => run([receipt('p1', '2026-09-01', '12001')])).toThrow('capacity')
     expect(() => run([shipment('s1', '2026-09-01', '11001', '1000')])).toThrow('components')
   })
+
+  it('refuses a zero-money shipment as unstamped, naming the fulfillment, not as over-basis', () => {
+    expect(() => run([shipment('s1', '2026-09-01', '0', '0')])).toThrow(
+      'fulfillment s1 has no stamped totals'
+    )
+  })
 })
 
 describe('tax component conservation', () => {

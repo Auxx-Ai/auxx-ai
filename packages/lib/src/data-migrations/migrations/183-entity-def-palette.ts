@@ -2,9 +2,13 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { toRecordId } from '@auxx/types/resource'
+import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { ensureGuestContact } from '../../accounting/parties'
+import { getCachedEntityDefId, getOrgCache } from '../../cache'
+import { seedSession, UnifiedCrudHandler } from '../../resources/crud'
 import { SYSTEM_ENTITIES } from '../../seed/entity-seeder/constants'
+import { SystemUserService } from '../../users/system-user-service'
 import type { PerOrgMigration, PerOrgMigrationResult } from '../per-org'
 
 const logger = createScopedLogger('entity-migrations:183')
@@ -14,7 +18,10 @@ const CACHE_KEYS = ['resources'] as const
 
 /**
  * Migration 183: restamp every system `EntityDefinition`'s icon and colour from
- * {@link SYSTEM_ENTITIES} (`plans/icons/entity-def-palette.md` §3).
+ * {@link SYSTEM_ENTITIES} (`plans/icons/entity-def-palette.md` §3), and mint the
+ * guest customer for every org that already provisioned a chart, backfilling
+ * `order_contact` on every order that names neither a contact nor a company
+ * (`plans/accounting/tasks/79-guest-receipts-and-unresolved-refunds.md` §4.1).
  *
  * ## Unconditional, by decision (§4)
  *
@@ -30,7 +37,9 @@ export const migration183EntityDefPalette: PerOrgMigration = {
   id: '183-entity-def-palette',
   description:
     'Restamps system EntityDefinition icon/color from SYSTEM_ENTITIES - colour becomes the ' +
-    'accounting axis (sell green, buy red, goods teal, cash blue, ledger gray)',
+    'accounting axis (sell green, buy red, goods teal, cash blue, ledger gray). Also mints ' +
+    'the guest customer for every org holding a gl_account row and backfills order_contact ' +
+    'on every order with neither a contact nor a company (task 79 §4.1)',
 
   async up(db: Database, organizationId: string): Promise<PerOrgMigrationResult> {
     const state = { entityDefsCreated: 0, fieldsCreated: 0, relationshipsLinked: 0 }
@@ -73,6 +82,104 @@ export const migration183EntityDefPalette: PerOrgMigration = {
       logger.info('Migration 183 applied', { organizationId, restamped })
     }
 
-    return { ...state, alreadyUpToDate: restamped === 0 }
+    const guest = await backfillGuestCustomer(db, organizationId)
+
+    return {
+      ...state,
+      alreadyUpToDate: restamped === 0 && guest.created === 0 && guest.backfilled === 0,
+    }
   },
+}
+
+/**
+ * Mint the org's guest customer and give it to every order that has neither a
+ * contact nor a company. Skipped whole for an org with no chart — provisioning
+ * is the door that means "we want accounting", and this covers what exists at
+ * this deploy while `provisionChart` covers every org after it.
+ *
+ * Idempotent: a second pass finds the guest through the setting and every order
+ * already carrying it.
+ */
+async function backfillGuestCustomer(
+  db: Database,
+  organizationId: string
+): Promise<{ created: 0 | 1; backfilled: number }> {
+  const nothing = { created: 0, backfilled: 0 } as const
+
+  // A `gl_account` ROW, not the definition — the definition ships with every org
+  // and provisioning is what says the org wants accounting.
+  const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
+  if (!glAccountDefId) return nothing
+  const [chart] = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, glAccountDefId)
+      )
+    )
+    .limit(1)
+  if (!chart) return nothing
+
+  const guest = await ensureGuestContact(db, organizationId)
+  if (!guest.contactInstanceId) return nothing
+
+  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
+  if (!orderDefId) return { created: guest.created, backfilled: 0 }
+
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['order_contact', 'order_company'] as const)
+  const partyFieldIds = [fields.order_contact?.id, fields.order_company?.id].filter(
+    (id): id is string => !!id
+  )
+  if (partyFieldIds.length === 0) return { created: guest.created, backfilled: 0 }
+
+  const orders = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, orderDefId)
+      )
+    )
+  if (orders.length === 0) return { created: guest.created, backfilled: 0 }
+
+  const withParty = await db
+    .selectDistinct({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.fieldId, partyFieldIds),
+        isNotNull(schema.FieldValue.relatedEntityId)
+      )
+    )
+  const covered = new Set(withParty.map((row) => row.entityId))
+  const missing = orders.filter((order) => !covered.has(order.id))
+  if (missing.length === 0) return { created: guest.created, backfilled: 0 }
+
+  const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+  const handler = new UnifiedCrudHandler(organizationId, systemUserId, db, undefined, {
+    session: seedSession('guest order contact backfill'),
+  })
+  const guestRecordId = toRecordId('contact', guest.contactInstanceId)
+
+  // Sequential: a fan-out over a five-figure order table is the one thing a
+  // migration pass must not do to the pool.
+  let backfilled = 0
+  for (const order of missing) {
+    await handler.update(toRecordId(orderDefId, order.id), { order_contact: guestRecordId })
+    backfilled++
+  }
+
+  logger.info('Migration 183 backfilled guest orders', {
+    organizationId,
+    guestCreated: guest.created,
+    backfilled,
+    requeued: guest.requeued,
+  })
+  return { created: guest.created, backfilled }
 }

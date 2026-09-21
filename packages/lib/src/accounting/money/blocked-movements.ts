@@ -83,7 +83,14 @@ export async function listMovementAccountingCandidates(
     )
   if (window)
     conditions.push(
-      sql`(${schema.MoneyTransaction.postingBlockedAt} IS NULL OR ${schema.MoneyTransaction.postingBlockedAt} <= ${window.retryBefore})`
+      sql`(${schema.MoneyTransaction.postingBlockedAt} IS NULL OR ${schema.MoneyTransaction.postingBlockedAt} <= ${window.retryBefore})`,
+      // Parked on a record change upstream, so re-reading it hourly can only refuse
+      // it again — the ingest sweep excludes the same rows (79 §4.5).
+      sql`NOT EXISTS (SELECT 1 FROM ${schema.FinancialSourceAcceptance} parked
+        WHERE parked."organizationId" = ${organizationId}
+        AND parked."moneyTransactionId" = ${schema.MoneyTransaction.id}
+        AND parked."state" = 'blocked'
+        AND parked."nextAttemptAt" IS NULL)`
     )
 
   const rows = await db
@@ -207,11 +214,18 @@ export interface BlockedMovementRow {
   reference: string | null
   note: string | null
   method: MovementRow['method']
-  /** `postEntry`'s own words. Rendered verbatim - never paraphrased. */
+  /**
+   * The blocked ingest acceptance's own words when one stands behind the
+   * movement, else `postEntry`'s. Rendered verbatim - never paraphrased.
+   */
   reason: string
   blockedAt: Date | null
   /** `account_unmapped` gets the remedy card; everything else is plain text. */
   reasonKind: 'account_unmapped' | 'other'
+  /** How many times the ingest has tried; `null` for a movement with no acceptance. */
+  acceptanceAttempts: number | null
+  /** What the acceptance waits for: a change to its order, or its next attempt time. */
+  acceptanceWaitingOn: 'change' | 'time' | null
 }
 
 /** A record a movement points at, with which role it plays for the movement. */
@@ -229,12 +243,26 @@ export interface BlockedMovementDetail extends BlockedMovementRow {
 }
 
 /**
+ * The true refusal: a movement the ingest blocked waits on its acceptance's
+ * reason, not on the poster's message about the application it never got (79 §1.3).
+ */
+const REASON = sql<
+  string | null
+>`COALESCE(${schema.FinancialSourceAcceptance.reason}, ${schema.MoneyTransaction.postingBlockedReason})`
+
+/**
  * The refusal shape, from its prefix: `resolve-roles.ts` opens every unmapped-role
  * refusal with "Cannot post:" and nothing else does.
  */
 const REASON_KIND = sql<
   'account_unmapped' | 'other'
->`CASE WHEN ${schema.MoneyTransaction.postingBlockedReason} LIKE 'Cannot post:%' THEN 'account_unmapped' ELSE 'other' END`
+>`CASE WHEN ${REASON} LIKE 'Cannot post:%' THEN 'account_unmapped' ELSE 'other' END`
+
+/** A blocked acceptance with no `nextAttemptAt` is parked until its order changes (79 §4.2). */
+const ACCEPTANCE_WAITING_ON = sql<'change' | 'time' | null>`CASE
+  WHEN ${schema.FinancialSourceAcceptance.id} IS NULL THEN NULL
+  WHEN ${schema.FinancialSourceAcceptance.nextAttemptAt} IS NULL THEN 'change'
+  ELSE 'time' END`
 
 /** A movement is parked when it carries a reason and holds no live subject posting. */
 function blockedWhere(organizationId: string) {
@@ -267,9 +295,11 @@ function selectBlockedRows(db: Database) {
       reference: schema.MoneyTransaction.reference,
       note: schema.MoneyTransaction.note,
       method: schema.MoneyTransaction.method,
-      reason: schema.MoneyTransaction.postingBlockedReason,
+      reason: REASON,
       blockedAt: schema.MoneyTransaction.postingBlockedAt,
       reasonKind: REASON_KIND,
+      acceptanceAttempts: schema.FinancialSourceAcceptance.attempts,
+      acceptanceWaitingOn: ACCEPTANCE_WAITING_ON,
     })
     .from(schema.MoneyTransaction)
     .leftJoin(
@@ -277,6 +307,14 @@ function selectBlockedRows(db: Database) {
       and(
         eq(schema.EntityInstance.organizationId, schema.MoneyTransaction.organizationId),
         eq(schema.EntityInstance.id, schema.MoneyTransaction.partyInstanceId)
+      )
+    )
+    .leftJoin(
+      schema.FinancialSourceAcceptance,
+      and(
+        eq(schema.FinancialSourceAcceptance.organizationId, schema.MoneyTransaction.organizationId),
+        eq(schema.FinancialSourceAcceptance.moneyTransactionId, schema.MoneyTransaction.id),
+        eq(schema.FinancialSourceAcceptance.state, 'blocked')
       )
     )
 }

@@ -5,10 +5,12 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 import { accountingBasisHash } from '../../../ledger/builders/basis-hash'
+import { listMovementAccountingCandidates } from '../../blocked-movements'
 import type { customerMoneyObservationSchema } from '../contracts'
-import { materializeImportedMoneyInTx } from '../ingest'
+import { materializeImportedMoneyInTx, sweepImportedCustomerMoney } from '../ingest'
 import { listOrderMoneyTransactions } from '../reads'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
+import { requeueAcceptancesForOrders } from '../source-writes'
 
 const db = () => getTestDb()
 let organizationId: string
@@ -192,6 +194,85 @@ async function staged(patch: Partial<typeof sample> = {}, withOrder = true) {
 async function accept(id: string) {
   await db().transaction((tx) => materializeImportedMoneyInTx(tx, organizationId, id))
 }
+const readAcceptanceRow = (id: string) =>
+  db().query.FinancialSourceAcceptance.findFirst({
+    where: eq(schema.FinancialSourceAcceptance.id, id),
+  })
+/** One `credit_memo` record owed to `partyId`, with its own definition. */
+async function creditMemo(partyId: string, apiSlug: string) {
+  const [def] = await db()
+    .insert(schema.EntityDefinition)
+    .values({
+      organizationId,
+      apiSlug,
+      singular: 'Credit',
+      plural: 'Credits',
+      entityType: 'credit_memo',
+    })
+    .returning()
+  const [credit] = await db()
+    .insert(schema.EntityInstance)
+    .values({ organizationId, entityDefinitionId: def!.id, updatedAt: new Date() })
+    .returning()
+  for (const [attribute, value] of [
+    ['credit_memo_total', 1000],
+    ['credit_memo_currency', 'USD'],
+    ['credit_memo_contact', partyId],
+  ] as const) {
+    const [field] = await db()
+      .insert(schema.CustomField)
+      .values({
+        organizationId,
+        entityDefinitionId: def!.id,
+        name: attribute,
+        systemAttribute: attribute,
+        type:
+          attribute === 'credit_memo_total'
+            ? 'NUMBER'
+            : attribute === 'credit_memo_contact'
+              ? 'RELATIONSHIP'
+              : 'TEXT',
+        updatedAt: new Date(),
+      })
+      .returning()
+    await db()
+      .insert(schema.FieldValue)
+      .values({
+        organizationId,
+        entityDefinitionId: def!.id,
+        entityId: credit!.id,
+        fieldId: field!.id,
+        ...(attribute === 'credit_memo_total'
+          ? { valueNumber: value as number }
+          : attribute === 'credit_memo_contact'
+            ? { relatedEntityId: value as string }
+            : { valueText: value as string }),
+      })
+  }
+  return { id: credit!.id, entityDefinitionId: def!.id }
+}
+/** A refund of `capture1` whose observation names neither credential nor connector. */
+async function credentiallessRefund() {
+  const refund = await staged({
+    id: 'refund1',
+    kind: 'refund',
+    amount: '10.00',
+    parentTransactionId: 'capture1',
+    creditMemoExternalId: 'refund_document',
+  })
+  await db()
+    .update(schema.FinancialSourceObservation)
+    .set({ reportingInstallationSnapshot: {} })
+    .where(eq(schema.FinancialSourceObservation.id, refund.observationId))
+  return refund
+}
+async function connectionId(name: string) {
+  const [credential] = await db()
+    .insert(schema.Credential)
+    .values({ organizationId, name, encryptedSecrets: 'fixture', updatedAt: new Date() })
+    .returning()
+  return credential!.id
+}
 describe('customer money source acceptance against PostgreSQL', () => {
   it('multiple captures and duplicate retries create exactly two movements/applications', async () => {
     const a = await staged()
@@ -318,6 +399,60 @@ describe('customer money source acceptance against PostgreSQL', () => {
     expect(coverage!.fetchedCount).toBe(1)
     expect(coverage!.pendingCount).toBe(1)
     expect(coverage!.complete).toBe(false)
+  })
+  it('settles a refund whose observation has no credential from the memo identity alone', async () => {
+    const capture = await staged()
+    await accept(capture.id)
+    const [receipt] = await db().select().from(schema.MoneyTransaction)
+    const credit = await creditMemo(receipt!.partyInstanceId!, 'credits')
+    await db().insert(schema.RecordIdentity).values({
+      organizationId,
+      entityInstanceId: credit.id,
+      entityDefinitionId: credit.entityDefinitionId,
+      source: 'shopify',
+      externalId: 'refund_document',
+      appFieldKey: 'refundId',
+    })
+    const refund = await credentiallessRefund()
+    await accept(refund.id)
+    expect(await db().select().from(schema.MoneyRefundSettlement)).toMatchObject([
+      { disposition: 'customer_credit', customerCreditMemoInstanceId: credit.id },
+    ])
+    expect(
+      await db().query.FinancialSourceAcceptance.findFirst({
+        where: eq(schema.FinancialSourceAcceptance.id, refund.id),
+      })
+    ).toMatchObject({ state: 'accepted', reason: null })
+  })
+  it('leaves a refund blocked when the memo identity is held on two connections', async () => {
+    const capture = await staged()
+    await accept(capture.id)
+    const [receipt] = await db().select().from(schema.MoneyTransaction)
+    for (const [index, apiSlug] of ['credits-a', 'credits-b'].entries()) {
+      const credit = await creditMemo(receipt!.partyInstanceId!, apiSlug)
+      await db()
+        .insert(schema.RecordIdentity)
+        .values({
+          organizationId,
+          entityInstanceId: credit.id,
+          entityDefinitionId: credit.entityDefinitionId,
+          source: 'shopify',
+          externalId: 'refund_document',
+          appFieldKey: 'refundId',
+          connectionId: await connectionId(`Shopify ${index}`),
+        })
+    }
+    const refund = await credentiallessRefund()
+    await accept(refund.id)
+    expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(0)
+    expect(
+      await db().query.FinancialSourceAcceptance.findFirst({
+        where: eq(schema.FinancialSourceAcceptance.id, refund.id),
+      })
+    ).toMatchObject({
+      state: 'blocked',
+      reason: 'Refund original receipt or credit document is unresolved',
+    })
   })
   it('settles a partial refund once and survives a reconnect with the same store identity', async () => {
     const capture = await staged()
@@ -560,6 +695,57 @@ describe('ordinary order evidence staging and shared events', () => {
       complete: true,
       acceptedCount: 1,
     })
+  })
+  // 79 §4.2/§4.5: the retry class per reason, the wake that re-queues, and the posting
+  // sweep's matching exclusion.
+  it('parks a wake-on-change refusal once, and the order wake re-queues it', async () => {
+    const a = await staged({ amount: '101.00' })
+    await accept(a.id)
+    expect(await readAcceptanceRow(a.id)).toMatchObject({
+      state: 'blocked',
+      reason: 'Confirmed receipt exceeds the remaining order obligation',
+      attempts: 1,
+      nextAttemptAt: null,
+    })
+    expect(await sweepImportedCustomerMoney(db(), organizationId)).toEqual({
+      examined: 0,
+      failed: 0,
+    })
+
+    await requeueAcceptancesForOrders(db(), organizationId, [orderId])
+    expect((await readAcceptanceRow(a.id))?.nextAttemptAt).toBeInstanceOf(Date)
+    expect(await sweepImportedCustomerMoney(db(), organizationId)).toEqual({
+      examined: 1,
+      failed: 0,
+    })
+    expect(await readAcceptanceRow(a.id)).toMatchObject({ attempts: 2, nextAttemptAt: null })
+  })
+  it('keeps the posting sweep off a movement parked on a change', async () => {
+    const a = await staged({ amount: '101.00' })
+    await accept(a.id)
+    const [money] = await db().select().from(schema.MoneyTransaction)
+    const window = { cutoffPeriod: null, bookTimeZone: 'UTC', retryBefore: new Date() }
+    expect(await listMovementAccountingCandidates(db(), organizationId, 10, window)).toEqual([])
+    // Unparked, it is a candidate again.
+    await requeueAcceptancesForOrders(db(), organizationId, [orderId])
+    expect(await listMovementAccountingCandidates(db(), organizationId, 10, window)).toMatchObject([
+      { id: money!.id },
+    ])
+  })
+  it('backs a retryable refusal off from 60s, doubling per attempt', async () => {
+    await db().delete(schema.OrganizationSetting)
+    const a = await staged()
+    await accept(a.id)
+    const first = await readAcceptanceRow(a.id)
+    expect(first).toMatchObject({ reason: 'Book timezone is unresolved or invalid', attempts: 1 })
+    expect(first!.nextAttemptAt!.getTime() - Date.now()).toBeGreaterThan(50_000)
+    expect(first!.nextAttemptAt!.getTime() - Date.now()).toBeLessThanOrEqual(60_000)
+
+    await accept(a.id)
+    const second = await readAcceptanceRow(a.id)
+    expect(second).toMatchObject({ attempts: 2 })
+    expect(second!.nextAttemptAt!.getTime() - Date.now()).toBeGreaterThan(110_000)
+    expect(second!.nextAttemptAt!.getTime() - Date.now()).toBeLessThanOrEqual(120_000)
   })
   it('rejects cross-organization order ownership before financial writes', async () => {
     const { stageOrderPaymentEvidenceInTx } = await import('../record-evidence')

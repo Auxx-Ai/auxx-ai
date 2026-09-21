@@ -378,6 +378,60 @@ describe('the evidence bridge', () => {
     ).toHaveLength(6)
   })
 
+  it('stamps the credit memo a refund names onto its evidence when the identity is unique', async () => {
+    const [memoDef] = await getTestDb()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        entityType: 'credit_memo',
+        apiSlug: 'credit-memos',
+        singular: 'Credit memo',
+        plural: 'Credit memos',
+        updatedAt: new Date(),
+      })
+      .returning()
+    const [memo] = await getTestDb()
+      .insert(schema.EntityInstance)
+      .values({ organizationId, entityDefinitionId: memoDef!.id, updatedAt: new Date() })
+      .returning()
+    await getTestDb().insert(schema.RecordIdentity).values({
+      organizationId,
+      entityInstanceId: memo!.id,
+      entityDefinitionId: memoDef!.id,
+      source: SOURCE.provider_key,
+      externalId: 'refund_doc_1',
+      appFieldKey: 'refundId',
+    })
+    const orderId = await createInstance('order', {
+      order_payment_source_provider: SOURCE.provider_key,
+      order_payment_source_account: SOURCE.account_id,
+      order_payment_source_environment: SOURCE.environment,
+      order_payment_source_order_id: 'order-ext-1',
+      order_payment_source_complete: true,
+      order_payment_source_count: 1,
+    })
+    const refundId = await createInstance('customer_transaction', {
+      ...transactionFields('txn_refund', orderId),
+      customer_transaction_kind: 'refund',
+      customer_transaction_credit_memo_id: 'refund_doc_1',
+    })
+
+    await bridgeFinancialRecords(getTestDb(), {
+      organizationId,
+      actorUserId,
+      records: [{ id: refundId, kind: 'customer_transaction' }],
+    })
+
+    const observation = await getTestDb().query.FinancialSourceObservation.findFirst({
+      where: eq(schema.FinancialSourceObservation.organizationId, organizationId),
+    })
+    expect(observation!.payload).toMatchObject({ creditMemoInstanceId: memo!.id })
+    const acceptance = await getTestDb().query.FinancialSourceAcceptance.findFirst({
+      where: eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
+    })
+    expect(acceptance!.unresolvedReferences).toMatchObject({ creditMemoInstanceId: memo!.id })
+  })
+
   it('skips a record whose required source facts are missing instead of failing the batch', async () => {
     const good = await createInstance('processor_balance_entry', entryFields('bt_ok', 0))
     const bad = await createInstance('processor_balance_entry', {
