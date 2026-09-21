@@ -3,7 +3,8 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from '@auxx/ui/components/avatar'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Link2 } from 'lucide-react'
+import { ExternalLink, Link2 } from 'lucide-react'
+import { useExternalLink } from '~/components/fields/use-external-link'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -19,6 +20,7 @@ import type { DrawerTabProps } from '../drawer-tab-registry'
  */
 export function ContactExternalIdentitiesCard({ recordId }: DrawerTabProps) {
   const { data: identities, isLoading } = api.record.getIdentities.useQuery({ recordId })
+  const { open, prefetch } = useExternalLink(recordId)
 
   if (isLoading) {
     return (
@@ -79,7 +81,20 @@ export function ContactExternalIdentitiesCard({ recordId }: DrawerTabProps) {
                   <span className='text-muted-foreground shrink-0'>
                     {identity.fieldLabel ?? identity.appFieldKey ?? 'ID'}
                   </span>
-                  <span className='font-mono truncate'>{identity.externalId}</span>
+                  {identity.linkable ? (
+                    <button
+                      type='button'
+                      aria-label={`Open ${identity.externalId} in ${label}`}
+                      className='flex min-w-0 cursor-pointer items-center gap-1 font-mono underline decoration-muted-foreground/50 hover:decoration-muted-foreground'
+                      onClick={() => void open(identity.source, identity.connectionId)}
+                      onMouseEnter={() => prefetch(identity.source, identity.connectionId)}
+                      onFocus={() => prefetch(identity.source, identity.connectionId)}>
+                      <span className='truncate'>{identity.externalId}</span>
+                      <ExternalLink className='size-3 shrink-0 text-muted-foreground' />
+                    </button>
+                  ) : (
+                    <span className='font-mono truncate'>{identity.externalId}</span>
+                  )}
                 </div>
               ))}
             </div>

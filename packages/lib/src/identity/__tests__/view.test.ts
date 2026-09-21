@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getCachedInstalledApps = vi.fn()
 const getCachedCustomFields = vi.fn()
+const getCachedIdentityLink = vi.fn()
 vi.mock('../../cache', () => ({
   getCachedInstalledApps: (...args: unknown[]) => getCachedInstalledApps(...args),
   getCachedCustomFields: (...args: unknown[]) => getCachedCustomFields(...args),
+  getCachedIdentityLink: (...args: unknown[]) => getCachedIdentityLink(...args),
 }))
 
 import { decorateRecordIdentities } from '../view'
@@ -38,6 +40,7 @@ beforeEach(() => {
     },
   ])
   getCachedCustomFields.mockResolvedValue([{ id: 'field_cust', name: 'Shopify customer ID' }])
+  getCachedIdentityLink.mockResolvedValue(null)
 })
 
 describe('decorateRecordIdentities', () => {
@@ -64,8 +67,19 @@ describe('decorateRecordIdentities', () => {
       appFieldKey: 'customerId',
       fieldLabel: 'Shopify customer ID',
       externalId: '207119551',
+      linkable: false,
       updatedAt: '2026-06-30T00:00:00.000Z',
     })
+  })
+
+  it('flags an identity kind the app declares a link template for', async () => {
+    getCachedIdentityLink.mockResolvedValue(
+      'https://{connection.identity}/admin/customers/{externalId}'
+    )
+    const [view] = await decorateRecordIdentities('org_1', [
+      row({ source: 'shopify', appFieldKey: 'customerId' }),
+    ])
+    expect(view?.linkable).toBe(true)
   })
 
   it('labels the app-less chat link "Chat" with no icon or field label', async () => {

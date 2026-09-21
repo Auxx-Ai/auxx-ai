@@ -328,6 +328,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
             primaryAdornment={
               <ConnectorSourceBadge
                 sources={cachedRecord?.sources}
+                recordId={recordId}
                 variant='chip'
                 className='shrink-0'
               />

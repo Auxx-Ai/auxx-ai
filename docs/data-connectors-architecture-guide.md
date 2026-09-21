@@ -355,6 +355,8 @@ identityRole?: { kind: 'externalId'; order?: number } | { kind: 'match'; normali
 
 Identity stays **bootstrap-only** `DataConnectorItem` is steady state.
 
+**External links.** An app can declare a `link` URL template on its `identity: true` field (`link: 'https://{connection.identity}/admin/orders/{externalId}'`), which makes the record-grain source badge open the record's page in the source system. Nothing is stored per record: the URL is composed at read time from the `RecordIdentity` row, the connection's plaintext `metadata`, and at most one belongs_to hop for a child with no page of its own (a Shopify refund or fulfillment opens its order). See `plans/data-connectors/external-record-link-plan.md` and `docs/app-fields-and-entities-guide.md` §2.
+
 An earlier revision of this section described a per-mapping union `connectorExternalId | matchField | composite | manualReview` carrying `connectorFieldKey → targetFieldId`. **That union never existed in code** (`grep -rn "connectorExternalId"` returns nothing) and was superseded by the per-field `identityRole` above. Corrected 2026-08-21.
 
 **Composite (AND) identity.** More than one field carrying `{ kind: 'match' }` *is* the composite key. The primitive lives on the shared lookup core, `lookupEntitiesByFieldValue`, its `candidates` list is OR / first-wins by default, and `matchAll` opts into AND. AND intersects the per-candidate record sets **before** the by-`recordId` dedupe, which is only meaningful for OR.

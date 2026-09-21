@@ -2,6 +2,7 @@
 
 import type { EntityRefKind } from '../tools/types.js'
 import type { FieldCapabilities, FieldScope, FieldSelectOption, FieldType } from './field-types.js'
+import { parseLinkTemplate } from './link-template.js'
 
 /** Field key regex — stable id used for provisioning + reverse lookup, unique
  *  per entity (an owned `EntityDecl`'s own field list, or per `targetEntity`
@@ -60,6 +61,12 @@ interface BaseFieldDecl {
    * `defineField`'s validation.
    */
   readonly identity?: boolean
+  /**
+   * Deep-link template to the record's page in the external system, e.g.
+   * `https://{connection.identity}/admin/orders/{externalId}`. Only valid with
+   * `identity: true` — see plans/data-connectors/external-record-link-plan.md §2.
+   */
+  readonly link?: string
   /**
    * Flag PII. Carried into the catalog; no platform consumer yet — see
    * docs/app-fields-and-entities-guide.md §8 (the flag is inert until a
@@ -171,12 +178,29 @@ const NON_IDENTITY_FIELD_TYPES = new Set<FieldType>([
  * internal cross-module helper.
  */
 export function assertValidIdentityField(field: FieldDecl): void {
+  if (field.link !== undefined && !field.identity) {
+    throw new Error(
+      `defineField: "${field.key}" declares a link but not identity: true — a link template ` +
+        'resolves from the record identity, so it is only valid on an identity field'
+    )
+  }
   if (!field.identity) return
   if (NON_IDENTITY_FIELD_TYPES.has(field.type)) {
     throw new Error(
       `defineField: "${field.key}" cannot be identity: true with type "${field.type}" — ` +
         'identity fields must be a scalar single-value type (TEXT unless another scalar is needed)'
     )
+  }
+  if (field.link !== undefined) {
+    try {
+      parseLinkTemplate(field.link)
+    } catch (error) {
+      throw new Error(
+        `defineField: "${field.key}" has an invalid link — ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    }
   }
 }
 

@@ -141,7 +141,12 @@ export const PrimaryFieldCell = memo(function PrimaryFieldCell({
       }
       actions={actions}
       suffix={
-        <ConnectorSourceBadge sources={record?.sources} variant='icon' className='shrink-0' />
+        <ConnectorSourceBadge
+          sources={record?.sources}
+          recordId={recordId}
+          variant='icon'
+          className='shrink-0'
+        />
       }>
       {children}
     </PrimaryCell>

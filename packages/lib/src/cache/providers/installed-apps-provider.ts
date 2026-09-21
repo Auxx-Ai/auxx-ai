@@ -1,6 +1,6 @@
 // packages/lib/src/cache/providers/installed-apps-provider.ts
 
-import type { CatalogBlock, CatalogTool } from '@auxx/database'
+import type { CatalogBlock, CatalogField, CatalogPayload, CatalogTool } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getBuiltinAuxxInstalledRow } from '../../agents/builtin-installed-row'
@@ -60,6 +60,26 @@ export function projectWorkflowBlocks(
       ]
     }),
   }))
+}
+
+/**
+ * Flatten every `identity` field that declares a page-URL `link` — manifest
+ * fields and owned-entity fields alike — into the `(appFieldKey, link)` list
+ * `resolveExternalLink` reads. See
+ * plans/data-connectors/external-record-link-plan.md §4.
+ */
+function projectIdentityLinks(
+  catalog: CatalogPayload | null | undefined
+): Array<{ appFieldKey: string; link: string }> | undefined {
+  if (!catalog) return undefined
+  const declared: CatalogField[] = [
+    ...(catalog.fields ?? []),
+    ...(catalog.entities ?? []).flatMap((e) => e.fields ?? []),
+  ]
+  const links = declared.flatMap((f) =>
+    f.identity && f.link ? [{ appFieldKey: f.key, link: f.link }] : []
+  )
+  return links.length > 0 ? links : undefined
 }
 
 /**
@@ -268,6 +288,7 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
         actions,
         dataConnectors: inst.currentDeployment?.catalog?.dataConnectors ?? undefined,
         entities: inst.currentDeployment?.catalog?.entities ?? undefined,
+        identityLinks: projectIdentityLinks(inst.currentDeployment?.catalog),
         orgConnectionPresent: orgConnByAppId.get(inst.app.id)?.present ?? false,
         orgConnectionExpiresAt: orgConnByAppId.get(inst.app.id)?.expiresAt?.toISOString() ?? null,
       }

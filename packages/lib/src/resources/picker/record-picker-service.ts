@@ -20,6 +20,7 @@ import {
 } from 'drizzle-orm'
 import {
   getCachedEntityDefId,
+  getCachedIdentityLink,
   getCachedResource,
   getCachedResources,
   getOrgCache,
@@ -1178,21 +1179,39 @@ export class RecordPickerService {
     if (recordKeys.length === 0) return
 
     const identities = await getRecordIdentitiesForRecords(this.organizationId, recordKeys, this.db)
+    const linkableByKind = new Map<string, boolean>()
+    const isLinkable = async (source: string, appFieldKey: string | null): Promise<boolean> => {
+      const kind = `${source}\u0000${appFieldKey ?? ''}`
+      const cached = linkableByKind.get(kind)
+      if (cached !== undefined) return cached
+      const link = await getCachedIdentityLink(this.organizationId, source, appFieldKey)
+      linkableByKind.set(kind, link !== null)
+      return link !== null
+    }
+
     for (const [recordId, rows] of identities) {
       const item = items[recordId]
       if (!item) continue
-      const seen = new Set<string>()
+      const chipByKey = new Map<string, RecordSourceChip>()
       const sources: RecordSourceChip[] = []
       for (const row of rows) {
         if (!row.appInstallationId) continue
         const dedupeKey = `${row.appInstallationId}:${row.connectionId ?? ''}`
-        if (seen.has(dedupeKey)) continue
-        seen.add(dedupeKey)
-        sources.push({
+        const linkable = await isLinkable(row.source, row.appFieldKey)
+        const existing = chipByKey.get(dedupeKey)
+        // A linkable sibling upgrades the kept chip rather than adding a second one.
+        if (existing) {
+          if (linkable) existing.linkable = true
+          continue
+        }
+        const chip: RecordSourceChip = {
           source: row.source,
           appInstallationId: row.appInstallationId,
           connectionId: row.connectionId,
-        })
+          ...(linkable ? { linkable: true as const } : {}),
+        }
+        chipByKey.set(dedupeKey, chip)
+        sources.push(chip)
       }
       if (sources.length > 0) item.sources = sources
     }

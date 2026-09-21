@@ -2,7 +2,7 @@
 
 import type { RecordIdentityEntity } from '@auxx/database/types'
 import type { RecordId } from '@auxx/types/resource'
-import { getCachedCustomFields, getCachedInstalledApps } from '../cache'
+import { getCachedCustomFields, getCachedIdentityLink, getCachedInstalledApps } from '../cache'
 import { getRecordIdentitiesForRecords } from './batch'
 
 /** `RecordIdentity.source` used for the app-less chat-visitor link. */
@@ -31,6 +31,8 @@ export interface RecordIdentityView {
   fieldLabel: string | null
   /** The external value — numeric Shopify id, chat visitor id, … */
   externalId: string
+  /** The app declares a page-URL template for this identity kind — render an anchor. */
+  linkable: boolean
   updatedAt: string
 }
 
@@ -58,6 +60,20 @@ export async function decorateRecordIdentities(
     })
   )
 
+  // One cache lookup per distinct (source, appFieldKey), not per row.
+  const linkableByKind = new Map<string, boolean>()
+  await Promise.all(
+    [...new Set(rows.map((r) => `${r.source}\u0000${r.appFieldKey ?? ''}`))].map(async (kind) => {
+      const [source, appFieldKey] = kind.split('\u0000')
+      const link = await getCachedIdentityLink(
+        organizationId,
+        source as string,
+        appFieldKey || null
+      )
+      linkableByKind.set(kind, link !== null)
+    })
+  )
+
   return rows
     .map((row) => {
       const app = row.appInstallationId ? appByInstallation.get(row.appInstallationId) : undefined
@@ -71,6 +87,7 @@ export async function decorateRecordIdentities(
         appFieldKey: row.appFieldKey,
         fieldLabel: row.fieldId ? (fieldNameById.get(row.fieldId) ?? null) : null,
         externalId: row.externalId,
+        linkable: linkableByKind.get(`${row.source}\u0000${row.appFieldKey ?? ''}`) ?? false,
         updatedAt: row.updatedAt.toISOString(),
       }
     })

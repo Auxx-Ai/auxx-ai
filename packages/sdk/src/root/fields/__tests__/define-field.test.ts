@@ -111,6 +111,66 @@ describe('identity field validation', () => {
   })
 })
 
+describe('identity field link templates', () => {
+  const identityField = {
+    key: 'shopifyOrderId',
+    targetEntity: 'order',
+    scope: 'connection',
+    name: 'Shopify order ID',
+    type: 'TEXT',
+    identity: true,
+  } as const
+
+  it('accepts a valid link on an identity field', () => {
+    const field = defineField({
+      ...identityField,
+      link: 'https://{connection.identity}/admin/orders/{externalId}',
+    })
+    expect(field.link).toBe('https://{connection.identity}/admin/orders/{externalId}')
+  })
+
+  it('accepts a template that is a single {field.<key>} variable', () => {
+    expect(() => defineField({ ...identityField, link: '{field.url}' })).not.toThrow()
+  })
+
+  it('rejects a link on a non-identity field', () => {
+    expect(() =>
+      defineField({
+        key: 'storeDomain',
+        targetEntity: 'order',
+        scope: 'connection',
+        name: 'Store',
+        type: 'TEXT',
+        link: 'https://acme.test/{externalId}',
+      })
+    ).toThrow(/only valid on an identity field/i)
+  })
+
+  it('rejects an unknown variable', () => {
+    expect(() =>
+      defineField({ ...identityField, link: 'https://{shop}/admin/orders/{externalId}' })
+    ).toThrow(/Unsupported link variable \{shop\}/)
+  })
+
+  it('rejects a two-hop via', () => {
+    expect(() => defineField({ ...identityField, link: 'https://acme.test/{via.a.b.c}' })).toThrow(
+      /Unsupported link variable \{via\.a\.b\.c\}/
+    )
+  })
+
+  it('rejects a template that starts with neither https:// nor {field.', () => {
+    expect(() => defineField({ ...identityField, link: '/admin/orders/{externalId}' })).toThrow(
+      /must start with/i
+    )
+  })
+
+  it('validates links in defineFields too', () => {
+    expect(() =>
+      defineFields([{ ...identityField, link: 'ftp://acme.test/{externalId}' }])
+    ).toThrow(/must start with/i)
+  })
+})
+
 describe('key validation', () => {
   it('rejects an invalid key', () => {
     expect(() =>

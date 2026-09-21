@@ -191,6 +191,8 @@ describe('compileAndExtractCatalog', () => {
       scope: 'connection',
       name: 'Customer ID',
       capabilities: { hidden: true, updatable: false },
+      identity: true,
+      link: 'https://{connection.identity}/admin/customers/{externalId}',
     })
     expect(catalog.fields?.[1]).toMatchObject({
       key: 'tier',
@@ -202,5 +204,15 @@ describe('compileAndExtractCatalog', () => {
         { value: 'silver', label: 'Silver' },
       ],
     })
+    expect(catalog.fields?.[1]?.link).toBeUndefined()
+
+    // `link` survives on an owned entity's identity field too.
+    expect(catalog.entities).toHaveLength(1)
+    expect(catalog.entities?.[0]?.fields?.[0]).toMatchObject({
+      key: 'githubId',
+      identity: true,
+      link: '{field.url}',
+    })
+    expect(catalog.entities?.[0]?.fields?.[1]?.link).toBeUndefined()
   })
 })
