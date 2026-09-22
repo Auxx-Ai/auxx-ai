@@ -33,11 +33,15 @@ import { defineResourceFields } from '../system-attributes'
  * has no revenue to reverse, because none was ever posted. A `returned` line
  * does NOT move stock yet (§9); the field is kept so the inventory leg can be
  * added without a data migration.
+ *
+ * `shipping` is a line with no goods that gives back shipping charged (Shopify's
+ * refund shipping lines): its entry reverses `revenue_shipping`, not returns (91 D8).
  */
 export const CREDIT_MEMO_LINE_DISPOSITION_OPTIONS = [
   { label: 'Returned', value: 'returned', color: 'green' },
   { label: 'Not returned', value: 'not_returned', color: 'amber' },
   { label: 'Cancelled', value: 'cancelled', color: 'gray' },
+  { label: 'Shipping', value: 'shipping', color: 'blue' },
 ] as const
 
 /**

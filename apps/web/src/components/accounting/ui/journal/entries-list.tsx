@@ -26,9 +26,9 @@ interface EntriesListProps {
    */
   periodKey?: string
   currencyCode: string
-  /** Row click on a posted/reversed entry - opens the posting frame via `?posting=`. */
+  /** Row click on a posting no journal entry owns - opens the posting frame via `?posting=`. */
   onSelectPosting: (id: string) => void
-  /** Row click on a draft - opens the JE drawer via `?je=<id>`. */
+  /** Row click on a journal entry, posted or not - opens the JE drawer via `?je=<id>`. */
   onSelectJournalEntry: (id: string) => void
 }
 
@@ -36,16 +36,12 @@ interface EntriesListProps {
 const STATUS_DOT: Record<EntryStatus, string> = {
   posted: 'bg-green-500',
   reversed: 'bg-primary-400',
-  pending: 'bg-amber-500',
-  failed: 'bg-destructive',
   draft: 'bg-amber-500',
 }
 
 const STATUS_LABEL: Record<EntryStatus, string> = {
   posted: 'Posted',
   reversed: 'Reversed',
-  pending: 'In flight',
-  failed: 'Failed',
   draft: 'Draft',
 }
 
@@ -75,24 +71,11 @@ const VISIBLE_LIMIT = 12
 const FILTERS = [
   { value: 'all', label: 'All', tooltip: undefined },
   { value: 'posted', label: 'Posted', tooltip: undefined },
-  { value: 'draft', label: 'Drafts', tooltip: 'Raised but not posted' },
+  { value: 'draft', label: 'Drafts', tooltip: 'Journal entries saved but not posted' },
   { value: 'reversed', label: 'Reversed', tooltip: undefined },
-  { value: 'attention', label: 'Attention', tooltip: 'Failed, or still in flight' },
 ] as const
 
 type EntryFilter = (typeof FILTERS)[number]['value']
-
-/**
- * 🛑 `attention` is failed AND in-flight, not just failed. A posting stuck at
- * `pending` never reached the provider either; splitting them into two tabs of
- * one row each would hide the second behind a tab nobody clicks.
- */
-const FILTER_MATCHES: Record<Exclude<EntryFilter, 'all'>, (status: EntryStatus) => boolean> = {
-  posted: (status) => status === 'posted',
-  draft: (status) => status === 'draft',
-  reversed: (status) => status === 'reversed',
-  attention: (status) => status === 'failed' || status === 'pending',
-}
 
 /**
  * The period's entries, narrowable.
@@ -124,7 +107,7 @@ export function EntriesList({
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return rows.filter((row) => {
-      if (filter !== 'all' && !FILTER_MATCHES[filter](row.status)) return false
+      if (filter !== 'all' && row.status !== filter) return false
       if (!needle) return true
       // The doc number is what somebody pastes in from a provider or a Slack
       // thread, so it is searched alongside the memo.
@@ -137,10 +120,7 @@ export function EntriesList({
 
   const isNarrowed = filter !== 'all' || search.trim().length > 0
 
-  // 🛑 Drafts only, and only a `ledger.post` holder. A posting row's `id` is a
-  // `GlPosting` id, not a journal-entry id, and a posted entry is corrected by
-  // REVERSING it - offering Discard on one would be a second path around ground
-  // rule 6, which is exactly what this brief must not open.
+  // Unposted entries only (a posted one is voided from its drawer), and a write.
   const canDiscard = can('ledger.post')
 
   return (
@@ -150,8 +130,7 @@ export function EntriesList({
        the rows, the refusal card and the empty states with it, leaving their
        borders flush against the section's. Each one puts the 12px back. */
     <div className='flex flex-col gap-3'>
-      {/* 🛑 A refusal is a card, never a toast (ground rule 9). It names the
-          entry and points at reversal, and it stays until the next attempt. */}
+      {/* A refusal is a card, never a toast (ground rule 9). */}
       {discard.refusal && (
         <div className={INSET}>
           <EntryBlockers blockers={[{ status: 'discard_refused', error: discard.refusal }]} />
@@ -260,11 +239,10 @@ export function EntriesList({
                     </span>
                   }
                   actions={
-                    row.kind === 'draft' && canDiscard ? (
+                    row.kind === 'journal_entry' && row.status === 'draft' && canDiscard ? (
                       <TreeRowButton
                         variant='destructive'
-                        // An icon-only button has no accessible name of its own
-                        // - the tooltip is `aria-describedby`, not a label.
+                        // The tooltip is `aria-describedby`, not a label.
                         aria-label={`Discard this draft${row.number ? ` (${row.number})` : ''}`}
                         tooltipText='Discard this draft'
                         disabled={discard.isDiscarding}

@@ -2,22 +2,29 @@
 
 'use client'
 
-// Accounting > Ledger > Outbox > the BLOCKED tab (75-D1, 88 §4.5). One row per
-// `MoneyTransaction` the ledger refused and one per shipment its poster
-// refused: the money moved or the goods left, nothing was written, and the
-// row carries the reason.
-//
-// 🛑 The refusal is rendered in the server's own words, never paraphrased -
-// on the row's help icon, and in full with the remedy card in the movement
-// drawer (`movement-frame.tsx`) or the shipment drawer (`shipment-frame.tsx`)
-// a row opens.
+// Accounting > Ledger > Outbox > the BLOCKED tab (91 §4.6): parked accounting work,
+// one row per (reasonCode, role, railId, glAccountId), expandable to its items.
 
+import {
+  type WorkItemSourceKind,
+  workItemSentence,
+  workItemSeverity,
+  workItemStatus,
+} from '@auxx/lib/accounting/work-items/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { CircleAlert, RefreshCw, Truck } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleSlash,
+  Clock,
+  Map as MapIcon,
+  RefreshCw,
+  TriangleAlert,
+} from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
@@ -25,20 +32,45 @@ import { useBulkMode, useListSelection, useSelectionIds } from '~/components/lis
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
-import { BLOCKED_CATEGORY_LABEL } from '../type-labels'
+import { MOVEMENT_PURPOSE_LABEL, WORK_SOURCE_LABEL } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
-/** The server's rows, never rebuilt here - `listBlockedWork` owns the shape. */
-type BlockedRow = RouterOutputs['ledger']['listBlocked']['items'][number]
-type BlockedMovementRow = Extract<BlockedRow, { kind: 'movement' }>
-type BlockedShipmentRow = Extract<BlockedRow, { kind: 'shipment' }>
+type BlockedGroup = RouterOutputs['ledger']['listBlocked']['items'][number]
+type BlockedItem = RouterOutputs['ledger']['listBlockedItems']['items'][number]
+type GroupKey = Pick<BlockedGroup, 'reasonCode' | 'role' | 'railId' | 'glAccountId'>
 
-/** What the ingest acceptance behind the movement is waiting for, when there is one (79 §4.4). */
-function acceptanceWait(row: BlockedMovementRow): string | null {
-  if (!row.acceptanceWaitingOn) return null
-  const wait = row.acceptanceWaitingOn === 'change' ? 'Waiting on a change' : 'Waiting to try again'
-  return row.acceptanceAttempts ? `${wait} - ${row.acceptanceAttempts} attempts` : wait
+const groupId = (group: GroupKey) =>
+  [group.reasonCode, group.role ?? '', group.railId ?? '', group.glAccountId ?? ''].join('|')
+
+const toGroupKey = ({ reasonCode, role, railId, glAccountId }: GroupKey): GroupKey => ({
+  reasonCode,
+  role,
+  railId,
+  glAccountId,
+})
+
+function sourceLabel(kind: string): string {
+  return WORK_SOURCE_LABEL[kind as WorkItemSourceKind] ?? kind
+}
+
+/** Severity decides the icon: an error waits for a person, info for a wake. */
+function SeverityIcon({ reasonCode }: { reasonCode: string }) {
+  if (workItemStatus(reasonCode) === 'skipped')
+    return <CircleSlash className='size-4 text-muted-foreground' />
+  const severity = workItemSeverity(reasonCode)
+  if (severity === 'error') return <CircleAlert className='size-4 text-destructive' />
+  if (severity === 'warning') return <TriangleAlert className='size-4 text-amber-500' />
+  return <Clock className='size-4 text-muted-foreground' />
+}
+
+/** Where the fix for a group is made, when it is a mapping. */
+function mapHref(group: GroupKey): string | null {
+  if (group.reasonCode === 'ROLE_UNMAPPED' && group.role)
+    return `/app/accounting/settings/accounts?role=${encodeURIComponent(group.role)}`
+  if (group.reasonCode === 'ACCOUNT_INVALID' && group.glAccountId)
+    return `/app/accounting/settings/accounts?s=chart&account=${encodeURIComponent(group.glAccountId)}`
+  return null
 }
 
 interface BlockedPanelProps {
@@ -57,7 +89,7 @@ interface BlockedPanelProps {
   onSelectShipment: (fulfillmentId: string) => void
 }
 
-/** Every parked movement and shipment, newest refusal first, paged, with Retry per row and over a selection. */
+/** Every parked group, newest first, with Map and Retry all per row and over a selection. */
 export function BlockedPanel({
   filters,
   emptyAction,
@@ -70,188 +102,141 @@ export function BlockedPanel({
   onSelectShipment,
 }: BlockedPanelProps) {
   const utils = api.useUtils()
-  const list = api.ledger.listBlocked.useInfiniteQuery(
-    {
-      search: filters.search || undefined,
-      from: filters.from || undefined,
-      to: filters.to || undefined,
-      categories: outboxCategoryInput(filters),
-    },
-    { getNextPageParam: (page) => page.nextCursor }
+  const router = useRouter()
+  const query = {
+    search: filters.search || undefined,
+    from: filters.from || undefined,
+    to: filters.to || undefined,
+    categories: outboxCategoryInput(filters),
+  }
+  const list = api.ledger.listBlocked.useInfiniteQuery(query, {
+    getNextPageParam: (page) => page.nextCursor,
+  })
+  const groups = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
+  const groupsById = useMemo(
+    () => new Map(groups.map((group) => [groupId(group), group])),
+    [groups]
   )
-  const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
-  const rowsById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows])
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
 
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
   const setItemIds = useListSelection((state) => state.setItemIds)
   const exitSelection = useListSelection((state) => state.exit)
   useEffect(() => {
-    setItemIds(rows.map((row) => row.id))
-  }, [rows, setItemIds])
-
-  const [retryingMany, setRetryingMany] = useState(false)
+    setItemIds(groups.map(groupId))
+  }, [groups, setItemIds])
 
   function refresh() {
     void utils.ledger.listBlocked.invalidate()
-    void utils.ledger.listDrafts.invalidate()
-    void utils.ledger.listPostings.invalidate()
+    void utils.ledger.listBlockedItems.invalidate()
     void utils.ledger.outboxCounts.invalidate()
   }
 
-  const retryMovement = api.ledger.retryBlockedMovement.useMutation()
-  const retryShipment = api.ledger.retryBlockedFulfillment.useMutation()
-  const retryPending = retryMovement.isPending || retryShipment.isPending
+  // Retry all makes the rows due now and returns; the recovery job posts them (91 §4.6).
+  const retry = api.ledger.retryBlockedGroup.useMutation({
+    onSuccess: refresh,
+    onError: (error) => toastError({ title: 'Could not retry', description: error.message }),
+  })
 
-  /** One retry, by kind; both posters answer in the same vocabulary. */
-  async function retry(row: BlockedRow) {
-    return row.kind === 'movement'
-      ? retryMovement.mutateAsync({ moneyTransactionId: row.id })
-      : retryShipment.mutateAsync({ fulfillmentId: row.id })
-  }
-
-  async function retryOne(row: BlockedRow) {
-    try {
-      const result = await retry(row)
-      if (result.status !== 'accepted')
-        toastError({
-          title: 'Still not posted',
-          description: 'reason' in result ? result.reason : 'It is waiting for approval.',
-        })
-    } catch (error) {
-      toastError({
-        title: 'Could not retry',
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-    refresh()
-  }
-
-  /** Sequential - a retry is a post, and forty at once would race the same period claim. */
   async function retryMany(ids: string[]) {
-    setRetryingMany(true)
-    let stillBlocked = 0
-    for (const id of ids) {
-      const row = rowsById.get(id)
-      if (!row) continue
-      try {
-        const result = await retry(row)
-        if (result.status !== 'accepted') stillBlocked++
-      } catch {
-        stillBlocked++
+    try {
+      for (const id of ids) {
+        const group = groupsById.get(id)
+        if (group) await retry.mutateAsync({ group: toGroupKey(group) })
       }
+    } catch {
+      // `onError` already said so.
     }
-    setRetryingMany(false)
-    if (stillBlocked > 0)
-      toastError({
-        title: 'Some are still not posted',
-        description: `${stillBlocked} of ${ids.length} were refused again; each row still gives its reason.`,
-      })
     exitSelection()
-    refresh()
   }
 
-  function renderMovement(row: BlockedMovementRow) {
-    const busy = retryMovement.isPending && retryMovement.variables?.moneyTransactionId === row.id
-    const date = row.occurredOn ?? row.occurredAt?.toISOString() ?? null
-    const partyRecordId =
-      row.partyDefinitionId && row.partyInstanceId
-        ? toRecordId(row.partyDefinitionId, row.partyInstanceId)
-        : null
-    const wait = acceptanceWait(row)
-    return (
-      <OutboxRow
-        id={row.id}
-        icon={<CircleAlert className='size-4 text-destructive' />}
-        date={date ? formatAccountingDate(date, bookTimeZone) : ''}
-        typeLabel={BLOCKED_CATEGORY_LABEL[row.purpose]}
-        // The refusal, not the purpose: 135 of one dev org's 228 rows
-        // share a purpose, and the reason is what decides what to do
-        // next. `description` keeps it untruncated on the help icon.
-        title={row.reason}
-        description={row.reason}
-        secondary={
-          partyRecordId || wait ? (
-            <span className='flex items-center gap-2'>
-              {partyRecordId && <RecordBadge recordId={partyRecordId} size='sm' />}
-              {wait && <span className='text-muted-foreground text-xs'>{wait}</span>}
-            </span>
-          ) : undefined
-        }
-        amount={formatMinor(row.amountMinor, row.currency)}
-        actions={
-          <TreeRowButton
-            persistent
-            tooltipText='Post this movement again'
-            disabled={busy || retryingMany}
-            onClick={() => void retryOne(row)}>
-            <RefreshCw className={busy ? 'animate-spin' : undefined} />
-          </TreeRowButton>
-        }
-        onOpen={() => onSelectMovement(row.id)}
-        active={activeMovementId === row.id}
-        selectLabel={`Select ${BLOCKED_CATEGORY_LABEL[row.purpose]}${row.partyName ? ` - ${row.partyName}` : ''}`}
-      />
-    )
+  function toggle(id: string) {
+    setOpen((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  function renderShipment(row: BlockedShipmentRow) {
-    const busy = retryShipment.isPending && retryShipment.variables?.fulfillmentId === row.id
-    const recordId = toRecordId(row.entityDefinitionId, row.id)
-    const orderRecordId =
-      row.orderDefinitionId && row.orderId ? toRecordId(row.orderDefinitionId, row.orderId) : null
+  function renderGroup(group: BlockedGroup) {
+    const id = groupId(group)
+    const busy =
+      retry.isPending && !!retry.variables && 'group' in retry.variables
+        ? groupId(retry.variables.group) === id
+        : false
+    const sentence = workItemSentence(group.reasonCode, group)
+    const where = [group.railName, group.glAccountName].filter(Boolean).join(', ')
+    const noun =
+      group.sourceKinds.length === 1 ? sourceLabel(group.sourceKinds[0] ?? '') : 'Records'
+    const href = mapHref(group)
     return (
       <OutboxRow
-        id={row.id}
-        icon={<Truck className='size-4 text-destructive' />}
-        date={row.shippedAt ? formatAccountingDate(row.shippedAt, bookTimeZone) : ''}
-        typeLabel={BLOCKED_CATEGORY_LABEL.shipment}
-        title={row.reason}
-        description={row.reason}
-        secondary={
-          <span className='flex items-center gap-2'>
-            <RecordBadge recordId={recordId} size='sm' />
-            {orderRecordId && <RecordBadge recordId={orderRecordId} size='sm' />}
-          </span>
-        }
-        amount={formatMinor(row.amountMinor, row.currency)}
+        id={id}
+        icon={<SeverityIcon reasonCode={group.reasonCode} />}
+        date={formatAccountingDate(group.latestAt.toISOString(), bookTimeZone)}
+        typeLabel={noun}
+        title={`${group.count} waiting${where ? ` (${where})` : ''}: ${sentence}`}
+        description={sentence}
+        amount=''
+        expandable
+        isOpen={open.has(id)}
+        onToggleOpen={() => toggle(id)}
         actions={
-          <TreeRowButton
-            persistent
-            tooltipText='Post this shipment again'
-            disabled={busy || retryingMany}
-            onClick={() => void retryOne(row)}>
-            <RefreshCw className={busy ? 'animate-spin' : undefined} />
-          </TreeRowButton>
+          <>
+            {href && (
+              <TreeRowButton persistent tooltipText='Map it' onClick={() => router.push(href)}>
+                <MapIcon />
+              </TreeRowButton>
+            )}
+            <TreeRowButton
+              persistent
+              tooltipText='Retry all'
+              disabled={busy}
+              onClick={() => retry.mutate({ group: toGroupKey(group) })}>
+              <RefreshCw className={busy ? 'animate-spin' : undefined} />
+            </TreeRowButton>
+          </>
         }
-        onOpen={() => onSelectShipment(row.id)}
-        active={activeShipmentId === row.id}
-        selectLabel={`Select shipment${row.name ? ` - ${row.name}` : ''}`}
-      />
+        selectLabel={`Select ${noun} - ${sentence}`}>
+        {open.has(id) && (
+          <BlockedGroupItems
+            group={toGroupKey(group)}
+            query={query}
+            bookTimeZone={bookTimeZone}
+            activeMovementId={activeMovementId}
+            onSelectMovement={onSelectMovement}
+            activeShipmentId={activeShipmentId}
+            onSelectShipment={onSelectShipment}
+            onRetry={(item) =>
+              retry.mutate({ source: { sourceKind: item.sourceKind, sourceId: item.sourceId } })
+            }
+          />
+        )}
+      </OutboxRow>
     )
   }
 
   return (
-    <div className={`flex flex-1 flex-col gap-3 p-3 ${rows.length > 0 ? 'pb-16' : ''}`}>
-      {!list.isPending && rows.length === 0 ? (
+    <div className={`flex flex-1 flex-col gap-3 p-3 ${groups.length > 0 ? 'pb-16' : ''}`}>
+      {!list.isPending && groups.length === 0 ? (
         <EmptyState
           className='py-8'
           icon={CircleAlert}
-          title={emptyTitle ?? 'Nothing has been refused'}
+          title={emptyTitle ?? 'Nothing is waiting'}
           description={emptyDescription}
           button={emptyAction}
         />
       ) : (
         <>
           <TreeRowList
-            items={rows}
+            items={groups}
             loading={list.isPending}
             skeletonCount={4}
             className='gap-px'
-            getKey={(row: BlockedRow) => `${row.kind}:${row.id}`}
-            renderRow={(row: BlockedRow) =>
-              row.kind === 'movement' ? renderMovement(row) : renderShipment(row)
-            }
+            getKey={groupId}
+            renderRow={renderGroup}
           />
           <InfiniteListTail
             hasNextPage={list.hasNextPage}
@@ -264,7 +249,7 @@ export function BlockedPanel({
 
       <ActionBar
         open={selecting}
-        onOpenChange={(open) => !open && exitSelection()}
+        onOpenChange={(next) => !next && exitSelection()}
         duration={Number.POSITIVE_INFINITY}
         position='bottom-center'
         selectedCount={selectedIds.length}
@@ -273,13 +258,110 @@ export function BlockedPanel({
         actions={[
           {
             id: 'retry',
-            label: 'Post again',
+            label: 'Retry all',
             icon: RefreshCw,
-            disabled: retryingMany || retryPending,
+            disabled: retry.isPending,
             onClick: () => void retryMany(selectedIds),
           },
         ]}
       />
     </div>
+  )
+}
+
+interface BlockedGroupItemsProps {
+  group: GroupKey
+  query: {
+    search?: string
+    from?: string
+    to?: string
+    categories?: ReturnType<typeof outboxCategoryInput>
+  }
+  bookTimeZone: string
+  activeMovementId: string | null
+  onSelectMovement: (moneyTransactionId: string) => void
+  activeShipmentId: string | null
+  onSelectShipment: (fulfillmentId: string) => void
+  onRetry: (item: BlockedItem) => void
+}
+
+/** One group's items, paged; a movement or a shipment opens its drawer. */
+function BlockedGroupItems({
+  group,
+  query,
+  bookTimeZone,
+  activeMovementId,
+  onSelectMovement,
+  activeShipmentId,
+  onSelectShipment,
+  onRetry,
+}: BlockedGroupItemsProps) {
+  const list = api.ledger.listBlockedItems.useInfiniteQuery(
+    { ...query, group },
+    { getNextPageParam: (page) => page.nextCursor }
+  )
+  const items = list.data?.pages.flatMap((page) => page.items) ?? []
+
+  return (
+    <>
+      {items.map((item) => {
+        const movementId = item.moneyTransactionId
+        const onOpen =
+          item.sourceKind === 'fulfillment'
+            ? () => onSelectShipment(item.sourceId)
+            : movementId
+              ? () => onSelectMovement(movementId)
+              : undefined
+        const active =
+          item.sourceKind === 'fulfillment'
+            ? activeShipmentId === item.sourceId
+            : !!movementId && activeMovementId === movementId
+        const typeLabel = item.purpose
+          ? (MOVEMENT_PURPOSE_LABEL[item.purpose as keyof typeof MOVEMENT_PURPOSE_LABEL] ??
+            sourceLabel(item.sourceKind))
+          : sourceLabel(item.sourceKind)
+        return (
+          <OutboxRow
+            key={item.id}
+            id={item.id}
+            depth={1}
+            selectable={false}
+            date={formatAccountingDate(item.updatedAt.toISOString(), bookTimeZone)}
+            typeLabel={typeLabel}
+            title={item.label ?? item.externalRef ?? item.sourceId}
+            description={workItemSentence(item.reasonCode, item)}
+            secondary={
+              item.recordDefinitionId ? (
+                <RecordBadge
+                  recordId={toRecordId(item.recordDefinitionId, item.sourceId)}
+                  size='sm'
+                />
+              ) : undefined
+            }
+            amount={
+              item.amountMinor !== null && item.currency
+                ? formatMinor(item.amountMinor, item.currency)
+                : ''
+            }
+            actions={
+              <TreeRowButton persistent tooltipText='Retry' onClick={() => onRetry(item)}>
+                <RefreshCw />
+              </TreeRowButton>
+            }
+            onOpen={onOpen}
+            active={active}
+            selectLabel={item.label ?? item.sourceId}
+          />
+        )
+      })}
+      {list.hasNextPage && (
+        <InfiniteListTail
+          hasNextPage={list.hasNextPage}
+          isFetchingNextPage={list.isFetchingNextPage}
+          fetchNextPage={list.fetchNextPage}
+          loadingLabel='Loading more...'
+        />
+      )}
+    </>
   )
 }

@@ -46,14 +46,6 @@ export const MoneyTransaction = pgTable(
      * link for a channel movement. Exclusive with `cashAccountInstanceId`.
      */
     paymentGatewayId: text(),
-    /**
-     * Why the ledger last refused this movement, and when. Written by
-     * `postMovementEntry` on every `blocked` result, cleared on `accepted`; the
-     * sweep backs off on it rather than retrying the same refusal every run.
-     * The mirror of `payout_blocked_reason` on the payout record.
-     */
-    postingBlockedReason: text(),
-    postingBlockedAt: timestamp({ withTimezone: true }),
     /** How the money moved — descriptive only; nullable because channel money has none. */
     method: text().$type<'cash' | 'check' | 'card' | 'bank' | 'other'>(),
     recordedByCommandId: text().notNull(),

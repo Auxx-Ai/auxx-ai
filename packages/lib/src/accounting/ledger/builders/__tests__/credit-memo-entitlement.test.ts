@@ -46,28 +46,6 @@ describe('buildCreditMemoEntitlementEntry', () => {
     ])
   })
 
-  it('keeps a pre-shipment deposit component separate from cash refund evidence', () => {
-    const built = buildCreditMemoEntitlementEntry({
-      ...base,
-      total: 1000,
-      creditControlGlAccountId: 'gl_deposit',
-      components: [
-        {
-          componentKey: 'customer_deposit',
-          accountRole: 'customer_deposits',
-          direction: 'debit',
-          amount: 1000,
-        },
-      ],
-    })
-    expect(built.entry.lines).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ glAccountId: 'gl_deposit', direction: 'credit', amount: 1000 }),
-      ])
-    )
-    expect(built.entry.lines.some((line) => line.memo?.includes('refunded'))).toBe(false)
-  })
-
   it('refuses a component total that does not equal the memo total', () => {
     expect(() =>
       buildCreditMemoEntitlementEntry({

@@ -24,19 +24,18 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  // The sweep clamps to 500 per call, so loop. Stop when a pass clears nothing, not
-  // only on an empty scan: a receipt applied to no document throws in `resolvePoster`
-  // before `markPostingBlock`, so its retry window never advances and it rescans forever.
-  const total = { scanned: 0, accepted: 0, drafted: 0, blocked: 0, skipped: 0 }
+  // The sweep clamps to 500 per call, so loop until a pass clears nothing; a refusal
+  // reschedules its own work item, so it is not rescanned in the next pass.
+  const total: Record<string, number> = {}
   for (;;) {
     const counts = await sweepMovementAccounting(database, {
       organizationId: ORG_ARG,
       limit: 500,
       timeBudgetMs: 5 * 60 * 1000,
     })
-    for (const key of Object.keys(total) as (keyof typeof total)[]) total[key] += counts[key]
+    for (const [key, value] of Object.entries(counts)) total[key] = (total[key] ?? 0) + value
     console.log(`org ${ORG_ARG}: pass`, counts)
-    if (counts.scanned === 0 || counts.accepted + counts.drafted === 0) break
+    if (counts.scanned === 0 || counts.accepted === 0) break
   }
   console.log(`org ${ORG_ARG}: total`, total)
   process.exit(0)

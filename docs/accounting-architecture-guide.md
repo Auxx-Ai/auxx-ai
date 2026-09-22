@@ -2,7 +2,7 @@
 
 # Accounting Architecture Guide
 
-**Last Updated:** 2026-09-19
+**Last Updated:** 2026-09-22
 
 **Scope:** Everything under `packages/lib/src/accounting/` — the general ledger and the pipeline
 that writes it, account roles and the chart, periods and the close, the statements, the money
@@ -103,8 +103,8 @@ Six properties hold the whole thing up:
 4. **One posting lane.** Every builder feeds `postEntry`. There is no second acceptance boundary
    and no compensating-entry undo.
 5. **The ledger's question and the export's question are different columns on different tables.**
-   `GlPosting.status` is `draft | posted | reversed`. What a provider did lives on
-   `ExportBatch.state`.
+   `GlPosting.status` is `posted | reversed` — the ledger has no drafts (§5.5). What a provider
+   did lives on `ExportBatch.state`.
 6. **Provider-agnostic above the seam.** Nothing outside `accounting/providers/` imports a
    specific accounting system. One display-label map in `accounting/mirror/client.ts` spells the
    word "QuickBooks"; there is no import.
@@ -133,6 +133,7 @@ packages/lib/src/
                  payouts, checkout, stripe-connect, and the two evidence
                  reconcilers (customer-money/order-evidence-reconciler.ts,
                  payouts/payout-reconciler.ts)
+    work-items/  AccountingWorkItem: the parked-work codes, writes, wakes, reads, sweep (§8.4c)
     banking/     feed/ import/ review/ rules/
     purchasing/  POs, the three-way match, bills, vendor credits, landed cost,
                  both intake lanes
@@ -236,7 +237,8 @@ relief path has no such edge — `accounting/sales/orders/fulfill.ts` calls *int
 | **Claim** | The one live `subject` row on `GlPostingSource` for `(sourceKind, sourceId, occurrence)` |
 | **Occurrence** | Which pass over one source this is: `'original'`, `'reversal'`, `'inventory'`, `write_off:<n>`, an application id |
 | **The built envelope** | `GlPosting.built` (jsonb): the entry verbatim as it was posted, with its resolved lines, its reasons and its sources. **Every symbol that reads it is still named `*Draft*`** |
-| **Draft** | A real `GlPosting` with `status = 'draft'`: lines, a `built` envelope, no doc number, **no subject row and therefore no claim**. Statements do not read it |
+| **Draft** | **Not a ledger state** (91 D5). The word survives on documents — a `journal_entry`, bill or credit memo with no posting yet — and in the `built` envelope's `*Draft*` symbol names (§5.5) |
+| **Work item** | One `AccountingWorkItem` row: a source a poster refused or skipped, named by a reason code (§8.4c) |
 | **Avenue** | The export lane a posting type belongs to — `fulfillment`, `receipt`, `payout`, `journal`, … or `null` for the three that never leave |
 | **Batch** | One `ExportBatch`: one provider object, its frozen payload, its state, and the detail postings it rolls up |
 | **The mirror** | `ProviderLedgerEntry` / `ProviderLedgerLine` — a raw copy of the provider's own ledger, verbatim, in its own tables |
@@ -254,8 +256,8 @@ All schema under `packages/database/src/db/schema/`.
 | --- | --- |
 | Identity | `id`, `organizationId`, `postingType`, `avenue`, `periodKey`, `revision` |
 | Dates | `txnDate` (a Postgres `date`, already in the org's book timezone), `postedAt` |
-| State | `status` (`draft` \| `posted` \| `reversed`), `docNumber` (null while draft), `reversesId` |
-| Grouping | `storeId` (`FinancialSourceAccount`, `set null`), `railId` (a `payment_gateway` record id, so no FK) |
+| State | `status` (`posted` \| `reversed`), `docNumber`, `reversesId` |
+| Grouping | `storeId` (`FinancialSourceAccount`, `set null`), `railId` (a `payment_gateway` record id, so no FK), `payoutId` (the provider's payout id, text, indexed, no FK — drizzle `0391`; null until brief 94 stamps it, §13.3) |
 | Money | `currency`, `totalMinor` (`bigint({ mode: 'number' })`) |
 | Provenance | `built` (jsonb) |
 
@@ -267,16 +269,17 @@ claim (decision `G6`). The retired `gl_posting` / `gl_posting_line` entity defin
 deleted in entity migration 114; do not recreate them, and `gl_posting` is deliberately not an
 `EntityRefKind`.
 
-🛑 **`status` is `draft | posted | reversed`, and nothing else.** `pending` and `failed` were
+🛑 **`status` is `posted | reversed`, and nothing else.** `pending` and `failed` were
 never ledger states — they described a push, wearing this column's name, and a provider refusal
-that moved this field took a real, balanced entry out of every report. What the export did lives
-on `ExportBatch`. `reversed` is terminal and belongs to the **original** of a reversal pair; the
-reversal itself is an ordinary `posted` entry (decision `G4`).
+that moved this field took a real, balanced entry out of every report. `draft` went with brief
+91 D5 (drizzle `0392`, §5.5). What the export did lives on `ExportBatch`. `reversed` is terminal
+and belongs to the **original** of a reversal pair; the reversal itself is an ordinary `posted`
+entry (decision `G4`).
 
 Four CHECKs are worth knowing because they decide the *shape of an insert*, not just its
 validity: `GlPosting_reversal_check` (`revision = 0 AND reversesId IS NULL`, or `revision > 0 AND
 reversesId IS NOT NULL`) makes insert-then-link impossible, and `GlPosting_posted_check`
-(`status <> 'posted' OR postedAt IS NOT NULL`) is why `postedAt` rides in the same INSERT. Plus
+(`postedAt IS NOT NULL` — every row is posted or reversed) is why `postedAt` rides in the same INSERT. Plus
 `totalMinor >= 0` and `revision >= 0`. `GlPosting_org_docNumber_key` is a full unique index and
 is **not** swallowed by the claim's `ON CONFLICT` (§5.4).
 
@@ -337,10 +340,12 @@ row, `(gl_posting, <original id>, occurrence 'reversal')`.
 `credit_memo_gl_posting`, `order_payment_gl_posting` — each with a tombstone comment in its
 registry file. A record's ledger card is one query through `listPostingsForSource`.
 
-✅ **One survivor, deliberately.** `journal_entry.glPostingId` is a TEXT pointer (not a
-RELATIONSHIP — `GlPosting` is a table with no `EntityDefinition`) set the moment the draft is
-raised. 🛑 **That record is a POINTER, not a store:** there is no `journal_entry_lines` and no
-`journal_entry_status`; both live on the posting.
+✅ **One survivor, deliberately.** `journal_entry_gl_posting_id` is a TEXT pointer (not a
+RELATIONSHIP — `GlPosting` is a table with no `EntityDefinition`) stamped when the entry is
+**posted**. Since 91 D5 the record is a document like a bill: its lines are `journal_entry_line`
+child records (data migration 187: `gl_account` id pointer, side, amount, memo, optional
+counterparty, sort order; `journal_entry.lines` is a cascading has-many), and its status is
+derived — `draft` until the pointer is set, then that posting's status (§5.5).
 
 ### 4.4 `GlRoleAssignment` — this org's role map
 
@@ -383,13 +388,17 @@ key needs. Eight production readers wrote their own `select` before it existed.
 
 ### 5.1 Posting types
 
-Declared in `ledger/types.ts` (`POSTING_TYPES`, 20 values) and mirrored by the `GlPostingType`
+Declared in `ledger/types.ts` (`POSTING_TYPES`, 21 values) and mirrored by the `GlPostingType`
 Postgres enum. **Two copies on purpose** — `types.ts` is client-safe and `@auxx/database` is not
 — and there must never be a third. `__tests__/types.test.ts` pins them to each other.
 
-| Enabled (17, in `ENABLED_POSTING_TYPES` order) | Not enabled |
+| Enabled (18, in `ENABLED_POSTING_TYPES` order) | Not enabled |
 | --- | --- |
-| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `deposit_application`, `credit_memo`, `vendor_credit`, `recurring_journal`, `vendor_bill`, `landed_cost_clear` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
+| `inventory_movement`, `manual_journal`, `opening_balance`, `bank_deposit`, `fulfillment`, `payment`, `vendor_payment`, `refund`, `vendor_refund`, `payout`, `write_off`, `bank_transaction`, `invoice_issued`, `credit_memo`, `vendor_credit`, `recurring_journal`, `vendor_bill`, `landed_cost_clear` | `provider_sync`, `month_end_deferral`, `month_end_reversal` |
+
+`deposit_application` is gone (91 §4.3; the enum value was dropped in drizzle `0392`): applying
+held money to an invoice posts nothing, because the receipt already credited A/R (§8.3). The two
+`month_end_*` types are still declared and still have no writer.
 
 🛑 **`vendor_bill` is the ONE type for a supplier invoice, with or without a purchase order.**
 `expense_bill` was a second type for the second kind — same record, same lines, same A/P line,
@@ -407,6 +416,23 @@ Save and Void. A posted bill is locked by a field pre-hook until somebody presse
 amendment itself is the generic lane, §5.10. Void refuses unless the
 bill is unpaid, reverses every live `vendor_bill` posting, and returns the order lines to
 billable.
+
+**The shipment entry is a function of its own stamp** (91 D2, D8; `ledger/builders/fulfillment.ts`):
+
+```
+Dr accounts_receivable      the box's stamped total
+Dr discounts_given          list − net on the shipped lines (store-scoped)
+    Cr revenue_product        the shipped lines at list
+    Cr gift_card_liability    gift card lines (line_item_category = 'gift_card'), at net
+    Cr sales_tax_payable      by jurisdiction, cumulative by box sequence
+    Cr revenue_shipping       on the first box
+```
+
+The discount is `line_item_line_total − line_item_net_total`, split across boxes by the net's
+cumulative allocation — never `line_item_discount`, which no connector writes. A gift card is
+recognised as a liability on the shipment because the receipt carries no gift-card fact; through
+A/R the net is the same. Nothing is read from a receipt, an allocation or a deposit, and no box
+reads another box's posting. A $0 box is `skipped`; a cancelled box is reversed (§5.6).
 
 🛑 **The existence of a builder does not mean a type is live**, and neither does the absence of one
 mean it is dead. `buildReceiptEntry` is named by `regime.ts` and does not exist; the two `month_end_*`
@@ -502,33 +528,39 @@ hands to `exportPostedEntry` **after** commit.
 checked at all: an opening entry must name all three inventory accounts, and it is not a second
 writer because it is measured from the `accounting.opening*` settings rather than read back.
 
-### 5.5 The draft gate
+### 5.5 No drafts in the ledger
 
-Gate 1 of the two gates (`ledger/post/auto-post.ts`). One settings key per avenue,
-`accounting.autoPost.<avenue>` over `AUTO_POST_AVENUES` — `fulfillment · invoice · receipt ·
-refund · creditMemo · expenseBill · vendorPayment · vendorCredit`. On posts immediately; **off or
-unset drafts** — fail closed: a writer that cannot resolve a mode must draft, never post
-unattended. `payout`, `bankDeposit`, `inventory` and `journal` have no draft step.
+🛑 **`GlPosting.status` is `posted | reversed`** (91 D5). A generated entry posts the moment its
+event is final; review is the export gate (§11.2), before anything leaves. Gate 1 went with its
+eight `accounting.autoPost.*` settings, `auto-post.ts`, `draft-lines.ts`, `postDraft` /
+`postDraftInTx` / `exportApprovedDraft`, `findPendingDraftPostings`, the `pending` link role, the
+`drafted` post status and the Outbox Drafts tab. Drizzle `0392` discarded every remaining draft
+and every `deposit_application` row, never promoted: a draft was built by the order timeline and
+need not be the entry the per-event posters write (91 §8.10).
 
-A draft is a real row: lines, a `built` envelope, `docNumber = NULL`, `postedAt = NULL`, every
-**non-subject** source link written, and **no subject row**, so it holds no claim and no statement
-reads it.
+**The manual journal is a document, like a bill** (`journals/entries/writes.ts`). Its lines are
+`journal_entry_line` children (§4.3):
 
-🛑 **`postDraft` re-checks everything rather than trusting the draft.** A draft can sit in the
-queue across a close, a role remap or a chart edit. But **the lines are not rebuilt from the
-source** — the draft's own `built` envelope is the entry — so what a reviewer approved is what
-posts. The subject it claims comes off `envelope.sources`; a draft with no subject is an `error`,
-because there is no claim to take.
+- `createJournalEntry` writes the record and its lines — an unposted document, no posting.
+  Balance is checked at Post and in the preview, never at save.
+- `updateJournalEntry` keeps, creates and deletes lines by line id. The web editor creates the
+  record on first Save and matches the returned line ids by position.
+- `postJournalEntry` builds the entry from the lines (`ledger/builders/manual.ts`), calls
+  `postEntry` and stamps `journal_entry_gl_posting_id`.
+- **Void** reverses the posting; **Discard** deletes an unposted record and its lines.
+- A posted **manual** entry is amended through edit-in-place (§5.10). An opening, recurring or
+  template entry refuses Edit and is corrected by reversal.
+- Recurring journals **post directly** when they materialise (reverses decision 21-A). The key
+  is `hashedPeriodKey('RJE', '<ruleId>:<occurrenceDate>')`, so a raced duplicate converges to
+  `already_posted`.
+- The opening flow finds its journal by the document's own status (`opening/reads.ts`).
 
-`draft-lines.ts` is the only editor: `updateDraftLines` re-runs `prepareEntry` (so a draft that
-could no longer be posted as typed refuses rather than saving silently) and `discardDraftPosting`
-refuses anything but a draft — *"reverse a posted entry instead of discarding it"*. Neither
-touches `GlPostingSource`.
+`prepareEntry` is still the pure preview behind `previewJournalEntry` and `previewFulfillment`.
 
 ⚠️ **The column is `built`; every symbol is named `*Draft*`.** `draft.ts`, `PostingDraftV1`,
-`buildPostingDraft`, `parsePostingDraft`, `POSTING_DRAFT_VERSION`. The envelope predates the
-`draft` *status* and the names were not swept. Expect the collision; do not assume a `draft`
-symbol is about the status.
+`buildPostingDraft`, `parsePostingDraft`, `POSTING_DRAFT_VERSION`. The names outlived the
+`draft` *status* and were not swept: a `*Draft*` symbol in `ledger/post/` is about the envelope.
+`built.sources` is the audit copy; the claim is the subject row written at insert.
 
 `buildPostingDraft` is the **single construction site** — one place the version is stamped.
 `parsePostingDraft` **throws** rather than returning a `Result`, deliberately: a draft that does
@@ -550,6 +582,15 @@ chart moved, and both halves would balance either way.
 succeeds — an original left `posted` beside its reversal is double-counted by every report until a
 push that may never succeed says otherwise.
 
+🛑 **A return never reverses the shipment entry** (91 D8). The credit memo reverses revenue for the
+returned lines that had shipped (§8.4); reversing the shipment as well would reverse the same goods
+twice. A shipment entry is reversed only when its fulfillment is cancelled — the box never left —
+by `reverseFulfillmentPosting` from the totals reconciler, idempotent (no live posting is a no-op).
+If a memo on that order had already posted, the same hook reverses and reposts it
+(`sales/credit-memos/repost.ts`) so its lines re-read `line_item_fulfilled_qty` and the pair nets.
+That is the one correction coupling left between two entries, and it fires only from the cancel
+hook.
+
 `reverseEntries` is deliberately sequential, one entry at a time: a batch transaction around forty
 of them would hold the commit lock for the length of the slowest, and a row that refuses lands the
 rest. The lock is resolved once by the caller so a close cannot land halfway through a selection.
@@ -562,17 +603,16 @@ hooks; adding one status silently broke two of them and **typecheck could not se
 `switch` and the `never` at the bottom are the point — do not replace it with a `Set`, however
 tidy. It reads `status` and never an export state.
 
-- `didLedgerAccept` — true for `posted` and `already_posted` only. False for `drafted` (a row
-  exists, with lines and no doc number, and it holds no claim) and for `not_enabled`.
-- `isExpectedPostOutcome` — that, plus `not_enabled` and `drafted`. 🛑 Use this for "should I warn
-  or roll back", and `didLedgerAccept` for "does a `GlPosting` row exist". They differ on exactly
-  one status.
+`didLedgerAccept` is true for `posted` and `already_posted` only, and false for every refusal,
+for `nothing_to_recognise` and for `not_enabled`. It is the only predicate: `isExpectedPostOutcome`
+and the `drafted` status went with drafts (91 D5). A caller that treats `not_enabled` or
+`nothing_to_recognise` as an ordinary skip checks that status itself.
 
 ### 5.8 `withAccountingCommitLock`
 
 Re-exported from `@auxx/database` via `ledger/post/accounting-commit-lock.ts` — that two-line file
 is the whole module. An org-scoped advisory lock taken **inside** the transaction by `postEntry`,
-`postDraft`, `reverseEntry`, `setLockedThrough` and `runMoneyCommand`.
+`reverseEntry`, `setLockedThrough` and `runMoneyCommand`.
 
 ⚠️ Writing a setting row directly, or purging cache keys by hand, **skips this lock.** Harmless
 when nothing is posting; not the same path as a click.
@@ -605,8 +645,7 @@ pressing Save; **Save is where the ledger is touched**, in one transaction under
 that rebuilds the entry from current values, compares it to the live posting's built lines, and
 reverses-then-reposts only if they differ. §5.6's rule is not bent: the correction is still a
 second, opposite entry, and both halves are dated today in the book time zone rather than in the
-document's original month. Under an avenue with auto-post off the live entry is a draft, so it is
-discarded and drafted again — no pair, no new generation.
+document's original month.
 
 **The repost needs a new key.** `GlPosting_org_docNumber_key` is unique per org and the reversed
 original keeps its number, so `documentEntryKey` (`accounting/documents/document-entry-key.ts`)
@@ -614,7 +653,8 @@ keys generation 2 and up on the internal number's DIGITS plus `G<n>` — `0002G2
 — falling back to a six-digit hash (`BGN` bill, `IGN` invoice, `CGN` credit memo) when that will not
 fit in `DOC_NUMBER_MAX_LENGTH`. 🛑 **Generation 1 is the internal number verbatim and must stay so**,
 or every document already in a ledger re-keys. The counter lives on
-`EntityInstance.metadata.ledger` beside the draft pointer (`document-ledger-state.ts`).
+`EntityInstance.metadata.ledger` (`document-ledger-state.ts`); the draft pointer that sat beside it
+is gone.
 
 **`spec.ts` is the only file that knows a family.** One row each for `vendor_bill`, `invoice` and
 `credit_memo`: the content children, the poster and the posting type, the statuses Edit refuses
@@ -622,7 +662,9 @@ or every document already in a ledger re-keys. The counter lives on
 already been settled against the document, below which Save refuses. The floors are read from the
 money model, never from the projected header fields: paid + credited + discounted for a bill,
 applied payments + applied credits for an invoice, applied + reserved refunds for a credit memo —
-which is exactly what `voidCreditMemo` reads before it reverses.
+which is exactly what `voidCreditMemo` reads before it reverses. A fourth row, `journal_entry`
+(91 D5), admits **manual** entries only; its live posting is the record's own pointer, and nothing
+is ever settled against a journal, so it has no floor.
 
 **The flag is a row, not a jsonb key.** `EntityInstanceEditSnapshot` holds one row per record under
 edit — the snapshot, who opened it, when — and its existence *is* "an edit is open" (74 D1). The
@@ -656,7 +698,7 @@ an edit that moves a total moves what is still owed, and the projection is the o
 status that gates Record payment.
 
 `routers/document-edit.ts` carries `readState`, `open`, `save` and `cancel`, all four gated on
-**`ledgerPost`** for all three families: an edit reverses and reposts, so it belongs with Void and
+**`ledgerPost`** for every family: an edit reverses and reposts, so it belongs with Void and
 the write-off, not with the desk mutations that move a description.
 
 ---
@@ -670,7 +712,7 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **32 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
+There are **34 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
 `ROLE_ACCOUNT_TYPES`, `ROLE_ACCOUNT_SUBTYPES`, `ACCOUNT_ROLE_LABELS`, `ROLES_WITHOUT_DEFAULT`,
 `SCOPABLE_ROLES` and `roleScopeAxis` beside them. That is the **only** copy of the vocabulary.
 
@@ -679,9 +721,10 @@ settling into one bank and the bank feed's own line for the same money could lan
 accounts and still balance, with nothing comparing them. ⚠️ **That argument is false once the map
 has a rail scope.** `BANK` is admissible precisely because it can never be unscoped:
 `ROLES_WITHOUT_DEFAULT` refuses an org-wide `bank` row, so the role only ever answers "which bank
-*this rail* pays into". `bank` and `clearing` are also the two roles with a subtype pin in
-`ROLE_ACCOUNT_SUBTYPES`, checked by `setRoleAssignment` before it writes and by `resolveRoles` on
-every read.
+*this rail* pays into". `bank`, `clearing` and — since 91 — `accounts_receivable` are the three
+roles with a subtype pin in `ROLE_ACCOUNT_SUBTYPES`, checked by `setRoleAssignment` before it
+writes and by `resolveRoles` on every read. The A/R pin is what lets aging and the statement split
+find every receivable account, per-store ones included, by subtype (§13.2).
 
 The four newest are the buy side's: `cogs_direct_labor` (`5010`, the labour share of a relieved
 unit, beside `cogs_product_cost` and `applied_overhead`), `purchase_tax` (`5040`, tax a vendor
@@ -691,9 +734,18 @@ inventory), `build_variance` (`5091`, scrap and a run that did not close to stan
 at `5091` rather than at `ppv`'s `5090`: a role is unique per account in the seed, so two roles
 cannot share one code even where an org would happily see them in one place.
 
-`SCOPABLE_ROLES` has exactly six entries: `revenue_product`, `revenue_shipping` and
-`revenue_returns_allowances` on the **store** axis; `clearing`, `payment_processing_fees` and
-`bank` on the **rail** axis.
+The two newest are 91 D8's: `discounts_given` (revenue, contra, seeded at `4080` in core,
+store-scoped; the QuickBooks import matches *Discounts given*) and `gift_card_liability`
+(liability, `2360` in the `prepayments` pack, unscoped, and **not** subtype-pinned — the obvious
+subtype, `STORED_BALANCES`, is an asset classification). A new role reaches an existing org
+through the wizard's pack picker or the Roles tab's Add, never a data migration.
+
+`SCOPABLE_ROLES` has exactly eight entries: `revenue_product`, `revenue_shipping`,
+`revenue_returns_allowances`, `discounts_given` and `accounts_receivable` on the **store** axis;
+`clearing`, `payment_processing_fees` and `bank` on the **rail** axis. A/R on the store axis
+(91 D3) keeps a channel's prepaid receivable apart from the dealer receivable in our books. ⚠️ A
+QuickBooks Invoice and Payment always post to the company's default A/R, so a store-scoped A/R
+account reaches QuickBooks through journal entries only; the Mapping tab's store row says so.
 
 🔑 **The vocabulary stays closed.** No role is added by scoping and no builder changes.
 🛑 **Fees are not a store axis** — a store using two rails would pool both rails' fees, and two
@@ -702,12 +754,12 @@ stores sharing one Stripe account would split fees that arrive on a single state
 `dimensions` entry, never a second revenue role.
 
 🛑 **Forward events resolve through the mapping; mirrors freeze from the original.** A
-fulfillment, a receipt or a payout asks `GlRoleAssignment` what the account is *now*. A credit-memo
-settlement, a refund of a receipt, a void or an unapply copies the account the original **posted
-to**. Both halves balance either way, so re-resolving a mirror after the chart moved would credit
-an account the money never entered and leave the other overstated with nothing able to detect it.
-`money/customer-money/refund-accounting.ts` reads each slice's account off that memo's posted
-lines for exactly this reason.
+fulfillment, a receipt, a refund, a credit memo or a payout asks `GlRoleAssignment` what the
+account is *now* — since 91 D4 the memo's and the refund's A/R legs are roles, not an account read
+off another entry. A reversal, a void or an edit-in-place reversal copies the account the original
+**posted to** (§5.6). Both halves balance either way, so re-resolving a mirror after the chart
+moved would credit an account the money never entered and leave the other overstated with nothing
+able to detect it.
 
 ### 6.2 `resolveRoles` — a batch, and it fails closed
 
@@ -859,8 +911,9 @@ be closed — a broken read must not be able to hold an organization's books hos
 `close-blockers.ts` is the pure, client-safe half. 🛑 **The sentence is a projection of the items,
 never a parallel implementation.** The moment a screen hand-writes its own version of one of these
 labels, the refusal an operator reads and the refusal the books recorded can disagree. The item
-keys are `unposted_shipments`, `draft_channel_memos`, `unposted_credit_memos`, `unmapped_role`,
-`inventory_unposted`, `inventory_balance`.
+keys are `unposted_shipments`, `draft_channel_memos` (a memo *document* still in `draft`),
+`unmapped_role`, `unmapped_account`, `invalid_mapping`, `inventory_unposted`, `inventory_balance`,
+`inventory_standard_value`.
 
 `settled-periods.ts` answers "is this date in a month the books are already closed to", and it is
 **three predicates, each catching a case the others miss**: the period lock, *or* a posted entry
@@ -907,7 +960,7 @@ a 500.
 | `MoneyApplication` | Append-only `apply` / `unapply` against an order, an invoice or a vendor bill |
 | `MoneyTransfer` | A payout or transfer. **Never** a fifth money purpose |
 | `MoneySourceLink` | Many immutable source observations → one movement |
-| `MoneyRefundSettlement` | A refund settling a credit memo |
+| `MoneyRefundSettlement` | A refund settling a credit memo — a link written when both sides exist, never an input to the refund's entry (91 D4) |
 | `PaymentAccount` | The org's Stripe Connect account. `money/stripe-connect/account.ts` is its ONLY writer |
 
 `money/reads.ts` and `money/writes.ts` are the family's readers and writers: `readMovements` /
@@ -930,38 +983,59 @@ constraint-name string in `apps/web`'s record router, and four stale `apps/worke
 probes that no longer compile — `@auxx/worker` has no `typecheck` script, which is why nothing
 catches them.
 
-### 8.3 Two policies, one family: the order door and the invoice door
+### 8.3 One rule for every customer receipt, two posters
 
-`customer_receipt` money arrives through one of two doors, and **the two never see each other's
-movements**:
+🛑 **An entry depends only on facts on its own record** (91 §4.0). It never waits for another
+record to arrive or another entry to post; links to other records are written when both sides
+exist and are never inputs to the lines.
 
-- **`money/customer-money/`** — the ORDER policy. A channel receipt against an order:
-  `Dr <the cash endpoint> / Cr accounts_receivable + customer_deposits +
-  sales_tax_payable`, where the split comes from the order's **recognition timeline**
-  (`recognition.ts` replays receipts and shipments in occurrence order; `recognition-facts.ts`
-  reads the exact order facts; `recognition-source.ts` assembles the timeline and gates on its
-  completeness). `record-storage.ts` is the write door for financial records and their
+**Every customer receipt posts `Dr <the cash endpoint> / Cr accounts_receivable` for the
+movement's whole amount** (91 D1). Both lines are sourced on the movement (`money_transaction` /
+its id); the counterparty is the customer, or the guest contact (`accounting.guestContactId`)
+when there is none; `parent` names the order or invoice when one is known. No order timeline, no
+tax leg, no deposits leg, no check that a sibling posted. Two posters write it:
+
+- **`money/customer-money/accounting.ts`** — a channel receipt, and every receipt not applied to
+  an invoice. `record-storage.ts` is the write door for financial records and their
   observations, and it owns the ordering rule: **source order is acquisition order; arrival time
   never grants authority**, so a verified prior beaten by an unverified next is a `conflict`.
-- **`money/invoice-payments/`** — the INVOICE policy. An issued invoice has already answered the
-  recognition question, so a receipt against it is `Dr <the cash endpoint> /
-  Cr accounts_receivable`, in one step.
+- **`money/invoice-payments/receipt-accounting.ts`** — the invoice lane: the same two lines,
+  parent the invoice when the live applications name exactly one.
 
-🔑 **The two doors differ on the CREDIT side only.** The recognition timeline against one A/R line
-is the whole distinction; the DEBIT is one resolver for both, and for every other movement
-(§8.4).
+`resolvePoster` (`money/blocked-movements.ts`) picks between them off the movement's own
+`MoneyApplication` rows: an invoice application → the invoice poster, anything else → the
+customer receipt poster.
 
-The eight `invoice-payments` files are one verb each: `record-payment` (money that was never
-held), `apply-money` (**held money only** — `Dr customer_deposits / Cr accounts_receivable`),
-`unapply-money`, `move-payment` (unapply + apply, netting to `Dr A/R[A] Cr A/R[B]`),
-`void-payment` (a reversal, never a compensating entry), `receipt-accounting`, `payment-state`
-(the projection onto the invoice's mirrors) and `payment-reads`.
+🔑 **Applications are links, not entries.** Partial application, `unapply` and one receipt
+across several documents are not refusals: the entry is the movement, and what it pays is a
+`MoneyApplication` row that aging and the statement split read (§13.2). `apply-money`,
+`unapply-money` and `move-payment` write applications only; `deposit_application` is deleted.
 
-🛑 **The receipt entry is never amended.** On the day the money arrived, none of it was owed; a
-later allocation is its own event on its own day and gets its own `deposit_application` entry,
-keyed on the **application** id so one deposit split across two invoices cannot swallow itself as
-`already_posted`. 🛑 **Only money that was APPLIED can be moved** — a receipt that named its
-invoice in its own entry has nothing to move.
+**An orderless receipt posts now and links later** (91 §8.6). A channel receipt whose order has
+not arrived is accepted at ingest with an `ORDER_NOT_FOUND` work item at stage `evidence`
+(§8.4c) and posts on the guest with no parent. When the order's `created` record event wakes
+the row, the link step writes the `MoneyApplication`, the posting's `parent` link and the
+movement's party. ⚠️ The frozen line counterparty stays the guest — the one thing link-later
+cannot repair.
+
+**`customer_deposits` has no writer.** The checkout quote deposit
+(`money/checkout/deposit-accounting.ts`), the invoice lane's held money and the order receipt all
+credit A/R: a paid, unshipped order is a credit in A/R until it ships, as QuickBooks shows an
+unapplied payment. The role, its label and its seeded account stay for an org that hand-posts to
+it. The statements show the credit side per document as a computed row (§13.2).
+
+The eight `invoice-payments` files are one verb each: `record-payment`, `apply-money` (held money
+onto an invoice — posts nothing), `unapply-money` (posts nothing), `move-payment` (unapply +
+apply, links only), `void-payment` (a reversal, never a compensating entry), `receipt-accounting`,
+`payment-state` (the projection onto the invoice's mirrors) and `payment-reads`.
+
+🛑 **The receipt entry is never amended.** A later allocation is a link on its own day; it moves
+what aging attributes the credit to and never touches the ledger.
+
+A refusal is a work item with a code, never prose on the movement (§8.4c) — `GATEWAY_UNMAPPED`,
+`ROLE_UNMAPPED`, `ENDPOINT_UNRESOLVED`, `CUSTOMER_UNRESOLVED`, `MISSING_AMOUNT`, `MISSING_DATE`,
+`PERIOD_LOCKED`, `SETUP_INCOMPLETE`, `NO_DOCUMENT`, `OWNERSHIP_CONFLICT`, `EVIDENCE_PENDING` —
+and `BEFORE_CUTOFF` is a skip, not a refusal.
 
 ### 8.4 The cash endpoint
 
@@ -994,26 +1068,43 @@ transaction, because the mapping is made by a person and may not exist when the 
 A channel receipt resolves its rail from the movement's own gateway **handle**, in four rules
 (`customer-money/receipt-accounting.ts`):
 
-1. The handle normalises to a RESERVED handle (`manual`, `bogus`) → **no rail**. The movement
-   resolves through the "neither" shape and lands in undeposited funds; the feed link is not
-   consulted and its refusal does not apply. A manual Shopify payment is money in no processor.
+1. The handle normalises to a RESERVED handle (`manual`, `bogus`, `gift_card`) → **no rail**.
+   `manual` and `bogus` resolve through the "neither" shape and land in undeposited funds; the feed
+   link is not consulted and its refusal does not apply. A manual Shopify payment is money in no
+   processor. `gift_card` (`GIFT_CARD_GATEWAY_HANDLE`) is a redemption: its endpoint is
+   `gift_card_liability` (91 D8).
 2. The handle matches exactly one `payment_gateway` record through `matchGatewayRoute` → **that
    rail**, whether it is active or closed. The feed link is not consulted.
-3. The handle is present but unmapped, or two rails claim it → **blocked**, naming the handle. No
-   silent fallback: the sweep retries it once somebody maps it.
+3. The handle is present but unmapped, or two rails claim it → **blocked** as `GATEWAY_UNMAPPED`
+   with the handle as `externalRef`. No silent fallback: mapping a gateway wakes those rows.
 4. The handle is absent → the feed's `FinancialSourceAccount.paymentGatewayId`, with the existing
    "no payment gateway linked" refusal when that is missing too.
 
-A channel refund stamps from the refunded receipt's `paymentGatewayId`, which may be null — a
-manual receipt's refund leaves by undeposited funds, and that is correct.
+A channel refund resolves its rail from **its own** handle by the same four rules
+(`readCustomerReceiptAccountingSource(…, 'customer_refund')`, 91 D4), never from the receipt it
+refunds.
 
-🔑 **The memo a refund draws down always has a control account to draw on.** A credit memo issued
-after its order shipped posts `Dr returns (± tax) / Cr accounts_receivable`; one issued before it
-shipped reverses revenue that was never recognised, so it posts `Dr customer_deposits (net) ·
-Dr sales_tax_payable (tax) / Cr accounts_receivable (total)` instead — the pre-fulfillment receipt
-credited the net to `customer_deposits` and the tax to `sales_tax_payable`, and the memo mirrors
-that split onto the control account (71 D14 as 88 D7 corrected it). Either way the refund is the
-same `Dr <the memo's control> / Cr <the endpoint>`.
+🔑 **The credit memo and the refund meet in A/R, not in each other's entries** (91 D4).
+
+- **The memo posts per line**, for the lines whose goods had shipped before the memo, read off the
+  order's own line items: `line_item_fulfilled_qty` / `_at` null means the channel said nothing
+  and the line reverses; qty 0, or shipped after the memo date, means not shipped; a native memo
+  treats every line as shipped. `Dr revenue_returns_allowances` for goods, `Dr revenue_shipping`
+  for a `credit_memo_line_disposition = 'shipping'` line, `Dr sales_tax_payable` for their tax,
+  `/ Cr accounts_receivable`. A memo with no shipped line posts nothing and issues as
+  `nothing_to_recognise`: there is no revenue to reverse, and the money is already a credit in A/R.
+- **The refund posts `Dr accounts_receivable / Cr <the endpoint>`**, sourced on the movement,
+  parent its own order, and waits for nothing — not the memo, its posting, nor the receipt's.
+  Where a memo exists it still checks the total and that it is not dated before the memo;
+  entitlement (applied + reserved against the memo) runs in the link step after posting
+  (`linkRefundPostingToMemos`) and writes a `REFUND_EXCEEDS_MEMO` **warning** rather than
+  refusing. Ingest writes the `MoneyRefundSettlement` when the memo already resolves;
+  `linkImportedRefundsToMemo` writes it from the memo issuing pass when the memo arrives later.
+  ⚠️ A channel refund whose **order** has not arrived still waits (`ORDER_NOT_FOUND`).
+
+`readCreditMemoControlAccount`, the pre-shipment memo branch, the readiness gate (88 D2) and 88 D7's
+mirror split are gone. `sweepChannelCreditMemos` (`sales/credit-memos/issue-pass.ts`) runs as the
+recovery job's third posting sweep beside the movement and shipment sweeps.
 
 🛑 **The bank deposit's debit is the bank account the operator picked, by `gl_account` id.**
 Grouping posts nothing; only the bank run does, and it posts ONE line so it matches ONE bank line.
@@ -1079,7 +1170,7 @@ A supplier paying the credit back is a `MoneyTransaction` with purpose `vendor_r
 `MoneyRefundSettlement` at disposition `vendor_credit`. It posts `Dr <the cash endpoint> /
 Cr <the credit's control account>` through the same `postMovementEntry` frame as its own
 `vendor_refund` type on the `vendorPayment` avenue — money with a vendor, arriving instead of
-leaving, gated by that avenue's `autoPost` beside the vendor payment. The control account is
+leaving. The control account is
 read off the credit's own posted lines (`readVendorCreditControlAccount`), never re-resolved, and a
 refund may not precede the credit's issue date.
 
@@ -1091,10 +1182,59 @@ refund may not precede the credit's issue date.
 `money/post-movement.ts`'s `postMovementEntry` holds what every money poster shares: the
 live-posting check, `isAccountingEnabled`, the finalized-setup gate, zone and cutoff, the movement
 load and its three refusals, `resolveCashEndpoint`, the three link rows, the period lock,
-`postEntry` and the `accepted | blocked | skipped` answer. Each poster is a `prepare` callback that
-returns only its LINES — the recognition split, the one A/R credit, the memo control account, A/P
-— because that is the accounting and each differs by design. `commands/insert-movement.ts` is the
-same story for the six writers' `MoneyTransaction` insert.
+`postEntry` and the `accepted | blocked | skipped` answer — writing the movement's work item on
+`blocked` or `skipped` and deleting it on `accepted` (§8.4c). Each poster is a `prepare` callback
+that returns only its LINES — the A/R credit, the A/R debit, A/P — because that is the accounting
+and each differs by design. `commands/insert-movement.ts` is the same story for the six writers'
+`MoneyTransaction` insert.
+
+### 8.4c Parked work — `AccountingWorkItem`
+
+One table for everything a poster refused or skipped (91 D6, drizzle `0390`). It replaced five
+markers: `MoneyTransaction.postingBlockedReason/At`, the fulfillment and credit-memo marker
+fields (their entity migrations 184 and 185 are deleted and retired; data migration 186 drops the
+fields), `payout_blocked_reason`, and `FinancialSourceAcceptance`'s `attempts / nextAttemptAt /
+reason`.
+
+```
+AccountingWorkItem
+  organizationId, sourceKind, sourceId, occurrence, stage
+  reasonCode, role, railId, glAccountId, periodKey, externalRef, detail (jsonb)
+  attempts, nextAttemptAt, createdAt, updatedAt
+  unique (organizationId, sourceKind, sourceId, occurrence, stage)
+```
+
+🛑 **One row per stuck thing; success deletes it.** A refusal is a row insert, never a
+`setValueWithType` on the record, for entity-backed and table-backed sources alike. Movements,
+shipments and payouts park at stage `post`, a credit memo at `issue`, an acceptance at `evidence`.
+A pre-delete hook (`field-hooks/pre/accounting-work-item-delete.ts`) sweeps a deleted record's rows.
+
+🔑 **Only the code is stored.** `work-items/codes.ts` is the closed, client-safe vocabulary; the
+sentence, the severity (`info` · `warning` · `error`) and the status (`waiting` · `blocked` ·
+`warning` · `skipped` · `rejected`) are functions of the code, and a test pins a sentence and a
+severity on every one. `refusal.ts` maps a thrown error to a code: `details.workItemCode` (set at
+the throw site with `withWorkItemCode`) → `unresolvedRoles` → `ROLE_UNMAPPED` → a `NotFoundError`
+→ `SOURCE_NOT_FOUND` → `REFUSED`, which carries the thrower's words in `detail.message`.
+
+**Severity decides the retry, not the stage** (`nextAttemptDelayMs`): `info` after an hour,
+`error` after a day, transient codes (`TRANSIENT_ERROR`, `NOT_CONFIRMED`) doubling from a minute
+to a six-hour cap. `skipped`, `rejected` and `warning` rows get no `nextAttemptAt` and are never
+re-offered, so a skip (`NOTHING_TO_RECOGNISE`, `BEFORE_CUTOFF`) is a row a person can see that
+the sweep excludes in SQL.
+
+**A fix wakes exactly what it unblocks** (`wake.ts`: `nextAttemptAt = now()`): `setRoleAssignment`
+→ `ROLE_UNMAPPED` for that role and rail; the totals stamp → `TOTALS_NOT_STAMPED` for those
+fulfillments; `setLockedThrough` → `PERIOD_LOCKED` rows whose month is open again; an order's
+`created` event → `ORDER_NOT_FOUND` rows carrying its external id; a gateway mapped or a feed
+linked → `GATEWAY_UNMAPPED`; the guest contact minted → `CUSTOMER_UNRESOLVED`. The schedule is
+the safety net, not the mechanism.
+
+**One sweep frame** (`sweep.ts`'s `runWorkItemSweep`): never-tried sources first, then due rows,
+until the limit or the time budget; a throw reschedules its own row, so a thousand refusals cannot
+starve a postable source. The recovery job (`jobs/maintenance/accounting-recovery-job.ts`) visits
+up to 25 finalized orgs per run, those with due work first, with no cursor, and runs for each the
+evidence bridge, the imported-money ingest, the movement and shipment sweeps — in any order,
+since no entry reads a sibling — and the export batch sweep.
 
 ### 8.5 Payouts
 
@@ -1137,6 +1277,12 @@ the currency. ⚠️ `post-payout-entry.ts` **resolves nothing itself and must n
 ⚠️ **The reported destination is a check, not a resolver.** The mapping is the authority, and a
 destination that disagrees flags `payout_destination_mismatch` on a payout that still posts. Only
 Stripe reports one.
+
+**A chargeback is a refund** (91 D8). A `dispute` balance entry matches a `customer_refund`
+movement (`MATCHABLE_ENTRY_TYPES`, `match-entries.ts` — admitted in code; the entry type is free
+text); the refund carries the dispute fee as `Dr payment_processing_fees` (`feeMinor`), and the
+payout excludes a fee already on the refund (`feeOnRefund`). ⚠️ A payout that posts before its
+chargeback's refund books the fee twice.
 
 **Keeping evidence current is two `defineParentReconciler`s, not a router.** A fired record
 rule *marks*; the drain rebuilds once per parent after commit, however many per-field rules fired.
@@ -1199,7 +1345,7 @@ Every one carries `(organizationId, id)` as a unique, and every cross-table FK i
 
 | Table | Holds |
 | --- | --- |
-| `FinancialSourceAccount` | One connected account/store: `providerKey`, `externalAccountId`, `environment`, a human `name`, `paymentGatewayId`, `exportShape` |
+| `FinancialSourceAccount` | One connected account/store: `providerKey`, `externalAccountId`, `environment`, a human `name`, `paymentGatewayId` |
 | `FinancialSourceObservation` | An immutable record of what a provider reported, with its content hash |
 | `FinancialSourceAcceptance` | That an observation was accepted as evidence: `state` (`pending`/`accepted`/`rejected`/`blocked`), `moneyTransactionId`, `unresolvedReferences`. One per source object |
 | `FinancialSourceCoverage` | How far acquisition has progressed. CHECKed: `accepted + rejected + pending = fetched` |
@@ -1223,9 +1369,11 @@ links it. **A rail nothing points at is a manual rail.** It is durable configura
 created — the same class of thing as a bank account record, not connector plumbing re-minted on
 reconnect — so it survives a reinstall the same way the store scope does.
 
-`exportShape` (`auto` | `invoice`) is read when the batch is BUILT, not when it is sent, and decides
-whether a fulfillment takes the shape of a Sales Receipt or an Invoice (§11.3). Changing it moves
-what is built next; it does not reshape a batch already frozen.
+`exportShape` is gone with the Sales Receipt shape (91 §8.13, drizzle `0390`); every shipment
+exports as an Invoice (§11.3). Since 91 an acceptance whose order has not arrived is accepted
+anyway, with an `ORDER_NOT_FOUND` work item at stage `evidence` (§8.3), and the acceptance's
+retry columns live on `AccountingWorkItem` (§8.4c). The rest of this section is brief 94's to
+rewrite.
 
 `MoneyTransfer` and `ProcessorBalanceEntry` extend an existing canonical `EntityInstance`
 identity, with ordinary `FieldValue`s carrying provider facts and shared domain events doing
@@ -1286,9 +1434,8 @@ status and registered again with it.
 
 **One `ExportBatch` is one provider object**: its `objectType`, a frozen payload and that payload's
 hash, the provider's id and sync token for it, its state, and the detail postings it rolls up
-through `ExportBatchPosting`. In Transaction mode a batch usually holds one posting — the exception
-is a Sales Receipt, which holds the fulfillment plus the receipts it absorbed (§11.3). The
-**grain** is still the fulfillment's own posting id either way.
+through `ExportBatchPosting`. In Transaction mode a batch holds exactly one posting; the Sales
+Receipt shape that absorbed a fulfillment's receipts into its batch is gone (91 §8.13).
 
 ```
 ready → sending → sent
@@ -1327,7 +1474,7 @@ which live batch holds a posting. The list's month filter is the half-open windo
 
 ```
 source event final
-   │  autoPost off → draft queue (review, approve)     ← gate 1: our books  (§5.5)
+   │  posts at once — no drafts (§5.5)                  ← our books
    ▼
 posted
    │  autoSend off → export queue (hold, release)      ← gate 2: the provider
@@ -1335,6 +1482,7 @@ posted
 sent
 ```
 
+Gate 1, the draft queue, was deleted by 91 D5: review happens here, before anything leaves.
 Reverse acts on the left column. Retry, rollback and release act on the right. **No verb does
 both.**
 
@@ -1366,7 +1514,7 @@ rows so the tab shows the refusal before anyone presses Send; `releaseExportBatc
 enqueue a batch it flags; `sendExportBatch` runs it after the lease and fails the batch as
 `configuration` with the items and no round trip. It is a subset of the adapter's own resolution
 at send time (`invalid_mapping` needs the live provider chart), never a contradiction of it, and
-it does not touch gate 1: a ledger post never asks whether a provider account exists (P2).
+it never reaches back into the ledger: a post never asks whether a provider account exists (P2).
 
 **Send is idempotent by readback**, not by a request-id contract. `idempotencyKey` is derived from
 the batch identity alone, so every retry carries the same key. ⚠️ `readbackMismatch`'s
@@ -1388,8 +1536,7 @@ refuses while one is still there.
 | `accounting.exportMode` | `transaction` \| `summary`. Fails closed to `transaction` |
 | `accounting.exportModeCutover` | The date the mode applies from. A posting dated below `max(cutover, connection.exportFromDate)` is skipped |
 | `accounting.autoSend.<avenue>` | Gate 2, per avenue. Unset → off |
-| `accounting.summaryGrain.<avenue>` | `day` \| `month` for the nine grained avenues (`SUMMARY_GRAIN_AVENUES`). Payouts, bank deposits and journals have no grain — one object each |
-| `accounting.autoPost.<avenue>` | Gate 1 (§5.5). A different gate, on a different table |
+| `accounting.summaryGrain.<avenue>` | `day` \| `month` \| `payout` for the nine grained avenues (`SUMMARY_GRAIN_AVENUES`, §13.3). Payouts, bank deposits and journals have no grain — one object each |
 
 **The avenue is a stored column.** `avenueOfPostingType` is the exhaustive posting-type → avenue
 map, applied once in `insert-posting.ts` and written to `GlPosting.avenue` (task 92); every read
@@ -1417,39 +1564,29 @@ no handler, so a new object type cannot silently fall through `sendObject` as "u
 
 | Posting type | Object |
 | --- | --- |
-| `fulfillment` | `sales_receipt` when `wantsSalesReceipt`, else `invoice` |
-| `invoice_issued` | `invoice` |
-| `payment`, `deposit_application` | `payment` |
+| `fulfillment`, `invoice_issued` | `invoice` |
+| `payment` | `payment` |
 | `credit_memo` | `credit_memo` |
 | `refund` | `refund_receipt` |
 | `payout`, `bank_deposit` | `deposit` |
 | `vendor_bill` | `bill` |
+| `vendor_credit` | `vendor_credit` |
 | everything else | `journal` |
 
-On a fulfillment:
-
-```ts
-/** T14/D1: whether a fulfillment should ship as a Sales Receipt rather than an Invoice. */
-export function wantsSalesReceipt(exportShape: 'auto' | 'invoice', fullyPaidAtShipment: boolean | undefined): boolean {
-  return exportShape !== 'invoice' && fullyPaidAtShipment === true
-}
-```
-
-`exportShape` is the channel's, off `FinancialSourceAccount`. **There is no "always Sales
-Receipt"**: it would differ from `auto` only on unpaid orders, where it would book cash that did
-not arrive. When a Sales Receipt is chosen, the receipts that paid the order are **absorbed** as
-members of that batch and excluded from their own `payment` batch.
+🛑 **Every shipment is an Invoice and every receipt a Payment** (91 §8.13). Our two entries map
+one to one onto the pair; QuickBooks applies the waiting Payment to the Invoice itself and derives
+both its accrual and its cash P&L from them. The Sales Receipt shape — `exportShape`,
+`wantsSalesReceipt`, the `auto` fork, `readReceiptsForOrders` and the absorbed members — is
+deleted: it read a sibling, and under per-event receipts it pulled a receipt already sent as a
+Payment into a later Sales Receipt, booking the cash twice.
 
 Each shape classifies its own lines by role and **falls back to `journal`, with a reason, the
 moment a line does not fit — never a refusal**. The default branch for `write_off`,
 `manual_journal`, `recurring_journal`, `inventory_movement` and the two `month_end_*` types is a
-plain journal, *not* a fallback: nothing was tried and rejected. Two shapes fall back routinely
-rather than exceptionally: a `deposit_application` debits `customer_deposits`, which is not one of
-the three `MONEY_ROLES` a Payment's deposit leg may be, and a credit memo that carries the optional
-fourth `Dr accounts_receivable / Cr clearing` leg has a credit a CreditMemo cannot express.
+plain journal, *not* a fallback: nothing was tried and rejected.
 
 🛑 A line names `glAccountId` and `accountCode`, **never a provider account id** (decision `P2`) —
-on a journal line, a `sales_receipt`'s `depositTo`, a `deposit`'s `fromAccount`, all of them. The
+on a journal line, a `payment`'s `depositTo`, a `deposit`'s `fromAccount`, all of them. The
 adapter resolves them at send time, so a batch built before a mapping changed sends against the
 mapping that is live when it goes.
 
@@ -1460,6 +1597,11 @@ actually lands, which is what the signed lines — the fee carried as a negative
 Summary mode still emits only `journal` (D3): `readLedgerSummary` already emits one row per posting
 for the grain-less avenues, so both shapes come out of one read, and a summary batch mints its own
 `AUXX-SUM-<hash>` document number because it has no posting to borrow one from.
+
+A summary journal carries `summary: { storeId }` (91 §8.14). QuickBooks refuses an A/R line
+without a customer, and a summary line has no counterparty, so the adapter resolves the store's
+per-platform placeholder customer (`resolvePlaceholderCustomer`, `objects/journal.ts`) for a
+receivable line; a payable line without a counterparty still refuses.
 
 ### 11.4 The provider seam
 
@@ -1518,46 +1660,37 @@ suggestion is never a mapping**.
 `providers/provider-agreement.ts` compares our trial balance against their balance sheet. 🛑 **It
 renders a COMPARISON and never becomes a statement source.**
 
-### 11.5 The Outbox — the one screen, five tabs
+### 11.5 The Outbox — the one screen, four tabs
 
-`OUTBOX_TABS = ['drafts', 'blocked', 'ready', 'sent', 'failed']` (`export/client.ts`). The two
-leading tabs are not `ExportBatchState`s: `drafts` holds entries awaiting gate 1 and `blocked` holds
-movements that have no posting at all, which is why they stand ahead of the export states rather
-than among them. Every tab lists **all periods**; only the Build button is scoped to the month in
-the header, and its empty states say so.
+`OUTBOX_TABS = ['blocked', 'ready', 'sent', 'failed']` (`export/client.ts`). `blocked` is not an
+`ExportBatchState`: it holds work the ledger has not posted at all, which is why it stands ahead of
+the export states rather than among them. Beside the tabs a view dropdown (`?view=`, brief 95)
+picks **Summary** — one row per grain bucket, whether or not a batch exists — or **Transaction** —
+one row per posting with its export state. Ready, Sent and Failed filter whichever view is
+showing; Blocked ignores it. Every tab lists **all periods**.
 
 🛑 **`sending` is a state, not a tab** (75 D6). A batch mid-send stays listed under Ready and spins
 there — a momentary state is not a place to stand, and a batch that vanished from the tab you were
 looking at read as a failure. `exportBatchTabAdmits` is what makes Ready admit both, and
 `parseOutboxTab` lands a pasted `?tab=sending` on Ready rather than an empty strip.
 
-**Blocked is the ledger's parked work** (75 D1, 88 §4.5). One row per `MoneyTransaction` carrying a
-`postingBlockedReason` with no live subject posting, and one per `fulfillment` carrying
-`fulfillment_posting_blocked_reason` (88 §7.4) with none: the party or the order, the amount, the
-poster's own words rendered verbatim, and — when the refusal is an unmapped role — the same remedy
-card the synchronous callout uses. **Map** deep-links to `/app/accounting/settings/accounts?role=<role>`,
-which seeds the Mapping tab's search box so the row is on screen; **Retry** re-runs the row's poster
-and the mark clears on acceptance. A movement row opens the `?movement=` frame, a shipment row the
-`?shipment=` frame (`shipment-frame.tsx`), both in the one ledger drawer host. `listBlockedWork`
-(`money/blocked-work.ts`) merges the two paged reads newest refusal first behind a two-offset cursor;
-each read derives its `reasonKind` in SQL, because a dev org already holds ~1,100 movements and
-~1,700 shipments here.
+**Blocked is the ledger's parked work** (75 D1, 91 D6). One row per
+`(reasonCode, role, railId, glAccountId)` group over `AccountingWorkItem` (§8.4c) — *"100 receipts
+blocked: clearing is not mapped for Shopify Payments"* is one row — with the code's sentence and
+severity from `work-items/client.ts`, a count, and an expansion to its items
+(`listBlockedWorkItems`); a movement item opens the `?movement=` frame and a shipment the
+`?shipment=` frame, in the one ledger drawer host. The category (receipt, refund, vendor payment,
+fulfillment, credit memo, payout) is derived from the source in SQL. **Map** deep-links to
+`/app/accounting/settings/accounts?role=<role>`, which seeds the Mapping tab's search box so the
+row is on screen. **Retry all** (`retryBlockedGroup`) sets `nextAttemptAt` on the group and
+returns — the recovery job does the posting, as release does for the outbox. The badge counts
+groups and leaves skipped codes out.
 
-🛑 **A refusal caused by a draft names the draft** (88 D10): *"earlier receipt X is a draft awaiting
-approval"*, never the generic *pending*. A draft never depends on a draft, so the chain advances one
-approval round at a time — and approval continues it: `postDraft` in the router is followed by
-`continueAccountingAfterDraft` (`sales/orders/continue-accounting.ts`), which offers the parent
-order's shipments, receipts, memos and refunds to their posters in the same request. A draft whose
-subject another posting already claimed can never post; `postDraft` discards it on `already_posted`
-rather than leaving it on the tab.
-
-`money/blocked-movements.ts` is both halves: the reader above and `sweepMovementAccounting`, the
-scheduled retry the recovery job calls. It replaced a sweep that lived in `customer-money/` and was
-filtered to two purposes and to Shopify-sourced evidence, so a blocked `vendor_payment` was parked
-forever. 🛑 **The poster is chosen from the movement's own `MoneyApplication` evidence** — an
-application to an invoice is the invoice door, one to an order is the recognition door (§8.3) —
-never from a provider key. The back-off window and the never-tried-first ordering are 71 D12's,
-unchanged: a thousand refusals must not starve one postable movement.
+`money/blocked-movements.ts` holds `sweepMovementAccounting`, the movement lane of the work-item
+sweep, for every purpose. 🛑 **The poster is chosen from the movement's purpose and its own
+`MoneyApplication` rows** (`resolvePoster`): a refund, a vendor payment and a vendor refund to
+their own posters; a receipt applied to an invoice to the invoice poster; every other receipt to
+the customer receipt poster (§8.3) — never from a provider key.
 
 ⚠️ A **document**-level refusal (a bill's Post button) has no lane here and needs none: it refuses
 synchronously, the callout names the remedy, and nothing is written.
@@ -1695,7 +1828,7 @@ aggregates share the line predicate — `standingLineFilter` (`ledger/reads/stan
 | Balance sheet | `balance-sheet.ts` | As of one date; splits equity at `fiscalYearStart(asOf)` |
 | Profit & loss | `profit-and-loss.ts` | A true range report |
 | General ledger | `general-ledger.ts` | Per-account lines; optional `glAccountId` filter |
-| A/R + A/P aging | `aging.ts` | As of one date, grouped by the document the line's source names |
+| A/R + A/P aging | `aging.ts` | As of one date, grouped by document; a movement's line attributed through `MoneyApplication` (§13.2) |
 | 1099 | `vendor-1099.ts`, `vendor-1099-rows.ts` | Per vendor |
 | Dimension breakdown | `dimension-breakdown.ts` | Group by a `dimensions` key |
 | Completeness | `completeness.ts` | Which months and which posting types the books are incomplete for |
@@ -1745,9 +1878,10 @@ those change a posted entry's `txnDate`/`periodKey`, this one writes nothing to 
 
 ### 13.2 Aging groups by the source document
 
-`aging.ts` groups posted `accounts_receivable` / `accounts_payable` lines by the document their
-`sourceType` / `sourceId` name and nets each one, so the total ties to `readTrialBalance`'s own
-figure for the same account by construction.
+`aging.ts` walks posted lines on **every** receivable or payable account — the role's default
+plus every account whose subtype is `accounts_receivable` / `accounts_payable`, which covers A/R's
+per-store accounts — groups them by document, nets each one, and ties its total against
+`readTrialBalance`'s sum over those accounts (the `verdict`, shown even when false).
 
 🔑 **The receivable a shipment raises is sourced on the `order`, not on an invoice.** The
 DTC/dealer revenue path has no invoice record at all — `invoice` is the separate service-business
@@ -1756,6 +1890,29 @@ carry a due date a report can bucket on; everything else is `current`, grouped b
 resolves and into an "Unapplied and adjustments" catch-all otherwise. A new A/R- or A/P-touching
 `sourceType` needs a branch here too, or its lines still tie (the total is a GL sum, not a join)
 but land in the catch-all.
+
+🔑 **A receipt or refund line is sourced on its movement, and aging attributes it through
+`MoneyApplication`, never through the line** (91 §4.1; `reports/receivable-attribution.ts`, shared
+with the statement split below). Live applications only, prorated by largest remainder across the
+documents the movement is applied to; the unapplied remainder stays on the movement and lands in
+the catch-all (`AGING_UNAPPLIED_GROUP_ID`); a refund follows its `MoneyRefundSettlement` or the
+receipt it reverses; a credit memo folds into its order or invoice. Link-later therefore repairs
+attribution without touching the ledger. The match is `'money_transaction'`: until 91 it read the
+retired Dispatch-era `'payment_transaction'`, so every receipt credit fell into the catch-all.
+
+**Paid before cutover** (`AGING_PRE_CUTOVER_GROUP_ID`, 91 §8.7). A document whose applications all
+predate `accounting.cutoffPeriod` groups there rather than in `current`: the opening entry carries
+that money by account, not by document, so the balance sheet was right and only aging needed the
+rule.
+
+**The statements split each receivable account per document** (91 D3). `readTrialBalance({
+splitReceivables })` fills `receivableSplit` on every `accounts_receivable`-subtyped account by
+the same attribution. The balance sheet keeps documents in debit under the account and shows
+documents in credit — a paid, unshipped order — as a computed "<code> <name> - customer deposits"
+row under Liabilities, with a `meta.note` and no drill (a computed row has no posting). The
+trial-balance statement does the same; its Balance column leaves out the documents in credit and
+the note says so. Nothing is posted: the ledger holds one A/R that goes negative, and the
+presentation happens at read time.
 
 ⚠️ **`GENERAL_LEDGER_MAX_LINES = 25_000`** with a truncation contract: an `INCOMPLETE` first row, a
 banner, a verdict override and an `-INCOMPLETE` filename. CSV and PDF read the **full** range
@@ -1774,12 +1931,23 @@ drill-down through the posting ids. **It is what the export batch builder sums i
 from.** In Transaction mode it is a view an org can open whenever it wants; in Summary mode each
 row is also a batch carrying its sent state. Same component in both.
 
-The Outbox's Ready tab does not use it. `export/unbuilt-summary.ts` is the same grouping in SQL
-over the stored `avenue` column — `readUnbuiltSummaryPage` (keyset-paged on the row's full sort
-key, because Build removes rows between pages), `countUnbuiltSummaryRows` for the badge, and
-`readUnbuiltSummaryMembers` when a row is opened. The grain per avenue becomes a `CASE` over the
-org's `summaryGrain` settings; "would make a journal" is a `HAVING` over the netted account lines.
-`readLedgerSummary` stays in memory because the builder needs every group's summed lines.
+The Outbox does not use it. `export/summary-ctes.ts` is the same grouping in SQL over the stored
+`avenue` column, read by `export/unbuilt-summary.ts` (`readUnbuiltSummaryPage`,
+`countUnbuiltSummaryRows`, `readUnbuiltSummaryMembers`) and brief 95's `export/summary-rows.ts`.
+The grain per avenue becomes a `CASE` over the org's `summaryGrain` settings; "would make a
+journal" is a `HAVING` over the account-and-side lines. `readLedgerSummary` stays in memory
+because the builder needs every group's summed lines.
+
+**The grain is `day | month | payout`** (`SUMMARY_GRAINS`, 91 D9). Under `payout` a posting with a
+`GlPosting.payoutId` buckets by it and one without falls into its day, so nothing waits on a
+settlement that may not come. A payout bucket files on its earliest posting's day
+(`summaryDayKey`) and is complete for the sweep once its latest posting is more than two days old,
+the day grain's own rule. `payoutId` is null everywhere until brief 94 stamps it.
+
+🛑 **Summary lines are keyed on `(glAccountId, direction)` and never netted** (91 D9). A/R appears
+twice on a day — shipments in, receipts out — so Σdebit equals the row's `totalMinor` by
+construction; netted lines could not balance a group mixing entry types. Both implementations,
+`ledger-summary.ts` in memory and `summary-ctes.ts` in SQL, follow the rule and change together.
 
 ### 13.4 Reading a record's postings
 
@@ -1794,8 +1962,8 @@ reversal deletes the original's subject row, so anything still `subject` and not
 is standing in the books right now. `findLiveSubjectPostings` is its batch.
 
 `findLinkedPostings` is the `parent` / `member` read and takes `statuses` **required**: those link
-rows survive the reversal, so "posted" and "any" are different answers — order recognition asks for
-`['posted']` and a reversed credit memo therefore does not block it. `readPostingHeaders` is the
+rows survive the reversal, so "posted" and "any" are different answers — a caller that wants what
+stands in the books asks for `['posted']`. `readPostingHeaders` is the
 batched header read (the `FOR UPDATE` header reads stay in `ledger/post/`),
 `readControlAccountLine` the A/R or A/P leg an entry actually landed in, and
 `countPostingsForLineSource` the retry counter a key's `attempt` is minted from.
@@ -1816,7 +1984,7 @@ exists but is not yours" is itself a disclosure.
 procedures) · `ledger-reports.ts` · `ledger-opening.ts` · `money.ts` (which also holds the sales
 verbs) · `credit-memo.ts` · `payment-gateways.ts` · `payout-evidence.ts` · `banking.ts` ·
 `banking-review.ts` · `banking-rules.ts` · `banking-import.ts` · `sync-history.ts` ·
-`document-edit.ts` (§5.10's four, for all three families)
+`document-edit.ts` (§5.10's four, for all four families)
 
 ⚠️ There is **no** `inventory.ts`, `sales.ts` or `invoice.ts` router: sales verbs live in
 `money.ts` and inventory verbs are split between `purchasing.ts` and `builds.ts`. That is an
@@ -1859,10 +2027,10 @@ concurrency 1, globally (plain BullMQ has no per-org groups), since one job alre
 | `accounting.cutoffPeriod` | The first month auxx keeps. Frozen after the first posting |
 | `accounting.fiscalYearStartMonth` | 🔑 Where every read splits prior years from this year (§13.1). Defaults to January; **not** frozen |
 | `ledger.lockedThroughMonth` | The period lock |
-| `accounting.autoPost.<avenue>` | Gate 1 — draft or post |
 | `accounting.exportMode`, `.exportModeCutover` | Transaction or summary, and from when |
-| `accounting.autoSend.<avenue>` | Gate 2 — hold or send |
-| `accounting.summaryGrain.<avenue>` | The summary bucket, `day` or `month` |
+| `accounting.autoSend.<avenue>` | Gate 2 — hold or send. There is no gate 1 (§5.5) |
+| `accounting.summaryGrain.<avenue>` | The summary bucket, `day`, `month` or `payout` |
+| `accounting.guestContactId` | The contact a receipt or refund names when the customer is unknown (§8.3) |
 | `accounting.opening*`, `qboOpening*` | The opening trial balance. Frozen by prefix after the first posting |
 | `accounting.setupState`, `setupFinalizedAt/ByUserId` | Wizard completion |
 | `accounting.providerSyncedThrough` | 🛑 The inbound marker — advance it only over a chunk that succeeded |
@@ -1993,8 +2161,9 @@ These are known:
   `draft.ts` parses — that one is code, not a comment.
 - `providers/book-connections.ts` says `externalCompanyId` is "what `GlPosting.providerTenantId`
   stores". That column is gone; the company scopes the mirror's key instead (§15 item 7).
-- `types.ts`'s `POSTING_STATUSES` JSDoc says "two values" over a three-element tuple, and its
-  `provider_sync` comment names `EXPORT_ROUTE_BY_POSTING_TYPE`, now a derived view of the policy.
+- `types.ts`'s `provider_sync` comment names `EXPORT_ROUTE_BY_POSTING_TYPE`, now a derived view of
+  the policy, and its `refund` and `credit_memo` comments still describe pre-91 entries
+  (`Dr returns / Cr clearing`, a memo money leg). The builders' headers are right.
 - `builders/basis-dimension.ts` explains itself in terms of `AccountingEffect`, which is gone.
 
 ### The tensions nobody has adjudicated
@@ -2018,7 +2187,9 @@ Concrete, testable, and the right thing to walk through before changing §5, §8
 1. A **$200 charge applied $150 / $50 across two invoices**: one money movement, two applications,
    a correct held balance, and no duplicate bank receipt.
 2. An **unapplied deposit** and a **refund** both remain visible and correctly classified — the
-   deposit as a liability, not as a negative receivable.
+   deposit shown as a liability, per document, at read time, inside each receivable account
+   (§13.2), while the ledger holds it as a credit in A/R; a refund whose memo has not arrived as a
+   receivable on aging.
 3. The **same charge arriving twice** — through collection and through connector evidence: one
    canonical transaction, one claim, one entry.
 4. A **payout arriving before its charges**, or with incomplete evidence: inspectable, but not

@@ -58,11 +58,8 @@ export const glPostingType = pgEnum('GlPostingType', [
   // `payment`, so the export can send a Refund Receipt and the ledger card can
   // name it. Added by MIGRATION step 2, drizzle 0378.
   'refund',
-  // plans/accounting/tasks/done/08-invoice-revenue.md and 07-customer-deposits.md,
-  // drizzle 0362. An invoice's issuance entry, and the reclass of a held
-  // customer deposit out of the liability and onto a receivable.
+  // plans/accounting/tasks/done/08-invoice-revenue.md, drizzle 0362. An invoice's issuance entry.
   'invoice_issued',
-  'deposit_application',
   // plans/accounting/tasks/done/10-credit-memos.md: the issue entry of a credit memo,
   // Dr 4090 / Dr sales tax payable / Cr A/R.
   'credit_memo',
@@ -110,16 +107,15 @@ export const GL_POSTING_AVENUES = [
 ] as const
 
 /**
- * Lifecycle of one journal entry, in OUR books: `draft -> posted -> reversed`.
+ * Lifecycle of one journal entry, in OUR books: `posted -> reversed` (91 D5: no drafts).
  *
- * A draft has lines and no doc number and holds no claim; posting assigns both.
  * `reversed` is terminal and belongs to the ORIGINAL of a reversal pair - the
  * reversal itself is an ordinary `posted` entry (decision G4).
  *
  * 🛑 `pending` and `failed` were never ledger states; they were EXPORT states
  * wearing this column's name. What the export did lives on `ExportBatch`.
  */
-export const glPostingStatus = pgEnum('GlPostingStatus', ['draft', 'posted', 'reversed'])
+export const glPostingStatus = pgEnum('GlPostingStatus', ['posted', 'reversed'])
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
 export const glPostingDirection = pgEnum('GlPostingDirection', ['debit', 'credit'])
@@ -158,7 +154,7 @@ export const GlPosting = pgTable(
     status: glPostingStatus().default('posted').notNull(),
     /** The accounting date. Always explicit — providers default to their own server date. */
     txnDate: date().notNull(),
-    /** Deterministic, <= 21 chars (QBO `DocNumber`). NULL while the entry is a draft. */
+    /** Deterministic, <= 21 chars (QBO `DocNumber`). */
     docNumber: text(),
 
     /** Which `FinancialSourceAccount` the entry resolved through, so a summary can group by it. */
@@ -167,6 +163,8 @@ export const GlPosting = pgTable(
     }),
     /** The `payment_gateway` instance the entry resolved through. An entity record id, so no FK. */
     railId: text(),
+    /** The provider's payout id the entry settled in (brief 94 stamps it); the summary's payout grain. No FK. */
+    payoutId: text(),
 
     /** ISO 4217. USD only for the cutover; asserted in the poster, never assumed. */
     currency: text().default('USD').notNull(),
@@ -226,6 +224,11 @@ export const GlPosting = pgTable(
       table.organizationId.asc().nullsLast(),
       table.txnDate.asc().nullsLast()
     ),
+    index('GlPosting_org_payoutId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.payoutId.asc().nullsLast()
+    ),
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),
     // The Outbox's grouped reads: posted rows of one org, by avenue and date.
@@ -251,11 +254,8 @@ export const GlPosting = pgTable(
       'GlPosting_reversal_check',
       sql`(${table.revision} = 0 AND ${table.reversesId} IS NULL) OR (${table.revision} > 0 AND ${table.reversesId} IS NOT NULL)`
     ),
-    // `posted` is the only status that may carry a posted timestamp.
-    check(
-      'GlPosting_posted_check',
-      sql`${table.status} <> 'posted' OR ${table.postedAt} IS NOT NULL`
-    ),
+    // Every entry is posted at insert; `reversed` keeps the original's timestamp.
+    check('GlPosting_posted_check', sql`${table.postedAt} IS NOT NULL`),
   ]
 )
 

@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/export/__tests__/preflight.test.ts
 //
 // The Ready tab's own read (89 D7). Two things are on trial: that the walk over
-// a frozen payload finds every `glAccountId` on all nine shapes - asserted
+// a frozen payload finds every `glAccountId` on all eight shapes - asserted
 // against each shape's OWN zod schema, so a new field cannot drift the read-side
 // set away from what the adapter resolves - and that the read stays inside our
 // database.
@@ -30,7 +30,6 @@ import {
   exportJournalSchema,
   exportPaymentSchema,
   exportRefundReceiptSchema,
-  exportSalesReceiptSchema,
   exportVendorCreditSchema,
   payloadAccountIds,
 } from '../payloads'
@@ -62,17 +61,6 @@ const SHAPES: Array<{ objectType: string; payload: unknown; ids: string[] }> = [
         { ...glRef('gl_a'), direction: 'debit', amountMinor: 1000, sortOrder: 0 },
         { ...glRef('gl_b'), direction: 'credit', amountMinor: 1000, sortOrder: 1 },
       ],
-    }),
-    ids: ['gl_a', 'gl_b'],
-  },
-  {
-    objectType: 'sales_receipt',
-    payload: exportSalesReceiptSchema.parse({
-      ...base,
-      customer,
-      storeId: null,
-      lines: [itemLine('gl_a')],
-      depositTo: glRef('gl_b'),
     }),
     ids: ['gl_a', 'gl_b'],
   },

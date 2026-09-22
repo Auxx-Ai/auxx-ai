@@ -15,7 +15,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
@@ -143,7 +143,7 @@ async function countUnpostedShipments(
         eq(schema.GlPostingSource.organizationId, organizationId),
         eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
         eq(schema.GlPostingSource.linkRole, 'subject'),
-        inArray(schema.GlPosting.status, ['draft', 'posted'])
+        eq(schema.GlPosting.status, 'posted')
       )
     )
 

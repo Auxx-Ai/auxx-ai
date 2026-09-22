@@ -13,11 +13,13 @@ export type PaymentMethod = 'cash' | 'check' | 'card' | 'bank' | 'other'
 export interface CashEndpointSource {
   paymentGatewayId: string | null
   cashAccountInstanceId: string | null
-  /** ISO 4217. Scopes the rail's clearing row; ignored for the other two shapes. */
+  /** ISO 4217. Scopes the rail's clearing row; ignored for the other shapes. */
   currency: string
+  /** Paid with (or refunded onto) a gift card: the money is the cardholder's balance (91 D8). */
+  giftCard?: boolean
 }
 
-export type CashEndpointKind = 'clearing' | 'bank_account' | 'undeposited_funds'
+export type CashEndpointKind = 'clearing' | 'bank_account' | 'undeposited_funds' | 'gift_card'
 
 /** A movement names a rail, a bank account, or neither. Never both. */
 export function validateCashEndpointSource(source: CashEndpointSource): void {
@@ -39,6 +41,7 @@ export function netApplied(
 
 /** How a movement's money is held — the pure half of `resolveCashEndpoint`. */
 export function cashEndpointKind(source: CashEndpointSource): CashEndpointKind {
+  if (source.giftCard) return 'gift_card'
   if (source.paymentGatewayId?.trim()) return 'clearing'
   if (source.cashAccountInstanceId?.trim()) return 'bank_account'
   return 'undeposited_funds'

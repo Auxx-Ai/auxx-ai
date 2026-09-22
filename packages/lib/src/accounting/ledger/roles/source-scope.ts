@@ -38,8 +38,7 @@
  *
  * Do not backfill it into effects. `sourceStoreId` stays nullable on the
  * fulfillment effect and keeps meaning "this record had no connected source",
- * which is true and which `recognition-source.ts`'s live / non-archived guards
- * rely on. The translation from null to the manual row happens in exactly one
+ * which is true. The translation from null to the manual row happens in exactly one
  * place, on the resolution side, in `resolve-roles.ts` (47 §3.2).
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
@@ -186,8 +185,7 @@ const STORE_EVIDENCE_OBJECT_TYPES = ['order_transaction', 'charge', 'refund'] as
  * every org has.
  *
  * Archived and non-`live` accounts, and archived gateways, are excluded IN THE
- * QUERY, the same rule `recognition-source.ts` applies to evidence and
- * `chart-accounts.ts` applies to the chart: a source somebody archived must
+ * QUERY, the same rule `chart-accounts.ts` applies to the chart: a source somebody archived must
  * not be offered, and a test store's revenue must not reach the live account.
  */
 export async function listRoleSources(

@@ -3,14 +3,14 @@
 // TARGET §3: the export batch's settings. `readExportSettings` stays
 // server-only (`./index`) - these three reach nothing but `../../types`.
 export {
-  AUTO_POST_AVENUES,
-  type AutoPostAvenue,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrain,
   isSummaryGrainAvenue,
   SUMMARY_GRAIN_AVENUES,
+  SUMMARY_GRAINS,
   type SummaryGrain,
   type SummaryGrainAvenue,
 } from './export-settings'

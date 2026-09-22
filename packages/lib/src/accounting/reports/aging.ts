@@ -6,35 +6,32 @@
 // the single most common "my accounting software is lying to me" complaint,
 // and it is unfixable after the fact because the two numbers have different
 // definitions. So this reads posted `accounts_receivable`/`accounts_payable`
-// lines, groups them by the DOCUMENT their `sourceType`/`sourceId` names
-// (netting debits and credits per document as of `asOf`), and asserts its own
-// total against `readTrialBalance`'s figure for the same role and date - the
-// `verdict`, shown even when it is false.
+// lines on every receivable/payable account (the role's default plus every
+// account whose subtype says so, which covers A/R's per-store accounts), groups
+// them by the DOCUMENT their `sourceType`/`sourceId` names (netting debits and
+// credits per document as of `asOf`), and asserts its own total against the sum
+// of `readTrialBalance`'s rows for those accounts - the `verdict`, shown even
+// when it is false.
 //
 // BUCKETING. Always on the document's DUE DATE, never on issue date (task 05
 // §3): a net-60 invoice issued 45 days ago is `current`, not `31-60`. A
 // document with no due date - an unapplied payment, a manual adjustment, the
 // opening entry - has nothing to bucket on and is always `current`.
 //
-// DOCUMENT SOURCES. `sourceType` on a posted line names what produced it:
-// `invoice` (a write-off, `build-write-off-entry.ts`), `vendor_bill` (the
-// matched bill entry, `build-entry.ts`), `order` (a fulfillment entry -
-// `build-fulfillment-entry.ts` posts A/R by ORDER, not by invoice; orders
-// carry no due date and settle under the order's own contact/company),
-// `payment_transaction` (a payment or refund, `build-payment-entry.ts` - the
-// sourceType name predates the money model and is unchanged; `sourceId` is a
-// `MoneyTransaction.id`, resolved against its own `partyInstanceId`) and `journal_entry`
-// (a manual or opening entry, which carries no contact). Every one of these
-// is handled; nothing is dropped. A `sourceType` this file does not know
-// about falls into the same "Unapplied and adjustments" catch-all a
-// `journal_entry` line does, so the total still ties even for a source this
-// read has never heard of.
+// DOCUMENT SOURCES. `invoice` and `vendor_bill` age on their due date; `order`
+// (a shipment) carries none. A `money_transaction` line (receipt, refund,
+// vendor payment) is attributed to the documents its `MoneyApplication`s name,
+// prorated, and a `credit_memo` folds into its order or invoice - see
+// `receivable-attribution.ts`. What stays on a movement is unapplied. That,
+// `journal_entry` and any unknown source land in the catch-all, so the total
+// still ties. A document paid only before `accounting.cutoffPeriod` groups as
+// pre-cutover: the opening entry carries that money by account (91 §8.7).
 //
 // No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, lte } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
@@ -43,6 +40,11 @@ import { systemFieldMap } from '../../resources/system-records'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
+import {
+  attributeToDocuments,
+  readAttributionLinks,
+  readPreCutoverDocumentIds,
+} from './receivable-attribution'
 import { type StatementColumn, type StatementRow, totalRow } from './rows'
 import { signedBalance } from './statement-math'
 import { readTrialBalance } from './trial-balance'
@@ -148,12 +150,12 @@ export interface Aging {
   organizationId: string
   side: AgingSide
   asOf: string
-  /** The org's own account code carrying the role, or `null` when the role is unmapped. */
+  /** The code of the role's org-default account, or `null` when that is unmapped. */
   accountCode: string | null
   groups: AgingGroup[]
   bucketTotals: Record<AgingBucketKey, number>
   totalMinor: number
-  /** `readTrialBalance`'s own figure for the same role's account, as of the same date. */
+  /** The sum of `readTrialBalance`'s rows for every account walked, as of the same date. */
   balanceSheetMinor: number
   /** `totalMinor === balanceSheetMinor`. `false` is shown, never hidden - task 05 §2. */
   verdict: boolean
@@ -170,6 +172,17 @@ export interface ReadAgingOptions {
 /** The catch-all every document with no resolvable contact/company falls into. Never dropped. */
 export const AGING_UNAPPLIED_GROUP_ID = 'unapplied'
 const UNAPPLIED_GROUP_NAME = 'Unapplied and adjustments'
+
+/** Documents whose every application predates the cutoff (91 §8.7). */
+export const AGING_PRE_CUTOVER_GROUP_ID = 'pre_cutover'
+const PRE_CUTOVER_GROUP_NAME = 'Paid before cutover'
+
+const SYNTHETIC_GROUPS = new Map([
+  [AGING_UNAPPLIED_GROUP_ID, UNAPPLIED_GROUP_NAME],
+  [AGING_PRE_CUTOVER_GROUP_ID, PRE_CUTOVER_GROUP_NAME],
+])
+
+const MOVEMENT_SOURCE_TYPE = 'money_transaction'
 
 const DOCUMENT_SCALAR_ATTRIBUTES = [
   'invoice_due_date',
@@ -232,12 +245,11 @@ interface ResolvedDocument {
 /**
  * A/R or A/P aging as of `asOf`, from the GL.
  *
- * Resolves the side's role (`accounts_receivable` | `accounts_payable`) to
- * this org's own account via {@link loadRoleAccountCodes} - a READER's door,
- * not a poster's, so an unmapped role is reported as an empty, trivially
- * verdict-true aging (nothing could have posted to it) rather than refused.
+ * Walks the side's role default ({@link loadRoleAccountCodes}) plus every account
+ * carrying the side's subtype - a store-scoped A/R account is pinned to it
+ * (`ROLE_ACCOUNT_SUBTYPES`). No account at all is an empty, trivially tied aging.
  *
- * Every posted line against that account, through `asOf`, is grouped by the
+ * Every posted line against those accounts, through `asOf`, is grouped by the
  * document its `sourceType`/`sourceId` names and netted by the account's own
  * natural direction ({@link signedBalance}) - a fully paid document nets to
  * zero and is dropped from the listing (an "open" aging, per task 05's
@@ -251,14 +263,19 @@ export async function readAging(
   const { organizationId, side, asOf } = options
   const role =
     side === 'receivable' ? ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE : ACCOUNT_ROLES.ACCOUNTS_PAYABLE
+  const subtype = side === 'receivable' ? 'accounts_receivable' : 'accounts_payable'
 
   try {
-    const accounts = await loadRoleAccountCodes(db, organizationId, [role])
-    const account = accounts.get(role)
-    // Unmapped: nothing could have posted to a role nobody has assigned an
-    // account to. An empty, trivially-tied aging, not a refusal - the same
-    // "absent rather than failed" rule `vendor-1099.ts`'s `emptySummary` follows.
-    if (!account) return ok(emptyAging(options, null))
+    const account = (await loadRoleAccountCodes(db, organizationId, [role])).get(role)
+    const tbResult = await readTrialBalance(db, { organizationId, to: asOf })
+    if (tbResult.isErr()) return err(tbResult.error)
+    const accountIds = new Set(
+      tbResult.value.rows.filter((row) => row.subtype === subtype).map((row) => row.glAccountId)
+    )
+    if (account) accountIds.add(account.glAccountId)
+    // "Absent rather than failed", the same rule `vendor-1099.ts`'s `emptySummary` follows.
+    if (accountIds.size === 0) return ok(emptyAging(options, null))
+    const accountType = account?.accountType ?? (side === 'receivable' ? 'asset' : 'liability')
 
     const rawLines = await db
       .select({
@@ -275,7 +292,7 @@ export async function readAging(
       .where(
         standingLineFilter(organizationId, {
           to: asOf,
-          glAccountIds: [account.glAccountId],
+          glAccountIds: [...accountIds],
         })
       )
 
@@ -302,10 +319,13 @@ export async function readAging(
       else accum.creditMinor += line.amountMinor
     }
 
-    const openDocs = [...byDoc.values()]
+    const links = await readAttributionLinks(db, organizationId, [...byDoc.values()])
+    if (links.isErr()) return err(links.error)
+
+    const openDocs = attributeToDocuments([...byDoc.values()], links.value)
       .map((accum) => ({
         accum,
-        openMinor: signedBalance(accum.debitMinor, accum.creditMinor, account.accountType),
+        openMinor: signedBalance(accum.debitMinor, accum.creditMinor, accountType),
       }))
       // A document that nets to zero is fully settled - it does not belong in
       // an OPEN aging (task 05's title), though its zero already contributed
@@ -317,8 +337,10 @@ export async function readAging(
       .filter((d) => ['invoice', 'vendor_bill', 'order'].includes(d.accum.sourceType))
       .map((d) => d.accum.sourceId)
     const paymentTransactionIds = openDocs
-      .filter((d) => d.accum.sourceType === 'payment_transaction')
+      .filter((d) => d.accum.sourceType === MOVEMENT_SOURCE_TYPE)
       .map((d) => d.accum.sourceId)
+    const preCutover = await readPreCutoverDocumentIds(db, organizationId, fieldDocumentIds)
+    if (preCutover.isErr()) return err(preCutover.error)
 
     const cf = await systemFieldMap(db, organizationId, [
       ...DOCUMENT_SCALAR_ATTRIBUTES,
@@ -349,7 +371,6 @@ export async function readAging(
           ? db
               .select({
                 id: schema.MoneyTransaction.id,
-                contactInstanceId: schema.MoneyTransaction.partyInstanceId,
                 reference: schema.MoneyTransaction.reference,
                 purpose: schema.MoneyTransaction.purpose,
               })
@@ -366,7 +387,7 @@ export async function readAging(
       ])
     const paymentById = new Map(paymentTransactions.map((p) => [p.id, p]))
 
-    const resolved: ResolvedDocument[] = openDocs.map((doc) => {
+    const resolveDocument = (doc: (typeof openDocs)[number]): ResolvedDocument => {
       const { sourceType, sourceId, docNumber } = doc.accum
 
       if (sourceType === 'invoice') {
@@ -440,12 +461,13 @@ export async function readAging(
         }
       }
 
-      if (sourceType === 'payment_transaction') {
+      // What no application covers: the unapplied remainder, or a refund with no memo yet.
+      if (sourceType === MOVEMENT_SOURCE_TYPE) {
         const payment = paymentById.get(sourceId)
         return {
           accum: doc.accum,
           openMinor: doc.openMinor,
-          groupId: payment?.contactInstanceId ?? AGING_UNAPPLIED_GROUP_ID,
+          groupId: AGING_UNAPPLIED_GROUP_ID,
           label:
             payment?.reference || (payment?.purpose === 'customer_refund' ? 'Refund' : 'Payment'),
           issuedAt: null,
@@ -463,11 +485,17 @@ export async function readAging(
         issuedAt: null,
         dueDate: null,
       }
+    }
+    const resolved = openDocs.map((doc) => {
+      const r = resolveDocument(doc)
+      return preCutover.value.has(r.accum.sourceId)
+        ? { ...r, groupId: AGING_PRE_CUTOVER_GROUP_ID }
+        : r
     })
 
     // ── Names for every resolved contact/company ─────────────────────────
     const groupIds = [
-      ...new Set(resolved.map((r) => r.groupId).filter((id) => id !== AGING_UNAPPLIED_GROUP_ID)),
+      ...new Set(resolved.map((r) => r.groupId).filter((id) => !SYNTHETIC_GROUPS.has(id))),
     ]
     const names =
       groupIds.length > 0
@@ -505,10 +533,7 @@ export async function readAging(
       if (!group) {
         group = {
           groupId: r.groupId,
-          groupName:
-            r.groupId === AGING_UNAPPLIED_GROUP_ID
-              ? UNAPPLIED_GROUP_NAME
-              : nameById.get(r.groupId) || r.groupId,
+          groupName: SYNTHETIC_GROUPS.get(r.groupId) ?? (nameById.get(r.groupId) || r.groupId),
           documents: [],
           bucketTotals: zeroBucketTotals(),
           totalMinor: 0,
@@ -520,11 +545,12 @@ export async function readAging(
       group.totalMinor += document.openMinor
     }
 
-    const groups = [...groupsById.values()].sort((a, b) => {
-      if (a.groupId === AGING_UNAPPLIED_GROUP_ID) return 1
-      if (b.groupId === AGING_UNAPPLIED_GROUP_ID) return -1
-      return a.groupName.localeCompare(b.groupName)
-    })
+    // Contacts first by name, then pre-cutover, then the catch-all.
+    const rank = (id: string) =>
+      id === AGING_UNAPPLIED_GROUP_ID ? 2 : id === AGING_PRE_CUTOVER_GROUP_ID ? 1 : 0
+    const groups = [...groupsById.values()].sort(
+      (a, b) => rank(a.groupId) - rank(b.groupId) || a.groupName.localeCompare(b.groupName)
+    )
     for (const group of groups) {
       group.documents.sort(
         (a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '') || a.label.localeCompare(b.label)
@@ -539,17 +565,16 @@ export async function readAging(
     }
 
     // ── The tie assertion ──────────────────────────────────────────────────
-    const tbResult = await readTrialBalance(db, { organizationId, to: asOf })
-    if (tbResult.isErr()) return err(tbResult.error)
-    const balanceSheetMinor =
-      tbResult.value.rows.find((row) => row.glAccountId === account.glAccountId)?.balanceMinor ?? 0
+    const balanceSheetMinor = tbResult.value.rows
+      .filter((row) => accountIds.has(row.glAccountId))
+      .reduce((sum, row) => sum + row.balanceMinor, 0)
     const differenceMinor = totalMinor - balanceSheetMinor
 
     return ok({
       organizationId,
       side,
       asOf,
-      accountCode: account.code,
+      accountCode: account?.code ?? null,
       groups,
       bucketTotals,
       totalMinor,

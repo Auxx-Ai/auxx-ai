@@ -8,7 +8,7 @@ import type { PostingType } from '../types'
 
 /**
  * The category every posting carries as `GlPosting.avenue`: the provider-object
- * family it leaves as, the lane its `autoPost` / `autoSend` / `summaryGrain`
+ * family it leaves as, the lane its `autoSend` / `summaryGrain`
  * switches key on, and the one vocabulary every Outbox tab filters by.
  * Mirrors TARGET §3's provider-object table and §5's Provider object column.
  */
@@ -29,20 +29,6 @@ export const EXPORT_AVENUES = [
 
 export type ExportAvenue = (typeof EXPORT_AVENUES)[number]
 
-/** The avenues with a draft step - `accounting.autoPost.<avenue>` exists for these alone. */
-export const AUTO_POST_AVENUES = [
-  'fulfillment',
-  'invoice',
-  'receipt',
-  'refund',
-  'creditMemo',
-  'expenseBill',
-  'vendorPayment',
-  'vendorCredit',
-] as const
-
-export type AutoPostAvenue = (typeof AUTO_POST_AVENUES)[number]
-
 /** The avenues `accounting.summaryGrain.*` governs. Payouts, bank deposits and journals have no grain - one object each. */
 export const SUMMARY_GRAIN_AVENUES = [
   'fulfillment',
@@ -58,7 +44,14 @@ export const SUMMARY_GRAIN_AVENUES = [
 
 export type SummaryGrainAvenue = (typeof SUMMARY_GRAIN_AVENUES)[number]
 
-export type SummaryGrain = 'day' | 'month'
+/** `payout` buckets by `GlPosting.payoutId`; a posting with none falls into its day (91 D9). */
+export const SUMMARY_GRAINS = ['day', 'month', 'payout'] as const
+
+export type SummaryGrain = (typeof SUMMARY_GRAINS)[number]
+
+export function isSummaryGrain(value: unknown): value is SummaryGrain {
+  return (SUMMARY_GRAINS as readonly unknown[]).includes(value)
+}
 
 export function isSummaryGrainAvenue(avenue: ExportAvenue): avenue is SummaryGrainAvenue {
   return (SUMMARY_GRAIN_AVENUES as readonly string[]).includes(avenue)
@@ -80,9 +73,7 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
       return 'fulfillment'
     case 'invoice_issued':
       return 'invoice'
-    // Rides along with the payment it applies against - TARGET §5: "part of the Payment".
     case 'payment':
-    case 'deposit_application':
       return 'receipt'
     case 'refund':
       return 'refund'

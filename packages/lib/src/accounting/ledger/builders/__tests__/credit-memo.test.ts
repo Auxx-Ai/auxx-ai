@@ -4,9 +4,10 @@
 //
 //  1. **The revenue leg debits 4090, never the original revenue account.** A
 //     reversal netted into `4000` leaves a return rate nobody can see.
-//  2. **Tax is transcribed, and `total` must tie to `subtotal + tax`.** The
-//     entry ties to the stored totals by construction or it refuses.
-//  3. **The period key is the memo's own number**, so a second issue of the
+//  2. **Tax is transcribed, and `total` must tie to the lines.** The entry ties
+//     to the stored totals by construction or it refuses.
+//  3. **Only the shipped lines post** (91 D4): an unshipped line reverses no revenue.
+//  4. **The period key is the memo's own number**, so a second issue of the
 //     same memo claims the same tuple and converges to `already_posted`. A
 //     cuid would blow the 21-character document-number cap outright.
 
@@ -19,6 +20,7 @@ import {
   buildCreditMemoEntry,
   CREDIT_MEMO_POSTING_TYPE,
   CREDIT_MEMO_SOURCE_TYPE,
+  computeCreditMemoAmounts,
 } from '../credit-memo'
 import { buildDocNumber, DOC_NUMBER_MAX_LENGTH, DOC_NUMBER_PREFIX } from '../doc-number'
 import { ACCOUNT_ROLES } from '../entry'
@@ -28,10 +30,17 @@ const BASE: BuildCreditMemoEntryInput = {
   number: 'CM-0007',
   issuedAt: '2026-09-08',
   currency: 'USD',
-  subtotal: 12_000,
-  taxTotal: 990,
+  lines: [{ subtotal: 12_000, taxTotal: 990, shipped: true }],
   total: 12_990,
-  reverseRevenue: true,
+}
+
+/** One shipped line carrying these amounts. */
+function one(
+  subtotal: number | null | undefined,
+  taxTotal: number | null | undefined,
+  total: number | null | undefined
+): BuildCreditMemoEntryInput {
+  return { ...BASE, lines: [{ subtotal, taxTotal, shipped: true }], total }
 }
 
 function expectRefusal(fn: () => unknown): UnprocessableEntityError {
@@ -48,7 +57,7 @@ function lines(built: ReturnType<typeof buildCreditMemoEntry>, role: string) {
   return built.entry.lines.filter((row) => row.accountRole === role)
 }
 
-describe('a native credit memo (reverseRevenue, no settlement)', () => {
+describe('a memo whose one line shipped', () => {
   const built = buildCreditMemoEntry(BASE)
 
   it('balances by construction', () => {
@@ -125,7 +134,7 @@ describe('a native credit memo (reverseRevenue, no settlement)', () => {
 
 describe('tax', () => {
   it('omits the tax leg when the tax is zero rather than posting a line that moves nothing', () => {
-    const built = buildCreditMemoEntry({ ...BASE, taxTotal: 0, total: 12_000 })
+    const built = buildCreditMemoEntry(one(12_000, 0, 12_000))
     expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
     expect(built.entry.lines).toHaveLength(2)
     expect(built.taxTotalMinor).toBe(0)
@@ -133,19 +142,19 @@ describe('tax', () => {
   })
 
   it('treats a null tax as no tax leg, not as a refusal', () => {
-    const built = buildCreditMemoEntry({ ...BASE, taxTotal: null, total: 12_000 })
+    const built = buildCreditMemoEntry(one(12_000, null, 12_000))
     expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
     expect(built.taxTotalMinor).toBe(0)
     expect(built.entry.lines.map((row) => row.sortOrder)).toEqual([0, 1])
   })
 
   it('treats an undefined tax the same way', () => {
-    const built = buildCreditMemoEntry({ ...BASE, taxTotal: undefined, total: 12_000 })
+    const built = buildCreditMemoEntry(one(12_000, undefined, 12_000))
     expect(built.entry.lines).toHaveLength(2)
   })
 
   it('reverses only the tax on a memo that is all tax', () => {
-    const built = buildCreditMemoEntry({ ...BASE, subtotal: 0, taxTotal: 990, total: 990 })
+    const built = buildCreditMemoEntry(one(0, 990, 990))
     expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toHaveLength(0)
     expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)[0]?.amount).toBe(990)
     expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.amount).toBe(990)
@@ -154,88 +163,58 @@ describe('tax', () => {
   // `FieldValue.valueNumber` is `doublePrecision`, so a stored `12000` can read
   // back as `11999.999999999998`. The builder rounds the noise floor.
   it('absorbs double-precision noise on the stored totals', () => {
-    const built = buildCreditMemoEntry({
-      ...BASE,
-      subtotal: 11_999.999999999998,
-      taxTotal: 990.0000000000001,
-      total: 12_989.999999999998,
-    })
+    const built = buildCreditMemoEntry(
+      one(11_999.999999999998, 990.0000000000001, 12_989.999999999998)
+    )
     expect(built.subtotalMinor).toBe(12_000)
     expect(built.taxTotalMinor).toBe(990)
     expect(built.totalMinor).toBe(12_990)
   })
 })
 
-describe('a channel credit memo on an order that never shipped (71 D14, 88 D7)', () => {
-  // Nothing was recognised, so there is no revenue to reverse - but the
-  // pre-fulfillment receipt credited the net to `customer_deposits` and the tax
-  // to `sales_tax_payable`, so the memo mirrors that split onto the control
-  // account, and the refund then draws it down like any other memo's.
-  const built = buildCreditMemoEntry({ ...BASE, reverseRevenue: false })
+describe('per line: only what had shipped reverses (91 D4)', () => {
+  const shipped = { subtotal: 5_000, taxTotal: 400, shipped: true }
+  const unshipped = { subtotal: 7_000, taxTotal: 590, shipped: false }
 
-  it('mirrors the receipt: Dr customer_deposits (net) · Dr sales_tax_payable (tax) / Cr A/R (total)', () => {
-    expect(built.entry.lines).toHaveLength(3)
-    expect(lines(built, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)[0]).toMatchObject({
-      direction: 'debit',
-      amount: 12_000,
-    })
-    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)[0]).toMatchObject({
-      direction: 'debit',
-      amount: 990,
-    })
-    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
-      direction: 'credit',
-      amount: 12_990,
-    })
-    expect(built.entry.totalDebit).toBe(12_990)
-    expect(built.entry.totalCredit).toBe(12_990)
+  it('a shipped line posts returns and its tax against A/R', () => {
+    const built = buildCreditMemoEntry({ ...BASE, lines: [shipped], total: 5_400 })
+    expect(built.entry.lines.map((row) => [row.accountRole, row.direction, row.amount])).toEqual([
+      [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES, 'debit', 5_000],
+      [ACCOUNT_ROLES.SALES_TAX_PAYABLE, 'debit', 400],
+      [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE, 'credit', 5_400],
+    ])
   })
 
-  it('reverses no revenue, and reports the tax it gave back', () => {
-    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toHaveLength(0)
-    expect(built.subtotalMinor).toBe(0)
-    expect(built.taxTotalMinor).toBe(990)
+  it('an unshipped line posts nothing, so a memo of only those refuses to build', () => {
+    const error = expectRefusal(() =>
+      buildCreditMemoEntry({ ...BASE, lines: [unshipped], total: 7_590 })
+    )
+    expect(error.message).toMatch(/no line that had shipped/)
+    expect(
+      computeCreditMemoAmounts({
+        creditMemoId: BASE.creditMemoId,
+        number: BASE.number,
+        lines: [unshipped],
+        total: 7_590,
+      })
+    ).toEqual({ subtotalMinor: 0, shippingMinor: 0, taxTotalMinor: 0, totalMinor: 0 })
   })
 
-  it('drops the tax leg on a memo with no tax, and the deposit leg on one that is all tax', () => {
-    const noTax = buildCreditMemoEntry({
-      ...BASE,
-      reverseRevenue: false,
-      taxTotal: 0,
-      total: 12_000,
-    })
-    expect(noTax.entry.lines).toHaveLength(2)
-    expect(lines(noTax, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
-    const allTax = buildCreditMemoEntry({
-      ...BASE,
-      reverseRevenue: false,
-      subtotal: 0,
-      taxTotal: 990,
-      total: 990,
-    })
-    expect(allTax.entry.lines).toHaveLength(2)
-    expect(lines(allTax, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toHaveLength(0)
+  it('a mixed memo posts only the shipped line, tax included, and still ties the whole memo', () => {
+    const built = buildCreditMemoEntry({ ...BASE, lines: [shipped, unshipped], total: 12_990 })
+    expect(built.subtotalMinor).toBe(5_000)
+    expect(built.taxTotalMinor).toBe(400)
+    expect(built.totalMinor).toBe(5_400)
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.amount).toBe(5_400)
+    expect(built.entry.totalDebit).toBe(5_400)
+    expectRefusal(() =>
+      buildCreditMemoEntry({ ...BASE, lines: [shipped, unshipped], total: 5_400 })
+    )
   })
 
-  it('still reports the memo total, because that is what it credits', () => {
-    expect(built.totalMinor).toBe(12_990)
-  })
-
-  it('touches no clearing account — the refund posts its own entry', () => {
-    expect(lines(built, ACCOUNT_ROLES.CLEARING)).toHaveLength(0)
-  })
-
-  it('carries the contact on the receivable leg, never on the deposit leg', () => {
-    const withContact = buildCreditMemoEntry({
-      ...BASE,
-      reverseRevenue: false,
-      contactInstanceId: 'ei_contact_1',
-    })
-    expect(lines(withContact, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
-      counterpartyType: 'customer',
-      counterpartyId: 'ei_contact_1',
-    })
-    expect(lines(withContact, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)[0]?.counterpartyId).toBeUndefined()
+  it('never touches customer_deposits', () => {
+    const built = buildCreditMemoEntry({ ...BASE, lines: [shipped, unshipped], total: 12_990 })
+    expect(built.entry.lines.some((row) => row.accountRole === 'customer_deposits')).toBe(false)
   })
 })
 
@@ -263,43 +242,37 @@ describe('the counterparty (brief 13 §1.2)', () => {
 
 describe('refusals', () => {
   it('refuses a total that does not equal subtotal plus tax', () => {
-    const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, total: 13_000 }))
+    const error = expectRefusal(() => buildCreditMemoEntry(one(12_000, 990, 13_000)))
     expect(error.message).toMatch(/totals 13000 but its subtotal 12000 plus tax 990 is 12990/)
   })
 
   it('refuses a zero total', () => {
-    const error = expectRefusal(() =>
-      buildCreditMemoEntry({ ...BASE, subtotal: 0, taxTotal: 0, total: 0 })
-    )
+    const error = expectRefusal(() => buildCreditMemoEntry(one(0, 0, 0)))
     expect(error.message).toMatch(/totals 0/)
   })
 
   it('refuses a null total as a zero total', () => {
-    expectRefusal(() => buildCreditMemoEntry({ ...BASE, subtotal: 0, taxTotal: 0, total: null }))
+    expectRefusal(() => buildCreditMemoEntry(one(0, 0, null)))
   })
 
   it('refuses a negative subtotal', () => {
-    const error = expectRefusal(() =>
-      buildCreditMemoEntry({ ...BASE, subtotal: -100, taxTotal: 0, total: -100 })
-    )
+    const error = expectRefusal(() => buildCreditMemoEntry(one(-100, 0, -100)))
     expect(error.message).toMatch(/Neither is ever negative/)
   })
 
   it('refuses negative tax', () => {
-    const error = expectRefusal(() =>
-      buildCreditMemoEntry({ ...BASE, subtotal: 12_000, taxTotal: -10, total: 11_990 })
-    )
+    const error = expectRefusal(() => buildCreditMemoEntry(one(12_000, -10, 11_990)))
     expect(error.message).toMatch(/Neither is ever negative/)
   })
 
   it('refuses a fractional subtotal, tax or total', () => {
-    expectRefusal(() => buildCreditMemoEntry({ ...BASE, subtotal: 12_000.5, total: 12_990.5 }))
-    expectRefusal(() => buildCreditMemoEntry({ ...BASE, taxTotal: 990.5, total: 12_990.5 }))
-    expectRefusal(() => buildCreditMemoEntry({ ...BASE, total: 12_990.5 }))
+    expectRefusal(() => buildCreditMemoEntry(one(12_000.5, 990, 12_990.5)))
+    expectRefusal(() => buildCreditMemoEntry(one(12_000, 990.5, 12_990.5)))
+    expectRefusal(() => buildCreditMemoEntry(one(12_000, 990, 12_990.5)))
   })
 
   it('refuses a non-finite amount', () => {
-    expectRefusal(() => buildCreditMemoEntry({ ...BASE, total: Number.NaN }))
+    expectRefusal(() => buildCreditMemoEntry(one(12_000, 990, Number.NaN)))
   })
 
   it('refuses a blank memo number', () => {
@@ -328,7 +301,7 @@ describe('refusals', () => {
 describe('the already-posted convergence key', () => {
   it('is deterministic for one memo, whatever the amounts', () => {
     const first = buildCreditMemoEntry(BASE)
-    const second = buildCreditMemoEntry({ ...BASE, memo: 'again', taxTotal: 0, total: 12_000 })
+    const second = buildCreditMemoEntry({ ...one(12_000, 0, 12_000), memo: 'again' })
     expect(second.periodKey).toBe(first.periodKey)
     expect(buildDocNumber({ postingType: 'credit_memo', periodKey: first.periodKey })).toBe(
       buildDocNumber({ postingType: 'credit_memo', periodKey: second.periodKey })
@@ -382,5 +355,52 @@ describe('the document number', () => {
 describe('the regime', () => {
   it('declares credit_memo as driving no single-writer role', () => {
     expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.credit_memo).toEqual([])
+  })
+})
+
+describe('a shipping-only refund (91 D8)', () => {
+  const shippingLine = {
+    subtotal: 1_500,
+    taxTotal: 120,
+    shipped: true,
+    component: 'shipping' as const,
+  }
+
+  it('debits revenue_shipping and its tax against A/R, never returns', () => {
+    const built = buildCreditMemoEntry({ ...BASE, lines: [shippingLine], total: 1_620 })
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_SHIPPING)).toMatchObject([
+      { direction: 'debit', amount: 1_500 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toMatchObject([
+      { direction: 'debit', amount: 120 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toMatchObject([
+      { direction: 'credit', amount: 1_620 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toEqual([])
+    expect(built.shippingMinor).toBe(1_500)
+    expect(built.subtotalMinor).toBe(0)
+  })
+
+  it('splits goods and shipping on one memo', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      lines: [{ subtotal: 12_000, taxTotal: 990, shipped: true }, shippingLine],
+      total: 14_610,
+    })
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)[0]?.amount).toBe(12_000)
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_SHIPPING)[0]?.amount).toBe(1_500)
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.amount).toBe(14_610)
+  })
+
+  it('posts nothing for shipping that was never recognised', () => {
+    expect(
+      computeCreditMemoAmounts({
+        creditMemoId: BASE.creditMemoId,
+        number: BASE.number,
+        lines: [{ ...shippingLine, shipped: false }],
+        total: 1_620,
+      }).totalMinor
+    ).toBe(0)
   })
 })

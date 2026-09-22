@@ -136,6 +136,7 @@ export async function refundCreditMemoToCard(
         reference: refund.id,
       })
 
+      // The link to the memo, written with the movement; never an input to its entry (91 D4).
       const [settlement] = await tx
         .insert(schema.MoneyRefundSettlement)
         .values({

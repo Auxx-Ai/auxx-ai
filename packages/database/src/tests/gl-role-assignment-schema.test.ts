@@ -101,10 +101,11 @@ describe('GlRoleAssignment', () => {
     const fkColumns = config.foreignKeys.flatMap((fk) => fk.reference().columns.map((c) => c.name))
     expect(fkColumns).not.toContain('glAccountId')
     // The org (cascade), the confirming user (set null), and the composite
-    // (organizationId, sourceAccountId) key added by task 47.
+    // (organizationId, sourceAccountId) and (organizationId, paymentGatewayId) keys.
     expect([...new Set(fkColumns)].sort()).toEqual([
       'confirmedByUserId',
       'organizationId',
+      'paymentGatewayId',
       'sourceAccountId',
     ])
   })

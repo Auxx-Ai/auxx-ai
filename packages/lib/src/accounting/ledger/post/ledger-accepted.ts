@@ -47,15 +47,9 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
     case 'revenue_incomplete':
     case 'nothing_to_recognise':
     case 'error':
-    // 🛑 NOT accepted, and this is the one that reads like a mistake. The
-    // accounting module has never been turned on, so nothing was built, nothing
-    // claimed, nothing logged (task 17 §3). It is a first-class SILENT case,
-    // but it is not the ledger accepting anything - callers that must not warn
-    // about it want {@link isExpectedPostOutcome}, which says so by name.
+    // Not accepted: the module is off, so nothing was built. Callers that treat it
+    // as an ordinary skip check the status themselves (task 17 §3).
     case 'not_enabled':
-    // A row exists, with lines and no doc number, and it holds no claim. The
-    // statements do not read it, so the books do not yet hold this entry.
-    case 'drafted':
       return false
 
     // 🛑 FAILS CLOSED, and the `void` is why this is not `return exhaustive`.
@@ -74,27 +68,4 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
       return false
     }
   }
-}
-
-/**
- * Is this a normal outcome that needs no warning?
- *
- * {@link didLedgerAccept}, plus `not_enabled`: an org that never turned the
- * accounting module on is as ordinary as one with no provider connected, and
- * the business action - issuing the invoice, banking the deposit, shipping the
- * order - is real and must not be rolled back or logged as a failure for it
- * (task 17 §3).
- *
- * 🛑 Use this for "should I warn / roll back", and {@link didLedgerAccept} for
- * "does a `GlPosting` row exist". They differ on exactly one status and
- * conflating them is how `not_enabled` ended up inside sets named
- * `ACCEPTED_POST_STATUSES` that were also asked whether the books hold an entry.
- */
-export function isExpectedPostOutcome(result: { status: PostResultStatus }): boolean {
-  return (
-    didLedgerAccept(result) ||
-    result.status === 'not_enabled' ||
-    result.status === 'drafted' ||
-    result.status === 'nothing_to_recognise'
-  )
 }

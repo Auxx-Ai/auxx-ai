@@ -6,6 +6,17 @@ import { financialSourceReferenceSchema } from '../customer-money/record-contrac
 import { readSourceAccounts } from '../customer-money/source-reads'
 import type { MatchReason } from './match-reasons'
 
+/**
+ * The processor row types the matcher links to a movement. `ProcessorBalanceEntry.type` is
+ * free text; a `dispute` (a chargeback) is money leaving, so it matches a customer refund.
+ */
+export const MATCHABLE_ENTRY_TYPES: readonly string[] = ['charge', 'refund', 'dispute']
+
+/** The movement purpose a matchable row's money has. */
+export function movementPurposeForEntryType(type: string): 'customer_receipt' | 'customer_refund' {
+  return type === 'refund' || type === 'dispute' ? 'customer_refund' : 'customer_receipt'
+}
+
 /** Evidence needed to link activity to an already recorded customer movement. */
 export interface MatchableProcessorEntry {
   id: string
@@ -100,7 +111,7 @@ export async function assessProcessorEntries(
   const result = new Map<string, string>()
   const refusals = new Map<string, MatchRefusal>()
   const eligible = entries.flatMap((entry) => {
-    if (entry.type !== 'charge' && entry.type !== 'refund') return []
+    if (!MATCHABLE_ENTRY_TYPES.includes(entry.type)) return []
     const parsed = financialSourceReferenceSchema.safeParse(entry.sourceReference)
     if (!parsed.success) {
       refusals.set(entry.id, { reason: 'no_reference' })
@@ -183,7 +194,7 @@ export async function assessProcessorEntries(
         ({ money }) =>
           money.currency === entry.currency &&
           money.currencyExponent === entry.currencyExponent &&
-          money.purpose === (entry.type === 'refund' ? 'customer_refund' : 'customer_receipt')
+          money.purpose === movementPurposeForEntryType(entry.type)
       )
       if (!candidates.length) {
         refusals.set(entry.id, { reason: 'no_receipt' })

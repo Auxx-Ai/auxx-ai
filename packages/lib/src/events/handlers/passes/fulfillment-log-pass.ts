@@ -320,7 +320,7 @@ async function runFulfillmentPostingForSync(
     '../../../accounting/sales/fulfillments'
   )
   const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
-  const counts = { accepted: 0, drafted: 0, blocked: 0, skipped: 0 }
+  const counts = { accepted: 0, blocked: 0, skipped: 0 }
   for (const fulfillments of byOrder.values()) {
     const live = fulfillments
       .filter(isLiveFulfillment)

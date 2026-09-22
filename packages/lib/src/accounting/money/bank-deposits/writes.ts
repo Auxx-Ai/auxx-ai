@@ -50,7 +50,7 @@ import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { ACCOUNT_ROLES, buildEntry } from '../../ledger/builders/entry'
 import { loadChartAccountsById } from '../../ledger/chart/chart-accounts'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
@@ -347,7 +347,6 @@ export async function createBankDeposit(
           actorUserId,
           lock,
           memo: reference ? `Deposit slip ${reference}` : undefined,
-          mode: 'post',
           sources: [
             { sourceKind: BANK_DEPOSIT_SOURCE_TYPE, sourceId: depositId, linkRole: 'subject' },
             // MIGRATION follow-up 9: `payment.paymentId` is a `MoneyTransaction.id`
@@ -361,7 +360,7 @@ export async function createBankDeposit(
         })
       }
 
-      if (!isExpectedPostOutcome(post)) {
+      if (!didLedgerAccept(post) && post.status !== 'not_enabled') {
         await rollbackDeposit(db, organizationId, actorUserId, deposit)
         logger.warn('Bank deposit rolled back - the LEDGER refused the entry', {
           organizationId,

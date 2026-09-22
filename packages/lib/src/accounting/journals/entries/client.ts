@@ -1,7 +1,6 @@
 // packages/lib/src/accounting/journals/entries/client.ts
 //
-// Client-safe shapes for the journal-entry draft. Types and pure constants only;
-// nothing here touches a database, a logger or a provider.
+// Client-safe shapes for the journal-entry document. Types and pure constants only.
 //
 // NOTE: no 'use client' directive - server code imports this file too, and the
 // directive would turn every export into a client-reference proxy there. See
@@ -21,7 +20,7 @@ export type JournalEntryKindValue =
   | 'recurring_template'
   | 'recurring'
 
-/** Where the draft is in its one-way life. See `enum-values.ts` for why there is no `failed`. */
+/** The document's own state: `draft` until Post stamps a posting, then that posting's status. */
 export type JournalEntryStatusValue = 'draft' | 'posted' | 'reversed'
 
 /**
@@ -51,18 +50,13 @@ export const JOURNAL_ENTRY_POSTING_TYPE = {
 } as const satisfies Record<Exclude<JournalEntryKindValue, 'recurring_template'>, PostingType>
 
 /**
- * One line of the draft, exactly as it is stored in `journal_entry_lines`.
- *
- * 🛑 `amountMinor` is INTEGER MINOR UNITS and always positive; `direction` is
- * the only carrier of sign. Dollars never reach this shape - `toMinorUnits` in
- * `build-manual-entry.ts` is the single conversion and it is called at the
- * input boundary, in the browser.
- *
- * `glAccountId` (task 15: the id is the identity, the code is a label) - a
- * person picks a specific `gl_account` `EntityInstance` out of their own chart
- * by id, never by its code, which may not exist at all once it is optional.
+ * One `journal_entry_line` child record. `amountMinor` is integer minor units and
+ * always positive; `direction` is the only carrier of sign. `glAccountId` is a
+ * `gl_account` instance id, never a code (task 15).
  */
 export interface JournalEntryLine {
+  /** The `journal_entry_line` instance id. Set on every read; on update it names the row to keep. */
+  id?: string
   glAccountId: string
   direction: PostingDirection
   amountMinor: number
@@ -76,14 +70,7 @@ export interface JournalEntryLine {
   counterpartyId?: string
 }
 
-/**
- * One draft, as every read path returns it and the drawer renders it.
- *
- * Nullable almost throughout because these are `FieldValue` rows on an
- * `EntityInstance`: a field that has never been written has no row at all, and
- * an org short of migration 125 has no field either. A reader that assumed a
- * value would render `undefined` into a money column.
- */
+/** One journal entry, as every read path returns it and the drawer renders it. */
 export interface JournalEntryRecord {
   id: string
   /** `'JNL-0007'`. Hook-issued on create; also the posting's `periodKey`. */
@@ -93,9 +80,9 @@ export interface JournalEntryRecord {
   memo: string | null
   status: JournalEntryStatusValue
   kind: JournalEntryKindValue
-  /** Empty until somebody adds a line. Never null - an absent value reads as `[]`. */
+  /** The child `journal_entry_line` records, in sort order. Never null. */
   lines: JournalEntryLine[]
-  /** The `GlPosting` row this became. Null while `draft`. */
+  /** The `GlPosting` Post stamped. Null while `draft`. */
   glPostingId: string | null
   /**
    * The `RecurrenceRule` that generated this entry. Null on every

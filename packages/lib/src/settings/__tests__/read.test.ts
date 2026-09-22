@@ -41,7 +41,7 @@ beforeEach(() => {
 
 describe('readOrganizationSettings — typing', () => {
   it('types a boolean-default key as boolean', () => {
-    expectTypeOf<SettingValueFor<'accounting.autoPost.fulfillment'>>().toEqualTypeOf<boolean>()
+    expectTypeOf<SettingValueFor<'accounting.autoSend.fulfillment'>>().toEqualTypeOf<boolean>()
   })
 
   it('types a number-default key as number', () => {
@@ -60,14 +60,14 @@ describe('readOrganizationSettings — typing', () => {
 
 describe('readOrganizationSettings — without db', () => {
   it('reads the cached orgSettings map once for every requested key', async () => {
-    h.cached = { 'accounting.autoPost.fulfillment': true }
+    h.cached = { 'accounting.autoSend.fulfillment': true }
 
     const result = await readOrganizationSettings(ORG, [
-      'accounting.autoPost.fulfillment',
+      'accounting.autoSend.fulfillment',
       'documents.quote.validDays',
     ] as const)
 
-    expect(result['accounting.autoPost.fulfillment']).toBe(true)
+    expect(result['accounting.autoSend.fulfillment']).toBe(true)
     // Not in the cached map — falls back to the catalog default.
     expect(result['documents.quote.validDays']).toBe(30)
     expect(h.getCalls).toEqual([[ORG, 'orgSettings']])
@@ -86,15 +86,15 @@ describe('readOrganizationSettings — without db', () => {
 
 describe('readOrganizationSettings — with db', () => {
   it('selects the rows directly and merges catalog defaults over the gaps, never touching the cache', async () => {
-    const db = fakeDb([{ key: 'accounting.autoPost.fulfillment', value: true }])
+    const db = fakeDb([{ key: 'accounting.autoSend.fulfillment', value: true }])
 
     const result = await readOrganizationSettings(
       ORG,
-      ['accounting.autoPost.fulfillment', 'documents.quote.validDays'] as const,
+      ['accounting.autoSend.fulfillment', 'documents.quote.validDays'] as const,
       db
     )
 
-    expect(result['accounting.autoPost.fulfillment']).toBe(true)
+    expect(result['accounting.autoSend.fulfillment']).toBe(true)
     expect(result['documents.quote.validDays']).toBe(30)
     expect(h.getCalls).toEqual([])
   })
@@ -102,11 +102,11 @@ describe('readOrganizationSettings — with db', () => {
 
 describe('getOrganizationSetting — sugar over readOrganizationSettings', () => {
   it('returns the single requested key, cached path by default', async () => {
-    h.cached = { 'accounting.autoPost.fulfillment': true }
+    h.cached = { 'accounting.autoSend.fulfillment': true }
 
     const value = await getOrganizationSetting({
       organizationId: ORG,
-      key: 'accounting.autoPost.fulfillment',
+      key: 'accounting.autoSend.fulfillment',
     })
 
     expect(value).toBe(true)

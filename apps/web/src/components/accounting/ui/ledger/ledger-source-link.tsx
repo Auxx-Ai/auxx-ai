@@ -3,9 +3,7 @@
 'use client'
 
 // One `GlPostingSource` row's identity, rendered as a link where `sourceKind`
-// resolves to a live entity definition and plain text otherwise. Shared by the
-// posting drawer's Links section and the Drafts tab's subject column
-// (accounting migration step 1c).
+// resolves to a live entity definition and plain text otherwise.
 
 import Link from 'next/link'
 import { toRecordId, useRecordLink, useResourceProperty } from '~/components/resources'

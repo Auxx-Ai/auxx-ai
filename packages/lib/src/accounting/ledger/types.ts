@@ -79,11 +79,6 @@ export const POSTING_TYPES = [
   //
   // 🛑 Prefix `INI`, never `INV` - `inventory_movement` holds `INV`.
   'invoice_issued',
-  // A held customer deposit reclassed onto an invoice:
-  // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
-  // money moved) nor a manual journal (nobody keyed it)
-  // (plans/accounting/tasks/done/07-customer-deposits.md).
-  'deposit_application',
   // A credit memo ISSUED: `Dr revenue_returns_allowances / Dr sales_tax_payable
   // / Cr accounts_receivable`, dated the memo's own `issuedAt`, plus
   // `Dr accounts_receivable / Cr clearing` when a channel refund already
@@ -228,7 +223,7 @@ export interface GlPostingLineBase {
  * (task 47 §5, rail axis added by task 58 §5.1).
  *
  * Consulted only for the roles in `SCOPABLE_ROLES` - the three revenue roles,
- * `clearing`, `payment_processing_fees` and `bank`. Every other role ignores it
+ * `accounts_receivable`, `clearing`, `payment_processing_fees` and `bank`. Every other role ignores it
  * entirely, which is what keeps an org that maps nothing byte-for-byte
  * identical to how it behaved before task 47, and that no-op is the acceptance
  * test for the whole brief.
@@ -432,7 +427,7 @@ export interface ResolvedPostingLine extends GlPostingLineBase {
  * literals rather than this type - which is why this exists rather than each
  * interface spelling the union out. See plans/accounting/export-state-split.md.
  */
-export const POSTING_STATUSES = ['draft', 'posted', 'reversed'] as const
+export const POSTING_STATUSES = ['posted', 'reversed'] as const
 
 export type PostingStatus = (typeof POSTING_STATUSES)[number]
 
@@ -451,17 +446,9 @@ export const POSTED_STATUSES = ['posted', 'reversed'] as const satisfies readonl
  * `subject` is what the entry is OF, and its row IS the claim - one live
  * subject per `(sourceKind, sourceId, occurrence)`. `parent` lets an order list
  * its fulfillment, receipt and refund postings in one query; `member` names what
- * a posting summed. `pending` is a draft's subject-to-be: written by the ledger
- * in draft mode, never by a writer, and swapped for `subject` when the draft
- * posts. See plans/accounting/TARGET.md §1 and tasks/77.
+ * a posting summed. See plans/accounting/TARGET.md §1.
  */
-export const POSTING_LINK_ROLES = [
-  'subject',
-  'parent',
-  'counterparty',
-  'member',
-  'pending',
-] as const
+export const POSTING_LINK_ROLES = ['subject', 'parent', 'counterparty', 'member'] as const
 
 export type PostingLinkRole = (typeof POSTING_LINK_ROLES)[number]
 
@@ -580,7 +567,6 @@ export class ProviderPostError extends Error {
 export type PostResultStatus =
   | 'posted'
   | 'already_posted'
-  | 'drafted'
   | 'period_closed'
   | 'account_unmapped'
   | 'unbalanced'
@@ -612,10 +598,6 @@ export type PostResultStatus =
   // A document that recognises nothing - a shipment of only free lines - so
   // there is no entry to build. A skip, never a fault (88 D6).
   | 'nothing_to_recognise'
-  // `postEntry` with `mode: 'draft'`: a `GlPosting` row exists with its lines
-  // and no doc number, holding no claim. A SUCCESS - `postDraft` promotes it -
-  // but not one the books read, so `didLedgerAccept` is false for it.
-  | 'drafted'
   | 'error'
 
 /**
@@ -830,7 +812,6 @@ export interface PostingDetail {
   postingType: PostingType
   periodKey: string
   txnDate: string
-  /** Null while `status` is `draft` — assigned when it posts. */
   docNumber: string | null
   status: PostingStatus
   revision: number
@@ -1290,7 +1271,6 @@ export interface ClosePeriod {
 /** One entry whose lines do not tie, or do not sum to its recorded total. */
 export interface BooksBalanceDiscrepancy {
   glPostingId: string
-  /** Null only for a draft; balance is checked on posted rows, so this is rare. */
   docNumber: string | null
   postingType: PostingType
   periodKey: string

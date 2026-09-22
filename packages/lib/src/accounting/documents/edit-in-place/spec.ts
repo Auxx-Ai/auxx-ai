@@ -5,9 +5,13 @@
 
 import type { Database } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
+import { JOURNAL_ENTRY_POSTING_TYPE } from '../../journals/entries/client'
+import { requireJournalEntry } from '../../journals/entries/reads'
+import { buildEntryForJournalEntry, postBuiltJournalEntry } from '../../journals/entries/writes'
 import { CREDIT_MEMO_POSTING_TYPE } from '../../ledger/builders/credit-memo'
 import { VENDOR_BILL_POSTING_TYPE } from '../../ledger/builders/entry'
 import { INVOICE_ISSUED_POSTING_TYPE } from '../../ledger/builders/invoice'
+import { readPostingHeader } from '../../ledger/reads/read-posting'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { BuiltEntry, PostResult } from '../../ledger/types'
 import { syncInvoicePaymentState } from '../../money/invoice-payments/payment-state'
@@ -28,7 +32,7 @@ import {
 } from '../../sales/credit-memos/accounting'
 import {
   loadCreditMemoLines,
-  orderHadFulfillmentBefore,
+  readShippedMemoLineIds,
   requireCreditMemo,
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
@@ -41,9 +45,15 @@ import {
 } from '../../sales/invoices/issuance-accounting'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { listInvoicePostings } from '../../sales/invoices/post-invoice'
+import { documentEntryKey } from '../document-entry-key'
 
 /** The registry entity types the lane knows. */
-export const DOCUMENT_EDIT_FAMILIES = ['vendor_bill', 'credit_memo', 'invoice'] as const
+export const DOCUMENT_EDIT_FAMILIES = [
+  'vendor_bill',
+  'credit_memo',
+  'invoice',
+  'journal_entry',
+] as const
 
 export type DocumentEditFamily = (typeof DOCUMENT_EDIT_FAMILIES)[number]
 
@@ -68,7 +78,7 @@ export interface DocumentEditDoc {
   plan(db: Database): Promise<DocumentEditPlan>
 }
 
-/** One general-ledger entry sourced on the document. `status` is `draft | posted | reversed`. */
+/** One general-ledger entry sourced on the document. `status` is `posted | reversed`. */
 export interface DocumentEditPosting {
   glPostingId: string
   docNumber: string
@@ -278,17 +288,13 @@ const creditMemoRow: DocumentEditRow = {
         const currency = await organizationCurrency(organizationId)
         // Read before the commit lock for the same reason the bill's basis is:
         // `build` is pure, and a refusal must not hold the accounting lock.
-        const reverseRevenue =
-          memo.source === 'channel'
-            ? memo.orderInstanceId
-              ? await orderHadFulfillmentBefore(
-                  planDb,
-                  organizationId,
-                  memo.orderInstanceId,
-                  issuedAt
-                )
-              : false
-            : true
+        const shippedLineIds = await readShippedMemoLineIds(
+          planDb,
+          organizationId,
+          memo,
+          lines,
+          issuedAt
+        )
         return {
           build(generation) {
             const built = buildEntryForCreditMemo({
@@ -296,9 +302,22 @@ const creditMemoRow: DocumentEditRow = {
               lines,
               issuedAt,
               currency,
-              reverseRevenue,
+              shippedLineIds,
               generation,
             })
+            // No shipped line: the lane reverses what stood and posts nothing (91 D4).
+            if (!built)
+              return {
+                entry: {
+                  postingType: CREDIT_MEMO_POSTING_TYPE,
+                  periodKey: documentEntryKey(memo.number, generation) ?? memo.number,
+                  txnDate: issuedAt,
+                  lines: [],
+                  totalDebit: 0,
+                  totalCredit: 0,
+                },
+                post: async () => ({ status: 'nothing_to_recognise' as const }),
+              }
             return {
               entry: built.entry,
               post: (txDb, postInput) =>
@@ -435,10 +454,103 @@ const invoiceRow: DocumentEditRow = {
   restoredMemo: (doc) => `Invoice ${doc.label} posted again after its entry was discarded`,
 }
 
+const journalEntryRow: DocumentEditRow = {
+  family: 'journal_entry',
+  noun: 'journal entry',
+  children: ['lines'],
+  derivedTotalAttrs: [],
+  postingType: JOURNAL_ENTRY_POSTING_TYPE.manual,
+  // Unposted is already editable; a reversed entry is corrected by a new one.
+  editRefusedIn: ['draft', 'reversed'],
+
+  async load(db, organizationId, entityInstanceId) {
+    const entry = await requireJournalEntry(db, organizationId, entityInstanceId)
+    // Manual entries only: the opening balance keys on the cutover date, a template never
+    // posts, and a generated entry posts as `recurring_journal`, which `save.ts` does not match.
+    if (entry.kind !== 'manual') {
+      throw new UnprocessableEntityError(
+        entry.kind === 'opening_balance'
+          ? 'The opening trial balance is corrected by reversing it from the ledger and posting ' +
+              'it again from the opening balances page, never by editing it here.'
+          : entry.kind === 'recurring'
+            ? 'A generated recurring entry is corrected by reversing it and posting a manual ' +
+              'entry, or by fixing its template for the next occurrence.'
+            : 'A recurring template never posts, so there is nothing to edit in place - it is ' +
+              'already editable.',
+        { journalEntryId: entry.id, kind: entry.kind }
+      )
+    }
+    const label = entry.number ?? entry.id
+    return {
+      id: entry.id,
+      status: entry.status,
+      internalNumber: label,
+      label,
+      totalMinor: entry.lines
+        .filter((line) => line.direction === 'debit')
+        .reduce((sum, line) => sum + line.amountMinor, 0),
+      // Nothing settles against a journal entry.
+      settledMinor: 0,
+      plan: async (planDb) => {
+        // Re-read at Save: the lines the person edited while the entry was open.
+        const current = await requireJournalEntry(planDb, organizationId, entityInstanceId)
+        return {
+          build(generation) {
+            const built = buildEntryForJournalEntry(current, generation)
+            return {
+              entry: built.entry,
+              post: (txDb, postInput) =>
+                postBuiltJournalEntry(txDb, {
+                  organizationId,
+                  actorUserId: postInput.actorUserId,
+                  entry: current,
+                  built,
+                  memo: postInput.memo,
+                }),
+            }
+          },
+        }
+      },
+    }
+  },
+
+  refuseEdit(doc) {
+    return doc.status === 'reversed'
+      ? `Journal entry ${doc.label} is reversed. A reversed entry is corrected by posting a new ` +
+          'one, never by editing it.'
+      : `Journal entry ${doc.label} is not posted yet and is already editable.`
+  },
+
+  refuseBelowFloor(doc) {
+    return `Journal entry ${doc.label} has nothing settled against it.`
+  },
+
+  async listPostings(db, params) {
+    // The record's own pointer names its one live posting (91 D5).
+    const entry = await requireJournalEntry(db, params.organizationId, params.entityInstanceId)
+    if (!entry.glPostingId) return []
+    const header = await readPostingHeader(db, params.organizationId, entry.glPostingId)
+    if (!header) return []
+    return [
+      {
+        glPostingId: header.id,
+        docNumber: header.docNumber ?? '',
+        status: header.status,
+        postingType: header.postingType,
+      },
+    ]
+  },
+
+  reversalMemo: (doc, docNumber) => `Reversal of ${docNumber} - journal entry ${doc.label} edited`,
+  repostMemo: (doc) => `Journal entry ${doc.label} re-posted after an edit`,
+  restoredMemo: (doc) => `Journal entry ${doc.label} posted again`,
+}
+
 const DOCUMENT_EDIT_SPEC: Readonly<Record<DocumentEditFamily, DocumentEditRow>> = {
   vendor_bill: vendorBillRow,
   credit_memo: creditMemoRow,
   invoice: invoiceRow,
+  journal_entry: journalEntryRow,
 }
 
 /** The row for one family. The only way into the spec. */

@@ -14,13 +14,12 @@ const h = vi.hoisted(() => ({
   editStamp: null as { openedAt: string; byUserId: string } | null,
   postings: [] as unknown[],
   reverseEntry: vi.fn(),
-  discardDraftPosting: vi.fn(),
   postCreditMemoEntry: vi.fn(),
   captureRecordSnapshot: vi.fn(),
   restoreRecordSnapshot: vi.fn(),
   deleteEditSnapshot: vi.fn(),
   publishRecordEditStamp: vi.fn(),
-  ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
+  ledgerState: { generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
   settleCreditMemo: vi.fn(async () => ({})),
 }))
@@ -39,7 +38,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../ledger/post/draft-lines', () => ({ discardDraftPosting: h.discardDraftPosting }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
@@ -59,7 +57,12 @@ vi.mock('../../../sales/credit-memos/reads', () => ({
   loadCreditMemoLines: async () => h.lines,
   sumCreditMemoApplications: async () => h.applied,
   sumReservedCreditMemoRefunds: async () => h.refunded,
-  orderHadFulfillmentBefore: async () => true,
+  readShippedMemoLineIds: async (
+    _db: unknown,
+    _org: string,
+    _memo: unknown,
+    lines: Array<{ id: string }>
+  ) => new Set(lines.map((line) => line.id)),
 }))
 vi.mock('../../document-ledger-state', () => ({
   readDocumentLedgerState: async () => h.ledgerState,
@@ -104,8 +107,8 @@ function currentEntry() {
     lines: h.lines as unknown as CreditMemoLineRecord[],
     issuedAt: '2026-09-01',
     currency: 'USD',
-    reverseRevenue: true,
-  }).entry
+    shippedLineIds: new Set((h.lines as Array<{ id: string }>).map((line) => line.id)),
+  })!.entry
 }
 
 /** Move the memo's figures so the rebuilt entry differs from the live one. */
@@ -165,7 +168,7 @@ beforeEach(() => {
   h.applied = 0
   h.refunded = 0
   h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER }
-  h.ledgerState = { draftGlPostingId: null, generation: 1 }
+  h.ledgerState = { generation: 1 }
   h.postings = [
     {
       glPostingId: 'gp_1',
@@ -181,7 +184,6 @@ beforeEach(() => {
   })
   h.deleteEditSnapshot.mockResolvedValue(true)
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
-  h.discardDraftPosting.mockResolvedValue({ isErr: () => false, error: undefined })
   h.postCreditMemoEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',

@@ -4,6 +4,7 @@
  * Where a movement's money physically sits, as one GL account.
  *
  * ```
+ *   giftCard                  → the unscoped `gift_card_liability` role (91 D8)
  *   paymentGatewayId set      → the rail's clearing account, scoped by rail + currency
  *   cashAccountInstanceId set → the bank account's `bank_account_gl_account` pointer
  *   neither                   → the unscoped `undeposited_funds` role
@@ -17,10 +18,11 @@
  */
 
 import type { schema, Transaction } from '@auxx/database'
-import { UnprocessableEntityError } from '../../errors'
+import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { resolveBankAccountGlAccountInTx } from '../ledger/chart/resolve-cash-account'
 import { resolveRoles } from '../ledger/roles/resolve-roles'
+import { withWorkItemCode } from '../work-items/refusal'
 import type { CashEndpointKind, CashEndpointSource } from './client'
 import { validateCashEndpointSource } from './client'
 
@@ -41,7 +43,29 @@ export async function resolveCashEndpoint(
   /** Prefixes every refusal: 'Invoice receipt', 'Refund', 'Vendor payment'. */
   subject: string
 ): Promise<CashEndpoint> {
-  validateCashEndpointSource(source)
+  const unresolved = (message: string, railId: string | null = null) =>
+    new UnprocessableEntityError(message, withWorkItemCode('ENDPOINT_UNRESOLVED', { railId }))
+  // An unmapped role is `ROLE_UNMAPPED`, so mapping it wakes the row (91 §4.6).
+  const unmapped = (message: string, role: string, railId: string | null = null) =>
+    new UnprocessableEntityError(message, withWorkItemCode('ROLE_UNMAPPED', { role, railId }))
+
+  try {
+    validateCashEndpointSource(source)
+  } catch (error) {
+    throw unresolved(error instanceof Error ? error.message : String(error))
+  }
+
+  if (source.giftCard) {
+    const roles = await resolveRoles(tx, organizationId, [ACCOUNT_ROLES.GIFT_CARD_LIABILITY])
+    if (roles.isErr()) throw unresolved(`${subject}: ${roles.error.message}`)
+    const liability = roles.value.get(ACCOUNT_ROLES.GIFT_CARD_LIABILITY)
+    if (!liability)
+      throw unmapped(
+        `${subject} gift card liability account is not mapped`,
+        ACCOUNT_ROLES.GIFT_CARD_LIABILITY
+      )
+    return { glAccountId: liability.glAccountId, kind: 'gift_card', railId: null }
+  }
 
   const railId = source.paymentGatewayId?.trim() || null
   if (railId) {
@@ -49,39 +73,56 @@ export async function resolveCashEndpoint(
       rail: railId,
       currency: source.currency,
     })
-    if (roles.isErr()) throw new UnprocessableEntityError(`${subject}: ${roles.error.message}`)
+    if (roles.isErr()) throw unresolved(`${subject}: ${roles.error.message}`, railId)
     const clearing = roles.value.get(ACCOUNT_ROLES.CLEARING)
     if (!clearing)
-      throw new UnprocessableEntityError(`${subject} payment gateway has no clearing account`)
+      throw unmapped(
+        `${subject} payment gateway has no clearing account`,
+        ACCOUNT_ROLES.CLEARING,
+        railId
+      )
     return { glAccountId: clearing.glAccountId, kind: 'clearing', railId }
   }
 
   const bankAccountInstanceId = source.cashAccountInstanceId?.trim() || null
   if (bankAccountInstanceId) {
-    const glAccountId = await resolveBankAccountGlAccountInTx(
-      tx,
-      organizationId,
-      bankAccountInstanceId,
-      subject
-    )
-    return { glAccountId, kind: 'bank_account', railId: null }
+    try {
+      const glAccountId = await resolveBankAccountGlAccountInTx(
+        tx,
+        organizationId,
+        bankAccountInstanceId,
+        subject
+      )
+      return { glAccountId, kind: 'bank_account', railId: null }
+    } catch (error) {
+      if (!(error instanceof AuxxError)) throw error
+      throw unresolved(error.message)
+    }
   }
 
   const roles = await resolveRoles(tx, organizationId, [ACCOUNT_ROLES.UNDEPOSITED_FUNDS])
-  if (roles.isErr()) throw new UnprocessableEntityError(`${subject}: ${roles.error.message}`)
+  if (roles.isErr()) throw unresolved(`${subject}: ${roles.error.message}`)
   const undeposited = roles.value.get(ACCOUNT_ROLES.UNDEPOSITED_FUNDS)
   if (!undeposited)
-    throw new UnprocessableEntityError(`${subject} undeposited funds account is not mapped`)
+    throw unmapped(
+      `${subject} undeposited funds account is not mapped`,
+      ACCOUNT_ROLES.UNDEPOSITED_FUNDS
+    )
   return { glAccountId: undeposited.glAccountId, kind: 'undeposited_funds', railId: null }
 }
 
-/** The endpoint columns of a movement row, for {@link resolveCashEndpoint}. */
+/**
+ * The endpoint columns of a movement row, for {@link resolveCashEndpoint}. `giftCard` is the
+ * caller's: it comes from the movement's own gateway handle, which no column stores.
+ */
 export function cashEndpointSourceOf(
-  money: typeof schema.MoneyTransaction.$inferSelect
+  money: typeof schema.MoneyTransaction.$inferSelect,
+  giftCard = false
 ): CashEndpointSource {
   return {
     paymentGatewayId: money.paymentGatewayId,
     cashAccountInstanceId: money.cashAccountInstanceId,
     currency: money.currency,
+    ...(giftCard ? { giftCard } : {}),
   }
 }

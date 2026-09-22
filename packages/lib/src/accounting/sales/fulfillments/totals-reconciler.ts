@@ -127,6 +127,13 @@ async function reverseCancelledFulfillment(
       actorUserId: userId,
       memo: 'Shipment cancelled',
     })
+    // 91 §4.8: a memo already posted re-reads its lines' shipped qty, so it nets with the reversal.
+    const { repostCreditMemosForCancelledFulfillment } = await import('../credit-memos/repost')
+    await repostCreditMemosForCancelledFulfillment(database, {
+      organizationId,
+      fulfillmentInstanceId,
+      actorUserId: userId,
+    })
   } catch (error) {
     logger.error('cancelled fulfillment reversal failed — the order still re-stamps', {
       organizationId,

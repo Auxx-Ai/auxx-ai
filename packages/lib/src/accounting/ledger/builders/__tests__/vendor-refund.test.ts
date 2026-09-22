@@ -7,8 +7,8 @@
 
 import { describe, expect, it } from 'vitest'
 import { movementPeriodKey } from '../movement-key'
-import { REFUND_POSTING_TYPE } from '../refund'
-import { buildVendorRefundEntry } from '../vendor-refund'
+
+import { buildVendorRefundEntry, VENDOR_REFUND_POSTING_TYPE } from '../vendor-refund'
 
 const BASE = {
   moneyTransactionId: 'mt_1',
@@ -37,9 +37,9 @@ describe('buildVendorRefundEntry', () => {
       ],
     })
 
-    expect(built.periodKey).toBe(movementPeriodKey('refund', 'mt_1'))
+    expect(built.periodKey).toBe(movementPeriodKey('vendor_refund', 'mt_1'))
     expect(built.totalMinor).toBe(20_000)
-    expect(built.entry.postingType).toBe(REFUND_POSTING_TYPE)
+    expect(built.entry.postingType).toBe(VENDOR_REFUND_POSTING_TYPE)
 
     const [endpoint, ...controls] = built.entry.lines
     expect(endpoint).toMatchObject({

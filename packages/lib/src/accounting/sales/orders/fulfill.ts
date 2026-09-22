@@ -15,9 +15,7 @@ import { toRecordId } from '../../../resources/resource-id'
 import { computeShipmentTotals } from '../../ledger/builders/fulfillment'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { withAccountingCommitLock } from '../../ledger/post/accounting-commit-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import {
   exportPostedEntry,
   type InTxPostResult,
@@ -28,15 +26,15 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { EntryPreview, PostResult } from '../../ledger/types'
+import { refusalFromError, refusalFromPost, type WorkItemRefusal } from '../../work-items/refusal'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
 // The leaves, not the barrel: `../fulfillments` re-exports `stamp-totals.ts`,
 // whose real dependency chain (field-value writes, realtime) is exactly what
 // `fulfill.test.ts` mocks the barrel to avoid pulling in.
 import {
-  markFulfillmentPostingBlock,
   NothingToRecogniseError,
-  PREVIEW_SHIPMENT_ID,
   type PreparedFulfillmentEntry,
+  parkFulfillment,
   prepareFulfillmentEntry,
   prepareShipmentEntry,
   readShipmentPostingWindow,
@@ -174,7 +172,8 @@ function shapeRequestedShipment(
     context: { orderId: order.orderId },
   })
   return {
-    id: PREVIEW_SHIPMENT_ID,
+    // Not written yet; the preview entry still needs a source id.
+    id: 'preview',
     sequence: order.nextSequence,
     shippedAt: calendarDayToInstant(shippedAt),
     lines,
@@ -198,8 +197,7 @@ function refusalOf(error: AuxxError): PostResult {
  * Build the entry this shipment would post, without writing anything.
  *
  * Runs the SAME core `fulfillOrder` runs, so what the dialog shows is what the
- * write would freeze - the deposit release and the tax already collected on an
- * advance included (88 D6). A refusal comes back as `preview.blockedBy`, which
+ * write would freeze (88 D6). A refusal comes back as `preview.blockedBy`, which
  * is what `EntryBlockers` renders.
  */
 export async function previewFulfillment(
@@ -260,8 +258,7 @@ export async function previewFulfillment(
  * counterparty the customer's contact (when the order has one) - the links and
  * the scope `prepareFulfillmentEntry` resolved, so the native door's posting
  * is byte-identical to the sweep's (88 D6). `railId` is always `null`: a
- * shipment debits `accounts_receivable` or `customer_deposits`, never a
- * gateway's clearing account (D11).
+ * shipment debits `accounts_receivable`, never a gateway's clearing account (D11).
  *
  * Posts inside the fulfillment's own transaction, so the shipment and its entry
  * commit together. A REFUSAL is not a throw - nothing is written at that
@@ -278,14 +275,12 @@ async function postFulfillmentEntryInTx(
 ): Promise<InTxPostResult> {
   const { organizationId, prepared, actorUserId, memo } = input
   const lock = await resolvePeriodLock(organizationId, tx)
-  const mode = await readAutoPostMode(organizationId, 'fulfillment')
   return postEntryInTx(tx, {
     organizationId,
     entry: prepared.entry,
     lock,
     scope: prepared.scope,
     sources: prepared.sources,
-    mode,
     storeId: prepared.storeId,
     railId: null,
     actorUserId,
@@ -301,7 +296,7 @@ async function postFulfillmentEntryInTx(
  * fulfillment record's own status - this function touches only the ledger.
  * A no-op, returning `null`, when the fulfillment never posted or its posting
  * was already reversed: cancelling an unposted or already-reversed shipment
- * has nothing left to back out. A draft still in the outbox is discarded.
+ * has nothing left to back out.
  */
 export async function reverseFulfillmentPosting(
   db: Database,
@@ -313,12 +308,6 @@ export async function reverseFulfillmentPosting(
   }
 ): Promise<PostResult | null> {
   const { organizationId, fulfillmentInstanceId, actorUserId, memo } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: 'fulfillment',
-    sourceId: fulfillmentInstanceId,
-  })
-  if (discarded.isErr()) throw discarded.error
   const found = await listPostingsForSource(db, {
     organizationId,
     sourceKind: 'fulfillment',
@@ -395,7 +384,7 @@ export async function fulfillOrder(
           // (88 D6). A refusal is a result, and after commit a marker (§7.4);
           // the shipment stands either way.
           let post: InTxPostResult = { status: 'not_enabled' }
-          let blockReason: string | null = null
+          let blocked: WorkItemRefusal | null = null
           if (accountingEnabled) {
             try {
               const prepared = await prepareFulfillmentEntry(tx, {
@@ -408,12 +397,14 @@ export async function fulfillOrder(
                 actorUserId,
                 memo,
               })
-              if (!isExpectedPostOutcome(post))
-                blockReason = post.error ?? `The ledger answered ${post.status}`
+              if (!didLedgerAccept(post))
+                blocked = refusalFromPost(post, {
+                  periodKey: prepared.entry.txnDate.slice(0, 7),
+                })
             } catch (error) {
               if (!(error instanceof AuxxError)) throw error
               post = refusalOf(error)
-              if (!(error instanceof NothingToRecogniseError)) blockReason = error.message
+              if (!(error instanceof NothingToRecogniseError)) blocked = refusalFromError(error)
             }
           }
           const fulfillment: Fulfillment = {
@@ -449,21 +440,15 @@ export async function fulfillOrder(
             shipped,
             shippedAtInstant: shipment.shippedAt,
             post,
-            blockReason,
+            blocked,
           }
         })
       )
       if (committed.owned) await flushTxWriteScope(committed.scope)
-      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant, blockReason } =
+      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant, blocked } =
         committed.result
 
-      if (blockReason)
-        await markFulfillmentPostingBlock(
-          db,
-          organizationId,
-          created.fulfillmentInstanceId,
-          blockReason
-        )
+      if (blocked) await parkFulfillment(db, organizationId, created.fulfillmentInstanceId, blocked)
 
       // The provider push is deliberately outside the transaction: a network
       // call inside one holds the claim's index tuple for an HTTP round trip.

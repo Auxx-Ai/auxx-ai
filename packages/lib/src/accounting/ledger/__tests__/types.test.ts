@@ -26,7 +26,7 @@
 
 import { GlPostingStatusValues, GlPostingTypeValues } from '@auxx/database/enums'
 import { describe, expect, it } from 'vitest'
-import { POSTING_STATUSES, POSTING_TYPES } from '../types'
+import { POSTING_LINK_ROLES, POSTING_STATUSES, POSTING_TYPES } from '../types'
 
 describe('the posting-type vocabulary is one vocabulary', () => {
   it('POSTING_TYPES and the GlPostingType storage values hold exactly the same set', () => {
@@ -68,6 +68,11 @@ describe('the posting-status vocabulary says only what the LEDGER did', () => {
   it('gives the ledger no way to say a provider refused something', () => {
     expect(POSTING_STATUSES).not.toContain('failed')
     expect(POSTING_STATUSES).not.toContain('pending')
+  })
+
+  it('holds no draft - every entry posts at insert (91 D5)', () => {
+    expect(POSTING_STATUSES).not.toContain('draft')
+    expect(POSTING_LINK_ROLES).not.toContain('pending')
   })
 
   it('names no status twice', () => {

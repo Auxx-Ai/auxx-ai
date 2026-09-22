@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/ledger/reads/__tests__/ledger-summary.test.ts
 //
 // A fake db in `post-entry.test.ts`'s style: the interesting behaviour is the
-// BUCKETING and NETTING this file does in memory, not Postgres's own filtering,
+// BUCKETING and per-side SUMMING this file does in memory, not Postgres's own filtering,
 // so the fake hands back fixed rows per call rather than re-implementing SQL.
 // `excludePostingIds` is the one option Postgres itself applies (a `notInArray`)
 // - proved by walking the captured `WHERE` for the excluded id's literal,
@@ -64,6 +64,7 @@ function posting(overrides: {
   txnDate: string
   storeId?: string | null
   railId?: string | null
+  payoutId?: string | null
   currency?: string
   totalMinor: number
 }) {
@@ -71,6 +72,7 @@ function posting(overrides: {
     postingType: 'fulfillment',
     storeId: 'store_1',
     railId: null,
+    payoutId: null,
     currency: 'USD',
     ...overrides,
   }
@@ -148,15 +150,18 @@ describe('readLedgerSummary', () => {
     )
   })
 
-  it('nets an account that took both a debit and a credit inside one group down to one line', async () => {
+  it('keeps the debit and credit sides of one account as two lines, so Σdebit equals the total', async () => {
     const { db } = fakeDb([
-      [posting({ id: 'p1', txnDate: '2026-09-10', totalMinor: 1000 })],
       [
-        // A clearing account debited by one leg and credited by another within
-        // the same posting - the net is a single line, not two.
-        line('p1', 'acct_clearing', 'debit', 1000),
-        line('p1', 'acct_clearing', 'credit', 400),
-        line('p1', 'acct_rev', 'credit', 600),
+        posting({ id: 'p1', postingType: 'payment', txnDate: '2026-09-10', totalMinor: 1000 }),
+        posting({ id: 'p2', postingType: 'payment', txnDate: '2026-09-10', totalMinor: 400 }),
+      ],
+      [
+        // A/R in on one posting and out on another - two lines, never a 600 residual.
+        line('p1', 'acct_ar', 'debit', 1000),
+        line('p1', 'acct_rev', 'credit', 1000),
+        line('p2', 'acct_clearing', 'debit', 400),
+        line('p2', 'acct_ar', 'credit', 400),
       ],
     ])
 
@@ -168,18 +173,107 @@ describe('readLedgerSummary', () => {
     })
 
     const rows = result._unsafeUnwrap()
-    expect(rows[0]!.lines).toEqual(
+    expect(rows).toHaveLength(1)
+    const lines = rows[0]!.lines
+    expect(lines).toHaveLength(4)
+    expect(lines).toEqual(
       expect.arrayContaining([
-        {
-          glAccountId: 'acct_clearing',
-          accountCode: 'acct_clearing',
-          direction: 'debit',
-          amountMinor: 600,
-        },
-        { glAccountId: 'acct_rev', accountCode: 'acct_rev', direction: 'credit', amountMinor: 600 },
+        { glAccountId: 'acct_ar', accountCode: 'acct_ar', direction: 'debit', amountMinor: 1000 },
+        { glAccountId: 'acct_ar', accountCode: 'acct_ar', direction: 'credit', amountMinor: 400 },
       ])
     )
-    expect(rows[0]!.lines).toHaveLength(2)
+    const debit = lines
+      .filter((l) => l.direction === 'debit')
+      .reduce((a, l) => a + l.amountMinor, 0)
+    const credit = lines
+      .filter((l) => l.direction === 'credit')
+      .reduce((a, l) => a + l.amountMinor, 0)
+    expect(debit).toBe(rows[0]!.totalMinor)
+    expect(credit).toBe(rows[0]!.totalMinor)
+  })
+
+  it('buckets by payout under the payout grain, with the day as the catch-all', async () => {
+    const { db } = fakeDb([
+      [
+        posting({
+          id: 'p1',
+          postingType: 'payment',
+          txnDate: '2026-09-10',
+          payoutId: 'po_1',
+          totalMinor: 100,
+        }),
+        posting({
+          id: 'p2',
+          postingType: 'payment',
+          txnDate: '2026-09-11',
+          payoutId: 'po_1',
+          totalMinor: 200,
+        }),
+        posting({
+          id: 'p3',
+          postingType: 'payment',
+          txnDate: '2026-09-11',
+          payoutId: 'po_2',
+          totalMinor: 300,
+        }),
+        posting({ id: 'p4', postingType: 'payment', txnDate: '2026-09-11', totalMinor: 400 }),
+        posting({ id: 'p5', postingType: 'payment', txnDate: '2026-09-11', totalMinor: 500 }),
+      ],
+      [],
+    ])
+
+    const result = await readLedgerSummary(db, {
+      organizationId: ORG,
+      from: '2026-09-01',
+      to: '2026-09-30',
+      grainByAvenue: { ...DAY_GRAIN, receipt: 'payout' },
+    })
+
+    const rows = result._unsafeUnwrap()
+    const byGrain = new Map(rows.map((row) => [row.grainKey, row]))
+    expect([...byGrain.keys()].sort()).toEqual(['2026-09-11', 'po_1', 'po_2'])
+    // One payout spans two days and stays one row.
+    expect(byGrain.get('po_1')).toMatchObject({
+      payoutId: 'po_1',
+      totalMinor: 300,
+      txnDateFrom: '2026-09-10',
+      txnDateTo: '2026-09-11',
+    })
+    expect(byGrain.get('po_2')).toMatchObject({ payoutId: 'po_2', totalMinor: 300 })
+    expect(byGrain.get('2026-09-11')).toMatchObject({ payoutId: null, totalMinor: 900 })
+  })
+
+  it('ignores the payout id under the day grain', async () => {
+    const { db } = fakeDb([
+      [
+        posting({
+          id: 'p1',
+          postingType: 'payment',
+          txnDate: '2026-09-10',
+          payoutId: 'po_1',
+          totalMinor: 100,
+        }),
+        posting({
+          id: 'p2',
+          postingType: 'payment',
+          txnDate: '2026-09-10',
+          payoutId: 'po_2',
+          totalMinor: 200,
+        }),
+      ],
+      [],
+    ])
+
+    const result = await readLedgerSummary(db, {
+      organizationId: ORG,
+      from: '2026-09-01',
+      to: '2026-09-30',
+      grainByAvenue: DAY_GRAIN,
+    })
+
+    const rows = result._unsafeUnwrap()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ grainKey: '2026-09-10', payoutId: null, totalMinor: 300 })
   })
 
   it('keeps two postings on the same day and store as two rows when their rail differs', async () => {

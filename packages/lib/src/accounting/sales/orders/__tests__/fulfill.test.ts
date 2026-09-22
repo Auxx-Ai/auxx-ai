@@ -39,7 +39,6 @@ const h = vi.hoisted(() => ({
   relieved: [] as Array<{ organizationId: string; userId: string; lines: unknown[] }>,
   /** Overridable per test - defaults to a clean run that wrote nothing skipped. */
   reliefResult: null as unknown,
-  autoPostMode: 'post' as 'draft' | 'post',
   /** Every `prepareFulfillmentEntry` call - the record the entry is built off. */
   prepared: [] as Array<{ organizationId: string; fulfillmentId: string }>,
   /** Every `prepareShipmentEntry` call - the preview's shipment. */
@@ -47,7 +46,11 @@ const h = vi.hoisted(() => ({
   /** What the poster throws, when a test says the prepare refuses. */
   prepareError: null as Error | null,
   /** Every marker write after commit. */
-  marked: [] as Array<{ fulfillmentId: string; reason: string | null }>,
+  marked: [] as Array<{ fulfillmentId: string; refusal: Record<string, unknown> | null }>,
+  /** Every entry `prepareFulfillmentEntry` handed back, to compare with what posted. */
+  preparedEntries: [] as Array<Record<string, unknown>>,
+  /** `buildFulfillmentEntry` calls made outside the (mocked) poster. */
+  builderCalls: 0,
 }))
 
 vi.mock('../../fulfillments/accounting', async () => {
@@ -56,7 +59,7 @@ vi.mock('../../fulfillments/accounting', async () => {
   const prepared = () => {
     const contact = h.order.contactInstanceId as string | null
     return {
-      entry: { postingType: 'fulfillment', lines: [] },
+      entry: { postingType: 'fulfillment', txnDate: '2026-09-14', lines: [] },
       sources: [
         { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'subject' },
         { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
@@ -70,7 +73,6 @@ vi.mock('../../fulfillments/accounting', async () => {
     }
   }
   return {
-    PREVIEW_SHIPMENT_ID: 'preview',
     NothingToRecogniseError,
     readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
     prepareFulfillmentEntry: async (
@@ -79,20 +81,22 @@ vi.mock('../../fulfillments/accounting', async () => {
     ) => {
       h.prepared.push(input)
       if (h.prepareError) throw h.prepareError
-      return prepared()
+      const result = prepared()
+      h.preparedEntries.push(result)
+      return result
     },
     prepareShipmentEntry: async (_db: unknown, input: { shipment: Record<string, unknown> }) => {
       h.previewed.push(input.shipment)
       if (h.prepareError) throw h.prepareError
       return prepared()
     },
-    markFulfillmentPostingBlock: async (
+    parkFulfillment: async (
       _db: unknown,
       _org: string,
       fulfillmentId: string,
-      reason: string | null
+      refusal: Record<string, unknown> | null
     ) => {
-      h.marked.push({ fulfillmentId, reason })
+      h.marked.push({ fulfillmentId, refusal })
     },
   }
 })
@@ -137,6 +141,7 @@ vi.mock('../../../ledger/builders/fulfillment', async (importOriginal) => {
     buildFulfillmentEntry: (input: {
       shippedLines: Array<{ lineId: string; taxMinor?: number }>
     }) => {
+      h.builderCalls += 1
       h.built.push({ shippedLines: input.shippedLines })
       return {
         entry: {
@@ -201,10 +206,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: async () => h.autoPostMode,
-}))
-
 vi.mock('../../../../inventory/relief', async () => {
   const { ok } = await import('neverthrow')
   return {
@@ -263,6 +264,8 @@ const input = {
 beforeEach(() => {
   h.events = []
   h.postCalls = []
+  h.preparedEntries = []
+  h.builderCalls = 0
   h.scope = {}
   h.order = {
     orderId: 'ord_1',
@@ -298,7 +301,6 @@ beforeEach(() => {
   h.built = []
   h.relieved = []
   h.reliefResult = null
-  h.autoPostMode = 'post'
   h.prepared = []
   h.previewed = []
   h.prepareError = null
@@ -343,13 +345,26 @@ describe('fulfillOrder', () => {
     expect(h.marked).toEqual([])
   })
 
+  // 91 D2: the sweep's `postFulfillmentAccounting` posts the same `prepareFulfillmentEntry`
+  // result, so the native door adds nothing - no allocation, no builder call of its own.
+  it('posts exactly the entry and scope the sweep core prepared, building nothing itself', async () => {
+    h.scope = { store: 'fsa_1' }
+    await fulfillOrder(stubDb(), input)
+
+    const call = h.postCalls[0]!
+    const prepared = h.preparedEntries[0]!
+    expect(call.entry).toBe(prepared.entry)
+    expect(call.sources).toBe(prepared.sources)
+    expect(call.scope).toEqual({ store: 'fsa_1' })
+    expect(h.builderCalls).toBe(0)
+  })
+
   it('posts subject/parent/counterparty sources, storeId from the order scope, and no rail', async () => {
     h.scope = { store: 'fsa_1' }
     await fulfillOrder(stubDb(), input)
 
     expect(h.postCalls).toHaveLength(1)
     const call = h.postCalls[0]!
-    expect(call.mode).toBe('post')
     expect(call.storeId).toBe('fsa_1')
     // D11: a native shipment debits accounts_receivable, never a gateway's
     // clearing account, so it never carries a rail.
@@ -532,22 +547,21 @@ describe('fulfillOrder', () => {
       expect(result._unsafeUnwrap().post.status).toBe('period_closed')
     })
 
-    it('marks the record after commit with the ledger words, so the sweep and the Blocked tab see it (88 §7.4)', async () => {
+    it('parks a coded work item after commit, so the sweep and the Blocked tab see it (91 §4.6)', async () => {
       await fulfillOrder(stubDb(), input)
-      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: 'Period locked' }])
-    })
-
-    it('leaves no mark on a draft - a draft is not a refusal', async () => {
-      h.postResult = { status: 'drafted', glPostingId: 'glp_d' }
-      await fulfillOrder(stubDb(), input)
-      expect(h.marked).toEqual([])
+      expect(h.marked).toEqual([
+        {
+          fulfillmentId: 'ful_1',
+          refusal: { reasonCode: 'PERIOD_LOCKED', periodKey: '2026-09' },
+        },
+      ])
     })
   })
 
   describe('when the poster refuses to build the entry', () => {
     it('retains the shipment, answers `error` in the poster words, posts nothing, and marks the record', async () => {
       h.prepareError = new UnprocessableEntityError(
-        'Order recognition timeline is incomplete: earlier receipt mt_1 is a draft awaiting approval'
+        'Order recognition timeline is incomplete: earlier receipt mt_1 has not posted'
       )
       const result = await fulfillOrder(stubDb(), input)
       expect(result.isOk()).toBe(true)
@@ -555,9 +569,14 @@ describe('fulfillOrder', () => {
       expect(h.postCalls).toHaveLength(0)
       expect(result._unsafeUnwrap().post).toMatchObject({
         status: 'error',
-        error: expect.stringContaining('earlier receipt mt_1 is a draft awaiting approval'),
+        error: expect.stringContaining('earlier receipt mt_1 has not posted'),
       })
-      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: h.prepareError.message }])
+      expect(h.marked).toEqual([
+        {
+          fulfillmentId: 'ful_1',
+          refusal: { reasonCode: 'REFUSED', detail: { message: h.prepareError.message } },
+        },
+      ])
       expect(h.relieved).toHaveLength(1)
     })
 

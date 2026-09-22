@@ -19,7 +19,6 @@
 // the sentence beside it.
 
 import {
-  AUTO_POST_AVENUES,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,
@@ -29,6 +28,7 @@ import {
   type PostingTrigger,
   type PostingType,
   SUMMARY_GRAIN_AVENUES,
+  type SummaryGrain,
   type SummaryGrainAvenue,
 } from '@auxx/lib/accounting/ledger/client'
 import {
@@ -135,8 +135,7 @@ export function settingRowTitle(key: string, policy?: PostingPolicy): string {
 
 /**
  * The setting keys this page renders as INPUTS: everything on a policy that no
- * other page owns. Deduplicated - `vendor_payment` and `vendor_refund` share
- * one avenue's `autoPost` key, and a key listed twice is sent twice in the one
+ * other page owns. Deduplicated, since a key listed twice is sent twice in the one
  * batch the save bar writes.
  */
 export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
@@ -150,8 +149,8 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
 // ── The export table (TARGET §3, §4 gate 2) ─────────────────────────────────
 //
 // `autoSend` and `summaryGrain` are per AVENUE (`EXPORT_AVENUES`), not per
-// `PostingType` - several types share one avenue (`payment` and
-// `deposit_application` both export as `receipt`), so the controls live in one
+// `PostingType` - several types share one avenue (`vendor_payment` and
+// `vendor_refund` both export as `vendorPayment`), so the controls live in one
 // table keyed on the avenue rather than on each type's section.
 
 /** The labels of the posting types that export through `avenue`, in page order. */
@@ -159,18 +158,6 @@ export function postingLabelsForAvenue(avenue: ExportAvenue): string[] {
   return POSTING_PAGE_POLICIES.filter((policy) => avenueOfPostingType(policy.type) === avenue).map(
     (policy) => policy.label
   )
-}
-
-export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
-  return (AUTO_POST_AVENUES as readonly string[]).includes(avenue)
-    ? `accounting.autoPost.${avenue}`
-    : null
-}
-
-/** The `autoPost` key this policy is gated on, which the export table renders instead of its section. */
-export function autoPostKeyForPolicy(policy: PostingPolicy): string | null {
-  const avenue = avenueOfPostingType(policy.type)
-  return avenue ? autoPostKeyForAvenue(avenue) : null
 }
 
 export function autoSendKeyForAvenue(avenue: ExportAvenue): string {
@@ -183,18 +170,22 @@ export function summaryGrainKeyForAvenue(avenue: ExportAvenue): string | null {
     : null
 }
 
-/**
- * Every export-table key the page's draft needs beyond `POSTING_PAGE_INPUT_KEYS`
- * (which already carries `autoPost`, one of `policy.settings`).
- */
+/** The grain picker's option labels; a posting with no payout falls into its day. */
+export const SUMMARY_GRAIN_LABEL: Record<SummaryGrain, string> = {
+  day: 'Per day',
+  month: 'Per month',
+  payout: 'Per payout',
+}
+
+/** Every export-table key the page's form draft needs beyond `POSTING_PAGE_INPUT_KEYS`. */
 export const EXPORT_ROW_DRAFT_KEYS: readonly string[] = EXPORT_AVENUES.flatMap((avenue) => {
   const grainKey = summaryGrainKeyForAvenue(avenue)
   return grainKey ? [autoSendKeyForAvenue(avenue), grainKey] : [autoSendKeyForAvenue(avenue)]
 })
 
 // Two independent stacks, not a grid of rows: a grid row is as tall as its
-// tallest cell, so the six-setting `payment` section would open a hole beside
-// itself. Reading order is column-major as a result.
+// tallest cell, so one tall section would open a hole beside itself. Reading
+// order is column-major as a result.
 
 const SECTION_BASE_UNITS = 120
 /** The stack's own `gap-8` under each section. */

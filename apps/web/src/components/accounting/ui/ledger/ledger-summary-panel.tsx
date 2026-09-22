@@ -4,7 +4,8 @@
 
 // The Entries section's Summary mode (TARGET §6, step 3 part C): the same
 // `ledger.summary` read in both export modes, grouped by avenue, grain bucket,
-// store, rail and currency, each row expandable to its member postings. In
+// store, rail and currency, each row expandable to its lines (one per account and
+// side, 91 D9) and its member postings. In
 // Summary export mode a row IS an export batch; `exportBatches.list` for the
 // same month is matched onto it by the identical grouping key so the state
 // badge shows beside a row that has one, without a second column of state.
@@ -136,8 +137,8 @@ export function LedgerSummaryPanel({
               onToggleOpen={() => toggleOpen(key)}
               title={
                 <span className='flex min-w-0 items-center gap-1.5'>
-                  <span className='w-24 shrink-0 font-mono text-muted-foreground text-xs'>
-                    {row.grainKey}
+                  <span className='w-24 shrink-0 truncate font-mono text-muted-foreground text-xs'>
+                    {row.payoutId ? `Payout ${row.payoutId}` : row.grainKey}
                   </span>
                   <span className='truncate text-sm'>{exportAvenueLabel(row.avenue)}</span>
                 </span>
@@ -166,6 +167,27 @@ export function LedgerSummaryPanel({
                 </span>
               }>
               <div className='flex flex-col gap-px py-1'>
+                {row.lines.map((line) => (
+                  <TreeRow
+                    key={`${line.glAccountId} ${line.direction}`}
+                    depth={1}
+                    title={
+                      <span className='flex min-w-0 items-center gap-1.5'>
+                        <span className='w-6 shrink-0 text-muted-foreground text-xs'>
+                          {line.direction === 'debit' ? 'Dr' : 'Cr'}
+                        </span>
+                        <span className='truncate font-mono text-xs'>
+                          {line.accountCode || EMPTY_CELL}
+                        </span>
+                      </span>
+                    }
+                    actions={
+                      <span className='font-mono text-xs tabular-nums'>
+                        {formatMinor(line.amountMinor, row.currency)}
+                      </span>
+                    }
+                  />
+                ))}
                 {row.postingIds.map((id) => {
                   const posting = postingById.get(id)
                   return (

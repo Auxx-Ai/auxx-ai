@@ -52,6 +52,15 @@ vi.mock('@auxx/lib/accounting/ledger', async () => {
   }
 })
 
+vi.mock('@auxx/lib/accounting/journals', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/journals')
+  return {
+    ...actual,
+    updateJournalEntry: vi.fn(async () => okResult({ id: 'je_1', lines: [] })),
+    discardJournalEntry: vi.fn(async () => okResult(undefined)),
+  }
+})
+
 vi.mock('@auxx/lib/accounting/export', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/export')
   return {
@@ -163,6 +172,7 @@ const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/accounting/banking')
 const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
 const { rebuildSummaryBucket, releaseExportBatches, retryExportBatch, sendSummaryBucket } =
   await import('@auxx/lib/accounting/export')
+const { discardJournalEntry, updateJournalEntry } = await import('@auxx/lib/accounting/journals')
 
 type Capabilities = InstanceType<typeof CapabilitySet>
 
@@ -452,5 +462,58 @@ describe('ledger.exportBatches summary buckets', () => {
       key,
       force: true,
     })
+  })
+})
+
+describe('ledger.journalEntry lines and discard (91 D5)', () => {
+  const ledgerView = () => capabilitiesFor({ [Area.ledger]: Level.View })
+
+  it('passes line ids through, so the lib keeps, creates and deletes by id', async () => {
+    const lines = [
+      { id: 'jel_1', glAccountId: 'acc_6300', direction: 'debit' as const, amountMinor: 500 },
+      { glAccountId: 'acc_2000', direction: 'credit' as const, amountMinor: 500 },
+    ]
+    await ledgerCaller(ledgerEdit()).journalEntry.update({ id: 'je_1', lines })
+    expect(updateJournalEntry).toHaveBeenCalledWith(db, ORG_ID, USER_ID, {
+      journalEntryId: 'je_1',
+      lines,
+    })
+  })
+
+  it('refuses a fractional or negative amount before the lib', async () => {
+    for (const amountMinor of [12.5, -1]) {
+      await expect(
+        ledgerCaller(ledgerEdit()).journalEntry.update({
+          id: 'je_1',
+          lines: [{ glAccountId: 'acc_6300', direction: 'debit', amountMinor }],
+        })
+      ).rejects.toThrow()
+    }
+    expect(updateJournalEntry).not.toHaveBeenCalled()
+  })
+
+  it('saves a zero amount - amounts and balance are checked at Post', async () => {
+    await ledgerCaller(ledgerEdit()).journalEntry.update({
+      id: 'je_1',
+      lines: [{ glAccountId: 'acc_6300', direction: 'debit', amountMinor: 0 }],
+    })
+    expect(updateJournalEntry).toHaveBeenCalled()
+  })
+
+  it('discard deletes through the lib and answers with the id', async () => {
+    await expect(ledgerCaller(ledgerEdit()).journalEntry.discard({ id: 'je_1' })).resolves.toEqual({
+      id: 'je_1',
+      discarded: true,
+    })
+    expect(discardJournalEntry).toHaveBeenCalledWith(db, ORG_ID, USER_ID, {
+      journalEntryId: 'je_1',
+    })
+  })
+
+  it('discard refuses ledger: View', async () => {
+    await expect(
+      ledgerCaller(ledgerView()).journalEntry.discard({ id: 'je_1' })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(discardJournalEntry).not.toHaveBeenCalled()
   })
 })

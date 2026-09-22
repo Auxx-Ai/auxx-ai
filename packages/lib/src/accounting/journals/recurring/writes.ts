@@ -53,7 +53,7 @@ export interface SetRecurringJournalScheduleInput {
  *
  * 🛑 `materializedUntil` survives. An edit to the pattern must not re-open
  * months the template has already generated entries for: those entries exist,
- * some of them are posted, and regenerating them would raise a second draft
+ * most of them are posted, and regenerating them would raise a second entry
  * per occurrence whose only defence is the claim index. `effectiveFrom` moves
  * to today instead, which is the three-way-edit anchor the recurring engine
  * already defines - occurrences on or after it follow the new pattern.
@@ -137,7 +137,7 @@ export async function setRecurringJournalSchedule(
  * Stop a template repeating.
  *
  * 🛑 Deletes the RULE and nothing else. Entries the template has already
- * generated stay exactly where they are, posted or draft: a schedule is
+ * generated stay exactly where they are, posted or not: a schedule is
  * declarative configuration and the entries are what actually happened. The
  * same call is also what "delete this template" has to do first, because
  * `RecurrenceRule.subjectId` cascades from `EntityInstance` and a template

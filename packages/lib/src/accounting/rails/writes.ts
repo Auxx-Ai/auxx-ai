@@ -23,6 +23,7 @@ import { UnifiedCrudHandler } from '../../resources/crud'
 import { toRecordId } from '../../resources/resource-id'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { setRoleAssignment } from '../ledger/roles/role-map'
+import { wakeReasonCode } from '../work-items/wake'
 import {
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
@@ -177,6 +178,7 @@ export async function createPaymentGateway(
         throw new NotFoundError('The payment gateway could not be read back after writing')
       }
 
+      await wakeReasonCode(db, organizationId, 'GATEWAY_UNMAPPED')
       logger.info('Created a payment gateway', {
         organizationId,
         paymentGatewayId,
@@ -294,6 +296,7 @@ export async function updatePaymentGateway(
         throw new NotFoundError('The payment gateway could not be read back after writing')
       }
 
+      if (handles) await wakeReasonCode(db, organizationId, 'GATEWAY_UNMAPPED')
       logger.info('Updated a payment gateway', {
         organizationId,
         paymentGatewayId,

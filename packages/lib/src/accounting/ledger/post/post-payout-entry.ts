@@ -97,7 +97,6 @@ export async function postPayoutEntry(
       beforeCommit,
       lock,
       memo: input.memo ?? `Payout ${built.periodKey}`,
-      mode: 'post',
       railId: input.rail,
       sources: [
         { sourceKind: 'payout', sourceId: payoutInstanceId, linkRole: 'subject' },

@@ -393,6 +393,16 @@ export const ACCOUNT_ROLES = {
    */
   REVENUE_RETURNS_ALLOWANCES: 'revenue_returns_allowances',
   /**
+   * Discounts given (default `4080`). Contra-revenue: the shipment credits revenue at list and
+   * debits the line's allocated discount here, so the P&L shows gross, discounts and net (91 D8).
+   */
+  DISCOUNTS_GIVEN: 'discounts_given',
+  /**
+   * Gift card liability (default `2360`). Credited when a gift card ships, debited when one pays
+   * for an order; the unredeemed balance is money owed to cardholders (91 D8).
+   */
+  GIFT_CARD_LIABILITY: 'gift_card_liability',
+  /**
    * Payment processing fees (default `6100`). What the processor withheld from
    * a payout. NOT `money/payments/fees.ts`, which is the Connect application
    * fee auxx charges, a different number.
@@ -453,20 +463,22 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
   revenue_returns_allowances: 'revenue',
+  discounts_given: 'revenue',
+  gift_card_liability: 'liability',
   payment_processing_fees: 'expense',
   bad_debt_expense: 'expense',
 }
 
 /**
- * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58): a
- * second, narrower requirement present for exactly two roles. `bank` must
- * carry `GlAccountSubtype.BANK`; `clearing` must carry `GlAccountSubtype.CLEARING`.
- * Every other role pins nothing here and only its statement type applies.
+ * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58); every other role
+ * pins only its statement type. `accounts_receivable` is pinned because aging, the statement
+ * split and the QuickBooks journal's customer rule find a receivable by its subtype.
  */
 export const ROLE_ACCOUNT_SUBTYPES: Readonly<Partial<Record<AccountRole, GlAccountSubtypeValue>>> =
   {
     [ACCOUNT_ROLES.BANK]: GlAccountSubtype.BANK,
     [ACCOUNT_ROLES.CLEARING]: GlAccountSubtype.CLEARING,
+    [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   }
 
 /**
@@ -517,6 +529,8 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
   revenue_returns_allowances: 'Sales Returns and Allowances',
+  discounts_given: 'Discounts Given',
+  gift_card_liability: 'Gift Card Liability',
   payment_processing_fees: 'Payment Processing Fees',
   bad_debt_expense: 'Bad Debt Expense',
 }
@@ -562,9 +576,16 @@ export type ScopeAxis = 'store' | 'rail'
  * the per-store accounts sat at zero forever. It joins this table when 61 I2
  * puts COGS on the inventory entry.
  *
+ * `accounts_receivable` reads the store axis so a channel's prepayments stay out of the dealer
+ * receivable (91 §4.3). A store-scoped receivable reaches QuickBooks only through journals;
+ * invoices and payments post to the company's default A/R.
+ *
+ * `discounts_given` reads the store axis with the revenue it reduces, so a store's gross,
+ * discounts and net sit side by side; `gift_card_liability` stays pooled, since a card sold
+ * in one store may be redeemed in another.
+ *
  * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
- * role: `accounts_receivable` is settled by cash rather than by store,
- * `sales_tax_payable` is one obligation per jurisdiction, inventory is one
+ * role: `sales_tax_payable` is one obligation per jurisdiction, inventory is one
  * physical pool, `unidentified_receipts` wants ONE place to look, and
  * `revenue_service` is credited on an invoice, which is always manual.
  *
@@ -576,6 +597,8 @@ export const SCOPABLE_ROLES: Readonly<Partial<Record<AccountRole, ScopeAxis>>> =
   [ACCOUNT_ROLES.REVENUE_PRODUCT]: 'store',
   [ACCOUNT_ROLES.REVENUE_SHIPPING]: 'store',
   [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES]: 'store',
+  [ACCOUNT_ROLES.DISCOUNTS_GIVEN]: 'store',
+  [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: 'store',
   [ACCOUNT_ROLES.CLEARING]: 'rail',
   [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'rail',
   [ACCOUNT_ROLES.BANK]: 'rail',

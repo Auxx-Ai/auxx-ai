@@ -139,25 +139,25 @@ describe('the channel keyspace', () => {
   })
 })
 
-describe('canonical customer-money allocation', () => {
-  it('posts a partial receipt as deposit, A/R and only newly recognized tax', () => {
+describe('the store axis', () => {
+  it('scopes A/R and revenue to the store, never tax', () => {
     const built = buildFulfillmentEntry({
       ...BASE,
-      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: 100_000 }],
-      recognitionAllocation: {
-        amountMinor: 106_500,
-        depositMinor: 52_500,
-        receivableMinor: 54_000,
-        taxMinor: 5_000,
-        historyHash: 'a'.repeat(64),
-      },
+      shippedLines: WHOLE_ORDER,
+      sourceStoreId: 'store-1',
     })
-    expect(amountFor(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(52_500)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(54_000)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(5_000)
-    expect(built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CLEARING)).toBe(
-      false
-    )
+    const scopeOf = (role: string) =>
+      built.entry.lines.find((line) => line.accountRole === role)?.sourceScope
+    expect(scopeOf(ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toEqual({ store: 'store-1' })
+    expect(scopeOf(ACCOUNT_ROLES.REVENUE_PRODUCT)).toEqual({ store: 'store-1' })
+    expect(scopeOf(ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBeUndefined()
+  })
+
+  it('never debits customer deposits', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    expect(
+      built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CUSTOMER_DEPOSITS)
+    ).toBe(false)
   })
 })
 
@@ -732,5 +732,120 @@ describe('line memos', () => {
       'Order ORD-0012 · dtc · shipping, recognised once on the first fulfillment'
     )
     expect(memos.every((memo) => memo?.startsWith('Order ORD-0012 · dtc · '))).toBe(true)
+  })
+})
+
+describe('discounts as their own line (91 D8)', () => {
+  // A 200 list line discounted to 180, and a 100 line with no discount: subtotal 280.
+  const DISCOUNTED = [
+    {
+      lineId: 'l1',
+      quantity: 2,
+      unitPriceMinor: 9_000,
+      lineTotalMinor: 18_000,
+      listLineTotalMinor: 20_000,
+      orderedQuantity: 2,
+    },
+    {
+      lineId: 'l2',
+      quantity: 1,
+      unitPriceMinor: 10_000,
+      lineTotalMinor: 10_000,
+      listLineTotalMinor: 10_000,
+      orderedQuantity: 1,
+    },
+  ]
+  const ORDER = {
+    ...BASE,
+    orderSubtotalMinor: 28_000,
+    orderTaxTotalMinor: 0,
+    includeShipping: false,
+  }
+
+  it('credits revenue at list and debits the discount, leaving A/R at what the customer owes', () => {
+    const built = buildFulfillmentEntry({ ...ORDER, shippedLines: DISCOUNTED, sourceStoreId: 's1' })
+    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(28_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(30_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.DISCOUNTS_GIVEN)).toBe(2_000)
+    const discount = built.entry.lines.find((l) => l.accountRole === ACCOUNT_ROLES.DISCOUNTS_GIVEN)
+    expect(discount?.direction).toBe('debit')
+    expect(discount?.sourceScope).toEqual({ store: 's1' })
+    expect(built.discountMinor).toBe(2_000)
+    expect(built.subtotalMinor).toBe(28_000)
+  })
+
+  it('splits a discount across boxes by the same cumulative allocation, summing exactly', () => {
+    const line = {
+      lineId: 'l1',
+      unitPriceMinor: 100 / 3,
+      lineTotalMinor: 100,
+      listLineTotalMinor: 131,
+      orderedQuantity: 3,
+    }
+    const order = {
+      ...BASE,
+      orderSubtotalMinor: 100,
+      orderTaxTotalMinor: 0,
+      includeShipping: false,
+    }
+    const discounts = [0, 1, 2].map(
+      (prior, index) =>
+        buildFulfillmentEntry({
+          ...order,
+          sequence: index + 1,
+          shippedLines: [{ ...line, quantity: 1, priorShippedQuantity: prior }],
+        }).discountMinor
+    )
+    expect(discounts.reduce((sum, value) => sum + value, 0)).toBe(31)
+  })
+
+  it('posts no discount leg when the line has no stamped net', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    expect(amountFor(built.entry, ACCOUNT_ROLES.DISCOUNTS_GIVEN)).toBeUndefined()
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(100_000)
+  })
+
+  it('refuses a line whose net exceeds its list', () => {
+    expect(() =>
+      buildFulfillmentEntry({
+        ...ORDER,
+        shippedLines: [{ ...DISCOUNTED[0]!, listLineTotalMinor: 17_000 }],
+      })
+    ).toThrow(UnprocessableEntityError)
+  })
+})
+
+describe('gift cards (91 D8)', () => {
+  it('credits a shipped gift card line to the liability, never to revenue', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      orderSubtotalMinor: 15_000,
+      orderTaxTotalMinor: 0,
+      includeShipping: false,
+      shippedLines: [
+        { lineId: 'g1', quantity: 1, unitPriceMinor: 5_000, giftCard: true },
+        { lineId: 'l1', quantity: 1, unitPriceMinor: 10_000 },
+      ],
+    })
+    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(15_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.GIFT_CARD_LIABILITY)).toBe(5_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(10_000)
+    const liability = built.entry.lines.find(
+      (l) => l.accountRole === ACCOUNT_ROLES.GIFT_CARD_LIABILITY
+    )
+    expect(liability?.direction).toBe('credit')
+    expect(liability?.sourceScope).toBeUndefined()
+  })
+
+  it('posts no revenue line for a box of gift cards alone', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      orderSubtotalMinor: 5_000,
+      orderTaxTotalMinor: 0,
+      includeShipping: false,
+      shippedLines: [{ lineId: 'g1', quantity: 1, unitPriceMinor: 5_000, giftCard: true }],
+    })
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBeUndefined()
+    expect(built.giftCardMinor).toBe(5_000)
   })
 })

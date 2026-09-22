@@ -1,10 +1,9 @@
 // apps/web/src/components/accounting/ui/ledger/outbox/outbox-tabs.ts
 
 import type { OutboxTab } from '@auxx/lib/accounting/export/client'
-import { CheckCheck, CheckCircle2, CircleAlert, FileClock } from 'lucide-react'
+import { CheckCheck, CheckCircle2, CircleAlert } from 'lucide-react'
 
 export const TAB_ICON: Record<OutboxTab, typeof CheckCircle2> = {
-  drafts: FileClock,
   blocked: CircleAlert,
   ready: CheckCircle2,
   sent: CheckCheck,
@@ -12,7 +11,6 @@ export const TAB_ICON: Record<OutboxTab, typeof CheckCircle2> = {
 }
 
 export const TAB_LABEL: Record<OutboxTab, string> = {
-  drafts: 'Drafts',
   blocked: 'Blocked',
   ready: 'Ready',
   sent: 'Sent',

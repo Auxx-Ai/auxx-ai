@@ -23,7 +23,7 @@ import { BadRequestError, ConflictError, NotFoundError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { type BuildWriteOffEntryInput, buildWriteOffEntry } from '../../ledger/builders/write-off'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
@@ -310,11 +310,7 @@ export async function writeOffInvoice(
       })
     : { status: 'not_enabled' }
 
-  // ⚠️ This list used to be written out here and was missing `healed` AND
-  // `not_exported` - a write-off on a healed claim, or on any posting type that
-  // ever routes to `'none'`, returned before stamping the invoice. The shared
-  // predicate carries both.
-  if (!isExpectedPostOutcome(result)) return result
+  if (!didLedgerAccept(result) && result.status !== 'not_enabled') return result
 
   const remainingBalanceMinor = invoice.outstandingMinor - amount
 

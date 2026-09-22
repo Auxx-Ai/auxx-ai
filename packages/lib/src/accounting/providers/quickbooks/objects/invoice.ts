@@ -1,7 +1,6 @@
 // packages/lib/src/accounting/providers/quickbooks/objects/invoice.ts
-// A fulfillment invoiced (not fully paid at shipment, or `exportShape:
-// 'invoice'`) or a standalone `invoice_issued` posting, sent as a QuickBooks
-// Invoice (plan 67 §1, §5.1).
+// A shipment (every `fulfillment` posting, 91 §8.13) or a standalone
+// `invoice_issued` posting, sent as a QuickBooks Invoice (plan 67 §1, §5.1).
 
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'

@@ -44,8 +44,7 @@ import { readDocumentLedgerState } from '../../documents/document-ledger-state'
 import type { BuiltVendorBillEntry } from '../../ledger/builders/entry'
 import { VENDOR_BILL_POSTING_TYPE, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { discardDraftPosting } from '../../ledger/post/draft-lines'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -278,7 +277,7 @@ export async function postVendorBill(
     memo: `Bill ${bill.number || bill.internalNumber} posted`,
   })) ?? { status: 'not_enabled' }
 
-  if (!isExpectedPostOutcome(post)) {
+  if (!didLedgerAccept(post) && post.status !== 'not_enabled') {
     throw new BadRequestError(
       'This vendor bill could not be posted to the general ledger' +
         `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
@@ -308,7 +307,7 @@ export async function postVendorBill(
   return { post, docNumber: post.docNumber ?? null, totalMinor: built.totalMinor }
 }
 
-/** One row of {@link listVendorBillPostings}. `status` is `draft | posted | reversed`. */
+/** One row of {@link listVendorBillPostings}. `status` is `posted | reversed`. */
 export interface VendorBillPosting {
   glPostingId: string
   docNumber: string
@@ -321,10 +320,6 @@ export interface VendorBillPosting {
  *
  * One source type for both kinds of bill since 73 D3, which is what lets a void
  * and the delete guard reckon with the whole document rather than half of it.
- *
- * 🛑 A DRAFT waiting in the outbox is in the list through its `pending` link with
- * `status: 'draft'` and no document number. Callers that need a LIVE payable must
- * therefore test `status === 'posted'`, never merely "a row came back".
  */
 export async function listVendorBillPostings(
   db: Database,
@@ -363,8 +358,7 @@ export interface VoidVendorBillInput {
  * been written at that point.
  *
  * The reversal claims revision 1 on the same period key, so its document number
- * is the original's with `-R1` on the end. An entry still only DRAFTED is
- * discarded instead - it holds no claim and no place in the books.
+ * is the original's with `-R1` on the end.
  */
 export async function voidVendorBill(db: Database, input: VoidVendorBillInput): Promise<void> {
   const { organizationId, userId, vendorBillInstanceId, memo } = input
@@ -394,31 +388,13 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
   }
 
   const postings = await listVendorBillPostings(db, { organizationId, vendorBillInstanceId })
-  // A reversed original has already left the books; a draft never entered them.
+  // A reversed original has already left the books.
   const live = postings.filter(
     (posting) => posting.postingType === VENDOR_BILL_POSTING_TYPE && posting.status !== 'reversed'
   )
   if (live.length > 0) {
     const lock = await resolvePeriodLock(organizationId)
     for (const posting of live) {
-      // A draft is thrown away rather than reversed: reversing nothing writes a
-      // second entry, and a draft left standing can still be approved later and
-      // raise a payable for a bill that is void.
-      if (posting.status === 'draft') {
-        const discarded = await discardDraftPosting(db, {
-          organizationId,
-          glPostingId: posting.glPostingId,
-        })
-        if (discarded.isErr()) {
-          throw new BadRequestError(
-            `This vendor bill has a drafted general ledger entry that could not be discarded: ` +
-              `${discarded.error.message}. Voiding it would leave a draft that can still be ` +
-              'approved into the books.',
-            { vendorBillInstanceId, glPostingId: posting.glPostingId }
-          )
-        }
-        continue
-      }
       const result = await reverseEntry(db, {
         organizationId,
         glPostingId: posting.glPostingId,
@@ -428,7 +404,7 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
           memo ??
           `Reversal of ${posting.docNumber} - bill ${bill.number || bill.internalNumber} voided`,
       })
-      if (!isExpectedPostOutcome(result)) {
+      if (!didLedgerAccept(result)) {
         throw new BadRequestError(
           `This vendor bill has a general ledger entry (${posting.docNumber}) that could not be ` +
             `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +

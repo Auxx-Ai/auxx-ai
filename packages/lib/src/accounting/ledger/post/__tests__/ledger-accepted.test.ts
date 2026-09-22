@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { PostResultStatus } from '../../types'
-import { didLedgerAccept, isExpectedPostOutcome } from '../ledger-accepted'
+import { didLedgerAccept } from '../ledger-accepted'
 
 /**
  * Every member of `PostResultStatus`, written out by hand ON PURPOSE.
@@ -17,8 +17,6 @@ import { didLedgerAccept, isExpectedPostOutcome } from '../ledger-accepted'
 const ACCEPTED: readonly PostResultStatus[] = ['posted', 'already_posted']
 
 const REFUSED: readonly PostResultStatus[] = [
-  // A draft holds no claim and no document number; nothing is in the books yet.
-  'drafted',
   'period_closed',
   'account_unmapped',
   'unbalanced',
@@ -28,6 +26,7 @@ const REFUSED: readonly PostResultStatus[] = [
   'inventory_role_refused',
   'account_invalid',
   'revenue_incomplete',
+  'nothing_to_recognise',
   'error',
 ]
 
@@ -47,7 +46,6 @@ describe('didLedgerAccept', () => {
    */
   it('refuses not_enabled, because nothing was built', () => {
     expect(didLedgerAccept({ status: 'not_enabled' })).toBe(false)
-    expect(isExpectedPostOutcome({ status: 'not_enabled' })).toBe(true)
   })
 
   /**
@@ -63,7 +61,6 @@ describe('didLedgerAccept', () => {
   it('fails CLOSED on a status outside the union', () => {
     const bogus = { status: 'period_locked' as PostResultStatus }
     expect(didLedgerAccept(bogus)).toBe(false)
-    expect(isExpectedPostOutcome(bogus)).toBe(false)
     expect(didLedgerAccept({ status: '' as PostResultStatus })).toBe(false)
   })
 
@@ -73,25 +70,5 @@ describe('didLedgerAccept', () => {
     // Mirrors the union in `types.ts`. If this number moves, a status was added
     // and both this file and `didLedgerAccept`'s switch need the new member.
     expect(all).toHaveLength(13)
-  })
-})
-
-describe('isExpectedPostOutcome', () => {
-  it.each(ACCEPTED)('is true for %s', (status) => {
-    expect(isExpectedPostOutcome({ status })).toBe(true)
-  })
-
-  it.each(
-    REFUSED.filter((s) => s !== 'not_enabled' && s !== 'drafted')
-  )('is false for %s', (status) => {
-    expect(isExpectedPostOutcome({ status })).toBe(false)
-  })
-
-  it('differs from didLedgerAccept on exactly two statuses', () => {
-    const all = [...ACCEPTED, ...REFUSED]
-    const differ = all.filter(
-      (s) => didLedgerAccept({ status: s }) !== isExpectedPostOutcome({ status: s })
-    )
-    expect(differ).toEqual(['drafted', 'not_enabled'])
   })
 })

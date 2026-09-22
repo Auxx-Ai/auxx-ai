@@ -22,7 +22,7 @@ const target = z.object({
 })
 
 export const documentEditRouter = createTRPCRouter({
-  /** Is this document unlocked, and is it waiting on a drafted entry? */
+  /** Is this document unlocked, and what does the ledger hold for it? */
   readState: permissionProcedure(PermissionKey.ledgerView)
     .input(target)
     .query(async ({ ctx, input }) => {

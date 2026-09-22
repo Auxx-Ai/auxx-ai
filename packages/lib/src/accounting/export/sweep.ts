@@ -6,7 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import { readOrganizationSettings } from '../../settings/read'
 import { periodKeyForDate } from '../ledger/periods/periods'
-import { EXPORT_AVENUES } from '../ledger/setup/export-settings'
+import { EXPORT_AVENUES, isSummaryGrainAvenue } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import { MAX_AUTO_ATTEMPTS, type SendExportBatchResult, sendExportBatch } from './send'
 import { sendSummaryBucket } from './send-bucket'
@@ -116,12 +116,18 @@ export async function sweepExportBatches(
  * more than {@link DAY_GRAIN_WAIT_DAYS} days back, a month once the next has begun,
  * a grain-less bucket (one posting) at once.
  */
-export function isSummaryBucketComplete(grainKey: string, today: string): boolean {
+export function isSummaryBucketComplete(
+  grainKey: string,
+  today: string,
+  /** A payout bucket's latest posting day: it closes by the day rule its catch-all uses (91 D9). */
+  payoutLastDay?: string
+): boolean {
   if (/^\d{4}-\d{2}$/.test(grainKey)) return grainKey < today.slice(0, 7)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(grainKey)) return true
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(grainKey) ? grainKey : payoutLastDay
+  if (!day) return true
   const cutoff = new Date(`${today}T00:00:00Z`)
   cutoff.setUTCDate(cutoff.getUTCDate() - DAY_GRAIN_WAIT_DAYS)
-  return grainKey < cutoff.toISOString().slice(0, 10)
+  return day < cutoff.toISOString().slice(0, 10)
 }
 
 /**
@@ -161,7 +167,15 @@ export async function sweepSummaryBuckets(
 
   const due = rows.value.items
     .filter((row) => row.status === 'not_sent' && !row.batch)
-    .filter((row) => isSummaryBucketComplete(row.grainKey, today))
+    .filter((row) =>
+      isSummaryBucketComplete(
+        row.grainKey,
+        today,
+        isSummaryGrainAvenue(row.avenue) && settings.summaryGrain[row.avenue] === 'payout'
+          ? row.txnDateTo
+          : undefined
+      )
+    )
     .slice(0, input.limit ?? SUMMARY_BUCKETS_PER_SWEEP)
 
   const results: SendExportBatchResult[] = []

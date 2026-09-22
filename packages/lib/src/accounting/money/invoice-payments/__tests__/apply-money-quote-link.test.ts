@@ -11,9 +11,6 @@ vi.mock('../../commands/run-money-command', () => ({ runMoneyCommand }))
 vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: async () => ({ totalMinor: 50_000 }),
 }))
-vi.mock('../../customer-money/deposit-application-accounting', () => ({
-  acceptDepositApplicationAccounting: async () => ({ status: 'posted' }),
-}))
 
 const { applyMoneyToInvoice } = await import('../apply-money')
 

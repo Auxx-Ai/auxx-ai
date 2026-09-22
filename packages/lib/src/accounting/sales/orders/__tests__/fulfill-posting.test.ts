@@ -22,9 +22,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 // Gate 1 is on for this file: what is under test is the posting, not the draft.
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: async () => 'post',
-}))
 
 const h = vi.hoisted(() => ({
   fields: new Map<string, string>([
@@ -33,14 +30,35 @@ const h = vi.hoisted(() => ({
     ['gl_account_type', 'fld_type'],
     ['gl_account_is_active', 'fld_active'],
   ]),
+  /** The chart the `chartAccounts` cache key computes from; set beside `CHART` below. */
+  accounts: [] as Array<{ id: string; code: string; name: string; accountType: string }>,
 }))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.has(a) ? { id: h.fields.get(a) } : null])),
+        Object.fromEntries(
+          attrs.map((a) => [
+            a,
+            h.fields.has(a) ? { id: h.fields.get(a), entityDefinitionId: 'def_gl_account' } : null,
+          ])
+        ),
     }),
+    // The chart moved into the org cache (#2304); computed by the real provider.
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { chartProviderDb, computeChart } = await import(
+        '../../../ledger/__tests__/support/chart-cache-stub'
+      )
+      const values = h.accounts.flatMap((account) => [
+        { entityId: account.id, fieldId: 'fld_code', valueText: account.code },
+        { entityId: account.id, fieldId: 'fld_name', valueText: account.name },
+        { entityId: account.id, fieldId: 'fld_type', optionId: account.accountType },
+        { entityId: account.id, fieldId: 'fld_active', valueBoolean: true },
+      ])
+      return computeChart(orgId, chartProviderDb(h.accounts, values))
+    },
   }),
 }))
 
@@ -85,13 +103,12 @@ vi.mock('../../fulfillments/accounting', async () => {
   const { buildFulfillmentEntry } = await import('../../../ledger/builders/fulfillment')
   const { UnprocessableEntityError } = await import('../../../../errors')
   return {
-    PREVIEW_SHIPMENT_ID: 'preview',
     NothingToRecogniseError: class NothingToRecogniseError extends UnprocessableEntityError {},
     readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
     prepareShipmentEntry: async () => {
       throw new Error('the preview is not exercised here')
     },
-    markFulfillmentPostingBlock: async () => {},
+    parkFulfillment: async () => {},
     prepareFulfillmentEntry: async (_tx: unknown, input: { fulfillmentId: string }) => ({
       entry: buildFulfillmentEntry({
         orderId: ORDER.orderId,
@@ -192,6 +209,7 @@ const CHART = [
   { role: 'accounts_receivable', account: RAR },
   { role: 'revenue_product', account: REVENUE },
 ]
+h.accounts = CHART.map((entry) => entry.account)
 
 /** Values a Drizzle condition bound, the same walk `post-entry.test.ts` uses. */
 function boundValues(condition: unknown): string[] {
@@ -506,6 +524,22 @@ describe('fulfillOrder against the real poster', () => {
     })
     // The subject claim is gone - the fulfillment can post again.
     expect(bySubject._unsafeUnwrap()).toHaveLength(0)
+  })
+
+  // 91 D8: the cancel hook fires on both cancel writes, so the reversal must be safe to repeat.
+  it('reverses once when a cancel fires twice', async () => {
+    const fake = createFakeDb()
+    await fulfillOrder(fake.db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      orderId: 'ord_1',
+      shippedLines: [{ lineId: 'li_1', quantity: 3 }],
+      shippedAt: '2026-09-03',
+    })
+    const input = { organizationId: ORG, fulfillmentInstanceId: 'ful_1', actorUserId: USER }
+
+    expect((await reverseFulfillmentPosting(fake.db, input))?.status).toBe('posted')
+    expect(await reverseFulfillmentPosting(fake.db, input)).toBeNull()
   })
 
   it('is a no-op when the fulfillment never posted', async () => {

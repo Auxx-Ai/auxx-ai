@@ -10,12 +10,6 @@ export {
   parsePostingDraft,
   reverseAssertions,
 } from './draft'
-export {
-  discardDraftPosting,
-  discardDraftsForSource,
-  type UpdateDraftLinesInput,
-  updateDraftLines,
-} from './draft-lines'
 // ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────
 export {
   type DuplicateMovementEntry,
@@ -23,7 +17,7 @@ export {
   type FindDuplicateBankMovementsOptions,
   findDuplicateBankMovements,
 } from './duplicate-movements'
-export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
+export { didLedgerAccept } from './ledger-accepted'
 // ── plans/accounting/tasks/28 §2: the declared posting policy ────────────────
 export {
   LEDGER_WIDE_SETTING_KEYS,
@@ -39,10 +33,8 @@ export {
 export {
   type EntryPreview,
   LEDGER_CURRENCY,
-  type PostDraftOptions,
   type PostEntryOptions,
   type PreviewEntryOptions,
-  postDraft,
   postEntry,
   previewEntry,
 } from './post-entry'

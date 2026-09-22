@@ -18,7 +18,7 @@
  * header's own recorded total and never `SUM(lines)`; if the two disagree that
  * is a real corruption and `verifyBooksBalance` is the sweep that reports it,
  * so summing here would paper over it in the list somebody opens to
- * investigate. `memo` is read off the stored draft envelope rather than
+ * investigate. `memo` is read off the stored `built` envelope rather than
  * recomposed.
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
@@ -30,7 +30,6 @@ import { toDateKey, toIso } from '@auxx/utils/calendar-day'
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   gte,
@@ -100,9 +99,7 @@ export interface PostingListRow extends PostingSummary {
  * screen a bookkeeper opens to find them, so "no month" lists the whole ledger
  * rather than nothing. `limit` still caps it.
  *
- * 🛑 `status` narrows in SQL, BEFORE `limit`. The Outbox's Drafts tab is
- * unbounded by month, and filtering drafts out of an already-capped page of
- * postings would hide every draft older than the newest 200 rows.
+ * `status` narrows in SQL, BEFORE `limit`, so a filtered page is never short.
  */
 export async function listPostings(
   db: Database,
@@ -225,21 +222,6 @@ function exportStateCondition(filter?: PostingExportStateFilter[]): SQL | undefi
     filter.includes('none') ? isNull(schema.ExportBatch.id) : undefined,
     states.length ? inArray(schema.ExportBatch.state, states) : undefined
   )
-}
-
-/** Drafts awaiting approval across every period - the Outbox tab badge, counted in SQL. */
-export async function countDraftPostings(db: Database, organizationId: string): Promise<number> {
-  const [row] = await db
-    .select({ total: count() })
-    .from(schema.GlPosting)
-    .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        eq(schema.GlPosting.status, 'draft'),
-        ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE)
-      )
-    )
-  return row?.total ?? 0
 }
 
 /** A posting plus the `GlPostingSource` role it was found through. */
@@ -422,7 +404,6 @@ export interface LinkedPosting {
   glPostingId: string
   postingType: PostingType
   status: PostingStatus
-  /** Null while the entry is a draft: a draft holds no claim and gets no number. */
   docNumber: string | null
   /** The accounting date, `YYYY-MM-DD`. */
   txnDate: string
@@ -510,15 +491,13 @@ export async function findLinkedPostings(
 }
 
 /** The statuses a live subject row can carry. A reversal deletes the row itself. */
-const LIVE_SUBJECT_STATUSES = ['draft', 'posted'] as const satisfies readonly PostingStatus[]
+const LIVE_SUBJECT_STATUSES = ['posted'] as const satisfies readonly PostingStatus[]
 
 /**
  * The posting that currently holds each source's subject claim, batched.
  *
  * A reversal deletes the original's subject row (`markReversedInTx`), so
- * anything still `subject` is what stands in the books right now. `draft` stays
- * in the status filter although a draft's subject is written as `pending` since
- * #2274: callers that want only the POSTED ones filter the returned `status`.
+ * anything still `subject` is what stands in the books right now.
  */
 export async function findLiveSubjectPostings(
   db: Database | Transaction,
@@ -530,27 +509,6 @@ export async function findLiveSubjectPostings(
     sourceIds: options.sourceIds,
     linkRole: 'subject',
     statuses: LIVE_SUBJECT_STATUSES,
-  })
-  const bySource = new Map<string, LinkedPosting>()
-  for (const row of rows) if (!bySource.has(row.sourceId)) bySource.set(row.sourceId, row)
-  return bySource
-}
-
-/**
- * The draft each source is waiting on: its `pending` link onto a row still in
- * `draft`, batched. A draft holds no claim, so {@link findLiveSubjectPostings}
- * cannot see it; this is how a refusal names the draft instead of "pending".
- */
-export async function findPendingDraftPostings(
-  db: Database | Transaction,
-  organizationId: string,
-  options: { sourceKind: string; sourceIds: readonly string[] }
-): Promise<Map<string, LinkedPosting>> {
-  const rows = await findLinkedPostings(db, organizationId, {
-    sourceKind: options.sourceKind,
-    sourceIds: options.sourceIds,
-    linkRole: 'pending',
-    statuses: ['draft'],
   })
   const bySource = new Map<string, LinkedPosting>()
   for (const row of rows) if (!bySource.has(row.sourceId)) bySource.set(row.sourceId, row)

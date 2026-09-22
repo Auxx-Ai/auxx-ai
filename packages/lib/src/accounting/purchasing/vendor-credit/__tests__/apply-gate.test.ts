@@ -1,8 +1,7 @@
 // packages/lib/src/accounting/purchasing/vendor-credit/__tests__/apply-gate.test.ts
 //
 // 73 D1: the gate on an application is the LEDGER, not the bill's lifecycle -
-// and "the ledger" means a POSTED entry. A draft waiting in the outbox holds no
-// claim and raised no payable, so there is nothing yet to credit.
+// and "the ledger" means a POSTED entry.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -66,13 +65,6 @@ beforeEach(() => {
 describe('applyVendorCredit ledger gate', () => {
   it('refuses a bill with no entry at all', async () => {
     await expect(run()).rejects.toThrow(/not in the books yet/)
-  })
-
-  it('refuses a bill whose entry is still a draft in the outbox', async () => {
-    h.postings = [
-      { glPostingId: 'gp_d', docNumber: '', status: 'draft', postingType: 'vendor_bill' },
-    ]
-    await expect(run()).rejects.toThrow(/waiting for approval in the outbox/)
   })
 
   it('refuses a bill whose only entry has been reversed', async () => {

@@ -10,7 +10,8 @@
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
+import { wakeSources } from '../../work-items/wake'
 import type {
   SourceAcceptanceRow,
   SourceAccountRow,
@@ -231,14 +232,14 @@ export async function refreshOrderCoverageCountsForOrders(
   await applyOrderCoverageCounts(db, organizationId, counts)
 }
 
-/** Upsert acceptances on `(org, sourceObjectId)`. */
+/** Upsert acceptances on `(org, sourceObjectId)`; returns each row's id. */
 export async function upsertAcceptances(
   tx: Db,
   organizationId: string,
   rows: readonly Omit<typeof schema.FinancialSourceAcceptance.$inferInsert, 'organizationId'>[]
-): Promise<void> {
-  if (!rows.length) return
-  await tx
+): Promise<Array<{ id: string; sourceObjectId: string }>> {
+  if (!rows.length) return []
+  return tx
     .insert(schema.FinancialSourceAcceptance)
     .values(rows.map((row) => ({ ...row, organizationId })))
     .onConflictDoUpdate({
@@ -250,11 +251,13 @@ export async function upsertAcceptances(
         observationId: sql`excluded."observationId"`,
         orderInstanceId: sql`excluded."orderInstanceId"`,
         state: sql`excluded.state`,
-        reason: sql`excluded.reason`,
         unresolvedReferences: sql`excluded."unresolvedReferences"`,
-        nextAttemptAt: sql`excluded."nextAttemptAt"`,
         updatedAt: new Date(),
       },
+    })
+    .returning({
+      id: schema.FinancialSourceAcceptance.id,
+      sourceObjectId: schema.FinancialSourceAcceptance.sourceObjectId,
     })
 }
 
@@ -278,10 +281,7 @@ export async function updateAcceptance(
     )
 }
 
-/**
- * Wake the acceptances parked on a change to these orders (79 §4.2): `nextAttemptAt`
- * null → now. Scoped to the parked rows, so a backing-off row keeps its own schedule.
- */
+/** Wake the `evidence` work items of the open acceptances on these orders (79 §4.2). */
 export async function requeueAcceptancesForOrders(
   tx: Db,
   organizationId: string,
@@ -289,18 +289,21 @@ export async function requeueAcceptancesForOrders(
 ): Promise<void> {
   const ids = [...new Set(orderInstanceIds)]
   if (!ids.length) return
-  const now = new Date()
-  await tx
-    .update(schema.FinancialSourceAcceptance)
-    .set({ nextAttemptAt: now, updatedAt: now })
+  const open = await tx
+    .select({ id: schema.FinancialSourceAcceptance.id })
+    .from(schema.FinancialSourceAcceptance)
     .where(
       and(
         eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
         inArray(schema.FinancialSourceAcceptance.orderInstanceId, ids),
-        inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked']),
-        isNull(schema.FinancialSourceAcceptance.nextAttemptAt)
+        inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
       )
     )
+  await wakeSources(tx, organizationId, {
+    sourceKind: 'financial_source_acceptance',
+    sourceIds: open.map((row) => row.id),
+    stage: 'evidence',
+  })
 }
 
 /** Patch every acceptance of these source objects. */

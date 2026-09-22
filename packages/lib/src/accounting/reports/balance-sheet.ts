@@ -37,6 +37,16 @@ export interface BalanceSheetRow {
   inChart: boolean
 }
 
+/** A receivable account's documents in credit, presented as a liability (91 D3). Computed, never posted. */
+export interface CustomerDepositsRow {
+  /** The receivable account the documents sit in. */
+  glAccountId: string
+  accountCode: string | null
+  accountName: string
+  /** Positive: the credit balance of those documents. */
+  balanceMinor: number
+}
+
 /** One point-in-time balance sheet. `readBalanceSheet` returns one or two of these (primary + compare). */
 export interface BalanceSheetSnapshot {
   asOf: string
@@ -49,6 +59,11 @@ export interface BalanceSheetSnapshot {
    * ADDITIONAL to this list, never a replacement for it.
    */
   equity: BalanceSheetRow[]
+  /**
+   * Split out of the receivable rows in `assets`, whose `balanceMinor` then holds only
+   * the documents in debit. Counted in `totalLiabilitiesMinor`.
+   */
+  customerDeposits: CustomerDepositsRow[]
   totalAssetsMinor: number
   totalLiabilitiesMinor: number
   /**
@@ -183,7 +198,7 @@ async function computeSnapshot(
 
   const [asOfResult, priorYearsResult, currentFyResult, retainedEarningsAccounts] =
     await Promise.all([
-      readTrialBalance(db, { organizationId, to: asOf, chart }),
+      readTrialBalance(db, { organizationId, to: asOf, chart, splitReceivables: true }),
       readTrialBalance(db, { organizationId, to: dayBeforeFyStart, chart }),
       readTrialBalance(db, { organizationId, from: fyStart, to: asOf, chart }),
       loadRoleAccountCodes(db, organizationId, [ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS]),
@@ -230,9 +245,24 @@ async function computeSnapshot(
     postedRetainedEarningsBalance,
   })
 
-  const assets = asOfResult.value.rows
-    .filter((row) => row.accountType === 'asset')
-    .map(toBalanceSheetRow)
+  const assetRows = asOfResult.value.rows.filter((row) => row.accountType === 'asset')
+  const assets = assetRows.map((row) =>
+    row.receivableSplit && row.receivableSplit.depositsMinor !== 0
+      ? { ...toBalanceSheetRow(row), balanceMinor: row.receivableSplit.receivableMinor }
+      : toBalanceSheetRow(row)
+  )
+  const customerDeposits: CustomerDepositsRow[] = assetRows.flatMap((row) =>
+    row.receivableSplit && row.receivableSplit.depositsMinor !== 0
+      ? [
+          {
+            glAccountId: row.glAccountId,
+            accountCode: row.accountCode,
+            accountName: row.accountName,
+            balanceMinor: row.receivableSplit.depositsMinor,
+          },
+        ]
+      : []
+  )
   const liabilities = asOfResult.value.rows
     .filter((row) => row.accountType === 'liability')
     .map(toBalanceSheetRow)
@@ -241,7 +271,9 @@ async function computeSnapshot(
     .map(toBalanceSheetRow)
 
   const totalAssetsMinor = assets.reduce((sum, row) => sum + row.balanceMinor, 0)
-  const totalLiabilitiesMinor = liabilities.reduce((sum, row) => sum + row.balanceMinor, 0)
+  const totalLiabilitiesMinor =
+    liabilities.reduce((sum, row) => sum + row.balanceMinor, 0) +
+    customerDeposits.reduce((sum, row) => sum + row.balanceMinor, 0)
   const postedEquityMinor = equity.reduce((sum, row) => sum + row.balanceMinor, 0)
   // Both computed figures, unconditionally: together they are all-time net
   // income, which no posted equity row carries while there is no year-end
@@ -254,6 +286,7 @@ async function computeSnapshot(
     assets,
     liabilities,
     equity,
+    customerDeposits,
     totalAssetsMinor,
     totalLiabilitiesMinor,
     totalEquityMinor,

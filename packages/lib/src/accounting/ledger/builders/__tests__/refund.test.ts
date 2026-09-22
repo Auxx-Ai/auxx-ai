@@ -11,43 +11,53 @@ const BASE = {
   txnDate: '2026-09-04',
   customerInstanceId: 'ct_1',
   endpointGlAccountId: 'gl_bank',
-  settlements: [
-    {
-      settlementId: 'rs_1',
-      creditMemoInstanceId: 'cm_1',
-      creditControlGlAccountId: 'gl_ar',
-      amountMinor: 20_000,
-    },
-  ],
+  amountMinor: 20_000,
 }
 
 describe('buildRefundEntry', () => {
-  it('debits each memo control account and credits the endpoint for the whole movement', () => {
-    const built = buildRefundEntry({
-      ...BASE,
-      settlements: [
-        BASE.settlements[0]!,
-        {
-          settlementId: 'rs_2',
-          creditMemoInstanceId: 'cm_2',
-          creditControlGlAccountId: 'gl_credit',
-          amountMinor: 5_000,
-        },
-      ],
-    })
+  it('debits the accounts_receivable role and credits the endpoint for the movement', () => {
+    const built = buildRefundEntry(BASE)
 
-    expect(built.totalMinor).toBe(25_000)
+    expect(built.totalMinor).toBe(20_000)
     expect(
-      built.entry.lines.map((line) => [line.glAccountId, line.direction, line.amount])
+      built.entry.lines.map((line) => [
+        line.accountRole ?? line.glAccountId,
+        line.direction,
+        line.amount,
+      ])
     ).toEqual([
-      ['gl_ar', 'debit', 20_000],
-      ['gl_credit', 'debit', 5_000],
-      ['gl_bank', 'credit', 25_000],
+      ['accounts_receivable', 'debit', 20_000],
+      ['gl_bank', 'credit', 20_000],
     ])
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
   })
 
-  it('names the customer on every control leg and never on the endpoint', () => {
+  // 91 D8: a chargeback carries its dispute fee as its own expense, out of the same endpoint.
+  it('debits a dispute fee to payment_processing_fees and credits the endpoint the sum', () => {
+    const built = buildRefundEntry({ ...BASE, feeMinor: 1_500 })
+
+    expect(built.totalMinor).toBe(21_500)
+    expect(
+      built.entry.lines.map((line) => [
+        line.accountRole ?? line.glAccountId,
+        line.direction,
+        line.amount,
+      ])
+    ).toEqual([
+      ['accounts_receivable', 'debit', 20_000],
+      ['payment_processing_fees', 'debit', 1_500],
+      ['gl_bank', 'credit', 21_500],
+    ])
+    expect(built.entry.lines[1]?.counterpartyId).toBeUndefined()
+  })
+
+  it('posts no fee leg at zero and refuses a negative or fractional fee', () => {
+    expect(buildRefundEntry({ ...BASE, feeMinor: 0 }).entry.lines).toHaveLength(2)
+    expect(() => buildRefundEntry({ ...BASE, feeMinor: -1 })).toThrow(AuxxError)
+    expect(() => buildRefundEntry({ ...BASE, feeMinor: 1.5 })).toThrow(AuxxError)
+  })
+
+  it('names the customer on the receivable leg and never on the endpoint', () => {
     const built = buildRefundEntry(BASE)
 
     expect(built.entry.lines[0]).toMatchObject({
@@ -57,9 +67,9 @@ describe('buildRefundEntry', () => {
     expect(built.entry.lines[1]?.counterpartyId).toBeUndefined()
   })
 
-  it('carries the memo and settlement as dimensions, so a slice is traceable', () => {
-    expect(buildRefundEntry(BASE).entry.lines[0]?.dimensions).toEqual({
-      creditMemoInstanceId: 'cm_1',
+  it('carries the settlement as a dimension only when given one', () => {
+    expect(buildRefundEntry(BASE).entry.lines[0]?.dimensions).toBeUndefined()
+    expect(buildRefundEntry({ ...BASE, settlementId: 'rs_1' }).entry.lines[0]?.dimensions).toEqual({
       settlementId: 'rs_1',
     })
   })
@@ -84,32 +94,24 @@ describe('buildRefundEntry', () => {
       expect(line).toMatchObject({ sourceType: 'money_transaction', sourceId: 'mt_1' })
   })
 
-  it('refuses a blank movement, a missing endpoint and an empty partition', () => {
+  it('refuses a blank movement and a missing endpoint', () => {
     expect(() => buildRefundEntry({ ...BASE, moneyTransactionId: '  ' })).toThrowError(AuxxError)
     expect(() => buildRefundEntry({ ...BASE, endpointGlAccountId: ' ' })).toThrowError(
       /the account the money left by/
     )
-    expect(() => buildRefundEntry({ ...BASE, settlements: [] })).toThrowError(
-      /at least one settlement slice/
-    )
   })
 
-  it('refuses a slice that is not a positive whole number of minor units', () => {
+  it('refuses an amount that is not a positive whole number of minor units', () => {
     for (const amountMinor of [0, -1, 1.5, Number.NaN]) {
-      expect(() =>
-        buildRefundEntry({
-          ...BASE,
-          settlements: [{ ...BASE.settlements[0]!, amountMinor }],
-        })
-      ).toThrowError(/positive whole number/)
+      expect(() => buildRefundEntry({ ...BASE, amountMinor })).toThrowError(/positive whole number/)
     }
   })
 
   it('memos every line with the movement id ahead of the leg label', () => {
     const built = buildRefundEntry(BASE)
     expect(built.entry.lines.map((row) => row.memo)).toEqual([
-      'txn mt_1 · Customer credit refund',
-      'txn mt_1 · Customer credit refund',
+      'txn mt_1 · Customer refund',
+      'txn mt_1 · Customer refund',
     ])
   })
 })

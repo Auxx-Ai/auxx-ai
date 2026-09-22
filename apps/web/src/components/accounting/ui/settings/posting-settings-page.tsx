@@ -9,19 +9,12 @@
 // the policy's `settings` rendered through `SettingsFieldRow`, so a setting
 // reaches this page by being listed on the policy and nowhere else.
 //
-// The bulk "Run now" dialogs are gone (accounting migration step 1b): each
-// avenue now writes as it happens, gated by its own `accounting.autoPost.<avenue>`
-// row - one more setting the policy declares and this page renders the same
-// way it renders every other one. The Drafts tab (step 1c) is where a held
-// draft gets reviewed and posted.
-//
-// Draft keys are scoped explicitly, for the reason `general-settings-page`
-// gives: every `accounting.*` key is `GENERAL` scope, so the draft is narrowed
-// to `POSTING_PAGE_INPUT_KEYS` and diffs only against those.
+// The form draft's keys are scoped explicitly, for the reason `general-settings-page`
+// gives: every `accounting.*` key is `GENERAL` scope, so it diffs only against its own keys.
 
 import type { PostingPolicy, PostingType } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import type { SettingKey, SettingValue } from '@auxx/lib/settings/client'
+import type { SettingKey } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -32,7 +25,6 @@ import {
 import { ChevronDown, CircleHelp, ExternalLink, Lock, Send } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
-import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -43,11 +35,9 @@ import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
-import { readText } from './accounting-settings-keys'
 import { ExportAvenuesTable } from './export-avenues-table'
 import { PostingGuideDialog } from './posting-guide-dialog'
 import {
-  autoPostKeyForPolicy,
   EXPORT_ROW_DRAFT_KEYS,
   EXTERNAL_SETTING_HOMES,
   NEVER_POLICIES,
@@ -142,11 +132,7 @@ export function AccountingPostingSettingsPage() {
 
   function renderPolicy(policy: PostingPolicy) {
     const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
-    // The avenue's `autoPost` switch lives in the export table, not in this section.
-    const ownAutoPostKey = autoPostKeyForPolicy(policy)
-    const inputKeys = policy.settings.filter(
-      (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== ownAutoPostKey
-    )
+    const inputKeys = policy.settings.filter((key) => !(key in EXTERNAL_SETTING_HOMES))
     const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
 
     return (
@@ -213,7 +199,7 @@ export function AccountingPostingSettingsPage() {
         <SettingsSection
           icon={Send}
           title='Export'
-          description='Whether each export drafts or posts, sends on its own, and how finely it summarises.'>
+          description='Whether each export sends on its own, and how finely it summarises.'>
           <ExportAvenuesTable draft={draft.draft} patch={draft.patch} />
         </SettingsSection>
 
@@ -276,8 +262,7 @@ function PolicyFacts({
           <span className='font-medium text-foreground/80'>Last posted</span>{' '}
           {latest ? (
             <>
-              {formatDayKey(latest.txnDate)}{' '}
-              <span className='font-mono'>({latest.docNumber || 'draft'})</span>
+              {formatDayKey(latest.txnDate)} <span className='font-mono'>({latest.docNumber})</span>
             </>
           ) : latestLoading ? (
             'loading'

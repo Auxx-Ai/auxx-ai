@@ -52,7 +52,6 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'write_off',
   'bank_transaction',
   'invoice_issued',
-  'deposit_application',
   'credit_memo',
   // 71 §5 U7. Declared beside the vendor bill, whose entry it is with the sides
   // flipped, so it lands here rather than at the end of the block.
@@ -258,14 +257,5 @@ describe('records and setting copy are declared on the policy they belong to', (
         expect(record.href.startsWith('/app/'), `${policy.type}: ${record.href}`).toBe(true)
       }
     }
-  })
-
-  it('the two autoPost rows describe what off does', () => {
-    expect(
-      POSTING_POLICY.fulfillment.settingCopy?.['accounting.autoPost.fulfillment']?.description
-    ).toMatch(/drafts on the ledger/)
-    expect(
-      POSTING_POLICY.credit_memo.settingCopy?.['accounting.autoPost.creditMemo']?.description
-    ).toMatch(/drafts on the ledger/)
   })
 })

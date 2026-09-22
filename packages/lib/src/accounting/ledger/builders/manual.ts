@@ -77,7 +77,7 @@ export type ManualPostingType = Extract<
   'manual_journal' | 'opening_balance' | 'recurring_journal'
 >
 
-/** One line as a person entered it: an account, a side, and an amount. */
+/** One `journal_entry_line` row as a person entered it: an account, a side, and an amount. */
 export interface ManualEntryLine {
   /** The `gl_account` `EntityInstance` id out of this org's own chart. */
   glAccountId: string

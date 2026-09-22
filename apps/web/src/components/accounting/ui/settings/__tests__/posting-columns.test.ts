@@ -37,12 +37,15 @@ describe('splitPostingColumns', () => {
     )
   })
 
-  it('gives the column holding a tall section fewer sections', () => {
+  it('gives the column holding the tallest section no more sections than the other', () => {
     const { left, right } = splitPostingColumns(POSTING_PAGE_POLICIES)
-    const withPayment = left.some((policy) => policy.type === 'payment') ? left : right
-    const other = withPayment === left ? right : left
+    const tallest = POSTING_PAGE_POLICIES.reduce((a, b) =>
+      postingSectionUnits(b) > postingSectionUnits(a) ? b : a
+    )
+    const withTallest = left.includes(tallest) ? left : right
+    const other = withTallest === left ? right : left
 
-    expect(withPayment.length).toBeLessThan(other.length + 1)
+    expect(withTallest.length).toBeLessThanOrEqual(other.length)
   })
 
   it('answers empty for an empty list', () => {
@@ -51,11 +54,18 @@ describe('splitPostingColumns', () => {
 })
 
 describe('postingSectionUnits', () => {
+  // No shipped policy carries an input setting today, so the tall case is built here.
   it('grows with the settings a policy renders as inputs', () => {
-    const payment = POSTING_PAGE_POLICIES.find((policy) => policy.type === 'payment')
     const writeOff = POSTING_PAGE_POLICIES.find((policy) => policy.type === 'write_off')
+    expect(writeOff).toBeTruthy()
 
-    expect(payment && writeOff).toBeTruthy()
-    expect(postingSectionUnits(payment!)).toBeGreaterThan(2 * postingSectionUnits(writeOff!))
+    const withSettings: PostingPolicy = {
+      ...writeOff!,
+      settings: [...writeOff!.settings, 'test.one', 'test.two', 'test.three', 'test.four'],
+    }
+    expect(postingSectionUnits(withSettings)).toBeGreaterThan(postingSectionUnits(writeOff!))
+    expect(postingSectionUnits(withSettings)).toBeGreaterThan(
+      Math.max(...POSTING_PAGE_POLICIES.map(postingSectionUnits))
+    )
   })
 })

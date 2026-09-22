@@ -10,6 +10,7 @@ import {
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrain,
   SUMMARY_GRAIN_AVENUES,
   type SummaryGrain,
   type SummaryGrainAvenue,
@@ -25,7 +26,7 @@ function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
 
 /**
  * Every export setting for one org, in one call: mode, cutover, and the
- * per-avenue `autoSend` / `summaryGrain` switches beside `autoPost`.
+ * per-avenue `autoSend` / `summaryGrain` switches.
  *
  * Off/unset fails closed to the safe value - `autoSend` false (batches hold for
  * release), `summaryGrain` `'day'`. No caller writes one of these keys earlier
@@ -44,10 +45,10 @@ export async function readExportSettings(organizationId: string): Promise<Export
   ) as Record<ExportAvenue, boolean>
 
   const summaryGrain = Object.fromEntries(
-    SUMMARY_GRAIN_AVENUES.map((avenue) => [
-      avenue,
-      settings[summaryGrainSettingKey(avenue)] === 'month' ? 'month' : 'day',
-    ])
+    SUMMARY_GRAIN_AVENUES.map((avenue) => {
+      const value = settings[summaryGrainSettingKey(avenue)]
+      return [avenue, isSummaryGrain(value) ? value : 'day']
+    })
   ) as Record<SummaryGrainAvenue, SummaryGrain>
 
   const cutover = settings['accounting.exportModeCutover']

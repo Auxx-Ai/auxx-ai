@@ -2,14 +2,8 @@
 
 'use client'
 
-// Accounting > Ledger > the OUTBOX (TARGET §3, §4 gate 1 and 2, step 3 part C).
-//
-// One strip over the whole pipeline of work leaving the books: Drafts (posted
-// with `autoPost` off), Blocked (the ledger refused the movement), then the
-// export-batch states. This is the list half - the strip and its counts; each
-// tab's rows live in its own panel beside this file.
-//
-// Lists default to all periods. Select-all leads the second toolbar row.
+// Accounting > Ledger > the OUTBOX: Blocked, then the export states (TARGET §3, §4 gate 2).
+// The strip and its counts; each tab's rows live in their own panel. Lists span all periods.
 
 import {
   type ExportBatchTab,
@@ -41,7 +35,6 @@ import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BlockedPanel } from './blocked-panel'
-import { DraftsPanel } from './drafts-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
 import { SummaryPanel } from './summary-panel'
@@ -56,11 +49,11 @@ interface OutboxPanelProps {
   onGroupByChange: (groupBy: OutboxGroupBy | null) => void
   order: OutboxOrder
   onOrderChange: (order: OutboxOrder) => void
-  /** `?view=`; null follows the org's export mode. Drafts and Blocked ignore it. */
+  /** `?view=`; null follows the org's export mode. Blocked ignores it. */
   view: OutboxView | null
   onViewChange: (view: OutboxView) => void
-  bookTimeZone: string
   currencyCode: string
+  bookTimeZone: string
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
   /** So an open row reads as "the one you are looking at" the same as the rail strip does. */
@@ -94,8 +87,8 @@ function OutboxBody({
   onOrderChange,
   view: viewParam,
   onViewChange,
-  bookTimeZone,
   currencyCode,
+  bookTimeZone,
   providerLabel,
   activePostingId,
   onSelectPosting,
@@ -108,11 +101,9 @@ function OutboxBody({
   const canRelease = can(PermissionKey.ledgerPost)
   const canRollback = can(PermissionKey.ledgerControl)
 
-  // 🛑 Drafts and Blocked are `ledgerPost`-gated on the server, so the tabs are
-  // absent, not disabled, for a read-only member - a tab that 403s on click is
-  // worse than one never offered. `effectiveTab` catches a pasted link.
-  const effectiveTab: OutboxTab =
-    (tab === 'drafts' || tab === 'blocked') && !canRelease ? 'ready' : tab
+  // Blocked is `ledgerPost`-gated on the server, so the tab is absent for a read-only
+  // member rather than one that 403s; `effectiveTab` catches a pasted link.
+  const effectiveTab: OutboxTab = tab === 'blocked' && !canRelease ? 'ready' : tab
   // One filter state across every tab: the category vocabulary is the same on all of them.
   const [filters, setFilters] = useState(EMPTY_OUTBOX_FILTERS)
   const search = useDebounce(filters.search.trim(), 250)
@@ -135,7 +126,6 @@ function OutboxBody({
   const countsQuery = api.ledger.outboxCounts.useQuery()
   const counts = countsQuery.data
   const tally: Record<OutboxTab, number> = {
-    drafts: counts?.drafts ?? 0,
     blocked: counts?.blocked ?? 0,
     // Ready holds `sending` too (75-D6).
     ready: (counts?.ready ?? 0) + (counts?.sending ?? 0) + (counts?.unbuilt ?? 0),
@@ -238,17 +228,6 @@ function OutboxBody({
                 onSelectMovement={onSelectMovement}
                 activeShipmentId={activeShipmentId}
                 onSelectShipment={onSelectShipment}
-              />
-            ) : effectiveTab === 'drafts' ? (
-              <DraftsPanel
-                filters={appliedFilters}
-                emptyTitle={filtered ? 'No matching results' : undefined}
-                emptyAction={clearAction}
-                emptyDescription={emptyCopy('drafts')}
-                currencyCode={currencyCode}
-                bookTimeZone={bookTimeZone}
-                activePostingId={activePostingId}
-                onSelectPosting={onSelectPosting}
               />
             ) : view === 'transaction' ? (
               <TransactionsPanel
@@ -357,8 +336,6 @@ function emptyDescription(tab: OutboxTab, providerLabel: string, heldForRelease:
   switch (tab) {
     case 'blocked':
       return 'Nothing the ledger refused is waiting. A movement lands here when its entry could not be built - an account role nothing is mapped to, a period that is shut - and leaves it the moment a retry is accepted.'
-    case 'drafts':
-      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry and puts it on Ready - as its own row in Transaction mode, or inside its period's summary in Summary mode.${held}`
     case 'ready':
       return `These tabs list every period, so nothing anywhere is waiting to be sent.${held}`
     case 'sent':

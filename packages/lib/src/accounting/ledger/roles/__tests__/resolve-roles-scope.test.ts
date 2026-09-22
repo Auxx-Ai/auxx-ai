@@ -119,6 +119,8 @@ const ACCOUNTS = [
   { id: 'acct_6101', code: '6101', name: 'Stripe Fees', accountType: 'expense' },
   { id: 'acct_1100', code: '1100', name: 'Accounts Receivable', accountType: 'asset' },
   { id: 'acct_1101', code: '1101', name: 'A/R - US', accountType: 'asset' },
+  { id: 'acct_2200', code: '2200', name: 'Sales Tax Payable', accountType: 'liability' },
+  { id: 'acct_2201', code: '2201', name: 'Sales Tax - US', accountType: 'liability' },
 ]
 
 interface Stub {
@@ -435,17 +437,36 @@ describe('a role reads its OWN axis and no other', () => {
   it('never scopes a role outside SCOPABLE_ROLES', async () => {
     const stub = stubDb(
       [
-        { role: 'accounts_receivable', glAccountId: 'acct_1100' },
+        { role: 'sales_tax_payable', glAccountId: 'acct_2200' },
         // A row that should be unreachable - `setRoleAssignment` refuses to
         // write it - and is ignored even so.
-        { role: 'accounts_receivable', glAccountId: 'acct_1101', sourceAccountId: STORE_US },
+        { role: 'sales_tax_payable', glAccountId: 'acct_2201', sourceAccountId: STORE_US },
       ],
       LIVE_SOURCES
     )
     const resolved = (
+      await resolveRoles(stub.db, ORG, ['sales_tax_payable'], { store: STORE_US })
+    )._unsafeUnwrap()
+    expect(resolved.get('sales_tax_payable')?.code).toBe('2200')
+  })
+
+  // 91 §4.3: a store's receivable resolves to its own account; other stores keep the default.
+  it('resolves accounts_receivable through the store scope', async () => {
+    const stub = stubDb(
+      [
+        { role: 'accounts_receivable', glAccountId: 'acct_1100' },
+        { role: 'accounts_receivable', glAccountId: 'acct_1101', sourceAccountId: STORE_US },
+      ],
+      LIVE_SOURCES
+    )
+    const us = (
       await resolveRoles(stub.db, ORG, ['accounts_receivable'], { store: STORE_US })
     )._unsafeUnwrap()
-    expect(resolved.get('accounts_receivable')?.code).toBe('1100')
+    const eu = (
+      await resolveRoles(stub.db, ORG, ['accounts_receivable'], { store: STORE_EU })
+    )._unsafeUnwrap()
+    expect(us.get('accounts_receivable')?.code).toBe('1101')
+    expect(eu.get('accounts_receivable')?.code).toBe('1100')
   })
 })
 

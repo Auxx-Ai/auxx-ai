@@ -116,10 +116,11 @@ export {
   isLiveFulfillment,
   loadFulfillmentFieldContext,
   postFulfillmentAccounting,
-  readBlockedFulfillment,
   readFulfillmentsForOrder,
   readFulfillmentsForOrders,
+  readShipmentDetail,
   requireFulfillmentFieldContext,
+  type ShipmentDetail,
 } from './fulfillments'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export {
@@ -162,9 +163,6 @@ export {
 // shipped, which a status flip cannot, and that is what makes a second
 // fulfillment able to avoid re-recognising the first.
 export {
-  type ContinueOrderAccountingResult,
-  continueAccountingAfterDraft,
-  continueOrderAccounting,
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,

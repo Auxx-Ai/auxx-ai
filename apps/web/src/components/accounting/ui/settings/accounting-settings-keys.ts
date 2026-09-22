@@ -48,11 +48,6 @@ export const ACCOUNTING_KEYS = {
  * from the whole record would write back unrelated settings, so each section
  * narrows its draft to one of these arrays and diffs only against it.
  */
-// `fulfillmentPosting` used to ride in this slice; it was a MODE, not a period
-// fact, and brief 28 §3 moved it (with the payment routes) to the Posting page.
-// Gone outright now (accounting migration step 1b): the mode is
-// `accounting.autoPost.fulfillment`, one of six per-avenue rows the Posting
-// page renders straight off `POSTING_POLICY`, same as every other one.
 export const PERIOD_DRAFT_KEYS = [
   ACCOUNTING_KEYS.cutoffPeriod,
   ACCOUNTING_KEYS.bookTimeZone,

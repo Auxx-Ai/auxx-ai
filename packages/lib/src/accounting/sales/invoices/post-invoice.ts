@@ -31,7 +31,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { DocumentPosting } from '../../documents/document-ledger-state'
 import { INVOICE_SOURCE_TYPE } from '../../ledger/builders/invoice'
-import { didLedgerAccept, isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { NON_FAILURE_REFUSALS, type PostResult } from '../../ledger/types'
 import { postInvoiceIssuanceEntry, reverseInvoiceIssuanceEntry } from './issuance-accounting'
@@ -85,18 +85,12 @@ export async function postInvoiceIssuance(
   })
 
   if (
-    !isExpectedPostOutcome(post) &&
-    // 🛑 `nothing_to_close` is not a failure and must not warn. An invoice with
-    // no readable totals is an empty document, and a channel that fires on
-    // routine outcomes is a channel nobody reads (`types.ts` NON_FAILURE_REFUSALS).
+    !didLedgerAccept(post) &&
+    post.status !== 'not_enabled' &&
+    // `nothing_to_close` is an empty document, not a failure (`types.ts` NON_FAILURE_REFUSALS).
     !(NON_FAILURE_REFUSALS as readonly string[]).includes(post.status)
   ) {
-    // 🛑 Recorded, never swallowed. A refusal AFTER the claim writes a
-    // `pending`/`failed` `GlPosting` row, which `listFailedExports` reads,
-    // so it surfaces on the close console on its own. A refusal BEFORE the
-    // claim (a locked period, an unmapped `revenue_service` role) writes no
-    // row at all, and this log line is the only trace - which is why it names
-    // the status and the reason rather than "failed".
+    // A refusal writes no row, so this log line is its only trace.
     logger.warn('An invoice issuance was not posted to the ledger', {
       organizationId,
       invoiceId,
@@ -114,9 +108,7 @@ export async function postInvoiceIssuance(
  * Every general-ledger entry sourced on one invoice, newest first.
  *
  * `sourceType: 'invoice'` covers the issuance entry AND the write-off entry,
- * which is what a void has to reckon with and what the delete guard reads. A
- * draft waiting in the outbox is in the list with `status: 'draft'` through its
- * `pending` link.
+ * which is what a void has to reckon with and what the delete guard reads.
  */
 export async function listInvoicePostings(
   db: Database,
@@ -139,19 +131,15 @@ export async function listInvoicePostings(
 /**
  * True when this invoice has a general-ledger entry that is still standing.
  *
- * `reversed` has already been backed out, `failed` never reached the books and
- * a `draft` is not in them yet, so none is a reason to refuse anything. Read by
- * `field-hooks/pre/invoice-delete-guard.ts`.
+ * `reversed` has already been backed out, so it is no reason to refuse anything.
+ * Read by `field-hooks/pre/invoice-delete-guard.ts`.
  */
 export async function hasLiveInvoicePostings(
   db: Database,
   params: { organizationId: string; invoiceId: string }
 ): Promise<{ live: boolean; docNumbers: string[] }> {
   const postings = await listInvoicePostings(db, params)
-  const live = postings.filter(
-    (posting) =>
-      posting.status !== 'reversed' && posting.status !== 'failed' && posting.status !== 'draft'
-  )
+  const live = postings.filter((posting) => posting.status !== 'reversed')
   return { live: live.length > 0, docNumbers: live.map((posting) => posting.docNumber) }
 }
 
@@ -169,9 +157,8 @@ export interface ReverseInvoiceIssuanceInput {
  * reverse), and a {@link PostResult} carrying the refusal otherwise. The caller
  * turns that into a refusal of the VOID - see the file header.
  *
- * A deposit APPLIED to this invoice would leave a `deposit_application` entry
- * crediting a receivable that is about to disappear; `voidInvoice` refuses
- * outright while any money is still applied, so that entry cannot be stranded.
+ * `voidInvoice` refuses outright while any money is still applied, so no
+ * application is left naming a voided invoice.
  */
 export async function reverseInvoiceIssuance(
   db: Database,

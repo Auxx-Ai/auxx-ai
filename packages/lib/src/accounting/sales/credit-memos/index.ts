@@ -6,7 +6,6 @@
 export {
   type PostCreditMemoEntryInput,
   postCreditMemoEntry,
-  readCreditMemoControlAccount,
   reverseCreditMemoEntry,
 } from './accounting'
 export {
@@ -50,14 +49,12 @@ export {
   type PlannedCreditApplication,
   planCreditApplication,
 } from './client'
-export { type ChannelMemoPassCounts, sweepChannelCreditMemos } from './issue-pass'
 export {
   type ChannelMemoCandidateWindow,
-  type ChannelMemoReadiness,
+  type ChannelMemoPassCounts,
   listChannelMemoIssueCandidates,
-  markCreditMemoIssueBlock,
-  readChannelMemoReadiness,
-} from './readiness'
+  sweepChannelCreditMemos,
+} from './issue-pass'
 export {
   type CreditMemoApplicationRecord,
   type CreditMemoForRefund,
@@ -75,10 +72,10 @@ export {
   loadCreditMemoLines,
   loadInvoiceForCredit,
   loadInvoiceLinesForCredit,
-  orderHadFulfillmentBefore,
   readContactCredit,
   readCreditMemoForRefund,
   readCreditMemoSettlement,
+  readShippedMemoLineIds,
   requireCreditMemo,
   resolveInvoiceOutstandingMinor,
   sumCreditMemoApplications,

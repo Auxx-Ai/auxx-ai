@@ -99,7 +99,7 @@ vi.mock('~/trpc/react', () => {
         },
         outboxCounts: {
           useQuery: () => ({
-            data: { drafts: 2, blocked: 2, ready: 2, sending: 0, sent: 1, failed: 1 },
+            data: { blocked: 2, ready: 2, sending: 0, sent: 1, failed: 1 },
           }),
         },
         exportBatches: {
@@ -178,9 +178,6 @@ function Panel({
     </>
   )
 }
-vi.mock('./drafts-panel', () => ({
-  DraftsPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
-}))
 vi.mock('./blocked-panel', () => ({
   BlockedPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
 }))
@@ -194,8 +191,8 @@ const props = {
   onTabChange: vi.fn(),
   view: 'summary' as const,
   onViewChange: vi.fn(),
-  bookTimeZone: 'UTC',
   currencyCode: 'USD',
+  bookTimeZone: 'UTC',
   providerLabel: 'Provider',
   activePostingId: null,
   onSelectPosting: vi.fn(),
@@ -204,6 +201,17 @@ const props = {
   activeShipmentId: null,
   onSelectShipment: vi.fn(),
 }
+
+describe('Outbox tabs', () => {
+  it('offers Blocked and the three export states, and no Drafts', () => {
+    render(<OutboxPanel {...props} tab='ready' />)
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
+    for (const label of ['Blocked', 'Ready', 'Sent', 'Failed']) {
+      expect(screen.getByText(label)).toBeDefined()
+    }
+    expect(screen.queryByText('Drafts')).toBeNull()
+  })
+})
 
 describe('Outbox category filters', () => {
   it('supports multiple categories, clears selection, and keeps them across every tab', async () => {
@@ -228,7 +236,7 @@ describe('Outbox category filters', () => {
   })
 
   it('debounces search, prevents selection of old results, and clears filters', async () => {
-    render(<OutboxPanel {...props} tab='drafts' />)
+    render(<OutboxPanel {...props} tab='blocked' />)
     fireEvent.click(screen.getByLabelText('Select everything listed'))
     fireEvent.change(screen.getByPlaceholderText('Search outbox'), { target: { value: 'invoice' } })
     expect(screen.getByRole('status').textContent).toBe('Searching…')
@@ -542,8 +550,8 @@ describe('Outbox view dropdown', () => {
     expect(screen.getByText('Nothing is waiting to be sent')).toBeDefined()
   })
 
-  it('is not offered on Drafts', () => {
-    render(<OutboxPanel {...props} tab='drafts' />)
+  it('is not offered on Blocked', () => {
+    render(<OutboxPanel {...props} tab='blocked' />)
     expect(screen.queryByRole('button', { name: /^View:/ })).toBeNull()
   })
 

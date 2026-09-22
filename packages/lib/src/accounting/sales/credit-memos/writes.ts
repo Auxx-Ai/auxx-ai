@@ -25,13 +25,15 @@ import {
 } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
-import { readOrganizationSettings } from '../../../settings/read'
-import type { BuiltCreditMemoEntry } from '../../ledger/builders/credit-memo'
+import {
+  type BuiltCreditMemoEntry,
+  CREDIT_MEMO_POSTING_TYPE,
+} from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
-import { readBookTimeZoneOrUtc, todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
+import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { roundCents } from '../totals/totals'
 import { recomputeTotals } from '../totals/totals-hooks'
@@ -43,7 +45,6 @@ import {
 } from './accounting'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
 import { runCreditCommand } from './command'
-import { readChannelMemoReadiness } from './readiness'
 import {
   type CreditMemoLineRecord,
   type CreditMemoRecord,
@@ -51,7 +52,7 @@ import {
   loadCreditMemoLines,
   loadInvoiceForCredit,
   loadInvoiceLinesForCredit,
-  orderHadFulfillmentBefore,
+  readShippedMemoLineIds,
   requireCreditMemo,
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
@@ -365,40 +366,18 @@ export interface ResolvedIssue {
   lines: CreditMemoLineRecord[]
   issuedAt: string
   /**
-   * Absent when the caller asked to skip it (`resolveIssue`'s `buildEntry: false`)
-   * because the org has never enabled accounting - see the call site in
-   * {@link issueCreditMemo}. {@link previewIssueCreditMemo} always asks for it.
+   * `undefined` when the caller skipped the build (accounting never enabled);
+   * `null` when no line had shipped, so the memo posts nothing (91 D4).
    */
-  built: BuiltCreditMemoEntry | undefined
+  built: BuiltCreditMemoEntry | null | undefined
 }
 
 /**
- * Refuse an issue that cannot be made, resolve its date and both legs, and -
- * unless the caller says otherwise - build the entry. Shared by
- * {@link issueCreditMemo} and {@link previewIssueCreditMemo} so the two can
- * never disagree about what is refusable before the ledger is asked.
- *
- * The totals the entry carries are summed from the LINES here, not read off
- * the memo's mirrors, so a preview of a draft whose reconciler drain has not
- * run yet still shows the right numbers; `issueCreditMemo` recomputes the
- * mirrors before calling this so the stored totals match what posts.
- *
- * `buildEntry: false` skips `orderHadFulfillmentBefore` (a read that exists
- * only to decide the builder's `reverseRevenue`) and the builder call itself -
- * {@link issueCreditMemo} passes it when the org has never turned accounting
- * on (task 17 section 3), so a credit memo can still issue with none of that
- * work done and no ledger-specific refusal (a foreign currency, say) reachable
- * for an org this module does nothing for.
- *
- * ⚠️ **Exported, but the batch poster does NOT use it, and should not.** An
- * earlier draft of this comment claimed `money/credit-memo-posting/` computes
- * each member through here with `{ buildEntry: false }`. It does not: this
- * function costs a `requireCreditMemo` plus a `loadCreditMemoLines` PER MEMO,
- * which is exactly the N+1 that brief 25 §4.3 exists to prevent over a
- * 1,061-memo backlog. The shared unit that actually keeps the two doors
- * agreeing is `computeCreditMemoAmounts`
- * (`postings/build-credit-memo-entry.ts`), which both this function and the
- * batch builder call. Keep it that way.
+ * Refuse an issue that cannot be made, resolve its date, and - unless the caller
+ * says otherwise - build the entry. Shared by {@link issueCreditMemo} and
+ * {@link previewIssueCreditMemo} so the two never disagree about what is refusable.
+ * `buildEntry: false` skips the shipped-line read and the build, for an org that
+ * never turned accounting on (task 17 §3).
  */
 export async function resolveIssue(
   db: Database,
@@ -467,27 +446,12 @@ export async function resolveIssue(
     return { memo, lines, issuedAt, built: undefined }
   }
 
-  // Native: always reverses revenue, because it exists only where an invoice
-  // was issued. Channel: only when the order shipped before the memo's date,
-  // because `build-fulfillment-entry.ts` recognised nothing otherwise - and
-  // when it did not, the builder moves the customer's advance instead (71 D14).
-  //
-  // ⚠️ All-or-nothing on purpose. A memo whose order shipped SOME of its lines
-  // is not split here; `orderHadFulfillmentBefore` is the one switch, and
-  // splitting it would need a per-line recognition read the memo does not have.
-  const reverseRevenue =
-    memo.source === 'channel'
-      ? memo.orderInstanceId
-        ? await orderHadFulfillmentBefore(db, organizationId, memo.orderInstanceId, issuedAt)
-        : false
-      : true
-
   const built = buildEntryForCreditMemo({
     memo,
     lines,
     issuedAt,
     currency: await organizationCurrency(organizationId),
-    reverseRevenue,
+    shippedLineIds: await readShippedMemoLineIds(db, organizationId, memo, lines, issuedAt),
   })
 
   return { memo, lines, issuedAt, built }
@@ -503,11 +467,19 @@ export async function previewIssueCreditMemo(
   input: IssueCreditMemoInput
 ): Promise<EntryPreview> {
   const { organizationId } = input
-  // Always asks for the entry - a preview with nothing to preview is not a
-  // preview - so `built` is always present here.
-  const { built } = await resolveIssue(db, input, { buildEntry: true })
+  const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: true })
+  // No shipped line: issuing posts nothing, and that is not a refusal.
+  if (!built)
+    return {
+      postingType: CREDIT_MEMO_POSTING_TYPE,
+      periodKey: memo.number,
+      txnDate: issuedAt,
+      docNumber: '',
+      lines: [],
+      totalMinor: 0,
+    }
   const lock = await resolvePeriodLock(organizationId)
-  return previewEntry(db, { organizationId, entry: built!.entry, lock })
+  return previewEntry(db, { organizationId, entry: built.entry, lock })
 }
 
 /**
@@ -515,11 +487,12 @@ export async function previewIssueCreditMemo(
  * settle so a channel memo lands `settled` in the same call.
  *
  * ```
- *   Dr revenue_returns_allowances   subtotal
- *   Dr sales_tax_payable            tax
- *       Cr accounts_receivable        total
+ *   Dr revenue_returns_allowances   the shipped lines' subtotal
+ *   Dr sales_tax_payable            the shipped lines' tax
+ *       Cr accounts_receivable        the two together
  * ```
  *
+ * A memo with no shipped line issues with `nothing_to_recognise` and no entry.
  * The ledger goes FIRST and a refused post refuses the issue, naming the
  * reason: a locked period, an unmapped role. Nothing has been written at that
  * point, so the memo stays a draft. The claim is keyed on the memo number, so a
@@ -553,28 +526,10 @@ export async function issueCreditMemo(
   const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: accountingEnabled })
 
   let post: PostResult
-  if (accountingEnabled) {
-    // 88 D2: the memo is where order matters. Issuing before the order's
-    // earlier receipts and shipments have posted trips the timeline's
-    // posted-memo refusal on the receipt, or books contra-revenue against
-    // revenue not yet in the books. The wait is named, so the pass and the
-    // close can say it.
-    if (memo.source === 'channel' && memo.orderInstanceId) {
-      const readiness = await readChannelMemoReadiness(db, {
-        organizationId,
-        orderInstanceId: memo.orderInstanceId,
-        issuedAt,
-        bookTimeZone: await readBookTimeZoneOrUtc(organizationId),
-        cutoffPeriod:
-          (await readOrganizationSettings(organizationId, ['accounting.cutoffPeriod'] as const))[
-            'accounting.cutoffPeriod'
-          ] ?? null,
-      })
-      if (!readiness.ready)
-        throw new ConflictError(`This credit memo waits on its order: ${readiness.reason}`, {
-          creditMemoInstanceId,
-        })
-    }
+  if (accountingEnabled && !built) {
+    // No line had shipped: no revenue to reverse, the money is a credit in A/R (91 D4).
+    post = { status: 'nothing_to_recognise' }
+  } else if (accountingEnabled) {
     post = await postCreditMemoEntry(db, {
       organizationId,
       creditMemoInstanceId,
@@ -588,7 +543,11 @@ export async function issueCreditMemo(
     // The org keeps no books, so nothing was asked of the ledger.
     post = { status: 'not_enabled' }
   }
-  if (!isExpectedPostOutcome(post)) {
+  if (
+    !didLedgerAccept(post) &&
+    post.status !== 'not_enabled' &&
+    post.status !== 'nothing_to_recognise'
+  ) {
     throw new BadRequestError(
       `This credit memo could not be posted to the general ledger` +
         `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
@@ -696,7 +655,7 @@ export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInp
         actorUserId: userId,
         memo: `Credit memo ${memo.number} voided`,
       })
-      if (reversal && !isExpectedPostOutcome(reversal)) {
+      if (reversal && !didLedgerAccept(reversal)) {
         throw new BadRequestError(
           'This credit memo has a general ledger entry that could not be reversed' +
             `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}. Voiding it ` +

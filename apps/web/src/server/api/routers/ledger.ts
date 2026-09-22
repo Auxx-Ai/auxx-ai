@@ -49,11 +49,9 @@ import {
   ACCOUNT_ROLES,
   assertAccountingSetupUnfrozen,
   CHART_PACK_KEYS,
-  countDraftPostings,
   createChartAccount,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
-  discardDraftPosting,
   EXPORT_AVENUES,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
@@ -67,7 +65,6 @@ import {
   listRoleMap,
   listRoleSources,
   monthDateRange,
-  postDraft,
   readCloseBlockers,
   readExportSettings,
   readLatestPostingsByType,
@@ -96,8 +93,7 @@ import {
   countBlockedWork,
   getPaymentAccount,
   listBlockedWork,
-  postBlockedMovement,
-  readBlockedMovement,
+  listBlockedWorkItems,
   readMovementDetail,
   readMovements,
 } from '@auxx/lib/accounting/money'
@@ -121,11 +117,8 @@ import { mintRailAccounts } from '@auxx/lib/accounting/rails'
 // `payment-gateways` barrel, which reaches Drizzle and the org cache.
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
-import {
-  continueAccountingAfterDraft,
-  postFulfillmentAccounting,
-  readBlockedFulfillment,
-} from '@auxx/lib/accounting/sales'
+import { readShipmentDetail } from '@auxx/lib/accounting/sales'
+import { wakeSources, wakeWorkItemGroup } from '@auxx/lib/accounting/work-items'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -140,7 +133,7 @@ import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
 
 /** What a posting's links are read in, so two postings of a kind read alike (task 83 §2.1). */
-const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'pending', 'subject', 'member']
+const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'subject', 'member']
 
 const logger = createScopedLogger('ledger-router')
 
@@ -211,7 +204,7 @@ function sourceRoleRank(linkRole: string): number {
  *
  * What DOES throw is everything upstream of the poster: `resolvePeriodLock`
  * fails closed on a malformed `ledger.lockedThroughMonth` setting, `buildEntry`
- * refuses a draft that does not balance, and `periodMonth` rejects a malformed
+ * refuses an entry that does not balance, and `periodMonth` rejects a malformed
  * bound. All three throw `AuxxError` subclasses, which `auxxErrorMiddleware`
  * maps to the right status. Nothing here catches them - a `try/catch` that
  * rethrew would have to guard with `isAuxxError(e)` from `~/server/api/trpc`,
@@ -277,6 +270,24 @@ const unbuiltCursor = z.object({
   currency: z.string(),
 })
 
+/** One Blocked group's identity - its code and wake keys. */
+const workItemGroup = z.object({
+  reasonCode: z.string().min(1),
+  role: z.string().nullable(),
+  railId: z.string().nullable(),
+  glAccountId: z.string().nullable(),
+})
+
+/** The book zone a Blocked date range is cut in, read only when a range is set. */
+async function readOutboxZone(
+  organizationId: string,
+  input: { from?: string; to?: string }
+): Promise<string | undefined> {
+  if (!input.from && !input.to) return undefined
+  const zone = await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
+  return typeof zone === 'string' ? zone : undefined
+}
+
 /** The Outbox's one category vocabulary, on every tab: the avenue. */
 const outboxCategories = z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional()
 
@@ -312,25 +323,17 @@ async function withProviderObjectUrls<T extends ExportBatchRow>(
 }
 
 /**
- * One line of a journal-entry DRAFT, as the drawer stores it.
- *
- * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
- * `toMinorUnits` from `@auxx/lib/accounting/ledger/client` is the single conversion and
- * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
- * a number and no more - `buildManualEntry` refuses a zero, a negative and a
- * fraction of a cent, and it names the ROW while doing it, which a Zod issue
- * cannot.
+ * One `journal_entry_line` child as the drawer sends it. `amountMinor` is integer
+ * minor units (the browser converts at the `CurrencyInput` boundary); a zero saves,
+ * and `buildManualEntry` refuses it at Post, naming the row.
  */
 const journalEntryLine = z.object({
-  /**
-   * The `gl_account` instance id out of this org's own chart (task 15: the id
-   * is the identity, the code is a label - one that may not exist at all once
-   * it is optional). A person picks a specific account by id, never by code.
-   */
+  /** The line's instance id: present keeps and updates that row, absent creates one. */
+  id: z.string().min(1).optional(),
+  /** The `gl_account` instance id out of this org's chart, never a code (task 15). */
   glAccountId: z.string().min(1),
   direction: z.enum(['debit', 'credit']),
-  /** Integer minor units, > 0. The debit/credit column carries the sign. */
-  amountMinor: z.number(),
+  amountMinor: z.number().int().nonnegative(),
   memo: z.string().max(1000).optional(),
   /**
    * Who this line is attributable to, when it names a receivable or payable
@@ -533,15 +536,9 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * One posting, with its lines and its stored draft - the posting drawer's
-   * single read.
-   *
-   * 🛑 The `draft` comes back as it was STORED, assertions included. The
-   * roll-forward panel renders `assertions.before` / `assertions.after` from it
-   * and must never re-derive them from the subledger: a posted entry asserts
-   * what the world looked like when it was posted, and a reversal swaps the pair
-   * rather than recomputing it. Re-reading would make a reversed month render as
-   * though it had never been reversed.
+   * One posting with its lines and its stored envelope - the posting drawer's single read.
+   * The envelope's assertions come back as stored, never re-derived, so a reversed month
+   * still renders its swapped pair.
    */
   get: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ id: z.string().min(1) }))
@@ -579,8 +576,7 @@ export const ledgerRouter = createTRPCRouter({
             eq(schema.GlPostingSource.glPostingId, input.glPostingId)
           )
         )
-      // One read for every movement on the posting, not one per badge - a Drafts
-      // page renders forty rows.
+      // One read for every movement on the posting, not one per badge.
       const movements = await readMovements(
         ctx.db,
         organizationId,
@@ -1856,15 +1852,9 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * The summarised view over the detail ledger (TARGET §6) - posted postings
-   * grouped by avenue, grain bucket, store, rail and currency, lines summed by
-   * account, drilling down through `postingIds`. The same read serves
-   * Transaction and Summary mode (TARGET §3): the grain per avenue comes from
-   * `accounting.summaryGrain.*`.
-   *
-   * 🛑 Nothing is excluded for a live export batch here - `ExportBatchPosting`
-   * doesn't exist yet (step 3, part B). Once it does, this passes the ids it
-   * finds as `excludePostingIds` so a batched posting is not offered twice.
+   * The summarised view over the detail ledger (TARGET §6): posted postings grouped by avenue,
+   * grain (`accounting.summaryGrain.*`, payout included), store, rail and currency; lines summed
+   * by account and side (91 D9). Batched postings are not excluded here.
    */
   summary: permissionProcedure(PermissionKey.ledgerView)
     .input(
@@ -1890,88 +1880,60 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every DRAFT posting - the Outbox's Drafts tab (TARGET §4 gate 1, step 1c).
-   * A draft holds no claim and no doc number; `autoPost` off on its avenue is
-   * what leaves one here instead of `posted`.
-   *
-   * 🛑 The month is OPTIONAL, and the Outbox omits it. Drafts sits beside the
-   * export tabs, which span every period, and a tab strip whose scope changed
-   * per tab made "3 drafts" mean two different things on one screen. A draft
-   * older than the month on the toolbar is still work somebody owes.
-   *
-   * `ledgerPost`, not `ledgerView`: the tab is where a draft gets approved or
-   * discarded, and reviewing what is queued to post is part of that authority.
+   * The Outbox's Blocked tab: parked accounting work grouped by
+   * `(reasonCode, role, railId, glAccountId)`, newest write first (91 §4.6).
    */
-  listDrafts: permissionProcedure(PermissionKey.ledgerPost)
+  listBlocked: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       outboxPage.extend({ categories: outboxCategories }).refine(validOutboxRange, outboxRangeError)
     )
     .query(async ({ ctx, input }) => {
-      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
-      const offset = input.cursor ?? 0
-      const result = await listPostings(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        status: 'draft',
-        categories: input.categories,
-        search: input.search,
-        from: input.from,
-        to: input.to,
-        limit: pageSize,
-        offset,
-      })
-      if (result.isErr()) throw result.error
-      return {
-        items: result.value,
-        nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
-      }
-    }),
-
-  /**
-   * Everything the ledger refused - the Outbox's Blocked tab (75-D1, 88 §4.5):
-   * movements under `postingBlockedReason`, shipments under their marker
-   * fields, merged newest refusal first. Work parked, not lost: each mark clears
-   * the moment a retry is accepted. Two offsets in the cursor, one per read.
-   */
-  listBlocked: permissionProcedure(PermissionKey.ledgerPost)
-    .input(
-      outboxPage
-        .omit({ cursor: true })
-        .extend({
-          cursor: z
-            .object({ movement: z.number().int().min(0), shipment: z.number().int().min(0) })
-            .optional(),
-          categories: outboxCategories,
-        })
-        .refine(validOutboxRange, outboxRangeError)
-    )
-    .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const bookTimeZone =
-        input.from || input.to
-          ? await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
-          : undefined
-      return listBlockedWork(ctx.db, organizationId, {
+      const result = await listBlockedWork(ctx.db, organizationId, {
         limit: input.limit ?? OUTBOX_PAGE_SIZE,
         cursor: input.cursor,
         categories: input.categories,
         search: input.search,
         from: input.from,
         to: input.to,
-        bookTimeZone: typeof bookTimeZone === 'string' ? bookTimeZone : undefined,
+        bookTimeZone: await readOutboxZone(organizationId, input),
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** One Blocked group expanded: its items, paged. */
+  listBlockedItems: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      outboxPage
+        .extend({ categories: outboxCategories, group: workItemGroup })
+        .refine(validOutboxRange, outboxRangeError)
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const result = await listBlockedWorkItems(ctx.db, organizationId, input.group, {
+        limit: input.limit ?? OUTBOX_PAGE_SIZE,
+        cursor: input.cursor,
+        categories: input.categories,
+        search: input.search,
+        from: input.from,
+        to: input.to,
+        bookTimeZone: await readOutboxZone(organizationId, input),
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**
    * Every Outbox tab's badge and the rail's total, counted in SQL - one dev org
-   * holds ~1,100 blocked movements, so no badge rides on the rows. Drafts and
-   * blocked are `ledgerPost` reads, so a member without it sees zero for both,
-   * matching the tabs that member is not offered.
+   * holds ~1,100 blocked movements, so no badge rides on the rows. Blocked is a
+   * `ledgerPost` read, so a member without it sees zero, matching the tab it is
+   * not offered.
    */
   outboxCounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
-    const [drafts, blocked, settings] = await Promise.all([
-      canPost ? countDraftPostings(ctx.db, organizationId) : 0,
+    const [blocked, settings] = await Promise.all([
       canPost ? countBlockedWork(ctx.db, organizationId) : 0,
       readExportSettings(organizationId),
     ])
@@ -1979,14 +1941,13 @@ export const ledgerRouter = createTRPCRouter({
     if (settings.mode === 'summary') {
       const rows = await countSummaryRows(ctx.db, { organizationId })
       if (rows.isErr()) throw rows.error
-      return { drafts, blocked, unbuilt: 0, ...rows.value, sending: 0 }
+      return { blocked, unbuilt: 0, ...rows.value, sending: 0 }
     }
     const [batches, unbuilt] = await Promise.all([
       countExportBatchesByState(ctx.db, organizationId),
       countUnbuiltSummaryRows(ctx.db, { organizationId }),
     ])
     return {
-      drafts,
       blocked,
       /** Summary mode's groups Build has not made yet; they sit on Ready as rows. */
       unbuilt: unbuilt.isOk() ? unbuilt.value : 0,
@@ -1997,100 +1958,44 @@ export const ledgerRouter = createTRPCRouter({
     }
   }),
 
-  /** One parked movement for the drawer; `null` once it has posted, so a stale link reads as such. */
-  getBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ moneyTransactionId: z.string().min(1) }))
-    .query(({ ctx, input }) =>
-      readBlockedMovement(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
-    ),
-
-  /** One movement for the drawer, blocked or posted; `reason` is null once it posted (83 §2.3). */
+  /** One movement for the drawer, parked or posted, with its work items (83 §2.3). */
   getMovement: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ moneyTransactionId: z.string().min(1) }))
     .query(({ ctx, input }) =>
       readMovementDetail(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
     ),
 
-  /**
-   * Post one parked movement again, through whichever poster its evidence
-   * names. The outcome is returned rather than thrown: a movement still blocked
-   * on an unmapped role is an answer the row renders, not a 500.
-   */
-  retryBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ moneyTransactionId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) =>
-      postBlockedMovement(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        moneyTransactionId: input.moneyTransactionId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
-
-  /** One parked shipment for the drawer; `null` once it has posted, so a stale link reads as such. */
-  getBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
+  /** One shipment for the drawer, parked or posted, with its work items. */
+  getShipment: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ fulfillmentId: z.string().min(1) }))
     .query(({ ctx, input }) =>
-      readBlockedFulfillment(ctx.db, ctx.session.organizationId, input.fulfillmentId)
+      readShipmentDetail(ctx.db, ctx.session.organizationId, input.fulfillmentId)
     ),
 
   /**
-   * Post one parked shipment again through the shipment poster. The outcome is
-   * returned rather than thrown, exactly as {@link retryBlockedMovement}'s.
+   * Retry all: make a Blocked group, or one source's rows, due now and return. The
+   * recovery job does the posting, as release does for the outbox (91 §4.6).
    */
-  retryBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ fulfillmentId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) =>
-      postFulfillmentAccounting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        fulfillmentId: input.fulfillmentId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
-
-  /**
-   * Promote a draft: re-resolve its roles, re-check the period lock, claim,
-   * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
-   * or an account the chart no longer holds comes back as a `PostResult` status
-   * the Drafts tab renders, exactly as {@link post} does.
-   *
-   * A draft that posts continues its order's chain in the same request (88
-   * D10): the shipment a receipt draft was holding up drafts now, not on the
-   * recovery job's next hour.
-   */
-  postDraft: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
+  retryBlockedGroup: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.union([
+        z.object({ group: workItemGroup }),
+        z.object({
+          source: z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) }),
+        }),
+      ])
+    )
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const lock = await resolvePeriodLock(organizationId)
-
-      const result = await postDraft(ctx.db, {
-        organizationId,
-        glPostingId: input.glPostingId,
-        actorUserId: userId,
-        lock,
-      })
-      if (result.status === 'posted')
-        await continueAccountingAfterDraft(ctx.db, {
-          organizationId,
-          glPostingId: input.glPostingId,
-          actorUserId: userId,
-        })
-      return result
-    }),
-
-  /**
-   * Throw a draft posting away: its lines, then the header. A draft holds no
-   * claim, so nothing is released - there is simply nothing left to post.
-   */
-  discardDraft: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const result = await discardDraftPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingId: input.glPostingId,
-      })
-      if (result.isErr()) throw result.error
-      return { glPostingId: input.glPostingId, discarded: true }
+      const { organizationId } = ctx.session
+      const woken =
+        'group' in input
+          ? await wakeWorkItemGroup(ctx.db, organizationId, input.group)
+          : await wakeSources(ctx.db, organizationId, {
+              sourceKind: input.source.sourceKind,
+              sourceIds: [input.source.sourceId],
+            })
+      if (woken.isErr()) throw woken.error
+      return { woken: woken.value }
     }),
 
   /**
@@ -2108,38 +2013,14 @@ export const ledgerRouter = createTRPCRouter({
   }),
 
   /**
-   * The journal-entry DRAFT - the record a bookkeeper types a posting into, and
-   * the holder of the opening trial balance (HANDOFF decision 6.7).
-   *
-   * ## Why the draft is a record and not a client-side buffer
-   *
-   * The entry's NUMBER is issued on create and becomes the posting's
-   * `periodKey` (`doc-number.ts`), so an entry cannot be posted until it has
-   * one - which means the draft has to exist server-side before Post is
-   * reachable at all. That is also what lets the opening trial balance be a
-   * draft the wizard fills in over several sittings, and what gives the
-   * attachment somewhere to hang.
-   *
-   * ## The gates
-   *
-   * | procedure | gate |
-   * | --- | --- |
-   * | `get`, `list`, `preview` | `ledger.view` |
-   * | `create`, `update`, `post`, `reverse` | `ledger.post` |
-   *
-   * 🛑 `create` and `update` are `ledgerPost`, not `ledgerView`, even though
-   * neither writes a posting. A draft is the thing somebody then presses Post
-   * on, and `setRoleAssignment` above made the same call for the same reason:
-   * this decides where real money lands. `journal_entry` stays
-   * `isVisible: false` so this is its only door - routing it through
-   * `record.create` would hand it to anyone with records-Full and ledger-None.
+   * The journal-entry document and its `journal_entry_line` children (91 D5): a
+   * document like a bill that is `draft` until Post builds the entry from its lines.
+   * Reads and preview are `ledgerView`; every write is `ledgerPost`, because the
+   * lines decide where real money lands. `journal_entry` is `isVisible: false`, so
+   * this is its only door - `record.create` would hand it to records-Full, ledger-None.
    */
   journalEntry: createTRPCRouter({
-    /**
-     * Raise a draft. Lines may be empty - a person opens the drawer before they
-     * have typed anything, and refusing an empty draft would mean the drawer
-     * could not save until it balanced.
-     */
+    /** Create the record and its lines, `draft`. Empty or unbalanced saves; Post refuses. */
     create: permissionProcedure(PermissionKey.ledgerPost)
       .input(
         z.object({
@@ -2162,13 +2043,10 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Edit a draft. `lines` is replaced WHOLESALE when present - a draft's lines
-     * have no identity, and a patch protocol over them would need row ids the
-     * JSON does not carry.
-     *
-     * Refused on a posted entry with a `ConflictError`: the ledger has no update
-     * path, so an edit could only ever mean this record's JSON disagreeing with
-     * the numbers actually posted.
+     * Edit the document. `lines`, when present, is the full list after the edit: a
+     * line naming a known `id` is kept and updated, one without is created, a saved
+     * line left out is deleted; sort order is array position. Allowed while `draft`,
+     * or `posted` with a `documentEdit` snapshot open; otherwise a `ConflictError`.
      */
     update: permissionProcedure(PermissionKey.ledgerPost)
       .input(
@@ -2191,7 +2069,7 @@ export const ledgerRouter = createTRPCRouter({
         return result.value
       }),
 
-    /** One draft, or a `NotFoundError` for an id that is not this org's. */
+    /** One entry with its lines, or a `NotFoundError` for an id that is not this org's. */
     get: permissionProcedure(PermissionKey.ledgerView)
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
@@ -2201,19 +2079,13 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Drafts and posted entries, newest first.
-     *
-     * ⚠️ `periodKey` filters on the entry's own accounting DATE, month by
-     * month - not on the posting's `periodKey`, which for a `manual_journal` is
-     * the entry number.
+     * Entries newest first. `status: 'draft'` is every unposted document. ⚠️ `periodKey`
+     * is the month of the entry's own date, not the posting's `periodKey` (its number).
      */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(
         z
           .object({
-            // A LIST, because the drafts list wants the two kinds a person
-            // reviews and posts - hand-authored and sweep-generated - and not
-            // the stencil, which one value cannot express.
             kinds: z
               .array(z.enum(['manual', 'opening_balance', 'recurring_template', 'recurring']))
               .min(1)
@@ -2236,16 +2108,9 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * What this draft WOULD post. Persists nothing, including the overrides.
-     *
-     * The overrides exist so the drawer can preview what is on screen without
-     * saving first - the totals strip and the blockers card both want an answer
-     * for the entry as it is being typed, and forcing a save to get one would
-     * write a draft on every keystroke.
-     *
-     * A `.mutation()` despite writing nothing, for `preview`'s two reasons: the
-     * lines are a request BODY and do not fit in a URL, and a preview keyed on
-     * the entire draft is not cacheable in any useful sense.
+     * What this entry WOULD post, with the on-screen values as overrides so the
+     * drawer need not save first. Persists nothing; a `.mutation()` because the
+     * lines are a request body.
      */
     preview: permissionProcedure(PermissionKey.ledgerView)
       .input(
@@ -2267,11 +2132,9 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Post the draft and stamp the record.
-     *
-     * Returns a `PostResult` verbatim, for the reason `post` above does: a
-     * closed period, an account that is not in the chart and an inventory
-     * account named by code all arrive as a status the screen RENDERS.
+     * Build the entry from the stored lines, post it, and stamp the record's
+     * pointer. Pre-ledger refusals (not a draft, unbalanced, a bad row) throw;
+     * ledger outcomes (`period_closed`, ...) return as the `PostResult` to render.
      */
     post: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
@@ -2286,17 +2149,8 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Throw a DRAFT away. Archives the record; the row and its number stay.
-     *
-     * 🛑 `ledgerPost`, not `ledgerView`. Discarding is a write, and the key that
-     * gates creating and editing a draft is the key that gates throwing one
-     * away - handing it to a read-only ledger member would let them clear the
-     * Entries list of somebody else's half-finished adjusting entries.
-     *
-     * The lib error is rethrown UNWRAPPED so `auxxErrorMiddleware` maps its
-     * `ConflictError` to a 409, exactly as `post` and `reverse` do: a posted
-     * entry refuses here and the message points at reversal, and flattening it
-     * into a 500 would throw that sentence away.
+     * Delete an unposted entry and its lines. The number is not reused. A posted
+     * entry refuses with a `ConflictError` (409 via `auxxErrorMiddleware`).
      */
     discard: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1) }))
@@ -2310,13 +2164,8 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Back the posted entry out with a second, opposite one, and flip the
-     * record to `reversed`.
-     *
-     * There is no edit and no void. Gated on `ledgerPost` rather than a key of
-     * its own: a reversal IS a post, it lands in the same books, and someone
-     * trusted to write to the ledger is exactly who should be able to correct
-     * it.
+     * Void: back the posted entry out with an opposite one; the record reads
+     * `reversed`. Correcting it instead goes through `documentEdit` (open, update, save).
      */
     reverse: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
@@ -2335,24 +2184,12 @@ export const ledgerRouter = createTRPCRouter({
    * The SCHEDULE on a recurring journal template
    * (`plans/accounting/tasks/21-the-books-stand-alone.md` §1).
    *
-   * The template itself is an ordinary `journalEntry` record with
-   * `kind: 'recurring_template'` - it is created, edited and discarded through
-   * the procedures above, because it holds exactly the same lines, memo and
-   * date every other draft does. What is new is the rule that says how often
-   * it repeats, and that is all this sub-router owns.
-   *
-   * ## The gates
-   *
-   * | procedure | gate |
-   * | --- | --- |
-   * | `list` | `ledger.view` |
-   * | `setSchedule`, `clearSchedule` | `ledger.control` |
-   *
-   * 🛑 `ledgerControl` on the writes, not `ledgerPost`. A schedule decides what
-   * lands in the books every month without anybody pressing anything, which is
-   * the same authority `setLockedThrough` takes. A bookkeeper with
-   * `ledgerPost` still reviews and posts each generated draft; what they may
-   * not do is change what generates.
+   * The template is an ordinary `journalEntry` record (`kind: 'recurring_template'`)
+   * written through the procedures above; this sub-router owns only its rule.
+   * Each occurrence posts directly when the sweep materialises it (91 D5), so the
+   * writes are `ledgerControl`, not `ledgerPost`: a schedule puts entries in the
+   * books every month without anybody pressing anything, the authority
+   * `setLockedThrough` takes.
    */
   recurringTemplate: createTRPCRouter({
     /**

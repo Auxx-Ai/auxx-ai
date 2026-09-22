@@ -11,6 +11,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
+import { withWorkItemCode } from '../work-items/refusal'
 import { netApplied } from './client'
 
 export type MovementRow = typeof schema.MoneyTransaction.$inferSelect
@@ -60,14 +61,24 @@ export function assertPostableMovement(
   money: MovementRow | null | undefined,
   label: string
 ): MovementRow {
-  if (!money) throw new UnprocessableEntityError(`${label} movement does not exist`)
+  if (!money)
+    throw new UnprocessableEntityError(
+      `${label} movement does not exist`,
+      withWorkItemCode('SOURCE_NOT_FOUND')
+    )
   if (money.currency !== 'USD' || money.currencyExponent !== 2)
-    throw new UnprocessableEntityError(`${label} requires a confirmed USD amount`)
+    throw new UnprocessableEntityError(
+      `${label} requires a confirmed USD amount`,
+      withWorkItemCode('MISSING_AMOUNT')
+    )
   if (
     (money.datePrecision === 'instant' && !money.occurredAt) ||
     (money.datePrecision === 'date' && !money.occurredOn)
   )
-    throw new UnprocessableEntityError(`${label} occurrence date is incomplete`)
+    throw new UnprocessableEntityError(
+      `${label} occurrence date is incomplete`,
+      withWorkItemCode('MISSING_DATE')
+    )
   return money
 }
 

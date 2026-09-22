@@ -2731,6 +2731,27 @@
       "when": 1790093545645,
       "tag": "0389_accounting_92_posting_avenue",
       "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1790104074832,
+      "tag": "0390_accounting_work_item",
+      "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1790104619777,
+      "tag": "0391_gl_posting_payout_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1790106715657,
+      "tag": "0392_no_ledger_drafts",
+      "breakpoints": true
     }
   ]
 }

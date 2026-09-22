@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/journals/client.ts
 //
-// The client-safe half of `accounting/journals/`: the draft's shapes and the
+// The client-safe half of `accounting/journals/`: the entry's shapes and the
 // recurrence keyspace and window (docs/lib-module-guide.md §7).
 //
 // NOTE: no 'use client' directive - server code imports this file too, and the

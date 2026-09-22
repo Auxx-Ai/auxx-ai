@@ -26,10 +26,7 @@ import { ConflictError } from '../../../errors'
  * hydrated record, and widening the guard to load one would make the archived
  * rows this same guard has to let through unreadable.
  *
- * `status` is the linked `GlPosting`'s status now that `journal_entry_status`
- * is gone - there is no longer a separate stamp that could go stale relative to
- * `journal_entry_gl_posting_id`, which is why there is only one guard function
- * below where there used to be two.
+ * `status` is `draft` until Post stamps `journal_entry_gl_posting_id`, then that posting's.
  */
 export interface JournalEntryRefusalSubject {
   id: string
@@ -44,7 +41,7 @@ function label(entry: JournalEntryRefusalSubject): string {
 }
 
 /**
- * Refuse anything but a draft, naming what was attempted.
+ * Refuse anything but an unposted entry, naming what was attempted.
  *
  * `verb` is a past participle - `'edited'`, `'posted'`, `'discarded'`,
  * `'deleted'` - and it is an argument rather than a fixed word precisely so a

@@ -15,6 +15,9 @@ export interface ShipmentLine {
   priorShippedQuantity: number
   /** Present only when the line carries `line_item_tax_total`. */
   taxMinor?: number
+  /** `line_item_line_total`, only when `lineTotalMinor` is the stamped net: the discount basis. */
+  listLineTotalMinor: number | null
+  giftCard: boolean
   name: string
 }
 
@@ -48,6 +51,8 @@ export function shapeShipmentLine(
     orderedQuantity: line.quantity,
     priorShippedQuantity,
     ...(taxMinor === undefined ? {} : { taxMinor }),
+    listLineTotalMinor: line.listLineTotalMinor,
+    giftCard: line.giftCard,
     name: line.name,
   }
 }

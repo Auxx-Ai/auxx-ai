@@ -121,8 +121,7 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
  * plans/accounting/tasks/done/14-one-quickbooks-two-write-paths.md originally scoped
  * a third value, `document` (a document mirror owns the transaction; the entry
  * is built, balanced and persisted, and NOT pushed) for the INVOICE family:
- * `invoice_issued`, `payment`, `credit_memo`, `deposit_application`,
- * `write_off`. **Retired 2026-09-10 on MK's decision (brief 14's DECIDED
+ * `invoice_issued`, `payment`, `credit_memo`, `write_off`. **Retired 2026-09-10 on MK's decision (brief 14's DECIDED
  * block), not as cleanup**: QuickBooks receives journal entries only, and the
  * invoice document mirror (plan 37e) is gone.
  *

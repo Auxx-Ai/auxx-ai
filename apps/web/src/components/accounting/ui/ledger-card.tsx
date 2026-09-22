@@ -74,13 +74,11 @@ export interface LedgerCardProps extends Partial<DrawerTabProps> {
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
-  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
-  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }
@@ -91,7 +89,6 @@ const LINK_ROLE_LABEL: Record<PostingLinkRole, string> = {
   parent: 'Parent',
   counterparty: 'Counterparty',
   member: 'Member',
-  pending: 'Drafted',
 }
 
 /**
@@ -113,12 +110,8 @@ export function LedgerCard({ entityInstanceId, sourceKind, emptyLabel }: LedgerC
     { sourceKind, sourceId: entityInstanceId },
     { enabled: !!entityInstanceId }
   )
-  const allPostings = (postingsQuery.data ?? []) as SourcePosting[]
+  const postings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
-  // A `pending` row is a draft waiting in the outbox for this record: it holds no
-  // claim and no document number yet, so it gets its own row above the list.
-  const pendingDrafts = allPostings.filter((posting) => posting.linkRole === 'pending')
-  const postings = allPostings.filter((posting) => posting.linkRole !== 'pending')
 
   // The backward read of `plans/accounting/payout-links.md` §10.3: which payout
   // posting swept the receipts this document was paid by. Only orders and
@@ -161,7 +154,7 @@ export function LedgerCard({ entityInstanceId, sourceKind, emptyLabel }: LedgerC
     return `/app/accounting/reports/general-ledger?${params.toString()}`
   }, [postings, sourceKind, entityInstanceId])
 
-  if (!loading && allPostings.length === 0 && sweeps.length === 0) {
+  if (!loading && postings.length === 0 && sweeps.length === 0) {
     return <EmptyRow label={emptyLabel ?? 'Nothing posted yet'} />
   }
 
@@ -177,37 +170,6 @@ export function LedgerCard({ entityInstanceId, sourceKind, emptyLabel }: LedgerC
           </Button>
         </DrawerCardActions>
       )}
-      {pendingDrafts.map((draft) => (
-        <TreeRow
-          key={draft.id}
-          className={TREE_SECONDARY_NOTRUNCATE}
-          icon={<BookOpenCheck className='size-4' />}
-          title={
-            <span className='truncate text-sm'>Drafted — awaiting approval in the outbox</span>
-          }
-          description={formatAccountingDate(draft.txnDate, bookTimeZone)}
-          secondary={
-            <span className='flex items-center gap-1.5'>
-              <Badge variant='outline' size='xs'>
-                {humanizePostingType(draft.postingType)}
-              </Badge>
-              <Badge variant={STATUS_VARIANT.draft} size='xs'>
-                {STATUS_LABEL.draft}
-              </Badge>
-            </span>
-          }
-          onToggleOpen={() => setOpenPostingId(draft.id)}
-          actions={
-            <Button asChild variant='ghost' size='xs'>
-              <Link href={`/app/accounting/outbox?tab=drafts&posting=${draft.id}`}>
-                <ExternalLink />
-                Open outbox
-              </Link>
-            </Button>
-          }
-        />
-      ))}
-
       <TreeRowList
         items={postings}
         loading={loading}

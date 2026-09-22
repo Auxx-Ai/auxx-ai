@@ -11,7 +11,7 @@ export {
 // Types only - the read touches `@auxx/database` and stays server-only,
 // exported from `./index`. The close console's card renders this shape.
 export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
-export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
+export { didLedgerAccept } from './ledger-accepted'
 // ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
 // Types only. `readRailFeeStatus` makes three database reads and stays
 // server-only, exported from `./index`; the close console's Processor fees

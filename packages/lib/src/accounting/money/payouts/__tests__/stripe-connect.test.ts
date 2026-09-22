@@ -52,6 +52,8 @@ const h = vi.hoisted(() => ({
   listPayoutMemberEntryIds: vi.fn(async (..._args: unknown[]) => [] as string[]),
   countPayoutEntryAttempts: vi.fn(async (..._args: unknown[]) => 0),
   syncStoredMatches: vi.fn(async () => new Map()),
+  upsertWorkItem: vi.fn(async (..._args: unknown[]) => undefined),
+  deleteWorkItem: vi.fn(async (..._args: unknown[]) => undefined),
   listPostingsForSource: vi.fn(async (..._args: unknown[]) => ({
     isErr: () => false,
     isOk: () => true,
@@ -90,6 +92,10 @@ vi.mock('../reads', () => ({
   readBankAccountSettlementDestinations: h.readDestinations,
 }))
 vi.mock('../match-sync', () => ({ syncStoredMatches: h.syncStoredMatches }))
+vi.mock('../../../work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
+  deleteWorkItem: h.deleteWorkItem,
+}))
 vi.mock('../../stripe-connect/account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
@@ -291,12 +297,17 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     })
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
       payout_status: 'paid',
-      payout_blocked_reason: null,
       // 58 §5.4 rule 2: the fixture's `resolveRoles` answers an EMPTY map, so
       // there is no resolved `bank` glAccountId to check the destination against.
       payout_destination_mismatch: null,
     })
     expect(h.readDestinations).not.toHaveBeenCalled()
+    // Success deletes any row a prior blocked run left.
+    expect(h.deleteWorkItem).toHaveBeenCalledWith(expect.anything(), ORG, {
+      sourceKind: 'payout',
+      sourceId: 'inst_1',
+      stage: 'post',
+    })
     expect(h.stamp).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       actorUserId: 'user_system',
@@ -319,7 +330,6 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(h.readDestinations).toHaveBeenCalledWith(expect.anything(), ORG, 'gl_bank_1')
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
       payout_status: 'paid',
-      payout_blocked_reason: null,
       payout_destination_mismatch: expect.stringContaining('PAY-0001'),
     })
     // The entry still posted - a mismatch is a flag, never a block.
@@ -380,10 +390,15 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
 
     expect(h.create).toHaveBeenCalledTimes(1)
     expect(h.postPayoutEntry).not.toHaveBeenCalled()
-    expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
-      payout_blocked_reason:
-        'Payout PAY-0001 has no receiving bank account mapped for Stripe in USD. Map it on ' +
-        'Accounting > Settings > Payment gateways.',
+    // The refusal is a work item keyed on the rail and currency, never a field on the record.
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(expect.anything(), ORG, {
+      sourceKind: 'payout',
+      sourceId: 'inst_1',
+      stage: 'post',
+      reasonCode: 'ROLE_UNMAPPED',
+      role: 'bank',
+      railId: 'pg_stripe',
+      detail: { currency: 'USD' },
     })
     expect(result._unsafeUnwrap().refused).toHaveLength(1)
     expect(h.stamp).not.toHaveBeenCalled()

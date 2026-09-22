@@ -50,37 +50,19 @@ import { useResource } from '~/components/resources'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 
 /**
- * A DEPARTURE from the ui-plan's default shape (§2.1: `LINE_SCHEMAS.journal_entry`
- * over `LineBuilder`). `LineBuilder` (`money/ui/line-builder/`) is built around
- * lines that are their OWN `EntityInstance`s - created, patched and reordered one
- * record at a time through `record.create`/`record.update`, with a whole
- * real-time/optimistic-cache machinery on top (see `line-values.ts`,
- * `line-rows.tsx` at ~2,650 lines). A journal entry's lines are not records at
- * all: they live on the draft `GlPosting`'s stored envelope behind the
- * record's `journal_entry_gl_posting_id` pointer, replaced wholesale on every
- * save through `updateDraftLines` (`journal-entries/writes.ts`'s
- * `updateJournalEntry`). Bending
- * `LineBuilder` onto a single JSON array would mean either giving every draft
- * line a fake record identity it does not have, or forking large parts of the
- * builder's internals - either one is well past a day of work for a shape
- * `LineBuilder` was never designed to hold.
- *
- * So this is a thin, purpose-built grid instead: same LOOK (a trailing phantom
- * draft row that materializes on first keystroke), reusing every piece of
- * `LineBuilder` that has no record assumptions - `useLineNav`'s spreadsheet
- * keyboard nav (`data-line-row`/`data-line-col`, now the document-agnostic
- * `line-grid` kit's) and `CurrencyCellInput`'s chromeless cell (still exported
- * from money's `line-rows.tsx`, which is where currency formatting belongs) -
- * plus a drag grip and a row `⋯` menu in `LineBuilder`'s visual idiom.
- * `LineNameCellView`, `useLineHotkeys` and `LINE_SCHEMAS` are the pieces that
- * stay out: hard-wired to catalog items or a full record schema, and do not
- * fit a plain array with no per-line record.
+ * A thin grid rather than `LineBuilder`: `LineBuilder` writes each line through
+ * `record.create`/`record.update` one at a time, while a journal entry's
+ * `journal_entry_line` children are written in one `journalEntry.update` that
+ * keeps, creates and deletes rows by id (91 D5). It reuses `useLineNav` and
+ * `CurrencyCellInput`, the pieces with no record assumptions.
  */
 
 /** One row as the grid edits it. Debit and credit are mutually exclusive UI slots. */
 export interface JournalLineDraft {
   /** Client-only identity for React keys, drag-and-drop and keyboard nav. Never sent to the server. */
   key: string
+  /** The saved `journal_entry_line` id; `null` until a save creates the row. */
+  id: string | null
   glAccountId: string | null
   memo: string
   debitMinor: number | null
@@ -98,6 +80,7 @@ export interface JournalLineDraft {
 export function emptyDraftRow(): JournalLineDraft {
   return {
     key: generateId('jel'),
+    id: null,
     glAccountId: null,
     memo: '',
     debitMinor: null,
@@ -107,23 +90,25 @@ export function emptyDraftRow(): JournalLineDraft {
   }
 }
 
+/** An account and a positive amount on one side - the only kind of row that is saved. */
+function isSavableRow(row: JournalLineDraft): row is JournalLineDraft & { glAccountId: string } {
+  if (!row.glAccountId) return false
+  return (row.debitMinor ?? 0) > 0 || (row.creditMinor ?? 0) > 0
+}
+
 /**
- * Draft rows -> the wire shape (`journalEntryLine` on `routers/ledger.ts`).
- *
- * A row that has no account, or has neither a debit nor a credit amount, is
- * dropped rather than sent as a zero/empty line - that is what makes the
- * trailing phantom row safe to include in `onChange` unfiltered.
+ * Draft rows -> the wire shape (`journalEntryLine` on `routers/ledger.ts`). A row
+ * with no account or no amount is dropped, so a saved one the server then deletes.
  */
 export function linesFromDraftRows(rows: JournalLineDraft[]): JournalEntryLine[] {
   const lines: JournalEntryLine[] = []
   for (const row of rows) {
-    if (!row.glAccountId) continue
-    const hasDebit = row.debitMinor !== null && row.debitMinor > 0
-    const hasCredit = row.creditMinor !== null && row.creditMinor > 0
-    if (!hasDebit && !hasCredit) continue
+    if (!isSavableRow(row)) continue
+    const hasDebit = (row.debitMinor ?? 0) > 0
     const direction = hasDebit ? 'debit' : 'credit'
     const amountMinor = (hasDebit ? row.debitMinor : row.creditMinor) as number
     lines.push({
+      ...(row.id ? { id: row.id } : {}),
       glAccountId: row.glAccountId,
       direction,
       amountMinor,
@@ -140,6 +125,7 @@ export function linesFromDraftRows(rows: JournalLineDraft[]): JournalEntryLine[]
 export function draftRowsFromLines(lines: JournalEntryLine[]): JournalLineDraft[] {
   return lines.map((line) => ({
     key: generateId('jel'),
+    id: line.id ?? null,
     glAccountId: line.glAccountId,
     memo: line.memo ?? '',
     debitMinor: line.direction === 'debit' ? line.amountMinor : null,
@@ -147,6 +133,23 @@ export function draftRowsFromLines(lines: JournalEntryLine[]): JournalLineDraft[
     counterpartyType: line.counterpartyType ?? null,
     counterpartyId: line.counterpartyId ?? null,
   }))
+}
+
+/**
+ * Stamp the ids a save returned onto the rows it sent. Sort order is array
+ * position, so the n-th savable row of `sent` is `saved[n]`; a sent row that was
+ * dropped loses its id. Rows added or edited while the save was in flight keep
+ * their local values.
+ */
+export function withSavedLineIds(
+  current: JournalLineDraft[],
+  sent: JournalLineDraft[],
+  saved: JournalEntryLine[]
+): JournalLineDraft[] {
+  const ids = new Map<string, string | null>()
+  let next = 0
+  for (const row of sent) ids.set(row.key, isSavableRow(row) ? (saved[next++]?.id ?? null) : null)
+  return current.map((row) => (ids.has(row.key) ? { ...row, id: ids.get(row.key) ?? null } : row))
 }
 
 export interface JournalLineTotals {
@@ -511,10 +514,7 @@ function JournalLineRow({
             readOnly={!!disabled}
             currencyCode={currencyCode}
             ariaLabel='Debit'
-            // Commit per keystroke, not just on blur - `onPatch` is cheap
-            // local state (the whole entry saves wholesale on Save draft), and
-            // the balance strip below should move as you type, not only once
-            // you tab away.
+            // Per keystroke: `onPatch` is local state, and the totals should move as you type.
             live
             onCommit={(next) =>
               onPatch({ debitMinor: next, creditMinor: next ? null : row.creditMinor })
@@ -598,6 +598,7 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
   const [phantomKey, setPhantomKey] = useState(() => generateId('jel'))
   const phantom: JournalLineDraft = {
     key: phantomKey,
+    id: null,
     glAccountId: null,
     memo: '',
     debitMinor: null,

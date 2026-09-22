@@ -21,68 +21,46 @@ import { buildEntry } from '../ledger/builders/entry'
 import { type MovementPostingType, movementPeriodKey } from '../ledger/builders/movement-key'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { periodKeyForDate } from '../ledger/periods/periods'
-import { type AutoPostAvenue, readAutoPostMode } from '../ledger/post/auto-post'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry } from '../ledger/post/post-entry'
 import { findLiveSubjectPosting } from '../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
 import { FINALIZED_SETUP_STATE } from '../ledger/setup/setup-readiness'
 import type { GlPostingLineInput, GlPostingSourceInput, RoleSourceScope } from '../ledger/types'
+import {
+  refusalFromError,
+  refusalFromPost,
+  type WorkItemRefusal,
+  withWorkItemCode,
+} from '../work-items/refusal'
+import { deleteWorkItem, upsertWorkItem } from '../work-items/write'
 import { type CashEndpoint, cashEndpointSourceOf, resolveCashEndpoint } from './cash-endpoint'
 import { assertPostableMovement, type MovementRow, readMovement } from './reads'
 
 const logger = createScopedLogger('post-movement')
 
-/**
- * Record why the ledger refused, or clear the mark once it accepts.
- *
- * ⚠️ On `db`, never the prepare transaction: a refusal rolls that back, and a
- * mark rolled back with it is a mark the sweep never sees.
- */
-async function markPostingBlock(
+const workKey = (moneyTransactionId: string) => ({
+  sourceKind: MOVEMENT_SOURCE_TYPE,
+  sourceId: moneyTransactionId,
+  stage: 'post' as const,
+})
+
+/** Park the refusal on `db`: the prepare transaction it came from rolled back. */
+async function parkMovement(
   db: Database,
   organizationId: string,
   moneyTransactionId: string,
-  reason: string | null
+  refusal: WorkItemRefusal
 ): Promise<void> {
-  await db
-    .update(schema.MoneyTransaction)
-    .set({ postingBlockedReason: reason, postingBlockedAt: reason ? new Date() : null })
-    .where(
-      and(
-        eq(schema.MoneyTransaction.organizationId, organizationId),
-        eq(schema.MoneyTransaction.id, moneyTransactionId)
-      )
-    )
+  await upsertWorkItem(db, organizationId, { ...workKey(moneyTransactionId), ...refusal })
 }
 
-/** The draft a movement waits on: its `pending` link onto a row still in `draft`. */
-async function findLiveDraft(
+async function clearMovement(
   db: Database,
   organizationId: string,
   moneyTransactionId: string
-): Promise<string | null> {
-  const [row] = await db
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, MOVEMENT_SOURCE_TYPE),
-        eq(schema.GlPostingSource.sourceId, moneyTransactionId),
-        eq(schema.GlPostingSource.linkRole, 'pending'),
-        eq(schema.GlPosting.status, 'draft')
-      )
-    )
-    .limit(1)
-  return row?.id ?? null
+): Promise<void> {
+  await deleteWorkItem(db, organizationId, workKey(moneyTransactionId))
 }
 
 /** Every money line's `sourceType`, and the `sourceKind` of the subject link. */
@@ -90,8 +68,6 @@ export const MOVEMENT_SOURCE_TYPE = 'money_transaction'
 
 export type MovementPostingResult =
   | { status: 'accepted'; glPostingId: string }
-  /** A draft is waiting for approval in the Outbox; nothing is in the books yet. */
-  | { status: 'drafted'; glPostingId: string }
   | { status: 'blocked'; reason: string }
   | { status: 'skipped'; reason: string }
 
@@ -116,6 +92,8 @@ export interface LoadedMovement {
    * The channel doors learn it here rather than at ingest (task 71 §3).
    */
   stampGateway: (paymentGatewayId: string) => Promise<void>
+  /** The movement's own handle says gift card: its endpoint is the liability. Before {@link endpoint}. */
+  markGiftCard: () => void
   /** Where the money sits. Resolved once, after any {@link stampGateway}. */
   endpoint: () => Promise<CashEndpoint>
 }
@@ -129,15 +107,12 @@ export interface PreparedMovement {
   storeId?: string | null
 }
 
-/** The posting type each purpose writes, and the avenue's `autoPost` switch it is gated on. */
-const MOVEMENT_POSTING: Record<
-  MovementRow['purpose'],
-  { postingType: MovementPostingType; avenue: AutoPostAvenue }
-> = {
-  customer_receipt: { postingType: 'payment', avenue: 'receipt' },
-  customer_refund: { postingType: 'refund', avenue: 'refund' },
-  vendor_payment: { postingType: 'vendor_payment', avenue: 'vendorPayment' },
-  vendor_refund: { postingType: 'vendor_refund', avenue: 'vendorPayment' },
+/** The posting type each purpose writes. */
+const MOVEMENT_POSTING_TYPE: Record<MovementRow['purpose'], MovementPostingType> = {
+  customer_receipt: 'payment',
+  customer_refund: 'refund',
+  vendor_payment: 'vendor_payment',
+  vendor_refund: 'vendor_refund',
 }
 
 export interface PostMovementInput {
@@ -193,12 +168,9 @@ export async function postMovementEntry(
   // the one blocked answer that does not mark it.
   if (live.isErr()) return { status: 'blocked', reason: live.error.message }
   if (live.value) {
-    await markPostingBlock(db, input.organizationId, input.moneyTransactionId, null)
+    await clearMovement(db, input.organizationId, input.moneyTransactionId)
     return { status: 'accepted', glPostingId: live.value.id }
   }
-  // A draft holds no subject claim, so the read above cannot see it.
-  const draft = await findLiveDraft(db, input.organizationId, input.moneyTransactionId)
-  if (draft) return { status: 'drafted', glPostingId: draft }
 
   if (!(await isAccountingEnabled(db, input.organizationId)))
     return { status: 'skipped', reason: 'Accounting is not enabled' }
@@ -217,14 +189,20 @@ export async function postMovementEntry(
     ] as const)
     if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
       throw new UnprocessableEntityError(
-        `Finalize accounting setup before posting ${input.label.toLowerCase()}s`
+        `Finalize accounting setup before posting ${input.label.toLowerCase()}s`,
+        withWorkItemCode('SETUP_INCOMPLETE')
       )
     const zone = settings['accounting.bookTimeZone']
-    if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
+    if (!zone)
+      throw new UnprocessableEntityError(
+        'Book time zone is not configured',
+        withWorkItemCode('SETUP_INCOMPLETE')
+      )
 
     built = await db.transaction(async (tx) => {
       const { money, effectiveDate } = await loadMovement(tx, input, zone)
       let endpoint: CashEndpoint | null = null
+      let giftCard = false
       const counterparty = defaultCounterparty(money)
       const loaded: LoadedMovement = {
         money,
@@ -256,11 +234,14 @@ export async function postMovementEntry(
             )
           money.paymentGatewayId = paymentGatewayId
         },
+        markGiftCard: () => {
+          giftCard = true
+        },
         endpoint: async () => {
           endpoint ??= await resolveCashEndpoint(
             tx,
             input.organizationId,
-            cashEndpointSourceOf(money),
+            cashEndpointSourceOf(money, giftCard),
             input.label
           )
           return endpoint
@@ -269,7 +250,7 @@ export async function postMovementEntry(
 
       const prepared = await input.prepare(tx, loaded)
       const resolved = await loaded.endpoint()
-      const { postingType } = MOVEMENT_POSTING[input.purpose]
+      const postingType = MOVEMENT_POSTING_TYPE[input.purpose]
       const entry = buildEntry({
         postingType,
         // Both key on the MOVEMENT, never on the book date: two payments settle
@@ -281,7 +262,8 @@ export async function postMovementEntry(
       const cutoff = settings['accounting.cutoffPeriod']
       if (cutoff && entry.txnDate.slice(0, 7) <= cutoff)
         throw new UnprocessableEntityError(
-          `${input.label} is before the accounting opening cutoff ${cutoff}`
+          `${input.label} is before the accounting opening cutoff ${cutoff}`,
+          withWorkItemCode('BEFORE_CUTOFF')
         )
 
       const link = prepared.counterparty ?? counterparty
@@ -316,7 +298,7 @@ export async function postMovementEntry(
       label: input.label,
       error: error.message,
     })
-    await markPostingBlock(db, input.organizationId, input.moneyTransactionId, error.message)
+    await parkMovement(db, input.organizationId, input.moneyTransactionId, refusalFromError(error))
     return { status: 'blocked', reason: error.message }
   }
 
@@ -330,26 +312,26 @@ export async function postMovementEntry(
     entry: built.entry,
     actorUserId: input.actorUserId,
     lock,
-    // The movement id is not repeated here: it is already the `subject`/`pending`
-    // row on `GlPostingSource`, and this memo is what the Outbox renders as a title.
+    // The movement id is already the `subject` row; this memo is the Outbox's title.
     memo: input.label,
     sources: built.sources,
     ...(Object.keys(scope).length ? { scope } : {}),
     storeId: built.storeId,
     railId: built.railId,
-    mode: await readAutoPostMode(input.organizationId, MOVEMENT_POSTING[input.purpose].avenue),
   })
-  if (post.status === 'drafted' && post.glPostingId) {
-    // A draft is not a refusal, so the block clears; the draft's own `pending`
-    // link is what stops the sweep drafting it again.
-    await markPostingBlock(db, input.organizationId, input.moneyTransactionId, null)
-    return { status: 'drafted', glPostingId: post.glPostingId }
-  }
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
-    await markPostingBlock(db, input.organizationId, input.moneyTransactionId, reason)
+    await parkMovement(
+      db,
+      input.organizationId,
+      input.moneyTransactionId,
+      refusalFromPost(post, {
+        railId: built.railId,
+        periodKey: built.entry.txnDate.slice(0, 7),
+      })
+    )
     return { status: 'blocked', reason }
   }
-  await markPostingBlock(db, input.organizationId, input.moneyTransactionId, null)
+  await clearMovement(db, input.organizationId, input.moneyTransactionId)
   return { status: 'accepted', glPostingId: post.glPostingId }
 }

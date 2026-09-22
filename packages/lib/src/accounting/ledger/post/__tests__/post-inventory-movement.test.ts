@@ -116,13 +116,6 @@ describe('the source set one document posts with', () => {
 
     expect(lastSources().some((source) => source.linkRole === 'parent')).toBe(false)
   })
-
-  it('never drafts - the ledger must not sit behind the subledger by choice', async () => {
-    h.postEntryInTx.mockClear()
-    await postInventoryMovementInTx(TX, SALE)
-    const call = h.postEntryInTx.mock.calls.at(-1) as unknown as [unknown, { mode: string }]
-    expect(call[1].mode).toBe('post')
-  })
 })
 
 describe('what it declines to post', () => {

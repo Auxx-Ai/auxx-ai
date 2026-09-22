@@ -223,11 +223,8 @@ export function CloseoutPage() {
   // setting in the product. `ledger.setLockedThrough` is now the only door.
   const setLockedThrough = api.ledger.setLockedThrough.useMutation()
 
-  // The batch fulfillment/credit-memo posting dialogs that used to open from a
-  // `revenue_incomplete` blocker's Fix button are gone (step 1b, part E): every
-  // fulfillment and credit memo posts as it happens now, and the Drafts tab
-  // (step 1c) is what a review-before-post queue becomes. `onFix` below is a
-  // no-op until then - `LedgerBanners` still requires the prop.
+  // Fulfillments and credit memos post as they happen, so a blocker has no Fix dialog;
+  // `LedgerBanners` still requires the prop.
   const onFix = useCallback(() => {}, [])
 
   const goToPeriod = useCallback(
@@ -412,9 +409,8 @@ export function CloseoutPage() {
                 </div>
               )}
 
-              {/* Everything the month-end entry above is NOT: other postings
-                  this period, plus drafts nobody has posted yet. With no month
-                  resolved it is the whole of the screen. */}
+              {/* Everything the month-end entry above is NOT: other postings this period,
+                  plus journal entries nobody has posted yet. */}
               <Section
                 className={SECTION_BLEED}
                 title='Entries'
@@ -423,7 +419,7 @@ export function CloseoutPage() {
                   activePeriodKey
                     ? entriesView === 'summary'
                       ? 'Posted entries grouped by avenue, grain, store, rail and currency (TARGET §6) - a batch state shows beside a row that has a live one.'
-                      : 'Every other entry dated in this month - postings and drafts alike.'
+                      : 'Every other entry dated in this month, and journal entries not yet posted.'
                     : 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
                 }
                 collapsible={false}

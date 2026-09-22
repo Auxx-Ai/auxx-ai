@@ -1,32 +1,26 @@
 // packages/lib/src/accounting/money/customer-money/__tests__/accounting.test.ts
 //
-// The channel receipt writer on the one poster: the recognition split becomes
-// the entry's lines, the movement is the claim, the order is the parent, and
-// the store and rail ride on the posting (MIGRATION.md step 1b).
+// The channel receipt on the one poster: Dr endpoint / Cr A/R for the movement's
+// amount, the movement is the claim, the order a link, the store and rail ride on
+// the posting (91 D1).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   isAccountingEnabled: vi.fn(),
-  listCustomerMoneyAccountingCandidates: vi.fn(),
   readCustomerReceiptAccountingSource: vi.fn(),
-  readOrderRecognitionFactsInTx: vi.fn(),
-  readOrderRecognitionSource: vi.fn(),
   resolveRoles: vi.fn(),
   postEntry: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(async () => 'post'),
+  upsertWorkItem: vi.fn(async () => ({ isErr: () => false })),
   money: null as unknown,
   updates: [] as unknown[],
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
-}))
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: h.readAutoPostMode,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
@@ -51,15 +45,11 @@ vi.mock('../../../../settings/read', () => ({
     ),
 }))
 vi.mock('../receipt-accounting', () => ({
-  listCustomerMoneyAccountingCandidates: h.listCustomerMoneyAccountingCandidates,
   readCustomerReceiptAccountingSource: h.readCustomerReceiptAccountingSource,
 }))
-vi.mock('../recognition-facts', () => ({
-  readOrderRecognitionFactsInTx: h.readOrderRecognitionFactsInTx,
-}))
-vi.mock('../recognition-source', () => ({
-  readOrderRecognitionSource: h.readOrderRecognitionSource,
-  requireCompleteOrderRecognitionSource: (value: unknown) => value,
+vi.mock('../../../work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
+  deleteWorkItem: vi.fn(async () => ({ isErr: () => false })),
 }))
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -98,18 +88,20 @@ function db(): Database {
   } as unknown as Database
 }
 
-function receiptSource(amountMinor = 120n) {
+function receiptSource(
+  overrides: { orderId?: string | null; partyInstanceId?: string | null } = {}
+) {
   return {
     money: {
       id: moneyTransactionId,
-      amountMinor,
+      amountMinor: 10_800n,
       currency: 'USD',
       currencyExponent: 2,
       occurredAt: new Date('2026-09-01T15:00:00.000Z'),
-      partyInstanceId: 'customer_1',
+      partyInstanceId:
+        overrides.partyInstanceId === undefined ? 'customer_1' : overrides.partyInstanceId,
     },
-    orderId: 'order_1',
-    effectiveDate: '2026-09-01',
+    orderId: overrides.orderId === undefined ? 'order_1' : overrides.orderId,
     paymentGatewayId: 'gateway_1',
     sourceStoreId: 'store_1',
     sourceProvider: 'shopify',
@@ -119,54 +111,18 @@ function receiptSource(amountMinor = 120n) {
     gatewayName: 'Shopify Payments',
     storeDomain: 'demo.myshopify.com',
     sourceHash: 'b'.repeat(64),
-    applications: [
-      { id: 'application_1', orderInstanceId: 'order_1', amountMinor, effectiveDate: '2026-09-01' },
-    ],
   }
 }
 
-function prepareRecognition(
-  amountMinor: bigint,
-  depositMinor: string,
-  receivableMinor: string,
-  taxMinor: string
-) {
-  h.readCustomerReceiptAccountingSource.mockResolvedValue(receiptSource(amountMinor))
-  h.readOrderRecognitionFactsInTx.mockResolvedValue({
-    orderId: 'order_1',
-    customerInstanceId: 'customer_1',
-    subtotal: 100n,
-    tax: 20n,
-    shipping: 0n,
-    total: 120n,
-    channel: null,
-    taxComponents: [
-      {
-        componentKey: 'tax_1',
-        amountMinor: '20',
-        jurisdiction: 'CA',
-        collector: 'merchant',
-        remitter: 'merchant',
-        withholdingEvidenceId: null,
-      },
-    ],
-  })
-  const allocation = {
-    id: moneyTransactionId,
-    kind: 'receipt' as const,
-    effectiveDate: '2026-09-01',
-    amountMinor: amountMinor.toString(),
-    depositMinor,
-    receivableMinor,
-    taxMinor,
-    historyHash: 'c'.repeat(64),
-  }
-  h.readOrderRecognitionSource.mockResolvedValue({
-    target: allocation,
-    allocations: [allocation],
-    blockers: [],
-  })
+type Line = {
+  accountRole?: string
+  glAccountId?: string
+  direction: string
+  amount: number
+  counterpartyId?: string
 }
+const shape = (lines: Line[]) =>
+  lines.map((line) => [line.accountRole ?? line.glAccountId, line.direction, line.amount])
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -175,7 +131,7 @@ beforeEach(() => {
     id: moneyTransactionId,
     organizationId,
     purpose: 'customer_receipt',
-    amountMinor: 120n,
+    amountMinor: 10_800n,
     currency: 'USD',
     currencyExponent: 2,
     datePrecision: 'instant',
@@ -187,15 +143,16 @@ beforeEach(() => {
     method: null,
   }
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readAutoPostMode.mockResolvedValue('post')
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'posting_1' })
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) => {
     if (key === 'accounting.bookTimeZone') return 'America/Los_Angeles'
     if (key === 'accounting.setupState') return 'finalized'
+    if (key === 'accounting.guestContactId') return 'guest_1'
     return null
   })
+  h.readCustomerReceiptAccountingSource.mockResolvedValue(receiptSource())
   h.resolveRoles.mockResolvedValue({
     isErr: () => false,
     value: new Map([['clearing', { glAccountId: 'gl_clearing', accountType: 'asset' }]]),
@@ -204,8 +161,6 @@ beforeEach(() => {
 
 describe('postCustomerReceiptAccounting', () => {
   it('claims the movement, parents the order, names the customer, and scopes the rail', async () => {
-    prepareRecognition(120n, '0', '100', '20')
-
     const result = await postCustomerReceiptAccounting(db(), {
       organizationId,
       moneyTransactionId,
@@ -221,46 +176,134 @@ describe('postCustomerReceiptAccounting', () => {
     expect(options.storeId).toBe('store_1')
     expect(options.railId).toBe('gateway_1')
     expect(options.scope).toEqual({ store: 'store_1', rail: 'gateway_1' })
-    expect(options.mode).toBe('post')
     // The rail is stamped onto the movement inside the posting transaction.
     expect(h.updates).toEqual([{ paymentGatewayId: 'gateway_1' }])
   })
 
-  it('builds the advance journal from the recognition allocation', async () => {
-    prepareRecognition(120n, '100', '0', '20')
-
+  it('posts Dr endpoint / Cr A/R for the whole movement, with no deposits or tax leg', async () => {
     await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
 
-    const entry = h.postEntry.mock.calls[0]![1].entry
-    expect(
-      entry.lines.map((line: { accountRole?: string; glAccountId?: string; amount: number }) => [
-        line.accountRole ?? line.glAccountId,
-        line.amount,
-      ])
-    ).toEqual([
-      ['gl_clearing', 120],
-      ['customer_deposits', 100],
-      ['sales_tax_payable', 20],
+    const lines: Line[] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(shape(lines)).toEqual([
+      ['gl_clearing', 'debit', 10_800],
+      ['accounts_receivable', 'credit', 10_800],
     ])
-  })
-
-  it('builds the after-shipment journal against the receivable', async () => {
-    prepareRecognition(120n, '0', '100', '20')
-
-    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
-
-    const entry = h.postEntry.mock.calls[0]![1].entry
-    expect(entry.lines[1]).toMatchObject({
-      accountRole: 'accounts_receivable',
+    expect(lines[1]).toMatchObject({
+      sourceType: 'money_transaction',
+      sourceId: moneyTransactionId,
+      counterpartyType: 'customer',
       counterpartyId: 'customer_1',
-      amount: 100,
     })
   })
 
-  it('debits undeposited funds for a receipt whose handle names no rail', async () => {
-    prepareRecognition(120n, '0', '100', '20')
+  it('debits the gift card liability for a gift card redemption, with no rail', async () => {
     h.readCustomerReceiptAccountingSource.mockResolvedValue({
-      ...receiptSource(120n),
+      ...receiptSource(),
+      paymentGatewayId: null,
+      giftCard: true,
+      gatewayName: 'gift_card',
+    })
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      value: new Map([
+        ['gift_card_liability', { glAccountId: 'gl_gift', accountType: 'liability' }],
+      ]),
+    })
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(shape(options.entry.lines)).toEqual([
+      ['gl_gift', 'debit', 10_800],
+      ['accounts_receivable', 'credit', 10_800],
+    ])
+    expect(options.railId).toBeNull()
+    expect(h.resolveRoles).toHaveBeenCalledWith(expect.anything(), organizationId, [
+      'gift_card_liability',
+    ])
+    expect(h.updates).toEqual([])
+  })
+
+  it('posts the same lines for a receipt applied to no order, with no parent link', async () => {
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+    const withOrder = h.postEntry.mock.calls[0]![1]
+    h.readCustomerReceiptAccountingSource.mockResolvedValue(receiptSource({ orderId: null }))
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const withoutOrder = h.postEntry.mock.calls[1]![1]
+    expect(withoutOrder.entry.lines).toEqual(withOrder.entry.lines)
+    expect(withoutOrder.sources).toEqual([
+      { sourceKind: 'money_transaction', sourceId: moneyTransactionId, linkRole: 'subject' },
+      { sourceKind: 'contact', sourceId: 'customer_1', linkRole: 'counterparty' },
+    ])
+  })
+
+  it('names the guest customer when the movement has none', async () => {
+    h.money = { ...(h.money as object), partyInstanceId: null }
+    h.readCustomerReceiptAccountingSource.mockResolvedValue(
+      receiptSource({ orderId: null, partyInstanceId: null })
+    )
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(options.entry.lines[1]).toMatchObject({ counterpartyId: 'guest_1' })
+    expect(options.sources).toContainEqual({
+      sourceKind: 'contact',
+      sourceId: 'guest_1',
+      linkRole: 'counterparty',
+    })
+  })
+
+  it('blocks when neither the movement nor the org has a customer', async () => {
+    h.money = { ...(h.money as object), partyInstanceId: null }
+    h.readCustomerReceiptAccountingSource.mockResolvedValue(
+      receiptSource({ partyInstanceId: null })
+    )
+    h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
+      key === 'accounting.bookTimeZone'
+        ? 'America/Los_Angeles'
+        : key === 'accounting.setupState'
+          ? 'finalized'
+          : null
+    )
+
+    const result = await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    expect(result).toEqual({
+      status: 'blocked',
+      reason: 'Receipt has no customer and the organization has no guest customer',
+    })
+    expect(h.postEntry).not.toHaveBeenCalled()
+    // The code minting the guest wakes.
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      expect.anything(),
+      organizationId,
+      expect.objectContaining({ stage: 'post', reasonCode: 'CUSTOMER_UNRESOLVED' })
+    )
+  })
+
+  it('parks an unmapped clearing as ROLE_UNMAPPED keyed by role and rail', async () => {
+    h.resolveRoles.mockResolvedValue({ isErr: () => false, value: new Map() })
+
+    const result = await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    expect(result.status).toBe('blocked')
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      expect.anything(),
+      organizationId,
+      expect.objectContaining({
+        reasonCode: 'ROLE_UNMAPPED',
+        role: 'clearing',
+        railId: 'gateway_1',
+      })
+    )
+  })
+
+  it('debits undeposited funds for a receipt whose handle names no rail', async () => {
+    h.readCustomerReceiptAccountingSource.mockResolvedValue({
+      ...receiptSource(),
       paymentGatewayId: null,
     })
     h.resolveRoles.mockResolvedValue({
@@ -291,7 +334,6 @@ describe('postCustomerReceiptAccounting', () => {
   })
 
   it('blocks rather than throws when the source cannot be read', async () => {
-    prepareRecognition(120n, '0', '100', '20')
     h.readCustomerReceiptAccountingSource.mockRejectedValue(
       new (await import('../../../../errors')).UnprocessableEntityError(
         'Receipt source is unresolved'
@@ -309,7 +351,6 @@ describe('postCustomerReceiptAccounting', () => {
   })
 
   it('blocks when the ledger refuses the entry', async () => {
-    prepareRecognition(120n, '0', '100', '20')
     h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed.' })
 
     const result = await postCustomerReceiptAccounting(db(), {

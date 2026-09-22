@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/sales/fulfillments/__tests__/accounting.test.ts
 //
-// The shipment poster's frame (88 §4.5): the claim, the draft, the gates, the
-// timeline, and the marker the sweep backs off on.
+// The shipment poster's frame (88 §4.5) and its own facts (91 D2): the claim,
+// the gates, the work item, and an entry that reads no receipt and no sibling box.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,24 +9,19 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   isAccountingEnabled: vi.fn(async () => true),
   findLiveSubjectPosting: vi.fn(),
-  findLiveFulfillmentDraft: vi.fn(async () => null as string | null),
   readFulfillmentPostingSubject: vi.fn(),
   readOrderForFulfillment: vi.fn(),
-  readOrderRecognitionFactsInTx: vi.fn(),
-  readOrderMoneyCoverage: vi.fn(),
-  readOrderRecognitionSource: vi.fn(),
   readOrderSourceScope: vi.fn(async () => ({ store: 'store_1' })),
   postEntry: vi.fn(),
   resolvePeriodLock: vi.fn(async () => ({})),
-  readAutoPostMode: vi.fn(async () => 'post'),
-  setValues: [] as Array<{ fieldId: string; value: unknown }>,
+  /** Every work-item write, park or clear (91 §4.6). */
+  setValues: [] as Array<Record<string, unknown>>,
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
-vi.mock('../../../ledger/post/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
 vi.mock('../../../ledger/post/post-entry', () => ({
   postEntry: h.postEntry,
   LEDGER_CURRENCY: 'USD',
@@ -43,43 +38,17 @@ vi.mock('../../../../settings/read', () => ({
       )
     ),
 }))
-vi.mock('../posting-reads', () => ({ findLiveFulfillmentDraft: h.findLiveFulfillmentDraft }))
 vi.mock('../reads', () => ({ readFulfillmentPostingSubject: h.readFulfillmentPostingSubject }))
 vi.mock('../../orders/reads', () => ({ readOrderForFulfillment: h.readOrderForFulfillment }))
-vi.mock('../../../money/customer-money/recognition-facts', () => ({
-  readOrderRecognitionFactsInTx: h.readOrderRecognitionFactsInTx,
-}))
+// Only the store scope: the poster reads no receipt, coverage or timeline (91 D2).
 vi.mock('../../../money/customer-money/reads', () => ({
-  readOrderMoneyCoverage: h.readOrderMoneyCoverage,
   readOrderSourceScope: h.readOrderSourceScope,
 }))
-vi.mock('../../../money/customer-money/recognition-source', () => ({
-  readOrderRecognitionSource: h.readOrderRecognitionSource,
-  requireCompleteOrderRecognitionSource: (value: { blockers: string[] }) => {
-    if (value.blockers.length) throw new Error('unreachable in this harness')
-    return value
-  },
-}))
-vi.mock('../../../../cache', () => ({
-  requireCachedEntityDefId: async () => 'def_fulfillment',
-}))
-vi.mock('../../../../resources/system-records', () => ({
-  systemFieldMap: async () => ({
-    fulfillment_posting_blocked_reason: { id: 'f_reason', type: 'TEXT' },
-    fulfillment_posting_blocked_at: { id: 'f_at', type: 'DATETIME' },
-  }),
-}))
-vi.mock('../../../../field-values/field-value-helpers', () => ({
-  createFieldValueContext: () => ({}),
-}))
-vi.mock('../../../../field-values/field-value-mutations', () => ({
-  setValueWithType: async (_ctx: unknown, params: { fieldId: string; value: unknown }) => {
-    h.setValues.push({ fieldId: params.fieldId, value: params.value })
-    return []
-  },
-}))
-vi.mock('../../../../field-values/stored-field-type', () => ({
-  toFieldType: (value: string) => value,
+vi.mock('../../../work-items/write', () => ({
+  upsertWorkItem: async (_db: unknown, _org: string, input: Record<string, unknown>) =>
+    h.setValues.push({ park: input }),
+  deleteWorkItem: async (_db: unknown, _org: string, key: Record<string, unknown>) =>
+    h.setValues.push({ clear: key }),
 }))
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -89,7 +58,6 @@ import type { Database } from '@auxx/database'
 import { ok } from 'neverthrow'
 import type { OrderForFulfillment } from '../../orders/reads'
 import {
-  PREVIEW_SHIPMENT_ID,
   postFulfillmentAccounting,
   prepareShipmentEntry,
   readShipmentPostingWindow,
@@ -97,6 +65,15 @@ import {
 
 const organizationId = 'org_1'
 const fulfillmentId = 'ful_1'
+const KEY = { sourceKind: 'fulfillment', sourceId: fulfillmentId, stage: 'post' }
+const CLEARED = [{ clear: KEY }]
+
+/** `role:direction -> amount`, one key per line. */
+function byRole(entry: { lines: { accountRole?: string; direction: string; amount: number }[] }) {
+  return Object.fromEntries(
+    entry.lines.map((line) => [`${line.accountRole}:${line.direction}`, line.amount])
+  )
+}
 
 function db(): Database {
   return {
@@ -169,34 +146,10 @@ beforeEach(() => {
   )
   h.isAccountingEnabled.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
-  h.findLiveFulfillmentDraft.mockResolvedValue(null)
   h.readFulfillmentPostingSubject.mockResolvedValue({ orderId: 'ord_1', subtotalMinor: 10000 })
   h.readOrderForFulfillment.mockResolvedValue(order())
-  h.readOrderRecognitionFactsInTx.mockResolvedValue({
-    subtotal: 10000n,
-    shipping: 0n,
-    tax: 800n,
-    customerInstanceId: 'contact_1',
-    taxComponents: [],
-  })
-  h.readOrderMoneyCoverage.mockResolvedValue({ sourceAvailable: true })
-  h.readOrderRecognitionSource.mockResolvedValue({
-    blockers: [],
-    target: {
-      id: fulfillmentId,
-      kind: 'fulfillment',
-      effectiveDate: '2026-09-02',
-      amountMinor: '10800',
-      depositMinor: '10000',
-      receivableMinor: '800',
-      taxMinor: '800',
-      historyHash: 'a'.repeat(64),
-    },
-    targetTaxComponents: [],
-  })
   h.readOrderSourceScope.mockResolvedValue({ store: 'store_1' })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1' })
-  h.readAutoPostMode.mockResolvedValue('post')
 })
 
 describe('postFulfillmentAccounting', () => {
@@ -206,17 +159,7 @@ describe('postFulfillmentAccounting', () => {
     expect(result).toEqual({ status: 'accepted', glPostingId: 'glp_live' })
     expect(h.postEntry).not.toHaveBeenCalled()
     // The marker clears on acceptance.
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
-  })
-
-  it('answers drafted off a pending link onto a draft', async () => {
-    h.findLiveFulfillmentDraft.mockResolvedValue('glp_draft')
-    const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result).toEqual({ status: 'drafted', glPostingId: 'glp_draft' })
-    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.setValues).toEqual(CLEARED)
   })
 
   it('skips an org with accounting off', async () => {
@@ -225,20 +168,17 @@ describe('postFulfillmentAccounting', () => {
     expect(result).toEqual({ status: 'skipped', reason: 'Accounting is not enabled' })
   })
 
-  it('blocks, and marks, an org whose setup is not finalized', async () => {
+  it('blocks, and parks, an org whose setup is not finalized', async () => {
     h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
       key === 'accounting.bookTimeZone' ? 'UTC' : null
     )
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result.status).toBe('blocked')
-    expect(h.setValues[0]).toMatchObject({
-      fieldId: 'f_reason',
-      value: { type: 'text', value: expect.stringContaining('Finalize accounting setup') },
-    })
-    expect(h.setValues[1]?.fieldId).toBe('f_at')
+    expect((result as { reason: string }).reason).toContain('Finalize accounting setup')
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'SETUP_INCOMPLETE' } }])
   })
 
-  it('skips a cancelled shipment and leaves no marker', async () => {
+  it('skips a cancelled shipment as a visible skip the sweep never re-offers', async () => {
     const read = order()
     read._unsafeUnwrap().fulfillments[0]!.status = 'cancelled'
     h.readOrderForFulfillment.mockResolvedValue(read)
@@ -247,10 +187,7 @@ describe('postFulfillmentAccounting', () => {
       status: 'skipped',
       reason: 'Shipment is cancelled, so there is nothing to recognise',
     })
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'NOTHING_TO_RECOGNISE' } }])
   })
 
   it('blocks an unstamped shipment with the stamp as the reason', async () => {
@@ -260,6 +197,8 @@ describe('postFulfillmentAccounting', () => {
       status: 'blocked',
       reason: 'Shipment totals are not stamped yet',
     })
+    // The code the totals stamp wakes (91 §4.6).
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'TOTALS_NOT_STAMPED' } }])
   })
 
   it('skips a $0 shipment', async () => {
@@ -288,101 +227,85 @@ describe('postFulfillmentAccounting', () => {
     })
   })
 
-  it('posts the allocation as the recognition split, and clears the marker', async () => {
+  // 91 §2: Dr A/R 108 / Cr Revenue 100, Cr Sales tax 8 - with no receipt anywhere on the order.
+  it('posts Dr A/R / Cr revenue, Cr tax off its own totals, with no receipt on the order', async () => {
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result).toEqual({ status: 'accepted', glPostingId: 'glp_1' })
-    const entry = h.postEntry.mock.calls[0]![1].entry
-    const byRole = Object.fromEntries(
-      entry.lines.map((line: { accountRole?: string; direction: string; amount: number }) => [
-        `${line.accountRole}:${line.direction}`,
-        line.amount,
-      ])
-    )
-    expect(byRole['customer_deposits:debit']).toBe(10000)
-    expect(byRole['accounts_receivable:debit']).toBe(800)
-    expect(byRole['revenue_product:credit']).toBe(10000)
-    expect(h.postEntry.mock.calls[0]![1].railId).toBeNull()
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    const call = h.postEntry.mock.calls[0]![1]
+    expect(byRole(call.entry)).toEqual({
+      'accounts_receivable:debit': 10800,
+      'revenue_product:credit': 10000,
+      'sales_tax_payable:credit': 800,
+    })
+    // A/R resolves on the store axis through the entry scope (91 §4.3).
+    expect(call.scope).toEqual({ store: 'store_1' })
+    expect(call.storeId).toBe('store_1')
+    expect(call.railId).toBeNull()
+    expect(h.setValues).toEqual(CLEARED)
   })
 
-  it('debits A/R in full on an order with no connected source, never reading the timeline', async () => {
-    h.readOrderMoneyCoverage.mockResolvedValue({ sourceAvailable: false })
+  it('posts a second box off its own stamp, never reading the first box', async () => {
+    const read = order({ subtotalMinor: 10000, taxTotalMinor: 800, totalMinor: 10800 })
+    const base = read._unsafeUnwrap()
+    const first = base.fulfillments[0]!
+    base.fulfillments = [
+      { ...first, id: 'ful_0', subtotalMinor: 4000, totalMinor: 4320 },
+      {
+        ...first,
+        id: 'ful_1',
+        sequence: 2,
+        subtotalMinor: 6000,
+        totalMinor: 6480,
+        lines: [{ ...first.lines[0]!, id: 'fl_2', lineItemId: 'li_2' }],
+      },
+    ]
+    base.fulfillments[0]!.lines = [{ ...first.lines[0]!, lineItemId: 'li_1' }]
+    base.lines = [
+      { ...base.lines[0]!, lineId: 'li_1', unitPriceMinor: 4000, lineTotalMinor: 4000 },
+      { ...base.lines[0]!, lineId: 'li_2', unitPriceMinor: 6000, lineTotalMinor: 6000 },
+    ]
+    h.readOrderForFulfillment.mockResolvedValue(read)
+    h.readFulfillmentPostingSubject.mockResolvedValue({ orderId: 'ord_1', subtotalMinor: 6000 })
+
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result.status).toBe('accepted')
-    expect(h.readOrderRecognitionSource).not.toHaveBeenCalled()
-    const entry = h.postEntry.mock.calls[0]![1].entry
-    const receivable = entry.lines.find(
-      (line: { accountRole?: string; direction: string }) =>
-        line.accountRole === 'accounts_receivable' && line.direction === 'debit'
-    )
-    expect(receivable.amount).toBe(10800)
-    expect(
-      entry.lines.some((line: { accountRole?: string }) => line.accountRole === 'customer_deposits')
-    ).toBe(false)
-  })
-
-  it('marks the ledger refusal with the ledger words', async () => {
-    h.postEntry.mockResolvedValue({ status: 'error', error: 'Cannot post: revenue_product' })
-    const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result).toEqual({ status: 'blocked', reason: 'Cannot post: revenue_product' })
-    expect(h.setValues[0]).toMatchObject({
-      fieldId: 'f_reason',
-      value: { type: 'text', value: 'Cannot post: revenue_product' },
+    // Only this box's own claim is looked up; the first box's posting is never read.
+    expect(h.findLiveSubjectPosting).toHaveBeenCalledTimes(1)
+    expect(h.findLiveSubjectPosting.mock.calls[0]![1]).toMatchObject({ sourceId: 'ful_1' })
+    // Cumulative tax: round(800 x 10000/10000) - round(800 x 4000/10000) = 480.
+    expect(byRole(h.postEntry.mock.calls[0]![1].entry)).toEqual({
+      'accounts_receivable:debit': 6480,
+      'revenue_product:credit': 6000,
+      'sales_tax_payable:credit': 480,
     })
   })
 
-  it('clears the marker on a draft - a draft is not a refusal', async () => {
-    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'glp_draft' })
+  it('parks the ledger refusal as a coded work item', async () => {
+    h.postEntry.mockResolvedValue({ status: 'error', error: 'Cannot post: revenue_product' })
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result).toEqual({ status: 'drafted', glPostingId: 'glp_draft' })
+    expect(result).toEqual({ status: 'blocked', reason: 'Cannot post: revenue_product' })
     expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
+      {
+        park: {
+          ...KEY,
+          reasonCode: 'TRANSIENT_ERROR',
+          detail: { message: 'Cannot post: revenue_product' },
+        },
+      },
     ])
   })
 })
 
 describe('the shared core (88 D6)', () => {
-  it('hands the timeline the shipment as the walk computed it, keyed on the record', async () => {
-    await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    const asked = h.readOrderRecognitionSource.mock.calls[0]![1]
-    expect(asked.target).toEqual({ kind: 'fulfillment', id: fulfillmentId })
-    expect(asked.targetEvent).toEqual({
-      id: fulfillmentId,
-      kind: 'fulfillment',
-      effectiveDate: '2026-09-02',
-      occurredAt: '2026-09-02T10:00:00.000Z',
-      netMinor: '10000',
-      taxMinor: '800',
-    })
-  })
-
   it('builds the preview off a shipment no record carries, under the preview id', async () => {
     const read = order()
     const base = read._unsafeUnwrap()
-    h.readOrderRecognitionSource.mockResolvedValue({
-      blockers: [],
-      target: {
-        id: PREVIEW_SHIPMENT_ID,
-        kind: 'fulfillment',
-        effectiveDate: '2026-09-05',
-        amountMinor: '10800',
-        depositMinor: '10000',
-        receivableMinor: '800',
-        taxMinor: '800',
-        historyHash: 'a'.repeat(64),
-      },
-      targetTaxComponents: [],
-    })
     const prepared = await prepareShipmentEntry({} as never, {
       organizationId,
       order: { ...base, fulfillments: [] } as unknown as OrderForFulfillment,
       window: await readShipmentPostingWindow(organizationId),
       shipment: {
-        id: PREVIEW_SHIPMENT_ID,
+        id: 'preview',
         sequence: 1,
         shippedAt: '2026-09-05T12:00:00.000Z',
         lines: [
@@ -393,6 +316,8 @@ describe('the shared core (88 D6)', () => {
             lineTotalMinor: 10000,
             orderedQuantity: 1,
             priorShippedQuantity: 0,
+            listLineTotalMinor: null,
+            giftCard: false,
             name: 'Widget',
           },
         ],
@@ -404,20 +329,16 @@ describe('the shared core (88 D6)', () => {
         totalMinor: 10800,
       },
     })
-    const asked = h.readOrderRecognitionSource.mock.calls[0]![1]
-    expect(asked.target).toEqual({ kind: 'fulfillment', id: PREVIEW_SHIPMENT_ID })
-    expect(asked.targetEvent).toMatchObject({ id: PREVIEW_SHIPMENT_ID, netMinor: '10000' })
     expect(prepared.sources[0]).toEqual({
       sourceKind: 'fulfillment',
-      sourceId: PREVIEW_SHIPMENT_ID,
+      sourceId: 'preview',
       linkRole: 'subject',
     })
     expect(prepared.entry.txnDate).toBe('2026-09-05')
-    expect(
-      prepared.entry.lines.find(
-        (line: { accountRole?: string; direction: string }) =>
-          line.accountRole === 'customer_deposits' && line.direction === 'debit'
-      )?.amount
-    ).toBe(10000)
+    expect(byRole(prepared.entry)).toEqual({
+      'accounts_receivable:debit': 10800,
+      'revenue_product:credit': 10000,
+      'sales_tax_payable:credit': 800,
+    })
   })
 })

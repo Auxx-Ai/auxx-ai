@@ -80,10 +80,26 @@ const STRIPE = 'fsa_stripe'
 const MANUAL = 'fsa_manual'
 const GATEWAY = 'pg_stripe'
 
-const ACCOUNTS = [
+const SUBTYPE_FIELD = 'fld_subtype'
+
+const ACCOUNTS: {
+  id: string
+  code: string
+  name: string
+  accountType: string
+  subtype?: string
+}[] = [
   { id: 'acct_4001', code: '4001', name: 'Revenue - US', accountType: 'revenue' },
   { id: 'acct_6101', code: '6101', name: 'Stripe Fees', accountType: 'expense' },
-  { id: 'acct_1100', code: '1100', name: 'Accounts Receivable', accountType: 'asset' },
+  {
+    id: 'acct_1100',
+    code: '1100',
+    name: 'Accounts Receivable',
+    accountType: 'asset',
+    subtype: 'accounts_receivable',
+  },
+  { id: 'acct_1190', code: '1190', name: 'Other Receivable', accountType: 'asset' },
+  { id: 'acct_2200', code: '2200', name: 'Sales Tax Payable', accountType: 'liability' },
 ]
 
 /** Every scalar the module put into a `where` clause, flattened. */
@@ -137,6 +153,9 @@ function stubDb(options: { storeIds?: string[] } = {}): Stub {
     { entityId: account.id, fieldId: NAME_FIELD, valueText: account.name },
     { entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType },
     { entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: true },
+    ...(account.subtype
+      ? [{ entityId: account.id, fieldId: SUBTYPE_FIELD, optionId: account.subtype }]
+      : []),
   ])
   h.chartDb = chartProviderDb(ACCOUNTS, values)
 
@@ -209,6 +228,7 @@ beforeEach(() => {
     ['gl_account_name', { id: NAME_FIELD }],
     ['gl_account_type', { id: TYPE_FIELD }],
     ['gl_account_is_active', { id: ACTIVE_FIELD }],
+    ['gl_account_subtype', { id: SUBTYPE_FIELD }],
   ])
   gatewayStub.live = new Set([GATEWAY])
   gatewayStub.rows = []
@@ -222,15 +242,44 @@ describe('setRoleAssignment - which roles may name a connection', () => {
     const stub = stubDb()
     const result = await setRoleAssignment(stub.db, {
       organizationId: ORG,
-      role: 'accounts_receivable',
-      glAccountId: 'acct_1100',
+      role: 'sales_tax_payable',
+      glAccountId: 'acct_2200',
       sourceAccountId: STORE,
     })
 
     expect(result.isErr()).toBe(true)
     const error = result._unsafeUnwrapErr()
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(error.message).toContain("'accounts_receivable'")
+    expect(error.message).toContain("'sales_tax_payable'")
+    expect(stub.inserts).toHaveLength(0)
+  })
+
+  // 91 §4.3: A/R is on the store axis, and a store's receivable must carry the A/R subtype.
+  it('accepts a store-scoped receivable carrying the accounts_receivable subtype', async () => {
+    const stub = stubDb()
+    const result = await setRoleAssignment(stub.db, {
+      organizationId: ORG,
+      role: 'accounts_receivable',
+      glAccountId: 'acct_1100',
+      sourceAccountId: STORE,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(stub.inserts).toEqual([expect.objectContaining({ sourceAccountId: STORE })])
+  })
+
+  it('refuses a store-scoped receivable without the accounts_receivable subtype', async () => {
+    const stub = stubDb()
+    const result = await setRoleAssignment(stub.db, {
+      organizationId: ORG,
+      role: 'accounts_receivable',
+      glAccountId: 'acct_1190',
+      sourceAccountId: STORE,
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
+    expect(result._unsafeUnwrapErr().message).toContain("'accounts_receivable'")
     expect(stub.inserts).toHaveLength(0)
   })
 

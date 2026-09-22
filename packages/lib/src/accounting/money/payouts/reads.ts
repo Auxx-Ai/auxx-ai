@@ -26,6 +26,7 @@ import {
 } from '../../../resources/system-records'
 import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { listLinkedFeeds } from '../../rails/reads'
+import { workItemSentence } from '../../work-items/codes'
 import { resolvePayoutStatus } from './client'
 import { listPayoutEntries } from './entry-reads'
 import {
@@ -460,7 +461,7 @@ async function hydrate(
       netMinor: money('payout_net'),
       unrecognisedNetMinor: money('payout_unrecognised_net'),
       unrecognisedCount: money('payout_unrecognised_count'),
-      blockedReason: record.text('payout_blocked_reason'),
+      blockedReason: null,
       bankTransactionId: record.text('payout_bank_transaction_id'),
       paymentGatewayId: record.related('payout_payment_gateway'),
       bankAccountId: record.related('payout_bank_account'),
@@ -483,15 +484,34 @@ async function withLivePostings(
   // provider's payout id (`plans/accounting/payout-links.md` §11.5).
   const instanceIds = records.map((record) => record.payoutId)
   if (instanceIds.length === 0) return records
-  const live = await findLiveSubjectPostings(db, organizationId, {
-    sourceKind: 'payout',
-    sourceIds: instanceIds,
-  })
+  const [live, parked] = await Promise.all([
+    findLiveSubjectPostings(db, organizationId, {
+      sourceKind: 'payout',
+      sourceIds: instanceIds,
+    }),
+    db
+      .select()
+      .from(schema.AccountingWorkItem)
+      .where(
+        and(
+          eq(schema.AccountingWorkItem.organizationId, organizationId),
+          eq(schema.AccountingWorkItem.sourceKind, 'payout'),
+          eq(schema.AccountingWorkItem.stage, 'post'),
+          inArray(schema.AccountingWorkItem.sourceId, instanceIds)
+        )
+      ),
+  ])
+  const blocked = new Map(parked.map((item) => [item.sourceId, item]))
   return records.map((record) => {
-    // POSTED only: a drafted entry holds the subject row too, and this column
-    // is "what is in the books".
+    const item = blocked.get(record.payoutId)
+    const withReason = item
+      ? { ...record, blockedReason: workItemSentence(item.reasonCode, item) }
+      : record
+    // POSTED only: this column is "what is in the books".
     const posting = live.get(record.payoutId)
-    return posting?.status === 'posted' ? { ...record, glPostingId: posting.glPostingId } : record
+    return posting?.status === 'posted'
+      ? { ...withReason, glPostingId: posting.glPostingId }
+      : withReason
   })
 }
 

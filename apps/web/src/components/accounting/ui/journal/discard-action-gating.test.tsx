@@ -1,26 +1,16 @@
 // apps/web/src/components/accounting/ui/journal/discard-action-gating.test.tsx
 //
-// Who is offered the Discard action, and on what
-// (plans/accounting/tasks/done/09-discard-a-draft-entry.md §4, "Web").
-//
-// 🛑 The server refuses either way - `ledger.journalEntry.discard` is on
-// `permissionProcedure(ledgerPost)` and `discardJournalEntry` refuses anything
-// that is not a clean draft. This file is about the SCREEN: an affordance a
-// person cannot use is a promise the product then breaks, and "throw this entry
-// away" is the worst one to offer to somebody with read-only books.
-//
-// Both doors are covered, because they compute the gate from different things:
-// the Entries list from the row's `kind`, the drawer from the loaded record's
-// status AND its `glPostingId`.
+// Which document actions (Discard, Void, Edit) are offered, and on what (91 D5).
+// The server refuses either way; this is about the screen not offering what cannot work.
 
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   /** What `useAccess().can(key)` answers. */
   granted: new Set<string>(),
-  /** The one draft the Entries list reads back. */
+  /** The journal entries the Entries list reads back. */
   drafts: [] as unknown[],
   /** The postings half of the Entries list. */
   postings: [] as unknown[],
@@ -78,6 +68,7 @@ vi.mock('./journal-lines', () => ({
   JournalLinesTotals: () => <div />,
   draftRowsFromLines: () => [],
   linesFromDraftRows: () => [],
+  withSavedLineIds: () => [],
 }))
 
 import { EntriesList } from './entries-list'
@@ -87,6 +78,9 @@ const DRAFT = {
   id: 'je_1',
   number: 'JNL-0006',
   memo: 'Accrue August rent',
+  kind: 'manual',
+  status: 'draft',
+  glPostingId: null,
   lines: [],
   createdAt: '2026-08-31T00:00:00.000Z',
 }
@@ -110,13 +104,15 @@ function withTooltips(ui: React.ReactNode) {
   return render(<TooltipProvider>{ui}</TooltipProvider>)
 }
 
-function entriesList() {
+function entriesList(
+  handlers: { onSelectPosting?: () => void; onSelectJournalEntry?: () => void } = {}
+) {
   return withTooltips(
     <EntriesList
       periodKey='2026-08'
       currencyCode='USD'
-      onSelectPosting={vi.fn()}
-      onSelectJournalEntry={vi.fn()}
+      onSelectPosting={handlers.onSelectPosting ?? vi.fn()}
+      onSelectJournalEntry={handlers.onSelectJournalEntry ?? vi.fn()}
     />
   )
 }
@@ -152,16 +148,24 @@ function draftState(overrides: Record<string, unknown> = {}) {
     setMemo: vi.fn(),
     setLines: vi.fn(),
     number: 'JNL-0006',
+    kind: 'manual',
     status: 'draft',
     glPostingId: null,
+    editing: false,
     isSaving: false,
-    saveDraft: vi.fn(),
+    save: vi.fn(),
     preview: null,
     isPreviewing: false,
     previewIsStale: false,
     runPreview: vi.fn(),
     isPosting: false,
     runPost: vi.fn(),
+    isVoiding: false,
+    runVoid: vi.fn(),
+    openEdit: vi.fn(),
+    saveEdit: vi.fn(),
+    cancelEdit: vi.fn(),
+    isEditPending: false,
     postResult: null,
     ...overrides,
   }
@@ -180,23 +184,43 @@ describe('the Entries list row', () => {
     expect(screen.getByRole('button', { name: /discard this draft/i })).toBeInTheDocument()
   })
 
-  // 🛑 Discarding is a WRITE. `ledgerView` is the read rung, and the key that
-  // gates creating and editing a draft is the key that gates throwing one away.
   it('is absent for a ledgerView-only member', () => {
     h.granted = new Set(['ledger.view'])
     entriesList()
     expect(screen.queryByRole('button', { name: /discard this draft/i })).not.toBeInTheDocument()
   })
 
-  // 🛑 A posted row is a `GlPosting`, and it is corrected by REVERSING it. Its
-  // `id` is not even a journal-entry id, so a Discard there could not act on the
-  // right record if it wanted to.
   it('is absent on a posted entry', () => {
     h.drafts = []
     h.postings = [POSTING]
     entriesList()
     expect(screen.getByText('Posted entry')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /discard this draft/i })).not.toBeInTheDocument()
+  })
+
+  it('opens a posting no journal entry owns in the posting frame', () => {
+    const onSelectPosting = vi.fn()
+    const onSelectJournalEntry = vi.fn()
+    h.drafts = []
+    h.postings = [POSTING]
+    entriesList({ onSelectPosting, onSelectJournalEntry })
+    fireEvent.click(screen.getByText('Posted entry'))
+    expect(onSelectPosting).toHaveBeenCalledWith('post_1')
+    expect(onSelectJournalEntry).not.toHaveBeenCalled()
+  })
+
+  // A posted journal entry takes over its posting's row, so Void and Edit are reachable.
+  it("opens a posted journal entry's row in the journal drawer, without Discard", () => {
+    const onSelectPosting = vi.fn()
+    const onSelectJournalEntry = vi.fn()
+    h.drafts = [{ ...DRAFT, id: 'je_5', status: 'posted', glPostingId: 'post_1' }]
+    h.postings = [POSTING]
+    entriesList({ onSelectPosting, onSelectJournalEntry })
+    expect(screen.getAllByText('Posted entry')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /discard this draft/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Posted entry'))
+    expect(onSelectJournalEntry).toHaveBeenCalledWith('je_5')
+    expect(onSelectPosting).not.toHaveBeenCalled()
   })
 })
 
@@ -224,14 +248,56 @@ describe('the journal entry drawer', () => {
     expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument()
   })
 
-  // 🛑 The row the status check alone would let through. `postJournalEntry`
-  // claims the posting FIRST and stamps the record SECOND, so an interrupted run
-  // leaves status `draft` with a posting id set - and archiving it would orphan a
-  // `GlPosting` whose `sourceId` no read path resolves. The server refuses it, so
-  // the screen must not offer it.
-  it('is absent on a draft that already carries a posting id', () => {
-    h.draftState = draftState({ status: 'draft', glPostingId: 'post_1' })
+  // `draft` is the document's own status: a pointer to a posting that no longer exists reads draft.
+  it('is offered on a draft whose pointer names a posting that is gone', () => {
+    h.draftState = draftState({ status: 'draft', glPostingId: 'post_gone' })
     drawer()
-    expect(screen.queryByRole('button', { name: /discard/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /discard/i })).toBeInTheDocument()
+  })
+})
+
+describe('the journal entry drawer, once posted', () => {
+  it('offers Void and Edit on a posted manual entry, and hides Save and Post', () => {
+    h.draftState = draftState({ status: 'posted', glPostingId: 'post_1' })
+    drawer()
+    expect(screen.getByRole('button', { name: /void/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^post\b/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /view posting/i })).toBeInTheDocument()
+  })
+
+  // `spec.ts` edits manual entries only; a generated one is voided and re-entered.
+  it('offers Void but not Edit on a posted recurring entry', () => {
+    h.draftState = draftState({ status: 'posted', kind: 'recurring', glPostingId: 'post_1' })
+    drawer()
+    expect(screen.getByRole('button', { name: /void/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+  })
+
+  it('offers neither on a reversed entry', () => {
+    h.draftState = draftState({ status: 'reversed', glPostingId: 'post_1' })
+    drawer()
+    expect(screen.queryByRole('button', { name: /void/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+  })
+
+  it('offers neither to a ledgerView-only member', () => {
+    h.granted = new Set(['ledger.view'])
+    h.draftState = draftState({ status: 'posted', glPostingId: 'post_1' })
+    drawer()
+    expect(screen.queryByRole('button', { name: /void/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+  })
+
+  it('swaps to Save and Cancel edit while the edit lane is open', () => {
+    const saveEdit = vi.fn()
+    h.draftState = draftState({ status: 'posted', glPostingId: 'post_1', editing: true, saveEdit })
+    drawer()
+    expect(screen.getByRole('button', { name: /cancel edit/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /void/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^save/i }))
+    expect(saveEdit).toHaveBeenCalled()
   })
 })

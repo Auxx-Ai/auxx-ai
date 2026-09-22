@@ -22,10 +22,8 @@
  * other.
  *
  * So {@link postOpeningTrialBalance} runs the same three steps
- * `postJournalEntry` does - build, `postEntry`, stamp the record - over
- * `buildOpeningBalanceEntry` instead. The duplication is thirty lines and it is
- * deliberate; the alternative was a `builder` parameter on `postJournalEntry`,
- * which would have made the manual path carry a branch it never takes.
+ * `postJournalEntry` does - build from the lines, `postEntry`, stamp the
+ * record's pointer - over `buildOpeningBalanceEntry` instead.
  *
  * ## The freeze
  *
@@ -50,6 +48,7 @@ import { buildOpeningBalanceEntry } from '../ledger/builders/opening-balance'
 import { accountLabel } from '../ledger/chart/account-label'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { assertAccountingSetupUnfrozen } from '../ledger/periods/settled-periods'
+import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry, previewEntry } from '../ledger/post/post-entry'
 import type { EntryPreview, PostResult } from '../ledger/types'
 import {
@@ -70,11 +69,8 @@ export interface SaveOpeningTrialBalanceInput {
 }
 
 /**
- * Create or replace the draft.
- *
- * Wholesale, never a patch: a trial balance's rows have no identity, and a row
- * a person CLEARED has to be able to disappear. A patch protocol would need row
- * ids the stored JSON does not carry.
+ * Create or replace the draft. Wholesale: a row a person CLEARED disappears, and a
+ * line without an `id` is written as a new `journal_entry_line`.
  *
  * The date is derived from `accounting.cutoffPeriod` on every save rather than
  * taken from the caller, so an org that corrects its cutoff before finalizing
@@ -115,9 +111,7 @@ export async function saveOpeningTrialBalance(
         return created.value
       }
 
-      // `updateJournalEntry` refuses anything but a draft with its own
-      // `ConflictError` naming the reversal path, so a posted opening entry is
-      // already covered without a second check here.
+      // `updateJournalEntry` refuses a posted entry with a `ConflictError` naming reversal.
       const updated = await updateJournalEntry(db, organizationId, userId, {
         journalEntryId: existing.id,
         date: cutoverDate,
@@ -179,12 +173,9 @@ export async function previewOpeningTrialBalance(
  * RENDERS as an `EntryBlockers` card, and flattening them would throw away
  * `docNumber`, `failureClass` and `retryable`.
  *
- * 🛑 The record is stamped only on a status that actually wrote a posting.
- * `not_connected` and `disabled` DO write one - an org with no accounting
- * system has nothing in flight - and `already_posted` found one that was
- * already there, which is a converged re-run rather than a failure. A refusal
- * leaves the record `draft`, which is exactly what "fix it and press Finalize
- * again" needs.
+ * The pointer is stamped when the ledger accepted the entry (`already_posted` is
+ * a converged re-run), exactly as `postJournalEntry` stamps it. A refusal leaves
+ * the record `draft`, which is what "fix it and press Finalize again" needs.
  */
 export async function postOpeningTrialBalance(
   db: Database,
@@ -226,11 +217,7 @@ export async function postOpeningTrialBalance(
         actorUserId: userId,
         memo: input.memo ?? entry.memo ?? undefined,
         lock,
-        mode: 'post',
-        // The claim: one opening balance per org, ever - keyed on the cutover
-        // date rather than on the `journal_entry` record's own number (see the
-        // file header). Not the record's own draft subject; that draft is
-        // never claimed, this posting is a fresh one under its own subject.
+        // One opening balance per org, ever: keyed on the cutover date, not the record's number.
         sources: [
           {
             sourceKind: 'opening_balance',
@@ -241,12 +228,8 @@ export async function postOpeningTrialBalance(
         ],
       })
 
-      if (result.glPostingId) {
+      if (didLedgerAccept(result) && result.glPostingId) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
-        // `journal_entry_status` no longer exists (TARGET §1) - the record's
-        // status is read back off whichever `GlPosting` its
-        // `journal_entry_gl_posting_id` points at, and this posting call is the
-        // one place that pointer moves from the draft to the real thing.
         await crud.update(toRecordId(ctx.defId, entry.id) as RecordId, {
           journal_entry_gl_posting_id: result.glPostingId,
         })

@@ -53,6 +53,7 @@ import {
 import { readActiveBookConnection } from '../../providers/book-connections'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
 import { getPaymentGateway } from '../../rails/reads'
+import { wakeRoleUnmapped } from '../../work-items/wake'
 import {
   ACCOUNT_ROLES,
   type AccountRole,
@@ -533,7 +534,7 @@ export interface SetRoleAssignmentOptions {
  * - the account is active (`UnprocessableEntityError`)
  * - the account's `accountType` matches `ROLE_ACCOUNT_TYPES[role]`
  *   (`UnprocessableEntityError`, naming the role, the account and both types)
- * - the account's `subtype` matches `ROLE_ACCOUNT_SUBTYPES[role]`, for the two
+ * - the account's `subtype` matches `ROLE_ACCOUNT_SUBTYPES[role]`, for the
  *   roles that pin one (`UnprocessableEntityError`, task 58 §3 rule 4)
  *
  * The type check is the one that matters most. `resolveRoles` performs the
@@ -555,9 +556,17 @@ export async function setRoleAssignment(
   db: Database | Transaction,
   options: SetRoleAssignmentOptions
 ): Promise<Result<RoleAssignmentRow, Error>> {
-  return db instanceof PgTransaction
-    ? setRoleAssignmentInTx(db, options)
-    : db.transaction((tx) => setRoleAssignmentInTx(tx, options))
+  const result =
+    db instanceof PgTransaction
+      ? await setRoleAssignmentInTx(db, options)
+      : await db.transaction((tx) => setRoleAssignmentInTx(tx, options))
+  // A mapping wakes exactly the work it unblocks (91 §4.6).
+  if (result.isOk() && options.glAccountId?.trim())
+    await wakeRoleUnmapped(db, options.organizationId, {
+      role: options.role,
+      railId: options.paymentGatewayId?.trim() || null,
+    })
+  return result
 }
 
 async function setRoleAssignmentInTx(
@@ -802,7 +811,7 @@ export async function saveRoleAssignments(
 }
 
 /**
- * Existence, active status, statement type and (for the two roles that pin
+ * Existence, active status, statement type and (for the roles that pin
  * one) subtype - every check a role-map write makes on the account it is
  * about to name, shared by every write mode.
  *
@@ -843,9 +852,7 @@ async function assertMappableAccount(
     )
   }
 
-  // §3 rule 4: a second, narrower pin beside the type, present for `bank` and
-  // `clearing` only. `ChartAccountRow.subtype` is already loaded above - no
-  // second chart read.
+  // §3 rule 4: the narrower pin beside the type; `subtype` is already loaded above.
   const expectedSubtype = ROLE_ACCOUNT_SUBTYPES[role]
   if (expectedSubtype && account.subtype !== expectedSubtype) {
     throw new UnprocessableEntityError(
@@ -1060,7 +1067,7 @@ async function readRoleRailOverrides(
  *
  * | Condition | What the reader has to do about it |
  * | --- | --- |
- * | the role is not scopable at all | nothing - `accounts_receivable` is settled by cash, not by store |
+ * | the role is not scopable at all | nothing - `sales_tax_payable` is one obligation per jurisdiction |
  * | the role is scoped, but by rail | send `paymentGatewayId` instead |
  * | the source is not this org's, is archived, or is not `live` | pick a live connection |
  * | the source does not carry store evidence | 🛑 a revenue role pointed at a merchant account with no storefront behind it |

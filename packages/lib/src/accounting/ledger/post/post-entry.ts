@@ -34,10 +34,9 @@
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
-import { type Database, schema, type Transaction } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { formatCurrency } from '@auxx/utils'
-import { and, eq } from 'drizzle-orm'
 import {
   AuxxError,
   BadRequestError,
@@ -74,18 +73,16 @@ import type {
   PostResultStatus,
 } from '../types'
 import { withAccountingCommitLock } from './accounting-commit-lock'
-import { type PostingAssertions, parsePostingDraft } from './draft'
+import type { PostingAssertions } from './draft'
 import {
   type ClaimHolderRow,
   type ClaimOutcome,
   claimSubjectInTx,
   insertPostingInTx,
   insertSourceLinksInTx,
-  markPostedInTx,
   markReversedInTx,
   type PreparedLine,
   readClaimHolderInTx,
-  releasePendingInTx,
   subjectOf,
 } from './insert-posting'
 
@@ -147,7 +144,7 @@ export interface PostEntryOptions {
    */
   docNumber?: string
   /**
-   * Balance assertions recorded on the draft envelope.
+   * Balance assertions recorded on the `built` envelope.
    *
    * ⚠️ No posting type writes these since MIGRATION step 5 deleted the monthly
    * assertion. The envelope still carries them so entries written before that
@@ -180,16 +177,12 @@ export interface PostEntryOptions {
    * ledger cards read (TARGET §1).
    */
   sources: GlPostingSourceInput[]
-  /**
-   * `'draft'` writes the row with its lines and no doc number and takes no
-   * claim - {@link postDraft} promotes it. `'post'` claims, numbers and posts in
-   * one transaction. Per-avenue `accounting.autoPost` decides which a writer asks for.
-   */
-  mode: 'draft' | 'post'
   /** `FinancialSourceAccount.id` this entry resolved through, for the summary grouping. */
   storeId?: string | null
   /** `payment_gateway` instance id this entry resolved through. */
   railId?: string | null
+  /** The provider's payout id, for the summary's payout grain; null until brief 94 stamps it. */
+  payoutId?: string | null
 }
 
 export interface PreviewEntryOptions {
@@ -604,7 +597,7 @@ export function uniqueViolationConstraint(error: unknown): string | null {
 }
 
 /**
- * Persist NOTHING. Build the draft, resolve its roles, and return what a post
+ * Persist NOTHING. Build the entry, resolve its roles, and return what a post
  * WOULD write.
  *
  * The cutover trigger is a person clicking Post (decision G5, ~30 entries a
@@ -619,7 +612,7 @@ export async function previewEntry(
 ): Promise<EntryPreview> {
   const { organizationId, entry, lock, scope } = options
   // A preview is always of an original. A reversal is previewed by reading the
-  // posting it reverses, which is `reverseEntry`'s job, not a fresh draft's.
+  // posting it reverses, which is `reverseEntry`'s job.
   const prepared = await prepareEntry(db, { organizationId, entry, lock, revision: 0, scope })
 
   return {
@@ -640,23 +633,9 @@ export async function previewEntry(
 }
 
 /**
- * What the write transaction did: a draft row, a fresh claim, or a loser that
- * found the source already claimed.
- */
-type PostingWriteOutcome =
-  | { kind: 'drafted'; glPostingId: string }
-  | {
-      kind: 'posted'
-      claim: ClaimOutcome
-    }
-
-/**
- * The write half, inside the caller's transaction and under the accounting lock.
- *
- * Draft: insert the row with its lines, `built` and every source link, no doc
- * number and NO claim. Post: insert `draft` first, then take the claim on the
- * subject row - the loser reads the winner and the row it wrote is rolled back
- * with the transaction - then number it and flip it to `posted`.
+ * The write half, inside the caller's transaction and under the accounting lock:
+ * insert the row, then take the claim on the subject - the loser reads the
+ * winner and its own row rolls back with the savepoint.
  */
 async function writePostingInTx(
   tx: Transaction,
@@ -667,15 +646,15 @@ async function writePostingInTx(
     reversesId?: string
     prepared: PreparedEntry
     sources: GlPostingSourceInput[]
-    mode: 'draft' | 'post'
     storeId?: string | null
     railId?: string | null
+    payoutId?: string | null
     memo?: string
     actorUserId?: string
     assertions?: PostingAssertions
   }
-): Promise<PostingWriteOutcome> {
-  const { organizationId, entry, revision, reversesId, prepared, sources, mode } = input
+): Promise<ClaimOutcome> {
+  const { organizationId, entry, revision, reversesId, prepared, sources } = input
   const subject = subjectOf(sources)
 
   const row = await insertPostingInTx(tx, {
@@ -683,24 +662,17 @@ async function writePostingInTx(
     entry,
     revision,
     reversesId,
-    docNumber: mode === 'post' ? prepared.docNumber : null,
+    docNumber: prepared.docNumber,
     totalMinor: prepared.totalMinor,
     lines: prepared.lines,
     sources,
     storeId: input.storeId,
     railId: input.railId,
+    payoutId: input.payoutId,
     memo: input.memo,
     actorUserId: input.actorUserId,
     assertions: input.assertions,
-    status: mode === 'post' ? 'posted' : 'draft',
   })
-
-  if (mode === 'draft') {
-    // A draft's subject goes in as `pending`, not `subject`: the subject row is
-    // the claim, and a draft holds none until `postDraft` takes it.
-    await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources, mode })
-    return { kind: 'drafted', glPostingId: row.id }
-  }
 
   const held = await claimSubjectInTx(tx, { organizationId, glPostingId: row.id, subject })
   if (held) {
@@ -709,9 +681,9 @@ async function writePostingInTx(
     throw new AlreadyClaimed(winner)
   }
 
-  await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources, mode })
+  await insertSourceLinksInTx(tx, { organizationId, glPostingId: row.id, sources })
   if (reversesId) await markReversedInTx(tx, { organizationId, reversesId, entry, revision })
-  return { kind: 'posted', claim: { kind: 'claimed', row } }
+  return { kind: 'claimed', row }
 }
 
 /**
@@ -726,7 +698,7 @@ class AlreadyClaimed extends Error {
 
 /**
  * What a freshly claimed row still owes the export once its transaction has
- * committed. Absent on a draft, on `already_posted` and on every refusal.
+ * committed. Absent on `already_posted` and on every refusal.
  */
 export interface PendingEntryExport {
   organizationId: string
@@ -824,11 +796,11 @@ export async function postEntryInTx(
   }
   const docNumber = prepared.docNumber
 
-  let outcome: PostingWriteOutcome
+  let claim: ClaimOutcome
   try {
     // A SAVEPOINT, so the loser of a claim race rolls back its own row without
     // taking the caller's work with it.
-    outcome = await tx.transaction((nested) =>
+    claim = await tx.transaction((nested) =>
       writePostingInTx(nested, {
         organizationId,
         entry,
@@ -836,9 +808,9 @@ export async function postEntryInTx(
         reversesId,
         prepared,
         sources: options.sources,
-        mode: options.mode,
         storeId: options.storeId,
         railId: options.railId,
+        payoutId: options.payoutId,
         memo,
         actorUserId,
         assertions,
@@ -848,7 +820,7 @@ export async function postEntryInTx(
     // The loser of a claim race. Its own row rolled back with the savepoint;
     // the winner's stands, and `already_posted` is a SUCCESS.
     if (error instanceof AlreadyClaimed) {
-      outcome = { kind: 'posted', claim: { kind: 'existing', row: error.row } }
+      claim = { kind: 'existing', row: error.row }
     } else {
       // 🛑 The claim's `ON CONFLICT DO NOTHING` swallows a conflict on
       // `GlPostingSource_claim_key` and no other. A violation of
@@ -873,17 +845,6 @@ export async function postEntryInTx(
       throw error
     }
   }
-
-  if (outcome.kind === 'drafted') {
-    logger.info('Entry drafted - it holds no claim and no document number', {
-      organizationId,
-      postingType: entry.postingType,
-      glPostingId: outcome.glPostingId,
-    })
-    return { status: 'drafted', glPostingId: outcome.glPostingId }
-  }
-
-  const claim = outcome.claim
 
   if (claim.kind === 'existing') {
     // A SUCCESS: the row that holds this claim is in the books, whatever its
@@ -1008,233 +969,4 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
   const { pendingExport, ...posted } = result
   if (!pendingExport) return posted
   return exportPostedEntry(db, pendingExport)
-}
-
-export interface PostDraftOptions {
-  organizationId: string
-  /** A `GlPosting` row in status `draft`. */
-  glPostingId: string
-  actorUserId?: string
-  /** Preview context. The commit re-reads the authoritative lock in its transaction. */
-  lock: PeriodLock
-}
-
-/**
- * Promote a draft: re-resolve its roles, re-check the period lock, claim,
- * number, flip to `posted`.
- *
- * **Never throws.** Refusals are {@link PostResult}s, exactly as `postEntry`'s.
- *
- * 🛑 Everything is re-checked rather than trusted from the draft. A draft can
- * sit in the queue across a close, a role remap or a chart edit, and approving
- * one must not post an entry whose accounts no longer exist. The lines are NOT
- * rebuilt from the source - the draft's own `built` envelope is the entry - so
- * what a reviewer approved is what posts.
- */
-export async function postDraft(db: Database, options: PostDraftOptions): Promise<PostResult> {
-  const { organizationId, glPostingId } = options
-  let result: PostResult
-  try {
-    result = await db.transaction(async (tx) => {
-      await withAccountingCommitLock(tx, organizationId)
-      return postDraftInTx(tx, options)
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    logger.error('Posting a draft failed', { organizationId, glPostingId, error: message })
-    return { status: 'error', failureClass: 'transport', retryable: false, error: message }
-  }
-  if (result.status === 'posted') await exportApprovedDraft(db, { organizationId, glPostingId })
-  // The claim is held by another posting, so this draft can never post: it
-  // leaves the Outbox instead of answering "already posted" on every approval.
-  if (result.status === 'already_posted' && result.glPostingId !== glPostingId) {
-    const { discardDraftPosting } = await import('./draft-lines')
-    const discarded = await discardDraftPosting(db, { organizationId, glPostingId })
-    if (discarded.isErr())
-      logger.warn('A superseded draft could not be discarded', {
-        organizationId,
-        glPostingId,
-        error: discarded.error.message,
-      })
-  }
-  return result
-}
-
-/**
- * Put an approved draft on the Ready tab. Transaction mode builds its batch at
- * once, so Approve is not followed by a Build nobody knows to press; the batch
- * is sent only where `autoSend` says so. Summary mode builds nothing - the
- * entry joins its period's unbuilt row until Build closes the bucket.
- */
-async function exportApprovedDraft(
-  db: Database,
-  input: { organizationId: string; glPostingId: string }
-): Promise<void> {
-  const { organizationId, glPostingId } = input
-  try {
-    const [row] = await db
-      .select({ postingType: schema.GlPosting.postingType, txnDate: schema.GlPosting.txnDate })
-      .from(schema.GlPosting)
-      .where(
-        and(
-          eq(schema.GlPosting.id, glPostingId),
-          eq(schema.GlPosting.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    if (!row) return
-    const avenue = avenueOfPostingType(row.postingType)
-    if (!avenue) return
-    const settings = await readExportSettings(organizationId)
-    if (settings.mode !== 'transaction') return
-
-    const built = await buildExportBatches(db, {
-      organizationId,
-      from: row.txnDate,
-      to: row.txnDate,
-      glPostingIds: [glPostingId],
-    })
-    if (built.isErr()) {
-      logger.warn('Could not build the export batch for an approved draft', {
-        organizationId,
-        glPostingId,
-        error: built.error.message,
-      })
-      return
-    }
-    if (!settings.autoSend[avenue]) return
-    for (const batchId of built.value.batchIds)
-      await sendExportBatch(db, { organizationId, batchId })
-  } catch (error) {
-    logger.error('Exporting an approved draft failed; Build will pick it up', {
-      organizationId,
-      glPostingId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-/**
- * {@link postDraft} on the caller's transaction, which owns the commit lock.
- *
- * Throws rather than swallowing, so a caller promoting a draft alongside its own
- * write rolls both back together. A refusal writes nothing and so is a
- * `PostResult`, not a throw.
- */
-export async function postDraftInTx(
-  tx: Transaction,
-  options: PostDraftOptions
-): Promise<PostResult> {
-  const { organizationId, glPostingId, actorUserId } = options
-
-  const [row] = await tx
-    .select({
-      id: schema.GlPosting.id,
-      status: schema.GlPosting.status,
-      revision: schema.GlPosting.revision,
-      built: schema.GlPosting.built,
-    })
-    .from(schema.GlPosting)
-    .where(
-      and(eq(schema.GlPosting.id, glPostingId), eq(schema.GlPosting.organizationId, organizationId))
-    )
-    .limit(1)
-
-  if (!row) {
-    return {
-      status: 'error',
-      failureClass: 'data',
-      retryable: false,
-      error: `No posting ${glPostingId} in this organization.`,
-    }
-  }
-  if (row.status !== 'draft') {
-    return {
-      status: 'error',
-      failureClass: 'data',
-      retryable: false,
-      error: `Posting ${glPostingId} is ${row.status}, not draft. Only a draft can be posted.`,
-      glPostingId,
-    }
-  }
-
-  const envelope = parsePostingDraft(row.built)
-  const entry = envelope.entry
-
-  const subject = envelope.sources?.find((source) => source.linkRole === 'subject')
-  if (!subject) {
-    return {
-      status: 'error',
-      failureClass: 'data',
-      retryable: false,
-      error: `Draft ${glPostingId} carries no subject source, so there is no claim to take.`,
-      glPostingId,
-    }
-  }
-
-  const authoritativeLock = await resolvePeriodLock(organizationId, tx)
-  const prepared = await prepareEntry(tx, {
-    organizationId,
-    entry,
-    lock: authoritativeLock,
-    revision: row.revision,
-  })
-  if (prepared.refusal) {
-    return {
-      status: prepared.refusal.status,
-      failureClass: prepared.refusal.failureClass,
-      retryable: false,
-      error: prepared.refusal.error,
-      ...(prepared.refusal.items?.length ? { items: prepared.refusal.items } : {}),
-      glPostingId,
-    }
-  }
-
-  const claimed = await claimSubjectInTx(tx, { organizationId, glPostingId, subject })
-  if (claimed) {
-    logger.info('Source already claimed - the draft was not posted', {
-      organizationId,
-      glPostingId,
-      heldBy: claimed.heldBy,
-    })
-    return { status: 'already_posted', glPostingId: claimed.heldBy }
-  }
-  // The claim is the subject row now; the `pending` row it replaces goes.
-  await releasePendingInTx(tx, { organizationId, glPostingId })
-
-  // The claim above defends `GlPostingSource_claim_key` and nothing else. A
-  // draft minted on a keyspace that is not one-per-subject still collides on
-  // `GlPosting_org_docNumber_key` HERE, and without this the violation reaches
-  // the outbox as the raw UPDATE statement.
-  try {
-    await markPostedInTx(tx, {
-      organizationId,
-      glPostingId,
-      docNumber: prepared.docNumber,
-      actorUserId,
-    })
-  } catch (error) {
-    const constraint = uniqueViolationConstraint(error)
-    if (constraint === null) throw error
-    logger.error('A draft could not take its document number', {
-      organizationId,
-      glPostingId,
-      docNumber: prepared.docNumber,
-      constraint,
-    })
-    return {
-      status: 'error',
-      failureClass: 'data',
-      retryable: false,
-      error:
-        constraint === 'GlPosting_org_docNumber_key'
-          ? `Document number ${prepared.docNumber} is already used by a different posting in this organization. ` +
-            'Two posting identities minted the same number - the document-number keyspace is wrong, not the entry.'
-          : `A unique constraint (${constraint || 'unknown'}) rejected the post of ${prepared.docNumber}.`,
-      glPostingId,
-    }
-  }
-
-  logger.info('Draft posted', { organizationId, glPostingId, docNumber: prepared.docNumber })
-  return { status: 'posted', glPostingId, docNumber: prepared.docNumber }
 }

@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   publishFieldValueUpdates: vi.fn(),
   systemFieldMap: vi.fn(),
   readOrderForFulfillment: vi.fn(),
+  wakeTotalsNotStamped: vi.fn(),
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -40,6 +41,7 @@ vi.mock('../../../../resources/system-records', () => ({
 vi.mock('../../orders/reads', () => ({
   readOrderForFulfillment: h.readOrderForFulfillment,
 }))
+vi.mock('../../../work-items/wake', () => ({ wakeTotalsNotStamped: h.wakeTotalsNotStamped }))
 
 import type { Database } from '@auxx/database'
 import { stampOrderShipmentTotals } from '../stamp-totals'
@@ -156,6 +158,10 @@ describe('stampOrderShipmentTotals', () => {
     expect(second.get(FIELDS.fulfillment_subtotal.id)).toBe(30_00)
     expect(second.get(FIELDS.fulfillment_total.id)).toBe(33_00)
     expect(second.get(FIELDS.fulfillment_shipping_recognised.id)).toBe(false)
+    // The shipments parked on TOTALS_NOT_STAMPED are woken, and only those it wrote.
+    expect(h.wakeTotalsNotStamped).toHaveBeenCalledWith(DB, ORG, {
+      fulfillmentIds: ['ful_1', 'ful_2'],
+    })
   })
 
   it('excludes a cancelled first shipment from the prior; the second takes shipping', async () => {
@@ -188,6 +194,7 @@ describe('stampOrderShipmentTotals', () => {
     expect(result).toEqual({ fulfillmentsWritten: 1, skippedPosted: 1 })
     expect(writesFor('ful_1').size).toBe(0)
     expect(writesFor('ful_2').size).toBeGreaterThan(0)
+    expect(h.wakeTotalsNotStamped).toHaveBeenCalledWith(DB, ORG, { fulfillmentIds: ['ful_2'] })
   })
 
   it('uses the per-line basis when every shipped line carries its own tax', async () => {

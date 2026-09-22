@@ -6,7 +6,7 @@
 // each builder's subject link carries:
 //
 //   invoice        `buildInvoiceEntry` (postings/build-invoice-entry.ts)
-//   money_transaction  `postMovementEntry`/deposit-application writers
+//   money_transaction  `postMovementEntry`
 //   bank_deposit   `createBankDeposit` (money/bank-deposits/writes.ts)
 //   fulfillment    `buildFulfillmentEntry` (money/orders/fulfill.ts)
 //   payout         `buildPayoutEntry` (money/payouts/sync.ts)
@@ -65,8 +65,8 @@ export function PayoutLedgerCard(props: DrawerTabProps) {
 
 export function VendorBillLedgerCard(props: DrawerTabProps) {
   const { values } = useSystemValues(props.recordId, ['vendor_bill_status'], { autoFetch: true })
-  // A `posted` bill with no entry lost its draft in the outbox. Post refuses a
-  // bill that is not `draft`, so Save is the door back and the card says so.
+  // Post refuses a bill whose document status is not `draft`, so a `posted` bill with
+  // no entry has only Save as the door back, and the card says so.
   const stranded = values.vendor_bill_status === 'posted'
   return (
     <LedgerCard

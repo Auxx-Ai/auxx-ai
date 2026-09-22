@@ -13,6 +13,11 @@ const h = vi.hoisted(() => ({
   getPaymentGateway: vi.fn(),
   gatewayHandle: null as string | null,
   feedRailId: 'pg_feed' as string | null,
+  applications: [] as Array<Record<string, unknown>>,
+  acceptanceState: 'accepted',
+  environment: 'live',
+  currency: 'USD',
+  nativeOwner: null as unknown,
 }))
 
 vi.mock('../../../rails/reads', () => ({
@@ -24,7 +29,7 @@ vi.mock('../source-reads', () => ({
   readSourceObject: async () => ({ id: 'fo_1', sourceAccountId: 'fsa_1', externalId: 'capture_1' }),
   readSourceAccount: async () => ({
     id: 'fsa_1',
-    environment: 'live',
+    environment: h.environment,
     archivedAt: null,
     providerKey: 'shopify',
     externalAccountId: 'demo.myshopify.com',
@@ -33,6 +38,7 @@ vi.mock('../source-reads', () => ({
 }))
 
 import type { Transaction } from '@auxx/database'
+import { refusalFromError } from '../../../work-items/refusal'
 import { readCustomerReceiptAccountingSource } from '../receipt-accounting'
 
 const ORG = 'org_1'
@@ -40,11 +46,20 @@ const MOVEMENT = 'mt_1'
 const ORDER = 'order_1'
 const OCCURRED = new Date('2026-09-01T15:00:00.000Z')
 
+const apply = (id: string, orderInstanceId: string, amountMinor: bigint) => ({
+  id,
+  operation: 'apply',
+  orderInstanceId,
+  amountMinor,
+  effectiveDate: '2026-09-05',
+  reversesApplicationId: null,
+})
+
 const money = () => ({
   id: MOVEMENT,
   purpose: 'customer_receipt' as const,
   amountMinor: 12_000n,
-  currency: 'USD',
+  currency: h.currency,
   currencyExponent: 2,
   occurredAt: OCCURRED,
   partyInstanceId: 'ct_1',
@@ -60,26 +75,16 @@ function tx(): Transaction {
           return row ? [row] : []
         },
       },
-      MoneyCommand: { findFirst: async () => null },
-      MoneyApplication: {
-        findMany: async () => [
-          {
-            id: 'ma_1',
-            operation: 'apply',
-            orderInstanceId: ORDER,
-            amountMinor: 12_000n,
-            effectiveDate: '2026-09-01',
-          },
-        ],
-      },
+      MoneyCommand: { findFirst: async () => h.nativeOwner },
+      MoneyApplication: { findMany: async () => h.applications },
       FinancialSourceAcceptance: {
         findMany: async () => [
           {
             id: 'fa_1',
             sourceObjectId: 'fo_1',
             observationId: 'ob_1',
-            state: 'accepted',
-            orderInstanceId: ORDER,
+            state: h.acceptanceState,
+            orderInstanceId: 'order_elsewhere',
             moneyTransactionId: MOVEMENT,
           },
         ],
@@ -114,12 +119,17 @@ function tx(): Transaction {
   } as unknown as Transaction
 }
 
-const read = () => readCustomerReceiptAccountingSource(tx(), ORG, MOVEMENT, 'America/Los_Angeles')
+const read = () => readCustomerReceiptAccountingSource(tx(), ORG, MOVEMENT)
 
 beforeEach(() => {
   vi.clearAllMocks()
   h.gatewayHandle = null
   h.feedRailId = 'pg_feed'
+  h.applications = [apply('ma_1', ORDER, 12_000n)]
+  h.acceptanceState = 'accepted'
+  h.environment = 'live'
+  h.currency = 'USD'
+  h.nativeOwner = null
   h.listPaymentGateways.mockResolvedValue(
     ok([
       { id: 'pg_shopify', handles: ['shopify_payments'], status: 'active' },
@@ -161,6 +171,20 @@ describe('which rail a channel receipt posts to', () => {
     expect((await read()).paymentGatewayId).toBeNull()
   })
 
+  // 91 D8: a gift card redemption spends the liability; its handle is the one fact.
+  it('flags a gift card payment and names no rail for it', async () => {
+    h.gatewayHandle = 'Gift_Card'
+    h.feedRailId = 'pg_feed'
+    const source = await read()
+    expect(source.giftCard).toBe(true)
+    expect(source.paymentGatewayId).toBeNull()
+  })
+
+  it('does not flag an ordinary card payment', async () => {
+    h.gatewayHandle = 'bogus'
+    expect((await read()).giftCard).toBe(false)
+  })
+
   it('refuses an unmapped handle by name rather than falling back to the feed', async () => {
     h.gatewayHandle = 'paypal'
     await expect(read()).rejects.toThrow(
@@ -190,5 +214,72 @@ describe('which rail a channel receipt posts to', () => {
     h.gatewayHandle = null
     h.feedRailId = null
     await expect(read()).rejects.toThrow(/Receipt source feed has no payment gateway linked/)
+  })
+})
+
+// 91 D1: the order is a link. Nothing about the applications refuses the receipt.
+describe('the order a receipt names', () => {
+  it('is the one order its live applications name', async () => {
+    expect((await read()).orderId).toBe(ORDER)
+  })
+
+  it('is null for a receipt applied to nothing yet, which still reads', async () => {
+    h.applications = []
+    expect((await read()).orderId).toBeNull()
+  })
+
+  it('reads a partial application off another day without refusing', async () => {
+    h.applications = [apply('ma_1', ORDER, 5_000n)]
+    expect((await read()).orderId).toBe(ORDER)
+  })
+
+  it('names no order for a receipt split across two', async () => {
+    h.applications = [apply('ma_1', ORDER, 6_000n), apply('ma_2', 'order_2', 6_000n)]
+    expect((await read()).orderId).toBeNull()
+  })
+
+  it('ignores an application an unapply reversed', async () => {
+    h.applications = [
+      apply('ma_1', 'order_2', 12_000n),
+      { ...apply('ma_2', 'order_2', 12_000n), operation: 'unapply', reversesApplicationId: 'ma_1' },
+      apply('ma_3', ORDER, 12_000n),
+    ]
+    expect((await read()).orderId).toBe(ORDER)
+  })
+})
+
+// 91 §4.6: every refusal names its code, so the Blocked tab groups and wakes it.
+describe('the code a receipt refusal carries', () => {
+  const refusal = async () => refusalFromError(await read().catch((error: unknown) => error))
+
+  it('names an unmapped handle as GATEWAY_UNMAPPED keyed by the handle', async () => {
+    h.gatewayHandle = 'paypal'
+    expect(await refusal()).toEqual({ reasonCode: 'GATEWAY_UNMAPPED', externalRef: 'paypal' })
+  })
+
+  it('names a feed with no rail as GATEWAY_UNMAPPED with no handle', async () => {
+    h.feedRailId = null
+    expect(await refusal()).toEqual({ reasonCode: 'GATEWAY_UNMAPPED' })
+  })
+
+  it('names a non-USD amount MISSING_AMOUNT', async () => {
+    h.currency = 'EUR'
+    expect((await refusal()).reasonCode).toBe('MISSING_AMOUNT')
+  })
+
+  it('waits on an acceptance that has not cleared, and rejects a test feed', async () => {
+    h.acceptanceState = 'pending'
+    expect((await refusal()).reasonCode).toBe('EVIDENCE_PENDING')
+    h.acceptanceState = 'accepted'
+    h.environment = 'test'
+    expect(await refusal()).toMatchObject({
+      reasonCode: 'INVALID_EVIDENCE',
+      detail: { message: expect.stringContaining('test mode') },
+    })
+  })
+
+  it('names native ownership as OWNERSHIP_CONFLICT', async () => {
+    h.nativeOwner = { id: 'cmd_1' }
+    expect((await refusal()).reasonCode).toBe('OWNERSHIP_CONFLICT')
   })
 })

@@ -50,13 +50,15 @@ export async function summaryScope(
   return { from, to, settings, bookId: connection.bookId }
 }
 
-/** `summaryGrainKey` in SQL: the day, the month, or the posting's own id for a grain-less avenue. */
+/** `summaryGrainKey` in SQL: the day, the month, the payout (else the day), or the posting's own id for a grain-less avenue. */
 export function grainKeySql(settings: ExportSettings): SQL {
-  const arms = EXPORT_AVENUES.filter(isSummaryGrainAvenue).map((avenue) =>
-    settings.summaryGrain[avenue] === 'month'
-      ? sql`WHEN ${avenue} THEN to_char(p."txnDate", 'YYYY-MM')`
-      : sql`WHEN ${avenue} THEN p."txnDate"::text`
-  )
+  const arms = EXPORT_AVENUES.filter(isSummaryGrainAvenue).map((avenue) => {
+    const grain = settings.summaryGrain[avenue]
+    if (grain === 'month') return sql`WHEN ${avenue} THEN to_char(p."txnDate", 'YYYY-MM')`
+    if (grain === 'payout')
+      return sql`WHEN ${avenue} THEN coalesce(nullif(p."payoutId", ''), p."txnDate"::text)`
+    return sql`WHEN ${avenue} THEN p."txnDate"::text`
+  })
   return sql`CASE p."avenue" ${sql.join(arms, sql` `)} ELSE p."id" END`
 }
 
@@ -74,7 +76,7 @@ export interface BucketCteInput {
  * `WITH member, account, journal`: `member` is each posted posting in the window
  * with its bucket key and `heldBy` (the live batch holding it, or null);
  * `journal` is each bucket Build would make a journal of - at least two
- * accounts with a non-zero net, the builder's own rule.
+ * non-zero account-and-side lines, never netted, the builder's own rule (91 D9).
  */
 export function bucketCtes(input: BucketCteInput, scope: SummaryScope): SQL {
   const avenues = input.avenues?.length ? [...input.avenues] : null
@@ -115,15 +117,15 @@ export function bucketCtes(input: BucketCteInput, scope: SummaryScope): SQL {
     ),
     account AS (
       SELECT m."avenue", m."grainKey", m."storeId", m."railId", m."currency", l."glAccountId",
-        sum(CASE WHEN l."direction" = 'debit' THEN l."amountMinor" ELSE -l."amountMinor" END) AS net
+        l."direction", sum(l."amountMinor") AS amount
       FROM member m
       JOIN ${schema.GlPostingLine} l
         ON l."organizationId" = ${input.organizationId} AND l."glPostingId" = m."id"
-      GROUP BY 1, 2, 3, 4, 5, 6
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
     ),
     journal AS (
       SELECT "avenue", "grainKey", "storeId", "railId", "currency"
-      FROM account WHERE net <> 0
+      FROM account WHERE amount <> 0
       GROUP BY 1, 2, 3, 4, 5 HAVING count(*) >= 2
     )`
 }

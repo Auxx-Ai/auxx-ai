@@ -1,8 +1,8 @@
 // packages/lib/src/accounting/money/customer-money/acceptance-wake.ts
 
 /**
- * The wake side of 79 §4.2: an acceptance parked with `nextAttemptAt = null` is re-queued
- * when the record it was waiting on moves. Keyed on the ORDER, because that is what
+ * The wake side of 79 §4.2: an acceptance's `evidence` work item is made due when the
+ * record it was waiting on moves. Keyed on the ORDER, because that is what
  * `FinancialSourceAcceptance.orderInstanceId` names; a credit memo reaches it in one hop.
  */
 

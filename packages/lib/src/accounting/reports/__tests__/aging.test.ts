@@ -9,7 +9,7 @@
 
 import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../ledger/roles/resolve-roles', () => ({ loadRoleAccountCodes: vi.fn() }))
 vi.mock('../trial-balance', () => ({ readTrialBalance: vi.fn() }))
@@ -18,12 +18,19 @@ vi.mock('../../../field-values/read-field-scalars', () => ({
   readFieldScalars: vi.fn(),
   readFieldRelations: vi.fn(),
 }))
+// The attribution itself runs for real; only its two db reads are stubbed.
+vi.mock('../receivable-attribution', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../receivable-attribution')>()),
+  readAttributionLinks: vi.fn(),
+  readPreCutoverDocumentIds: vi.fn(),
+}))
 
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { readFieldRelations, readFieldScalars } from '../../../field-values/read-field-scalars'
 import { buildVendorBillEntry } from '../../ledger/builders/entry'
 import { loadRoleAccountCodes } from '../../ledger/roles/resolve-roles'
 import {
+  AGING_PRE_CUTOVER_GROUP_ID,
   AGING_UNAPPLIED_GROUP_ID,
   type Aging,
   type AgingDocument,
@@ -32,9 +39,23 @@ import {
   readAging,
   toAgingRows,
 } from '../aging'
+import {
+  type AttributionLinks,
+  readAttributionLinks,
+  readPreCutoverDocumentIds,
+} from '../receivable-attribution'
 import { readTrialBalance } from '../trial-balance'
 
 const ORG = 'org_1'
+
+function mockAttribution(links?: Partial<AttributionLinks>, preCutover: string[] = []) {
+  vi.mocked(readAttributionLinks).mockResolvedValue(
+    ok({ movementTargets: new Map(), parents: new Map(), ...links })
+  )
+  vi.mocked(readPreCutoverDocumentIds).mockResolvedValue(ok(new Set(preCutover)))
+}
+
+beforeEach(() => mockAttribution())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // agingBucket - pure, exhaustive
@@ -282,8 +303,19 @@ function noOrgCache() {
 }
 
 describe('readAging', () => {
-  it('is empty and trivially tied when the role has no mapped account', async () => {
+  it('is empty and trivially tied when no account is mapped or carries the subtype', async () => {
     vi.mocked(loadRoleAccountCodes).mockResolvedValue(new Map())
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [],
+        totalDebitMinor: 0,
+        totalCreditMinor: 0,
+        balanced: true,
+      })
+    )
     noOrgCache()
 
     const result = await readAging(stubDb([]), {
@@ -296,7 +328,70 @@ describe('readAging', () => {
     expect(value.accountCode).toBeNull()
     expect(value.groups).toEqual([])
     expect(value.verdict).toBe(true)
-    expect(readTrialBalance).not.toHaveBeenCalled()
+  })
+
+  // A/R on the store axis (91 §4.3): the store's account is walked and tied beside the default.
+  it('walks every accounts_receivable account and ties to their summed balance', async () => {
+    vi.mocked(loadRoleAccountCodes).mockResolvedValue(
+      new Map([
+        [
+          'accounts_receivable',
+          { glAccountId: 'a1', code: '1100', name: 'A/R', accountType: 'asset', isActive: true },
+        ],
+      ])
+    )
+    noOrgCache()
+    const tbRow = (glAccountId: string, subtype: string | null, balanceMinor: number) => ({
+      glAccountId,
+      accountCode: glAccountId,
+      accountName: glAccountId,
+      accountType: 'asset' as const,
+      subtype: subtype as never,
+      debitMinor: Math.max(balanceMinor, 0),
+      creditMinor: Math.max(-balanceMinor, 0),
+      balanceMinor,
+      inChart: true,
+    })
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [
+          tbRow('a1', null, 4_000),
+          tbRow('a_store', 'accounts_receivable', 6_000),
+          tbRow('bank', 'bank', 99_000),
+        ],
+        totalDebitMinor: 109_000,
+        totalCreditMinor: 109_000,
+        balanced: true,
+      })
+    )
+    const db = stubDb([
+      [
+        glLine({
+          sourceType: 'journal_entry',
+          sourceId: 'je_1',
+          direction: 'debit',
+          amountMinor: 4_000,
+        }),
+        glLine({
+          sourceType: 'journal_entry',
+          sourceId: 'je_2',
+          direction: 'debit',
+          amountMinor: 6_000,
+        }),
+      ],
+    ])
+
+    const value = (
+      await readAging(db, { organizationId: ORG, side: 'receivable', asOf: '2026-08-31' })
+    )._unsafeUnwrap()
+
+    expect(value.accountCode).toBe('1100')
+    expect(value.totalMinor).toBe(10_000)
+    expect(value.balanceSheetMinor).toBe(10_000)
+    expect(value.verdict).toBe(true)
   })
 
   it('groups an invoice-sourced line by its resolved contact and ties to the trial balance', async () => {
@@ -705,14 +800,13 @@ describe('readAging', () => {
     const db = stubDb([
       [
         glLine({
-          sourceType: 'payment_transaction',
+          sourceType: 'money_transaction',
           sourceId: 'txn_1',
           direction: 'credit',
           amountMinor: 2_000,
         }),
       ],
-      // The MoneyTransaction lookup, with no contactInstanceId - unresolvable.
-      [{ id: 'txn_1', contactInstanceId: null, reference: null, purpose: 'customer_receipt' }],
+      [{ id: 'txn_1', reference: null, purpose: 'customer_receipt' }],
     ])
 
     const result = await readAging(db, {
@@ -807,5 +901,172 @@ describe('readAging', () => {
       asOf: '2026-08-31',
     })
     expect(result.isErr()).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// readAging - money lines attributed through MoneyApplication (91 §4.1, §8.7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('readAging attribution', () => {
+  function receivableOrg(balanceMinor: number) {
+    vi.mocked(loadRoleAccountCodes).mockResolvedValue(
+      new Map([
+        [
+          'accounts_receivable',
+          { glAccountId: 'a1', code: '1100', name: 'A/R', accountType: 'asset', isActive: true },
+        ],
+      ])
+    )
+    vi.mocked(getOrgCache).mockReturnValue({
+      from: () => ({
+        bySystemAttributes: async () => ({
+          order_number: { id: 'f_number' },
+          order_contact: { id: 'f_contact' },
+        }),
+      }),
+    } as never)
+    vi.mocked(readFieldScalars).mockResolvedValue(
+      new Map([
+        ['o1', new Map<string, unknown>([['f_number', '#1001']])],
+        ['o2', new Map<string, unknown>([['f_number', '#1002']])],
+      ])
+    )
+    vi.mocked(readFieldRelations).mockResolvedValue(
+      new Map([
+        ['o1', new Map([['f_contact', 'contact_1']])],
+        ['o2', new Map([['f_contact', 'contact_1']])],
+      ])
+    )
+    vi.mocked(getCachedEntityDefId).mockResolvedValue(undefined)
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [
+          {
+            glAccountId: 'a1',
+            accountCode: '1100',
+            accountName: 'A/R',
+            accountType: 'asset',
+            subtype: 'accounts_receivable',
+            debitMinor: Math.max(balanceMinor, 0),
+            creditMinor: Math.max(-balanceMinor, 0),
+            balanceMinor,
+            inChart: true,
+          },
+        ],
+        totalDebitMinor: 0,
+        totalCreditMinor: 0,
+        balanced: true,
+      })
+    )
+  }
+
+  const read = (db: Database) =>
+    readAging(db, { organizationId: ORG, side: 'receivable', asOf: '2026-08-31' })
+
+  it('attributes a money_transaction receipt through its applications, prorated across two orders', async () => {
+    receivableOrg(11_000)
+    mockAttribution({
+      movementTargets: new Map([
+        [
+          'mt_1',
+          [
+            { sourceType: 'order', sourceId: 'o1', weightMinor: 6_000 },
+            { sourceType: 'order', sourceId: 'o2', weightMinor: 4_000 },
+          ],
+        ],
+      ]),
+    })
+    const db = stubDb([
+      [
+        glLine({ sourceType: 'order', sourceId: 'o1', direction: 'debit', amountMinor: 10_000 }),
+        glLine({ sourceType: 'order', sourceId: 'o2', direction: 'debit', amountMinor: 10_000 }),
+        // $90 received against $100 of applications: prorated 54/36.
+        glLine({
+          sourceType: 'money_transaction',
+          sourceId: 'mt_1',
+          direction: 'credit',
+          amountMinor: 9_000,
+        }),
+      ],
+      [{ id: 'contact_1', displayName: 'Acme Co' }],
+    ])
+
+    const value = (await read(db))._unsafeUnwrap()
+    expect(value.groups).toHaveLength(1)
+    expect(value.groups[0]?.groupName).toBe('Acme Co')
+    const byLabel = new Map(value.groups[0]?.documents.map((d) => [d.label, d.openMinor]))
+    expect(byLabel.get('#1001')).toBe(4_600)
+    expect(byLabel.get('#1002')).toBe(6_400)
+    expect(value.totalMinor).toBe(11_000)
+    expect(value.verdict).toBe(true)
+  })
+
+  it('puts the unapplied part of a receipt in the catch-all', async () => {
+    receivableOrg(-2_500)
+    mockAttribution({
+      movementTargets: new Map([
+        ['mt_1', [{ sourceType: 'order', sourceId: 'o1', weightMinor: 7_500 }]],
+      ]),
+    })
+    const db = stubDb([
+      [
+        glLine({ sourceType: 'order', sourceId: 'o1', direction: 'debit', amountMinor: 7_500 }),
+        glLine({
+          sourceType: 'money_transaction',
+          sourceId: 'mt_1',
+          direction: 'credit',
+          amountMinor: 10_000,
+        }),
+      ],
+      [{ id: 'mt_1', reference: 'ch_123', purpose: 'customer_receipt' }],
+    ])
+
+    const value = (await read(db))._unsafeUnwrap()
+    expect(value.groups).toHaveLength(1)
+    expect(value.groups[0]?.groupId).toBe(AGING_UNAPPLIED_GROUP_ID)
+    expect(value.groups[0]?.documents[0]).toMatchObject({ label: 'ch_123', openMinor: -2_500 })
+    expect(value.verdict).toBe(true)
+  })
+
+  it('shows a refund with no memo as a receivable', async () => {
+    receivableOrg(5_000)
+    const db = stubDb([
+      [
+        glLine({
+          sourceType: 'money_transaction',
+          sourceId: 'rf_1',
+          direction: 'debit',
+          amountMinor: 5_000,
+        }),
+      ],
+      [{ id: 'rf_1', reference: null, purpose: 'customer_refund' }],
+    ])
+
+    const value = (await read(db))._unsafeUnwrap()
+    expect(value.groups[0]?.groupId).toBe(AGING_UNAPPLIED_GROUP_ID)
+    expect(value.groups[0]?.documents[0]).toMatchObject({ label: 'Refund', openMinor: 5_000 })
+    expect(value.totalMinor).toBe(5_000)
+  })
+
+  it('groups a document whose applications all predate the cutoff as pre-cutover', async () => {
+    receivableOrg(10_800)
+    mockAttribution(undefined, ['o1'])
+    const db = stubDb([
+      [glLine({ sourceType: 'order', sourceId: 'o1', direction: 'debit', amountMinor: 10_800 })],
+    ])
+
+    const value = (await read(db))._unsafeUnwrap()
+    expect(readPreCutoverDocumentIds).toHaveBeenCalledWith(db, ORG, ['o1'])
+    expect(value.groups).toHaveLength(1)
+    expect(value.groups[0]).toMatchObject({
+      groupId: AGING_PRE_CUTOVER_GROUP_ID,
+      groupName: 'Paid before cutover',
+      totalMinor: 10_800,
+    })
+    expect(value.groups[0]?.documents[0]?.label).toBe('#1001')
   })
 })

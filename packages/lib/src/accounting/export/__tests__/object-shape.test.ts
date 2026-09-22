@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/export/__tests__/object-shape.test.ts
-// One case per native object type (plan 67 §1's mapping table), the `auto` vs
-// `invoice` split, the sales-tax line's `taxCode: 'NON'`, and the journal
-// fallback when a posting's lines do not fit its object's shape.
+// One case per native object type (plan 67 §1's mapping table), the sales-tax
+// line's `taxCode: 'NON'`, and the journal fallback when a posting's lines do
+// not fit its object's shape.
 
 import { describe, expect, it } from 'vitest'
 import type { AccountRole } from '../../ledger/builders/entry'
@@ -70,7 +70,6 @@ describe('the note cap', () => {
         lines,
         roleByGlAccountId,
         counterparty: CUSTOMER,
-        exportShape: 'auto',
         limits,
       }).payload.privateNote as string
 
@@ -82,76 +81,30 @@ describe('the note cap', () => {
 })
 
 describe('shapeForPosting', () => {
-  it('a fulfillment fully paid under `auto` becomes a sales_receipt', () => {
+  it('a fulfillment always becomes an invoice, its tax line coded NON (91 §8.13)', () => {
     const { lines, roleByGlAccountId } = withLines(
       line('acct_ar', 'accounts_receivable', 'debit', 5000, { counterparty: CUSTOMER }),
       line('acct_rev', 'revenue_product', 'credit', 4800),
-      line('acct_tax', 'sales_tax_payable', 'credit', 200),
-      line('acct_clearing', 'clearing', 'debit', 5000),
-      line('acct_ar', 'accounts_receivable', 'credit', 5000, { counterparty: CUSTOMER })
+      line('acct_tax', 'sales_tax_payable', 'credit', 200)
     )
     const result = shapeForPosting({
       posting: posting(),
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
-      fullyPaidAtShipment: true,
     })
 
-    expect(result.objectType).toBe('sales_receipt')
+    expect(result.objectType).toBe('invoice')
     expect(result.fallbackReason).toBeUndefined()
     const payload = result.payload as {
-      depositTo: { glAccountId: string }
+      customer: unknown
       lines: Array<{ glAccountId: string; taxCode?: string }>
     }
-    expect(payload.depositTo).toEqual({
-      glAccountId: 'acct_clearing',
-      accountCode: 'ACCT_CLEARING',
-    })
+    expect(payload.customer).toEqual(CUSTOMER)
     expect(payload.lines).toHaveLength(2)
     // The sales-tax line gets `taxCode: 'NON'` (§7 D2); the revenue line does not.
-    const taxLine = payload.lines.find((l) => l.glAccountId === 'acct_tax')
-    const revenueLine = payload.lines.find((l) => l.glAccountId === 'acct_rev')
-    expect(taxLine?.taxCode).toBe('NON')
-    expect(revenueLine?.taxCode).toBeUndefined()
-  })
-
-  it('the same fulfillment not fully paid becomes an invoice', () => {
-    const { lines, roleByGlAccountId } = withLines(
-      line('acct_ar', 'accounts_receivable', 'debit', 5000, { counterparty: CUSTOMER }),
-      line('acct_rev', 'revenue_product', 'credit', 5000)
-    )
-    const result = shapeForPosting({
-      posting: posting(),
-      lines,
-      roleByGlAccountId,
-      counterparty: CUSTOMER,
-      exportShape: 'auto',
-      fullyPaidAtShipment: false,
-    })
-
-    expect(result.objectType).toBe('invoice')
-    const payload = result.payload as { customer: unknown; lines: unknown[] }
-    expect(payload.customer).toEqual(CUSTOMER)
-    expect(payload.lines).toHaveLength(1)
-  })
-
-  it('`exportShape: invoice` forces Invoice even when fully paid at shipment', () => {
-    const { lines, roleByGlAccountId } = withLines(
-      line('acct_ar', 'accounts_receivable', 'debit', 5000, { counterparty: CUSTOMER }),
-      line('acct_rev', 'revenue_product', 'credit', 5000)
-    )
-    const result = shapeForPosting({
-      posting: posting(),
-      lines,
-      roleByGlAccountId,
-      counterparty: CUSTOMER,
-      exportShape: 'invoice',
-      fullyPaidAtShipment: true,
-    })
-
-    expect(result.objectType).toBe('invoice')
+    expect(payload.lines.find((l) => l.glAccountId === 'acct_tax')?.taxCode).toBe('NON')
+    expect(payload.lines.find((l) => l.glAccountId === 'acct_rev')?.taxCode).toBeUndefined()
   })
 
   it('a standalone invoice_issued posting becomes an invoice', () => {
@@ -164,7 +117,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('invoice')
@@ -185,7 +137,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
       appliesToGlPostingId: 'glp_1',
     })
 
@@ -210,7 +161,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('credit_memo')
@@ -231,7 +181,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('refund_receipt')
@@ -256,7 +205,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: null,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('deposit')
@@ -286,7 +234,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: null,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('deposit')
@@ -307,7 +254,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: VENDOR,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('bill')
@@ -329,7 +275,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: null,
-      exportShape: 'auto',
     })
 
     expect(result.objectType).toBe('journal')
@@ -347,8 +292,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: CUSTOMER,
-      exportShape: 'auto',
-      fullyPaidAtShipment: false,
     })
 
     expect(result.objectType).toBe('journal')
@@ -367,8 +310,6 @@ describe('shapeForPosting', () => {
       lines,
       roleByGlAccountId,
       counterparty: null,
-      exportShape: 'auto',
-      fullyPaidAtShipment: false,
     })
 
     expect(result.objectType).toBe('journal')

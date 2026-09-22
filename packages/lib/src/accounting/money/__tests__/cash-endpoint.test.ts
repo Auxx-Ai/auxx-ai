@@ -18,6 +18,7 @@ vi.mock('../../ledger/chart/resolve-cash-account', () => ({
 
 import type { Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
+import { refusalFromError } from '../../work-items/refusal'
 import { resolveCashEndpoint } from '../cash-endpoint'
 import { validateCashEndpointSource } from '../client'
 
@@ -75,6 +76,34 @@ describe('resolveCashEndpoint', () => {
     expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['undeposited_funds'])
   })
 
+  it('resolves a gift card payment to the unscoped liability, never the rail', async () => {
+    h.resolveRoles.mockResolvedValue(
+      ok(new Map([['gift_card_liability', { glAccountId: 'gl_gift' }]]))
+    )
+    const endpoint = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD', giftCard: true },
+      'Customer payment'
+    )
+    expect(endpoint).toEqual({ glAccountId: 'gl_gift', kind: 'gift_card', railId: null })
+    expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['gift_card_liability'])
+  })
+
+  it('names an unmapped gift card liability ROLE_UNMAPPED', async () => {
+    h.resolveRoles.mockResolvedValue(ok(new Map()))
+    const error = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD', giftCard: true },
+      'Customer payment'
+    ).catch((e: unknown) => e)
+    expect(refusalFromError(error as UnprocessableEntityError)).toMatchObject({
+      reasonCode: 'ROLE_UNMAPPED',
+      role: 'gift_card_liability',
+    })
+  })
+
   it('refuses a movement that names both a rail and a bank account', async () => {
     await expect(
       resolveCashEndpoint(
@@ -122,6 +151,35 @@ describe('resolveCashEndpoint', () => {
         'Refund'
       )
     ).rejects.toThrow('Refund bank account is missing or archived')
+  })
+})
+
+describe('the code a cash endpoint refusal carries', () => {
+  const refusal = (source: Parameters<typeof resolveCashEndpoint>[2]) =>
+    resolveCashEndpoint(tx, ORG, source, 'Refund').catch((error: unknown) =>
+      refusalFromError(error)
+    )
+
+  it('names an unmapped clearing or undeposited funds ROLE_UNMAPPED, so mapping it wakes', async () => {
+    h.resolveRoles.mockResolvedValue(ok(new Map()))
+    expect(
+      await refusal({ paymentGatewayId: 'pg_1', cashAccountInstanceId: null, currency: 'USD' })
+    ).toEqual({ reasonCode: 'ROLE_UNMAPPED', role: 'clearing', railId: 'pg_1' })
+    expect(
+      await refusal({ paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD' })
+    ).toEqual({ reasonCode: 'ROLE_UNMAPPED', role: 'undeposited_funds' })
+  })
+
+  it('names every other endpoint failure ENDPOINT_UNRESOLVED', async () => {
+    h.resolveBankAccountGlAccountInTx.mockRejectedValue(
+      new UnprocessableEntityError('Refund bank account has no GL account linked')
+    )
+    expect(
+      await refusal({ paymentGatewayId: null, cashAccountInstanceId: 'ba_1', currency: 'USD' })
+    ).toEqual({ reasonCode: 'ENDPOINT_UNRESOLVED' })
+    expect(
+      await refusal({ paymentGatewayId: 'pg_1', cashAccountInstanceId: 'ba_1', currency: 'USD' })
+    ).toEqual({ reasonCode: 'ENDPOINT_UNRESOLVED' })
   })
 })
 

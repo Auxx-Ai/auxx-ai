@@ -1,5 +1,5 @@
 // packages/lib/src/accounting/export/payloads/invoice.ts
-// A fulfillment invoiced (not fully paid at shipment, or `exportShape: 'invoice'`)
+// A shipment (every `fulfillment` posting, 91 §8.13)
 // or a standalone `invoice_issued` posting - a QuickBooks Invoice (plan 67 §1-2).
 
 import { z } from 'zod/v4'

@@ -173,6 +173,11 @@ describe('isSummaryBucketComplete - 95 D1', () => {
   it('treats a grain-less bucket as complete at once', () => {
     expect(isSummaryBucketComplete('post_1', TODAY)).toBe(true)
   })
+
+  it('closes a payout bucket by the day rule on its latest posting', () => {
+    expect(isSummaryBucketComplete('po_1', TODAY, '2026-09-19')).toBe(true)
+    expect(isSummaryBucketComplete('po_1', TODAY, '2026-09-20')).toBe(false)
+  })
 })
 
 describe('sweepSummaryBuckets - the build rule', () => {

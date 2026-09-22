@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/export/payloads/payment.ts
-// A customer receipt (`payment` / `deposit_application`) against an invoice or
-// a fulfillment sent as Invoice - a QuickBooks Payment (plan 67 §1-2).
+// A customer receipt (`payment`) against an invoice or a shipment - a
+// QuickBooks Payment (plan 67 §1-2).
 
 import { z } from 'zod/v4'
 import { baseShape, counterpartySchema, glRefSchema, moneySchema } from './shared'

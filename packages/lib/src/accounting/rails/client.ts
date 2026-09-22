@@ -139,20 +139,28 @@ export function normaliseGatewayHandle(handle: string): string {
   return handle.trim().toLowerCase()
 }
 
+/** Shopify's handle for money paid with a gift card: it spends the liability, not a rail (91 D8). */
+export const GIFT_CARD_GATEWAY_HANDLE = 'gift_card'
+
 /**
- * The two handles that never belong to a `payment_gateway` record.
+ * The handles that never belong to a `payment_gateway` record.
  *
  * `manual` is money that did not come through a rail at all and `bogus` is
- * Shopify's test gateway. A receipt carrying either names NO rail and lands in
- * undeposited funds (task 71 U2); neither can ever be "claimed", so the census
- * ({@link listObservedGatewayHandles}) drops them rather than reporting two
+ * Shopify's test gateway: a receipt carrying either names NO rail and lands in
+ * undeposited funds (task 71 U2). {@link GIFT_CARD_GATEWAY_HANDLE} lands on the
+ * gift card liability. None can ever be "claimed", so the census
+ * ({@link listObservedGatewayHandles}) drops them rather than reporting
  * permanently unroutable handles at every org forever.
  *
  * 🛑 A deliberate mirror of that file's private `MANUAL_GATEWAY` /
  * `TEST_GATEWAY`, not an import - an import back would be a cycle. Same call
  * {@link normaliseGatewayHandle} makes about `normaliseGateways`.
  */
-export const RESERVED_GATEWAY_HANDLES: readonly string[] = ['manual', 'bogus']
+export const RESERVED_GATEWAY_HANDLES: readonly string[] = [
+  'manual',
+  'bogus',
+  GIFT_CARD_GATEWAY_HANDLE,
+]
 
 /**
  * One gateway handle seen on the org's own orders, and whether a

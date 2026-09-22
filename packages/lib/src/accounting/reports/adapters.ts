@@ -146,6 +146,22 @@ export function nestAccountLines<T extends { glAccountId: string; inChart: boole
   return [...nested, ...outOfChartLines]
 }
 
+const DELETED_ACCOUNT_NOTE =
+  'This account has posted lines but has been deleted from the current chart of accounts.'
+const RECEIVABLE_SPLIT_NOTE =
+  'Orders and invoices in credit are shown under Liabilities as customer deposits.'
+const CUSTOMER_DEPOSITS_NOTE =
+  'Orders and invoices in credit in this receivable, netted per document. Not a posted balance.'
+
+/** The computed deposits row's label. A hyphen, not a dash: the PDF font has no em dash. */
+export function customerDepositsLabel(account: {
+  accountCode: string | null
+  accountName: string
+}): string {
+  const name = [account.accountCode, account.accountName].filter(Boolean).join(' ')
+  return `${name || 'Accounts receivable'} - customer deposits`
+}
+
 /** The trial balance's own columns, in the order `toTrialBalanceRows` fills them. */
 export const TRIAL_BALANCE_COLUMNS: StatementColumn[] = [
   { key: 'debit', label: 'Debit', align: 'right' },
@@ -199,9 +215,7 @@ export function toTrialBalanceRows(
         // accounts under five different ones. Null for an account whose type the
         // chart no longer holds, which `glAccountTypeMeta` handles.
         accountType: row.accountType ?? undefined,
-        note: row.inChart
-          ? undefined
-          : 'This account has posted lines but has been deleted from the current chart of accounts.',
+        note: row.inChart ? undefined : DELETED_ACCOUNT_NOTE,
       },
     }
   })
@@ -262,6 +276,38 @@ export function toTrialBalanceStatementRows(tb: TrialBalanceStatement): Statemen
     lines.splice(insertAt, 0, re)
   }
 
+  // 91 D3: the receivable's balance keeps its documents in debit; those in credit move to a
+  // computed liability row. Debit and credit stay as posted, so the totals do not move.
+  const deposits: StatementRow[] = []
+  for (const row of tb.rows) {
+    const split = row.receivableSplit
+    if (!split || split.depositsMinor === 0) continue
+    const line = lines.find((l) => l.id === row.glAccountId)
+    if (line) {
+      line.values = [line.values[0] ?? null, line.values[1] ?? null, split.receivableMinor]
+      line.meta = { ...line.meta, note: RECEIVABLE_SPLIT_NOTE }
+    }
+    deposits.push(
+      computedRow(
+        `customer-deposits:${row.glAccountId}`,
+        customerDepositsLabel(row),
+        [null, null, split.depositsMinor],
+        CUSTOMER_DEPOSITS_NOTE
+      )
+    )
+  }
+  if (deposits.length > 0) {
+    let insertAt = lines.length
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const type = lines[i]?.meta?.accountType
+      if (type === 'liability' || type === 'asset') {
+        insertAt = i + 1
+        break
+      }
+    }
+    lines.splice(insertAt, 0, ...deposits)
+  }
+
   return [...lines, totalRow('total', 'Total', [tb.totalDebitMinor, tb.totalCreditMinor, null])]
 }
 
@@ -309,6 +355,25 @@ export function toBalanceSheetRows(
     glAccountId: string
   ) => (compare ? [value, findCompare(rows, glAccountId)] : [value])
 
+  // One deposits row per receivable in credit in either snapshot, matched by id.
+  const depositAccounts = new Map<string, { accountCode: string | null; accountName: string }>()
+  for (const row of [...bs.customerDeposits, ...(compare?.customerDeposits ?? [])])
+    if (!depositAccounts.has(row.glAccountId)) depositAccounts.set(row.glAccountId, row)
+  const splitAccountIds = new Set(depositAccounts.keys())
+  const depositRows: StatementRow[] = [...depositAccounts].map(([glAccountId, account]) =>
+    computedRow(
+      `customer-deposits:${glAccountId}`,
+      customerDepositsLabel(account),
+      compare
+        ? [
+            findCompare(bs.customerDeposits, glAccountId),
+            findCompare(compare.customerDeposits, glAccountId),
+          ]
+        : [findCompare(bs.customerDeposits, glAccountId)],
+      CUSTOMER_DEPOSITS_NOTE
+    )
+  )
+
   const section = (
     id: string,
     label: string,
@@ -335,9 +400,11 @@ export function toBalanceSheetRows(
         accountCode: row.accountCode,
         accountName: row.accountName,
         accountType,
-        note: row.inChart
-          ? undefined
-          : 'This account has posted lines but has been deleted from the current chart of accounts.',
+        note: !row.inChart
+          ? DELETED_ACCOUNT_NOTE
+          : splitAccountIds.has(row.glAccountId)
+            ? RECEIVABLE_SPLIT_NOTE
+            : undefined,
       },
     })
     const children: StatementRow[] = nestAccountLines(
@@ -416,7 +483,8 @@ export function toBalanceSheetRows(
     compare?.liabilities ?? [],
     'Total liabilities',
     bs.totalLiabilitiesMinor,
-    compare?.totalLiabilitiesMinor
+    compare?.totalLiabilitiesMinor,
+    depositRows
   )
   const equity = section(
     'equity',

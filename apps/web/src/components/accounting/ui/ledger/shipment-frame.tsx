@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { CloseBlockerItem, PostingStatus } from '@auxx/lib/accounting/ledger/client'
+import type { PostingStatus } from '@auxx/lib/accounting/ledger/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -17,7 +17,6 @@ import {
   BookOpenCheck,
   CalendarClock,
   CircleAlert,
-  Clock,
   Coins,
   Link2,
   RefreshCw,
@@ -28,72 +27,46 @@ import { toFrame, useOpenRecord } from '~/components/records/record-drill-panels
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { EntryBlockers } from './entry-blockers'
-import { formatAccountingDate, formatAuditTimestamp, formatMinor } from './format'
+import { formatAccountingDate, formatMinor } from './format'
 import type { FrameHeader } from './posting-frame'
 import { postingTypeLabel } from './type-labels'
+import { WorkItemsSection } from './work-items-section'
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
-  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
-  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
-}
-
-/** The roles an `account_unmapped` refusal names, parsed the way `movement-frame.tsx` parses them. */
-function unmappedRoleItems(reason: string): CloseBlockerItem[] {
-  const items: CloseBlockerItem[] = []
-  for (const match of reason.matchAll(/'([a-z0-9_]+)'\s*(\([^)]*\))?([^']*)/g)) {
-    const role = match[1]
-    if (!role || items.some((item) => item.ref === role)) continue
-    items.push({
-      key: 'unmapped_role',
-      label: match[2] ? `${role} ${match[2]}` : role,
-      remedy: match[3]?.trim() || 'It is not mapped to any account.',
-      ref: role,
-    })
-  }
-  return items
 }
 
 /**
  * The shipment frame's identity strip and its Retry, read by the host: one
  * `DrawerHeader` serves the whole stack (83 §2.4).
  */
-export function useShipmentFrameHeader(
-  fulfillmentId: string | null,
-  { onOpenPosting }: { onOpenPosting: (glPostingId: string) => void }
-): FrameHeader {
+export function useShipmentFrameHeader(fulfillmentId: string | null): FrameHeader {
   const utils = api.useUtils()
-  const { data: detail } = api.ledger.getBlockedFulfillment.useQuery(
+  const { data: detail } = api.ledger.getShipment.useQuery(
     { fulfillmentId: fulfillmentId ?? '' },
     { enabled: !!fulfillmentId }
   )
+  const isBlocked = (detail?.workItems.length ?? 0) > 0
 
-  const retry = api.ledger.retryBlockedFulfillment.useMutation({
-    onSuccess: (result) => {
+  // Retry makes its rows due now; the recovery job posts it within a minute.
+  const retry = api.ledger.retryBlockedGroup.useMutation({
+    onSuccess: () => {
       void utils.ledger.listBlocked.invalidate()
-      void utils.ledger.listDrafts.invalidate()
-      void utils.ledger.listPostings.invalidate()
-      void utils.ledger.outboxCounts.invalidate()
-      if (result.status === 'accepted' || result.status === 'drafted') {
-        onOpenPosting(result.glPostingId)
-        return
-      }
-      toastError({ title: 'Still not posted', description: result.reason })
-      void utils.ledger.getBlockedFulfillment.invalidate()
+      void utils.ledger.listBlockedItems.invalidate()
+      void utils.ledger.getShipment.invalidate()
     },
     onError: (error) => toastError({ title: 'Could not retry', description: error.message }),
   })
 
   return {
     drawerTitle: 'Shipment',
-    icon: detail ? (
+    icon: isBlocked ? (
       <CircleAlert className='size-5 text-destructive' />
     ) : (
       <Truck className='size-5 text-muted-foreground' />
@@ -101,21 +74,23 @@ export function useShipmentFrameHeader(
     title: (
       <div className='flex flex-wrap items-center gap-2'>
         <span className='font-medium'>{detail?.name ?? 'Shipment'}</span>
-        {detail && (
+        {isBlocked && (
           <Badge variant='destructive' size='sm'>
             Blocked
           </Badge>
         )}
       </div>
     ),
-    actions: detail && (
+    actions: isBlocked && detail && (
       <Tooltip content='Post this shipment again'>
         <Button
           variant='ghost'
           size='icon-xs'
           aria-label='Post this shipment again'
           disabled={retry.isPending}
-          onClick={() => retry.mutate({ fulfillmentId: detail.id })}>
+          onClick={() =>
+            retry.mutate({ source: { sourceKind: 'fulfillment', sourceId: detail.id } })
+          }>
           <RefreshCw className={retry.isPending ? 'animate-spin' : undefined} />
         </Button>
       </Tooltip>
@@ -130,17 +105,16 @@ interface ShipmentFrameProps {
 }
 
 /**
- * One refused shipment - the body of a `~shipment:` frame in `LedgerDrawerHost`
- * (88 §4.5). The reason in the poster's own words with the remedy card for an
- * unmapped role, the draft or posting it produced, and the records it belongs
- * to; Retry lives on the host's header.
+ * One shipment - the body of a `~shipment:` frame in `LedgerDrawerHost` (88 §4.5):
+ * its work items while it is parked, the postings it produced, and the records it
+ * belongs to. Retry lives on the host's header.
  */
 export function ShipmentFrame({ fulfillmentId, bookTimeZone }: ShipmentFrameProps) {
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const openFrame = useOpenRecord()
 
-  const detailQuery = api.ledger.getBlockedFulfillment.useQuery({ fulfillmentId })
+  const detailQuery = api.ledger.getShipment.useQuery({ fulfillmentId })
   const detail = detailQuery.data ?? null
 
   const postingsQuery = api.ledger.listPostingsForSource.useQuery({
@@ -159,11 +133,7 @@ export function ShipmentFrame({ fulfillmentId, bookTimeZone }: ShipmentFrameProp
   }
 
   if (!detail) {
-    return (
-      <div className='p-4 text-muted-foreground text-sm'>
-        No refused shipment matches this link.
-      </div>
-    )
+    return <div className='p-4 text-muted-foreground text-sm'>No shipment matches this link.</div>
   }
 
   const links = [
@@ -187,37 +157,9 @@ export function ShipmentFrame({ fulfillmentId, bookTimeZone }: ShipmentFrameProp
             icon={<Coins className='size-4 text-muted-foreground' />}
             value={formatMinor(detail.amountMinor, detail.currency)}
           />
-          <MetricCell
-            label='Refused'
-            icon={<Clock className='size-4 text-muted-foreground' />}
-            className='col-span-2'
-            value={
-              detail.blockedAt
-                ? formatAuditTimestamp(detail.blockedAt.toISOString(), bookTimeZone)
-                : '—'
-            }
-          />
         </MetricGrid>
 
-        <Section
-          title='Why it was refused'
-          icon={<CircleAlert className='size-4' />}
-          description='In the ledger’s own words. Retry once the cause is fixed.'
-          collapsible={false}>
-          {detail.reasonKind === 'account_unmapped' ? (
-            <EntryBlockers
-              blockers={[
-                {
-                  status: 'account_unmapped',
-                  error: detail.reason,
-                  items: unmappedRoleItems(detail.reason),
-                },
-              ]}
-            />
-          ) : (
-            <p className='text-sm'>{detail.reason}</p>
-          )}
-        </Section>
+        <WorkItemsSection items={detail.workItems} bookTimeZone={bookTimeZone} />
 
         {postings.length > 0 && (
           <Section

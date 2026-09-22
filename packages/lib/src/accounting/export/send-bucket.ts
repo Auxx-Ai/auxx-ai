@@ -107,7 +107,9 @@ export async function sendSummaryBucket(
     const batch = await readLiveBucketBatch(db, organizationId, scope.bookId, key)
     if (!batch)
       return err(
-        new UnprocessableEntityError('This summary nets to fewer than two accounts, so no journal')
+        new UnprocessableEntityError(
+          'This summary has fewer than two non-zero lines, so no journal'
+        )
       )
     return sendLive(db, organizationId, batch, built.value.batchIds.includes(batch.id))
   } catch (error) {

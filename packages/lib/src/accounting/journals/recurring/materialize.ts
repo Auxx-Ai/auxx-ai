@@ -41,8 +41,9 @@ import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../../cache'
 import { advanceRecurrenceCursor, type RecurrenceRuleRow } from '../../../recurrence'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { requireJournalEntry } from '../entries/reads'
-import { createJournalEntry } from '../entries/writes'
+import { createJournalEntry, postJournalEntry } from '../entries/writes'
 import { guard } from './guard'
 import { findGeneratedEntryIds, planForRule } from './reads'
 
@@ -56,7 +57,9 @@ export interface MaterializeRecurringJournalsResult {
   templateId: string
   /** Entry ids raised on this pass. */
   generated: string[]
-  /** Occurrences a previous pass had already raised an entry for. */
+  /** Entry ids the ledger accepted on this pass, including a left-over one a previous pass raised. */
+  posted: string[]
+  /** Occurrences a previous pass had already raised and posted. */
   alreadyPresent: number
   /**
    * The closed month that stopped the pass, if any. Everything from this
@@ -68,17 +71,12 @@ export interface MaterializeRecurringJournalsResult {
 }
 
 /**
- * Generate every entry this template owes, oldest first, stopping at the first
- * occurrence that could not be raised.
- *
- * ## Why a DRAFT and not a posting
- *
- * MK's decision A (task 21). An accrual reversal or a prepaid schedule is
- * exactly the entry a bookkeeper wants to look at before it lands, and the
- * safety argument costs nothing either way: both paths mint the same
- * `RJE-<fold>` period key, so the claim index is the boundary in both. A
- * draft's worst case is a DUPLICATE DRAFT - visible, discardable, and unable
- * to double-post because both drafts resolve to the same claim.
+ * Generate and POST every entry this template owes, oldest first, stopping at
+ * the first occurrence that did not land. Posted directly (91 D5, reversing
+ * 21-A): review is the outbox, before anything leaves. The `RJE-<fold>` key and
+ * the rule's occurrence claim make a raced duplicate converge to `already_posted`.
+ * An occurrence raised but not accepted (a bad line, a refusal) stays an unposted
+ * entry; the next pass posts that one rather than raising another.
  *
  * ## Stopping at the first failure, not skipping it
  *
@@ -111,6 +109,7 @@ export async function materializeRecurringJournals(
         organizationId,
         templateId,
         generated: [],
+        posted: [],
         alreadyPresent: 0,
         held: plan.held,
         cursor: plan.cursor,
@@ -147,41 +146,47 @@ export async function materializeRecurringJournals(
       let cursor = plan.cursor
 
       for (const occurrence of plan.due) {
-        if (existing.has(occurrence.occurrenceDate)) {
-          outcome.alreadyPresent++
-          continue
-        }
         try {
-          const created = await createJournalEntry(db, organizationId, userId, {
-            kind: 'recurring',
-            // The SLOT is the accounting date on the generated entry. A person
-            // may re-date the draft afterwards; `occurrenceDate` beside it does
-            // not move, because it is half of what the posting is keyed on.
-            date: occurrence.occurrenceDate,
-            memo: template.memo ?? undefined,
-            lines: template.lines,
-            recurrenceRuleId: rule.id,
-            occurrenceDate: occurrence.occurrenceDate,
-            // The claim is the TEMPLATE'S occurrence, not this generated
-            // record: two records raised for one occurrence (a sweep race)
-            // must collide on this claim when promoted, not on the doc
-            // number's unique constraint.
-            subject: {
-              sourceKind: 'recurring_journal',
-              sourceId: templateId,
-              linkRole: 'subject',
-              occurrence: occurrence.occurrenceDate,
-            },
+          let entryId = existing.get(occurrence.occurrenceDate)
+          if (entryId) {
+            const standing = await requireJournalEntry(db, organizationId, entryId)
+            if (standing.status !== 'draft') {
+              outcome.alreadyPresent++
+              continue
+            }
+          } else {
+            const created = await createJournalEntry(db, organizationId, userId, {
+              kind: 'recurring',
+              // The slot is the accounting date; `occurrenceDate` never moves - it is half the key.
+              date: occurrence.occurrenceDate,
+              memo: template.memo ?? undefined,
+              lines: template.lines.map(({ id: _id, ...line }) => line),
+              recurrenceRuleId: rule.id,
+              occurrenceDate: occurrence.occurrenceDate,
+            })
+            if (created.isErr()) throw created.error
+            entryId = created.value.id
+            outcome.generated.push(entryId)
+          }
+
+          const posted = await postJournalEntry(db, organizationId, userId, {
+            journalEntryId: entryId,
           })
-          if (created.isErr()) throw created.error
-          outcome.generated.push(created.value.id)
+          if (posted.isErr()) throw posted.error
+          if (!didLedgerAccept(posted.value)) {
+            throw new Error(
+              `The ledger did not accept the entry (${posted.value.status})` +
+                `${posted.value.error ? `: ${posted.value.error}` : ''}`
+            )
+          }
+          outcome.posted.push(entryId)
         } catch (error) {
           // Hold the cursor AT this occurrence - see the file header. The next
           // sweep starts here and tries again.
           cursor = occurrence.start
           outcome.cursor = cursor
           outcome.held = null
-          logger.error('Failed to generate a recurring journal entry; holding the cursor', {
+          logger.error('Failed to post a recurring journal entry; holding the cursor', {
             organizationId,
             ruleId: rule.id,
             templateId,
@@ -195,12 +200,13 @@ export async function materializeRecurringJournals(
 
       await advanceRecurrenceCursor(db, organizationId, rule.id, cursor)
 
-      if (outcome.generated.length > 0 || outcome.held) {
+      if (outcome.posted.length > 0 || outcome.held) {
         logger.info('Materialized recurring journal entries', {
           organizationId,
           ruleId: rule.id,
           templateId,
           generated: outcome.generated.length,
+          posted: outcome.posted.length,
           alreadyPresent: outcome.alreadyPresent,
           heldMonth: outcome.held?.month ?? null,
         })

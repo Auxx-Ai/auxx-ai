@@ -644,7 +644,7 @@ export async function setupSchedules() {
 
   // Recurring journal templates, daily at 03:45 UTC (accounting task 21 §1.2), fifteen
   // minutes after the invoice-draft sweep and forty-five after the visit one so the three
-  // `RecurrenceRule` consumers never contend. Generates DRAFTS only; a template whose next
+  // `RecurrenceRule` consumers never contend. Posts each occurrence (91 D5); a template whose next
   // occurrence falls in a CLOSED month is reported and its cursor HELD, never advanced.
   await maintenanceQueue.upsertJobScheduler(
     'recurringJournalsJob',

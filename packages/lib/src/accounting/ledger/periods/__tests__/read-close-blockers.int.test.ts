@@ -78,7 +78,7 @@ async function fulfillment(
 }
 
 /** The claim a posting holds over a shipment. `reversed` deletes the row, so it takes none. */
-async function claim(fulfillmentInstanceId: string, status: 'draft' | 'posted' | 'reversed') {
+async function claim(fulfillmentInstanceId: string, status: 'posted' | 'reversed') {
   const [posting] = await db()
     .insert(schema.GlPosting)
     .values({
@@ -89,7 +89,7 @@ async function claim(fulfillmentInstanceId: string, status: 'draft' | 'posted' |
       txnDate: '2026-03-15',
       totalMinor: 10800,
       built: {},
-      postedAt: status === 'posted' ? new Date() : null,
+      postedAt: new Date(),
     })
     .returning()
   if (status === 'reversed') return
@@ -140,7 +140,6 @@ describe('unposted_shipments', () => {
     await fulfillment({ subtotal: null })
     await fulfillment({ total: 0 })
     await claim(await fulfillment(), 'posted')
-    await claim(await fulfillment(), 'draft')
 
     expect(await unpostedShipments()).toBeUndefined()
   })

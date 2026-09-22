@@ -12,6 +12,7 @@ import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../../errors'
 import { listApplicationsByMovement } from '../reads'
+import { movementPurposeForEntryType } from './match-entries'
 
 /** A document one candidate receipt is applied to — what the picker row shows. */
 export interface CandidateDocument {
@@ -79,7 +80,7 @@ export async function listMatchCandidates(
   if (!entry) return err(new NotFoundError('Processor entry not found'))
 
   const gross = entry.entry.grossMinor < 0n ? -entry.entry.grossMinor : entry.entry.grossMinor
-  const purpose = entry.entry.type === 'refund' ? 'customer_refund' : 'customer_receipt'
+  const purpose = movementPurposeForEntryType(entry.entry.type)
   const search = input.query?.trim()
   const difference = sql<string>`(${schema.MoneyTransaction.amountMinor} - ${gross})`
 

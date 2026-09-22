@@ -1,7 +1,6 @@
 // packages/lib/src/accounting/export/unbuilt-summary.ts
-// Summary mode's rows that no batch holds yet: what the Ready tab shows for a
-// posted entry between Approve and Build (TARGET §3, §6), grouped in SQL the
-// way `readLedgerSummary` groups in memory, and paged.
+// Summary mode's buckets that no batch holds yet (TARGET §3, §6), grouped in SQL
+// the way `readLedgerSummary` groups in memory, and paged.
 
 import type { Database } from '@auxx/database'
 import { type SQL, sql } from 'drizzle-orm'

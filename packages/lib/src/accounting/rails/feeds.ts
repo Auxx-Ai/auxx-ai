@@ -21,6 +21,7 @@ import { NotFoundError } from '../../errors'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import { listOpenDestinationMismatches } from '../money/payouts/reads'
+import { wakeReasonCode } from '../work-items/wake'
 import { guard } from './guard'
 import { getPaymentGateway, listLinkedFeeds } from './reads'
 
@@ -68,6 +69,7 @@ export async function linkFeed(
         throw new NotFoundError(`Feed ${sourceAccountId} was not found`)
       }
 
+      await wakeReasonCode(db, organizationId, 'GATEWAY_UNMAPPED')
       logger.info('Linked a feed to a payment gateway', {
         organizationId,
         gatewayId,

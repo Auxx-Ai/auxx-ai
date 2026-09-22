@@ -55,16 +55,14 @@ export const OUTBOX_VIEWS = ['summary', 'transaction'] as const
 export type OutboxView = (typeof OUTBOX_VIEWS)[number]
 
 /**
- * The Outbox's tabs: the ledger's own drafts, the movements the ledger refused,
- * then the export states. Neither `drafts` nor `blocked` is an
- * `ExportBatchState` - one has no batch yet and the other has no posting at
- * all, which is the point of the two leading the strip (75-D1).
+ * The Outbox's tabs: the movements the ledger refused, then the export states.
+ * `blocked` is not an `ExportBatchState` - it has no posting at all (75-D1).
  */
-export const OUTBOX_TABS = ['drafts', 'blocked', ...EXPORT_BATCH_TABS] as const
+export const OUTBOX_TABS = ['blocked', ...EXPORT_BATCH_TABS] as const
 export type OutboxTab = (typeof OUTBOX_TABS)[number]
 
 export function isExportBatchTab(tab: OutboxTab): tab is ExportBatchTab {
-  return tab !== 'drafts' && tab !== 'blocked'
+  return tab !== 'blocked'
 }
 
 /** `?tab=` values a pasted link may still carry - tabs that no longer render included. */
@@ -108,7 +106,6 @@ export function exportBatchStateHint(state: ExportBatchState, autoSend: boolean)
 /** Plan 67 §1's mapping table, in the words the outbox shows for `ExportBatchRow.objectType`. */
 const OBJECT_TYPE_LABELS: Record<string, string> = {
   journal: 'Journal entry',
-  sales_receipt: 'Sales receipt',
   invoice: 'Invoice',
   payment: 'Payment',
   credit_memo: 'Credit memo',

@@ -477,9 +477,9 @@ describe('postOpeningTrialBalance', () => {
     h.entries = [draft(balanced)]
     await postOpeningTrialBalance(db, ORG, USER)
     const [[, options]] = postEntry.mock.calls as unknown as [
-      [unknown, { mode: string; sources: Array<Record<string, unknown>> }],
+      [unknown, { sources: Array<Record<string, unknown>> }],
     ]
-    expect(options.mode).toBe('post')
+    expect(options).not.toHaveProperty('mode')
     expect(options.sources).toEqual([
       {
         sourceKind: 'opening_balance',
@@ -508,11 +508,20 @@ describe('postOpeningTrialBalance', () => {
     expect(h.crudUpdate).not.toHaveBeenCalled()
   })
 
-  it('stamps on not_connected, which DOES write a posting', async () => {
+  it('stamps on already_posted, a converged re-run', async () => {
     h.entries = [draft(balanced)]
-    h.postResult = { status: 'not_connected', glPostingId: 'glp_2' }
+    h.postResult = { status: 'already_posted', glPostingId: 'glp_2' }
     await postOpeningTrialBalance(db, ORG, USER)
-    expect(h.crudUpdate).toHaveBeenCalled()
+    expect(h.crudUpdate).toHaveBeenCalledWith('def_je:je_1', {
+      journal_entry_gl_posting_id: 'glp_2',
+    })
+  })
+
+  it('does not stamp an error that still names a posting id', async () => {
+    h.entries = [draft(balanced)]
+    h.postResult = { status: 'error', glPostingId: 'glp_3', error: 'boom' }
+    await postOpeningTrialBalance(db, ORG, USER)
+    expect(h.crudUpdate).not.toHaveBeenCalled()
   })
 
   it('refuses a second post, naming the reversal path', async () => {

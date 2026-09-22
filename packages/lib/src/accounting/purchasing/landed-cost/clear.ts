@@ -26,7 +26,6 @@ import { createGuard } from '../../../utils/guard'
 import { ACCOUNT_ROLES, buildEntry, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { hashedPeriodKey } from '../../ledger/periods/period-key'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -164,8 +163,6 @@ export async function clearLandedCost(
         actorUserId,
         lock,
         memo: 'Landed cost cleared',
-        // Inventory's lane has no draft step: a clear posts as Clear is pressed.
-        mode: 'post',
         sources: [
           {
             sourceKind: VENDOR_BILL_SOURCE_TYPE,
@@ -205,13 +202,6 @@ export async function reverseLandedCostClear(
   }
 ): Promise<PostResult | null> {
   const { organizationId, goodsBillInstanceId, attempt, actorUserId } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: VENDOR_BILL_SOURCE_TYPE,
-    sourceId: goodsBillInstanceId,
-    occurrence: clearOccurrence(attempt),
-  })
-  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: VENDOR_BILL_SOURCE_TYPE,

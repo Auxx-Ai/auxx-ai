@@ -179,9 +179,7 @@ export function useLedgerDrawers({
         }}
         onOpenPosting={openPosting}
         onDiscarded={() => {
-          // The record is archived, so every read that could still be showing it
-          // is stale - and the drawer itself is now open over a record no read
-          // path returns. Close it.
+          // The record and its lines are deleted; close the drawer over it.
           setBase({})
           void utils.ledger.journalEntry.list.invalidate()
         }}

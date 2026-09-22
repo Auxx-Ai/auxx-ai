@@ -7,6 +7,10 @@ import type {
   CloseBlockerItemKey,
   PostResultStatus,
 } from '@auxx/lib/accounting/ledger/client'
+import {
+  type WorkItemSentenceInput,
+  workItemSentence,
+} from '@auxx/lib/accounting/work-items/client'
 import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -160,7 +164,7 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     icon: PackagePlus,
     title: 'This month still holds revenue that is not in the books',
     guidance:
-      'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and settle the drafts first: once the month is closed, the entries they owe cannot be written into it.',
+      'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and issue or void the draft credit memos first: once the month is closed, the entries they owe cannot be written into it.',
     href: '/app/orders',
     actionLabel: 'Open orders',
   },
@@ -214,17 +218,13 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     href: '/app/accounting/settings/bank-accounts',
     actionLabel: 'Map the account',
   },
-  // ── Task 09: discarding a draft ───────────────────────────────────────────
-  //
-  // 🛑 A refusal here names a POSTED entry and points at reversal, which is
-  // exactly the kind of sentence that must not vanish in four seconds. Nothing
-  // was changed, so the entry is still where it was.
+  // Discarding a journal entry: a refusal names a posted entry and points at reversal.
   discard_refused: {
     tone: 'failure',
     icon: Trash2,
     title: 'This entry cannot be discarded',
     guidance:
-      'Only a draft can be thrown away, and only one that has not reached the ledger. An entry that has been posted is corrected by reversing it and posting a new one, so what it did to the books stays on the record. Nothing was changed.',
+      'Only an unposted entry can be discarded. A posted entry is voided, or edited in place, so what it did to the books stays on the record. Nothing was changed.',
   },
   // Brief 19 section 4.4: a provider suggestion that does not balance is not
   // a refusal. Nothing was built, claimed or posted, and every cell stays
@@ -448,6 +448,40 @@ const COLUMNS = 'minmax(0,1fr) auto'
  * `period_closed`, every banking refusal) carries no items and renders as it
  * always did: one row, the server's sentence verbatim, one button.
  */
+/** The work-item fields a blocker card needs; the row never stores prose (91 §4.6). */
+export interface WorkItemForBlocker extends WorkItemSentenceInput {
+  reasonCode: string
+}
+
+const WORK_ITEM_STATUS: Partial<Record<string, LedgerBlockerStatus>> = {
+  ROLE_UNMAPPED: 'account_unmapped',
+  ACCOUNT_INVALID: 'account_invalid',
+  PERIOD_LOCKED: 'period_closed',
+  UNBALANCED: 'unbalanced',
+  SETUP_INCOMPLETE: 'setup_incomplete',
+  NOTHING_TO_RECOGNISE: 'nothing_to_recognise',
+}
+
+/** A parked work item as a blocker card: its code picks the remedy, its sentence is the text. */
+export function workItemBlocker(item: WorkItemForBlocker): LedgerBlocker {
+  const error = workItemSentence(item.reasonCode, item)
+  const status = WORK_ITEM_STATUS[item.reasonCode] ?? 'error'
+  if (status !== 'account_unmapped' || !item.role) return { status, error }
+  const roles = Array.isArray(item.detail?.roles)
+    ? (item.detail.roles as unknown[]).filter((role): role is string => typeof role === 'string')
+    : [item.role]
+  return {
+    status,
+    error,
+    items: roles.map((role) => ({
+      key: 'unmapped_role',
+      label: role,
+      remedy: workItemSentence(item.reasonCode, { ...item, role }),
+      ref: role,
+    })),
+  }
+}
+
 export function EntryBlockers({
   blockers,
   onFix,

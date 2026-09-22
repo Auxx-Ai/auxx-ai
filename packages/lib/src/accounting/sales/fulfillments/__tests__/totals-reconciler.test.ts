@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   stampOrderShipmentTotals: vi.fn(),
   isFulfillmentCancelled: vi.fn(),
   reverseFulfillmentPosting: vi.fn(),
+  repostCreditMemosForCancelledFulfillment: vi.fn(),
 }))
 
 // Real `defineParentReconciler` + real `resolveParentsByRelation` (plan 78's ladder is
@@ -28,6 +29,9 @@ vi.mock('../stamp-totals', () => ({ stampOrderShipmentTotals: h.stampOrderShipme
 vi.mock('../reads', () => ({ isFulfillmentCancelled: h.isFulfillmentCancelled }))
 vi.mock('../../orders/fulfill', () => ({
   reverseFulfillmentPosting: h.reverseFulfillmentPosting,
+}))
+vi.mock('../../credit-memos/repost', () => ({
+  repostCreditMemosForCancelledFulfillment: h.repostCreditMemosForCancelledFulfillment,
 }))
 vi.mock('@auxx/database', () => ({ database: {} }))
 
@@ -218,6 +222,31 @@ describe('a cancelled shipment reverses', () => {
     expect(h.reverseFulfillmentPosting.mock.invocationCallOrder[0]!).toBeLessThan(
       h.stampOrderShipmentTotals.mock.invocationCallOrder[0]!
     )
+  })
+
+  // 91 §4.8: the pair nets - the memo on the order re-reads its lines after the reversal.
+  it('re-posts the order memos after the shipment reversal', async () => {
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.repostCreditMemosForCancelledFulfillment).toHaveBeenCalledWith(
+      {},
+      { organizationId: ORG, fulfillmentInstanceId: 'ff_1', actorUserId: USER }
+    )
+    expect(h.reverseFulfillmentPosting.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.repostCreditMemosForCancelledFulfillment.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('re-posts no memo for a shipment that is not cancelled', async () => {
+    h.isFulfillmentCancelled.mockResolvedValue(false)
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.repostCreditMemosForCancelledFulfillment).not.toHaveBeenCalled()
   })
 
   it('reverses on `fulfillment_cancelled_at` too, since either write may land first', async () => {

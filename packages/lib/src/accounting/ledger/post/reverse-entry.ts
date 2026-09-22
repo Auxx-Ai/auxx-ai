@@ -288,7 +288,6 @@ export async function reverseEntryInTx(
       reversesId: original.id,
       revision: original.revision + 1,
       docNumber: original.docNumber ? `${original.docNumber}-R${original.revision + 1}` : undefined,
-      mode: 'post',
       storeId: original.storeId,
       railId: original.railId,
       // The reversal's OWN subject. `markReversedInTx` deletes the original's

@@ -117,6 +117,8 @@ export interface StoredPayoutEntry {
   grossMinor: number
   feeMinor: number
   netMinor: number
+  /** A matched chargeback whose refund entry already booked the dispute fee (91 D8). */
+  feeOnRefund?: boolean
 }
 
 /**
@@ -140,6 +142,12 @@ export function splitStoredEntries(entries: readonly StoredPayoutEntry[]): Payou
   let unrecognisedCount = 0
 
   for (const entry of entries) {
+    // The refund entry booked this chargeback's fee (91 D8) and credited clearing for it,
+    // so clearing is relieved of the net and the payout books no second fee.
+    if (entry.matchState === 'matched' && entry.feeOnRefund) {
+      grossMinor += entry.netMinor
+      continue
+    }
     if (entry.matchState === 'matched') {
       grossMinor += entry.grossMinor
       feesMinor += entry.feeMinor

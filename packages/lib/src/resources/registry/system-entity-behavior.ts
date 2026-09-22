@@ -245,6 +245,11 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     inPromptCatalog: false,
     sidebar: 'never',
   }, // Accounting > Ledger
+  journal_entry_line: {
+    searchable: false,
+    inPromptCatalog: false,
+    sidebar: 'never',
+  }, // owned child of journal_entry (91 D5)
   bank_account: {
     searchable: false,
     inPromptCatalog: false,

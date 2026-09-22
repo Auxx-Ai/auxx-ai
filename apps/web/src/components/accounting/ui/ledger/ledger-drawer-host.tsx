@@ -21,7 +21,6 @@ import {
   DrawerTabParamProvider,
   frameKind,
   RecordStackProvider,
-  toFrame,
   useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
@@ -31,8 +30,7 @@ import { MovementFrame, useMovementFrameHeader } from './movement-frame'
 import { type FrameHeader, PostingFrame, usePostingFrameHeader } from './posting-frame'
 import { ShipmentFrame, useShipmentFrameHeader } from './shipment-frame'
 
-/** 🛑 Not `tab`: on the Outbox that is the page's own tab strip, and a record
- * frame's tab bar would bounce the list from Drafts back to Ready behind the drawer. */
+/** Not `tab`: on the Outbox that is the page's own tab strip, which a record frame's tab bar would switch. */
 export const LEDGER_RECORD_TAB_PARAM = 'rtab'
 
 interface LedgerDrawerHostProps {
@@ -85,8 +83,6 @@ function LedgerDrawerFrames({
   const isBaseTop = depth <= 1
   const router = useRouter()
 
-  const openPosting = useCallback((id: string) => push(toFrame('posting', id)), [push])
-
   const topKind = top ? frameKind(top) : null
   const topRecordId = topKind?.kind === 'record' ? topKind.recordId : null
 
@@ -103,14 +99,9 @@ function LedgerDrawerFrames({
   const postingHeader = usePostingFrameHeader(topKind?.kind === 'posting' ? topKind.id : null, {
     onReverse: actions.runReverse,
     isReversing: actions.isReversing,
-    onClose: handleClose,
   })
-  const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null, {
-    onOpenPosting: openPosting,
-  })
-  const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null, {
-    onOpenPosting: openPosting,
-  })
+  const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null)
+  const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null)
   const { resource: recordResource } = useResource(
     topRecordId ? parseRecordId(topRecordId).entityDefinitionId : null
   )

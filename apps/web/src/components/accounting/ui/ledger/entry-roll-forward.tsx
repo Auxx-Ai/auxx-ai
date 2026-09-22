@@ -40,7 +40,7 @@ interface EntryRollForwardProps {
 }
 
 /**
- * Opening / Activity / Closing, built from the draft's `assertions.before` and
+ * Opening / Activity / Closing, built from the stored envelope's `assertions.before` and
  * `assertions.after`.
  *
  * This is the CPA-legible view and it is not decoration. The journal entry shows

@@ -1,10 +1,8 @@
 // packages/lib/src/accounting/ledger/setup/index.ts
 
 export { readBookTimeZone, readBookTimeZoneOrUtc, todayInBookTimeZone } from './book-time-zone'
-// TARGET §3: the export batch's settings, beside `autoPost`.
+// TARGET §3: the export batch's settings.
 export {
-  AUTO_POST_AVENUES,
-  type AutoPostAvenue,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,

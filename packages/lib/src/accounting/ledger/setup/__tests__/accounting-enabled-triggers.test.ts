@@ -35,15 +35,10 @@ const TRIGGER_FILES = [
   // the gate moved with the build. It is still checked before ANY read.
   'accounting/sales/invoices/issuance-accounting.ts',
   'accounting/sales/orders/fulfill.ts',
-  // The legacy `money/payments/` lane (`post-transaction.ts`,
-  // `post-deposit-application.ts`) is gone (accounting migration step 0). Every
-  // receipt now posts off `MoneyTransaction`/`MoneyApplication` through one of
-  // these two builders, and both are gated.
   // Task 71: the invoice receipt, the channel receipt, the channel/hand refund,
   // the quote deposit and the vendor payment all build through one frame, and the
   // gate sits there once rather than in five copies.
   'accounting/money/post-movement.ts',
-  'accounting/money/customer-money/deposit-application-accounting.ts',
   // D19: `write-off.ts` still checks the gate before its own reads, and
   // `write-off-accounting.ts` is where the entry is now built and accepted — so
   // the gate is asserted on both halves rather than moved off the builder.

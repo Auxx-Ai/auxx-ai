@@ -66,7 +66,6 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   vendor_refund: 'VRF',
   // `INV` is `inventory_movement`'s.
   invoice_issued: 'INI',
-  deposit_application: 'DPA',
   credit_memo: 'CRM',
   // Keys on `vendor_credit_number`, ours, for the reason `vendor_bill` does.
   vendor_credit: 'VCR',
@@ -104,7 +103,6 @@ export const DOC_NUMBER_KIND: Record<PostingType, DocNumberKind> = {
   vendor_payment: 'hash',
   vendor_refund: 'hash',
   invoice_issued: 'document',
-  deposit_application: 'hash',
   credit_memo: 'document',
   provider_sync: 'calendar',
   recurring_journal: 'hash',

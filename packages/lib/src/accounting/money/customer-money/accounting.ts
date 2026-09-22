@@ -1,30 +1,19 @@
 // packages/lib/src/accounting/money/customer-money/accounting.ts
 
 /**
- * A channel customer receipt against an ORDER.
- *
- * ```
- *   Dr <the cash endpoint — the gateway's clearing account>   the receipt
- *       Cr accounts_receivable                                  the shipped part
- *       Cr customer_deposits                                    the advance part
- *       Cr sales_tax_payable                                    per jurisdiction
- * ```
- *
- * The split comes from the order's recognition timeline, which is what a
- * standalone invoice does not need - see `invoice-payments/receipt-accounting.ts`.
- *
- * Subject the `MoneyTransaction`, parent the order, counterparty the customer;
- * `storeId` is the feed's `FinancialSourceAccount`. The rail is stamped onto the
- * movement here, inside the posting transaction, because the feed link is set by
- * a person and may not exist when the movement arrives (task 71 §3).
+ * A channel customer receipt: `Dr <cash endpoint> / Cr accounts_receivable`, the
+ * movement's amount, from the receipt's own facts only (91 D1). The order it paid
+ * is a `parent` link when known, never an input to the lines.
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
 import type { Database, Transaction } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
+import { readOrganizationSettings } from '../../../settings/read'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
+import { withWorkItemCode } from '../../work-items/refusal'
 import {
   type LoadedMovement,
   type MovementPostingResult,
@@ -32,12 +21,6 @@ import {
   postMovementEntry,
 } from '../post-movement'
 import { readCustomerReceiptAccountingSource } from './receipt-accounting'
-import { allocateRecognitionTaxComponents } from './recognition'
-import { readOrderRecognitionFactsInTx } from './recognition-facts'
-import {
-  readOrderRecognitionSource,
-  requireCompleteOrderRecognitionSource,
-} from './recognition-source'
 
 export type CustomerReceiptAccountingResult = MovementPostingResult
 
@@ -53,106 +36,63 @@ async function prepareReceipt(
   organizationId: string,
   loaded: LoadedMovement
 ): Promise<PreparedMovement> {
-  const source = await readCustomerReceiptAccountingSource(
-    tx,
-    organizationId,
-    loaded.money.id,
-    loaded.bookTimeZone
-  )
-  const facts = await readOrderRecognitionFactsInTx(tx, organizationId, source.orderId)
-  if (source.money.partyInstanceId && source.money.partyInstanceId !== facts.customerInstanceId)
-    throw new UnprocessableEntityError('Receipt customer differs from the order customer')
-  const timeline = requireCompleteOrderRecognitionSource(
-    await readOrderRecognitionSource(tx, {
-      organizationId,
-      orderId: source.orderId,
-      orderNetMinor: (facts.subtotal + facts.shipping).toString(),
-      orderTaxMinor: facts.tax.toString(),
-      bookTimeZone: loaded.bookTimeZone,
-      target: { kind: 'receipt', id: source.money.id },
-    })
-  )
-  const allocation = timeline.target
-  if (!allocation)
-    throw new UnprocessableEntityError('Receipt is absent from the recognition timeline')
-  const taxShares = allocateRecognitionTaxComponents(timeline.allocations, facts.taxComponents).get(
-    source.money.id
-  )!
-  const taxComponents = facts.taxComponents.map((component) => ({
-    ...component,
-    amountMinor: taxShares.find((share) => share.componentKey === component.componentKey)!
-      .amountMinor,
-  }))
-  // The handle (or, failing that, the feed link) is the rail: stamped onto the
-  // movement here so the movement and its posting agree, then resolved through
-  // the one cash endpoint. A reserved handle names no rail and lands in
-  // undeposited funds.
+  const source = await readCustomerReceiptAccountingSource(tx, organizationId, loaded.money.id)
+  const customerId =
+    source.money.partyInstanceId ??
+    (await readOrganizationSettings(organizationId, ['accounting.guestContactId'] as const))[
+      'accounting.guestContactId'
+    ]
+  if (!customerId)
+    throw new UnprocessableEntityError(
+      'Receipt has no customer and the organization has no guest customer',
+      // Minting the guest wakes this code (`parties/guest-contact.ts`).
+      withWorkItemCode('CUSTOMER_UNRESOLVED')
+    )
+  // The handle (or, failing that, the feed link) is the rail, stamped so the
+  // movement and its posting agree. A reserved handle lands in undeposited funds.
   if (source.paymentGatewayId) await loaded.stampGateway(source.paymentGatewayId)
+  // A gift card redemption: the receipt's endpoint is the liability it spends down.
+  if (source.giftCard) loaded.markGiftCard()
   const endpoint = await loaded.endpoint()
 
-  const dimensions = {
-    sourceProvider: source.sourceProvider,
-    ...(facts.channel ? { channel: facts.channel } : {}),
-    sourceStoreId: source.sourceStoreId,
-    ...(source.paymentGatewayId ? { paymentGatewayId: source.paymentGatewayId } : {}),
-    orderId: source.orderId,
+  const label = [source.storeDomain, source.sourceExternalId, source.gatewayName]
+    .filter(Boolean)
+    .join(' / ')
+  const base = {
+    sourceType: 'money_transaction',
+    sourceId: source.money.id,
+    dimensions: {
+      sourceProvider: source.sourceProvider,
+      sourceStoreId: source.sourceStoreId,
+      ...(source.paymentGatewayId ? { paymentGatewayId: source.paymentGatewayId } : {}),
+    },
   }
-  const base = { sourceType: 'money_transaction', sourceId: source.money.id, dimensions }
-  const money = (amount: string) => toLedgerMinor(amount, 'USD', 2)
+  const amount = toLedgerMinor(source.money.amountMinor.toString(), 'USD', 2)
   const lines: GlPostingLineInput[] = [
     {
       ...base,
       glAccountId: endpoint.glAccountId,
       direction: 'debit',
-      amount: money(allocation.amountMinor),
+      amount,
       sortOrder: 0,
-      memo: 'Customer payment received',
+      memo: `${label}: Customer payment received`,
     },
-  ]
-  if (BigInt(allocation.receivableMinor) > 0n)
-    lines.push({
+    {
       ...base,
       accountRole: 'accounts_receivable',
       direction: 'credit',
-      amount: money(allocation.receivableMinor),
-      sortOrder: lines.length,
+      amount,
+      sortOrder: 1,
       counterpartyType: 'customer',
-      counterpartyId: facts.customerInstanceId,
-      memo: 'Payment applied to shipped order',
-    })
-  if (BigInt(allocation.depositMinor) > 0n)
-    lines.push({
-      ...base,
-      accountRole: 'customer_deposits',
-      direction: 'credit',
-      amount: money(allocation.depositMinor),
-      sortOrder: lines.length,
-      memo: 'Advance payment held for shipment',
-    })
-  for (const tax of taxComponents)
-    if (BigInt(tax.amountMinor) > 0n)
-      lines.push({
-        ...base,
-        accountRole: 'sales_tax_payable',
-        direction: 'credit',
-        amount: money(tax.amountMinor),
-        sortOrder: lines.length,
-        dimensions: {
-          ...dimensions,
-          jurisdiction: tax.jurisdiction!,
-          taxComponentId: tax.componentKey,
-        },
-        memo: 'Sales tax on advance payment',
-      })
-  const label = [source.storeDomain, source.sourceExternalId, source.gatewayName, facts.channel]
-    .filter(Boolean)
-    .join(' / ')
-  for (const line of lines) line.memo = `${label}: ${line.memo}`
+      counterpartyId: customerId,
+      memo: `${label}: Customer payment`,
+    },
+  ]
 
   return {
     lines,
-    parent: { sourceKind: 'order', sourceId: source.orderId },
-    counterparty: { sourceKind: 'contact', sourceId: facts.customerInstanceId },
+    ...(source.orderId ? { parent: { sourceKind: 'order', sourceId: source.orderId } } : {}),
+    counterparty: { sourceKind: 'contact', sourceId: customerId },
     storeId: source.sourceStoreId,
   }
 }

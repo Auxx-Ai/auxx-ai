@@ -17,18 +17,6 @@ export {
   type CreditMemoEntitlementComponent,
   computeCreditMemoAmounts,
 } from './credit-memo'
-// ── plans/accounting/tasks/07: customer deposits are a liability ────────────
-// PURE - reaches nothing but `errors`, `build-entry` and `period-key`, all of
-// which are already on this surface.
-export {
-  type BuildDepositApplicationEntryInput,
-  type BuiltDepositApplicationEntry,
-  buildDepositApplicationEntry,
-  DEPOSIT_APPLICATION_PERIOD_KEY_PREFIX,
-  DEPOSIT_APPLICATION_POSTING_TYPE,
-  DEPOSIT_APPLICATION_SOURCE_TYPE,
-  depositApplicationPeriodKey,
-} from './deposit-application'
 export {
   buildDocNumber,
   DOC_NUMBER_KIND,
@@ -46,6 +34,7 @@ export {
   type BuiltVendorBillEntry,
   buildEntry,
   buildVendorBillEntry,
+  ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
   roleAcceptsManualSource,
   roleScopeAxis,

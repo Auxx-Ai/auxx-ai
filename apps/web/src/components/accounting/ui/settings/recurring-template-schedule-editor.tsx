@@ -117,8 +117,8 @@ export function RecurringTemplateScheduleEditor({
             )}
           </div>
           <p className='text-muted-foreground text-xs'>
-            A template posts nothing. The daily sweep copies it into a DRAFT entry for each month it
-            owes, and you review and post those from the ledger.
+            A template posts nothing. The daily sweep copies it into an entry for each month it owes
+            and posts it. Review happens in the outbox, before anything is sent.
           </p>
           <div>
             <Button variant='outline' size='sm' onClick={onEditLines}>

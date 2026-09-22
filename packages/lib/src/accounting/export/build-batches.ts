@@ -15,11 +15,10 @@ import { findLinkedPostings } from '../ledger/reads/list-postings'
 import type { ExportAvenue } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import type { CounterpartyType, PostingType } from '../ledger/types'
-import { readSourceAccounts } from '../money/customer-money/source-reads'
 import { readActiveBookConnection } from '../providers/book-connections'
 import { type AccountingProviderLimits, resolveAccountingProvider } from '../providers/provider'
 import { type UnbuiltGroupKey, unbuiltGroupKeyString } from './client'
-import { type ShapeForPostingLine, shapeForPosting, wantsSalesReceipt } from './object-shape'
+import { type ShapeForPostingLine, shapeForPosting } from './object-shape'
 import {
   type ExportJournalPayload,
   exportJournalSchema,
@@ -61,18 +60,6 @@ interface CandidateRow {
   railId: string | null
   totalMinor: number
   built: unknown
-}
-
-/** A store's native-object settings (T14). Absent store id resolves as `auto`. */
-interface StoreExportSetting {
-  exportShape: 'auto' | 'invoice'
-}
-
-/** One receipt (`payment` posting) parented on an order, for the fully-paid check (§1). */
-interface ReceiptInfo {
-  glPostingId: string
-  totalMinor: number
-  txnDate: string
 }
 
 const POSTINGS_PAGE_SIZE = 5000
@@ -164,16 +151,6 @@ async function readLines(db: Database, organizationId: string, glPostingIds: str
     .orderBy(asc(schema.GlPostingLine.lineNumber))
 }
 
-/** T14: `exportShape` per store, one query on the distinct `storeId`s in range. */
-async function readStoreExportSettings(
-  db: Database,
-  organizationId: string,
-  storeIds: string[]
-): Promise<Map<string, StoreExportSetting>> {
-  const rows = await readSourceAccounts(db, organizationId, storeIds)
-  return new Map([...rows].map(([id, row]) => [id, { exportShape: row.exportShape }]))
-}
-
 /** Each posting's own `parent` link - a fulfillment's order, a receipt's order or invoice. */
 async function readParentLinks(
   db: Database,
@@ -198,36 +175,6 @@ async function readParentLinks(
   return new Map(
     rows.map((row) => [row.glPostingId, { sourceKind: row.sourceKind, sourceId: row.sourceId }])
   )
-}
-
-/**
- * Posted `payment` postings parented on one of `orderIds` - the "fully paid at
- * shipment" read (§1). Through `GlPostingSource`, never the money model.
- */
-async function readReceiptsForOrders(
-  db: Database,
-  organizationId: string,
-  orderIds: string[]
-): Promise<Map<string, ReceiptInfo[]>> {
-  const rows = await findLinkedPostings(db, organizationId, {
-    sourceKind: 'order',
-    sourceIds: orderIds,
-    linkRole: 'parent',
-    postingTypes: ['payment'],
-    statuses: ['posted'],
-  })
-  const map = new Map<string, ReceiptInfo[]>()
-  for (const row of rows) {
-    const info: ReceiptInfo = {
-      glPostingId: row.glPostingId,
-      totalMinor: row.totalMinor,
-      txnDate: row.txnDate,
-    }
-    const bucket = map.get(row.sourceId)
-    if (bucket) bucket.push(info)
-    else map.set(row.sourceId, [info])
-  }
-  return map
 }
 
 /**
@@ -376,63 +323,20 @@ export async function buildExportBatches(
     const batchIds: string[] = []
 
     if (settings.mode === 'transaction') {
-      // ── T14 + D1: which store each fulfillment resolves through, and which
-      // receipts a fully-paid one absorbs into a Sales Receipt. ─────────────
-      const storeIds = [
-        ...new Set(eligible.map((row) => row.storeId).filter((id): id is string => id !== null)),
-      ]
-      const storeSettings = await readStoreExportSettings(db, organizationId, storeIds)
-
-      const fulfillmentIds = eligible
-        .filter((row) => row.postingType === 'fulfillment')
-        .map((row) => row.id)
+      // Each posting is its own batch; nothing reads a sibling (91 §8.13).
       const paymentIds = eligible
-        .filter((row) => row.postingType === 'payment' || row.postingType === 'deposit_application')
+        .filter((row) => row.postingType === 'payment')
         .map((row) => row.id)
-      const parentLinks = await readParentLinks(db, organizationId, [
-        ...fulfillmentIds,
-        ...paymentIds,
+      const parentLinks = await readParentLinks(db, organizationId, paymentIds)
+      const claimBySource = await readClaimsForSources(db, organizationId, [
+        ...parentLinks.values(),
       ])
 
-      const orderIdByFulfillment = new Map<string, string>()
-      for (const id of fulfillmentIds) {
-        const link = parentLinks.get(id)
-        if (link && link.sourceKind === 'order') orderIdByFulfillment.set(id, link.sourceId)
-      }
-      const receiptsByOrder = await readReceiptsForOrders(db, organizationId, [
-        ...new Set(orderIdByFulfillment.values()),
-      ])
-
-      const paymentSources = paymentIds
-        .map((id) => parentLinks.get(id))
-        .filter((link): link is { sourceKind: string; sourceId: string } => link !== undefined)
-      const claimBySource = await readClaimsForSources(db, organizationId, paymentSources)
-
-      // D1: a fully-paid `auto` fulfillment's Sales Receipt absorbs the
-      // qualifying receipts as members; they are excluded from their own
-      // `payment` batch THIS run, and the anti-join protects later runs.
-      const fullyPaidByFulfillment = new Map<string, boolean>()
-      const receiptIdsByFulfillment = new Map<string, string[]>()
-      for (const row of eligible) {
-        if (row.postingType !== 'fulfillment') continue
-        const orderId = orderIdByFulfillment.get(row.id)
-        const receipts = orderId ? (receiptsByOrder.get(orderId) ?? []) : []
-        const qualifying = receipts.filter((receipt) => receipt.txnDate <= row.txnDate)
-        const sum = qualifying.reduce((total, receipt) => total + receipt.totalMinor, 0)
-        const fullyPaid = qualifying.length > 0 && sum >= row.totalMinor
-        fullyPaidByFulfillment.set(row.id, fullyPaid)
-        const shape = row.storeId ? (storeSettings.get(row.storeId)?.exportShape ?? 'auto') : 'auto'
-        if (wantsSalesReceipt(shape, fullyPaid))
-          receiptIdsByFulfillment.set(
-            row.id,
-            qualifying.map((receipt) => receipt.glPostingId)
-          )
-      }
-      const absorbedReceiptIds = new Set([...receiptIdsByFulfillment.values()].flat())
-
-      const lines = await readLines(db, organizationId, [
-        ...new Set([...eligible.map((row) => row.id), ...absorbedReceiptIds]),
-      ])
+      const lines = await readLines(
+        db,
+        organizationId,
+        eligible.map((row) => row.id)
+      )
       const byPosting = new Map<string, typeof lines>()
       for (const line of lines) {
         const bucket = byPosting.get(line.glPostingId)
@@ -441,15 +345,8 @@ export async function buildExportBatches(
       }
 
       for (const row of eligible) {
-        // Absorbed into a Sales Receipt above - not its own candidate this run.
-        if (absorbedReceiptIds.has(row.id)) continue
-
         const avenue = row.avenue
-        const receiptIds = receiptIdsByFulfillment.get(row.id) ?? []
-        const allLines = [
-          ...(byPosting.get(row.id) ?? []),
-          ...receiptIds.flatMap((id) => byPosting.get(id) ?? []),
-        ]
+        const allLines = byPosting.get(row.id) ?? []
         if (!avenue || allLines.length < 2 || !row.docNumber) continue
 
         const roleByGlAccountId = new Map<string, AccountRole | null>()
@@ -468,9 +365,6 @@ export async function buildExportBatches(
             }
           : null
 
-        const exportShape = row.storeId
-          ? (storeSettings.get(row.storeId)?.exportShape ?? 'auto')
-          : 'auto'
         const memo = (row.built as { memo?: unknown } | null)?.memo
         const paymentSource = parentLinks.get(row.id)
         const appliesToGlPostingId = paymentSource
@@ -493,8 +387,6 @@ export async function buildExportBatches(
           roleByGlAccountId,
           limits,
           counterparty,
-          exportShape,
-          fullyPaidAtShipment: fullyPaidByFulfillment.get(row.id),
           appliesToGlPostingId,
         })
         if (shaped.fallbackReason) {
@@ -513,8 +405,7 @@ export async function buildExportBatches(
               ...base,
               mode: 'transaction',
               avenue,
-              // The posting id IS the grain in Transaction mode, unchanged by
-              // D1: a Sales Receipt's grain is still the fulfillment's id.
+              // The posting id IS the grain in Transaction mode.
               grainKey: row.id,
               storeId: row.storeId,
               railId: row.railId,
@@ -524,7 +415,7 @@ export async function buildExportBatches(
               payloadHash: hashExportPayload(shaped.payload),
               totalMinor: row.totalMinor,
             },
-            [row.id, ...receiptIds]
+            [row.id]
           )
         )
         if (id) batchIds.push(id)
@@ -563,6 +454,7 @@ export async function buildExportBatches(
           amountMinor: line.amountMinor,
           sortOrder: index,
         })),
+        summary: { storeId: group.storeId },
       } satisfies ExportJournalPayload)
       const id = await db.transaction((tx) =>
         insertBatchInTx(

@@ -8,10 +8,8 @@
 // and Payment gateways, which are the other two screens that decide what lands
 // in the books without being a book entry themselves.
 //
-// 🛑 Every write here is `ledgerControl`. A schedule decides what the sweep
-// puts in the books every month with nobody pressing anything, which is the
-// same authority `setLockedThrough` takes. A bookkeeper with `ledgerPost`
-// still reviews and posts each generated draft.
+// Every write here is `ledgerControl`: the sweep posts each occurrence with nobody
+// pressing anything (91 D5), the authority `setLockedThrough` takes.
 
 import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
@@ -43,7 +41,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'Entries that repeat - a monthly depreciation figure, an accrual reversal, a prepaid schedule. A template posts nothing itself: a nightly sweep copies it into a draft for each month it owes, and you review and post those. A month that is closed HOLDS the entry rather than skipping it.'
+  'Entries that repeat - a monthly depreciation figure, an accrual reversal, a prepaid schedule. A template posts nothing itself: a nightly sweep copies it into an entry for each month it owes and posts it. A month that is closed HOLDS the entry rather than skipping it.'
 
 export function RecurringTemplatesSettingsPage() {
   // 🛑 `ledgerControl`, not `ledgerView`. Every control on this page is a
@@ -119,7 +117,7 @@ export function RecurringTemplatesSettingsPage() {
     const confirmed = await confirm({
       title: 'Stop this template repeating?',
       description:
-        'Entries it has already generated stay exactly where they are, posted or draft - only the schedule goes. The template itself is kept, so you can start it again later.',
+        'Entries it has already generated stay exactly where they are - only the schedule goes. The template itself is kept, so you can start it again later.',
       confirmText: 'Stop repeating',
       cancelText: 'Cancel',
       destructive: true,
@@ -128,11 +126,8 @@ export function RecurringTemplatesSettingsPage() {
     clearSchedule.mutate({ templateId: selected.template.id })
   }, [selected, confirm, clearSchedule])
 
-  // The SAME drawer the ledger page uses, in template mode: it hides Preview
-  // and Post, because `postJournalEntry` refuses a stencil by name. The
-  // schedule is not in it - a rule needs a saved record to hang off and the
-  // drawer defers its create to the first edit, so the repeat editor lives in
-  // the pane behind this.
+  // The ledger's drawer in template mode (no Preview or Post). The schedule lives in
+  // the pane behind it: a rule needs a saved record, and the drawer creates on first Save.
   const drawer = useMemo(
     () => (
       <JournalEntryDrawer

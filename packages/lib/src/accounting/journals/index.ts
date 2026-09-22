@@ -7,6 +7,7 @@
 // barrel: the writes pull `UnifiedCrudHandler` and the whole server graph.
 
 export {
+  buildEntryForJournalEntry,
   type CreateJournalEntryInput,
   createJournalEntry,
   discardJournalEntry,
@@ -20,8 +21,10 @@ export {
   listJournalEntries,
   type PostingSummary,
   type PreviewJournalEntryInput,
+  postBuiltJournalEntry,
   postJournalEntry,
   previewJournalEntry,
+  readJournalEntryLines,
   reverseJournalEntry,
   type UpdateJournalEntryInput,
   updateJournalEntry,

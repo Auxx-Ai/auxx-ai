@@ -21,6 +21,7 @@ export {
 export {
   AGING_BUCKET_LABELS,
   AGING_COLUMNS,
+  AGING_PRE_CUTOVER_GROUP_ID,
   AGING_UNAPPLIED_GROUP_ID,
   type Aging,
   type AgingBucketKey,
@@ -36,6 +37,7 @@ export {
   type BalanceSheet,
   type BalanceSheetRow,
   type BalanceSheetSnapshot,
+  type CustomerDepositsRow,
   type ReadBalanceSheetOptions,
   readBalanceSheet,
 } from './balance-sheet'

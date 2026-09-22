@@ -25,6 +25,7 @@ import {
   type ChartAccountRow,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
+  ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
   type RoleAssignmentRow,
   type RoleRailAssignmentRow,
@@ -67,11 +68,12 @@ import { MappingScopeRow } from './mapping-scope-row'
 /** Mirrors `ROLES_WITHOUT_DEFAULT` (`postings/build-entry.ts`) - not client-exported. */
 const BANK_ROLE = 'bank'
 
-/** Mirrors `ROLE_ACCOUNT_SUBTYPES` (`postings/build-entry.ts`) - not client-exported. */
-const SUBTYPE_PIN: Partial<Record<AccountRole, GlAccountSubtypeValue>> = {
-  bank: 'bank' as GlAccountSubtypeValue,
-  clearing: 'clearing' as GlAccountSubtypeValue,
-}
+/** The picker's filter and the create dialog's preset, so a new per-store A/R carries its subtype. */
+const SUBTYPE_PIN = ROLE_ACCOUNT_SUBTYPES
+
+/** QuickBooks invoices and payments name no receivable account, so a per-store A/R is journal-only (91 §4.3). */
+const STORE_RECEIVABLE_NOTE =
+  'QuickBooks invoices and payments use its default A/R; this account reaches it through journals only'
 
 /** One edit, in `ledger.saveMapping`'s own row shape - sent as a one-row batch on every change. */
 interface MappingEdit {
@@ -683,6 +685,7 @@ function StoreScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      note={roleKey === 'accounts_receivable' ? STORE_RECEIVABLE_NOTE : undefined}
       linked={override?.linked ?? null}
       linkAccountId={override?.accountId ?? null}
       linkTooltip={linkTooltip}

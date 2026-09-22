@@ -16,12 +16,6 @@ export {
 } from './bridge'
 export type { OrderMoneyTransaction } from './client'
 export {
-  type AcceptDepositApplicationInput,
-  acceptDepositApplicationAccounting,
-  listDepositApplicationAccountingCandidates,
-  sweepDepositApplicationAccounting,
-} from './deposit-application-accounting'
-export {
   materializeImportedMoneyInTx,
   sweepImportedCustomerMoney,
 } from './ingest'

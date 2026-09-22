@@ -1,30 +1,25 @@
 // packages/lib/src/accounting/money/invoice-payments/receipt-accounting.ts
 
 /**
- * A confirmed customer receipt against an ISSUED INVOICE.
+ * A confirmed customer receipt on the invoice lane.
  *
  * ```
  *   Dr <the cash endpoint: a rail's clearing, a bank account, or undeposited funds>
  *       Cr accounts_receivable
  * ```
  *
- * ## 🔑 Why this is not `customer-money/accounting.ts`
+ * The credit is the movement's whole amount whatever it is applied to (91 §4.1):
+ * a partial or unapplied receipt is a credit in A/R, and the applications are
+ * links that aging reads, never inputs to the lines.
  *
- * That module is the same avenue's ORDER policy: a Shopify receipt can arrive
- * before anything has been recognised, so it needs a recognition timeline and a
- * tax split to know whether the money is a deposit, a receivable or tax. An
- * issued invoice has already answered that question - the money relieves the
- * receivable, in full, and that is the entire entry.
- *
- * Subject the `MoneyTransaction`, parent the invoice, counterparty the invoice's
- * own contact (TARGET §5).
+ * Subject the `MoneyTransaction`, parent the invoice when the live applications
+ * name exactly one, counterparty that invoice's contact (TARGET §5).
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
-import { UnprocessableEntityError } from '../../../errors'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
@@ -34,7 +29,7 @@ import {
   type PreparedMovement,
   postMovementEntry,
 } from '../post-movement'
-import { listMovementApplications } from '../reads'
+import { listLiveApplications } from '../reads'
 
 export interface AcceptInvoiceReceiptInput {
   organizationId: string
@@ -46,30 +41,19 @@ export interface AcceptInvoiceReceiptInput {
 }
 
 /**
- * The single invoice the movement's applications name, and that invoice's contact.
+ * The one invoice the movement's live applications name, when there is exactly one.
  *
- * 🛑 The invoice is resolved through `EntityDefinition.entityType`, never trusted
- * from the FK: crediting a receivable no invoice ever raised is not recoverable.
+ * Resolved through `EntityDefinition.entityType`, never trusted from the FK.
  */
-async function readInvoiceReceiptSource(
+async function readInvoiceLink(
   tx: Transaction,
   organizationId: string,
   money: typeof schema.MoneyTransaction.$inferSelect
 ) {
-  const applications = await listMovementApplications(tx, organizationId, money.id)
-  const invoiceInstanceId = applications[0]?.invoiceInstanceId
-  // One invoice, all applies, summing to the whole movement. A partially applied
-  // receipt is held money and belongs to `deposit_application`.
-  if (
-    !invoiceInstanceId ||
-    applications.some(
-      (a) => a.operation !== 'apply' || a.invoiceInstanceId !== invoiceInstanceId
-    ) ||
-    applications.reduce((sum, a) => sum + a.amountMinor, 0n) !== money.amountMinor
-  )
-    throw new UnprocessableEntityError(
-      'Invoice receipt needs complete applications to one invoice; unapplications require correction'
-    )
+  const applications = await listLiveApplications(tx, organizationId, money.id)
+  const invoiceIds = [...new Set(applications.flatMap((a) => a.invoiceInstanceId ?? []))]
+  if (invoiceIds.length !== 1) return null
+  const invoiceInstanceId = invoiceIds[0]!
 
   const [invoice] = await tx
     .select({ id: schema.EntityInstance.id })
@@ -91,21 +75,15 @@ async function readInvoiceReceiptSource(
       )
     )
     .limit(1)
-  if (!invoice)
-    throw new UnprocessableEntityError(
-      'Invoice receipt requires a live invoice in this organization'
-    )
+  if (!invoice) return null
 
-  const fields = await loadInvoiceForIssuance(tx, organizationId, invoiceInstanceId)
-  if (!fields?.totalMinor)
-    throw new UnprocessableEntityError('Invoice receipt requires an invoice with a total')
-
+  const fields = await loadInvoiceForIssuance(tx, organizationId, invoice.id)
   return {
-    invoiceInstanceId,
-    invoiceNumber: fields.number || null,
-    // The invoice's own contact, not the movement's party: `accounts_receivable`
-    // is a per-customer balance and has to agree with the issuance entry.
-    contactInstanceId: fields.contactInstanceId ?? money.partyInstanceId ?? null,
+    invoiceInstanceId: invoice.id,
+    invoiceNumber: fields?.number || null,
+    // The invoice's own contact: `accounts_receivable` is a per-customer balance
+    // and has to agree with the issuance entry.
+    contactInstanceId: fields?.contactInstanceId ?? money.partyInstanceId ?? null,
   }
 }
 
@@ -114,16 +92,16 @@ async function prepareInvoiceReceipt(
   organizationId: string,
   loaded: LoadedMovement
 ): Promise<PreparedMovement> {
-  const source = await readInvoiceReceiptSource(tx, organizationId, loaded.money)
+  const invoice = await readInvoiceLink(tx, organizationId, loaded.money)
   const endpoint = await loaded.endpoint()
   const amountMinor = toLedgerMinor(loaded.money.amountMinor, 'USD', 2)
-  const label = source.invoiceNumber
-    ? `Payment received on ${source.invoiceNumber}`
+  const label = invoice?.invoiceNumber
+    ? `Payment received on ${invoice.invoiceNumber}`
     : 'Payment received'
   const base = {
     ...loaded.base,
-    ...(source.contactInstanceId
-      ? { counterpartyType: 'customer' as const, counterpartyId: source.contactInstanceId }
+    ...(invoice?.contactInstanceId
+      ? { counterpartyType: 'customer' as const, counterpartyId: invoice.contactInstanceId }
       : {}),
   }
   const lines: GlPostingLineInput[] = [
@@ -144,11 +122,12 @@ async function prepareInvoiceReceipt(
       memo: label,
     },
   ]
+  if (!invoice) return { lines }
   return {
     lines,
-    parent: { sourceKind: 'invoice', sourceId: source.invoiceInstanceId },
-    ...(source.contactInstanceId
-      ? { counterparty: { sourceKind: 'contact', sourceId: source.contactInstanceId } }
+    parent: { sourceKind: 'invoice', sourceId: invoice.invoiceInstanceId },
+    ...(invoice.contactInstanceId
+      ? { counterparty: { sourceKind: 'contact', sourceId: invoice.contactInstanceId } }
       : {}),
   }
 }

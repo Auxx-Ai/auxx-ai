@@ -79,6 +79,12 @@ describe('GlPosting', () => {
     expect(postingConfig.columns.find((c) => c.name === 'built')?.notNull).toBe(true)
   })
 
+  it('carries the payout id as a nullable text column beside store and rail (91 D9)', () => {
+    const payoutId = postingConfig.columns.find((c) => c.name === 'payoutId')
+    expect(payoutId?.getSQLType()).toBe('text')
+    expect(payoutId?.notNull).toBe(false)
+  })
+
   it('carries no export columns — the export lives on `ExportBatch` (TARGET §3)', () => {
     const names = columnNames(postingConfig)
     for (const gone of [
@@ -274,8 +280,8 @@ describe('the enum vocabularies', () => {
     expect(glPostingStatus.enumValues).toContain('reversed')
   })
 
-  it('carries `draft` — an entry with lines, no doc number and no claim', () => {
-    expect(glPostingStatus.enumValues).toContain('draft')
+  it('has no `draft` — every entry posts at insert (91 D5)', () => {
+    expect(glPostingStatus.enumValues).not.toContain('draft')
   })
 
   it('matches POSTING_TYPES in packages/lib/src/accounting/ledger/types.ts', () => {
@@ -302,7 +308,6 @@ describe('the enum vocabularies', () => {
       'payment',
       'refund',
       'invoice_issued',
-      'deposit_application',
       'credit_memo',
       // brief 20 §6. The one type auxx does not author: the accountant's own
       // entry, read back off the provider's general ledger.
@@ -313,6 +318,9 @@ describe('the enum vocabularies', () => {
       'vendor_credit',
       // 74 D4.
       'landed_cost_clear',
+      // 92: money with a vendor, either direction.
+      'vendor_payment',
+      'vendor_refund',
     ])
   })
 })

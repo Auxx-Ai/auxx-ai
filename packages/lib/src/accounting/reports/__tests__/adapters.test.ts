@@ -8,6 +8,7 @@ import {
   toBalanceSheetRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
+  toTrialBalanceStatementRows,
 } from '../adapters'
 import type { BalanceSheetSnapshot } from '../balance-sheet'
 import type { ProfitAndLossSnapshot } from '../profit-and-loss'
@@ -91,6 +92,7 @@ const balanceSheet: BalanceSheetSnapshot = {
       inChart: true,
     },
   ],
+  customerDeposits: [],
   totalAssetsMinor: 900_000,
   totalLiabilitiesMinor: 100_000,
   totalEquityMinor: 800_000,
@@ -104,6 +106,119 @@ const balanceSheet: BalanceSheetSnapshot = {
   },
   verdict: true,
 }
+
+describe('customer deposits split (91 D3)', () => {
+  const withDeposits: BalanceSheetSnapshot = {
+    ...balanceSheet,
+    assets: [
+      ...balanceSheet.assets,
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        accountName: 'Shopify receivable',
+        accountType: 'asset',
+        balanceMinor: 30_000,
+        inChart: true,
+      },
+    ],
+    customerDeposits: [
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        accountName: 'Shopify receivable',
+        balanceMinor: 12_000,
+      },
+    ],
+    totalAssetsMinor: 930_000,
+    totalLiabilitiesMinor: 112_000,
+  }
+
+  it('puts a computed, non-drillable deposits row under Liabilities and notes the receivable', () => {
+    const rows = toBalanceSheetRows(withDeposits)
+    const liabilities = rows.find((r) => r.id === 'liabilities')
+    const deposits = liabilities?.children?.find((c) => c.id === 'customer-deposits:acct_1100')
+    expect(deposits).toMatchObject({
+      kind: 'computed',
+      label: '1100 Shopify receivable - customer deposits',
+      values: [12_000],
+    })
+    expect(deposits?.meta?.glAccountId).toBeUndefined()
+    expect(deposits?.meta?.note).toMatch(/Not a posted balance/)
+    expect(deposits?.label).not.toMatch(/[–—]/)
+    expect(liabilities?.values).toEqual([112_000])
+
+    const receivable = rows
+      .find((r) => r.id === 'assets')
+      ?.children?.find((c) => c.id === 'acct_1100')
+    expect(receivable?.values).toEqual([30_000])
+    expect(receivable?.meta?.note).toMatch(/customer deposits/)
+  })
+
+  it('renders a deposits row present in only one snapshot with an empty cell in the other', () => {
+    const rows = toBalanceSheetRows(withDeposits, balanceSheet)
+    const deposits = rows
+      .find((r) => r.id === 'liabilities')
+      ?.children?.find((c) => c.id === 'customer-deposits:acct_1100')
+    expect(deposits?.values).toEqual([12_000, null])
+  })
+
+  it('moves a receivable credit to a computed row in the trial balance statement, totals unchanged', () => {
+    const rows = toTrialBalanceStatementRows({
+      organizationId: 'org_1',
+      asOf: '2026-08-31',
+      fiscalYearStart: '2026-01-01',
+      chart: [],
+      rows: [
+        {
+          glAccountId: 'acct_1100',
+          accountCode: '1100',
+          accountName: 'Shopify receivable',
+          accountType: 'asset',
+          subtype: 'accounts_receivable',
+          debitMinor: 50_000,
+          creditMinor: 32_000,
+          balanceMinor: 18_000,
+          inChart: true,
+          receivableSplit: { receivableMinor: 30_000, depositsMinor: 12_000 },
+        },
+        {
+          glAccountId: 'acct_2000',
+          accountCode: '2000',
+          accountName: 'A/P',
+          accountType: 'liability',
+          subtype: null,
+          debitMinor: 0,
+          creditMinor: 18_000,
+          balanceMinor: 18_000,
+          inChart: true,
+        },
+      ],
+      retainedEarnings: {
+        balanceMinor: 0,
+        priorYearsSource: 'rolled_forward',
+        priorYearsMinor: 0,
+        postedPriorYearsMinor: 0,
+        currentPeriodMinor: 0,
+        accountCode: null,
+        plugDebitMinor: 0,
+        plugCreditMinor: 0,
+      },
+      totalDebitMinor: 50_000,
+      totalCreditMinor: 50_000,
+      balanced: true,
+    })
+    expect(rows.map((r) => r.id)).toEqual([
+      'acct_1100',
+      'acct_2000',
+      'customer-deposits:acct_1100',
+      'total',
+    ])
+    expect(rows[0]?.values).toEqual([50_000, 32_000, 30_000])
+    expect(rows[2]).toMatchObject({ kind: 'computed', values: [null, null, 12_000] })
+    expect(rows[2]?.meta?.glAccountId).toBeUndefined()
+    expect(rows[3]?.values).toEqual([50_000, 50_000, null])
+  })
+})
 
 describe('toBalanceSheetRows', () => {
   it('renders three sections plus the total-liabilities-and-equity row, with both retained-earnings computed rows in Equity', () => {

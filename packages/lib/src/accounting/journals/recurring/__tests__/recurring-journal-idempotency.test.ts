@@ -4,19 +4,12 @@
  * 🛑 **This is the test that stands between a working scheduler and a doubled
  * ledger** (task 21 §9).
  *
- * `postJournalEntry` no longer rebuilds the entry at post time - `postDraft`
- * posts the lines already resolved onto the draft's own `GlPosting`, which
- * `createJournalEntry` wrote with the deterministic `RJE-<fold>` period key
- * (`recurringJournalPeriodKey`). What is pinned here is what happens ON TOP of
- * that: `already_posted` is BELIEVED only after checking that the posting
- * holding the claim fills the same SLOT (`findRecurringKeyCollision`), and the
- * check is by SLOT and not by record id, so the ordinary duplicate-draft race
- * - two records, one occurrence - is NOT reported as a collision.
- *
- * The collaborators are stubbed at the module boundary rather than through a
- * fake database, for the reason `journal-entries/__tests__/writes.test.ts`
- * gives: `postDraft` has its own exhaustive suite and re-driving it through a
- * second fake here would test the fake.
+ * A generated entry posts under the rule's occurrence (`recurring_journal`, the
+ * rule id, the slot) with the deterministic `RJE-<fold>` period key. What is
+ * pinned here is what happens ON TOP of that: `already_posted` is BELIEVED only
+ * after checking that the posting holding the claim fills the same SLOT
+ * (`findRecurringKeyCollision`), and the check is by SLOT and not by record id,
+ * so two records raised for one occurrence converge rather than collide.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   record: null as Record<string, unknown> | null,
   postResult: { status: 'posted', glPostingId: 'post_1' } as Record<string, unknown>,
-  /** Every `postDraft` call, in order. */
+  /** Every `postEntry` call, in order. */
   posted: [] as Array<Record<string, unknown>>,
   updates: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   creates: [] as Array<{ defId: string; values: Record<string, unknown> }>,
@@ -43,13 +36,14 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
     async update(recordId: string, values: Record<string, unknown>) {
       h.updates.push({ recordId, values })
     }
-    async archive() {}
+    async bulkCreate() {
+      return { created: [], errors: [] }
+    }
   },
 }))
 
 vi.mock('../../../ledger/post/post-entry', () => ({
-  postEntry: async () => ({ status: 'drafted', glPostingId: 'draft_generated' }),
-  postDraft: async (_db: unknown, options: Record<string, unknown>) => {
+  postEntry: async (_db: unknown, options: Record<string, unknown>) => {
     h.posted.push(options)
     return h.postResult
   },
@@ -57,11 +51,6 @@ vi.mock('../../../ledger/post/post-entry', () => ({
 }))
 
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: async () => h.postResult }))
-
-vi.mock('../../../ledger/post/draft-lines', () => ({
-  updateDraftLines: async () => ({ isErr: () => false }),
-  discardDraftPosting: async () => ({ isErr: () => false }),
-}))
 
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
@@ -71,19 +60,11 @@ vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => okResult(h.winningSourceIds),
 }))
 
+vi.mock('../../../../entity-instances/edit-snapshot', () => ({ readEditStamp: async () => null }))
+
 vi.mock('../../entries/fields', () => ({
-  requireJournalEntryFieldContext: async () => ({
-    defId: 'def_je',
-    fields: {
-      journal_entry_number: { id: 'f_number' },
-      journal_entry_date: { id: 'f_date' },
-      journal_entry_memo: { id: 'f_memo' },
-      journal_entry_kind: { id: 'f_kind' },
-      journal_entry_gl_posting_id: { id: 'f_posting' },
-      journal_entry_recurrence_rule_id: { id: 'f_rule' },
-      journal_entry_occurrence_date: { id: 'f_slot' },
-    },
-  }),
+  requireJournalEntryFieldContext: async () => ({ defId: 'def_je', fields: {} }),
+  requireJournalEntryLineFieldContext: async () => ({ defId: 'def_line', fields: {} }),
 }))
 
 vi.mock('../../entries/reads', async () => {
@@ -111,8 +92,8 @@ const DB = {} as never
 const RULE_ID = 'rule_depreciation'
 const MARCH = '2026-03-31'
 
-/** A draft the sweep generated for March, as `reads.ts` would return it. */
-function generatedDraft(overrides: Partial<JournalEntryRecord> = {}): Record<string, unknown> {
+/** An unposted entry the sweep generated for March, as `reads.ts` would return it. */
+function generatedEntry(overrides: Partial<JournalEntryRecord> = {}): Record<string, unknown> {
   return {
     id: 'je_march_a',
     number: 'JNL-0042',
@@ -121,13 +102,10 @@ function generatedDraft(overrides: Partial<JournalEntryRecord> = {}): Record<str
     status: 'draft',
     kind: 'recurring',
     lines: [
-      { glAccountId: 'acct_6600', direction: 'debit', amountMinor: 25_000 },
-      { glAccountId: 'acct_1590', direction: 'credit', amountMinor: 25_000 },
+      { id: 'l1', glAccountId: 'acct_6600', direction: 'debit', amountMinor: 25_000 },
+      { id: 'l2', glAccountId: 'acct_1590', direction: 'credit', amountMinor: 25_000 },
     ],
-    // A generated draft always carries its companion posting from the moment
-    // `createJournalEntry` raised it (TARGET §1) - there is no longer a
-    // `glPostingId: null` state for a record this far along.
-    glPostingId: 'post_march_a',
+    glPostingId: null,
     recurrenceRuleId: RULE_ID,
     occurrenceDate: MARCH,
     createdAt: '2026-03-31T00:00:00.000Z',
@@ -136,7 +114,7 @@ function generatedDraft(overrides: Partial<JournalEntryRecord> = {}): Record<str
 }
 
 beforeEach(() => {
-  h.record = generatedDraft()
+  h.record = generatedEntry()
   h.postResult = { status: 'posted', glPostingId: 'post_1' }
   h.posted = []
   h.updates = []
@@ -158,9 +136,7 @@ describe('the keyspace', () => {
     })
 
     expect(march).not.toEqual(april)
-    // Two templates that both fire on the last day of the month is the
-    // ordinary case - depreciation beside an accrual reversal - so keying on
-    // the date alone would merge them.
+    // Depreciation beside an accrual reversal on the same month-end is the ordinary case.
     expect(march).not.toEqual(otherRule)
   })
 
@@ -172,50 +148,47 @@ describe('the keyspace', () => {
       `${RULE_ID}:${MARCH}`
     )
   })
+
+  it("posts under the rule's occurrence, keyed on the fold", async () => {
+    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
+    expect(h.posted[0]?.sources).toEqual([
+      {
+        sourceKind: 'recurring_journal',
+        sourceId: RULE_ID,
+        occurrence: MARCH,
+        linkRole: 'subject',
+      },
+    ])
+    expect((h.posted[0]?.entry as { periodKey: string }).periodKey).toBe(
+      recurringJournalPeriodKey({ recurrenceRuleId: RULE_ID, occurrenceDate: MARCH })
+    )
+  })
 })
 
-describe('a race on the SAME draft converges without a stamp update', () => {
-  it('does NOT report a collision when the winner fills the same slot', async () => {
-    // The narrow race `postDraft`'s claim can actually produce now: two
-    // concurrent `postJournalEntry` calls on the SAME record/glPostingId. The
-    // loser's `already_posted` names its own posting, whose journal-entry
-    // line names this same record - trivially the same slot.
+describe('two records raised for one occurrence converge', () => {
+  it('believes already_posted when the winner is this record', async () => {
     h.postResult = { status: 'already_posted', glPostingId: 'post_march_a' }
     h.winningSourceIds = ['je_march_a']
     h.identities = new Map([['je_march_a', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
 
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
 
-    expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().status).toBe('already_posted')
-    // Converged: nothing on the record needs stamping any more, since its
-    // status is read back off the posting rather than written here.
-    expect(h.updates).toEqual([])
+    expect(h.updates).toEqual([
+      { recordId: 'def_je:je_march_a', values: { journal_entry_gl_posting_id: 'post_march_a' } },
+    ])
   })
-})
 
-describe('a race across two DIFFERENT generated records for one occurrence', () => {
-  // `materialize.ts` claims a draft's `GlPostingSource` subject on
-  // `{ sourceKind: 'recurring_journal', sourceId: templateId, occurrence:
-  // occurrenceDate }`, not on the generated record's own id - the fix this
-  // file exists to pin. Before it, `je_march_a` and `je_march_b` (two drafts
-  // a sweep race raised for the same March occurrence) each claimed under
-  // their OWN record id, so both promoted cleanly and only collided on
-  // `GlPosting_org_docNumber_key` - a raw constraint violation, not
-  // `already_posted`. With the shared subject, the loser's `postDraft` now
-  // loses the CLAIM first and comes back `already_posted` naming the
-  // WINNER'S posting - a different record entirely - and this is the check
-  // that has to wave it through as a convergence rather than a collision.
-  it('converges when the winner is a different record for the same slot', async () => {
+  it('believes already_posted when the winner is a different record for the same slot', async () => {
     h.postResult = { status: 'already_posted', glPostingId: 'post_march_b' }
     h.winningSourceIds = ['je_march_b']
     h.identities = new Map([['je_march_b', { recurrenceRuleId: RULE_ID, occurrenceDate: MARCH }]])
 
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
 
-    expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().status).toBe('already_posted')
-    expect(h.updates).toEqual([])
+    // The slot is in the books; this record points at the posting that holds it.
+    expect(h.updates[0]?.values).toEqual({ journal_entry_gl_posting_id: 'post_march_b' })
   })
 })
 
@@ -228,20 +201,20 @@ describe('the sourceId check catches a hash collision rather than trusting alrea
     }
   })
 
-  it('refuses when the winning posting belongs to a different occurrence', async () => {
+  it('refuses when the winning posting belongs to a different occurrence, and stamps nothing', async () => {
     h.winningSourceIds = ['je_april']
     h.identities = new Map([
       ['je_april', { recurrenceRuleId: RULE_ID, occurrenceDate: '2026-04-30' }],
     ])
 
-    const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-
-    expect(result.isOk()).toBe(true)
-    const value = result._unsafeUnwrap()
+    const value = (
+      await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
+    )._unsafeUnwrap()
     expect(value.status).toBe('error')
     expect(value.failureClass).toBe('data')
     expect(value.retryable).toBe(false)
     expect(value.error).toContain('collision')
+    expect(h.updates).toEqual([])
   })
 
   it('refuses when the winning posting belongs to a different RULE on the same date', async () => {
@@ -249,29 +222,12 @@ describe('the sourceId check catches a hash collision rather than trusting alrea
     h.identities = new Map([
       ['je_rent', { recurrenceRuleId: 'rule_rent_accrual', occurrenceDate: MARCH }],
     ])
-
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
     expect(result._unsafeUnwrap().status).toBe('error')
   })
 
-  it('leaves the record a DRAFT on a collision - nothing was written for it', async () => {
-    h.winningSourceIds = ['je_april']
-    h.identities = new Map([
-      ['je_april', { recurrenceRuleId: RULE_ID, occurrenceDate: '2026-04-30' }],
-    ])
-
-    await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-
-    // 🛑 The whole point of running the check BEFORE trusting the result: the
-    // record's status is read off the posting, so nothing here needs undoing -
-    // but the collision itself must still be reported rather than swallowed.
-    expect(h.updates).toEqual([])
-  })
-
   it('refuses when the winner is a hand-authored entry with no identity at all', async () => {
     h.winningSourceIds = ['je_manual']
-    h.identities = new Map()
-
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
     expect(result._unsafeUnwrap().status).toBe('error')
   })
@@ -282,34 +238,25 @@ describe('the sourceId check catches a hash collision rather than trusting alrea
     h.identities = new Map([
       ['je_april', { recurrenceRuleId: RULE_ID, occurrenceDate: '2026-04-30' }],
     ])
-
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
     expect(result._unsafeUnwrap().status).toBe('posted')
   })
 
   it('does not run the check on a hand-authored entry', async () => {
-    h.record = {
-      ...generatedDraft(),
-      kind: 'manual',
-      recurrenceRuleId: null,
-      occurrenceDate: null,
-    }
+    h.record = generatedEntry({ kind: 'manual', recurrenceRuleId: null, occurrenceDate: null })
     h.winningSourceIds = ['je_someone_else']
-    h.identities = new Map()
-
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-    // A manual entry keys on its own number, so `already_posted` there really
-    // is a re-post of the same record and there is nothing to disambiguate.
+    // A manual entry keys on its own number, so `already_posted` is a re-post of this record.
     expect(result._unsafeUnwrap().status).toBe('already_posted')
   })
 })
 
 describe('a generated entry has to name both halves of its identity', () => {
   it('refuses to post one carrying only the rule', async () => {
-    h.record = generatedDraft({ occurrenceDate: null })
+    h.record = generatedEntry({ occurrenceDate: null })
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-    expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('rule and the occurrence')
+    expect(h.posted).toHaveLength(0)
   })
 
   it('refuses to create one carrying only the slot', async () => {
@@ -328,18 +275,16 @@ describe('a generated entry has to name both halves of its identity', () => {
       recurrenceRuleId: RULE_ID,
       occurrenceDate: MARCH,
     })
-    expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('may not carry a recurrence rule')
   })
 
   it('still refuses to post the TEMPLATE itself', async () => {
-    h.record = generatedDraft({
+    h.record = generatedEntry({
       kind: 'recurring_template',
       recurrenceRuleId: null,
       occurrenceDate: null,
     })
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_march_a' })
-    expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('stencil')
   })
 })

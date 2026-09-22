@@ -94,6 +94,7 @@ import {
   recalculateBilledRollupOnCreditLineChange,
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
+import { sweepAccountingWorkItemsOnDelete } from './pre/accounting-work-item-delete'
 import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import {
@@ -236,7 +237,7 @@ export function registerAllHooks(): void {
   registerFulfillmentTotalsReconcilers()
 
   // The imported-money acceptance wake's two drains (79 §4.2). The two hooks below only
-  // MARK; without this a parked acceptance (`nextAttemptAt` null) is never re-queued.
+  // MARK; without this a parked acceptance waits for the sweep's safety-net delay.
   registerMoneyAcceptanceWakeReconcilers()
 
   // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
@@ -724,14 +725,8 @@ export function registerAllHooks(): void {
   // declarative, `restrict` on `tariff_code_vendor_parts` and `cascade` on
   // `tariff_code_rates`.
 
-  // The journal-entry draft (plans/accounting/tasks/done/09-discard-a-draft-entry.md
-  // §3.3). `journal_entry` is `isVisible: false`, so it has no records table of
-  // its own - but the GENERIC `record.delete`, bulk delete and any Kopilot or API
-  // caller still reach it by id, and before this guard they hard-deleted a POSTED
-  // entry without complaint, orphaning the `GlPosting` that named it. Refuses
-  // anything that is not a draft, and refuses a draft that carries a posting id;
-  // an ordinary draft passes, because the product's own answer to one of those is
-  // `discardJournalEntry`, which archives it.
+  // The generic `record.delete` reaches a journal entry by id; refuse a posted or
+  // reversed one. An unposted entry passes - `discardJournalEntry` deletes it.
   registerEntityPreDeleteHooks('journal-entries', [guardJournalEntryDelete])
 
   // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
@@ -799,4 +794,9 @@ export function registerAllHooks(): void {
   registerDeriveHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
   registerEntityPostDeleteHooks('vendor-credit-lines', [recomputeVendorCreditAfterLineDelete])
   registerEntityPreDeleteHooks('vendor-credits', [guardVendorCreditDelete])
+
+  // Parked accounting work goes with its record (91 §8.9). Registered last, so every
+  // guard above refuses before anything is swept.
+  for (const slug of ['fulfillments', 'credit-memos', 'payouts'])
+    registerEntityPreDeleteHooks(slug, [sweepAccountingWorkItemsOnDelete])
 }

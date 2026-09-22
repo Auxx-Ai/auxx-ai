@@ -96,8 +96,8 @@ export function RecurringTemplatesList({
           description={
             <>
               A template is a journal entry that repeats - a monthly depreciation figure, an accrual
-              reversal, a prepaid schedule. It posts nothing itself; a daily sweep copies it into a
-              draft for each month it owes, and you review and post those.
+              reversal, a prepaid schedule. It posts nothing itself; a daily sweep copies it into an
+              entry for each month it owes and posts it.
             </>
           }
           button={addButton}

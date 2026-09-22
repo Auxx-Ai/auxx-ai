@@ -125,16 +125,13 @@ export function planForRule(
  * Two sweeps running at once can therefore both read "no entry" and both write
  * one.
  *
- * That is tolerable only because layer 2 is exact: both drafts mint the same
- * `RJE-<fold>` period key, so the second to POST loses the claim index and
- * converges to `already_posted`. The worst case is a duplicate DRAFT - visible
- * and discardable - never a duplicate posting.
+ * That is tolerable only because layer 2 is exact: both records claim the rule's
+ * occurrence under the same `RJE-<fold>` key, so the second to post converges to
+ * `already_posted`. The worst case is a duplicate unposted record, never a
+ * duplicate posting.
  *
- * Returns entry ids keyed by occurrence date, including entries that have
- * since been posted: a posted occurrence is emphatically still generated.
- * Archived (discarded) entries are excluded, so discarding a generated draft
- * lets the next sweep raise it again - which is what "throw this one away and
- * let it regenerate" has to mean.
+ * Returns entry ids keyed by occurrence date, posted or not. A discarded
+ * (deleted) entry is gone, so the next sweep raises its occurrence again.
  */
 export async function findGeneratedEntryIds(
   db: Database,

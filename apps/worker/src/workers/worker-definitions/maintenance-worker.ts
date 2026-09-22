@@ -263,7 +263,7 @@ export const jobMappings = {
   invoiceDraftsJob,
 
   // Recurring journal templates, daily (accounting task 21 §1.2): copies every
-  // `journal_entries` recurrence rule's due occurrences into DRAFT entries. The third
+  // `journal_entries` recurrence rule's due occurrences into posted entries (91 D5). The third
   // consumer of `RecurrenceRule`, and the only one that reads `materializedUntil`
   // BACKWARD on purpose - a depreciation entry for March may not exist in January.
   recurringJournalsJob,

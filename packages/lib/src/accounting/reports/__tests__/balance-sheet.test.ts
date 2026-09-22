@@ -160,6 +160,53 @@ describe('readBalanceSheet', () => {
     expect(bs.totalAssetsMinor).toBe(bs.totalLiabilitiesMinor + bs.totalEquityMinor)
   })
 
+  it('moves a receivable account documents in credit to Liabilities, and still balances (91 D3)', async () => {
+    vi.mocked(loadRoleAccountCodes).mockResolvedValue(new Map())
+    mockTrialBalances({
+      cumulative: [
+        row({
+          accountCode: '1100',
+          accountName: 'Shopify receivable',
+          accountType: 'asset',
+          subtype: 'accounts_receivable',
+          debitMinor: 50_000,
+          creditMinor: 32_000,
+          balanceMinor: 18_000,
+          receivableSplit: { receivableMinor: 30_000, depositsMinor: 12_000 },
+        }),
+        row({
+          accountCode: '3000',
+          accountType: 'equity',
+          creditMinor: 18_000,
+          balanceMinor: 18_000,
+        }),
+      ],
+      priorYears: [],
+      currentFy: [],
+    })
+
+    const bs = (
+      await readBalanceSheet(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
+    )._unsafeUnwrap()
+
+    expect(vi.mocked(readTrialBalance)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ to: '2026-08-31', splitReceivables: true })
+    )
+    expect(bs.assets[0]?.balanceMinor).toBe(30_000)
+    expect(bs.customerDeposits).toEqual([
+      {
+        glAccountId: 'id_1100',
+        accountCode: '1100',
+        accountName: 'Shopify receivable',
+        balanceMinor: 12_000,
+      },
+    ])
+    expect(bs.totalAssetsMinor).toBe(30_000)
+    expect(bs.totalLiabilitiesMinor).toBe(12_000)
+    expect(bs.verdict).toBe(true)
+  })
+
   it('balances across a fiscal-year boundary the same way in year two', async () => {
     // Year two: the org has now accumulated a full prior year's net income
     // (150,000, from the case above) with STILL nothing posted to retained

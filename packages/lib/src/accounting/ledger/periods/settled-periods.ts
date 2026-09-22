@@ -166,10 +166,7 @@ export function isFrozenSetupSettingKey(key: string): boolean {
  * Refuse a write to any frozen setup key once the organization has an entry
  * standing in its books.
  *
- * "Standing" is `status IN ('posted', 'pending')`: a reversed original has
- * left the books, a failed claim never entered them, and a pending one is
- * mid-push and about to. A reversal row is itself `posted`, so a ledger whose
- * every original has been reversed is STILL frozen - deliberately. The pairs
+ * Any `GlPosting` row counts, a reversed pair included - deliberately. The pairs
  * net to zero, but each half was computed from the baseline these keys hold,
  * and a bookkeeper who wants the baseline back should see the entries that
  * used it in the register rather than have them silently disagree with a
@@ -200,13 +197,7 @@ export async function assertAccountingSetupUnfrozen(
   )
 }
 
-/**
- * Does this org's ledger hold an entry at all?
- *
- * Any row IS an entry since the export split: a `GlPosting` row only exists
- * once the claim and its lines have committed, and nothing a provider answers
- * can take it back out.
- */
+/** Does this org's ledger hold an entry at all? Every `GlPosting` row is a posted entry (91 D5). */
 export async function hasStandingEntry(
   db: Database | Transaction,
   organizationId: string

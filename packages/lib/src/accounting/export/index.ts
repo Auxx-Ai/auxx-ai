@@ -45,7 +45,6 @@ export {
   type ExportObjectType,
   type ExportPaymentPayload,
   type ExportRefundReceiptPayload,
-  type ExportSalesReceiptPayload,
   exportBillSchema,
   exportCreditMemoSchema,
   exportDepositSchema,
@@ -53,7 +52,6 @@ export {
   exportJournalSchema,
   exportPaymentSchema,
   exportRefundReceiptSchema,
-  exportSalesReceiptSchema,
   hashExportPayload,
   INVOICE_OBJECT_TYPE,
   JOURNAL_OBJECT_TYPE,
@@ -62,7 +60,6 @@ export {
   parseExportPayload,
   payloadAccountIds,
   REFUND_RECEIPT_OBJECT_TYPE,
-  SALES_RECEIPT_OBJECT_TYPE,
 } from './payloads'
 export { exportBlockerSentence, readExportBatchBlockers } from './preflight'
 export {

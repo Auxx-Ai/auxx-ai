@@ -40,14 +40,12 @@ type OutboxCounts = RouterOutputs['ledger']['outboxCounts']
 /** 🛑 `sent` is not counted: the topbar figure is about what is OUTSTANDING. */
 function outstanding(counts: OutboxCounts | undefined): number {
   if (!counts) return 0
-  return (
-    counts.drafts + counts.blocked + counts.unbuilt + counts.ready + counts.sending + counts.failed
-  )
+  return counts.blocked + counts.unbuilt + counts.ready + counts.sending + counts.failed
 }
 
 /**
  * The Outbox, at `/app/accounting/outbox` — everything on its way out of the
- * books: `drafts` (TARGET §4 gate 1), `blocked`, then the export states, over `?tab=`.
+ * books: `blocked`, then the export states, over `?tab=`.
  * No month in the topbar: every tab reads across all periods (81 §4).
  */
 export function OutboxPage() {
@@ -114,8 +112,8 @@ export function OutboxPage() {
         onOrderChange={selectOrder}
         view={view}
         onViewChange={selectView}
-        bookTimeZone={period.bookTimeZone}
         currencyCode={period.currencyCode}
+        bookTimeZone={period.bookTimeZone}
         providerLabel={providerLabel}
         activePostingId={drawers.postingId}
         onSelectPosting={drawers.openPosting}

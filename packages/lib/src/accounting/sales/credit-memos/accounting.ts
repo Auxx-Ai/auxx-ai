@@ -4,9 +4,10 @@
  * The credit memo's ledger half: post one memo's issue entry, and reverse it.
  *
  * ```
- *   Dr revenue_returns_allowances   subtotal
- *   Dr sales_tax_payable            tax
- *       Cr accounts_receivable        total
+ *   Dr revenue_returns_allowances   the shipped goods lines' subtotal
+ *   Dr revenue_shipping             the shipped shipping lines' subtotal
+ *   Dr sales_tax_payable            the shipped lines' tax
+ *       Cr accounts_receivable        the three together
  * ```
  *
  * Subject the memo, counterparty its contact, `storeId` the order's own source
@@ -17,8 +18,7 @@
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
-import { type Database, schema } from '@auxx/database'
-import { and, asc, eq } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import { UnprocessableEntityError } from '../../../errors'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { documentEntryKey } from '../../documents/document-entry-key'
@@ -27,14 +27,12 @@ import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
   CREDIT_MEMO_SOURCE_TYPE,
+  computeCreditMemoAmounts,
 } from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
-import { readControlAccountLine } from '../../ledger/reads/read-posting'
 import type { BuiltEntry, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
 import { roundCents } from '../totals/totals'
@@ -53,24 +51,36 @@ export interface CreditMemoEntrySource {
   issuedAt: string
   /** The org's document currency; refused when it differs from the ledger's. */
   currency: string
-  /** Whether revenue was ever posted for what this memo credits. See `resolveIssue`. */
-  reverseRevenue: boolean
+  /** The memo lines whose goods had shipped before the memo (`readShippedMemoLineIds`). */
+  shippedLineIds: ReadonlySet<string>
   /** How many times this memo has posted. 1 (the default) keys on the memo number. */
   generation?: number
 }
 
 /**
- * The entry this memo's CURRENT lines produce - pure, persists nothing.
- *
- * The one place the record shape meets the builder, so Issue, the preview and
- * the edit lane's compare-and-repost on Save cannot disagree about what a memo's
- * entry is. The totals are summed from the LINES (74 D6: the header amounts are
- * the totals hook's projection of them), never read off the header's mirrors.
+ * The entry this memo's CURRENT lines produce - pure, persists nothing. `null` when
+ * no line had shipped: there is nothing to reverse (91 D4). The one place the record
+ * shape meets the builder, so Issue, the preview and the edit lane cannot disagree.
  */
-export function buildEntryForCreditMemo(source: CreditMemoEntrySource): BuiltCreditMemoEntry {
-  const { memo, lines, issuedAt, currency, reverseRevenue } = source
+export function buildEntryForCreditMemo(
+  source: CreditMemoEntrySource
+): BuiltCreditMemoEntry | null {
+  const { memo, lines, issuedAt, currency, shippedLineIds } = source
+  const entryLines = lines.map((line) => ({
+    subtotal: line.subtotalMinor,
+    taxTotal: line.taxTotalMinor,
+    shipped: shippedLineIds.has(line.id),
+    component: line.disposition === 'shipping' ? ('shipping' as const) : ('goods' as const),
+  }))
   const subtotal = roundCents(lines.reduce((sum, line) => sum + line.subtotalMinor, 0))
   const taxTotal = roundCents(lines.reduce((sum, line) => sum + (line.taxTotalMinor ?? 0), 0))
+  const amounts = computeCreditMemoAmounts({
+    creditMemoId: memo.id,
+    number: memo.number,
+    lines: entryLines,
+    total: subtotal + taxTotal,
+  })
+  if (amounts.totalMinor === 0) return null
   return buildCreditMemoEntry({
     creditMemoId: memo.id,
     number: memo.number,
@@ -78,10 +88,8 @@ export function buildEntryForCreditMemo(source: CreditMemoEntrySource): BuiltCre
     issuedAt,
     currency,
     ledgerCurrency: LEDGER_CURRENCY,
-    subtotal,
-    taxTotal,
+    lines: entryLines,
     total: subtotal + taxTotal,
-    reverseRevenue,
     contactInstanceId: memo.contactInstanceId,
     memo: `Credit memo ${memo.number} issued`,
   })
@@ -132,15 +140,10 @@ export async function postCreditMemoEntry(
     scope,
     sources,
     storeId: typeof scope.store === 'string' ? scope.store : null,
-    mode: await readAutoPostMode(organizationId, 'creditMemo'),
   })
 }
 
-/**
- * Every general-ledger entry sourced on one credit memo, newest first. A draft
- * waiting in the outbox is in the list with `status: 'draft'` through its
- * `pending` link.
- */
+/** Every general-ledger entry sourced on one credit memo, newest first. */
 export async function listCreditMemoPostings(
   db: Database,
   params: { organizationId: string; creditMemoInstanceId: string }
@@ -161,9 +164,8 @@ export async function listCreditMemoPostings(
 }
 
 /**
- * Reverse the memo's live issue posting, freeing the claim. A draft still in the
- * outbox is discarded instead. `null` when nothing is standing - an unposted
- * memo voids freely.
+ * Reverse the memo's live issue posting, freeing the claim. `null` when nothing
+ * is standing - an unposted memo voids freely.
  */
 export async function reverseCreditMemoEntry(
   db: Database,
@@ -175,12 +177,6 @@ export async function reverseCreditMemoEntry(
   }
 ): Promise<PostResult | null> {
   const { organizationId, creditMemoInstanceId, actorUserId, memo } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: CREDIT_MEMO_SOURCE_TYPE,
-    sourceId: creditMemoInstanceId,
-  })
-  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: CREDIT_MEMO_SOURCE_TYPE,
@@ -197,33 +193,4 @@ export async function reverseCreditMemoEntry(
     lock,
     memo: memo ?? `Reversal of ${live.value.docNumber} - credit memo voided`,
   })
-}
-
-/**
- * The account a memo's issue entry credited, which a refund of that memo debits
- * back. `null` when the memo never posted.
- *
- * Read off the posted lines rather than re-resolved through the chart: a refund
- * must return the credit to the account it actually landed in, even if the
- * `accounts_receivable` role has been repointed since.
- */
-export async function readCreditMemoControlAccount(
-  db: Database,
-  input: { organizationId: string; creditMemoInstanceId: string }
-): Promise<{ glPostingId: string; glAccountId: string; txnDate: string } | null> {
-  const live = await findLiveSubjectPosting(db, {
-    organizationId: input.organizationId,
-    sourceKind: CREDIT_MEMO_SOURCE_TYPE,
-    sourceId: input.creditMemoInstanceId,
-  })
-  if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
-  if (!live.value) return null
-
-  const line = await readControlAccountLine(db, input.organizationId, {
-    glPostingId: live.value.id,
-    direction: 'credit',
-    counterpartyType: 'customer',
-  })
-  if (!line) return null
-  return { glPostingId: live.value.id, glAccountId: line.glAccountId, txnDate: live.value.txnDate }
 }
