@@ -815,6 +815,8 @@ export const GlPostingTypeValues = [
   'recurring_journal',
   'vendor_credit',
   'landed_cost_clear',
+  'vendor_payment',
+  'vendor_refund',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 
