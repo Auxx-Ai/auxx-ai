@@ -188,11 +188,10 @@ function ReviewQueueBody() {
   }, [queueState, account])
 
   /**
-   * ⚠️ `1280px`, not the `1024px` `ledger-page.tsx` docks at. This page sits
-   * behind the accounting shell's `SidebarSecondary`, so it eats ~255px
-   * more than the ledger's does: at 1100 the app rail plus that sidebar plus a
-   * 450px panel leave the queue about 100px, which is not a list any more.
-   * 1280 is the first width where the queue keeps a readable column.
+   * ⚠️ `1280px`, not the `1024px` `use-ledger-drawers.tsx` docks at: at 1100
+   * the app rail plus the accounting rail plus a 450px panel leave the queue
+   * about 100px, which is not a list any more. 1280 is the first width where
+   * the queue keeps a readable column.
    */
   const isDesktop = useMedia('(min-width: 1280px)')
   const dockedWidth = useDockStore((state) => state.dockedWidth)
@@ -357,7 +356,7 @@ function ReviewQueueBody() {
 
   /**
    * ⚠️ Built ONCE and memoised. The panel array below is published to the
-   * Banking layout's docked slot through an effect, so a drawer element with a
+   * accounting layout's docked slot through an effect, so a drawer element with a
    * fresh identity every render would re-publish on every render.
    */
   const drawer = useMemo(

@@ -114,7 +114,7 @@ function detail() {
 }
 
 /**
- * Docked, which is how the Banking layout renders it — `DockableDrawer` then
+ * Docked, which is how the accounting layout renders it — `DockableDrawer` then
  * renders its children inline rather than through a vaul portal, so no stub is
  * needed for the drawer itself.
  */

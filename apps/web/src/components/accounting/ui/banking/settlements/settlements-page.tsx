@@ -205,7 +205,7 @@ function SettlementsBody() {
   const narrowed = !!filters.search.trim() || !!filters.from || !!filters.to
 
   // ⚠️ Built ONCE and memoised - the panel array below is published to the
-  // Banking layout's docked slot through an effect.
+  // accounting layout's docked slot through an effect.
   const drawer = useMemo(
     () => (
       <PayoutEvidenceDrawer

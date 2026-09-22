@@ -9,7 +9,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from '
  * A slot a page can dock a panel into when the LAYOUT owns `MainPageContent`.
  *
  * `MainPageContent` takes its docked panels as a prop, which works when the page
- * itself renders it (`ledger-page.tsx`). Under a section layout that renders one
+ * itself renders it. Under a section layout that renders one
  * `MainPageContent` around every page below it, the page has no way to reach
  * that prop, and nesting a second `MainPageContent` inside the first would give
  * the panel the wrong height and a second resize handle.

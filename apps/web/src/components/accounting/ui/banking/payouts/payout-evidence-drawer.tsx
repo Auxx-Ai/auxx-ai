@@ -19,7 +19,7 @@ interface PayoutEvidenceDrawerProps {
   /** Overrides `!!payoutId` so a caller still resolving the id keeps the panel mounted. */
   open?: boolean
   onOpenChange: (open: boolean) => void
-  /** Docked into the Banking layout's `MainPageContent`, or a floating overlay. */
+  /** Docked into the accounting layout's `MainPageContent`, or a floating overlay. */
   isDocked: boolean
   width: number
   onWidthChange: (width: number) => void
