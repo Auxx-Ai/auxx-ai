@@ -59,7 +59,7 @@ function matchedLabel(line: Pick<BankTransactionRow, 'matchedRecordType' | 'matc
 interface ReviewDrawerProps {
   transactionId: string | null
   onOpenChange: (open: boolean) => void
-  /** Docked into the Banking layout's `MainPageContent`, or a floating overlay. */
+  /** Docked into the accounting layout's `MainPageContent`, or a floating overlay. */
   isDocked: boolean
   width: number
   onWidthChange: (width: number) => void
@@ -76,7 +76,7 @@ interface ReviewDrawerProps {
  * reviewer's real decision, and a UI that leads with an account picker has
  * already assumed the answer is "code".
  *
- * Docked on desktop, exactly as `posting-frame.tsx` is. The Banking layout owns
+ * Docked on desktop, exactly as `posting-frame.tsx` is. The accounting layout owns
  * the `MainPageContent`, so the page reaches its `dockedPanels` slot through
  * `docked-panels-outlet.tsx` rather than by rendering a second one.
  */
