@@ -10,10 +10,9 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import { NotFoundError, UnprocessableEntityError } from '../../errors'
+import { NotFoundError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { listWorkItemsForSource, type WorkItemRow } from '../work-items/reads'
-import { withWorkItemCode } from '../work-items/refusal'
 import { noWorkItem, runWorkItemSweep, type SweepCounts } from '../work-items/sweep'
 import { postCustomerReceiptAccounting } from './customer-money/accounting'
 import { postCustomerRefundAccounting } from './customer-money/refund-accounting'
@@ -89,9 +88,9 @@ export async function listMovementAccountingCandidates(
 
 /**
  * Which poster a movement belongs to, decided from its evidence rather than from
- * a provider key: a `customer_receipt` applied to an invoice is the invoice door,
- * one applied to an order is the recognition door, and the two never see each
- * other's movements (guide §8.3).
+ * a provider key: a `customer_receipt` applied to an invoice is the invoice door;
+ * every other receipt, applied to an order or to nothing yet, posts on its own
+ * facts (91 §8.6, guide §8.3).
  */
 async function resolvePoster(
   db: Database,
@@ -104,11 +103,7 @@ async function resolvePoster(
 
   const applications = await listMovementApplications(db, organizationId, money.id)
   if (applications.some((row) => row.invoiceInstanceId)) return acceptInvoiceReceiptAccounting
-  if (applications.some((row) => row.orderInstanceId)) return postCustomerReceiptAccounting
-  throw new UnprocessableEntityError(
-    'Receipt is applied to neither an invoice nor an order, so there is no entry to post',
-    withWorkItemCode('NO_DOCUMENT')
-  )
+  return postCustomerReceiptAccounting
 }
 
 export interface PostBlockedMovementInput {
@@ -120,7 +115,7 @@ export interface PostBlockedMovementInput {
 /**
  * Post one movement through whichever poster its evidence names.
  *
- * Throws only when the movement does not exist or names no document; every
+ * Throws only when the movement does not exist; every
  * accounting refusal comes back `blocked` with its work item written by
  * `postMovementEntry`, and acceptance deletes it.
  */

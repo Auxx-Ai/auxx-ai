@@ -29,7 +29,7 @@ vi.mock('../../upsert-customer', () => ({
 }))
 vi.mock('../../../../../resources/crud', () => ({ UnifiedCrudHandler: class {} }))
 
-import type { ExportJournalPayload } from '../../../../export/payloads/journal'
+import { type ExportJournalPayload, exportJournalSchema } from '../../../../export/payloads/journal'
 import type { ProviderPostError } from '../../../../ledger/types'
 import type { QuickbooksToolContext } from '../../invoke-quickbooks-tool'
 import { batchObject } from '../journal'
@@ -118,6 +118,76 @@ describe('a receivable line with no counterparty', () => {
     const error = built._unsafeUnwrapErr() as ProviderPostError
     expect(error.failureClass).toBe('configuration')
     expect(error.message).toContain('This document names no store')
+  })
+
+  it('sends an unnetted summary - A/R on both sides - as balanced lines, each on the placeholder', async () => {
+    h.resolveMappedAccounts.mockResolvedValue(
+      ok({
+        accounts: new Map([
+          ['gl_clearing', { id: '35', fullyQualifiedName: 'Shopify Clearing' }],
+          ['gl_ar', { id: '50', fullyQualifiedName: 'Accounts Receivable (A/R)' }],
+          ['gl_rev', { id: '79', fullyQualifiedName: 'Sales' }],
+        ]),
+        chart: [
+          { id: 'gl_clearing', code: '1150', name: 'Shopify Clearing', accountType: 'asset' },
+          {
+            id: 'gl_ar',
+            code: '1100',
+            name: 'Accounts Receivable',
+            accountType: 'asset',
+            subtype: 'accounts_receivable',
+          },
+          { id: 'gl_rev', code: '4000', name: 'Sales', accountType: 'income' },
+        ],
+      })
+    )
+    const payload = exportJournalSchema.parse(
+      journal({
+        totalMinor: 1400,
+        lines: [
+          {
+            glAccountId: 'gl_ar',
+            accountCode: '1100',
+            direction: 'debit',
+            amountMinor: 1000,
+            sortOrder: 0,
+          },
+          {
+            glAccountId: 'gl_rev',
+            accountCode: '4000',
+            direction: 'credit',
+            amountMinor: 1000,
+            sortOrder: 1,
+          },
+          {
+            glAccountId: 'gl_clearing',
+            accountCode: '1150',
+            direction: 'debit',
+            amountMinor: 400,
+            sortOrder: 2,
+          },
+          {
+            glAccountId: 'gl_ar',
+            accountCode: '1100',
+            direction: 'credit',
+            amountMinor: 400,
+            sortOrder: 3,
+          },
+        ],
+        summary: { storeId: 'store_1' },
+      })
+    )
+
+    const built = await batchObject.build(TOOL, CTX, payload)
+
+    const create = (built._unsafeUnwrap() as { create: { lines: Array<Record<string, unknown>> } })
+      .create
+    const receivable = create.lines.filter((l) => l.accountId === '50')
+    expect(receivable.map((l) => l.postingType)).toEqual(['Debit', 'Credit'])
+    expect(receivable.every((l) => (l.entity as { id: string }).id === 'qbo_placeholder_7')).toBe(
+      true
+    )
+    expect(h.resolvePlaceholderCustomer).toHaveBeenCalledTimes(1)
   })
 
   it('still refuses outside a summary batch', async () => {

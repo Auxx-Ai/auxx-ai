@@ -14,6 +14,10 @@ const h = vi.hoisted(() => ({
   gatewayHandle: null as string | null,
   feedRailId: 'pg_feed' as string | null,
   applications: [] as Array<Record<string, unknown>>,
+  acceptanceState: 'accepted',
+  environment: 'live',
+  currency: 'USD',
+  nativeOwner: null as unknown,
 }))
 
 vi.mock('../../../rails/reads', () => ({
@@ -25,7 +29,7 @@ vi.mock('../source-reads', () => ({
   readSourceObject: async () => ({ id: 'fo_1', sourceAccountId: 'fsa_1', externalId: 'capture_1' }),
   readSourceAccount: async () => ({
     id: 'fsa_1',
-    environment: 'live',
+    environment: h.environment,
     archivedAt: null,
     providerKey: 'shopify',
     externalAccountId: 'demo.myshopify.com',
@@ -34,6 +38,7 @@ vi.mock('../source-reads', () => ({
 }))
 
 import type { Transaction } from '@auxx/database'
+import { refusalFromError } from '../../../work-items/refusal'
 import { readCustomerReceiptAccountingSource } from '../receipt-accounting'
 
 const ORG = 'org_1'
@@ -54,7 +59,7 @@ const money = () => ({
   id: MOVEMENT,
   purpose: 'customer_receipt' as const,
   amountMinor: 12_000n,
-  currency: 'USD',
+  currency: h.currency,
   currencyExponent: 2,
   occurredAt: OCCURRED,
   partyInstanceId: 'ct_1',
@@ -70,7 +75,7 @@ function tx(): Transaction {
           return row ? [row] : []
         },
       },
-      MoneyCommand: { findFirst: async () => null },
+      MoneyCommand: { findFirst: async () => h.nativeOwner },
       MoneyApplication: { findMany: async () => h.applications },
       FinancialSourceAcceptance: {
         findMany: async () => [
@@ -78,7 +83,7 @@ function tx(): Transaction {
             id: 'fa_1',
             sourceObjectId: 'fo_1',
             observationId: 'ob_1',
-            state: 'accepted',
+            state: h.acceptanceState,
             orderInstanceId: 'order_elsewhere',
             moneyTransactionId: MOVEMENT,
           },
@@ -121,6 +126,10 @@ beforeEach(() => {
   h.gatewayHandle = null
   h.feedRailId = 'pg_feed'
   h.applications = [apply('ma_1', ORDER, 12_000n)]
+  h.acceptanceState = 'accepted'
+  h.environment = 'live'
+  h.currency = 'USD'
+  h.nativeOwner = null
   h.listPaymentGateways.mockResolvedValue(
     ok([
       { id: 'pg_shopify', handles: ['shopify_payments'], status: 'active' },
@@ -222,5 +231,41 @@ describe('the order a receipt names', () => {
       apply('ma_3', ORDER, 12_000n),
     ]
     expect((await read()).orderId).toBe(ORDER)
+  })
+})
+
+// 91 §4.6: every refusal names its code, so the Blocked tab groups and wakes it.
+describe('the code a receipt refusal carries', () => {
+  const refusal = async () => refusalFromError(await read().catch((error: unknown) => error))
+
+  it('names an unmapped handle as GATEWAY_UNMAPPED keyed by the handle', async () => {
+    h.gatewayHandle = 'paypal'
+    expect(await refusal()).toEqual({ reasonCode: 'GATEWAY_UNMAPPED', externalRef: 'paypal' })
+  })
+
+  it('names a feed with no rail as GATEWAY_UNMAPPED with no handle', async () => {
+    h.feedRailId = null
+    expect(await refusal()).toEqual({ reasonCode: 'GATEWAY_UNMAPPED' })
+  })
+
+  it('names a non-USD amount MISSING_AMOUNT', async () => {
+    h.currency = 'EUR'
+    expect((await refusal()).reasonCode).toBe('MISSING_AMOUNT')
+  })
+
+  it('waits on an acceptance that has not cleared, and rejects a test feed', async () => {
+    h.acceptanceState = 'pending'
+    expect((await refusal()).reasonCode).toBe('EVIDENCE_PENDING')
+    h.acceptanceState = 'accepted'
+    h.environment = 'test'
+    expect(await refusal()).toMatchObject({
+      reasonCode: 'INVALID_EVIDENCE',
+      detail: { message: expect.stringContaining('test mode') },
+    })
+  })
+
+  it('names native ownership as OWNERSHIP_CONFLICT', async () => {
+    h.nativeOwner = { id: 'cmd_1' }
+    expect((await refusal()).reasonCode).toBe('OWNERSHIP_CONFLICT')
   })
 })

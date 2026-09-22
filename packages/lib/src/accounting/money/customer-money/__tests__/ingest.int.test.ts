@@ -7,7 +7,11 @@ import type { z } from 'zod'
 import { accountingBasisHash } from '../../../ledger/builders/basis-hash'
 import { listMovementAccountingCandidates } from '../../blocked-movements'
 import type { customerMoneyObservationSchema } from '../contracts'
-import { materializeImportedMoneyInTx, sweepImportedCustomerMoney } from '../ingest'
+import {
+  linkImportedRefundsToMemo,
+  materializeImportedMoneyInTx,
+  sweepImportedCustomerMoney,
+} from '../ingest'
 import { listOrderMoneyTransactions } from '../reads'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
 import { requeueAcceptancesForOrders } from '../source-writes'
@@ -207,7 +211,7 @@ const readWorkItem = (acceptanceId: string) =>
     ),
   })
 /** One `credit_memo` record owed to `partyId`, with its own definition. */
-async function creditMemo(partyId: string, apiSlug: string) {
+async function creditMemo(partyId: string, apiSlug: string, memoOrderId?: string) {
   const [def] = await db()
     .insert(schema.EntityDefinition)
     .values({
@@ -222,10 +226,12 @@ async function creditMemo(partyId: string, apiSlug: string) {
     .insert(schema.EntityInstance)
     .values({ organizationId, entityDefinitionId: def!.id, updatedAt: new Date() })
     .returning()
-  for (const [attribute, value] of [
+  const values: Array<readonly [string, number | string]> = [
     ['credit_memo_total', 1000],
     ['credit_memo_contact', partyId],
-  ] as const) {
+    ...(memoOrderId ? [['credit_memo_order', memoOrderId] as const] : []),
+  ]
+  for (const [attribute, value] of values) {
     const [field] = await db()
       .insert(schema.CustomField)
       .values({
@@ -233,12 +239,7 @@ async function creditMemo(partyId: string, apiSlug: string) {
         entityDefinitionId: def!.id,
         name: attribute,
         systemAttribute: attribute,
-        type:
-          attribute === 'credit_memo_total'
-            ? 'NUMBER'
-            : attribute === 'credit_memo_contact'
-              ? 'RELATIONSHIP'
-              : 'TEXT',
+        type: attribute === 'credit_memo_total' ? 'NUMBER' : 'RELATIONSHIP',
         updatedAt: new Date(),
       })
       .returning()
@@ -249,11 +250,7 @@ async function creditMemo(partyId: string, apiSlug: string) {
         entityDefinitionId: def!.id,
         entityId: credit!.id,
         fieldId: field!.id,
-        ...(attribute === 'credit_memo_total'
-          ? { valueNumber: value as number }
-          : attribute === 'credit_memo_contact'
-            ? { relatedEntityId: value as string }
-            : { valueText: value as string }),
+        ...(typeof value === 'number' ? { valueNumber: value } : { relatedEntityId: value }),
       })
   }
   return { id: credit!.id, entityDefinitionId: def!.id }
@@ -304,6 +301,33 @@ describe('customer money source acceptance against PostgreSQL', () => {
     await accept(a.id)
     expect(await db().select().from(schema.MoneyTransaction)).toHaveLength(1)
     expect(await db().select().from(schema.MoneyApplication)).toHaveLength(1)
+    expect(await readWorkItem(a.id)).toBeUndefined()
+  })
+  // 91 §8.6: post now, link later. The receipt stands on its own facts; its order is a pending link.
+  it('accepts an orderless receipt on its own facts and records the pending order link', async () => {
+    const a = await staged({}, false)
+    await accept(a.id)
+    const [money] = await db().select().from(schema.MoneyTransaction)
+    expect(money).toMatchObject({
+      purpose: 'customer_receipt',
+      amountMinor: 6000n,
+      partyInstanceId: null,
+    })
+    expect(await readAcceptanceRow(a.id)).toMatchObject({
+      state: 'accepted',
+      moneyTransactionId: money!.id,
+      orderInstanceId: null,
+    })
+    expect(await readWorkItem(a.id)).toMatchObject({
+      stage: 'evidence',
+      reasonCode: 'ORDER_NOT_FOUND',
+      externalRef: 'order1',
+    })
+    // Accepted, the posting sweep offers it; nothing waits on the order.
+    const window = { cutoffPeriod: null, bookTimeZone: 'UTC' }
+    expect(await listMovementAccountingCandidates(db(), organizationId, 10, window)).toMatchObject([
+      { id: money!.id },
+    ])
   })
   it('stages malformed money without creating a movement and shows it beside the order', async () => {
     const a = await staged({ amount: '1e3' })
@@ -432,7 +456,8 @@ describe('customer money source acceptance against PostgreSQL', () => {
     ).toMatchObject({ state: 'accepted' })
     expect(await readWorkItem(refund.id)).toBeUndefined()
   })
-  it('leaves a refund blocked when the memo identity is held on two connections', async () => {
+  // 91 D4: the memo is a link, never a precondition - the refund is accepted and posts.
+  it('accepts a refund whose memo identity is held on two connections, unlinked', async () => {
     const capture = await staged()
     await accept(capture.id)
     const [receipt] = await db().select().from(schema.MoneyTransaction)
@@ -457,11 +482,38 @@ describe('customer money source acceptance against PostgreSQL', () => {
       await db().query.FinancialSourceAcceptance.findFirst({
         where: eq(schema.FinancialSourceAcceptance.id, refund.id),
       })
-    ).toMatchObject({ state: 'blocked' })
-    expect(await readWorkItem(refund.id)).toMatchObject({
-      stage: 'evidence',
-      reasonCode: 'REFUND_ORIGINAL_UNRESOLVED',
+    ).toMatchObject({ state: 'accepted' })
+    expect(await readWorkItem(refund.id)).toBeUndefined()
+  })
+  it('links a refund that arrived before its memo once the memo arrives', async () => {
+    const capture = await staged()
+    await accept(capture.id)
+    const [receipt] = await db().select().from(schema.MoneyTransaction)
+    const refund = await credentiallessRefund()
+    await accept(refund.id)
+    expect(await readAcceptanceRow(refund.id)).toMatchObject({ state: 'accepted' })
+    expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(0)
+
+    const credit = await creditMemo(receipt!.partyInstanceId!, 'credits', orderId)
+    await db().insert(schema.RecordIdentity).values({
+      organizationId,
+      entityInstanceId: credit.id,
+      entityDefinitionId: credit.entityDefinitionId,
+      source: 'shopify',
+      externalId: 'refund_document',
+      appFieldKey: 'refundId',
     })
+    expect(await linkImportedRefundsToMemo(db(), organizationId, credit.id)).toBe(1)
+    expect(await db().select().from(schema.MoneyRefundSettlement)).toMatchObject([
+      {
+        disposition: 'customer_credit',
+        customerCreditMemoInstanceId: credit.id,
+        originalTransactionId: receipt!.id,
+        amountMinor: 1000n,
+      },
+    ])
+    // Linked once: a second pass finds nothing left to link.
+    expect(await linkImportedRefundsToMemo(db(), organizationId, credit.id)).toBe(0)
   })
   it('settles a partial refund once and survives a reconnect with the same store identity', async () => {
     const capture = await staged()
@@ -589,11 +641,6 @@ describe('customer money source acceptance against PostgreSQL', () => {
         },
       })
       .where(eq(schema.FinancialSourceObservation.id, refund.observationId))
-    // The refund goes back the way the receipt came in (task 71 D6).
-    await db()
-      .update(schema.MoneyTransaction)
-      .set({ paymentGatewayId: 'pg_shopify' })
-      .where(eq(schema.MoneyTransaction.purpose, 'customer_receipt'))
     await accept(refund.id)
     await accept(refund.id)
     expect(await db().select().from(schema.MoneyRefundSettlement)).toHaveLength(1)
@@ -601,7 +648,8 @@ describe('customer money source acceptance against PostgreSQL', () => {
       where: eq(schema.MoneyTransaction.purpose, 'customer_refund'),
     })
     expect(refundMoney!.amountMinor).toBe(1000n)
-    expect(refundMoney!.paymentGatewayId).toBe('pg_shopify')
+    // Its rail comes from its own gateway handle at post time, never off the receipt (91 D4).
+    expect(refundMoney!.paymentGatewayId).toBeNull()
     const [replacement] = await db()
       .insert(schema.Credential)
       .values({

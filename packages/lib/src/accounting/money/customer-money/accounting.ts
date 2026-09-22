@@ -13,6 +13,7 @@ import { UnprocessableEntityError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import type { GlPostingLineInput } from '../../ledger/types'
+import { withWorkItemCode } from '../../work-items/refusal'
 import {
   type LoadedMovement,
   type MovementPostingResult,
@@ -43,7 +44,9 @@ async function prepareReceipt(
     ]
   if (!customerId)
     throw new UnprocessableEntityError(
-      'Receipt has no customer and the organization has no guest customer'
+      'Receipt has no customer and the organization has no guest customer',
+      // Minting the guest wakes this code (`parties/guest-contact.ts`).
+      withWorkItemCode('CUSTOMER_UNRESOLVED')
     )
   // The handle (or, failing that, the feed link) is the rail, stamped so the
   // movement and its posting agree. A reserved handle lands in undeposited funds.

@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
   readAutoPostMode: vi.fn(async () => 'post'),
+  upsertWorkItem: vi.fn(async () => ({ isErr: () => false })),
   money: null as unknown,
   updates: [] as unknown[],
 }))
@@ -49,6 +50,10 @@ vi.mock('../../../../settings/read', () => ({
 }))
 vi.mock('../receipt-accounting', () => ({
   readCustomerReceiptAccountingSource: h.readCustomerReceiptAccountingSource,
+}))
+vi.mock('../../../work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
+  deleteWorkItem: vi.fn(async () => ({ isErr: () => false })),
 }))
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -249,6 +254,29 @@ describe('postCustomerReceiptAccounting', () => {
       reason: 'Receipt has no customer and the organization has no guest customer',
     })
     expect(h.postEntry).not.toHaveBeenCalled()
+    // The code minting the guest wakes.
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      expect.anything(),
+      organizationId,
+      expect.objectContaining({ stage: 'post', reasonCode: 'CUSTOMER_UNRESOLVED' })
+    )
+  })
+
+  it('parks an unmapped clearing as ROLE_UNMAPPED keyed by role and rail', async () => {
+    h.resolveRoles.mockResolvedValue({ isErr: () => false, value: new Map() })
+
+    const result = await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    expect(result.status).toBe('blocked')
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      expect.anything(),
+      organizationId,
+      expect.objectContaining({
+        reasonCode: 'ROLE_UNMAPPED',
+        role: 'clearing',
+        railId: 'gateway_1',
+      })
+    )
   })
 
   it('debits undeposited funds for a receipt whose handle names no rail', async () => {

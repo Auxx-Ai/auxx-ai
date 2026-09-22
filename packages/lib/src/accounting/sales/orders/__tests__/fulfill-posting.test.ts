@@ -33,14 +33,35 @@ const h = vi.hoisted(() => ({
     ['gl_account_type', 'fld_type'],
     ['gl_account_is_active', 'fld_active'],
   ]),
+  /** The chart the `chartAccounts` cache key computes from; set beside `CHART` below. */
+  accounts: [] as Array<{ id: string; code: string; name: string; accountType: string }>,
 }))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.has(a) ? { id: h.fields.get(a) } : null])),
+        Object.fromEntries(
+          attrs.map((a) => [
+            a,
+            h.fields.has(a) ? { id: h.fields.get(a), entityDefinitionId: 'def_gl_account' } : null,
+          ])
+        ),
     }),
+    // The chart moved into the org cache (#2304); computed by the real provider.
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { chartProviderDb, computeChart } = await import(
+        '../../../ledger/__tests__/support/chart-cache-stub'
+      )
+      const values = h.accounts.flatMap((account) => [
+        { entityId: account.id, fieldId: 'fld_code', valueText: account.code },
+        { entityId: account.id, fieldId: 'fld_name', valueText: account.name },
+        { entityId: account.id, fieldId: 'fld_type', optionId: account.accountType },
+        { entityId: account.id, fieldId: 'fld_active', valueBoolean: true },
+      ])
+      return computeChart(orgId, chartProviderDb(h.accounts, values))
+    },
   }),
 }))
 
@@ -191,6 +212,7 @@ const CHART = [
   { role: 'accounts_receivable', account: RAR },
   { role: 'revenue_product', account: REVENUE },
 ]
+h.accounts = CHART.map((entry) => entry.account)
 
 /** Values a Drizzle condition bound, the same walk `post-entry.test.ts` uses. */
 function boundValues(condition: unknown): string[] {

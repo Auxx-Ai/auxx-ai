@@ -29,6 +29,7 @@ import { GlAccountType } from '../../../../resources/registry/enum-values'
 import {
   ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
+  ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
   ROLES_WITHOUT_DEFAULT,
   roleAcceptsManualSource,
@@ -96,9 +97,10 @@ describe('the roles that may be scoped to a source', () => {
   // 🛑 Exact, both directions. Adding a role to `ACCOUNT_ROLES` must not
   // silently make it scopable, and dropping one from this list must be a
   // deliberate edit rather than a merge artifact. Task 58 §3 rule 5 added
-  // `bank` and `clearing` on the rail axis.
-  it('is exactly the six roles brief 47 and task 58 decide on', () => {
+  // `bank` and `clearing` on the rail axis; 91 §4.3 added `accounts_receivable`.
+  it('is exactly the seven roles briefs 47, 58 and 91 decide on', () => {
     expect(Object.keys(SCOPABLE_ROLES).sort()).toEqual([
+      'accounts_receivable',
       'bank',
       'clearing',
       'payment_processing_fees',
@@ -116,6 +118,7 @@ describe('the roles that may be scoped to a source', () => {
     expect(SCOPABLE_ROLES.revenue_product).toBe('store')
     expect(SCOPABLE_ROLES.revenue_shipping).toBe('store')
     expect(SCOPABLE_ROLES.revenue_returns_allowances).toBe('store')
+    expect(SCOPABLE_ROLES.accounts_receivable).toBe('store')
     expect(SCOPABLE_ROLES.clearing).toBe('rail')
     expect(SCOPABLE_ROLES.payment_processing_fees).toBe('rail')
     expect(SCOPABLE_ROLES.bank).toBe('rail')
@@ -136,11 +139,12 @@ describe('the roles that may be scoped to a source', () => {
   it('accepts the manual bucket on the store axis only', () => {
     expect(roleAcceptsManualSource('revenue_product')).toBe(true)
     expect(roleAcceptsManualSource('payment_processing_fees')).toBe(false)
-    expect(roleAcceptsManualSource('accounts_receivable')).toBe(false)
+    expect(roleAcceptsManualSource('accounts_receivable')).toBe(true)
+    expect(roleAcceptsManualSource('sales_tax_payable')).toBe(false)
   })
 
   it('answers no axis at all for a role that is not scopable', () => {
-    expect(roleScopeAxis('accounts_receivable')).toBeNull()
+    expect(roleScopeAxis('sales_tax_payable')).toBeNull()
     expect(roleScopeAxis('invented')).toBeNull()
   })
 })
@@ -157,6 +161,15 @@ describe('the chart agrees with the declared account types', () => {
         ROLE_ACCOUNT_TYPES[account.role]
       )
     }
+  })
+
+  // A pinned role (A/R included, 91 §4.3) must be seeded on an account the pin accepts.
+  it('seeds every subtype-pinned role onto an account of that subtype', () => {
+    for (const account of DEFAULT_CHART_OF_ACCOUNTS) {
+      const pin = account.role ? ROLE_ACCOUNT_SUBTYPES[account.role] : undefined
+      if (pin) expect(account.subtype, `${account.code} ${account.role}`).toBe(pin)
+    }
+    expect(ROLE_ACCOUNT_SUBTYPES.accounts_receivable).toBe('accounts_receivable')
   })
 })
 

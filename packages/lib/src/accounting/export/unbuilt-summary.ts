@@ -82,20 +82,22 @@ async function unbuiltScope(db: Database, input: UnbuiltSummaryFilter): Promise<
   return { from, to, settings }
 }
 
-/** `summaryGrainKey` in SQL: the day, the month, or the posting's own id for a grain-less avenue. */
+/** `summaryGrainKey` in SQL: the day, the month, the payout (else the day), or the posting's own id for a grain-less avenue. */
 function grainKeySql(settings: ExportSettings): SQL {
-  const arms = EXPORT_AVENUES.filter(isSummaryGrainAvenue).map((avenue) =>
-    settings.summaryGrain[avenue] === 'month'
-      ? sql`WHEN ${avenue} THEN to_char(p."txnDate", 'YYYY-MM')`
-      : sql`WHEN ${avenue} THEN p."txnDate"::text`
-  )
+  const arms = EXPORT_AVENUES.filter(isSummaryGrainAvenue).map((avenue) => {
+    const grain = settings.summaryGrain[avenue]
+    if (grain === 'month') return sql`WHEN ${avenue} THEN to_char(p."txnDate", 'YYYY-MM')`
+    if (grain === 'payout')
+      return sql`WHEN ${avenue} THEN coalesce(nullif(p."payoutId", ''), p."txnDate"::text)`
+    return sql`WHEN ${avenue} THEN p."txnDate"::text`
+  })
   return sql`CASE p."avenue" ${sql.join(arms, sql` `)} ELSE p."id" END`
 }
 
 /**
  * The CTEs every read shares: `member` is each posted, unbatched posting with
  * its group key; `journal` is each group Build would make a journal of - at
- * least two accounts with a non-zero net, the builder's own rule.
+ * least two non-zero account-and-side lines, the builder's own rule (91 D9).
  */
 function unbuiltCtes(input: UnbuiltSummaryFilter, scope: Scope): SQL {
   const avenues = input.avenues?.length ? [...input.avenues] : null
@@ -122,15 +124,15 @@ function unbuiltCtes(input: UnbuiltSummaryFilter, scope: Scope): SQL {
     ),
     account AS (
       SELECT m."avenue", m."grainKey", m."storeId", m."railId", m."currency", l."glAccountId",
-        sum(CASE WHEN l."direction" = 'debit' THEN l."amountMinor" ELSE -l."amountMinor" END) AS net
+        l."direction", sum(l."amountMinor") AS amount
       FROM member m
       JOIN ${schema.GlPostingLine} l
         ON l."organizationId" = ${input.organizationId} AND l."glPostingId" = m."id"
-      GROUP BY 1, 2, 3, 4, 5, 6
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
     ),
     journal AS (
       SELECT "avenue", "grainKey", "storeId", "railId", "currency"
-      FROM account WHERE net <> 0
+      FROM account WHERE amount <> 0
       GROUP BY 1, 2, 3, 4, 5 HAVING count(*) >= 2
     ),
     grp AS (

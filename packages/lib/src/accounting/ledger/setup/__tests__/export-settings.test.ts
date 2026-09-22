@@ -82,4 +82,15 @@ describe('readExportSettings', () => {
     expect(settings.summaryGrain.invoice).toBe('month')
     expect(settings.summaryGrain.receipt).toBe('day')
   })
+
+  it('reads the payout grain, and coerces an unknown grain to day', async () => {
+    h.settings.clear()
+    h.settings.set('accounting.summaryGrain.receipt', 'payout')
+    h.settings.set('accounting.summaryGrain.refund', 'week')
+
+    const settings = await readExportSettings('org_1')
+
+    expect(settings.summaryGrain.receipt).toBe('payout')
+    expect(settings.summaryGrain.refund).toBe('day')
+  })
 })

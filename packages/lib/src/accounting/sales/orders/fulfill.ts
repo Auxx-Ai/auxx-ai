@@ -199,8 +199,7 @@ function refusalOf(error: AuxxError): PostResult {
  * Build the entry this shipment would post, without writing anything.
  *
  * Runs the SAME core `fulfillOrder` runs, so what the dialog shows is what the
- * write would freeze - the deposit release and the tax already collected on an
- * advance included (88 D6). A refusal comes back as `preview.blockedBy`, which
+ * write would freeze (88 D6). A refusal comes back as `preview.blockedBy`, which
  * is what `EntryBlockers` renders.
  */
 export async function previewFulfillment(

@@ -99,7 +99,27 @@ export const WORK_ITEM_CODES = {
     severity: 'error',
     status: 'blocked',
     sentence: () =>
-      'The money is applied to neither an invoice nor an order, so there is no entry to post.',
+      'The money carries no channel transaction and is applied to no invoice, so there is no entry to post.',
+  },
+  GATEWAY_UNMAPPED: {
+    severity: 'error',
+    status: 'blocked',
+    sentence: (item) =>
+      item.externalRef
+        ? `Gateway handle '${item.externalRef}' is not mapped to a payment gateway. Map it under Accounting > Settings > Payment gateways.`
+        : 'Its store feed has no payment gateway linked. Link it under Accounting > Settings > Payment gateways.',
+  },
+  OWNERSHIP_CONFLICT: {
+    severity: 'error',
+    status: 'blocked',
+    sentence: () =>
+      'More than one source claims this money (another channel transaction, or native payment accounting). Resolve which one owns it.',
+  },
+  EVIDENCE_PENDING: {
+    severity: 'info',
+    status: 'waiting',
+    sentence: () =>
+      'Its channel transaction is not accepted yet. It posts once the evidence clears.',
   },
   SOURCE_NOT_FOUND: {
     severity: 'error',
@@ -122,7 +142,8 @@ export const WORK_ITEM_CODES = {
   CUSTOMER_UNRESOLVED: {
     severity: 'info',
     status: 'waiting',
-    sentence: () => "The order's customer or currency is unresolved or does not match the money.",
+    sentence: () =>
+      "Its customer cannot be resolved (and there is no guest customer), or the order's customer or currency does not match the money.",
   },
   ORDER_BALANCE_UNRESOLVED: {
     severity: 'info',

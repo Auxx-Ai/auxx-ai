@@ -41,6 +41,8 @@ export interface MappingScopeRowProps {
   mismatchMessage?: string
   /** A `bank` rail with no linked feed: forces the picker disabled, drops Inherit, and shows this as secondary text. */
   noFeedLinked?: boolean
+  /** One muted line of context under the title when nothing more urgent is shown. */
+  note?: string
   /** A rail scope row: hover "+ currency" to add a currency sub-row. */
   onAddCurrency?: () => void
   /** Viewer lacks `ledgerControl` — every control disabled, no hover actions. */
@@ -84,6 +86,7 @@ export function MappingScopeRow({
   onConfirmSuggested,
   mismatchMessage,
   noFeedLinked = false,
+  note,
   onAddCurrency,
   disabled = false,
   expandable = false,
@@ -116,6 +119,7 @@ export function MappingScopeRow({
           notMapped={notMapped}
           noFeedLinked={noFeedLinked}
           mismatchMessage={mismatchMessage}
+          note={note}
         />
       }
       trailing={
@@ -183,10 +187,12 @@ function ScopeRowSecondary({
   notMapped,
   noFeedLinked,
   mismatchMessage,
+  note,
 }: {
   notMapped: boolean
   noFeedLinked: boolean
   mismatchMessage?: string
+  note?: string
 }) {
   if (mismatchMessage) {
     return (
@@ -212,6 +218,8 @@ function ScopeRowSecondary({
       </Tooltip>
     )
   }
+
+  if (note) return <span className='truncate text-muted-foreground text-xs'>{note}</span>
 
   return null
 }

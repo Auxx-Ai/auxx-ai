@@ -163,10 +163,8 @@ export async function reverseVendorCreditEntry(
  * The account a credit's issue entry DEBITED, which a refund of that credit
  * credits back — `accounts_payable`. `null` when the credit never posted.
  *
- * `readCreditMemoControlAccount` with `direction: 'debit'` and
- * `counterpartyType: 'vendor'`: read off the posted lines rather than
- * re-resolved through the chart, so a refund returns the credit to the account
- * it actually landed in even if the role has been repointed since.
+ * Read off the posted lines rather than re-resolved through the chart, so a refund
+ * returns the credit to the account it actually landed in even if the role moved.
  */
 export async function readVendorCreditControlAccount(
   db: Database,

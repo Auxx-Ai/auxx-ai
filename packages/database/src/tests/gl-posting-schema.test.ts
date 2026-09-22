@@ -79,6 +79,12 @@ describe('GlPosting', () => {
     expect(postingConfig.columns.find((c) => c.name === 'built')?.notNull).toBe(true)
   })
 
+  it('carries the payout id as a nullable text column beside store and rail (91 D9)', () => {
+    const payoutId = postingConfig.columns.find((c) => c.name === 'payoutId')
+    expect(payoutId?.getSQLType()).toBe('text')
+    expect(payoutId?.notNull).toBe(false)
+  })
+
   it('carries no export columns — the export lives on `ExportBatch` (TARGET §3)', () => {
     const names = columnNames(postingConfig)
     for (const gone of [

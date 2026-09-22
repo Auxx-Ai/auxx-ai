@@ -33,6 +33,7 @@ export {
   refusalFromPost,
   WORK_ITEM_CODE_DETAIL,
   type WorkItemRefusal,
+  type WorkItemTagKeys,
   withWorkItemCode,
 } from './refusal'
 export {

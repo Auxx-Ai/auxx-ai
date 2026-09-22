@@ -37,8 +37,6 @@ import {
   readMovements,
   selectLiveApplications,
 } from '../../money/reads'
-import { isLiveFulfillment } from '../fulfillments/client'
-import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
   ContactCredit,
   ContactCreditMemo,
@@ -135,6 +133,12 @@ const LINE_ITEM_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_tax_total',
   'line_item_sort_order',
   'line_item_work_order',
+] as const)
+
+/** The two `line_item` attributes the channel stamps when a line ships (91 D4). */
+const LINE_ITEM_SHIPPED_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
+  'line_item_fulfilled_qty',
+  'line_item_fulfilled_at',
 ] as const)
 
 type CreditMemoApplicationAttribute = (typeof CREDIT_MEMO_APPLICATION_ATTRIBUTES)[number]
@@ -604,38 +608,49 @@ export async function loadInvoiceLinesForCredit(
     .sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-// ─── The order ──────────────────────────────────────────────────────────────
+// ─── Shipped lines ──────────────────────────────────────────────────────────
 
 /**
- * Whether the order had a fulfillment shipped on or before `issuedAt`.
- *
- * Read from the order's `fulfillment` records (`money/fulfillments/reads.ts`),
- * never from `order_fulfillment_status`: the status says `partial` and cannot
- * say WHEN. A channel memo on an order with no shipment before its date
- * reverses revenue that was never posted, so the issue entry omits the
- * revenue leg (section 3.1).
- *
- * 🛑 Only LIVE fulfillments count (`isLiveFulfillment`, i.e. not `cancelled`).
- * This is not new behaviour: the JSON log this replaces never carried a
- * cancelled dispatch either - the connector's `deriveFulfillments` filtered
- * `status !== 'cancelled'` before anything reached the log. The record form
- * keeps cancelled dispatches (brief 55 §5), so this function has to exclude
- * them itself to preserve the original meaning of "shipped": a cancelled
- * fulfillment did not ship, and must not be read as evidence that revenue was
- * ever recognised for it.
+ * The memo lines whose goods had shipped on or before `issuedAt`, read off each
+ * line's own `line_item` fulfilled qty and date - never off fulfillment records,
+ * which may sync after the memo (91 D4, §4.0). A native memo credits an issued
+ * invoice, so every line reverses revenue.
  */
-export async function orderHadFulfillmentBefore(
-  db: Database,
+export async function readShippedMemoLineIds(
+  db: Database | Transaction,
   organizationId: string,
-  orderId: string,
+  memo: Pick<CreditMemoRecord, 'source'>,
+  lines: readonly Pick<CreditMemoLineRecord, 'id' | 'lineItemInstanceId'>[],
   issuedAt: string
-): Promise<boolean> {
-  const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
-  return fulfillments.some((fulfillment) => {
-    if (!isLiveFulfillment(fulfillment)) return false
-    const shippedDay = toCalendarDay(fulfillment.shippedAt)
-    return shippedDay !== null && shippedDay <= issuedAt
-  })
+): Promise<Set<string>> {
+  if (memo.source !== 'channel') return new Set(lines.map((line) => line.id))
+  const lineItemIds = [
+    ...new Set(lines.flatMap((line) => (line.lineItemInstanceId ? [line.lineItemInstanceId] : []))),
+  ]
+  const ctx = lineItemIds.length
+    ? await systemFields(db, organizationId, 'line_item', LINE_ITEM_SHIPPED_ATTRIBUTES)
+    : null
+  const items = ctx
+    ? new Map(
+        (await readSystemRecords(db, organizationId, ctx, { ids: lineItemIds })).map((item) => [
+          item.id,
+          item,
+        ])
+      )
+    : new Map<string, SystemRecord<(typeof LINE_ITEM_SHIPPED_ATTRIBUTES)[number]>>()
+  const shipped = new Set<string>()
+  for (const line of lines) {
+    const item = line.lineItemInstanceId ? items.get(line.lineItemInstanceId) : undefined
+    const qty = item?.number('line_item_fulfilled_qty') ?? null
+    // Null qty is the channel saying nothing, not "unshipped" (line-item-fields.ts): it reverses.
+    if (qty === null) {
+      shipped.add(line.id)
+      continue
+    }
+    const day = toCalendarDay(item?.date('line_item_fulfilled_at') ?? null)
+    if (qty > 0 && (day === null || day <= issuedAt)) shipped.add(line.id)
+  }
+  return shipped
 }
 
 // ─── The reads the router exposes ───────────────────────────────────────────

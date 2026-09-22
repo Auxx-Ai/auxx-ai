@@ -28,7 +28,7 @@ import {
 } from '../../sales/credit-memos/accounting'
 import {
   loadCreditMemoLines,
-  orderHadFulfillmentBefore,
+  readShippedMemoLineIds,
   requireCreditMemo,
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
@@ -41,6 +41,7 @@ import {
 } from '../../sales/invoices/issuance-accounting'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { listInvoicePostings } from '../../sales/invoices/post-invoice'
+import { documentEntryKey } from '../document-entry-key'
 
 /** The registry entity types the lane knows. */
 export const DOCUMENT_EDIT_FAMILIES = ['vendor_bill', 'credit_memo', 'invoice'] as const
@@ -278,17 +279,13 @@ const creditMemoRow: DocumentEditRow = {
         const currency = await organizationCurrency(organizationId)
         // Read before the commit lock for the same reason the bill's basis is:
         // `build` is pure, and a refusal must not hold the accounting lock.
-        const reverseRevenue =
-          memo.source === 'channel'
-            ? memo.orderInstanceId
-              ? await orderHadFulfillmentBefore(
-                  planDb,
-                  organizationId,
-                  memo.orderInstanceId,
-                  issuedAt
-                )
-              : false
-            : true
+        const shippedLineIds = await readShippedMemoLineIds(
+          planDb,
+          organizationId,
+          memo,
+          lines,
+          issuedAt
+        )
         return {
           build(generation) {
             const built = buildEntryForCreditMemo({
@@ -296,9 +293,22 @@ const creditMemoRow: DocumentEditRow = {
               lines,
               issuedAt,
               currency,
-              reverseRevenue,
+              shippedLineIds,
               generation,
             })
+            // No shipped line: the lane reverses what stood and posts nothing (91 D4).
+            if (!built)
+              return {
+                entry: {
+                  postingType: CREDIT_MEMO_POSTING_TYPE,
+                  periodKey: documentEntryKey(memo.number, generation) ?? memo.number,
+                  txnDate: issuedAt,
+                  lines: [],
+                  totalDebit: 0,
+                  totalCredit: 0,
+                },
+                post: async () => ({ status: 'nothing_to_recognise' as const }),
+              }
             return {
               entry: built.entry,
               post: (txDb, postInput) =>

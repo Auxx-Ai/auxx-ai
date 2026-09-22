@@ -6,10 +6,12 @@
 // the single most common "my accounting software is lying to me" complaint,
 // and it is unfixable after the fact because the two numbers have different
 // definitions. So this reads posted `accounts_receivable`/`accounts_payable`
-// lines, groups them by the DOCUMENT their `sourceType`/`sourceId` names
-// (netting debits and credits per document as of `asOf`), and asserts its own
-// total against `readTrialBalance`'s figure for the same role and date - the
-// `verdict`, shown even when it is false.
+// lines on every receivable/payable account (the role's default plus every
+// account whose subtype says so, which covers A/R's per-store accounts), groups
+// them by the DOCUMENT their `sourceType`/`sourceId` names (netting debits and
+// credits per document as of `asOf`), and asserts its own total against the sum
+// of `readTrialBalance`'s rows for those accounts - the `verdict`, shown even
+// when it is false.
 //
 // BUCKETING. Always on the document's DUE DATE, never on issue date (task 05
 // §3): a net-60 invoice issued 45 days ago is `current`, not `31-60`. A
@@ -29,7 +31,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, lte } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
@@ -148,12 +150,12 @@ export interface Aging {
   organizationId: string
   side: AgingSide
   asOf: string
-  /** The org's own account code carrying the role, or `null` when the role is unmapped. */
+  /** The code of the role's org-default account, or `null` when that is unmapped. */
   accountCode: string | null
   groups: AgingGroup[]
   bucketTotals: Record<AgingBucketKey, number>
   totalMinor: number
-  /** `readTrialBalance`'s own figure for the same role's account, as of the same date. */
+  /** The sum of `readTrialBalance`'s rows for every account walked, as of the same date. */
   balanceSheetMinor: number
   /** `totalMinor === balanceSheetMinor`. `false` is shown, never hidden - task 05 §2. */
   verdict: boolean
@@ -243,12 +245,11 @@ interface ResolvedDocument {
 /**
  * A/R or A/P aging as of `asOf`, from the GL.
  *
- * Resolves the side's role (`accounts_receivable` | `accounts_payable`) to
- * this org's own account via {@link loadRoleAccountCodes} - a READER's door,
- * not a poster's, so an unmapped role is reported as an empty, trivially
- * verdict-true aging (nothing could have posted to it) rather than refused.
+ * Walks the side's role default ({@link loadRoleAccountCodes}) plus every account
+ * carrying the side's subtype - a store-scoped A/R account is pinned to it
+ * (`ROLE_ACCOUNT_SUBTYPES`). No account at all is an empty, trivially tied aging.
  *
- * Every posted line against that account, through `asOf`, is grouped by the
+ * Every posted line against those accounts, through `asOf`, is grouped by the
  * document its `sourceType`/`sourceId` names and netted by the account's own
  * natural direction ({@link signedBalance}) - a fully paid document nets to
  * zero and is dropped from the listing (an "open" aging, per task 05's
@@ -262,14 +263,19 @@ export async function readAging(
   const { organizationId, side, asOf } = options
   const role =
     side === 'receivable' ? ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE : ACCOUNT_ROLES.ACCOUNTS_PAYABLE
+  const subtype = side === 'receivable' ? 'accounts_receivable' : 'accounts_payable'
 
   try {
-    const accounts = await loadRoleAccountCodes(db, organizationId, [role])
-    const account = accounts.get(role)
-    // Unmapped: nothing could have posted to a role nobody has assigned an
-    // account to. An empty, trivially-tied aging, not a refusal - the same
-    // "absent rather than failed" rule `vendor-1099.ts`'s `emptySummary` follows.
-    if (!account) return ok(emptyAging(options, null))
+    const account = (await loadRoleAccountCodes(db, organizationId, [role])).get(role)
+    const tbResult = await readTrialBalance(db, { organizationId, to: asOf })
+    if (tbResult.isErr()) return err(tbResult.error)
+    const accountIds = new Set(
+      tbResult.value.rows.filter((row) => row.subtype === subtype).map((row) => row.glAccountId)
+    )
+    if (account) accountIds.add(account.glAccountId)
+    // "Absent rather than failed", the same rule `vendor-1099.ts`'s `emptySummary` follows.
+    if (accountIds.size === 0) return ok(emptyAging(options, null))
+    const accountType = account?.accountType ?? (side === 'receivable' ? 'asset' : 'liability')
 
     const rawLines = await db
       .select({
@@ -286,7 +292,7 @@ export async function readAging(
       .where(
         standingLineFilter(organizationId, {
           to: asOf,
-          glAccountIds: [account.glAccountId],
+          glAccountIds: [...accountIds],
         })
       )
 
@@ -319,7 +325,7 @@ export async function readAging(
     const openDocs = attributeToDocuments([...byDoc.values()], links.value)
       .map((accum) => ({
         accum,
-        openMinor: signedBalance(accum.debitMinor, accum.creditMinor, account.accountType),
+        openMinor: signedBalance(accum.debitMinor, accum.creditMinor, accountType),
       }))
       // A document that nets to zero is fully settled - it does not belong in
       // an OPEN aging (task 05's title), though its zero already contributed
@@ -559,17 +565,16 @@ export async function readAging(
     }
 
     // ── The tie assertion ──────────────────────────────────────────────────
-    const tbResult = await readTrialBalance(db, { organizationId, to: asOf })
-    if (tbResult.isErr()) return err(tbResult.error)
-    const balanceSheetMinor =
-      tbResult.value.rows.find((row) => row.glAccountId === account.glAccountId)?.balanceMinor ?? 0
+    const balanceSheetMinor = tbResult.value.rows
+      .filter((row) => accountIds.has(row.glAccountId))
+      .reduce((sum, row) => sum + row.balanceMinor, 0)
     const differenceMinor = totalMinor - balanceSheetMinor
 
     return ok({
       organizationId,
       side,
       asOf,
-      accountCode: account.code,
+      accountCode: account?.code ?? null,
       groups,
       bucketTotals,
       totalMinor,

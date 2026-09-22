@@ -1,26 +1,46 @@
 // packages/lib/src/accounting/sales/credit-memos/__tests__/issue-pass.test.ts
 //
-// 88 D3: the pass issues ready channel memos as the system user and parks the
-// rest as `issue` work items (91 §4.6).
+// 88 D3: the pass issues draft channel memos as the system user, parks the rest as
+// `issue` work items (91 §4.6), and links the refunds that arrived first (91 §4.4).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  candidates: [] as string[],
-  windows: [] as Array<Record<string, unknown>>,
+  memos: [] as Array<{ id: string; issuedAt: string }>,
+  parked: new Set<string>(),
+  parkedReads: 0,
+  filters: [] as unknown[],
   issue: vi.fn(),
+  linked: [] as string[],
   marks: [] as Array<Record<string, unknown>>,
 }))
 
-vi.mock('../readiness', () => ({
-  listChannelMemoIssueCandidates: async (
+vi.mock('../../../../resources/system-records', () => ({
+  systemFields: async () => ({
+    fields: { credit_memo_status: {}, credit_memo_source: {}, credit_memo_order: {} },
+  }),
+  findSystemRecordIdsByValue: async (
     _db: unknown,
     _org: string,
-    _limit: number,
-    window: Record<string, unknown>
+    _ctx: unknown,
+    filters: unknown
   ) => {
-    h.windows.push(window)
-    return h.candidates
+    h.filters.push(filters)
+    return new Map([['draft', h.memos.map((memo) => memo.id)]])
+  },
+  readSystemRecords: async () =>
+    h.memos.map((memo) => ({ id: memo.id, date: () => `${memo.issuedAt}T12:00:00.000Z` })),
+}))
+vi.mock('../../../work-items/reads', () => ({
+  listParkedSourceIds: async () => {
+    h.parkedReads++
+    return { isOk: () => true, value: h.parked }
+  },
+}))
+vi.mock('../../../money/customer-money/ingest', () => ({
+  linkImportedRefundsToMemo: async (_db: unknown, _org: string, id: string) => {
+    h.linked.push(id)
+    return 0
   },
 }))
 vi.mock('../../../work-items/write', () => ({
@@ -46,16 +66,21 @@ import { sweepChannelCreditMemos } from '../issue-pass'
 
 const db = {} as Database
 
+const memo = (id: string, issuedAt = '2026-02-01') => ({ id, issuedAt })
+
 beforeEach(() => {
   vi.clearAllMocks()
-  h.candidates = []
-  h.windows = []
+  h.memos = []
+  h.parked = new Set()
+  h.parkedReads = 0
+  h.filters = []
+  h.linked = []
   h.marks = []
 })
 
 describe('sweepChannelCreditMemos', () => {
   it('issues each candidate as the system user and deletes its work item', async () => {
-    h.candidates = ['cm_1', 'cm_2']
+    h.memos = [memo('cm_1'), memo('cm_2', '2026-02-02')]
     h.issue.mockResolvedValue({ status: 'settled' })
     const counts = await sweepChannelCreditMemos(db, { organizationId: 'org_1' })
     expect(h.issue.mock.calls.map((call) => call[1])).toEqual([
@@ -67,14 +92,13 @@ describe('sweepChannelCreditMemos', () => {
       { clear: { sourceKind: 'credit_memo', sourceId: 'cm_2', stage: 'issue' } },
     ])
     expect(counts).toEqual({ scanned: 2, issued: 2, blocked: 0 })
+    expect(h.linked).toEqual(['cm_1', 'cm_2'])
   })
 
   it('parks a refused memo and keeps going', async () => {
-    h.candidates = ['cm_wait', 'cm_ok']
+    h.memos = [memo('cm_wait'), memo('cm_ok', '2026-02-02')]
     h.issue
-      .mockRejectedValueOnce(
-        new ConflictError('This credit memo waits on its order: receipt mt_1 has no posting')
-      )
+      .mockRejectedValueOnce(new ConflictError('August is closed'))
       .mockResolvedValueOnce({ status: 'issued' })
     const counts = await sweepChannelCreditMemos(db, { organizationId: 'org_1' })
     expect(h.marks[0]).toEqual({
@@ -83,22 +107,34 @@ describe('sweepChannelCreditMemos', () => {
         sourceId: 'cm_wait',
         stage: 'issue',
         reasonCode: 'REFUSED',
-        detail: { message: 'This credit memo waits on its order: receipt mt_1 has no posting' },
+        detail: { message: 'August is closed' },
       },
     })
     expect(counts).toEqual({ scanned: 2, issued: 1, blocked: 1 })
+    // A refused memo still links the refunds that name it.
+    expect(h.linked).toEqual(['cm_wait', 'cm_ok'])
   })
 
   it('cuts on the cutoff and skips parked memos, except when scoped to one order', async () => {
+    h.memos = [memo('cm_old', '2026-01-31'), memo('cm_parked'), memo('cm_new', '2026-02-02')]
+    h.parked = new Set(['cm_parked'])
+    h.issue.mockResolvedValue({ status: 'issued' })
     await sweepChannelCreditMemos(db, { organizationId: 'org_1' })
-    expect(h.windows[0]).toMatchObject({ cutoffPeriod: '2026-01', includeParked: false })
+    expect(h.issue.mock.calls.map((call) => call[1].creditMemoInstanceId)).toEqual(['cm_new'])
 
+    h.issue.mockClear()
+    h.parkedReads = 0
     await sweepChannelCreditMemos(db, { organizationId: 'org_1', orderInstanceId: 'ord_1' })
-    expect(h.windows[1]).toMatchObject({ orderInstanceId: 'ord_1', includeParked: true })
+    expect(h.parkedReads).toBe(0)
+    expect(h.issue.mock.calls.map((call) => call[1].creditMemoInstanceId)).toEqual([
+      'cm_parked',
+      'cm_new',
+    ])
+    expect(h.filters[1]).toContainEqual({ attribute: 'credit_memo_order', related: ['ord_1'] })
   })
 
   it('rethrows anything that is not a refusal', async () => {
-    h.candidates = ['cm_1']
+    h.memos = [memo('cm_1')]
     h.issue.mockRejectedValueOnce(new Error('connection reset'))
     await expect(sweepChannelCreditMemos(db, { organizationId: 'org_1' })).rejects.toThrow(
       'connection reset'

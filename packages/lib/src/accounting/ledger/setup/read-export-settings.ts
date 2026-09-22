@@ -10,6 +10,7 @@ import {
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrain,
   SUMMARY_GRAIN_AVENUES,
   type SummaryGrain,
   type SummaryGrainAvenue,
@@ -44,10 +45,10 @@ export async function readExportSettings(organizationId: string): Promise<Export
   ) as Record<ExportAvenue, boolean>
 
   const summaryGrain = Object.fromEntries(
-    SUMMARY_GRAIN_AVENUES.map((avenue) => [
-      avenue,
-      settings[summaryGrainSettingKey(avenue)] === 'month' ? 'month' : 'day',
-    ])
+    SUMMARY_GRAIN_AVENUES.map((avenue) => {
+      const value = settings[summaryGrainSettingKey(avenue)]
+      return [avenue, isSummaryGrain(value) ? value : 'day']
+    })
   ) as Record<SummaryGrainAvenue, SummaryGrain>
 
   const cutover = settings['accounting.exportModeCutover']

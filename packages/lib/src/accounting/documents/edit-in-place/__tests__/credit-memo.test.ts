@@ -59,7 +59,12 @@ vi.mock('../../../sales/credit-memos/reads', () => ({
   loadCreditMemoLines: async () => h.lines,
   sumCreditMemoApplications: async () => h.applied,
   sumReservedCreditMemoRefunds: async () => h.refunded,
-  orderHadFulfillmentBefore: async () => true,
+  readShippedMemoLineIds: async (
+    _db: unknown,
+    _org: string,
+    _memo: unknown,
+    lines: Array<{ id: string }>
+  ) => new Set(lines.map((line) => line.id)),
 }))
 vi.mock('../../document-ledger-state', () => ({
   readDocumentLedgerState: async () => h.ledgerState,
@@ -104,8 +109,8 @@ function currentEntry() {
     lines: h.lines as unknown as CreditMemoLineRecord[],
     issuedAt: '2026-09-01',
     currency: 'USD',
-    reverseRevenue: true,
-  }).entry
+    shippedLineIds: new Set((h.lines as Array<{ id: string }>).map((line) => line.id)),
+  })!.entry
 }
 
 /** Move the memo's figures so the rebuilt entry differs from the live one. */

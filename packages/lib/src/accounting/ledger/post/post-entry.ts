@@ -190,6 +190,8 @@ export interface PostEntryOptions {
   storeId?: string | null
   /** `payment_gateway` instance id this entry resolved through. */
   railId?: string | null
+  /** The provider's payout id, for the summary's payout grain; null until brief 94 stamps it. */
+  payoutId?: string | null
 }
 
 export interface PreviewEntryOptions {
@@ -670,6 +672,7 @@ async function writePostingInTx(
     mode: 'draft' | 'post'
     storeId?: string | null
     railId?: string | null
+    payoutId?: string | null
     memo?: string
     actorUserId?: string
     assertions?: PostingAssertions
@@ -689,6 +692,7 @@ async function writePostingInTx(
     sources,
     storeId: input.storeId,
     railId: input.railId,
+    payoutId: input.payoutId,
     memo: input.memo,
     actorUserId: input.actorUserId,
     assertions: input.assertions,
@@ -839,6 +843,7 @@ export async function postEntryInTx(
         mode: options.mode,
         storeId: options.storeId,
         railId: options.railId,
+        payoutId: options.payoutId,
         memo,
         actorUserId,
         assertions,

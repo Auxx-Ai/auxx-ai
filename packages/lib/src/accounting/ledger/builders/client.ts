@@ -34,6 +34,7 @@ export {
   type BuiltVendorBillEntry,
   buildEntry,
   buildVendorBillEntry,
+  ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
   roleAcceptsManualSource,
   roleScopeAxis,

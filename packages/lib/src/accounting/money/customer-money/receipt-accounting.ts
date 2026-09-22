@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/money/customer-money/receipt-accounting.ts
 import { schema, type Transaction } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
-import { UnprocessableEntityError } from '../../../errors'
+import { NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import type { PaymentGatewayRow } from '../../rails/client'
 import {
@@ -12,6 +12,8 @@ import {
   toGatewayRoutes,
 } from '../../rails/client'
 import { getPaymentGateway, listPaymentGateways } from '../../rails/reads'
+import type { WorkItemCode } from '../../work-items/codes'
+import { type WorkItemTagKeys, withWorkItemCode } from '../../work-items/refusal'
 import {
   findSourceLink,
   listMovementApplications,
@@ -22,19 +24,22 @@ import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 import { readSourceAccount, readSourceObject } from './source-reads'
 
+const refuse = (message: string, code: WorkItemCode, keys?: WorkItemTagKeys) =>
+  new UnprocessableEntityError(message, withWorkItemCode(code, keys))
+
 /** Read the canonical movement and its accepted source evidence under the commit lock. */
 export async function readCustomerReceiptAccountingSource(
   tx: Transaction,
   organizationId: string,
-  moneyTransactionId: string
+  moneyTransactionId: string,
+  // A channel refund resolves its rail by the same rules (91 D4).
+  purpose: 'customer_receipt' | 'customer_refund' = 'customer_receipt'
 ) {
-  const money = await readMovement(tx, organizationId, moneyTransactionId, {
-    purpose: 'customer_receipt',
-  })
-  if (!money || money.currency !== 'USD' || money.currencyExponent !== 2 || !money.occurredAt)
-    throw new UnprocessableEntityError(
-      'Receipt requires a confirmed USD amount and occurrence instant'
-    )
+  const money = await readMovement(tx, organizationId, moneyTransactionId, { purpose })
+  if (!money) throw new NotFoundError('Receipt movement does not exist')
+  if (money.currency !== 'USD' || money.currencyExponent !== 2)
+    throw refuse('Receipt requires a confirmed USD amount', 'MISSING_AMOUNT')
+  if (!money.occurredAt) throw refuse('Receipt requires an occurrence instant', 'MISSING_DATE')
   const nativeOwnership = await tx.query.MoneyCommand.findFirst({
     where: and(
       eq(schema.MoneyCommand.organizationId, organizationId),
@@ -43,8 +48,9 @@ export async function readCustomerReceiptAccountingSource(
     ),
   })
   if (nativeOwnership)
-    throw new UnprocessableEntityError(
-      'Receipt is linked to native payment accounting; repair its existing accounting membership before switching ownership'
+    throw refuse(
+      'Receipt is linked to native payment accounting; repair its existing accounting membership before switching ownership',
+      'OWNERSHIP_CONFLICT'
     )
   // The order is a link, never an input to the lines (91 §4.0): a receipt applied
   // to no order, part of one, or two posts the same entry.
@@ -65,8 +71,12 @@ export async function readCustomerReceiptAccountingSource(
     const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
     const account = object && (await readSourceAccount(tx, organizationId, object.sourceAccountId))
     if (!account) continue
-    if (acceptance.state !== 'accepted' || account.environment !== 'live' || account.archivedAt)
-      throw new UnprocessableEntityError('Receipt source is unresolved, changed, or test data')
+    if (account.environment !== 'live' || account.archivedAt) {
+      const message = 'Receipt source feed is archived or in test mode'
+      throw refuse(message, 'INVALID_EVIDENCE', { message })
+    }
+    if (acceptance.state !== 'accepted')
+      throw refuse('Receipt source is not accepted yet', 'EVIDENCE_PENDING')
     const observation = await tx.query.FinancialSourceObservation.findFirst({
       where: and(
         eq(schema.FinancialSourceObservation.organizationId, organizationId),
@@ -75,15 +85,16 @@ export async function readCustomerReceiptAccountingSource(
       ),
     })
     const parsed = readStoredCustomerMoneyObservation(observation?.payload)
-    if (!parsed.success || parsed.data.test)
-      throw new UnprocessableEntityError('Receipt source observation is incomplete or test data')
+    if (!parsed.success || parsed.data.test) {
+      const message = 'Receipt source observation is incomplete or test data'
+      throw refuse(message, 'INVALID_EVIDENCE', { message })
+    }
     let fact: ReturnType<typeof confirmedCustomerMovement>
     try {
       fact = confirmedCustomerMovement(parsed.data)
     } catch (error) {
-      throw new UnprocessableEntityError(
-        `Receipt source is not a confirmed movement: ${error instanceof Error ? error.message : String(error)}`
-      )
+      const message = `Receipt source is not a confirmed movement: ${error instanceof Error ? error.message : String(error)}`
+      throw refuse(message, 'INVALID_EVIDENCE', { message })
     }
     if (
       fact.purpose !== money.purpose ||
@@ -91,10 +102,10 @@ export async function readCustomerReceiptAccountingSource(
       fact.currency !== money.currency ||
       fact.occurredAt.getTime() !== money.occurredAt.getTime()
     )
-      throw new UnprocessableEntityError('Receipt source no longer matches the canonical movement')
+      throw refuse('Receipt source no longer matches the canonical movement', 'MOVEMENT_CHANGED')
     const link = await findSourceLink(tx, organizationId, object!.id)
     if (link?.moneyTransactionId !== money.id)
-      throw new UnprocessableEntityError('Receipt source ownership is unresolved')
+      throw refuse('Receipt source ownership is unresolved', 'OWNERSHIP_CONFLICT')
     evidence.push({
       object: object!,
       account,
@@ -102,8 +113,10 @@ export async function readCustomerReceiptAccountingSource(
       gatewayHandle: parsed.data.gateway,
     })
   }
-  if (evidence.length !== 1)
-    throw new UnprocessableEntityError('Receipt needs one unambiguous accepted transaction source')
+  if (evidence.length === 0)
+    throw refuse('Receipt has no channel transaction source', 'NO_DOCUMENT')
+  if (evidence.length > 1)
+    throw refuse('Receipt has more than one accepted transaction source', 'OWNERSHIP_CONFLICT')
   const source = evidence[0]!
   // Task 71 U2: the movement's own gateway HANDLE decides its rail, and the
   // feed link is the fallback for a transaction that carries none.
@@ -119,15 +132,18 @@ export async function readCustomerReceiptAccountingSource(
     const routes: GatewayRoute[] = toGatewayRoutes(gateways.value)
     const matched = matchGatewayRoute(handle, routes)
     if (!matched)
-      throw new UnprocessableEntityError(
-        `Receipt gateway handle "${handle}" is not mapped to a payment gateway. Map it under Accounting > Settings > Payment gateways.`
+      throw refuse(
+        `Receipt gateway handle "${handle}" is not mapped to a payment gateway. Map it under Accounting > Settings > Payment gateways.`,
+        'GATEWAY_UNMAPPED',
+        { externalRef: handle }
       )
     paymentGatewayId = matched
   } else {
     paymentGatewayId = source.account.paymentGatewayId
     if (!paymentGatewayId)
-      throw new UnprocessableEntityError(
-        'Receipt source feed has no payment gateway linked. Map it under Accounting > Settings > Payment gateways.'
+      throw refuse(
+        'Receipt source feed has no payment gateway linked. Map it under Accounting > Settings > Payment gateways.',
+        'GATEWAY_UNMAPPED'
       )
   }
   let gateway: PaymentGatewayRow | null = null
@@ -135,7 +151,9 @@ export async function readCustomerReceiptAccountingSource(
     const read = await getPaymentGateway(tx, organizationId, paymentGatewayId)
     if (read.isErr()) throw read.error
     if (!read.value)
-      throw new UnprocessableEntityError('Receipt payment gateway is missing or archived')
+      throw refuse('Receipt payment gateway is missing or archived', 'ENDPOINT_UNRESOLVED', {
+        railId: paymentGatewayId,
+      })
     gateway = read.value
   }
   return {

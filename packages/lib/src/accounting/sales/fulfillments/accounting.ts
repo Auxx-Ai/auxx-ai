@@ -1,45 +1,17 @@
 // packages/lib/src/accounting/sales/fulfillments/accounting.ts
 
 /**
- * The shipment poster: one shipment's revenue, from whichever door wrote it.
- *
- * ```
- *   Dr customer_deposits      what the receipts already funded
- *   Dr accounts_receivable    the rest
- *       Cr revenue_product    this shipment's subtotal
- *       Cr sales_tax_payable  the tax not already collected on an advance
- *       Cr revenue_shipping   the order's shipping, ONCE
- * ```
- *
- * The split comes from the order's recognition timeline, the same reader the
- * receipt poster uses, so the two sides of one order cannot disagree about who
- * owns which cent. An order with no connected source has no timeline to read
- * (`readOrderMoneyCoverage` answers `sourceAvailable: false`) and posts the
- * invoice shape instead: `Dr A/R` in full (88 §4.6).
- *
- * Two entrances onto one core. {@link prepareFulfillmentEntry} reads a
- * `fulfillment` record (the sweep, the sync trigger, the native door after its
- * write); {@link prepareShipmentEntry} takes the shipment as the caller
- * computed it (the native door's preview, which has no record yet). Both build
- * the same entry from the same walk (88 D6).
- *
- * The frame is `money/post-movement.ts`'s, restated for a record rather than a
- * movement: the live claim, the draft, the enabled/finalized/cutoff gates, the
- * three link rows, the period lock, and a refusal that is a `blocked` result
- * rather than a throw.
- *
- * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
+ * The shipment poster: `Dr accounts_receivable / Cr revenue, Cr shipping, Cr sales tax`
+ * off the shipment's own stamped totals, never a sibling's posting (91 D2).
+ * {@link prepareFulfillmentEntry} reads a `fulfillment` record; {@link prepareShipmentEntry}
+ * takes the native door's not-yet-written shipment. No permission checks here.
  */
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
-import {
-  buildFulfillmentEntry,
-  type FulfillmentRecognitionAllocation,
-  type FulfillmentRecognitionTaxComponent,
-} from '../../ledger/builders/fulfillment'
+import { buildFulfillmentEntry } from '../../ledger/builders/fulfillment'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { periodKeyForDate } from '../../ledger/periods/periods'
 import { readAutoPostMode } from '../../ledger/post/auto-post'
@@ -49,12 +21,7 @@ import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { FINALIZED_SETUP_STATE } from '../../ledger/setup/setup-readiness'
 import type { BuiltEntry, GlPostingSourceInput, RoleSourceScope } from '../../ledger/types'
-import { readOrderMoneyCoverage, readOrderSourceScope } from '../../money/customer-money/reads'
-import { readOrderRecognitionFactsInTx } from '../../money/customer-money/recognition-facts'
-import {
-  readOrderRecognitionSource,
-  requireCompleteOrderRecognitionSource,
-} from '../../money/customer-money/recognition-source'
+import { readOrderSourceScope } from '../../money/customer-money/reads'
 import {
   refusalFromError,
   refusalFromPost,
@@ -73,9 +40,6 @@ const logger = createScopedLogger('fulfillment-accounting')
 
 /** The `sourceKind` of a shipment's subject link, and of every candidate read. */
 export const FULFILLMENT_SOURCE_KIND = 'fulfillment'
-
-/** The id a not-yet-written shipment carries through the timeline and the preview. */
-export const PREVIEW_SHIPMENT_ID = 'preview'
 
 /**
  * A refusal that is not a defect: the shipment recognises nothing, so there is
@@ -106,10 +70,7 @@ export interface ShipmentPostingWindow {
   cutoff: string | null
 }
 
-/**
- * One shipment as the sequence walk sees it, whether or not its record exists
- * yet: {@link OrderShipment}'s share plus the identity the entry is keyed on.
- */
+/** One shipment as the sequence walk sees it, whether or not its record exists yet. */
 export type ShipmentToRecognise = Pick<
   OrderShipment,
   | 'lines'
@@ -120,7 +81,7 @@ export type ShipmentToRecognise = Pick<
   | 'shippingMinor'
   | 'totalMinor'
 > & {
-  /** The fulfillment id, or {@link PREVIEW_SHIPMENT_ID} for one not written yet. */
+  /** The fulfillment id, or a placeholder for the native door's preview. */
   id: string
   sequence: number
   /** The instant the goods went out. */
@@ -147,14 +108,6 @@ export async function parkFulfillment(
   else await deleteWorkItem(db, organizationId, workKey(fulfillmentId))
 }
 
-/** A minor-unit string off the allocator, as the builder's integer. */
-function safeMinor(value: string, label: string): number {
-  const amount = Number(value)
-  if (!Number.isSafeInteger(amount) || amount < 0)
-    throw new UnprocessableEntityError(`${label} is not a whole minor-unit amount`)
-  return amount
-}
-
 /** Read the window once per call. Throws until setup is finalized and a zone is set. */
 export async function readShipmentPostingWindow(
   organizationId: string
@@ -179,12 +132,8 @@ export async function readShipmentPostingWindow(
 }
 
 /**
- * Build the entry one shipment would post, from the shipment as the walk
- * computed it, inside the caller's transaction.
- *
- * Throws an `AuxxError` on every refusal - a {@link NothingToRecogniseError}
- * when the shipment is worth nothing, and the timeline's or the builder's own
- * words otherwise.
+ * Build the entry one shipment would post, inside the caller's transaction. Throws an
+ * `AuxxError` on every refusal ({@link NothingToRecogniseError} when it is worth nothing).
  */
 export async function prepareShipmentEntry(
   tx: Database | Transaction,
@@ -212,50 +161,6 @@ export async function prepareShipmentEntry(
       withWorkItemCode('BEFORE_CUTOFF')
     )
 
-  const facts = await readOrderRecognitionFactsInTx(tx, organizationId, order.orderId)
-  // An order with no connected source has no timeline to replay: the reader
-  // answers `complete: false` over zero coverage rows, which would refuse every
-  // hand-recorded shipment. It posts the invoice shape instead - Dr A/R in full
-  // - which is what the deleted batch poster did (88 §4.6, `reads.ts:184`).
-  const coverage = await readOrderMoneyCoverage(tx, organizationId, order.orderId)
-  let recognitionAllocation: FulfillmentRecognitionAllocation | undefined
-  let recognitionTaxComponents: FulfillmentRecognitionTaxComponent[] | undefined
-  if (coverage.sourceAvailable) {
-    const timeline = requireCompleteOrderRecognitionSource(
-      await readOrderRecognitionSource(tx, {
-        organizationId,
-        orderId: order.orderId,
-        orderNetMinor: (facts.subtotal + facts.shipping).toString(),
-        orderTaxMinor: facts.tax.toString(),
-        bookTimeZone: window.zone,
-        target: { kind: 'fulfillment', id: shipment.id },
-        // Only read when no record carries this shipment yet (the preview).
-        targetEvent: {
-          id: shipment.id,
-          kind: 'fulfillment',
-          effectiveDate: txnDate,
-          occurredAt: occurredAt.toISOString(),
-          netMinor: String(shipment.subtotalMinor + shipment.shippingMinor),
-          taxMinor: String(shipment.taxMinor),
-        },
-      })
-    )
-    const target = timeline.target
-    if (!target)
-      throw new UnprocessableEntityError('Shipment is absent from the recognition timeline')
-    recognitionAllocation = {
-      amountMinor: safeMinor(target.amountMinor, 'Shipment recognition amount'),
-      depositMinor: safeMinor(target.depositMinor, 'Shipment deposit release'),
-      receivableMinor: safeMinor(target.receivableMinor, 'Shipment receivable'),
-      taxMinor: safeMinor(target.taxMinor, 'Shipment recognised tax'),
-      historyHash: target.historyHash,
-    }
-    recognitionTaxComponents = (timeline.targetTaxComponents ?? []).map((component) => ({
-      ...component,
-      amountMinor: safeMinor(component.amountMinor, 'Shipment tax component'),
-    }))
-  }
-
   const built = buildFulfillmentEntry({
     orderId: order.orderId,
     orderNumber: order.number ?? '',
@@ -272,8 +177,6 @@ export async function prepareShipmentEntry(
     includeShipping: shipment.includeShipping,
     contactInstanceId: order.contactInstanceId,
     taxLines: order.taxLines,
-    ...(recognitionAllocation ? { recognitionAllocation } : {}),
-    ...(recognitionTaxComponents?.length ? { recognitionTaxComponents } : {}),
   })
 
   const scope = await readOrderSourceScope(tx, organizationId, order.orderId)
@@ -294,22 +197,15 @@ export async function prepareShipmentEntry(
     entry: built.entry,
     sources,
     scope,
-    // D11: a shipment debits A/R or deposits, never a gateway's clearing
-    // account, so there is no rail to scope it to.
+    // D11: a shipment debits the store's A/R, never a gateway's clearing account, so no rail.
     storeId: typeof scope.store === 'string' ? scope.store : null,
     contactInstanceId: order.contactInstanceId,
   }
 }
 
 /**
- * Build the entry one `fulfillment` record would post, inside the caller's
- * transaction.
- *
- * Throws an `AuxxError` on every refusal - a {@link NothingToRecogniseError}
- * when the shipment is cancelled or worth nothing, and the timeline's or the
- * builder's own words otherwise. {@link postFulfillmentAccounting} turns those
- * into a status; the native door (D6) posts the result in the transaction that
- * created the shipment.
+ * Build the entry one `fulfillment` record would post, inside the caller's transaction.
+ * Throws like {@link prepareShipmentEntry}; {@link postFulfillmentAccounting} turns that into a status.
  */
 export async function prepareFulfillmentEntry(
   tx: Database | Transaction,

@@ -458,15 +458,15 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
 }
 
 /**
- * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58): a
- * second, narrower requirement present for exactly two roles. `bank` must
- * carry `GlAccountSubtype.BANK`; `clearing` must carry `GlAccountSubtype.CLEARING`.
- * Every other role pins nothing here and only its statement type applies.
+ * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58); every other role
+ * pins only its statement type. `accounts_receivable` is pinned because aging, the statement
+ * split and the QuickBooks journal's customer rule find a receivable by its subtype.
  */
 export const ROLE_ACCOUNT_SUBTYPES: Readonly<Partial<Record<AccountRole, GlAccountSubtypeValue>>> =
   {
     [ACCOUNT_ROLES.BANK]: GlAccountSubtype.BANK,
     [ACCOUNT_ROLES.CLEARING]: GlAccountSubtype.CLEARING,
+    [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   }
 
 /**
@@ -562,9 +562,12 @@ export type ScopeAxis = 'store' | 'rail'
  * the per-store accounts sat at zero forever. It joins this table when 61 I2
  * puts COGS on the inventory entry.
  *
+ * `accounts_receivable` reads the store axis so a channel's prepayments stay out of the dealer
+ * receivable (91 §4.3). A store-scoped receivable reaches QuickBooks only through journals;
+ * invoices and payments post to the company's default A/R.
+ *
  * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
- * role: `accounts_receivable` is settled by cash rather than by store,
- * `sales_tax_payable` is one obligation per jurisdiction, inventory is one
+ * role: `sales_tax_payable` is one obligation per jurisdiction, inventory is one
  * physical pool, `unidentified_receipts` wants ONE place to look, and
  * `revenue_service` is credited on an invoice, which is always manual.
  *
@@ -576,6 +579,7 @@ export const SCOPABLE_ROLES: Readonly<Partial<Record<AccountRole, ScopeAxis>>> =
   [ACCOUNT_ROLES.REVENUE_PRODUCT]: 'store',
   [ACCOUNT_ROLES.REVENUE_SHIPPING]: 'store',
   [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES]: 'store',
+  [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: 'store',
   [ACCOUNT_ROLES.CLEARING]: 'rail',
   [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'rail',
   [ACCOUNT_ROLES.BANK]: 'rail',

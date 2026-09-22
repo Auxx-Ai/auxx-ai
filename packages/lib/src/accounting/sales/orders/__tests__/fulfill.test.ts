@@ -48,6 +48,10 @@ const h = vi.hoisted(() => ({
   prepareError: null as Error | null,
   /** Every marker write after commit. */
   marked: [] as Array<{ fulfillmentId: string; refusal: Record<string, unknown> | null }>,
+  /** Every entry `prepareFulfillmentEntry` handed back, to compare with what posted. */
+  preparedEntries: [] as Array<Record<string, unknown>>,
+  /** `buildFulfillmentEntry` calls made outside the (mocked) poster. */
+  builderCalls: 0,
 }))
 
 vi.mock('../../fulfillments/accounting', async () => {
@@ -78,7 +82,9 @@ vi.mock('../../fulfillments/accounting', async () => {
     ) => {
       h.prepared.push(input)
       if (h.prepareError) throw h.prepareError
-      return prepared()
+      const result = prepared()
+      h.preparedEntries.push(result)
+      return result
     },
     prepareShipmentEntry: async (_db: unknown, input: { shipment: Record<string, unknown> }) => {
       h.previewed.push(input.shipment)
@@ -136,6 +142,7 @@ vi.mock('../../../ledger/builders/fulfillment', async (importOriginal) => {
     buildFulfillmentEntry: (input: {
       shippedLines: Array<{ lineId: string; taxMinor?: number }>
     }) => {
+      h.builderCalls += 1
       h.built.push({ shippedLines: input.shippedLines })
       return {
         entry: {
@@ -262,6 +269,8 @@ const input = {
 beforeEach(() => {
   h.events = []
   h.postCalls = []
+  h.preparedEntries = []
+  h.builderCalls = 0
   h.scope = {}
   h.order = {
     orderId: 'ord_1',
@@ -340,6 +349,20 @@ describe('fulfillOrder', () => {
     await fulfillOrder(stubDb(), input)
     expect(h.prepared).toEqual([{ organizationId: ORG, fulfillmentId: 'ful_1' }])
     expect(h.marked).toEqual([])
+  })
+
+  // 91 D2: the sweep's `postFulfillmentAccounting` posts the same `prepareFulfillmentEntry`
+  // result, so the native door adds nothing - no allocation, no builder call of its own.
+  it('posts exactly the entry and scope the sweep core prepared, building nothing itself', async () => {
+    h.scope = { store: 'fsa_1' }
+    await fulfillOrder(stubDb(), input)
+
+    const call = h.postCalls[0]!
+    const prepared = h.preparedEntries[0]!
+    expect(call.entry).toBe(prepared.entry)
+    expect(call.sources).toBe(prepared.sources)
+    expect(call.scope).toEqual({ store: 'fsa_1' })
+    expect(h.builderCalls).toBe(0)
   })
 
   it('posts subject/parent/counterparty sources, storeId from the order scope, and no rail', async () => {

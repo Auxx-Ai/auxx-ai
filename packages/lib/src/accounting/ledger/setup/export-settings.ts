@@ -58,7 +58,14 @@ export const SUMMARY_GRAIN_AVENUES = [
 
 export type SummaryGrainAvenue = (typeof SUMMARY_GRAIN_AVENUES)[number]
 
-export type SummaryGrain = 'day' | 'month'
+/** `payout` buckets by `GlPosting.payoutId`; a posting with none falls into its day (91 D9). */
+export const SUMMARY_GRAINS = ['day', 'month', 'payout'] as const
+
+export type SummaryGrain = (typeof SUMMARY_GRAINS)[number]
+
+export function isSummaryGrain(value: unknown): value is SummaryGrain {
+  return (SUMMARY_GRAINS as readonly unknown[]).includes(value)
+}
 
 export function isSummaryGrainAvenue(avenue: ExportAvenue): avenue is SummaryGrainAvenue {
   return (SUMMARY_GRAIN_AVENUES as readonly string[]).includes(avenue)

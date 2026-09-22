@@ -32,7 +32,7 @@ vi.mock('../vendor-payments/refund-accounting', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { NotFoundError, UnprocessableEntityError } from '../../../errors'
+import { NotFoundError } from '../../../errors'
 import { postBlockedMovement } from '../blocked-movements'
 
 const ORG = 'org_1'
@@ -96,7 +96,7 @@ describe('postBlockedMovement', () => {
     expect(h.customerRefund).toHaveBeenCalledOnce()
   })
 
-  it('sends an order receipt to the recognition poster and an invoice receipt to the invoice one', async () => {
+  it('sends an order receipt to the receipt poster and an invoice receipt to the invoice one', async () => {
     h.applications = [{ invoiceInstanceId: null, orderInstanceId: 'ord_1' }]
     await retry()
     expect(h.customerReceipt).toHaveBeenCalledOnce()
@@ -107,8 +107,10 @@ describe('postBlockedMovement', () => {
     expect(h.invoiceReceipt).toHaveBeenCalledOnce()
   })
 
-  it('refuses a receipt whose applications name neither document', async () => {
-    await expect(retry()).rejects.toBeInstanceOf(UnprocessableEntityError)
+  it('sends a receipt applied to nothing yet to the receipt poster (91 §8.6)', async () => {
+    await expect(retry()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
+    expect(h.customerReceipt).toHaveBeenCalledOnce()
+    expect(h.invoiceReceipt).not.toHaveBeenCalled()
   })
 
   it('refuses a movement that does not exist', async () => {

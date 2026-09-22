@@ -7,15 +7,27 @@
 
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
-import { eq } from 'drizzle-orm'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { and, eq } from 'drizzle-orm'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { upsertWorkItem } from '../../work-items/write'
 import {
   listMovementAccountingCandidates,
   type MovementCandidateWindow,
   type MovementPurpose,
+  postBlockedMovement,
   readMovementDetail,
 } from '../blocked-movements'
+
+vi.mock('@auxx/redis', async (original) => ({
+  ...(await original<typeof import('@auxx/redis')>()),
+  getRedisClient: async () => {
+    throw new Error('No Redis in blocked-movement database tests')
+  },
+}))
+// The plan gate reads billing; every other gate on the route below is real.
+vi.mock('../../ledger/setup/accounting-enabled', () => ({
+  isAccountingEnabled: async () => true,
+}))
 
 const db = () => getTestDb()
 let organizationId: string
@@ -330,5 +342,45 @@ describe('readMovementDetail', () => {
     })
     const other = (await createTestOrganization()).id
     expect(await readMovementDetail(db(), other, mine)).toBeNull()
+  })
+})
+
+describe('postBlockedMovement', () => {
+  it('routes a receipt applied to nothing yet to the channel receipt poster (91 §8.6)', async () => {
+    await db()
+      .insert(schema.OrganizationSetting)
+      .values([
+        { organizationId, key: 'accounting.setupState', value: 'finalized', updatedAt: new Date() },
+        {
+          organizationId,
+          key: 'accounting.bookTimeZone',
+          value: 'America/Los_Angeles',
+          updatedAt: new Date(),
+        },
+      ])
+    const unapplied = await receipt({
+      occurredOn: '2026-09-02',
+      createdAt: new Date('2026-09-02T00:00:00Z'),
+    })
+
+    // Only the channel receipt's own reader words this refusal; the route no longer throws.
+    const result = await postBlockedMovement(db(), {
+      organizationId,
+      moneyTransactionId: unapplied,
+    })
+    expect(result).toEqual({
+      status: 'blocked',
+      reason: 'Receipt requires an occurrence instant',
+    })
+    const [item] = await db()
+      .select()
+      .from(schema.AccountingWorkItem)
+      .where(
+        and(
+          eq(schema.AccountingWorkItem.organizationId, organizationId),
+          eq(schema.AccountingWorkItem.sourceId, unapplied)
+        )
+      )
+    expect(item).toMatchObject({ stage: 'post', reasonCode: 'MISSING_DATE' })
   })
 })

@@ -1,65 +1,74 @@
 // packages/lib/src/accounting/sales/credit-memos/__tests__/reads.test.ts
 //
-// `orderHadFulfillmentBefore`: brief 55's re-base onto the `fulfillment`
-// records. This is the read that decides whether a channel credit memo
-// reverses revenue at all (55 §6, "why this function matters") - and
-// `writes.test.ts` only ever mocks it away, so it needs its own coverage
-// rather than relying on that suite to notice a regression here.
+// `readShippedMemoLineIds`: the per-line read that decides which memo lines reverse
+// revenue (91 D4). `writes.test.ts` mocks it away, so it needs its own coverage.
 
 import { describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  fulfillments: [] as unknown[],
+  items: [] as Array<{ id: string; qty: number | null; at: string | null }>,
+  reads: 0,
 }))
 
-// The single-order door this function is: one call, no field context of its
-// own to fake (`money/fulfillments/reads.ts` owns that).
-vi.mock('../../fulfillments/reads', () => ({
-  readFulfillmentsForOrder: async () => h.fulfillments,
+vi.mock('../../../../resources/system-records', () => ({
+  systemFields: async () => ({ fields: {} }),
+  readSystemRecords: async () => {
+    h.reads++
+    return h.items.map((item) => ({
+      id: item.id,
+      number: () => item.qty,
+      date: () => item.at,
+    }))
+  },
+  findSystemRecordIdsByValue: vi.fn(),
+  systemFieldMap: vi.fn(),
+  systemValueJoin: vi.fn(),
 }))
 
 import type { Database } from '@auxx/database'
-import { orderHadFulfillmentBefore } from '../reads'
-
-function fulfillment(shippedAt: string, status = 'success'): unknown {
-  return { shippedAt, status }
-}
+import { readShippedMemoLineIds } from '../reads'
 
 const DB = {} as Database
+const CHANNEL = { source: 'channel' }
+const line = (id: string, lineItemInstanceId: string | null) => ({ id, lineItemInstanceId })
+const read = (lines: ReturnType<typeof line>[], memo = CHANNEL) =>
+  readShippedMemoLineIds(DB, 'org_1', memo, lines, '2026-01-14')
 
-describe('orderHadFulfillmentBefore', () => {
-  it('is true when a live fulfillment shipped before the date', async () => {
-    h.fulfillments = [fulfillment('2026-01-02')]
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(true)
+describe('readShippedMemoLineIds', () => {
+  it('counts a line whose item shipped on or before the memo date', async () => {
+    h.items = [
+      { id: 'li_1', qty: 1, at: '2026-01-02T12:00:00Z' },
+      { id: 'li_2', qty: 2, at: '2026-01-14T12:00:00Z' },
+    ]
+    expect(await read([line('l1', 'li_1'), line('l2', 'li_2')])).toEqual(new Set(['l1', 'l2']))
   })
 
-  it('is true when a live fulfillment shipped ON the date', async () => {
-    h.fulfillments = [fulfillment('2026-01-14')]
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(true)
+  it('does not count a line the channel reports as unshipped', async () => {
+    h.items = [{ id: 'li_1', qty: 0, at: null }]
+    expect(await read([line('l1', 'li_1')])).toEqual(new Set())
   })
 
-  it('is false when every fulfillment shipped after the date', async () => {
-    h.fulfillments = [fulfillment('2026-01-20')]
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(false)
+  it('does not count a line that shipped only after the memo', async () => {
+    h.items = [{ id: 'li_1', qty: 1, at: '2026-01-20T12:00:00Z' }]
+    expect(await read([line('l1', 'li_1')])).toEqual(new Set())
   })
 
-  it('is false with no fulfillments at all', async () => {
-    h.fulfillments = []
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(false)
+  it('treats a null quantity as the channel saying nothing, not unshipped', async () => {
+    h.items = [{ id: 'li_1', qty: null, at: null }]
+    expect(await read([line('l1', 'li_1'), line('l2', null)])).toEqual(new Set(['l1', 'l2']))
   })
 
-  // 🛑 The decision this function has to make that the JSON log never had to:
-  // a CANCELLED fulfillment is a real record now, not an absence. A cancelled
-  // dispatch never shipped, so it must not count as evidence revenue was ever
-  // recognised - exactly what the old connector enforced by never writing a
-  // cancelled entry into the log in the first place.
-  it('ignores a CANCELLED fulfillment even when it is the only one', async () => {
-    h.fulfillments = [fulfillment('2026-01-02', 'cancelled')]
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(false)
+  it('splits a mixed memo per line', async () => {
+    h.items = [
+      { id: 'li_1', qty: 1, at: '2026-01-02T12:00:00Z' },
+      { id: 'li_2', qty: 0, at: null },
+    ]
+    expect(await read([line('l1', 'li_1'), line('l2', 'li_2')])).toEqual(new Set(['l1']))
   })
 
-  it('counts a live fulfillment even when an earlier one on the order was cancelled', async () => {
-    h.fulfillments = [fulfillment('2026-01-02', 'cancelled'), fulfillment('2026-01-10')]
-    expect(await orderHadFulfillmentBefore(DB, 'org_1', 'ord_1', '2026-01-14')).toBe(true)
+  it('reverses every line of a native memo without reading the line items', async () => {
+    h.reads = 0
+    expect(await read([line('l1', 'li_1')], { source: 'native' })).toEqual(new Set(['l1']))
+    expect(h.reads).toBe(0)
   })
 })

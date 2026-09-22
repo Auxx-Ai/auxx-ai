@@ -13,6 +13,27 @@ describe('refusalFromError', () => {
     expect(refusalFromError(error)).toEqual({ reasonCode: 'TOTALS_NOT_STAMPED' })
   })
 
+  it("carries the thrower's wake keys and message beside its code", () => {
+    const error = new UnprocessableEntityError(
+      'Receipt gateway handle "paypal" is not mapped',
+      withWorkItemCode('GATEWAY_UNMAPPED', { externalRef: 'paypal', railId: null })
+    )
+    expect(refusalFromError(error)).toEqual({
+      reasonCode: 'GATEWAY_UNMAPPED',
+      externalRef: 'paypal',
+    })
+    const keyed = new UnprocessableEntityError(
+      'x',
+      withWorkItemCode('ROLE_UNMAPPED', { role: 'clearing', railId: 'pg_1', message: 'why' })
+    )
+    expect(refusalFromError(keyed)).toEqual({
+      reasonCode: 'ROLE_UNMAPPED',
+      role: 'clearing',
+      railId: 'pg_1',
+      detail: { message: 'why' },
+    })
+  })
+
   it("takes the resolver's unresolved roles as the wake key", () => {
     const error = new UnprocessableEntityError('Cannot post: 2 posting role(s) ...', {
       unresolvedRoles: ['clearing', 'bank'],

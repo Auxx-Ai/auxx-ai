@@ -303,8 +303,19 @@ function noOrgCache() {
 }
 
 describe('readAging', () => {
-  it('is empty and trivially tied when the role has no mapped account', async () => {
+  it('is empty and trivially tied when no account is mapped or carries the subtype', async () => {
     vi.mocked(loadRoleAccountCodes).mockResolvedValue(new Map())
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [],
+        totalDebitMinor: 0,
+        totalCreditMinor: 0,
+        balanced: true,
+      })
+    )
     noOrgCache()
 
     const result = await readAging(stubDb([]), {
@@ -317,7 +328,70 @@ describe('readAging', () => {
     expect(value.accountCode).toBeNull()
     expect(value.groups).toEqual([])
     expect(value.verdict).toBe(true)
-    expect(readTrialBalance).not.toHaveBeenCalled()
+  })
+
+  // A/R on the store axis (91 §4.3): the store's account is walked and tied beside the default.
+  it('walks every accounts_receivable account and ties to their summed balance', async () => {
+    vi.mocked(loadRoleAccountCodes).mockResolvedValue(
+      new Map([
+        [
+          'accounts_receivable',
+          { glAccountId: 'a1', code: '1100', name: 'A/R', accountType: 'asset', isActive: true },
+        ],
+      ])
+    )
+    noOrgCache()
+    const tbRow = (glAccountId: string, subtype: string | null, balanceMinor: number) => ({
+      glAccountId,
+      accountCode: glAccountId,
+      accountName: glAccountId,
+      accountType: 'asset' as const,
+      subtype: subtype as never,
+      debitMinor: Math.max(balanceMinor, 0),
+      creditMinor: Math.max(-balanceMinor, 0),
+      balanceMinor,
+      inChart: true,
+    })
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [
+          tbRow('a1', null, 4_000),
+          tbRow('a_store', 'accounts_receivable', 6_000),
+          tbRow('bank', 'bank', 99_000),
+        ],
+        totalDebitMinor: 109_000,
+        totalCreditMinor: 109_000,
+        balanced: true,
+      })
+    )
+    const db = stubDb([
+      [
+        glLine({
+          sourceType: 'journal_entry',
+          sourceId: 'je_1',
+          direction: 'debit',
+          amountMinor: 4_000,
+        }),
+        glLine({
+          sourceType: 'journal_entry',
+          sourceId: 'je_2',
+          direction: 'debit',
+          amountMinor: 6_000,
+        }),
+      ],
+    ])
+
+    const value = (
+      await readAging(db, { organizationId: ORG, side: 'receivable', asOf: '2026-08-31' })
+    )._unsafeUnwrap()
+
+    expect(value.accountCode).toBe('1100')
+    expect(value.totalMinor).toBe(10_000)
+    expect(value.balanceSheetMinor).toBe(10_000)
+    expect(value.verdict).toBe(true)
   })
 
   it('groups an invoice-sourced line by its resolved contact and ties to the trial balance', async () => {

@@ -9,8 +9,10 @@ export {
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrain,
   isSummaryGrainAvenue,
   SUMMARY_GRAIN_AVENUES,
+  SUMMARY_GRAINS,
   type SummaryGrain,
   type SummaryGrainAvenue,
 } from './export-settings'

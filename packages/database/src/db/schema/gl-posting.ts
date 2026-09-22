@@ -167,6 +167,8 @@ export const GlPosting = pgTable(
     }),
     /** The `payment_gateway` instance the entry resolved through. An entity record id, so no FK. */
     railId: text(),
+    /** The provider's payout id the entry settled in (brief 94 stamps it); the summary's payout grain. No FK. */
+    payoutId: text(),
 
     /** ISO 4217. USD only for the cutover; asserted in the poster, never assumed. */
     currency: text().default('USD').notNull(),
@@ -225,6 +227,11 @@ export const GlPosting = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.txnDate.asc().nullsLast()
+    ),
+    index('GlPosting_org_payoutId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.payoutId.asc().nullsLast()
     ),
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),

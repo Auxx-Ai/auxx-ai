@@ -225,7 +225,7 @@ export interface GlPostingLineBase {
  * (task 47 §5, rail axis added by task 58 §5.1).
  *
  * Consulted only for the roles in `SCOPABLE_ROLES` - the three revenue roles,
- * `clearing`, `payment_processing_fees` and `bank`. Every other role ignores it
+ * `accounts_receivable`, `clearing`, `payment_processing_fees` and `bank`. Every other role ignores it
  * entirely, which is what keeps an org that maps nothing byte-for-byte
  * identical to how it behaved before task 47, and that no-op is the acceptance
  * test for the whole brief.

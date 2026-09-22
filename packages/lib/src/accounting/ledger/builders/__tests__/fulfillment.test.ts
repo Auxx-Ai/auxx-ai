@@ -139,25 +139,25 @@ describe('the channel keyspace', () => {
   })
 })
 
-describe('canonical customer-money allocation', () => {
-  it('posts a partial receipt as deposit, A/R and only newly recognized tax', () => {
+describe('the store axis', () => {
+  it('scopes A/R and revenue to the store, never tax', () => {
     const built = buildFulfillmentEntry({
       ...BASE,
-      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: 100_000 }],
-      recognitionAllocation: {
-        amountMinor: 106_500,
-        depositMinor: 52_500,
-        receivableMinor: 54_000,
-        taxMinor: 5_000,
-        historyHash: 'a'.repeat(64),
-      },
+      shippedLines: WHOLE_ORDER,
+      sourceStoreId: 'store-1',
     })
-    expect(amountFor(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBe(52_500)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(54_000)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(5_000)
-    expect(built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CLEARING)).toBe(
-      false
-    )
+    const scopeOf = (role: string) =>
+      built.entry.lines.find((line) => line.accountRole === role)?.sourceScope
+    expect(scopeOf(ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toEqual({ store: 'store-1' })
+    expect(scopeOf(ACCOUNT_ROLES.REVENUE_PRODUCT)).toEqual({ store: 'store-1' })
+    expect(scopeOf(ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBeUndefined()
+  })
+
+  it('never debits customer deposits', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    expect(
+      built.entry.lines.some((line) => line.accountRole === ACCOUNT_ROLES.CUSTOMER_DEPOSITS)
+    ).toBe(false)
   })
 })
 

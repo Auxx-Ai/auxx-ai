@@ -1727,15 +1727,9 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * The summarised view over the detail ledger (TARGET §6) - posted postings
-   * grouped by avenue, grain bucket, store, rail and currency, lines summed by
-   * account, drilling down through `postingIds`. The same read serves
-   * Transaction and Summary mode (TARGET §3): the grain per avenue comes from
-   * `accounting.summaryGrain.*`.
-   *
-   * 🛑 Nothing is excluded for a live export batch here - `ExportBatchPosting`
-   * doesn't exist yet (step 3, part B). Once it does, this passes the ids it
-   * finds as `excludePostingIds` so a batched posting is not offered twice.
+   * The summarised view over the detail ledger (TARGET §6): posted postings grouped by avenue,
+   * grain (`accounting.summaryGrain.*`, payout included), store, rail and currency; lines summed
+   * by account and side (91 D9). Batched postings are not excluded here.
    */
   summary: permissionProcedure(PermissionKey.ledgerView)
     .input(

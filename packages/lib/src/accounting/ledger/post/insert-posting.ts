@@ -50,6 +50,8 @@ export interface InsertPostingInput {
   sources: GlPostingSourceInput[]
   storeId?: string | null
   railId?: string | null
+  /** The provider's payout id; null until brief 94 stamps it. */
+  payoutId?: string | null
   memo?: string
   actorUserId?: string
   assertions?: PostingAssertions
@@ -198,6 +200,7 @@ export async function insertPostingInTx(
       docNumber,
       storeId: input.storeId ?? null,
       railId: input.railId ?? null,
+      payoutId: input.payoutId ?? null,
       // Explicit, never the column default - see LEDGER_CURRENCY.
       currency: LEDGER_CURRENCY,
       totalMinor,

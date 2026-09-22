@@ -451,26 +451,6 @@ export interface FulfillmentShippedLine {
   name?: string
 }
 
-/** One conserved tax component share for a recognition event. */
-export interface FulfillmentRecognitionTaxComponent {
-  componentKey: string
-  amountMinor: number
-  jurisdiction: string | null
-  collector: 'merchant' | 'marketplace'
-  remitter: 'merchant' | 'marketplace'
-  withholdingEvidenceId: string | null
-}
-
-/** One shipment's frozen deposit, receivable and newly recognized tax split. */
-export interface FulfillmentRecognitionAllocation {
-  /** Helper event amount, including pretax shipment revenue and new tax. */
-  amountMinor: number
-  depositMinor: number
-  receivableMinor: number
-  taxMinor: number
-  historyHash: string
-}
-
 export interface BuildFulfillmentEntryInput {
   /** The `order` EntityInstance id. Every line's `sourceId`. */
   orderId: string
@@ -486,19 +466,9 @@ export interface BuildFulfillmentEntryInput {
   /** `order_currency`, verbatim. Anything but `ledgerCurrency` REFUSES. */
   currency: string | null | undefined
   /**
-   * The `FinancialSourceAccount` the sale came from, stamped on the REVENUE
-   * lines so the org may point them at a per-store account (task 47 §5).
-   *
-   * 🛑 Three values, three meanings. An id is the storefront; `null` is "this
-   * record had no connected source", which resolves through the MANUAL bucket;
-   * OMITTING it is "the caller does not know", which resolves to the org
-   * default exactly as every fulfillment did before this brief. A test or an
-   * older caller that leaves it off therefore changes nothing.
-   *
-   * ⚠️ Only the revenue roles read it. A/R, tax and COGS are pooled - the first
-   * is settled by cash rather than by store, the second is one obligation per
-   * jurisdiction, and the third is blocked until L3 puts COGS on this entry
-   * at all (47 §4.2, §4.3).
+   * The `FinancialSourceAccount` the sale came from, stamped on the revenue lines (task 47 §5):
+   * an id is the storefront, `null` the manual bucket, omitted the org default. The poster
+   * passes the entry-level scope instead, which A/R reads too; tax and COGS stay pooled.
    */
   sourceStoreId?: string | null
   /**
@@ -567,10 +537,6 @@ export interface BuildFulfillmentEntryInput {
    * breakdown would read as a complete one.
    */
   taxLines?: readonly JurisdictionTaxLine[]
-  /** Canonical receipt and shipment ownership, when the switched policy applies. */
-  recognitionAllocation?: FulfillmentRecognitionAllocation
-  /** Conserved component shares for the newly recognized tax credit. */
-  recognitionTaxComponents?: readonly FulfillmentRecognitionTaxComponent[]
   /** The entry memo, carried onto every line with none of its own. */
   memo?: string
 }
@@ -597,12 +563,6 @@ export interface BuiltFulfillmentEntry {
   totalMinor: number
   /** How the tax number above was arrived at. A screen says which. */
   taxBasis: 'per_line' | 'allocated'
-  /** Source tax before receipt ownership reduced the journal tax credit. */
-  sourceTaxMinor?: number
-  /** Deposit and A/R debit components under canonical recognition. */
-  depositDebitMinor?: number
-  receivableDebitMinor?: number
-  recognitionHistoryHash?: string
 }
 
 /**
@@ -688,8 +648,6 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     includeShipping,
     contactInstanceId,
     taxLines,
-    recognitionAllocation,
-    recognitionTaxComponents,
     memo,
   } = input
 
@@ -734,34 +692,8 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     context: { orderNumber },
   })
   const { subtotalMinor, shippingMinor, taxBasis } = sourceTotals
-  const taxMinor = recognitionAllocation?.taxMinor ?? sourceTotals.taxMinor
+  const taxMinor = sourceTotals.taxMinor
   const totalMinor = subtotalMinor + taxMinor + shippingMinor
-  if (recognitionAllocation) {
-    const values = [
-      recognitionAllocation.amountMinor,
-      recognitionAllocation.depositMinor,
-      recognitionAllocation.receivableMinor,
-      recognitionAllocation.taxMinor,
-    ]
-    const expectedNet =
-      recognitionAllocation.depositMinor + recognitionAllocation.receivableMinor - taxMinor
-    if (
-      !recognitionAllocation.historyHash ||
-      values.some((value) => !Number.isSafeInteger(value) || value < 0) ||
-      expectedNet !== subtotalMinor + shippingMinor ||
-      recognitionAllocation.amountMinor !== subtotalMinor + shippingMinor + taxMinor ||
-      recognitionAllocation.taxMinor > sourceTotals.taxMinor
-    ) {
-      throw new UnprocessableEntityError(
-        `Recognition allocation for order ${orderNumber} does not tie to the shipped source.`,
-        {
-          orderNumber,
-          expectedNet: String(expectedNet),
-          netAndShippingMinor: String(subtotalMinor + shippingMinor),
-        }
-      )
-    }
-  }
 
   if (totalMinor <= 0) {
     throw new UnprocessableEntityError(
@@ -782,38 +714,21 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     lines.push({ ...line, sortOrder: sortOrder++ } as GlPostingLineInput)
   }
 
-  /**
-   * Spread onto the revenue lines only. Empty when the caller named no store,
-   * which leaves those lines byte-for-byte what they were before task 47.
-   */
-  const revenueScope =
+  // Spread onto the store-scoped lines (A/R and revenue); empty when the caller named no store.
+  const storeScope =
     input.sourceStoreId === undefined ? {} : { sourceScope: { store: input.sourceStoreId } }
 
-  if (recognitionAllocation?.depositMinor) {
-    push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
-      direction: 'debit',
-      amount: recognitionAllocation.depositMinor,
-      memo: memo ?? shipmentLabel,
-      ...(contactInstanceId
-        ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
-        : {}),
-    })
-  }
-  const receivableDebit = recognitionAllocation?.receivableMinor ?? totalMinor
-  if (receivableDebit) {
-    push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-      direction: 'debit',
-      amount: receivableDebit,
-      memo: memo ?? shipmentLabel,
-      ...(contactInstanceId
-        ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
-        : {}),
-    })
-  }
+  push({
+    ...source,
+    accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+    direction: 'debit',
+    amount: totalMinor,
+    memo: memo ?? shipmentLabel,
+    ...storeScope,
+    ...(contactInstanceId
+      ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+      : {}),
+  })
   push({
     ...source,
     accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
@@ -829,7 +744,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     // own. Decision D10 keeps them separate rather than collapsing either into
     // the other.
     dimensions: { channel: channelDimension },
-    ...revenueScope,
+    ...storeScope,
   })
 
   // Zero legs are DROPPED rather than posted at zero. An org that charges no
@@ -840,32 +755,11 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     const taxLabel = taxBasis === 'per_line' ? 'per line' : 'allocated'
     // Split by jurisdiction when the order's own tax lines tie to its total
     // (brief 13 §5) - otherwise the single undimensioned line, unchanged.
-    const conserved = recognitionTaxComponents?.length
-      ? (() => {
-          const shares = new Map<string, number>()
-          for (const component of recognitionTaxComponents) {
-            if (!component.jurisdiction) return undefined
-            shares.set(
-              component.jurisdiction,
-              (shares.get(component.jurisdiction) ?? 0) + component.amountMinor
-            )
-          }
-          const total = [...shares.values()].reduce((sum, value) => sum + value, 0)
-          return total === taxMinor
-            ? [...shares.entries()].map(([jurisdiction, amountMinor]) => ({
-                jurisdiction,
-                amountMinor,
-              }))
-            : undefined
-        })()
-      : undefined
-    const split =
-      conserved ??
-      splitTaxByJurisdiction({
-        taxMinor,
-        taxLines: taxLines ?? [],
-        orderTaxTotalMinor: input.orderTaxTotalMinor,
-      })
+    const split = splitTaxByJurisdiction({
+      taxMinor,
+      taxLines: taxLines ?? [],
+      orderTaxTotalMinor: input.orderTaxTotalMinor,
+    })
     if (split) {
       for (const { jurisdiction, amountMinor } of split) {
         push({
@@ -897,7 +791,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       direction: 'credit',
       amount: shippingMinor,
       memo: sourceFactsMemo(facts, 'shipping, recognised once on the first fulfillment'),
-      ...revenueScope,
+      ...storeScope,
     })
   }
 
@@ -913,13 +807,5 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     shippingMinor,
     totalMinor,
     taxBasis,
-    ...(recognitionAllocation
-      ? {
-          sourceTaxMinor: sourceTotals.taxMinor,
-          depositDebitMinor: recognitionAllocation.depositMinor,
-          receivableDebitMinor: recognitionAllocation.receivableMinor,
-          recognitionHistoryHash: recognitionAllocation.historyHash,
-        }
-      : {}),
   }
 }

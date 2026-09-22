@@ -590,6 +590,52 @@ describe('Summary mode', () => {
     expect(inserted[0]?.payload).toMatchObject({ summary: { storeId: 'store_1' } })
   })
 
+  it('freezes both sides of one account as separate journal lines, and the payout as the grain', async () => {
+    readExportSettings.mockResolvedValue({
+      ...summarySettings,
+      summaryGrain: { receipt: 'payout' },
+    })
+    readLedgerSummary.mockResolvedValue(
+      ok([
+        {
+          avenue: 'receipt',
+          grainKey: 'po_1',
+          payoutId: 'po_1',
+          storeId: 'store_1',
+          railId: 'rail_1',
+          currency: 'USD',
+          postingIds: ['glp_1', 'glp_2'],
+          txnDateFrom: '2026-09-13',
+          txnDateTo: '2026-09-14',
+          totalMinor: 1400,
+          lines: [
+            { glAccountId: 'acct_ar', accountCode: '1100', direction: 'debit', amountMinor: 1000 },
+            {
+              glAccountId: 'acct_rev',
+              accountCode: '4000',
+              direction: 'credit',
+              amountMinor: 1000,
+            },
+            { glAccountId: 'acct_clr', accountCode: '1050', direction: 'debit', amountMinor: 400 },
+            { glAccountId: 'acct_ar', accountCode: '1100', direction: 'credit', amountMinor: 400 },
+          ],
+        },
+      ])
+    )
+    const { db, inserted } = fakeDb([[posting(), posting({ id: 'glp_2' })]])
+
+    const result = await buildExportBatches(db, RANGE)
+
+    expect(result._unsafeUnwrap().built).toBe(1)
+    expect(inserted[0]).toMatchObject({ avenue: 'receipt', grainKey: 'po_1', totalMinor: 1400 })
+    const lines = (inserted[0]?.payload as { lines: { glAccountId: string; direction: string }[] })
+      .lines
+    expect(lines.filter((line) => line.glAccountId === 'acct_ar').map((l) => l.direction)).toEqual([
+      'debit',
+      'credit',
+    ])
+  })
+
   it('excludes an already-batched posting from the summary, so no row sums it twice', async () => {
     readExportSettings.mockResolvedValue(summarySettings)
     const { db } = fakeDb([[posting(), posting({ id: 'glp_2', batchedId: 'ebp_1' })]])

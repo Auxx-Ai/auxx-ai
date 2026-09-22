@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(async () => true),
   memo: {} as Record<string, unknown>,
   lines: [] as unknown[],
-  orderHadFulfillmentBefore: vi.fn(async () => false),
+  readShipped: vi.fn(async () => new Set<string>(['line_1'])),
   buildCreditMemoEntry: vi.fn(),
   postCreditMemoEntry: vi.fn(),
   reverseCreditMemoEntry: vi.fn(),
@@ -20,10 +20,8 @@ const h = vi.hoisted(() => ({
   sumCreditMemoApplications: vi.fn(async () => 0),
   sumSucceededCreditMemoRefunds: vi.fn(async () => 0),
   readEditStamp: vi.fn(async (): Promise<{ openedAt: string; byUserId: string } | null> => null),
-  readiness: vi.fn(async () => ({ ready: true }) as { ready: boolean; reason?: string }),
 }))
 
-vi.mock('../readiness', () => ({ readChannelMemoReadiness: h.readiness }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   readBookTimeZoneOrUtc: async () => 'UTC',
   todayInBookTimeZone: async () => '2026-09-01',
@@ -41,7 +39,8 @@ vi.mock('../../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: async () => ({}) }) }),
 }))
-vi.mock('../../../ledger/builders/credit-memo', () => ({
+vi.mock('../../../ledger/builders/credit-memo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../ledger/builders/credit-memo')>()),
   buildCreditMemoEntry: h.buildCreditMemoEntry,
 }))
 vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
@@ -78,7 +77,7 @@ vi.mock('../command', () => ({
 vi.mock('../reads', () => ({
   requireCreditMemo: async () => h.memo,
   loadCreditMemoLines: async () => h.lines,
-  orderHadFulfillmentBefore: h.orderHadFulfillmentBefore,
+  readShippedMemoLineIds: h.readShipped,
   loadInvoiceForCredit: vi.fn(),
   loadInvoiceLinesForCredit: vi.fn(),
   sumCreditMemoApplications: h.sumCreditMemoApplications,
@@ -139,7 +138,7 @@ beforeEach(() => {
       sortOrder: 0,
     },
   ]
-  h.orderHadFulfillmentBefore.mockResolvedValue(false)
+  h.readShipped.mockResolvedValue(new Set(['line_1']))
   h.buildCreditMemoEntry.mockReturnValue({
     entry: { postingType: 'credit_memo', periodKey: 'CM-0001', txnDate: '2026-09-01', lines: [] },
   })
@@ -191,7 +190,7 @@ describe('issueCreditMemo', () => {
 
     expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
     expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
-    expect(h.orderHadFulfillmentBefore).not.toHaveBeenCalled()
+    expect(h.readShipped).not.toHaveBeenCalled()
     expect(result.postingId).toBeNull()
   })
 
@@ -203,67 +202,41 @@ describe('issueCreditMemo', () => {
   })
 })
 
-describe('the channel memo gate (88 D2)', () => {
-  it('refuses an unready channel memo, naming what it waits on, before anything is written', async () => {
+describe('the channel memo entry (91 D4)', () => {
+  beforeEach(() => {
     h.memo.source = 'channel'
     h.memo.orderInstanceId = 'order_1'
-    h.readiness.mockResolvedValueOnce({
-      ready: false,
-      reason: 'receipt mt_1 is a draft awaiting approval',
-    })
-
-    await expect(issueCreditMemo(db, input)).rejects.toThrow(
-      'This credit memo waits on its order: receipt mt_1 is a draft awaiting approval'
-    )
-    expect(h.readiness).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        orderInstanceId: 'order_1',
-        issuedAt: '2026-09-01',
-        cutoffPeriod: '2026-01',
-      })
-    )
-    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
-    expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
-  it('never asks for a native memo', async () => {
-    await issueCreditMemo(db, input)
-    expect(h.readiness).not.toHaveBeenCalled()
-  })
-})
-
-describe('the channel memo entry', () => {
-  it('carries no money leg — the refund movement posts its own entry (D6)', async () => {
-    h.memo.source = 'channel'
-    h.memo.orderInstanceId = 'order_1'
+  it('issues without waiting on its order, carrying no money leg (71 D6)', async () => {
     h.memo.amountRefundedMinor = 100_00
-    h.orderHadFulfillmentBefore.mockResolvedValue(true)
 
     await issueCreditMemo(db, input)
 
     expect(h.buildCreditMemoEntry).toHaveBeenCalledOnce()
     const built = h.buildCreditMemoEntry.mock.calls[0]![0]
     expect(built).not.toHaveProperty('settlement')
-    expect(built.reverseRevenue).toBe(true)
+    expect(built.lines).toEqual([{ subtotal: 100_00, taxTotal: null, shipped: true }])
+    expect(h.readShipped).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG,
+      expect.objectContaining({ source: 'channel' }),
+      h.lines,
+      '2026-09-01'
+    )
+    expect(h.postCreditMemoEntry).toHaveBeenCalledOnce()
   })
 
-  // 71 D14. The builder turns this into `Dr customer_deposits / Cr A/R`; what
-  // this file owns is that the memo still ISSUES, and issues with the flag that
-  // selects that branch. Before D14 it refused, and a Shopify refund taken
-  // before the order shipped could not be recorded at all.
-  it('issues a memo on an order that never shipped, with reverseRevenue false', async () => {
-    h.memo.source = 'channel'
-    h.memo.orderInstanceId = 'order_1'
-    h.orderHadFulfillmentBefore.mockResolvedValue(false)
+  it('issues a memo whose lines never shipped with no entry at all', async () => {
+    h.readShipped.mockResolvedValue(new Set())
 
-    await expect(issueCreditMemo(db, input)).resolves.toBeDefined()
+    const result = await issueCreditMemo(db, input)
 
-    expect(h.buildCreditMemoEntry.mock.calls[0]![0]).toMatchObject({
-      reverseRevenue: false,
-      total: 100_00,
-    })
-    expect(h.postCreditMemoEntry).toHaveBeenCalledOnce()
+    expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
+    expect(result.postingId).toBeNull()
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual([{ fieldId: 'credit_memo_status', value: 'issued' }])
   })
 })
 

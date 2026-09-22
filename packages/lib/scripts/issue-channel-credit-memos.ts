@@ -10,12 +10,8 @@
 // moment somebody reads it and the moment the script runs, and this writes to
 // the ledger. Read the list first, then hand it over.
 //
-// ⚠️ ORDER MATTERS. A channel memo reverses revenue only when its order shipped
-// before the memo's date (`orderHadFulfillmentBefore`), and that read looks at
-// the SHIPMENT LOG, not at whether the fulfillment was posted. Issuing before
-// the month's fulfillments are posted therefore books contra-revenue against
-// revenue that is not in the books yet. Both entries balance, so nothing
-// downstream notices. Post the fulfillments first.
+// A channel memo reverses revenue only for the lines its order's line items say had
+// shipped by the memo's date (`readShippedMemoLineIds`, 91 D4).
 //
 //   npx dotenv -- npx tsx packages/lib/scripts/issue-channel-credit-memos.ts <organizationId> <id> [id...]
 

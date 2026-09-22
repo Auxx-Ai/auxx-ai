@@ -1209,6 +1209,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many fulfillment postings roll into one Summary-mode export object.',
@@ -1222,6 +1223,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many customer receipt postings roll into one Summary-mode export object.',
@@ -1235,6 +1237,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many refund postings roll into one Summary-mode export object.',
@@ -1248,6 +1251,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many credit memo postings roll into one Summary-mode export object.',
@@ -1261,6 +1265,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many invoice postings roll into one Summary-mode export object.',
@@ -1274,6 +1279,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many expense bill postings roll into one Summary-mode export object.',
@@ -1287,6 +1293,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many vendor payment postings roll into one Summary-mode export object.',
@@ -1300,6 +1307,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many vendor credit postings roll into one Summary-mode export object.',
@@ -1313,6 +1321,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
+        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many inventory postings roll into one Summary-mode export object.',

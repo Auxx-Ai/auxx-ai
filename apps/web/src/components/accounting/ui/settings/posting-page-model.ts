@@ -29,6 +29,7 @@ import {
   type PostingTrigger,
   type PostingType,
   SUMMARY_GRAIN_AVENUES,
+  type SummaryGrain,
   type SummaryGrainAvenue,
 } from '@auxx/lib/accounting/ledger/client'
 import {
@@ -181,6 +182,13 @@ export function summaryGrainKeyForAvenue(avenue: ExportAvenue): string | null {
   return (SUMMARY_GRAIN_AVENUES as readonly string[]).includes(avenue)
     ? `accounting.summaryGrain.${avenue as SummaryGrainAvenue}`
     : null
+}
+
+/** The grain picker's option labels; a posting with no payout falls into its day. */
+export const SUMMARY_GRAIN_LABEL: Record<SummaryGrain, string> = {
+  day: 'Per day',
+  month: 'Per month',
+  payout: 'Per payout',
 }
 
 /**

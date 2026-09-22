@@ -18,9 +18,47 @@ export interface WorkItemRefusal {
 /** The `details` key a thrower sets to name its own code. */
 export const WORK_ITEM_CODE_DETAIL = 'workItemCode'
 
+/** The wake keys (and a message for a code that renders one) a tagged throw can carry. */
+export interface WorkItemTagKeys {
+  role?: string | null
+  railId?: string | null
+  externalRef?: string | null
+  message?: string | null
+}
+
+// `AuxxErrorDetails` holds only strings, so the keys ride flat beside the code.
+const TAG_KEYS = {
+  role: 'workItemRole',
+  railId: 'workItemRailId',
+  externalRef: 'workItemExternalRef',
+  message: 'workItemMessage',
+} as const
+
 /** Tag an `AuxxError`'s details with a work-item code, for a throw site that knows its refusal. */
-export function withWorkItemCode(code: WorkItemCode): { [WORK_ITEM_CODE_DETAIL]: WorkItemCode } {
-  return { [WORK_ITEM_CODE_DETAIL]: code }
+export function withWorkItemCode(
+  code: WorkItemCode,
+  keys: WorkItemTagKeys = {}
+): Record<string, string> {
+  const details: Record<string, string> = { [WORK_ITEM_CODE_DETAIL]: code }
+  for (const [key, detailKey] of Object.entries(TAG_KEYS)) {
+    const value = keys[key as keyof WorkItemTagKeys]
+    if (value) details[detailKey] = value
+  }
+  return details
+}
+
+function taggedKeys(details: Record<PropertyKey, unknown>): Partial<WorkItemRefusal> {
+  const read = (key: string) => (typeof details[key] === 'string' ? (details[key] as string) : null)
+  const role = read(TAG_KEYS.role)
+  const railId = read(TAG_KEYS.railId)
+  const externalRef = read(TAG_KEYS.externalRef)
+  const message = read(TAG_KEYS.message)
+  return {
+    ...(role ? { role } : {}),
+    ...(railId ? { railId } : {}),
+    ...(externalRef ? { externalRef } : {}),
+    ...(message ? { detail: { message } } : {}),
+  }
 }
 
 function firstRole(details: unknown): string | null {
@@ -49,7 +87,7 @@ export function refusalFromError(
   const message = error instanceof Error ? error.message : String(error)
   const details = error instanceof AuxxError ? error.details : undefined
   const tagged = details?.[WORK_ITEM_CODE_DETAIL]
-  if (isWorkItemCode(tagged)) return { reasonCode: tagged, ...keys }
+  if (isWorkItemCode(tagged)) return { reasonCode: tagged, ...keys, ...taggedKeys(details!) }
   const role = firstRole(details)
   if (role) {
     return {

@@ -1,59 +1,19 @@
 // packages/lib/src/accounting/ledger/builders/credit-memo.ts
 
 /**
- * The credit memo issue entry: "you owe us less", whoever started it.
- *
- * PURE. No database, no clock, no chart.
+ * The credit memo issue entry, per line (91 D4). PURE: no database, no clock, no chart.
  *
  * ```
- *   revenue leg (reverseRevenue):
- *     Dr revenue_returns_allowances   subtotal
- *     Dr sales_tax_payable            taxTotal        (omitted when zero)
- *         Cr accounts_receivable        total
- *
- *   pre-fulfillment (reverseRevenue false):
- *     Dr customer_deposits            total
- *         Cr accounts_receivable        total
+ *   Dr revenue_returns_allowances   the shipped lines' subtotal
+ *   Dr sales_tax_payable            the shipped lines' tax      (omitted when zero)
+ *       Cr accounts_receivable        the two together
  * ```
  *
- * ## One builder, both sources
+ * A line whose goods had not shipped posts nothing: no revenue was recognised, and
+ * its money is already a credit in A/R that the refund debits. No money leg (71 D6).
+ * Tax is transcribed from the lines, never recomputed from a rate.
  *
- * A native memo is a person conceding part of an invoice: the revenue leg and
- * nothing else. A channel memo is the same entry when the order shipped first.
- *
- * 🛑 **No money leg, either way** (71 D6). The refund is its own `refund` entry
- * off its own `MoneyTransaction`, `Dr <this memo's control account> / Cr <the
- * cash endpoint>`, so one memo refunded on two rails stays two credits and this
- * entry never has to know which rail paid.
- *
- * ## 4090 always, never the original revenue account
- *
- * A reversal netted into `4000` leaves a return rate nobody can see, which is
- * the reason `revenue_returns_allowances` exists in the default chart at all.
- * The role covers allowances as well as returns, and the allowance is the
- * common case.
- *
- * ## The pre-fulfillment branch
- *
- * A channel memo whose order was never fulfilled before `issuedAt` reverses
- * revenue that was never posted, so the caller passes `reverseRevenue: false`
- * and the entry moves the customer's ADVANCE instead: the pre-fulfillment
- * receipt credited the whole amount, tax included, to `customer_deposits`
- * (`customer-money/accounting.ts`), so the memo debits that liability in full
- * and credits the control account the refund later draws down (71 D14). No
- * `sales_tax_payable` line: none was ever credited. A native memo always reverses revenue,
- * because it exists only where an invoice was issued. A channel memo with
- * neither is refused, naming why: there is no entry to build.
- *
- * ## Tax is transcribed, never recomputed
- *
- * `taxTotal` is the sum of the memo's line tax totals as the lines carry them.
- * Recomputing it from a rate here would be a second implementation free to
- * drift from the document, and an entry that does not tie to its document is
- * worse than no entry. `total` must equal `subtotal + taxTotal` for the same
- * reason: the entry ties to the stored totals by construction or it refuses.
- *
- * @see plans/accounting/tasks/done/10-credit-memos.md section 3 and section 10.6
+ * @see plans/accounting/tasks/91-one-entry-per-event.md §4.4
  */
 
 import { UnprocessableEntityError } from '../../../errors'
@@ -76,8 +36,8 @@ export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
 
 /** One explicit entitlement component. Cash refunds are separate effects. */
 export interface CreditMemoEntitlementComponent {
-  componentKey: 'earned_revenue' | 'customer_deposit' | 'sales_tax'
-  accountRole: 'revenue_returns_allowances' | 'customer_deposits' | 'sales_tax_payable'
+  componentKey: 'earned_revenue' | 'sales_tax'
+  accountRole: 'revenue_returns_allowances' | 'sales_tax_payable'
   direction: 'debit'
   amount: number
 }
@@ -101,18 +61,22 @@ export interface BuiltCreditMemoEntitlementEntry {
   totalMinor: number
 }
 
-/** The amounts one memo contributes, all integer minor units. */
+/** One memo line as the entry sees it. */
+export interface CreditMemoEntryLine {
+  /** `credit_memo_line_subtotal`, integer minor units, >= 0. */
+  subtotal: number | null | undefined
+  /** `credit_memo_line_tax_total`, integer minor units, >= 0. Null is no tax. */
+  taxTotal: number | null | undefined
+  /** The line's goods had shipped before the memo, so there is revenue to reverse. */
+  shipped: boolean
+}
+
+/** The amounts one memo posts, all integer minor units: its shipped lines only. */
 export interface CreditMemoAmounts {
-  /** Zero when `reverseRevenue` is false: there is no revenue leg to split. */
   subtotalMinor: number
-  /** Zero when `reverseRevenue` is false. */
   taxTotalMinor: number
-  /** The memo total, `reverseRevenue` or not — the control credit is always for it. */
+  /** `subtotalMinor + taxTotalMinor`. Zero when no line had shipped. */
   totalMinor: number
-  reverseRevenue: boolean
-  /** The memo's own split, validated, whichever branch posts it (88 D7 reads it). */
-  memoSubtotalMinor: number
-  memoTaxTotalMinor: number
 }
 
 /** What one memo's arithmetic needs, and nothing else. See {@link computeCreditMemoAmounts}. */
@@ -121,43 +85,46 @@ export interface CreditMemoAmountsInput {
   creditMemoId: string
   /** The memo's own number (`'CM-0007'`). Names every refusal. */
   number: string
-  /** `credit_memo_subtotal`, integer minor units, >= 0. */
-  subtotal: number | null | undefined
-  /** `credit_memo_tax_total`, integer minor units, >= 0. */
-  taxTotal: number | null | undefined
-  /** `credit_memo_total`, integer minor units, > 0. `subtotal + taxTotal`, asserted. */
+  lines: readonly CreditMemoEntryLine[]
+  /** `credit_memo_total`, integer minor units, > 0. The sum of every line, asserted. */
   total: number | null | undefined
-  /** Whether revenue was ever posted for what this memo credits. */
-  reverseRevenue: boolean
 }
 
 /**
- * One memo's amounts, validated and zeroed where it reverses no revenue.
+ * One memo's amounts: every line validated, the document total tied, the shipped
+ * lines summed. The single implementation of the per-memo arithmetic.
  *
- * PURE, and **the single implementation of the per-memo arithmetic**. Three
- * callers share it - this file's single-memo entry, the batch planner, and
- * `build-credit-memo-batch-entry.ts` through the amounts the planner froze -
- * so a batched January and the same memo posted on its own can never disagree
- * about what it credits. Two copies of this would be two rounding rules and
- * two refusal ladders, free to drift, and a drifted one is undetectable: both
- * entries balance.
- *
- * `reverseRevenue: false` zeroes the two revenue numbers rather than dropping
- * the memo: its entry moves the customer's advance instead (71 D14), and the
- * total is what that entry is for.
- *
- * @throws {UnprocessableEntityError} on a subtotal, tax or total that is
- *   negative or not whole minor units, or a total that is zero or that does not
- *   equal `subtotal + taxTotal`.
+ * @throws {UnprocessableEntityError} on a line subtotal or tax that is negative or
+ *   not whole minor units, or a total that is zero or not the sum of the lines.
  */
 export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditMemoAmounts {
-  const { creditMemoId, number, reverseRevenue } = input
+  const { creditMemoId, number } = input
 
   // `FieldValue.valueNumber` is a `doublePrecision` column, so `12000` can read
-  // back as `11999.999999999998`. `toAmountMinor` rounds the double's own noise
-  // floor and refuses a genuinely fractional value.
-  const subtotalMinor = toAmountMinor(input.subtotal, `Credit memo ${number} subtotal`)
-  const taxTotalMinor = toAmountMinor(input.taxTotal, `Credit memo ${number} tax`)
+  // back as `11999.999999999998`; `toAmountMinor` rounds that noise and refuses a real fraction.
+  let subtotalMinor = 0
+  let taxTotalMinor = 0
+  let shippedSubtotalMinor = 0
+  let shippedTaxMinor = 0
+  input.lines.forEach((line, index) => {
+    const subtotal = toAmountMinor(
+      line.subtotal,
+      `Credit memo ${number} line ${index + 1} subtotal`
+    )
+    const tax = toAmountMinor(line.taxTotal, `Credit memo ${number} line ${index + 1} tax`)
+    if (subtotal < 0 || tax < 0)
+      throw new UnprocessableEntityError(
+        `Credit memo ${number} line ${index + 1} carries a subtotal of ${subtotal} and tax of ${tax}. ` +
+          'Neither is ever negative - sign lives in the line direction, not in the amount.',
+        { creditMemoId, number }
+      )
+    subtotalMinor += subtotal
+    taxTotalMinor += tax
+    if (line.shipped) {
+      shippedSubtotalMinor += subtotal
+      shippedTaxMinor += tax
+    }
+  })
   const totalMinor = toAmountMinor(input.total, `Credit memo ${number} total`)
 
   const context = {
@@ -168,13 +135,6 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
     totalMinor: String(totalMinor),
   }
 
-  if (subtotalMinor < 0 || taxTotalMinor < 0) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} carries a subtotal of ${subtotalMinor} and tax of ${taxTotalMinor}. ` +
-        'Neither is ever negative - sign lives in the line direction, not in the amount.',
-      context
-    )
-  }
   if (totalMinor <= 0) {
     throw new UnprocessableEntityError(
       `Credit memo ${number} totals ${totalMinor}. An issue entry reduces a receivable by a ` +
@@ -192,12 +152,9 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
   }
 
   return {
-    subtotalMinor: reverseRevenue ? subtotalMinor : 0,
-    taxTotalMinor: reverseRevenue ? taxTotalMinor : 0,
-    totalMinor,
-    reverseRevenue,
-    memoSubtotalMinor: subtotalMinor,
-    memoTaxTotalMinor: taxTotalMinor,
+    subtotalMinor: shippedSubtotalMinor,
+    taxTotalMinor: shippedTaxMinor,
+    totalMinor: shippedSubtotalMinor + shippedTaxMinor,
   }
 }
 
@@ -328,20 +285,9 @@ export interface BuildCreditMemoEntryInput {
   currency: string
   /** The one currency the books are kept in. Omit to skip the currency check. */
   ledgerCurrency?: string
-  /** `credit_memo_subtotal`, integer minor units, >= 0. Drives the 4090 leg. */
-  subtotal: number | null | undefined
-  /** `credit_memo_tax_total`, integer minor units, >= 0. Null is no tax leg. */
-  taxTotal: number | null | undefined
-  /** `credit_memo_total`, integer minor units, > 0. `subtotal + taxTotal`, asserted. */
+  lines: readonly CreditMemoEntryLine[]
+  /** `credit_memo_total`, integer minor units, > 0. The sum of every line, asserted. */
   total: number | null | undefined
-  /**
-   * Whether revenue was ever posted for what this memo credits.
-   *
-   * Native: always `true`. Channel: `false` when the order had no fulfillment
-   * before `issuedAt`, because `build-fulfillment-entry.ts` never recognised
-   * the revenue and there is nothing to reverse.
-   */
-  reverseRevenue: boolean
   /**
    * The memo's own contact (`credit_memo_contact`), for the counterparty on
    * every `accounts_receivable` line this entry carries (brief 13 §1.2) - never
@@ -354,9 +300,9 @@ export interface BuildCreditMemoEntryInput {
 export interface BuiltCreditMemoEntry {
   entry: BuiltEntry
   periodKey: string
-  /** The receivable this entry credits — the memo total, either branch. */
+  /** The receivable this entry credits: the shipped lines, tax included. */
   totalMinor: number
-  /** What went to `revenue_returns_allowances`. Zero when `reverseRevenue` is false. */
+  /** What went to `revenue_returns_allowances`. */
   subtotalMinor: number
   /** What came back out of `sales_tax_payable`. `0` omits the leg. */
   taxTotalMinor: number
@@ -366,12 +312,11 @@ export interface BuiltCreditMemoEntry {
  * Build the issue entry for one credit memo.
  *
  * @throws {UnprocessableEntityError} on a blank or over-long memo number, a
- *   currency that differs from the ledger's, a subtotal, tax or total that is
- *   negative or not whole minor units, or a total that is zero or that does not
- *   equal `subtotal + taxTotal`.
+ *   currency that differs from the ledger's, any refusal of
+ *   {@link computeCreditMemoAmounts}, or a memo with no shipped line (nothing to post).
  */
 export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCreditMemoEntry {
-  const { creditMemoId, issuedAt, reverseRevenue, memo, contactInstanceId } = input
+  const { creditMemoId, issuedAt, memo, contactInstanceId } = input
 
   const number = assertDocumentKey({
     value: input.number,
@@ -399,20 +344,17 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     )
   }
 
-  // The arithmetic and every refusal in it belong to `computeCreditMemoAmounts`,
-  // which the batch planner also calls: one implementation, so a batched memo
-  // and the same memo posted alone can never disagree about what it credits.
-  // The three revenue numbers come back zeroed when `reverseRevenue` is false,
-  // which is exactly what the revenue leg below is skipped for.
-  const { subtotalMinor, taxTotalMinor, totalMinor, memoSubtotalMinor, memoTaxTotalMinor } =
-    computeCreditMemoAmounts({
-      creditMemoId,
-      number,
-      subtotal: input.subtotal,
-      taxTotal: input.taxTotal,
-      total: input.total,
-      reverseRevenue,
-    })
+  const { subtotalMinor, taxTotalMinor, totalMinor } = computeCreditMemoAmounts({
+    creditMemoId,
+    number,
+    lines: input.lines,
+    total: input.total,
+  })
+  if (totalMinor === 0)
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} credits no line that had shipped, so it has no revenue to reverse.`,
+      { creditMemoId, number }
+    )
 
   const lineMemo = memo ?? `Credit memo ${number}`
   const source = { sourceType: CREDIT_MEMO_SOURCE_TYPE, sourceId: creditMemoId }
@@ -422,75 +364,36 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
     : {}
 
-  // A zero leg is omitted rather than posted: `buildEntry` refuses a line that
-  // moves nothing. A memo that is all tax therefore reverses only the tax; a
-  // memo with no tax reverses only revenue.
-  if (reverseRevenue) {
-    if (subtotalMinor > 0) {
-      lines.push({
-        ...source,
-        accountRole: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
-        direction: 'debit',
-        amount: subtotalMinor,
-        memo: lineMemo,
-        sortOrder: lines.length,
-      })
-    }
-    if (taxTotalMinor > 0) {
-      lines.push({
-        ...source,
-        accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
-        direction: 'debit',
-        amount: taxTotalMinor,
-        memo: `${lineMemo} sales tax`,
-        sortOrder: lines.length,
-      })
-    }
+  // A zero leg is omitted: `buildEntry` refuses a line that moves nothing.
+  if (subtotalMinor > 0) {
     lines.push({
       ...source,
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-      direction: 'credit',
-      amount: totalMinor,
+      accountRole: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
+      direction: 'debit',
+      amount: subtotalMinor,
       memo: lineMemo,
       sortOrder: lines.length,
-      ...counterparty,
-    })
-  } else {
-    // 71 D14 as 88 D7 corrected it. Nothing was recognised, so no revenue
-    // reverses - but the pre-fulfillment receipt split its credit between
-    // `customer_deposits` (the net) and `sales_tax_payable` (the tax), so the
-    // memo mirrors that split line for line onto the control account the
-    // refund then draws down (`readCreditMemoControlAccount`).
-    if (memoSubtotalMinor > 0) {
-      lines.push({
-        ...source,
-        accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
-        direction: 'debit',
-        amount: memoSubtotalMinor,
-        memo: `${lineMemo} against the customer's advance`,
-        sortOrder: lines.length,
-      })
-    }
-    if (memoTaxTotalMinor > 0) {
-      lines.push({
-        ...source,
-        accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
-        direction: 'debit',
-        amount: memoTaxTotalMinor,
-        memo: `${lineMemo} sales tax collected on the advance`,
-        sortOrder: lines.length,
-      })
-    }
-    lines.push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-      direction: 'credit',
-      amount: totalMinor,
-      memo: lineMemo,
-      sortOrder: lines.length,
-      ...counterparty,
     })
   }
+  if (taxTotalMinor > 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+      direction: 'debit',
+      amount: taxTotalMinor,
+      memo: `${lineMemo} sales tax`,
+      sortOrder: lines.length,
+    })
+  }
+  lines.push({
+    ...source,
+    accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+    direction: 'credit',
+    amount: totalMinor,
+    memo: lineMemo,
+    sortOrder: lines.length,
+    ...counterparty,
+  })
 
   return {
     entry: buildEntry({
@@ -502,7 +405,6 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     periodKey,
     totalMinor,
     subtotalMinor,
-    // Given back either way: reversed off revenue, or off the advance (88 D7).
-    taxTotalMinor: reverseRevenue ? taxTotalMinor : memoTaxTotalMinor,
+    taxTotalMinor,
   }
 }

@@ -55,6 +55,14 @@ describe('the reason-code vocabulary', () => {
     expect(workItemSentence('ROLE_UNMAPPED', { role: 'clearing' })).toContain("'clearing'")
     expect(workItemSentence('PERIOD_LOCKED', { periodKey: '2026-08' })).toContain('2026-08')
     expect(workItemSentence('ORDER_NOT_FOUND', { externalRef: '#1001' })).toContain('#1001')
+    expect(workItemSentence('GATEWAY_UNMAPPED', { externalRef: 'paypal' })).toContain("'paypal'")
+    expect(workItemSentence('GATEWAY_UNMAPPED')).toContain('store feed')
+  })
+
+  it('waits on evidence, and blocks on a gateway or an ownership conflict', () => {
+    expect(workItemSeverity('EVIDENCE_PENDING')).toBe('info')
+    expect(workItemSeverity('GATEWAY_UNMAPPED')).toBe('error')
+    expect(workItemSeverity('OWNERSHIP_CONFLICT')).toBe('error')
   })
 
   it('treats an unknown code as the generic refusal rather than throwing', () => {

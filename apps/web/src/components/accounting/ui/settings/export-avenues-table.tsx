@@ -7,6 +7,7 @@
 import {
   EXPORT_AVENUES,
   type ExportAvenue,
+  SUMMARY_GRAINS,
   type SummaryGrain,
 } from '@auxx/lib/accounting/ledger/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
@@ -30,6 +31,7 @@ import {
   autoPostKeyForAvenue,
   autoSendKeyForAvenue,
   postingLabelsForAvenue,
+  SUMMARY_GRAIN_LABEL,
   summaryGrainKeyForAvenue,
 } from './posting-page-model'
 
@@ -110,8 +112,11 @@ export function ExportAvenuesTable({ draft, patch }: ExportAvenuesTableProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='day'>Per day</SelectItem>
-                    <SelectItem value='month'>Per month</SelectItem>
+                    {SUMMARY_GRAINS.map((grain) => (
+                      <SelectItem key={grain} value={grain}>
+                        {SUMMARY_GRAIN_LABEL[grain]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               ) : (

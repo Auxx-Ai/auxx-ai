@@ -1,18 +1,13 @@
 // packages/lib/src/accounting/money/customer-money/ingest.ts
 
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
-import { ConflictError } from '../../../errors'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
-import {
-  readReceiptRefundEndpoints,
-  sumCreditMemoApplications,
-  sumReservedCreditMemoRefunds,
-} from '../../sales/credit-memos/reads'
 import type { WorkItemCode } from '../../work-items/codes'
 import { noWorkItem, runWorkItemSweep } from '../../work-items/sweep'
+import { wakeSources } from '../../work-items/wake'
 import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
 import { insertMovement } from '../commands/insert-movement'
 import { findMoneyCommandByKey } from '../commands/run-money-command'
@@ -27,6 +22,8 @@ import {
 import { insertApplication } from '../writes'
 import { confirmedCustomerMovement } from './contracts'
 import { readRecordIdentityMatches } from './identity-reads'
+import { linkReceiptPostingToOrderInTx } from './link-later'
+import { linkRefundPostingToMemos } from './refund-accounting'
 import {
   readStoredCustomerMoneyObservation,
   resolveSourceDocumentFromConnector,
@@ -104,7 +101,7 @@ async function typedDocument(
   return rows.length === 1 ? rows[0]! : rows.length === 0 ? fromConnector() : null
 }
 
-async function documentFacts(tx: Transaction, organizationId: string, entityId: string) {
+async function documentFacts(tx: Database | Transaction, organizationId: string, entityId: string) {
   const rows = await tx
     .select({
       attribute: schema.CustomField.systemAttribute,
@@ -319,21 +316,34 @@ export async function materializeImportedMoneyInTx(
   }
   if (!money) throw new Error('Money materialization failed')
   const base = { moneyTransactionId: money.id, orderInstanceId: orderId }
+  // An accepted receipt already stands on its own facts; a refusal from here on
+  // holds only its order link, never the entry (91 §8.6).
+  const linking = acceptance.state === 'accepted' && money.purpose === 'customer_receipt'
+  const block = async (reasonCode: WorkItemCode) => {
+    await park(reasonCode)
+    await updateAcceptance(tx, organizationId, acceptance.id, {
+      ...base,
+      state: linking ? 'accepted' : 'blocked',
+    })
+  }
+  // A poster that met the acceptance unsettled parked `EVIDENCE_PENDING`; accepting wakes it.
+  const wakePost = () =>
+    wakeSources(tx, organizationId, {
+      sourceKind: 'money_transaction',
+      sourceIds: [money.id],
+      stage: 'post',
+    })
   if (!orderId || !facts) {
+    if (money.purpose !== 'customer_receipt') return block('ORDER_NOT_FOUND')
+    // Post now, link later: the order's arrival wakes this row by external id (91 §8.6).
     await park('ORDER_NOT_FOUND')
-    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
+    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'accepted' })
+    await wakePost()
     return
   }
-  if (!partyId || facts.get('order_currency')?.text !== money.currency) {
-    await park('CUSTOMER_UNRESOLVED')
-    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-    return
-  }
-  if (money.partyInstanceId && money.partyInstanceId !== partyId) {
-    await park('CUSTOMER_CHANGED')
-    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-    return
-  }
+  if (!partyId || facts.get('order_currency')?.text !== money.currency)
+    return block('CUSTOMER_UNRESOLVED')
+  if (money.partyInstanceId && money.partyInstanceId !== partyId) return block('CUSTOMER_CHANGED')
   if (!money.partyInstanceId)
     await tx
       .update(schema.MoneyTransaction)
@@ -348,9 +358,7 @@ export async function materializeImportedMoneyInTx(
     if (typeof zone !== 'string' || !zone.trim()) throw new Error('missing timezone')
     effectiveDate = periodKeyForDate(money.occurredAt!, 'day', zone)
   } catch {
-    await park('SETUP_INCOMPLETE')
-    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-    return
+    return block('SETUP_INCOMPLETE')
   }
   if (money.purpose === 'customer_receipt') {
     const existing = await tx.query.MoneyApplication.findFirst({
@@ -363,23 +371,12 @@ export async function materializeImportedMoneyInTx(
     })
     if (!existing) {
       const usedMoney = await sumAppliedToMovement(tx, organizationId, money.id)
-      if (usedMoney !== 0n) {
-        await park('MOVEMENT_ALREADY_APPLIED')
-        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-        return
-      }
+      if (usedMoney !== 0n) return block('MOVEMENT_ALREADY_APPLIED')
       const total = facts.get('order_total')?.amount
-      if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) {
-        await park('ORDER_BALANCE_UNRESOLVED')
-        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-        return
-      }
+      if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0)
+        return block('ORDER_BALANCE_UNRESOLVED')
       const applied = await sumAppliedToOrder(tx, organizationId, orderId)
-      if (applied + money.amountMinor > BigInt(total)) {
-        await park('RECEIPT_EXCEEDS_ORDER')
-        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-        return
-      }
+      if (applied + money.amountMinor > BigInt(total)) return block('RECEIPT_EXCEEDS_ORDER')
       await insertApplication(tx, organizationId, command!.id, {
         moneyTransactionId: money.id,
         operation: 'apply',
@@ -390,119 +387,177 @@ export async function materializeImportedMoneyInTx(
         commandItemKey: 'initial_order',
       })
     }
-  } else {
-    const [existing] = await listRefundSettlements(tx, organizationId, {
-      refundTransactionId: money.id,
+    // The link step of "post now, link later": a no-op until the receipt has posted.
+    await linkReceiptPostingToOrderInTx(tx, organizationId, {
+      moneyTransactionId: money.id,
+      orderInstanceId: orderId,
     })
-    if (!existing) {
-      const originalObject = source.data.parentTransactionId
-        ? await findSourceObjectByIdentity(tx, organizationId, {
-            sourceAccountId: object.sourceAccountId,
-            objectType: 'order_transaction',
-            externalId: source.data.parentTransactionId,
-            componentKey: '',
-          })
-        : undefined
-      const originalLink = originalObject
-        ? await findSourceLink(tx, organizationId, originalObject.id)
-        : null
-      const creditId =
-        source.data.creditMemoInstanceId ||
-        snapshot.creditMemoInstanceId ||
-        source.data.creditMemoExternalId
-          ? await typedDocument(
-              tx,
-              organizationId,
-              snapshot.credentialId,
-              source.data.creditMemoExternalId ?? '',
-              'credit_memo',
-              object.sourceAccountId,
-              source.data.creditMemoInstanceId ?? snapshot.creditMemoInstanceId,
-              snapshot.connectorId
-            )
-          : null
-      if (!originalLink || !creditId) {
-        await park('REFUND_ORIGINAL_UNRESOLVED')
-        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-        return
-      }
-      const original = await readMovement(tx, organizationId, originalLink.moneyTransactionId)
-      const creditFacts = await documentFacts(tx, organizationId, creditId)
-      const creditTotal = creditFacts.get('credit_memo_total')?.amount
-      const settlements = await listRefundSettlements(tx, organizationId, {
-        originalTransactionIds: [originalLink.moneyTransactionId],
-        customerCreditMemoInstanceId: creditId,
-      })
-      const originalUsed = settlements
-        .filter((row) => row.originalTransactionId === originalLink.moneyTransactionId)
-        .reduce((sum, row) => sum + row.amountMinor, 0n)
-      const [creditApplied, creditReserved] = await Promise.all([
-        sumCreditMemoApplications(tx as unknown as Database, organizationId, creditId),
-        // The current imported refund is not a settlement yet. Its source projection
-        // can already include it, so this gate uses actual reservations only.
-        sumReservedCreditMemoRefunds(tx as unknown as Database, organizationId, {
-          id: creditId,
-          source: 'native',
-          amountRefundedMinor: 0,
-        }),
-      ])
-      if (
-        !original ||
-        original.purpose !== 'customer_receipt' ||
-        original.currency !== money.currency ||
-        original.partyInstanceId !== partyId ||
-        originalUsed + money.amountMinor > original.amountMinor ||
-        typeof creditTotal !== 'number' ||
-        !Number.isSafeInteger(creditTotal) ||
-        BigInt(creditApplied) + BigInt(creditReserved) + money.amountMinor > BigInt(creditTotal) ||
-        // No `credit_memo_currency` leg: the memo models no currency, it inherits the
-        // order's, which `order_currency` above already matched against this movement.
-        creditFacts.get('credit_memo_contact')?.related !== partyId
-      ) {
-        await park('REFUND_CAPACITY_MISMATCH')
-        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
-        return
-      }
-      await tx.insert(schema.MoneyRefundSettlement).values({
-        organizationId,
-        refundTransactionId: money.id,
-        originalTransactionId: original.id,
-        amountMinor: money.amountMinor,
-        disposition: 'customer_credit',
-        customerCreditMemoInstanceId: creditId,
-        commandId: command!.id,
-        commandItemKey: 'initial_credit',
-      })
-      // The refund went back the way the receipt came in — read THROUGH the
-      // receipt's deposit, so a banked receipt's refund leaves the account the
-      // deposit put it in rather than undeposited funds (task 71 D6).
-      const endpoint = (
-        await readReceiptRefundEndpoints(tx as unknown as Database, organizationId, [original])
-      ).get(original.id)
-      if (
-        endpoint &&
-        (endpoint.paymentGatewayId || endpoint.cashAccountInstanceId) &&
-        !money.paymentGatewayId &&
-        !money.cashAccountInstanceId
-      )
-        await tx
-          .update(schema.MoneyTransaction)
-          .set({
-            paymentGatewayId: endpoint.paymentGatewayId,
-            cashAccountInstanceId: endpoint.cashAccountInstanceId,
-          })
-          .where(
-            and(
-              eq(schema.MoneyTransaction.organizationId, organizationId),
-              eq(schema.MoneyTransaction.id, money.id),
-              isNull(schema.MoneyTransaction.paymentGatewayId),
-              isNull(schema.MoneyTransaction.cashAccountInstanceId)
-            )
-          )
-    }
+  } else {
+    // The link step, never a precondition: the refund posts whether or not its memo is here (91 D4).
+    await linkImportedRefundInTx(tx, organizationId, {
+      money,
+      sourceAccountId: object.sourceAccountId,
+      data: source.data,
+      snapshot,
+      commandId: command!.id,
+    })
   }
   await settle()
   await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'accepted' })
+  await wakePost()
+}
+
+type ObservationData = Extract<
+  ReturnType<typeof readStoredCustomerMoneyObservation>,
+  { success: true }
+>['data']
+
+type ReportingSnapshot = {
+  credentialId?: string
+  connectorId?: string
+  creditMemoInstanceId?: string
+}
+
+/**
+ * Write a channel refund's `MoneyRefundSettlement` once the memo it names exists, then
+ * link its posting (91 §4.4). `false` while the memo has not arrived.
+ */
+async function linkImportedRefundInTx(
+  tx: Transaction,
+  organizationId: string,
+  input: {
+    money: NonNullable<Awaited<ReturnType<typeof readMovement>>>
+    sourceAccountId: string
+    data: ObservationData
+    snapshot: ReportingSnapshot
+    commandId: string
+  }
+): Promise<boolean> {
+  const { money, data, snapshot } = input
+  const [existing] = await listRefundSettlements(tx, organizationId, {
+    refundTransactionId: money.id,
+  })
+  if (existing) return false
+  const explicitCreditId = data.creditMemoInstanceId ?? snapshot.creditMemoInstanceId
+  if (!explicitCreditId && !data.creditMemoExternalId) return false
+  const creditId = await typedDocument(
+    tx,
+    organizationId,
+    snapshot.credentialId,
+    data.creditMemoExternalId ?? '',
+    'credit_memo',
+    input.sourceAccountId,
+    explicitCreditId,
+    snapshot.connectorId
+  )
+  if (!creditId) return false
+  const originalObject = data.parentTransactionId
+    ? await findSourceObjectByIdentity(tx, organizationId, {
+        sourceAccountId: input.sourceAccountId,
+        objectType: 'order_transaction',
+        externalId: data.parentTransactionId,
+        componentKey: '',
+      })
+    : undefined
+  const originalLink = originalObject
+    ? await findSourceLink(tx, organizationId, originalObject.id)
+    : null
+  const original = originalLink
+    ? await readMovement(tx, organizationId, originalLink.moneyTransactionId)
+    : null
+  await tx.insert(schema.MoneyRefundSettlement).values({
+    organizationId,
+    refundTransactionId: money.id,
+    originalTransactionId:
+      original?.purpose === 'customer_receipt' && original.currency === money.currency
+        ? original.id
+        : null,
+    amountMinor: money.amountMinor,
+    disposition: 'customer_credit',
+    customerCreditMemoInstanceId: creditId,
+    commandId: input.commandId,
+    commandItemKey: 'initial_credit',
+  })
+  await linkRefundPostingToMemos(tx, organizationId, money.id)
+  return true
+}
+
+/**
+ * The link step from the memo's side: channel refunds on its order that arrived
+ * before it and name it. Returns how many were linked.
+ */
+export async function linkImportedRefundsToMemo(
+  db: Database,
+  organizationId: string,
+  creditMemoInstanceId: string
+): Promise<number> {
+  const memoOrderId = (await documentFacts(db, organizationId, creditMemoInstanceId)).get(
+    'credit_memo_order'
+  )?.related
+  if (!memoOrderId) return 0
+  const acceptance = schema.FinancialSourceAcceptance
+  const rows = await db
+    .select({
+      sourceObjectId: acceptance.sourceObjectId,
+      observationId: acceptance.observationId,
+      unresolvedReferences: acceptance.unresolvedReferences,
+      moneyTransactionId: schema.MoneyTransaction.id,
+    })
+    .from(acceptance)
+    .innerJoin(
+      schema.MoneyTransaction,
+      and(
+        eq(schema.MoneyTransaction.organizationId, acceptance.organizationId),
+        eq(schema.MoneyTransaction.id, acceptance.moneyTransactionId)
+      )
+    )
+    .where(
+      and(
+        eq(acceptance.organizationId, organizationId),
+        eq(acceptance.orderInstanceId, memoOrderId),
+        eq(acceptance.state, 'accepted'),
+        eq(schema.MoneyTransaction.purpose, 'customer_refund'),
+        sql`NOT EXISTS (SELECT 1 FROM ${schema.MoneyRefundSettlement} s
+          WHERE s."organizationId" = ${organizationId}
+          AND s."refundTransactionId" = ${schema.MoneyTransaction.id})`
+      )
+    )
+  let linked = 0
+  for (const row of rows) {
+    const done = await db.transaction(async (tx) => {
+      await withAccountingCommitLock(tx, organizationId)
+      const object = await readSourceObject(tx, organizationId, row.sourceObjectId)
+      const observation = await tx.query.FinancialSourceObservation.findFirst({
+        where: and(
+          eq(schema.FinancialSourceObservation.organizationId, organizationId),
+          eq(schema.FinancialSourceObservation.id, row.observationId)
+        ),
+      })
+      const parsed = readStoredCustomerMoneyObservation(observation?.payload)
+      const money = await readMovement(tx, organizationId, row.moneyTransactionId)
+      const command = object
+        ? await tx.query.MoneyCommand.findFirst({
+            where: and(
+              eq(schema.MoneyCommand.organizationId, organizationId),
+              eq(schema.MoneyCommand.commandKey, `source-money:${object.id}`)
+            ),
+          })
+        : undefined
+      if (!object || !parsed.success || !money || !command) return false
+      return linkImportedRefundInTx(tx, organizationId, {
+        money,
+        sourceAccountId: object.sourceAccountId,
+        data: parsed.data,
+        snapshot: {
+          ...(observation!.reportingInstallationSnapshot as ReportingSnapshot),
+          ...(row.unresolvedReferences as ReportingSnapshot),
+        },
+        commandId: command.id,
+      })
+    })
+    if (done) linked++
+  }
+  return linked
 }
 
 /** Refresh acceptance coverage from durable states after relationship recovery. */
@@ -556,8 +611,8 @@ export async function sweepImportedCustomerMoney(
       ).map((row) => row.id),
     handle: async (acceptanceId) => {
       const row = await readAcceptance(db, organizationId, acceptanceId)
-      // Accepted or rejected since it was queued: nothing left to do.
-      if (!row || (row.state !== 'pending' && row.state !== 'blocked')) {
+      // An accepted row still due is a receipt waiting to link its order (91 §8.6).
+      if (!row || row.state === 'rejected') {
         await deleteWorkItem(db, organizationId, acceptanceWorkKey(acceptanceId))
         return { status: 'skipped' }
       }

@@ -150,7 +150,7 @@ beforeEach(async () => {
 })
 
 describe('listFulfillmentAccountingCandidates', () => {
-  it('offers the earliest shipment first - the timeline wants it posted first', async () => {
+  it('offers the earliest shipment first', async () => {
     const late = await fulfillment({ shippedAt: '2026-03-20T12:00:00.000Z' })
     const early = await fulfillment({ shippedAt: '2026-03-02T12:00:00.000Z' })
     const middle = await fulfillment({ shippedAt: '2026-03-10T12:00:00.000Z' })
