@@ -12,6 +12,7 @@ import {
   exportBatchStateHint,
   exportBatchStateLabel,
   exportFailureClassHint,
+  type SummaryRowStatus,
 } from '@auxx/lib/accounting/export/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
@@ -48,4 +49,40 @@ export function ExportBatchStateBadge({
     </Badge>
   )
   return hint ? <SimpleTooltip content={hint}>{badge}</SimpleTooltip> : badge
+}
+
+interface SummaryStatusBadgeProps {
+  status: SummaryRowStatus
+  newCount: number
+  failureClass?: ExportFailureClass | null
+  autoSend?: boolean
+}
+
+/** A Summary row's status (95 §3.2): the batch state, `Not sent` without one, plus `n new` since it was built. */
+export function SummaryStatusBadge({
+  status,
+  newCount,
+  failureClass = null,
+  autoSend = false,
+}: SummaryStatusBadgeProps) {
+  if (status === 'not_sent')
+    return (
+      <SimpleTooltip content='No batch holds these postings yet; Send builds and sends it'>
+        <Badge variant='outline' size='xs'>
+          Not sent
+        </Badge>
+      </SimpleTooltip>
+    )
+  const state: ExportBatchState =
+    status === 'ready_new' ? 'ready' : status === 'sent_new' ? 'sent' : status
+  return (
+    <span className='flex items-center gap-1'>
+      <ExportBatchStateBadge state={state} failureClass={failureClass} autoSend={autoSend} />
+      {(status === 'ready_new' || status === 'sent_new') && (
+        <Badge variant='blue' size='xs'>
+          {newCount} new
+        </Badge>
+      )}
+    </span>
+  )
 }

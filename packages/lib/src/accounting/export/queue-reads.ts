@@ -16,6 +16,7 @@ import {
   lt,
   lte,
   or,
+  type SQL,
   sql,
 } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
@@ -30,6 +31,8 @@ export interface ExportBatchMember {
   glPostingId: string
   postingType: PostingType
   docNumber: string | null
+  /** Off the stored envelope, the way `listPostings` reads it - a posting with no number is named by this. */
+  memo: string | null
   txnDate: string
   totalMinor: number
 }
@@ -55,6 +58,8 @@ export interface ExportBatchRow {
   failureItems: ExportFailureItem[]
   /** What the mapping table says stops a `ready` or `failed` batch from sending (89 D7); empty otherwise. */
   blockers: ExportFailureItem[]
+  /** The accounting day (or month, for a month grain) the row reads as; the key `orderBy: 'day'` sorts on. */
+  dayKey: string | null
   providerObjectId: string | null
   nextAttemptAt: string | null
   sentAt: string | null
@@ -72,12 +77,103 @@ export interface ListExportBatchesInput {
   states?: ExportBatchState[]
   /** Only batches holding one of these postings as a live member - a card or drawer's read. */
   glPostingIds?: string[]
+  /** Exactly these batches - a hydration read after another read has paged. */
+  batchIds?: string[]
+  /** `day` orders by {@link ExportBatchRow.dayKey} so a page never splits a day the client is grouping. */
+  orderBy?: 'created' | 'day'
+  direction?: 'asc' | 'desc'
   limit?: number
   offset?: number
 }
 
 /** Rows per page when a caller does not say. */
 export const EXPORT_BATCH_PAGE_SIZE = 50
+
+/** The day the row shows: a day- or month-shaped grain key, else the first member's date. */
+const memberDay = sql`(SELECT min(${schema.GlPosting.txnDate}) FROM ${schema.ExportBatchPosting}
+  INNER JOIN ${schema.GlPosting} ON ${schema.GlPosting.organizationId} = ${schema.ExportBatchPosting.organizationId}
+    AND ${schema.GlPosting.id} = ${schema.ExportBatchPosting.glPostingId}
+  WHERE ${schema.ExportBatchPosting.batchId} = ${schema.ExportBatch.id}
+    AND ${schema.ExportBatchPosting.withdrawnAt} IS NULL)`
+const batchDayKey = sql<string | null>`CASE
+  WHEN ${schema.ExportBatch.mode} = 'summary' AND ${schema.ExportBatch.grainKey} ~ '^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$'
+    THEN ${schema.ExportBatch.grainKey}
+  ELSE ${memberDay}::text END`
+
+/** Every filter the queue applies, shared by the page read and the key read so both see one list. */
+function exportBatchFilter(db: Database, input: ListExportBatchesInput): SQL | undefined {
+  const { organizationId } = input
+  const monthWindow = input.month ? monthBounds(input.month) : null
+  const memberMatches = (search?: string) =>
+    exists(
+      db
+        .select({ id: schema.ExportBatchPosting.id })
+        .from(schema.ExportBatchPosting)
+        .innerJoin(
+          schema.GlPosting,
+          and(
+            eq(schema.GlPosting.organizationId, schema.ExportBatchPosting.organizationId),
+            eq(schema.GlPosting.id, schema.ExportBatchPosting.glPostingId)
+          )
+        )
+        .where(
+          and(
+            eq(schema.ExportBatchPosting.organizationId, organizationId),
+            eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
+            isNull(schema.ExportBatchPosting.withdrawnAt),
+            search
+              ? sql`strpos(lower(${schema.GlPosting.docNumber}), lower(${search})) > 0`
+              : undefined,
+            !search && input.from ? gte(schema.GlPosting.txnDate, input.from) : undefined,
+            !search && input.to ? lte(schema.GlPosting.txnDate, input.to) : undefined,
+            !search && monthWindow ? gte(schema.GlPosting.txnDate, monthWindow.first) : undefined,
+            !search && monthWindow ? lt(schema.GlPosting.txnDate, monthWindow.next) : undefined
+          )
+        )
+    )
+
+  return and(
+    eq(schema.ExportBatch.organizationId, organizationId),
+    input.batchIds ? inArray(schema.ExportBatch.id, input.batchIds) : undefined,
+    input.states ? inArray(schema.ExportBatch.state, input.states) : undefined,
+    input.categories?.length ? inArray(schema.ExportBatch.avenue, input.categories) : undefined,
+    input.from || input.to || monthWindow ? memberMatches() : undefined,
+    input.search
+      ? or(
+          sql`strpos(lower(concat_ws(' ', ${schema.ExportBatch.id}, ${schema.ExportBatch.payload}->>'docNumber', ${schema.ExportBatch.providerObjectId}, ${schema.ExportBatch.lastError})), lower(${input.search})) > 0`,
+          memberMatches(input.search)
+        )
+      : undefined,
+    input.glPostingIds
+      ? exists(
+          db
+            .select({ id: schema.ExportBatchPosting.id })
+            .from(schema.ExportBatchPosting)
+            .where(
+              and(
+                eq(schema.ExportBatchPosting.organizationId, organizationId),
+                eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
+                isNull(schema.ExportBatchPosting.withdrawnAt),
+                inArray(schema.ExportBatchPosting.glPostingId, input.glPostingIds)
+              )
+            )
+        )
+      : undefined
+  )
+}
+
+function exportBatchOrder(input: ListExportBatchesInput): SQL[] {
+  const dir = input.direction === 'asc' ? asc : desc
+  if (input.orderBy !== 'day')
+    return [dir(schema.ExportBatch.createdAt), asc(schema.ExportBatch.id)]
+  return [
+    input.direction === 'asc'
+      ? sql`${batchDayKey} ASC NULLS LAST`
+      : sql`${batchDayKey} DESC NULLS LAST`,
+    dir(schema.ExportBatch.createdAt),
+    asc(schema.ExportBatch.id),
+  ]
+}
 
 /**
  * The queue, newest first, with every batch's member postings.
@@ -97,72 +193,16 @@ export async function listExportBatches(
     const monthWindow = input.month ? monthBounds(input.month) : null
 
     if (input.glPostingIds && input.glPostingIds.length === 0) return ok([])
+    if (input.batchIds && input.batchIds.length === 0) return ok([])
 
-    const memberMatches = (search?: string) =>
-      exists(
-        db
-          .select({ id: schema.ExportBatchPosting.id })
-          .from(schema.ExportBatchPosting)
-          .innerJoin(
-            schema.GlPosting,
-            and(
-              eq(schema.GlPosting.organizationId, schema.ExportBatchPosting.organizationId),
-              eq(schema.GlPosting.id, schema.ExportBatchPosting.glPostingId)
-            )
-          )
-          .where(
-            and(
-              eq(schema.ExportBatchPosting.organizationId, organizationId),
-              eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
-              isNull(schema.ExportBatchPosting.withdrawnAt),
-              search
-                ? sql`strpos(lower(${schema.GlPosting.docNumber}), lower(${search})) > 0`
-                : undefined,
-              !search && input.from ? gte(schema.GlPosting.txnDate, input.from) : undefined,
-              !search && input.to ? lte(schema.GlPosting.txnDate, input.to) : undefined,
-              !search && monthWindow ? gte(schema.GlPosting.txnDate, monthWindow.first) : undefined,
-              !search && monthWindow ? lt(schema.GlPosting.txnDate, monthWindow.next) : undefined
-            )
-          )
-      )
-
-    const batches = await db
-      .select()
+    const batchRows = await db
+      .select({ batch: schema.ExportBatch, dayKey: batchDayKey })
       .from(schema.ExportBatch)
-      .where(
-        and(
-          eq(schema.ExportBatch.organizationId, organizationId),
-          input.states ? inArray(schema.ExportBatch.state, input.states) : undefined,
-          input.categories?.length
-            ? inArray(schema.ExportBatch.avenue, input.categories)
-            : undefined,
-          input.from || input.to || monthWindow ? memberMatches() : undefined,
-          input.search
-            ? or(
-                sql`strpos(lower(concat_ws(' ', ${schema.ExportBatch.id}, ${schema.ExportBatch.payload}->>'docNumber', ${schema.ExportBatch.providerObjectId}, ${schema.ExportBatch.lastError})), lower(${input.search})) > 0`,
-                memberMatches(input.search)
-              )
-            : undefined,
-          input.glPostingIds
-            ? exists(
-                db
-                  .select({ id: schema.ExportBatchPosting.id })
-                  .from(schema.ExportBatchPosting)
-                  .where(
-                    and(
-                      eq(schema.ExportBatchPosting.organizationId, organizationId),
-                      eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
-                      isNull(schema.ExportBatchPosting.withdrawnAt),
-                      inArray(schema.ExportBatchPosting.glPostingId, input.glPostingIds)
-                    )
-                  )
-              )
-            : undefined
-        )
-      )
-      .orderBy(desc(schema.ExportBatch.createdAt), asc(schema.ExportBatch.id))
+      .where(exportBatchFilter(db, input))
+      .orderBy(...exportBatchOrder(input))
       .limit(input.limit ?? EXPORT_BATCH_PAGE_SIZE)
       .offset(input.offset ?? 0)
+    const batches = batchRows.map((row) => ({ ...row.batch, dayKey: row.dayKey }))
     if (batches.length === 0) return ok([])
 
     const memberRows = await db
@@ -171,6 +211,7 @@ export async function listExportBatches(
         glPostingId: schema.GlPosting.id,
         postingType: schema.GlPosting.postingType,
         docNumber: schema.GlPosting.docNumber,
+        memo: sql<string | null>`nullif(${schema.GlPosting.built}->>'memo', '')`,
         txnDate: schema.GlPosting.txnDate,
         totalMinor: schema.GlPosting.totalMinor,
       })
@@ -218,6 +259,7 @@ export async function listExportBatches(
         glPostingId: row.glPostingId,
         postingType: row.postingType,
         docNumber: row.docNumber,
+        memo: row.memo,
         txnDate: row.txnDate,
         totalMinor: row.totalMinor,
       }
@@ -249,6 +291,7 @@ export async function listExportBatches(
           failureClass: batch.failureClass ?? null,
           failureItems: batch.failureItems ?? [],
           blockers: preflight.value.get(batch.id) ?? [],
+          dayKey: batch.dayKey,
           providerObjectId: batch.providerObjectId,
           nextAttemptAt: batch.nextAttemptAt?.toISOString() ?? null,
           sentAt: batch.sentAt?.toISOString() ?? null,

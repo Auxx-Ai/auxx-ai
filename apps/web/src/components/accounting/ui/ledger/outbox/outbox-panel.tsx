@@ -9,42 +9,56 @@
 // export-batch states. This is the list half - the strip and its counts; each
 // tab's rows live in its own panel beside this file.
 //
-// Lists default to all periods. Filters narrow the backlog independently of Build.
-// Select-all leads the second toolbar row.
+// Lists default to all periods. Select-all leads the second toolbar row.
 
 import {
   type ExportBatchTab,
   isExportBatchTab,
   OUTBOX_TABS,
+  type OutboxGroupBy,
+  type OutboxOrder,
   type OutboxTab,
+  type OutboxView,
 } from '@auxx/lib/accounting/export/client'
 import { EXPORT_AVENUES } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Loader } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, Layers, List, Loader } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { ListSelectionProvider, useListSelection } from '~/components/list-selection'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-import { BatchesPanel } from './batches-panel'
 import { BlockedPanel } from './blocked-panel'
 import { DraftsPanel } from './drafts-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
+import { SummaryPanel } from './summary-panel'
+import { TransactionsPanel } from './transactions-panel'
 import { type OutboxRun, useOutboxRealtime } from './use-outbox-realtime'
 
 interface OutboxPanelProps {
   tab: OutboxTab
   onTabChange: (tab: OutboxTab) => void
-  /** The month the topbar's Build control is pointed at, for the empty copy. */
-  buildMonthLabel: string
-  /** What the last Build said, rendered under the bar it was fired from above. */
-  buildNotice?: ReactNode
+  /** How the batch tabs are grouped and ordered - `?group=` and `?order=`, so a link carries the view. */
+  groupBy: OutboxGroupBy | null
+  onGroupByChange: (groupBy: OutboxGroupBy | null) => void
+  order: OutboxOrder
+  onOrderChange: (order: OutboxOrder) => void
+  /** `?view=`; null follows the org's export mode. Drafts and Blocked ignore it. */
+  view: OutboxView | null
+  onViewChange: (view: OutboxView) => void
   bookTimeZone: string
   currencyCode: string
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
@@ -74,8 +88,12 @@ export function OutboxPanel(props: OutboxPanelProps) {
 function OutboxBody({
   tab,
   onTabChange,
-  buildMonthLabel,
-  buildNotice,
+  groupBy,
+  onGroupByChange,
+  order,
+  onOrderChange,
+  view: viewParam,
+  onViewChange,
   bookTimeZone,
   currencyCode,
   providerLabel,
@@ -99,7 +117,11 @@ function OutboxBody({
   const [filters, setFilters] = useState(EMPTY_OUTBOX_FILTERS)
   const search = useDebounce(filters.search.trim(), 250)
   const appliedFilters = { ...filters, search }
-  const filterKey = JSON.stringify([effectiveTab, filters])
+  // ⚠️ Free: `useSettings` rides the org cache the provider already hydrated.
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const view: OutboxView =
+    viewParam ?? (getSetting('accounting.exportMode') === 'summary' ? 'summary' : 'transaction')
+  const filterKey = JSON.stringify([effectiveTab, filters, groupBy, order, view])
   const searchPending = search !== filters.search.trim()
   const filtered = !!(search || filters.categories.length || filters.from || filters.to)
   const tabs = useMemo(
@@ -121,13 +143,10 @@ function OutboxBody({
     failed: counts?.failed ?? 0,
   }
 
-  // ⚠️ Free: `useSettings` rides the org cache the provider already hydrated.
-  const { getSetting } = useSettings({ scope: 'GENERAL' })
   const heldForRelease = EXPORT_AVENUES.every(
     (avenue) =>
       getSetting(`accounting.autoSend.${avenue}` as Parameters<typeof getSetting>[0]) !== true
   )
-  const monthLabel = buildMonthLabel || 'this month'
 
   const exitSelection = useListSelection((state) => state.exit)
   // biome-ignore lint/correctness/useExhaustiveDependencies: the tab and filters trigger a selection reset
@@ -149,7 +168,7 @@ function OutboxBody({
   const emptyCopy = (value: OutboxTab) =>
     filtered
       ? 'Try another search, category, or date range.'
-      : emptyDescription(value, providerLabel, monthLabel, heldForRelease)
+      : emptyDescription(value, providerLabel, heldForRelease)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
@@ -178,6 +197,9 @@ function OutboxBody({
                 )
               })}
             </RadioTab>
+            {isExportBatchTab(effectiveTab) && (
+              <ViewDropdown view={view} onViewChange={onViewChange} />
+            )}
           </ListToolbarGroup>
         </ListToolbar>
         <OutboxToolbar
@@ -186,20 +208,25 @@ function OutboxBody({
           onChange={changeFilters}
           onClear={clearFilters}
           selectionDisabled={searchPending}
+          groupBy={groupBy}
+          onGroupByChange={onGroupByChange}
+          order={order}
+          onOrderChange={onOrderChange}
         />
       </div>
 
-      {buildNotice}
       {live.run && <RunStrip run={live.run} />}
 
       {/* List page, so the bar pins and only the rows move (§6). */}
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
+      {/* Keyed so a tab, filter, group or order change starts at the top: a viewport left at the
+          bottom of the old list sits on the new list's tail and keeps paging it in. */}
+      <ScrollArea key={filterKey} className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         {searchPending ? (
           <p role='status' className='p-3 text-sm text-muted-foreground'>
             Searching…
           </p>
         ) : (
-          <div key={filterKey} className='flex flex-1 flex-col'>
+          <div className='flex flex-1 flex-col'>
             {effectiveTab === 'blocked' ? (
               <BlockedPanel
                 filters={appliedFilters}
@@ -223,15 +250,29 @@ function OutboxBody({
                 activePostingId={activePostingId}
                 onSelectPosting={onSelectPosting}
               />
-            ) : (
-              <BatchesPanel
-                filters={appliedFilters}
-                emptyAction={clearAction}
+            ) : view === 'transaction' ? (
+              <TransactionsPanel
                 // Remounts per tab, so one tab's open rows and selection never leak into the next.
                 key={effectiveTab}
                 tab={effectiveTab}
+                filters={appliedFilters}
+                order={order}
+                groupBy={groupBy}
+                bookTimeZone={bookTimeZone}
+                currencyCode={currencyCode}
+                activePostingId={activePostingId}
+                onSelectPosting={onSelectPosting}
                 emptyTitle={filtered ? 'No matching results' : emptyTitle(effectiveTab)}
                 emptyDescription={emptyCopy(effectiveTab)}
+                emptyAction={clearAction}
+              />
+            ) : (
+              <SummaryPanel
+                key={effectiveTab}
+                tab={effectiveTab}
+                filters={appliedFilters}
+                order={order}
+                groupBy={groupBy}
                 bookTimeZone={bookTimeZone}
                 providerLabel={providerLabel}
                 canRelease={canRelease}
@@ -240,6 +281,9 @@ function OutboxBody({
                 onSelectPosting={onSelectPosting}
                 onReleased={live.startRun}
                 watchRun={live.watchRun}
+                emptyTitle={filtered ? 'No matching results' : emptyTitle(effectiveTab)}
+                emptyDescription={emptyCopy(effectiveTab)}
+                emptyAction={clearAction}
               />
             )}
           </div>
@@ -262,26 +306,35 @@ function RunStrip({ run }: { run: OutboxRun }) {
   )
 }
 
-/** One line on what the topbar's Build just did. Rendered by the Outbox page above this list. */
-export function buildResultSentence(
-  result: {
-    built: number
-    batchIds: string[]
-    skippedBeforeCutover: number
-    connected: boolean
-  },
-  monthLabel: string
-): string {
-  if (!result.connected) return 'No accounting system is connected, so nothing was built.'
-  const skipped = result.skippedBeforeCutover
-  const postings = `${skipped} posting${skipped === 1 ? '' : 's'}`
-  if (result.built === 0) {
-    return skipped > 0
-      ? `Nothing built for ${monthLabel}: ${postings} dated before the export cutover.`
-      : `${monthLabel} has no posted entry that is not already in a batch.`
-  }
-  const tail = skipped > 0 ? ` ${postings} skipped, dated before the cutover.` : ''
-  return `Built ${result.built} batch${result.built === 1 ? '' : 'es'} for ${monthLabel}.${tail}`
+const VIEW_LABEL: Record<OutboxView, string> = { summary: 'Summary', transaction: 'Transaction' }
+
+/** Summary rows are period buckets, Transaction rows are postings (95 §3.1). */
+function ViewDropdown({
+  view,
+  onViewChange,
+}: {
+  view: OutboxView
+  onViewChange: (view: OutboxView) => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant='ghost' size='sm' aria-label={`View: ${VIEW_LABEL[view]}`}>
+          {view === 'summary' ? <Layers /> : <List />}
+          {VIEW_LABEL[view]}
+          <ChevronDown />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='start'>
+        <DropdownMenuRadioGroup
+          value={view}
+          onValueChange={(value) => onViewChange(value === 'summary' ? 'summary' : 'transaction')}>
+          <DropdownMenuRadioItem value='summary'>Summary</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value='transaction'>Transaction</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 /** ⚠️ An empty Ready tab is the HEALTHY state and has to read like one. */
@@ -296,26 +349,21 @@ function emptyTitle(tab: ExportBatchTab): string {
   }
 }
 
-/** ⚠️ Names WHICH month Build would take, and why a tab is empty (75-D7) - it used to read as a fault. */
-function emptyDescription(
-  tab: OutboxTab,
-  providerLabel: string,
-  monthLabel: string,
-  heldForRelease: boolean
-): string {
+/** Why a tab is empty (75-D7) - it used to read as a fault. */
+function emptyDescription(tab: OutboxTab, providerLabel: string, heldForRelease: boolean): string {
   const held = heldForRelease
-    ? ' No avenue has auto-send switched on, so a batch that is built is held for release rather than sent.'
+    ? ' No avenue has auto-send switched on, so nothing leaves until somebody presses Send.'
     : ''
   switch (tab) {
     case 'blocked':
       return 'Nothing the ledger refused is waiting. A movement lands here when its entry could not be built - an account role nothing is mapped to, a period that is shut - and leaves it the moment a retry is accepted.'
     case 'drafts':
-      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry and puts it on Ready - as its own batch in Transaction mode, or inside its period's unbuilt row in Summary mode.${held}`
+      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry and puts it on Ready - as its own row in Transaction mode, or inside its period's summary in Summary mode.${held}`
     case 'ready':
-      return `These tabs list every period, so nothing anywhere is waiting to be sent. "Build batches" freezes the picked month's posted entries into batches, and nothing is built until somebody asks.${held}`
+      return `These tabs list every period, so nothing anywhere is waiting to be sent.${held}`
     case 'sent':
-      return `Nothing has settled in ${providerLabel} yet, in any period. A batch is built one month at a time - ${monthLabel} is the one the button above takes - and then released.${held}`
+      return `Nothing has settled in ${providerLabel} yet, in any period.${held}`
     case 'failed':
-      return `${providerLabel} has not refused a batch, in any period. A refusal shows the reason it gave, on the row.`
+      return `${providerLabel} has not refused anything, in any period. A refusal shows the reason it gave, on the row.`
   }
 }

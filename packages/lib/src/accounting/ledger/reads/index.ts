@@ -19,6 +19,9 @@ export {
   type LinkedPosting,
   listPostings,
   listPostingsForSource,
+  type PostingExportState,
+  type PostingExportStateFilter,
+  type PostingListRow,
   type SourcePosting,
 } from './list-postings'
 export {

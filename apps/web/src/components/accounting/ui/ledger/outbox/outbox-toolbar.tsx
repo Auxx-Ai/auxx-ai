@@ -1,15 +1,34 @@
 // apps/web/src/components/accounting/ui/ledger/outbox/outbox-toolbar.tsx
 'use client'
 
-import type { OutboxTab } from '@auxx/lib/accounting/export/client'
+import {
+  isExportBatchTab,
+  type OutboxGroupBy,
+  type OutboxOrder,
+  type OutboxTab,
+} from '@auxx/lib/accounting/export/client'
 import { EXPORT_AVENUES, type ExportAvenue } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { DateRangePicker } from '@auxx/ui/components/date-range-picker'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { format } from 'date-fns'
-import { ChevronDown, CircleX, Tags } from 'lucide-react'
+import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  ChevronDown,
+  CircleX,
+  Rows3,
+  Tags,
+} from 'lucide-react'
 import { SelectAllCheckbox } from '~/components/list-selection'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { EXPORT_AVENUE_LABEL } from '../export-avenue-labels'
@@ -42,12 +61,20 @@ export function OutboxToolbar({
   onChange,
   onClear,
   selectionDisabled = false,
+  groupBy,
+  onGroupByChange,
+  order,
+  onOrderChange,
 }: {
   tab: OutboxTab
   filters: OutboxFilters
   onChange: (filters: OutboxFilters) => void
   onClear: () => void
   selectionDisabled?: boolean
+  groupBy: OutboxGroupBy | null
+  onGroupByChange: (groupBy: OutboxGroupBy | null) => void
+  order: OutboxOrder
+  onOrderChange: (order: OutboxOrder) => void
 }) {
   const dirty = !!(filters.search || filters.categories.length || filters.from || filters.to)
   return (
@@ -132,6 +159,45 @@ export function OutboxToolbar({
           onClick={onClear}>
           <CircleX />
         </Button>
+        {/* A view choice, not a filter: it survives Clear and only the batch tabs have it. */}
+        {isExportBatchTab(tab) && (
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='w-32 justify-start'
+                  aria-label={groupBy === 'day' ? 'Grouped by day' : 'Not grouped'}>
+                  <Rows3 />
+                  <span className='flex-1 text-left'>
+                    {groupBy === 'day' ? 'By day' : 'No groups'}
+                  </span>
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='start'>
+                <DropdownMenuRadioGroup
+                  value={groupBy ?? 'none'}
+                  onValueChange={(value) => onGroupByChange(value === 'day' ? 'day' : null)}>
+                  <DropdownMenuRadioItem value='none'>No groups</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value='day'>By day</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              aria-label={
+                order === 'asc'
+                  ? 'Oldest first, switch to newest first'
+                  : 'Newest first, switch to oldest first'
+              }
+              onClick={() => onOrderChange(order === 'asc' ? 'desc' : 'asc')}>
+              {order === 'asc' ? <ArrowUpNarrowWide /> : <ArrowDownWideNarrow />}
+            </Button>
+          </>
+        )}
       </ListToolbarGroup>
     </ListToolbar>
   )
