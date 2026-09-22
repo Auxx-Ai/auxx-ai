@@ -5,6 +5,7 @@ import { sweepExportBatches } from '../../accounting/export'
 import { sweepMovementAccounting } from '../../accounting/money/blocked-movements'
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
+import { sweepChannelCreditMemos } from '../../accounting/sales/credit-memos/issue-pass'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
 import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
 import type { JobContext } from '../types/job-context'
@@ -20,6 +21,8 @@ type PostingSweep = (
 const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Payment accounting', sweepMovementAccounting],
   ['Shipment accounting', sweepFulfillmentAccounting],
+  // Issues channel memos and links refunds that posted before their memo arrived.
+  ['Credit memo issuing', sweepChannelCreditMemos],
 ]
 
 async function attempt(label: string, organizationId: string, run: () => Promise<unknown>) {

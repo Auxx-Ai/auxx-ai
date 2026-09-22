@@ -22,6 +22,9 @@ vi.mock('../../../accounting/money/customer-money/ingest', () => ({
 vi.mock('../../../accounting/money/blocked-movements', () => ({
   sweepMovementAccounting: h.receipt,
 }))
+vi.mock('../../../accounting/sales/credit-memos/issue-pass', () => ({
+  sweepChannelCreditMemos: vi.fn(async () => ({ scanned: 0, issued: 0, blocked: 0 })),
+}))
 vi.mock('../../../accounting/sales/fulfillments/accounting-sweep', () => ({
   sweepFulfillmentAccounting: h.shipment,
 }))
