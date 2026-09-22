@@ -7,13 +7,14 @@ import {
   formatToDisplayValue,
   isValueEmpty,
 } from '@auxx/lib/field-values/client'
-import type { RecordId } from '@auxx/lib/resources/client'
+import type { RecordId, RecordSourceChip } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatUrlForDisplay, normalizeUrl } from '@auxx/utils'
 import { formatDistanceToNow } from 'date-fns'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react'
+import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { DisplayField } from '~/components/fields/displays/display-field'
 import { FieldInput } from '~/components/fields/field-input'
 import { useFieldPopoverCoordination } from '~/components/fields/hooks/use-field-popover-coordination'
@@ -127,8 +128,6 @@ interface RecordIdentityHeaderProps {
    * a host can lock the header without the component second-guessing it.
    */
   readOnly?: boolean
-  /** Rendered after the primary value (e.g. the connector source badge). */
-  primaryAdornment?: ReactNode
   className?: string
 }
 
@@ -148,7 +147,6 @@ interface RecordIdentityHeaderProps {
 export function RecordIdentityHeader({
   recordId,
   readOnly = false,
-  primaryAdornment,
   className,
 }: RecordIdentityHeaderProps) {
   const {
@@ -223,7 +221,14 @@ export function RecordIdentityHeader({
             registerClose={registerClose}
             unregisterClose={unregisterClose}
           />
-          {primaryAdornment}
+          {/* Rendered here, not passed in by the host, so a peeked frame and the
+              contact drawer get the same "Open in <app>" badge as the base frame. */}
+          <ConnectorSourceBadge
+            sources={(record as { sources?: RecordSourceChip[] } | undefined)?.sources}
+            recordId={recordId}
+            variant='chip'
+            className='shrink-0'
+          />
         </div>
 
         <HeaderValue
