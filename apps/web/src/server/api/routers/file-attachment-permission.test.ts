@@ -132,6 +132,7 @@ vi.mock('drizzle-orm', () => ({
   eq: vi.fn((a: unknown, b: unknown) => ({ op: 'eq', a, b })),
   inArray: vi.fn((a: unknown, b: unknown) => ({ op: 'inArray', a, b })),
   isNull: vi.fn((a: unknown) => ({ op: 'isNull', a })),
+  sql: Object.assign(vi.fn(() => ({ op: 'sql' })), { raw: vi.fn(), join: vi.fn() }),
 }))
 
 // `getOrgCache()` must return a usable cache, not a bare `vi.fn()`:

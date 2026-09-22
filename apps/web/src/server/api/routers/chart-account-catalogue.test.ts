@@ -81,7 +81,9 @@ const { ORG_ID, USER_ID, ACCOUNT_ID, world, gate, seedChartAccounts, restoreChar
  * about the ROUTER. What is under test is "a code not in the catalogue is
  * refused by name", which needs a catalogue, not this catalogue.
  */
-vi.mock('@auxx/lib/accounting/ledger', () => ({
+vi.mock('@auxx/lib/accounting/ledger', async (importOriginal) => ({
+  // The constants the router chain reads at load; the fns below stay stubs.
+  ...(await importOriginal<typeof import('@auxx/lib/accounting/ledger')>()),
   DEFAULT_CHART_OF_ACCOUNTS: [
     { code: '1000', name: 'Cash', accountType: 'asset' },
     { code: '1100', name: 'Accounts Receivable', accountType: 'asset' },
@@ -145,22 +147,8 @@ vi.mock('@auxx/lib/cache', () => ({
   onCacheEvent: vi.fn(),
 }))
 
-vi.mock('@auxx/lib/errors', () => ({
-  BadRequestError: class extends Error {
-    statusCode = 400
-    constructor(message: string) {
-      super(message)
-      this.name = 'BadRequestError'
-    }
-  },
-  UnprocessableEntityError: class extends Error {
-    statusCode = 422
-    constructor(message: string) {
-      super(message)
-      this.name = 'UnprocessableEntityError'
-    }
-  },
-}))
+// The real classes: the router chain reads several AuxxError subclasses at load.
+vi.mock('@auxx/lib/errors', async () => vi.importActual('@auxx/lib/errors'))
 
 vi.mock('@auxx/lib/accounting/money', () => ({ getPaymentAccount: vi.fn() }))
 vi.mock('@auxx/lib/permissions', () => ({
