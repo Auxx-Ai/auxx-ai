@@ -125,7 +125,9 @@ export async function stampOrderShipmentTotals(
     const totalMinor = subtotalMinor + taxMinor + shippingMinor
     const shippingRecognised = shippingMinor > 0
 
+    // A $0 shipment still gets explicit zeros, or it reads the same as one never stamped.
     if (
+      fulfillment.totalsStamped &&
       fulfillment.subtotalMinor === subtotalMinor &&
       fulfillment.totalMinor === totalMinor &&
       fulfillment.shippingRecognised === shippingRecognised

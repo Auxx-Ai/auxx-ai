@@ -233,6 +233,7 @@ describe('readFulfillmentsForOrders', () => {
         subtotalMinor: 50_00,
         totalMinor: 55_00,
         shippingRecognised: true,
+        totalsStamped: true,
         glPosting: null,
         docNumber: null,
         recordedAt: '2026-09-03T00:00:00.000Z',

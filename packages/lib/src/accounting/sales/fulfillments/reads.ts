@@ -114,6 +114,7 @@ export async function readFulfillmentsForOrders(
       subtotalMinor: record.number('fulfillment_subtotal') ?? 0,
       totalMinor: record.number('fulfillment_total') ?? 0,
       shippingRecognised: record.boolean('fulfillment_shipping_recognised') ?? false,
+      totalsStamped: record.number('fulfillment_subtotal') != null,
       // "Posted" is "holds a live subject claim" - never a stamp field on the
       // record (TARGET §1). `null` on both means no subject `GlPostingSource`
       // row exists, whether because nothing was posted yet or because a

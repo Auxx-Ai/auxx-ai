@@ -218,10 +218,16 @@ export async function readOrderRecognitionSource(
     const netMinor = BigInt(fulfillment.subtotalMinor) + shippingMinor
     const taxMinor =
       BigInt(fulfillment.totalMinor) - BigInt(fulfillment.subtotalMinor) - shippingMinor
+    if (!fulfillment.totalsStamped) {
+      blockers.push(`fulfillment ${fulfillment.id} has no stamped totals`)
+      continue
+    }
     if (netMinor < 0n || taxMinor < 0n) {
       blockers.push(`fulfillment ${fulfillment.id} has inconsistent shipment totals`)
       continue
     }
+    // A $0 shipment (a free or fully discounted line) recognises nothing, so it is not an event.
+    if (netMinor + taxMinor === 0n) continue
     shipmentEvents.push({
       event: {
         id: fulfillment.id,

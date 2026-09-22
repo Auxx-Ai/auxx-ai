@@ -2,7 +2,11 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ linked: [] as unknown[], askedFor: [] as unknown[] }))
+const h = vi.hoisted(() => ({
+  linked: [] as unknown[],
+  askedFor: [] as unknown[],
+  fulfillments: [] as unknown[],
+}))
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLinkedPostings: async (_db: unknown, _org: string, options: unknown) => {
     h.askedFor.push(options)
@@ -30,7 +34,9 @@ vi.mock('../reads', () => ({
     sourceStoreIds: [] as string[],
   })),
 }))
-vi.mock('../../../sales/fulfillments/reads', () => ({ readFulfillmentsForOrder: async () => [] }))
+vi.mock('../../../sales/fulfillments/reads', () => ({
+  readFulfillmentsForOrder: async () => h.fulfillments,
+}))
 
 const CREDIT_BLOCKER =
   'Order recognition must include its posted credit components before further posting'
@@ -72,6 +78,44 @@ describe('the credit-memo blocker', () => {
       bookTimeZone: 'UTC',
     })
     expect(source.blockers).toContain(CREDIT_BLOCKER)
+  })
+})
+
+describe('shipment totals', () => {
+  const shipment = (over: Record<string, unknown>) => ({
+    id: 'ful_1',
+    status: 'success',
+    shippedAt: '2026-09-04T12:00:00.000Z',
+    subtotalMinor: 0,
+    totalMinor: 0,
+    shippingRecognised: false,
+    totalsStamped: true,
+    glPosting: null,
+    ...over,
+  })
+  const read = () =>
+    readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '1000',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+    })
+
+  it('leaves a stamped $0 shipment out of the timeline instead of refusing it', async () => {
+    h.linked = []
+    h.fulfillments = [shipment({})]
+    const source = await read()
+    expect(source.events).toEqual([])
+    expect(source.blockers.some((b) => b.includes('ful_1'))).toBe(false)
+  })
+
+  it('still refuses a shipment whose totals were never stamped', async () => {
+    h.linked = []
+    h.fulfillments = [shipment({ totalsStamped: false })]
+    const source = await read()
+    expect(source.blockers).toContain('fulfillment ful_1 has no stamped totals')
+    h.fulfillments = []
   })
 })
 

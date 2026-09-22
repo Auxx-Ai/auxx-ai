@@ -81,6 +81,7 @@ function fulfillment(over: Record<string, unknown> = {}) {
     subtotalMinor: 0,
     totalMinor: 0,
     shippingRecognised: false,
+    totalsStamped: false,
     glPosting: null as string | null,
     lines: [{ lineItemId: 'li_1', quantity: 2 }],
     ...over,
@@ -124,6 +125,7 @@ function applyWrites(order: { fulfillments: Array<Record<string, unknown>> }): v
     f.subtotalMinor = written.get(FIELDS.fulfillment_subtotal.id)
     f.totalMinor = written.get(FIELDS.fulfillment_total.id)
     f.shippingRecognised = written.get(FIELDS.fulfillment_shipping_recognised.id)
+    f.totalsStamped = true
   }
 }
 
@@ -217,6 +219,23 @@ describe('stampOrderShipmentTotals', () => {
     expect(written.get(FIELDS.fulfillment_subtotal.id)).toBe(2000)
     // Per-line tax (80 + 120 = 200), not the allocated 300 the order total would give.
     expect(written.get(FIELDS.fulfillment_total.id)).toBe(2200)
+  })
+
+  it('writes explicit zeros for a $0 shipment, so it reads as stamped', async () => {
+    h.order = baseOrder({
+      subtotalMinor: 0,
+      taxTotalMinor: 0,
+      shippingTotalMinor: 0,
+      totalMinor: 0,
+      shippingOwed: false,
+      lines: [line({ quantity: 1, shippedQuantity: 1, unitPriceMinor: 0, lineTotalMinor: 0 })],
+      fulfillments: [fulfillment({ lines: [{ lineItemId: 'li_1', quantity: 1 }] })],
+    })
+    const result = await stamp()
+
+    expect(result).toEqual({ fulfillmentsWritten: 1, skippedPosted: 0 })
+    expect(writesFor('ful_1').get(FIELDS.fulfillment_subtotal.id)).toBe(0)
+    expect(writesFor('ful_1').get(FIELDS.fulfillment_total.id)).toBe(0)
   })
 
   it('writes nothing on a second run once the stored totals already agree', async () => {

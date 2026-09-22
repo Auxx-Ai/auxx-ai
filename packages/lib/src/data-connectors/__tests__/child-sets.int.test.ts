@@ -2,16 +2,16 @@
 
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { type BoundRecordFixture, seedBoundRecord, testDb } from '../__int-test-helpers'
 import { replaceChildSets } from '../child-sets'
 import type { ChildSet } from '../map-record'
 import type { DecodedMapping } from '../service'
 import { entitySink } from '../sinks/entity-sink'
-import type { SyncCtx } from '../sinks/types'
+import type { EntitySink, SyncCtx } from '../sinks/types'
 
 let f: BoundRecordFixture
-let archive: ReturnType<typeof vi.spyOn>
+let archive: MockInstance<EntitySink['archiveRecord']>
 
 beforeEach(async () => {
   f = await seedBoundRecord()

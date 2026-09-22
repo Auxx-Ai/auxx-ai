@@ -446,6 +446,7 @@ export async function fulfillOrder(
             subtotalMinor: amounts.subtotalMinor,
             totalMinor: amounts.totalMinor,
             shippingRecognised: amounts.shippingMinor > 0,
+            totalsStamped: true,
             glPosting: null,
             docNumber: null,
             recordedAt,

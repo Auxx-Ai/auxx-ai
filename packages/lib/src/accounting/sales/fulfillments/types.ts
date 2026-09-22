@@ -122,6 +122,8 @@ export interface Fulfillment {
    * once, on the first dispatch of an order.
    */
   shippingRecognised: boolean
+  /** False until the totals were written; tells an unstamped shipment from a $0 one. */
+  totalsStamped: boolean
   /**
    * The `GlPosting.id` this fulfillment became, or `null` before it is
    * posted (or after a refused post rolled the whole record back). TEXT, not a
