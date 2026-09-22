@@ -228,11 +228,11 @@ describe('payouts filter toolbar', () => {
     expect(state.listInput?.needsMatching).toBeUndefined()
   })
 
-  it('shows the open count and the dominant code on a row that has one', () => {
+  it('shows the open count, but not the dominant code, on a row that has one', () => {
     state.payouts = [{ ...PAYOUT, needsMatchingCount: 16, dominantMatchReason: 'no_rail' }]
     renderPage()
     expect(screen.getByText('16 need matching')).toBeInTheDocument()
-    expect(screen.getByText('Feed has no gateway')).toBeInTheDocument()
+    expect(screen.queryByText('Feed has no gateway')).not.toBeInTheDocument()
   })
 })
 
@@ -255,7 +255,7 @@ describe('payouts topbar', () => {
     }
     renderPage()
 
-    expect(screen.getByText('USD 75.00')).toBeInTheDocument()
+    expect(screen.getByText('$75.00')).toBeInTheDocument()
     expect(screen.getByText('of processor activity is not yet in a payout')).toBeInTheDocument()
     // It expands to the same list the deleted tab held, and the list is not
     // rendered until it does.

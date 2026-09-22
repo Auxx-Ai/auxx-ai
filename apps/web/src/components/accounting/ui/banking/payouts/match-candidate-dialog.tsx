@@ -23,7 +23,8 @@ import { Receipt } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
-import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
+import { formatMinor } from '../../ledger/format'
+import { formatEvidenceDate } from './evidence-format'
 import { RecordChipLink } from './record-chip-link'
 
 export interface MatchCandidateDialogProps {
@@ -95,11 +96,7 @@ export function MatchCandidateDialog({
                 icon={<Receipt className='size-4' />}
                 title={
                   <span className='font-mono text-sm tabular-nums'>
-                    {formatEvidenceAmount(
-                      candidate.amountMinor,
-                      candidate.currency,
-                      candidate.currencyExponent
-                    )}
+                    {formatMinor(Number(candidate.amountMinor), candidate.currency)}
                   </span>
                 }
                 description={formatEvidenceDate(candidate.occurredOn ?? candidate.occurredAt)}
@@ -110,11 +107,7 @@ export function MatchCandidateDialog({
                       size='xs'>
                       {candidate.differenceMinor === '0'
                         ? 'Exact amount'
-                        : `Differs ${formatEvidenceAmount(
-                            candidate.differenceMinor,
-                            candidate.currency,
-                            candidate.currencyExponent
-                          )}`}
+                        : `Differs ${formatMinor(Number(candidate.differenceMinor), candidate.currency)}`}
                     </Badge>
                     {candidate.documents.map((document) => (
                       <RecordChipLink key={document.instanceId} document={document} />
