@@ -289,12 +289,8 @@ export function registerVendorBillBalanceReconcilers(): void {
  * If that ever stops being true, the balance's inputs changed and this trigger
  * set is what has to change with them.
  *
- * ⚠️ Known gap, shared with the three-way match and both PO-line roll-ups: the
- * sync/import lanes suppress the field-change chain, and
- * `events/handlers/finalize-integrity-passes.ts` runs four hard-coded passes
- * that do not include any purchasing recompute. A bill whose total arrives by
- * connector or CSV gets its balance on the next interactive write. That is a gap
- * in the finalize pass, not in this hook.
+ * Fires on all three lanes since #2283 (plans/events/10): the buffered flush and
+ * the sync finalize both replay the chain through `dispatchFieldChanges`.
  */
 export const recalculateBalanceOnBillChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined

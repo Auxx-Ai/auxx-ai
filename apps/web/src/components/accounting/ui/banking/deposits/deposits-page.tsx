@@ -54,6 +54,7 @@ import { useRegisterAccountingToolbar } from '~/components/accounting/accounting
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { RecordsView } from '~/components/records/records-view'
@@ -143,9 +144,13 @@ export function DepositsPage() {
   const [tab, setTab] = useQueryState('s', { defaultValue: 'undeposited' as string })
   const activeTab: DepositsTab = tab === 'deposits' ? 'deposits' : 'undeposited'
 
-  const undeposited = api.money.bankDeposit.listUndeposited.useQuery(undefined, {
-    enabled: activeTab === 'undeposited',
-  })
+  const undeposited = api.money.bankDeposit.listUndeposited.useInfiniteQuery(
+    {},
+    {
+      enabled: activeTab === 'undeposited',
+      getNextPageParam: (page) => page.nextCursor,
+    }
+  )
 
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [bankAccountId, setBankAccountId] = useState<string | null>(null)
@@ -154,7 +159,10 @@ export function DepositsPage() {
   const [blockers, setBlockers] = useState<LedgerBlocker[]>([])
   const [recordedId, setRecordedId] = useState<string | null>(null)
 
-  const rows = useMemo(() => undeposited.data ?? [], [undeposited.data])
+  const rows = useMemo(
+    () => undeposited.data?.pages.flatMap((page) => page.items) ?? [],
+    [undeposited.data?.pages]
+  )
   const days = useMemo(() => groupByDay(rows), [rows])
   const selected = useMemo(
     () => rows.filter((row) => selectedIds.includes(row.paymentId)),
@@ -350,13 +358,9 @@ export function DepositsPage() {
                     icon={Banknote}
                     title='Nothing waiting to be banked'
                     description={
-                      // Not "no payments": undeposited funds is meant to BE zero once
-                      // everything has cleared, so an empty list is the healthy state
-                      // and must not read as a failure.
                       <span>
-                        Every payment routed through undeposited funds has been banked. Cash and
-                        cheques land here as they are received; ACH and card receipts never do,
-                        because each arrives at the bank on its own line.
+                        No eligible payments are waiting to be grouped into a bank deposit.
+                        Processor payments are handled through payouts.
                       </span>
                     }
                   />
@@ -413,7 +417,7 @@ export function DepositsPage() {
                               secondary={
                                 <span className='flex items-center gap-1.5'>
                                   <Badge variant='outline' size='xs'>
-                                    {METHOD_LABELS[row.method ?? ''] ?? row.method ?? 'Channel'}
+                                    {METHOD_LABELS[row.method ?? ''] ?? row.method ?? 'Manual'}
                                   </Badge>
                                   {row.reference ? (
                                     <span className='text-muted-foreground text-xs'>
@@ -440,6 +444,12 @@ export function DepositsPage() {
                     )
                   })
                 )}
+                <InfiniteListTail
+                  hasNextPage={undeposited.hasNextPage}
+                  isFetchingNextPage={undeposited.isFetchingNextPage}
+                  fetchNextPage={undeposited.fetchNextPage}
+                  loadingLabel='Loading more payments...'
+                />
               </div>
 
               {selectedIds.length > 0 && (

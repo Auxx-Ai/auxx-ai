@@ -381,7 +381,7 @@ checkboxes below it. `TOOLBAR_INSET_PX` is `ListToolbar`'s `px-3` and `BOX_PX` i
 *"a `size='sm'` `RadioTab` (`h-8`) inside the bar's `py-2`"*. A topbar is a
 different inset and a different row height, so moving either control breaks the
 alignment — and selection is per-`ListSelectionProvider`, which is per-list, not
-per-route. See `plans/accounting/tasks/81-one-accounting-shell.md` §3.
+per-route. See `plans/accounting/tasks/done/81-one-accounting-shell.md` §3.
 
 ⚠️ A page under such a layout must be given a **definite** height
 (`flex-1 min-h-0`) and must not be wrapped in `SettingsPage`: that component is

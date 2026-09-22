@@ -13,7 +13,7 @@ export interface AccountingToolbarContent {
 /**
  * The slot a page publishes its topbar controls into, so the LAYOUT can own one
  * `AccountingToolbar` that never unmounts across a Closeout → Banking → Reports
- * jump (plans/accounting/tasks/81-one-accounting-shell.md §7).
+ * jump (plans/accounting/tasks/done/81-one-accounting-shell.md §7).
  *
  * ⚠️ Read and write are SEPARATE contexts on purpose, exactly as in
  * `docked-panels-outlet.tsx`. With one context the page that publishes is also a

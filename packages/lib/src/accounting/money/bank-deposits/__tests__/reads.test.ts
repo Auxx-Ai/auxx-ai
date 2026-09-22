@@ -14,8 +14,8 @@
 //     `readPaymentsByIds` all read the same columns through `hydrateReceipts`.
 //
 //  3. **The undeposited list and `createBankDeposit` must read the same
-//     receipt the same way**: a movement naming neither a rail nor a bank
-//     account really is sitting in 1050, whatever its method says.
+//     receipt the same way**. Source eligibility is covered by the real SQL
+//     tests in eligibility.int.test.ts; these stubs only check hydration.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
