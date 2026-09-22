@@ -1,24 +1,35 @@
 // apps/web/src/server/api/routers/ledger.ts
 
-import { schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import {
   buildExportBatches,
   countExportBatchesByState,
+  countSummaryRows,
   countUnbuiltSummaryRows,
   EXPORT_BATCH_PAGE_SIZE,
+  type ExportBatchRow,
   listExportBatches,
+  listSummaryRows,
   readUnbuiltSummaryMembers,
   readUnbuiltSummaryPage,
+  rebuildSummaryBucket,
   releaseExportBatches,
   releaseFailedBatchesNamingAccount,
   retryExportBatch,
   rollbackExportBatch,
   sendExportBatch,
+  sendSummaryBucket,
 } from '@auxx/lib/accounting/export'
 // The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
-import { EXPORT_BATCH_TABS, exportBatchTabStates } from '@auxx/lib/accounting/export/client'
+import {
+  EXPORT_BATCH_STATES,
+  EXPORT_BATCH_TABS,
+  exportBatchTabStates,
+  OUTBOX_GROUP_BYS,
+  OUTBOX_ORDERS,
+} from '@auxx/lib/accounting/export/client'
 import {
   createJournalEntry,
   discardJournalEntry,
@@ -284,6 +295,32 @@ const outboxCategories = z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.leng
 const validOutboxRange = (input: { from?: string; to?: string }) =>
   !input.from || !input.to || input.from <= input.to
 const outboxRangeError = { message: 'End date must be on or after start date', path: ['to'] }
+
+/**
+ * Adds `providerObjectUrl` to each batch. The deep-link guard (plan 67 §5.6): only a `sent`
+ * batch with a provider id, sent to the book connected right now, links out.
+ */
+async function withProviderObjectUrls<T extends ExportBatchRow>(
+  db: Database,
+  organizationId: string,
+  batches: T[]
+): Promise<Array<T & { providerObjectUrl: string | null }>> {
+  const [connection, provider] = await Promise.all([
+    readActiveBookConnection(db, organizationId),
+    resolveAccountingProvider(organizationId),
+  ])
+  const activeBookId = connection?.bookId ?? null
+  return batches.map((batch) => ({
+    ...batch,
+    providerObjectUrl:
+      batch.state === 'sent' && batch.providerObjectId && batch.bookId === activeBookId
+        ? (provider.objectUrl?.({
+            objectType: batch.objectType,
+            externalId: batch.providerObjectId,
+          }) ?? null)
+        : null,
+  }))
+}
 
 /**
  * One line of a journal-entry DRAFT, as the drawer stores it.
@@ -1187,6 +1224,9 @@ export const ledgerRouter = createTRPCRouter({
             /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
             month: z.string().min(1).optional(),
             tab: z.enum(EXPORT_BATCH_TABS).optional(),
+            /** `day` orders by the row's day so a page never splits a group the client renders. */
+            groupBy: z.enum(OUTBOX_GROUP_BYS).optional(),
+            order: z.enum(OUTBOX_ORDERS).optional(),
             glPostingIds: z.array(z.string().min(1)).max(500).optional(),
             limit: z.number().int().min(1).max(500).optional(),
             /** The row offset the next page starts at, as `useInfiniteQuery` hands it back. */
@@ -1206,33 +1246,90 @@ export const ledgerRouter = createTRPCRouter({
           ...(input.month ? { month: input.month } : {}),
           ...(input.tab ? { states: exportBatchTabStates(input.tab) } : {}),
           ...(input.glPostingIds ? { glPostingIds: input.glPostingIds } : {}),
+          orderBy: input.groupBy === 'day' ? 'day' : 'created',
+          direction: input.order,
           limit: pageSize,
           offset,
         })
         if (result.isErr()) throw result.error
 
-        // The deep-link guard, server-side (plan 67 §5.6): a batch links out
-        // only when it is `sent`, carries a provider id, and was sent to the
-        // book we are connected to right now - a batch sent to a company
-        // since disconnected must not link, same as before this moved here.
-        const [connection, provider] = await Promise.all([
-          readActiveBookConnection(ctx.db, ctx.session.organizationId),
-          resolveAccountingProvider(ctx.session.organizationId),
-        ])
-        const activeBookId = connection?.bookId ?? null
-
-        const items = result.value.map((batch) => ({
-          ...batch,
-          providerObjectUrl:
-            batch.state === 'sent' && batch.providerObjectId && batch.bookId === activeBookId
-              ? (provider.objectUrl?.({
-                  objectType: batch.objectType,
-                  externalId: batch.providerObjectId,
-                }) ?? null)
-              : null,
-        }))
+        const items = await withProviderObjectUrls(ctx.db, ctx.session.organizationId, result.value)
         // A full page means there MAY be more; a short one is the end.
         return { items, nextCursor: items.length === pageSize ? offset + pageSize : undefined }
+      }),
+
+    /**
+     * The Summary view: one row per bucket in the export window, with its live batch
+     * or none (plans/accounting/tasks/95-the-summary-is-the-row.md §3.2).
+     */
+    summaryRows: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        outboxPage
+          .extend({
+            categories: outboxCategories,
+            tab: z.enum(EXPORT_BATCH_TABS),
+            order: z.enum(OUTBOX_ORDERS).optional(),
+          })
+          .refine(validOutboxRange, outboxRangeError)
+      )
+      .query(async ({ ctx, input }) => {
+        const { organizationId } = ctx.session
+        const pageSize = input.limit ?? EXPORT_BATCH_PAGE_SIZE
+        const offset = input.cursor ?? 0
+        const result = await listSummaryRows(ctx.db, {
+          organizationId,
+          tab: input.tab,
+          categories: input.categories,
+          search: input.search,
+          from: input.from,
+          to: input.to,
+          direction: input.order,
+          limit: pageSize,
+          offset,
+        })
+        if (result.isErr()) throw result.error
+
+        const { items: rows, total } = result.value
+        const batches = await withProviderObjectUrls(
+          ctx.db,
+          organizationId,
+          rows.flatMap((row) => (row.batch ? [row.batch] : []))
+        )
+        const byId = new Map(batches.map((batch) => [batch.id, batch]))
+        const items = rows.map((row) => ({
+          ...row,
+          batch: row.batch ? (byId.get(row.batch.id) ?? null) : null,
+        }))
+        return {
+          items,
+          total,
+          nextCursor: offset + pageSize < total ? offset + pageSize : undefined,
+        }
+      }),
+
+    /** Send one summary row: build its bucket when no live batch holds it, then send or retry. */
+    sendBucket: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ key: unbuiltGroup }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await sendSummaryBucket(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          key: input.key,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** `sent · n new`: roll back, rebuild, resend (95 D3). `ledgerControl` for `rollback`'s reason. */
+    rebuildBucket: permissionProcedure(PermissionKey.ledgerControl)
+      .input(z.object({ key: unbuiltGroup, force: z.boolean().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await rebuildSummaryBucket(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          key: input.key,
+          ...(input.force === undefined ? {} : { force: input.force }),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
       }),
 
     /**
@@ -1250,6 +1347,7 @@ export const ledgerRouter = createTRPCRouter({
             limit: z.number().int().min(1).max(200).optional(),
             /** The last row of the previous page, as `useInfiniteQuery` hands it back. */
             cursor: unbuiltCursor.optional(),
+            order: z.enum(OUTBOX_ORDERS).optional(),
           })
           .refine(validOutboxRange, outboxRangeError)
       )
@@ -1262,6 +1360,7 @@ export const ledgerRouter = createTRPCRouter({
           search: input.search,
           limit: input.limit ?? EXPORT_BATCH_PAGE_SIZE,
           cursor: input.cursor,
+          direction: input.order,
         })
         if (result.isErr()) throw result.error
         return result.value
@@ -1682,14 +1781,58 @@ export const ledgerRouter = createTRPCRouter({
     // future, and its Entries section is the only door to a manual entry, so
     // demanding one made every posting invisible on the screen a bookkeeper
     // opens to find them. A MALFORMED month is still refused by the regex.
-    .input(optionalMonthKey)
+    .input(
+      optionalMonthKey.extend({
+        exportStates: z.array(z.enum(['none', ...EXPORT_BATCH_STATES])).optional(),
+        order: z.enum(OUTBOX_ORDERS).optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const result = await listPostings(ctx.db, {
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
+        exportStates: input.exportStates,
+        direction: input.order,
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /** The Outbox's Transaction view: posted postings with their export state, paged (95 §3.3). */
+  listExportPostings: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      outboxPage
+        .extend({
+          categories: outboxCategories,
+          tab: z.enum(EXPORT_BATCH_TABS),
+          order: z.enum(OUTBOX_ORDERS).optional(),
+        })
+        .refine(validOutboxRange, outboxRangeError)
+    )
+    .query(async ({ ctx, input }) => {
+      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
+      const offset = input.cursor ?? 0
+      const result = await listPostings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        status: 'posted',
+        // An unbatched posting waits on Ready.
+        exportStates: [
+          ...(input.tab === 'ready' ? (['none'] as const) : []),
+          ...exportBatchTabStates(input.tab),
+        ],
+        categories: input.categories,
+        search: input.search,
+        from: input.from,
+        to: input.to,
+        direction: input.order,
+        limit: pageSize,
+        offset,
+      })
+      if (result.isErr()) throw result.error
+      return {
+        items: result.value,
+        nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
+      }
     }),
 
   /**
@@ -1798,8 +1941,17 @@ export const ledgerRouter = createTRPCRouter({
   outboxCounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
-    const [blocked, batches, unbuilt] = await Promise.all([
+    const [blocked, settings] = await Promise.all([
       canPost ? countBlockedWork(ctx.db, organizationId) : 0,
+      readExportSettings(organizationId),
+    ])
+    // Summary mode counts summary rows per tab (95 §4); Ready already holds unbuilt and sending.
+    if (settings.mode === 'summary') {
+      const rows = await countSummaryRows(ctx.db, { organizationId })
+      if (rows.isErr()) throw rows.error
+      return { blocked, unbuilt: 0, ...rows.value, sending: 0 }
+    }
+    const [batches, unbuilt] = await Promise.all([
       countExportBatchesByState(ctx.db, organizationId),
       countUnbuiltSummaryRows(ctx.db, { organizationId }),
     ])

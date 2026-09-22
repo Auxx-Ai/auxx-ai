@@ -173,7 +173,12 @@ export {
   type PostingTrigger,
   reverseAssertions,
 } from './post/client'
-export { summaryGrainKey } from './reads/client'
+export {
+  type PostingExportState,
+  type PostingExportStateFilter,
+  type PostingListRow,
+  summaryGrainKey,
+} from './reads/client'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,

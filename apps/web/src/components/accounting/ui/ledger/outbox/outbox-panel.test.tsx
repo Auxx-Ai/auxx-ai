@@ -9,13 +9,14 @@ import {
   useSelectionIds,
 } from '~/components/list-selection'
 
-/** The batch rows `exportBatches.list` hands the panel, swapped per test. */
-const state = vi.hoisted(() => ({ batches: [] as Record<string, unknown>[] }))
+/** The summary rows `exportBatches.summaryRows` hands the panel, swapped per test. */
+const state = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[] }))
 
 vi.mock('next/link', () => ({ default: (props: ComponentProps<'a'>) => <a {...props} /> }))
 vi.mock('~/providers/capabilities-provider', () => ({ useAccess: () => ({ can: () => true }) }))
 vi.mock('~/hooks/use-settings', () => ({ useSettings: () => ({ getSetting: () => false }) }))
 vi.mock('~/hooks/use-confirm', () => ({ useConfirm: () => [vi.fn(), () => null] }))
+vi.mock('./rail-badge', () => ({ RailBadge: () => null }))
 vi.mock('./use-outbox-realtime', () => ({
   useOutboxRealtime: () => ({ run: null, startRun: vi.fn(), watchRun: vi.fn(() => vi.fn()) }),
 }))
@@ -43,6 +44,7 @@ vi.mock('@auxx/ui/components/tree-row', async (importOriginal) => ({
 // `isOpen` exactly as `TreeRow` does.
 vi.mock('./outbox-row', () => ({
   OutboxRow: ({
+    title,
     description,
     actions,
     expandable,
@@ -50,6 +52,7 @@ vi.mock('./outbox-row', () => ({
     onToggleOpen,
     children,
   }: {
+    title?: ReactNode
     description?: string
     actions?: ReactNode
     expandable?: boolean
@@ -58,6 +61,7 @@ vi.mock('./outbox-row', () => ({
     children?: ReactNode
   }) => (
     <div>
+      <span>{title}</span>
       {description && <p data-testid='row-description'>{description}</p>}
       {actions}
       {expandable && (
@@ -76,21 +80,34 @@ vi.mock('~/trpc/react', () => {
     api: {
       useUtils: () => ({
         ledger: {
-          exportBatches: { list: { invalidate: vi.fn() }, unbuilt: { invalidate: vi.fn() } },
+          exportBatches: { list: { invalidate: vi.fn() }, summaryRows: { invalidate: vi.fn() } },
+          listExportPostings: { invalidate: vi.fn() },
           outboxCounts: { invalidate: vi.fn() },
         },
       }),
       ledger: {
         roleMap: { useQuery: () => ({ data: { sources: [] }, isPending: false }) },
+        listExportPostings: {
+          useInfiniteQuery: () => ({
+            data: { pages: [{ items: [], nextCursor: undefined }] },
+            isPending: false,
+            isError: false,
+            hasNextPage: false,
+            isFetchingNextPage: false,
+            fetchNextPage: vi.fn(),
+          }),
+        },
         outboxCounts: {
           useQuery: () => ({
             data: { blocked: 2, ready: 2, sending: 0, sent: 1, failed: 1 },
           }),
         },
         exportBatches: {
-          list: {
+          summaryRows: {
             useInfiniteQuery: () => ({
-              data: { pages: [{ items: state.batches, nextCursor: undefined }] },
+              data: {
+                pages: [{ items: state.rows, total: state.rows.length, nextCursor: undefined }],
+              },
               isPending: false,
               isError: false,
               hasNextPage: false,
@@ -98,20 +115,11 @@ vi.mock('~/trpc/react', () => {
               fetchNextPage: vi.fn(),
             }),
           },
-          unbuilt: {
-            useInfiniteQuery: () => ({
-              data: { pages: [{ items: [], nextCursor: undefined }] },
-              isPending: false,
-              hasNextPage: false,
-              isFetchingNextPage: false,
-              fetchNextPage: vi.fn(),
-            }),
-          },
           unbuiltMembers: { useQuery: () => ({ data: [], isPending: false }) },
-          build: { useMutation: noMutation },
           send: { useMutation: noMutation },
+          sendBucket: { useMutation: noMutation },
+          rebuildBucket: { useMutation: noMutation },
           retry: { useMutation: noMutation },
-          release: { useMutation: noMutation },
           rollback: { useMutation: noMutation },
         },
       },
@@ -173,15 +181,17 @@ function Panel({
 vi.mock('./blocked-panel', () => ({
   BlockedPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
 }))
-vi.mock('./batches-panel', () => ({
-  BatchesPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
+vi.mock('./summary-panel', () => ({
+  SummaryPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
 }))
 
 import { OutboxPanel } from './outbox-panel'
 
 const props = {
   onTabChange: vi.fn(),
-  buildMonthLabel: 'February',
+  view: 'summary' as const,
+  onViewChange: vi.fn(),
+  currencyCode: 'USD',
   bookTimeZone: 'UTC',
   providerLabel: 'Provider',
   activePostingId: null,
@@ -259,6 +269,7 @@ function batch(overrides: Record<string, unknown>) {
     failureClass: 'configuration',
     failureItems: [],
     blockers: [],
+    dayKey: '2026-09',
     providerObjectId: null,
     providerObjectUrl: null,
     nextAttemptAt: null,
@@ -268,8 +279,41 @@ function batch(overrides: Record<string, unknown>) {
   }
 }
 
-const batchProps = {
+/** One `SummaryRow` holding `batchRow` (or none); status follows the batch unless given. */
+function summaryRow(
+  batchRow: ReturnType<typeof batch> | null,
+  overrides: Record<string, unknown> = {}
+) {
+  const newCount = (overrides.newCount as number | undefined) ?? (batchRow ? 0 : 2)
+  const status = !batchRow
+    ? 'not_sent'
+    : batchRow.state === 'sent' && newCount > 0
+      ? 'sent_new'
+      : batchRow.state
+  return {
+    key: `manual ${(overrides.grainKey as string | undefined) ?? '2026-09'} USD`,
+    avenue: 'manual',
+    grainKey: '2026-09',
+    storeId: null,
+    railId: null,
+    currency: 'USD',
+    dayKey: '2026-09',
+    totalMinor: 1000,
+    memberCount: 2,
+    newCount,
+    txnDateFrom: '2026-09-01',
+    txnDateTo: '2026-09-30',
+    firstPostingId: 'p1',
+    status,
+    batch: batchRow,
+    ...overrides,
+  }
+}
+
+const panelProps = {
   filters: { search: '', from: '', to: '', categories: [] as string[] },
+  order: 'desc' as const,
+  groupBy: null,
   emptyTitle: 'Nothing here',
   emptyDescription: 'Nothing here',
   bookTimeZone: 'UTC',
@@ -278,16 +322,17 @@ const batchProps = {
   canRollback: true,
   activePostingId: null,
   onSelectPosting: vi.fn(),
+  watchRun: vi.fn(() => vi.fn()),
 }
 
-async function renderBatches(tab: 'ready' | 'failed') {
-  // The real panel, past this file's own `./batches-panel` mock.
-  const { BatchesPanel } =
-    await vi.importActual<typeof import('./batches-panel')>('./batches-panel')
+async function renderSummary(tab: 'ready' | 'sent' | 'failed', groupBy: 'day' | null = null) {
+  // The real panel, past this file's own `./summary-panel` mock.
+  const { SummaryPanel } =
+    await vi.importActual<typeof import('./summary-panel')>('./summary-panel')
   return render(
     <TooltipProvider>
       <ListSelectionProvider>
-        <BatchesPanel {...batchProps} tab={tab} />
+        <SummaryPanel {...panelProps} tab={tab} groupBy={groupBy} />
       </ListSelectionProvider>
     </TooltipProvider>
   )
@@ -300,33 +345,35 @@ function expand() {
 
 describe('Failed and Ready batches refuse in one voice (89 D6, D7)', () => {
   it('renders one blocker row per failure item instead of the verbatim sentence', async () => {
-    state.batches = [
-      batch({
-        failureItems: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-1',
-            label: '5010 COGS - Direct Labor',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-          {
-            key: 'invalid_mapping',
-            ref: 'acct-2',
-            label: '1310 Inventory Asset',
-            remedy: 'Pick it again - the one it named is gone.',
-          },
-        ],
-        blockers: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-1',
-            label: '5010 COGS - Direct Labor',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-        ],
-      }),
+    state.rows = [
+      summaryRow(
+        batch({
+          failureItems: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-1',
+              label: '5010 COGS - Direct Labor',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+            {
+              key: 'invalid_mapping',
+              ref: 'acct-2',
+              label: '1310 Inventory Asset',
+              remedy: 'Pick it again - the one it named is gone.',
+            },
+          ],
+          blockers: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-1',
+              label: '5010 COGS - Direct Labor',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+          ],
+        })
+      ),
     ]
-    await renderBatches('failed')
+    await renderSummary('failed')
     expand()
 
     expect(screen.getByText('5010 COGS - Direct Labor')).toBeDefined()
@@ -341,8 +388,8 @@ describe('Failed and Ready batches refuse in one voice (89 D6, D7)', () => {
   })
 
   it('falls back to the provider sentence when the refusal has no items', async () => {
-    state.batches = [batch({ failureClass: null, failureItems: [] })]
-    await renderBatches('failed')
+    state.rows = [summaryRow(batch({ failureClass: null, failureItems: [] }))]
+    await renderSummary('failed')
 
     expect(screen.getByTestId('row-description').textContent).toBe(
       'Shopify Payments Bank is not mapped to a QuickBooks account.'
@@ -351,22 +398,24 @@ describe('Failed and Ready batches refuse in one voice (89 D6, D7)', () => {
   })
 
   it('blocks Send now on a ready batch the mapping table already refuses', async () => {
-    state.batches = [
-      batch({
-        state: 'ready',
-        lastError: null,
-        failureClass: null,
-        blockers: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-1',
-            label: '5010 COGS - Direct Labor',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-        ],
-      }),
+    state.rows = [
+      summaryRow(
+        batch({
+          state: 'ready',
+          lastError: null,
+          failureClass: null,
+          blockers: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-1',
+              label: '5010 COGS - Direct Labor',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+          ],
+        })
+      ),
     ]
-    await renderBatches('ready')
+    await renderSummary('ready')
     expand()
 
     expect(screen.getByText('This batch cannot be sent yet')).toBeDefined()
@@ -376,20 +425,22 @@ describe('Failed and Ready batches refuse in one voice (89 D6, D7)', () => {
   })
 
   it('replaces the card with a one-line note once every account it named is mapped', async () => {
-    state.batches = [
-      batch({
-        failureItems: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-1',
-            label: '5010 COGS - Direct Labor',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-        ],
-        blockers: [],
-      }),
+    state.rows = [
+      summaryRow(
+        batch({
+          failureItems: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-1',
+              label: '5010 COGS - Direct Labor',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+          ],
+          blockers: [],
+        })
+      ),
     ]
-    await renderBatches('failed')
+    await renderSummary('failed')
     expand()
 
     expect(
@@ -400,37 +451,112 @@ describe('Failed and Ready batches refuse in one voice (89 D6, D7)', () => {
   })
 
   it('keeps only the items the mapping table still refuses', async () => {
-    state.batches = [
-      batch({
-        failureItems: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-1',
-            label: '5010 COGS - Direct Labor',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-          {
-            key: 'unmapped_account',
-            ref: 'acct-2',
-            label: '1310 Inventory Asset',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-        ],
-        blockers: [
-          {
-            key: 'unmapped_account',
-            ref: 'acct-2',
-            label: '1310 Inventory Asset',
-            remedy: 'Pick the QuickBooks account this one is.',
-          },
-        ],
-      }),
+    state.rows = [
+      summaryRow(
+        batch({
+          failureItems: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-1',
+              label: '5010 COGS - Direct Labor',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+            {
+              key: 'unmapped_account',
+              ref: 'acct-2',
+              label: '1310 Inventory Asset',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+          ],
+          blockers: [
+            {
+              key: 'unmapped_account',
+              ref: 'acct-2',
+              label: '1310 Inventory Asset',
+              remedy: 'Pick the QuickBooks account this one is.',
+            },
+          ],
+        })
+      ),
     ]
-    await renderBatches('failed')
+    await renderSummary('failed')
     expand()
 
     expect(screen.getByText('1310 Inventory Asset')).toBeDefined()
     expect(screen.queryByText('5010 COGS - Direct Labor')).toBeNull()
     expect(screen.getByText('The provider refused this batch')).toBeDefined()
+  })
+})
+
+describe('Summary rows (95 §3.2)', () => {
+  it('offers Send on a bucket no batch holds yet', async () => {
+    state.rows = [summaryRow(null)]
+    await renderSummary('ready')
+
+    expect(screen.getByText('Not sent')).toBeDefined()
+    expect(screen.getByLabelText('Send now to QuickBooks').hasAttribute('disabled')).toBe(false)
+  })
+
+  it('offers Rebuild beside Roll back once postings land after the send', async () => {
+    state.rows = [summaryRow(batch({ state: 'sent', lastError: null }), { newCount: 3 })]
+    await renderSummary('sent')
+
+    expect(screen.getByText('3 new')).toBeDefined()
+    expect(screen.getByLabelText('Rebuild with the 3 new')).toBeDefined()
+    expect(screen.getByLabelText('Roll back from QuickBooks')).toBeDefined()
+  })
+
+  it('does not offer Rebuild on a sent bucket with nothing new', async () => {
+    state.rows = [summaryRow(batch({ state: 'sent', lastError: null }))]
+    await renderSummary('sent')
+
+    expect(screen.queryByLabelText(/^Rebuild/)).toBeNull()
+    expect(screen.getByLabelText('Roll back from QuickBooks')).toBeDefined()
+  })
+
+  it('puts a day header over the rows that share a day', async () => {
+    state.rows = [
+      summaryRow(null, { key: 'a', dayKey: '2026-09-02', grainKey: '2026-09-02' }),
+      summaryRow(null, {
+        key: 'b',
+        dayKey: '2026-09-02',
+        grainKey: '2026-09-02',
+        avenue: 'payout',
+      }),
+      summaryRow(null, { key: 'c', dayKey: '2026-09-01', grainKey: '2026-09-01' }),
+    ]
+    await renderSummary('ready', 'day')
+
+    expect(screen.getAllByLabelText(/^Select every row of/)).toHaveLength(2)
+    expect(screen.getByText('2 summaries')).toBeDefined()
+    expect(screen.getByText('1 summary')).toBeDefined()
+  })
+})
+
+describe('Outbox view dropdown', () => {
+  it('switches the batch tabs between Summary and Transaction rows', async () => {
+    const onViewChange = vi.fn()
+    const view = render(<OutboxPanel {...props} tab='ready' onViewChange={onViewChange} />)
+    expect(screen.getByTestId('empty-title')).toBeDefined()
+
+    const trigger = screen.getByRole('button', { name: 'View: Summary' })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Transaction' }))
+    expect(onViewChange).toHaveBeenCalledWith('transaction')
+
+    view.rerender(<OutboxPanel {...props} tab='ready' view='transaction' />)
+    // The real Transaction panel, empty: the tab's own copy, not the summary stub.
+    expect(screen.queryByTestId('empty-title')).toBeNull()
+    expect(screen.getByText('Nothing is waiting to be sent')).toBeDefined()
+  })
+
+  it('is not offered on Blocked', () => {
+    render(<OutboxPanel {...props} tab='blocked' />)
+    expect(screen.queryByRole('button', { name: /^View:/ })).toBeNull()
+  })
+
+  it('follows the export mode when the URL names no view', () => {
+    render(<OutboxPanel {...props} tab='sent' view={null} />)
+    expect(screen.getByRole('button', { name: 'View: Transaction' })).toBeDefined()
   })
 })

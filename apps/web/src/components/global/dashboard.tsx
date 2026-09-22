@@ -23,6 +23,7 @@ import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
 import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
 import { AppDragOverlay } from '~/components/global/app-drag-overlay'
 import { NotificationPanelRoot } from '~/components/global/notifications/notification-panel-root'
+import { SecondarySidebarPrefsProvider } from '~/components/global/secondary-sidebar-provider'
 import AppSidebar from '~/components/global/sidebar'
 import { SidebarDragPeek } from '~/components/global/sidebar/sidebar-drag-peek'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
@@ -57,6 +58,8 @@ type Props = {
   defaultSidebarOpen?: boolean
   /** SSR-provided from the `sidebar_state_width` cookie so the width doesn't flash on load. */
   defaultSidebarWidth?: number
+  /** SSR-provided from the `secondary_sidebar` cookies, for every section's `SidebarSecondary`. */
+  defaultSecondarySidebar?: { open?: boolean; width?: number }
 }
 
 export const Dashboard = ({
@@ -65,6 +68,7 @@ export const Dashboard = ({
   children,
   defaultSidebarOpen,
   defaultSidebarWidth,
+  defaultSecondarySidebar,
 }: Props) => {
   const pathname = usePathname()
   const router = useRouter()
@@ -199,7 +203,7 @@ export const Dashboard = ({
   }
 
   return (
-    <SidebarProvider resizable defaultOpen={defaultSidebarOpen} defaultWidth={defaultSidebarWidth}>
+    <SidebarProvider resizable defaultOpen={defaultSidebarOpen} initialWidth={defaultSidebarWidth}>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -215,7 +219,11 @@ export const Dashboard = ({
             <SidebarInset className='min-h-0 pt-safe pb-safe pl-safe pr-safe'>
               <DemoBanner />
               <OverageBanner overages={overages} />
-              {children}
+              <SecondarySidebarPrefsProvider
+                defaultOpen={defaultSecondarySidebar?.open}
+                defaultWidth={defaultSecondarySidebar?.width}>
+                {children}
+              </SecondarySidebarPrefsProvider>
             </SidebarInset>
             <KopilotDock />
             {/* Headless turn runner + task-notification watches. Sibling of the

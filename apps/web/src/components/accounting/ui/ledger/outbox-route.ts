@@ -18,6 +18,13 @@ export const OUTBOX_ROUTE = '/app/accounting/outbox'
 /** Which tab the Outbox opens on. Was `?queue=` while the outbox was a view of one URL. */
 export const OUTBOX_TAB_PARAM = 'tab'
 
+/** How a batch tab is grouped and ordered; both absent is the flat list, newest first. */
+export const OUTBOX_GROUP_PARAM = 'group'
+export const OUTBOX_ORDER_PARAM = 'order'
+
+/** Summary or Transaction rows on the batch tabs; absent follows the org's export mode. */
+export const OUTBOX_VIEW_PARAM = 'view'
+
 export function outboxHref(tab?: OutboxTab): string {
   return tab ? `${OUTBOX_ROUTE}?${OUTBOX_TAB_PARAM}=${tab}` : OUTBOX_ROUTE
 }

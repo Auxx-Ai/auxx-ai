@@ -80,6 +80,8 @@ export function usePostingFrameHeader(
 
   function refresh() {
     void utils.ledger.exportBatches.list.invalidate()
+    void utils.ledger.exportBatches.summaryRows.invalidate()
+    void utils.ledger.listExportPostings.invalidate()
     void utils.ledger.outboxCounts.invalidate()
   }
   const send = api.ledger.exportBatches.send.useMutation({
@@ -217,6 +219,8 @@ export function PostingFrame({
   /** The same queries `usePostingFrameHeader`'s own refresh invalidates. */
   function refreshExport() {
     void utils.ledger.exportBatches.list.invalidate()
+    void utils.ledger.exportBatches.summaryRows.invalidate()
+    void utils.ledger.listExportPostings.invalidate()
     void utils.ledger.outboxCounts.invalidate()
   }
 

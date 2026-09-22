@@ -18,6 +18,7 @@ import {
   DockedPanelsOutletProvider,
   useDockedPanelsOutlet,
 } from '~/components/global/docked-panels-outlet'
+import { SecondarySidebarProvider } from '~/components/global/secondary-sidebar-provider'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
@@ -135,7 +136,7 @@ function AccountingSettingsLayoutFrame({ children }: { children: React.ReactNode
     <MainPageContent dockedPanels={dockedPanels}>
       {/* `md:` must match SidebarSecondary's own breakpoint — at `sm:` the sidebar is
           still in mobile-disclosure mode with no fixed width and collapses to a sliver. */}
-      <div className='flex flex-col md:flex-row h-full flex-1 overflow-hidden'>
+      <SecondarySidebarProvider className='flex-1 flex-col overflow-hidden md:flex-row'>
         <SidebarSecondary
           items={ACCOUNTING_SETTINGS}
           baseUrl='/app/accounting/settings'
@@ -143,7 +144,7 @@ function AccountingSettingsLayoutFrame({ children }: { children: React.ReactNode
           title='Settings'
         />
         <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
-      </div>
+      </SecondarySidebarProvider>
     </MainPageContent>
   )
 }

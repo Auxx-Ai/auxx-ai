@@ -62,7 +62,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const widthCookie = cookieStore.get('admin_sidebar_width')?.value
   const defaultOpen = openCookie ? openCookie !== 'false' : undefined
   const parsedWidth = widthCookie ? Number.parseInt(widthCookie, 10) : Number.NaN
-  const defaultWidth = Number.isFinite(parsedWidth) ? parsedWidth : undefined
+  const initialWidth = Number.isFinite(parsedWidth) ? parsedWidth : undefined
 
   return (
     <div className='h-screen flex flex-1 flex-col w-full h-full'>
@@ -80,7 +80,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 resizable
                 persistKey='admin_sidebar'
                 defaultOpen={defaultOpen}
-                defaultWidth={defaultWidth}>
+                initialWidth={initialWidth}>
                 <AdminAppSidebar user={user} variant='inset' />
                 <SidebarInset className='p-0 m-0!'>{children}</SidebarInset>
               </SidebarProvider>

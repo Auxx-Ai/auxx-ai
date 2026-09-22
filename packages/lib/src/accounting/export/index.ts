@@ -25,6 +25,9 @@ export {
   OUTBOX_TABS,
   type OutboxTab,
   parseOutboxTab,
+  SUMMARY_ROW_STATUSES,
+  type SummaryRowStatus,
+  summaryRowStatus,
   unbuiltGroupKeyString,
 } from './client'
 export { type ShapedPosting, type ShapeForPostingInput, shapeForPosting } from './object-shape'
@@ -85,11 +88,24 @@ export {
   sendExportBatch,
 } from './send'
 export {
+  type RebuildSummaryBucketResult,
+  rebuildSummaryBucket,
+  type SendSummaryBucketResult,
+  sendSummaryBucket,
+} from './send-bucket'
+export {
   EXPORT_BATCHES_PER_JOB,
   type SendExportBatchesResult,
   sendExportBatches,
 } from './send-many'
-export { type SweepExportBatchesInput, sweepExportBatches } from './sweep'
+export {
+  countSummaryRows,
+  type ListSummaryRowsInput,
+  listSummaryRows,
+  type SummaryRow,
+  type SummaryRowFilter,
+} from './summary-rows'
+export { type SweepExportBatchesInput, sweepExportBatches, sweepSummaryBuckets } from './sweep'
 export {
   countUnbuiltSummaryRows,
   type ReadUnbuiltSummaryPageInput,

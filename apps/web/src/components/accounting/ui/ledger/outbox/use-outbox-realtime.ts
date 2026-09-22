@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ExportBatchState } from '@auxx/lib/accounting/export/client'
+import { type ExportBatchState, summaryRowStatus } from '@auxx/lib/accounting/export/client'
 import type { ExportBatchChangedEvent } from '@auxx/lib/realtime/client'
 import { type InfiniteData, useQueryClient } from '@tanstack/react-query'
 import { getQueryKey } from '@trpc/react-query'
@@ -10,8 +10,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 
-type ListPage = RouterOutputs['ledger']['exportBatches']['list']
-type ListData = InfiniteData<ListPage>
+type SummaryPage = RouterOutputs['ledger']['exportBatches']['summaryRows']
+type SummaryData = InfiniteData<SummaryPage>
 type Frame = ExportBatchChangedEvent['data']
 
 /** The states `outboxCounts` counts by; `withdrawn` is not one. */
@@ -51,8 +51,8 @@ const SEEN_RUN_LIMIT = 20
 export const RUN_IDLE_MS = 30_000
 
 /**
- * Keeps the Outbox moving on `exportBatch:changed`: patches the row in every cached
- * `exportBatches.list` page, moves `outboxCounts` by the delta, and tallies the release
+ * Keeps the Outbox moving on `exportBatch:changed`: patches the summary row holding the
+ * batch in every cached `exportBatches.summaryRows` page, moves `outboxCounts` by the delta, and tallies the release
  * `startRun` names. Rows never leave a tab here - admission is the server's (brief 93 §3 B3).
  */
 export function useOutboxRealtime() {
@@ -106,32 +106,31 @@ export function useOutboxRealtime() {
     (event: string, payload: unknown) => {
       if (event !== 'exportBatch:changed') return
       const frame = payload as Frame
-      const listKey = getQueryKey(api.ledger.exportBatches.list, undefined, 'infinite')
+      const rowsKey = getQueryKey(api.ledger.exportBatches.summaryRows, undefined, 'infinite')
 
       let previous: ExportBatchState | null = null
-      for (const [, data] of queryClient.getQueriesData<ListData>({ queryKey: listKey })) {
+      for (const [, data] of queryClient.getQueriesData<SummaryData>({ queryKey: rowsKey })) {
         for (const page of data?.pages ?? []) {
-          const row = page.items.find((item) => item.id === frame.batchId)
-          if (row) previous ??= row.state
+          const row = page.items.find((item) => item.batch?.id === frame.batchId)
+          if (row?.batch) previous ??= row.batch.state
         }
       }
 
-      if (previous === null) {
+      // A withdrawn batch frees its bucket back to `Not sent`, which no frame describes.
+      if (previous === null || frame.state === 'withdrawn') {
+        void utils.ledger.exportBatches.summaryRows.invalidate()
+        void utils.ledger.listExportPostings.invalidate()
         void utils.ledger.exportBatches.list.invalidate()
         void utils.ledger.outboxCounts.invalidate()
         tally(frame)
         return
       }
 
-      queryClient.setQueriesData<ListData>({ queryKey: listKey }, (data) =>
+      queryClient.setQueriesData<SummaryData>({ queryKey: rowsKey }, (data) =>
         data ? { ...data, pages: data.pages.map((page) => patchPage(page, frame)) } : data
       )
 
-      if (frame.state === 'withdrawn') {
-        // Freed postings come back as unbuilt rows, which no frame describes.
-        void utils.ledger.exportBatches.unbuilt.invalidate()
-        void utils.ledger.outboxCounts.invalidate()
-      } else if (previous !== frame.state) {
+      if (previous !== frame.state) {
         const from = previous
         const to = frame.state
         utils.ledger.outboxCounts.setData(undefined, (counts) => {
@@ -197,6 +196,8 @@ export function useOutboxRealtime() {
       () => {
         if (runRef.current?.runId !== run.runId) return
         closeRun()
+        void utils.ledger.exportBatches.summaryRows.invalidate()
+        void utils.ledger.listExportPostings.invalidate()
         void utils.ledger.exportBatches.list.invalidate()
         void utils.ledger.outboxCounts.invalidate()
       },
@@ -208,23 +209,27 @@ export function useOutboxRealtime() {
   return { run: run ? summarise(run) : null, startRun, watchRun }
 }
 
-function patchPage(page: ListPage, frame: Frame): ListPage {
-  if (!page.items.some((row) => row.id === frame.batchId)) return page
+function patchPage(page: SummaryPage, frame: Frame): SummaryPage {
+  if (!page.items.some((row) => row.batch?.id === frame.batchId)) return page
   return {
     ...page,
     items: page.items.map((row) =>
-      row.id === frame.batchId
+      row.batch?.id === frame.batchId
         ? {
             ...row,
-            state: frame.state,
-            attempts: frame.attempts,
-            ...(frame.providerObjectId !== undefined && {
-              providerObjectId: frame.providerObjectId,
-            }),
-            ...(frame.failureClass !== undefined && { failureClass: frame.failureClass }),
-            ...(frame.lastError !== undefined && { lastError: frame.lastError }),
-            // The deep link is the server's to build; a row no longer sent loses it.
-            providerObjectUrl: frame.state === 'sent' ? row.providerObjectUrl : null,
+            status: summaryRowStatus(frame.state, row.newCount),
+            batch: {
+              ...row.batch,
+              state: frame.state,
+              attempts: frame.attempts,
+              ...(frame.providerObjectId !== undefined && {
+                providerObjectId: frame.providerObjectId,
+              }),
+              ...(frame.failureClass !== undefined && { failureClass: frame.failureClass }),
+              ...(frame.lastError !== undefined && { lastError: frame.lastError }),
+              // The deep link is the server's to build; a row no longer sent loses it.
+              providerObjectUrl: frame.state === 'sent' ? row.batch.providerObjectUrl : null,
+            },
           }
         : row
     ),

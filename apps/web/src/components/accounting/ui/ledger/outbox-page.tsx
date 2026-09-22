@@ -3,17 +3,18 @@
 'use client'
 
 import {
+  OUTBOX_GROUP_BYS,
+  OUTBOX_ORDERS,
   OUTBOX_TAB_PARAMS,
+  OUTBOX_VIEWS,
+  type OutboxGroupBy,
+  type OutboxOrder,
   type OutboxTab,
+  type OutboxView,
   parseOutboxTab,
 } from '@auxx/lib/accounting/export/client'
-import { PermissionKey } from '@auxx/lib/permissions/client'
-import { Button } from '@auxx/ui/components/button'
-import { Separator } from '@auxx/ui/components/separator'
-import { toastError } from '@auxx/ui/components/toast'
-import { Hammer } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import {
   UNKNOWN_PROVIDER_LABEL,
@@ -22,13 +23,16 @@ import {
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { today } from '~/components/accounting/ui/journal/period-helpers'
-import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 
-import { formatPeriodLabel } from './format'
-import { MonthDropdown, ProviderPill } from './ledger-toolbar'
-import { buildResultSentence, OutboxPanel } from './outbox/outbox-panel'
-import { OUTBOX_TAB_PARAM } from './outbox-route'
+import { ProviderPill } from './ledger-toolbar'
+import { OutboxPanel } from './outbox/outbox-panel'
+import {
+  OUTBOX_GROUP_PARAM,
+  OUTBOX_ORDER_PARAM,
+  OUTBOX_TAB_PARAM,
+  OUTBOX_VIEW_PARAM,
+} from './outbox-route'
 import { useLedgerDrawers } from './use-ledger-drawers'
 
 type OutboxCounts = RouterOutputs['ledger']['outboxCounts']
@@ -41,21 +45,12 @@ function outstanding(counts: OutboxCounts | undefined): number {
 
 /**
  * The Outbox, at `/app/accounting/outbox` — everything on its way out of the
- * books: `blocked`, then the export-batch states, over `?tab=`.
- *
- * 🛑 NO month nav and NO period pill in the topbar, unlike Closeout. Every tab
- * here reads with no month bound, so "September" over a list reaching back
- * eighteen months is a false claim — the complaint
- * 81-one-accounting-shell.md was opened to settle (§4). The month survives only
- * on Build, which freezes one month's POSTED entries into batches and is the one
- * thing that genuinely is month-scoped.
+ * books: `blocked`, then the export states, over `?tab=`.
+ * No month in the topbar: every tab reads across all periods (81 §4).
  */
 export function OutboxPage() {
   const period = useLedgerPeriod()
   const provider = useAccountingProviderStatus()
-  const utils = api.useUtils()
-  const { can } = useAccess()
-  const canRelease = can(PermissionKey.ledgerPost)
   const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
 
   const [tabParam, setTabParam] = useQueryState(
@@ -65,17 +60,25 @@ export function OutboxPage() {
   const tab = parseOutboxTab(tabParam) ?? 'ready'
   const selectTab = useCallback((next: OutboxTab) => void setTabParam(next), [setTabParam])
 
-  /**
-   * Build's month, local to this screen rather than `?month=`: it is the
-   * argument to one mutation, not a claim about what the list below is showing.
-   * `null` means "whatever resolved".
-   */
-  const [chosenBuildMonth, setChosenBuildMonth] = useState<string | null>(null)
-  const buildMonth = chosenBuildMonth ?? period.resolvedPeriodKey
-  const buildMonthLabel = buildMonth ? formatPeriodLabel(buildMonth) : ''
+  const [groupBy, setGroupBy] = useQueryState(
+    OUTBOX_GROUP_PARAM,
+    parseAsStringLiteral(OUTBOX_GROUP_BYS)
+  )
+  const [orderParam, setOrderParam] = useQueryState(
+    OUTBOX_ORDER_PARAM,
+    parseAsStringLiteral(OUTBOX_ORDERS)
+  )
+  const order: OutboxOrder = orderParam ?? 'desc'
+  const selectGroupBy = useCallback(
+    (next: OutboxGroupBy | null) => void setGroupBy(next),
+    [setGroupBy]
+  )
+  const selectOrder = useCallback((next: OutboxOrder) => void setOrderParam(next), [setOrderParam])
+  const [view, setView] = useQueryState(OUTBOX_VIEW_PARAM, parseAsStringLiteral(OUTBOX_VIEWS))
+  const selectView = useCallback((next: OutboxView) => void setView(next), [setView])
 
   const drawers = useLedgerDrawers({
-    periodKey: buildMonth,
+    periodKey: period.resolvedPeriodKey,
     currencyCode: period.currencyCode,
     bookTimeZone: period.bookTimeZone,
     providerLabel,
@@ -85,24 +88,6 @@ export function OutboxPage() {
   const countsQuery = api.ledger.outboxCounts.useQuery()
   const outstandingCount = outstanding(countsQuery.data)
 
-  const build = api.ledger.exportBatches.build.useMutation({
-    onSuccess: () => {
-      void utils.ledger.exportBatches.list.invalidate()
-      void utils.ledger.outboxCounts.invalidate()
-    },
-    onError: (error) => toastError({ title: 'Error building batches', description: error.message }),
-  })
-  const [buildResult, setBuildResult] = useState<Awaited<
-    ReturnType<typeof build.mutateAsync>
-  > | null>(null)
-
-  const buildMutate = build.mutate
-  const handleBuild = useCallback(() => {
-    if (!buildMonth) return
-    setBuildResult(null)
-    buildMutate({ periodKey: buildMonth }, { onSuccess: (result) => setBuildResult(result) })
-  }, [buildMonth, buildMutate])
-
   const toolbar = useMemo(
     () => ({
       left: (
@@ -110,32 +95,9 @@ export function OutboxPage() {
           Outbox
         </ToolbarTitle>
       ),
-      right: canRelease ? (
-        <>
-          <Button
-            variant='ghost'
-            size='sm'
-            disabled={!buildMonth}
-            loading={build.isPending}
-            loadingText='Building…'
-            onClick={handleBuild}>
-            <Hammer />
-            Build batches
-          </Button>
-          <MonthDropdown
-            periodKey={buildMonth}
-            options={period.options}
-            onSelectPeriod={setChosenBuildMonth}
-            className='min-w-[8.5rem]'
-          />
-          <Separator orientation='vertical' className='h-6' />
-          <ProviderPill />
-        </>
-      ) : (
-        <ProviderPill />
-      ),
+      right: <ProviderPill />,
     }),
-    [build.isPending, buildMonth, canRelease, handleBuild, outstandingCount, period.options]
+    [outstandingCount]
   )
   useRegisterAccountingToolbar(toolbar)
 
@@ -144,14 +106,13 @@ export function OutboxPage() {
       <OutboxPanel
         tab={tab}
         onTabChange={selectTab}
-        buildMonthLabel={buildMonthLabel}
-        buildNotice={
-          buildResult ? (
-            <p className='shrink-0 px-3 pt-3 text-muted-foreground text-xs'>
-              {buildResultSentence(buildResult, buildMonthLabel || 'this month')}
-            </p>
-          ) : null
-        }
+        groupBy={groupBy}
+        onGroupByChange={selectGroupBy}
+        order={order}
+        onOrderChange={selectOrder}
+        view={view}
+        onViewChange={selectView}
+        currencyCode={period.currencyCode}
         bookTimeZone={period.bookTimeZone}
         providerLabel={providerLabel}
         activePostingId={drawers.postingId}

@@ -42,6 +42,18 @@ export function exportFailureClassHint(failureClass: ExportFailureClass | null):
 export const EXPORT_BATCH_TABS = ['ready', 'sent', 'failed'] as const
 export type ExportBatchTab = (typeof EXPORT_BATCH_TABS)[number]
 
+/** How a batch tab's rows are grouped (`?group=`); absent is a flat list, newest built first. */
+export const OUTBOX_GROUP_BYS = ['day'] as const
+export type OutboxGroupBy = (typeof OUTBOX_GROUP_BYS)[number]
+
+/** The direction of a batch tab's order (`?order=`); `desc` when absent. */
+export const OUTBOX_ORDERS = ['asc', 'desc'] as const
+export type OutboxOrder = (typeof OUTBOX_ORDERS)[number]
+
+/** What a batch tab's row is (`?view=`): the period bucket, or the posting (95 §3.1). */
+export const OUTBOX_VIEWS = ['summary', 'transaction'] as const
+export type OutboxView = (typeof OUTBOX_VIEWS)[number]
+
 /**
  * The Outbox's tabs: the movements the ledger refused, then the export states.
  * `blocked` is not an `ExportBatchState` - it has no posting at all (75-D1).
@@ -115,6 +127,29 @@ export interface UnbuiltGroupKey {
   storeId: string | null
   railId: string | null
   currency: string
+}
+
+/** A summary row's status (95 §3.2): its live batch's state, split by whether postings landed since. */
+export const SUMMARY_ROW_STATUSES = [
+  'not_sent',
+  'ready',
+  'ready_new',
+  'sending',
+  'sent',
+  'sent_new',
+  'failed',
+] as const
+export type SummaryRowStatus = (typeof SUMMARY_ROW_STATUSES)[number]
+
+/** `newCount` is the bucket's postings the live batch does not hold. */
+export function summaryRowStatus(
+  batchState: ExportBatchState | null,
+  newCount: number
+): SummaryRowStatus {
+  if (!batchState || batchState === 'withdrawn') return 'not_sent'
+  if (batchState === 'ready') return newCount > 0 ? 'ready_new' : 'ready'
+  if (batchState === 'sent') return newCount > 0 ? 'sent_new' : 'sent'
+  return batchState
 }
 
 /** The group key as one string, stable across reads so a row can be tracked and matched. */

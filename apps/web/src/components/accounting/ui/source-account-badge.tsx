@@ -16,6 +16,8 @@ interface SourceAccountBadgeProps extends VariantProps<typeof recordBadgeVariant
   externalAccountId: string
   /** `live` or `test`. Part of the identity, so it shows in the tooltip. */
   environment?: string | null
+  /** A label the caller already holds - a rail's own name - shown instead of the derived one. */
+  name?: string | null
   className?: string
 }
 
@@ -55,11 +57,12 @@ export function SourceAccountBadge({
   providerKey,
   externalAccountId,
   environment,
+  name,
   size,
   variant,
   className,
 }: SourceAccountBadgeProps) {
-  const subject = { providerKey, externalAccountId, environment }
+  const subject = { providerKey, externalAccountId, environment, name }
 
   return (
     <SimpleTooltip content={sourceAccountTooltip(subject)}>
