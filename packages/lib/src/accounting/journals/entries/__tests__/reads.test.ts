@@ -1,109 +1,91 @@
 // packages/lib/src/accounting/journals/entries/__tests__/reads.test.ts
 //
-// `linesFromBuilt` is the seam between a posting's jsonb `built` envelope and
-// arithmetic that decides what a journal entry says, so its contract is worth
-// stating on its own.
-//
-// 🛑 It is TOLERANT on read - a malformed row means the JSON was written by
-// something else or by an older shape, and the honest response is to render
-// what IS readable rather than to throw and make the entry unopenable.
-// `buildManualEntry` refuses the entry a second time before it can post, so a
-// dropped line cannot become a silently unbalanced posting - it becomes a
-// visible imbalance the person can see and fix.
+// Lines are `journal_entry_line` children (91 D5), read tolerantly: a row missing
+// its account or amount still renders, and `buildManualEntry` refuses it by row
+// number at Post. The status filter reads `draft` as "no live posting".
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const h = vi.hoisted(() => ({ lineRows: [] as Array<Record<string, unknown>> }))
+
 vi.mock('../../../../cache', () => ({ getCachedEntityDefId: vi.fn(), getOrgCache: vi.fn() }))
+vi.mock('../../../../resources/system-records', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../resources/system-records')>()),
+  readSystemRecords: vi.fn(async () =>
+    h.lineRows.map((values) => ({
+      id: values.id,
+      text: (attr: string) => (values[attr] as string | undefined) ?? null,
+      number: (attr: string) => (values[attr] as number | undefined) ?? null,
+      option: (attr: string) => (values[attr] as string | undefined) ?? null,
+      related: (attr: string) => (values[attr] as string | undefined) ?? null,
+    }))
+  ),
+}))
 
 import { getCachedEntityDefId, getOrgCache } from '../../../../cache'
-import { linesFromBuilt, listJournalEntries } from '../reads'
+import { listJournalEntries, readJournalEntryLines } from '../reads'
 
-/** A `GlPosting.built` envelope carrying only what `linesFromBuilt` reads. */
-function built(resolvedLines: unknown): unknown {
-  return { v: 1, resolvedLines }
+const LINE_FIELDS = {
+  journal_entry_line_journal_entry: { id: 'f_parent' },
+  journal_entry_line_gl_account: { id: 'f_account' },
+  journal_entry_line_side: { id: 'f_side' },
+  journal_entry_line_amount: { id: 'f_amount' },
+  journal_entry_line_memo: { id: 'f_memo' },
+  journal_entry_line_counterparty_type: { id: 'f_cpt' },
+  journal_entry_line_counterparty: { id: 'f_cp' },
+  journal_entry_line_sort_order: { id: 'f_sort' },
 }
 
-describe('linesFromBuilt', () => {
-  it('reads well-formed resolved lines back as journal-entry lines', () => {
-    expect(
-      linesFromBuilt(
-        built([
-          { glAccountId: 'acct_6200', direction: 'debit', amount: 50_000, memo: 'Rent' },
-          { glAccountId: 'acct_2100', direction: 'credit', amount: 50_000 },
-        ])
-      )
-    ).toEqual([
-      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
-      { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
+function line(values: Record<string, unknown>): Record<string, unknown> {
+  return {
+    journal_entry_line_journal_entry: 'je_1',
+    journal_entry_line_side: 'debit',
+    ...values,
+  }
+}
+
+describe('readJournalEntryLines', () => {
+  beforeEach(() => {
+    vi.mocked(getCachedEntityDefId).mockResolvedValue('def_line')
+    vi.mocked(getOrgCache).mockReturnValue({
+      from: () => ({ bySystemAttributes: async () => LINE_FIELDS }),
+    } as unknown as ReturnType<typeof getOrgCache>)
+  })
+
+  it('groups lines under their entry in sort order, carrying each line id', async () => {
+    h.lineRows = [
+      line({
+        id: 'l2',
+        journal_entry_line_gl_account: 'acct_2100',
+        journal_entry_line_side: 'credit',
+        journal_entry_line_amount: 50_000,
+        journal_entry_line_sort_order: 1,
+      }),
+      line({
+        id: 'l1',
+        journal_entry_line_gl_account: 'acct_6200',
+        journal_entry_line_amount: 50_000,
+        journal_entry_line_memo: 'Rent',
+        journal_entry_line_sort_order: 0,
+      }),
+      line({
+        id: 'l3',
+        journal_entry_line_journal_entry: 'je_2',
+        journal_entry_line_gl_account: 'acct_1100',
+        journal_entry_line_amount: 5_000,
+        journal_entry_line_counterparty_type: 'customer',
+        journal_entry_line_counterparty: 'contact_1',
+      }),
+    ]
+    const lines = await readJournalEntryLines({} as Database, 'org_1', ['je_1', 'je_2'])
+    expect(lines.get('je_1')).toEqual([
+      { id: 'l1', glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
+      { id: 'l2', glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
     ])
-  })
-
-  it('reads an absent, non-object, or shapeless value as no lines', () => {
-    expect(linesFromBuilt(undefined)).toEqual([])
-    expect(linesFromBuilt(null)).toEqual([])
-    expect(linesFromBuilt({})).toEqual([])
-    expect(linesFromBuilt(built('nope'))).toEqual([])
-  })
-
-  it('drops a row with no account id', () => {
-    expect(linesFromBuilt(built([{ direction: 'debit', amount: 1 }]))).toEqual([])
-  })
-
-  it('drops a row whose direction is not one of the two sides', () => {
-    expect(
-      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'left', amount: 1 }]))
-    ).toEqual([])
-  })
-
-  it('drops a row with a non-numeric amount', () => {
-    expect(
-      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'debit', amount: '50' }]))
-    ).toEqual([])
-  })
-
-  it('keeps the readable rows and drops only the broken ones', () => {
-    const lines = linesFromBuilt(
-      built([
-        { glAccountId: 'acct_6200', direction: 'debit', amount: 50_000 },
-        { glAccountId: 'acct_2100', direction: 'sideways', amount: 50_000 },
-        null,
-        { glAccountId: 'acct_2100', direction: 'credit', amount: 50_000 },
-      ])
-    )
-    expect(lines.map((line) => line.glAccountId)).toEqual(['acct_6200', 'acct_2100'])
-  })
-
-  it('keeps a zero amount so the builder can refuse it by row number', () => {
-    expect(
-      linesFromBuilt(built([{ glAccountId: 'acct_6200', direction: 'debit', amount: 0 }]))
-    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 }])
-  })
-
-  it('omits an empty memo rather than storing a blank string', () => {
-    const [line] = linesFromBuilt(
-      built([{ glAccountId: 'acct_6200', direction: 'debit', amount: 1, memo: '' }])
-    )
-    expect(line).not.toHaveProperty('memo')
-  })
-
-  // Brief 13 §1.4: a manual line coded to a receivable or payable account may
-  // carry an optional counterparty. Well-formed means BOTH fields present.
-  it('reads a well-formed counterparty back verbatim', () => {
-    expect(
-      linesFromBuilt(
-        built([
-          {
-            glAccountId: 'acct_1100',
-            direction: 'debit',
-            amount: 5_000,
-            counterpartyType: 'customer',
-            counterpartyId: 'contact_1',
-          },
-        ])
-      )
-    ).toEqual([
+    expect(lines.get('je_2')).toEqual([
       {
+        id: 'l3',
         glAccountId: 'acct_1100',
         direction: 'debit',
         amountMinor: 5_000,
@@ -113,44 +95,37 @@ describe('linesFromBuilt', () => {
     ])
   })
 
-  it('drops both counterparty fields when the type is not customer or vendor', () => {
-    const [line] = linesFromBuilt(
-      built([
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amount: 5_000,
-          counterpartyType: 'employee',
-          counterpartyId: 'contact_1',
-        },
-      ])
-    )
-    expect(line).not.toHaveProperty('counterpartyType')
-    expect(line).not.toHaveProperty('counterpartyId')
+  it('keeps an uncoded, zero row so the builder can refuse it by row number', async () => {
+    h.lineRows = [line({ id: 'l1' })]
+    const lines = await readJournalEntryLines({} as Database, 'org_1', ['je_1'])
+    expect(lines.get('je_1')).toEqual([
+      { id: 'l1', glAccountId: '', direction: 'debit', amountMinor: 0 },
+    ])
   })
 
-  it('drops a lone counterpartyType with no id', () => {
-    const [line] = linesFromBuilt(
-      built([
-        {
-          glAccountId: 'acct_1100',
-          direction: 'debit',
-          amount: 5_000,
-          counterpartyType: 'customer',
-        },
-      ])
-    )
-    expect(line).not.toHaveProperty('counterpartyType')
+  it('drops a counterparty type with no id', async () => {
+    h.lineRows = [
+      line({
+        id: 'l1',
+        journal_entry_line_gl_account: 'acct_1100',
+        journal_entry_line_amount: 1,
+        journal_entry_line_counterparty_type: 'vendor',
+      }),
+    ]
+    const [only] = (await readJournalEntryLines({} as Database, 'org_1', ['je_1'])).get('je_1')!
+    expect(only).not.toHaveProperty('counterpartyType')
+  })
+
+  it('reads nothing on an org short of migration 187', async () => {
+    vi.mocked(getCachedEntityDefId).mockResolvedValue(undefined)
+    h.lineRows = [line({ id: 'l1' })]
+    expect((await readJournalEntryLines({} as Database, 'org_1', ['je_1'])).size).toBe(0)
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The `status` filter
-//
-// 🛑 Every journal entry carries its companion posting from the moment
-// `createJournalEntry` raises it (TARGET §1), so the filter is a plain INNER
-// join through `journal_entry_gl_posting_id` to `GlPosting.status` - there is
-// no more default-value fallback to branch on, unlike `kind` below it.
+// The `status` filter: LEFT joins through the pointer, so `draft` can match the
+// absence of a posting as well as a pointer to one that is gone.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Records which join the query builder was asked for, then returns no rows. */
@@ -195,11 +170,11 @@ describe('listJournalEntries status filter', () => {
     } as unknown as ReturnType<typeof getOrgCache>)
   })
 
-  it('INNER joins through the posting pointer for every status', async () => {
+  it('LEFT joins through the posting pointer for every status', async () => {
     for (const status of ['draft', 'posted', 'reversed'] as const) {
       const { db, joins } = joinSpyDb()
       await listJournalEntries(db, 'org_1', { status })
-      expect(joins).toEqual(['inner', 'inner'])
+      expect(joins).toEqual(['left', 'left'])
     }
   })
 

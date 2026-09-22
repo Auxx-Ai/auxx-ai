@@ -11,7 +11,7 @@
  *
  * ## The two doors, one caller shape (§1.4)
  *
- * Both `money/orders/fulfill.ts` (after `isExpectedPostOutcome` passes, next
+ * Both `money/orders/fulfill.ts` (after `didLedgerAccept` passes, next
  * to the posting stamp - NOT inside the fulfillment transaction) and
  * `events/handlers/passes/fulfillment-log-pass.ts` (over the fulfillments a
  * sync wrote) build a `FulfillmentLineToRelieve[]` from data they already

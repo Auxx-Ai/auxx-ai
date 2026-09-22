@@ -34,8 +34,6 @@ export const POSTING_TYPE_LABEL: Record<PostingType, string> = {
   vendor_payment: 'Vendor payment',
   vendor_refund: 'Vendor refund',
   invoice_issued: 'Invoice',
-  // No writer since 91 §4.3; TODO(91 S3): drops with the enum value.
-  deposit_application: 'Deposit applied',
   credit_memo: 'Credit memo',
   provider_sync: 'Accountant entry',
   recurring_journal: 'Recurring entry',

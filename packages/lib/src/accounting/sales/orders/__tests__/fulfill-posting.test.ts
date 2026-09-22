@@ -22,9 +22,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 // Gate 1 is on for this file: what is under test is the posting, not the draft.
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: async () => 'post',
-}))
 
 const h = vi.hoisted(() => ({
   fields: new Map<string, string>([

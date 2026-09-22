@@ -171,10 +171,8 @@ export async function verifyBooksBalance(
  * banner warns before somebody presses Post rather than after.
  *
  * The third, `unpostedCreditMemos` (25 §9.1), is the issued memo whose entry has
- * not been written yet. It is a different question from the draft count beside
- * it and neither covers the other: one is a refund nobody has decided about, the
- * other a refund already granted whose contra-revenue is still outside the
- * books.
+ * not been written yet: a refund already granted whose contra-revenue is still
+ * outside the books.
  *
  * ⚠️ Returns `null`s, never zeros, when no month was asked. A `0` in that slot
  * would read as "nothing outstanding" for a question nobody asked, and the
@@ -207,9 +205,7 @@ async function countIncompleteRevenue(
   try {
     // `unpostedShipments` and `unpostedCreditMemos` are `null` - unavailable,
     // not zero - now that both avenues post eagerly (step 1b, TARGET §1): the
-    // batch/effect backlog this used to count no longer exists. TODO(step-1b):
-    // recompute from live drafts once the per-avenue `accounting.autoPost`
-    // setting lands.
+    // batch/effect backlog this used to count no longer exists.
     const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month })
     return {
       month,

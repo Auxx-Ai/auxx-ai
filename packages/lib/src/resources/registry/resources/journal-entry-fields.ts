@@ -1,61 +1,20 @@
 // packages/lib/src/resources/registry/resources/journal-entry-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { JournalEntryKind } from '../enum-values'
 import { defineResourceFields } from '../system-attributes'
 
 /**
- * Field definitions for the Journal Entry resource - the **draft** of a
- * hand-authored posting, and the only record in the accounting module a person
- * types line by line (plans/accounting/tasks/done/02-manual-journal-entry.md).
- *
- * ## Why an entity at all, when `GlPosting` is already a table
- *
- * Three things a `GlPosting` structurally cannot hold, and each one on its own
- * would be enough:
- *
- * 1. **A draft.** `GlPosting.status` is `pending | posted | failed | reversed`,
- *    and `pending` means *claimed and mid-push* - it holds the period's unique
- *    index. There is nowhere for "somebody is half way through typing this".
- * 2. **An attachment.** A file hangs off a FILE field on an `EntityInstance`
- *    (`docs/files-upload-architecture-guide.md`); `GlPosting` is a Drizzle table
- *    with no `MediaAsset` route to it at all.
- * 3. **A recurrence.** `RecurrenceRule.subjectId` is `NOT NULL` and references
- *    `EntityInstance`, so tier 2's recurring journal entries have no subject
- *    unless the draft is a record. `kind: 'recurring_template'` is the slot,
- *    reserved now so the shape does not have to change later.
- *
- * The opening trial balance is the same record with `kind: 'opening_balance'`
- * (handoff decision 6.7). It is a draft while the wizard is being filled in,
- * previews through the same `ledger.preview`, and posts through the same door -
- * so the org's first journal entry is an ordinary one and reversing it is the
- * ordinary path rather than a bespoke "unfreeze".
- *
- * ## The relationship to the posting it becomes
- *
- * One-way and by ID, not a RELATIONSHIP: `glPostingId` is TEXT because
- * `GlPosting` is a table and there is no `EntityDefinition` to point a
- * relationship at. The reverse direction already exists and is the one that
- * matters for audit - every `GlPostingLine` carries
- * `sourceType: 'journal_entry'` and `sourceId` = this record's id, which is
- * what `ledger.listPostingsForSource` reads.
- *
- * 🛑 **This record is a POINTER, not a store.** TARGET §1: `glPostingId` is set
- * the moment the draft is raised - `createJournalEntry` writes the companion
- * draft `GlPosting` in the same call - and both the lines and the status live
- * there from then on. There is no `journal_entry_lines` or `journal_entry_status`
- * field; `postings/journal-entries/reads.ts` reads both off the linked
- * `GlPosting` row. `updateJournalEntry` edits the draft's lines through
- * `postings/draft-lines.ts`'s `updateDraftLines`, which refuses anything but a
- * `draft` posting, because an entry is corrected by REVERSAL and never by edit
- * (ground rule 6).
+ * Field definitions for the Journal Entry resource - a hand-authored posting as a
+ * document, like a bill: its lines are `journal_entry_line` children, Post builds
+ * the entry from them and stamps `journal_entry_gl_posting_id`, Void reverses (91 D5).
+ * The opening trial balance is the same record with `kind: 'opening_balance'`.
  *
  * Hidden system entity (`isVisible: false`), like `gl_account` beside it: the
- * ledger page and the JE drawer are the doors, and an auto-linked sidebar entry
- * would be a second, dumber way into the same records with no line grid.
+ * ledger page and the JE drawer are the doors.
  */
 export const JOURNAL_ENTRY_FIELDS = defineResourceFields({
   id: {
@@ -218,25 +177,44 @@ export const JOURNAL_ENTRY_FIELDS = defineResourceFields({
     systemAttribute: 'journal_entry_gl_posting_id',
     systemSortOrder: 'a8',
     nullable: true,
-    // TEXT and not a RELATIONSHIP: `GlPosting` is a Drizzle table (decision G6),
-    // so there is no `EntityDefinition` for a relationship to point at. The
-    // audit direction that matters runs the other way and already exists -
-    // every `GlPostingLine` carries `sourceType: 'journal_entry'` and this
-    // record's id as `sourceId`.
+    // TEXT and not a RELATIONSHIP: `GlPosting` is a Drizzle table (decision G6).
     showInPanel: false,
     showInDialogs: false,
     capabilities: {
       filterable: true,
       sortable: false,
-      // System-written only. `postJournalEntry` stamps it inside the same step
-      // that flips `status`; a person setting it by hand would be asserting a
-      // posting exists, which is the one claim this record must not be able to
-      // make on its own.
+      // Stamped only by Post; a hand-set value would assert a posting exists.
       creatable: false,
       updatable: true,
       configurable: false,
     },
     description: 'The GlPosting row this entry became once it was posted',
+  },
+
+  lines: {
+    id: toFieldId('lines'),
+    key: 'lines',
+    label: 'Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'journal_entry_lines',
+    systemSortOrder: 'aD',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'journal_entry_line:journalEntry' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'cascade',
+      isInverse: true,
+    },
+    description: 'The lines of this entry - one per account, side and amount',
   },
 
   recurrenceRuleId: {

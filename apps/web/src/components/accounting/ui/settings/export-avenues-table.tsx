@@ -2,7 +2,7 @@
 'use client'
 
 // The Posting page's export table (TARGET §3, §4 gate 2): one row per avenue, with
-// autoPost, autoSend and summaryGrain as columns - laid out like the Settlements rail strip.
+// autoSend and summaryGrain as columns - laid out like the Settlements rail strip.
 
 import {
   EXPORT_AVENUES,
@@ -28,7 +28,6 @@ import type { ReactNode } from 'react'
 import { EXPORT_AVENUE_LABEL } from '../ledger/export-avenue-labels'
 import { EMPTY_CELL } from '../ledger/format'
 import {
-  autoPostKeyForAvenue,
   autoSendKeyForAvenue,
   postingLabelsForAvenue,
   SUMMARY_GRAIN_LABEL,
@@ -41,7 +40,7 @@ interface ExportAvenuesTableProps {
 }
 
 /** One template for the header and every row, so the columns share widths. */
-const EXPORT_COLUMNS = 'grid grid-cols-[5rem_5rem_8rem] items-center justify-items-end gap-x-5'
+const EXPORT_COLUMNS = 'grid grid-cols-[5rem_8rem] items-center justify-items-end gap-x-5'
 
 const HEADER_TEXT = 'whitespace-nowrap text-[10px] text-muted-foreground uppercase tracking-wide'
 
@@ -54,9 +53,6 @@ function ColumnHeader() {
     <div className='flex items-center justify-between gap-4 px-1'>
       <span className={HEADER_TEXT}>Exports as</span>
       <div className={cn(EXPORT_COLUMNS, HEADER_TEXT)}>
-        <SimpleTooltip content='On, this posts immediately. Off, it drafts on the ledger for review.'>
-          <span>Auto-post</span>
-        </SimpleTooltip>
         <SimpleTooltip content='On, a posted entry sends to the provider on its own. Off, its batch holds until released from the outbox.'>
           <span>Auto-send</span>
         </SimpleTooltip>
@@ -68,7 +64,6 @@ function ColumnHeader() {
 
 export function ExportAvenuesTable({ draft, patch }: ExportAvenuesTableProps) {
   function renderRow(avenue: ExportAvenue) {
-    const autoPostKey = autoPostKeyForAvenue(avenue)
     const autoSendKey = autoSendKeyForAvenue(avenue)
     const grainKey = summaryGrainKeyForAvenue(avenue)
     const label = EXPORT_AVENUE_LABEL[avenue]
@@ -81,20 +76,6 @@ export function ExportAvenuesTable({ draft, patch }: ExportAvenuesTableProps) {
         secondaryFill
         trailing={
           <div className={EXPORT_COLUMNS}>
-            <Cell>
-              {autoPostKey ? (
-                <Switch
-                  size='xs'
-                  aria-label={`Auto-post ${label}`}
-                  checked={!!draft[autoPostKey]}
-                  onCheckedChange={(checked) => patch({ [autoPostKey]: checked })}
-                />
-              ) : (
-                <SimpleTooltip content='Has no draft step - always posts immediately.'>
-                  <span className='text-muted-foreground text-xs'>Always</span>
-                </SimpleTooltip>
-              )}
-            </Cell>
             <Cell>
               <Switch
                 size='xs'

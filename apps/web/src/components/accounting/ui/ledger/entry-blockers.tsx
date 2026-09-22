@@ -164,7 +164,7 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     icon: PackagePlus,
     title: 'This month still holds revenue that is not in the books',
     guidance:
-      'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and settle the drafts first: once the month is closed, the entries they owe cannot be written into it.',
+      'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and issue or void the draft credit memos first: once the month is closed, the entries they owe cannot be written into it.',
     href: '/app/orders',
     actionLabel: 'Open orders',
   },
@@ -218,11 +218,7 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     href: '/app/accounting/settings/bank-accounts',
     actionLabel: 'Map the account',
   },
-  // ── Task 09: discarding a draft ───────────────────────────────────────────
-  //
-  // 🛑 A refusal here names a POSTED entry and points at reversal, which is
-  // exactly the kind of sentence that must not vanish in four seconds. Nothing
-  // was changed, so the entry is still where it was.
+  // Discarding a journal entry: a refusal names a posted entry and points at reversal.
   discard_refused: {
     tone: 'failure',
     icon: Trash2,

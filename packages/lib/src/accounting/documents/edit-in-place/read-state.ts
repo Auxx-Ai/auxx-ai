@@ -10,7 +10,7 @@ export interface DocumentEditState {
   ledger: DocumentLedgerState
 }
 
-/** Is this document unlocked, and is it waiting on a drafted entry? */
+/** Is this document unlocked, and where does its ledger generation stand? */
 export async function readDocumentEditState(
   db: Database,
   input: { organizationId: string; entityInstanceId: string }

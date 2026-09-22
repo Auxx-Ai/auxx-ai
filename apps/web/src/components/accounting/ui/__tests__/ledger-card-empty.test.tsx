@@ -1,9 +1,4 @@
-// apps/web/src/components/accounting/ui/__tests__/ledger-card-draft.test.tsx
-
-// A record whose avenue has auto-post OFF holds a DRAFT. A draft writes no
-// subject `GlPostingSource` row - it holds no claim - so it reaches the card
-// through its `pending` link (tasks/77), and the card names the state rather
-// than saying "Nothing posted yet" while the entry sits in the outbox.
+// apps/web/src/components/accounting/ui/__tests__/ledger-card-empty.test.tsx
 
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { render, screen } from '@testing-library/react'
@@ -47,60 +42,38 @@ const card = (emptyLabel?: string) =>
     </TooltipProvider>
   )
 
-const DRAFT = {
-  id: 'gp_draft',
-  docNumber: '',
+const POSTED = {
+  id: 'gp_1',
+  docNumber: 'CM-0002',
   postingType: 'credit_memo',
   txnDate: '2026-09-01',
   totalMinor: 250_000,
-  status: 'draft',
-  linkRole: 'pending',
+  status: 'posted',
+  linkRole: 'subject',
 }
 
 beforeEach(() => {
   state.postings = []
 })
 
-describe('the ledger card and a drafted entry', () => {
-  it('names the drafted state and links to the outbox', () => {
-    state.postings = [DRAFT]
-    card()
-
-    expect(screen.queryByText('Nothing posted yet')).not.toBeInTheDocument()
-    expect(screen.getByText('Drafted — awaiting approval in the outbox')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Open outbox' })).toHaveAttribute(
-      'href',
-      '/app/accounting/outbox?tab=drafts&posting=gp_draft'
-    )
-  })
-
-  it('still says nothing posted when there is no draft', () => {
+describe('the ledger card empty state', () => {
+  it('says nothing posted when the record has no posting', () => {
     card()
     expect(screen.getByText('Nothing posted yet')).toBeInTheDocument()
   })
 
-  // A `posted` bill whose draft was discarded in the outbox: "Nothing posted
-  // yet" reads as "not posted", when the way back is Edit then Save.
+  // "Nothing posted yet" would read as "not posted" on a posted bill with no entry.
   it('names the way back when the record hands it one', () => {
     card('No entry — Edit then Save to post it again')
     expect(screen.getByText('No entry — Edit then Save to post it again')).toBeInTheDocument()
     expect(screen.queryByText('Nothing posted yet')).not.toBeInTheDocument()
   })
 
-  // Approved in the outbox: the draft took its claim, the `pending` row is gone
-  // and the posting arrives through the ordinary read as a `subject` row.
-  it('lists the posting once it is claimed, with no drafted notice', () => {
-    state.postings = [{ ...DRAFT, docNumber: 'CM-0002', status: 'posted', linkRole: 'subject' }]
+  it('lists a posted entry instead of the empty label', () => {
+    state.postings = [POSTED]
     card()
 
-    expect(screen.queryByText('Drafted — awaiting approval in the outbox')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nothing posted yet')).not.toBeInTheDocument()
     expect(screen.getByText('CM-0002')).toBeInTheDocument()
-  })
-
-  // Two drafts on one record - an issuance and a write-off, say - are two rows.
-  it('shows every pending draft', () => {
-    state.postings = [DRAFT, { ...DRAFT, id: 'gp_draft_2', postingType: 'write_off' }]
-    card()
-    expect(screen.getAllByText('Drafted — awaiting approval in the outbox')).toHaveLength(2)
   })
 })

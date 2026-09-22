@@ -39,6 +39,7 @@ import { migration181RewalkProvisionedChartPacks } from './migrations/181-rewalk
 import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-bill-amount-discounted'
 import { migration183EntityDefPalette } from './migrations/183-entity-def-palette'
 import { migration186DropPostingMarkers } from './migrations/186-drop-posting-markers'
+import { migration187JournalEntryLine } from './migrations/187-journal-entry-line'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -204,6 +205,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Drops the five marker fields 184 and 185 added (and `payout_blocked_reason`):
   // parked work is an `AccountingWorkItem` row now (91 §4.6).
   migration186DropPostingMarkers,
+  // The manual journal holds its own lines as `journal_entry_line` children (91 D5).
+  migration187JournalEntryLine,
 ]
 
 /**

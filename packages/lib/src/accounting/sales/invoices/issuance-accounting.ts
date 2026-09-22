@@ -21,8 +21,6 @@ import {
   INVOICE_SOURCE_TYPE,
 } from '../../ledger/builders/invoice'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -102,7 +100,6 @@ export async function postInvoiceIssuanceBuiltEntry(
     lock,
     memo,
     sources,
-    mode: await readAutoPostMode(organizationId, 'invoice'),
   })
 }
 
@@ -181,22 +178,13 @@ export interface ReverseInvoiceIssuanceEntryInput {
 
 /**
  * Reverse the invoice's live issuance posting, freeing the claim so the invoice
- * can post again. A draft still waiting in the outbox is discarded instead, so
- * it cannot be approved for an invoice that is void. `null` when nothing is
- * standing.
+ * can post again. `null` when nothing is standing.
  */
 export async function reverseInvoiceIssuanceEntry(
   db: Database,
   input: ReverseInvoiceIssuanceEntryInput
 ): Promise<PostResult | null> {
   const { organizationId, invoiceId, actorUserId, memo } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: INVOICE_SOURCE_TYPE,
-    sourceId: invoiceId,
-    occurrence: 'original',
-  })
-  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: INVOICE_SOURCE_TYPE,

@@ -39,7 +39,6 @@ const h = vi.hoisted(() => ({
   relieved: [] as Array<{ organizationId: string; userId: string; lines: unknown[] }>,
   /** Overridable per test - defaults to a clean run that wrote nothing skipped. */
   reliefResult: null as unknown,
-  autoPostMode: 'post' as 'draft' | 'post',
   /** Every `prepareFulfillmentEntry` call - the record the entry is built off. */
   prepared: [] as Array<{ organizationId: string; fulfillmentId: string }>,
   /** Every `prepareShipmentEntry` call - the preview's shipment. */
@@ -207,10 +206,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: async () => h.autoPostMode,
-}))
-
 vi.mock('../../../../inventory/relief', async () => {
   const { ok } = await import('neverthrow')
   return {
@@ -306,7 +301,6 @@ beforeEach(() => {
   h.built = []
   h.relieved = []
   h.reliefResult = null
-  h.autoPostMode = 'post'
   h.prepared = []
   h.previewed = []
   h.prepareError = null
@@ -371,7 +365,6 @@ describe('fulfillOrder', () => {
 
     expect(h.postCalls).toHaveLength(1)
     const call = h.postCalls[0]!
-    expect(call.mode).toBe('post')
     expect(call.storeId).toBe('fsa_1')
     // D11: a native shipment debits accounts_receivable, never a gateway's
     // clearing account, so it never carries a rail.
@@ -563,18 +556,12 @@ describe('fulfillOrder', () => {
         },
       ])
     })
-
-    it('leaves no mark on a draft - a draft is not a refusal', async () => {
-      h.postResult = { status: 'drafted', glPostingId: 'glp_d' }
-      await fulfillOrder(stubDb(), input)
-      expect(h.marked).toEqual([])
-    })
   })
 
   describe('when the poster refuses to build the entry', () => {
     it('retains the shipment, answers `error` in the poster words, posts nothing, and marks the record', async () => {
       h.prepareError = new UnprocessableEntityError(
-        'Order recognition timeline is incomplete: earlier receipt mt_1 is a draft awaiting approval'
+        'Order recognition timeline is incomplete: earlier receipt mt_1 has not posted'
       )
       const result = await fulfillOrder(stubDb(), input)
       expect(result.isOk()).toBe(true)
@@ -582,7 +569,7 @@ describe('fulfillOrder', () => {
       expect(h.postCalls).toHaveLength(0)
       expect(result._unsafeUnwrap().post).toMatchObject({
         status: 'error',
-        error: expect.stringContaining('earlier receipt mt_1 is a draft awaiting approval'),
+        error: expect.stringContaining('earlier receipt mt_1 has not posted'),
       })
       expect(h.marked).toEqual([
         {

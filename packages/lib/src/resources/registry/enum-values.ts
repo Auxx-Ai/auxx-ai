@@ -901,6 +901,28 @@ export const JournalEntryKind = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/** Which side of the entry a `journal_entry_line` sits on; the amount is always positive (91 D5). */
+export const JournalEntryLineSide = {
+  DEBIT: 'debit',
+  CREDIT: 'credit',
+
+  values: [
+    { value: 'debit', label: 'Debit', color: 'gray' },
+    { value: 'credit', label: 'Credit', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/** Who a `journal_entry_line` is attributable to: a customer (`contact`) or a vendor (`company`). */
+export const JournalEntryLineCounterpartyType = {
+  CUSTOMER: 'customer',
+  VENDOR: 'vendor',
+
+  values: [
+    { value: 'customer', label: 'Customer', color: 'green' },
+    { value: 'vendor', label: 'Vendor', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 /**
  * How a `payment_gateway` drains (`plans/accounting/tasks/done/13-cash-accounts-and-the-qbo-seam.md`
  * §5.3). `stripe`, `shopify_payments`, `affirm` and `authorize_net` read a real

@@ -30,9 +30,6 @@ const h = vi.hoisted(() => ({
   setValuesForEntity: vi.fn(),
   readEditStamp: vi.fn(async () => null as { openedAt: string; byUserId: string } | null),
   ledgerState: { generation: 1 },
-  discardDraftPosting: vi.fn(
-    async (): Promise<{ isErr: () => boolean; error?: Error }> => ({ isErr: () => false })
-  ),
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -79,9 +76,6 @@ vi.mock('../../../../entity-instances/edit-snapshot', () => ({ readEditStamp: h.
 vi.mock('../../../documents/document-ledger-state', () => ({
   readDocumentLedgerState: async () => h.ledgerState,
 }))
-vi.mock('../../../ledger/post/draft-lines', () => ({
-  discardDraftPosting: h.discardDraftPosting,
-}))
 vi.mock('../reads', () => ({
   requireVendorBill: async () => h.bill,
   loadVendorBillLines: async () => h.lines,
@@ -89,12 +83,7 @@ vi.mock('../reads', () => ({
 
 import type { Database } from '@auxx/database'
 import { BadRequestError } from '../../../../errors'
-import {
-  listVendorBillPostings,
-  postVendorBill,
-  previewVendorBill,
-  voidVendorBill,
-} from '../writes'
+import { postVendorBill, previewVendorBill, voidVendorBill } from '../writes'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -151,7 +140,6 @@ beforeEach(() => {
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
   h.ledgerState = { generation: 1 }
-  h.discardDraftPosting.mockResolvedValue({ isErr: () => false })
 })
 
 describe('postVendorBill', () => {
@@ -430,72 +418,6 @@ describe('voidVendorBill', () => {
       voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
     ).rejects.toThrow(/open for editing/)
     expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.setValuesForEntity).not.toHaveBeenCalled()
-  })
-})
-
-// With auto-post off the bill's entry is a DRAFT. It holds no subject claim, so
-// it reaches every reader through its `pending` link (tasks/77) - as `draft`,
-// with no document number.
-const PENDING_DRAFT = {
-  id: 'gp_draft',
-  docNumber: '',
-  status: 'draft',
-  postingType: 'vendor_bill',
-  linkRole: 'pending',
-}
-
-describe('listVendorBillPostings and the drafted entry', () => {
-  it('lists the pending draft as `draft`', async () => {
-    h.listPostingsForSource.mockResolvedValue({
-      isErr: () => false,
-      isOk: () => true,
-      value: [PENDING_DRAFT],
-    })
-
-    const postings = await listVendorBillPostings(db, {
-      organizationId: ORG,
-      vendorBillInstanceId: BILL_ID,
-    })
-
-    expect(postings).toEqual([
-      { glPostingId: 'gp_draft', docNumber: '', status: 'draft', postingType: 'vendor_bill' },
-    ])
-  })
-})
-
-describe('voidVendorBill and a drafted entry', () => {
-  beforeEach(() => {
-    h.bill = { ...h.bill, status: 'posted' }
-    h.listPostingsForSource.mockResolvedValue({
-      isErr: () => false,
-      isOk: () => true,
-      value: [PENDING_DRAFT],
-    })
-  })
-
-  // 🛑 A draft left standing can still be approved in the outbox, raising a
-  // payable for a bill that is void.
-  it('discards the draft rather than reversing it, then sets void', async () => {
-    await voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-
-    expect(h.discardDraftPosting).toHaveBeenCalledWith(db, {
-      organizationId: ORG,
-      glPostingId: 'gp_draft',
-    })
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(lastWrite()).toContainEqual({ fieldId: 'vendor_bill_status', value: 'void' })
-  })
-
-  it('refuses the void when the draft cannot be discarded', async () => {
-    h.discardDraftPosting.mockResolvedValue({
-      isErr: () => true,
-      error: new Error('it is posted, not draft'),
-    })
-
-    await expect(
-      voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/could not be discarded/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 })

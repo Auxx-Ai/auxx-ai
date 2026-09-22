@@ -26,13 +26,12 @@ const h = vi.hoisted(() => ({
   readEditStamp: vi.fn(),
   postings: [] as unknown[],
   reverseEntry: vi.fn(),
-  discardDraftPosting: vi.fn(),
   postVendorBillEntry: vi.fn(),
   captureRecordSnapshot: vi.fn(),
   restoreRecordSnapshot: vi.fn(),
   deleteEditSnapshot: vi.fn(),
   publishRecordEditStamp: vi.fn(),
-  ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
+  ledgerState: { generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
   syncVendorBillPaymentState: vi.fn(async () => undefined),
 }))
@@ -51,7 +50,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../ledger/post/draft-lines', () => ({ discardDraftPosting: h.discardDraftPosting }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
@@ -179,7 +177,7 @@ beforeEach(() => {
     },
   ]
   h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER }
-  h.ledgerState = { draftGlPostingId: null, generation: 1 }
+  h.ledgerState = { generation: 1 }
   h.postings = [
     {
       glPostingId: 'gp_1',
@@ -196,7 +194,6 @@ beforeEach(() => {
   h.restoreRecordSnapshot.mockResolvedValue(undefined)
   h.deleteEditSnapshot.mockResolvedValue(true)
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
-  h.discardDraftPosting.mockResolvedValue({ isErr: () => false, error: undefined })
   h.postVendorBillEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',
@@ -457,7 +454,7 @@ describe('the repost generation', () => {
 
   it('claims generation 3 when a second Save reverses the repost', async () => {
     h.bill = { ...h.bill, internalNumber: 'BILL-0002' }
-    h.ledgerState = { draftGlPostingId: null, generation: 2 }
+    h.ledgerState = { generation: 2 }
     h.postings = [
       {
         glPostingId: 'gp_3',
@@ -476,57 +473,28 @@ describe('the repost generation', () => {
   })
 })
 
-// Defect 1. With auto-post off the live entry is a DRAFT: it holds no claim and
-// no document number, so it is thrown away and re-drafted rather than reversed.
-describe('saving against a drafted entry', () => {
-  beforeEach(() => {
-    h.ledgerState = { draftGlPostingId: 'gp_draft', generation: 1 }
-    h.postings = [
-      { glPostingId: 'gp_draft', docNumber: '', status: 'draft', postingType: 'vendor_bill' },
-    ]
-    h.postVendorBillEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gp_draft_2' })
-  })
-
-  it('discards the draft and drafts again, on the same generation', async () => {
-    storedBuilt = { entry: currentEntry() }
-    raiseTheBill()
-
-    const result = await saveDocumentEdit(db, target)
-
-    expect(h.discardDraftPosting).toHaveBeenCalledWith(db, {
-      organizationId: ORG,
-      glPostingId: 'gp_draft',
-    })
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(postedEntry().periodKey).toBe('BILL-0007')
-    expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
-    expect(result.outcome).toBe('reposted')
-    expect(h.deleteEditSnapshot).toHaveBeenCalled()
-  })
-
+// A finalized bill with no live entry (reversed elsewhere, or posted while accounting was off).
+describe('saving with no live entry', () => {
   // The stranding this closes: the bill is `posted` from the moment Post ran,
   // so Post refuses it, and before this Save read `not_posted` and cleared the
   // flag - leaving a bill in the books' lifecycle with no entry and no door.
-  it('posts again on the same generation when the draft was discarded in the outbox', async () => {
-    h.ledgerState = { draftGlPostingId: null, generation: 1 }
+  it('posts again on the same generation when nothing is standing', async () => {
+    h.ledgerState = { generation: 1 }
     h.postings = []
 
     const result = await saveDocumentEdit(db, target)
 
     expect(result.outcome).toBe('reposted')
     expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(h.discardDraftPosting).not.toHaveBeenCalled()
     expect(postedEntry().periodKey).toBe('BILL-0007')
     expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
     expect(h.deleteEditSnapshot).toHaveBeenCalled()
   })
 
-  // posted -> Save reversed it and bumped to 2 -> that repost's DRAFT was
-  // discarded. Generation 2's document number was never minted, so the repost
-  // keys on 2 again; bumping to 3 here would burn a generation per discard.
+  // Generation 2's number was never minted, so the repost keys on 2 again rather than burning one.
   it('keys on the already-bumped generation without bumping it again', async () => {
     h.bill = { ...h.bill, internalNumber: 'BILL-0002' }
-    h.ledgerState = { draftGlPostingId: null, generation: 2 }
+    h.ledgerState = { generation: 2 }
     h.postings = [
       {
         glPostingId: 'gp_1',
@@ -544,7 +512,7 @@ describe('saving against a drafted entry', () => {
     expect(h.reverseEntry).not.toHaveBeenCalled()
   })
 
-  it('leaves the row standing when the re-post of a discarded entry is refused', async () => {
+  it('leaves the row standing when the re-post is refused', async () => {
     h.postings = []
     h.postVendorBillEntry.mockResolvedValue({
       status: 'period_closed',
@@ -552,19 +520,6 @@ describe('saving against a drafted entry', () => {
     })
 
     await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
-    expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
-  })
-
-  it('leaves everything alone when the draft cannot be discarded', async () => {
-    storedBuilt = { entry: currentEntry() }
-    raiseTheBill()
-    h.discardDraftPosting.mockResolvedValue({
-      isErr: () => true,
-      error: new Error('it is posted, not draft'),
-    })
-
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/could not be discarded/)
-    expect(h.postVendorBillEntry).not.toHaveBeenCalled()
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 })

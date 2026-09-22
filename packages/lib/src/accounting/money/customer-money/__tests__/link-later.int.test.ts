@@ -217,7 +217,6 @@ beforeEach(async () => {
   await setting('accounting.setupState', 'finalized')
   await setting('accounting.bookTimeZone', 'America/Los_Angeles')
   await setting('accounting.cutoffPeriod', '2026-07')
-  await setting('accounting.autoPost.receipt', true)
   await setting('accounting.guestContactId', guestId)
   const [account] = await db()
     .insert(schema.FinancialSourceAccount)

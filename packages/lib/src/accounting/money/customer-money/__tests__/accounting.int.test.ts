@@ -242,7 +242,6 @@ beforeEach(async () => {
   await setting('accounting.setupState', 'finalized')
   await setting('accounting.bookTimeZone', 'America/Los_Angeles')
   await setting('accounting.cutoffPeriod', '2026-07')
-  await setting('accounting.autoPost.receipt', true)
   await setting('accounting.guestContactId', guestId)
   const [command] = await db()
     .insert(schema.MoneyCommand)
@@ -466,10 +465,6 @@ describe('the shipment of 91 §2, in any arrival order', () => {
       )
     return lines.reduce((sum, l) => sum + (l.direction === 'debit' ? l.amount : -l.amount), 0)
   }
-
-  beforeEach(async () => {
-    await setting('accounting.autoPost.fulfillment', true)
-  })
 
   it('posts Dr A/R 108 / Cr revenue 100, Cr tax 8 whether or not the receipt came first', async () => {
     const shipped: Array<Awaited<ReturnType<typeof postShipment>>> = []
@@ -728,11 +723,6 @@ describe('the memo and the refund of 91 §2, in any arrival order', () => {
       sourceType: 'money_transaction',
     },
   ]
-
-  beforeEach(async () => {
-    await setting('accounting.autoPost.refund', true)
-    await setting('accounting.autoPost.creditMemo', true)
-  })
 
   it('posts the refund Dr A/R 54 / Cr endpoint 54 with no memo, memo posting or receipt posting', async () => {
     const orderId = await record('order')

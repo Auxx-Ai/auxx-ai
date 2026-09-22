@@ -33,13 +33,11 @@ import { postingTypeLabel } from './type-labels'
 import { WorkItemsSection } from './work-items-section'
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
-  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
-  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }

@@ -1226,10 +1226,7 @@ export const SYSTEM_ATTRIBUTES = [
   // manual | opening_balance | recurring_template | recurring. Set once, and it
   // is the single authority for the posting type the entry becomes.
   'journal_entry_kind',
-  // The DRAFT lines as JSON, the `inbox_settings` shape. The POSTED lines are
-  // normalised in `GlPostingLine`, which is what every report reads; a second
-  // normalised copy would be two sources of truth for what the entry says.
-  'journal_entry_lines',
+  'journal_entry_lines', // has_many; inverse of journal_entry_line_journal_entry (91 D5)
   'journal_entry_attachment',
   // TEXT, not a relationship: `GlPosting` is a Drizzle table (decision G6) and
   // there is no `EntityDefinition` to point at. The audit direction that matters
@@ -1242,6 +1239,16 @@ export const SYSTEM_ATTRIBUTES = [
   // once written.
   'journal_entry_recurrence_rule_id',
   'journal_entry_occurrence_date',
+
+  // ─── Journal entry line (91 D5) ─────────────────────────────────
+  'journal_entry_line_journal_entry', // owning side; inverse of journal_entry_lines
+  'journal_entry_line_gl_account', // a gl_account id, TEXT, like vendor_bill_line_gl_account
+  'journal_entry_line_side', // debit | credit
+  'journal_entry_line_amount', // integer minor units, > 0
+  'journal_entry_line_memo',
+  'journal_entry_line_counterparty_type', // customer | vendor
+  'journal_entry_line_counterparty', // a contact or company id, by the type
+  'journal_entry_line_sort_order',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

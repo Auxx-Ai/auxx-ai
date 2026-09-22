@@ -14,7 +14,6 @@ import { readOrganizationSettings } from '../../../settings/read'
 import { buildFulfillmentEntry } from '../../ledger/builders/fulfillment'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { periodKeyForDate } from '../../ledger/periods/periods'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -31,7 +30,6 @@ import {
 import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
 import { type OrderForFulfillment, readOrderForFulfillment } from '../orders/reads'
 import { isLiveFulfillment } from './client'
-import { findLiveFulfillmentDraft } from './posting-reads'
 import { readFulfillmentPostingSubject } from './reads'
 import type { OrderShipment } from './shipment-lines'
 import { resolveOrderShipments } from './shipment-lines'
@@ -49,8 +47,6 @@ export class NothingToRecogniseError extends UnprocessableEntityError {}
 
 export type FulfillmentPostingResult =
   | { status: 'accepted'; glPostingId: string }
-  /** A draft is waiting for approval in the Outbox; nothing is in the books yet. */
-  | { status: 'drafted'; glPostingId: string }
   | { status: 'blocked'; reason: string }
   | { status: 'skipped'; reason: string }
 
@@ -278,9 +274,6 @@ export async function postFulfillmentAccounting(
     await parkFulfillment(db, organizationId, fulfillmentId, null)
     return { status: 'accepted', glPostingId: live.value.id }
   }
-  // A draft holds no subject claim, so the read above cannot see it.
-  const draft = await findLiveFulfillmentDraft(db, organizationId, fulfillmentId)
-  if (draft) return { status: 'drafted', glPostingId: draft }
 
   if (!(await isAccountingEnabled(db, organizationId)))
     return { status: 'skipped', reason: 'Accounting is not enabled' }
@@ -318,13 +311,7 @@ export async function postFulfillmentAccounting(
     sources: prepared.sources,
     storeId: prepared.storeId,
     railId: null,
-    mode: await readAutoPostMode(organizationId, 'fulfillment'),
   })
-  if (post.status === 'drafted' && post.glPostingId) {
-    // A draft is not a refusal; its own `pending` link stops the sweep drafting it again.
-    await parkFulfillment(db, organizationId, fulfillmentId, null)
-    return { status: 'drafted', glPostingId: post.glPostingId }
-  }
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
     await parkFulfillment(

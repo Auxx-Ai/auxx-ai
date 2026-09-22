@@ -17,7 +17,6 @@ const h = vi.hoisted(() => ({
   selectRows: [] as unknown[],
   resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
-  readAutoPostMode: vi.fn(async () => 'post'),
   previewEntry: vi.fn(),
   getOrganizationSetting: vi.fn(),
   setValuesForEntity: vi.fn(),
@@ -50,9 +49,6 @@ vi.mock('../../../ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   previewEntry: h.previewEntry,
   postEntry: h.postEntry,
-}))
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: h.readAutoPostMode,
 }))
 vi.mock('../../../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
@@ -195,7 +191,6 @@ beforeEach(() => {
     key === 'organization.currency' ? 'USD' : 'UTC'
   )
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readAutoPostMode.mockResolvedValue('post')
   h.readEditStamp.mockResolvedValue(null)
 })
 

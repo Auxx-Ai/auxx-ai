@@ -326,18 +326,9 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
-    // The DRAFT of a hand-authored posting, and the holder of the opening trial
-    // balance (plans/accounting/tasks/02, HANDOFF slot 1A + decision 6.7).
-    // `GlPosting` cannot be the draft: its `pending` means claimed-and-mid-push
-    // and holds the period's unique index, so there is nowhere for "half typed".
-    //
-    // 🛑 `isVisible: false`, like `gl_account` above it. The ledger page and the
-    // journal-entry drawer are the doors, and both need a line grid with a
-    // running Dr/Cr difference. An auto-linked sidebar entry would be a second,
-    // dumber way in, where the lines are a JSON blob nobody can balance.
-    //
-    // 🛑 This line reaches FRESH orgs only - `ensureEntityDefinitions` skips an
-    // org that already holds the def. Entity migration 125 is the other half.
+    // A hand-authored posting as a document, and the holder of the opening trial
+    // balance (91 D5). Hidden: the ledger page and the journal-entry drawer are
+    // the doors, and both need a line grid with a running Dr/Cr difference.
     entityType: 'journal_entry',
     apiSlug: 'journal-entries',
     singular: 'Journal Entry',
@@ -345,6 +336,16 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     icon: 'book-open',
     color: 'gray',
     isVisible: false,
+  },
+  {
+    // Fresh orgs only; entity migration 187 reaches existing ones.
+    entityType: 'journal_entry_line',
+    apiSlug: 'journal-entry-lines',
+    singular: 'Journal Entry Line',
+    plural: 'Journal Entry Lines',
+    icon: 'list',
+    color: 'gray',
+    isVisible: false, // Internal entity, managed from the journal entry
   },
   {
     // Ships INERT with entity migration 109 (plans/products/build/README.md
@@ -910,6 +911,11 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   journal_entry: {
     primaryDisplayField: 'number',
     secondaryDisplayField: 'memo',
+  },
+  // `memo` is nullable, as `vendor_bill_line`'s `description` is; `amount` never is.
+  journal_entry_line: {
+    primaryDisplayField: 'memo',
+    secondaryDisplayField: 'amount',
   },
   build: {
     primaryDisplayField: 'number',

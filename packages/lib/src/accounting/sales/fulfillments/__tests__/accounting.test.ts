@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/sales/fulfillments/__tests__/accounting.test.ts
 //
-// The shipment poster's frame (88 §4.5) and its own facts (91 D2): the claim, the draft,
+// The shipment poster's frame (88 §4.5) and its own facts (91 D2): the claim,
 // the gates, the work item, and an entry that reads no receipt and no sibling box.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,13 +9,11 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   isAccountingEnabled: vi.fn(async () => true),
   findLiveSubjectPosting: vi.fn(),
-  findLiveFulfillmentDraft: vi.fn(async () => null as string | null),
   readFulfillmentPostingSubject: vi.fn(),
   readOrderForFulfillment: vi.fn(),
   readOrderSourceScope: vi.fn(async () => ({ store: 'store_1' })),
   postEntry: vi.fn(),
   resolvePeriodLock: vi.fn(async () => ({})),
-  readAutoPostMode: vi.fn(async () => 'post'),
   /** Every work-item write, park or clear (91 §4.6). */
   setValues: [] as Array<Record<string, unknown>>,
 }))
@@ -24,7 +22,6 @@ vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
-vi.mock('../../../ledger/post/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
 vi.mock('../../../ledger/post/post-entry', () => ({
   postEntry: h.postEntry,
   LEDGER_CURRENCY: 'USD',
@@ -41,7 +38,6 @@ vi.mock('../../../../settings/read', () => ({
       )
     ),
 }))
-vi.mock('../posting-reads', () => ({ findLiveFulfillmentDraft: h.findLiveFulfillmentDraft }))
 vi.mock('../reads', () => ({ readFulfillmentPostingSubject: h.readFulfillmentPostingSubject }))
 vi.mock('../../orders/reads', () => ({ readOrderForFulfillment: h.readOrderForFulfillment }))
 // Only the store scope: the poster reads no receipt, coverage or timeline (91 D2).
@@ -150,12 +146,10 @@ beforeEach(() => {
   )
   h.isAccountingEnabled.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
-  h.findLiveFulfillmentDraft.mockResolvedValue(null)
   h.readFulfillmentPostingSubject.mockResolvedValue({ orderId: 'ord_1', subtotalMinor: 10000 })
   h.readOrderForFulfillment.mockResolvedValue(order())
   h.readOrderSourceScope.mockResolvedValue({ store: 'store_1' })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'glp_1' })
-  h.readAutoPostMode.mockResolvedValue('post')
 })
 
 describe('postFulfillmentAccounting', () => {
@@ -166,13 +160,6 @@ describe('postFulfillmentAccounting', () => {
     expect(h.postEntry).not.toHaveBeenCalled()
     // The marker clears on acceptance.
     expect(h.setValues).toEqual(CLEARED)
-  })
-
-  it('answers drafted off a pending link onto a draft', async () => {
-    h.findLiveFulfillmentDraft.mockResolvedValue('glp_draft')
-    const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result).toEqual({ status: 'drafted', glPostingId: 'glp_draft' })
-    expect(h.postEntry).not.toHaveBeenCalled()
   })
 
   it('skips an org with accounting off', async () => {
@@ -306,13 +293,6 @@ describe('postFulfillmentAccounting', () => {
         },
       },
     ])
-  })
-
-  it('clears the marker on a draft - a draft is not a refusal', async () => {
-    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'glp_draft' })
-    const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result).toEqual({ status: 'drafted', glPostingId: 'glp_draft' })
-    expect(h.setValues).toEqual(CLEARED)
   })
 })
 

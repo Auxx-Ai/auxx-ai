@@ -93,14 +93,10 @@ async function readVendorBillBalance(
     organizationId,
     vendorBillInstanceId,
   })
-  // `posted`, never "a row exists": a DRAFT waiting in the outbox holds no
-  // claim and no balance, so there is nothing yet to relieve.
+  // `posted`, never "a row exists": a reversed entry holds no balance to relieve.
   if (!postings.some((posting) => posting.status === 'posted'))
     throw new UnprocessableEntityError(
-      postings.some((posting) => posting.status === 'draft')
-        ? "This vendor bill's entry is waiting for approval in the outbox, so there is no " +
-            'payable to pay yet. Approve it first.'
-        : 'This vendor bill is not in the books yet, so there is no payable to pay. Post it first.'
+      'This vendor bill is not in the books yet, so there is no payable to pay. Post it first.'
     )
 
   const fields = await systemFieldMap(tx, organizationId, [

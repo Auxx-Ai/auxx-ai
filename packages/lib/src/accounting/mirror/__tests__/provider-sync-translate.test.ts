@@ -94,7 +94,6 @@ describe('an entry the accountant authored', () => {
 
     expect(result._unsafeUnwrap().written).toBe(1)
     const options = postEntry.mock.calls[0]![1]
-    expect(options.mode).toBe('post')
     expect(options.entry.postingType).toBe('provider_sync')
     // 🛑 The mirror row's id, not their transaction id: our books point at the
     // mirror, so a re-read that re-keys the transaction moves one row rather

@@ -68,6 +68,7 @@ export const GL_ACCOUNT_POINTER_ATTRIBUTES: Readonly<Record<string, string>> = {
   bank_rule_gl_account: 'a bank rule',
   bank_transaction_gl_account: 'a bank transaction',
   bank_transaction_suggested_gl_account: 'a bank transaction suggestion',
+  journal_entry_line_gl_account: 'a journal entry line',
   vendor_bill_line_gl_account: 'a vendor bill line',
   vendor_credit_line_gl_account: 'a vendor credit line',
 }

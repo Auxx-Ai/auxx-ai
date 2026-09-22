@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/journals/recurring/index.ts
 //
 // Server entry point for recurring journal templates - the stencil, its
-// schedule, and the daily sweep that copies it into drafts
+// schedule, and the daily sweep that copies it into posted entries
 // (plans/accounting/tasks/21-the-books-stand-alone.md §1).
 //
 // Client code must import `@auxx/lib/accounting/journals/recurring/client`, never

@@ -131,7 +131,7 @@ if (!ORG_ARG || selectors !== 1 || (CHART && !ALL && !FORCE)) {
     'usage: reset-accounting.ts <organizationId|name> <selector> [options]\n\n' +
       '  selectors, exactly one:\n' +
       '    --period <key>    delete one period key, any shape (2026-08, DEP-0003, INV-0012)\n' +
-      '    --all             delete every posting, export batch and mirror entry this\n' +
+      '    --all             delete every posting, export batch, mirror entry and work item this\n' +
       '                      organization has\n\n' +
       '  options:\n' +
       '    --wizard          also return the setup wizard, the opening baseline and the\n' +
@@ -405,6 +405,7 @@ async function main() {
 
   let batchCount = 0
   let mirrorCount = 0
+  let workItemCount = 0
   if (ALL) {
     const [batches] = await db
       .select({ n: sql<number>`count(*)::int` })
@@ -416,8 +417,14 @@ async function main() {
       .from(schema.ProviderLedgerEntry)
       .where(eq(schema.ProviderLedgerEntry.organizationId, org.id))
     mirrorCount = mirror?.n ?? 0
+    const [work] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.AccountingWorkItem)
+      .where(eq(schema.AccountingWorkItem.organizationId, org.id))
+    workItemCount = work?.n ?? 0
     console.log(`export batches: ${batchCount}, all states`)
-    console.log(`mirror: ${mirrorCount} provider ledger entr${mirrorCount === 1 ? 'y' : 'ies'}\n`)
+    console.log(`mirror: ${mirrorCount} provider ledger entr${mirrorCount === 1 ? 'y' : 'ies'}`)
+    console.log(`work items: ${workItemCount}\n`)
   }
 
   // ── 5. The account map ────────────────────────────────────────────────────
@@ -567,7 +574,13 @@ async function main() {
     await db
       .delete(schema.ProviderLedgerEntry)
       .where(eq(schema.ProviderLedgerEntry.organizationId, org.id))
-    console.log(`deleted ${batchCount} export batch(es) and ${mirrorCount} mirror entr(ies)`)
+    // A parked item (e.g. REFUND_EXCEEDS_MEMO) would otherwise keep its source from being re-offered.
+    await db
+      .delete(schema.AccountingWorkItem)
+      .where(eq(schema.AccountingWorkItem.organizationId, org.id))
+    console.log(
+      `deleted ${batchCount} export batch(es), ${mirrorCount} mirror entr(ies) and ${workItemCount} work item(s)`
+    )
   }
 
   // BEFORE the chart wipe: the map is a cell on the `gl_account` row mirrored

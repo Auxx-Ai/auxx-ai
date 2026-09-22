@@ -26,7 +26,7 @@ function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
 
 /**
  * Every export setting for one org, in one call: mode, cutover, and the
- * per-avenue `autoSend` / `summaryGrain` switches beside `autoPost`.
+ * per-avenue `autoSend` / `summaryGrain` switches.
  *
  * Off/unset fails closed to the safe value - `autoSend` false (batches hold for
  * release), `summaryGrain` `'day'`. No caller writes one of these keys earlier

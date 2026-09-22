@@ -24,6 +24,7 @@ import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { JOURNAL_ENTRY_FIELDS } from '../../resources/registry/resources/journal-entry-fields'
+import { JOURNAL_ENTRY_LINE_FIELDS } from '../../resources/registry/resources/journal-entry-line-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
@@ -105,6 +106,7 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   vendor_credit_application: VENDOR_CREDIT_APPLICATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   journal_entry: JOURNAL_ENTRY_FIELDS,
+  journal_entry_line: JOURNAL_ENTRY_LINE_FIELDS,
   build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
   payout: PAYOUT_FIELDS,

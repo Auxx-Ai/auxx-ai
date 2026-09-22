@@ -40,7 +40,7 @@ vi.mock('../../../../accounting/sales/fulfillments', () => ({
   isLiveFulfillment: (row: { status: string }) => row.status !== 'cancelled',
   postFulfillmentAccounting: async (_db: unknown, input: { fulfillmentId: string }) => {
     h.posted.push(input.fulfillmentId)
-    return { status: 'drafted' as const, glPostingId: 'glp_1' }
+    return { status: 'accepted' as const, glPostingId: 'glp_1' }
   },
 }))
 vi.mock('../../../../inventory/relief', () => ({ relieveFulfillmentLines: h.relieve }))

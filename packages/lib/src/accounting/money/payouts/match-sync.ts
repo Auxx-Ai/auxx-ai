@@ -81,7 +81,7 @@ async function readLivePostingsByEntry(
     sourceKind: 'processor_balance_entry',
     sourceIds: entryIds,
     linkRole: 'member',
-    statuses: ['draft', 'posted'],
+    statuses: ['posted'],
   })
   return new Map(rows.map((row) => [row.sourceId, row.glPostingId]))
 }

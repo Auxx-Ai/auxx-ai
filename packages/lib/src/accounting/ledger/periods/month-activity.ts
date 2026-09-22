@@ -92,8 +92,6 @@ export interface ReadMonthActivityOptions {
  * `unpostedShipments` and `unpostedCreditMemos` are always `null` -
  * unavailable, not zero - now that both avenues post eagerly (step 1b,
  * TARGET §1): the batch/effect backlog they used to count no longer exists.
- * TODO(step-1b): recompute from live drafts once the per-avenue
- * `accounting.autoPost` setting lands.
  */
 export async function readMonthActivity(
   db: Database,
@@ -134,9 +132,7 @@ export async function readMonthActivity(
           lastTxnDate: row.lastTxnDate,
         })),
       // `null` - unavailable, not zero - now that both avenues post eagerly
-      // (step 1b, TARGET §1): the batch/effect backlog this used to count no
-      // longer exists. TODO(step-1b): recompute from live drafts once the
-      // per-avenue `accounting.autoPost` setting lands.
+      // (step 1b, TARGET §1): the batch/effect backlog this used to count no longer exists.
       unpostedShipments: null,
       unpostedCreditMemos: null,
     })

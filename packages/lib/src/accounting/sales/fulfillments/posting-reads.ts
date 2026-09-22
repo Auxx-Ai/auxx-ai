@@ -2,50 +2,20 @@
 
 /**
  * What the shipment poster and its sweep ASK, as opposed to what they write:
- * the draft a shipment is waiting on, the shipments nobody has tried, and the
- * shipment drawer's read.
+ * the shipments nobody has tried, and the shipment drawer's read.
  *
  * Reads only; the poster lives in `accounting.ts` and the sweep's loop in
  * `accounting-sweep.ts` (`docs/lib-module-guide.md` §5). No permission checks
  * anywhere in this file (§6).
  */
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../../cache'
 import { systemFieldMap } from '../../../resources/system-records'
 import { listWorkItemsForSource, type WorkItemRow } from '../../work-items/reads'
 import { noWorkItem } from '../../work-items/sweep'
-
-/** The draft a shipment waits on: its `pending` link onto a row still in `draft`. */
-export async function findLiveFulfillmentDraft(
-  db: Database,
-  organizationId: string,
-  fulfillmentId: string
-): Promise<string | null> {
-  const [row] = await db
-    .select({ id: schema.GlPosting.id })
-    .from(schema.GlPostingSource)
-    .innerJoin(
-      schema.GlPosting,
-      and(
-        eq(schema.GlPosting.organizationId, schema.GlPostingSource.organizationId),
-        eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
-        eq(schema.GlPostingSource.sourceId, fulfillmentId),
-        eq(schema.GlPostingSource.linkRole, 'pending'),
-        eq(schema.GlPosting.status, 'draft')
-      )
-    )
-    .limit(1)
-  return row?.id ?? null
-}
 
 /** The window the sweep's candidate query cuts on, read once per pass. */
 export interface FulfillmentCandidateWindow {
@@ -63,7 +33,7 @@ const CANDIDATE_ATTRS = [
 ] as const
 
 /**
- * Live, stamped, non-zero shipments after the cutoff that hold no claim, no draft
+ * Live, stamped, non-zero shipments after the cutoff that hold no claim
  * and no work item - the ones nobody has tried. A refused one comes back through its
  * work item's `nextAttemptAt` instead.
  *
@@ -116,13 +86,6 @@ export async function listFulfillmentAccountingCandidates(
           AND link."sourceKind" = 'fulfillment'
           AND link."sourceId" = ship."entityId"
           AND link."linkRole" = 'subject')
-      AND NOT EXISTS (SELECT 1 FROM "GlPostingSource" pending
-        JOIN "GlPosting" draft ON draft."id" = pending."glPostingId"
-        WHERE pending."organizationId" = ${organizationId}
-          AND pending."sourceKind" = 'fulfillment'
-          AND pending."sourceId" = ship."entityId"
-          AND pending."linkRole" = 'pending'
-          AND draft."status" = 'draft')
     ORDER BY ship."valueDate" ASC, ship."entityId" ASC
     LIMIT ${limit}
   `)

@@ -32,6 +32,7 @@ export async function recurringJournalsJob(ctx: JobContext): Promise<void> {
     jobId: ctx.jobId,
     rulesEvaluated: summary.rulesEvaluated,
     entriesGenerated: summary.entriesGenerated,
+    entriesPosted: summary.entriesPosted,
     heldByClosedPeriod: summary.held.length,
     failed: summary.failed,
   })

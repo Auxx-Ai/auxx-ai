@@ -21,13 +21,12 @@ const h = vi.hoisted(() => ({
   editStamp: null as { openedAt: string; byUserId: string } | null,
   postings: [] as unknown[],
   reverseEntry: vi.fn(),
-  discardDraftPosting: vi.fn(),
   postInvoiceIssuanceBuiltEntry: vi.fn(),
   captureRecordSnapshot: vi.fn(),
   restoreRecordSnapshot: vi.fn(),
   deleteEditSnapshot: vi.fn(),
   publishRecordEditStamp: vi.fn(),
-  ledgerState: { draftGlPostingId: null as string | null, generation: 1 },
+  ledgerState: { generation: 1 },
   writeDocumentLedgerGeneration: vi.fn(),
   syncInvoicePaymentState: vi.fn(async () => undefined),
 }))
@@ -46,7 +45,6 @@ vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../ledger/post/draft-lines', () => ({ discardDraftPosting: h.discardDraftPosting }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
 }))
@@ -158,7 +156,7 @@ beforeEach(() => {
     contactInstanceId: 'ei_contact_1',
   }
   h.editStamp = { openedAt: '2026-09-18T00:00:00.000Z', byUserId: USER }
-  h.ledgerState = { draftGlPostingId: null, generation: 1 }
+  h.ledgerState = { generation: 1 }
   h.postings = [
     {
       glPostingId: 'gp_1',
@@ -175,7 +173,6 @@ beforeEach(() => {
   h.restoreRecordSnapshot.mockResolvedValue(undefined)
   h.deleteEditSnapshot.mockResolvedValue(true)
   h.reverseEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_2' })
-  h.discardDraftPosting.mockResolvedValue({ isErr: () => false, error: undefined })
   h.postInvoiceIssuanceBuiltEntry.mockResolvedValue({
     status: 'posted',
     glPostingId: 'gp_3',
@@ -355,32 +352,5 @@ describe('the repost generation', () => {
       buildDocNumber({ postingType: 'invoice_issued', periodKey: key, revision: 1 }).length
     ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
     expect(h.writeDocumentLedgerGeneration).toHaveBeenCalledWith(db, ORG, INVOICE_ID, 2)
-  })
-})
-
-// With auto-post off — the default — the live entry is a DRAFT: it holds no
-// claim and no document number, so it is thrown away and re-drafted.
-describe('saving against a drafted entry', () => {
-  it('discards the draft and drafts again, on the same generation', async () => {
-    h.ledgerState = { draftGlPostingId: 'gp_draft', generation: 1 }
-    h.postings = [
-      { glPostingId: 'gp_draft', docNumber: '', status: 'draft', postingType: 'invoice_issued' },
-    ]
-    h.postInvoiceIssuanceBuiltEntry.mockResolvedValue({
-      status: 'drafted',
-      glPostingId: 'gp_draft_2',
-    })
-    raiseTheInvoice()
-
-    const result = await saveDocumentEdit(db, target)
-
-    expect(h.discardDraftPosting).toHaveBeenCalledWith(db, {
-      organizationId: ORG,
-      glPostingId: 'gp_draft',
-    })
-    expect(h.reverseEntry).not.toHaveBeenCalled()
-    expect(postedEntry().periodKey).toBe('INV-0007')
-    expect(h.writeDocumentLedgerGeneration).not.toHaveBeenCalled()
-    expect(result.outcome).toBe('reposted')
   })
 })

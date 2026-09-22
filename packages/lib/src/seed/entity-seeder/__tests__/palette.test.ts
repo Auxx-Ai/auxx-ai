@@ -84,6 +84,7 @@ const CATEGORY: Record<string, keyof typeof CATEGORY_COLOR> = {
   processor_balance_entry: 'cash',
   gl_account: 'ledger',
   journal_entry: 'ledger',
+  journal_entry_line: 'ledger',
   tax_line: 'tax',
   tariff_code: 'tax',
   tariff_rate: 'tax',

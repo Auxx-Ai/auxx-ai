@@ -14,7 +14,6 @@ const h = vi.hoisted(() => ({
   postEntry: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(async () => 'post'),
   upsertWorkItem: vi.fn(async () => ({ isErr: () => false })),
   money: null as unknown,
   updates: [] as unknown[],
@@ -22,9 +21,6 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
-}))
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: h.readAutoPostMode,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
@@ -147,7 +143,6 @@ beforeEach(() => {
     method: null,
   }
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readAutoPostMode.mockResolvedValue('post')
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'posting_1' })
@@ -181,7 +176,6 @@ describe('postCustomerReceiptAccounting', () => {
     expect(options.storeId).toBe('store_1')
     expect(options.railId).toBe('gateway_1')
     expect(options.scope).toEqual({ store: 'store_1', rail: 'gateway_1' })
-    expect(options.mode).toBe('post')
     // The rail is stamped onto the movement inside the posting transaction.
     expect(h.updates).toEqual([{ paymentGatewayId: 'gateway_1' }])
   })

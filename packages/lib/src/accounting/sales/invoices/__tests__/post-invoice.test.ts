@@ -14,14 +14,10 @@ const h = vi.hoisted(() => ({
   reverseEntry: vi.fn(),
   listPostingsForSource: vi.fn(),
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(async () => 'post'),
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
-}))
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: h.readAutoPostMode,
 }))
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
@@ -31,9 +27,6 @@ vi.mock('../../../ledger/builders/invoice', () => ({
   buildInvoiceEntry: h.buildInvoiceEntry,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
-vi.mock('../../../ledger/post/draft-lines', () => ({
-  discardDraftsForSource: async () => ({ isErr: () => false, value: [] }),
-}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
@@ -104,7 +97,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   claims = []
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readAutoPostMode.mockResolvedValue('post')
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.buildInvoiceEntry.mockReturnValue({
     entry: {
@@ -154,23 +146,12 @@ describe('postInvoiceIssuance', () => {
       { sourceKind: 'invoice', sourceId: INVOICE, linkRole: 'subject' },
       { sourceKind: 'contact', sourceId: CONTACT, linkRole: 'counterparty' },
     ])
-    expect(options.mode).toBe('post')
   })
 
   it('posts without a counterparty row when the invoice has no contact', async () => {
     await postInvoiceIssuance(wireInvoice(null), { organizationId: ORG, invoiceId: INVOICE })
 
     expect(h.postEntry.mock.calls[0]![1].sources).toHaveLength(1)
-  })
-
-  it('drafts the entry when the invoice avenue does not auto-post', async () => {
-    h.readAutoPostMode.mockResolvedValue('draft')
-
-    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gp-draft' })
-
-    await postInvoiceIssuance(wireInvoice(), { organizationId: ORG, invoiceId: INVOICE })
-
-    expect(h.postEntry.mock.calls[0]![1].mode).toBe('draft')
   })
 
   it('never posts, and never reads, when accounting is off', async () => {

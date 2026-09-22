@@ -10,7 +10,6 @@ const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(),
   postEntry: vi.fn(),
   resolveRoles: vi.fn(),
   resolveBankAccountGlAccountInTx: vi.fn(),
@@ -27,7 +26,6 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
 vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
-vi.mock('../../../ledger/post/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../ledger/chart/resolve-cash-account', () => ({
@@ -90,7 +88,6 @@ beforeEach(() => {
   h.isAccountingEnabled.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
-  h.readAutoPostMode.mockResolvedValue('post')
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
   h.resolveRoles.mockResolvedValue(
     ok(new Map([['undeposited_funds', { glAccountId: 'gl_undep' }]]))

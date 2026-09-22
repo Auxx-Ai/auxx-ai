@@ -20,7 +20,6 @@ import {
   VENDOR_BILL_SOURCE_TYPE,
 } from '../ledger/builders/entry'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
-import { readAutoPostMode } from '../ledger/post/auto-post'
 import { LEDGER_CURRENCY, postEntry } from '../ledger/post/post-entry'
 import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
 import type { PostResult } from '../ledger/types'
@@ -152,7 +151,6 @@ export async function postVendorBillEntry(
     organizationId,
     entry: entry.entry,
     lock,
-    mode: await readAutoPostMode(organizationId, 'expenseBill'),
     memo: input.memo,
     actorUserId,
     sources: [

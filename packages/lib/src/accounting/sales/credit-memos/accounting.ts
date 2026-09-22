@@ -29,8 +29,6 @@ import {
   computeCreditMemoAmounts,
 } from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -140,15 +138,10 @@ export async function postCreditMemoEntry(
     scope,
     sources,
     storeId: typeof scope.store === 'string' ? scope.store : null,
-    mode: await readAutoPostMode(organizationId, 'creditMemo'),
   })
 }
 
-/**
- * Every general-ledger entry sourced on one credit memo, newest first. A draft
- * waiting in the outbox is in the list with `status: 'draft'` through its
- * `pending` link.
- */
+/** Every general-ledger entry sourced on one credit memo, newest first. */
 export async function listCreditMemoPostings(
   db: Database,
   params: { organizationId: string; creditMemoInstanceId: string }
@@ -169,9 +162,8 @@ export async function listCreditMemoPostings(
 }
 
 /**
- * Reverse the memo's live issue posting, freeing the claim. A draft still in the
- * outbox is discarded instead. `null` when nothing is standing - an unposted
- * memo voids freely.
+ * Reverse the memo's live issue posting, freeing the claim. `null` when nothing
+ * is standing - an unposted memo voids freely.
  */
 export async function reverseCreditMemoEntry(
   db: Database,
@@ -183,12 +175,6 @@ export async function reverseCreditMemoEntry(
   }
 ): Promise<PostResult | null> {
   const { organizationId, creditMemoInstanceId, actorUserId, memo } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: CREDIT_MEMO_SOURCE_TYPE,
-    sourceId: creditMemoInstanceId,
-  })
-  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: CREDIT_MEMO_SOURCE_TYPE,

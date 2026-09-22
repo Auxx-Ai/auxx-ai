@@ -50,7 +50,7 @@ import {
 } from '../../../providers/provider'
 import { listPostingsForSource } from '../../reads/list-postings'
 import type { BuiltEntry, GlPostingSourceInput } from '../../types'
-import { postDraft, postEntry, postEntryInTx } from '../post-entry'
+import { postEntry, postEntryInTx } from '../post-entry'
 import { reverseEntry } from '../reverse-entry'
 
 const ORG = 'org_1'
@@ -344,7 +344,7 @@ function createFakeDb(chart: Array<{ role: string; account: Account }>) {
         chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
           Promise.resolve()
             .then(() => {
-              // A discard: the draft's lines, then its header, by the ids the WHERE bound.
+              // Lines, then the header, by the ids the WHERE bound.
               if (table === schema.GlPosting || table === schema.GlPostingLine) {
                 const named = boundValues(condition)
                 const rows = table === schema.GlPosting ? postings : lines
@@ -464,35 +464,9 @@ beforeEach(() => {
   setConnectedProviderResolver(async () => null)
 })
 
-// ── Draft mode ─────────────────────────────────────────────────────────────
+// ── Refusals before the write ──────────────────────────────────────────────
 
-describe('postEntry in draft mode', () => {
-  it('writes the row, its lines and its non-subject links, and takes no claim', async () => {
-    const fake = createFakeDb(CHART)
-
-    const result = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'draft',
-      sources: [SUBJECT, PARENT],
-    })
-
-    expect(result.status).toBe('drafted')
-    expect(result.glPostingId).toBeDefined()
-    expect(result.docNumber).toBeUndefined()
-
-    const [row] = fake.postings
-    expect(row?.status).toBe('draft')
-    // 🛑 A draft has no document number and no claim. Both are what posting adds.
-    expect(row?.docNumber).toBeNull()
-    expect(row?.postedAt).toBeNull()
-    expect(fake.lines).toHaveLength(2)
-    // The subject goes in as `pending` - the row its record finds the draft by,
-    // outside the claim index (tasks/77).
-    expect(fake.sources.map((s) => s.linkRole).sort()).toEqual(['parent', 'pending'])
-  })
-
+describe('postEntry refusals', () => {
   it('refuses a closed period before writing anything', async () => {
     const fake = createFakeDb(CHART)
     h.lockedThroughMonth = '2026-08'
@@ -501,7 +475,6 @@ describe('postEntry in draft mode', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'draft',
       sources: [SUBJECT],
     })
 
@@ -527,7 +500,6 @@ describe('postEntryInTx', () => {
         organizationId: ORG,
         entry: receiptEntry(),
         lock: OPEN,
-        mode: 'post',
         sources: [SUBJECT],
       })
     )
@@ -548,7 +520,6 @@ describe('postEntryInTx', () => {
           organizationId: ORG,
           entry: receiptEntry(),
           lock: OPEN,
-          mode: 'post',
           sources: [SUBJECT],
         })
         // The source write that motivated the posting fails AFTER it.
@@ -572,7 +543,6 @@ describe('postEntryInTx', () => {
         organizationId: ORG,
         entry: receiptEntry(),
         lock: OPEN,
-        mode: 'post',
         sources: [SUBJECT],
       })
     )
@@ -592,7 +562,6 @@ describe('postEntry in post mode', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT, PARENT],
       storeId: 'fsa_1',
       railId: 'gw_1',
@@ -615,7 +584,6 @@ describe('postEntry in post mode', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [PARENT],
     })
 
@@ -644,14 +612,12 @@ describe('postEntry in post mode', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT],
     })
     const runB = postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT],
     })
     release()
@@ -671,7 +637,7 @@ describe('postEntry in post mode', () => {
 
   it('lets a second occurrence of the same source claim independently', async () => {
     const fake = createFakeDb(CHART)
-    const base = { organizationId: ORG, lock: OPEN, mode: 'post' as const }
+    const base = { organizationId: ORG, lock: OPEN }
 
     const first = await postEntry(fake.db, {
       ...base,
@@ -690,103 +656,6 @@ describe('postEntry in post mode', () => {
   })
 })
 
-// ── postDraft ──────────────────────────────────────────────────────────────
-
-describe('postDraft', () => {
-  it('claims, numbers and flips a draft to posted', async () => {
-    const fake = createFakeDb(CHART)
-    const drafted = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'draft',
-      sources: [SUBJECT, PARENT],
-    })
-
-    const result = await postDraft(fake.db, {
-      organizationId: ORG,
-      glPostingId: drafted.glPostingId as string,
-      lock: OPEN,
-      actorUserId: 'user_1',
-    })
-
-    expect(result.status).toBe('posted')
-    expect(result.docNumber).toBe('2026-08-18')
-    expect(fake.postings[0]?.status).toBe('posted')
-    expect(fake.postings[0]?.docNumber).toBe('2026-08-18')
-    expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(1)
-  })
-
-  it('re-checks the period lock, so a draft cannot be approved into a closed month', async () => {
-    const fake = createFakeDb(CHART)
-    const drafted = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'draft',
-      sources: [SUBJECT],
-    })
-
-    h.lockedThroughMonth = '2026-08'
-    const result = await postDraft(fake.db, {
-      organizationId: ORG,
-      glPostingId: drafted.glPostingId as string,
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('period_closed')
-    expect(fake.postings[0]?.status).toBe('draft')
-    expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(0)
-  })
-
-  it('discards a draft whose source another posting already claimed - it can never post', async () => {
-    const fake = createFakeDb(CHART)
-    const drafted = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'draft',
-      sources: [SUBJECT],
-    })
-    const posted = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'post',
-      sources: [SUBJECT],
-    })
-
-    const result = await postDraft(fake.db, {
-      organizationId: ORG,
-      glPostingId: drafted.glPostingId as string,
-      lock: OPEN,
-    })
-
-    expect(result).toEqual({ status: 'already_posted', glPostingId: posted.glPostingId })
-    expect(fake.postings.map((row) => row.id)).toEqual([posted.glPostingId])
-  })
-
-  it('refuses a posting that is not a draft', async () => {
-    const fake = createFakeDb(CHART)
-    const posted = await postEntry(fake.db, {
-      organizationId: ORG,
-      entry: receiptEntry(),
-      lock: OPEN,
-      mode: 'post',
-      sources: [SUBJECT],
-    })
-
-    const result = await postDraft(fake.db, {
-      organizationId: ORG,
-      glPostingId: posted.glPostingId as string,
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('error')
-    expect(result.error).toContain('not draft')
-  })
-})
-
 // ── reverseEntry ───────────────────────────────────────────────────────────
 
 describe('reverseEntry', () => {
@@ -796,7 +665,6 @@ describe('reverseEntry', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT],
     })
 
@@ -824,7 +692,6 @@ describe('reverseEntry', () => {
       organizationId: ORG,
       entry: receiptEntry({ periodKey: '2026-08-20', txnDate: '2026-08-20' }),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT],
     })
     expect(again.status).toBe('posted')
@@ -839,7 +706,6 @@ describe('reverseEntry', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT],
     })
     const row = fake.postings.find((p) => p.id === posted.glPostingId)
@@ -857,17 +723,21 @@ describe('reverseEntry', () => {
 
   it('refuses to reverse anything but a posted entry', async () => {
     const fake = createFakeDb(CHART)
-    const drafted = await postEntry(fake.db, {
+    const posted = await postEntry(fake.db, {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'draft',
       sources: [SUBJECT],
+    })
+    await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: posted.glPostingId as string,
+      lock: OPEN,
     })
 
     const result = await reverseEntry(fake.db, {
       organizationId: ORG,
-      glPostingId: drafted.glPostingId as string,
+      glPostingId: posted.glPostingId as string,
       lock: OPEN,
     })
 
@@ -885,7 +755,6 @@ describe('listPostingsForSource', () => {
       organizationId: ORG,
       entry: receiptEntry(),
       lock: OPEN,
-      mode: 'post',
       sources: [SUBJECT, PARENT],
     })
 

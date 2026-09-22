@@ -8,7 +8,7 @@ import type { PostingType } from '../types'
 
 /**
  * The category every posting carries as `GlPosting.avenue`: the provider-object
- * family it leaves as, the lane its `autoPost` / `autoSend` / `summaryGrain`
+ * family it leaves as, the lane its `autoSend` / `summaryGrain`
  * switches key on, and the one vocabulary every Outbox tab filters by.
  * Mirrors TARGET §3's provider-object table and §5's Provider object column.
  */
@@ -28,20 +28,6 @@ export const EXPORT_AVENUES = [
 ] as const
 
 export type ExportAvenue = (typeof EXPORT_AVENUES)[number]
-
-/** The avenues with a draft step - `accounting.autoPost.<avenue>` exists for these alone. */
-export const AUTO_POST_AVENUES = [
-  'fulfillment',
-  'invoice',
-  'receipt',
-  'refund',
-  'creditMemo',
-  'expenseBill',
-  'vendorPayment',
-  'vendorCredit',
-] as const
-
-export type AutoPostAvenue = (typeof AUTO_POST_AVENUES)[number]
 
 /** The avenues `accounting.summaryGrain.*` governs. Payouts, bank deposits and journals have no grain - one object each. */
 export const SUMMARY_GRAIN_AVENUES = [
@@ -125,8 +111,6 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
     case 'opening_balance':
     case 'provider_sync':
     case 'bank_transaction':
-    // No writer since 91 §4.3; TODO(91 S3): drops with the enum value.
-    case 'deposit_application':
       return null
   }
 }

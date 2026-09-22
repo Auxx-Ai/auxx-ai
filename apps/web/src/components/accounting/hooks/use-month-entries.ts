@@ -6,7 +6,7 @@ import type { JournalEntryLine, PostingSummary } from '@auxx/lib/accounting/jour
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 
-/** One row's journal-entry kind/`GlPosting.status` collapsed to a common vocabulary. */
+/** A posting's `GlPosting.status`, or `draft` for an unposted journal entry document. */
 export type EntryStatus = 'posted' | 'reversed' | 'pending' | 'failed' | 'draft'
 
 export interface EntryRow {
@@ -26,37 +26,17 @@ export interface EntryRow {
 export interface MonthEntries {
   rows: EntryRow[]
   loading: boolean
-  /** How many of `rows` are unposted drafts. */
+  /** How many of `rows` are unposted journal entries. */
   draftCount: number
 }
 
 /**
- * The period's entries - everything the inline month-end entry does not already
- * show - from two reads merged into one list (ui-plan.md §2.1):
+ * The period's entries (ui-plan.md §2.1): this month's postings, except `month_end_inventory`,
+ * merged with the manual and recurring journal entries a bookkeeper has not posted yet.
  *
- * - `ledger.listPostings` - every posting this month except `month_end_inventory`
- *   (already excluded server-side), posted or reversed. Draft-status rows are
- *   filtered OUT here (TARGET §1 widened `GlPosting.status` to include
- *   `draft`) - see the note on that filter below.
- * - `ledger.journalEntry.list` with `status: 'draft'` - entries a bookkeeper has
- *   started but not posted, whichever avenue's draft this is.
- *
- * 🛑 ONE hook because two callers need the same answer: the list renders these
- * rows and the stats strip counts them. Two hand-written copies of the query
- * inputs share a React Query cache entry only for as long as both copies stay
- * byte-identical - the day one gains a filter the other silently opens a second
- * request and the header disagrees with the list under it.
- *
- * 🛑 The draft read is filtered to the two POSTABLE, hand-reviewed kinds:
- * `manual` and `recurring` (the entries the nightly sweep copied out of a
- * template, task 21 §1). An `opening_balance` draft belongs to the setup wizard
- * and the opening-balances settings page, and a `recurring_template` is the
- * stencil itself - neither can be posted from a row here, and rendering them
- * offered a Post the server then refused by name.
- *
- * ⚠️ `recurring` MUST be here. A generated draft that nobody can see is a
- * scheduler that silently does nothing: the whole point of decision A (draft,
- * not auto-post) is that a bookkeeper looks at the accrual before it lands.
+ * One hook because the list renders these rows and the stats strip counts them; two copies
+ * of the query inputs drift into two requests and a header that disagrees with the list.
+ * `opening_balance` and `recurring_template` entries are excluded: neither posts from a row here.
  *
  * ⚠️ With no `periodKey` BOTH reads widen to the whole ledger rather than being
  * skipped. An org whose accounting is finalized with a cutoff in the future
@@ -76,17 +56,9 @@ export function useMonthEntries(periodKey?: string): MonthEntries {
   const drafts = draftsQuery.data
 
   return useMemo(() => {
-    // 🛑 Draft-status postings are excluded here, not merely left unmapped by
-    // `postingToRow`: a manual/recurring journal draft's own `GlPosting` row
-    // would otherwise render TWICE - once from here, once from `draftsQuery` -
-    // and a draft from any OTHER avenue (a fulfillment or invoice with
-    // `autoPost` off) does not belong on this list at all. This screen is the
-    // posted/reversed activity plus the two POSTABLE journal-entry kinds; every
-    // draft, across every avenue, is the Drafts tab's list (step 1c).
-    const rows = [
-      ...(postings ?? []).filter((posting) => posting.status !== 'draft').map(postingToRow),
-      ...(drafts ?? []).map(draftToRow),
-    ].sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+    const rows = [...(postings ?? []).map(postingToRow), ...(drafts ?? []).map(draftToRow)].sort(
+      (a, b) => b.sortKey.localeCompare(a.sortKey)
+    )
 
     return {
       rows,
@@ -107,7 +79,7 @@ function postingToRow(posting: PostingSummary): EntryRow {
     title: posting.memo || posting.docNumber,
     docNumber: posting.docNumber,
     amountMinor: posting.totalMinor,
-    status: posting.status === 'reversed' ? 'reversed' : posting.status,
+    status: posting.status,
     number: null,
   }
 }
@@ -132,7 +104,7 @@ function draftToRow(entry: {
   }
 }
 
-/** The draft's own total - the sum of its debit legs (an unbalanced draft has none yet). */
+/** The entry's own total - the sum of its debit legs. */
 function sumDebits(lines: JournalEntryLine[]): number {
   return lines
     .filter((line) => line.direction === 'debit')

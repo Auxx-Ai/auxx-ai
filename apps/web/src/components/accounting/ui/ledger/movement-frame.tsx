@@ -36,13 +36,11 @@ const LINK_ROLE_LABEL: Record<MovementDetail['links'][number]['role'] | 'party',
 }
 
 const STATUS_VARIANT: Record<PostingStatus, Variant> = {
-  draft: 'outline',
   posted: 'green',
   reversed: 'amber',
 }
 
 const STATUS_LABEL: Record<PostingStatus, string> = {
-  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }

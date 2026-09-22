@@ -188,7 +188,6 @@ export async function translateMirrorRange(
         `Synced from ${input.providerId}: ${entry.providerTxnType}` +
         `${entry.docNumber ? ` ${entry.docNumber}` : ''} (transaction ${entry.providerTxnId})`,
       lock: input.lock,
-      mode: 'post',
       sources: [
         { sourceKind: PROVIDER_LEDGER_SOURCE_KIND, sourceId: entry.id, linkRole: 'subject' },
       ],

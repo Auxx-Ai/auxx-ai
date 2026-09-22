@@ -4,7 +4,7 @@
 // this file owns the SQL.
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import { avenueOfPostingType } from '../setup/export-settings'
 import { LEDGER_CURRENCY } from '../setup/ledger-currency'
@@ -42,8 +42,7 @@ export interface InsertPostingInput {
   entry: BuiltEntry
   revision: number
   reversesId?: string
-  /** NULL for a draft: a draft holds no claim and gets no number until it posts. */
-  docNumber: string | null
+  docNumber: string
   totalMinor: number
   lines: PreparedLine[]
   /** At least one `subject`. The subject row is the claim; see {@link claimSubjectInTx}. */
@@ -55,7 +54,6 @@ export interface InsertPostingInput {
   memo?: string
   actorUserId?: string
   assertions?: PostingAssertions
-  status: 'draft' | 'posted'
 }
 
 /** The one subject row of a source set. Throws if there is not exactly one. */
@@ -127,62 +125,30 @@ export async function claimSubjectInTx(
   return { heldBy: winner.glPostingId }
 }
 
-/**
- * Write the links. A posted entry's subject went in through
- * {@link claimSubjectInTx}; a draft's subject is written as `pending`, so the
- * record it is about can find it without the draft holding a claim.
- */
+/** Write the non-subject links; the subject went in through {@link claimSubjectInTx}. */
 export async function insertSourceLinksInTx(
   tx: Database | Transaction,
-  input: {
-    organizationId: string
-    glPostingId: string
-    sources: GlPostingSourceInput[]
-    mode: 'draft' | 'post'
-  }
+  input: { organizationId: string; glPostingId: string; sources: GlPostingSourceInput[] }
 ): Promise<void> {
   const rows = input.sources
-    .filter((source) => source.linkRole !== 'subject' || input.mode === 'draft')
+    .filter((source) => source.linkRole !== 'subject')
     .map((source) => ({
       organizationId: input.organizationId,
       glPostingId: input.glPostingId,
       sourceKind: source.sourceKind,
       sourceId: source.sourceId,
-      linkRole: source.linkRole === 'subject' ? ('pending' as const) : source.linkRole,
+      linkRole: source.linkRole,
       occurrence: source.occurrence ?? 'original',
     }))
   if (rows.length > 0) await tx.insert(schema.GlPostingSource).values(rows)
 }
 
-/** Drop a draft's `pending` row - the claim replaces it, or the draft is discarded. */
-export async function releasePendingInTx(
-  tx: Transaction,
-  input: { organizationId: string; glPostingId: string }
-): Promise<void> {
-  await tx
-    .delete(schema.GlPostingSource)
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, input.organizationId),
-        eq(schema.GlPostingSource.glPostingId, input.glPostingId),
-        eq(schema.GlPostingSource.linkRole, 'pending')
-      )
-    )
-}
-
-/**
- * Write the header and its lines. Caller owns the transaction, the accounting
- * lock and the claim.
- *
- * A `draft` row carries lines, `built` and its source links, and no doc number:
- * posting assigns both the number and the claim (`postDraft`).
- */
+/** Write the header and its lines. Caller owns the transaction, the accounting lock and the claim. */
 export async function insertPostingInTx(
   tx: Transaction,
   input: InsertPostingInput
 ): Promise<{ id: string; docNumber: string | null }> {
   const { organizationId, entry, revision, reversesId, docNumber, totalMinor, lines } = input
-  const posted = input.status === 'posted'
 
   const [row] = await tx
     .insert(schema.GlPosting)
@@ -192,10 +158,9 @@ export async function insertPostingInTx(
       avenue: avenueOfPostingType(entry.postingType),
       periodKey: entry.periodKey,
       revision,
-      status: input.status,
-      // `GlPosting_posted_check` is `status <> 'posted' OR postedAt IS NOT NULL`,
-      // so the timestamp is part of the same INSERT rather than a later UPDATE.
-      postedAt: posted ? new Date() : null,
+      status: 'posted',
+      // `GlPosting_posted_check` requires the timestamp in the same INSERT.
+      postedAt: new Date(),
       txnDate: entry.txnDate,
       docNumber,
       storeId: input.storeId ?? null,
@@ -207,7 +172,7 @@ export async function insertPostingInTx(
       // The audit record of WHAT WAS POSTED, verbatim. One construction site,
       // in `draft.ts`.
       built: buildPostingDraft({
-        docNumber: docNumber ?? '',
+        docNumber,
         revision,
         memo: input.memo,
         entry,
@@ -236,9 +201,7 @@ export async function insertPostingInTx(
 }
 
 /**
- * The `GlPostingLine` values for a prepared entry - the first insert and a
- * draft's re-insert must write the same columns or an edited draft would post
- * differently from a fresh one.
+ * The `GlPostingLine` values for a prepared entry.
  *
  * `lineNumber` is 1-based over the built order, which `prepareEntry` sorted by
  * `sortOrder`. `counterparty*` is FROZEN here (brief 13 §1.1): a retry replays
@@ -353,32 +316,4 @@ export async function readClaimHolderInTx(
     throw new Error(`The claim names posting ${input.glPostingId}, which does not exist.`)
   }
   return found
-}
-
-/** Assign the doc number and flip a draft to `posted`, in the claim's transaction. */
-export async function markPostedInTx(
-  tx: Transaction,
-  input: {
-    organizationId: string
-    glPostingId: string
-    docNumber: string
-    actorUserId?: string
-  }
-): Promise<void> {
-  await tx
-    .update(schema.GlPosting)
-    .set({
-      status: 'posted',
-      postedAt: new Date(),
-      docNumber: input.docNumber,
-      ...(input.actorUserId ? { postedByUserId: input.actorUserId } : {}),
-      built: sql`jsonb_set(${schema.GlPosting.built}, '{docNumber}', ${JSON.stringify(input.docNumber)}::jsonb)`,
-    })
-    .where(
-      and(
-        eq(schema.GlPosting.id, input.glPostingId),
-        eq(schema.GlPosting.organizationId, input.organizationId),
-        eq(schema.GlPosting.status, 'draft')
-      )
-    )
 }

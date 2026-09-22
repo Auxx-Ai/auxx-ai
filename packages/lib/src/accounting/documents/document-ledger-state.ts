@@ -2,8 +2,7 @@
 //
 // What a posting document knows about its own entry that `GlPostingSource` cannot
 // say, on `EntityInstance.metadata.ledger`: `generation`, because a repost after
-// Save cannot reuse the reversed original's document number. The draft a document
-// waits on is the ledger's own `pending` link (tasks/77), not a pointer here.
+// Save cannot reuse the reversed original's document number.
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
@@ -75,7 +74,7 @@ export async function writeDocumentLedgerGeneration(
     )
 }
 
-/** One row of a document's ledger postings. `status` is `draft | posted | reversed`. */
+/** One row of a document's ledger postings. `status` is `posted | reversed`. */
 export interface DocumentPosting {
   glPostingId: string
   docNumber: string

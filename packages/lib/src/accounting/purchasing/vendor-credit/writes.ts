@@ -24,7 +24,7 @@ import {
 } from '../../ledger/builders/vendor-credit'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { withAccountingCommitLock } from '../../ledger/post/accounting-commit-lock'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import {
   exportPostedEntry,
   type InTxPostResult,
@@ -338,7 +338,7 @@ export async function issueVendorCredit(
         memo: `Vendor credit ${credit.number} issued`,
       })
     }
-    if (!isExpectedPostOutcome(post)) {
+    if (!didLedgerAccept(post) && post.status !== 'not_enabled') {
       // Inside the transaction, so the refusal takes the movements with it.
       throw new BadRequestError(
         'This vendor credit could not be posted to the general ledger' +
@@ -446,7 +446,7 @@ export async function voidVendorCredit(
     actorUserId: userId,
     memo: `Vendor credit ${credit.number} voided`,
   })
-  if (reversal && !isExpectedPostOutcome(reversal)) {
+  if (reversal && !didLedgerAccept(reversal)) {
     throw new BadRequestError(
       'This vendor credit has a general ledger entry that could not be reversed' +
         `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}. Voiding it would ` +

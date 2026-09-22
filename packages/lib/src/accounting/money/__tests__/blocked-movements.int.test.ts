@@ -265,38 +265,6 @@ describe('listMovementAccountingCandidates', () => {
 
     expect(await candidates()).not.toContain(waiting)
   })
-
-  it('holds a movement waiting on a live draft, and offers it once the draft is gone', async () => {
-    const [draft] = await db()
-      .insert(schema.GlPosting)
-      .values({
-        organizationId,
-        postingType: 'payment',
-        periodKey: '2026-09',
-        txnDate: '2026-09-03',
-        totalMinor: 1000,
-        built: {},
-        status: 'draft',
-      })
-      .returning({ id: schema.GlPosting.id })
-    const waiting = await receipt({
-      occurredOn: '2026-09-03',
-      createdAt: new Date('2026-09-03T00:00:00Z'),
-    })
-    // The draft's `pending` link is what holds the movement back (tasks/77).
-    await db().insert(schema.GlPostingSource).values({
-      organizationId,
-      glPostingId: draft!.id,
-      sourceKind: 'money_transaction',
-      sourceId: waiting,
-      linkRole: 'pending',
-    })
-    expect(await candidates()).not.toContain(waiting)
-
-    // Discarded: the link cascades away and the movement is drafted again next sweep.
-    await db().delete(schema.GlPosting).where(eq(schema.GlPosting.id, draft!.id))
-    expect(await candidates()).toContain(waiting)
-  })
 })
 
 describe('readMovementDetail', () => {

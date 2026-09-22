@@ -36,15 +36,12 @@ type OutboxCounts = RouterOutputs['ledger']['outboxCounts']
 /** 🛑 `sent` is not counted: the topbar figure is about what is OUTSTANDING. */
 function outstanding(counts: OutboxCounts | undefined): number {
   if (!counts) return 0
-  return (
-    counts.drafts + counts.blocked + counts.unbuilt + counts.ready + counts.sending + counts.failed
-  )
+  return counts.blocked + counts.unbuilt + counts.ready + counts.sending + counts.failed
 }
 
 /**
  * The Outbox, at `/app/accounting/outbox` — everything on its way out of the
- * books: `drafts` (TARGET §4 gate 1 — approve or discard), `blocked`, then the
- * export-batch states, over `?tab=`.
+ * books: `blocked`, then the export-batch states, over `?tab=`.
  *
  * 🛑 NO month nav and NO period pill in the topbar, unlike Closeout. Every tab
  * here reads with no month bound, so "September" over a list reaching back
@@ -156,7 +153,6 @@ export function OutboxPage() {
           ) : null
         }
         bookTimeZone={period.bookTimeZone}
-        currencyCode={period.currencyCode}
         providerLabel={providerLabel}
         activePostingId={drawers.postingId}
         onSelectPosting={drawers.openPosting}

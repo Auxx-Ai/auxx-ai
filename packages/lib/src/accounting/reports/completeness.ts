@@ -84,8 +84,7 @@ export interface ReadCompletenessOptions {
  * would be a permanent, unfixable item on every org's statements. Subtracted
  * here rather than given a sentence, because there is nothing to say.
  */
-// `deposit_application` has no writer since 91 §4.3; TODO(91 S3): drops with the enum value.
-const NEVER_CLOSE_EMITTED = new Set<PostingType>(['provider_sync', 'deposit_application'])
+const NEVER_CLOSE_EMITTED = new Set<PostingType>(['provider_sync'])
 
 /**
  * One sentence per disabled posting type, naming what is consequently missing

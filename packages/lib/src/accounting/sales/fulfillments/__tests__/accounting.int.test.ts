@@ -103,30 +103,28 @@ async function park(
   expect(written.isOk()).toBe(true)
 }
 
-/** The link a posting holds over a shipment: `subject` when live, `pending` on a draft. */
-async function claim(fulfillmentInstanceId: string, kind: 'posted' | 'draft') {
+/** The `subject` link a posting holds over a shipment. */
+async function claim(fulfillmentInstanceId: string) {
   const [posting] = await db()
     .insert(schema.GlPosting)
     .values({
       organizationId,
       postingType: 'fulfillment',
       periodKey: `k-${fulfillmentInstanceId}`,
-      status: kind,
+      status: 'posted',
       txnDate: '2026-03-15',
       totalMinor: 10800,
       built: {},
-      postedAt: kind === 'posted' ? new Date() : null,
+      postedAt: new Date(),
     })
     .returning()
-  await db()
-    .insert(schema.GlPostingSource)
-    .values({
-      organizationId,
-      glPostingId: posting!.id,
-      sourceKind: 'fulfillment',
-      sourceId: fulfillmentInstanceId,
-      linkRole: kind === 'posted' ? 'subject' : 'pending',
-    })
+  await db().insert(schema.GlPostingSource).values({
+    organizationId,
+    glPostingId: posting!.id,
+    sourceKind: 'fulfillment',
+    sourceId: fulfillmentInstanceId,
+    linkRole: 'subject',
+  })
 }
 
 const candidates = () => listFulfillmentAccountingCandidates(db(), organizationId, 100, WINDOW)
@@ -158,12 +156,11 @@ describe('listFulfillmentAccountingCandidates', () => {
     expect(await candidates()).toEqual([early, middle, late])
   })
 
-  it('leaves out the cancelled, the unstamped, the $0, the claimed and the drafted', async () => {
+  it('leaves out the cancelled, the unstamped, the $0 and the claimed', async () => {
     await fulfillment({ status: 'cancelled' })
     await fulfillment({ subtotal: null })
     await fulfillment({ total: 0 })
-    await claim(await fulfillment(), 'posted')
-    await claim(await fulfillment(), 'draft')
+    await claim(await fulfillment())
 
     expect(await candidates()).toEqual([])
   })

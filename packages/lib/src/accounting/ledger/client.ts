@@ -158,7 +158,6 @@ export {
   type DuplicateMovementEntry,
   type DuplicateMovementFinding,
   didLedgerAccept,
-  isExpectedPostOutcome,
   LEDGER_WIDE_SETTING_KEYS,
   type MonthEndInventorySnapshot,
   POSTING_DRAFT_VERSION,
@@ -185,8 +184,6 @@ export {
 } from './roles/client'
 export {
   ABSORPTION_RATE_SETTING_KEYS,
-  AUTO_POST_AVENUES,
-  type AutoPostAvenue,
   avenueOfPostingType,
   describeUnscopedSources,
   EXPORT_AVENUES,

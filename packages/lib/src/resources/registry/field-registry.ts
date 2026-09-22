@@ -25,6 +25,7 @@ import { GL_ACCOUNT_FIELDS } from './resources/gl-account-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
 import { INVOICE_FIELDS } from './resources/invoice-fields'
 import { JOURNAL_ENTRY_FIELDS } from './resources/journal-entry-fields'
+import { JOURNAL_ENTRY_LINE_FIELDS } from './resources/journal-entry-line-fields'
 import { KB_FIELDS } from './resources/kb-fields'
 import { LINE_ITEM_FIELDS } from './resources/line-item-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
@@ -170,6 +171,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   vendor_credit_application: VENDOR_CREDIT_APPLICATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   journal_entry: JOURNAL_ENTRY_FIELDS,
+  journal_entry_line: JOURNAL_ENTRY_LINE_FIELDS,
   build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
   payout: PAYOUT_FIELDS,

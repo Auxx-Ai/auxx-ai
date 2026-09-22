@@ -1,19 +1,9 @@
 // packages/lib/src/accounting/journals/entries/reads.ts
 
 /**
- * Every READ over the journal-entry pointer: the list and the detail. The
- * def-and-field contexts both halves of the module open with live in
- * `fields.ts`.
- *
- * Reads only. The writes live in `writes.ts`, because a file that both queries
- * and mutates is the first step back toward a service class
- * (`docs/lib-module-guide.md` §5).
- *
- * 🛑 **`status` and `lines` are not `journal_entry` fields any more** (TARGET
- * §1). The record is a pointer; both are read off the linked `GlPosting` row,
- * batched here rather than N+1'd per record.
- *
- * No permission checks anywhere in this file. The router asserts
+ * Every READ over the journal-entry document: the list and the detail. Lines are
+ * the `journal_entry_line` children; the status is `draft` until Post stamps
+ * `journal_entry_gl_posting_id`, then that posting's. No permission checks
  * (`docs/lib-module-guide.md` §6).
  */
 
@@ -40,15 +30,15 @@ import type {
 } from './client'
 import {
   type JournalEntryAttribute,
-  type JournalEntryFieldContext,
   loadJournalEntryFieldContext,
+  loadJournalEntryLineFieldContext,
   loadRecurrenceIdentityContext,
 } from './fields'
 import { guard } from './guard'
 
 const DEFAULT_LIMIT = 50
 
-/** One draft, or `null` when it does not exist, is archived, or is another org's. */
+/** One entry, or `null` when it does not exist, is archived, or is another org's. */
 export async function getJournalEntry(
   db: Database,
   organizationId: string,
@@ -60,7 +50,7 @@ export async function getJournalEntry(
       if (!ctx) return null
       const records = await readSystemRecords(db, organizationId, ctx, { ids: [journalEntryId] })
       if (records.length === 0) return null
-      const [record] = await hydrate(db, organizationId, ctx, records)
+      const [record] = await hydrate(db, organizationId, records)
       return record ?? null
     },
     'Failed to read journal entry',
@@ -92,20 +82,9 @@ export async function requireJournalEntry(
 }
 
 /**
- * List drafts and posted entries, newest first.
- *
- * Ordered by `createdAt` rather than by the accounting `date`, for the reason
- * `listBuilds` gives: a draft somebody has not dated yet has no date at all,
- * and ordering on it sorts every unfinished entry to one end of the list -
- * which is the half a bookkeeper is looking at.
- *
- * Every filter is applied IN SQL, so a caller asking for page two gets page two
- * of the filtered set (`docs/lib-module-guide.md` §6).
- *
- * ⚠️ `periodKey` filters on the entry's own `date`, month by month, NOT on the
- * posting's `periodKey` - which for a `manual_journal` is the entry NUMBER.
- * Filtering on the posting key would answer "which entries are numbered
- * 2026-08", which is nothing.
+ * List entries newest first (by `createdAt`), every filter applied IN SQL.
+ * `periodKey` filters on the entry's own `date` by month, never on the posting's
+ * `periodKey`, which for a `manual_journal` is the entry number.
  */
 export async function listJournalEntries(
   db: Database,
@@ -121,25 +100,25 @@ export async function listJournalEntries(
 
       let query = db.select(systemInstanceColumns).from(schema.EntityInstance).$dynamic()
 
-      // 🛑 Every draft carries a posting now (TARGET §1), so this is a plain
-      // INNER join through the pointer to `GlPosting.status` - there is no
-      // longer a default-value fallback to branch on, unlike `kind` below.
+      // `draft` is the absence of a live pointer: no value, or one naming a posting that is gone.
       if (filters.status && ctx.fields.journal_entry_gl_posting_id) {
         const postingIdValue = alias(schema.FieldValue, 'je_posting_v')
         const posting = alias(schema.GlPosting, 'je_posting')
         query = query
-          .innerJoin(
+          .leftJoin(
             postingIdValue,
             systemValueJoin(postingIdValue, ctx.fields.journal_entry_gl_posting_id.id)
           )
-          .innerJoin(
+          .leftJoin(
             posting,
             and(
               eq(posting.id, postingIdValue.valueText),
               eq(posting.organizationId, organizationId)
             )
           )
-        where.push(eq(posting.status, filters.status))
+        where.push(
+          filters.status === 'draft' ? isNull(posting.id) : eq(posting.status, filters.status)
+        )
       }
 
       if (filters.kinds?.length && ctx.fields.journal_entry_kind) {
@@ -200,7 +179,7 @@ export async function listJournalEntries(
 
       if (rows.length === 0) return []
       const records = await readSystemRecords(db, organizationId, ctx, { instances: rows })
-      return hydrate(db, organizationId, ctx, records)
+      return hydrate(db, organizationId, records)
     },
     'Failed to list journal entries',
     { organizationId, filters }
@@ -279,118 +258,90 @@ function monthBoundsUtc(periodKey: string): { start: string; end: string } {
 }
 
 /**
- * Turn a page of read records into full rows with ONE additional query: the
- * linked postings that carry status and lines, batched by
- * `journal_entry_gl_posting_id`.
- *
- * The alternative - a join per attribute on the paging query - multiplies the
- * row count and makes `LIMIT` mean something other than "this many entries".
+ * Turn a page of records into full rows with two batched reads: the stamped
+ * postings (for status) and the line children. Never a join on the paging query,
+ * which would make `LIMIT` count something other than entries.
  */
 async function hydrate(
   db: Database,
   organizationId: string,
-  ctx: JournalEntryFieldContext,
   page: SystemRecord<JournalEntryAttribute>[]
 ): Promise<JournalEntryRecord[]> {
-  const glPostingIds = new Set<string>()
-  for (const record of page) {
-    const raw = record.text('journal_entry_gl_posting_id')
-    if (raw) glPostingIds.add(raw)
-  }
-  const postingById = await readLinkedPostings(db, organizationId, [...glPostingIds])
+  const glPostingIds = page
+    .map((record) => record.text('journal_entry_gl_posting_id'))
+    .filter((id): id is string => !!id)
+  const [headers, linesByEntry] = await Promise.all([
+    readPostingHeaders(db, organizationId, glPostingIds),
+    readJournalEntryLines(
+      db,
+      organizationId,
+      page.map((record) => record.id)
+    ),
+  ])
 
-  return page.map((record) => toRecord(record, postingById))
-}
-
-/** What `toRecord` needs off the linked `GlPosting` row: its status and its lines. */
-interface LinkedPosting {
-  status: JournalEntryStatusValue
-  built: unknown
-}
-
-/** The linked postings behind a page of records, batched by id. */
-async function readLinkedPostings(
-  db: Database,
-  organizationId: string,
-  glPostingIds: string[]
-): Promise<Map<string, LinkedPosting>> {
-  const headers = await readPostingHeaders(db, organizationId, glPostingIds)
-  const byId = new Map<string, LinkedPosting>()
-  for (const [id, header] of headers) {
-    byId.set(id, { status: header.status as JournalEntryStatusValue, built: header.built })
-  }
-  return byId
-}
-
-function toRecord(
-  record: SystemRecord<JournalEntryAttribute>,
-  postingById: Map<string, LinkedPosting>
-): JournalEntryRecord {
-  const glPostingId = record.text('journal_entry_gl_posting_id')
-  const posting = glPostingId ? postingById.get(glPostingId) : undefined
-
-  return {
-    id: record.id,
-    number: record.text('journal_entry_number'),
-    date: parseDateKeyOrNull(record.date('journal_entry_date')),
-    memo: record.text('journal_entry_memo'),
-    // A record whose companion draft is missing (the second half of
-    // `createJournalEntry` never ran) reads as `draft` - there is nothing else
-    // it could be, since only a posting can move it further.
-    status: posting?.status ?? 'draft',
-    kind: (record.option('journal_entry_kind') ?? 'manual') as JournalEntryKindValue,
-    lines: linesFromBuilt(posting?.built),
-    glPostingId,
-    recurrenceRuleId: record.text('journal_entry_recurrence_rule_id'),
-    occurrenceDate: record.text('journal_entry_occurrence_date'),
-    createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : null,
-  }
+  return page.map((record) => {
+    const glPostingId = record.text('journal_entry_gl_posting_id')
+    const posting = glPostingId ? headers.get(glPostingId) : undefined
+    return {
+      id: record.id,
+      number: record.text('journal_entry_number'),
+      date: parseDateKeyOrNull(record.date('journal_entry_date')),
+      memo: record.text('journal_entry_memo'),
+      // A pointer naming a posting that is gone (a ledger reset) reads as unposted.
+      status: (posting?.status ?? 'draft') as JournalEntryStatusValue,
+      kind: (record.option('journal_entry_kind') ?? 'manual') as JournalEntryKindValue,
+      lines: linesByEntry.get(record.id) ?? [],
+      glPostingId,
+      recurrenceRuleId: record.text('journal_entry_recurrence_rule_id'),
+      occurrenceDate: record.text('journal_entry_occurrence_date'),
+      createdAt: record.createdAt instanceof Date ? record.createdAt.toISOString() : null,
+    }
+  })
 }
 
 /**
- * Read a draft's lines off its posting's `resolvedLines`, discarding anything
- * that is not a usable line.
- *
- * 🛑 Tolerant on READ, deliberately - the same rule the old `journal_entry_lines`
- * parser followed. A malformed envelope means the row was written by something
- * else, and the honest response is to render what IS readable. `buildManualEntry`
- * refuses the entry a second time before it can post, so a dropped line cannot
- * become a silently unbalanced posting.
+ * The `journal_entry_line` children of each entry, in sort order, keyed by entry
+ * id. Tolerant on read: a row missing its account or amount still renders, and
+ * `buildManualEntry` refuses it by row number at Post.
  */
-export function linesFromBuilt(built: unknown): JournalEntryLine[] {
-  if (typeof built !== 'object' || built === null) return []
-  const resolvedLines = (built as { resolvedLines?: unknown }).resolvedLines
-  if (!Array.isArray(resolvedLines)) return []
+export async function readJournalEntryLines(
+  db: Database,
+  organizationId: string,
+  journalEntryIds: readonly string[]
+): Promise<Map<string, JournalEntryLine[]>> {
+  const byEntry = new Map<string, JournalEntryLine[]>()
+  if (journalEntryIds.length === 0) return byEntry
+  const ctx = await loadJournalEntryLineFieldContext(db, organizationId)
+  if (!ctx) return byEntry
 
-  const lines: JournalEntryLine[] = []
-  for (const raw of resolvedLines) {
-    if (typeof raw !== 'object' || raw === null) continue
-    const line = raw as Record<string, unknown>
-    const glAccountId =
-      typeof line.glAccountId === 'string' && line.glAccountId.trim().length > 0
-        ? line.glAccountId
-        : null
-    const direction =
-      line.direction === 'debit' || line.direction === 'credit' ? line.direction : null
-    const amountMinor = typeof line.amount === 'number' ? line.amount : null
-    if (!glAccountId || !direction || amountMinor === null) continue
-    const counterpartyType =
-      line.counterpartyType === 'customer' || line.counterpartyType === 'vendor'
-        ? line.counterpartyType
-        : null
-    const counterpartyId =
-      typeof line.counterpartyId === 'string' && line.counterpartyId.trim().length > 0
-        ? line.counterpartyId
-        : null
-    lines.push({
-      glAccountId,
-      direction,
-      amountMinor,
-      ...(typeof line.memo === 'string' && line.memo ? { memo: line.memo } : {}),
-      ...(counterpartyType && counterpartyId ? { counterpartyType, counterpartyId } : {}),
-    })
+  const rows = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'journal_entry_line_journal_entry', in: journalEntryIds },
+  })
+  const ranked = rows
+    .map((row) => ({ row, sortKey: row.number('journal_entry_line_sort_order') ?? 0 }))
+    .sort((a, b) => a.sortKey - b.sortKey)
+
+  for (const { row } of ranked) {
+    const entryId = row.related('journal_entry_line_journal_entry')
+    if (!entryId) continue
+    const counterpartyType = row.option('journal_entry_line_counterparty_type')
+    const counterpartyId = row.text('journal_entry_line_counterparty')
+    const memo = row.text('journal_entry_line_memo')
+    const line: JournalEntryLine = {
+      id: row.id,
+      glAccountId: row.text('journal_entry_line_gl_account') ?? '',
+      direction: row.option('journal_entry_line_side') === 'credit' ? 'credit' : 'debit',
+      amountMinor: row.number('journal_entry_line_amount') ?? 0,
+      ...(memo ? { memo } : {}),
+      ...((counterpartyType === 'customer' || counterpartyType === 'vendor') && counterpartyId
+        ? { counterpartyType, counterpartyId }
+        : {}),
+    }
+    const list = byEntry.get(entryId)
+    if (list) list.push(line)
+    else byEntry.set(entryId, [line])
   }
-  return lines
+  return byEntry
 }
 
 /**

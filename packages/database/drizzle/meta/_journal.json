@@ -2745,6 +2745,13 @@
       "when": 1790104619777,
       "tag": "0391_gl_posting_payout_id",
       "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1790106715657,
+      "tag": "0392_no_ledger_drafts",
+      "breakpoints": true
     }
   ]
 }

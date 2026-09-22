@@ -10,13 +10,10 @@ const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(),
   postEntry: vi.fn(),
   resolveCashEndpoint: vi.fn(),
   settings: {} as Record<string, unknown>,
   money: null as unknown,
-  /** The id `findLiveDraft` answers with, or null. */
-  draft: null as string | null,
   updates: [] as unknown[],
   marks: [] as unknown[],
 }))
@@ -29,7 +26,6 @@ vi.mock('../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
 vi.mock('../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
-vi.mock('../../ledger/post/auto-post', () => ({ readAutoPostMode: h.readAutoPostMode }))
 vi.mock('../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../cash-endpoint', async () => {
   const actual = await vi.importActual<typeof import('../cash-endpoint')>('../cash-endpoint')
@@ -72,18 +68,8 @@ function db(): Database {
     },
     update: () => ({ set: (values: unknown) => ({ where: async () => h.updates.push(values) }) }),
   }
-  // `findLiveDraft`'s select chain, answering `h.draft`.
-  const chain = (): Record<string, unknown> => {
-    const self: Record<string, unknown> = {}
-    for (const method of ['from', 'innerJoin', 'where', 'limit']) self[method] = () => self
-    // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
-    self.then = (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(h.draft ? [{ id: h.draft }] : []).then(resolve)
-    return self
-  }
   return {
     ...base,
-    select: () => chain(),
     transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(base),
   } as unknown as Database
 }
@@ -127,11 +113,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.updates = []
   h.marks = []
-  h.draft = null
   h.isAccountingEnabled.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
-  h.readAutoPostMode.mockResolvedValue('post')
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
   h.resolveCashEndpoint.mockResolvedValue({
     glAccountId: 'gl_undep',
@@ -184,21 +168,6 @@ describe('postMovementEntry', () => {
     h.findLiveSubjectPosting.mockResolvedValue(ok({ id: 'gl_old', txnDate: '2026-09-01' }))
     await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_old' })
     expect(h.postEntry).not.toHaveBeenCalled()
-  })
-
-  it('answers drafted and clears the block when the avenue posts with autoPost off', async () => {
-    h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gl_draft' })
-    await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
-    // A draft is not a refusal: the work item goes, and the draft's own `pending`
-    // link is what the next sweep finds.
-    expect(h.marks).toEqual(CLEARED)
-  })
-
-  it('answers drafted without building again while the movement waits on a live draft', async () => {
-    h.draft = 'gl_draft'
-    await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
-    expect(h.postEntry).not.toHaveBeenCalled()
-    expect(h.marks).toEqual([])
   })
 
   it('skips when accounting is not enabled', async () => {
@@ -280,7 +249,6 @@ describe('postMovementEntry', () => {
     const options = h.postEntry.mock.calls[0]![1]
     expect(options.entry.postingType).toBe('refund')
     expect(options.entry.periodKey).toBe(movementPeriodKey('refund', MOVEMENT))
-    expect(h.readAutoPostMode).toHaveBeenCalledWith(ORG, 'refund')
   })
 
   it('rethrows a non-AuxxError', async () => {

@@ -19,7 +19,6 @@
 // the sentence beside it.
 
 import {
-  AUTO_POST_AVENUES,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,
@@ -136,8 +135,7 @@ export function settingRowTitle(key: string, policy?: PostingPolicy): string {
 
 /**
  * The setting keys this page renders as INPUTS: everything on a policy that no
- * other page owns. Deduplicated - `vendor_payment` and `vendor_refund` share
- * one avenue's `autoPost` key, and a key listed twice is sent twice in the one
+ * other page owns. Deduplicated, since a key listed twice is sent twice in the one
  * batch the save bar writes.
  */
 export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
@@ -162,18 +160,6 @@ export function postingLabelsForAvenue(avenue: ExportAvenue): string[] {
   )
 }
 
-export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
-  return (AUTO_POST_AVENUES as readonly string[]).includes(avenue)
-    ? `accounting.autoPost.${avenue}`
-    : null
-}
-
-/** The `autoPost` key this policy is gated on, which the export table renders instead of its section. */
-export function autoPostKeyForPolicy(policy: PostingPolicy): string | null {
-  const avenue = avenueOfPostingType(policy.type)
-  return avenue ? autoPostKeyForAvenue(avenue) : null
-}
-
 export function autoSendKeyForAvenue(avenue: ExportAvenue): string {
   return `accounting.autoSend.${avenue}`
 }
@@ -191,18 +177,15 @@ export const SUMMARY_GRAIN_LABEL: Record<SummaryGrain, string> = {
   payout: 'Per payout',
 }
 
-/**
- * Every export-table key the page's draft needs beyond `POSTING_PAGE_INPUT_KEYS`
- * (which already carries `autoPost`, one of `policy.settings`).
- */
+/** Every export-table key the page's form draft needs beyond `POSTING_PAGE_INPUT_KEYS`. */
 export const EXPORT_ROW_DRAFT_KEYS: readonly string[] = EXPORT_AVENUES.flatMap((avenue) => {
   const grainKey = summaryGrainKeyForAvenue(avenue)
   return grainKey ? [autoSendKeyForAvenue(avenue), grainKey] : [autoSendKeyForAvenue(avenue)]
 })
 
 // Two independent stacks, not a grid of rows: a grid row is as tall as its
-// tallest cell, so the six-setting `payment` section would open a hole beside
-// itself. Reading order is column-major as a result.
+// tallest cell, so one tall section would open a hole beside itself. Reading
+// order is column-major as a result.
 
 const SECTION_BASE_UNITS = 120
 /** The stack's own `gap-8` under each section. */

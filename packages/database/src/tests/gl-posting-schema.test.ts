@@ -280,8 +280,8 @@ describe('the enum vocabularies', () => {
     expect(glPostingStatus.enumValues).toContain('reversed')
   })
 
-  it('carries `draft` — an entry with lines, no doc number and no claim', () => {
-    expect(glPostingStatus.enumValues).toContain('draft')
+  it('has no `draft` — every entry posts at insert (91 D5)', () => {
+    expect(glPostingStatus.enumValues).not.toContain('draft')
   })
 
   it('matches POSTING_TYPES in packages/lib/src/accounting/ledger/types.ts', () => {
@@ -308,7 +308,6 @@ describe('the enum vocabularies', () => {
       'payment',
       'refund',
       'invoice_issued',
-      'deposit_application',
       'credit_memo',
       // brief 20 §6. The one type auxx does not author: the accountant's own
       // entry, read back off the provider's general ledger.
@@ -319,6 +318,9 @@ describe('the enum vocabularies', () => {
       'vendor_credit',
       // 74 D4.
       'landed_cost_clear',
+      // 92: money with a vendor, either direction.
+      'vendor_payment',
+      'vendor_refund',
     ])
   })
 })

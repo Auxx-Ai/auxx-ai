@@ -29,7 +29,7 @@ interface LedgerStatsProps {
   entryPending: boolean
   /** How many pieces of work stand between this month and a close. */
   blockerCount: number
-  /** Other entries this month: postings plus drafts nobody has posted. */
+  /** Other entries this month: postings plus journal entries nobody has posted. */
   entryCount: number | null
   draftCount: number | null
   balanceReport: BooksBalanceReport | undefined
@@ -93,7 +93,7 @@ export function LedgerStats({
           body: <span className={mono}>{entryCount ?? EMPTY_CELL}</span>,
           description:
             draftCount && draftCount > 0
-              ? `${draftCount} ${draftCount === 1 ? 'draft is' : 'drafts are'} waiting`
+              ? `${draftCount} unposted journal ${draftCount === 1 ? 'entry' : 'entries'}`
               : 'Everything here is posted',
         },
         {

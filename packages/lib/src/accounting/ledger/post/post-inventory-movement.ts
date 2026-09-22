@@ -124,9 +124,6 @@ export async function postInventoryMovementInTx(
     entry: built.entry,
     lock,
     sources,
-    // Never drafted. An inventory entry mirrors rows that already exist; holding
-    // it for review would leave the subledger and the ledger apart by design.
-    mode: 'post',
     actorUserId,
     memo,
   })
@@ -299,6 +296,5 @@ export async function linkMovementsToPosting(
       linkRole: 'member' as const,
       occurrence: 'reversal',
     })),
-    mode: 'post',
   })
 }

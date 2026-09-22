@@ -30,7 +30,6 @@ describe('avenueOfPostingType', () => {
     expect(avenueOfPostingType('fulfillment')).toBe('fulfillment')
     expect(avenueOfPostingType('invoice_issued')).toBe('invoice')
     expect(avenueOfPostingType('payment')).toBe('receipt')
-    expect(avenueOfPostingType('deposit_application')).toBeNull()
     expect(avenueOfPostingType('refund')).toBe('refund')
     expect(avenueOfPostingType('credit_memo')).toBe('creditMemo')
     expect(avenueOfPostingType('vendor_bill')).toBe('expenseBill')

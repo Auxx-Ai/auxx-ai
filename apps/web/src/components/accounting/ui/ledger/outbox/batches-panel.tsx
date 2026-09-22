@@ -114,7 +114,7 @@ export function BatchesPanel({
   const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
 
   // Summary mode only (empty otherwise): what Build would make of the posted,
-  // unbatched entries, shown here so an approved draft has somewhere to be seen.
+  // unbatched entries, shown here so a posted entry has somewhere to be seen.
   // Read once the built batches are all on screen, so the page has one tail.
   const showUnbuilt = tab === 'ready' && !list.isPending && !list.hasNextPage
   const unbuiltList = api.ledger.exportBatches.unbuilt.useInfiniteQuery(
@@ -497,7 +497,7 @@ export function BatchesPanel({
                 date={grainDateLabel(group.grainKey, bookTimeZone, group.txnDateFrom)}
                 typeLabel={exportAvenueLabel(group.avenue)}
                 title={<span className='truncate'>{exportObjectTypeLabel('journal')}</span>}
-                description='Posted here and not yet in a batch. Build makes the journal this row would send; approving more drafts in the same period adds to it until then.'
+                description='Posted here and not yet in a batch. Build makes the journal this row would send; every entry posted in the same period adds to it until then.'
                 secondary={
                   <span className='flex flex-wrap items-center gap-1.5'>
                     {group.storeId && (

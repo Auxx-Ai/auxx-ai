@@ -30,8 +30,7 @@ import { MovementFrame, useMovementFrameHeader } from './movement-frame'
 import { type FrameHeader, PostingFrame, usePostingFrameHeader } from './posting-frame'
 import { ShipmentFrame, useShipmentFrameHeader } from './shipment-frame'
 
-/** 🛑 Not `tab`: on the Outbox that is the page's own tab strip, and a record
- * frame's tab bar would bounce the list from Drafts back to Ready behind the drawer. */
+/** Not `tab`: on the Outbox that is the page's own tab strip, which a record frame's tab bar would switch. */
 export const LEDGER_RECORD_TAB_PARAM = 'rtab'
 
 interface LedgerDrawerHostProps {
@@ -100,7 +99,6 @@ function LedgerDrawerFrames({
   const postingHeader = usePostingFrameHeader(topKind?.kind === 'posting' ? topKind.id : null, {
     onReverse: actions.runReverse,
     isReversing: actions.isReversing,
-    onClose: handleClose,
   })
   const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null)
   const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null)

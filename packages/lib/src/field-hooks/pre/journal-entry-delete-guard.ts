@@ -19,15 +19,10 @@ import type { EntityPreDeleteHandler } from '../types'
  * hard-deleted a POSTED entry with no complaint, leaving its `GlPosting` in the
  * books pointing at a `sourceId` that no longer resolves.
  *
- * `journal_entry_status` no longer exists (TARGET §1): the record is a pointer
- * and its status is the linked `GlPosting`'s, read here directly rather than off
- * a captured field value. No `journal_entry_gl_posting_id` at all reads as
- * `draft` - a record whose companion draft failed to write has nothing posted to
- * protect.
- *
- * ⚠️ **A draft is ALLOWED through.** The guard must not become a second,
- * stricter rule than the procedure it backs up: an unposted draft is a record a
- * person may throw away, and the product's own answer is to archive it.
+ * The status is the stamped posting's, read directly; no pointer (or a pointer
+ * to a posting that is gone) reads as `draft`. An unposted entry is ALLOWED
+ * through - it is what `discardJournalEntry` deletes - and its
+ * `journal_entry_line` children go with it through the `lines` cascade (91 D5).
  *
  * No admin gate, following `parts`: the per-row `record.delete` rule the
  * mutation already asserts is the whole authorization story, and the accounting

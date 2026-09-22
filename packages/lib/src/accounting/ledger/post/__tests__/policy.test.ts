@@ -258,13 +258,4 @@ describe('records and setting copy are declared on the policy they belong to', (
       }
     }
   })
-
-  it('the two autoPost rows describe what off does', () => {
-    expect(
-      POSTING_POLICY.fulfillment.settingCopy?.['accounting.autoPost.fulfillment']?.description
-    ).toMatch(/drafts on the ledger/)
-    expect(
-      POSTING_POLICY.credit_memo.settingCopy?.['accounting.autoPost.creditMemo']?.description
-    ).toMatch(/drafts on the ledger/)
-  })
 })

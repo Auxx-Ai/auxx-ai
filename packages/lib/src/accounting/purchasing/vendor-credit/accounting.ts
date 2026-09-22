@@ -21,8 +21,6 @@ import { and, asc, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { VENDOR_CREDIT_SOURCE_TYPE } from '../../ledger/builders/vendor-credit'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
-import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { type InTxPostResult, postEntry, postEntryInTx } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -80,7 +78,7 @@ export async function postVendorCreditEntryInTx(
   return postEntryInTx(tx, { ...(await vendorCreditPostOptions(input)), lock })
 }
 
-/** The claim links and the auto-post mode both doors share. */
+/** The claim links both doors share. */
 async function vendorCreditPostOptions(input: PostVendorCreditEntryInput) {
   const { organizationId, vendorCreditInstanceId, entry, actorUserId } = input
 
@@ -116,14 +114,12 @@ async function vendorCreditPostOptions(input: PostVendorCreditEntryInput) {
     actorUserId,
     memo: input.memo,
     sources,
-    mode: await readAutoPostMode(organizationId, 'vendorCredit'),
   }
 }
 
 /**
- * Reverse the credit's live issue posting, freeing the claim. A draft still in
- * the outbox is discarded instead. `null` when nothing is standing — an
- * unposted credit voids freely.
+ * Reverse the credit's live issue posting, freeing the claim. `null` when
+ * nothing is standing — an unposted credit voids freely.
  */
 export async function reverseVendorCreditEntry(
   db: Database,
@@ -135,12 +131,6 @@ export async function reverseVendorCreditEntry(
   }
 ): Promise<PostResult | null> {
   const { organizationId, vendorCreditInstanceId, actorUserId, memo } = input
-  const discarded = await discardDraftsForSource(db, {
-    organizationId,
-    sourceKind: VENDOR_CREDIT_SOURCE_TYPE,
-    sourceId: vendorCreditInstanceId,
-  })
-  if (discarded.isErr()) throw new UnprocessableEntityError(discarded.error.message)
   const live = await findLiveSubjectPosting(db, {
     organizationId,
     sourceKind: VENDOR_CREDIT_SOURCE_TYPE,

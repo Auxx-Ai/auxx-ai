@@ -20,14 +20,12 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import {
   BookOpenCheck,
   CalendarClock,
-  Check,
   CircleHelp,
   Clock,
   ExternalLink,
   Layers,
   Link2,
   Send,
-  Trash2,
   Undo2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -37,7 +35,7 @@ import { toFrame, useOpenRecord } from '~/components/records/record-drill-panels
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
-import { api, type RouterOutputs } from '~/trpc/react'
+import { api } from '~/trpc/react'
 import { MovementBadge } from '../movement-badge'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
@@ -45,13 +43,7 @@ import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
 import { ExportBatchStateBadge } from './outbox/export-batch-badge'
 import { ExportFailureRemedy } from './outbox/export-failure-remedy'
-import { OUTCOMES } from './post-result-callout'
-import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
-
-/** Hydrated beside the link by `postingSources`; a stored draft envelope carries none. */
-type PostingSourceMovement = NonNullable<
-  RouterOutputs['ledger']['postingSources'][number]['movement']
->
+import { readStoredAssertions, readStoredReasons } from './stored-draft'
 
 /** What `LedgerDrawerHost` puts in its one `DrawerHeader` while a posting is on top. */
 export interface FrameHeader {
@@ -70,11 +62,7 @@ export interface FrameHeader {
  */
 export function usePostingFrameHeader(
   postingId: string | null,
-  {
-    onReverse,
-    isReversing,
-    onClose,
-  }: { onReverse: (memo: string) => void; isReversing: boolean; onClose: () => void }
+  { onReverse, isReversing }: { onReverse: (memo: string) => void; isReversing: boolean }
 ): FrameHeader {
   const [confirm, ConfirmDialog] = useConfirm()
   const { data: detail } = api.ledger.get.useQuery(
@@ -99,46 +87,6 @@ export function usePostingFrameHeader(
     onError: (error) => toastError({ title: 'Could not send', description: error.message }),
   })
 
-  function refreshDrafts() {
-    void utils.ledger.get.invalidate()
-    void utils.ledger.listDrafts.invalidate()
-    void utils.ledger.listPostings.invalidate()
-    void utils.ledger.periods.invalidate()
-    void utils.ledger.outboxCounts.invalidate()
-  }
-  // A refusal comes back as a result, not a throw - the drawer has no row overlay, so it toasts.
-  const postDraft = api.ledger.postDraft.useMutation({
-    onSuccess: (result) => {
-      refreshDrafts()
-      if (OUTCOMES[result.status].tone === 'failure')
-        toastError({ title: OUTCOMES[result.status].title, description: result.error ?? undefined })
-    },
-    onError: (error) => toastError({ title: 'Could not post', description: error.message }),
-  })
-  const discardDraft = api.ledger.discardDraft.useMutation({
-    onSuccess: () => {
-      refreshDrafts()
-      onClose()
-    },
-    onError: (error) => toastError({ title: 'Could not discard', description: error.message }),
-  })
-
-  async function handleHeaderDiscard() {
-    if (!detail) return
-    const confirmed = await confirm({
-      title: `Discard ${detail.docNumber || 'this draft'}?`,
-      description:
-        'A draft holds no claim and no document number, so nothing else is affected. This cannot be undone from here.' +
-        (detail.postingType === 'vendor_bill'
-          ? ' For a vendor bill, Edit then Save drafts it again.'
-          : ''),
-      confirmText: 'Discard the draft',
-      cancelText: 'Keep it',
-      destructive: true,
-    })
-    if (confirmed) discardDraft.mutate({ glPostingId: detail.id })
-  }
-
   async function handleHeaderReverse() {
     const confirmed = await confirm({
       title: 'Reverse this posting?',
@@ -152,7 +100,7 @@ export function usePostingFrameHeader(
   }
 
   return {
-    drawerTitle: detail ? `Posting ${detail.docNumber || '(draft)'}` : 'Posting',
+    drawerTitle: detail ? `Posting ${detail.docNumber}` : 'Posting',
     icon: <BookOpenCheck className='size-5 text-muted-foreground' />,
     title: (
       <div className='flex flex-wrap items-center gap-2'>
@@ -185,30 +133,6 @@ export function usePostingFrameHeader(
               <Send className={send.isPending ? 'animate-pulse' : undefined} />
             </Button>
           </Tooltip>
-        )}
-        {detail?.status === 'draft' && canRelease && (
-          <>
-            <Tooltip content='Discard the draft'>
-              <Button
-                variant='ghost'
-                size='icon-xs'
-                aria-label='Discard the draft'
-                disabled={discardDraft.isPending || postDraft.isPending}
-                onClick={() => void handleHeaderDiscard()}>
-                <Trash2 className={discardDraft.isPending ? 'animate-pulse' : undefined} />
-              </Button>
-            </Tooltip>
-            <Tooltip content='Approve and post'>
-              <Button
-                variant='ghost'
-                size='icon-xs'
-                aria-label='Approve and post'
-                disabled={postDraft.isPending || discardDraft.isPending}
-                onClick={() => postDraft.mutate({ glPostingId: detail.id })}>
-                <Check className={postDraft.isPending ? 'animate-pulse' : undefined} />
-              </Button>
-            </Tooltip>
-          </>
         )}
         {detail?.status === 'posted' && (
           <Tooltip content='Reverse this posting'>
@@ -256,7 +180,7 @@ interface PostingFrameProps {
  *
  * ⚠️ Everything here is the STORED record, never a re-run of the builder. The
  * lines come from `GlPostingLine` with the account name as it stood at posting
- * time, and the roll-forward comes from the stored draft's assertions - already
+ * time, and the roll-forward comes from the stored envelope's assertions - already
  * swapped by `reverseEntry` when this posting is a reversal, so nothing swaps
  * them again here. Re-deriving either would give a different answer the moment
  * the subledger moves, and the number that matters is the one that was posted.
@@ -276,12 +200,7 @@ export function PostingFrame({
   const postingQuery = api.ledger.get.useQuery({ id: postingId }, { staleTime: 30_000 })
   const detail = postingQuery.data
 
-  // The Links section's primary read (accounting migration step 1c): the
-  // actual `GlPostingSource` rows. A draft written before `postEntry` gained
-  // `sources` support (or one built by an older revision) may have none, so
-  // the stored envelope below is the fallback for that case only - never the
-  // primary source for a posted entry, whose `GlPostingSource` rows are the
-  // claim itself and cannot drift from what is rendered here.
+  // The Links section's read: the posting's actual `GlPostingSource` rows.
   const postingSourcesQuery = api.ledger.postingSources.useQuery(
     { glPostingId: postingId },
     { staleTime: 30_000 }
@@ -303,13 +222,7 @@ export function PostingFrame({
 
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
-  const linkedSources = postingSourcesQuery.data ?? []
-  const sources =
-    linkedSources.length > 0
-      ? linkedSources
-      : detail?.status === 'draft'
-        ? readStoredSources(detail.draft)
-        : []
+  const sources = postingSourcesQuery.data ?? []
   const isReversal = !!detail?.reversesId
 
   function handleReverse() {
@@ -462,9 +375,7 @@ export function PostingFrame({
 
         {/* The links (TARGET §1): what this entry is OF (`subject`), and
             what it names as `parent`, `counterparty` or `member` -
-            `ledger.postingSources`' `GlPostingSource` rows, falling back
-            to the stored envelope only for a draft with none written yet
-            (see the query above). Replaces the register (accounting
+            `ledger.postingSources`' `GlPostingSource` rows. Replaces the register (accounting
             migration step 1b, part E): a summary is a grouping of
             postings now, never its own kind of row, so there is no
             second ledger to drill into. */}
@@ -479,11 +390,8 @@ export function PostingFrame({
               visibleLimit={5}
               getKey={(source, index) => `${source.sourceKind}-${source.sourceId}-${index}`}
               renderRow={(source) => {
-                // A linked row carries a `RecordId`; a stored draft envelope does not.
-                const recordId = ('recordId' in source ? source.recordId : null) as RecordId | null
-                const movement = (
-                  'movement' in source ? source.movement : null
-                ) as PostingSourceMovement | null
+                const recordId = source.recordId as RecordId | null
+                const movement = source.movement
                 return (
                   <TreeRow
                     title={
@@ -604,7 +512,6 @@ function statusVariant(status: PostingDetail['status']) {
 }
 
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
-  draft: 'Draft',
   posted: 'Posted',
   reversed: 'Reversed',
 }

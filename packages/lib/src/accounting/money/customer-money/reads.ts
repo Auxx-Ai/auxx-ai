@@ -92,7 +92,7 @@ export async function listOrderMoneyTransactions(
     [...accounting].map(([moneyTransactionId, row]) => [
       moneyTransactionId,
       {
-        state: (row.status === 'draft' ? 'pending' : 'accepted') as 'pending' | 'accepted',
+        state: 'accepted' as const,
         reason: null,
         effectiveDate: String(row.txnDate).slice(0, 10),
         glPostingId: row.glPostingId,

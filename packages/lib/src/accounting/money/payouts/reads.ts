@@ -507,8 +507,7 @@ async function withLivePostings(
     const withReason = item
       ? { ...record, blockedReason: workItemSentence(item.reasonCode, item) }
       : record
-    // POSTED only: a drafted entry holds the subject row too, and this column
-    // is "what is in the books".
+    // POSTED only: this column is "what is in the books".
     const posting = live.get(record.payoutId)
     return posting?.status === 'posted'
       ? { ...withReason, glPostingId: posting.glPostingId }

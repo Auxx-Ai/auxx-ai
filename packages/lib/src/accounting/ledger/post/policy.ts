@@ -378,7 +378,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax collected, summarised' },
     ],
-    settings: ['accounting.autoPost.fulfillment'],
+    settings: [],
     sentence:
       "One entry per shipment recognises revenue, shipping and tax the moment it ships, debited to the order's payment rail's clearing account or to receivables on terms.",
     disabledSentence:
@@ -410,13 +410,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD],
-    settingCopy: {
-      'accounting.autoPost.fulfillment': {
-        title: 'Auto-post fulfillments',
-        description:
-          'On, a shipment posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -446,7 +439,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'The whole amount; a prepayment leaves the customer in credit until the sale posts',
       },
     ],
-    settings: ['accounting.autoPost.receipt'],
+    settings: [],
     sentence:
       'Every customer payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, or undeposited funds.',
     disabledSentence:
@@ -460,13 +453,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [BANK_ACCOUNTS_RECORD, PAYMENT_GATEWAYS_RECORD],
-    settingCopy: {
-      'accounting.autoPost.receipt': {
-        title: 'Auto-post receipts',
-        description:
-          'On, a payment posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -494,7 +480,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'The part of a bill an early-payment discount settled, when one was taken',
       },
     ],
-    settings: ['accounting.autoPost.vendorPayment'],
+    settings: [],
     sentence:
       'A vendor payment posts as it is recorded, relieving the payable and leaving by whatever the payment itself names.',
     disabledSentence:
@@ -508,13 +494,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [BANK_ACCOUNTS_RECORD],
-    settingCopy: {
-      'accounting.autoPost.vendorPayment': {
-        title: 'Auto-post vendor payments',
-        description:
-          'On, a vendor payment or refund posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -543,7 +522,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'A refund naming no source',
       },
     ],
-    settings: ['accounting.autoPost.refund'],
+    settings: [],
     sentence:
       "A refund posts as it is issued, leaving by whatever the refund itself names: a rail's clearing account, a bank account, or undeposited funds.",
     disabledSentence:
@@ -557,13 +536,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [BANK_ACCOUNTS_RECORD, PAYMENT_GATEWAYS_RECORD],
-    settingCopy: {
-      'accounting.autoPost.refund': {
-        title: 'Auto-post refunds',
-        description:
-          'On, a refund posts immediately. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -587,9 +559,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: "The vendor credit's own control account, as its issue entry debited it",
       },
     ],
-    // The vendor payment's lane, arriving instead of leaving: one switch for
-    // money either way with a supplier, as `receipt` is for a customer.
-    settings: ['accounting.autoPost.vendorPayment'],
+    settings: [],
     sentence:
       "A supplier's refund of a vendor credit posts as it is recorded, arriving into whatever endpoint it names and settling the credit.",
     disabledSentence:
@@ -752,19 +722,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       { side: 'credit', role: ACCOUNT_ROLES.REVENUE_SERVICE, what: 'The subtotal' },
       { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax on the invoice' },
     ],
-    settings: ['accounting.autoPost.invoice'],
+    settings: [],
     sentence:
       'Sending an invoice raises the receivable every payment entry relieves, dated the day the invoice was issued.',
     disabledSentence:
       'Invoice posting is off, so a sent invoice raises no receivable and its revenue is never recognised.',
     parameters: [],
-    settingCopy: {
-      'accounting.autoPost.invoice': {
-        title: 'Auto-post invoices',
-        description:
-          'On, an invoice posts immediately at send. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -798,7 +761,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: "The refund leaving through the rail's clearing account, or its record's account by id",
       },
     ],
-    settings: ['accounting.autoPost.creditMemo'],
+    settings: [],
     sentence:
       'A credit memo reverses revenue and tax against the receivable the moment it is issued; when the channel already refunded the money, the same entry drains it through clearing.',
     disabledSentence:
@@ -812,13 +775,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
     ],
     records: [PAYMENT_GATEWAYS_RECORD],
-    settingCopy: {
-      'accounting.autoPost.creditMemo': {
-        title: 'Auto-post credit memos',
-        description:
-          'On, a credit memo posts immediately at issue. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -837,7 +793,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'Each line, the account the original charge was coded to',
       },
     ],
-    settings: ['accounting.autoPost.vendorCredit'],
+    settings: [],
     sentence:
       "Issuing a supplier's credit note reduces the payable and gives back whatever the original bill was coded to, dated the credit.",
     disabledSentence:
@@ -856,13 +812,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'A vendor credit is the money side only; a physical return to the supplier is its own stock movement.',
       },
     ],
-    settingCopy: {
-      'accounting.autoPost.vendorCredit': {
-        title: 'Auto-post vendor credits',
-        description:
-          'On, a vendor credit posts immediately on Issue. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -997,7 +946,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       { side: 'debit', role: ACCOUNT_ROLES.PURCHASE_TAX, what: "The header's tax" },
       { side: 'credit', role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE, what: 'What the vendor is owed' },
     ],
-    settings: ['accounting.autoPost.expenseBill'],
+    settings: [],
     sentence:
       'Posting a vendor bill raises the payable for what the vendor is asking: a line against a purchase order relieves the goods-received accrual at the agreed price and books the difference as purchase price variance, and any other line lands on the account it was coded to.',
     disabledSentence:
@@ -1022,13 +971,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           "The bill's totals are copied from the vendor's document and never recomputed, and the entry refuses unless the lines, shipping, tax and discount tie to the stated total.",
       },
     ],
-    settingCopy: {
-      'accounting.autoPost.expenseBill': {
-        title: 'Auto-post vendor bills',
-        description:
-          'On, a bill posts immediately on Post. Off, it drafts on the ledger for review and approval.',
-      },
-    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -1079,22 +1021,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   },
 
   // ── Never posting, and declared so ──────────────────────────────────────
-
-  // TODO(91 S3): the row leaves with the pgEnum value.
-  deposit_application: {
-    type: 'deposit_application',
-    label: 'Deposit application',
-    trigger: { kind: 'never' },
-    template: [],
-    settings: [],
-    sentence:
-      'Applying a prepayment to an invoice posts nothing: the receipt already credited accounts receivable.',
-    disabledSentence: 'Deposit application posting is off.',
-    parameters: [],
-    enabled: false,
-    exportRoute: 'journal',
-    singleWriterRoles: [],
-  },
 
   month_end_deferral: {
     type: 'month_end_deferral',

@@ -30,7 +30,7 @@ import {
   CREDIT_MEMO_POSTING_TYPE,
 } from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
@@ -543,7 +543,11 @@ export async function issueCreditMemo(
     // The org keeps no books, so nothing was asked of the ledger.
     post = { status: 'not_enabled' }
   }
-  if (!isExpectedPostOutcome(post)) {
+  if (
+    !didLedgerAccept(post) &&
+    post.status !== 'not_enabled' &&
+    post.status !== 'nothing_to_recognise'
+  ) {
     throw new BadRequestError(
       `This credit memo could not be posted to the general ledger` +
         `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
@@ -651,7 +655,7 @@ export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInp
         actorUserId: userId,
         memo: `Credit memo ${memo.number} voided`,
       })
-      if (reversal && !isExpectedPostOutcome(reversal)) {
+      if (reversal && !didLedgerAccept(reversal)) {
         throw new BadRequestError(
           'This credit memo has a general ledger entry that could not be reversed' +
             `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}. Voiding it ` +

@@ -21,8 +21,7 @@
  * amounts, then a verdict that flickers. So this returns the assembled view.
  */
 
-import { type Database, schema } from '@auxx/database'
-import { eq } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { readOrganizationSettings } from '../../settings/read'
 import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/client'
@@ -50,15 +49,10 @@ import { guard } from './guard'
 /**
  * The one opening entry, whatever state it is in.
  *
- * A draft wins over a posted one, and that is the only ordering rule worth
- * having: after a reversal the ordinary repair is to raise a new draft beside
- * the reversed record, and the screen has to open the thing that is still being
- * edited. `listJournalEntries` orders newest first, so the fallback is the most
- * recent posted or reversed entry.
- *
- * Returns `null` on an org that has not run entity migration 125, rather than
- * throwing - the wizard renders an empty grid there instead of a 500, and the
- * WRITE path is where the refusal belongs.
+ * The unposted record wins - after a reversal the repair is a new entry beside
+ * the reversed one, and the screen opens what is still being edited. Unposted
+ * means no stamped posting, read off the record's own pointer; the ledger holds
+ * no drafts (91 D5). Otherwise the newest. `null` on an unprovisioned org.
  */
 export async function findOpeningTrialBalanceEntry(
   db: Database,

@@ -20,8 +20,7 @@ import {
 } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError } from '../../../errors'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { discardDraftPosting } from '../../ledger/post/draft-lines'
-import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
+import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { readPostingHeaders } from '../../ledger/reads/read-posting'
 import type { BuiltEntry, GlPostingLineInput } from '../../ledger/types'
@@ -35,8 +34,8 @@ export interface SaveDocumentEditResult {
   /**
    * `unchanged` — the rebuilt entry equals the live one, or a concurrent Save
    * closed the edit first; either way nothing was posted.
-   * `reposted` — the live entry was reversed (or its draft discarded, or it was
-   * already gone) and the document posted again.
+   * `reposted` — the live entry was reversed (or was already gone) and the
+   * document posted again.
    * `not_posted` — accounting is off, so there is no entry to keep up to date.
    */
   outcome: 'unchanged' | 'reposted' | 'not_posted'
@@ -52,11 +51,6 @@ export interface SaveDocumentEditResult {
  * When the rebuilt entry's lines equal the live posting's, nothing is posted: a
  * Save that only fixed a description would otherwise leave a reversal and its
  * twin in the books.
- *
- * Under an avenue with auto-post off the live entry is a DRAFT: it is discarded
- * and the document drafted again, with no reversal pair and no new generation. A
- * document whose draft was discarded in the outbox has no entry at all, and Save
- * is the only door back — Post refuses anything already finalized (73 D13).
  */
 export async function saveDocumentEdit(
   db: Database,
@@ -99,10 +93,7 @@ export async function saveDocumentEdit(
     await row.afterSave?.(db, { organizationId, userId, entityInstanceId })
   }
 
-  // The document is finalized and carries no entry: its draft was discarded in
-  // the outbox. Post it again from current values rather than leave it stranded —
-  // a discarded draft took no document number with it, so the generation the
-  // document already stands at is still free (73 D13).
+  // Finalized with no live entry: post from current values; Post refuses a finalized document (73 D13).
   if (live.length === 0) {
     const post = await built.post(db, { actorUserId: userId, memo: row.restoredMemo(doc) })
     if (!post) {
@@ -110,7 +101,7 @@ export async function saveDocumentEdit(
       await reproject()
       return { outcome: 'not_posted', docNumber: null, edit: null }
     }
-    if (!isExpectedPostOutcome(post)) {
+    if (!didLedgerAccept(post) && post.status !== 'nothing_to_recognise') {
       throw new BadRequestError(
         `This ${row.noun} could not be posted to the general ledger again` +
           `${post.error ? `: ${post.error}` : ` (${post.status})`}. Nothing has been changed.`,
@@ -119,7 +110,7 @@ export async function saveDocumentEdit(
     }
     await close()
     await reproject()
-    logger.info('Posted a document again after its entry was discarded', {
+    logger.info('Posted a document that had no live entry', {
       organizationId,
       family,
       entityInstanceId,
@@ -162,24 +153,6 @@ export async function saveDocumentEdit(
 
     let reversed = false
     for (const posting of live) {
-      // A draft never reached the books, so it is thrown away rather than
-      // reversed - and it took no document number with it, so the repost below
-      // stays on the same generation.
-      if (posting.status === 'draft') {
-        const discarded = await discardDraftPosting(txDb, {
-          organizationId,
-          glPostingId: posting.glPostingId,
-        })
-        if (discarded.isErr()) {
-          throw new BadRequestError(
-            `This ${row.noun}'s drafted entry could not be discarded: ${discarded.error.message}. ` +
-              'The edit cannot be saved, and nothing has been changed.',
-            { family, entityInstanceId, glPostingId: posting.glPostingId }
-          )
-        }
-        continue
-      }
-
       const reversal = await reverseEntry(txDb, {
         organizationId,
         glPostingId: posting.glPostingId,
@@ -187,7 +160,7 @@ export async function saveDocumentEdit(
         lock,
         memo: row.reversalMemo(doc, posting.docNumber),
       })
-      if (!isExpectedPostOutcome(reversal)) {
+      if (!didLedgerAccept(reversal)) {
         throw new BadRequestError(
           `This ${row.noun}'s entry (${posting.docNumber}) could not be reversed` +
             `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}, so the edit ` +
@@ -207,7 +180,7 @@ export async function saveDocumentEdit(
     const entry = generation === ledgerState.generation ? built : plan.build(generation)
 
     const post = await entry.post(txDb, { actorUserId: userId, memo: row.repostMemo(doc) })
-    if (post && !isExpectedPostOutcome(post)) {
+    if (post && !didLedgerAccept(post) && post.status !== 'nothing_to_recognise') {
       throw new BadRequestError(
         `This ${row.noun} could not be re-posted to the general ledger` +
           `${post.error ? `: ${post.error}` : ` (${post.status})`}. Nothing has been changed.`,

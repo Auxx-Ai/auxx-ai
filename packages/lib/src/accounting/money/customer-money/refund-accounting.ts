@@ -177,7 +177,6 @@ export async function linkRefundPostingToMemos(
         sourceId: memo.id,
         linkRole: 'parent' as const,
       })),
-      mode: 'post',
     })
 
   const exceeded: string[] = []

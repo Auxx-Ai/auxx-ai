@@ -51,14 +51,6 @@ export async function listMovementAccountingCandidates(
         AND link."sourceKind" = 'money_transaction'
         AND link."sourceId" = ${schema.MoneyTransaction.id}
         AND link."linkRole" = 'subject')`,
-    // Waiting on a draft in the Outbox: no claim yet, but nothing to do either.
-    sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} pending
-        JOIN ${schema.GlPosting} draft ON draft."id" = pending."glPostingId"
-        WHERE pending."organizationId" = ${organizationId}
-        AND pending."sourceKind" = 'money_transaction'
-        AND pending."sourceId" = ${schema.MoneyTransaction.id}
-        AND pending."linkRole" = 'pending'
-        AND draft."status" = 'draft')`,
     noWorkItem(organizationId, {
       stage: 'post',
       sourceKind: 'money_transaction',

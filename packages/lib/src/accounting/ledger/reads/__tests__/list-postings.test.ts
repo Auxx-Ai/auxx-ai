@@ -142,7 +142,7 @@ describe('findLinkedPostings', () => {
 })
 
 describe('findLiveSubjectPostings', () => {
-  it('asks for the subject role and both LIVE statuses - a draft holds the pointer too', async () => {
+  it('asks for the subject role and the posted status', async () => {
     const stub = stubDb([])
     await findLiveSubjectPostings(stub.db, 'org_1', {
       sourceKind: 'payout',
@@ -150,7 +150,6 @@ describe('findLiveSubjectPostings', () => {
     })
     const params = stub.params()
     expect(params).toContain('subject')
-    expect(params).toContain('draft')
     expect(params).toContain('posted')
     // A reversal deletes the subject row, so the status never reads `reversed`.
     expect(params).not.toContain('reversed')

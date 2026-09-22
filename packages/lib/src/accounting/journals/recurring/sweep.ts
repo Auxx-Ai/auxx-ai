@@ -27,6 +27,8 @@ const logger = createScopedLogger('postings:recurring-journals')
 export interface RecurringJournalSweepSummary {
   rulesEvaluated: number
   entriesGenerated: number
+  /** Entries the ledger accepted - generated this pass, or left unposted by an earlier one. */
+  entriesPosted: number
   /**
    * Every template whose next entry is owed to a CLOSED month.
    *
@@ -58,6 +60,7 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
   const summary: RecurringJournalSweepSummary = {
     rulesEvaluated: 0,
     entriesGenerated: 0,
+    entriesPosted: 0,
     held: [],
     failed: 0,
   }
@@ -83,6 +86,7 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
         continue
       }
       summary.entriesGenerated += result.value.generated.length
+      summary.entriesPosted += result.value.posted.length
       if (result.value.held) {
         summary.held.push({
           organizationId: rule.organizationId,

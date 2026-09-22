@@ -38,11 +38,9 @@ import {
   ACCOUNT_ROLES,
   assertAccountingSetupUnfrozen,
   CHART_PACK_KEYS,
-  countDraftPostings,
   createChartAccount,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
-  discardDraftPosting,
   EXPORT_AVENUES,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
@@ -56,7 +54,6 @@ import {
   listRoleMap,
   listRoleSources,
   monthDateRange,
-  postDraft,
   readCloseBlockers,
   readExportSettings,
   readLatestPostingsByType,
@@ -125,7 +122,7 @@ import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
 
 /** What a posting's links are read in, so two postings of a kind read alike (task 83 §2.1). */
-const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'pending', 'subject', 'member']
+const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'subject', 'member']
 
 const logger = createScopedLogger('ledger-router')
 
@@ -196,7 +193,7 @@ function sourceRoleRank(linkRole: string): number {
  *
  * What DOES throw is everything upstream of the poster: `resolvePeriodLock`
  * fails closed on a malformed `ledger.lockedThroughMonth` setting, `buildEntry`
- * refuses a draft that does not balance, and `periodMonth` rejects a malformed
+ * refuses an entry that does not balance, and `periodMonth` rejects a malformed
  * bound. All three throw `AuxxError` subclasses, which `auxxErrorMiddleware`
  * maps to the right status. Nothing here catches them - a `try/catch` that
  * rethrew would have to guard with `isAuxxError(e)` from `~/server/api/trpc`,
@@ -510,15 +507,9 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * One posting, with its lines and its stored draft - the posting drawer's
-   * single read.
-   *
-   * 🛑 The `draft` comes back as it was STORED, assertions included. The
-   * roll-forward panel renders `assertions.before` / `assertions.after` from it
-   * and must never re-derive them from the subledger: a posted entry asserts
-   * what the world looked like when it was posted, and a reversal swaps the pair
-   * rather than recomputing it. Re-reading would make a reversed month render as
-   * though it had never been reversed.
+   * One posting with its lines and its stored envelope - the posting drawer's single read.
+   * The envelope's assertions come back as stored, never re-derived, so a reversed month
+   * still renders its swapped pair.
    */
   get: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ id: z.string().min(1) }))
@@ -556,8 +547,7 @@ export const ledgerRouter = createTRPCRouter({
             eq(schema.GlPostingSource.glPostingId, input.glPostingId)
           )
         )
-      // One read for every movement on the posting, not one per badge - a Drafts
-      // page renders forty rows.
+      // One read for every movement on the posting, not one per badge.
       const movements = await readMovements(
         ctx.db,
         organizationId,
@@ -1755,43 +1745,6 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every DRAFT posting - the Outbox's Drafts tab (TARGET §4 gate 1, step 1c).
-   * A draft holds no claim and no doc number; `autoPost` off on its avenue is
-   * what leaves one here instead of `posted`.
-   *
-   * 🛑 The month is OPTIONAL, and the Outbox omits it. Drafts sits beside the
-   * export tabs, which span every period, and a tab strip whose scope changed
-   * per tab made "3 drafts" mean two different things on one screen. A draft
-   * older than the month on the toolbar is still work somebody owes.
-   *
-   * `ledgerPost`, not `ledgerView`: the tab is where a draft gets approved or
-   * discarded, and reviewing what is queued to post is part of that authority.
-   */
-  listDrafts: permissionProcedure(PermissionKey.ledgerPost)
-    .input(
-      outboxPage.extend({ categories: outboxCategories }).refine(validOutboxRange, outboxRangeError)
-    )
-    .query(async ({ ctx, input }) => {
-      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
-      const offset = input.cursor ?? 0
-      const result = await listPostings(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        status: 'draft',
-        categories: input.categories,
-        search: input.search,
-        from: input.from,
-        to: input.to,
-        limit: pageSize,
-        offset,
-      })
-      if (result.isErr()) throw result.error
-      return {
-        items: result.value,
-        nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
-      }
-    }),
-
-  /**
    * The Outbox's Blocked tab: parked accounting work grouped by
    * `(reasonCode, role, railId, glAccountId)`, newest write first (91 §4.6).
    */
@@ -1838,21 +1791,19 @@ export const ledgerRouter = createTRPCRouter({
 
   /**
    * Every Outbox tab's badge and the rail's total, counted in SQL - one dev org
-   * holds ~1,100 blocked movements, so no badge rides on the rows. Drafts and
-   * blocked are `ledgerPost` reads, so a member without it sees zero for both,
-   * matching the tabs that member is not offered.
+   * holds ~1,100 blocked movements, so no badge rides on the rows. Blocked is a
+   * `ledgerPost` read, so a member without it sees zero, matching the tab it is
+   * not offered.
    */
   outboxCounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
-    const [drafts, blocked, batches, unbuilt] = await Promise.all([
-      canPost ? countDraftPostings(ctx.db, organizationId) : 0,
+    const [blocked, batches, unbuilt] = await Promise.all([
       canPost ? countBlockedWork(ctx.db, organizationId) : 0,
       countExportBatchesByState(ctx.db, organizationId),
       countUnbuiltSummaryRows(ctx.db, { organizationId }),
     ])
     return {
-      drafts,
       blocked,
       /** Summary mode's groups Build has not made yet; they sit on Ready as rows. */
       unbuilt: unbuilt.isOk() ? unbuilt.value : 0,
@@ -1901,41 +1852,6 @@ export const ledgerRouter = createTRPCRouter({
             })
       if (woken.isErr()) throw woken.error
       return { woken: woken.value }
-    }),
-
-  /**
-   * Promote a draft: re-resolve its roles, re-check the period lock, claim,
-   * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
-   * or an account the chart no longer holds comes back as a `PostResult` status
-   * the Drafts tab renders, exactly as {@link post} does.
-   */
-  postDraft: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      const lock = await resolvePeriodLock(organizationId)
-
-      return postDraft(ctx.db, {
-        organizationId,
-        glPostingId: input.glPostingId,
-        actorUserId: userId,
-        lock,
-      })
-    }),
-
-  /**
-   * Throw a draft posting away: its lines, then the header. A draft holds no
-   * claim, so nothing is released - there is simply nothing left to post.
-   */
-  discardDraft: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ glPostingId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
-      const result = await discardDraftPosting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        glPostingId: input.glPostingId,
-      })
-      if (result.isErr()) throw result.error
-      return { glPostingId: input.glPostingId, discarded: true }
     }),
 
   /**

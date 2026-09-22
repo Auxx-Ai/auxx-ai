@@ -83,13 +83,7 @@ export interface PostingDraftV1 {
    * their line numbers - and the drawer prefixes it with "Reversing:".
    */
   reasons?: PostingReason[]
-  /**
-   * What the entry is FOR, as the writer supplied it.
-   *
-   * 🛑 Frozen here because a DRAFT writes no subject row - the subject row is
-   * the claim and a draft holds none - so this is the only record of which
-   * source `postDraft` must claim when the draft is approved.
-   */
+  /** What the entry is FOR, as the writer supplied it. */
   sources?: GlPostingSourceInput[]
 }
 

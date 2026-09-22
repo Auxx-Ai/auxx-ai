@@ -228,15 +228,6 @@ describe('recordVendorPayment', () => {
     await expect(run()).rejects.toThrow(/not in the books yet/)
   })
 
-  // 🛑 A draft holds no claim and no balance. "A row came back" is not the gate.
-  it('refuses a bill whose entry is still a draft in the outbox', async () => {
-    h.postings = [
-      { glPostingId: 'gp_d', docNumber: '', status: 'draft', postingType: 'vendor_bill' },
-    ]
-    await expect(run()).rejects.toThrow(/waiting for approval in the outbox/)
-    expect(h.inserts).toEqual([])
-  })
-
   it('pays a matched PO bill, whose posting came from the match hook', async () => {
     h.postings = [
       {

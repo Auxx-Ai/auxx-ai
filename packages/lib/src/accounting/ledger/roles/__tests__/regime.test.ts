@@ -135,14 +135,7 @@ describe('cash is gone as a role, and the guard is narrowed back to inventory', 
 
 /** The document families brief 14 §2.3 named, kept as the guard even though every family routes uniformly. */
 const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
-  documents: [
-    'invoice_issued',
-    'credit_memo',
-    'payment',
-    'refund',
-    'deposit_application',
-    'write_off',
-  ],
+  documents: ['invoice_issued', 'credit_memo', 'payment', 'refund', 'write_off'],
   inventory: [
     'inventory_movement',
     'vendor_bill',

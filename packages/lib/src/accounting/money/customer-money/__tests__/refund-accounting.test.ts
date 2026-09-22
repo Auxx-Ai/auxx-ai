@@ -12,7 +12,6 @@ const h = vi.hoisted(() => ({
   postEntry: vi.fn(),
   posted: null as string | null,
   resolvePeriodLock: vi.fn(),
-  readAutoPostMode: vi.fn(async () => 'post'),
   resolveRoles: vi.fn(),
   resolveBankAccountGlAccountInTx: vi.fn(),
   readSource: vi.fn(),
@@ -30,9 +29,6 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
-}))
-vi.mock('../../../ledger/post/auto-post', () => ({
-  readAutoPostMode: h.readAutoPostMode,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 // The refund's own claim appears once `postEntry` has written it.
@@ -130,7 +126,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.posted = null
   h.isAccountingEnabled.mockResolvedValue(true)
-  h.readAutoPostMode.mockResolvedValue('post')
   h.sumCreditMemoApplications.mockResolvedValue(0)
   h.sumReservedCreditMemoRefunds.mockResolvedValue(20_000)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
@@ -297,7 +292,6 @@ describe('the memo, where one exists', () => {
       organizationId: ORG,
       glPostingId: 'gl_refund',
       sources: [{ sourceKind: 'credit_memo', sourceId: MEMO, linkRole: 'parent' }],
-      mode: 'post',
     })
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
     expect(h.deleteWorkItem).toHaveBeenLastCalledWith(expect.anything(), ORG, {

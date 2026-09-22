@@ -10,6 +10,7 @@ vi.mock('../../../settings/read', () => ({
 }))
 
 import { listPostings } from '../../ledger/reads/list-postings'
+import { avenueOfPostingType } from '../../ledger/setup/export-settings'
 import { listExportBatches } from '../queue-reads'
 
 const db = () => getTestDb()
@@ -24,11 +25,14 @@ async function posting(
       organizationId,
       postingType: 'fulfillment',
       periodKey: 'reference',
-      status: 'draft',
+      status: 'posted',
+      postedAt: new Date(),
       txnDate: '2026-02-28',
       totalMinor: 1000,
       built: { memo: 'Order 10%_off' },
       ...values,
+      // The poster stamps it at insert; every Outbox filter reads the column.
+      avenue: avenueOfPostingType(values.postingType ?? 'fulfillment'),
     })
     .returning()
   return row!
@@ -93,7 +97,7 @@ async function batch(
 }
 
 describe('Outbox filters before pagination', () => {
-  it('combines draft categories with literal search and inclusive dates before paging', async () => {
+  it('combines categories with literal search and inclusive dates before paging', async () => {
     const org = await createTestOrganization()
     const other = await createTestOrganization()
     await posting(other.id)
@@ -104,7 +108,7 @@ describe('Outbox filters before pagination', () => {
     const second = await posting(org.id, { postingType: 'payout' })
     const input = {
       organizationId: org.id,
-      status: 'draft' as const,
+      status: 'posted' as const,
       categories: ['fulfillment', 'payout'] as Array<'fulfillment' | 'payout'>,
       from: '2026-02-28',
       to: '2026-02-28',

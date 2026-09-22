@@ -809,12 +809,13 @@ export const GlPostingTypeValues = [
   'payment',
   'refund',
   'invoice_issued',
-  'deposit_application',
   'credit_memo',
   'provider_sync',
   'recurring_journal',
   'vendor_credit',
   'landed_cost_clear',
+  'vendor_payment',
+  'vendor_refund',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 
@@ -826,7 +827,7 @@ export type GlPostingType = (typeof GlPostingTypeValues)[number]
  * 🛑 `pending` and `failed` were retired by the export split (#2065). They were
  * never ledger states; they described a push, which now lives on `ExportBatch`.
  */
-export const GlPostingStatusValues = ['draft', 'posted', 'reversed'] as const
+export const GlPostingStatusValues = ['posted', 'reversed'] as const
 export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */

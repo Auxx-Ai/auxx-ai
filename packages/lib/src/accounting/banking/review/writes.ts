@@ -322,7 +322,6 @@ export async function codeTransaction(
         actorUserId,
         lock,
         memo: memo ?? line.description ?? `Bank line ${line.externalId ?? transactionId}`,
-        mode: 'post',
         sources: [
           {
             sourceKind: BANK_TRANSACTION_SOURCE_TYPE,
@@ -558,7 +557,6 @@ export async function transferTransaction(
         actorUserId,
         lock,
         memo: memo ?? `Transfer between bank accounts`,
-        mode: 'post',
         // Filed on `filedOn`, whichever leg that is - `undoReview` goes looking
         // for the posting there, so the claim has to live there too.
         sources: [

@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     })
     for (const [key, value] of Object.entries(counts)) total[key] = (total[key] ?? 0) + value
     console.log(`org ${ORG_ARG}: pass`, counts)
-    if (counts.scanned === 0 || counts.accepted + (counts.drafted ?? 0) === 0) break
+    if (counts.scanned === 0 || counts.accepted === 0) break
   }
   console.log(`org ${ORG_ARG}: total`, total)
   process.exit(0)

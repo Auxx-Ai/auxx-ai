@@ -7,8 +7,7 @@
 //
 // `unpostedShipments` and `unpostedCreditMemos` are always `null` now - both
 // avenues post eagerly (step 1b, TARGET §1), so there is no batch/effect
-// backlog left to count. TODO(step-1b): recompute from live drafts once the
-// per-avenue `accounting.autoPost` setting lands.
+// backlog left to count.
 //
 // The database is a hand-written stub answering a queue of row sets, the
 // shape `rail-fee-status.test.ts` uses for the same reason: what is under
