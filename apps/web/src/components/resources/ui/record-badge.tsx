@@ -77,6 +77,8 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   recordId?: RecordId | null
   /** Whether to show icon/avatar (default: true) */
   showIcon?: boolean
+  /** Prefix the display name with the resource's singular label. */
+  showResourceLabel?: boolean
   /** Additional CSS classes */
   className?: string
   /** Link configuration - if true uses default link, if object uses those options */
@@ -136,6 +138,7 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
 export function RecordBadge({
   recordId,
   showIcon = true,
+  showResourceLabel = false,
   className,
   variant,
   size,
@@ -195,6 +198,7 @@ export function RecordBadge({
             />
           )}
           <span data-slot='record-display' className='truncate'>
+            {showResourceLabel && resource?.label ? `${resource.label} · ` : null}
             {displayName}
           </span>
           {onRemove && (

@@ -345,7 +345,13 @@ export function PostingFrame({
                   <TreeRow
                     title={
                       recordId ? (
-                        <RecordBadge recordId={recordId} size='sm' link openInStack />
+                        <RecordBadge
+                          recordId={recordId}
+                          size='sm'
+                          showResourceLabel={source.sourceKind === 'stock_movement'}
+                          link
+                          openInStack
+                        />
                       ) : movement ? (
                         <MovementBadge
                           movement={movement}
