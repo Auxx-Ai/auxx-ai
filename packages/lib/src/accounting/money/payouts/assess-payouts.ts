@@ -276,10 +276,8 @@ async function assessTransfers(
     if (!providerReady) blockers.push('The provider has not marked this payout ready')
     if (!assessment.unsupported && difference !== 0n)
       blockers.push('Payout amount differs from constituent net')
-    if (assessment.unmatchedCount)
-      blockers.push(
-        `${assessment.unmatchedCount} processor entries have no verified matching customer movement`
-      )
+    // Unmatched items are `unmatchedCount`, not a blocker: the list row and the drawer count them
+    // per item, and a sentence here would report the same problem twice.
     // Written from the stored state, not from the reversal attempt that follows
     // this transaction: a reversal that lands clears the fact on the next pass,
     // and one refused by a closed period leaves the blocker standing.

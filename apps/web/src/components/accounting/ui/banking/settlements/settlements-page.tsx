@@ -75,7 +75,6 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
-import { formatEvidenceAmount } from '../payouts/evidence-format'
 import { PayoutEvidenceDrawer } from '../payouts/payout-evidence-drawer'
 import { RailStrip } from './rail-strip'
 import { settlementDay, settlementDisplay } from './settlement-display'
@@ -414,11 +413,7 @@ function SettlementsBody() {
                               {display.amountMinor !== null &&
                               display.currency &&
                               display.currencyExponent !== null
-                                ? formatEvidenceAmount(
-                                    display.amountMinor,
-                                    display.currency,
-                                    display.currencyExponent
-                                  )
+                                ? formatMinor(Number(display.amountMinor), display.currency)
                                 : 'Amount unavailable'}
                             </span>
                             <span className='flex items-center gap-1 text-muted-foreground text-xs'>

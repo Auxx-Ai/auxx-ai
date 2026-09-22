@@ -18,9 +18,11 @@ import {
   Scale,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import { formatAccountingDate, formatAuditTimestamp, formatMinor } from '../../ledger/format'
 import { LedgerCard } from '../../ledger-card'
-import { formatEvidenceAmount, formatEvidenceDate } from './evidence-format'
+import { formatEvidenceDate } from './evidence-format'
 import { ProcessorActivity } from './processor-activity'
 
 /** Accounting > Settings > Payment gateways — where a feed is pointed at a rail. */
@@ -39,6 +41,8 @@ const PAYMENT_GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
   const query = api.payoutEvidence.detail.useQuery({ id: payoutId })
   const payout = query.data
+  const { getSetting } = useSettings({})
+  const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
 
   if (query.error) {
     return (
@@ -60,8 +64,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
     )
   }
 
-  const sourceAmount = (amount: string) =>
-    formatEvidenceAmount(amount, payout.sourceCurrency, payout.sourceCurrencyExponent)
+  const sourceAmount = (amount: string) => formatMinor(Number(amount), payout.sourceCurrency)
 
   return (
     <>
@@ -111,11 +114,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
           icon={<Banknote className='size-4 text-muted-foreground' />}
           value={
             <span className='font-mono tabular-nums'>
-              {formatEvidenceAmount(
-                payout.destinationAmountMinor,
-                payout.destinationCurrency,
-                payout.destinationCurrencyExponent
-              )}
+              {formatMinor(Number(payout.destinationAmountMinor), payout.destinationCurrency)}
             </span>
           }
           description='What the provider says landed, in the destination currency'
@@ -129,7 +128,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
         <MetricCell
           label='Last imported'
           icon={<Clock className='size-4 text-muted-foreground' />}
-          value={formatEvidenceDate(payout.updatedAt)}
+          value={formatAuditTimestamp(payout.updatedAt, bookTimeZone)}
           description='When this evidence was last read from the source'
         />
       </MetricGrid>
@@ -172,13 +171,13 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
             the same thing twice, once as a finding and once as an instruction,
             and the instruction was generic enough to be true of every payout on
             the page. The blocker is the sentence worth keeping. `nextActions`
-            is still on the DTO; nothing reads it now.
-
-            The line below is a CONSTANT the Details section used to spend a
-            labelled row on. It does not vary by payout. */}
-        <p className='text-muted-foreground text-xs'>
-          Bank confirmation is not assessed for these payouts.
-        </p>
+            is still on the DTO; nothing reads it now. */}
+        <BankDepositLine
+          bankDeposit={payout.bankDeposit}
+          status={payout.status}
+          currency={payout.destinationCurrency}
+          bookTimeZone={bookTimeZone}
+        />
       </div>
 
       <Section
@@ -203,5 +202,54 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
         </Section>
       )}
     </>
+  )
+}
+
+/** Only a payout that reached the bank can be confirmed by a bank line. */
+const DEPOSITED_STATUSES = new Set(['paid', 'in_transit'])
+
+/** The bank line a reviewer matched this payout to in Banking review. */
+function BankDepositLine({
+  bankDeposit,
+  status,
+  currency,
+  bookTimeZone,
+}: {
+  bankDeposit: {
+    transactionId: string
+    postedAt: string | null
+    amountMinor: number
+    bankAccountName: string | null
+  } | null
+  status: string
+  currency: string
+  bookTimeZone: string
+}) {
+  if (bankDeposit) {
+    return (
+      <p className='text-muted-foreground text-xs'>
+        Deposited:{' '}
+        <Link
+          href={`/app/accounting/banking?txn=${bankDeposit.transactionId}`}
+          className='text-foreground underline-offset-2 hover:underline'>
+          bank line
+          {bankDeposit.postedAt &&
+            ` on ${formatAccountingDate(bankDeposit.postedAt, bookTimeZone)}`}
+          , {formatMinor(bankDeposit.amountMinor, currency)}
+        </Link>
+        {bankDeposit.bankAccountName && ` in ${bankDeposit.bankAccountName}`}
+      </p>
+    )
+  }
+  if (!DEPOSITED_STATUSES.has(status)) return null
+  return (
+    <p className='text-muted-foreground text-xs'>
+      No bank deposit matched yet.{' '}
+      <Link
+        href='/app/accounting/banking'
+        className='text-foreground underline-offset-2 hover:underline'>
+        Open Banking review
+      </Link>
+    </p>
   )
 }

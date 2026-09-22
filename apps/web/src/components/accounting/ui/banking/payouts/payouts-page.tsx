@@ -49,9 +49,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { EMPTY_CELL } from '../../ledger/format'
-import { formatEvidenceAmount } from './evidence-format'
-import { MATCH_REASON_LABEL } from './match-reason-copy'
+import { EMPTY_CELL, formatMinor } from '../../ledger/format'
 import { PayoutEvidenceDrawer } from './payout-evidence-drawer'
 import {
   EMPTY_PAYOUT_FILTERS,
@@ -280,11 +278,7 @@ function UnassignedStrip() {
         {open ? <ChevronDown className='size-3.5' /> : <ChevronRight className='size-3.5' />}
         <Inbox className='size-3.5' />
         <span className='font-mono tabular-nums'>
-          {totals
-            .map((total) =>
-              formatEvidenceAmount(total.netMinor, total.currency, total.currencyExponent)
-            )
-            .join(' · ')}
+          {totals.map((total) => formatMinor(Number(total.netMinor), total.currency)).join(' · ')}
         </span>
         <span>of processor activity is not yet in a payout</span>
       </button>
@@ -499,21 +493,23 @@ function PayoutList({
                       Reconciliation pending
                     </Badge>
                   )}
-                  {/* The worklist's own count and the code that explains most of
-                      it (§10.4) - the two facts that decide whether this payout
-                      is worth opening. */}
                   {payout.needsMatchingCount > 0 && (
-                    <>
+                    <Badge variant='amber' size='xs'>
+                      <Link2Off />
+                      {payout.needsMatchingCount} need matching
+                    </Badge>
+                  )}
+                  {/* Amber, not destructive: the evidence is incomplete, nothing is lost. */}
+                  {payout.blockers.length > 0 && (
+                    <Tooltip
+                      content={`${payout.blockers.length} ${
+                        payout.blockers.length === 1 ? 'issue' : 'issues'
+                      } to review`}>
                       <Badge variant='amber' size='xs'>
-                        <Link2Off />
-                        {payout.needsMatchingCount} need matching
+                        <AlertTriangle />
+                        {payout.blockers.length}
                       </Badge>
-                      {payout.dominantMatchReason && (
-                        <Badge variant='outline' size='xs'>
-                          {MATCH_REASON_LABEL[payout.dominantMatchReason]}
-                        </Badge>
-                      )}
-                    </>
+                    </Tooltip>
                   )}
                 </span>
               }
@@ -523,11 +519,7 @@ function PayoutList({
               actions={
                 <div className='flex items-center gap-2'>
                   <span className='font-mono text-xs tabular-nums'>
-                    {formatEvidenceAmount(
-                      payout.sourceAmountMinor,
-                      payout.sourceCurrency,
-                      payout.sourceCurrencyExponent
-                    )}
+                    {formatMinor(Number(payout.sourceAmountMinor), payout.sourceCurrency)}
                   </span>
                   <span className='flex items-center gap-1 text-muted-foreground text-xs'>
                     <span
@@ -539,24 +531,6 @@ function PayoutList({
                     />
                     {payout.status.replaceAll('_', ' ')}
                   </span>
-                  {payout.blockers.length > 0 && (
-                    // The app's warning mark: amber + a warning glyph, the shape
-                    // `chart-list.tsx` and `setup-streams-overview.tsx` use. NOT
-                    // `destructive` - nothing here is broken or lost, the
-                    // evidence is just incomplete, and a red badge on a routine
-                    // unreconciled payout spends alarm this row has not earned.
-                    // The count replaces the words "Needs attention": it says
-                    // the same thing and also says how much.
-                    <Tooltip
-                      content={`${payout.blockers.length} ${
-                        payout.blockers.length === 1 ? 'issue' : 'issues'
-                      } to review`}>
-                      <Badge variant='amber' size='sm'>
-                        <AlertTriangle />
-                        {payout.blockers.length}
-                      </Badge>
-                    </Tooltip>
-                  )}
                   <TreeRowButton
                     persistent
                     tooltipText='Open details'

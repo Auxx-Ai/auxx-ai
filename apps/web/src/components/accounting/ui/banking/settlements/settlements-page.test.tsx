@@ -143,7 +143,7 @@ function renderPage() {
 describe('settlement rows', () => {
   it('renders imported money and setup instructions instead of zero and Unrouted', () => {
     renderPage()
-    expect(screen.getByText('USD 1,423.01')).toBeInTheDocument()
+    expect(screen.getByText('$1,423.01')).toBeInTheDocument()
     expect(screen.getByText('paid')).toBeInTheDocument()
     expect(screen.getByText('Pending accounting')).toBeInTheDocument()
     expect(screen.getByText(/Shopify Payments · Setup required/)).toBeInTheDocument()

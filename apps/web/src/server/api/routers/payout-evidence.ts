@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/payout-evidence.ts
 
+import { getBankTransaction } from '@auxx/lib/accounting/banking/review'
 import {
   acceptMatch,
   countPayoutEvidence,
@@ -85,7 +86,23 @@ export const payoutEvidenceRouter = createTRPCRouter({
         id: input.id,
       })
       if (!payout) throw new NotFoundError('Payout not found')
-      return payout
+      const bankLine = payout.bankTransactionId
+        ? unwrap(
+            await getBankTransaction(ctx.db, {
+              organizationId: ctx.session.organizationId,
+              transactionId: payout.bankTransactionId,
+            })
+          )
+        : null
+      return {
+        ...payout,
+        bankDeposit: bankLine && {
+          transactionId: bankLine.id,
+          postedAt: bankLine.postedAt,
+          amountMinor: bankLine.amountMinor,
+          bankAccountName: bankLine.bankAccountName,
+        },
+      }
     }),
 
   /** The evidence id for a provider payout id — how Settlements opens this drawer. */
