@@ -106,6 +106,18 @@ describe('releaseExportBatches', () => {
     ])
   })
 
+  it('marks every job manual for a Retry, so the send resets its attempts (93 C2)', async () => {
+    const db = fakeDb([{ id: 'b1', state: 'failed', payload: {} }])
+
+    const { runId } = (
+      await releaseExportBatches(db, { organizationId: ORG, batchIds: ['b1'], manual: true })
+    )._unsafeUnwrap()
+
+    expect(add.mock.calls.map(([args]) => (args as unknown[])[1])).toEqual([
+      { organizationId: ORG, batchId: 'b1', runId, manual: true },
+    ])
+  })
+
   it('asks the mapping table about the releasable rows alone', async () => {
     const db = fakeDb([
       { id: 'b1', state: 'ready', payload: { docNumber: 'A' } },

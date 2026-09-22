@@ -1324,10 +1324,29 @@ export const ledgerRouter = createTRPCRouter({
         return result.value
       }),
 
-    /** Send a failed batch again, now, and reset the sweep's attempt budget. */
+    /**
+     * Send failed batches again and reset the sweep's attempt budget.
+     *
+     * One `batchId` waits on the provider; `batchIds` enqueues like `release` and
+     * answers its `runId` for the bulk bar to tally (93 C2).
+     */
     retry: permissionProcedure(PermissionKey.ledgerPost)
-      .input(z.object({ batchId: z.string().min(1) }))
+      .input(
+        z.union([
+          z.object({ batchId: z.string().min(1) }),
+          z.object({ batchIds: z.array(z.string().min(1)).min(1).max(500) }),
+        ])
+      )
       .mutation(async ({ ctx, input }) => {
+        if ('batchIds' in input) {
+          const released = await releaseExportBatches(ctx.db, {
+            organizationId: ctx.session.organizationId,
+            batchIds: input.batchIds,
+            manual: true,
+          })
+          if (released.isErr()) throw released.error
+          return released.value
+        }
         const result = await retryExportBatch(ctx.db, {
           organizationId: ctx.session.organizationId,
           batchId: input.batchId,

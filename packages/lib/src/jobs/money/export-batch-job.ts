@@ -12,6 +12,8 @@ export interface ExportBatchJobData {
   organizationId: string
   batchId: string
   runId?: string
+  /** Enqueued by a person's Retry, so the send resets `attempts`. */
+  manual?: boolean
 }
 
 export const EXPORT_BATCH_JOB_NAME = 'export-batch'
@@ -25,9 +27,14 @@ export const EXPORT_BATCH_JOB_NAME = 'export-batch'
  * `nextAttemptAt` backoff and the sweep - three retry mechanisms for one send.
  */
 export const exportBatchJob = async (ctx: JobContext<ExportBatchJobData>) => {
-  const { organizationId, batchId, runId } = ctx.data
+  const { organizationId, batchId, runId, manual } = ctx.data
   try {
-    const result = await sendExportBatch(db, { organizationId, batchId, runId })
+    const result = await sendExportBatch(db, {
+      organizationId,
+      batchId,
+      runId,
+      ...(manual ? { manual } : {}),
+    })
     if (result.isErr()) {
       logger.warn('Export batch job could not send; the sweep will retry', {
         organizationId,

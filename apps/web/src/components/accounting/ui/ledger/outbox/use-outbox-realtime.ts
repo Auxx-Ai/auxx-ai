@@ -29,16 +29,26 @@ export interface OutboxRun {
   waiting: number
 }
 
+/** Per-row callbacks for one run: `settle` as each row leaves `sending`, `end` when the run closes. */
+export interface OutboxRunWatcher {
+  settle: (batchId: string) => void
+  end: () => void
+}
+
 interface RunState {
   runId: string
   total: number
   /** Last settled state per batch; a `sending` frame clears the entry. */
   settled: Map<string, ExportBatchState>
+  startedAt: number
   lastFrameAt: number
 }
 
-/** A fast worker can settle a row before `release` answers, so frames are kept for a run not yet started. */
-const EARLY_RUN_LIMIT = 20
+/** A fast worker can settle a row before `release` answers, so recent runs' frames are kept. */
+const SEEN_RUN_LIMIT = 20
+
+/** A run with no frame for this long is closed and the list refetched - realtime may be off. */
+export const RUN_IDLE_MS = 30_000
 
 /**
  * Keeps the Outbox moving on `exportBatch:changed`: patches the row in every cached
@@ -49,42 +59,48 @@ export function useOutboxRealtime() {
   const utils = api.useUtils()
   const queryClient = useQueryClient()
   const [run, setRun] = useState<RunState | null>(null)
-  const runIdRef = useRef<string | null>(null)
-  const early = useRef(new Map<string, Map<string, ExportBatchState>>())
+  const runRef = useRef<RunState | null>(null)
+  const seen = useRef(new Map<string, Map<string, ExportBatchState>>())
+  const watchers = useRef(new Map<string, Set<OutboxRunWatcher>>())
 
-  const settleRun = useCallback((next: RunState | null) => {
-    const done = next !== null && next.settled.size >= next.total
-    runIdRef.current = done ? null : (next?.runId ?? null)
-    setRun(done ? null : next)
+  const showRun = useCallback((next: RunState | null) => {
+    runRef.current = next
+    setRun(next)
   }, [])
 
-  const tally = useCallback((frame: Frame) => {
-    if (!frame.runId) return
-    const apply = (settled: Map<string, ExportBatchState>) => {
+  const closeRun = useCallback(() => {
+    const runId = runRef.current?.runId
+    showRun(null)
+    if (!runId) return
+    for (const watcher of watchers.current.get(runId) ?? []) watcher.end()
+    watchers.current.delete(runId)
+  }, [showRun])
+
+  const tally = useCallback(
+    (frame: Frame) => {
+      if (!frame.runId) return
+      let settled = seen.current.get(frame.runId)
+      if (!settled) {
+        if (seen.current.size >= SEEN_RUN_LIMIT) {
+          const oldest = seen.current.keys().next().value
+          if (oldest !== undefined) seen.current.delete(oldest)
+        }
+        settled = new Map()
+        seen.current.set(frame.runId, settled)
+      }
       if (frame.state === 'sending') settled.delete(frame.batchId)
-      else settled.set(frame.batchId, frame.state)
-    }
-    if (runIdRef.current !== frame.runId) {
-      let buffered = early.current.get(frame.runId)
-      if (!buffered) {
-        if (early.current.size >= EARLY_RUN_LIMIT) early.current.clear()
-        buffered = new Map()
-        early.current.set(frame.runId, buffered)
+      else {
+        settled.set(frame.batchId, frame.state)
+        for (const watcher of watchers.current.get(frame.runId) ?? []) watcher.settle(frame.batchId)
       }
-      apply(buffered)
-      return
-    }
-    setRun((prev) => {
-      if (!prev || prev.runId !== frame.runId) return prev
-      const settled = new Map(prev.settled)
-      apply(settled)
-      if (settled.size >= prev.total) {
-        runIdRef.current = null
-        return null
-      }
-      return { ...prev, settled, lastFrameAt: Date.now() }
-    })
-  }, [])
+
+      const current = runRef.current
+      if (!current || current.runId !== frame.runId) return
+      if (settled.size >= current.total) return closeRun()
+      showRun({ ...current, settled: new Map(settled), lastFrameAt: Date.now() })
+    },
+    [closeRun, showRun]
+  )
 
   const onEvent = useCallback(
     (event: string, payload: unknown) => {
@@ -135,13 +151,29 @@ export function useOutboxRealtime() {
 
   const startRun = useCallback(
     (runId: string, total: number) => {
-      const settled = early.current.get(runId) ?? new Map<string, ExportBatchState>()
-      early.current.delete(runId)
-      if (total === 0) return settleRun(null)
-      settleRun({ runId, total, settled, lastFrameAt: settled.size > 0 ? Date.now() : 0 })
+      const settled = new Map(seen.current.get(runId))
+      if (total === 0 || settled.size >= total) return showRun(null)
+      const now = Date.now()
+      showRun({ runId, total, settled, startedAt: now, lastFrameAt: settled.size > 0 ? now : 0 })
     },
-    [settleRun]
+    [showRun]
   )
+
+  /** Follow one run row by row; settles already seen are replayed at once. Returns an unsubscribe. */
+  const watchRun = useCallback((runId: string, watcher: OutboxRunWatcher) => {
+    let set = watchers.current.get(runId)
+    if (!set) {
+      set = new Set()
+      watchers.current.set(runId, set)
+    }
+    set.add(watcher)
+    for (const batchId of seen.current.get(runId)?.keys() ?? []) watcher.settle(batchId)
+    return () => {
+      const current = watchers.current.get(runId)
+      current?.delete(watcher)
+      if (current?.size === 0) watchers.current.delete(runId)
+    }
+  }, [])
 
   // The safety net for lost frames: a counts read that began after the run's last frame
   // and finds nothing sending ends it.
@@ -153,10 +185,27 @@ export function useOutboxRealtime() {
       return
     }
     if (!run || run.lastFrameAt === 0 || fetchStartedAt.current < run.lastFrameAt) return
-    if (counts.data?.sending === 0) settleRun(null)
-  }, [counts.isFetching, counts.data, run, settleRun])
+    if (counts.data?.sending === 0) closeRun()
+  }, [counts.isFetching, counts.data, run, closeRun])
 
-  return { run: run ? summarise(run) : null, startRun }
+  // The net for no frames at all (realtime off, worker down): give up after a quiet spell
+  // and let a refetch show the rows as they stand.
+  useEffect(() => {
+    if (!run) return
+    const quietSince = Math.max(run.startedAt, run.lastFrameAt)
+    const timer = setTimeout(
+      () => {
+        if (runRef.current?.runId !== run.runId) return
+        closeRun()
+        void utils.ledger.exportBatches.list.invalidate()
+        void utils.ledger.outboxCounts.invalidate()
+      },
+      Math.max(0, quietSince + RUN_IDLE_MS - Date.now())
+    )
+    return () => clearTimeout(timer)
+  }, [run, closeRun, utils])
+
+  return { run: run ? summarise(run) : null, startRun, watchRun }
 }
 
 function patchPage(page: ListPage, frame: Frame): ListPage {

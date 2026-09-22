@@ -2,9 +2,9 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ListSelectionProvider, useListSelection } from './store'
-import { useBulkRunner } from './use-bulk-runner'
+import { type BulkRunWatcher, ENQUEUE_IDLE_MS, useBulkRunner } from './use-bulk-runner'
 
 const confirmResult = { value: true as boolean }
 vi.mock('~/hooks/use-confirm', () => ({
@@ -168,5 +168,165 @@ describe('useBulkRunner.runBatch', () => {
     expect(result.current.pendingIds).toEqual([])
     expect(onDone).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(result.current.runner.isRunning).toBe(false))
+  })
+})
+
+describe('useBulkRunner.enqueue', () => {
+  /** A stand-in event source: the test settles rows by hand. */
+  function fakeWatch() {
+    const watchers = new Map<string, BulkRunWatcher>()
+    const unsubscribe = vi.fn()
+    const watch = vi.fn((runId: string, watcher: BulkRunWatcher) => {
+      watchers.set(runId, watcher)
+      return unsubscribe
+    })
+    return { watch, unsubscribe, watcher: (runId: string) => watchers.get(runId) }
+  }
+
+  beforeEach(() => {
+    confirmResult.value = true
+    toastError.mockClear()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('keeps every row pending past the round trip and clears each as it settles', async () => {
+    const source = fakeWatch()
+    const onDone = vi.fn()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(['a', 'b', 'c'], async () => ({ runId: 'run_1' }), {
+        ...OPTS,
+        pendingLabel: 'Retrying…',
+        watch: source.watch,
+        onDone,
+      })
+    })
+
+    expect(source.watch).toHaveBeenCalledWith('run_1', expect.any(Object))
+    expect(result.current.pendingIds).toEqual(['a', 'b', 'c'])
+    expect(result.current.pendingLabel).toBe('Retrying…')
+    expect(result.current.runner.isRunning).toBe(false)
+    expect(onDone).toHaveBeenCalledTimes(1)
+
+    act(() => source.watcher('run_1')?.settle('b'))
+    expect(result.current.pendingIds).toEqual(['a', 'c'])
+
+    act(() => {
+      source.watcher('run_1')?.settle('a')
+      source.watcher('run_1')?.settle('c')
+    })
+    expect(result.current.pendingIds).toEqual([])
+    expect(source.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears at once the rows the mutation did not take', async () => {
+    const source = fakeWatch()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(
+        ['a', 'b'],
+        async () => ({ runId: 'run_1', released: ['a'] }),
+        { ...OPTS, watch: source.watch }
+      )
+    })
+
+    expect(result.current.pendingIds).toEqual(['a'])
+  })
+
+  it('clears what is left when the source ends the run', async () => {
+    const source = fakeWatch()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(['a', 'b'], async () => ({ runId: 'run_1' }), {
+        ...OPTS,
+        watch: source.watch,
+      })
+    })
+    act(() => source.watcher('run_1')?.end())
+
+    expect(result.current.pendingIds).toEqual([])
+  })
+
+  it('does not hang when no event ever arrives', async () => {
+    vi.useFakeTimers()
+    const source = fakeWatch()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(['a', 'b'], async () => ({ runId: 'run_1' }), {
+        ...OPTS,
+        watch: source.watch,
+      })
+    })
+    act(() => vi.advanceTimersByTime(ENQUEUE_IDLE_MS - 1))
+    expect(result.current.pendingIds).toEqual(['a', 'b'])
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(result.current.pendingIds).toEqual([])
+    expect(source.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('restarts the quiet clock on every settle', async () => {
+    vi.useFakeTimers()
+    const source = fakeWatch()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(['a', 'b'], async () => ({ runId: 'run_1' }), {
+        ...OPTS,
+        watch: source.watch,
+        idleMs: 1_000,
+      })
+    })
+    act(() => vi.advanceTimersByTime(900))
+    act(() => source.watcher('run_1')?.settle('a'))
+    act(() => vi.advanceTimersByTime(900))
+
+    expect(result.current.pendingIds).toEqual(['b'])
+  })
+
+  it('survives a source that replays every settle before it returns', async () => {
+    const unsubscribe = vi.fn()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(['a'], async () => ({ runId: 'run_1' }), {
+        ...OPTS,
+        watch: (_runId, watcher) => {
+          watcher.settle('a')
+          return unsubscribe
+        },
+      })
+    })
+
+    expect(result.current.pendingIds).toEqual([])
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears every row and says why when the mutation fails', async () => {
+    const source = fakeWatch()
+    const { result } = renderHook(useSubject, { wrapper })
+
+    await act(async () => {
+      await result.current.runner.enqueue(
+        ['a', 'b'],
+        async () => {
+          throw new Error('queue is down')
+        },
+        { ...OPTS, watch: source.watch }
+      )
+    })
+
+    expect(result.current.pendingIds).toEqual([])
+    expect(source.watch).not.toHaveBeenCalled()
+    expect(toastError).toHaveBeenCalledWith({
+      title: 'Some shares were kept',
+      description: 'queue is down',
+    })
   })
 })

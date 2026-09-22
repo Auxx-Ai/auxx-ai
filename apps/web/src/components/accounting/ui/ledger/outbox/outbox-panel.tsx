@@ -239,6 +239,7 @@ function OutboxBody({
                 activePostingId={activePostingId}
                 onSelectPosting={onSelectPosting}
                 onReleased={live.startRun}
+                watchRun={live.watchRun}
               />
             )}
           </div>
