@@ -21,6 +21,7 @@
 import {
   AUTO_POST_AVENUES,
   avenueOfPostingType,
+  EXPORT_AVENUES,
   type ExportAvenue,
   POSTING_POLICIES,
   POSTING_POLICY,
@@ -146,37 +147,18 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
   ),
 ]
 
-// ── The export row (TARGET §3, §4 gate 2) ───────────────────────────────────
+// ── The export table (TARGET §3, §4 gate 2) ─────────────────────────────────
 //
 // `autoSend` and `summaryGrain` are per AVENUE (`EXPORT_AVENUES`), not per
-// `PostingType` the way `POSTING_POLICY.settings` is declared - several types
-// share one avenue (`payment` and `deposit_application` both export as
-// `receipt`; `manual_journal`, `write_off` and every month-end type export as
-// `journal`). Showing the same switch on every one of those sections would be
-// six copies of one control, so this picks ONE policy per avenue to carry it -
-// the type whose section reads as that avenue's home.
+// `PostingType` - several types share one avenue (`payment` and
+// `deposit_application` both export as `receipt`), so the controls live in one
+// table keyed on the avenue rather than on each type's section.
 
-/** Which policy's section carries the avenue's export row. */
-const PRIMARY_POSTING_TYPE_BY_AVENUE: Record<ExportAvenue, PostingType> = {
-  fulfillment: 'fulfillment',
-  invoice: 'invoice_issued',
-  receipt: 'payment',
-  refund: 'refund',
-  creditMemo: 'credit_memo',
-  expenseBill: 'vendor_bill',
-  vendorPayment: 'vendor_payment',
-  vendorCredit: 'vendor_credit',
-  payout: 'payout',
-  bankDeposit: 'bank_deposit',
-  inventory: 'inventory_movement',
-  journal: 'manual_journal',
-}
-
-/** The avenue whose export row this policy's section carries, or `null` for every other policy sharing that avenue. */
-export function exportAvenueForPolicy(policy: PostingPolicy): ExportAvenue | null {
-  const avenue = avenueOfPostingType(policy.type)
-  if (!avenue) return null
-  return PRIMARY_POSTING_TYPE_BY_AVENUE[avenue] === policy.type ? avenue : null
+/** The labels of the posting types that export through `avenue`, in page order. */
+export function postingLabelsForAvenue(avenue: ExportAvenue): string[] {
+  return POSTING_PAGE_POLICIES.filter((policy) => avenueOfPostingType(policy.type) === avenue).map(
+    (policy) => policy.label
+  )
 }
 
 export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
@@ -185,13 +167,7 @@ export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
     : null
 }
 
-/**
- * The `autoPost` key this policy is gated on, whether or not its section
- * carries the avenue's export row. Keyed on the policy's OWN avenue rather than
- * {@link exportAvenueForPolicy}: a policy sharing an avenue (a vendor refund
- * rides the vendor payment's switch) would otherwise render a second control
- * for the primary section's setting.
- */
+/** The `autoPost` key this policy is gated on, which the export table renders instead of its section. */
 export function autoPostKeyForPolicy(policy: PostingPolicy): string | null {
   const avenue = avenueOfPostingType(policy.type)
   return avenue ? autoPostKeyForAvenue(avenue) : null
@@ -208,18 +184,12 @@ export function summaryGrainKeyForAvenue(avenue: ExportAvenue): string | null {
 }
 
 /**
- * Every export-row key the page's draft needs beyond `POSTING_PAGE_INPUT_KEYS`
- * - `autoSend` always, `summaryGrain` where the avenue has one. `autoPost` is
- * already in that list (it is one of `policy.settings`); this only adds what
- * is NOT declared on any policy.
+ * Every export-table key the page's draft needs beyond `POSTING_PAGE_INPUT_KEYS`
+ * (which already carries `autoPost`, one of `policy.settings`).
  */
-export const EXPORT_ROW_DRAFT_KEYS: readonly string[] = Object.keys(
-  PRIMARY_POSTING_TYPE_BY_AVENUE
-).flatMap((avenue) => {
-  const keys = [autoSendKeyForAvenue(avenue as ExportAvenue)]
-  const grainKey = summaryGrainKeyForAvenue(avenue as ExportAvenue)
-  if (grainKey) keys.push(grainKey)
-  return keys
+export const EXPORT_ROW_DRAFT_KEYS: readonly string[] = EXPORT_AVENUES.flatMap((avenue) => {
+  const grainKey = summaryGrainKeyForAvenue(avenue)
+  return grainKey ? [autoSendKeyForAvenue(avenue), grainKey] : [autoSendKeyForAvenue(avenue)]
 })
 
 // Two independent stacks, not a grid of rows: a grid row is as tall as its

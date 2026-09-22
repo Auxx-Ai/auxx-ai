@@ -41,7 +41,7 @@
  * ## What is cached
  *
  * The accounts come from the `chartAccounts` org-cache key, invalidated by the
- * four `chart-write.ts` writers (plans/accounting/tasks/84-the-chart-in-the-org-cache.md).
+ * four `chart-write.ts` writers (plans/accounting/tasks/done/84-the-chart-in-the-org-cache.md).
  * The ASSIGNMENTS are not cached: `GlRoleAssignment` writes have no event yet, and
  * `role-assignments.ts`'s `readRoleAssignments` is where that key would go (§10.4).
  *
