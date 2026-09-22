@@ -335,7 +335,12 @@ function DraftLinks({ glPostingId }: { glPostingId: string }) {
     <span className='box-content flex h-4 min-w-0 flex-wrap items-center gap-1 overflow-hidden p-px'>
       {sources.map((source) =>
         source.recordId ? (
-          <RecordBadge key={source.id} recordId={source.recordId} size='sm' />
+          <RecordBadge
+            key={source.id}
+            recordId={source.recordId}
+            size='sm'
+            showResourceLabel={source.sourceKind === 'stock_movement'}
+          />
         ) : source.movement ? (
           <MovementBadge key={source.id} movement={source.movement} size='sm' detail='compact' />
         ) : (
