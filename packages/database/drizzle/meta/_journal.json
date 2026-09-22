@@ -2752,6 +2752,13 @@
       "when": 1790106715657,
       "tag": "0392_no_ledger_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1790114243952,
+      "tag": "0393_entity_instance_fk_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -145,6 +145,8 @@ export const Message = pgTable(
       )
       .where(sql`("machineMailTier" IS NOT NULL)`),
     index('Message_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    // SET NULL FK to EntityInstance; a record delete scans the table without it.
+    index('Message_signatureId_idx').using('btree', table.signatureId.asc().nullsLast()),
     // The mining group-by (suggestions plan §1.1). Partial — most mail has no list-id.
     index('Message_organizationId_listId_idx')
       .using('btree', table.organizationId.asc().nullsLast(), table.listId.asc().nullsLast())

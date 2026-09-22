@@ -164,6 +164,11 @@ export const DataConnectorItem = pgTable(
       'btree',
       table.entityInstanceId.asc().nullsLast()
     ),
+    // SET NULL FK: without this every EntityInstance delete scans the whole table.
+    index('DataConnectorItem_mintedInstanceId_idx').using(
+      'btree',
+      table.mintedInstanceId.asc().nullsLast()
+    ),
     // DEF-KEYED resolution (relationship-linking v3 §9.10): backs the two-pass
     // resolver's `findItemByDef` + the sink's def-keyed instance reuse-read.
     // NON-unique on purpose — two mappings legitimately bind the same

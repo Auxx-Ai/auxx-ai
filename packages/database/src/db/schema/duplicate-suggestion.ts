@@ -151,6 +151,9 @@ export const DuplicateSuggestion = pgTable(
     // side and the reader has to OR both columns.
     index('DuplicateSuggestion_org_low_idx').on(table.organizationId, table.instanceIdLow),
     index('DuplicateSuggestion_org_high_idx').on(table.organizationId, table.instanceIdHigh),
+    // Leading-column indexes for the two cascade FKs; the org-prefixed ones do not serve them.
+    index('DuplicateSuggestion_low_idx').on(table.instanceIdLow),
+    index('DuplicateSuggestion_high_idx').on(table.instanceIdHigh),
   ]
 )
 

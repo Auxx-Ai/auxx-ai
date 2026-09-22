@@ -147,6 +147,11 @@ export const Thread = pgTable(
       table.createdAt.asc().nullsLast()
     ),
     index('Thread_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    // SET NULL FK to EntityInstance; a record delete scans the table without it.
+    index('Thread_primaryEntityInstanceId_idx').using(
+      'btree',
+      table.primaryEntityInstanceId.asc().nullsLast()
+    ),
     index('Thread_organizationId_status_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
