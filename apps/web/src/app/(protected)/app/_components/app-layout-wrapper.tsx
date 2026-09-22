@@ -32,6 +32,8 @@ interface AppLayoutWrapperProps {
   defaultSidebarOpen?: boolean
   /** SSR sidebar width (px) from cookie — forwarded to `Dashboard`'s `SidebarProvider`. */
   defaultSidebarWidth?: number
+  /** SSR open/width from the `secondary_sidebar` cookies — forwarded to `Dashboard`. */
+  defaultSecondarySidebar?: { open?: boolean; width?: number }
 }
 
 /** Helper function to check if subscription is expired */
@@ -56,6 +58,7 @@ export function AppLayoutWrapper({
   user,
   defaultSidebarOpen,
   defaultSidebarWidth,
+  defaultSecondarySidebar,
 }: AppLayoutWrapperProps) {
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
@@ -116,7 +119,8 @@ export function AppLayoutWrapper({
               <Dashboard
                 user={user}
                 defaultSidebarOpen={defaultSidebarOpen}
-                defaultSidebarWidth={defaultSidebarWidth}>
+                defaultSidebarWidth={defaultSidebarWidth}
+                defaultSecondarySidebar={defaultSecondarySidebar}>
                 {children}
               </Dashboard>
               <FloatingComposeRoot />

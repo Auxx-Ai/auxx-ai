@@ -22,7 +22,7 @@ const SIDEBAR_WIDTH_MOBILE = '18rem'
 const SIDEBAR_MIN_WIDTH = 200
 const SIDEBAR_MAX_WIDTH = 400
 const SIDEBAR_DEFAULT_WIDTH = 256
-/** Distance from the screen edge (px) the cursor must reach for a resize drag to snap collapsed. */
+/** Distance (px) from the panel's outer edge at which a resize drag snaps collapsed. */
 const SIDEBAR_COLLAPSE_EDGE = 24
 /** Hover-intent delay (ms) before the collapsed sidebar peeks in — kept short so it feels snappy. */
 const SIDEBAR_PEEK_OPEN_DELAY = 20
@@ -101,9 +101,11 @@ function SidebarProvider({
   minWidth = SIDEBAR_MIN_WIDTH,
   maxWidth = SIDEBAR_MAX_WIDTH,
   defaultWidth = SIDEBAR_DEFAULT_WIDTH,
+  initialWidth,
   persistKey = SIDEBAR_COOKIE_NAME,
   keyboardShortcut = SIDEBAR_KEYBOARD_SHORTCUT,
   nested = false,
+  onWidthChange,
   children,
   ...props
 }: React.ComponentProps<'div'> & {
@@ -122,8 +124,10 @@ function SidebarProvider({
   minWidth?: number
   /** Max drag width in px (default 400). */
   maxWidth?: number
-  /** Initial/reset width in px (default 256) — pass from the `${persistKey}_width` cookie for SSR. */
+  /** Width in px that double-click resets to (default 256). */
   defaultWidth?: number
+  /** Starting width in px, e.g. from the `${persistKey}_width` cookie. Defaults to `defaultWidth`. */
+  initialWidth?: number
   /**
    * Cookie name used to persist the open state on every `setOpen` call. Pass `false` to skip
    * the cookie write entirely (e.g. a nested module sidebar that persists state elsewhere).
@@ -144,6 +148,8 @@ function SidebarProvider({
    * are unaffected.
    */
   nested?: boolean
+  /** Called with the committed width on drag end or double-click reset (not on every move). */
+  onWidthChange?: (width: number) => void
 }) {
   // const isMobile = false
   const isMobile = useIsMobile()
@@ -171,15 +177,16 @@ function SidebarProvider({
   )
 
   // Live drag width (px). Independent of open/closed — collapsing never resets it.
-  const [width_, setWidth] = React.useState(defaultWidth)
+  const [width_, setWidth] = React.useState(initialWidth ?? defaultWidth)
   const [isResizing, setIsResizing] = React.useState(false)
   const persistWidth = React.useCallback(
     (w: number) => {
       if (persistKey) {
         document.cookie = `${persistKey}_width=${Math.round(w)}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
       }
+      onWidthChange?.(w)
     },
-    [persistKey]
+    [persistKey, onWidthChange]
   )
 
   // Hover/drag peek overlay (collapsed state, fixed variant only).
@@ -513,12 +520,10 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 }
 
 /**
- * Attio-style drag-to-resize strip straddling the fixed sidebar's inner edge. Rendered
- * automatically inside a `resizable` `Sidebar` — consumers don't mount it. Live-updates the
- * provider `width` (clamped to `[minWidth, maxWidth]`), snaps to collapsed when dragged well
- * below `minWidth`, persists the width on release, and resets to `defaultWidth` on double-click.
+ * Attio-style drag-to-resize strip straddling the sidebar's inner edge. Must be a direct child
+ * of the panel it resizes: the collapse snap measures from that parent's outer edge.
  */
-function SidebarResizeHandle({ side }: { side: 'left' | 'right' }) {
+function SidebarResizeHandle({ side, className }: { side: 'left' | 'right'; className?: string }) {
   const {
     width,
     setWidth,
@@ -537,6 +542,8 @@ function SidebarResizeHandle({ side }: { side: 'left' | 'right' }) {
   const handleMouseDown = React.useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault()
+      const panel = e.currentTarget.parentElement?.getBoundingClientRect()
+      const outerEdge = side === 'left' ? (panel?.left ?? 0) : (panel?.right ?? window.innerWidth)
       setIsResizing(true)
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
@@ -554,12 +561,12 @@ function SidebarResizeHandle({ side }: { side: 'left' | 'right' }) {
       }
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        // Snap to collapsed only once the cursor is dragged right up to the screen edge — not
-        // merely when the width bottoms out at the minimum (Attio behavior).
+        // Snap to collapsed only once the cursor reaches the panel's outer edge (the screen edge
+        // for the fixed sidebar) — not merely when the width bottoms out at the minimum.
         const atEdge =
           side === 'left'
-            ? moveEvent.clientX <= SIDEBAR_COLLAPSE_EDGE
-            : moveEvent.clientX >= window.innerWidth - SIDEBAR_COLLAPSE_EDGE
+            ? moveEvent.clientX <= outerEdge + SIDEBAR_COLLAPSE_EDGE
+            : moveEvent.clientX >= outerEdge - SIDEBAR_COLLAPSE_EDGE
         if (atEdge) {
           collapsed = true
           cleanup()
@@ -601,7 +608,8 @@ function SidebarResizeHandle({ side }: { side: 'left' | 'right' }) {
       onDoubleClick={handleDoubleClick}
       className={cn(
         'group/resize absolute inset-y-0 z-20 flex w-2 cursor-col-resize items-stretch justify-center',
-        side === 'left' ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2'
+        side === 'left' ? 'right-0 translate-x-1/2' : 'left-0 -translate-x-1/2',
+        className
       )}>
       {/* Accent line on the border, revealed on hover / while dragging. */}
       <div className='w-px bg-transparent transition-colors group-hover/resize:bg-info' />
@@ -1011,6 +1019,7 @@ export {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarProvider,
+  SidebarResizeHandle,
   SidebarSeparator,
   SidebarTrigger,
   // Exported so secondary surfaces can apply the row styling to a non-button host

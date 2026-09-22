@@ -4,12 +4,12 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Separator } from '@auxx/ui/components/separator'
-import { CircleHelp, PanelLeft } from 'lucide-react'
+import { CircleHelp } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useAccountingToolbarOutlet } from '~/components/accounting/accounting-toolbar-outlet'
-import { useAccountingSidebarStore } from '~/components/accounting/stores/accounting-sidebar-store'
 import { PostingGuideDialog } from '~/components/accounting/ui/settings/posting-guide-dialog'
+import { SecondarySidebarTrigger } from '~/components/global/secondary-sidebar-provider'
 import { Tooltip } from '~/components/global/tooltip'
 
 /**
@@ -28,23 +28,13 @@ import { Tooltip } from '~/components/global/tooltip'
  */
 export function AccountingToolbar() {
   const { left, right } = useAccountingToolbarOutlet()
-  const sidebarOpen = useAccountingSidebarStore((store) => store.open)
-  const setSidebarOpen = useAccountingSidebarStore((store) => store.setOpen)
   const [guideOpen, setGuideOpen] = useState(false)
 
   return (
     <div className='flex shrink-0 flex-wrap items-center gap-1 border-b p-1'>
-      <Tooltip content={sidebarOpen ? 'Hide the rail' : 'Show the rail'}>
-        <Button
-          variant={sidebarOpen ? 'secondary' : 'ghost'}
-          size='icon-sm'
-          aria-label='Toggle the accounting rail'
-          onClick={() => setSidebarOpen(!sidebarOpen)}>
-          <PanelLeft />
-        </Button>
-      </Tooltip>
+      <SecondarySidebarTrigger />
 
-      <Separator orientation='vertical' className='h-6' />
+      <Separator orientation='vertical' className='hidden h-6 md:block' />
 
       {left}
 

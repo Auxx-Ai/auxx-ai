@@ -9,6 +9,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { usePathname } from 'next/navigation'
 import type * as React from 'react'
+import { SecondarySidebarProvider } from '~/components/global/secondary-sidebar-provider'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import { SETTINGS_MENU } from '~/constants/menu'
 
@@ -31,9 +32,9 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent className={cn(!isFullWidth && 'max-w-6xl')}>
-        <div
+        <SecondarySidebarProvider
           className={cn(
-            'rounded-2xl border border-neutral-200/80 dark:border-primary-200/80 flex flex-col md:flex-row h-full w-full overflow-hidden shadow-lg',
+            'rounded-2xl border border-neutral-200/80 dark:border-primary-200/80 flex-col md:flex-row w-full overflow-hidden shadow-lg',
             !isFullWidth && 'max-w-6xl'
           )}>
           <SidebarSecondary
@@ -46,7 +47,7 @@ export default function SettingsSidebar({ children }: { children: React.ReactNod
           <div className='relative flex h-full flex-1 grow overflow-hidden bg-background outline-none'>
             {children}
           </div>
-        </div>
+        </SecondarySidebarProvider>
       </MainPageContent>
     </MainPage>
   )
