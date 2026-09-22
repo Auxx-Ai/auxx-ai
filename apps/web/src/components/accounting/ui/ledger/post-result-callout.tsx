@@ -3,8 +3,9 @@
 'use client'
 
 import type { PostResult, PostResultStatus } from '@auxx/lib/accounting/ledger/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
-import { CheckCircle2, CircleSlash, PlugZap, TriangleAlert } from 'lucide-react'
+import { Button } from '@auxx/ui/components/button'
+import { cn } from '@auxx/ui/lib/utils'
+import { CheckCircle2, CircleSlash, PlugZap, TriangleAlert, X } from 'lucide-react'
 import type { ComponentType } from 'react'
 
 export interface OutcomeCopy {
@@ -128,51 +129,52 @@ export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
   },
 }
 
-/**
- * The tones map onto shared `Alert` variants rather than a local set of border
- * and text classes, so a posted entry reads as the same kind of object as every
- * other callout in the app. The variant carries the border, the wash and the
- * icon color; nothing here restates them.
- */
-const TONE_VARIANT: Record<OutcomeCopy['tone'], 'success' | 'neutral' | 'destructive'> = {
-  success: 'success',
-  neutral: 'neutral',
-  failure: 'destructive',
+/** Washes echo the `Alert` tones; solid `bg-background` beneath so the row under it does not bleed through. */
+const TONE_CLASS: Record<OutcomeCopy['tone'], string> = {
+  success: 'bg-green-500/10 text-green-700 dark:text-green-400',
+  neutral: 'bg-muted/80 text-foreground',
+  failure: 'bg-destructive/10 text-destructive',
 }
 
-interface PostResultCalloutProps {
+interface PostResultOverlayProps {
   result: PostResult
-  providerLabel: string
-  /**
-   * Which company this workspace is connected to now. Unused since the deep
-   * link moved behind the seam (plan 67 §5.6, `AccountingProvider.objectUrl`)
-   * - kept on the props for its caller, `drafts-panel.tsx`, which still
-   * threads it down from its own parent.
-   */
-  connectedTenantId: string | null
+  onDismiss: () => void
 }
 
-/** The provider result, inline with the entry it belongs to. */
-export function PostResultCallout({ result, providerLabel }: PostResultCalloutProps) {
+/**
+ * The provider result laid over the row it belongs to, so the list never
+ * grows under it. The parent must be `relative`.
+ */
+export function PostResultOverlay({ result, onDismiss }: PostResultOverlayProps) {
   const copy = OUTCOMES[result.status]
   const Icon = copy.icon
 
   return (
-    <Alert variant={TONE_VARIANT[copy.tone]}>
-      <Icon />
-      <AlertTitle className='flex-wrap'>
-        {copy.title}
+    <div className='absolute inset-0 z-10 rounded-md bg-background'>
+      <div
+        className={cn(
+          'flex size-full min-w-0 items-center gap-2 rounded-md px-2 text-sm',
+          TONE_CLASS[copy.tone]
+        )}>
+        <Icon className='size-4 shrink-0' />
+        <span className='shrink-0 font-medium'>{copy.title}</span>
         {result.docNumber && (
-          <span className='font-mono text-xs opacity-70'>{result.docNumber}</span>
+          <span className='shrink-0 font-mono text-xs opacity-70'>{result.docNumber}</span>
         )}
-      </AlertTitle>
-      <AlertDescription>{copy.detail}</AlertDescription>
-      {result.error && <p className='text-sm'>{result.error}</p>}
-      {result.retryable && (
-        <AlertDescription className='text-xs'>
-          This was a transport failure, so it is worth trying again.
-        </AlertDescription>
-      )}
-    </Alert>
+        {result.error && (
+          <span className='min-w-0 truncate text-xs' title={result.error}>
+            {result.error}
+          </span>
+        )}
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          aria-label='Dismiss'
+          className='ml-auto shrink-0'
+          onClick={onDismiss}>
+          <X />
+        </Button>
+      </div>
+    </div>
   )
 }

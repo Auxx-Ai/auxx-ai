@@ -45,8 +45,6 @@ interface OutboxPanelProps {
   buildNotice?: ReactNode
   bookTimeZone: string
   currencyCode: string
-  /** 🔌 The provider's own tenant, for a `PostResultCallout` deep link. */
-  connectedTenantId: string | null
   /** 🔌 Never a vendor name. `UNKNOWN_PROVIDER_LABEL` when nothing is connected. */
   providerLabel: string
   /** So an open row reads as "the one you are looking at" the same as the rail strip does. */
@@ -75,7 +73,6 @@ function OutboxBody({
   buildNotice,
   bookTimeZone,
   currencyCode,
-  connectedTenantId,
   providerLabel,
   activePostingId,
   onSelectPosting,
@@ -115,7 +112,7 @@ function OutboxBody({
     drafts: counts?.drafts ?? 0,
     blocked: counts?.blocked ?? 0,
     // Ready holds `sending` too (75-D6).
-    ready: (counts?.ready ?? 0) + (counts?.sending ?? 0),
+    ready: (counts?.ready ?? 0) + (counts?.sending ?? 0) + (counts?.unbuilt ?? 0),
     sent: counts?.sent ?? 0,
     failed: counts?.failed ?? 0,
   }
@@ -217,8 +214,6 @@ function OutboxBody({
                 emptyDescription={emptyCopy('drafts')}
                 currencyCode={currencyCode}
                 bookTimeZone={bookTimeZone}
-                providerLabel={providerLabel}
-                connectedTenantId={connectedTenantId}
                 activePostingId={activePostingId}
                 onSelectPosting={onSelectPosting}
               />
@@ -294,7 +289,7 @@ function emptyDescription(
     case 'blocked':
       return 'Nothing the ledger refused is waiting. A movement lands here when its entry could not be built - an account role nothing is mapped to, a period that is shut - and leaves it the moment a retry is accepted.'
     case 'drafts':
-      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry; it does not build an export batch - "Build batches" does, for the month picked beside it.${held}`
+      return `A draft is left here when its avenue posts with autoPost switched off (Settings › Posting). Approving one posts its entry and puts it on Ready - as its own batch in Transaction mode, or inside its period's unbuilt row in Summary mode.${held}`
     case 'ready':
       return `These tabs list every period, so nothing anywhere is waiting to be sent. "Build batches" freezes the picked month's posted entries into batches, and nothing is built until somebody asks.${held}`
     case 'sent':

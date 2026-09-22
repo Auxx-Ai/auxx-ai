@@ -36,7 +36,9 @@ type OutboxCounts = RouterOutputs['ledger']['outboxCounts']
 /** 🛑 `sent` is not counted: the topbar figure is about what is OUTSTANDING. */
 function outstanding(counts: OutboxCounts | undefined): number {
   if (!counts) return 0
-  return counts.drafts + counts.blocked + counts.ready + counts.sending + counts.failed
+  return (
+    counts.drafts + counts.blocked + counts.unbuilt + counts.ready + counts.sending + counts.failed
+  )
 }
 
 /**
@@ -81,7 +83,6 @@ export function OutboxPage() {
     bookTimeZone: period.bookTimeZone,
     providerLabel,
     defaultEntryDate: today(period.bookTimeZone),
-    onOpenOutbox: selectTab,
   })
 
   const countsQuery = api.ledger.outboxCounts.useQuery()
@@ -156,7 +157,6 @@ export function OutboxPage() {
         }
         bookTimeZone={period.bookTimeZone}
         currencyCode={period.currencyCode}
-        connectedTenantId={provider.connectedTenantId ?? null}
         providerLabel={providerLabel}
         activePostingId={drawers.postingId}
         onSelectPosting={drawers.openPosting}

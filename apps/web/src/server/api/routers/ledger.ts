@@ -6,6 +6,7 @@ import {
   countExportBatchesByState,
   EXPORT_BATCH_PAGE_SIZE,
   listExportBatches,
+  readUnbuiltSummaryRows,
   releaseExportBatches,
   retryExportBatch,
   rollbackExportBatch,
@@ -1173,18 +1174,54 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Build every batch a month still owes.
+     * Summary mode's rows Build has not made yet: posted, unbatched entries
+     * grouped the way a batch would group them. Empty in Transaction mode.
+     */
+    unbuilt: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            from: z.iso.date().optional(),
+            to: z.iso.date().optional(),
+            categories: z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional(),
+          })
+          .refine(validOutboxRange, outboxRangeError)
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await readUnbuiltSummaryRows(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          from: input.from,
+          to: input.to,
+          avenues: input.categories,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Build every batch a month still owes, or just the postings named.
      *
      * 🛑 `ledgerPost`: building freezes a payload out of posted entries and is
      * the act that decides what leaves. It sends nothing - `autoSend` and the
      * sweep, or an explicit release, do that.
      */
     build: permissionProcedure(PermissionKey.ledgerPost)
-      .input(monthKey)
+      .input(
+        z.union([
+          monthKey,
+          z
+            .object({
+              from: z.iso.date(),
+              to: z.iso.date(),
+              glPostingIds: z.array(z.string().min(1)).min(1).max(500),
+            })
+            .refine(validOutboxRange, outboxRangeError),
+        ])
+      )
       .mutation(async ({ ctx, input }) => {
         const result = await buildExportBatches(ctx.db, {
           organizationId: ctx.session.organizationId,
-          ...monthDateRange(input.periodKey),
+          ...('periodKey' in input ? monthDateRange(input.periodKey) : input),
         })
         if (result.isErr()) throw result.error
         return result.value
@@ -1690,14 +1727,17 @@ export const ledgerRouter = createTRPCRouter({
   outboxCounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
-    const [drafts, blocked, batches] = await Promise.all([
+    const [drafts, blocked, batches, unbuilt] = await Promise.all([
       canPost ? countDraftPostings(ctx.db, organizationId) : 0,
       canPost ? countBlockedMovements(ctx.db, organizationId) : 0,
       countExportBatchesByState(ctx.db, organizationId),
+      readUnbuiltSummaryRows(ctx.db, { organizationId }),
     ])
     return {
       drafts,
       blocked,
+      /** Summary mode's groups Build has not made yet; they sit on Ready as rows. */
+      unbuilt: unbuilt.isOk() ? unbuilt.value.length : 0,
       ready: batches.ready,
       sending: batches.sending,
       sent: batches.sent,
