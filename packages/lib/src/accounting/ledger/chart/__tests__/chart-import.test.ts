@@ -34,6 +34,14 @@ vi.mock('../../../providers/provider', () => ({
   NONE_PROVIDER_ID: 'none',
 }))
 
+const onCacheEvent = vi.fn()
+const getCachedProviderChart = vi.fn()
+vi.mock('../../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../cache')>()),
+  onCacheEvent: (...a: unknown[]) => onCacheEvent(...a),
+  getCachedProviderChart: (...a: unknown[]) => getCachedProviderChart(...a),
+}))
+
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { UniqueValueConflictError, UnprocessableEntityError } from '../../../../errors'
@@ -166,6 +174,22 @@ beforeEach(() => {
   )
   updateChartAccountMock.mockResolvedValue(ok({} as ChartAccountRow))
   listChartAccounts.mockResolvedValue(ok<ChartAccountRow[]>([]))
+  getCachedProviderChart.mockResolvedValue(null)
+})
+
+describe('the provider chart', () => {
+  it('drops the cached provider chart before reading it - Import reads the provider now', async () => {
+    stubProvider({ id: 'none', accounts: [] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(onCacheEvent).toHaveBeenCalledWith('accounting.provider-chart.changed', { orgId: ORG })
+    expect(onCacheEvent.mock.invocationCallOrder[0]).toBeLessThan(
+      getCachedProviderChart.mock.invocationCallOrder[0] ?? 0
+    )
+  })
 })
 
 describe('nothing connected', () => {

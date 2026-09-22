@@ -25,17 +25,16 @@
  * to - two screens, two truths, one chart. So the decode lives here and the
  * callers own only their query and their output shape.
  *
- * ⚠️ **Nothing here is cached, deliberately.** `resolve-roles.ts` carries the
- * long argument: `INVALIDATION_GRAPH` has no per-record event for a `gl_account`
- * rename or archive, so a cached key is correct for an hour and then fails OPEN.
- * The `customFields` org-cache lookup below is a different thing - it caches the
- * SCHEMA, which does have `custom-field.*` events - and is fine.
+ * `loadChartAccountsById` reads the `chartAccounts` org-cache key; `readChartAccountValues`
+ * stays a database read, because the cache provider and `chart-write.ts`'s read-back
+ * must see the rows as written.
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
+import { getOrgCache } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
 import { systemFieldMap } from '../../../resources/system-records'
 import type { ChartAccountRow } from '../types'
@@ -267,15 +266,14 @@ export function decodeChartAccounts(
 }
 
 /**
- * Load the named `gl_account` instances, decoded.
+ * Load the named `gl_account` instances from the `chartAccounts` org-cache key.
  *
- * Archived instances are excluded by the QUERY rather than filtered afterwards,
- * so "archived" and "deleted" produce one answer: from a mapping's point of view
- * they are the same fact - the account it names is not available.
+ * Archived instances are excluded, so "archived" and "deleted" produce one
+ * answer: from a mapping's point of view the account it names is not available.
+ * `malformed` is always `[]` - the cache provider decoded and logged those.
  *
- * An empty id list short-circuits without touching the cache OR the database, so
- * a fresh org with no assignments gets an empty chart rather than a provisioning
- * refusal.
+ * An empty id list short-circuits without touching the cache, so a fresh org
+ * with no assignments gets an empty chart rather than a provisioning refusal.
  *
  * @param notProvisionedMessage see {@link loadChartAccountFields}.
  */
@@ -287,23 +285,13 @@ export async function loadChartAccountsById(
 ): Promise<ChartAccountsRead> {
   if (accountIds.length === 0) return { accounts: new Map(), malformed: [] }
 
-  const fields = await loadChartAccountFields(organizationId, notProvisionedMessage, db)
+  await loadChartAccountFields(organizationId, notProvisionedMessage, db)
 
-  const live = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, [...new Set(accountIds)]),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-
-  return readChartAccountValues(
-    db,
-    organizationId,
-    live.map((row) => row.id),
-    fields
-  )
+  const wanted = new Set(accountIds)
+  const chart = await getOrgCache().get(organizationId, 'chartAccounts')
+  const accounts = new Map<string, ChartAccountRow>()
+  for (const row of chart) {
+    if (wanted.has(row.id) && !row.isArchived) accounts.set(row.id, row)
+  }
+  return { accounts, malformed: [] }
 }

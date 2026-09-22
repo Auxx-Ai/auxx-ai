@@ -31,6 +31,8 @@ import { ACCOUNT_ROLES } from '../../builders/entry'
 const h = vi.hoisted(() => ({
   /** systemAttribute -> the CustomField row, or absent to model an unmigrated org. */
   fields: new Map<string, { id: string; entityDefinitionId: string | null }>(),
+  /** The db the `chartAccounts` provider computes from - the one the test built. */
+  db: null as unknown,
 }))
 
 // The provider seam the link state (89 D9) is read through. `listProviderAccounts`
@@ -58,6 +60,13 @@ vi.mock('../../../../cache', () => ({
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(attrs.map((a) => [a, h.fields.get(a) ?? null])),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { chartAccountsProvider } = await import(
+        '../../../../cache/providers/chart-accounts-provider'
+      )
+      return chartAccountsProvider.compute(orgId, h.db as Database)
+    },
   }),
 }))
 
@@ -256,6 +265,7 @@ function stubDb(
       },
     }),
   } as unknown as Database
+  h.db = db
 
   return { db, inserts, updates }
 }

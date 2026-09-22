@@ -30,12 +30,9 @@
  * so nothing downstream can detect it; catching it here is the difference
  * between a validation message and a restatement.
  *
- * ⚠️ **No caching, deliberately.** `resolve-roles.ts` carries the long argument:
- * the invalidation graph has no per-record event for a `gl_account` rename or
- * archive, so a cached key is correct for an hour and then fails OPEN - the
- * entry still balances. This file reads the same rows through the same door and
- * inherits the same rule. Do not add an `OrgCacheDataMap` key to either until
- * `gl_account` create/update/archive have events of their own.
+ * The chart is read through the `chartAccounts` org-cache key, invalidated by
+ * `chart-account.changed` from the four `chart-write.ts` writers
+ * (plans/accounting/tasks/84-the-chart-in-the-org-cache.md).
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
@@ -46,6 +43,7 @@ import { toIso } from '@auxx/utils/calendar-day'
 import { and, count, eq, isNotNull, isNull } from 'drizzle-orm'
 import { PgTransaction } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
+import { getOrgCache } from '../../../cache'
 import {
   AuxxError,
   BadRequestError,
@@ -65,12 +63,10 @@ import {
   type ScopeAxis,
 } from '../builders/entry'
 import { accountLabel } from '../chart/account-label'
-import { sortChartTree } from '../chart/account-tree'
 import {
   type ChartAccountsRead,
   loadChartAccountFields,
   loadChartAccountsById as readChartAccountsById,
-  readChartAccountValues,
 } from '../chart/chart-accounts'
 import { withAccountingCommitLock } from '../post/accounting-commit-lock'
 import type {
@@ -336,19 +332,17 @@ async function readAccountLinks(
 }
 
 /**
- * The org's editable chart of accounts - every live `gl_account` instance.
+ * The org's editable chart of accounts - every live `gl_account` instance, read
+ * from the `chartAccounts` org-cache key.
  *
- * Archived instances are excluded by the query, exactly as `resolveRoles` does:
- * from a mapping's point of view "archived" and "deleted" are the same fact, and
- * an account somebody archived must not reappear in the picker that assigns
- * roles.
+ * Archived instances are excluded here, exactly as `resolveRoles` does: from a
+ * mapping's point of view "archived" and "deleted" are the same fact, and an
+ * account somebody archived must not reappear in the picker that assigns roles.
  *
- * An account missing `gl_account_type` is SKIPPED and logged rather than
- * defaulted - guessing a type would defeat the compatibility check that is the
- * only reason the type is read. A missing or blank `gl_account_code` is no
- * longer a reason to skip (task 15 §5): the account id is the identity, and a
- * code is a label the account may not carry. The log line names the ids so a
- * malformed account is findable rather than merely invisible.
+ * An account missing `gl_account_type` is SKIPPED rather than defaulted -
+ * guessing a type would defeat the compatibility check that is the only reason
+ * the type is read. The cache provider logs the skipped ids. A missing or blank
+ * `gl_account_code` is not a reason to skip (task 15 §5).
  *
  * Ordered depth-first by the chart's tree (D9, CHART-HIERARCHY.md): a parent,
  * then its subtree, siblings by code then name.
@@ -361,7 +355,9 @@ export interface ListChartAccountsOptions {
    * 🛑 The settings list is the ONLY caller that may pass true. An archived
    * account is removed as far as posting is concerned, and handing one to the
    * resolver, the role picker or a preview would put money into an account
-   * somebody deliberately took out of the chart.
+   * somebody deliberately took out of the chart. This accessor and
+   * `loadChartAccountsById` are the only places the cached chart is filtered
+   * on `isArchived`.
    */
   includeArchived?: boolean
 }
@@ -385,42 +381,9 @@ export async function listChartAccounts(
       )
     }
 
-    // 🛑 The archived filter is in the QUERY and stays there by default. Every
-    // reader but the settings list depends on it - `resolveRoles` picking a
-    // removed account would post real money into it - so `includeArchived` widens
-    // this one call rather than the readers filtering afterwards.
-    const instances = await db
-      .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
-      .from(schema.EntityInstance)
-      .where(
-        and(
-          eq(schema.EntityInstance.organizationId, organizationId),
-          eq(schema.EntityInstance.entityDefinitionId, glAccountDefId),
-          ...(options.includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
-        )
-      )
-
-    const accounts = warnMalformed(
-      organizationId,
-      await readChartAccountValues(
-        db,
-        organizationId,
-        instances.map((row) => row.id),
-        fields
-      )
-    )
-
-    // `archivedAt` lives on the instance, not among the account's attributes, so
-    // the decoder cannot know it. Stamped here, and only when it can be true.
-    if (options.includeArchived) {
-      for (const row of instances) {
-        if (!row.archivedAt) continue
-        const account = accounts.get(row.id)
-        if (account) account.isArchived = true
-      }
-    }
-
-    return ok(sortChartTree([...accounts.values()]))
+    // A new array every call: the local cache hands this same blob to every reader.
+    const chart = await getOrgCache().get(organizationId, 'chartAccounts')
+    return ok(options.includeArchived ? [...chart] : chart.filter((row) => !row.isArchived))
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list the chart of accounts', { error, organizationId })

@@ -14,17 +14,32 @@
 
 import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { chartProviderDb } from '../../__tests__/support/chart-cache-stub'
 
 vi.mock('../../post/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
 
-const h = vi.hoisted(() => ({ fields: new Map<string, { id: string }>() }))
+const h = vi.hoisted(() => ({
+  fields: new Map<string, { id: string }>(),
+  /** What the `chartAccounts` provider computes from - see `chart-cache-stub.ts`. */
+  chartDb: null as unknown,
+}))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.get(a) ?? null])),
+        Object.fromEntries(
+          attrs.map((a) => {
+            const field = h.fields.get(a)
+            return [a, field ? { ...field, entityDefinitionId: 'def_gl_account' } : null]
+          })
+        ),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { computeChart } = await import('../../__tests__/support/chart-cache-stub')
+      return computeChart(orgId, h.chartDb)
+    },
   }),
 }))
 
@@ -123,6 +138,7 @@ function stubDb(options: { storeIds?: string[] } = {}): Stub {
     { entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType },
     { entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: true },
   ])
+  h.chartDb = chartProviderDb(ACCOUNTS, values)
 
   const rowsFor = (table: unknown, params: string[]): unknown[] => {
     if (table === schema.GlRoleAssignment) return []

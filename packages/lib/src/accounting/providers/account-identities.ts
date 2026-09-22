@@ -38,6 +38,7 @@ import { accountLabel } from '../ledger/chart/account-label'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { AccountIdentityRow, ChartAccountRow, ProviderAccount } from '../ledger/types'
 import { resolveAccountingProvider, supportsCreatingProviderAccounts } from './provider'
+import { readProviderChart } from './provider-chart'
 import {
   classificationArticle,
   isMappableTo,
@@ -100,7 +101,7 @@ export async function listAccountIdentities(
     const provider = await resolveAccountingProvider(organizationId)
 
     const [providerChart, mappings] = await Promise.all([
-      provider.listProviderAccounts(organizationId),
+      readProviderChart(organizationId),
       provider.listAccountMappings(organizationId),
     ])
     if (providerChart.isErr()) return err(providerChart.error)
@@ -239,7 +240,7 @@ export async function setAccountIdentity(
       return ok(unmappedRow(account))
     }
 
-    const providerChart = await provider.listProviderAccounts(organizationId)
+    const providerChart = await readProviderChart(organizationId)
     if (providerChart.isErr()) return err(providerChart.error)
 
     const target = providerChart.value.find((row) => row.id === providerAccountId)

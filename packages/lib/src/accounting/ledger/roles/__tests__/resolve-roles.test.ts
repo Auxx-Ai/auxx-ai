@@ -22,10 +22,13 @@
 
 import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { chartProviderDb } from '../../__tests__/support/chart-cache-stub'
 
 const h = vi.hoisted(() => ({
   /** systemAttribute -> field id, or absent to model an unmigrated org. */
   fields: new Map<string, string>(),
+  /** What the `chartAccounts` provider computes from - see `chart-cache-stub.ts`. */
+  chartDb: null as unknown,
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -39,6 +42,11 @@ vi.mock('../../../../cache', () => ({
           ])
         ),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { computeChart } = await import('../../__tests__/support/chart-cache-stub')
+      return computeChart(orgId, h.chartDb)
+    },
   }),
 }))
 
@@ -106,6 +114,7 @@ function stubDb(assignments: Assignment[], accounts: Account[]) {
     }
     return rows
   })
+  h.chartDb = chartProviderDb(accounts, values)
 
   return {
     select: () => ({
@@ -419,6 +428,7 @@ function stubLineDb(assignments: Assignment[], accounts: Account[]) {
     }
     return rows
   })
+  h.chartDb = chartProviderDb(accounts, values)
 
   return {
     select: (columns?: unknown) => ({

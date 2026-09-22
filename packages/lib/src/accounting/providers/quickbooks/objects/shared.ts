@@ -7,6 +7,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { getCachedProviderChart } from '../../../../cache'
 import { UnprocessableEntityError } from '../../../../errors'
 import type { ExportFailureItem } from '../../../export/client'
 import { toMinorUnits } from '../../../ledger/builders/manual'
@@ -210,13 +211,20 @@ export function norm(value: string | null | undefined): string {
 }
 
 /**
- * Fetch the org's QuickBooks chart of accounts, active only - a posting
- * cannot use an inactive account. Moved verbatim from
- * `quickbooks-accounting-provider.ts`; see that file's own note on why the
- * chart is fetched whole rather than filtered server-side.
+ * The org's QuickBooks chart of accounts, active only - a posting cannot use an
+ * inactive account. Served from the org cache only when it holds this context's
+ * company; otherwise, or when the cache read fails, the live fetch (84 §7.3).
  */
 async function fetchChart(tool: QuickbooksToolContext): Promise<ProviderAccount[]> {
-  const accounts = await listQuickbooksProviderAccounts(tool)
+  const realmId = tool.realmId?.trim()
+  // A cache failure falls through so the live call throws Intuit's own error to classify.
+  const cached = realmId
+    ? await getCachedProviderChart(tool.organizationId).catch(() => null)
+    : null
+  const accounts =
+    cached && cached.companyId === realmId
+      ? cached.accounts
+      : await listQuickbooksProviderAccounts(tool)
   return accounts.filter((account) => account.active)
 }
 

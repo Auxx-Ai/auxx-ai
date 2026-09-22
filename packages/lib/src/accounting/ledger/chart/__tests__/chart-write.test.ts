@@ -48,6 +48,10 @@ const h = vi.hoisted(() => ({
    * payment gateway would be testing the wrong refusal.
    */
   pointers: [] as { attribute: string; entityId: string; glAccountId: string }[],
+  /** Cache events emitted, in order. */
+  events: [] as string[],
+  /** The db the `chartAccounts` provider computes from - the one the test built. */
+  db: null as unknown,
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -56,7 +60,17 @@ vi.mock('../../../../cache', () => ({
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(attrs.map((a) => [a, h.fields.get(a) ?? null])),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { chartAccountsProvider } = await import(
+        '../../../../cache/providers/chart-accounts-provider'
+      )
+      return chartAccountsProvider.compute(orgId, h.db as Database)
+    },
   }),
+  onCacheEvent: async (event: string) => {
+    h.events.push(event)
+  },
 }))
 
 vi.mock('../../../../resources/crud/unified-handler', () => ({
@@ -270,7 +284,7 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
     return allFieldValues().filter((row) => params.includes(row.entityId as string))
   }
 
-  return {
+  const db = {
     select: () => ({
       from: (table: unknown) => {
         let params: string[] = []
@@ -295,6 +309,8 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
       },
     }),
   } as unknown as Database
+  h.db = db
+  return db
 }
 
 const GRNI_ACCOUNT: Account = {
@@ -317,6 +333,7 @@ beforeEach(() => {
   h.archives = []
   h.restores = []
   h.deletes = []
+  h.events = []
   h.writeError = null
   h.createdId = 'acct_new'
   h.pointers = []
@@ -1524,5 +1541,47 @@ describe('I3: removing an account a role still posts to', () => {
 
     expect(error).toBeInstanceOf(NotFoundError)
     expect(h.archives).toHaveLength(0)
+  })
+})
+
+describe('chart-account.changed (brief 84 §3)', () => {
+  it('fires once from each of the four writers after the write lands', async () => {
+    h.createdId = 'acct_6410'
+    const created: Account = {
+      id: 'acct_6410',
+      code: '6410',
+      name: 'Office',
+      accountType: 'expense',
+    }
+    const db = stubDb([created, GRNI_ACCOUNT])
+    const target = { organizationId: ORG, accountId: GRNI_ACCOUNT.id, actorUserId: USER }
+
+    await createChartAccount(db, {
+      organizationId: ORG,
+      code: '6410',
+      name: 'Office',
+      accountType: 'expense',
+      actorUserId: USER,
+    })
+    await updateChartAccount(db, { ...target, name: 'GRNI' })
+    await removeChartAccount(db, target)
+    await restoreChartAccount(db, target)
+
+    expect(h.events).toEqual([
+      'chart-account.changed',
+      'chart-account.changed',
+      'chart-account.changed',
+      'chart-account.changed',
+    ])
+  })
+
+  it('does not fire when the write is refused or there is nothing to write', async () => {
+    const db = stubDb([GRNI_ACCOUNT], [{ role: 'grni', glAccountId: GRNI_ACCOUNT.id }])
+    const target = { organizationId: ORG, accountId: GRNI_ACCOUNT.id, actorUserId: USER }
+
+    await removeChartAccount(db, target)
+    await updateChartAccount(db, target)
+
+    expect(h.events).toEqual([])
   })
 })

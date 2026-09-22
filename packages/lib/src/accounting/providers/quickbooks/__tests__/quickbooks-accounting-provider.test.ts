@@ -49,6 +49,14 @@ vi.mock('../account-map', async (importOriginal) => ({
   readQuickbooksAccountMap: (...a: unknown[]) => readQuickbooksAccountMap(...a),
 }))
 
+// The live provider chart's org-cache key (84 §7). Null by default: every other
+// test here reads the chart through the real `callTool`.
+const getCachedProviderChart = vi.fn()
+vi.mock('../../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../cache')>()),
+  getCachedProviderChart: (...a: unknown[]) => getCachedProviderChart(...a),
+}))
+
 // The counterparty seam (brief 13 §1). Mocked the same way `upsert-customer.test.ts`
 // mocks it - `resolveCounterparties` never touches a real `UnifiedCrudHandler` method,
 // it only threads one through to this call.
@@ -71,6 +79,7 @@ vi.mock('../upsert-customer', () => ({
 
 import type { ExportJournalLine, ExportJournalPayload } from '../../../export/payloads/journal'
 import { ProviderPostError } from '../../../ledger/types'
+import { listQuickbooksProviderAccounts } from '../account-map'
 import {
   createQuickbooksAccountingProvider,
   QUICKBOOKS_PROVIDER_ID,
@@ -259,6 +268,7 @@ beforeEach(() => {
   readQuickbooksIdField.mockResolvedValue(undefined)
   readQuickbooksCustomerFields.mockResolvedValue({ firstName: 'Tawni', lastName: 'Donahue' })
   upsertQuickbooksCustomer.mockResolvedValue('qbo-cust-new')
+  getCachedProviderChart.mockResolvedValue(null)
 })
 
 describe('the exported surface', () => {
@@ -467,6 +477,65 @@ describe('the happy path', () => {
 
     const chartCalls = callTool.mock.calls.filter(([id]) => id === 'list_quickbooks_accounts')
     expect(chartCalls).toHaveLength(1)
+  })
+
+  describe('the provider chart from the org cache', () => {
+    const REALM = '9341453857213446'
+    const chartCalls = (callTool: ReturnType<typeof vi.fn>) =>
+      callTool.mock.calls.filter(([id]) => id === 'list_quickbooks_accounts')
+    const createJournal = {
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
+    }
+    async function cacheChart(companyId: string) {
+      const accounts = await listQuickbooksProviderAccounts({
+        callTool: async () => ({ accounts: CHART }),
+      } as never)
+      getCachedProviderChart.mockResolvedValue({ companyId, accounts })
+    }
+
+    it('skips the live fetch when the cache holds this company', async () => {
+      await cacheChart(REALM)
+      const callTool = connect(createJournal, { realmId: REALM })
+
+      const result = await send(baseJournal())
+
+      expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', externalId: '201' })
+      expect(chartCalls(callTool)).toHaveLength(0)
+    })
+
+    it('fetches live when the cache holds a different company', async () => {
+      await cacheChart('another-realm')
+      const callTool = connect(createJournal, { realmId: REALM })
+
+      await send(baseJournal())
+
+      expect(chartCalls(callTool)).toHaveLength(1)
+    })
+
+    it('fetches live without reading the cache when the context has no realm', async () => {
+      await cacheChart(REALM)
+      const callTool = connect(createJournal)
+
+      await send(baseJournal())
+
+      expect(getCachedProviderChart).not.toHaveBeenCalled()
+      expect(chartCalls(callTool)).toHaveLength(1)
+    })
+
+    it('still refuses an account the cached chart holds as inactive', async () => {
+      await cacheChart(REALM)
+      connect(createJournal, { realmId: REALM })
+
+      const result = await send(
+        baseJournal({
+          lines: baseJournal().lines.map((line, i) =>
+            i === 0 ? { ...line, glAccountId: 'acct_9999', accountCode: '9999' } : line
+          ),
+        })
+      )
+
+      expect((result._unsafeUnwrapErr() as ProviderPostError).failureClass).toBe('configuration')
+    })
   })
 
   // Task 15 §2.3: a replay (`retry-export.ts`) hands `postEntry` the ORIGINAL

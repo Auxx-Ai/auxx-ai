@@ -8,6 +8,7 @@ import {
 import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAudit } from '../../audit-log'
+import { onCacheEvent } from '../../cache'
 import { listAppCredentials, readAppCredential } from '../../connections/credential-reads'
 import { setDefaultAppCredential } from '../../connections/credential-writes'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
@@ -338,7 +339,10 @@ export async function activateAccountingBookConnection(
   db: Database,
   input: ActivateAccountingBookConnectionInput
 ) {
-  return db.transaction((tx) => activateAccountingBookConnectionInTx(tx, input))
+  const connection = await db.transaction((tx) => activateAccountingBookConnectionInTx(tx, input))
+  // After commit, so a racing reader cannot re-fill the key with the old company's chart.
+  await onCacheEvent('accounting.book.changed', { orgId: input.organizationId })
+  return connection
 }
 
 /** Disconnect accounting identities in the same transaction as an app uninstall. */
@@ -420,7 +424,7 @@ export async function repairAccountingBookConnection(
 ) {
   if (!input.actorUserId || !input.reason.trim())
     throw new UnprocessableEntityError('An actor and repair reason are required')
-  return db.transaction(async (tx) => {
+  const connection = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, input.organizationId)
     const target = await tx.query.ExternalBookConnection.findFirst({
       where: and(
@@ -485,4 +489,6 @@ export async function repairAccountingBookConnection(
     )
     return repaired!
   })
+  await onCacheEvent('accounting.book.changed', { orgId: input.organizationId })
+  return connection
 }

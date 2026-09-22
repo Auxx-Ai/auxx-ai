@@ -21,14 +21,26 @@ vi.mock('../accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() 
 const h = vi.hoisted(() => ({
   fields: new Map<string, string>(),
   lockedThroughMonth: null as string | null,
+  /** The db the `chartAccounts` provider computes from - the one the test built. */
+  db: null as unknown,
 }))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.has(a) ? { id: h.fields.get(a) } : null])),
+        Object.fromEntries(
+          attrs.map((a) => [
+            a,
+            h.fields.has(a) ? { id: h.fields.get(a), entityDefinitionId: 'def_gl_account' } : null,
+          ])
+        ),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { computeChart } = await import('../../__tests__/support/chart-cache-stub')
+      return computeChart(orgId, h.db)
+    },
   }),
 }))
 
@@ -361,8 +373,9 @@ function createFakeDb(chart: Array<{ role: string; account: Account }>) {
     return db
   }
 
+  h.db = makeDb(null)
   return {
-    db: makeDb(null) as never,
+    db: h.db as never,
     get postings() {
       return postings
     },

@@ -51,6 +51,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { onCacheEvent } from '../../../cache'
 import {
   AuxxError,
   BadRequestError,
@@ -207,6 +208,7 @@ export async function createChartAccount(
 
     const handler = crudHandler(db, organizationId, actorUserId)
     const created = await namingTheCode(code, () => handler.create(defId, values))
+    await onCacheEvent('chart-account.changed', { orgId: organizationId })
 
     return ok(await readBack(db, organizationId, created.instance.id, fields))
   } catch (error) {
@@ -324,6 +326,7 @@ export async function updateChartAccount(
       await namingTheCode(values.gl_account_code ?? account.code, () =>
         handler.update(toRecordId(defId, accountId), values)
       )
+      await onCacheEvent('chart-account.changed', { orgId: organizationId })
     }
 
     return ok(await readBack(db, organizationId, accountId, fields))
@@ -392,6 +395,7 @@ export async function removeChartAccount(
 
     const handler = crudHandler(db, organizationId, actorUserId)
     await handler.archive(toRecordId(defId, accountId))
+    await onCacheEvent('chart-account.changed', { orgId: organizationId })
 
     return ok({ id: accountId })
   } catch (error) {
@@ -435,6 +439,7 @@ export async function restoreChartAccount(
 
     const handler = crudHandler(db, organizationId, actorUserId)
     await handler.restore(toRecordId(defId, accountId))
+    await onCacheEvent('chart-account.changed', { orgId: organizationId })
 
     return ok({ id: accountId })
   } catch (error) {

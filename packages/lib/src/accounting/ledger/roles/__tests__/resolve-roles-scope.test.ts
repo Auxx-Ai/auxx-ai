@@ -27,15 +27,30 @@
 
 import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { chartProviderDb } from '../../__tests__/support/chart-cache-stub'
 
-const h = vi.hoisted(() => ({ fields: new Map<string, string>() }))
+const h = vi.hoisted(() => ({
+  fields: new Map<string, string>(),
+  /** What the `chartAccounts` provider computes from - see `chart-cache-stub.ts`. */
+  chartDb: null as unknown,
+}))
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, h.fields.has(a) ? { id: h.fields.get(a) } : null])),
+        Object.fromEntries(
+          attrs.map((a) => [
+            a,
+            h.fields.has(a) ? { id: h.fields.get(a), entityDefinitionId: 'def_gl_account' } : null,
+          ])
+        ),
     }),
+    get: async (orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      const { computeChart } = await import('../../__tests__/support/chart-cache-stub')
+      return computeChart(orgId, h.chartDb)
+    },
   }),
 }))
 
@@ -124,6 +139,7 @@ function stubDb(
     { entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType },
     { entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: true },
   ])
+  h.chartDb = chartProviderDb(ACCOUNTS, values)
 
   const rowsFor = (table: unknown, params: string[]): unknown[] => {
     if (table === schema.GlRoleAssignment) {

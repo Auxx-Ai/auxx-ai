@@ -21,8 +21,10 @@ vi.mock('../../../data-connectors/mutations', () => ({
 }))
 
 const getSystemUser = vi.fn()
+const onCacheEvent = vi.fn()
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ get: (...args: unknown[]) => getSystemUser(...args) }),
+  onCacheEvent: (...args: unknown[]) => onCacheEvent(...args),
 }))
 
 const deleteAppFields = vi.fn()
@@ -114,6 +116,19 @@ describe('uninstallApp — connector cleanup', () => {
       ['dc_1', 'dc_2'],
       expect.stringContaining('uninstalled')
     )
+  })
+
+  it('drops the cached provider chart after the uninstall commits', async () => {
+    vi.mocked(database.select).mockImplementation(() => chain([]) as never)
+
+    const result = await uninstallApp({
+      appId: 'app_1',
+      organizationId: 'org_1',
+      uninstalledById: 'user_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(onCacheEvent).toHaveBeenCalledWith('accounting.book.changed', { orgId: 'org_1' })
   })
 
   it("does NOT sweep the app's custom fields — the records it just kept would be emptied", async () => {
