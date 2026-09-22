@@ -5,7 +5,8 @@
  *
  * ```
  *   Dr accounts_receivable                 the movement amount
- *       Cr <the endpoint the money left by>  the movement amount
+ *   Dr payment_processing_fees             a chargeback's dispute fee (91 D8)
+ *       Cr <the endpoint the money left by>  the two together
  * ```
  *
  * PURE: no database, no clock, no settings. The caller resolves the endpoint; the
@@ -39,13 +40,18 @@ export interface BuildRefundEntryInput {
   customerInstanceId: string
   /** `MoneyRefundSettlement.id`, on the receivable leg when the caller has exactly one. */
   settlementId?: string
+  /**
+   * A chargeback's dispute fee, integer minor units: `Dr payment_processing_fees`, resolved on
+   * the entry's rail scope, and the endpoint credit carries it too. Absent or 0 is no fee leg.
+   */
+  feeMinor?: number
   memo?: string
 }
 
 export interface BuiltRefundEntry {
   entry: BuiltEntry
   periodKey: string
-  /** What left the endpoint. */
+  /** What left the endpoint: the amount plus any dispute fee. */
   totalMinor: number
 }
 
@@ -63,13 +69,21 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
     throw new UnprocessableEntityError('A refund entry needs the account the money left by', {
       moneyTransactionId,
     })
-  const totalMinor = input.amountMinor
-  if (!Number.isSafeInteger(totalMinor) || totalMinor <= 0)
+  const amountMinor = input.amountMinor
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0)
     throw new UnprocessableEntityError(
-      `Refund ${moneyTransactionId} is ${String(totalMinor)}. A refund moves a positive whole ` +
+      `Refund ${moneyTransactionId} is ${String(amountMinor)}. A refund moves a positive whole ` +
         'number of minor units.',
       { moneyTransactionId }
     )
+  const feeMinor = input.feeMinor ?? 0
+  if (!Number.isSafeInteger(feeMinor) || feeMinor < 0)
+    throw new UnprocessableEntityError(
+      `Refund ${moneyTransactionId} carries a dispute fee of ${String(feeMinor)}. A fee is a ` +
+        'positive whole number of minor units; direction carries the sign.',
+      { moneyTransactionId }
+    )
+  const totalMinor = amountMinor + feeMinor
 
   const memo =
     input.memo ?? sourceFactsMemo({ transactionId: moneyTransactionId }, 'Customer refund')
@@ -79,13 +93,26 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
       sourceId: moneyTransactionId,
       accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
       direction: 'debit',
-      amount: totalMinor,
+      amount: amountMinor,
       counterpartyType: 'customer',
       counterpartyId: input.customerInstanceId,
       ...(input.settlementId ? { dimensions: { settlementId: input.settlementId } } : {}),
       memo,
       sortOrder: 0,
     },
+    ...(feeMinor > 0
+      ? [
+          {
+            sourceType: REFUND_SOURCE_TYPE,
+            sourceId: moneyTransactionId,
+            accountRole: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+            direction: 'debit' as const,
+            amount: feeMinor,
+            memo: `${memo} - dispute fee`,
+            sortOrder: 1,
+          },
+        ]
+      : []),
     {
       sourceType: REFUND_SOURCE_TYPE,
       sourceId: moneyTransactionId,
@@ -94,7 +121,7 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
       amount: totalMinor,
       ...(input.endpointDimensions ? { dimensions: input.endpointDimensions } : {}),
       memo,
-      sortOrder: 1,
+      sortOrder: feeMinor > 0 ? 2 : 1,
     },
   ]
 

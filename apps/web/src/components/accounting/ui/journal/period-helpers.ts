@@ -73,7 +73,7 @@ function findFirstOpen(periods: ClosePeriod[]): ClosePeriod | null {
  * `YYYY-MM-DD` for "now", in the given time zone. The JE drawer's fallback
  * default date when there is no active ledger period to derive one from - an
  * org with no month open yet (cutoff still ahead of the wall clock, or setup
- * not finalized) still needs SOME valid date to raise a draft against, and an
+ * not finalized) still needs SOME valid date to create an entry with, and an
  * empty string fails `journalEntry.create`'s `YYYY-MM-DD` check outright.
  */
 export function today(timeZone: string): string {

@@ -14,7 +14,7 @@
 // The flat 37-account list this file used to export was one company's chart:
 // nine accounts carried no role at all and sixteen carried roles only a
 // manufacturer, a purchaser or a card merchant ever drives. Brief 16 §1 splits
-// the same table by WHO reaches it: a `core` every org gets (the eleven roles an
+// the same table by WHO reaches it: a `core` every org gets (the twelve roles an
 // enabled posting type can put on a line for any org that sends an invoice,
 // takes a payment, ships an order, issues a credit memo or writes something
 // off), and four packs an org adds when it starts doing the thing that needs
@@ -149,7 +149,7 @@ export interface ChartPack {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The core: twenty-seven accounts, eleven roles (16 §1.3, 21 §4.2)
+// The core: twenty-eight accounts, twelve roles (16 §1.3, 21 §4.2, 91 D8)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Two different arguments put an account here, and only the FIRST is about
@@ -342,6 +342,14 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Service Revenue',
     accountType: GlAccountType.REVENUE,
     role: 'revenue_service',
+  },
+  {
+    // Contra-revenue, debit-normal like 4090: every shipment of a discounted line
+    // reaches it, so it is core rather than a pack (91 D8).
+    code: '4080',
+    name: 'Discounts Given',
+    accountType: GlAccountType.REVENUE,
+    role: 'discounts_given',
   },
   {
     // A contra-revenue account, and its own account rather than a debit back
@@ -591,6 +599,14 @@ const PREPAYMENTS_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Customer Deposits',
     accountType: GlAccountType.LIABILITY,
     role: 'customer_deposits',
+  },
+  {
+    // Money a cardholder paid us before choosing the goods (91 D8). No subtype: the
+    // processor-balance subtypes are asset classifications.
+    code: '2360',
+    name: 'Gift Card Liability',
+    accountType: GlAccountType.LIABILITY,
+    role: 'gift_card_liability',
   },
 ]
 
@@ -1035,7 +1051,7 @@ export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
     key: 'core',
     label: 'Core',
     description:
-      'Receivables, payables, sales tax, equity, revenue and bad debt. Every organization gets these.',
+      'Receivables, payables, sales tax, equity, revenue, discounts and bad debt. Every organization gets these.',
     accounts: CORE_ACCOUNTS,
   },
   card_rail: {
@@ -1047,8 +1063,9 @@ export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
   },
   prepayments: {
     key: 'prepayments',
-    label: 'Deposits and deferred revenue',
-    description: 'Customer deposits taken before delivery, and revenue deferred at month end.',
+    label: 'Deposits, gift cards and deferred revenue',
+    description:
+      'Customer deposits taken before delivery, gift cards sold and not yet redeemed, and revenue deferred at month end.',
     accounts: PREPAYMENTS_ACCOUNTS,
   },
   inventory: {

@@ -24,6 +24,7 @@ import {
   sumReservedCreditMemoRefunds,
 } from '../../sales/credit-memos/reads'
 import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
+import { readMatchedDisputeFeeMinor } from '../payouts/entry-reads'
 import {
   type LoadedMovement,
   type MovementPostingResult,
@@ -77,6 +78,8 @@ async function prepareRefund(
     ? await readCustomerReceiptAccountingSource(tx, organizationId, money.id, 'customer_refund')
     : null
   if (source?.paymentGatewayId) await loaded.stampGateway(source.paymentGatewayId)
+  // A refund back onto a gift card restores the cardholder's balance.
+  if (source?.giftCard) loaded.markGiftCard()
 
   const { settlements, memos } = await readSettledMemos(tx, organizationId, money.id)
   for (const memo of memos) {
@@ -108,6 +111,8 @@ async function prepareRefund(
     endpointGlAccountId: endpoint.glAccountId,
     ...(Object.keys(endpointDimensions).length ? { endpointDimensions } : {}),
     customerInstanceId: customerId,
+    // A chargeback: the processor's matched dispute row is this movement's own evidence.
+    feeMinor: await readMatchedDisputeFeeMinor(tx, organizationId, money.id),
     // A native refund writes its one settlement with the movement, so the dimension is a fact of it.
     ...(!source && settlements.length === 1 ? { settlementId: settlements[0]!.id } : {}),
   })

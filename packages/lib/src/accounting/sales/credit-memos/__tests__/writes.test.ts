@@ -216,7 +216,9 @@ describe('the channel memo entry (91 D4)', () => {
     expect(h.buildCreditMemoEntry).toHaveBeenCalledOnce()
     const built = h.buildCreditMemoEntry.mock.calls[0]![0]
     expect(built).not.toHaveProperty('settlement')
-    expect(built.lines).toEqual([{ subtotal: 100_00, taxTotal: null, shipped: true }])
+    expect(built.lines).toEqual([
+      { subtotal: 100_00, taxTotal: null, shipped: true, component: 'goods' },
+    ])
     expect(h.readShipped).toHaveBeenCalledWith(
       expect.anything(),
       ORG,

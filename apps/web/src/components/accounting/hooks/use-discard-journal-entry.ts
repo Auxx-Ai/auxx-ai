@@ -14,7 +14,7 @@ export interface DiscardableJournalEntry {
 }
 
 export interface UseDiscardJournalEntryOptions {
-  /** Fires only after the archive actually landed. */
+  /** Fires only after the delete actually landed. */
   onDiscarded?: (journalEntryId: string) => void
 }
 
@@ -22,14 +22,7 @@ export interface DiscardJournalEntryState {
   /** Confirms, then discards. A cancel resolves to nothing happening. */
   requestDiscard: (entry: DiscardableJournalEntry) => Promise<void>
   isDiscarding: boolean
-  /**
-   * The server's own refusal sentence, or `null`.
-   *
-   * 🛑 Held in state rather than thrown at a toast (ground rule 9). A refusal
-   * here names a posted entry and points at reversal, and that is exactly the
-   * kind of message that must not vanish in four seconds. The caller renders it
-   * through `EntryBlockers` with `status: 'discard_refused'`.
-   */
+  /** The server's refusal sentence, rendered as a `discard_refused` card rather than a toast. */
   refusal: string | null
   clearRefusal: () => void
   /** Render this once, anywhere in the caller's tree. */
@@ -37,25 +30,8 @@ export interface DiscardJournalEntryState {
 }
 
 /**
- * The Discard action, shared by the two doors a draft is reachable from - the
- * journal-entry drawer and the ledger page's Entries list
- * (plans/accounting/tasks/done/09-discard-a-draft-entry.md §3.4).
- *
- * One hook rather than two copies, because the two doors have to agree on the
- * confirm copy: a person who discards from the row and a person who discards
- * from the drawer are doing the same thing to the same record, and two wordings
- * would be two different promises about what happens to the number.
- *
- * ## What the copy has to say, and why
- *
- * 🛑 **It archives; it does not delete, and it does not come back from here.**
- * `journal_entry_number` is issued on CREATE out of a gapless sequence, so an
- * abandoned `JNL-0006` leaves a permanent hole - and that hole is correct,
- * because a bookkeeper reading `JNL-0005` then `JNL-0007` has to be able to find
- * out what happened in between. `UnifiedCrudHandler.restore()` exists but there
- * is no archived-entries screen to restore from, so the copy says "cannot be
- * undone from here" rather than implying a reversibility the product does not
- * offer.
+ * Discard an unposted journal entry: the record and its lines are deleted (91 D5).
+ * Shared by the drawer and the Entries list so both confirm with the same words.
  */
 export function useDiscardJournalEntry(
   options: UseDiscardJournalEntryOptions = {}
@@ -78,9 +54,8 @@ export function useDiscardJournalEntry(
       const confirmed = await confirm({
         title: `Discard ${label}?`,
         description:
-          'The entry is archived, not deleted, so the number stays accounted for and the ' +
-          'sequence has no unexplained gap. It leaves the Entries list. This cannot be undone ' +
-          'from here.',
+          'The entry and its lines are deleted. It was never posted, so the books do not ' +
+          'change. Its number is not reused. This cannot be undone.',
         confirmText: 'Discard the entry',
         cancelText: 'Keep it',
         destructive: true,

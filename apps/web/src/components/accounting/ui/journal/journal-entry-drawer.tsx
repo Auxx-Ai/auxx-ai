@@ -13,7 +13,7 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { BookOpenCheck, ExternalLink, Trash2 } from 'lucide-react'
+import { Ban, BookOpenCheck, ExternalLink, Pencil, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useDiscardJournalEntry } from '~/components/accounting/hooks/use-discard-journal-entry'
 import { useJournalEntryDraft } from '~/components/accounting/hooks/use-journal-entry-draft'
@@ -22,6 +22,7 @@ import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel
 import type { RecordId } from '~/components/resources'
 import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 import { BaseType } from '~/components/workflow/types'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
@@ -32,7 +33,7 @@ import { JournalLines, JournalLinesTotals } from './journal-lines'
 import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
 
 interface JournalEntryDrawerProps {
-  /** The record id, or `null` while `isNew` and the empty draft has not landed yet. */
+  /** The record id, or `null` while `isNew` and the first Save has not created it. */
   journalEntryId: string | null
   isNew: boolean
   open: boolean
@@ -41,48 +42,25 @@ interface JournalEntryDrawerProps {
   width: number
   onWidthChange: (width: number) => void
   currencyCode: string
-  /** `YYYY-MM-DD`. Seeds a brand-new draft's Date field - the viewed period's last day. */
+  /** `YYYY-MM-DD`. Seeds a brand-new entry's Date field - the viewed period's last day. */
   defaultDate: string
-  /** The empty draft was raised - swap `?je=new` for `?je=<id>` without a nav. */
+  /** The first Save created the record - swap `?je=new` for `?je=<id>` without a nav. */
   onCreated: (id: string) => void
   /** The entry posted - close this drawer and open the posting it became. */
   onPosted: (glPostingId: string) => void
-  /** View an already-posted entry's posting, without waiting for a new post. */
+  /** View an already-posted entry's posting. */
   onOpenPosting: (glPostingId: string) => void
-  /**
-   * The draft was discarded - close this drawer (`?je=` to null) and refresh the
-   * Entries list behind it. The record is archived, so leaving the drawer open
-   * over it would show a record no read path returns any more.
-   */
+  /** The entry and its lines were deleted - close the drawer. */
   onDiscarded: () => void
-  /**
-   * What the record IS. Defaults to `manual`.
-   *
-   * 🛑 `recurring_template` is a STENCIL, not an entry: `postJournalEntry`
-   * refuses it by name with a sentence, so this drawer hides Preview and Post
-   * rather than offering two buttons the server will not honour. Its schedule
-   * is edited on Accounting > Settings > Recurring templates, because the rule
-   * needs a saved record to hang off and the drawer defers the create to the
-   * first edit.
-   */
+  /** What a NEW record is. A `recurring_template` never posts, so Preview and Post are hidden. */
   kind?: 'manual' | 'recurring_template'
 }
 
 /**
- * The journal entry drawer - HANDOFF slot 1B item 2. `DockableDrawer` in the
- * SAME dock slot `LedgerDrawerHost` uses on the ledger page, opened by `?je=new`
- * or `?je=<id>`.
- *
- * ⚠️ **The Attachment row is not a `FieldInputAdapter`**, alone among the rows
- * in this panel. `FieldInputAdapter`'s FILE case renders `FileInputField`,
- * which reads its field and record off `usePropertyContext()` rather than the
- * value/onChange pair every other row passes, so the field goes through
- * {@link JournalEntryAttachment} and the files pipeline instead
- * (`docs/files-upload-architecture-guide.md`).
- *
- * 🛑 That row needs a RECORD, and `useJournalEntryDraft` deliberately raises one
- * on the first edit rather than on mount. A drawer opened at `?je=new` and not
- * yet typed into therefore has nowhere to hang a file, and the row says so.
+ * The journal entry document drawer (91 D5), opened by `?je=new` or `?je=<id>`.
+ * Actions follow the record's own status: `draft` saves, previews, posts and
+ * discards; `posted` voids, or (manual only) edits in place through `documentEdit`.
+ * The Attachment row needs a saved record, so it waits for the first Save.
  */
 export function JournalEntryDrawer({
   journalEntryId,
@@ -125,17 +103,17 @@ export function JournalEntryDrawer({
   )
 
   const discard = useDiscardJournalEntry({ onDiscarded })
+  const [confirm, ConfirmDialog] = useConfirm()
 
-  const isEditable = draft.status === 'draft'
+  const isDraft = draft.status === 'draft'
+  const isEditable = isDraft || draft.editing
   const isLoading = draft.isLoading && !isNew
+  const canWrite = can('ledger.post')
 
   const entryPeriodKey = periodKeyForEntryDate(draft.date)
 
   const blockers: LedgerBlocker[] = []
-  // 🛑 The refusal card, never a toast (ground rule 9). A discard refused on a
-  // posted entry names the entry and points at reversal, and that sentence has
-  // to stay on screen. It is pushed FIRST because it is about the action the
-  // person just took, not about a preview they ran earlier.
+  // First: it is about the action just taken, not an earlier preview.
   if (discard.refusal) {
     blockers.push({ status: 'discard_refused', error: discard.refusal })
   }
@@ -144,10 +122,7 @@ export function JournalEntryDrawer({
   } else if (draft.postResult && !didLedgerAccept(draft.postResult)) {
     blockers.push({
       status: draft.postResult.status,
-      error: draft.postResult.error ?? 'The post was refused.',
-      // Carried through so a refused post gets the same row-per-role card a
-      // refused PREVIEW gets. Dropping it here would make the two paths to the
-      // same refusal render differently for no reason a reader could see.
+      error: draft.postResult.error ?? 'The ledger refused it.',
       ...(draft.postResult.items?.length ? { items: draft.postResult.items } : {}),
     })
   }
@@ -163,14 +138,35 @@ export function JournalEntryDrawer({
     draft.setDate(firstDayOfPeriod(nextOpen.periodKey))
   }
 
-  const canPost = isEditable && !!draft.preview && !draft.previewIsStale && !draft.preview.blockedBy
+  const canPost = isDraft && !!draft.preview && !draft.previewIsStale && !draft.preview.blockedBy
+  const canDiscard = !!journalEntryId && isDraft && canWrite && !isLoading
+  const isPosted = draft.status === 'posted' && !isTemplate
+  const canEditInPlace = isPosted && draft.kind === 'manual' && canWrite && !draft.editing
 
-  // 🛑 `!draft.glPostingId` as well as `isEditable`. Status and posting id are
-  // two facts written at two different moments, and a row that reads `draft`
-  // while carrying a posting id is the one the server refuses hardest - offering
-  // the button over it would be an affordance that cannot work.
-  const canDiscard =
-    !!journalEntryId && isEditable && !draft.glPostingId && can('ledger.post') && !isLoading
+  async function requestVoid() {
+    const confirmed = await confirm({
+      title: `Void ${draft.number ?? 'this journal entry'}?`,
+      description:
+        'An opposite entry is posted to back this one out. Both stay in the ledger, and the ' +
+        'entry reads Reversed.',
+      confirmText: 'Void',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (confirmed) draft.runVoid()
+  }
+
+  async function requestCancelEdit() {
+    const confirmed = await confirm({
+      title: 'Discard these changes?',
+      description:
+        'The entry returns to what it was when Edit was pressed. The ledger was never touched.',
+      confirmText: 'Discard changes',
+      cancelText: 'Keep editing',
+      destructive: true,
+    })
+    if (confirmed) draft.cancelEdit()
+  }
 
   return (
     <DockableDrawer
@@ -206,10 +202,6 @@ export function JournalEntryDrawer({
             </div>
           }
           actions={
-            // 🛑 A draft only, and a `ledger.post` holder only. Throwing a draft
-            // away is a WRITE, gated on the same key that gates creating and
-            // editing one - the server refuses it either way, but an action a
-            // read-only member cannot use should not be on their screen.
             canDiscard && (
               <Button
                 variant='ghost'
@@ -244,10 +236,20 @@ export function JournalEntryDrawer({
                 back out to the edge; the bleed is deleted with it. Anything
                 that is NOT a Section carries its own padding below. */}
             <div className='flex flex-col'>
+              {draft.editing && (
+                <Alert variant='neutral' className='mx-3 mt-3 w-auto'>
+                  <AlertDescription>
+                    Editing a posted entry. Save reverses it and posts the corrected entry if the
+                    lines changed; Cancel restores it.
+                  </AlertDescription>
+                </Alert>
+              )}
               {!isEditable && (
                 <Alert variant='neutral' className='mx-3 mt-3 w-auto'>
                   <AlertDescription>
-                    This entry is {draft.status} and can no longer be edited here.
+                    {draft.status === 'reversed'
+                      ? 'This entry was voided. Post a new entry to correct the books.'
+                      : 'This entry is posted. Edit it to correct it, or void it to back it out.'}
                   </AlertDescription>
                   {draft.glPostingId && (
                     <Button
@@ -336,7 +338,7 @@ export function JournalEntryDrawer({
                     ) : (
                       <span className='flex h-8 items-center text-muted-foreground text-sm'>
                         {attachmentField
-                          ? 'Type a date, memo or line first - a file needs an entry to hang on'
+                          ? 'Save the entry first - a file needs an entry to hang on'
                           : 'Not available on this organization yet'}
                       </span>
                     )}
@@ -372,20 +374,60 @@ export function JournalEntryDrawer({
           <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
             Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          {isEditable && (
+          {draft.editing && canWrite && (
+            <>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={draft.isEditPending || draft.isSaving}
+                onClick={() => void requestCancelEdit()}>
+                Cancel edit
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                loading={draft.isEditPending || draft.isSaving}
+                loadingText='Saving...'
+                onClick={draft.saveEdit}
+                data-dialog-submit>
+                Save <KbdSubmit variant='outline' size='sm' />
+              </Button>
+            </>
+          )}
+          {isPosted && canWrite && !draft.editing && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='text-destructive hover:text-destructive'
+              loading={draft.isVoiding}
+              loadingText='Voiding...'
+              onClick={() => void requestVoid()}>
+              <Ban />
+              Void
+            </Button>
+          )}
+          {canEditInPlace && (
+            <Button
+              variant='outline'
+              size='sm'
+              loading={draft.isEditPending}
+              loadingText='Opening...'
+              onClick={draft.openEdit}>
+              <Pencil />
+              Edit
+            </Button>
+          )}
+          {isDraft && (
             <>
               <Button
                 variant='outline'
                 size='sm'
                 loading={draft.isSaving}
                 loadingText='Saving...'
-                onClick={draft.saveDraft}>
-                Save draft
+                onClick={draft.save}>
+                Save
               </Button>
-              {/* 🛑 Neither button exists for a template. `postJournalEntry`
-                  refuses `recurring_template` by name - "a stencil for future
-                  entries, not an entry" - and `previewJournalEntry` builds
-                  through the same function, so both would refuse. */}
+              {/* A template never posts: both would be refused by name. */}
               {!isTemplate && (
                 <>
                   <Button
@@ -414,6 +456,7 @@ export function JournalEntryDrawer({
         </DrawerFooter>
       </div>
       <discard.ConfirmDialog />
+      <ConfirmDialog />
     </DockableDrawer>
   )
 }

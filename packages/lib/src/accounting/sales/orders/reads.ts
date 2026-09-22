@@ -22,7 +22,10 @@
 import type { Database, Transaction } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
+import {
+  LINE_ITEM_FIELDS,
+  LINE_ITEM_GIFT_CARD_CATEGORY,
+} from '../../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
 import { TAX_LINE_FIELDS } from '../../../resources/registry/resources/tax-line-fields'
 import {
@@ -90,6 +93,7 @@ const FULFILLMENT_LINE_PICK = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_net_total',
   'line_item_tax_total',
   'line_item_sort_order',
+  'line_item_category',
 ] as const)
 
 /** Every `tax_line` attribute the jurisdiction split reads (brief 13 §5). */
@@ -146,6 +150,13 @@ export interface OrderLineForFulfillment extends OrderLineRemaining {
    * derived from, so the split allocation and the rate agree.
    */
   lineTotalMinor: number | null
+  /**
+   * `line_item_line_total` (the list total) when the net came from `line_item_net_total`, else
+   * null: list minus net is the discount the shipment debits (91 D8).
+   */
+  listLineTotalMinor: number | null
+  /** `line_item_category` is `gift_card`: the line sells a liability, never revenue. */
+  giftCard: boolean
 }
 
 /** One order, everything the fulfillment builder and the dialog need, in one shape. */
@@ -333,6 +344,11 @@ function shapeLines(
       // a number switches the entry to per-line tax, one null falls back to
       // allocating the order's total. See `OrderLineRemaining.lineTaxMinor`.
       lineTaxMinor: record.number('line_item_tax_total'),
+      listLineTotalMinor:
+        totals.netTotalMinor != null && Number.isFinite(totals.netTotalMinor)
+          ? (totals.lineTotalMinor ?? null)
+          : null,
+      giftCard: record.option('line_item_category') === LINE_ITEM_GIFT_CARD_CATEGORY,
       sortOrder: record.number('line_item_sort_order') ?? index,
     }
   })

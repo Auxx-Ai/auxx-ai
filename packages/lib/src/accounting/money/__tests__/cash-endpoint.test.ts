@@ -76,6 +76,34 @@ describe('resolveCashEndpoint', () => {
     expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['undeposited_funds'])
   })
 
+  it('resolves a gift card payment to the unscoped liability, never the rail', async () => {
+    h.resolveRoles.mockResolvedValue(
+      ok(new Map([['gift_card_liability', { glAccountId: 'gl_gift' }]]))
+    )
+    const endpoint = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD', giftCard: true },
+      'Customer payment'
+    )
+    expect(endpoint).toEqual({ glAccountId: 'gl_gift', kind: 'gift_card', railId: null })
+    expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['gift_card_liability'])
+  })
+
+  it('names an unmapped gift card liability ROLE_UNMAPPED', async () => {
+    h.resolveRoles.mockResolvedValue(ok(new Map()))
+    const error = await resolveCashEndpoint(
+      tx,
+      ORG,
+      { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD', giftCard: true },
+      'Customer payment'
+    ).catch((e: unknown) => e)
+    expect(refusalFromError(error as UnprocessableEntityError)).toMatchObject({
+      reasonCode: 'ROLE_UNMAPPED',
+      role: 'gift_card_liability',
+    })
+  })
+
   it('refuses a movement that names both a rail and a bank account', async () => {
     await expect(
       resolveCashEndpoint(

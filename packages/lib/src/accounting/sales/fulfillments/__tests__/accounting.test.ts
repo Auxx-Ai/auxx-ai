@@ -316,6 +316,8 @@ describe('the shared core (88 D6)', () => {
             lineTotalMinor: 10000,
             orderedQuantity: 1,
             priorShippedQuantity: 0,
+            listLineTotalMinor: null,
+            giftCard: false,
             name: 'Widget',
           },
         ],

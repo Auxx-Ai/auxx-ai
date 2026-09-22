@@ -197,7 +197,7 @@ describe('per line: only what had shipped reverses (91 D4)', () => {
         lines: [unshipped],
         total: 7_590,
       })
-    ).toEqual({ subtotalMinor: 0, taxTotalMinor: 0, totalMinor: 0 })
+    ).toEqual({ subtotalMinor: 0, shippingMinor: 0, taxTotalMinor: 0, totalMinor: 0 })
   })
 
   it('a mixed memo posts only the shipped line, tax included, and still ties the whole memo', () => {
@@ -355,5 +355,52 @@ describe('the document number', () => {
 describe('the regime', () => {
   it('declares credit_memo as driving no single-writer role', () => {
     expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.credit_memo).toEqual([])
+  })
+})
+
+describe('a shipping-only refund (91 D8)', () => {
+  const shippingLine = {
+    subtotal: 1_500,
+    taxTotal: 120,
+    shipped: true,
+    component: 'shipping' as const,
+  }
+
+  it('debits revenue_shipping and its tax against A/R, never returns', () => {
+    const built = buildCreditMemoEntry({ ...BASE, lines: [shippingLine], total: 1_620 })
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_SHIPPING)).toMatchObject([
+      { direction: 'debit', amount: 1_500 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toMatchObject([
+      { direction: 'debit', amount: 120 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toMatchObject([
+      { direction: 'credit', amount: 1_620 },
+    ])
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toEqual([])
+    expect(built.shippingMinor).toBe(1_500)
+    expect(built.subtotalMinor).toBe(0)
+  })
+
+  it('splits goods and shipping on one memo', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      lines: [{ subtotal: 12_000, taxTotal: 990, shipped: true }, shippingLine],
+      total: 14_610,
+    })
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)[0]?.amount).toBe(12_000)
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_SHIPPING)[0]?.amount).toBe(1_500)
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.amount).toBe(14_610)
+  })
+
+  it('posts nothing for shipping that was never recognised', () => {
+    expect(
+      computeCreditMemoAmounts({
+        creditMemoId: BASE.creditMemoId,
+        number: BASE.number,
+        lines: [{ ...shippingLine, shipped: false }],
+        total: 1_620,
+      }).totalMinor
+    ).toBe(0)
   })
 })

@@ -526,6 +526,22 @@ describe('fulfillOrder against the real poster', () => {
     expect(bySubject._unsafeUnwrap()).toHaveLength(0)
   })
 
+  // 91 D8: the cancel hook fires on both cancel writes, so the reversal must be safe to repeat.
+  it('reverses once when a cancel fires twice', async () => {
+    const fake = createFakeDb()
+    await fulfillOrder(fake.db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      orderId: 'ord_1',
+      shippedLines: [{ lineId: 'li_1', quantity: 3 }],
+      shippedAt: '2026-09-03',
+    })
+    const input = { organizationId: ORG, fulfillmentInstanceId: 'ful_1', actorUserId: USER }
+
+    expect((await reverseFulfillmentPosting(fake.db, input))?.status).toBe('posted')
+    expect(await reverseFulfillmentPosting(fake.db, input)).toBeNull()
+  })
+
   it('is a no-op when the fulfillment never posted', async () => {
     const fake = createFakeDb()
     const reversal = await reverseFulfillmentPosting(fake.db, {

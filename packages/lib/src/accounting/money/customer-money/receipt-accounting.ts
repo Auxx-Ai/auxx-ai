@@ -6,6 +6,7 @@ import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import type { PaymentGatewayRow } from '../../rails/client'
 import {
   type GatewayRoute,
+  GIFT_CARD_GATEWAY_HANDLE,
   matchGatewayRoute,
   normaliseGatewayHandle,
   RESERVED_GATEWAY_HANDLES,
@@ -121,6 +122,8 @@ export async function readCustomerReceiptAccountingSource(
   // Task 71 U2: the movement's own gateway HANDLE decides its rail, and the
   // feed link is the fallback for a transaction that carries none.
   const handle = source.gatewayHandle?.trim() || null
+  // Paid with a gift card: no rail, the money is the cardholder's balance (91 D8).
+  const giftCard = !!handle && normaliseGatewayHandle(handle) === GIFT_CARD_GATEWAY_HANDLE
   let paymentGatewayId: string | null
   if (handle && RESERVED_GATEWAY_HANDLES.includes(normaliseGatewayHandle(handle))) {
     // `manual` and `bogus` are money in no processor. No rail, so the movement
@@ -160,6 +163,7 @@ export async function readCustomerReceiptAccountingSource(
     money,
     orderId,
     paymentGatewayId,
+    giftCard,
     sourceStoreId: source.account.id,
     sourceProvider: source.account.providerKey,
     sourceObjectId: source.object.id,

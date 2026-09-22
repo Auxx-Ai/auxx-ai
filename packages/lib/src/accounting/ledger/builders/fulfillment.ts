@@ -10,7 +10,9 @@
  *
  * ```
  *   Dr accounts_receivable                     this shipment's total
- *       Cr revenue_product   (channel dimension)  this shipment's subtotal
+ *   Dr discounts_given   (channel dimension)  list minus net on the shipped lines
+ *       Cr revenue_product   (channel dimension)  this shipment's subtotal at LIST
+ *       Cr gift_card_liability                    the shipped gift card lines, at net
  *       Cr sales_tax_payable (jurisdiction dimension, when it ties)
  *                                                  this shipment's tax
  *       Cr revenue_shipping                      the order's shipping, ONCE
@@ -225,11 +227,23 @@ export interface ShipmentTotalsLine {
    * `build-fulfillment-batch-entry.ts` is the one that does.
    */
   taxMinor?: number | null
+  /**
+   * `line_item_line_total`, the whole line at LIST, supplied only when {@link lineTotalMinor}
+   * is the stamped `line_item_net_total`. List minus net is the discount allocated to the line.
+   */
+  listLineTotalMinor?: number | null
+  /** A gift card line: what it recognises is owed to the cardholder, never revenue (91 D8). */
+  giftCard?: boolean
 }
 
 /** What one shipment contributes, all whole minor units. */
 export interface ShipmentTotals {
+  /** At the line NET: the A/R basis and the tax allocation's basis. Includes gift card lines. */
   subtotalMinor: number
+  /** List minus net on the shipped non-gift-card lines; revenue is `subtotal - giftCard + discount`. */
+  discountMinor: number
+  /** The net of the shipped gift card lines, credited to the liability. */
+  giftCardMinor: number
   taxMinor: number
   shippingMinor: number
   /** `subtotal + tax + shipping`. The debit. */
@@ -320,21 +334,11 @@ export interface ShipmentTotalsInput {
  *   off `order_subtotal`, because the lines are what actually left the building.
  *
  *   🛑 **`unitPriceMinor` is the line NET per unit, not the list price.** The
- *   readers derive it as `line_item_net_total / line_item_qty`
- *   (`money/orders/client.ts`'s `netUnitPriceMinor`, falling back to
- *   `line_item_line_total` for a line with no net yet), because
- *   `line_item_unit_price` is the PRE-discount price, `line_item_line_total` is
- *   the GROSS `price x qty` (29 §2.3), and `line_item_net_total` is the gross
- *   minus every discount allocated to the line. Measured on the reference org,
- *   the nets sum to `order_subtotal` on all 6,500 orders and `price x qty`
- *   does not on 3,073 of them
- *   (`plans/accounting/tasks/29-clearing-at-the-payment-date.md` §1.7). Fed the
- *   gross price, this function credits revenue and debits the money leg at an
- *   amount nobody was charged, the entry balances, and the payout can never
- *   bring clearing back to zero - which is why 29 §2.3 makes the NET the one
- *   basis every entry over an order is computed on. Revenue is credited at the
- *   net directly: there is no contra-discount role, and Shopify's own
- *   `subtotal_price` is net, so this is what ties to the store's reports.
+ *   subtotal is what the customer owes (29 §1.7, §2.3): the nets sum to
+ *   `order_subtotal` and `price x qty` does not. The DISCOUNT is the same
+ *   cumulative allocation run over `listLineTotalMinor` minus the net share, so
+ *   the boxes of a line sum to its discount exactly; revenue is credited at list
+ *   and the discount debited beside it (91 D8).
  * - **Tax** is per line when EVERY line carries `taxMinor`, and otherwise
  *   allocated pro rata CUMULATIVELY:
  *   `alloc(prior + this) - alloc(prior)`, where
@@ -359,12 +363,14 @@ export interface ShipmentTotalsInput {
  * knows which.
  *
  * @throws {UnprocessableEntityError} on a non-positive or non-finite quantity,
- *   or a stored amount that is not whole minor units.
+ *   a stored amount that is not whole minor units, or a line whose net exceeds its list.
  */
 export function computeShipmentTotals(input: ShipmentTotalsInput): ShipmentTotals {
   const { label, lines, includeShipping, context } = input
 
   let subtotalMinor = 0
+  let discountMinor = 0
+  let giftCardMinor = 0
   let perLineTaxMinor = 0
   let linesWithTax = 0
   for (const [index, line] of lines.entries()) {
@@ -376,7 +382,24 @@ export function computeShipmentTotals(input: ShipmentTotalsInput): ShipmentTotal
         { ...context, lineId: line.lineId, row: String(row) }
       )
     }
-    subtotalMinor += shippedLineAmount(line, `Row ${row} of ${label}`)
+    const rowLabel = `Row ${row} of ${label}`
+    const netMinor = shippedLineAmount(line, rowLabel)
+    subtotalMinor += netMinor
+    if (line.giftCard) {
+      giftCardMinor += netMinor
+    } else if (line.listLineTotalMinor != null && line.lineTotalMinor != null) {
+      const listMinor = shippedLineAmount(
+        { ...line, lineTotalMinor: line.listLineTotalMinor },
+        `${rowLabel} list`
+      )
+      if (listMinor < netMinor)
+        throw new UnprocessableEntityError(
+          `${rowLabel} recognises ${netMinor} after discount but only ${listMinor} at list. A ` +
+            'discount never raises a price, so the line total and its net disagree.',
+          { ...context, lineId: line.lineId, row: String(row) }
+        )
+      discountMinor += listMinor - netMinor
+    }
     if (line.taxMinor != null) {
       perLineTaxMinor += toAmountMinor(line.taxMinor, `Row ${row} tax on ${label}`)
       linesWithTax++
@@ -409,6 +432,8 @@ export function computeShipmentTotals(input: ShipmentTotalsInput): ShipmentTotal
 
   return {
     subtotalMinor,
+    discountMinor,
+    giftCardMinor,
     taxMinor,
     shippingMinor,
     totalMinor: subtotalMinor + taxMinor + shippingMinor,
@@ -447,6 +472,10 @@ export interface FulfillmentShippedLine {
    * allocated proportionally instead - see {@link buildFulfillmentEntry}.
    */
   taxMinor?: number
+  /** See {@link ShipmentTotalsLine.listLineTotalMinor}. */
+  listLineTotalMinor?: number | null
+  /** See {@link ShipmentTotalsLine.giftCard}. */
+  giftCard?: boolean
   /** For the line memo. Never a lookup key. */
   name?: string
 }
@@ -557,6 +586,10 @@ export interface BuiltFulfillmentEntry {
   channelDimension: string
   /** This shipment's share of the order, all in integer minor units. */
   subtotalMinor: number
+  /** The `discounts_given` debit. */
+  discountMinor: number
+  /** The `gift_card_liability` credit. */
+  giftCardMinor: number
   taxMinor: number
   shippingMinor: number
   /** The A/R debit: subtotal + tax + shipping. */
@@ -691,9 +724,10 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     includeShipping,
     context: { orderNumber },
   })
-  const { subtotalMinor, shippingMinor, taxBasis } = sourceTotals
+  const { subtotalMinor, discountMinor, giftCardMinor, shippingMinor, taxBasis } = sourceTotals
   const taxMinor = sourceTotals.taxMinor
   const totalMinor = subtotalMinor + taxMinor + shippingMinor
+  const revenueMinor = subtotalMinor - giftCardMinor + discountMinor
 
   if (totalMinor <= 0) {
     throw new UnprocessableEntityError(
@@ -729,23 +763,46 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
       : {}),
   })
-  push({
-    ...source,
-    accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
-    direction: 'credit',
-    amount: subtotalMinor,
-    memo: sourceFactsMemo(
-      facts,
-      `shipment ${sequence} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`
-    ),
-    // Both axes on one line, and they are not the same question. `channel`
-    // (DTC vs dealer) is an ATTRIBUTE of this sale and stays a dimension on one
-    // account; the store is a different BUSINESS and may have an account of its
-    // own. Decision D10 keeps them separate rather than collapsing either into
-    // the other.
-    dimensions: { channel: channelDimension },
-    ...storeScope,
-  })
+  if (discountMinor !== 0) {
+    push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.DISCOUNTS_GIVEN,
+      direction: 'debit',
+      amount: discountMinor,
+      memo: sourceFactsMemo(facts, `shipment ${sequence} - discounts`),
+      dimensions: { channel: channelDimension },
+      ...storeScope,
+    })
+  }
+  // Zero when every shipped line is a gift card.
+  if (revenueMinor !== 0) {
+    push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
+      direction: 'credit',
+      amount: revenueMinor,
+      memo: sourceFactsMemo(
+        facts,
+        `shipment ${sequence} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`
+      ),
+      // Both axes on one line, and they are not the same question. `channel`
+      // (DTC vs dealer) is an ATTRIBUTE of this sale and stays a dimension on one
+      // account; the store is a different BUSINESS and may have an account of its
+      // own. Decision D10 keeps them separate rather than collapsing either into
+      // the other.
+      dimensions: { channel: channelDimension },
+      ...storeScope,
+    })
+  }
+  if (giftCardMinor !== 0) {
+    push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.GIFT_CARD_LIABILITY,
+      direction: 'credit',
+      amount: giftCardMinor,
+      memo: sourceFactsMemo(facts, `shipment ${sequence} - gift cards sold`),
+    })
+  }
 
   // Zero legs are DROPPED rather than posted at zero. An org that charges no
   // tax has no reason to have mapped `sales_tax_payable`, and a zero line
@@ -803,6 +860,8 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     revenueRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
     channelDimension,
     subtotalMinor,
+    discountMinor,
+    giftCardMinor,
     taxMinor,
     shippingMinor,
     totalMinor,

@@ -224,7 +224,7 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     icon: Trash2,
     title: 'This entry cannot be discarded',
     guidance:
-      'Only a draft can be thrown away, and only one that has not reached the ledger. An entry that has been posted is corrected by reversing it and posting a new one, so what it did to the books stays on the record. Nothing was changed.',
+      'Only an unposted entry can be discarded. A posted entry is voided, or edited in place, so what it did to the books stays on the record. Nothing was changed.',
   },
   // Brief 19 section 4.4: a provider suggestion that does not balance is not
   // a refusal. Nothing was built, claimed or posted, and every cell stays

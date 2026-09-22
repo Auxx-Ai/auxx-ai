@@ -51,6 +51,8 @@ async function prepareReceipt(
   // The handle (or, failing that, the feed link) is the rail, stamped so the
   // movement and its posting agree. A reserved handle lands in undeposited funds.
   if (source.paymentGatewayId) await loaded.stampGateway(source.paymentGatewayId)
+  // A gift card redemption: the receipt's endpoint is the liability it spends down.
+  if (source.giftCard) loaded.markGiftCard()
   const endpoint = await loaded.endpoint()
 
   const label = [source.storeDomain, source.sourceExternalId, source.gatewayName]

@@ -323,25 +323,17 @@ async function withProviderObjectUrls<T extends ExportBatchRow>(
 }
 
 /**
- * One line of a journal-entry DRAFT, as the drawer stores it.
- *
- * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
- * `toMinorUnits` from `@auxx/lib/accounting/ledger/client` is the single conversion and
- * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
- * a number and no more - `buildManualEntry` refuses a zero, a negative and a
- * fraction of a cent, and it names the ROW while doing it, which a Zod issue
- * cannot.
+ * One `journal_entry_line` child as the drawer sends it. `amountMinor` is integer
+ * minor units (the browser converts at the `CurrencyInput` boundary); a zero saves,
+ * and `buildManualEntry` refuses it at Post, naming the row.
  */
 const journalEntryLine = z.object({
-  /**
-   * The `gl_account` instance id out of this org's own chart (task 15: the id
-   * is the identity, the code is a label - one that may not exist at all once
-   * it is optional). A person picks a specific account by id, never by code.
-   */
+  /** The line's instance id: present keeps and updates that row, absent creates one. */
+  id: z.string().min(1).optional(),
+  /** The `gl_account` instance id out of this org's chart, never a code (task 15). */
   glAccountId: z.string().min(1),
   direction: z.enum(['debit', 'credit']),
-  /** Integer minor units, > 0. The debit/credit column carries the sign. */
-  amountMinor: z.number(),
+  amountMinor: z.number().int().nonnegative(),
   memo: z.string().max(1000).optional(),
   /**
    * Who this line is attributable to, when it names a receivable or payable
@@ -2021,38 +2013,14 @@ export const ledgerRouter = createTRPCRouter({
   }),
 
   /**
-   * The journal-entry DRAFT - the record a bookkeeper types a posting into, and
-   * the holder of the opening trial balance (HANDOFF decision 6.7).
-   *
-   * ## Why the draft is a record and not a client-side buffer
-   *
-   * The entry's NUMBER is issued on create and becomes the posting's
-   * `periodKey` (`doc-number.ts`), so an entry cannot be posted until it has
-   * one - which means the draft has to exist server-side before Post is
-   * reachable at all. That is also what lets the opening trial balance be a
-   * draft the wizard fills in over several sittings, and what gives the
-   * attachment somewhere to hang.
-   *
-   * ## The gates
-   *
-   * | procedure | gate |
-   * | --- | --- |
-   * | `get`, `list`, `preview` | `ledger.view` |
-   * | `create`, `update`, `post`, `reverse` | `ledger.post` |
-   *
-   * 🛑 `create` and `update` are `ledgerPost`, not `ledgerView`, even though
-   * neither writes a posting. A draft is the thing somebody then presses Post
-   * on, and `setRoleAssignment` above made the same call for the same reason:
-   * this decides where real money lands. `journal_entry` stays
-   * `isVisible: false` so this is its only door - routing it through
-   * `record.create` would hand it to anyone with records-Full and ledger-None.
+   * The journal-entry document and its `journal_entry_line` children (91 D5): a
+   * document like a bill that is `draft` until Post builds the entry from its lines.
+   * Reads and preview are `ledgerView`; every write is `ledgerPost`, because the
+   * lines decide where real money lands. `journal_entry` is `isVisible: false`, so
+   * this is its only door - `record.create` would hand it to records-Full, ledger-None.
    */
   journalEntry: createTRPCRouter({
-    /**
-     * Raise a draft. Lines may be empty - a person opens the drawer before they
-     * have typed anything, and refusing an empty draft would mean the drawer
-     * could not save until it balanced.
-     */
+    /** Create the record and its lines, `draft`. Empty or unbalanced saves; Post refuses. */
     create: permissionProcedure(PermissionKey.ledgerPost)
       .input(
         z.object({
@@ -2075,13 +2043,10 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Edit a draft. `lines` is replaced WHOLESALE when present - a draft's lines
-     * have no identity, and a patch protocol over them would need row ids the
-     * JSON does not carry.
-     *
-     * Refused on a posted entry with a `ConflictError`: the ledger has no update
-     * path, so an edit could only ever mean this record's JSON disagreeing with
-     * the numbers actually posted.
+     * Edit the document. `lines`, when present, is the full list after the edit: a
+     * line naming a known `id` is kept and updated, one without is created, a saved
+     * line left out is deleted; sort order is array position. Allowed while `draft`,
+     * or `posted` with a `documentEdit` snapshot open; otherwise a `ConflictError`.
      */
     update: permissionProcedure(PermissionKey.ledgerPost)
       .input(
@@ -2104,7 +2069,7 @@ export const ledgerRouter = createTRPCRouter({
         return result.value
       }),
 
-    /** One draft, or a `NotFoundError` for an id that is not this org's. */
+    /** One entry with its lines, or a `NotFoundError` for an id that is not this org's. */
     get: permissionProcedure(PermissionKey.ledgerView)
       .input(z.object({ id: z.string().min(1) }))
       .query(async ({ ctx, input }) => {
@@ -2114,19 +2079,13 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Drafts and posted entries, newest first.
-     *
-     * ⚠️ `periodKey` filters on the entry's own accounting DATE, month by
-     * month - not on the posting's `periodKey`, which for a `manual_journal` is
-     * the entry number.
+     * Entries newest first. `status: 'draft'` is every unposted document. ⚠️ `periodKey`
+     * is the month of the entry's own date, not the posting's `periodKey` (its number).
      */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(
         z
           .object({
-            // A LIST, because the drafts list wants the two kinds a person
-            // reviews and posts - hand-authored and sweep-generated - and not
-            // the stencil, which one value cannot express.
             kinds: z
               .array(z.enum(['manual', 'opening_balance', 'recurring_template', 'recurring']))
               .min(1)
@@ -2149,16 +2108,9 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * What this draft WOULD post. Persists nothing, including the overrides.
-     *
-     * The overrides exist so the drawer can preview what is on screen without
-     * saving first - the totals strip and the blockers card both want an answer
-     * for the entry as it is being typed, and forcing a save to get one would
-     * write a draft on every keystroke.
-     *
-     * A `.mutation()` despite writing nothing, for `preview`'s two reasons: the
-     * lines are a request BODY and do not fit in a URL, and a preview keyed on
-     * the entire draft is not cacheable in any useful sense.
+     * What this entry WOULD post, with the on-screen values as overrides so the
+     * drawer need not save first. Persists nothing; a `.mutation()` because the
+     * lines are a request body.
      */
     preview: permissionProcedure(PermissionKey.ledgerView)
       .input(
@@ -2180,11 +2132,9 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Post the draft and stamp the record.
-     *
-     * Returns a `PostResult` verbatim, for the reason `post` above does: a
-     * closed period, an account that is not in the chart and an inventory
-     * account named by code all arrive as a status the screen RENDERS.
+     * Build the entry from the stored lines, post it, and stamp the record's
+     * pointer. Pre-ledger refusals (not a draft, unbalanced, a bad row) throw;
+     * ledger outcomes (`period_closed`, ...) return as the `PostResult` to render.
      */
     post: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
@@ -2199,17 +2149,8 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Throw a DRAFT away. Archives the record; the row and its number stay.
-     *
-     * 🛑 `ledgerPost`, not `ledgerView`. Discarding is a write, and the key that
-     * gates creating and editing a draft is the key that gates throwing one
-     * away - handing it to a read-only ledger member would let them clear the
-     * Entries list of somebody else's half-finished adjusting entries.
-     *
-     * The lib error is rethrown UNWRAPPED so `auxxErrorMiddleware` maps its
-     * `ConflictError` to a 409, exactly as `post` and `reverse` do: a posted
-     * entry refuses here and the message points at reversal, and flattening it
-     * into a 500 would throw that sentence away.
+     * Delete an unposted entry and its lines. The number is not reused. A posted
+     * entry refuses with a `ConflictError` (409 via `auxxErrorMiddleware`).
      */
     discard: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1) }))
@@ -2223,13 +2164,8 @@ export const ledgerRouter = createTRPCRouter({
       }),
 
     /**
-     * Back the posted entry out with a second, opposite one, and flip the
-     * record to `reversed`.
-     *
-     * There is no edit and no void. Gated on `ledgerPost` rather than a key of
-     * its own: a reversal IS a post, it lands in the same books, and someone
-     * trusted to write to the ledger is exactly who should be able to correct
-     * it.
+     * Void: back the posted entry out with an opposite one; the record reads
+     * `reversed`. Correcting it instead goes through `documentEdit` (open, update, save).
      */
     reverse: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
@@ -2248,24 +2184,12 @@ export const ledgerRouter = createTRPCRouter({
    * The SCHEDULE on a recurring journal template
    * (`plans/accounting/tasks/21-the-books-stand-alone.md` §1).
    *
-   * The template itself is an ordinary `journalEntry` record with
-   * `kind: 'recurring_template'` - it is created, edited and discarded through
-   * the procedures above, because it holds exactly the same lines, memo and
-   * date every other draft does. What is new is the rule that says how often
-   * it repeats, and that is all this sub-router owns.
-   *
-   * ## The gates
-   *
-   * | procedure | gate |
-   * | --- | --- |
-   * | `list` | `ledger.view` |
-   * | `setSchedule`, `clearSchedule` | `ledger.control` |
-   *
-   * 🛑 `ledgerControl` on the writes, not `ledgerPost`. A schedule decides what
-   * lands in the books every month without anybody pressing anything, which is
-   * the same authority `setLockedThrough` takes. A bookkeeper with
-   * `ledgerPost` still reviews and posts each generated draft; what they may
-   * not do is change what generates.
+   * The template is an ordinary `journalEntry` record (`kind: 'recurring_template'`)
+   * written through the procedures above; this sub-router owns only its rule.
+   * Each occurrence posts directly when the sweep materialises it (91 D5), so the
+   * writes are `ledgerControl`, not `ledgerPost`: a schedule puts entries in the
+   * books every month without anybody pressing anything, the authority
+   * `setLockedThrough` takes.
    */
   recurringTemplate: createTRPCRouter({
     /**

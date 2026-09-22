@@ -357,30 +357,34 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     template: [
       {
         side: 'debit',
-        role: ACCOUNT_ROLES.CLEARING,
-        what: 'Card shipments, summarised, when no gateway record claims the rail',
-      },
-      {
-        side: 'debit',
-        role: 'by id',
-        what: "A payment gateway record's own clearing account, summarised per record",
-      },
-      {
-        side: 'debit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        what: 'One line per order on terms, unpaid, or paid manually',
+        what: "The shipment's total, whether or not the order is paid",
       },
-      { side: 'credit', role: ACCOUNT_ROLES.REVENUE_PRODUCT, what: 'Product revenue, summarised' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.DISCOUNTS_GIVEN,
+        what: 'The discount allocated to the shipped lines, when there is one',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.REVENUE_PRODUCT,
+        what: 'Product revenue at list price',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.GIFT_CARD_LIABILITY,
+        what: 'A gift card line, which is money owed to the cardholder, never revenue',
+      },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.REVENUE_SHIPPING,
-        what: 'Shipping charged, summarised',
+        what: 'Shipping charged, on the first shipment',
       },
-      { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax collected, summarised' },
+      { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax collected' },
     ],
     settings: [],
     sentence:
-      "One entry per shipment recognises revenue, shipping and tax the moment it ships, debited to the order's payment rail's clearing account or to receivables on terms.",
+      'One entry per shipment recognises revenue at list, the discount beside it, shipping and tax the moment it ships, against receivables.',
     disabledSentence:
       'Fulfillment posting is off, so revenue and COGS come only from the monthly inventory assertion.',
     parameters: [
@@ -391,10 +395,10 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'Revenue is recognised on the day the goods left, never on the order date or the day the entry was posted; changing this is a different accounting method, so it is not a setting.',
       },
       {
-        name: 'Debit fork',
-        value: 'Receivables, a gateway record, or card clearing',
+        name: 'Discounts',
+        value: 'Their own line',
         sentence:
-          'An order that is not paid, or paid manually, debits receivables; a paid order debits the clearing account of the gateway record that claims its rail, or card clearing when none does.',
+          "Revenue is credited at the line's list total and the discount allocated to it is debited to discounts given, so the profit and loss shows gross, discounts and net.",
       },
       {
         name: 'Excluded orders',
@@ -434,6 +438,11 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'debit', role: 'by id', what: 'A receipt into a named bank account' },
       {
+        side: 'debit',
+        role: ACCOUNT_ROLES.GIFT_CARD_LIABILITY,
+        what: 'A payment made with a gift card, which spends down what the cardholder is owed',
+      },
+      {
         side: 'credit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
         what: 'The whole amount; a prepayment leaves the customer in credit until the sale posts',
@@ -441,7 +450,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     ],
     settings: [],
     sentence:
-      'Every customer payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, or undeposited funds.',
+      'Every customer payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, undeposited funds, or the gift card liability.',
     disabledSentence:
       'Payment posting is off, so receivables are never relieved and no customer money reaches clearing or the bank.',
     parameters: [
@@ -507,13 +516,23 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     template: [
       {
         side: 'debit',
-        role: 'by id',
-        what: "The credit memo's own control account, as its issue entry credited it",
+        role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+        what: 'The amount given back; the credit memo it settles is a link, never an input',
+      },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+        what: "A chargeback's dispute fee, when the processor's dispute row carries one",
       },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.CLEARING,
         what: 'A refund on a rail, until the payout nets it',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.GIFT_CARD_LIABILITY,
+        what: 'A refund back onto a gift card',
       },
       { side: 'credit', role: 'by id', what: 'A refund out of a named bank account' },
       {
@@ -742,7 +761,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       {
         side: 'debit',
         role: ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
-        what: 'Revenue given back',
+        what: 'Revenue given back on the lines that had shipped',
+      },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.REVENUE_SHIPPING,
+        what: 'Shipping given back, on a shipping line',
       },
       { side: 'debit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax given back' },
       {
@@ -750,20 +774,10 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
         what: 'The customer owes that much less',
       },
-      {
-        side: 'debit',
-        role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        what: 'When the channel already refunded the money, the receivable is closed again',
-      },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.CLEARING,
-        what: "The refund leaving through the rail's clearing account, or its record's account by id",
-      },
     ],
     settings: [],
     sentence:
-      'A credit memo reverses revenue and tax against the receivable the moment it is issued; when the channel already refunded the money, the same entry drains it through clearing.',
+      'A credit memo reverses the revenue, shipping and tax of what had shipped against the receivable the moment it is issued; the money going back is the refund, a separate entry.',
     disabledSentence:
       'Credit memo posting is off, so a refund or allowance never reduces revenue or the receivable.',
     parameters: [

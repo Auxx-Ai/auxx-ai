@@ -98,11 +98,12 @@ describe('the roles that may be scoped to a source', () => {
   // silently make it scopable, and dropping one from this list must be a
   // deliberate edit rather than a merge artifact. Task 58 §3 rule 5 added
   // `bank` and `clearing` on the rail axis; 91 §4.3 added `accounts_receivable`.
-  it('is exactly the seven roles briefs 47, 58 and 91 decide on', () => {
+  it('is exactly the eight roles briefs 47, 58 and 91 decide on', () => {
     expect(Object.keys(SCOPABLE_ROLES).sort()).toEqual([
       'accounts_receivable',
       'bank',
       'clearing',
+      'discounts_given',
       'payment_processing_fees',
       'revenue_product',
       'revenue_returns_allowances',
@@ -119,6 +120,8 @@ describe('the roles that may be scoped to a source', () => {
     expect(SCOPABLE_ROLES.revenue_shipping).toBe('store')
     expect(SCOPABLE_ROLES.revenue_returns_allowances).toBe('store')
     expect(SCOPABLE_ROLES.accounts_receivable).toBe('store')
+    expect(SCOPABLE_ROLES.discounts_given).toBe('store')
+    expect(SCOPABLE_ROLES.gift_card_liability).toBeUndefined()
     expect(SCOPABLE_ROLES.clearing).toBe('rail')
     expect(SCOPABLE_ROLES.payment_processing_fees).toBe('rail')
     expect(SCOPABLE_ROLES.bank).toBe('rail')
@@ -235,16 +238,16 @@ describe('the union of every pack', () => {
   // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
   // `clearing_affirm` role: a default chart must not name a vendor.
   // The number itself is not the point; being made to state it is.
-  it('totals sixty accounts: twenty-seven core, then three, two, eleven, six, five, three and three', () => {
-    expect(codesOf('core')).toHaveLength(27)
+  it('totals sixty-two accounts: twenty-eight core, then three, three, eleven, six, five, three and three', () => {
+    expect(codesOf('core')).toHaveLength(28)
     expect(codesOf('card_rail')).toHaveLength(3)
-    expect(codesOf('prepayments')).toHaveLength(2)
+    expect(codesOf('prepayments')).toHaveLength(3)
     expect(codesOf('inventory')).toHaveLength(11)
     expect(codesOf('purchasing')).toHaveLength(6)
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(60)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(62)
   })
 })
 
@@ -253,7 +256,7 @@ describe('the core', () => {
   // every one of these is reachable by an ENABLED posting type on any org that
   // sends an invoice, takes a payment, ships an order, issues a credit memo or
   // writes something off. Exact set.
-  it('carries exactly the eleven roles every org can reach', () => {
+  it('carries exactly the twelve roles every org can reach', () => {
     expect([...rolesOf('core')].sort()).toEqual(
       [
         ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
@@ -268,6 +271,8 @@ describe('the core', () => {
         ACCOUNT_ROLES.REVENUE_SHIPPING,
         ACCOUNT_ROLES.REVENUE_SERVICE,
         ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES,
+        // 91 D8: every shipment of a discounted line reaches it.
+        ACCOUNT_ROLES.DISCOUNTS_GIVEN,
         ACCOUNT_ROLES.BAD_DEBT_EXPENSE,
       ].sort()
     )
@@ -292,6 +297,7 @@ describe('the core', () => {
       '4000',
       '4020',
       '4030',
+      '4080',
       '4090',
       '6000',
       '6010',
@@ -315,7 +321,7 @@ describe('the core', () => {
   it('keeps 1400 Prepaid Expenses an asset in the core, not in the prepayments pack', () => {
     expect(byCode.get('1400')?.accountType).toBe(GlAccountType.ASSET)
     expect(codesOf('core')).toContain('1400')
-    expect(codesOf('prepayments')).toEqual(['2300', '2350'])
+    expect(codesOf('prepayments')).toEqual(['2300', '2350', '2360'])
     for (const code of codesOf('prepayments')) {
       expect(byCode.get(code)?.accountType, code).toBe(GlAccountType.LIABILITY)
     }
@@ -362,7 +368,9 @@ describe('the other packs', () => {
     // `2300 Deferred Revenue` is in this pack and carries no role: the
     // month-end deferral builder that would emit one was never written, so
     // `deferred_revenue` was deleted on 2026-09-10.
-    expect([...rolesOf('prepayments')].sort()).toEqual([ACCOUNT_ROLES.CUSTOMER_DEPOSITS].sort())
+    expect([...rolesOf('prepayments')].sort()).toEqual(
+      [ACCOUNT_ROLES.CUSTOMER_DEPOSITS, ACCOUNT_ROLES.GIFT_CARD_LIABILITY].sort()
+    )
     expect([...rolesOf('inventory')].sort()).toEqual(
       [
         ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
@@ -402,6 +410,17 @@ describe('the other packs', () => {
     expect(codesOf('inventory')).toContain('5095')
     expect(byCode.get('5090')?.role).toBe(ACCOUNT_ROLES.PPV)
     expect(byCode.get('5095')?.role).toBe(ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE)
+  })
+
+  // 91 D8: a sales discount is contra-revenue beside 4090; a gift card is a liability.
+  it('seeds discounts given at 4080 in the core and gift cards at 2360 in prepayments', () => {
+    expect(byCode.get('4080')?.role).toBe(ACCOUNT_ROLES.DISCOUNTS_GIVEN)
+    expect(byCode.get('4080')?.accountType).toBe(GlAccountType.REVENUE)
+    expect(byCode.get('2360')?.role).toBe(ACCOUNT_ROLES.GIFT_CARD_LIABILITY)
+    expect(byCode.get('2360')?.accountType).toBe(GlAccountType.LIABILITY)
+    expect(byCode.get('2360')?.subtype).toBeUndefined()
+    expect(packForRole(ACCOUNT_ROLES.DISCOUNTS_GIVEN)).toBe('core')
+    expect(packForRole(ACCOUNT_ROLES.GIFT_CARD_LIABILITY)).toBe('prepayments')
   })
 
   // 74 D3: the discount shows in margin, so it is contra-COGS beside the

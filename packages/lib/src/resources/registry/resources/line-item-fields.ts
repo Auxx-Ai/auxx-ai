@@ -10,6 +10,13 @@ import { defineResourceFields } from '../system-attributes'
 import { CATALOG_CATEGORY_OPTIONS } from './catalog-item-fields'
 
 /**
+ * The `line_item_category` a connector writes for a gift card line (Shopify `gift_card: true`):
+ * its shipment credits `gift_card_liability`, never revenue (91 D8). A line-only option, since a
+ * catalog item is never sold as one.
+ */
+export const LINE_ITEM_GIFT_CARD_CATEGORY = 'gift_card'
+
+/**
  * Field definitions for the Line Item resource — quote/work-order/invoice line rows
  * (money module, README). Hidden system entity — rendered only by the embedded
  * line-builder UIs (§H.1), never shown in the entity sidebar or generic dialogs.
@@ -508,7 +515,12 @@ export const LINE_ITEM_FIELDS = defineResourceFields({
     systemAttribute: 'line_item_category',
     systemSortOrder: 'aA',
     nullable: true,
-    options: { options: [...CATALOG_CATEGORY_OPTIONS] },
+    options: {
+      options: [
+        ...CATALOG_CATEGORY_OPTIONS,
+        { label: 'Gift card', value: LINE_ITEM_GIFT_CARD_CATEGORY, color: 'purple' },
+      ],
+    },
     capabilities: {
       filterable: true,
       sortable: true,

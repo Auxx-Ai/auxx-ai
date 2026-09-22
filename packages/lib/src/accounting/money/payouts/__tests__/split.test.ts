@@ -10,7 +10,13 @@
 // set, and a `none` ref is never in it.
 
 import { describe, expect, it } from 'vitest'
-import { type PayoutItem, resolvePayoutStatus, splitPayout, totalsOnlySplit } from '../client'
+import {
+  type PayoutItem,
+  resolvePayoutStatus,
+  splitPayout,
+  splitStoredEntries,
+  totalsOnlySplit,
+} from '../client'
 
 function charge(id: string, gross: number, fee: number): PayoutItem {
   return {
@@ -155,5 +161,41 @@ describe('resolvePayoutStatus', () => {
     expect(resolvePayoutStatus(null)).toBe('in_transit')
     expect(resolvePayoutStatus(undefined)).toBe('in_transit')
     expect(resolvePayoutStatus('nonsense')).toBe('in_transit')
+  })
+})
+
+// 91 D8: a chargeback whose refund entry booked its fee relieves clearing of the net and books
+// no second fee; one whose refund did not books the fee here; an unmatched one is unrecognised.
+describe('splitStoredEntries and a chargeback', () => {
+  const charge = {
+    type: 'charge',
+    matchState: 'matched' as const,
+    grossMinor: 10_000,
+    feeMinor: 300,
+    netMinor: 9_700,
+  }
+  const dispute = { type: 'dispute', grossMinor: -5_000, feeMinor: 1_500, netMinor: -6_500 }
+
+  it('relieves clearing of a matched dispute net, with no fee, when the refund booked it', () => {
+    const split = splitStoredEntries([
+      charge,
+      { ...dispute, matchState: 'matched', feeOnRefund: true },
+    ])
+    expect(split).toMatchObject({ grossMinor: 3_500, feesMinor: 300, netMinor: 3_200 })
+    expect(split.unrecognisedNetMinor).toBe(0)
+  })
+
+  it('books the dispute fee here when the refund entry does not carry it', () => {
+    const split = splitStoredEntries([charge, { ...dispute, matchState: 'matched' }])
+    expect(split).toMatchObject({ grossMinor: 5_000, feesMinor: 1_800, netMinor: 3_200 })
+  })
+
+  it('leaves an unmatched dispute net in the unrecognised remainder', () => {
+    const split = splitStoredEntries([charge, { ...dispute, matchState: 'pending' }])
+    expect(split).toMatchObject({
+      grossMinor: 10_000,
+      feesMinor: 300,
+      unrecognisedNetMinor: -6_500,
+    })
   })
 })

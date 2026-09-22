@@ -250,7 +250,7 @@ async function publishStamp(
 }
 
 /** The stored `BuiltEntry` of one posting, or `null` when it cannot be read. */
-async function readBuiltEntry(
+export async function readBuiltEntry(
   db: Database,
   organizationId: string,
   glPostingId: string
@@ -273,7 +273,7 @@ async function readBuiltEntry(
  * accounting content. An unreadable stored entry compares as different, so the
  * Save reposts rather than silently doing nothing.
  */
-function entryLinesEqual(next: BuiltEntry, live: BuiltEntry | null): boolean {
+export function entryLinesEqual(next: BuiltEntry, live: BuiltEntry | null): boolean {
   if (!live) return false
   if (next.txnDate !== live.txnDate) return false
   const a = next.lines.map(lineKey).sort()

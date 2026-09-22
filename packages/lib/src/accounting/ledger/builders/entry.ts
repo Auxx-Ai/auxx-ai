@@ -393,6 +393,16 @@ export const ACCOUNT_ROLES = {
    */
   REVENUE_RETURNS_ALLOWANCES: 'revenue_returns_allowances',
   /**
+   * Discounts given (default `4080`). Contra-revenue: the shipment credits revenue at list and
+   * debits the line's allocated discount here, so the P&L shows gross, discounts and net (91 D8).
+   */
+  DISCOUNTS_GIVEN: 'discounts_given',
+  /**
+   * Gift card liability (default `2360`). Credited when a gift card ships, debited when one pays
+   * for an order; the unredeemed balance is money owed to cardholders (91 D8).
+   */
+  GIFT_CARD_LIABILITY: 'gift_card_liability',
+  /**
    * Payment processing fees (default `6100`). What the processor withheld from
    * a payout. NOT `money/payments/fees.ts`, which is the Connect application
    * fee auxx charges, a different number.
@@ -453,6 +463,8 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
   revenue_returns_allowances: 'revenue',
+  discounts_given: 'revenue',
+  gift_card_liability: 'liability',
   payment_processing_fees: 'expense',
   bad_debt_expense: 'expense',
 }
@@ -517,6 +529,8 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
   revenue_returns_allowances: 'Sales Returns and Allowances',
+  discounts_given: 'Discounts Given',
+  gift_card_liability: 'Gift Card Liability',
   payment_processing_fees: 'Payment Processing Fees',
   bad_debt_expense: 'Bad Debt Expense',
 }
@@ -566,6 +580,10 @@ export type ScopeAxis = 'store' | 'rail'
  * receivable (91 §4.3). A store-scoped receivable reaches QuickBooks only through journals;
  * invoices and payments post to the company's default A/R.
  *
+ * `discounts_given` reads the store axis with the revenue it reduces, so a store's gross,
+ * discounts and net sit side by side; `gift_card_liability` stays pooled, since a card sold
+ * in one store may be redeemed in another.
+ *
  * Everything else is deliberately out, and 47 §4.3 carries the reasoning per
  * role: `sales_tax_payable` is one obligation per jurisdiction, inventory is one
  * physical pool, `unidentified_receipts` wants ONE place to look, and
@@ -579,6 +597,7 @@ export const SCOPABLE_ROLES: Readonly<Partial<Record<AccountRole, ScopeAxis>>> =
   [ACCOUNT_ROLES.REVENUE_PRODUCT]: 'store',
   [ACCOUNT_ROLES.REVENUE_SHIPPING]: 'store',
   [ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES]: 'store',
+  [ACCOUNT_ROLES.DISCOUNTS_GIVEN]: 'store',
   [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: 'store',
   [ACCOUNT_ROLES.CLEARING]: 'rail',
   [ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES]: 'rail',

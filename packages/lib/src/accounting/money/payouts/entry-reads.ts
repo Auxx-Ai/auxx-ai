@@ -70,3 +70,26 @@ export async function listPayoutEntries(
       )
     )
 }
+
+/**
+ * The dispute fee on a chargeback: the fees of the processor's `dispute` rows matched to this
+ * refund movement, integer minor units. `0` when none has matched yet (91 D8).
+ */
+export async function readMatchedDisputeFeeMinor(
+  db: Db,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<number> {
+  const rows = await db
+    .select({ feeMinor: schema.ProcessorBalanceEntry.feeMinor })
+    .from(schema.ProcessorBalanceEntry)
+    .where(
+      and(
+        eq(schema.ProcessorBalanceEntry.organizationId, organizationId),
+        eq(schema.ProcessorBalanceEntry.matchedMoneyTransactionId, moneyTransactionId),
+        eq(schema.ProcessorBalanceEntry.matchState, 'matched'),
+        eq(schema.ProcessorBalanceEntry.type, 'dispute')
+      )
+    )
+  return rows.reduce((sum, row) => sum + Number(row.feeMinor), 0)
+}

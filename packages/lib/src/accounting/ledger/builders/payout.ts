@@ -65,6 +65,9 @@
  * When every charge in the payout is recognised the fourth leg is zero and gets
  * dropped, which is the ordinary case and the original three-line entry exactly.
  *
+ * A matched chargeback whose refund entry booked its dispute fee (91 D8) arrives here at its
+ * NET with no fee, since that entry credited clearing for both (`splitStoredEntries`).
+ *
  * ⚠️ `unrecognisedNetMinor` is a NET figure - gross less the fee withheld on
  * those same charges. The fee on money auxx never took is not auxx's
  * `payment_processing_fees`: it is embedded in the remainder and gets sorted out

@@ -32,6 +32,31 @@ describe('buildRefundEntry', () => {
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
   })
 
+  // 91 D8: a chargeback carries its dispute fee as its own expense, out of the same endpoint.
+  it('debits a dispute fee to payment_processing_fees and credits the endpoint the sum', () => {
+    const built = buildRefundEntry({ ...BASE, feeMinor: 1_500 })
+
+    expect(built.totalMinor).toBe(21_500)
+    expect(
+      built.entry.lines.map((line) => [
+        line.accountRole ?? line.glAccountId,
+        line.direction,
+        line.amount,
+      ])
+    ).toEqual([
+      ['accounts_receivable', 'debit', 20_000],
+      ['payment_processing_fees', 'debit', 1_500],
+      ['gl_bank', 'credit', 21_500],
+    ])
+    expect(built.entry.lines[1]?.counterpartyId).toBeUndefined()
+  })
+
+  it('posts no fee leg at zero and refuses a negative or fractional fee', () => {
+    expect(buildRefundEntry({ ...BASE, feeMinor: 0 }).entry.lines).toHaveLength(2)
+    expect(() => buildRefundEntry({ ...BASE, feeMinor: -1 })).toThrow(AuxxError)
+    expect(() => buildRefundEntry({ ...BASE, feeMinor: 1.5 })).toThrow(AuxxError)
+  })
+
   it('names the customer on the receivable leg and never on the endpoint', () => {
     const built = buildRefundEntry(BASE)
 

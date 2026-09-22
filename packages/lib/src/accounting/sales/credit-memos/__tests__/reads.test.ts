@@ -7,14 +7,20 @@ import { describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   items: [] as Array<{ id: string; qty: number | null; at: string | null }>,
+  orderItems: [] as Array<{ id: string; qty: number | null; at: string | null }>,
   reads: 0,
 }))
 
 vi.mock('../../../../resources/system-records', () => ({
-  systemFields: async () => ({ fields: {} }),
-  readSystemRecords: async () => {
+  systemFields: async () => ({ fields: { line_item_order: { id: 'f_order' } } }),
+  readSystemRecords: async (
+    _db: unknown,
+    _org: unknown,
+    _ctx: unknown,
+    query: { by?: unknown }
+  ) => {
     h.reads++
-    return h.items.map((item) => ({
+    return (query.by ? h.orderItems : h.items).map((item) => ({
       id: item.id,
       number: () => item.qty,
       date: () => item.at,
@@ -70,5 +76,34 @@ describe('readShippedMemoLineIds', () => {
     h.reads = 0
     expect(await read([line('l1', 'li_1')], { source: 'native' })).toEqual(new Set(['l1']))
     expect(h.reads).toBe(0)
+  })
+
+  // 91 D8: a shipping line has no item; the order's own lines say whether shipping was recognised.
+  describe('a shipping line', () => {
+    const shippingLine = { id: 's1', lineItemInstanceId: null, disposition: 'shipping' }
+    const memo = { source: 'channel', orderInstanceId: 'order_1' }
+    const readShipping = () =>
+      readShippedMemoLineIds(DB, 'org_1', memo, [shippingLine], '2026-01-14')
+
+    it('reverses when any line of the order shipped by the memo date', async () => {
+      h.items = []
+      h.orderItems = [
+        { id: 'li_1', qty: 0, at: null },
+        { id: 'li_2', qty: 1, at: '2026-01-02T12:00:00Z' },
+      ]
+      expect(await readShipping()).toEqual(new Set(['s1']))
+    })
+
+    it('posts nothing when no line of the order had shipped', async () => {
+      h.items = []
+      h.orderItems = [{ id: 'li_1', qty: 0, at: null }]
+      expect(await readShipping()).toEqual(new Set())
+    })
+
+    it('reverses when the channel said nothing about any line', async () => {
+      h.items = []
+      h.orderItems = [{ id: 'li_1', qty: null, at: null }]
+      expect(await readShipping()).toEqual(new Set(['s1']))
+    })
   })
 })

@@ -92,6 +92,8 @@ export interface LoadedMovement {
    * The channel doors learn it here rather than at ingest (task 71 §3).
    */
   stampGateway: (paymentGatewayId: string) => Promise<void>
+  /** The movement's own handle says gift card: its endpoint is the liability. Before {@link endpoint}. */
+  markGiftCard: () => void
   /** Where the money sits. Resolved once, after any {@link stampGateway}. */
   endpoint: () => Promise<CashEndpoint>
 }
@@ -200,6 +202,7 @@ export async function postMovementEntry(
     built = await db.transaction(async (tx) => {
       const { money, effectiveDate } = await loadMovement(tx, input, zone)
       let endpoint: CashEndpoint | null = null
+      let giftCard = false
       const counterparty = defaultCounterparty(money)
       const loaded: LoadedMovement = {
         money,
@@ -231,11 +234,14 @@ export async function postMovementEntry(
             )
           money.paymentGatewayId = paymentGatewayId
         },
+        markGiftCard: () => {
+          giftCard = true
+        },
         endpoint: async () => {
           endpoint ??= await resolveCashEndpoint(
             tx,
             input.organizationId,
-            cashEndpointSourceOf(money),
+            cashEndpointSourceOf(money, giftCard),
             input.label
           )
           return endpoint

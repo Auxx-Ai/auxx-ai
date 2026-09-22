@@ -8,6 +8,7 @@ import {
   emptyDraftRow,
   type JournalLineDraft,
   linesFromDraftRows,
+  withSavedLineIds,
 } from './journal-lines'
 
 function row(overrides: Partial<JournalLineDraft>): JournalLineDraft {
@@ -82,6 +83,59 @@ describe('linesFromDraftRows', () => {
     ])
     expect(lines[0]).not.toHaveProperty('counterpartyType')
     expect(lines[1]).not.toHaveProperty('counterpartyId')
+  })
+})
+
+describe('line ids', () => {
+  it('sends a saved row with its id and a new row without one', () => {
+    const lines = linesFromDraftRows([
+      row({ id: 'jel_1', glAccountId: 'acc_6300', debitMinor: 500 }),
+      row({ glAccountId: 'acc_2000', creditMinor: 500 }),
+    ])
+    expect(lines[0]).toMatchObject({ id: 'jel_1' })
+    expect(lines[1]).not.toHaveProperty('id')
+  })
+
+  it('carries the id through a load', () => {
+    const rows = draftRowsFromLines([
+      { id: 'jel_1', glAccountId: 'acc_6300', direction: 'debit', amountMinor: 500 },
+    ])
+    expect(rows[0]?.id).toBe('jel_1')
+  })
+})
+
+describe('withSavedLineIds', () => {
+  it('stamps the returned ids onto the savable rows it sent, in order', () => {
+    const a = row({ glAccountId: 'acc_6300', debitMinor: 500 })
+    const blank = row({ glAccountId: null })
+    const b = row({ glAccountId: 'acc_2000', creditMinor: 500 })
+    const sent = [a, blank, b]
+    const saved = [
+      { id: 'jel_a', glAccountId: 'acc_6300', direction: 'debit' as const, amountMinor: 500 },
+      { id: 'jel_b', glAccountId: 'acc_2000', direction: 'credit' as const, amountMinor: 500 },
+    ]
+    const next = withSavedLineIds(sent, sent, saved)
+    expect(next.map((r) => r.id)).toEqual(['jel_a', null, 'jel_b'])
+  })
+
+  // A saved row that is no longer savable was deleted server-side; its id must not come back.
+  it('clears the id of a sent row the save dropped', () => {
+    const cleared = row({ id: 'jel_old', glAccountId: 'acc_6300', debitMinor: null })
+    const next = withSavedLineIds([cleared], [cleared], [])
+    expect(next[0]?.id).toBeNull()
+  })
+
+  it('keeps rows added and edits made while the save was in flight', () => {
+    const a = row({ glAccountId: 'acc_6300', debitMinor: 500 })
+    const edited = { ...a, debitMinor: 700 }
+    const added = row({ glAccountId: 'acc_1000', creditMinor: 700 })
+    const next = withSavedLineIds(
+      [edited, added],
+      [a],
+      [{ id: 'jel_a', glAccountId: 'acc_6300', direction: 'debit', amountMinor: 500 }]
+    )
+    expect(next[0]).toMatchObject({ id: 'jel_a', debitMinor: 700 })
+    expect(next[1]).toBe(added)
   })
 })
 

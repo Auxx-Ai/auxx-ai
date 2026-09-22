@@ -4,9 +4,10 @@
  * The credit memo's ledger half: post one memo's issue entry, and reverse it.
  *
  * ```
- *   Dr revenue_returns_allowances   the shipped lines' subtotal
+ *   Dr revenue_returns_allowances   the shipped goods lines' subtotal
+ *   Dr revenue_shipping             the shipped shipping lines' subtotal
  *   Dr sales_tax_payable            the shipped lines' tax
- *       Cr accounts_receivable        the two together
+ *       Cr accounts_receivable        the three together
  * ```
  *
  * Subject the memo, counterparty its contact, `storeId` the order's own source
@@ -69,6 +70,7 @@ export function buildEntryForCreditMemo(
     subtotal: line.subtotalMinor,
     taxTotal: line.taxTotalMinor,
     shipped: shippedLineIds.has(line.id),
+    component: line.disposition === 'shipping' ? ('shipping' as const) : ('goods' as const),
   }))
   const subtotal = roundCents(lines.reduce((sum, line) => sum + line.subtotalMinor, 0))
   const taxTotal = roundCents(lines.reduce((sum, line) => sum + (line.taxTotalMinor ?? 0), 0))

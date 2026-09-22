@@ -49,6 +49,8 @@ export const ROLE_IMPORT_MATCH: Partial<
   // from QuickBooks and still lands in the chart - it just carries no role, so
   // there is nothing here to match it to.
   bad_debt_expense: { names: ['Bad Debt', 'Bad Debts', 'Bad Debt Expense'] },
+  // QuickBooks ships this one by name in every US company.
+  discounts_given: { names: ['Discounts given'] },
 }
 
 /**

@@ -4,9 +4,10 @@
  * The credit memo issue entry, per line (91 D4). PURE: no database, no clock, no chart.
  *
  * ```
- *   Dr revenue_returns_allowances   the shipped lines' subtotal
+ *   Dr revenue_returns_allowances   the shipped goods lines' subtotal
+ *   Dr revenue_shipping             the shipped shipping lines' subtotal (91 D8)
  *   Dr sales_tax_payable            the shipped lines' tax      (omitted when zero)
- *       Cr accounts_receivable        the two together
+ *       Cr accounts_receivable        the three together
  * ```
  *
  * A line whose goods had not shipped posts nothing: no revenue was recognised, and
@@ -36,8 +37,8 @@ export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
 
 /** One explicit entitlement component. Cash refunds are separate effects. */
 export interface CreditMemoEntitlementComponent {
-  componentKey: 'earned_revenue' | 'sales_tax'
-  accountRole: 'revenue_returns_allowances' | 'sales_tax_payable'
+  componentKey: 'earned_revenue' | 'shipping' | 'sales_tax'
+  accountRole: 'revenue_returns_allowances' | 'revenue_shipping' | 'sales_tax_payable'
   direction: 'debit'
   amount: number
 }
@@ -69,13 +70,18 @@ export interface CreditMemoEntryLine {
   taxTotal: number | null | undefined
   /** The line's goods had shipped before the memo, so there is revenue to reverse. */
   shipped: boolean
+  /** `shipping` gives back shipping charged, reversing `revenue_shipping`. Absent is goods. */
+  component?: 'goods' | 'shipping'
 }
 
 /** The amounts one memo posts, all integer minor units: its shipped lines only. */
 export interface CreditMemoAmounts {
+  /** The shipped goods lines, to `revenue_returns_allowances`. */
   subtotalMinor: number
+  /** The shipped shipping lines, to `revenue_shipping`. */
+  shippingMinor: number
   taxTotalMinor: number
-  /** `subtotalMinor + taxTotalMinor`. Zero when no line had shipped. */
+  /** All three together. Zero when no line had shipped. */
   totalMinor: number
 }
 
@@ -105,6 +111,7 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
   let subtotalMinor = 0
   let taxTotalMinor = 0
   let shippedSubtotalMinor = 0
+  let shippedShippingMinor = 0
   let shippedTaxMinor = 0
   input.lines.forEach((line, index) => {
     const subtotal = toAmountMinor(
@@ -121,7 +128,8 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
     subtotalMinor += subtotal
     taxTotalMinor += tax
     if (line.shipped) {
-      shippedSubtotalMinor += subtotal
+      if (line.component === 'shipping') shippedShippingMinor += subtotal
+      else shippedSubtotalMinor += subtotal
       shippedTaxMinor += tax
     }
   })
@@ -153,8 +161,9 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
 
   return {
     subtotalMinor: shippedSubtotalMinor,
+    shippingMinor: shippedShippingMinor,
     taxTotalMinor: shippedTaxMinor,
-    totalMinor: shippedSubtotalMinor + shippedTaxMinor,
+    totalMinor: shippedSubtotalMinor + shippedShippingMinor + shippedTaxMinor,
   }
 }
 
@@ -304,6 +313,8 @@ export interface BuiltCreditMemoEntry {
   totalMinor: number
   /** What went to `revenue_returns_allowances`. */
   subtotalMinor: number
+  /** What went to `revenue_shipping`. `0` omits the leg. */
+  shippingMinor: number
   /** What came back out of `sales_tax_payable`. `0` omits the leg. */
   taxTotalMinor: number
 }
@@ -344,7 +355,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     )
   }
 
-  const { subtotalMinor, taxTotalMinor, totalMinor } = computeCreditMemoAmounts({
+  const { subtotalMinor, shippingMinor, taxTotalMinor, totalMinor } = computeCreditMemoAmounts({
     creditMemoId,
     number,
     lines: input.lines,
@@ -372,6 +383,16 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       direction: 'debit',
       amount: subtotalMinor,
       memo: lineMemo,
+      sortOrder: lines.length,
+    })
+  }
+  if (shippingMinor > 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.REVENUE_SHIPPING,
+      direction: 'debit',
+      amount: shippingMinor,
+      memo: `${lineMemo} shipping`,
       sortOrder: lines.length,
     })
   }
@@ -405,6 +426,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     periodKey,
     totalMinor,
     subtotalMinor,
+    shippingMinor,
     taxTotalMinor,
   }
 }

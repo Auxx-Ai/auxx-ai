@@ -4,6 +4,7 @@
  * Where a movement's money physically sits, as one GL account.
  *
  * ```
+ *   giftCard                  → the unscoped `gift_card_liability` role (91 D8)
  *   paymentGatewayId set      → the rail's clearing account, scoped by rail + currency
  *   cashAccountInstanceId set → the bank account's `bank_account_gl_account` pointer
  *   neither                   → the unscoped `undeposited_funds` role
@@ -54,6 +55,18 @@ export async function resolveCashEndpoint(
     throw unresolved(error instanceof Error ? error.message : String(error))
   }
 
+  if (source.giftCard) {
+    const roles = await resolveRoles(tx, organizationId, [ACCOUNT_ROLES.GIFT_CARD_LIABILITY])
+    if (roles.isErr()) throw unresolved(`${subject}: ${roles.error.message}`)
+    const liability = roles.value.get(ACCOUNT_ROLES.GIFT_CARD_LIABILITY)
+    if (!liability)
+      throw unmapped(
+        `${subject} gift card liability account is not mapped`,
+        ACCOUNT_ROLES.GIFT_CARD_LIABILITY
+      )
+    return { glAccountId: liability.glAccountId, kind: 'gift_card', railId: null }
+  }
+
   const railId = source.paymentGatewayId?.trim() || null
   if (railId) {
     const roles = await resolveRoles(tx, organizationId, [ACCOUNT_ROLES.CLEARING], {
@@ -98,13 +111,18 @@ export async function resolveCashEndpoint(
   return { glAccountId: undeposited.glAccountId, kind: 'undeposited_funds', railId: null }
 }
 
-/** The endpoint columns of a movement row, for {@link resolveCashEndpoint}. */
+/**
+ * The endpoint columns of a movement row, for {@link resolveCashEndpoint}. `giftCard` is the
+ * caller's: it comes from the movement's own gateway handle, which no column stores.
+ */
 export function cashEndpointSourceOf(
-  money: typeof schema.MoneyTransaction.$inferSelect
+  money: typeof schema.MoneyTransaction.$inferSelect,
+  giftCard = false
 ): CashEndpointSource {
   return {
     paymentGatewayId: money.paymentGatewayId,
     cashAccountInstanceId: money.cashAccountInstanceId,
     currency: money.currency,
+    ...(giftCard ? { giftCard } : {}),
   }
 }

@@ -123,6 +123,25 @@ describe('assessProcessorEntries near misses', () => {
     expect(outcome.matches.size).toBe(0)
   })
 
+  // 91 D8, trap #11: `type` is free text; a chargeback is money leaving, so it is a refund.
+  it('matches a dispute to the customer refund it moved, by the absolute amount', async () => {
+    const chargeback = candidate('mt-1')
+    chargeback.money.purpose = 'customer_refund'
+    const { db } = database([gateways, [chargeback]])
+    const outcome = await assessProcessorEntries(db, 'org', [
+      entry({ type: 'dispute', grossMinor: -10000n }),
+    ])
+    expect(outcome.matches.get('entry-1')).toBe('mt-1')
+  })
+
+  it('never matches a dispute to a receipt', async () => {
+    const { db } = database([gateways, [candidate('mt-1')]])
+    const outcome = await assessProcessorEntries(db, 'org', [
+      entry({ type: 'dispute', grossMinor: -10000n }),
+    ])
+    expect(outcome.refusals.get('entry-1')).toEqual({ reason: 'no_receipt' })
+  })
+
   it('has nothing to say about a fee', async () => {
     const { db } = database([])
     const outcome = await assessProcessorEntries(db, 'org', [entry({ type: 'fee' })])

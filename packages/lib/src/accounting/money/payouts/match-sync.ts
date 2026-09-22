@@ -16,7 +16,11 @@ import { findLinkedPostings } from '../../ledger/reads/list-postings'
 import { readSourceAccounts } from '../customer-money/source-reads'
 import { type PayoutSplit, type StoredPayoutEntry, splitStoredEntries } from './client'
 import { listPayoutEntries } from './entry-reads'
-import { assessProcessorEntries, type MatchableProcessorEntry } from './match-entries'
+import {
+  assessProcessorEntries,
+  MATCHABLE_ENTRY_TYPES,
+  type MatchableProcessorEntry,
+} from './match-entries'
 import { MATCH_STATE_FOR_REASON, type MatchReason, type MatchState } from './match-reasons'
 import { resolveEntryReferences, type UnreferencedEntry } from './reference-resolvers'
 
@@ -116,6 +120,33 @@ async function readUnrecognisedCredits(
   return byPosting
 }
 
+/**
+ * The refund movements whose live posting already books a dispute fee (91 D8). A chargeback
+ * matched before its refund posted carries the fee there; one matched after leaves it to the
+ * payout, so each fee lands exactly once whatever arrived first.
+ */
+async function readRefundsCarryingFee(
+  db: Database | Transaction,
+  organizationId: string,
+  moneyTransactionIds: readonly string[]
+): Promise<Set<string>> {
+  if (!moneyTransactionIds.length) return new Set()
+  const rows = await db
+    .selectDistinct({ sourceId: schema.GlPostingLine.sourceId })
+    .from(schema.GlPostingLine)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPostingLine.organizationId, organizationId),
+        eq(schema.GlPostingLine.sourceType, 'money_transaction'),
+        inArray(schema.GlPostingLine.sourceId, [...new Set(moneyTransactionIds)]),
+        eq(schema.GlPostingLine.accountRole, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES),
+        eq(schema.GlPosting.status, 'posted')
+      )
+    )
+  return new Set(rows.map((row) => row.sourceId))
+}
+
 /** A stored answer this pass may overwrite. */
 function rewritable(row: Stored & { matchedBy: string | null }, frozen: boolean): boolean {
   // A person's answer outranks the matcher's whether or not a posting has
@@ -150,7 +181,7 @@ export async function syncStoredMatches(
 
   // 🛑 Every non-outgoing row, not only the matchable ones: the SPLIT is this
   // function's second answer (§11.3) and a fee or an adjustment is part of it,
-  // unrecognised by construction. Only `charge` and `refund` reach the matcher.
+  // unrecognised by construction. Only `charge`, `refund` and `dispute` reach the matcher.
   const allRows = await listPayoutEntries(tx, organizationId, scopes)
   const keyByScope = new Map(
     scopes.map((scope) => [`${scope.sourceAccountId}:${scope.payoutExternalId}`, scope.key])
@@ -159,7 +190,7 @@ export async function syncStoredMatches(
     keyByScope.get(`${row.sourceAccountId}:${row.payoutExternalId}`)
   if (!allRows.length) return summaries
 
-  const rows = allRows.filter((row) => row.type === 'charge' || row.type === 'refund')
+  const rows = allRows.filter((row) => MATCHABLE_ENTRY_TYPES.includes(row.type))
   const accounts = await readSourceAccounts(
     tx,
     organizationId,
@@ -205,6 +236,7 @@ export async function syncStoredMatches(
   const changed: Array<ReturnType<typeof sql>> = []
   /** The state this pass leaves on each row, matchable or not, for the split. */
   const stateById = new Map<string, MatchState | null>()
+  const matchedMoneyById = new Map<string, string>()
   for (const row of rows) {
     const matched = outcome.matches.get(row.id)
     const refusal = outcome.refusals.get(row.id)
@@ -236,6 +268,7 @@ export async function syncStoredMatches(
         }::timestamptz)`
       )
     stateById.set(row.id, next.matchState)
+    if (next.matchedMoneyTransactionId) matchedMoneyById.set(row.id, next.matchedMoneyTransactionId)
     const summary = summaries.get(keyOf(row) ?? '')
     if (!summary) continue
     summary.basis.push([
@@ -256,17 +289,24 @@ export async function syncStoredMatches(
   for (const summary of summaries.values()) summary.basis.sort()
 
   // ── The split, and the postings it makes stale (§11.3, §13 Q6) ────────────
+  const matchedDisputeMoney = rows.flatMap((row) => {
+    const money = matchedMoneyById.get(row.id)
+    return row.type === 'dispute' && stateById.get(row.id) === 'matched' && money ? [money] : []
+  })
+  const feeOnRefund = await readRefundsCarryingFee(tx, organizationId, matchedDisputeMoney)
   const entriesByKey = new Map<string, StoredPayoutEntryRow[]>()
   for (const row of allRows) {
     const key = keyOf(row)
     if (!key) continue
     const list = entriesByKey.get(key) ?? []
+    const money = matchedMoneyById.get(row.id)
     list.push({
       type: row.type,
       matchState: stateById.get(row.id) ?? row.matchState,
       grossMinor: Number(row.grossMinor),
       feeMinor: Number(row.feeMinor),
       netMinor: Number(row.netMinor),
+      ...(money && feeOnRefund.has(money) ? { feeOnRefund: true } : {}),
       glPostingId: livePostings.get(row.id) ?? null,
     })
     entriesByKey.set(key, list)

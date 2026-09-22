@@ -196,6 +196,34 @@ describe('postCustomerReceiptAccounting', () => {
     })
   })
 
+  it('debits the gift card liability for a gift card redemption, with no rail', async () => {
+    h.readCustomerReceiptAccountingSource.mockResolvedValue({
+      ...receiptSource(),
+      paymentGatewayId: null,
+      giftCard: true,
+      gatewayName: 'gift_card',
+    })
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      value: new Map([
+        ['gift_card_liability', { glAccountId: 'gl_gift', accountType: 'liability' }],
+      ]),
+    })
+
+    await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(shape(options.entry.lines)).toEqual([
+      ['gl_gift', 'debit', 10_800],
+      ['accounts_receivable', 'credit', 10_800],
+    ])
+    expect(options.railId).toBeNull()
+    expect(h.resolveRoles).toHaveBeenCalledWith(expect.anything(), organizationId, [
+      'gift_card_liability',
+    ])
+    expect(h.updates).toEqual([])
+  })
+
   it('posts the same lines for a receipt applied to no order, with no parent link', async () => {
     await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })
     const withOrder = h.postEntry.mock.calls[0]![1]

@@ -135,10 +135,14 @@ const LINE_ITEM_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_work_order',
 ] as const)
 
+/** The relationship a `line_item` hangs off its order by, for a shipping line's read. */
+const LINE_ITEM_ORDER_ATTRIBUTE = 'line_item_order'
+
 /** The two `line_item` attributes the channel stamps when a line ships (91 D4). */
 const LINE_ITEM_SHIPPED_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_fulfilled_qty',
   'line_item_fulfilled_at',
+  LINE_ITEM_ORDER_ATTRIBUTE,
 ] as const)
 
 type CreditMemoApplicationAttribute = (typeof CREDIT_MEMO_APPLICATION_ATTRIBUTES)[number]
@@ -220,6 +224,24 @@ export async function loadCreditMemo(
     lineIds: relatedIds(memo, 'credit_memo_lines'),
     hasSettlementFields: ctx.fields.credit_memo_amount_applied !== null,
   }
+}
+
+const CREDIT_MEMO_ORDER_ATTRIBUTES = pickSystemAttributes(CREDIT_MEMO_FIELDS, [
+  'credit_memo_order',
+] as const)
+
+/** The ids of every memo that credits one order. Empty when the org has no memo def. */
+export async function listCreditMemoIdsForOrder(
+  db: Database | Transaction,
+  organizationId: string,
+  orderInstanceId: string
+): Promise<string[]> {
+  const ctx = await systemFields(db, organizationId, 'credit_memo', CREDIT_MEMO_ORDER_ATTRIBUTES)
+  if (!ctx?.fields.credit_memo_order) return []
+  const rows = await readSystemRecords(db, organizationId, ctx, {
+    by: { attribute: 'credit_memo_order', in: [orderInstanceId] },
+  })
+  return rows.map((row) => row.id)
 }
 
 /** {@link loadCreditMemo}, as the refusal a writer needs. */
@@ -614,41 +636,72 @@ export async function loadInvoiceLinesForCredit(
  * The memo lines whose goods had shipped on or before `issuedAt`, read off each
  * line's own `line_item` fulfilled qty and date - never off fulfillment records,
  * which may sync after the memo (91 D4, §4.0). A native memo credits an issued
- * invoice, so every line reverses revenue.
+ * invoice, so every line reverses revenue. A `shipping` line has no item of its
+ * own: it reverses when any line of the memo's order had shipped, since shipping
+ * is recognised with the first box (91 D8).
  */
 export async function readShippedMemoLineIds(
   db: Database | Transaction,
   organizationId: string,
-  memo: Pick<CreditMemoRecord, 'source'>,
-  lines: readonly Pick<CreditMemoLineRecord, 'id' | 'lineItemInstanceId'>[],
+  memo: Pick<CreditMemoRecord, 'source'> & { orderInstanceId?: string | null },
+  lines: readonly (Pick<CreditMemoLineRecord, 'id' | 'lineItemInstanceId'> & {
+    disposition?: string | null
+  })[],
   issuedAt: string
 ): Promise<Set<string>> {
   if (memo.source !== 'channel') return new Set(lines.map((line) => line.id))
+  const isShipping = (line: (typeof lines)[number]) => line.disposition === 'shipping'
   const lineItemIds = [
-    ...new Set(lines.flatMap((line) => (line.lineItemInstanceId ? [line.lineItemInstanceId] : []))),
-  ]
-  const ctx = lineItemIds.length
-    ? await systemFields(db, organizationId, 'line_item', LINE_ITEM_SHIPPED_ATTRIBUTES)
-    : null
-  const items = ctx
-    ? new Map(
-        (await readSystemRecords(db, organizationId, ctx, { ids: lineItemIds })).map((item) => [
-          item.id,
-          item,
-        ])
+    ...new Set(
+      lines.flatMap((line) =>
+        line.lineItemInstanceId && !isShipping(line) ? [line.lineItemInstanceId] : []
       )
-    : new Map<string, SystemRecord<(typeof LINE_ITEM_SHIPPED_ATTRIBUTES)[number]>>()
-  const shipped = new Set<string>()
-  for (const line of lines) {
-    const item = line.lineItemInstanceId ? items.get(line.lineItemInstanceId) : undefined
+    ),
+  ]
+  const orderId = lines.some(isShipping) ? (memo.orderInstanceId ?? null) : null
+  const ctx =
+    lineItemIds.length || orderId
+      ? await systemFields(db, organizationId, 'line_item', LINE_ITEM_SHIPPED_ATTRIBUTES)
+      : null
+  const items =
+    ctx && lineItemIds.length
+      ? new Map(
+          (await readSystemRecords(db, organizationId, ctx, { ids: lineItemIds })).map((item) => [
+            item.id,
+            item,
+          ])
+        )
+      : new Map<string, SystemRecord<(typeof LINE_ITEM_SHIPPED_ATTRIBUTES)[number]>>()
+  const verdict = (
+    item: SystemRecord<(typeof LINE_ITEM_SHIPPED_ATTRIBUTES)[number]> | undefined
+  ) => {
     const qty = item?.number('line_item_fulfilled_qty') ?? null
     // Null qty is the channel saying nothing, not "unshipped" (line-item-fields.ts): it reverses.
-    if (qty === null) {
-      shipped.add(line.id)
+    if (qty === null) return 'silent' as const
+    const day = toCalendarDay(item?.date('line_item_fulfilled_at') ?? null)
+    return qty > 0 && (day === null || day <= issuedAt) ? ('shipped' as const) : ('not' as const)
+  }
+
+  let orderShipped = true
+  if (orderId && ctx) {
+    const orderItems = ctx.fields[LINE_ITEM_ORDER_ATTRIBUTE]
+      ? await readSystemRecords(db, organizationId, ctx, {
+          by: { attribute: LINE_ITEM_ORDER_ATTRIBUTE, in: [orderId] },
+        })
+      : []
+    const verdicts = orderItems.map(verdict)
+    // Every line silent is the channel saying nothing about the order: it reverses.
+    orderShipped = verdicts.some((v) => v === 'shipped') || verdicts.every((v) => v === 'silent')
+  }
+
+  const shipped = new Set<string>()
+  for (const line of lines) {
+    if (isShipping(line)) {
+      if (orderShipped) shipped.add(line.id)
       continue
     }
-    const day = toCalendarDay(item?.date('line_item_fulfilled_at') ?? null)
-    if (qty > 0 && (day === null || day <= issuedAt)) shipped.add(line.id)
+    const item = line.lineItemInstanceId ? items.get(line.lineItemInstanceId) : undefined
+    if (verdict(item) !== 'not') shipped.add(line.id)
   }
   return shipped
 }

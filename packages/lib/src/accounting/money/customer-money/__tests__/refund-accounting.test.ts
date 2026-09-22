@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   settlements: [] as unknown[],
   acceptances: [] as unknown[],
   memoLinks: [] as unknown[],
+  disputes: [] as unknown[],
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -102,7 +103,9 @@ function db(): Database {
           ? h.acceptances
           : table === schema.GlPostingSource
             ? h.memoLinks
-            : []
+            : table === schema.ProcessorBalanceEntry
+              ? h.disputes
+              : []
       ).then(resolve, reject)
     return chain
   }
@@ -165,6 +168,7 @@ beforeEach(() => {
   h.settlements = [{ ...settlement, customerCreditMemoInstanceId: MEMO }]
   h.acceptances = []
   h.memoLinks = []
+  h.disputes = []
   h.readSource.mockResolvedValue({ paymentGatewayId: 'pg_shop', sourceStoreId: 'fsa_1' })
   h.loadCreditMemo.mockResolvedValue({
     id: MEMO,
@@ -201,6 +205,48 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
     ])
     expect(options.railId).toBe('pg_1')
     expect(options.scope).toEqual({ rail: 'pg_1' })
+  })
+
+  // 91 D8: a chargeback's fee is its own expense on the refund, out of the same clearing.
+  it('carries a matched dispute fee as payment_processing_fees on the rail scope', async () => {
+    h.disputes = [{ feeMinor: 1_500n }]
+
+    await post()
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(
+      options.entry.lines.map((line: Record<string, unknown>) => [
+        line.accountRole ?? line.glAccountId,
+        line.direction,
+        line.amount,
+      ])
+    ).toEqual([
+      ['accounts_receivable', 'debit', 20_000],
+      ['payment_processing_fees', 'debit', 1_500],
+      ['gl_clearing', 'credit', 21_500],
+    ])
+    expect(options.scope).toEqual({ rail: 'pg_1' })
+  })
+
+  it('credits the gift card liability for a refund back onto a gift card', async () => {
+    h.settlements = []
+    h.acceptances = [{ orderInstanceId: ORDER }]
+    ;(h.money as { paymentGatewayId: string | null }).paymentGatewayId = null
+    h.readSource.mockResolvedValue({
+      paymentGatewayId: null,
+      sourceStoreId: 'fsa_1',
+      giftCard: true,
+    })
+    h.resolveRoles.mockResolvedValue({
+      isErr: () => false,
+      value: new Map([['gift_card_liability', { glAccountId: 'gl_gift' }]]),
+    })
+
+    await post()
+
+    const options = h.postEntry.mock.calls[0]![1]
+    expect(options.entry.lines[1]).toMatchObject({ glAccountId: 'gl_gift', direction: 'credit' })
+    expect(options.railId).toBeNull()
   })
 
   it('posts a channel refund with no memo document, no memo posting and no receipt posting', async () => {

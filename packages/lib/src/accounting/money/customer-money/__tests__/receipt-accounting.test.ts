@@ -171,6 +171,20 @@ describe('which rail a channel receipt posts to', () => {
     expect((await read()).paymentGatewayId).toBeNull()
   })
 
+  // 91 D8: a gift card redemption spends the liability; its handle is the one fact.
+  it('flags a gift card payment and names no rail for it', async () => {
+    h.gatewayHandle = 'Gift_Card'
+    h.feedRailId = 'pg_feed'
+    const source = await read()
+    expect(source.giftCard).toBe(true)
+    expect(source.paymentGatewayId).toBeNull()
+  })
+
+  it('does not flag an ordinary card payment', async () => {
+    h.gatewayHandle = 'bogus'
+    expect((await read()).giftCard).toBe(false)
+  })
+
   it('refuses an unmapped handle by name rather than falling back to the feed', async () => {
     h.gatewayHandle = 'paypal'
     await expect(read()).rejects.toThrow(
