@@ -18,6 +18,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import React, { useCallback, useState } from 'react'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
+import { SyncStatusCard } from '~/components/channels/ui/sync-status/sync-status-card'
 import { DemoBanner } from '~/components/demo/demo-banner'
 import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
 import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
@@ -235,6 +236,7 @@ export const Dashboard = ({
         <AppDragOverlay />
       </DndContext>
       <NotificationPanelRoot />
+      <SyncStatusCard />
     </SidebarProvider>
   )
 }

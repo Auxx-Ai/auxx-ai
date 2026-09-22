@@ -44,6 +44,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { signOutAndClear } from '~/auth/sign-out'
+import { SyncStatusSidebarItem } from '~/components/channels/ui/sync-status/sync-status-sidebar-item'
 import { useDemo } from '~/hooks/use-demo'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useSubscription } from '~/hooks/use-subscription'
@@ -87,6 +88,7 @@ function AppFooter({}: Props) {
           </SidebarMenuButton>
         </SidebarMenuItem>
         <NotificationTrigger />
+        <SyncStatusSidebarItem />
 
         <SidebarMenuItem>
           <DropdownMenu open={isHelpOpen} onOpenChange={setIsHelpOpen}>
