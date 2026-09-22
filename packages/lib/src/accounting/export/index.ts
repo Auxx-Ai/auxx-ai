@@ -25,6 +25,7 @@ export {
   OUTBOX_TABS,
   type OutboxTab,
   parseOutboxTab,
+  unbuiltGroupKeyString,
 } from './client'
 export { type ShapedPosting, type ShapeForPostingInput, shapeForPosting } from './object-shape'
 export {
@@ -87,7 +88,12 @@ export {
 } from './send'
 export { type SweepExportBatchesInput, sweepExportBatches } from './sweep'
 export {
-  type ReadUnbuiltSummaryRowsInput,
-  readUnbuiltSummaryRows,
+  countUnbuiltSummaryRows,
+  type ReadUnbuiltSummaryPageInput,
+  readUnbuiltSummaryMembers,
+  readUnbuiltSummaryPage,
+  type UnbuiltCursor,
+  type UnbuiltGroupKey,
+  type UnbuiltSummaryFilter,
   type UnbuiltSummaryRow,
 } from './unbuilt-summary'

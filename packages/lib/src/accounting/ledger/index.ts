@@ -238,6 +238,7 @@ export {
   findLinkedPostings,
   findLiveSubjectPosting,
   findLiveSubjectPostings,
+  findPendingDraftPostings,
   getPosting,
   type LatestPostingByType,
   type LedgerSummaryLine,
@@ -290,10 +291,13 @@ export {
   type WriterConflict,
 } from './roles'
 export {
+  AUTO_POST_AVENUES,
+  type AutoPostAvenue,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrainAvenue,
   type OpeningTrialBalanceSummary,
   openingTrialBalanceDifference,
   readBookTimeZone,

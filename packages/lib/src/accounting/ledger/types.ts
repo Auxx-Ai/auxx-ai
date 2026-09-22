@@ -58,14 +58,20 @@ export const POSTING_TYPES = [
   'bank_deposit',
   // An invoice written off to bad debt.
   'write_off',
-  // A customer receipt or a vendor payment, posted off `MoneyTransaction`:
-  // `Dr <the cash endpoint> / Cr accounts_receivable`, or the same with both
-  // sides flipped for money going out (task 71 §0).
+  // A customer receipt, posted off `MoneyTransaction`:
+  // `Dr <the cash endpoint> / Cr accounts_receivable` (task 71 §0).
   'payment',
   // TARGET §5: a customer refund - `Dr returns / Cr clearing or bank`. Its own
   // type rather than a sides-swapped `payment` so the export can send a Refund
   // Receipt and a ledger card can name what it is.
   'refund',
+  // A vendor payment: `Dr accounts_payable / Cr <the cash endpoint>`. Its own
+  // type rather than a sides-flipped `payment` so its avenue is the vendor's
+  // (TARGET §5: a Bill Payment, never a customer Payment).
+  'vendor_payment',
+  // A supplier's refund of a vendor credit: `Dr <the cash endpoint> /
+  // Cr accounts_payable`. Own type for the reason `vendor_payment` is.
+  'vendor_refund',
   // An invoice ISSUED: `Dr accounts_receivable / Cr revenue_service /
   // Cr sales_tax_payable`, dated the invoice's own `issuedAt`. The receivable
   // every payment entry relieves and nothing used to raise
@@ -603,6 +609,9 @@ export type PostResultStatus =
   // rendering "the entry could not be built" over a set of books that is simply
   // short.
   | 'revenue_incomplete'
+  // A document that recognises nothing - a shipment of only free lines - so
+  // there is no entry to build. A skip, never a fault (88 D6).
+  | 'nothing_to_recognise'
   // `postEntry` with `mode: 'draft'`: a `GlPosting` row exists with its lines
   // and no doc number, holding no claim. A SUCCESS - `postDraft` promotes it -
   // but not one the books read, so `didLedgerAccept` is false for it.

@@ -111,9 +111,12 @@ export {
   type Fulfillment,
   type FulfillmentFieldContext,
   type FulfillmentLine,
+  type FulfillmentPostingResult,
   type FulfillmentStatusValue,
   isLiveFulfillment,
   loadFulfillmentFieldContext,
+  postFulfillmentAccounting,
+  readBlockedFulfillment,
   readFulfillmentsForOrder,
   readFulfillmentsForOrders,
   requireFulfillmentFieldContext,
@@ -159,6 +162,9 @@ export {
 // shipped, which a status flip cannot, and that is what makes a second
 // fulfillment able to avoid re-recognising the first.
 export {
+  type ContinueOrderAccountingResult,
+  continueAccountingAfterDraft,
+  continueOrderAccounting,
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,

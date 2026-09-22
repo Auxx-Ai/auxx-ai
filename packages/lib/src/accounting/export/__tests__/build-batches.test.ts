@@ -31,6 +31,8 @@ vi.mock('@auxx/logger', () => ({
 }))
 
 import { ok } from 'neverthrow'
+import { avenueOfPostingType } from '../../ledger/setup/export-settings'
+import type { PostingType } from '../../ledger/types'
 import { buildExportBatches } from '../build-batches'
 
 const ORG = 'org_1'
@@ -38,7 +40,7 @@ const CUSTOMER = { counterpartyType: 'customer', counterpartyId: 'cust_1' }
 const CONNECTION = { connectionId: 'conn_1', bookId: 'book_1', exportFromDate: '2026-01-01' }
 
 function posting(over: Partial<Record<string, unknown>> = {}) {
-  return {
+  const row = {
     id: 'glp_1',
     postingType: 'fulfillment',
     txnDate: '2026-09-14',
@@ -51,6 +53,8 @@ function posting(over: Partial<Record<string, unknown>> = {}) {
     batchedId: null,
     ...over,
   }
+  // The builder reads the stored column, which the poster derives the same way.
+  return { ...row, avenue: avenueOfPostingType(row.postingType as PostingType) }
 }
 
 function line(over: Partial<Record<string, unknown>> = {}) {

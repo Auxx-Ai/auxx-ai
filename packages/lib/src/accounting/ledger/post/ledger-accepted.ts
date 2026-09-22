@@ -45,6 +45,7 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
     case 'inventory_role_refused':
     case 'account_invalid':
     case 'revenue_incomplete':
+    case 'nothing_to_recognise':
     case 'error':
     // 🛑 NOT accepted, and this is the one that reads like a mistake. The
     // accounting module has never been turned on, so nothing was built, nothing
@@ -90,5 +91,10 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
  * `ACCEPTED_POST_STATUSES` that were also asked whether the books hold an entry.
  */
 export function isExpectedPostOutcome(result: { status: PostResultStatus }): boolean {
-  return didLedgerAccept(result) || result.status === 'not_enabled' || result.status === 'drafted'
+  return (
+    didLedgerAccept(result) ||
+    result.status === 'not_enabled' ||
+    result.status === 'drafted' ||
+    result.status === 'nothing_to_recognise'
+  )
 }

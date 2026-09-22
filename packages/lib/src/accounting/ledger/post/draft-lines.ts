@@ -4,12 +4,13 @@
 // `postEntry`/`postDraft`/`reverseEntry` (TARGET §1). A draft holds no claim;
 // its `pending` link is how a source finds the drafts standing on it.
 
-import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, ConflictError, NotFoundError } from '../../../errors'
 import type { PeriodLock } from '../periods/periods'
 import type { BuiltEntry, GlPostingSourceInput } from '../types'
+import { withAccountingCommitLock } from './accounting-commit-lock'
 import { buildPostingDraft } from './draft'
 import { toLineRows } from './insert-posting'
 import { prepareEntry } from './post-entry'

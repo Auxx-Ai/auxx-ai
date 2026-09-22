@@ -162,6 +162,8 @@ export function OutboxPage() {
         onSelectPosting={drawers.openPosting}
         activeMovementId={drawers.movementId}
         onSelectMovement={drawers.openMovement}
+        activeShipmentId={drawers.shipmentId}
+        onSelectShipment={drawers.openShipment}
       />
 
       {drawers.overlays}

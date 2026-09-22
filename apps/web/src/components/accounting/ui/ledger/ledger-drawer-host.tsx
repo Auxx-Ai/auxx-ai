@@ -29,13 +29,14 @@ import { useResource } from '~/components/resources'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { MovementFrame, useMovementFrameHeader } from './movement-frame'
 import { type FrameHeader, PostingFrame, usePostingFrameHeader } from './posting-frame'
+import { ShipmentFrame, useShipmentFrameHeader } from './shipment-frame'
 
 /** 🛑 Not `tab`: on the Outbox that is the page's own tab strip, and a record
  * frame's tab bar would bounce the list from Drafts back to Ready behind the drawer. */
 export const LEDGER_RECORD_TAB_PARAM = 'rtab'
 
 interface LedgerDrawerHostProps {
-  /** `~posting:<id>` / `~movement:<id>` from `?posting=` / `?movement=`; `null` closes. */
+  /** `~posting:` / `~movement:` / `~shipment:` from the matching query param; `null` closes. */
   baseFrame: DrawerFrame | null
   onOpenChange: (open: boolean) => void
   isDocked: boolean
@@ -107,6 +108,9 @@ function LedgerDrawerFrames({
   const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null, {
     onOpenPosting: openPosting,
   })
+  const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null, {
+    onOpenPosting: openPosting,
+  })
   const { resource: recordResource } = useResource(
     topRecordId ? parseRecordId(topRecordId).entityDefinitionId : null
   )
@@ -136,7 +140,9 @@ function LedgerDrawerFrames({
       ? postingHeader
       : topKind?.kind === 'movement'
         ? movementHeader
-        : recordHeader
+        : topKind?.kind === 'shipment'
+          ? shipmentHeader
+          : recordHeader
 
   // `DockableDrawer`'s own close paths (outside click, swipe, Escape) bypass
   // `handleClose` — clear the stack there too.
@@ -196,6 +202,8 @@ function LedgerDrawerFrames({
                       <LedgerRecordFrame recordId={kind.recordId} />
                     ) : kind.kind === 'movement' ? (
                       <MovementFrame movementId={kind.id} bookTimeZone={bookTimeZone} />
+                    ) : kind.kind === 'shipment' ? (
+                      <ShipmentFrame fulfillmentId={kind.id} bookTimeZone={bookTimeZone} />
                     ) : (
                       <PostingFrame
                         postingId={kind.id}

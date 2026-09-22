@@ -26,19 +26,25 @@ describe('avenueOfPostingType', () => {
     }
   })
 
-  it('maps the writers named in MIGRATION.md step 3', () => {
+  it('maps every type to the provider-object family TARGET §5 names for it', () => {
     expect(avenueOfPostingType('fulfillment')).toBe('fulfillment')
+    expect(avenueOfPostingType('invoice_issued')).toBe('invoice')
     expect(avenueOfPostingType('payment')).toBe('receipt')
+    expect(avenueOfPostingType('deposit_application')).toBe('receipt')
     expect(avenueOfPostingType('refund')).toBe('refund')
     expect(avenueOfPostingType('credit_memo')).toBe('creditMemo')
-    expect(avenueOfPostingType('invoice_issued')).toBe('invoice')
-    expect(avenueOfPostingType('write_off')).toBe('invoice')
     expect(avenueOfPostingType('vendor_bill')).toBe('expenseBill')
+    expect(avenueOfPostingType('vendor_payment')).toBe('vendorPayment')
+    expect(avenueOfPostingType('vendor_refund')).toBe('vendorPayment')
+    expect(avenueOfPostingType('vendor_credit')).toBe('vendorCredit')
     expect(avenueOfPostingType('payout')).toBe('payout')
     expect(avenueOfPostingType('bank_deposit')).toBe('bankDeposit')
+    expect(avenueOfPostingType('inventory_movement')).toBe('inventory')
+    expect(avenueOfPostingType('landed_cost_clear')).toBe('inventory')
+    // A write-off leaves as a Journal Entry (TARGET §3), not under the invoice.
+    expect(avenueOfPostingType('write_off')).toBe('journal')
     expect(avenueOfPostingType('manual_journal')).toBe('journal')
     expect(avenueOfPostingType('recurring_journal')).toBe('journal')
-    expect(avenueOfPostingType('inventory_movement')).toBe('journal')
   })
 
   it('never exports an opening entry, a provider-authored entry, or a coded bank line', () => {

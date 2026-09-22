@@ -94,7 +94,7 @@ export function useMovementFrameHeader(
 
   const retry = api.ledger.retryBlockedMovement.useMutation({
     onSuccess: (result) => {
-      void utils.ledger.listBlockedMovements.invalidate()
+      void utils.ledger.listBlocked.invalidate()
       void utils.ledger.listDrafts.invalidate()
       void utils.ledger.listPostings.invalidate()
       void utils.ledger.outboxCounts.invalidate()

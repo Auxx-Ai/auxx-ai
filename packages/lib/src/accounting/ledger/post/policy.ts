@@ -425,9 +425,9 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   payment: {
     type: 'payment',
     label: 'Payment',
-    // money/post-movement.ts, from the invoice receipt, the channel receipt, the
-    // quote deposit and the vendor payment.
-    trigger: { kind: 'event', on: 'A customer receipt or a vendor payment is recorded' },
+    // money/post-movement.ts, from the invoice receipt, the channel receipt and
+    // the quote deposit.
+    trigger: { kind: 'event', on: 'A customer receipt is recorded' },
     template: [
       {
         side: 'debit',
@@ -441,11 +441,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'debit', role: 'by id', what: 'A receipt into a named bank account' },
       {
-        side: 'debit',
-        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
-        what: 'The vendor bill an outgoing payment settles',
-      },
-      {
         side: 'credit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
         what: 'The invoice an incoming payment settles',
@@ -455,34 +450,18 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
         what: 'Any amount not yet applied to an invoice, held as a deposit',
       },
-      {
-        side: 'credit',
-        role: 'by id',
-        what: 'The rail, bank account or undeposited funds an outgoing payment left by',
-      },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.PURCHASE_DISCOUNTS,
-        what: 'The part of a bill an early-payment discount settled, when one was taken',
-      },
     ],
     settings: ['accounting.autoPost.receipt'],
     sentence:
-      'Every payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, or undeposited funds.',
+      'Every customer payment posts as it is recorded, landing where the payment itself says: a rail\u2019s clearing account, a bank account, or undeposited funds.',
     disabledSentence:
-      'Payment posting is off, so receivables and payables are never relieved and no money reaches clearing or the bank.',
+      'Payment posting is off, so receivables are never relieved and no customer money reaches clearing or the bank.',
     parameters: [
       {
         name: 'Destination',
         value: 'Per payment',
         sentence:
           "Where a payment lands is answered once, when it is recorded: a rail's clearing account, a bank account, or undeposited funds.",
-      },
-      {
-        name: 'Direction',
-        value: 'Both',
-        sentence:
-          'A customer receipt debits the destination and relieves a receivable; a vendor payment credits it and relieves a payable.',
       },
     ],
     records: [BANK_ACCOUNTS_RECORD, PAYMENT_GATEWAYS_RECORD],
@@ -498,13 +477,59 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     singleWriterRoles: [],
   },
 
+  vendor_payment: {
+    type: 'vendor_payment',
+    label: 'Vendor payment',
+    // money/vendor-payments/payment-accounting.ts, on a bill payment.
+    trigger: { kind: 'event', on: 'A vendor payment is recorded' },
+    template: [
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
+        what: 'The vendor bill the payment settles',
+      },
+      {
+        side: 'credit',
+        role: 'by id',
+        what: 'The rail, bank account or undeposited funds the payment left by',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.PURCHASE_DISCOUNTS,
+        what: 'The part of a bill an early-payment discount settled, when one was taken',
+      },
+    ],
+    settings: ['accounting.autoPost.vendorPayment'],
+    sentence:
+      'A vendor payment posts as it is recorded, relieving the payable and leaving by whatever the payment itself names.',
+    disabledSentence:
+      'Vendor payment posting is off, so payables are never relieved and no money ever leaves the books for a supplier.',
+    parameters: [
+      {
+        name: 'Discount',
+        value: 'One entry',
+        sentence:
+          'An early-payment discount taken is a credit line on the same entry, so voiding the payment unwinds both legs (74 D3).',
+      },
+    ],
+    records: [BANK_ACCOUNTS_RECORD],
+    settingCopy: {
+      'accounting.autoPost.vendorPayment': {
+        title: 'Auto-post vendor payments',
+        description:
+          'On, a vendor payment or refund posts immediately. Off, it drafts on the ledger for review and approval.',
+      },
+    },
+    enabled: true,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
+
   refund: {
     type: 'refund',
     label: 'Refund',
-    // money/customer-money/refund-accounting.ts on a customer refund, and
-    // money/vendor-payments/refund-accounting.ts on a supplier's refund of a
-    // vendor credit - one type, both directions (71 U7).
-    trigger: { kind: 'event', on: 'A customer or vendor refund is recorded' },
+    // money/customer-money/refund-accounting.ts on a customer refund.
+    trigger: { kind: 'event', on: 'A customer refund is recorded' },
     template: [
       {
         side: 'debit',
@@ -522,20 +547,10 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
         what: 'A refund naming no source',
       },
-      {
-        side: 'debit',
-        role: 'by id',
-        what: 'A supplier refund arrives instead, into whatever endpoint it names',
-      },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
-        what: "The vendor credit's own control account, as its issue entry debited it",
-      },
     ],
     settings: ['accounting.autoPost.refund'],
     sentence:
-      "A refund posts as it is issued, leaving by whatever the refund itself names: a rail's clearing account, a bank account, or undeposited funds. A supplier's refund of a vendor credit is the same entry arriving instead of leaving.",
+      "A refund posts as it is issued, leaving by whatever the refund itself names: a rail's clearing account, a bank account, or undeposited funds.",
     disabledSentence:
       'Refund posting is off, so money given back to a customer never leaves the books and returns are never recognised.',
     parameters: [
@@ -554,6 +569,45 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'On, a refund posts immediately. Off, it drafts on the ledger for review and approval.',
       },
     },
+    enabled: true,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
+
+  vendor_refund: {
+    type: 'vendor_refund',
+    label: 'Vendor refund',
+    // money/vendor-payments/refund-accounting.ts on a supplier's refund of a
+    // vendor credit (71 U7).
+    trigger: { kind: 'event', on: "A supplier's refund of a vendor credit is recorded" },
+    template: [
+      {
+        side: 'debit',
+        role: 'by id',
+        what: 'The endpoint the money arrives into',
+      },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
+        what: "The vendor credit's own control account, as its issue entry debited it",
+      },
+    ],
+    // The vendor payment's lane, arriving instead of leaving: one switch for
+    // money either way with a supplier, as `receipt` is for a customer.
+    settings: ['accounting.autoPost.vendorPayment'],
+    sentence:
+      "A supplier's refund of a vendor credit posts as it is recorded, arriving into whatever endpoint it names and settling the credit.",
+    disabledSentence:
+      'Vendor refund posting is off, so money a supplier gives back never reaches the books and the vendor credit stays open.',
+    parameters: [
+      {
+        name: 'Control account',
+        value: 'Read off the credit',
+        sentence:
+          "The account the refund settles is the vendor credit's own posted control line, never re-resolved, and a refund may not precede the credit's issue date.",
+      },
+    ],
+    records: [BANK_ACCOUNTS_RECORD],
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -812,9 +866,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'Each line, the account the original charge was coded to',
       },
     ],
-    // Decision 2 (71 U7): no new avenue. A vendor credit auto-posts on the
-    // expense bill's switch, because it is the same document lane.
-    settings: ['accounting.autoPost.expenseBill'],
+    settings: ['accounting.autoPost.vendorCredit'],
     sentence:
       "Issuing a supplier's credit note reduces the payable and gives back whatever the original bill was coded to, dated the credit.",
     disabledSentence:
@@ -833,6 +885,13 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
           'A vendor credit is the money side only; a physical return to the supplier is its own stock movement.',
       },
     ],
+    settingCopy: {
+      'accounting.autoPost.vendorCredit': {
+        title: 'Auto-post vendor credits',
+        description:
+          'On, a vendor credit posts immediately on Issue. Off, it drafts on the ledger for review and approval.',
+      },
+    },
     enabled: true,
     exportRoute: 'journal',
     singleWriterRoles: [],
@@ -1022,7 +1081,9 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       },
       { side: 'credit', role: ACCOUNT_ROLES.PPV, what: 'The under-run, as a period variance' },
     ],
-    settings: ['accounting.autoPost.expenseBill'],
+    // Inventory's lane, and it posts the moment Clear is pressed, as every
+    // other inventory entry does - a clear is a person's own action.
+    settings: [],
     sentence:
       "Clearing a shipment's landed cost takes the freight and duty its receipts accrued and nobody billed back out of the accruals, against purchase price variance.",
     disabledSentence:

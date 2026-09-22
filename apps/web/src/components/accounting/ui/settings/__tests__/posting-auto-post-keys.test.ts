@@ -1,9 +1,8 @@
 // apps/web/src/components/accounting/ui/settings/__tests__/posting-auto-post-keys.test.ts
 //
-// One switch per avenue, and one key per save. `vendor_bill` and `vendor_credit`
-// both declare `accounting.autoPost.expenseBill` (71 U7 decision 2 - a vendor
-// credit rides the expense bill's switch), which rendered the control twice and
-// put the key in the save bar's batch twice.
+// One switch per avenue, and one key per save. `vendor_payment` and
+// `vendor_refund` both declare `accounting.autoPost.vendorPayment`, which would
+// render the control twice and put the key in the save bar's batch twice.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -14,9 +13,9 @@ import {
 } from '../posting-page-model'
 
 describe('the posting page auto-post keys', () => {
-  it('carries the expense bill key exactly once', () => {
+  it('carries the vendor payment key exactly once', () => {
     const occurrences = POSTING_PAGE_INPUT_KEYS.filter(
-      (key) => key === 'accounting.autoPost.expenseBill'
+      (key) => key === 'accounting.autoPost.vendorPayment'
     )
     expect(occurrences).toHaveLength(1)
   })
@@ -35,8 +34,13 @@ describe('the posting page auto-post keys', () => {
     }
   })
 
-  it('gives the vendor credit the expense bill avenue, so it shares that switch', () => {
+  it('gives the vendor refund the vendor payment avenue, so it shares that switch', () => {
+    const refund = POSTING_PAGE_POLICIES.find((policy) => policy.type === 'vendor_refund')
+    expect(refund && autoPostKeyForPolicy(refund)).toBe('accounting.autoPost.vendorPayment')
+  })
+
+  it('gives the vendor credit its own switch', () => {
     const credit = POSTING_PAGE_POLICIES.find((policy) => policy.type === 'vendor_credit')
-    expect(credit && autoPostKeyForPolicy(credit)).toBe('accounting.autoPost.expenseBill')
+    expect(credit && autoPostKeyForPolicy(credit)).toBe('accounting.autoPost.vendorCredit')
   })
 })

@@ -167,7 +167,6 @@ export async function acceptInvoiceReceiptAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'customer_receipt',
-    avenue: 'receipt',
     label: 'Invoice receipt',
     actorUserId: input.actorUserId,
     prepare: (tx, loaded) => prepareInvoiceReceipt(tx, input.organizationId, loaded),

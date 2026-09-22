@@ -169,7 +169,6 @@ export async function postCustomerReceiptAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'customer_receipt',
-    avenue: 'receipt',
     label: 'Customer payment',
     actorUserId: input.actorUserId,
     prepare: (tx, loaded) => prepareReceipt(tx, input.organizationId, loaded),

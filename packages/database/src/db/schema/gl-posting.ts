@@ -83,7 +83,31 @@ export const glPostingType = pgEnum('GlPostingType', [
   // under-run - `Dr freight_accrual / Dr duties_accrual / Cr ppv` - posted by
   // Clear on a goods bill once no further carrier or broker bill is coming.
   'landed_cost_clear',
+  // plans/accounting/tasks/92-one-category-per-posting.md: money with a vendor,
+  // either direction, as its own types so the avenue is the vendor's.
+  'vendor_payment',
+  'vendor_refund',
 ])
+
+/**
+ * `GlPosting.avenue`'s vocabulary: `EXPORT_AVENUES` in
+ * `lib/accounting/ledger/setup/export-settings.ts`, which owns the list.
+ * Mirrored here so the CHECK below is the storage contract for it.
+ */
+export const GL_POSTING_AVENUES = [
+  'fulfillment',
+  'invoice',
+  'receipt',
+  'refund',
+  'creditMemo',
+  'expenseBill',
+  'vendorPayment',
+  'vendorCredit',
+  'payout',
+  'bankDeposit',
+  'inventory',
+  'journal',
+] as const
 
 /**
  * Lifecycle of one journal entry, in OUR books: `draft -> posted -> reversed`.
@@ -113,6 +137,12 @@ export const GlPosting = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
 
     postingType: glPostingType().notNull(),
+    /**
+     * The posting's category - `avenueOfPostingType(postingType)`, written once
+     * at insert. NULL for a type that never exports. Every Outbox read groups
+     * and filters on this column, never on a map over `postingType`.
+     */
+    avenue: text().$type<(typeof GL_POSTING_AVENUES)[number]>(),
     /** `'2026-08-18'` or `'2026-08'`, or a payout/build id. Parsed by `postings/periods.ts`. */
     periodKey: text().notNull(),
     /**
@@ -198,6 +228,21 @@ export const GlPosting = pgTable(
     ),
     // Walking a reversal chain back to its original.
     index('GlPosting_reversesId_idx').using('btree', table.reversesId.asc().nullsLast()),
+    // The Outbox's grouped reads: posted rows of one org, by avenue and date.
+    index('GlPosting_org_avenue_txnDate_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.avenue.asc().nullsLast(),
+      table.txnDate.asc().nullsLast()
+    ),
+
+    check(
+      'GlPosting_avenue_check',
+      sql`${table.avenue} IS NULL OR ${table.avenue} IN (${sql.join(
+        GL_POSTING_AVENUES.map((avenue) => sql.raw(`'${avenue}'`)),
+        sql`,`
+      )})`
+    ),
 
     check('GlPosting_totalMinor_check', sql`${table.totalMinor} >= 0`),
     check('GlPosting_revision_check', sql`${table.revision} >= 0`),

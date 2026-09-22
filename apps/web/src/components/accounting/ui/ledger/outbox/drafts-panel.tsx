@@ -70,7 +70,7 @@ export function DraftsPanel({
       search: filters.search || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
-      categories: outboxCategoryInput(filters).drafts,
+      categories: outboxCategoryInput(filters),
     },
     { getNextPageParam: (page) => page.nextCursor }
   )

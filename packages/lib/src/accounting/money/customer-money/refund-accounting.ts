@@ -121,7 +121,6 @@ export async function postCustomerRefundAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'customer_refund',
-    avenue: 'refund',
     label: 'Refund',
     actorUserId: input.actorUserId,
     prepare: async (tx, loaded) => {

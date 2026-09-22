@@ -1,16 +1,16 @@
 // packages/lib/src/accounting/sales/orders/__tests__/fulfill.test.ts
 //
-// `fulfillOrder` after step 1b (TARGET §1): the `fulfillment` record and the
-// status flip are written inside one transaction via
-// `money/fulfillments/writes.ts`'s `createFulfillment`, and the entry posts
-// right after the transaction commits through `postEntry` directly - there is
-// no more accounting-work capture, no acceptance queue and no stamp write.
-// A refused post retains the shipment; inventory relief runs regardless.
+// `fulfillOrder` after 88 D6: the `fulfillment` record and the status flip are
+// written inside one transaction via `sales/fulfillments/writes.ts`'s
+// `createFulfillment`, the entry is built off that record by the shipment
+// poster's own `prepareFulfillmentEntry`, and it posts in the same transaction.
+// A refused post retains the shipment and marks it; inventory relief runs
+// regardless.
 //
-// `money/fulfillments` is mocked wholesale here: this file is about
-// `fulfillOrder`'s own orchestration (what it creates, what it posts, what it
-// retains and when), not about the record read/write mechanics, which have
-// their own tests under `money/fulfillments/__tests__`.
+// `sales/fulfillments` and its poster are mocked wholesale here: this file is
+// about `fulfillOrder`'s own orchestration (what it creates, what it hands the
+// poster, what it retains and when), not about the record mechanics or the
+// entry's split, which have their own tests under `sales/fulfillments/__tests__`.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -40,7 +40,62 @@ const h = vi.hoisted(() => ({
   /** Overridable per test - defaults to a clean run that wrote nothing skipped. */
   reliefResult: null as unknown,
   autoPostMode: 'post' as 'draft' | 'post',
+  /** Every `prepareFulfillmentEntry` call - the record the entry is built off. */
+  prepared: [] as Array<{ organizationId: string; fulfillmentId: string }>,
+  /** Every `prepareShipmentEntry` call - the preview's shipment. */
+  previewed: [] as Array<Record<string, unknown>>,
+  /** What the poster throws, when a test says the prepare refuses. */
+  prepareError: null as Error | null,
+  /** Every marker write after commit. */
+  marked: [] as Array<{ fulfillmentId: string; reason: string | null }>,
 }))
+
+vi.mock('../../fulfillments/accounting', async () => {
+  const { UnprocessableEntityError } = await import('../../../../errors')
+  class NothingToRecogniseError extends UnprocessableEntityError {}
+  const prepared = () => {
+    const contact = h.order.contactInstanceId as string | null
+    return {
+      entry: { postingType: 'fulfillment', lines: [] },
+      sources: [
+        { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'subject' },
+        { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
+        ...(contact
+          ? [{ sourceKind: 'contact', sourceId: contact, linkRole: 'counterparty' }]
+          : []),
+      ],
+      scope: h.scope,
+      storeId: typeof h.scope.store === 'string' ? h.scope.store : null,
+      contactInstanceId: contact,
+    }
+  }
+  return {
+    PREVIEW_SHIPMENT_ID: 'preview',
+    NothingToRecogniseError,
+    readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
+    prepareFulfillmentEntry: async (
+      _tx: unknown,
+      input: { organizationId: string; fulfillmentId: string }
+    ) => {
+      h.prepared.push(input)
+      if (h.prepareError) throw h.prepareError
+      return prepared()
+    },
+    prepareShipmentEntry: async (_db: unknown, input: { shipment: Record<string, unknown> }) => {
+      h.previewed.push(input.shipment)
+      if (h.prepareError) throw h.prepareError
+      return prepared()
+    },
+    markFulfillmentPostingBlock: async (
+      _db: unknown,
+      _org: string,
+      fulfillmentId: string,
+      reason: string | null
+    ) => {
+      h.marked.push({ fulfillmentId, reason })
+    },
+  }
+})
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
@@ -180,7 +235,8 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { fulfillOrder } from '../fulfill'
+import { UnprocessableEntityError } from '../../../../errors'
+import { fulfillOrder, previewFulfillment } from '../fulfill'
 
 const ORG = 'org_1'
 const USER = 'user_1'
@@ -243,6 +299,10 @@ beforeEach(() => {
   h.relieved = []
   h.reliefResult = null
   h.autoPostMode = 'post'
+  h.prepared = []
+  h.previewed = []
+  h.prepareError = null
+  h.marked = []
   h.isAccountingEnabled.mockResolvedValue(true)
 })
 
@@ -275,6 +335,12 @@ describe('fulfillOrder', () => {
     // The entry commits WITH the shipment now (follow-up 2), so the post is
     // inside the transaction rather than after it.
     expect(h.events).toEqual(['lock', 'post', 'commit', 'flush'])
+  })
+
+  it('builds the entry off the record it just wrote, through the shipment poster (88 D6)', async () => {
+    await fulfillOrder(stubDb(), input)
+    expect(h.prepared).toEqual([{ organizationId: ORG, fulfillmentId: 'ful_1' }])
+    expect(h.marked).toEqual([])
   })
 
   it('posts subject/parent/counterparty sources, storeId from the order scope, and no rail', async () => {
@@ -464,6 +530,91 @@ describe('fulfillOrder', () => {
       const result = await fulfillOrder(stubDb(), input)
       expect(result.isOk()).toBe(true)
       expect(result._unsafeUnwrap().post.status).toBe('period_closed')
+    })
+
+    it('marks the record after commit with the ledger words, so the sweep and the Blocked tab see it (88 §7.4)', async () => {
+      await fulfillOrder(stubDb(), input)
+      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: 'Period locked' }])
+    })
+
+    it('leaves no mark on a draft - a draft is not a refusal', async () => {
+      h.postResult = { status: 'drafted', glPostingId: 'glp_d' }
+      await fulfillOrder(stubDb(), input)
+      expect(h.marked).toEqual([])
+    })
+  })
+
+  describe('when the poster refuses to build the entry', () => {
+    it('retains the shipment, answers `error` in the poster words, posts nothing, and marks the record', async () => {
+      h.prepareError = new UnprocessableEntityError(
+        'Order recognition timeline is incomplete: earlier receipt mt_1 is a draft awaiting approval'
+      )
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result.isOk()).toBe(true)
+      expect(h.created).toHaveLength(1)
+      expect(h.postCalls).toHaveLength(0)
+      expect(result._unsafeUnwrap().post).toMatchObject({
+        status: 'error',
+        error: expect.stringContaining('earlier receipt mt_1 is a draft awaiting approval'),
+      })
+      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: h.prepareError.message }])
+      expect(h.relieved).toHaveLength(1)
+    })
+
+    it('answers nothing_to_recognise for a shipment worth nothing, and leaves no mark', async () => {
+      const { NothingToRecogniseError } = await import('../../fulfillments/accounting')
+      h.prepareError = new NothingToRecogniseError('Shipment is worth nothing')
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result._unsafeUnwrap().post).toEqual({
+        status: 'nothing_to_recognise',
+        error: 'Shipment is worth nothing',
+      })
+      expect(h.marked).toEqual([])
+    })
+
+    it('rethrows anything that is not a refusal, rolling the shipment back', async () => {
+      h.prepareError = new Error('connection reset')
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result.isErr()).toBe(true)
+      expect(h.events).not.toContain('commit')
+    })
+  })
+
+  describe('previewFulfillment', () => {
+    it('runs the same core over the requested shipment, with the preview id (88 D6)', async () => {
+      const result = await previewFulfillment(stubDb(), {
+        organizationId: ORG,
+        orderId: 'ord_1',
+        shippedLines: [{ lineId: 'li_1', quantity: 3 }],
+        shippedAt: '2026-09-03',
+      })
+      expect(result.isOk()).toBe(true)
+      expect(h.previewed[0]).toMatchObject({
+        id: 'preview',
+        sequence: 1,
+        shippedAt: '2026-09-03T12:00:00.000Z',
+        subtotalMinor: 30_00,
+        totalMinor: 30_00,
+        includeShipping: true,
+      })
+      expect(h.created).toHaveLength(0)
+    })
+
+    it('returns a core refusal as blockedBy, never a throw', async () => {
+      h.prepareError = new UnprocessableEntityError(
+        'Finalize accounting setup before posting shipments'
+      )
+      const result = await previewFulfillment(stubDb(), {
+        organizationId: ORG,
+        orderId: 'ord_1',
+        shippedLines: [{ lineId: 'li_1', quantity: 3 }],
+        shippedAt: '2026-09-03',
+      })
+      expect(result.isOk()).toBe(true)
+      expect(result._unsafeUnwrap().blockedBy).toEqual({
+        status: 'error',
+        error: 'Finalize accounting setup before posting shipments',
+      })
     })
   })
 

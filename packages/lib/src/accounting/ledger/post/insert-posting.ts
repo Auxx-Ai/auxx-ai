@@ -6,6 +6,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
+import { avenueOfPostingType } from '../setup/export-settings'
 import { LEDGER_CURRENCY } from '../setup/ledger-currency'
 import type { BuiltEntry, GlPostingSourceInput, ResolvedPostingLine } from '../types'
 import { buildPostingDraft, type PostingAssertions } from './draft'
@@ -186,6 +187,7 @@ export async function insertPostingInTx(
     .values({
       organizationId,
       postingType: entry.postingType,
+      avenue: avenueOfPostingType(entry.postingType),
       periodKey: entry.periodKey,
       revision,
       status: input.status,

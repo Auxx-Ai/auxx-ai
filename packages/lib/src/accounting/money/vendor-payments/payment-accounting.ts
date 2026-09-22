@@ -117,9 +117,6 @@ export async function acceptVendorPaymentAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'vendor_payment',
-    // Money out on a `payment` entry, so it shares the receipt avenue's
-    // auto-post switch; TARGET §5 names one `payment` type for both directions.
-    avenue: 'receipt',
     label: 'Vendor payment',
     actorUserId: input.actorUserId,
     prepare: (tx, loaded) => prepareVendorPayment(tx, input.organizationId, loaded),

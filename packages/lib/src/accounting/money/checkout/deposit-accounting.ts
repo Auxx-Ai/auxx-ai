@@ -43,7 +43,6 @@ export async function acceptQuoteDepositAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'customer_receipt',
-    avenue: 'receipt',
     label: 'Quote deposit',
     actorUserId: input.actorUserId,
     prepare: async (_tx, loaded) => {

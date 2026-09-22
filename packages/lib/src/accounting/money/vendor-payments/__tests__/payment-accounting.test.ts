@@ -139,7 +139,7 @@ describe('acceptVendorPaymentAccounting', () => {
       }),
     ])
     const options = h.postEntry.mock.calls[0]![1]
-    expect(options.entry.postingType).toBe('payment')
+    expect(options.entry.postingType).toBe('vendor_payment')
     expect(options.railId).toBeNull()
     expect(options.sources).toEqual([
       { sourceKind: 'money_transaction', sourceId: MOVEMENT, linkRole: 'subject' },

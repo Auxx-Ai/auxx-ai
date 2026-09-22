@@ -6,38 +6,68 @@
 
 import type { PostingType } from '../types'
 
-/** Every avenue the export batch groups postings by. Mirrors TARGET §3's provider-object table. */
+/**
+ * The category every posting carries as `GlPosting.avenue`: the provider-object
+ * family it leaves as, the lane its `autoPost` / `autoSend` / `summaryGrain`
+ * switches key on, and the one vocabulary every Outbox tab filters by.
+ * Mirrors TARGET §3's provider-object table and §5's Provider object column.
+ */
 export const EXPORT_AVENUES = [
   'fulfillment',
+  'invoice',
   'receipt',
   'refund',
   'creditMemo',
-  'invoice',
   'expenseBill',
+  'vendorPayment',
+  'vendorCredit',
   'payout',
   'bankDeposit',
+  'inventory',
   'journal',
 ] as const
 
 export type ExportAvenue = (typeof EXPORT_AVENUES)[number]
 
-/** The avenues `accounting.summaryGrain.*` governs. Payouts, bank deposits and journals have no grain - one object each. */
-export const SUMMARY_GRAIN_AVENUES = [
+/** The avenues with a draft step - `accounting.autoPost.<avenue>` exists for these alone. */
+export const AUTO_POST_AVENUES = [
   'fulfillment',
+  'invoice',
   'receipt',
   'refund',
   'creditMemo',
-  'invoice',
   'expenseBill',
+  'vendorPayment',
+  'vendorCredit',
+] as const
+
+export type AutoPostAvenue = (typeof AUTO_POST_AVENUES)[number]
+
+/** The avenues `accounting.summaryGrain.*` governs. Payouts, bank deposits and journals have no grain - one object each. */
+export const SUMMARY_GRAIN_AVENUES = [
+  'fulfillment',
+  'invoice',
+  'receipt',
+  'refund',
+  'creditMemo',
+  'expenseBill',
+  'vendorPayment',
+  'vendorCredit',
+  'inventory',
 ] as const
 
 export type SummaryGrainAvenue = (typeof SUMMARY_GRAIN_AVENUES)[number]
 
 export type SummaryGrain = 'day' | 'month'
 
+export function isSummaryGrainAvenue(avenue: ExportAvenue): avenue is SummaryGrainAvenue {
+  return (SUMMARY_GRAIN_AVENUES as readonly string[]).includes(avenue)
+}
+
 /**
- * Which export avenue a posting type rolls up under, or `null` when it is never
- * exported. The inverse of the writers MIGRATION.md step 1b's table names.
+ * Which avenue a posting type belongs to, or `null` when it is never exported.
+ * Applied once, when the row is written (`insert-posting.ts`); every read
+ * groups and filters on the stored `GlPosting.avenue` column instead.
  *
  * No `default` case: the switch must stay exhaustive over `PostingType` so a
  * posting type added later fails to compile here rather than silently landing
@@ -48,37 +78,42 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
   switch (postingType) {
     case 'fulfillment':
       return 'fulfillment'
+    case 'invoice_issued':
+      return 'invoice'
+    // Rides along with the payment it applies against - TARGET §5: "part of the Payment".
     case 'payment':
+    case 'deposit_application':
       return 'receipt'
     case 'refund':
       return 'refund'
     case 'credit_memo':
       return 'creditMemo'
-    case 'invoice_issued':
-    case 'write_off':
-      return 'invoice'
     case 'vendor_bill':
-    // A vendor credit rides the buy-side avenue: its auto-post mode is the
-    // expense bill's, and no new avenue was added for it (71 U7, decision 2).
-    case 'vendor_credit':
-    // The landed-cost clear rides the same buy-side avenue, for the same
-    // reason: it is the vendor bill's own accrual, taken back out (74 D4).
-    case 'landed_cost_clear':
       return 'expenseBill'
+    // Money with a vendor, either direction (TARGET §5: a Bill Payment, and a
+    // Deposit against the vendor), the way `receipt` holds both customer entries.
+    case 'vendor_payment':
+    case 'vendor_refund':
+      return 'vendorPayment'
+    case 'vendor_credit':
+      return 'vendorCredit'
     case 'payout':
       return 'payout'
     case 'bank_deposit':
       return 'bankDeposit'
+    // The stock subledger's entries: a movement document, and the landed-cost
+    // accrual it clears. Journal-shaped at the provider, but their own lane -
+    // they are most of what leaves, and nobody wants them buried under "journal".
+    case 'inventory_movement':
+    case 'landed_cost_clear':
+      return 'inventory'
     // No native object (TARGET §3's table): a journal entry.
+    case 'write_off':
     case 'manual_journal':
     case 'recurring_journal':
-    case 'inventory_movement':
     case 'month_end_deferral':
     case 'month_end_reversal':
       return 'journal'
-    // Rides along with the payment it applies against - TARGET §5: "part of the Payment".
-    case 'deposit_application':
-      return 'receipt'
     // Never exported: an opening entry has no provider counterpart, a
     // provider-authored entry must never be pushed back at the provider, and a
     // coded bank line is already on the provider's own bank feed.

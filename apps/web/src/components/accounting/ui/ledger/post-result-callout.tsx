@@ -114,6 +114,12 @@ export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'No balance or activity total changed this month, so there is no entry to post.',
     tone: 'neutral',
   },
+  nothing_to_recognise: {
+    icon: CircleSlash,
+    title: 'Nothing to post',
+    detail: 'This document recognises nothing, so there is no entry to build. The reason follows.',
+    tone: 'neutral',
+  },
   setup_incomplete: {
     icon: PlugZap,
     title: 'Finish the accounting setup first',

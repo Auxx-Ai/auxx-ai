@@ -17,6 +17,12 @@
  * (`readOrderMoneyCoverage` answers `sourceAvailable: false`) and posts the
  * invoice shape instead: `Dr A/R` in full (88 §4.6).
  *
+ * Two entrances onto one core. {@link prepareFulfillmentEntry} reads a
+ * `fulfillment` record (the sweep, the sync trigger, the native door after its
+ * write); {@link prepareShipmentEntry} takes the shipment as the caller
+ * computed it (the native door's preview, which has no record yet). Both build
+ * the same entry from the same walk (88 D6).
+ *
  * The frame is `money/post-movement.ts`'s, restated for a record rather than a
  * movement: the live claim, the draft, the enabled/finalized/cutoff gates, the
  * three link rows, the period lock, and a refusal that is a `blocked` result
@@ -56,16 +62,20 @@ import {
   readOrderRecognitionSource,
   requireCompleteOrderRecognitionSource,
 } from '../../money/customer-money/recognition-source'
-import { readOrderForFulfillment } from '../orders/reads'
+import { type OrderForFulfillment, readOrderForFulfillment } from '../orders/reads'
 import { isLiveFulfillment } from './client'
 import { findLiveFulfillmentDraft } from './posting-reads'
 import { readFulfillmentPostingSubject } from './reads'
+import type { OrderShipment } from './shipment-lines'
 import { resolveOrderShipments } from './shipment-lines'
 
 const logger = createScopedLogger('fulfillment-accounting')
 
 /** The `sourceKind` of a shipment's subject link, and of every candidate read. */
 export const FULFILLMENT_SOURCE_KIND = 'fulfillment'
+
+/** The id a not-yet-written shipment carries through the timeline and the preview. */
+export const PREVIEW_SHIPMENT_ID = 'preview'
 
 /** The two fields 88 §7.4 puts the poster's last refusal on. */
 const MARKER_ATTRS = [
@@ -96,6 +106,33 @@ export interface PreparedFulfillmentEntry {
   contactInstanceId: string | null
 }
 
+/** The window every shipment posts inside: the book zone and the opening cutoff. */
+export interface ShipmentPostingWindow {
+  zone: string
+  cutoff: string | null
+}
+
+/**
+ * One shipment as the sequence walk sees it, whether or not its record exists
+ * yet: {@link OrderShipment}'s share plus the identity the entry is keyed on.
+ */
+export type ShipmentToRecognise = Pick<
+  OrderShipment,
+  | 'lines'
+  | 'priorSubtotalMinor'
+  | 'includeShipping'
+  | 'subtotalMinor'
+  | 'taxMinor'
+  | 'shippingMinor'
+  | 'totalMinor'
+> & {
+  /** The fulfillment id, or {@link PREVIEW_SHIPMENT_ID} for one not written yet. */
+  id: string
+  sequence: number
+  /** The instant the goods went out. */
+  shippedAt: string
+}
+
 /**
  * Record why the ledger refused, or clear the mark once it accepts.
  *
@@ -103,7 +140,7 @@ export interface PreparedFulfillmentEntry {
  * mark rolled back with it is a mark the sweep never sees. No `userId` on the
  * context either - the hook chain must not re-enter the totals reconciler.
  */
-async function markPostingBlock(
+export async function markFulfillmentPostingBlock(
   db: Database,
   organizationId: string,
   fulfillmentId: string,
@@ -140,20 +177,10 @@ function safeMinor(value: string, label: string): number {
   return amount
 }
 
-/**
- * Build the entry one shipment would post, inside the caller's transaction.
- *
- * Throws an `AuxxError` on every refusal - a {@link NothingToRecogniseError}
- * when the shipment is cancelled or worth nothing, and the timeline's or the
- * builder's own words otherwise. {@link postFulfillmentAccounting} turns those
- * into a status; the native door (D6) posts the result in the transaction that
- * created the shipment.
- */
-export async function prepareFulfillmentEntry(
-  tx: Database | Transaction,
-  input: { organizationId: string; fulfillmentId: string }
-): Promise<PreparedFulfillmentEntry> {
-  const { organizationId, fulfillmentId } = input
+/** Read the window once per call. Throws until setup is finalized and a zone is set. */
+export async function readShipmentPostingWindow(
+  organizationId: string
+): Promise<ShipmentPostingWindow> {
   const settings = await readOrganizationSettings(organizationId, [
     'accounting.setupState',
     'accounting.bookTimeZone',
@@ -163,50 +190,65 @@ export async function prepareFulfillmentEntry(
     throw new UnprocessableEntityError('Finalize accounting setup before posting shipments')
   const zone = settings['accounting.bookTimeZone']
   if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
+  return { zone, cutoff: settings['accounting.cutoffPeriod'] ?? null }
+}
 
-  const subject = await readFulfillmentPostingSubject(tx, { organizationId, fulfillmentId })
-  if (!subject) throw new NotFoundError('That shipment does not exist, or names no order')
-  const read = await readOrderForFulfillment(tx, {
-    organizationId,
-    orderId: subject.orderId,
-  })
-  if (read.isErr()) throw read.error
-  const order = read.value
-  const shipment = resolveOrderShipments(order).find((row) => row.fulfillment.id === fulfillmentId)
-  if (!shipment) throw new NotFoundError('That shipment is not on its own order')
-  const { fulfillment } = shipment
-
-  if (!isLiveFulfillment(fulfillment))
-    throw new NothingToRecogniseError('Shipment is cancelled, so there is nothing to recognise')
-  if (subject.subtotalMinor === null)
-    throw new UnprocessableEntityError('Shipment totals are not stamped yet')
-  if (fulfillment.totalMinor === 0)
+/**
+ * Build the entry one shipment would post, from the shipment as the walk
+ * computed it, inside the caller's transaction.
+ *
+ * Throws an `AuxxError` on every refusal - a {@link NothingToRecogniseError}
+ * when the shipment is worth nothing, and the timeline's or the builder's own
+ * words otherwise.
+ */
+export async function prepareShipmentEntry(
+  tx: Database | Transaction,
+  input: {
+    organizationId: string
+    order: OrderForFulfillment
+    shipment: ShipmentToRecognise
+    window: ShipmentPostingWindow
+  }
+): Promise<PreparedFulfillmentEntry> {
+  const { organizationId, order, shipment, window } = input
+  if (shipment.totalMinor === 0)
     throw new NothingToRecogniseError('Shipment is worth nothing, so there is nothing to recognise')
-  if (!fulfillment.shippedAt)
+
+  const occurredAt = new Date(shipment.shippedAt)
+  if (!Number.isFinite(occurredAt.getTime()))
     throw new UnprocessableEntityError('Shipment has no shipped date to post against')
+  const txnDate = periodKeyForDate(occurredAt, 'day', window.zone)
+  if (window.cutoff && txnDate.slice(0, 7) <= window.cutoff)
+    throw new UnprocessableEntityError(
+      `Shipment is before the accounting opening cutoff ${window.cutoff}`
+    )
 
-  const txnDate = periodKeyForDate(new Date(fulfillment.shippedAt), 'day', zone)
-  const cutoff = settings['accounting.cutoffPeriod']
-  if (cutoff && txnDate.slice(0, 7) <= cutoff)
-    throw new UnprocessableEntityError(`Shipment is before the accounting opening cutoff ${cutoff}`)
-
-  const facts = await readOrderRecognitionFactsInTx(tx, organizationId, subject.orderId)
+  const facts = await readOrderRecognitionFactsInTx(tx, organizationId, order.orderId)
   // An order with no connected source has no timeline to replay: the reader
   // answers `complete: false` over zero coverage rows, which would refuse every
   // hand-recorded shipment. It posts the invoice shape instead - Dr A/R in full
   // - which is what the deleted batch poster did (88 §4.6, `reads.ts:184`).
-  const coverage = await readOrderMoneyCoverage(tx, organizationId, subject.orderId)
+  const coverage = await readOrderMoneyCoverage(tx, organizationId, order.orderId)
   let recognitionAllocation: FulfillmentRecognitionAllocation | undefined
   let recognitionTaxComponents: FulfillmentRecognitionTaxComponent[] | undefined
   if (coverage.sourceAvailable) {
     const timeline = requireCompleteOrderRecognitionSource(
       await readOrderRecognitionSource(tx, {
         organizationId,
-        orderId: subject.orderId,
+        orderId: order.orderId,
         orderNetMinor: (facts.subtotal + facts.shipping).toString(),
         orderTaxMinor: facts.tax.toString(),
-        bookTimeZone: zone,
-        target: { kind: 'fulfillment', id: fulfillmentId },
+        bookTimeZone: window.zone,
+        target: { kind: 'fulfillment', id: shipment.id },
+        // Only read when no record carries this shipment yet (the preview).
+        targetEvent: {
+          id: shipment.id,
+          kind: 'fulfillment',
+          effectiveDate: txnDate,
+          occurredAt: occurredAt.toISOString(),
+          netMinor: String(shipment.subtotalMinor + shipment.shippingMinor),
+          taxMinor: String(shipment.taxMinor),
+        },
       })
     )
     const target = timeline.target
@@ -226,9 +268,9 @@ export async function prepareFulfillmentEntry(
   }
 
   const built = buildFulfillmentEntry({
-    orderId: subject.orderId,
+    orderId: order.orderId,
     orderNumber: order.number ?? '',
-    sequence: fulfillment.sequence,
+    sequence: shipment.sequence,
     channel: order.channel,
     currency: order.currency,
     ledgerCurrency: LEDGER_CURRENCY,
@@ -245,10 +287,10 @@ export async function prepareFulfillmentEntry(
     ...(recognitionTaxComponents?.length ? { recognitionTaxComponents } : {}),
   })
 
-  const scope = await readOrderSourceScope(tx, organizationId, subject.orderId)
+  const scope = await readOrderSourceScope(tx, organizationId, order.orderId)
   const sources: GlPostingSourceInput[] = [
-    { sourceKind: FULFILLMENT_SOURCE_KIND, sourceId: fulfillmentId, linkRole: 'subject' },
-    { sourceKind: 'order', sourceId: subject.orderId, linkRole: 'parent' },
+    { sourceKind: FULFILLMENT_SOURCE_KIND, sourceId: shipment.id, linkRole: 'subject' },
+    { sourceKind: 'order', sourceId: order.orderId, linkRole: 'parent' },
     ...(order.contactInstanceId
       ? [
           {
@@ -271,11 +313,63 @@ export async function prepareFulfillmentEntry(
 }
 
 /**
+ * Build the entry one `fulfillment` record would post, inside the caller's
+ * transaction.
+ *
+ * Throws an `AuxxError` on every refusal - a {@link NothingToRecogniseError}
+ * when the shipment is cancelled or worth nothing, and the timeline's or the
+ * builder's own words otherwise. {@link postFulfillmentAccounting} turns those
+ * into a status; the native door (D6) posts the result in the transaction that
+ * created the shipment.
+ */
+export async function prepareFulfillmentEntry(
+  tx: Database | Transaction,
+  input: { organizationId: string; fulfillmentId: string }
+): Promise<PreparedFulfillmentEntry> {
+  const { organizationId, fulfillmentId } = input
+  const window = await readShipmentPostingWindow(organizationId)
+
+  const subject = await readFulfillmentPostingSubject(tx, { organizationId, fulfillmentId })
+  if (!subject) throw new NotFoundError('That shipment does not exist, or names no order')
+  const read = await readOrderForFulfillment(tx, {
+    organizationId,
+    orderId: subject.orderId,
+  })
+  if (read.isErr()) throw read.error
+  const order = read.value
+  const shipment = resolveOrderShipments(order).find((row) => row.fulfillment.id === fulfillmentId)
+  if (!shipment) throw new NotFoundError('That shipment is not on its own order')
+  const { fulfillment } = shipment
+
+  if (!isLiveFulfillment(fulfillment))
+    throw new NothingToRecogniseError('Shipment is cancelled, so there is nothing to recognise')
+  if (subject.subtotalMinor === null)
+    throw new UnprocessableEntityError('Shipment totals are not stamped yet')
+  if (fulfillment.totalMinor === 0)
+    throw new NothingToRecogniseError('Shipment is worth nothing, so there is nothing to recognise')
+  if (!fulfillment.shippedAt)
+    throw new UnprocessableEntityError('Shipment has no shipped date to post against')
+
+  return prepareShipmentEntry(tx, {
+    organizationId,
+    order,
+    window,
+    shipment: {
+      ...shipment,
+      id: fulfillment.id,
+      sequence: fulfillment.sequence,
+      shippedAt: fulfillment.shippedAt,
+    },
+  })
+}
+
+/**
  * Post one shipment's revenue.
  *
  * **Never throws an `AuxxError`.** Every refusal comes back `blocked` with the
- * poster's own words on {@link markPostingBlock}'s two fields, because the goods
- * have already left the building and the caller records that either way.
+ * poster's own words on {@link markFulfillmentPostingBlock}'s two fields,
+ * because the goods have already left the building and the caller records
+ * that either way.
  */
 export async function postFulfillmentAccounting(
   db: Database,
@@ -291,7 +385,7 @@ export async function postFulfillmentAccounting(
   // the one blocked answer that does not mark it.
   if (live.isErr()) return { status: 'blocked', reason: live.error.message }
   if (live.value) {
-    await markPostingBlock(db, organizationId, fulfillmentId, null)
+    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
     return { status: 'accepted', glPostingId: live.value.id }
   }
   // A draft holds no subject claim, so the read above cannot see it.
@@ -309,7 +403,7 @@ export async function postFulfillmentAccounting(
   } catch (error) {
     if (!(error instanceof AuxxError)) throw error
     if (error instanceof NothingToRecogniseError) {
-      await markPostingBlock(db, organizationId, fulfillmentId, null)
+      await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
       return { status: 'skipped', reason: error.message }
     }
     logger.warn('A shipment could not be prepared', {
@@ -317,7 +411,7 @@ export async function postFulfillmentAccounting(
       fulfillmentId,
       error: error.message,
     })
-    await markPostingBlock(db, organizationId, fulfillmentId, error.message)
+    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, error.message)
     return { status: 'blocked', reason: error.message }
   }
 
@@ -336,14 +430,14 @@ export async function postFulfillmentAccounting(
   if (post.status === 'drafted' && post.glPostingId) {
     // A draft is not a refusal, so the block clears; the draft's own `pending`
     // link is what stops the sweep drafting it again.
-    await markPostingBlock(db, organizationId, fulfillmentId, null)
+    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
     return { status: 'drafted', glPostingId: post.glPostingId }
   }
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
-    await markPostingBlock(db, organizationId, fulfillmentId, reason)
+    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, reason)
     return { status: 'blocked', reason }
   }
-  await markPostingBlock(db, organizationId, fulfillmentId, null)
+  await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
   return { status: 'accepted', glPostingId: post.glPostingId }
 }

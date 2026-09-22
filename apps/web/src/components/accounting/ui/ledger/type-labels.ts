@@ -30,6 +30,8 @@ export const POSTING_TYPE_LABEL: Record<PostingType, string> = {
   write_off: 'Write-off',
   payment: 'Payment',
   refund: 'Refund',
+  vendor_payment: 'Vendor payment',
+  vendor_refund: 'Vendor refund',
   invoice_issued: 'Invoice',
   // 'Deposit application' is the one label that would not fit the badge column.
   deposit_application: 'Deposit applied',
@@ -53,4 +55,10 @@ export const MOVEMENT_PURPOSE_LABEL: Record<MovementPurpose, string> = {
   customer_refund: 'Customer refund',
   vendor_payment: 'Vendor payment',
   vendor_refund: 'Vendor refund',
+}
+
+/** The Blocked tab's category column: a movement's purpose, or the shipment kind (88 §4.5). */
+export const BLOCKED_CATEGORY_LABEL: Record<MovementPurpose | 'shipment', string> = {
+  ...MOVEMENT_PURPOSE_LABEL,
+  shipment: 'Shipment',
 }

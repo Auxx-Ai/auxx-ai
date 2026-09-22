@@ -28,6 +28,12 @@ export {
   shippingStillOwed,
 } from './client'
 export {
+  type ContinueOrderAccountingResult,
+  continueAccountingAfterDraft,
+  continueOrderAccounting,
+  readPostingParentOrderId,
+} from './continue-accounting'
+export {
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,

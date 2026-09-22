@@ -236,20 +236,27 @@ export function useRecordDrillStack(drillPanels: RecordDrillPanel[]) {
  * The `~` prefix cannot open a `RecordId` (`<entityDefinitionId>:<instanceId>`,
  * always a slug or a cuid), so `frameKind` can never misread one.
  */
-export type DrawerFrame = RecordId | `~posting:${string}` | `~movement:${string}`
+export type DrawerFrame =
+  | RecordId
+  | `~posting:${string}`
+  | `~movement:${string}`
+  | `~shipment:${string}`
+
+/** The ledger frames a `DrawerFrame` stack can hold beside records. */
+export type LedgerFrameKind = 'posting' | 'movement' | 'shipment'
 
 /** Encode a ledger frame for a `DrawerFrame` stack. */
-export function toFrame(kind: 'posting' | 'movement', id: string): DrawerFrame {
+export function toFrame(kind: LedgerFrameKind, id: string): DrawerFrame {
   return `~${kind}:${id}` as DrawerFrame
 }
 
 /** Decode a `DrawerFrame`; anything without a ledger prefix is a `RecordId`. */
 export function frameKind(
   frame: string
-): { kind: 'record'; recordId: RecordId } | { kind: 'posting' | 'movement'; id: string } {
-  if (frame.startsWith('~posting:')) return { kind: 'posting', id: frame.slice('~posting:'.length) }
-  if (frame.startsWith('~movement:')) {
-    return { kind: 'movement', id: frame.slice('~movement:'.length) }
+): { kind: 'record'; recordId: RecordId } | { kind: LedgerFrameKind; id: string } {
+  for (const kind of ['posting', 'movement', 'shipment'] as const) {
+    const prefix = `~${kind}:`
+    if (frame.startsWith(prefix)) return { kind, id: frame.slice(prefix.length) }
   }
   return { kind: 'record', recordId: frame as RecordId }
 }

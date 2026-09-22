@@ -39,6 +39,7 @@ import { migration181RewalkProvisionedChartPacks } from './migrations/181-rewalk
 import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-bill-amount-discounted'
 import { migration183EntityDefPalette } from './migrations/183-entity-def-palette'
 import { migration184FulfillmentPostingMarker } from './migrations/184-fulfillment-posting-marker'
+import { migration185CreditMemoIssueMarker } from './migrations/185-credit-memo-issue-marker'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -201,6 +202,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Two fields on the existing `fulfillment` def, no backfill: why the shipment
   // poster last refused a shipment and when (88 §7.4).
   migration184FulfillmentPostingMarker,
+  // Two fields on the existing `credit_memo` def, no backfill: why the channel
+  // memo pass last refused to issue a memo and when (88 §7.4).
+  migration185CreditMemoIssueMarker,
 ]
 
 /**

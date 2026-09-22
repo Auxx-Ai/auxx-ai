@@ -41,9 +41,13 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'bank_deposit',
   'fulfillment',
   'payment',
+  // 92: a vendor payment is its own type, declared beside the customer payment
+  // it was split off; the vendor refund likewise sits beside the refund.
+  'vendor_payment',
   // TARGET §5 gave a refund its own type, declared beside the payment it used
   // to borrow. MIGRATION step 2.
   'refund',
+  'vendor_refund',
   'payout',
   'write_off',
   'bank_transaction',

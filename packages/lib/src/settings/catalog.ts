@@ -1051,6 +1051,25 @@ export const SETTINGS_CATALOG = {
     description:
       'Post an expense bill entry the moment it is posted. Off, it drafts for review on the ledger.',
   },
+  'accounting.autoPost.vendorPayment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a vendor payment or vendor refund entry the moment it is recorded. Off, it drafts for ' +
+      'review on the ledger',
+  },
+  'accounting.autoPost.vendorCredit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Post a vendor credit entry the moment it is issued. Off, it drafts for review on the ledger.',
+  },
 
   // TARGET §3: gate 2, the export. `exportMode` and `exportModeCutover` decide
   // only the grain postings leave in; the books underneath are identical in
@@ -1154,6 +1173,31 @@ export const SETTINGS_CATALOG = {
     defaultValue: false,
     description: 'Send a journal entry to the provider as soon as it posts.',
   },
+  'accounting.autoSend.vendorPayment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'Send a vendor payment or vendor refund entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.vendorCredit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send a vendor credit entry to the provider as soon as it posts.',
+  },
+  'accounting.autoSend.inventory': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description: 'Send an inventory entry to the provider as soon as it posts.',
+  },
   // Summary-mode grain, per avenue that has one. `payout`, `bankDeposit` and
   // `journal` are absent - TARGET §3 says they are inherently one object each.
   'accounting.summaryGrain.fulfillment': {
@@ -1233,6 +1277,45 @@ export const SETTINGS_CATALOG = {
       ],
     },
     description: 'How many expense bill postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.vendorPayment': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many vendor payment postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.vendorCredit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many vendor credit postings roll into one Summary-mode export object.',
+  },
+  'accounting.summaryGrain.inventory': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'day',
+    options: {
+      options: [
+        { value: 'day', label: 'One object per day' },
+        { value: 'month', label: 'One object per month' },
+      ],
+    },
+    description: 'How many inventory postings roll into one Summary-mode export object.',
   },
 
   // The frozen auxx.ai snapshot: the December 31 physical count valued at

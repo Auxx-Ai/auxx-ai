@@ -26,7 +26,6 @@ import { createGuard } from '../../../utils/guard'
 import { ACCOUNT_ROLES, buildEntry, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { hashedPeriodKey } from '../../ledger/periods/period-key'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import { readAutoPostMode } from '../../ledger/post/auto-post'
 import { discardDraftsForSource } from '../../ledger/post/draft-lines'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -165,7 +164,8 @@ export async function clearLandedCost(
         actorUserId,
         lock,
         memo: 'Landed cost cleared',
-        mode: await readAutoPostMode(organizationId, 'expenseBill'),
+        // Inventory's lane has no draft step: a clear posts as Clear is pressed.
+        mode: 'post',
         sources: [
           {
             sourceKind: VENDOR_BILL_SOURCE_TYPE,

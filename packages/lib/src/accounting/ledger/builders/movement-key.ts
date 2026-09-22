@@ -12,7 +12,7 @@ import { hashedPeriodKey } from '../periods/period-key'
 import { DOC_NUMBER_PREFIX } from './doc-number'
 
 /** The two posting types a `MoneyTransaction` mints an entry for. */
-export type MovementPostingType = 'payment' | 'refund'
+export type MovementPostingType = 'payment' | 'refund' | 'vendor_payment' | 'vendor_refund'
 
 /**
  * `PMT-<6 base36>` / `RFD-<6 base36>` from `MoneyTransaction.id`.

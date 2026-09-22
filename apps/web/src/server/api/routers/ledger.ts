@@ -4,9 +4,11 @@ import { schema } from '@auxx/database'
 import {
   buildExportBatches,
   countExportBatchesByState,
+  countUnbuiltSummaryRows,
   EXPORT_BATCH_PAGE_SIZE,
   listExportBatches,
-  readUnbuiltSummaryRows,
+  readUnbuiltSummaryMembers,
+  readUnbuiltSummaryPage,
   releaseExportBatches,
   releaseFailedBatchesNamingAccount,
   retryExportBatch,
@@ -54,7 +56,6 @@ import {
   listRoleMap,
   listRoleSources,
   monthDateRange,
-  POSTING_TYPES,
   postDraft,
   readCloseBlockers,
   readExportSettings,
@@ -81,9 +82,9 @@ import {
 } from '@auxx/lib/accounting/mirror'
 import type { ProviderSyncScheduleConfig } from '@auxx/lib/accounting/mirror/client'
 import {
-  countBlockedMovements,
+  countBlockedWork,
   getPaymentAccount,
-  listBlockedMovements,
+  listBlockedWork,
   postBlockedMovement,
   readBlockedMovement,
   readMovementDetail,
@@ -109,6 +110,11 @@ import { mintRailAccounts } from '@auxx/lib/accounting/rails'
 // `payment-gateways` barrel, which reaches Drizzle and the org cache.
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
+import {
+  continueAccountingAfterDraft,
+  postFulfillmentAccounting,
+  readBlockedFulfillment,
+} from '@auxx/lib/accounting/sales'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -240,6 +246,28 @@ const outboxPage = z.object({
   limit: z.number().int().min(1).max(200).optional(),
   cursor: z.number().int().min(0).optional(),
 })
+
+/** One summary group's identity - what `ExportBatch_grain_key` holds, without the book. */
+const unbuiltGroup = z.object({
+  avenue: z.enum(EXPORT_AVENUES),
+  grainKey: z.string().min(1),
+  storeId: z.string().nullable(),
+  railId: z.string().nullable(),
+  currency: z.string().min(1),
+})
+
+/** `readUnbuiltSummaryPage`'s keyset cursor: the last row's full sort key. */
+const unbuiltCursor = z.object({
+  txnDateTo: z.iso.date(),
+  avenue: z.string(),
+  grainKey: z.string(),
+  storeId: z.string(),
+  railId: z.string(),
+  currency: z.string(),
+})
+
+/** The Outbox's one category vocabulary, on every tab: the avenue. */
+const outboxCategories = z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional()
 
 /** Reject inverted ranges before querying any outbox family. */
 const validOutboxRange = (input: { from?: string; to?: string }) =>
@@ -1151,7 +1179,7 @@ export const ledgerRouter = createTRPCRouter({
         z
           .object({
             ...outboxPage.shape,
-            categories: z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional(),
+            categories: outboxCategories,
             /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
             month: z.string().min(1).optional(),
             tab: z.enum(EXPORT_BATCH_TABS).optional(),
@@ -1211,18 +1239,37 @@ export const ledgerRouter = createTRPCRouter({
       .input(
         z
           .object({
+            search: z.string().trim().max(200).optional(),
             from: z.iso.date().optional(),
             to: z.iso.date().optional(),
-            categories: z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional(),
+            categories: outboxCategories,
+            limit: z.number().int().min(1).max(200).optional(),
+            /** The last row of the previous page, as `useInfiniteQuery` hands it back. */
+            cursor: unbuiltCursor.optional(),
           })
           .refine(validOutboxRange, outboxRangeError)
       )
       .query(async ({ ctx, input }) => {
-        const result = await readUnbuiltSummaryRows(ctx.db, {
+        const result = await readUnbuiltSummaryPage(ctx.db, {
           organizationId: ctx.session.organizationId,
           from: input.from,
           to: input.to,
           avenues: input.categories,
+          search: input.search,
+          limit: input.limit ?? EXPORT_BATCH_PAGE_SIZE,
+          cursor: input.cursor,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** The postings inside one unbuilt group - read when its row is opened. */
+    unbuiltMembers: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ group: unbuiltGroup }))
+      .query(async ({ ctx, input }) => {
+        const result = await readUnbuiltSummaryMembers(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          group: input.group,
         })
         if (result.isErr()) throw result.error
         return result.value
@@ -1245,6 +1292,9 @@ export const ledgerRouter = createTRPCRouter({
               to: z.iso.date(),
               glPostingIds: z.array(z.string().min(1)).min(1).max(500),
             })
+            .refine(validOutboxRange, outboxRangeError),
+          z
+            .object({ from: z.iso.date(), to: z.iso.date(), group: unbuiltGroup })
             .refine(validOutboxRange, outboxRangeError),
         ])
       )
@@ -1692,9 +1742,7 @@ export const ledgerRouter = createTRPCRouter({
    */
   listDrafts: permissionProcedure(PermissionKey.ledgerPost)
     .input(
-      outboxPage
-        .extend({ categories: z.array(z.enum(POSTING_TYPES)).max(POSTING_TYPES.length).optional() })
-        .refine(validOutboxRange, outboxRangeError)
+      outboxPage.extend({ categories: outboxCategories }).refine(validOutboxRange, outboxRangeError)
     )
     .query(async ({ ctx, input }) => {
       const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
@@ -1717,35 +1765,38 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every movement the ledger refused - the Outbox's Blocked tab (75-D1). Its
-   * work is parked, not lost: `postingBlockedReason` holds `postEntry`'s own
-   * words and the mark clears the moment a retry is accepted.
+   * Everything the ledger refused - the Outbox's Blocked tab (75-D1, 88 §4.5):
+   * movements under `postingBlockedReason`, shipments under their marker
+   * fields, merged newest refusal first. Work parked, not lost: each mark clears
+   * the moment a retry is accepted. Two offsets in the cursor, one per read.
    */
-  listBlockedMovements: permissionProcedure(PermissionKey.ledgerPost)
+  listBlocked: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       outboxPage
+        .omit({ cursor: true })
         .extend({
-          categories: z
-            .array(
-              z.enum(['customer_receipt', 'customer_refund', 'vendor_payment', 'vendor_refund'])
-            )
-            .max(4)
+          cursor: z
+            .object({ movement: z.number().int().min(0), shipment: z.number().int().min(0) })
             .optional(),
+          categories: outboxCategories,
         })
         .refine(validOutboxRange, outboxRangeError)
     )
     .query(async ({ ctx, input }) => {
-      const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
-      const offset = input.cursor ?? 0
-      const items = await listBlockedMovements(ctx.db, ctx.session.organizationId, {
+      const { organizationId } = ctx.session
+      const bookTimeZone =
+        input.from || input.to
+          ? await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
+          : undefined
+      return listBlockedWork(ctx.db, organizationId, {
+        limit: input.limit ?? OUTBOX_PAGE_SIZE,
+        cursor: input.cursor,
         categories: input.categories,
         search: input.search,
         from: input.from,
         to: input.to,
-        limit: pageSize,
-        offset,
+        bookTimeZone: typeof bookTimeZone === 'string' ? bookTimeZone : undefined,
       })
-      return { items, nextCursor: items.length === pageSize ? offset + pageSize : undefined }
     }),
 
   /**
@@ -1759,15 +1810,15 @@ export const ledgerRouter = createTRPCRouter({
     const canPost = ctx.capabilities.can(PermissionKey.ledgerPost)
     const [drafts, blocked, batches, unbuilt] = await Promise.all([
       canPost ? countDraftPostings(ctx.db, organizationId) : 0,
-      canPost ? countBlockedMovements(ctx.db, organizationId) : 0,
+      canPost ? countBlockedWork(ctx.db, organizationId) : 0,
       countExportBatchesByState(ctx.db, organizationId),
-      readUnbuiltSummaryRows(ctx.db, { organizationId }),
+      countUnbuiltSummaryRows(ctx.db, { organizationId }),
     ])
     return {
       drafts,
       blocked,
       /** Summary mode's groups Build has not made yet; they sit on Ready as rows. */
-      unbuilt: unbuilt.isOk() ? unbuilt.value.length : 0,
+      unbuilt: unbuilt.isOk() ? unbuilt.value : 0,
       ready: batches.ready,
       sending: batches.sending,
       sent: batches.sent,
@@ -1804,11 +1855,36 @@ export const ledgerRouter = createTRPCRouter({
       })
     ),
 
+  /** One parked shipment for the drawer; `null` once it has posted, so a stale link reads as such. */
+  getBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ fulfillmentId: z.string().min(1) }))
+    .query(({ ctx, input }) =>
+      readBlockedFulfillment(ctx.db, ctx.session.organizationId, input.fulfillmentId)
+    ),
+
+  /**
+   * Post one parked shipment again through the shipment poster. The outcome is
+   * returned rather than thrown, exactly as {@link retryBlockedMovement}'s.
+   */
+  retryBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ fulfillmentId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) =>
+      postFulfillmentAccounting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        fulfillmentId: input.fulfillmentId,
+        actorUserId: ctx.session.userId,
+      })
+    ),
+
   /**
    * Promote a draft: re-resolve its roles, re-check the period lock, claim,
    * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
    * or an account the chart no longer holds comes back as a `PostResult` status
    * the Drafts tab renders, exactly as {@link post} does.
+   *
+   * A draft that posts continues its order's chain in the same request (88
+   * D10): the shipment a receipt draft was holding up drafts now, not on the
+   * recovery job's next hour.
    */
   postDraft: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ glPostingId: z.string().min(1) }))
@@ -1816,12 +1892,19 @@ export const ledgerRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const lock = await resolvePeriodLock(organizationId)
 
-      return postDraft(ctx.db, {
+      const result = await postDraft(ctx.db, {
         organizationId,
         glPostingId: input.glPostingId,
         actorUserId: userId,
         lock,
       })
+      if (result.status === 'posted')
+        await continueAccountingAfterDraft(ctx.db, {
+          organizationId,
+          glPostingId: input.glPostingId,
+          actorUserId: userId,
+        })
+      return result
     }),
 
   /**

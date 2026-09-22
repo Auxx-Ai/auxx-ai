@@ -116,7 +116,7 @@ async function vendorCreditPostOptions(input: PostVendorCreditEntryInput) {
     actorUserId,
     memo: input.memo,
     sources,
-    mode: await readAutoPostMode(organizationId, 'expenseBill'),
+    mode: await readAutoPostMode(organizationId, 'vendorCredit'),
   }
 }
 

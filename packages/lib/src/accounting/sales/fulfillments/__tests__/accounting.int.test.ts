@@ -14,8 +14,11 @@ import { createAllFields } from '../../../../seed/entity-seeder/create-fields'
 import { linkRelationships } from '../../../../seed/entity-seeder/link-relationships'
 import type { EntityDefMap } from '../../../../seed/entity-seeder/types'
 import {
+  countBlockedFulfillments,
   type FulfillmentCandidateWindow,
+  listBlockedFulfillments,
   listFulfillmentAccountingCandidates,
+  readBlockedFulfillment,
 } from '../posting-reads'
 
 vi.mock('@auxx/redis', async (original) => ({
@@ -63,6 +66,7 @@ async function fulfillment(
     subtotal?: number | null
     total?: number | null
     blockedAt?: string | null
+    reason?: string | null
   } = {}
 ) {
   const [row] = await db()
@@ -81,12 +85,14 @@ async function fulfillment(
     subtotal = 10000,
     total = 10800,
     blockedAt = null,
+    reason = null,
   } = overrides
   if (shippedAt) await value(id, 'fulfillment_shipped_at', { valueDate: shippedAt })
   await value(id, 'fulfillment_status', { optionId: status })
   if (subtotal !== null) await value(id, 'fulfillment_subtotal', { valueNumber: subtotal })
   if (total !== null) await value(id, 'fulfillment_total', { valueNumber: total })
   if (blockedAt) await value(id, 'fulfillment_posting_blocked_at', { valueDate: blockedAt })
+  if (reason) await value(id, 'fulfillment_posting_blocked_reason', { valueText: reason })
   return id
 }
 
@@ -168,5 +174,56 @@ describe('listFulfillmentAccountingCandidates', () => {
     const stale = await fulfillment({ blockedAt: '2026-03-20T11:00:00.000Z' })
 
     expect(await candidates()).toEqual([stale])
+  })
+})
+
+describe('listBlockedFulfillments', () => {
+  it('lists refused shipments newest refusal first, with the reason verbatim', async () => {
+    const older = await fulfillment({
+      reason: 'Cannot post: revenue_product is not mapped',
+      blockedAt: '2026-03-18T10:00:00.000Z',
+    })
+    const newer = await fulfillment({
+      reason: 'Shipment totals are not stamped yet',
+      blockedAt: '2026-03-19T10:00:00.000Z',
+    })
+    await fulfillment()
+    const claimed = await fulfillment({ reason: 'stale', blockedAt: '2026-03-20T10:00:00.000Z' })
+    await claim(claimed, 'posted')
+
+    const rows = await listBlockedFulfillments(db(), organizationId)
+    expect(rows.map((row) => row.id)).toEqual([newer, older])
+    expect(rows[0]).toMatchObject({
+      reason: 'Shipment totals are not stamped yet',
+      reasonKind: 'other',
+      amountMinor: 10800,
+      shippedAt: '2026-03-15T12:00:00.000Z',
+      entityDefinitionId: defs.get('fulfillment')!.id,
+    })
+    expect(rows[1]?.reasonKind).toBe('account_unmapped')
+    expect(await countBlockedFulfillments(db(), organizationId)).toBe(2)
+  })
+
+  it('reads one refused shipment by id, and null once it is not refused', async () => {
+    const refused = await fulfillment({ reason: 'Period locked' })
+    const clean = await fulfillment()
+    expect((await readBlockedFulfillment(db(), organizationId, refused))?.id).toBe(refused)
+    expect(await readBlockedFulfillment(db(), organizationId, clean)).toBeNull()
+  })
+
+  it('searches the reason and cuts on the shipped day', async () => {
+    const hit = await fulfillment({
+      reason: 'Period locked',
+      shippedAt: '2026-03-15T12:00:00.000Z',
+    })
+    await fulfillment({ reason: 'Cannot post: x', shippedAt: '2026-03-15T12:00:00.000Z' })
+    await fulfillment({ reason: 'Period locked', shippedAt: '2026-04-01T12:00:00.000Z' })
+
+    const rows = await listBlockedFulfillments(db(), organizationId, {
+      search: 'locked',
+      from: '2026-03-01',
+      to: '2026-03-31',
+    })
+    expect(rows.map((row) => row.id)).toEqual([hit])
   })
 })

@@ -15,6 +15,7 @@ export {
   findLinkedPostings,
   findLiveSubjectPosting,
   findLiveSubjectPostings,
+  findPendingDraftPostings,
   type LinkedPosting,
   listPostings,
   listPostingsForSource,
