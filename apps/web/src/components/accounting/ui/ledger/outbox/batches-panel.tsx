@@ -22,7 +22,16 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { CheckCircle2, ExternalLink, Loader, RefreshCw, Send, Undo2 } from 'lucide-react'
+import {
+  CheckCircle2,
+  ExternalLink,
+  Layers,
+  Loader,
+  PackagePlus,
+  RefreshCw,
+  Send,
+  Undo2,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
@@ -92,6 +101,18 @@ export function BatchesPanel({
   )
   const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
 
+  // Summary mode only (empty otherwise): what Build would make of the posted,
+  // unbatched entries, shown here so an approved draft has somewhere to be seen.
+  const unbuiltQuery = api.ledger.exportBatches.unbuilt.useQuery(
+    {
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      categories: outboxCategoryInput(filters).batches,
+    },
+    { enabled: tab === 'ready' }
+  )
+  const unbuilt = unbuiltQuery.data ?? []
+
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
   const setItemIds = useListSelection((state) => state.setItemIds)
@@ -113,8 +134,14 @@ export function BatchesPanel({
 
   function refresh() {
     void utils.ledger.exportBatches.list.invalidate()
+    void utils.ledger.exportBatches.unbuilt.invalidate()
     void utils.ledger.outboxCounts.invalidate()
   }
+
+  const build = api.ledger.exportBatches.build.useMutation({
+    onSuccess: () => refresh(),
+    onError: (error) => toastError({ title: 'Could not build', description: error.message }),
+  })
 
   const send = api.ledger.exportBatches.send.useMutation({
     onSuccess: () => refresh(),
@@ -205,7 +232,7 @@ export function BatchesPanel({
       </p>
     )
 
-  if (!list.isPending && rows.length === 0)
+  if (!list.isPending && rows.length === 0 && unbuilt.length === 0)
     return (
       <div className='flex flex-1 flex-col p-3'>
         <EmptyState
@@ -220,6 +247,76 @@ export function BatchesPanel({
 
   return (
     <div className='flex flex-1 flex-col gap-px p-3 pb-16'>
+      {unbuilt.map((group) => {
+        const building =
+          build.isPending &&
+          build.variables !== undefined &&
+          'glPostingIds' in build.variables &&
+          build.variables.glPostingIds[0] === group.members[0]?.glPostingId
+        return (
+          <OutboxRow
+            key={group.key}
+            id={`unbuilt:${group.key}`}
+            selectable={false}
+            selectLabel={exportAvenueLabel(group.avenue)}
+            icon={<Layers className='size-4 text-muted-foreground' />}
+            date={grainDateLabel(group.grainKey, bookTimeZone, group.members[0]?.txnDate)}
+            typeLabel={exportObjectTypeLabel('journal')}
+            title={<span className='truncate'>{exportAvenueLabel(group.avenue)}</span>}
+            description='Posted here and not yet in a batch. Build makes the journal this row would send; approving more drafts in the same period adds to it until then.'
+            secondary={
+              <span className='flex flex-wrap items-center gap-1.5'>
+                {group.storeId && (
+                  <Badge variant='outline' size='xs'>
+                    {sourceName(group.storeId)}
+                  </Badge>
+                )}
+                {group.railId && (
+                  <Badge variant='outline' size='xs'>
+                    {sourceName(group.railId)}
+                  </Badge>
+                )}
+                <Badge variant='outline' size='xs'>
+                  {group.members.length} {group.members.length === 1 ? 'posting' : 'postings'}
+                </Badge>
+              </span>
+            }
+            amount={formatMinor(group.totalMinor, group.currency)}
+            actions={
+              <>
+                <Badge variant='outline' size='xs'>
+                  Not built
+                </Badge>
+                {canRelease && (
+                  <TreeRowButton
+                    persistent
+                    tooltipText='Build this batch'
+                    disabled={building}
+                    onClick={() =>
+                      build.mutate({
+                        from: group.txnDateFrom,
+                        to: group.txnDateTo,
+                        glPostingIds: group.members.map((member) => member.glPostingId),
+                      })
+                    }>
+                    <PackagePlus className={cn(building && 'animate-pulse')} />
+                  </TreeRowButton>
+                )}
+              </>
+            }
+            expandable
+            isOpen={openBatchIds.has(group.key)}
+            onToggleOpen={() => toggleOpen(group.key)}>
+            <BatchMembers
+              members={group.members}
+              currencyCode={group.currency}
+              bookTimeZone={bookTimeZone}
+              activePostingId={activePostingId}
+              onSelectPosting={onSelectPosting}
+            />
+          </OutboxRow>
+        )
+      })}
       <TreeRowList
         items={rows}
         loading={list.isPending}
@@ -229,8 +326,6 @@ export function BatchesPanel({
         renderRow={(batch: ExportBatchRow) => {
           const sending = send.isPending && send.variables?.batchId === batch.id
           const retrying = retry.isPending && retry.variables?.batchId === batch.id
-          const releasing =
-            release.isPending && release.variables?.batchIds.includes(batch.id) === true
           const rollingBack =
             rollback.isPending && (rollback.variables?.batchId === batch.id || bulkRunning)
           const StateIcon = TAB_ICON[batch.state as OutboxTab] ?? CheckCircle2
@@ -290,22 +385,13 @@ export function BatchesPanel({
                       the Ready tab (75-D6) and is the one that still says so. */}
                   {batch.state !== tab && <ExportBatchStateBadge state={batch.state} />}
                   {tab === 'ready' && canRelease && (
-                    <>
-                      <TreeRowButton
-                        persistent
-                        tooltipText='Release to the export worker'
-                        disabled={releasing}
-                        onClick={() => release.mutate({ batchIds: [batch.id] })}>
-                        <RefreshCw className={cn(releasing && 'animate-spin')} />
-                      </TreeRowButton>
-                      <TreeRowButton
-                        persistent
-                        tooltipText={`Send now to ${providerLabel}`}
-                        disabled={sending}
-                        onClick={() => send.mutate({ batchId: batch.id })}>
-                        <Send className={cn(sending && 'animate-pulse')} />
-                      </TreeRowButton>
-                    </>
+                    <TreeRowButton
+                      persistent
+                      tooltipText={`Send now to ${providerLabel}`}
+                      disabled={sending}
+                      onClick={() => send.mutate({ batchId: batch.id })}>
+                      <Send className={cn(sending && 'animate-pulse')} />
+                    </TreeRowButton>
                   )}
                   {tab === 'failed' && canRelease && (
                     <TreeRowButton
@@ -461,6 +547,12 @@ function batchDateLabel(batch: ExportBatchRow, bookTimeZone: string): string {
     const day = batch.members[0]?.txnDate
     return day ? formatAccountingDate(day, bookTimeZone) : EMPTY_CELL
   }
-  if (/^\d{4}-\d{2}$/.test(batch.grainKey)) return formatShortPeriodLabel(batch.grainKey)
-  return formatAccountingDate(batch.grainKey, bookTimeZone)
+  return grainDateLabel(batch.grainKey, bookTimeZone, batch.members[0]?.txnDate)
+}
+
+/** A month grain reads as its period, a day grain as its date; a grain-less avenue's key is a posting id, so its day is the posting's. */
+function grainDateLabel(grainKey: string, bookTimeZone: string, fallbackDay?: string): string {
+  if (/^\d{4}-\d{2}$/.test(grainKey)) return formatShortPeriodLabel(grainKey)
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(grainKey) ? grainKey : fallbackDay
+  return day ? formatAccountingDate(day, bookTimeZone) : EMPTY_CELL
 }

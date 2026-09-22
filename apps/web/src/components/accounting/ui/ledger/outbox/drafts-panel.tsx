@@ -26,7 +26,7 @@ import { MovementBadge } from '../../movement-badge'
 import { EntryBlockers } from '../entry-blockers'
 import { formatAccountingDate, formatMinor } from '../format'
 import { LedgerSourceLink } from '../ledger-source-link'
-import { PostResultCallout } from '../post-result-callout'
+import { PostResultOverlay } from '../post-result-callout'
 import { postingTypeLabel } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
@@ -40,8 +40,6 @@ interface DraftsPanelProps {
   emptyDescription: string
   currencyCode: string
   bookTimeZone: string
-  providerLabel: string
-  connectedTenantId: string | null
   /** The draft open in the ledger's `?posting=` drawer, so its row reads as the one you are looking at. */
   activePostingId: string | null
   onSelectPosting: (glPostingId: string) => void
@@ -62,8 +60,6 @@ export function DraftsPanel({
   emptyDescription,
   currencyCode,
   bookTimeZone,
-  providerLabel,
-  connectedTenantId,
   activePostingId,
   onSelectPosting,
 }: DraftsPanelProps) {
@@ -100,6 +96,13 @@ export function DraftsPanel({
     void utils.ledger.listPostings.invalidate()
     void utils.ledger.periods.invalidate()
     void utils.ledger.outboxCounts.invalidate()
+  }
+
+  function dismissResult(glPostingId: string) {
+    setResults((prev) => {
+      const { [glPostingId]: _dropped, ...rest } = prev
+      return rest
+    })
   }
 
   const postDraft = api.ledger.postDraft.useMutation()
@@ -190,10 +193,7 @@ export function DraftsPanel({
       { glPostingId: posting.id },
       {
         onSuccess: () => {
-          setResults((prev) => {
-            const { [posting.id]: _dropped, ...rest } = prev
-            return rest
-          })
+          dismissResult(posting.id)
           refresh()
         },
         onError: (error) => setDiscardRefusal(error.message),
@@ -229,7 +229,7 @@ export function DraftsPanel({
               const discarding =
                 discardDraft.isPending && discardDraft.variables?.glPostingId === posting.id
               return (
-                <div className='flex flex-col gap-1.5'>
+                <div className='relative'>
                   <OutboxRow
                     id={posting.id}
                     icon={<FileClock className='size-4 text-muted-foreground' />}
@@ -268,13 +268,10 @@ export function DraftsPanel({
                     selectLabel={`Select draft ${posting.memo || posting.id}`}
                   />
                   {result && (
-                    <div className='px-1'>
-                      <PostResultCallout
-                        result={result}
-                        providerLabel={providerLabel}
-                        connectedTenantId={connectedTenantId}
-                      />
-                    </div>
+                    <PostResultOverlay
+                      result={result}
+                      onDismiss={() => dismissResult(posting.id)}
+                    />
                   )}
                 </div>
               )

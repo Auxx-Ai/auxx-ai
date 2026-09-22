@@ -46,8 +46,8 @@ interface LedgerDrawerHostProps {
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
-  /** Close this drawer and open the outbox on the batch's own tab. */
-  onOpenOutbox: (tab: ExportBatchTab) => void
+  /** Close this drawer and open the outbox on the batch's own tab. Omit when already there. */
+  onOpenOutbox?: (tab: ExportBatchTab) => void
 }
 
 /**
@@ -95,9 +95,14 @@ function LedgerDrawerFrames({
     periodKey,
     glPostingId: topKind?.kind === 'posting' ? topKind.id : null,
   })
+  const handleClose = useCallback(() => {
+    peek.clear()
+    onOpenChange(false)
+  }, [onOpenChange, peek.clear])
   const postingHeader = usePostingFrameHeader(topKind?.kind === 'posting' ? topKind.id : null, {
     onReverse: actions.runReverse,
     isReversing: actions.isReversing,
+    onClose: handleClose,
   })
   const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null, {
     onOpenPosting: openPosting,
@@ -132,11 +137,6 @@ function LedgerDrawerFrames({
       : topKind?.kind === 'movement'
         ? movementHeader
         : recordHeader
-
-  const handleClose = useCallback(() => {
-    peek.clear()
-    onOpenChange(false)
-  }, [onOpenChange, peek.clear])
 
   // `DockableDrawer`'s own close paths (outside click, swipe, Escape) bypass
   // `handleClose` — clear the stack there too.

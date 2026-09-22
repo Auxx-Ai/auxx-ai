@@ -4,6 +4,7 @@
 
 import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
 import type { PostingDetail } from '@auxx/lib/accounting/ledger/client'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -13,18 +14,20 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
+import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import {
   BookOpenCheck,
   CalendarClock,
+  Check,
   CircleHelp,
   Clock,
   ExternalLink,
   Layers,
   Link2,
-  PanelRight,
   Send,
+  Trash2,
   Undo2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -33,6 +36,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { toFrame, useOpenRecord } from '~/components/records/record-drill-panels'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { MovementBadge } from '../movement-badge'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
@@ -40,6 +44,7 @@ import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
 import { ExportBatchStateBadge } from './outbox/export-batch-badge'
+import { OUTCOMES } from './post-result-callout'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
 
 /** Hydrated beside the link by `postingSources`; a stored draft envelope carries none. */
@@ -64,13 +69,74 @@ export interface FrameHeader {
  */
 export function usePostingFrameHeader(
   postingId: string | null,
-  { onReverse, isReversing }: { onReverse: (memo: string) => void; isReversing: boolean }
+  {
+    onReverse,
+    isReversing,
+    onClose,
+  }: { onReverse: (memo: string) => void; isReversing: boolean; onClose: () => void }
 ): FrameHeader {
   const [confirm, ConfirmDialog] = useConfirm()
   const { data: detail } = api.ledger.get.useQuery(
     { id: postingId ?? '' },
     { enabled: !!postingId, staleTime: 30_000 }
   )
+  const { can } = useAccess()
+  const canRelease = can(PermissionKey.ledgerPost)
+  const utils = api.useUtils()
+  const { data: batches } = api.ledger.exportBatches.list.useQuery(
+    { glPostingIds: [postingId ?? ''] },
+    { enabled: !!postingId }
+  )
+  const exportBatch = batches?.items[0] ?? null
+
+  function refresh() {
+    void utils.ledger.exportBatches.list.invalidate()
+    void utils.ledger.outboxCounts.invalidate()
+  }
+  const send = api.ledger.exportBatches.send.useMutation({
+    onSuccess: refresh,
+    onError: (error) => toastError({ title: 'Could not send', description: error.message }),
+  })
+
+  function refreshDrafts() {
+    void utils.ledger.get.invalidate()
+    void utils.ledger.listDrafts.invalidate()
+    void utils.ledger.listPostings.invalidate()
+    void utils.ledger.periods.invalidate()
+    void utils.ledger.outboxCounts.invalidate()
+  }
+  // A refusal comes back as a result, not a throw - the drawer has no row overlay, so it toasts.
+  const postDraft = api.ledger.postDraft.useMutation({
+    onSuccess: (result) => {
+      refreshDrafts()
+      if (OUTCOMES[result.status].tone === 'failure')
+        toastError({ title: OUTCOMES[result.status].title, description: result.error ?? undefined })
+    },
+    onError: (error) => toastError({ title: 'Could not post', description: error.message }),
+  })
+  const discardDraft = api.ledger.discardDraft.useMutation({
+    onSuccess: () => {
+      refreshDrafts()
+      onClose()
+    },
+    onError: (error) => toastError({ title: 'Could not discard', description: error.message }),
+  })
+
+  async function handleHeaderDiscard() {
+    if (!detail) return
+    const confirmed = await confirm({
+      title: `Discard ${detail.docNumber || 'this draft'}?`,
+      description:
+        'A draft holds no claim and no document number, so nothing else is affected. This cannot be undone from here.' +
+        (detail.postingType === 'vendor_bill'
+          ? ' For a vendor bill, Edit then Save drafts it again.'
+          : ''),
+      confirmText: 'Discard the draft',
+      cancelText: 'Keep it',
+      destructive: true,
+    })
+    if (confirmed) discardDraft.mutate({ glPostingId: detail.id })
+  }
 
   async function handleHeaderReverse() {
     const confirmed = await confirm({
@@ -102,20 +168,60 @@ export function usePostingFrameHeader(
         )}
       </div>
     ),
-    actions: detail?.status === 'posted' && (
+    actions: (
       // Icon-only, the shape `payout-evidence-drawer.tsx` uses: a drawer
       // header is a narrow strip and a worded button crowds the doc
       // number out of it at 380px.
-      <Tooltip content='Reverse this posting'>
-        <Button
-          variant='ghost'
-          size='icon-xs'
-          aria-label='Reverse this posting'
-          disabled={isReversing}
-          onClick={() => void handleHeaderReverse()}>
-          <Undo2 />
-        </Button>
-      </Tooltip>
+      <>
+        {exportBatch?.state === 'ready' && canRelease && (
+          <Tooltip content='Send now'>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label='Send now'
+              disabled={send.isPending}
+              onClick={() => send.mutate({ batchId: exportBatch.id })}>
+              <Send className={send.isPending ? 'animate-pulse' : undefined} />
+            </Button>
+          </Tooltip>
+        )}
+        {detail?.status === 'draft' && canRelease && (
+          <>
+            <Tooltip content='Discard the draft'>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                aria-label='Discard the draft'
+                disabled={discardDraft.isPending || postDraft.isPending}
+                onClick={() => void handleHeaderDiscard()}>
+                <Trash2 className={discardDraft.isPending ? 'animate-pulse' : undefined} />
+              </Button>
+            </Tooltip>
+            <Tooltip content='Approve and post'>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                aria-label='Approve and post'
+                disabled={postDraft.isPending || discardDraft.isPending}
+                onClick={() => postDraft.mutate({ glPostingId: detail.id })}>
+                <Check className={postDraft.isPending ? 'animate-pulse' : undefined} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
+        {detail?.status === 'posted' && (
+          <Tooltip content='Reverse this posting'>
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label='Reverse this posting'
+              disabled={isReversing}
+              onClick={() => void handleHeaderReverse()}>
+              <Undo2 />
+            </Button>
+          </Tooltip>
+        )}
+      </>
     ),
     overlay: <ConfirmDialog />,
   }
@@ -127,8 +233,8 @@ interface PostingFrameProps {
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
-  /** Close the drawer and open the outbox on the batch's own tab. */
-  onOpenOutbox: (tab: ExportBatchTab) => void
+  /** Close the drawer and open the outbox on the batch's own tab. Omit when already there. */
+  onOpenOutbox?: (tab: ExportBatchTab) => void
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -286,7 +392,18 @@ export function PostingFrame({
             title='Export'
             icon={<Send className='size-4' />}
             description={`Where this entry stands with ${providerLabel}.`}
-            collapsible={false}>
+            collapsible={false}
+            actions={
+              onOpenOutbox && (
+                <Button
+                  variant='ghost'
+                  size='xs'
+                  onClick={() => onOpenOutbox(exportBatch.state as ExportBatchTab)}>
+                  <ExternalLink />
+                  Open outbox
+                </Button>
+              )
+            }>
             <div className='flex flex-col gap-2'>
               <div className='flex items-center gap-2'>
                 <ExportBatchStateBadge state={exportBatch.state} size='sm' />
@@ -304,15 +421,6 @@ export function PostingFrame({
               {exportBatch.state === 'failed' && exportBatch.lastError && (
                 <p className='text-destructive text-xs'>{exportBatch.lastError}</p>
               )}
-              <div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => onOpenOutbox(exportBatch.state as ExportBatchTab)}>
-                  <PanelRight />
-                  Open the outbox
-                </Button>
-              </div>
             </div>
           </Section>
         )}
@@ -421,40 +529,35 @@ export function PostingFrame({
           </Section>
         )}
 
-        <Section
-          title='Reverse this posting'
-          icon={<Undo2 className='size-4' />}
-          description='A mistake is corrected by reversing and re-entering, never by editing a posted entry.'
-          initialOpen={false}>
-          <div className='flex flex-col gap-2'>
-            <Label htmlFor='reversal-memo'>Why is it being reversed? (optional)</Label>
-            <Textarea
-              id='reversal-memo'
-              value={memo}
-              onChange={(event) => setMemo(event.target.value)}
-              placeholder='Carried onto the reversing entry, and the only explanation a reader gets later. Left empty, the reversal stands on its own.'
-              rows={3}
-            />
-            <div>
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={detail.status !== 'posted'}
-                loading={isReversing}
-                loadingText='Reversing...'
-                onClick={handleReverse}>
-                <Undo2 />
-                Reverse
-              </Button>
+        {detail.status === 'posted' && (
+          <Section
+            title='Reverse this posting'
+            icon={<Undo2 className='size-4' />}
+            description='A mistake is corrected by reversing and re-entering, never by editing a posted entry.'
+            initialOpen={false}>
+            <div className='flex flex-col gap-2'>
+              <Label htmlFor='reversal-memo'>Why is it being reversed? (optional)</Label>
+              <Textarea
+                id='reversal-memo'
+                value={memo}
+                onChange={(event) => setMemo(event.target.value)}
+                placeholder='Carried onto the reversing entry, and the only explanation a reader gets later. Left empty, the reversal stands on its own.'
+                rows={3}
+              />
+              <div>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  loading={isReversing}
+                  loadingText='Reversing...'
+                  onClick={handleReverse}>
+                  <Undo2 />
+                  Reverse
+                </Button>
+              </div>
             </div>
-            {detail.status !== 'posted' && (
-              <p className='text-xs text-muted-foreground'>
-                Only a posted entry can be reversed. This one is{' '}
-                {STATUS_LABEL[detail.status].toLowerCase()}.
-              </p>
-            )}
-          </div>
-        </Section>
+          </Section>
+        )}
       </div>
     </ScrollArea>
   )

@@ -86,7 +86,6 @@ const props = {
   buildMonthLabel: 'February',
   bookTimeZone: 'UTC',
   currencyCode: 'USD',
-  connectedTenantId: null,
   providerLabel: 'Provider',
   activePostingId: null,
   onSelectPosting: vi.fn(),

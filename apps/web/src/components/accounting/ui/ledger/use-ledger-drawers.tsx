@@ -21,8 +21,8 @@ interface LedgerDrawersOptions {
   providerLabel: string
   /** Seeds a new journal entry's Date. */
   defaultEntryDate: string
-  /** A posting's export-batch row wants the Outbox at that tab. */
-  onOpenOutbox: (tab: ExportBatchTab) => void
+  /** A posting's export-batch row wants the Outbox at that tab. Omit on the Outbox itself. */
+  onOpenOutbox?: (tab: ExportBatchTab) => void
 }
 
 export interface LedgerDrawers {
@@ -118,10 +118,14 @@ export function useLedgerDrawers({
         currencyCode={currencyCode}
         bookTimeZone={bookTimeZone}
         providerLabel={providerLabel}
-        onOpenOutbox={(tab) => {
-          setBase({})
-          onOpenOutbox(tab)
-        }}
+        onOpenOutbox={
+          onOpenOutbox
+            ? (tab) => {
+                setBase({})
+                onOpenOutbox(tab)
+              }
+            : undefined
+        }
       />
     ),
     [

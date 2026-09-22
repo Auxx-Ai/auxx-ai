@@ -1033,8 +1033,9 @@ export interface PostDraftOptions {
  */
 export async function postDraft(db: Database, options: PostDraftOptions): Promise<PostResult> {
   const { organizationId, glPostingId } = options
+  let result: PostResult
   try {
-    return await db.transaction(async (tx) => {
+    result = await db.transaction(async (tx) => {
       await withAccountingCommitLock(tx, organizationId)
       return postDraftInTx(tx, options)
     })
@@ -1042,6 +1043,62 @@ export async function postDraft(db: Database, options: PostDraftOptions): Promis
     const message = error instanceof Error ? error.message : String(error)
     logger.error('Posting a draft failed', { organizationId, glPostingId, error: message })
     return { status: 'error', failureClass: 'transport', retryable: false, error: message }
+  }
+  if (result.status === 'posted') await exportApprovedDraft(db, { organizationId, glPostingId })
+  return result
+}
+
+/**
+ * Put an approved draft on the Ready tab. Transaction mode builds its batch at
+ * once, so Approve is not followed by a Build nobody knows to press; the batch
+ * is sent only where `autoSend` says so. Summary mode builds nothing - the
+ * entry joins its period's unbuilt row until Build closes the bucket.
+ */
+async function exportApprovedDraft(
+  db: Database,
+  input: { organizationId: string; glPostingId: string }
+): Promise<void> {
+  const { organizationId, glPostingId } = input
+  try {
+    const [row] = await db
+      .select({ postingType: schema.GlPosting.postingType, txnDate: schema.GlPosting.txnDate })
+      .from(schema.GlPosting)
+      .where(
+        and(
+          eq(schema.GlPosting.id, glPostingId),
+          eq(schema.GlPosting.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+    if (!row) return
+    const avenue = avenueOfPostingType(row.postingType)
+    if (!avenue) return
+    const settings = await readExportSettings(organizationId)
+    if (settings.mode !== 'transaction') return
+
+    const built = await buildExportBatches(db, {
+      organizationId,
+      from: row.txnDate,
+      to: row.txnDate,
+      glPostingIds: [glPostingId],
+    })
+    if (built.isErr()) {
+      logger.warn('Could not build the export batch for an approved draft', {
+        organizationId,
+        glPostingId,
+        error: built.error.message,
+      })
+      return
+    }
+    if (!settings.autoSend[avenue]) return
+    for (const batchId of built.value.batchIds)
+      await sendExportBatch(db, { organizationId, batchId })
+  } catch (error) {
+    logger.error('Exporting an approved draft failed; Build will pick it up', {
+      organizationId,
+      glPostingId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 
