@@ -6,7 +6,7 @@ import { useEffect } from 'react'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { getChannelStoreState, useChannelStore } from '../store/channel-store'
-import { SyncStatusToastManager } from '../ui/sync-status-toast'
+import { useSyncDockStore } from '../store/sync-dock-store'
 
 export function ChannelProvider({ children }: { children: React.ReactNode }) {
   const hasSyncing = useChannelStore((state) => state.syncingChannels.length > 0)
@@ -37,14 +37,10 @@ export function ChannelProvider({ children }: { children: React.ReactNode }) {
     getChannelStoreState().setLoading(channelsQuery.isLoading)
   }, [channelsQuery.isLoading])
 
-  return (
-    <>
-      <SyncStatusToastManager />
-      {children}
-    </>
-  )
+  return children
 }
 
 export function clearChannelCaches() {
   getChannelStoreState().reset()
+  useSyncDockStore.getState().reset()
 }
