@@ -88,7 +88,7 @@ export async function send(
       tool,
       payload.lines.map((line) => line.glAccountId)
     )
-    if (accounts.isErr()) return configError(accounts.error.message)
+    if (accounts.isErr()) return err(accounts.error)
 
     let vendorId: string
     try {

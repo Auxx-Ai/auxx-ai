@@ -35,6 +35,7 @@ export function outboxCategoryOptions(tab: OutboxTab) {
   return Object.entries(labels)
     .filter(([value]) => value !== 'month_end_reversal')
     .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 }
 
 /** Narrow selections to each endpoint's declared category vocabulary. */

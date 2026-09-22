@@ -43,11 +43,13 @@ import {
 } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { EntryBlockers } from '../entry-blockers'
 import { exportAvenueLabel } from '../export-avenue-labels'
 import { EMPTY_CELL, formatAccountingDate, formatMinor, formatShortPeriodLabel } from '../format'
 import { postingTypeLabel } from '../type-labels'
 import { useLedgerSources } from '../use-ledger-sources'
 import { ExportBatchStateBadge } from './export-batch-badge'
+import { remainingFailureItems } from './export-failure-remedy'
 import { OutboxRow } from './outbox-row'
 import { TAB_ICON } from './outbox-tabs'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
@@ -152,7 +154,11 @@ export function BatchesPanel({
     onError: (error) => toastError({ title: 'Could not retry', description: error.message }),
   })
   const release = api.ledger.exportBatches.release.useMutation({
-    onSuccess: () => {
+    onSuccess: (result) => {
+      // 89 D8: the table refused some of them before a send was spent. The rows
+      // already name which accounts, so the toast only carries the count.
+      const blocked = blockedCount(result)
+      if (blocked > 0) toastError({ title: `${blocked} not released: accounts unmapped` })
       exitSelection()
       refresh()
     },
@@ -261,8 +267,8 @@ export function BatchesPanel({
             selectLabel={exportAvenueLabel(group.avenue)}
             icon={<Layers className='size-4 text-muted-foreground' />}
             date={grainDateLabel(group.grainKey, bookTimeZone, group.members[0]?.txnDate)}
-            typeLabel={exportObjectTypeLabel('journal')}
-            title={<span className='truncate'>{exportAvenueLabel(group.avenue)}</span>}
+            typeLabel={exportAvenueLabel(group.avenue)}
+            title={<span className='truncate'>{exportObjectTypeLabel('journal')}</span>}
             description='Posted here and not yet in a batch. Build makes the journal this row would send; approving more drafts in the same period adds to it until then.'
             secondary={
               <span className='flex flex-wrap items-center gap-1.5'>
@@ -331,21 +337,62 @@ export function BatchesPanel({
           const StateIcon = TAB_ICON[batch.state as OutboxTab] ?? CheckCircle2
           const onlyMember = batch.members.length === 1 ? batch.members[0] : null
 
+          // 89 D6/D7: the refusal as the pieces of work it is made of. A failed
+          // batch carries the adapter's verdict, a ready one what the mapping
+          // table already refuses - one block, so both tabs refuse in one voice.
+          // The verdict is last send's, so `blockers` re-checks it live and an
+          // account mapped since then drops out of it.
+          const items =
+            batch.state === 'failed'
+              ? remainingFailureItems(batch.failureItems, batch.blockers)
+              : batch.blockers
+          const blockedReady = batch.state === 'ready' && batch.blockers.length > 0
+          const allMapped =
+            batch.state === 'failed' && batch.failureItems.length > 0 && items.length === 0
+
+          const refusal =
+            items.length > 0 ? (
+              <div className='ps-8 pb-1'>
+                <EntryBlockers
+                  blockers={[
+                    {
+                      status: batch.state === 'failed' ? 'export_refused' : 'export_blocked',
+                      error: batch.lastError ?? '',
+                      items,
+                    },
+                  ]}
+                />
+              </div>
+            ) : allMapped ? (
+              <p className='ps-8 pb-1 text-muted-foreground text-xs'>
+                Every account this batch named is mapped now. Retry to send it.
+              </p>
+            ) : null
+
+          // A batch of one IS its posting and has no member list to open, but a
+          // refusal is still something to unfold - so it expands for that alone.
+          const expandable = !onlyMember || refusal !== null
+
           return (
             <OutboxRow
               id={batch.id}
               icon={<StateIcon className='size-4 text-muted-foreground' />}
               date={batchDateLabel(batch, bookTimeZone)}
-              typeLabel={exportObjectTypeLabel(batch.objectType)}
+              typeLabel={exportAvenueLabel(batch.avenue)}
               title={
                 <span className='flex min-w-0 items-center gap-1.5'>
                   {batch.docNumber && (
                     <span className='shrink-0 font-mono text-xs'>{batch.docNumber}</span>
                   )}
-                  <span className='truncate'>{exportAvenueLabel(batch.avenue)}</span>
+                  <span className='truncate'>{exportObjectTypeLabel(batch.objectType)}</span>
                 </span>
               }
-              description={batch.state === 'failed' ? (batch.lastError ?? undefined) : undefined}
+              // The items say it better, and printing both says it twice.
+              description={
+                batch.state === 'failed' && batch.failureItems.length === 0
+                  ? (batch.lastError ?? undefined)
+                  : undefined
+              }
               secondary={
                 <span className='flex flex-wrap items-center gap-1.5'>
                   {batch.storeId && (
@@ -383,12 +430,16 @@ export function BatchesPanel({
                   )}
                   {/* Silent when it would only restate the tab; `sending` rides
                       the Ready tab (75-D6) and is the one that still says so. */}
-                  {batch.state !== tab && <ExportBatchStateBadge state={batch.state} />}
+                  {batch.state !== tab && (
+                    <ExportBatchStateBadge state={batch.state} failureClass={batch.failureClass} />
+                  )}
                   {tab === 'ready' && canRelease && (
                     <TreeRowButton
                       persistent
-                      tooltipText={`Send now to ${providerLabel}`}
-                      disabled={sending}
+                      tooltipText={
+                        blockedReady ? 'Map the accounts first' : `Send now to ${providerLabel}`
+                      }
+                      disabled={sending || blockedReady}
                       onClick={() => send.mutate({ batchId: batch.id })}>
                       <Send className={cn(sending && 'animate-pulse')} />
                     </TreeRowButton>
@@ -427,18 +478,24 @@ export function BatchesPanel({
               // A batch of one IS the posting the drawer is showing, so the
               // highlight belongs on this row - it has no child row to carry it.
               active={!!onlyMember && activePostingId === onlyMember.glPostingId}
-              // A batch of one is its posting: no chevron, and the row click
-              // falls through to `onOpen` and opens it.
-              expandable={!onlyMember}
+              expandable={expandable}
               isOpen={openBatchIds.has(batch.id)}
-              {...(onlyMember ? {} : { onToggleOpen: () => toggleOpen(batch.id) })}>
-              <BatchMembers
-                members={batch.members}
-                currencyCode={batch.currency}
-                bookTimeZone={bookTimeZone}
-                activePostingId={activePostingId}
-                onSelectPosting={onSelectPosting}
-              />
+              {...(expandable ? { onToggleOpen: () => toggleOpen(batch.id) } : {})}
+              // A batch of one is its posting, so its body click still opens
+              // it even when the chevron is there for the refusal.
+              {...(onlyMember
+                ? { onRowClick: () => onSelectPosting(onlyMember.glPostingId) }
+                : {})}>
+              {refusal}
+              {!onlyMember && (
+                <BatchMembers
+                  members={batch.members}
+                  currencyCode={batch.currency}
+                  bookTimeZone={bookTimeZone}
+                  activePostingId={activePostingId}
+                  onSelectPosting={onSelectPosting}
+                />
+              )}
             </OutboxRow>
           )
         }}
@@ -539,6 +596,12 @@ function BatchMembers({
       ))}
     </div>
   )
+}
+
+/** How many of a Release the mapping table refused (89 D8); 0 before the server grows the list. */
+function blockedCount(result: unknown): number {
+  const blocked = (result as { blocked?: unknown } | null)?.blocked
+  return Array.isArray(blocked) ? blocked.length : 0
 }
 
 /** The posting's day in Transaction mode; the summary grain (a day or a month) otherwise. */

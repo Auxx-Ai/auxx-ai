@@ -8,6 +8,7 @@ import {
   listExportBatches,
   readUnbuiltSummaryRows,
   releaseExportBatches,
+  releaseFailedBatchesNamingAccount,
   retryExportBatch,
   rollbackExportBatch,
   sendExportBatch,
@@ -115,6 +116,7 @@ import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
@@ -122,6 +124,28 @@ import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trp
 
 /** What a posting's links are read in, so two postings of a kind read alike (task 83 §2.1). */
 const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'pending', 'subject', 'member']
+
+const logger = createScopedLogger('ledger-router')
+
+/**
+ * Put the failed batches that named this account back on the queue.
+ *
+ * Never fails the mutation: the mapping itself succeeded, and a re-release that
+ * does not happen leaves the Retry button exactly where it was.
+ */
+async function rereleaseForAccount(
+  db: Parameters<typeof releaseFailedBatchesNamingAccount>[0],
+  organizationId: string,
+  glAccountId: string
+): Promise<void> {
+  const result = await releaseFailedBatchesNamingAccount(db, { organizationId, glAccountId })
+  if (result.isErr())
+    logger.warn('Could not re-release the failed batches naming a newly mapped account', {
+      organizationId,
+      glAccountId,
+      error: result.error.message,
+    })
+}
 
 function sourceRoleRank(linkRole: string): number {
   const rank = SOURCE_ROLE_ORDER.indexOf(linkRole)
@@ -705,6 +729,9 @@ export const ledgerRouter = createTRPCRouter({
         actorUserId: ctx.session.userId,
       })
       if (result.isErr()) throw result.error
+      // Withdrawing a mapping (a null id) cannot unblock anything.
+      if (input.providerAccountId)
+        await rereleaseForAccount(ctx.db, ctx.session.organizationId, input.glAccountId)
       return result.value
     }),
 
@@ -739,6 +766,9 @@ export const ledgerRouter = createTRPCRouter({
         actorUserId: ctx.session.userId,
       })
       if (result.isErr()) throw result.error
+      // The ancestors were mapped too, and a batch may name one of them.
+      for (const created of [...result.value.ancestors, result.value])
+        await rereleaseForAccount(ctx.db, ctx.session.organizationId, created.row.account.id)
       return result.value
     }),
 

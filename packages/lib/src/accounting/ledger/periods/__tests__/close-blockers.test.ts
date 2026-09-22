@@ -12,13 +12,12 @@ import {
 
 const JANUARY = '2026-01'
 
-/** The three counts, complete unless a test says otherwise. */
+/** The counts, complete unless a test says otherwise. */
 function counts(overrides: Partial<Parameters<typeof describeIncompleteRevenue>[0]> = {}) {
   return {
     periodKey: JANUARY,
     shipments: 0,
     draftChannelMemos: 0,
-    unpostedCreditMemos: 0,
     ...overrides,
   }
 }
@@ -31,7 +30,7 @@ describe('describeIncompleteRevenue', () => {
 
   it('omits the counts that are zero rather than rendering them as satisfied', () => {
     // 🛑 An operator with one problem sees one row. A card whose job is to list
-    // work must not pad that list with two rows saying there is none.
+    // work must not pad that list with a row saying there is none.
     const items = describeIncompleteRevenue(counts({ draftChannelMemos: 14 }))
 
     expect(items).toHaveLength(1)
@@ -40,21 +39,27 @@ describe('describeIncompleteRevenue', () => {
   })
 
   it('carries the month on every item, so a remedy knows what to scope to', () => {
-    const items = describeIncompleteRevenue(
-      counts({ shipments: 1, draftChannelMemos: 1, unpostedCreditMemos: 1 })
-    )
+    const items = describeIncompleteRevenue(counts({ shipments: 1, draftChannelMemos: 1 }))
 
-    expect(items.map((item) => item.ref)).toEqual([JANUARY, JANUARY, JANUARY])
+    expect(items.map((item) => item.ref)).toEqual([JANUARY, JANUARY])
   })
 
-  it('keeps the three counts separate: neither subsumes the other', () => {
-    // A draft memo waits on a decision and an issued one waits on a posting run.
+  it('keeps the counts separate: neither subsumes the other', () => {
+    // A shipment waits on the sweep and a draft memo waits on a decision.
     // Collapsing them sends somebody to the wrong screen.
-    const items = describeIncompleteRevenue(
-      counts({ draftChannelMemos: 1, unpostedCreditMemos: 1 })
-    )
+    const items = describeIncompleteRevenue(counts({ shipments: 1, draftChannelMemos: 1 }))
 
-    expect(items.map((item) => item.key)).toEqual(['draft_channel_memos', 'unposted_credit_memos'])
+    expect(items.map((item) => item.key)).toEqual(['unposted_shipments', 'draft_channel_memos'])
+  })
+
+  it('has nothing to say about an issued memo that never posted (88 D8)', () => {
+    // The third count is gone: an issue the ledger refused never flips the
+    // memo's status, so the state it described cannot exist.
+    const keys: string[] = describeIncompleteRevenue(
+      counts({ shipments: 1, draftChannelMemos: 1 })
+    ).map((item) => item.key)
+
+    expect(keys).not.toContain('unposted_credit_memos')
   })
 
   it('agrees with itself about number: one shipment is, two shipments are', () => {
@@ -67,18 +72,13 @@ describe('describeIncompleteRevenue', () => {
     expect(describeIncompleteRevenue(counts({ draftChannelMemos: 1 }))[0]?.label).toBe(
       '1 channel credit memo is still a draft'
     )
-    expect(describeIncompleteRevenue(counts({ unpostedCreditMemos: 1 }))[0]?.label).toBe(
-      '1 issued credit memo is not posted'
-    )
   })
 
   it('leaves no trailing period on a label and ends every remedy with one', () => {
     // The two halves are joined back into prose by `closeBlockerMessage`, and
     // rendered as a row title and a button by the console. Both need the split
     // to be exactly here.
-    for (const item of describeIncompleteRevenue(
-      counts({ shipments: 3, draftChannelMemos: 2, unpostedCreditMemos: 1 })
-    )) {
+    for (const item of describeIncompleteRevenue(counts({ shipments: 3, draftChannelMemos: 2 }))) {
       expect(item.label.endsWith('.')).toBe(false)
       expect(item.remedy.endsWith('.')).toBe(true)
     }
@@ -91,15 +91,13 @@ describe('closeBlockerMessage', () => {
   // items are a second rendering of one answer; the moment this message stops
   // matching what the gate used to write by hand, they have become two answers.
   it('reproduces the sentence the completeness gate has always written', () => {
-    const items = describeIncompleteRevenue(
-      counts({ shipments: 3, draftChannelMemos: 14, unpostedCreditMemos: 2 })
-    )
+    const items = describeIncompleteRevenue(counts({ shipments: 3, draftChannelMemos: 14 }))
 
     expect(closeBlockerMessage(incompleteRevenueLead(JANUARY), items)).toBe(
       'January 2026 still holds revenue that is not in the books. ' +
-        '3 shipments are not posted. Post the fulfillments for January 2026 with the posting dialog. ' +
-        '14 channel credit memos are still a draft. Issue or void the channel credit memos dated in January 2026. ' +
-        '2 issued credit memos are not posted. Post the credit memos for January 2026 with the posting dialog.'
+        '3 shipments are not posted. The shipment sweep posts the fulfillments for January 2026 ' +
+        'on its next pass. Anything it refuses is on the Outbox Blocked tab under its own reason. ' +
+        '14 channel credit memos are still a draft. Issue or void the channel credit memos dated in January 2026.'
     )
   })
 

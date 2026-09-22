@@ -1096,6 +1096,87 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
     expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
     expect(callTool).not.toHaveBeenCalledWith('find_quickbooks_journal_entry', expect.anything())
   })
+
+  // 89 D2. The prose is one joined sentence and the Failed tab cannot act on
+  // it; the items are the same refusal as pieces of work, one per account.
+  it('carries an item per refused account, both keys, on the refusal', async () => {
+    connect()
+
+    const result = await send(
+      baseJournal({
+        totalMinor: 100,
+        lines: [
+          // Mapped to account 11, which is inactive - `invalid_mapping`.
+          {
+            glAccountId: 'acct_9999',
+            accountCode: '9999',
+            direction: 'debit',
+            amountMinor: 100,
+            sortOrder: 0,
+          },
+          // Not in the map at all - `unmapped_account`.
+          {
+            glAccountId: 'acct_5090',
+            accountCode: '5090',
+            direction: 'credit',
+            amountMinor: 100,
+            sortOrder: 1,
+          },
+        ],
+      })
+    )
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.failureClass).toBe('configuration')
+    expect(error.items).toEqual([
+      {
+        key: 'invalid_mapping',
+        ref: 'acct_9999',
+        label: '9999 Retired',
+        remedy:
+          'Re-pick its QuickBooks account under Accounting > Settings > Accounts > Chart of accounts.',
+      },
+      {
+        key: 'unmapped_account',
+        ref: 'acct_5090',
+        label: '5090 PPV',
+        remedy:
+          'Pick its QuickBooks account under Accounting > Settings > Accounts > Chart of accounts.',
+      },
+    ])
+    // The sentence names the tab that fixes it, not the page (89 D8).
+    expect(error.message).toContain('Chart of accounts')
+  })
+
+  it('leaves an id our own chart does not hold as prose, with no item to pick', async () => {
+    connect()
+
+    const result = await send(
+      baseJournal({
+        totalMinor: 100,
+        lines: [
+          {
+            glAccountId: 'acct_ghost',
+            accountCode: null,
+            direction: 'debit',
+            amountMinor: 100,
+            sortOrder: 0,
+          },
+          {
+            glAccountId: 'acct_1310',
+            accountCode: '1310',
+            direction: 'credit',
+            amountMinor: 100,
+            sortOrder: 1,
+          },
+        ],
+      })
+    )
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.items).toEqual([])
+    expect(error.message).toContain('acct_ghost')
+  })
 })
 
 describe('createProviderAccount - the seam run backwards', () => {

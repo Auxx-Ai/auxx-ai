@@ -11,7 +11,6 @@ import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
-  BookOpenCheck,
   CircleSlash,
   CircleX,
   CloudOff,
@@ -50,6 +49,8 @@ export type LedgerBlockerStatus =
   | 'suggestion_incomplete'
   | 'agreement_refused'
   | 'sync_refused'
+  | 'export_refused'
+  | 'export_blocked'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -255,6 +256,23 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     guidance:
       'Nothing was read and nothing was written - the refusal happened before the first request went out. The reason above is the refusal itself, verbatim. A range the sync may not read is never quietly moved to one it may.',
   },
+  // 89 D6/D7: the export's two halves of one refusal. `export_blocked` is what
+  // the mapping table already knows before a send is spent; `export_refused` is
+  // what the provider said after one was.
+  export_refused: {
+    tone: 'failure',
+    icon: CloudOff,
+    title: 'The provider refused this batch',
+    guidance:
+      'Your books are unchanged - the postings stay posted and the batch waits here. Fix what each row names, then retry it.',
+  },
+  export_blocked: {
+    tone: 'failure',
+    icon: Unlink,
+    title: 'This batch cannot be sent yet',
+    guidance:
+      'The account map already says these accounts have no counterpart in the connected system, so a send would be refused. Nothing has been attempted.',
+  },
 }
 
 const FALLBACK: BlockerRemedy = {
@@ -280,6 +298,13 @@ interface ItemRemedy {
   fix?: boolean
 }
 
+/** The Chart tab's editor pane, seeded with one account. */
+function chartAccountHref(glAccountId: string | undefined): string {
+  return glAccountId
+    ? `/app/accounting/settings/accounts?s=chart&account=${encodeURIComponent(glAccountId)}`
+    : '/app/accounting/settings/accounts?s=chart'
+}
+
 /**
  * The items whose remedy is a control the HOST page mounts, so the host can
  * switch on the key it is handed without widening it back to every item.
@@ -290,7 +315,7 @@ interface ItemRemedy {
  * held in step by `entry-blockers.test.ts`, which fails when a `fix: true` item
  * is added here and not there.
  */
-export type FixableBlockerItemKey = 'unposted_shipments' | 'unposted_credit_memos'
+export type FixableBlockerItemKey = 'unposted_shipments'
 
 /**
  * Where each piece of work is actually done.
@@ -311,7 +336,6 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
     actionLabel: 'Review drafts',
     href: () => '/app/credit-memos',
   },
-  unposted_credit_memos: { icon: BookOpenCheck, actionLabel: 'Post credit memos', fix: true },
   unmapped_role: {
     icon: MapIcon,
     actionLabel: 'Map role',
@@ -319,6 +343,19 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
       item.ref
         ? `/app/accounting/settings/accounts?role=${encodeURIComponent(item.ref)}`
         : '/app/accounting/settings/accounts',
+  },
+  // 🛑 The Chart tab, not the Mapping tab the role rows above go to. `?s=chart`
+  // is what `accounts-settings-page.tsx` reads before `?account=`, and an
+  // account id without it lands on Mapping and selects nothing (89 §1.6).
+  unmapped_account: {
+    icon: MapIcon,
+    actionLabel: 'Map account',
+    href: (item) => chartAccountHref(item.ref),
+  },
+  invalid_mapping: {
+    icon: Unlink,
+    actionLabel: 'Re-map account',
+    href: (item) => chartAccountHref(item.ref),
   },
   // The three checks a close is, now that it posts nothing (MIGRATION step 5):
   // a document whose entry never landed, the ledger disagreeing with the rows

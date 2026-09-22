@@ -42,10 +42,14 @@ function sqlText(node: unknown): string {
   return out.join(' ')
 }
 
-function fakeDb(): { db: Database; orderArgs: unknown[] } {
-  const captured: { args: unknown[] } = { args: [] }
+function fakeDb(): { db: Database; orderArgs: unknown[]; whereArg: unknown } {
+  const captured: { args: unknown[]; where: unknown } = { args: [], where: null }
   const chain: Record<string, unknown> = {}
-  for (const method of ['from', 'where', 'limit']) chain[method] = () => chain
+  for (const method of ['from', 'limit']) chain[method] = () => chain
+  chain.where = (arg: unknown) => {
+    captured.where = arg
+    return chain
+  }
   chain.orderBy = (...args: unknown[]) => {
     captured.args = args
     return chain
@@ -57,7 +61,10 @@ function fakeDb(): { db: Database; orderArgs: unknown[] } {
     get orderArgs() {
       return captured.args
     },
-  } as unknown as { db: Database; orderArgs: unknown[] }
+    get whereArg() {
+      return captured.where
+    },
+  } as unknown as { db: Database; orderArgs: unknown[]; whereArg: unknown }
 }
 
 describe('sweepExportBatches - due-batch order', () => {
@@ -73,5 +80,22 @@ describe('sweepExportBatches - due-batch order', () => {
     // that it names `createdAt` is asserted by reading `sweep.ts` itself.
     expect(fake.orderArgs[1]).not.toBe(fake.orderArgs[0])
     expect(fake.orderArgs[1]).toBeTruthy()
+  })
+})
+
+// 89 D3. `fail()` writes no `nextAttemptAt` for `configuration` or `data`, and
+// this is the other half of that contract: the failed branch is gated on a
+// `<=` against now, which a NULL never satisfies. No query change was needed,
+// so this test exists to stop one being made.
+describe('sweepExportBatches - which failures are due', () => {
+  it('admits a failed batch only through a nextAttemptAt comparison', async () => {
+    const fake = fakeDb()
+
+    await sweepExportBatches(fake.db, { organizationId: 'org_1' })
+
+    const where = sqlText(fake.whereArg)
+    expect(where).toContain('failed')
+    expect(where).toContain('<=')
+    expect(where).toContain('<')
   })
 })

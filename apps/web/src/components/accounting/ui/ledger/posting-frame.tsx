@@ -44,6 +44,7 @@ import { EntryRollForward } from './entry-roll-forward'
 import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
 import { ExportBatchStateBadge } from './outbox/export-batch-badge'
+import { ExportFailureRemedy } from './outbox/export-failure-remedy'
 import { OUTCOMES } from './post-result-callout'
 import { readStoredAssertions, readStoredReasons, readStoredSources } from './stored-draft'
 
@@ -293,6 +294,13 @@ export function PostingFrame({
   const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({ glPostingIds: [postingId] })
   const exportBatch = exportBatchesQuery.data?.items[0] ?? null
 
+  const utils = api.useUtils()
+  /** The same queries `usePostingFrameHeader`'s own refresh invalidates. */
+  function refreshExport() {
+    void utils.ledger.exportBatches.list.invalidate()
+    void utils.ledger.outboxCounts.invalidate()
+  }
+
   const assertions = detail ? readStoredAssertions(detail.draft) : null
   const reasons = detail ? readStoredReasons(detail.draft) : []
   const linkedSources = postingSourcesQuery.data ?? []
@@ -384,9 +392,11 @@ export function PostingFrame({
             this posting sits in, if a live one has claimed it - `null`
             reads as "not built yet", not as a fault, so an unbuilt
             posted entry gets no section rather than an empty one.
-            🛑 No Retry and no Un-sync HERE - both actions live on the
-            queue itself, over potentially many postings at once; this
-            is a status and a way there, never a second door to act. */}
+            🛑 Retry is HERE (89 D5): it is one row's refusal asked
+            for again in the same breath, and somebody who has just mapped
+            an account below should not be walked to another screen to
+            press it. Un-sync stays on the queue - it deletes the
+            provider's copy, over potentially many postings at once. */}
         {exportBatch && (
           <Section
             title='Export'
@@ -406,7 +416,11 @@ export function PostingFrame({
             }>
             <div className='flex flex-col gap-2'>
               <div className='flex items-center gap-2'>
-                <ExportBatchStateBadge state={exportBatch.state} size='sm' />
+                <ExportBatchStateBadge
+                  state={exportBatch.state}
+                  failureClass={exportBatch.failureClass}
+                  size='sm'
+                />
                 {exportBatch.providerObjectUrl ? (
                   <a
                     href={exportBatch.providerObjectUrl}
@@ -418,8 +432,29 @@ export function PostingFrame({
                   </a>
                 ) : null}
               </div>
-              {exportBatch.state === 'failed' && exportBatch.lastError && (
-                <p className='text-destructive text-xs'>{exportBatch.lastError}</p>
+              {exportBatch.state === 'failed' && (
+                <ExportFailureRemedy
+                  batchId={exportBatch.id}
+                  state='failed'
+                  failureClass={exportBatch.failureClass}
+                  items={exportBatch.failureItems}
+                  blockers={exportBatch.blockers}
+                  lastError={exportBatch.lastError}
+                  nextAttemptAt={exportBatch.nextAttemptAt}
+                  onChanged={refreshExport}
+                />
+              )}
+              {/* The pickers sit ABOVE Send now (in the header) because the
+                  mapping table already refuses this send (89 D7). */}
+              {exportBatch.state === 'ready' && exportBatch.blockers.length > 0 && (
+                <ExportFailureRemedy
+                  batchId={exportBatch.id}
+                  state='ready'
+                  failureClass='configuration'
+                  items={exportBatch.blockers}
+                  lastError={null}
+                  onChanged={refreshExport}
+                />
               )}
             </div>
           </Section>

@@ -15,6 +15,7 @@ import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
+import { isFulfillmentCancelled } from './reads'
 import { stampOrderShipmentTotals } from './stamp-totals'
 
 const logger = createScopedLogger('sales:fulfillment-totals-reconciler')
@@ -29,6 +30,12 @@ const FULFILLMENT_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'fulfillment_status',
   'fulfillment_cancelled_at',
   'fulfillment_sequence',
+])
+
+/** The two writes a cancellation arrives as, from the connector or from a person. */
+const FULFILLMENT_CANCEL_ATTRS = new Set<SystemAttribute>([
+  'fulfillment_status',
+  'fulfillment_cancelled_at',
 ])
 
 const FULFILLMENT_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
@@ -96,11 +103,49 @@ function readRelatedInstanceId(raw: unknown): string | null {
   return parseRecordId(recordId as RecordId).entityInstanceId
 }
 
+/**
+ * Take a cancelled shipment's revenue back out, before the order re-stamps (88 D9).
+ *
+ * Idempotent by construction, which is what makes it safe here: the mark lane
+ * cannot tell "became cancelled" from "was already cancelled", and
+ * `reverseFulfillmentPosting` is a `null` no-op when the fulfillment holds no
+ * live posting. Never throws — a reversal that fails must not stop the drain.
+ */
+async function reverseCancelledFulfillment(
+  organizationId: string,
+  userId: string,
+  fulfillmentInstanceId: string
+): Promise<void> {
+  try {
+    if (!(await isFulfillmentCancelled(database, { organizationId, fulfillmentInstanceId }))) return
+    // Imported here, not at the top: `orders/fulfill` reaches back into this
+    // module through the `../fulfillments` barrel.
+    const { reverseFulfillmentPosting } = await import('../orders/fulfill')
+    await reverseFulfillmentPosting(database, {
+      organizationId,
+      fulfillmentInstanceId,
+      actorUserId: userId,
+      memo: 'Shipment cancelled',
+    })
+  } catch (error) {
+    logger.error('cancelled fulfillment reversal failed — the order still re-stamps', {
+      organizationId,
+      fulfillmentInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
 export const stampTotalsOnFulfillmentChange: MarkHandler = async (event) => {
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !FULFILLMENT_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId } = parseRecordId(event.recordId)
+  // A record written this instant has no posting to reverse, so only a later
+  // write can mean "cancelled now".
+  if (!event.isCreate && FULFILLMENT_CANCEL_ATTRS.has(attr)) {
+    await reverseCancelledFulfillment(event.organizationId, event.userId, entityInstanceId)
+  }
   await fulfillmentReconciler.mark(event.organizationId, event.userId, entityInstanceId)
 }
 

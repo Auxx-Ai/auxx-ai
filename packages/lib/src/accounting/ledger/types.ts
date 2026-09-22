@@ -8,7 +8,6 @@
 // complete and meaningful with NO provider connected at all. Nothing here names
 // QuickBooks, and nothing here carries a provider's identifier.
 
-import type { AccountRole } from './builders/entry'
 /**
  * What produced a posting.
  *
@@ -21,6 +20,8 @@ import type { AccountRole } from './builders/entry'
  * entity migration 114 retired the def (task 11) - so there are two, and there
  * must never be a third. See plans/money/tasks/done/07-align-gl-foundation.md section 6.
  */
+import type { ExportFailureItem } from '../export/client'
+import type { AccountRole } from './builders/entry'
 import type { GlAccountSubtypeValue } from './chart/account-subtype'
 import type { DefaultChartAccount, GlAccountTypeValue } from './chart/default-chart'
 import type { CloseBlockerItem } from './periods/close-blockers'
@@ -536,16 +537,24 @@ export class ProviderPostError extends Error {
   /** The provider's own fault code when it carried one - `'2300'`, `'6140'`. */
   readonly faultCode?: string
   readonly providerId: string
+  /** The refusal as pieces of work, for the classes that have pieces (89 D2). */
+  readonly items?: ExportFailureItem[]
 
   constructor(
     message: string,
-    options: { failureClass: PostFailureClass; providerId: string; faultCode?: string }
+    options: {
+      failureClass: PostFailureClass
+      providerId: string
+      faultCode?: string
+      items?: ExportFailureItem[]
+    }
   ) {
     super(message)
     this.name = 'ProviderPostError'
     this.failureClass = options.failureClass
     this.providerId = options.providerId
     this.faultCode = options.faultCode
+    this.items = options.items
   }
 
   /** Transport failures are the only ones worth trying again. */
@@ -964,6 +973,8 @@ export interface RoleSourceAssignmentRow {
   account: ChartAccountRow | null
   source: string | null
   confirmedAt: string | null
+  /** Does {@link accountId} carry a provider identity? Null when nothing is connected (89 D9). */
+  linked: boolean | null
 }
 
 /**
@@ -987,6 +998,8 @@ export interface RoleRailAssignmentRow {
   account: ChartAccountRow | null
   source: string | null
   confirmedAt: string | null
+  /** Does {@link accountId} carry a provider identity? Null when nothing is connected (89 D9). */
+  linked: boolean | null
 }
 
 /**
@@ -1039,6 +1052,15 @@ export interface RoleAssignmentRow {
    * empty for a role whose axis is not `'rail'`.
    */
   railOverrides: RoleRailAssignmentRow[]
+  /**
+   * Does {@link accountId} carry a provider identity (89 D9)? Null when nothing
+   * is connected, and null whenever `accountId` is.
+   *
+   * 🛑 Answered from `provider.listAccountMappings` - a DB-only read - never
+   * from `listProviderAccounts`, which is a provider round trip the Mapping tab
+   * must not pay for (`accounts-settings-page.tsx`).
+   */
+  linked: boolean | null
 }
 
 /**

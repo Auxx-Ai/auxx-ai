@@ -72,6 +72,29 @@ export const EXPORT_OBJECT_TYPES = [
 
 export type ExportObjectType = (typeof EXPORT_OBJECT_TYPES)[number]
 
+/**
+ * Every `gl_account` id a frozen payload names, de-duplicated (89 D7).
+ *
+ * A recursive walk rather than nine shape-specific readers, so a tenth payload
+ * shape cannot silently drop out of the Ready tab's preflight.
+ */
+export function payloadAccountIds(payload: unknown): string[] {
+  const found = new Set<string>()
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) walk(entry)
+      return
+    }
+    if (!node || typeof node !== 'object') return
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'glAccountId' && typeof value === 'string') found.add(value)
+      else walk(value)
+    }
+  }
+  walk(payload)
+  return [...found]
+}
+
 /** Parse an opaque stored payload back into its object type's shape. Throws on drift. */
 export function parseExportPayload(objectType: string, payload: unknown): unknown {
   switch (objectType) {

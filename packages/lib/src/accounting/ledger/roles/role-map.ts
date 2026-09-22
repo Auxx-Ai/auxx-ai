@@ -52,6 +52,8 @@ import {
   NotFoundError,
   UnprocessableEntityError,
 } from '../../../errors'
+import { readActiveBookConnection } from '../../providers/book-connections'
+import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
 import { getPaymentGateway } from '../../rails/reads'
 import {
   ACCOUNT_ROLES,
@@ -179,6 +181,11 @@ export async function listRoleMap(
     const accountIds = [...new Set(assignments.map((row) => row.glAccountId))]
     const accounts = await loadChartAccountsById(db, organizationId, accountIds)
 
+    // ONE link read for the whole map (89 D9), DB-only - see `readAccountLinks`.
+    const links = await readAccountLinks(db, organizationId, accountIds)
+    const linkedFor = (glAccountId: string): boolean | null =>
+      links === null ? null : links.has(glAccountId)
+
     /**
      * One role's overrides, ordered by source id so the list is stable between
      * reads. The SCREEN orders them by source NAME - it is the side that holds
@@ -195,6 +202,7 @@ export async function listRoleMap(
           account: accounts.get(row.glAccountId) ?? null,
           source: row.source,
           confirmedAt: toIso(row.confirmedAt),
+          linked: linkedFor(row.glAccountId),
         }))
 
     /**
@@ -217,6 +225,7 @@ export async function listRoleMap(
           account: accounts.get(row.glAccountId) ?? null,
           source: row.source,
           confirmedAt: toIso(row.confirmedAt),
+          linked: linkedFor(row.glAccountId),
         }))
 
     const rows: RoleAssignmentRow[] = ALL_ROLES.map((role) => {
@@ -235,6 +244,7 @@ export async function listRoleMap(
           axis,
           overrides,
           railOverrides,
+          linked: null,
         }
       }
 
@@ -259,6 +269,7 @@ export async function listRoleMap(
           axis,
           overrides,
           railOverrides,
+          linked: null,
         }
       }
 
@@ -272,6 +283,7 @@ export async function listRoleMap(
         axis,
         overrides,
         railOverrides,
+        linked: linkedFor(assignment.glAccountId),
       }
     })
 
@@ -281,6 +293,46 @@ export async function listRoleMap(
     logger.error('Failed to list the role map', { error, organizationId })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/**
+ * Which of `accountIds` carry a provider identity, or `null` when nothing is
+ * connected and the question has no answer (89 D9, §1.6).
+ *
+ * 🛑 `listAccountMappings` and nothing else. For QuickBooks that is
+ * `readQuickbooksAccountMap` - a single `FieldValue` read - where
+ * `listAccountIdentities`/`listProviderAccounts` fetch the provider's whole
+ * chart. The Mapping tab renders this on every row and must not pay a provider
+ * round trip for it.
+ *
+ * A refused mapping read reads as "no answer" rather than failing the role map:
+ * the checklist is about OUR chart, and a provider hiccup must not blank it.
+ */
+async function readAccountLinks(
+  db: Database | Transaction,
+  organizationId: string,
+  accountIds: string[]
+): Promise<Set<string> | null> {
+  if (accountIds.length === 0) return null
+
+  const provider = await resolveAccountingProvider(organizationId)
+  if (provider.id === NONE_PROVIDER_ID) return null
+
+  // No active book connection means no destination, so no account can be linked
+  // to one - `null` (nothing to say), never `false` (linked to nothing).
+  const connection = await readActiveBookConnection(db, organizationId)
+  if (!connection) return null
+
+  const mappings = await provider.listAccountMappings(organizationId)
+  if (mappings.isErr()) {
+    logger.warn('Could not read the provider account map for the role map', {
+      organizationId,
+      providerId: provider.id,
+      error: mappings.error.message,
+    })
+    return null
+  }
+  return new Set(mappings.value.keys())
 }
 
 /**
@@ -928,6 +980,9 @@ async function mapRole(
       markedUnused: schema.GlRoleAssignment.markedUnused,
     })
 
+  const links = await readAccountLinks(db, organizationId, [glAccountId])
+  const linked = links === null ? null : links.has(glAccountId)
+
   // ⚠️ A SCOPED write returns the role's row with this override folded in, not
   // a row describing the override alone. The caller asked "what does this role
   // look like now", and the default it still falls back to is half the answer.
@@ -945,6 +1000,7 @@ async function mapRole(
           account,
           source: written?.source ?? 'human',
           confirmedAt: toIso(written?.confirmedAt ?? confirmedAt),
+          linked,
         },
       ].sort((a, b) => a.sourceAccountId.localeCompare(b.sourceAccountId)),
     }
@@ -957,6 +1013,7 @@ async function mapRole(
     account,
     source: written?.source ?? 'human',
     confirmedAt: toIso(written?.confirmedAt ?? confirmedAt),
+    linked,
     axis: roleScopeAxis(role),
     // ⚠️ Read rather than assumed empty. Repointing the DEFAULT leaves every
     // override standing - that is what an override is - and a row that came back
@@ -984,11 +1041,9 @@ async function readRoleOverrides(
   const rows = await readRoleAssignments(db, organizationId)
   const scoped = rows.filter((row) => row.role === role && row.sourceAccountId != null)
   if (scoped.length === 0) return []
-  const accounts = await loadChartAccountsById(
-    db,
-    organizationId,
-    scoped.map((row) => row.glAccountId)
-  )
+  const accountIds = scoped.map((row) => row.glAccountId)
+  const accounts = await loadChartAccountsById(db, organizationId, accountIds)
+  const links = await readAccountLinks(db, organizationId, accountIds)
   return scoped
     .map((row) => ({
       sourceAccountId: row.sourceAccountId as string,
@@ -997,6 +1052,7 @@ async function readRoleOverrides(
       account: accounts.get(row.glAccountId) ?? null,
       source: row.source,
       confirmedAt: toIso(row.confirmedAt),
+      linked: links === null ? null : links.has(row.glAccountId),
     }))
     .sort((a, b) => a.sourceAccountId.localeCompare(b.sourceAccountId))
 }
@@ -1010,11 +1066,9 @@ async function readRoleRailOverrides(
   const rows = await readRoleAssignments(db, organizationId)
   const scoped = rows.filter((row) => row.role === role && row.paymentGatewayId != null)
   if (scoped.length === 0) return []
-  const accounts = await loadChartAccountsById(
-    db,
-    organizationId,
-    scoped.map((row) => row.glAccountId)
-  )
+  const accountIds = scoped.map((row) => row.glAccountId)
+  const accounts = await loadChartAccountsById(db, organizationId, accountIds)
+  const links = await readAccountLinks(db, organizationId, accountIds)
   return scoped
     .map((row) => ({
       paymentGatewayId: row.paymentGatewayId as string,
@@ -1024,6 +1078,7 @@ async function readRoleRailOverrides(
       account: accounts.get(row.glAccountId) ?? null,
       source: row.source,
       confirmedAt: toIso(row.confirmedAt),
+      linked: links === null ? null : links.has(row.glAccountId),
     }))
     .sort((a, b) => {
       const byGateway = a.paymentGatewayId.localeCompare(b.paymentGatewayId)
@@ -1228,6 +1283,7 @@ async function mapGatewayRole(
   // alone - the same reason the scoped branch of `mapRole` reads `current`
   // rather than returning a bare fragment (59 §6, U8).
   const current = await readRoleRow(db, organizationId, role)
+  const links = await readAccountLinks(db, organizationId, [glAccountId])
   return {
     ...current,
     railOverrides: [
@@ -1242,6 +1298,7 @@ async function mapGatewayRole(
         account,
         source: 'human',
         confirmedAt: toIso(confirmedAt),
+        linked: links === null ? null : links.has(glAccountId),
       },
     ].sort((a, b) => {
       const byGateway = a.paymentGatewayId.localeCompare(b.paymentGatewayId)
@@ -1365,10 +1422,12 @@ async function setUnusedFlag(
       axis,
       overrides,
       railOverrides,
+      linked: null,
     }
   }
 
   const accounts = await loadChartAccountsById(db, organizationId, [updated.glAccountId])
+  const links = await readAccountLinks(db, organizationId, [updated.glAccountId])
   return {
     role,
     state: updated.confirmedAt ? 'confirmed' : 'suggested',
@@ -1379,6 +1438,7 @@ async function setUnusedFlag(
     axis,
     overrides,
     railOverrides,
+    linked: links === null ? null : links.has(updated.glAccountId),
   }
 }
 

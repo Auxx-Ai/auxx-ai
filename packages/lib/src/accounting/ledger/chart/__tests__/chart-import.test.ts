@@ -84,6 +84,7 @@ function roleMapRows(
     axis: roleScopeAxis(role),
     overrides: [],
     railOverrides: [],
+    linked: null,
   }))
 }
 

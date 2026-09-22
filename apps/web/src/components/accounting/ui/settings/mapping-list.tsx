@@ -53,6 +53,7 @@ import { useQueryState } from 'nuqs'
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { useChartAccounts } from '../gl-account-picker'
 import {
   ACCOUNT_TYPE_OPTIONS,
@@ -78,6 +79,19 @@ interface MappingEdit {
   scope: { store: string } | { rail: string } | null
   currency?: string | null
   value: string | 'inherit' | 'unused'
+}
+
+/**
+ * The Link action's tooltip, naming the provider when one is connected (89 D9).
+ *
+ * A context read, not a query - `useAccountingProviderStatus` derives from
+ * `useAppsContext`, so every row that renders a Link action can ask.
+ */
+function useLinkTooltip(): string {
+  const { providerLabel } = useAccountingProviderStatus()
+  return providerLabel
+    ? `Link its ${providerLabel} account`
+    : 'Link its account in the connected accounting system'
 }
 
 const defaultKey = (role: string) => role
@@ -477,6 +491,8 @@ function RoleBlock({
   const visibleSources = configuredOnly ? inScope.filter((s) => hasOverride(role, s)) : inScope
   const expandable = visibleSources.length > 0
 
+  const linkTooltip = useLinkTooltip()
+
   const utils = api.useUtils()
   const setRole = api.ledger.setRoleAssignment.useMutation({
     onSuccess: () => utils.ledger.roleMap.invalidate(),
@@ -578,6 +594,9 @@ function RoleBlock({
       }
       filterTypes={filterTypes}
       subtypePin={subtypePin}
+      linked={role.linked}
+      linkAccountId={role.accountId}
+      linkTooltip={linkTooltip}
       suggested={!(defaultKeyStr in optimistic) && role.state === 'suggested'}
       onConfirmSuggested={
         role.accountId
@@ -644,6 +663,7 @@ function StoreScopeRow({
   canControl: boolean
 }) {
   const roleKey = role.role as AccountRole
+  const linkTooltip = useLinkTooltip()
   const override = role.overrides.find((o) => o.sourceAccountId === source.id)
   const persisted: MappingAccountValue = override ? override.accountId : 'inherit'
   const key = storeKey(role.role, source.id)
@@ -663,6 +683,9 @@ function StoreScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      linked={override?.linked ?? null}
+      linkAccountId={override?.accountId ?? null}
+      linkTooltip={linkTooltip}
       suggested={!(key in optimistic) && override?.state === 'suggested'}
       onConfirmSuggested={
         override
@@ -706,6 +729,7 @@ function RailScopeRow({
 }) {
   const roleKey = role.role as AccountRole
   const isBank = role.role === BANK_ROLE
+  const linkTooltip = useLinkTooltip()
   const own = role.railOverrides.find((o) => o.paymentGatewayId === rail.id && o.currency === null)
   const persisted: MappingAccountValue = own ? own.accountId : isBank ? null : 'inherit'
   const key = railKey(role.role, rail.id)
@@ -745,6 +769,9 @@ function RailScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      linked={own?.linked ?? null}
+      linkAccountId={own?.accountId ?? null}
+      linkTooltip={linkTooltip}
       suggested={!(key in optimistic) && own?.state === 'suggested'}
       onConfirmSuggested={
         own
@@ -834,6 +861,7 @@ function CurrencyRow({
 }) {
   const roleKey = role.role as AccountRole
   const isBank = role.role === BANK_ROLE
+  const linkTooltip = useLinkTooltip()
   const persisted: MappingAccountValue = override ? override.accountId : 'inherit'
   const key = railKey(role.role, rail.id, currency)
   const value = key in optimistic ? optimistic[key]! : persisted
@@ -859,6 +887,9 @@ function CurrencyRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
+      linked={override?.linked ?? null}
+      linkAccountId={override?.accountId ?? null}
+      linkTooltip={linkTooltip}
       suggested={!(key in optimistic) && override?.state === 'suggested'}
       onConfirmSuggested={
         override

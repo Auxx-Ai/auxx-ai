@@ -65,6 +65,18 @@ export const ExportBatch = pgTable(
     leaseToken: text(),
     leaseExpiresAt: timestamp({ withTimezone: true }),
     lastError: text(),
+    /** The adapter's own verdict on the last refusal; null on a thrown error or before any send. */
+    failureClass: text().$type<'configuration' | 'data' | 'transport'>(),
+    /** The refusal as pieces of work (`ExportFailureItem` in `@auxx/lib/accounting/export/client`). */
+    failureItems:
+      jsonb().$type<
+        Array<{
+          key: 'unmapped_account' | 'invalid_mapping'
+          ref: string
+          label: string
+          remedy: string
+        }>
+      >(),
     /** Both totals of the rolled-up postings, integer minor units. */
     totalMinor: bigint({ mode: 'number' }).notNull().default(0),
     sentAt: timestamp({ withTimezone: true }),
@@ -109,6 +121,10 @@ export const ExportBatch = pgTable(
       sql`${t.state} IN ('ready','sending','sent','failed','withdrawn') AND ${t.mode} IN ('transaction','summary') AND ${t.attempts} >= 0`
     ),
     check('ExportBatch_payloadHash_check', sql`${t.payloadHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      'ExportBatch_failureClass_check',
+      sql`${t.failureClass} IS NULL OR ${t.failureClass} IN ('configuration','data','transport')`
+    ),
   ]
 )
 

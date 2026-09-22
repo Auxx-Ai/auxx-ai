@@ -10,11 +10,15 @@ export {
 export {
   EXPORT_BATCH_STATES,
   EXPORT_BATCH_TABS,
+  EXPORT_FAILURE_CLASSES,
   type ExportBatchState,
   type ExportBatchTab,
+  type ExportFailureClass,
+  type ExportFailureItem,
   exportBatchStateHint,
   exportBatchStateLabel,
   exportBatchTabAdmits,
+  exportFailureClassHint,
   exportObjectTypeLabel,
   isExportBatchTab,
   OUTBOX_TAB_PARAMS,
@@ -52,9 +56,11 @@ export {
   PAYMENT_OBJECT_TYPE,
   parseExportJournal,
   parseExportPayload,
+  payloadAccountIds,
   REFUND_RECEIPT_OBJECT_TYPE,
   SALES_RECEIPT_OBJECT_TYPE,
 } from './payloads'
+export { exportBlockerSentence, readExportBatchBlockers } from './preflight'
 export {
   countExportBatchesByState,
   EXPORT_BATCH_PAGE_SIZE,
@@ -67,7 +73,9 @@ export {
 export {
   enqueueExportBatch,
   type ReleaseExportBatchesResult,
+  type ReleaseFailedBatchesNamingAccountResult,
   releaseExportBatches,
+  releaseFailedBatchesNamingAccount,
 } from './release'
 export { retryExportBatch } from './retry'
 export { type RollbackExportBatchResult, rollbackExportBatch } from './rollback'

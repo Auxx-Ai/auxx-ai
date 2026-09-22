@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   bridge: vi.fn(),
   money: vi.fn(),
   receipt: vi.fn(),
+  shipment: vi.fn(),
   application: vi.fn(),
   delivery: vi.fn(),
 }))
@@ -36,6 +37,9 @@ vi.mock('../../../accounting/money/customer-money/ingest', () => ({
 vi.mock('../../../accounting/money/blocked-movements', () => ({
   sweepMovementAccounting: h.receipt,
 }))
+vi.mock('../../../accounting/sales/fulfillments/accounting-sweep', () => ({
+  sweepFulfillmentAccounting: h.shipment,
+}))
 vi.mock('../../../accounting/money/customer-money/deposit-application-accounting', () => ({
   sweepDepositApplicationAccounting: h.application,
 }))
@@ -61,6 +65,9 @@ beforeEach(() => {
   h.receipt.mockImplementation(async (_db, input) => {
     h.events.push(`receipt:${input.organizationId}`)
   })
+  h.shipment.mockImplementation(async (_db, input) => {
+    h.events.push(`shipment:${input.organizationId}`)
+  })
   h.application.mockImplementation(async (_db, input) => {
     h.events.push(`application:${input.organizationId}`)
   })
@@ -77,15 +84,21 @@ describe('accounting recovery organization rotation', () => {
       'bridge:A',
       'money:A',
       'receipt:A',
+      'shipment:A',
       'application:A',
       'delivery:A',
       'cursor:B:null',
       'bridge:B',
       'money:B',
       'receipt:B',
+      'shipment:B',
       'application:B',
       'delivery:B',
     ])
+    expect(h.shipment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organizationId: 'A', limit: 100, timeBudgetMs: expect.any(Number) })
+    )
     expect(h.delivery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organizationId: 'A', limit: 5, timeBudgetMs: expect.any(Number) })

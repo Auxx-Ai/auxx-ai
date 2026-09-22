@@ -137,6 +137,50 @@ export async function readFulfillmentsForOrders(
 }
 
 /**
+ * The order one shipment hangs off, and whether 78's stamp has run on it.
+ *
+ * `subtotalMinor` is `null` for "no `fulfillment_subtotal` row" and `0` for a
+ * genuinely free shipment - {@link readFulfillmentsForOrders} collapses both to
+ * `0`, and the poster has to tell them apart (88 §4.5 step 3). `null` for a
+ * shipment that does not exist or names no order.
+ */
+export async function readFulfillmentPostingSubject(
+  db: Database | Transaction,
+  params: { organizationId: string; fulfillmentId: string }
+): Promise<{ orderId: string; subtotalMinor: number | null } | null> {
+  const ctx = await loadFulfillmentFieldContext(db, params.organizationId)
+  if (!ctx) return null
+  const [record] = await readSystemRecords(db, params.organizationId, ctx.fulfillment, {
+    ids: [params.fulfillmentId],
+    includeArchived: true,
+  })
+  const orderId = record?.related('fulfillment_order')
+  if (!record || !orderId) return null
+  return { orderId, subtotalMinor: record.number('fulfillment_subtotal') }
+}
+
+/**
+ * Is this fulfillment `cancelled` as the record stands now?
+ *
+ * One read of one attribute, for the cancel reversal (88 D9), which fires off a
+ * field change and cannot ask the diff: `oldValue`/`newValue` are absent on the
+ * sync lane, and `fulfillment_cancelled_at` may land before the status does.
+ */
+export async function isFulfillmentCancelled(
+  db: Database | Transaction,
+  params: { organizationId: string; fulfillmentInstanceId: string }
+): Promise<boolean> {
+  const { organizationId, fulfillmentInstanceId } = params
+  const ctx = await loadFulfillmentFieldContext(db, organizationId)
+  if (!ctx) return false
+  const [record] = await readSystemRecords(db, organizationId, ctx.fulfillment, {
+    ids: [fulfillmentInstanceId],
+    includeArchived: true,
+  })
+  return record?.option('fulfillment_status') === 'cancelled'
+}
+
+/**
  * Every fulfillment of ONE order, oldest first. Used by the native
  * fulfillment door (`sales/orders/reads.ts`) and by any single-order screen.
  *

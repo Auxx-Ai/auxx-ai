@@ -8,8 +8,10 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNull, lte, or } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
+import { ProviderPostError } from '../ledger/types'
 import { type ProviderObjectContext, resolveAccountingProvider } from '../providers/provider'
 import { hashExportPayload } from './payloads/journal'
+import { exportBlockerSentence, readExportBatchBlockers } from './preflight'
 
 const logger = createScopedLogger('postings:export-send')
 
@@ -113,28 +115,38 @@ async function releaseOwned(
  */
 function readbackMismatch(
   batch: ExportBatchEntity,
+  providerId: string,
   read: {
     status: 'found' | 'gone' | 'unsupported'
     docNumber: string | null
     totalMinor: number | null
     payloadHash: string | null
   }
-): string | null {
+): ProviderPostError | null {
+  // `data`, never `transport`: the object landed and disagrees with the
+  // payload, so sending again would create a second one (89 D3).
+  const refuse = (message: string) =>
+    new ProviderPostError(message, { failureClass: 'data', providerId })
   if (read.status === 'unsupported') return null
-  if (read.status === 'gone') return 'The provider does not hold the object we just created.'
+  if (read.status === 'gone')
+    return refuse('The provider does not hold the object we just created.')
   if (read.payloadHash)
     return read.payloadHash === batch.payloadHash
       ? null
-      : 'What the provider holds does not match the payload this batch froze.'
+      : refuse('What the provider holds does not match the payload this batch froze.')
   const expected = (batch.payload as { docNumber?: unknown }).docNumber
   if (read.docNumber !== null && typeof expected === 'string' && read.docNumber !== expected)
-    return `The provider holds document ${read.docNumber} where this batch sent ${expected}.`
+    return refuse(
+      `The provider holds document ${read.docNumber} where this batch sent ${expected}.`
+    )
   // What we SENT, not the postings' gross: a Deposit's total is the net of its
   // fee line, and the payload already carries the provider's own figure.
   const sent = (batch.payload as { totalMinor?: unknown }).totalMinor
   const expectedTotal = typeof sent === 'number' ? sent : batch.totalMinor
   if (read.totalMinor !== null && read.totalMinor !== expectedTotal)
-    return `The provider's total ${read.totalMinor} does not match the ${expectedTotal} this batch sent.`
+    return refuse(
+      `The provider's total ${read.totalMinor} does not match the ${expectedTotal} this batch sent.`
+    )
   return null
 }
 
@@ -161,6 +173,23 @@ export async function sendExportBatch(
 
   try {
     const provider = await resolveAccountingProvider(organizationId)
+
+    // 89 D8: the mapping table lives here, so a send it already refuses is not
+    // spent on a round trip. Runs on manual Retry too, and costs nothing.
+    const blocked = await readExportBatchBlockers(db, organizationId, [
+      { id: batch.id, payload: batch.payload },
+    ])
+    if (blocked.isErr()) return ok(await fail(db, batch, token, blocked.error))
+    const blockers = blocked.value.get(batch.id)
+    if (blockers && blockers.length > 0) {
+      const refusal = new ProviderPostError(blockers.map(exportBlockerSentence).join(' '), {
+        failureClass: 'configuration',
+        providerId: provider.id,
+        items: blockers,
+      })
+      return ok(await fail(db, batch, token, refusal))
+    }
+
     const sent = await provider.sendObject(ctx, {
       objectType: batch.objectType,
       payload: batch.payload,
@@ -171,7 +200,7 @@ export async function sendExportBatch(
         provider.limits?.idempotencyKeyLength
       ),
     })
-    if (sent.isErr()) return ok(await fail(db, batch, token, sent.error.message))
+    if (sent.isErr()) return ok(await fail(db, batch, token, sent.error))
     const result = sent.value
 
     if (result.status === 'not_connected' || result.status === 'disabled') {
@@ -204,8 +233,8 @@ export async function sendExportBatch(
     // The object exists at the provider from here on, whatever the read-back
     // says, so every refusal below carries its id.
     const landed = { externalId: result.externalId, remoteVersion: result.remoteVersion }
-    if (read.isErr()) return ok(await fail(db, batch, token, read.error.message, landed))
-    const mismatch = readbackMismatch(batch, read.value)
+    if (read.isErr()) return ok(await fail(db, batch, token, read.error, landed))
+    const mismatch = readbackMismatch(batch, provider.id, read.value)
     if (mismatch) return ok(await fail(db, batch, token, mismatch, landed))
 
     const kept = await releaseOwned(db, batch, token, {
@@ -214,6 +243,8 @@ export async function sendExportBatch(
       providerSyncToken: read.value.remoteVersion ?? result.remoteVersion,
       sentAt: new Date(),
       lastError: null,
+      failureClass: null,
+      failureItems: [],
       nextAttemptAt: null,
     })
     if (!kept) return ok({ batchId, status: 'leased_elsewhere', attempts: batch.attempts })
@@ -231,8 +262,7 @@ export async function sendExportBatch(
       attempts: batch.attempts,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return ok(await fail(db, batch, token, message))
+    return ok(await fail(db, batch, token, error instanceof Error ? error : String(error)))
   }
 }
 
@@ -240,7 +270,8 @@ async function fail(
   db: Database,
   batch: ExportBatchEntity,
   token: string,
-  reason: string,
+  /** The adapter's own error when there is one - that is where the class and the items are (89 D4). */
+  reason: Error | string,
   /**
    * What the provider created before the failure, when it created anything.
    * A create that lands and then fails its read-back would otherwise leave an
@@ -250,14 +281,21 @@ async function fail(
    */
   created?: { externalId: string; remoteVersion: string | null }
 ): Promise<SendExportBatchResult> {
+  const message = typeof reason === 'string' ? reason : reason.message
+  const posted = reason instanceof ProviderPostError ? reason : null
   // `batch.attempts` already counts this attempt - `lease` incremented it - so
   // the backoff is indexed one behind.
   const spent = Math.max(0, batch.attempts - 1)
   const backoff = RETRY_BACKOFF_MS[Math.min(spent, RETRY_BACKOFF_MS.length - 1)] ?? 60_000
+  // 89 D3: only `transport` (and an unclassified throw) is worth another
+  // attempt, and a null `nextAttemptAt` is already outside the sweep's window.
+  const retryable = posted === null || posted.failureClass === 'transport'
   await releaseOwned(db, batch, token, {
     state: 'failed',
-    lastError: reason,
-    nextAttemptAt: new Date(Date.now() + backoff),
+    lastError: message,
+    failureClass: posted?.failureClass ?? null,
+    failureItems: posted?.items ?? [],
+    nextAttemptAt: retryable ? new Date(Date.now() + backoff) : null,
     ...(created?.externalId && {
       providerObjectId: created.externalId,
       providerSyncToken: created.remoteVersion,
@@ -268,12 +306,12 @@ async function fail(
       organizationId: batch.organizationId,
       batchId: batch.id,
       attempts: batch.attempts,
-      error: reason,
+      error: message,
     })
   return {
     batchId: batch.id,
     status: 'failed',
-    error: reason,
+    error: message,
     attempts: batch.attempts,
     ...(created?.externalId && { providerObjectId: created.externalId }),
   }

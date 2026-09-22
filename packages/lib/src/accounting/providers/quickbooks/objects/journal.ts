@@ -237,13 +237,7 @@ export async function send(
       tool,
       journal.lines.map((line) => line.glAccountId)
     )
-    if (accounts.isErr())
-      return err(
-        new ProviderPostError(accounts.error.message, {
-          failureClass: 'configuration',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
+    if (accounts.isErr()) return err(accounts.error)
 
     const ourChart = await listChartAccounts(database, organizationId)
     if (ourChart.isErr())

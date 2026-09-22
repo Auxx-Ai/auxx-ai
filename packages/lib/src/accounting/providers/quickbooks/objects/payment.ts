@@ -135,7 +135,7 @@ export async function send(
       return configError('The invoice this payment applies to has no recorded provider id.')
 
     const accounts = await resolveMappedAccounts(tool, [payload.depositTo.glAccountId])
-    if (accounts.isErr()) return configError(accounts.error.message)
+    if (accounts.isErr()) return err(accounts.error)
     const depositToAccountId = accounts.value.get(payload.depositTo.glAccountId)?.id
     if (!depositToAccountId)
       return configError('This payment names no resolvable deposit-to account.')

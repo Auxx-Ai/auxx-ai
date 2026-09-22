@@ -12,7 +12,7 @@ import { type FixableBlockerItemKey, ITEM_REMEDIES } from './entry-blockers'
  * renders a button that does nothing at all - a refusal offering a dead remedy
  * is worse than one offering none.
  */
-const FIXABLE: readonly FixableBlockerItemKey[] = ['unposted_shipments', 'unposted_credit_memos']
+const FIXABLE: readonly FixableBlockerItemKey[] = ['unposted_shipments']
 
 describe('ITEM_REMEDIES', () => {
   it('gives every item exactly one remedy: a destination or a host control', () => {
@@ -41,6 +41,22 @@ describe('ITEM_REMEDIES', () => {
     expect(
       href?.({ key: 'unmapped_role', label: 'cogs_freight', remedy: '', ref: 'cogs_freight' })
     ).toBe('/app/accounting/settings/accounts?role=cogs_freight')
+  })
+
+  it('sends an export failure to the account it names on the Chart tab', () => {
+    // 🛑 `?s=chart` as well as `?account=`. The page keeps one selection param
+    // per tab, so an account id alone lands on Mapping and selects nothing.
+    for (const key of ['unmapped_account', 'invalid_mapping'] as const) {
+      expect(ITEM_REMEDIES[key].href?.({ key, label: 'COGS', remedy: '', ref: 'acct-1' })).toBe(
+        '/app/accounting/settings/accounts?s=chart&account=acct-1'
+      )
+    }
+  })
+
+  it('falls back to the chart with no account to seed', () => {
+    expect(
+      ITEM_REMEDIES.unmapped_account.href?.({ key: 'unmapped_account', label: 'x', remedy: '' })
+    ).toBe('/app/accounting/settings/accounts?s=chart')
   })
 
   it('falls back to the account map when a role arrives with no ref', () => {

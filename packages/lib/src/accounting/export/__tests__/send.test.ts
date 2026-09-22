@@ -13,7 +13,16 @@ vi.mock('../../providers/provider', async (importOriginal) => ({
   resolveAccountingProvider: (...a: unknown[]) => resolveAccountingProvider(...a),
 }))
 
+// 89 D8's check is `preflight.ts`'s own subject; here it is stubbed so only its
+// PLACE in the send is on trial - before the provider, after the lease.
+const readExportBatchBlockers = vi.fn()
+vi.mock('../preflight', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../preflight')>()),
+  readExportBatchBlockers: (...a: unknown[]) => readExportBatchBlockers(...a),
+}))
+
 import { err, ok } from 'neverthrow'
+import { ProviderPostError } from '../../ledger/types'
 import { MAX_AUTO_ATTEMPTS, sendExportBatch } from '../send'
 
 const ORG = 'org_1'
@@ -95,7 +104,10 @@ function provider(over: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  readExportBatchBlockers.mockResolvedValue(ok(new Map()))
+})
 
 describe('the lease', () => {
   it('takes it, sends, and records the provider object', async () => {
@@ -363,6 +375,45 @@ describe('the readback', () => {
   })
 })
 
+// 89 D8. The mapping table is ours, so a send it already refuses is not spent.
+describe('the preflight', () => {
+  it('fails a blocked batch as configuration, with the items, and never calls the provider', async () => {
+    const items = [
+      {
+        key: 'unmapped_account' as const,
+        ref: 'gl_b',
+        label: '5010 COGS - Direct Labor',
+        remedy: 'Pick its account under Accounting > Settings > Accounts > Chart of accounts.',
+      },
+    ]
+    const mock = provider()
+    resolveAccountingProvider.mockResolvedValue(mock)
+    readExportBatchBlockers.mockResolvedValue(ok(new Map([['batch_1', items]])))
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(mock.sendObject).not.toHaveBeenCalled()
+    expect(result._unsafeUnwrap().status).toBe('failed')
+    expect(result._unsafeUnwrap().error).toContain('5010 COGS - Direct Labor is not mapped')
+    expect(sets[1]).toMatchObject({
+      state: 'failed',
+      failureClass: 'configuration',
+      failureItems: items,
+      nextAttemptAt: null,
+    })
+  })
+
+  it('runs after the lease, so a batch somebody else holds is never preflighted', async () => {
+    resolveAccountingProvider.mockResolvedValue(provider())
+    const { db } = fakeDb(batch(), { leaseTaken: true })
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(readExportBatchBlockers).not.toHaveBeenCalled()
+  })
+})
+
 describe('failure and backoff', () => {
   it('records the provider refusal verbatim and schedules the next attempt', async () => {
     resolveAccountingProvider.mockResolvedValue(
@@ -441,6 +492,118 @@ describe('failure and backoff', () => {
       state: 'ready',
       attempts: 0,
       lastError: 'Waiting for invoice INV-1 to send',
+    })
+  })
+
+  // 89 D3/D4. The class and the items are what the Failed tab renders a remedy
+  // from, and the null `nextAttemptAt` is what keeps the sweep off a refusal
+  // three more attempts cannot change.
+  it('keeps the class and the items off a configuration refusal, and schedules nothing', async () => {
+    const items = [
+      {
+        key: 'unmapped_account' as const,
+        ref: 'gl_b',
+        label: '5010 COGS - Direct Labor',
+        remedy: 'Pick its QuickBooks account.',
+      },
+    ]
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        sendObject: vi.fn(async () =>
+          err(
+            new ProviderPostError('5010 COGS - Direct Labor is not mapped.', {
+              failureClass: 'configuration',
+              providerId: 'quickbooks',
+              items,
+            })
+          )
+        ),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap().status).toBe('failed')
+    expect(sets[1]).toMatchObject({
+      state: 'failed',
+      failureClass: 'configuration',
+      failureItems: items,
+      nextAttemptAt: null,
+    })
+  })
+
+  it('keeps the backoff on a transport refusal, which is the only class worth retrying', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        sendObject: vi.fn(async () =>
+          err(
+            new ProviderPostError('QuickBooks error 503', {
+              failureClass: 'transport',
+              providerId: 'quickbooks',
+            })
+          )
+        ),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(sets[1]).toMatchObject({ failureClass: 'transport', failureItems: [] })
+    expect(sets[1]?.nextAttemptAt).toBeInstanceOf(Date)
+  })
+
+  it('a thrown error has no class, so it keeps today behaviour and is retried', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        sendObject: vi.fn(async () => {
+          throw new Error('the adapter crashed')
+        }),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ error: 'the adapter crashed' })
+    expect(sets[1]).toMatchObject({ failureClass: null, failureItems: [] })
+    expect(sets[1]?.nextAttemptAt).toBeInstanceOf(Date)
+  })
+
+  it('the readback verdict is data, not transport - a second send would create a second object', async () => {
+    resolveAccountingProvider.mockResolvedValue(
+      provider({
+        readObject: vi.fn(async () =>
+          ok({
+            status: 'gone' as const,
+            externalId: null,
+            remoteVersion: null,
+            docNumber: null,
+            totalMinor: null,
+            payloadHash: null,
+          })
+        ),
+      })
+    )
+    const { db, sets } = fakeDb(batch())
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(sets[1]).toMatchObject({ failureClass: 'data', nextAttemptAt: null })
+  })
+
+  it('a send that lands clears the class and the items with the error', async () => {
+    resolveAccountingProvider.mockResolvedValue(provider())
+    const { db, sets } = fakeDb(batch({ state: 'failed', attempts: 1 }))
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(sets[1]).toMatchObject({
+      state: 'sent',
+      lastError: null,
+      failureClass: null,
+      failureItems: [],
     })
   })
 
