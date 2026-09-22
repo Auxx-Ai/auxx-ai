@@ -114,11 +114,11 @@ describe('processor activity rows', () => {
     expect(screen.getByText('charge')).toBeInTheDocument()
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
     expect(screen.getByText('Pending')).toBeInTheDocument()
-    expect(screen.getByText('No receipt yet')).toBeInTheDocument()
-    expect(screen.getByText('USD 97.00')).toBeInTheDocument()
+    expect(screen.queryByText('No receipt yet')).not.toBeInTheDocument()
+    expect(screen.getByText('$97.00')).toBeInTheDocument()
 
     // Everything the six-column table used to wrap starts closed.
-    expect(screen.queryByText('USD 100.00')).not.toBeInTheDocument()
+    expect(screen.queryByText('$100.00')).not.toBeInTheDocument()
     expect(screen.queryByText('txn-9')).not.toBeInTheDocument()
     expect(screen.queryByText(/has not synced/)).not.toBeInTheDocument()
   })
@@ -129,8 +129,8 @@ describe('processor activity rows', () => {
 
     expand()
 
-    expect(screen.getByText('USD 100.00')).toBeInTheDocument()
-    expect(screen.getByText('USD -3.00')).toBeInTheDocument()
+    expect(screen.getByText('$100.00')).toBeInTheDocument()
+    expect(screen.getByText('-$3.00')).toBeInTheDocument()
     expect(screen.getByText('txn-9')).toBeInTheDocument()
     expect(screen.getByText('order-9')).toBeInTheDocument()
     expect(screen.getByText(/The order or transaction has not synced/)).toBeInTheDocument()
@@ -152,10 +152,10 @@ describe('processor activity rows', () => {
     expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument()
   })
 
-  it('says nothing per row for no_rail beyond the code — the banner is feed-level', () => {
+  it('explains no_rail only in the expansion — the banner is feed-level', () => {
     state.entries = entry({ matchReason: 'no_rail' })
     renderWithTooltips(<ProcessorActivity transferId='transfer-1' />)
-    expect(screen.getByText('Feed has no gateway')).toBeInTheDocument()
+    expect(screen.queryByText(/not linked to a payment gateway/)).not.toBeInTheDocument()
     expand()
     expect(screen.getByText(/not linked to a payment gateway/)).toBeInTheDocument()
   })

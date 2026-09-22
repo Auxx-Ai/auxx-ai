@@ -24,14 +24,10 @@ import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { formatEvidenceAmount, formatEvidenceDate, formatEvidenceDay } from './evidence-format'
+import { formatMinor } from '../../ledger/format'
+import { formatEvidenceDate, formatEvidenceDay } from './evidence-format'
 import { MatchCandidateDialog } from './match-candidate-dialog'
-import {
-  MATCH_REASON_COPY,
-  MATCH_REASON_LABEL,
-  MATCH_STATE_LABEL,
-  MATCH_STATE_VARIANT,
-} from './match-reason-copy'
+import { MATCH_REASON_COPY, MATCH_STATE_LABEL, MATCH_STATE_VARIANT } from './match-reason-copy'
 import { type LinkedDocument, RecordChipLink } from './record-chip-link'
 
 /**
@@ -219,15 +215,14 @@ export function ProcessorActivity({
                         Out
                       </Badge>
                     )}
-                    <MatchBadges
+                    <MatchStateBadge
                       matchState={entry.isOutgoingTransfer ? null : entry.matchState}
-                      matchReason={entry.matchReason}
                     />
                   </span>
                 }
                 actions={
                   <span className='font-mono text-sm tabular-nums'>
-                    {formatEvidenceAmount(entry.netMinor, entry.currency, entry.currencyExponent)}
+                    {formatMinor(Number(entry.netMinor), entry.currency)}
                   </span>
                 }
                 rowClassName={WRAPPING_LABEL}
@@ -238,20 +233,12 @@ export function ProcessorActivity({
                   <dl className='flex flex-col gap-1.5'>
                     <DetailRow label='Gross'>
                       <span className='font-mono tabular-nums'>
-                        {formatEvidenceAmount(
-                          entry.grossMinor,
-                          entry.currency,
-                          entry.currencyExponent
-                        )}
+                        {formatMinor(Number(entry.grossMinor), entry.currency)}
                       </span>
                     </DetailRow>
                     <DetailRow label='Fee'>
                       <span className='font-mono tabular-nums'>
-                        {formatEvidenceAmount(
-                          entry.feeMinor,
-                          entry.currency,
-                          entry.currencyExponent
-                        )}
+                        {formatMinor(Number(entry.feeMinor), entry.currency)}
                       </span>
                     </DetailRow>
                     <DetailRow label='Source account'>
@@ -335,27 +322,14 @@ export function ProcessorActivity({
   )
 }
 
-/** The item's state, and the code that explains it — the §10.4 pair, never one without the other. */
-function MatchBadges({
-  matchState,
-  matchReason,
-}: {
-  matchState: MatchState | null
-  matchReason: MatchReason | null
-}) {
+/** The item's state; the reason code's sentence sits in the expansion. */
+function MatchStateBadge({ matchState }: { matchState: MatchState | null }) {
   // No state to report — the outgoing payout IS the payout, so it is not matched.
   if (!matchState) return null
   return (
-    <>
-      <Badge variant={MATCH_STATE_VARIANT[matchState]} size='sm'>
-        {MATCH_STATE_LABEL[matchState]}
-      </Badge>
-      {matchReason && (
-        <Badge variant='outline' size='sm'>
-          {MATCH_REASON_LABEL[matchReason]}
-        </Badge>
-      )}
-    </>
+    <Badge variant={MATCH_STATE_VARIANT[matchState]} size='sm'>
+      {MATCH_STATE_LABEL[matchState]}
+    </Badge>
   )
 }
 

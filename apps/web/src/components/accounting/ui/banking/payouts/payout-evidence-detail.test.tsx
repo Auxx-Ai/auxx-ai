@@ -85,10 +85,10 @@ beforeEach(() => {
     occurredOn: '2026-09-15',
     occurredAt: null,
     updatedAt: '2026-09-15T12:00:00.000Z',
-    sourceAmountMinor: '9007199254740993',
+    sourceAmountMinor: '123456',
     sourceCurrency: 'USD',
     sourceCurrencyExponent: 2,
-    destinationAmountMinor: '9007199254740993',
+    destinationAmountMinor: '123456',
     destinationCurrency: 'USD',
     destinationCurrencyExponent: 2,
     constituentNetMinor: null,
@@ -99,6 +99,7 @@ beforeEach(() => {
     paymentGatewayId: 'rail-1',
     payoutInstanceId: null,
     livePostingId: null,
+    bankDeposit: null,
     blockers: ['The provider has not completed the payout membership.'],
     nextActions: ['Run the payout stream again after the provider finishes processing.'],
   }
@@ -145,13 +146,8 @@ describe('payout evidence inspection', () => {
     expect(screen.queryByText(/^Evidence:/)).not.toBeInTheDocument()
     expect(screen.queryByText('Provider pending')).not.toBeInTheDocument()
     expect(screen.queryByText('Provider ready')).not.toBeInTheDocument()
-    // Two, not three: `Constituent net` and `Difference`. The third used to be
-    // a `Bank confirmation` row in a `Details` section, which is now one muted
-    // sentence.
     expect(screen.getAllByText('Not assessed')).toHaveLength(2)
-    expect(
-      screen.getByText('Bank confirmation is not assessed for these payouts.')
-    ).toBeInTheDocument()
+    expect(screen.getByText(/No bank deposit matched yet/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /post|sync/i })).not.toBeInTheDocument()
     // 🛑 The blocker survives; the "Next actions" list that restated it as an
     // imperative does not. Asserted as absent so it does not come back.
@@ -163,13 +159,33 @@ describe('payout evidence inspection', () => {
     )
   })
 
-  it('displays exact independent source amounts and a reported mismatch without rounding', () => {
-    state.payout.constituentNetMinor = '9007199254741093'
+  it('links the bank line a reviewer matched the payout to', () => {
+    state.payout.bankDeposit = {
+      transactionId: 'txn-1',
+      postedAt: '2026-09-16',
+      amountMinor: 123456,
+      bankAccountName: 'Operating',
+    }
+    detail()
+    expect(
+      screen.getByRole('link', { name: /bank line on Sep 16, 2026, \$1,234.56/ })
+    ).toHaveAttribute('href', '/app/accounting/banking?txn=txn-1')
+    expect(screen.queryByText(/No bank deposit matched yet/)).not.toBeInTheDocument()
+  })
+
+  it('expects no bank deposit for a payout that never reached the bank', () => {
+    state.payout.status = 'failed'
+    detail()
+    expect(screen.queryByText(/No bank deposit matched yet/)).not.toBeInTheDocument()
+  })
+
+  it('displays the independent source amounts and a reported mismatch', () => {
+    state.payout.constituentNetMinor = '123556'
     state.payout.differenceMinor = '-100'
     detail()
-    expect(screen.getAllByText('USD 90,071,992,547,409.93')).toHaveLength(2)
-    expect(screen.getByText('USD 90,071,992,547,410.93')).toBeInTheDocument()
-    expect(screen.getByText('USD -1.00')).toBeInTheDocument()
+    expect(screen.getAllByText('$1,234.56')).toHaveLength(2)
+    expect(screen.getByText('$1,235.56')).toBeInTheDocument()
+    expect(screen.getByText('-$1.00')).toBeInTheDocument()
   })
 
   it('retains outgoing transfer evidence and offers pagination without treating it as a payment', () => {

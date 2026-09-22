@@ -1,8 +1,6 @@
 // apps/web/src/components/accounting/ui/banking/payouts/match-reason-copy.ts
 
-// The §10.4 table as copy: one sentence and one next action per reason code.
-// Shared by the drawer's item rows and the payouts list's dominant-code badge,
-// so the worklist and the row cannot describe the same item differently.
+// The §10.4 table as copy: one sentence and one next action per reason code, for the drawer's item rows.
 
 import type { MatchReason, MatchState } from '@auxx/lib/accounting/money/payouts/client'
 import type { Variant } from '@auxx/ui/components/badge'
@@ -24,17 +22,6 @@ export const MATCH_STATE_VARIANT: Record<MatchState, Variant> = {
   suggested: 'amber',
   matched: 'green',
   unmatchable: 'secondary',
-}
-
-/** The badge word beside the state — short enough for a 380px drawer row. */
-export const MATCH_REASON_LABEL: Record<MatchReason, string> = {
-  no_receipt: 'No receipt yet',
-  no_rail: 'Feed has no gateway',
-  no_reference: 'No reference',
-  ambiguous: 'Ambiguous',
-  amount_differs: 'Amount differs',
-  rail_differs: 'Gateway differs',
-  manual: 'Matched by hand',
 }
 
 /** What happened, in the fixed words §10.4 assigns the code. */

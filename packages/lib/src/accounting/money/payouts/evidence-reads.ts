@@ -388,22 +388,27 @@ export async function listPayoutSourceAccounts(
  * The `payout` RECORD this transfer raised, by the pair `findPayoutByGatewayId`
  * keys on — the id the posting's subject row names since §11.5.
  *
- * One select for the instance id alone; the hydrated record `findPayoutByGatewayId`
- * returns is more than the ledger card's `sourceId` needs.
+ * One select for the instance id and the bank line that confirmed it; the hydrated
+ * record `findPayoutByGatewayId` returns is more than the drawer needs.
  */
-async function payoutInstanceId(
+async function payoutInstance(
   db: Database,
   organizationId: string,
   gatewayPayoutId: string,
   paymentGatewayId: string | null
-): Promise<string | null> {
+): Promise<{ id: string; bankTransactionId: string | null } | null> {
   const ctx = await loadPayoutFieldContext(db, organizationId)
   if (!ctx?.fields.payout_gateway_id) return null
   const value = alias(schema.FieldValue, 'payout_gateway_id_v')
   const rail = alias(schema.FieldValue, 'payout_payment_gateway_v')
+  const bankLine = alias(schema.FieldValue, 'payout_bank_transaction_id_v')
   const railField = ctx.fields.payout_payment_gateway
+  const bankLineField = ctx.fields.payout_bank_transaction_id
   let query = db
-    .select({ id: schema.EntityInstance.id })
+    .select({
+      id: schema.EntityInstance.id,
+      bankTransactionId: bankLineField ? bankLine.valueText : sql<string | null>`NULL`,
+    })
     .from(schema.EntityInstance)
     .innerJoin(
       value,
@@ -413,6 +418,7 @@ async function payoutInstanceId(
       )
     )
     .$dynamic()
+  if (bankLineField) query = query.leftJoin(bankLine, systemValueJoin(bankLine, bankLineField.id))
   // An unstamped row still matches, the same adoption `findPayoutByGatewayId` documents.
   if (paymentGatewayId !== null && railField !== null) {
     query = query
@@ -429,7 +435,7 @@ async function payoutInstanceId(
       )
     )
     .limit(1)
-  return found?.id ?? null
+  return found ? { id: found.id, bankTransactionId: found.bankTransactionId || null } : null
 }
 
 /** The payout posting that currently stands for this record — `null` once it is reversed. */
@@ -482,18 +488,21 @@ export async function getPayoutEvidence(
     .limit(1)
   if (!row) return null
   const matching = await openMatchSummaries(db, input.organizationId, [row.transfer])
-  const instanceId = await payoutInstanceId(
+  const instance = await payoutInstance(
     db,
     input.organizationId,
     row.transfer.externalId,
     row.account.paymentGatewayId
   )
+  const instanceId = instance?.id ?? null
   return {
     ...transferDto(row.transfer, row.account, row.snapshot, matching.get(row.transfer.id)),
     /** The `payout` record the ledger card is keyed on (§11.5). Null until the sync raises one. */
     payoutInstanceId: instanceId,
     /** Set while a non-reversed posting names that record — what freezes a matched item (§9.1). */
     livePostingId: instanceId ? await livePostingId(db, input.organizationId, instanceId) : null,
+    /** The bank line a reviewer matched this payout to in Banking review, or null. */
+    bankTransactionId: instance?.bankTransactionId ?? null,
   }
 }
 
