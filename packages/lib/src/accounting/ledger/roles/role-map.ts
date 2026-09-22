@@ -32,7 +32,7 @@
  *
  * The chart is read through the `chartAccounts` org-cache key, invalidated by
  * `chart-account.changed` from the four `chart-write.ts` writers
- * (plans/accounting/tasks/84-the-chart-in-the-org-cache.md).
+ * (plans/accounting/tasks/done/84-the-chart-in-the-org-cache.md).
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */

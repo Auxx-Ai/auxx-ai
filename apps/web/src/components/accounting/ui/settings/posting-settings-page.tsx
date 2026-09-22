@@ -29,7 +29,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@auxx/ui/components/collapsible'
-import { ChevronDown, CircleHelp, ExternalLink, Lock } from 'lucide-react'
+import { ChevronDown, CircleHelp, ExternalLink, Lock, Send } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
 import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
@@ -44,15 +44,12 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
 import { readText } from './accounting-settings-keys'
-import { ExportAvenueRow } from './export-avenue-row'
+import { ExportAvenuesTable } from './export-avenues-table'
 import { PostingGuideDialog } from './posting-guide-dialog'
 import {
-  autoPostKeyForAvenue,
   autoPostKeyForPolicy,
-  autoSendKeyForAvenue,
   EXPORT_ROW_DRAFT_KEYS,
   EXTERNAL_SETTING_HOMES,
-  exportAvenueForPolicy,
   NEVER_POLICIES,
   POSTING_PAGE_INPUT_KEYS,
   POSTING_PAGE_POLICIES,
@@ -60,7 +57,6 @@ import {
   postingSectionAnchor,
   settingRowTitle,
   splitPostingColumns,
-  summaryGrainKeyForAvenue,
   TRIGGER_KIND_ICON,
   triggerSentence,
 } from './posting-page-model'
@@ -98,9 +94,7 @@ export function AccountingPostingSettingsPage() {
 
   // One draft over every input key on the page. Nothing here validates, so one
   // slice and one save bar; the sections differ only in which keys they show.
-  // `EXPORT_ROW_DRAFT_KEYS` rides along - `autoSend`/`summaryGrain` are keyed
-  // on the AVENUE (posting-page-model.ts), so they are not on any policy's own
-  // `settings` list the way `POSTING_PAGE_INPUT_KEYS` is built.
+  // `EXPORT_ROW_DRAFT_KEYS` rides along: the export table's keys are per avenue, not on any policy.
   const draft = useAccountingSetupDraft([...POSTING_PAGE_INPUT_KEYS, ...EXPORT_ROW_DRAFT_KEYS])
 
   const latest = api.ledger.latestPostingsByType.useQuery(undefined, {
@@ -148,19 +142,12 @@ export function AccountingPostingSettingsPage() {
 
   function renderPolicy(policy: PostingPolicy) {
     const Icon = TRIGGER_KIND_ICON[policy.trigger.kind]
-    // The avenue whose export row belongs on THIS section (posting-page-model.ts)
-    // - `null` for a policy sharing its avenue with another, already-chosen one.
-    const avenue = exportAvenueForPolicy(policy)
-    const avenueAutoPostKey = avenue ? autoPostKeyForAvenue(avenue) : null
-    // The avenue's own `autoPost` row moves INTO the export row below, so it is
-    // dropped from the generic loop rather than shown twice - and dropped on
-    // every policy sharing that avenue, not just the one carrying the row.
+    // The avenue's `autoPost` switch lives in the export table, not in this section.
     const ownAutoPostKey = autoPostKeyForPolicy(policy)
     const inputKeys = policy.settings.filter(
       (key) => !(key in EXTERNAL_SETTING_HOMES) && key !== ownAutoPostKey
     )
     const externalKeys = policy.settings.filter((key) => key in EXTERNAL_SETTING_HOMES)
-    const summaryGrainKey = avenue ? summaryGrainKeyForAvenue(avenue) : null
 
     return (
       <div key={policy.type} id={postingSectionAnchor(policy.type)}>
@@ -180,36 +167,12 @@ export function AccountingPostingSettingsPage() {
           }
           description={policy.sentence}
           action={<GuideButton label={policy.label} onClick={() => setGuidePage(policy.type)} />}>
-          {(inputKeys.length > 0 || avenue) && (
+          {inputKeys.length > 0 && (
             <FieldPanel
               className='mt-1 p-0'
               resizeId={`accounting-posting-${policy.type}`}
               defaultLabelWidth={220}>
               {inputKeys.map((key) => renderSettingRow(policy, key))}
-              {avenue && (
-                <ExportAvenueRow
-                  autoPost={
-                    avenueAutoPostKey
-                      ? {
-                          checked: !!draft.draft[avenueAutoPostKey],
-                          onChange: (checked) => draft.patch({ [avenueAutoPostKey]: checked }),
-                        }
-                      : undefined
-                  }
-                  autoSend={{
-                    checked: !!draft.draft[autoSendKeyForAvenue(avenue)],
-                    onChange: (checked) => draft.patch({ [autoSendKeyForAvenue(avenue)]: checked }),
-                  }}
-                  summaryGrain={
-                    summaryGrainKey
-                      ? {
-                          value: (draft.draft[summaryGrainKey] as 'day' | 'month') ?? 'day',
-                          onChange: (value) => draft.patch({ [summaryGrainKey]: value }),
-                        }
-                      : undefined
-                  }
-                />
-              )}
             </FieldPanel>
           )}
 
@@ -246,6 +209,13 @@ export function AccountingPostingSettingsPage() {
           </Link>
           .
         </p>
+
+        <SettingsSection
+          icon={Send}
+          title='Export'
+          description='Whether each export drafts or posts, sends on its own, and how finely it summarises.'>
+          <ExportAvenuesTable draft={draft.draft} patch={draft.patch} />
+        </SettingsSection>
 
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>{columns.left.map(renderPolicy)}</div>
