@@ -4,7 +4,9 @@
 // whole money + inventory flow can be driven again from scratch: the ledger,
 // every accounting document, the money model and its source evidence, orders,
 // builds, movements, purchasing, the sales pipeline, record numbering, connector
-// bindings, and the QuickBooks map plus every QuickBooks id held on kept records.
+// bindings, the QuickBooks map plus every QuickBooks id held on kept records, and
+// the accounting configuration: the chart, its role map, bank accounts, bank rules
+// and payment gateways (`--keep-config` keeps those).
 //
 //   npx dotenv -- node --conditions=source --import tsx/esm \
 //     packages/lib/scripts/reset-org-books.ts DemoOrg1
@@ -17,10 +19,10 @@
 // ── What this KEEPS, and why that is the whole point ────────────────────────
 //
 // Parts, subparts, vendor parts, tariff codes and rates, the catalog, products,
-// contacts, companies, tickets, inboxes, the chart of accounts and its
-// `GlRoleAssignment` rows, bank accounts, bank rules and `FinancialSourceAccount`
-// (the store scope). The reset is about the transactions, not the master data
-// the transactions refer to.
+// contacts, companies, tickets, inboxes, `FinancialSourceAccount` (the store
+// scope, with its gateway link cleared) and the QuickBooks OAuth credential.
+// Nothing accounting-configuration-shaped survives: the wizard re-creates the
+// chart and the default gateway, and the bank feeds re-create the bank accounts.
 //
 // The money model and the source-evidence lane go WITH the documents: evidence is
 // keyed on the connector's external ids, so a surviving observation makes the
@@ -63,6 +65,12 @@
 //    DELETE **SET NULL**, not cascade. Left alone, the binding survives the
 //    record with a NULL instance and its `contentHash` still matches, so the
 //    next sync counts the record `skipped` and re-creates nothing.
+// 5. **The configuration after the waves, the chart last.** `GlRoleAssignment` and
+//    `FinancialSourceAccount.paymentGatewayId` are NO ACTION FKs into the gateway
+//    instance; the QuickBooks map is a cell on the `gl_account` row, cleared first
+//    so its `RecordIdentity` mirror goes with it; the chart's TEXT pointers are
+//    cleared and then proven gone by `findGlAccountPointers`, as `reset-accounting.ts
+//    --chart` does.
 //
 // ── This deliberately bypasses every pre-delete guard ───────────────────────
 //
@@ -86,6 +94,10 @@ import { inspect } from 'node:util'
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { listChartAccounts } from '../src/accounting/ledger'
+import {
+  findGlAccountPointers,
+  GL_ACCOUNT_POINTER_ATTRIBUTES,
+} from '../src/accounting/ledger/chart/gl-account-pointers'
 import { setLockedThrough } from '../src/accounting/ledger/periods/set-locked-through'
 import {
   clearQuickbooksAccountMapping,
@@ -104,6 +116,7 @@ const CONFIRM = args.includes('--confirm')
 const FORCE = args.includes('--force')
 const KEEP_CONNECTOR_ITEMS = args.includes('--keep-connector-items')
 const KEEP_QUICKBOOKS = args.includes('--keep-quickbooks')
+const KEEP_CONFIG = args.includes('--keep-config')
 
 if (!ORG_ARG) {
   console.error(
@@ -115,6 +128,7 @@ if (!ORG_ARG) {
       '                            instance and its contentHash still matches, so the\n' +
       '                            record is counted skipped and never re-created.\n' +
       '    --keep-quickbooks       do not clear the QuickBooks account map or held ids.\n' +
+      '    --keep-config           keep the chart, role map, bank accounts, bank rules, gateways.\n' +
       '    --force                 past the providerEntryId and part-SKU guards.\n' +
       '    --confirm               actually write. Without it this is a dry run.\n'
   )
@@ -164,6 +178,12 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
 
 /** Every type this script removes, flattened — used for counts and numbering. */
 const CLEARED_TYPES = DELETE_WAVES.flat()
+
+/**
+ * The accounting configuration, in delete order: rules name a bank account by TEXT,
+ * and the chart goes last because every one of the others names an account.
+ */
+const CONFIG_TYPES = ['payment_gateway', 'bank_rule', 'bank_account', 'gl_account'] as const
 
 /** A 121k-id `inArray` overflows the SQL builder's stack; chunk any whole-org id list. */
 function* chunked<T>(items: readonly T[], size = 5000): Generator<T[]> {
@@ -379,8 +399,11 @@ function qboPlaceholderFilter(organizationId: string) {
   )
 }
 
-/** Instance ids per entity type, for the types this script clears. */
-async function readInstanceIds(organizationId: string): Promise<Map<string, string[]>> {
+/** Instance ids per entity type, for `types`. */
+async function readInstanceIds(
+  organizationId: string,
+  types: readonly string[]
+): Promise<Map<string, string[]>> {
   const rows = await db
     .select({
       id: schema.EntityInstance.id,
@@ -394,7 +417,7 @@ async function readInstanceIds(organizationId: string): Promise<Map<string, stri
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityDefinition.entityType, [...CLEARED_TYPES])
+        inArray(schema.EntityDefinition.entityType, [...types])
       )
     )
 
@@ -493,6 +516,79 @@ async function assertPartsCanRematch(organizationId: string): Promise<number> {
   return bound.length
 }
 
+/** `deleteEntityInstances`, exiting with the Postgres error when it fails. */
+async function deleteInstancesOrExit(
+  organizationId: string,
+  ids: string[],
+  what: string
+): Promise<number> {
+  const result = await deleteEntityInstances({ ids, organizationId })
+  if (result.isOk()) return result.value.count
+  // The Postgres message sits at the bottom of the cause chain; the middle is the query text.
+  let root: { cause?: unknown } = result.error
+  while (root.cause && typeof root.cause === 'object') root = root.cause as { cause?: unknown }
+  const { message, code, detail, constraint, table } = root as Record<string, unknown>
+  console.error(`\n🛑 ${what}: ${result.error.message}`)
+  console.error(inspect({ message, code, detail, constraint, table }, { breakLength: 120 }))
+  process.exit(1)
+}
+
+/**
+ * The chart, its role map, bank accounts, bank rules and gateways, pointers first.
+ *
+ * Runs after the record waves, so the documents that name an account are gone and the
+ * pointer sweep only has kept records left to clear.
+ */
+async function deleteConfiguration(
+  organizationId: string,
+  idsByType: ReadonlyMap<string, string[]>,
+  pointerFieldIds: readonly string[]
+): Promise<void> {
+  // NO ACTION FK into the gateway instance (rail rows), and TEXT ids into the chart.
+  await db
+    .delete(schema.GlRoleAssignment)
+    .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
+  // NO ACTION FK into the gateway instance; the feed itself is the store scope and stays.
+  await db
+    .update(schema.FinancialSourceAccount)
+    .set({ paymentGatewayId: null })
+    .where(
+      and(
+        eq(schema.FinancialSourceAccount.organizationId, organizationId),
+        isNotNull(schema.FinancialSourceAccount.paymentGatewayId)
+      )
+    )
+
+  for (const type of CONFIG_TYPES) {
+    const ids = idsByType.get(type) ?? []
+    if (type === 'gl_account') {
+      if (pointerFieldIds.length > 0) {
+        await db
+          .delete(schema.FieldValue)
+          .where(
+            and(
+              eq(schema.FieldValue.organizationId, organizationId),
+              inArray(schema.FieldValue.fieldId, [...pointerFieldIds])
+            )
+          )
+      }
+      const remaining = await findGlAccountPointers(db, organizationId, ids)
+      if (remaining.length > 0) {
+        console.error(
+          `\n🛑 STOPPING before the chart wipe. ${remaining.length} record(s) still point at an\n` +
+            '   account through a field this script does not clear. Add the attribute to\n' +
+            '   GL_ACCOUNT_POINTER_ATTRIBUTES and re-run; wiping now would leave a dangling id.\n'
+        )
+        for (const p of remaining) console.error(`   ${p.label} (${p.attribute})`)
+        process.exit(1)
+      }
+    }
+    for (const chunk of chunked(ids)) {
+      await deleteInstancesOrExit(organizationId, chunk, `configuration delete failed on ${type}`)
+    }
+  }
+}
+
 async function main() {
   const org = await resolveOrg()
 
@@ -501,10 +597,13 @@ async function main() {
   console.log(
     `scope        ledger + documents + orders + builds + movements + purchasing +\n` +
       `             pipeline + numbering${KEEP_CONNECTOR_ITEMS ? '' : ' + connector bindings'}` +
-      `${KEEP_QUICKBOOKS ? '' : ' + QuickBooks map'}`
+      `${KEEP_QUICKBOOKS ? '' : ' + QuickBooks map'}` +
+      `${KEEP_CONFIG ? '' : ' +\n             chart + role map + bank accounts + bank rules + gateways'}`
   )
-  console.log('keeps        parts, contacts, companies, tickets, the chart of accounts,')
-  console.log('             bank accounts and bank rules\n')
+  console.log('keeps        parts, products, catalog, contacts, companies, tickets, inboxes,')
+  console.log(
+    `             FinancialSourceAccount, the QuickBooks credential${KEEP_CONFIG ? ', the configuration' : ''}\n`
+  )
 
   // ── 1. The ledger ─────────────────────────────────────────────────────────
 
@@ -603,7 +702,7 @@ async function main() {
 
   heading('3. Records, deepest wave first')
 
-  const idsByType = await readInstanceIds(org.id)
+  const idsByType = await readInstanceIds(org.id, CLEARED_TYPES)
   let instanceTotal = 0
   for (const [index, wave] of DELETE_WAVES.entries()) {
     const parts: string[] = []
@@ -793,9 +892,84 @@ async function main() {
     }
   }
 
-  // ── 7. Numbering and settings ─────────────────────────────────────────────
+  // ── 7. The accounting configuration ───────────────────────────────────────
 
-  heading('7. Record numbering and settings')
+  heading('7. Accounting configuration (chart last)')
+
+  const configIds = new Map<string, string[]>()
+  let roleAssignments = 0
+  let linkedFeeds = 0
+  let pointerFieldIds: string[] = []
+  let pointerRows = 0
+
+  if (KEEP_CONFIG) {
+    console.log('--keep-config: skipped.')
+  } else {
+    for (const [type, ids] of await readInstanceIds(org.id, CONFIG_TYPES)) {
+      configIds.set(type, ids)
+    }
+    const [roles] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.GlRoleAssignment)
+      .where(eq(schema.GlRoleAssignment.organizationId, org.id))
+    roleAssignments = roles?.n ?? 0
+
+    const [feeds] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.FinancialSourceAccount)
+      .where(
+        and(
+          eq(schema.FinancialSourceAccount.organizationId, org.id),
+          isNotNull(schema.FinancialSourceAccount.paymentGatewayId)
+        )
+      )
+    linkedFeeds = feeds?.n ?? 0
+
+    const pointerFields = await db
+      .select({ id: schema.CustomField.id })
+      .from(schema.CustomField)
+      .where(
+        and(
+          eq(schema.CustomField.organizationId, org.id),
+          inArray(schema.CustomField.systemAttribute, Object.keys(GL_ACCOUNT_POINTER_ATTRIBUTES))
+        )
+      )
+    pointerFieldIds = pointerFields.map((f) => f.id)
+    if (pointerFieldIds.length > 0) {
+      const [row] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, org.id),
+            inArray(schema.FieldValue.fieldId, pointerFieldIds)
+          )
+        )
+      pointerRows = row?.n ?? 0
+    }
+
+    console.log(`  GlRoleAssignment               ${String(roleAssignments).padStart(5)}`)
+    console.log(
+      `  FinancialSourceAccount links   ${String(linkedFeeds).padStart(5)}  (gateway -> null, row kept)`
+    )
+    for (const type of CONFIG_TYPES) {
+      const n = configIds.get(type)?.length ?? 0
+      console.log(`  ${type.padEnd(30)} ${String(n).padStart(5)}`)
+    }
+    console.log(
+      `  gl_account pointers (TEXT)     ${String(pointerRows).padStart(5)}  (incl. on records above)`
+    )
+    if (KEEP_QUICKBOOKS && (configIds.get('gl_account')?.length ?? 0) > 0) {
+      console.log(
+        '  ⚠️ --keep-quickbooks: the account map lives on the chart rows and goes with them'
+      )
+    }
+  }
+  const configTotal = [...configIds.values()].reduce((a, ids) => a + ids.length, 0)
+
+  // ── 8. Numbering and settings ─────────────────────────────────────────────
+
+  heading('8. Record numbering and settings')
 
   const sequences = await db
     .select({
@@ -823,9 +997,9 @@ async function main() {
     return
   }
 
-  // ── 8. Do it ──────────────────────────────────────────────────────────────
+  // ── 9. Do it ──────────────────────────────────────────────────────────────
 
-  heading('8. Writing')
+  heading('9. Writing')
 
   // Batches first: `ExportBatchPosting`'s FK to the posting is ON DELETE NO ACTION.
   await db
@@ -877,18 +1051,7 @@ async function main() {
     for (const type of wave) {
       const ids = idsByType.get(type) ?? []
       if (ids.length === 0) continue
-      const result = await deleteEntityInstances({ ids, organizationId: org.id })
-      if (result.isErr()) {
-        // The Postgres message sits at the bottom of the cause chain; the middle is the query text.
-        let root: { cause?: unknown } = result.error
-        while (root.cause && typeof root.cause === 'object')
-          root = root.cause as { cause?: unknown }
-        const { message, code, detail, constraint, table } = root as Record<string, unknown>
-        console.error(`\n🛑 wave ${index + 1} failed on ${type}: ${result.error.message}`)
-        console.error(inspect({ message, code, detail, constraint, table }, { breakLength: 120 }))
-        process.exit(1)
-      }
-      waveCount += result.value.count
+      waveCount += await deleteInstancesOrExit(org.id, ids, `wave ${index + 1} failed on ${type}`)
     }
     console.log(`wave ${index + 1}: deleted ${waveCount} record(s)`)
   }
@@ -939,6 +1102,8 @@ async function main() {
   }
   console.log('quantity on hand zeroed, stock status set to out_of_stock')
 
+  // BEFORE the chart wipe: the map is a cell on the `gl_account` row mirrored into
+  // `RecordIdentity`, and the cascade would otherwise make every call a no-op.
   if (connection) {
     for (const m of mappings) {
       await clearQuickbooksAccountMapping({
@@ -989,6 +1154,15 @@ async function main() {
     )
   }
 
+  if (!KEEP_CONFIG) {
+    await deleteConfiguration(org.id, configIds, pointerFieldIds)
+    console.log(
+      `deleted ${roleAssignments} role assignment(s), ${configTotal} configuration record(s) ` +
+        `(${CONFIG_TYPES.map((t) => `${t} ${configIds.get(t)?.length ?? 0}`).join(', ')}); ` +
+        `unlinked ${linkedFeeds} feed(s)`
+    )
+  }
+
   await db
     .update(schema.RecordSequence)
     .set({ currentNumber: 0, updatedAt: new Date() })
@@ -1019,15 +1193,27 @@ async function main() {
       `  ${postings.length} ledger posting(s), ${instanceTotal} record(s), ` +
       `${moneyTotal} money/evidence row(s), ${connectorItems} connector binding(s)\n` +
       `  ${mappings.length} account mapping(s), ${sequences.length} counter(s), ` +
-      `${SETTING_RESETS.length} setting(s)\n\n` +
+      `${SETTING_RESETS.length} setting(s)\n` +
+      (KEEP_CONFIG
+        ? '  configuration kept (--keep-config)\n\n'
+        : `  ${configTotal} configuration record(s), ${roleAssignments} role assignment(s)\n\n`) +
       'Next:\n' +
       '  1. Run the accounting setup wizard again — it reruns from page 1 and the\n' +
-      '     opening baseline is editable. The account map is empty, so the first Post\n' +
-      '     refuses until the accounts are re-mapped. That refusal is the mapping step\n' +
-      '     working.\n' +
+      '     opening baseline is editable.' +
+      (KEEP_CONFIG
+        ? '\n'
+        : ' The chart is empty: provision it from the pack\n' +
+          '     picker (card_rail re-seeds the Shopify Payments gateway) or import it from\n' +
+          '     QuickBooks, then add the other rails on the rails page once orders re-sync.\n') +
+      '     The account map is empty, so the first Post refuses until the accounts are\n' +
+      '     re-mapped. That refusal is the mapping step working.\n' +
       '  2. Sync the connectors. Every stream is back to backfill phase with no\n' +
       '     watermark, so history is re-crawled: parts and contacts re-match, orders\n' +
-      '     re-mint from ORD-0001.\n' +
+      '     re-mint from ORD-0001.' +
+      (KEEP_CONFIG
+        ? '\n'
+        : ' Bank feeds re-create their bank accounts; link each\n' +
+          '     to its GL account and re-link the store feeds to their rails.\n') +
       '  3. Turn inventory.autoBuildFromOrders back on if the retest needs it. It\n' +
       '     re-stamps its cutoff at that moment, so orders synced BEFORE you flip it\n' +
       '     will not auto-build.\n'
