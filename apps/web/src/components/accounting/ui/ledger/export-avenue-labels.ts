@@ -8,13 +8,16 @@ import type { ExportAvenue } from '@auxx/lib/accounting/ledger/client'
 
 export const EXPORT_AVENUE_LABEL: Record<ExportAvenue, string> = {
   fulfillment: 'Fulfillment',
+  invoice: 'Invoice',
   receipt: 'Customer receipt',
   refund: 'Refund',
   creditMemo: 'Credit memo',
-  invoice: 'Invoice',
   expenseBill: 'Expense bill',
+  vendorPayment: 'Vendor payment',
+  vendorCredit: 'Vendor credit',
   payout: 'Payout',
   bankDeposit: 'Bank deposit',
+  inventory: 'Inventory',
   journal: 'Journal entry',
 }
 

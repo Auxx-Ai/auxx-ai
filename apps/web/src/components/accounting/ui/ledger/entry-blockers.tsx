@@ -148,6 +148,13 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
   // closing on top of it puts revenue permanently outside a month somebody has
   // certified, because the entry it owes can no longer be written into a locked
   // period. It is work to do, and the box has to say so.
+  nothing_to_recognise: {
+    tone: 'neutral',
+    icon: CircleSlash,
+    title: 'Nothing to post',
+    guidance:
+      'This document recognises nothing - a shipment of only free lines, for instance - so there is no entry to build. The document is recorded; the books are not short.',
+  },
   revenue_incomplete: {
     tone: 'failure',
     icon: PackagePlus,

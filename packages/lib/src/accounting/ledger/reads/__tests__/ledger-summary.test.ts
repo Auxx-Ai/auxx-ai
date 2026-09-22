@@ -9,6 +9,8 @@
 
 import type { Database } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
+import { avenueOfPostingType } from '../../setup/export-settings'
+import type { PostingType } from '../../types'
 import { readLedgerSummary } from '../ledger-summary'
 
 /** Walk a Drizzle condition tree and collect the literal values it binds. */
@@ -65,13 +67,15 @@ function posting(overrides: {
   currency?: string
   totalMinor: number
 }) {
-  return {
+  const row = {
     postingType: 'fulfillment',
     storeId: 'store_1',
     railId: null,
     currency: 'USD',
     ...overrides,
   }
+  // The read groups on the stored column, which the poster derives the same way.
+  return { ...row, avenue: avenueOfPostingType(row.postingType as PostingType) }
 }
 
 function line(
@@ -86,11 +90,14 @@ function line(
 
 const DAY_GRAIN = {
   fulfillment: 'day' as const,
+  invoice: 'day' as const,
   receipt: 'day' as const,
   refund: 'day' as const,
   creditMemo: 'day' as const,
-  invoice: 'day' as const,
   expenseBill: 'day' as const,
+  vendorPayment: 'day' as const,
+  vendorCredit: 'day' as const,
+  inventory: 'day' as const,
 }
 
 describe('readLedgerSummary', () => {
@@ -286,12 +293,9 @@ describe('readLedgerSummary', () => {
     expect(rows[0]!.postingIds).toEqual(['p1'])
   })
 
-  it('filters to one avenue when asked', async () => {
-    const { db } = fakeDb([
-      [
-        posting({ id: 'p1', postingType: 'fulfillment', txnDate: '2026-09-10', totalMinor: 1000 }),
-        posting({ id: 'p2', postingType: 'payout', txnDate: '2026-09-10', totalMinor: 500 }),
-      ],
+  it('filters to one avenue when asked, in the query', async () => {
+    const { db, wheres } = fakeDb([
+      [posting({ id: 'p1', postingType: 'fulfillment', txnDate: '2026-09-10', totalMinor: 1000 })],
       [line('p1', 'acct_a', 'debit', 1000)],
     ])
 
@@ -303,6 +307,7 @@ describe('readLedgerSummary', () => {
       grainByAvenue: DAY_GRAIN,
     })
 
+    expect(boundValues(wheres[0])).toContain('fulfillment')
     const rows = result._unsafeUnwrap()
     expect(rows).toHaveLength(1)
     expect(rows[0]!.avenue).toBe('fulfillment')

@@ -3,10 +3,13 @@
 export { readBookTimeZone, readBookTimeZoneOrUtc, todayInBookTimeZone } from './book-time-zone'
 // TARGET §3: the export batch's settings, beside `autoPost`.
 export {
+  AUTO_POST_AVENUES,
+  type AutoPostAvenue,
   avenueOfPostingType,
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  isSummaryGrainAvenue,
   SUMMARY_GRAIN_AVENUES,
   type SummaryGrain,
   type SummaryGrainAvenue,

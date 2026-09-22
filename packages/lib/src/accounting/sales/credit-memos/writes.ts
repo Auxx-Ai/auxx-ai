@@ -25,12 +25,13 @@ import {
 } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
+import { readOrganizationSettings } from '../../../settings/read'
 import type { BuiltCreditMemoEntry } from '../../ledger/builders/credit-memo'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { isExpectedPostOutcome } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
-import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
+import { readBookTimeZoneOrUtc, todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { roundCents } from '../totals/totals'
 import { recomputeTotals } from '../totals/totals-hooks'
@@ -42,6 +43,7 @@ import {
 } from './accounting'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
 import { runCreditCommand } from './command'
+import { readChannelMemoReadiness } from './readiness'
 import {
   type CreditMemoLineRecord,
   type CreditMemoRecord,
@@ -552,6 +554,27 @@ export async function issueCreditMemo(
 
   let post: PostResult
   if (accountingEnabled) {
+    // 88 D2: the memo is where order matters. Issuing before the order's
+    // earlier receipts and shipments have posted trips the timeline's
+    // posted-memo refusal on the receipt, or books contra-revenue against
+    // revenue not yet in the books. The wait is named, so the pass and the
+    // close can say it.
+    if (memo.source === 'channel' && memo.orderInstanceId) {
+      const readiness = await readChannelMemoReadiness(db, {
+        organizationId,
+        orderInstanceId: memo.orderInstanceId,
+        issuedAt,
+        bookTimeZone: await readBookTimeZoneOrUtc(organizationId),
+        cutoffPeriod:
+          (await readOrganizationSettings(organizationId, ['accounting.cutoffPeriod'] as const))[
+            'accounting.cutoffPeriod'
+          ] ?? null,
+      })
+      if (!readiness.ready)
+        throw new ConflictError(`This credit memo waits on its order: ${readiness.reason}`, {
+          creditMemoInstanceId,
+        })
+    }
     post = await postCreditMemoEntry(db, {
       organizationId,
       creditMemoInstanceId,

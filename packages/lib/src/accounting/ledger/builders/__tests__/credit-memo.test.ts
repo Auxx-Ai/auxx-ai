@@ -166,18 +166,22 @@ describe('tax', () => {
   })
 })
 
-describe('a channel credit memo on an order that never shipped (71 D14)', () => {
-  // Nothing was recognised, so there is no revenue to reverse and no tax to give
-  // back: the pre-fulfillment receipt credited the WHOLE amount, tax included,
-  // to `customer_deposits`. The memo moves that advance onto the control
+describe('a channel credit memo on an order that never shipped (71 D14, 88 D7)', () => {
+  // Nothing was recognised, so there is no revenue to reverse - but the
+  // pre-fulfillment receipt credited the net to `customer_deposits` and the tax
+  // to `sales_tax_payable`, so the memo mirrors that split onto the control
   // account, and the refund then draws it down like any other memo's.
   const built = buildCreditMemoEntry({ ...BASE, reverseRevenue: false })
 
-  it('moves the advance: Dr customer_deposits / Cr accounts_receivable, for the total', () => {
-    expect(built.entry.lines).toHaveLength(2)
+  it('mirrors the receipt: Dr customer_deposits (net) · Dr sales_tax_payable (tax) / Cr A/R (total)', () => {
+    expect(built.entry.lines).toHaveLength(3)
     expect(lines(built, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)[0]).toMatchObject({
       direction: 'debit',
-      amount: 12_990,
+      amount: 12_000,
+    })
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)[0]).toMatchObject({
+      direction: 'debit',
+      amount: 990,
     })
     expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]).toMatchObject({
       direction: 'credit',
@@ -187,11 +191,30 @@ describe('a channel credit memo on an order that never shipped (71 D14)', () => 
     expect(built.entry.totalCredit).toBe(12_990)
   })
 
-  it('reverses no revenue and gives back no tax — neither was ever posted', () => {
+  it('reverses no revenue, and reports the tax it gave back', () => {
     expect(lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)).toHaveLength(0)
-    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
     expect(built.subtotalMinor).toBe(0)
-    expect(built.taxTotalMinor).toBe(0)
+    expect(built.taxTotalMinor).toBe(990)
+  })
+
+  it('drops the tax leg on a memo with no tax, and the deposit leg on one that is all tax', () => {
+    const noTax = buildCreditMemoEntry({
+      ...BASE,
+      reverseRevenue: false,
+      taxTotal: 0,
+      total: 12_000,
+    })
+    expect(noTax.entry.lines).toHaveLength(2)
+    expect(lines(noTax, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
+    const allTax = buildCreditMemoEntry({
+      ...BASE,
+      reverseRevenue: false,
+      subtotal: 0,
+      taxTotal: 990,
+      total: 990,
+    })
+    expect(allTax.entry.lines).toHaveLength(2)
+    expect(lines(allTax, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toHaveLength(0)
   })
 
   it('still reports the memo total, because that is what it credits', () => {

@@ -52,6 +52,9 @@ interface OutboxPanelProps {
   onSelectPosting: (glPostingId: string) => void
   activeMovementId: string | null
   onSelectMovement: (moneyTransactionId: string) => void
+  /** A refused shipment opens its `?shipment=` frame in the same drawer slot. */
+  activeShipmentId: string | null
+  onSelectShipment: (fulfillmentId: string) => void
 }
 
 /**
@@ -78,6 +81,8 @@ function OutboxBody({
   onSelectPosting,
   activeMovementId,
   onSelectMovement,
+  activeShipmentId,
+  onSelectShipment,
 }: OutboxPanelProps) {
   const { can } = useAccess()
   const canRelease = can(PermissionKey.ledgerPost)
@@ -88,13 +93,8 @@ function OutboxBody({
   // worse than one never offered. `effectiveTab` catches a pasted link.
   const effectiveTab: OutboxTab =
     (tab === 'drafts' || tab === 'blocked') && !canRelease ? 'ready' : tab
-  const family = isExportBatchTab(effectiveTab) ? 'batches' : effectiveTab
-  const [filterState, setFilterState] = useState({ family, filters: EMPTY_OUTBOX_FILTERS })
-  // Reset incompatible categories synchronously, including URL back/forward changes.
-  if (filterState.family !== family) {
-    setFilterState({ family, filters: { ...filterState.filters, categories: [] } })
-  }
-  const filters = filterState.filters
+  // One filter state across every tab: the category vocabulary is the same on all of them.
+  const [filters, setFilters] = useState(EMPTY_OUTBOX_FILTERS)
   const search = useDebounce(filters.search.trim(), 250)
   const appliedFilters = { ...filters, search }
   const filterKey = JSON.stringify([effectiveTab, filters])
@@ -133,7 +133,7 @@ function OutboxBody({
 
   const changeFilters = (next: OutboxFilters) => {
     exitSelection()
-    setFilterState({ family, filters: next })
+    setFilters(next)
   }
   const clearFilters = () => changeFilters(EMPTY_OUTBOX_FILTERS)
   const clearAction = filtered ? (
@@ -177,7 +177,6 @@ function OutboxBody({
           </ListToolbarGroup>
         </ListToolbar>
         <OutboxToolbar
-          key={family}
           tab={effectiveTab}
           filters={filters}
           onChange={changeFilters}
@@ -205,6 +204,8 @@ function OutboxBody({
                 bookTimeZone={bookTimeZone}
                 activeMovementId={activeMovementId}
                 onSelectMovement={onSelectMovement}
+                activeShipmentId={activeShipmentId}
+                onSelectShipment={onSelectShipment}
               />
             ) : effectiveTab === 'drafts' ? (
               <DraftsPanel

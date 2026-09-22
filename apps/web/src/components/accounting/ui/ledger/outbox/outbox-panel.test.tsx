@@ -95,7 +95,16 @@ vi.mock('~/trpc/react', () => {
               fetchNextPage: vi.fn(),
             }),
           },
-          unbuilt: { useQuery: () => ({ data: [] }) },
+          unbuilt: {
+            useInfiniteQuery: () => ({
+              data: { pages: [{ items: [], nextCursor: undefined }] },
+              isPending: false,
+              hasNextPage: false,
+              isFetchingNextPage: false,
+              fetchNextPage: vi.fn(),
+            }),
+          },
+          unbuiltMembers: { useQuery: () => ({ data: [], isPending: false }) },
           build: { useMutation: noMutation },
           send: { useMutation: noMutation },
           retry: { useMutation: noMutation },
@@ -180,10 +189,12 @@ const props = {
   onSelectPosting: vi.fn(),
   activeMovementId: null,
   onSelectMovement: vi.fn(),
+  activeShipmentId: null,
+  onSelectShipment: vi.fn(),
 }
 
 describe('Outbox category filters', () => {
-  it('supports multiple categories, clears selection, and resets across record families', async () => {
+  it('supports multiple categories, clears selection, and keeps them across every tab', async () => {
     const view = render(<OutboxPanel {...props} tab='ready' />)
     fireEvent.click(screen.getByLabelText('Select everything listed'))
     expect(screen.getByTestId('selected').textContent).toBe('2')
@@ -194,12 +205,12 @@ describe('Outbox category filters', () => {
     expect(screen.getByTestId('selected').textContent).toBe('0')
     view.rerender(<OutboxPanel {...props} tab='sent' />)
     expect(screen.getByTestId('categories').textContent).toBe('fulfillment,payout')
+    // One vocabulary: a filter picked on Ready still means the same thing on Blocked.
     view.rerender(<OutboxPanel {...props} tab='blocked' />)
-    expect(screen.getByTestId('categories').textContent).toBe('')
-    fireEvent.click(screen.getByRole('button', { name: 'Category, all categories' }))
-    expect(screen.getByLabelText('Customer payment')).toBeDefined()
-    expect(screen.queryByLabelText('Fulfillment')).toBeNull()
-    fireEvent.click(screen.getByLabelText('Customer payment'))
+    expect(screen.getByTestId('categories').textContent).toBe('fulfillment,payout')
+    // The picker is still open: the toolbar is not remounted per tab any more.
+    expect(screen.getByLabelText('Vendor payment')).toBeDefined()
+    expect(screen.getByLabelText('Fulfillment')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'All categories' }))
     expect(screen.getByTestId('categories').textContent).toBe('')
   })

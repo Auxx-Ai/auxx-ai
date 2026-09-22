@@ -42,6 +42,12 @@ export {
   sweepMovementAccounting,
 } from './blocked-movements'
 export {
+  type BlockedWorkCursor,
+  type BlockedWorkRow,
+  countBlockedWork,
+  listBlockedWork,
+} from './blocked-work'
+export {
   type CashEndpoint,
   type CashEndpointKind,
   type CashEndpointSource,

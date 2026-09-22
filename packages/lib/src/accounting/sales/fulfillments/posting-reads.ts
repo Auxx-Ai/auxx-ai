@@ -137,3 +137,186 @@ export async function listFulfillmentAccountingCandidates(
   `)
   return (result.rows as Array<{ id: string }>).map((row) => row.id)
 }
+
+/** One refused shipment, as the Outbox's Blocked tab renders it beside the movements (88 §4.5). */
+export interface BlockedFulfillmentRow {
+  /** The `fulfillment` instance id. */
+  id: string
+  entityDefinitionId: string
+  /** `fulfillment_name`, the record's display name. */
+  name: string | null
+  orderId: string | null
+  orderDefinitionId: string | null
+  orderName: string | null
+  /** The instant the goods went out, or `null` for a shipment with no date. */
+  shippedAt: string | null
+  /** `fulfillment_total`, integer minor units in the order's currency. */
+  amountMinor: number
+  currency: string
+  /** The poster's own words, verbatim. */
+  reason: string
+  blockedAt: Date | null
+  /** `account_unmapped` gets the remedy card; everything else is plain text. */
+  reasonKind: 'account_unmapped' | 'other'
+}
+
+const BLOCKED_ATTRS = [
+  'fulfillment_posting_blocked_reason',
+  'fulfillment_posting_blocked_at',
+  'fulfillment_shipped_at',
+  'fulfillment_total',
+  'fulfillment_order',
+  'order_currency',
+] as const
+
+/** A shipment is parked when it carries a reason and holds no live subject posting. */
+function blockedFulfillmentWhere(organizationId: string, defId: string, reasonFieldId: string) {
+  return sql`reason."organizationId" = ${organizationId}
+    AND reason."entityDefinitionId" = ${defId}
+    AND reason."fieldId" = ${reasonFieldId}
+    AND reason."valueText" IS NOT NULL
+    AND f."archivedAt" IS NULL
+    AND NOT EXISTS (SELECT 1 FROM "GlPostingSource" link
+      WHERE link."organizationId" = ${organizationId}
+        AND link."sourceKind" = 'fulfillment'
+        AND link."sourceId" = reason."entityId"
+        AND link."linkRole" = 'subject')`
+}
+
+/**
+ * Every shipment the poster refused, newest refusal first, paged. Empty, never
+ * a refusal, on an org with no `fulfillment` def or no migration 184.
+ */
+export async function listBlockedFulfillments(
+  db: Database,
+  organizationId: string,
+  options: {
+    limit?: number
+    offset?: number
+    search?: string
+    /** `YYYY-MM-DD`, on the shipped day cut in `bookTimeZone`. */
+    from?: string
+    to?: string
+    bookTimeZone?: string
+    /** Narrow to these fulfillment ids - the drawer's one-row read. */
+    ids?: readonly string[]
+  } = {}
+): Promise<BlockedFulfillmentRow[]> {
+  const defId = await getCachedEntityDefId(organizationId, 'fulfillment')
+  if (!defId) return []
+  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...BLOCKED_ATTRS])
+  const reason = fields.fulfillment_posting_blocked_reason?.id
+  const blockedAt = fields.fulfillment_posting_blocked_at?.id
+  if (!reason || !blockedAt) return []
+  const shippedAt = fields.fulfillment_shipped_at?.id ?? ''
+  const total = fields.fulfillment_total?.id ?? ''
+  const orderRel = fields.fulfillment_order?.id ?? ''
+  const currency = fields.order_currency?.id ?? ''
+  const zone = options.bookTimeZone ?? 'UTC'
+  const day = sql`(ship."valueDate" AT TIME ZONE ${zone})::date`
+
+  const result = await db.execute(sql`
+    SELECT f."id", f."entityDefinitionId", f."displayName" AS "name",
+      reason."valueText" AS "reason", mark."valueDate" AS "blockedAt",
+      ship."valueDate" AS "shippedAt", tot."valueNumber" AS "total",
+      ord."id" AS "orderId", ord."entityDefinitionId" AS "orderDefinitionId",
+      ord."displayName" AS "orderName", cur."valueText" AS "currency"
+    FROM "FieldValue" reason
+    JOIN "EntityInstance" f ON f."id" = reason."entityId"
+      AND f."organizationId" = reason."organizationId"
+    LEFT JOIN "FieldValue" mark ON mark."organizationId" = reason."organizationId"
+      AND mark."entityId" = reason."entityId" AND mark."fieldId" = ${blockedAt}
+    LEFT JOIN "FieldValue" ship ON ship."organizationId" = reason."organizationId"
+      AND ship."entityId" = reason."entityId" AND ship."fieldId" = ${shippedAt}
+    LEFT JOIN "FieldValue" tot ON tot."organizationId" = reason."organizationId"
+      AND tot."entityId" = reason."entityId" AND tot."fieldId" = ${total}
+    LEFT JOIN "FieldValue" rel ON rel."organizationId" = reason."organizationId"
+      AND rel."entityId" = reason."entityId" AND rel."fieldId" = ${orderRel}
+    LEFT JOIN "EntityInstance" ord ON ord."id" = rel."relatedEntityId"
+      AND ord."organizationId" = reason."organizationId"
+    LEFT JOIN "FieldValue" cur ON cur."organizationId" = reason."organizationId"
+      AND cur."entityId" = ord."id" AND cur."fieldId" = ${currency}
+    WHERE ${blockedFulfillmentWhere(organizationId, defId, reason)}
+      ${
+        options.ids?.length
+          ? sql`AND f."id" IN (${sql.join(
+              options.ids.map((id) => sql`${id}`),
+              sql`, `
+            )})`
+          : sql``
+      }
+      ${options.from ? sql`AND ${day} >= ${options.from}::date` : sql``}
+      ${options.to ? sql`AND ${day} <= ${options.to}::date` : sql``}
+      ${
+        options.search
+          ? sql`AND strpos(lower(concat_ws(' ', f."displayName", ord."displayName", reason."valueText")), lower(${options.search})) > 0`
+          : sql``
+      }
+    ORDER BY mark."valueDate" DESC NULLS LAST, f."id" ASC
+    LIMIT ${options.limit ?? 50} OFFSET ${options.offset ?? 0}
+  `)
+  return (
+    result.rows as Array<{
+      id: string
+      entityDefinitionId: string
+      name: string | null
+      reason: string
+      blockedAt: string | Date | null
+      shippedAt: string | null
+      total: number | string | null
+      orderId: string | null
+      orderDefinitionId: string | null
+      orderName: string | null
+      currency: string | null
+    }>
+  ).map((row) => ({
+    id: row.id,
+    entityDefinitionId: row.entityDefinitionId,
+    name: row.name,
+    orderId: row.orderId,
+    orderDefinitionId: row.orderDefinitionId,
+    orderName: row.orderName,
+    shippedAt: row.shippedAt ? new Date(row.shippedAt).toISOString() : null,
+    amountMinor: Number(row.total ?? 0),
+    currency: row.currency ?? 'USD',
+    reason: row.reason,
+    blockedAt: row.blockedAt ? new Date(row.blockedAt) : null,
+    // `resolve-roles.ts` opens every unmapped-role refusal with "Cannot post:".
+    reasonKind: row.reason.startsWith('Cannot post:') ? 'account_unmapped' : 'other',
+  }))
+}
+
+/** One parked shipment for the drawer, or `null` once it has posted or was never refused. */
+export async function readBlockedFulfillment(
+  db: Database,
+  organizationId: string,
+  fulfillmentId: string
+): Promise<BlockedFulfillmentRow | null> {
+  const [row] = await listBlockedFulfillments(db, organizationId, {
+    ids: [fulfillmentId],
+    limit: 1,
+  })
+  return row ?? null
+}
+
+/** The Blocked tab's badge share for shipments, counted in SQL. */
+export async function countBlockedFulfillments(
+  db: Database,
+  organizationId: string
+): Promise<number> {
+  const defId = await getCachedEntityDefId(organizationId, 'fulfillment')
+  if (!defId) return 0
+  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [
+    'fulfillment_posting_blocked_reason',
+  ])
+  const reason = fields.fulfillment_posting_blocked_reason?.id
+  if (!reason) return 0
+  const result = await db.execute(sql`
+    SELECT count(*)::int AS "total"
+    FROM "FieldValue" reason
+    JOIN "EntityInstance" f ON f."id" = reason."entityId"
+      AND f."organizationId" = reason."organizationId"
+    WHERE ${blockedFulfillmentWhere(organizationId, defId, reason)}
+  `)
+  return Number((result.rows[0] as { total?: number } | undefined)?.total ?? 0)
+}

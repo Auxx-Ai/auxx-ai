@@ -252,7 +252,7 @@ All schema under `packages/database/src/db/schema/`.
 
 | Column group | What it carries |
 | --- | --- |
-| Identity | `id`, `organizationId`, `postingType`, `periodKey`, `revision` |
+| Identity | `id`, `organizationId`, `postingType`, `avenue`, `periodKey`, `revision` |
 | Dates | `txnDate` (a Postgres `date`, already in the org's book timezone), `postedAt` |
 | State | `status` (`draft` \| `posted` \| `reversed`), `docNumber` (null while draft), `reversesId` |
 | Grouping | `storeId` (`FinancialSourceAccount`, `set null`), `railId` (a `payment_gateway` record id, so no FK) |
@@ -505,9 +505,10 @@ writer because it is measured from the `accounting.opening*` settings rather tha
 ### 5.5 The draft gate
 
 Gate 1 of the two gates (`ledger/post/auto-post.ts`). One settings key per avenue,
-`accounting.autoPost.<avenue>` over `fulfillment · invoice · receipt · refund · creditMemo ·
-expenseBill`. On posts immediately; **off or unset drafts** — fail closed: a writer that cannot
-resolve a mode must draft, never post unattended.
+`accounting.autoPost.<avenue>` over `AUTO_POST_AVENUES` — `fulfillment · invoice · receipt ·
+refund · creditMemo · expenseBill · vendorPayment · vendorCredit`. On posts immediately; **off or
+unset drafts** — fail closed: a writer that cannot resolve a mode must draft, never post
+unattended. `payout`, `bankDeposit`, `inventory` and `journal` have no draft step.
 
 A draft is a real row: lines, a `built` envelope, `docNumber = NULL`, `postedAt = NULL`, every
 **non-subject** source link written, and **no subject row**, so it holds no claim and no statement
@@ -1008,10 +1009,11 @@ manual receipt's refund leaves by undeposited funds, and that is correct.
 
 🔑 **The memo a refund draws down always has a control account to draw on.** A credit memo issued
 after its order shipped posts `Dr returns (± tax) / Cr accounts_receivable`; one issued before it
-shipped reverses revenue that was never recognised, so it posts `Dr customer_deposits (total) /
-Cr accounts_receivable` instead — the pre-fulfillment receipt credited the whole amount, tax
-included, to `customer_deposits`, and the memo moves that advance onto the control account (71
-D14). Either way the refund is the same `Dr <the memo's control> / Cr <the endpoint>`.
+shipped reverses revenue that was never recognised, so it posts `Dr customer_deposits (net) ·
+Dr sales_tax_payable (tax) / Cr accounts_receivable (total)` instead — the pre-fulfillment receipt
+credited the net to `customer_deposits` and the tax to `sales_tax_payable`, and the memo mirrors
+that split onto the control account (71 D14 as 88 D7 corrected it). Either way the refund is the
+same `Dr <the memo's control> / Cr <the endpoint>`.
 
 🛑 **The bank deposit's debit is the bank account the operator picked, by `gl_account` id.**
 Grouping posts nothing; only the bank run does, and it posts ONE line so it matches ONE bank line.
@@ -1054,8 +1056,8 @@ vendor bill's coded-line arm with the sides flipped, and the entry ties to the s
 does not post. A line names its account by **id**, like a `vendor_bill_line`, and a credit raised
 against a PO-backed bill has its lines prefilled with the org's resolved `grni` account
 (`resolveGrniAccountId`, never a hardcoded code), so the short-shipment case `Dr A/P / Cr GRNI` is
-the same entry with that account on the line. One builder, no per-line roles. Auto-post reads the
-`expenseBill` avenue: a credit is the same buy-side document lane as the bill it reverses.
+the same entry with that account on the line. One builder, no per-line roles. Its avenue is
+`vendorCredit`, its own: the provider object is a Vendor Credit, not a Bill (task 92).
 
 Applying a credit to a bill posts NOTHING — the issue entry already debited the payable. What
 moves is `vendor_bill_amount_credited`, the bill's balance
@@ -1075,8 +1077,9 @@ receipt reversal stays the keying-mistake door and is never offered as a return.
 
 A supplier paying the credit back is a `MoneyTransaction` with purpose `vendor_refund` and a
 `MoneyRefundSettlement` at disposition `vendor_credit`. It posts `Dr <the cash endpoint> /
-Cr <the credit's control account>` through the same `postMovementEntry` frame on the `refund`
-avenue — the customer refund with the money arriving instead of leaving. The control account is
+Cr <the credit's control account>` through the same `postMovementEntry` frame as its own
+`vendor_refund` type on the `vendorPayment` avenue — money with a vendor, arriving instead of
+leaving, gated by that avenue's `autoPost` beside the vendor payment. The control account is
 read off the credit's own posted lines (`readVendorCreditControlAccount`), never re-resolved, and a
 refund may not precede the credit's issue date.
 
@@ -1376,14 +1379,21 @@ refuses while one is still there.
 | `accounting.exportMode` | `transaction` \| `summary`. Fails closed to `transaction` |
 | `accounting.exportModeCutover` | The date the mode applies from. A posting dated below `max(cutover, connection.exportFromDate)` is skipped |
 | `accounting.autoSend.<avenue>` | Gate 2, per avenue. Unset → off |
-| `accounting.summaryGrain.<avenue>` | `day` \| `month` for the six grained avenues. Payouts, bank deposits and journals have no grain — one object each |
+| `accounting.summaryGrain.<avenue>` | `day` \| `month` for the nine grained avenues (`SUMMARY_GRAIN_AVENUES`). Payouts, bank deposits and journals have no grain — one object each |
 | `accounting.autoPost.<avenue>` | Gate 1 (§5.5). A different gate, on a different table |
 
-`avenueOfPostingType` is the exhaustive posting-type → avenue map, and it has **no `default`
-case**: the switch must stay exhaustive so a posting type added later fails to compile rather than
-silently landing in no avenue at all. Three types answer `null` — `opening_balance` (an opening
-entry has no provider counterpart), `provider_sync` (the loop guard) and `bank_transaction` (the
-provider already has the bank feed).
+**The avenue is a stored column.** `avenueOfPostingType` is the exhaustive posting-type → avenue
+map, applied once in `insert-posting.ts` and written to `GlPosting.avenue` (task 92); every read
+that groups or filters by category — the Outbox tabs, the unbuilt summary, the builder's
+candidate scan — reads the column, never the map. The switch has **no `default` case**, so a
+posting type added later fails to compile rather than silently landing in no avenue at all, and
+`GlPosting_avenue_check` pins the same list in SQL. Three types answer `null` — `opening_balance`
+(an opening entry has no provider counterpart), `provider_sync` (the loop guard) and
+`bank_transaction` (the provider already has the bank feed). The twelve avenues are the
+provider-object families of TARGET §5's last column: `fulfillment · invoice · receipt · refund ·
+creditMemo · expenseBill · vendorPayment · vendorCredit · payout · bankDeposit · inventory ·
+journal`. `inventory` is journal-shaped at the provider but its own lane, because inventory
+movements are most of what leaves and nobody wants them filtered as "journal".
 
 **`ExportBatch.objectType` is one of eight, and `journal` is only one of them.**
 `export/payloads/` holds one file per object type — each a Zod schema, its `*_OBJECT_TYPE`
@@ -1505,13 +1515,25 @@ there — a momentary state is not a place to stand, and a batch that vanished f
 looking at read as a failure. `exportBatchTabAdmits` is what makes Ready admit both, and
 `parseOutboxTab` lands a pasted `?tab=sending` on Ready rather than an empty strip.
 
-**Blocked is the money model's parked work** (75 D1). One row per `MoneyTransaction` carrying a
-`postingBlockedReason` with no live subject posting: the party, the amount, `postEntry`'s own words
-rendered verbatim, and — when the refusal is an unmapped role — the same remedy card the synchronous
-callout uses. **Map** deep-links to `/app/accounting/settings/accounts?role=<role>`, which seeds the
-Mapping tab's search box so the row is on screen; **Retry** re-runs the movement's poster and the
-mark clears on acceptance through `markPostingBlock(…, null)`. The list paginates and derives its
-`reasonKind` in SQL, because a dev org already holds ~1,100 of these.
+**Blocked is the ledger's parked work** (75 D1, 88 §4.5). One row per `MoneyTransaction` carrying a
+`postingBlockedReason` with no live subject posting, and one per `fulfillment` carrying
+`fulfillment_posting_blocked_reason` (88 §7.4) with none: the party or the order, the amount, the
+poster's own words rendered verbatim, and — when the refusal is an unmapped role — the same remedy
+card the synchronous callout uses. **Map** deep-links to `/app/accounting/settings/accounts?role=<role>`,
+which seeds the Mapping tab's search box so the row is on screen; **Retry** re-runs the row's poster
+and the mark clears on acceptance. A movement row opens the `?movement=` frame, a shipment row the
+`?shipment=` frame (`shipment-frame.tsx`), both in the one ledger drawer host. `listBlockedWork`
+(`money/blocked-work.ts`) merges the two paged reads newest refusal first behind a two-offset cursor;
+each read derives its `reasonKind` in SQL, because a dev org already holds ~1,100 movements and
+~1,700 shipments here.
+
+🛑 **A refusal caused by a draft names the draft** (88 D10): *"earlier receipt X is a draft awaiting
+approval"*, never the generic *pending*. A draft never depends on a draft, so the chain advances one
+approval round at a time — and approval continues it: `postDraft` in the router is followed by
+`continueAccountingAfterDraft` (`sales/orders/continue-accounting.ts`), which offers the parent
+order's shipments, receipts, memos and refunds to their posters in the same request. A draft whose
+subject another posting already claimed can never post; `postDraft` discards it on `already_posted`
+rather than leaving it on the tab.
 
 `money/blocked-movements.ts` is both halves: the reader above and `sweepMovementAccounting`, the
 scheduled retry the recovery job calls. It replaced a sweep that lived in `customer-money/` and was
@@ -1713,8 +1735,12 @@ drill-down through the posting ids. **It is what the export batch builder sums i
 from.** In Transaction mode it is a view an org can open whenever it wants; in Summary mode each
 row is also a batch carrying its sent state. Same component in both.
 
-⚠️ `avenue` is derived from `postingType` in application code, not in SQL, so the grouping cannot
-be pushed into one `GROUP BY`.
+The Outbox's Ready tab does not use it. `export/unbuilt-summary.ts` is the same grouping in SQL
+over the stored `avenue` column — `readUnbuiltSummaryPage` (keyset-paged on the row's full sort
+key, because Build removes rows between pages), `countUnbuiltSummaryRows` for the badge, and
+`readUnbuiltSummaryMembers` when a row is opened. The grain per avenue becomes a `CASE` over the
+org's `summaryGrain` settings; "would make a journal" is a `HAVING` over the netted account lines.
+`readLedgerSummary` stays in memory because the builder needs every group's summed lines.
 
 ### 13.4 Reading a record's postings
 

@@ -87,7 +87,6 @@ function post(prepare = defaultPrepare) {
     organizationId: ORG,
     moneyTransactionId: MOVEMENT,
     purpose: 'customer_receipt',
-    avenue: 'receipt',
     label: 'Invoice receipt',
     prepare,
   })
@@ -268,7 +267,6 @@ describe('postMovementEntry', () => {
       organizationId: ORG,
       moneyTransactionId: MOVEMENT,
       purpose: 'customer_refund',
-      avenue: 'refund',
       label: 'Customer refund',
       prepare: defaultPrepare,
     })

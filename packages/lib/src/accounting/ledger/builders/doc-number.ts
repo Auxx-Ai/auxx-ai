@@ -62,6 +62,8 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // one key would converge the loser to `already_posted`, a SUCCESS, and merge
   // two events into one entry. See `hashedPeriodKey` for the collision caveat.
   payment: 'PMT',
+  vendor_payment: 'VPM',
+  vendor_refund: 'VRF',
   // `INV` is `inventory_movement`'s.
   invoice_issued: 'INI',
   deposit_application: 'DPA',
@@ -99,6 +101,8 @@ export const DOC_NUMBER_KIND: Record<PostingType, DocNumberKind> = {
   write_off: 'document',
   payment: 'hash',
   refund: 'hash',
+  vendor_payment: 'hash',
+  vendor_refund: 'hash',
   invoice_issued: 'document',
   deposit_application: 'hash',
   credit_memo: 'document',

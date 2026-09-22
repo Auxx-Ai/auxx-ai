@@ -5,18 +5,9 @@
 
 import type { SettingKey } from '../../../settings/catalog'
 import { getOrganizationSetting } from '../../../settings/settings-service'
+import type { AutoPostAvenue } from '../setup/export-settings'
 
-/** The avenues a writer can be gated on. Mirrors MIGRATION.md step 1b's writer table. */
-export const AUTO_POST_AVENUES = [
-  'fulfillment',
-  'invoice',
-  'receipt',
-  'refund',
-  'creditMemo',
-  'expenseBill',
-] as const
-
-export type AutoPostAvenue = (typeof AUTO_POST_AVENUES)[number]
+export { AUTO_POST_AVENUES, type AutoPostAvenue } from '../setup/export-settings'
 
 /** The settings key an avenue's `autoPost` switch lives under. */
 export function autoPostSettingKey(avenue: AutoPostAvenue): SettingKey {

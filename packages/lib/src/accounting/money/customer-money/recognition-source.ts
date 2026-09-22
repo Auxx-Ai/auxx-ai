@@ -4,7 +4,11 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { periodKeyForDate } from '../../ledger/periods/periods'
-import { findLinkedPostings, findLiveSubjectPostings } from '../../ledger/reads/list-postings'
+import {
+  findLinkedPostings,
+  findLiveSubjectPostings,
+  findPendingDraftPostings,
+} from '../../ledger/reads/list-postings'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
 import { listOrderApplications, readMovements } from '../reads'
@@ -74,7 +78,10 @@ export async function readOrderRecognitionSource(
     orderTaxMinor: string
     bookTimeZone: string
     target?: { kind: 'receipt' | 'fulfillment'; id: string }
-    /** Current unaccepted event supplied by the fulfillment source reader. */
+    /**
+     * The target shipment as its caller computes it, for one no record carries
+     * yet (the native door's preview). A record that exists wins over it.
+     */
     targetEvent?: OrderRecognitionEvent
   }
 ): Promise<OrderRecognitionSource> {
@@ -232,26 +239,43 @@ export async function readOrderRecognitionSource(
       posted: fulfillment.glPosting !== null,
     })
   }
+  const supplied = input.targetEvent
+  if (
+    supplied?.kind === 'fulfillment' &&
+    input.target?.kind === 'fulfillment' &&
+    supplied.id === input.target.id &&
+    !shipmentEvents.some((row) => row.event.id === supplied.id)
+  )
+    shipmentEvents.push({ event: supplied, posted: false })
   for (const shipment of shipmentEvents) events.push(shipment.event)
 
   const targetTimelineEvent = input.target
-    ? ((input.targetEvent &&
-      input.target.kind === 'fulfillment' &&
-      input.targetEvent.kind === 'fulfillment' &&
-      input.targetEvent.id === input.target.id
-        ? shipmentEvents.find((row) => row.event.id === input.target!.id)?.event
-        : undefined) ??
-      events.find((event) => event.kind === input.target!.kind && event.id === input.target!.id))
+    ? events.find((event) => event.kind === input.target!.kind && event.id === input.target!.id)
     : undefined
 
   // An earlier shipment that has not posted leaves this one recognising
-  // revenue out of order, so the timeline refuses until it lands.
-  if (targetTimelineEvent)
-    for (const shipment of shipmentEvents) {
-      if (shipment.event.id === input.target?.id || shipment.posted) continue
-      if (eventPrecedes(shipment.event, targetTimelineEvent))
-        blockers.push(`earlier shipment accounting pending for fulfillment ${shipment.event.id}`)
-    }
+  // revenue out of order, so the timeline refuses until it lands. One that is
+  // a draft is named as one: the remedy is approval, not a retry (88 D10).
+  if (targetTimelineEvent) {
+    const waiting = shipmentEvents.filter(
+      (shipment) =>
+        shipment.event.id !== input.target?.id &&
+        !shipment.posted &&
+        eventPrecedes(shipment.event, targetTimelineEvent)
+    )
+    const drafts = waiting.length
+      ? await findPendingDraftPostings(db, input.organizationId, {
+          sourceKind: 'fulfillment',
+          sourceIds: waiting.map((row) => row.event.id),
+        })
+      : new Map<string, unknown>()
+    for (const shipment of waiting)
+      blockers.push(
+        drafts.has(shipment.event.id)
+          ? `earlier shipment ${shipment.event.id} is a draft awaiting approval`
+          : `earlier shipment accounting pending for fulfillment ${shipment.event.id}`
+      )
+  }
 
   let allocations: OrderRecognitionAllocation[] = []
   if (blockers.length === 0) {
@@ -276,11 +300,25 @@ export async function readOrderRecognitionSource(
         })
       ).keys()
     )
-    for (const event of events) {
-      if (event.kind !== 'receipt' || event.id === input.target?.id) continue
-      if (eventPrecedes(event, targetTimelineEvent) && !posted.has(event.id))
-        blockers.push(`earlier receipt accounting pending for receipt ${event.id}`)
-    }
+    const waiting = events.filter(
+      (event) =>
+        event.kind === 'receipt' &&
+        event.id !== input.target?.id &&
+        eventPrecedes(event, targetTimelineEvent) &&
+        !posted.has(event.id)
+    )
+    const drafts = waiting.length
+      ? await findPendingDraftPostings(db, input.organizationId, {
+          sourceKind: 'money_transaction',
+          sourceIds: waiting.map((event) => event.id),
+        })
+      : new Map<string, unknown>()
+    for (const event of waiting)
+      blockers.push(
+        drafts.has(event.id)
+          ? `earlier receipt ${event.id} is a draft awaiting approval`
+          : `earlier receipt accounting pending for receipt ${event.id}`
+      )
   }
   const target = input.target
     ? (allocations.find((row) => row.kind === input.target!.kind && row.id === input.target!.id) ??

@@ -85,7 +85,6 @@ export async function postVendorRefundAccounting(
     organizationId: input.organizationId,
     moneyTransactionId: input.moneyTransactionId,
     purpose: 'vendor_refund',
-    avenue: 'refund',
     label: 'Vendor refund',
     actorUserId: input.actorUserId,
     prepare: async (tx, loaded) => {

@@ -15,6 +15,7 @@ import {
   type ExportBatchTab,
   exportObjectTypeLabel,
   type OutboxTab,
+  unbuiltGroupKeyString,
 } from '@auxx/lib/accounting/export/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
@@ -56,6 +57,7 @@ import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
 /** `ExportBatchRow` plus the server-computed deep link (plan 67 §5.6) - never built in the browser. */
 type ExportBatchRow = RouterOutputs['ledger']['exportBatches']['list']['items'][number]
+type UnbuiltRow = RouterOutputs['ledger']['exportBatches']['unbuilt']['items'][number]
 
 interface BatchesPanelProps {
   filters: OutboxFilters
@@ -97,7 +99,7 @@ export function BatchesPanel({
       search: filters.search || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
-      categories: outboxCategoryInput(filters).batches,
+      categories: outboxCategoryInput(filters),
     },
     { getNextPageParam: (page) => page.nextCursor }
   )
@@ -105,15 +107,21 @@ export function BatchesPanel({
 
   // Summary mode only (empty otherwise): what Build would make of the posted,
   // unbatched entries, shown here so an approved draft has somewhere to be seen.
-  const unbuiltQuery = api.ledger.exportBatches.unbuilt.useQuery(
+  // Read once the built batches are all on screen, so the page has one tail.
+  const showUnbuilt = tab === 'ready' && !list.isPending && !list.hasNextPage
+  const unbuiltList = api.ledger.exportBatches.unbuilt.useInfiniteQuery(
     {
+      search: filters.search || undefined,
       from: filters.from || undefined,
       to: filters.to || undefined,
-      categories: outboxCategoryInput(filters).batches,
+      categories: outboxCategoryInput(filters),
     },
-    { enabled: tab === 'ready' }
+    { enabled: showUnbuilt, getNextPageParam: (page) => page.nextCursor }
   )
-  const unbuilt = unbuiltQuery.data ?? []
+  const unbuilt = useMemo(
+    () => unbuiltList.data?.pages.flatMap((page) => page.items) ?? [],
+    [unbuiltList.data]
+  )
 
   const selectedIds = useSelectionIds()
   const selecting = useBulkMode()
@@ -238,7 +246,7 @@ export function BatchesPanel({
       </p>
     )
 
-  if (!list.isPending && rows.length === 0 && unbuilt.length === 0)
+  if (showUnbuilt && !unbuiltList.isPending && rows.length === 0 && unbuilt.length === 0)
     return (
       <div className='flex flex-1 flex-col p-3'>
         <EmptyState
@@ -253,76 +261,6 @@ export function BatchesPanel({
 
   return (
     <div className='flex flex-1 flex-col gap-px p-3 pb-16'>
-      {unbuilt.map((group) => {
-        const building =
-          build.isPending &&
-          build.variables !== undefined &&
-          'glPostingIds' in build.variables &&
-          build.variables.glPostingIds[0] === group.members[0]?.glPostingId
-        return (
-          <OutboxRow
-            key={group.key}
-            id={`unbuilt:${group.key}`}
-            selectable={false}
-            selectLabel={exportAvenueLabel(group.avenue)}
-            icon={<Layers className='size-4 text-muted-foreground' />}
-            date={grainDateLabel(group.grainKey, bookTimeZone, group.members[0]?.txnDate)}
-            typeLabel={exportAvenueLabel(group.avenue)}
-            title={<span className='truncate'>{exportObjectTypeLabel('journal')}</span>}
-            description='Posted here and not yet in a batch. Build makes the journal this row would send; approving more drafts in the same period adds to it until then.'
-            secondary={
-              <span className='flex flex-wrap items-center gap-1.5'>
-                {group.storeId && (
-                  <Badge variant='outline' size='xs'>
-                    {sourceName(group.storeId)}
-                  </Badge>
-                )}
-                {group.railId && (
-                  <Badge variant='outline' size='xs'>
-                    {sourceName(group.railId)}
-                  </Badge>
-                )}
-                <Badge variant='outline' size='xs'>
-                  {group.members.length} {group.members.length === 1 ? 'posting' : 'postings'}
-                </Badge>
-              </span>
-            }
-            amount={formatMinor(group.totalMinor, group.currency)}
-            actions={
-              <>
-                <Badge variant='outline' size='xs'>
-                  Not built
-                </Badge>
-                {canRelease && (
-                  <TreeRowButton
-                    persistent
-                    tooltipText='Build this batch'
-                    disabled={building}
-                    onClick={() =>
-                      build.mutate({
-                        from: group.txnDateFrom,
-                        to: group.txnDateTo,
-                        glPostingIds: group.members.map((member) => member.glPostingId),
-                      })
-                    }>
-                    <PackagePlus className={cn(building && 'animate-pulse')} />
-                  </TreeRowButton>
-                )}
-              </>
-            }
-            expandable
-            isOpen={openBatchIds.has(group.key)}
-            onToggleOpen={() => toggleOpen(group.key)}>
-            <BatchMembers
-              members={group.members}
-              currencyCode={group.currency}
-              bookTimeZone={bookTimeZone}
-              activePostingId={activePostingId}
-              onSelectPosting={onSelectPosting}
-            />
-          </OutboxRow>
-        )
-      })}
       <TreeRowList
         items={rows}
         loading={list.isPending}
@@ -506,6 +444,102 @@ export function BatchesPanel({
         fetchNextPage={list.fetchNextPage}
         loadingLabel='Loading more batches...'
       />
+      {/* After the last built batch, never between them: two paged lists stacked
+          would put one list's Load more above the other's rows. */}
+      {showUnbuilt && (
+        <>
+          {unbuilt.map((group) => {
+            const building =
+              build.isPending &&
+              build.variables !== undefined &&
+              'group' in build.variables &&
+              unbuiltGroupKeyString(build.variables.group) === group.key
+            const one = group.memberCount === 1
+            return (
+              <OutboxRow
+                key={group.key}
+                id={`unbuilt:${group.key}`}
+                selectable={false}
+                selectLabel={exportAvenueLabel(group.avenue)}
+                icon={<Layers className='size-4 text-muted-foreground' />}
+                date={grainDateLabel(group.grainKey, bookTimeZone, group.txnDateFrom)}
+                typeLabel={exportAvenueLabel(group.avenue)}
+                title={<span className='truncate'>{exportObjectTypeLabel('journal')}</span>}
+                description='Posted here and not yet in a batch. Build makes the journal this row would send; approving more drafts in the same period adds to it until then.'
+                secondary={
+                  <span className='flex flex-wrap items-center gap-1.5'>
+                    {group.storeId && (
+                      <Badge variant='outline' size='xs'>
+                        {sourceName(group.storeId)}
+                      </Badge>
+                    )}
+                    {group.railId && (
+                      <Badge variant='outline' size='xs'>
+                        {sourceName(group.railId)}
+                      </Badge>
+                    )}
+                    <Badge variant='outline' size='xs'>
+                      {group.memberCount} {one ? 'posting' : 'postings'}
+                    </Badge>
+                  </span>
+                }
+                amount={formatMinor(group.totalMinor, group.currency)}
+                actions={
+                  <>
+                    <Badge variant='outline' size='xs'>
+                      Not built
+                    </Badge>
+                    {canRelease && (
+                      <TreeRowButton
+                        persistent
+                        tooltipText='Build this batch'
+                        disabled={building}
+                        onClick={() =>
+                          build.mutate({
+                            from: group.txnDateFrom,
+                            to: group.txnDateTo,
+                            group: {
+                              avenue: group.avenue,
+                              grainKey: group.grainKey,
+                              storeId: group.storeId,
+                              railId: group.railId,
+                              currency: group.currency,
+                            },
+                          })
+                        }>
+                        <PackagePlus className={cn(building && 'animate-pulse')} />
+                      </TreeRowButton>
+                    )}
+                  </>
+                }
+                // A group of one IS its posting, so the row opens it; a wider group
+                // opens its member list, read only then.
+                onOpen={
+                  one ? () => onSelectPosting(group.firstPostingId) : () => toggleOpen(group.key)
+                }
+                active={one && activePostingId === group.firstPostingId}
+                expandable={!one}
+                isOpen={openBatchIds.has(group.key)}
+                {...(one ? {} : { onToggleOpen: () => toggleOpen(group.key) })}>
+                {!one && openBatchIds.has(group.key) && (
+                  <UnbuiltMembers
+                    group={group}
+                    bookTimeZone={bookTimeZone}
+                    activePostingId={activePostingId}
+                    onSelectPosting={onSelectPosting}
+                  />
+                )}
+              </OutboxRow>
+            )
+          })}
+          <InfiniteListTail
+            hasNextPage={!!unbuiltList.hasNextPage}
+            isFetchingNextPage={unbuiltList.isFetchingNextPage}
+            fetchNextPage={unbuiltList.fetchNextPage}
+            loadingLabel='Loading more groups...'
+          />
+        </>
+      )}
 
       <ActionBar
         open={selecting}
@@ -595,6 +629,41 @@ function BatchMembers({
         />
       ))}
     </div>
+  )
+}
+
+/** One unbuilt group's postings, read when its row is opened. */
+function UnbuiltMembers({
+  group,
+  bookTimeZone,
+  activePostingId,
+  onSelectPosting,
+}: {
+  group: UnbuiltRow
+  bookTimeZone: string
+  activePostingId: string | null
+  onSelectPosting: (glPostingId: string) => void
+}) {
+  const members = api.ledger.exportBatches.unbuiltMembers.useQuery({
+    group: {
+      avenue: group.avenue,
+      grainKey: group.grainKey,
+      storeId: group.storeId,
+      railId: group.railId,
+      currency: group.currency,
+    },
+  })
+  if (members.isPending) {
+    return <p className='py-2 text-muted-foreground text-xs'>Loading postings...</p>
+  }
+  return (
+    <BatchMembers
+      members={members.data ?? []}
+      currencyCode={group.currency}
+      bookTimeZone={bookTimeZone}
+      activePostingId={activePostingId}
+      onSelectPosting={onSelectPosting}
+    />
   )
 }
 

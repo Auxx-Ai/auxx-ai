@@ -18,11 +18,10 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { buildEntry } from '../ledger/builders/entry'
-import { movementPeriodKey } from '../ledger/builders/movement-key'
-import { REFUND_POSTING_TYPE } from '../ledger/builders/refund'
+import { type MovementPostingType, movementPeriodKey } from '../ledger/builders/movement-key'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { periodKeyForDate } from '../ledger/periods/periods'
-import { readAutoPostMode } from '../ledger/post/auto-post'
+import { type AutoPostAvenue, readAutoPostMode } from '../ledger/post/auto-post'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry } from '../ledger/post/post-entry'
 import { findLiveSubjectPosting } from '../ledger/reads/list-postings'
@@ -130,11 +129,21 @@ export interface PreparedMovement {
   storeId?: string | null
 }
 
+/** The posting type each purpose writes, and the avenue's `autoPost` switch it is gated on. */
+const MOVEMENT_POSTING: Record<
+  MovementRow['purpose'],
+  { postingType: MovementPostingType; avenue: AutoPostAvenue }
+> = {
+  customer_receipt: { postingType: 'payment', avenue: 'receipt' },
+  customer_refund: { postingType: 'refund', avenue: 'refund' },
+  vendor_payment: { postingType: 'vendor_payment', avenue: 'vendorPayment' },
+  vendor_refund: { postingType: 'vendor_refund', avenue: 'vendorPayment' },
+}
+
 export interface PostMovementInput {
   organizationId: string
   moneyTransactionId: string
   purpose: MovementRow['purpose']
-  avenue: 'receipt' | 'refund'
   /** 'Invoice receipt', 'Customer refund', 'Vendor payment'… for memos and refusals. */
   label: string
   actorUserId?: string
@@ -260,12 +269,12 @@ export async function postMovementEntry(
 
       const prepared = await input.prepare(tx, loaded)
       const resolved = await loaded.endpoint()
-      const isRefund = input.avenue === 'refund'
+      const { postingType } = MOVEMENT_POSTING[input.purpose]
       const entry = buildEntry({
-        postingType: isRefund ? REFUND_POSTING_TYPE : 'payment',
+        postingType,
         // Both key on the MOVEMENT, never on the book date: two payments settle
         // on one day routinely, and a date would be one number for both.
-        periodKey: movementPeriodKey(isRefund ? 'refund' : 'payment', money.id),
+        periodKey: movementPeriodKey(postingType, money.id),
         txnDate: effectiveDate,
         lines: prepared.lines,
       })
@@ -328,7 +337,7 @@ export async function postMovementEntry(
     ...(Object.keys(scope).length ? { scope } : {}),
     storeId: built.storeId,
     railId: built.railId,
-    mode: await readAutoPostMode(input.organizationId, input.avenue),
+    mode: await readAutoPostMode(input.organizationId, MOVEMENT_POSTING[input.purpose].avenue),
   })
   if (post.status === 'drafted' && post.glPostingId) {
     // A draft is not a refusal, so the block clears; the draft's own `pending`

@@ -1444,6 +1444,9 @@ export const SYSTEM_ATTRIBUTES = [
   'part_return_lines',
   'part_return_part_lines',
   'credit_memo_return', // owning side: the FK is on the memo
+  // Why the channel memo pass last refused to issue this memo, and when (88 §7.4).
+  'credit_memo_issue_blocked_reason',
+  'credit_memo_issue_blocked_at',
 ] as const
 
 /** Union type of all valid system attribute identifiers */

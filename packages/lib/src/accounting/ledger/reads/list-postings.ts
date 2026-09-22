@@ -32,6 +32,7 @@ import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { PostingSummary } from '../../journals/entries/client'
 import { monthBounds } from '../periods/periods'
+import type { ExportAvenue } from '../setup/export-settings'
 import type { PostingLinkRole, PostingStatus, PostingType } from '../types'
 
 const logger = createScopedLogger('postings:list-postings')
@@ -78,7 +79,8 @@ export async function listPostings(
     organizationId: string
     periodKey?: string | null
     status?: PostingStatus
-    categories?: PostingType[]
+    /** Avenues, the Outbox's one category vocabulary. */
+    categories?: ExportAvenue[]
     search?: string
     from?: string
     to?: string
@@ -109,7 +111,7 @@ export async function listPostings(
           eq(schema.GlPosting.organizationId, organizationId),
           ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE),
           options.categories?.length
-            ? inArray(schema.GlPosting.postingType, options.categories)
+            ? inArray(schema.GlPosting.avenue, options.categories)
             : undefined,
           options.from ? gte(schema.GlPosting.txnDate, options.from) : undefined,
           options.to ? lte(schema.GlPosting.txnDate, options.to) : undefined,
@@ -448,6 +450,27 @@ export async function findLiveSubjectPostings(
     sourceIds: options.sourceIds,
     linkRole: 'subject',
     statuses: LIVE_SUBJECT_STATUSES,
+  })
+  const bySource = new Map<string, LinkedPosting>()
+  for (const row of rows) if (!bySource.has(row.sourceId)) bySource.set(row.sourceId, row)
+  return bySource
+}
+
+/**
+ * The draft each source is waiting on: its `pending` link onto a row still in
+ * `draft`, batched. A draft holds no claim, so {@link findLiveSubjectPostings}
+ * cannot see it; this is how a refusal names the draft instead of "pending".
+ */
+export async function findPendingDraftPostings(
+  db: Database | Transaction,
+  organizationId: string,
+  options: { sourceKind: string; sourceIds: readonly string[] }
+): Promise<Map<string, LinkedPosting>> {
+  const rows = await findLinkedPostings(db, organizationId, {
+    sourceKind: options.sourceKind,
+    sourceIds: options.sourceIds,
+    linkRole: 'pending',
+    statuses: ['draft'],
   })
   const bySource = new Map<string, LinkedPosting>()
   for (const row of rows) if (!bySource.has(row.sourceId)) bySource.set(row.sourceId, row)

@@ -78,6 +78,58 @@ const ORDER = {
 }
 
 vi.mock('../reads', () => ({ readOrderForFulfillment: async () => ok(ORDER) }))
+// The poster's prepare is the entry's own subject (`fulfillments/__tests__`);
+// here it hands back the real builder's entry over ORDER so the ledger wiring
+// under test sees the lines and links the native door really posts (88 D6).
+vi.mock('../../fulfillments/accounting', async () => {
+  const { buildFulfillmentEntry } = await import('../../../ledger/builders/fulfillment')
+  const { UnprocessableEntityError } = await import('../../../../errors')
+  return {
+    PREVIEW_SHIPMENT_ID: 'preview',
+    NothingToRecogniseError: class NothingToRecogniseError extends UnprocessableEntityError {},
+    readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
+    prepareShipmentEntry: async () => {
+      throw new Error('the preview is not exercised here')
+    },
+    markFulfillmentPostingBlock: async () => {},
+    prepareFulfillmentEntry: async (_tx: unknown, input: { fulfillmentId: string }) => ({
+      entry: buildFulfillmentEntry({
+        orderId: ORDER.orderId,
+        orderNumber: ORDER.number,
+        sequence: 1,
+        channel: ORDER.channel,
+        currency: ORDER.currency,
+        ledgerCurrency: 'USD',
+        txnDate: '2026-09-03',
+        shippedLines: [
+          {
+            lineId: 'li_1',
+            quantity: 3,
+            unitPriceMinor: 10_00,
+            lineTotalMinor: null,
+            orderedQuantity: 5,
+            priorShippedQuantity: 0,
+            name: 'Widget',
+          },
+        ],
+        orderSubtotalMinor: ORDER.subtotalMinor,
+        orderTaxTotalMinor: ORDER.taxTotalMinor,
+        orderShippingTotalMinor: ORDER.shippingTotalMinor,
+        includeShipping: ORDER.shippingOwed,
+        contactInstanceId: ORDER.contactInstanceId,
+        taxLines: [],
+      }).entry,
+      sources: [
+        { sourceKind: 'fulfillment', sourceId: input.fulfillmentId, linkRole: 'subject' },
+        { sourceKind: 'order', sourceId: ORDER.orderId, linkRole: 'parent' },
+        { sourceKind: 'contact', sourceId: ORDER.contactInstanceId, linkRole: 'counterparty' },
+      ],
+      scope: {},
+      storeId: null,
+      contactInstanceId: ORDER.contactInstanceId,
+    }),
+  }
+})
 vi.mock('../../../money/customer-money/reads', () => ({
   readOrderSourceScope: async () => ({}),
 }))

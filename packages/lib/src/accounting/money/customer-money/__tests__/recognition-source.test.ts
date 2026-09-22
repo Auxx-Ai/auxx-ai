@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   movements: new Map<string, unknown>(),
   listRefundSettlements: vi.fn(async () => [] as unknown[]),
   fulfillments: [] as unknown[],
+  /** Sources with a draft waiting on approval, by kind. */
+  drafts: new Map<string, Set<string>>(),
 }))
 vi.mock('../../reads', () => ({
   listOrderApplications: async () => h.applications,
@@ -21,6 +23,16 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
     return h.linked
   },
   findLiveSubjectPostings: async () => new Map(),
+  findPendingDraftPostings: async (
+    _db: unknown,
+    _org: string,
+    options: { sourceKind: string; sourceIds: readonly string[] }
+  ) =>
+    new Map(
+      options.sourceIds
+        .filter((id) => h.drafts.get(options.sourceKind)?.has(id))
+        .map((id) => [id, { glPostingId: `draft_${id}` }])
+    ),
 }))
 vi.mock('../recognition-facts', () => ({
   readOrderRecognitionFactsInTx: async () => {
@@ -163,6 +175,100 @@ describe('a $0 shipment', () => {
       bookTimeZone: 'UTC',
     })
     expect(source.events.map((event) => event.id)).toEqual(['ful_paid'])
+    h.fulfillments = []
+  })
+})
+
+function shipment(id: string, shippedAt: string, glPosting: string | null = null) {
+  return {
+    id,
+    status: 'success',
+    shippedAt,
+    subtotalMinor: 5000,
+    totalMinor: 5000,
+    shippingRecognised: false,
+    glPosting,
+  }
+}
+
+describe('a shipment no record carries yet (88 D6)', () => {
+  it('joins the timeline as the target when supplied, and a record wins over it', async () => {
+    h.linked = []
+    h.fulfillments = [shipment('ful_1', '2026-09-02 10:00:00+00')]
+    const supplied = {
+      id: 'preview',
+      kind: 'fulfillment' as const,
+      effectiveDate: '2026-09-03',
+      occurredAt: '2026-09-03T12:00:00.000Z',
+      netMinor: '2500',
+      taxMinor: '0',
+    }
+    const source = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '7500',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+      target: { kind: 'fulfillment', id: 'preview' },
+      targetEvent: supplied,
+    })
+    expect(source.events.map((event) => event.id)).toEqual(['ful_1', 'preview'])
+    // The earlier record has not posted, so the supplied one waits behind it.
+    expect(source.blockers).toContain('earlier shipment accounting pending for fulfillment ful_1')
+
+    const stale = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '5000',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+      target: { kind: 'fulfillment', id: 'ful_1' },
+      targetEvent: { ...supplied, id: 'ful_1', netMinor: '1' },
+    })
+    expect(stale.events).toEqual([expect.objectContaining({ id: 'ful_1', netMinor: '5000' })])
+    h.fulfillments = []
+  })
+})
+
+describe('a refusal caused by a draft (88 D10)', () => {
+  it('names the draft on an earlier shipment instead of saying pending', async () => {
+    h.linked = []
+    h.fulfillments = [
+      shipment('ful_1', '2026-09-02 10:00:00+00'),
+      shipment('ful_2', '2026-09-03 10:00:00+00'),
+    ]
+    h.drafts = new Map([['fulfillment', new Set(['ful_1'])]])
+    const source = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '10000',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+      target: { kind: 'fulfillment', id: 'ful_2' },
+    })
+    expect(source.blockers).toContain('earlier shipment ful_1 is a draft awaiting approval')
+    expect(source.blockers).not.toContain(
+      'earlier shipment accounting pending for fulfillment ful_1'
+    )
+    h.drafts = new Map()
+    h.fulfillments = []
+  })
+
+  it('still says pending when there is no draft to approve', async () => {
+    h.linked = []
+    h.fulfillments = [
+      shipment('ful_1', '2026-09-02 10:00:00+00'),
+      shipment('ful_2', '2026-09-03 10:00:00+00'),
+    ]
+    const source = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '10000',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+      target: { kind: 'fulfillment', id: 'ful_2' },
+    })
+    expect(source.blockers).toContain('earlier shipment accounting pending for fulfillment ful_1')
     h.fulfillments = []
   })
 })

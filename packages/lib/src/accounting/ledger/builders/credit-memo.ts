@@ -110,6 +110,9 @@ export interface CreditMemoAmounts {
   /** The memo total, `reverseRevenue` or not — the control credit is always for it. */
   totalMinor: number
   reverseRevenue: boolean
+  /** The memo's own split, validated, whichever branch posts it (88 D7 reads it). */
+  memoSubtotalMinor: number
+  memoTaxTotalMinor: number
 }
 
 /** What one memo's arithmetic needs, and nothing else. See {@link computeCreditMemoAmounts}. */
@@ -193,6 +196,8 @@ export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditM
     taxTotalMinor: reverseRevenue ? taxTotalMinor : 0,
     totalMinor,
     reverseRevenue,
+    memoSubtotalMinor: subtotalMinor,
+    memoTaxTotalMinor: taxTotalMinor,
   }
 }
 
@@ -399,14 +404,15 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
   // and the same memo posted alone can never disagree about what it credits.
   // The three revenue numbers come back zeroed when `reverseRevenue` is false,
   // which is exactly what the revenue leg below is skipped for.
-  const { subtotalMinor, taxTotalMinor, totalMinor } = computeCreditMemoAmounts({
-    creditMemoId,
-    number,
-    subtotal: input.subtotal,
-    taxTotal: input.taxTotal,
-    total: input.total,
-    reverseRevenue,
-  })
+  const { subtotalMinor, taxTotalMinor, totalMinor, memoSubtotalMinor, memoTaxTotalMinor } =
+    computeCreditMemoAmounts({
+      creditMemoId,
+      number,
+      subtotal: input.subtotal,
+      taxTotal: input.taxTotal,
+      total: input.total,
+      reverseRevenue,
+    })
 
   const lineMemo = memo ?? `Credit memo ${number}`
   const source = { sourceType: CREDIT_MEMO_SOURCE_TYPE, sourceId: creditMemoId }
@@ -450,19 +456,31 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       ...counterparty,
     })
   } else {
-    // 71 D14. Nothing was recognised, so there is no revenue to reverse and no
-    // tax to give back: the pre-fulfillment receipt credited the whole amount to
-    // `customer_deposits`. The memo moves that advance onto the control account
-    // the refund then draws down, so `readCreditMemoControlAccount` finds a live
-    // posting and the refund poster stays the one shape for every memo.
-    lines.push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
-      direction: 'debit',
-      amount: totalMinor,
-      memo: `${lineMemo} against the customer's advance`,
-      sortOrder: lines.length,
-    })
+    // 71 D14 as 88 D7 corrected it. Nothing was recognised, so no revenue
+    // reverses - but the pre-fulfillment receipt split its credit between
+    // `customer_deposits` (the net) and `sales_tax_payable` (the tax), so the
+    // memo mirrors that split line for line onto the control account the
+    // refund then draws down (`readCreditMemoControlAccount`).
+    if (memoSubtotalMinor > 0) {
+      lines.push({
+        ...source,
+        accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
+        direction: 'debit',
+        amount: memoSubtotalMinor,
+        memo: `${lineMemo} against the customer's advance`,
+        sortOrder: lines.length,
+      })
+    }
+    if (memoTaxTotalMinor > 0) {
+      lines.push({
+        ...source,
+        accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+        direction: 'debit',
+        amount: memoTaxTotalMinor,
+        memo: `${lineMemo} sales tax collected on the advance`,
+        sortOrder: lines.length,
+      })
+    }
     lines.push({
       ...source,
       accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
@@ -484,6 +502,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     periodKey,
     totalMinor,
     subtotalMinor,
-    taxTotalMinor,
+    // Given back either way: reversed off revenue, or off the advance (88 D7).
+    taxTotalMinor: reverseRevenue ? taxTotalMinor : memoTaxTotalMinor,
   }
 }

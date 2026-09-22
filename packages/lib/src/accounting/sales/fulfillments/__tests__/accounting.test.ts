@@ -87,7 +87,13 @@ vi.mock('@auxx/logger', () => ({
 
 import type { Database } from '@auxx/database'
 import { ok } from 'neverthrow'
-import { postFulfillmentAccounting } from '../accounting'
+import type { OrderForFulfillment } from '../../orders/reads'
+import {
+  PREVIEW_SHIPMENT_ID,
+  postFulfillmentAccounting,
+  prepareShipmentEntry,
+  readShipmentPostingWindow,
+} from '../accounting'
 
 const organizationId = 'org_1'
 const fulfillmentId = 'ful_1'
@@ -336,5 +342,82 @@ describe('postFulfillmentAccounting', () => {
       { fieldId: 'f_reason', value: null },
       { fieldId: 'f_at', value: null },
     ])
+  })
+})
+
+describe('the shared core (88 D6)', () => {
+  it('hands the timeline the shipment as the walk computed it, keyed on the record', async () => {
+    await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
+    const asked = h.readOrderRecognitionSource.mock.calls[0]![1]
+    expect(asked.target).toEqual({ kind: 'fulfillment', id: fulfillmentId })
+    expect(asked.targetEvent).toEqual({
+      id: fulfillmentId,
+      kind: 'fulfillment',
+      effectiveDate: '2026-09-02',
+      occurredAt: '2026-09-02T10:00:00.000Z',
+      netMinor: '10000',
+      taxMinor: '800',
+    })
+  })
+
+  it('builds the preview off a shipment no record carries, under the preview id', async () => {
+    const read = order()
+    const base = read._unsafeUnwrap()
+    h.readOrderRecognitionSource.mockResolvedValue({
+      blockers: [],
+      target: {
+        id: PREVIEW_SHIPMENT_ID,
+        kind: 'fulfillment',
+        effectiveDate: '2026-09-05',
+        amountMinor: '10800',
+        depositMinor: '10000',
+        receivableMinor: '800',
+        taxMinor: '800',
+        historyHash: 'a'.repeat(64),
+      },
+      targetTaxComponents: [],
+    })
+    const prepared = await prepareShipmentEntry({} as never, {
+      organizationId,
+      order: { ...base, fulfillments: [] } as unknown as OrderForFulfillment,
+      window: await readShipmentPostingWindow(organizationId),
+      shipment: {
+        id: PREVIEW_SHIPMENT_ID,
+        sequence: 1,
+        shippedAt: '2026-09-05T12:00:00.000Z',
+        lines: [
+          {
+            lineId: 'li_1',
+            quantity: 1,
+            unitPriceMinor: 10000,
+            lineTotalMinor: 10000,
+            orderedQuantity: 1,
+            priorShippedQuantity: 0,
+            name: 'Widget',
+          },
+        ],
+        priorSubtotalMinor: 0,
+        includeShipping: false,
+        subtotalMinor: 10000,
+        taxMinor: 800,
+        shippingMinor: 0,
+        totalMinor: 10800,
+      },
+    })
+    const asked = h.readOrderRecognitionSource.mock.calls[0]![1]
+    expect(asked.target).toEqual({ kind: 'fulfillment', id: PREVIEW_SHIPMENT_ID })
+    expect(asked.targetEvent).toMatchObject({ id: PREVIEW_SHIPMENT_ID, netMinor: '10000' })
+    expect(prepared.sources[0]).toEqual({
+      sourceKind: 'fulfillment',
+      sourceId: PREVIEW_SHIPMENT_ID,
+      linkRole: 'subject',
+    })
+    expect(prepared.entry.txnDate).toBe('2026-09-05')
+    expect(
+      prepared.entry.lines.find(
+        (line: { accountRole?: string; direction: string }) =>
+          line.accountRole === 'customer_deposits' && line.direction === 'debit'
+      )?.amount
+    ).toBe(10000)
   })
 })

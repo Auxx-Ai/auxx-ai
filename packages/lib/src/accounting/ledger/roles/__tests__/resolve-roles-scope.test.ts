@@ -511,3 +511,49 @@ describe('one entry spanning two stores', () => {
     expect(resolved.map((account) => account.code)).toEqual(['4001', '4002'])
   })
 })
+
+// A reversal reverses by `glAccountId` and carries the original's role as a
+// snapshot only. The role door must not be asked about a line that already
+// names its account, or a rail-scoped `bank` refuses at org scope and the
+// reversal of every rail posting is stuck.
+describe('a line that names its account does not go through the role door', () => {
+  const railBank: Assignment = {
+    role: 'bank',
+    glAccountId: 'acct_1101',
+    paymentGatewayId: STRIPE_GATEWAY,
+  }
+
+  it('resolves an id line by its id even when its snapshot role is unmapped at this scope', async () => {
+    const stub = stubDb([railBank], LIVE_SOURCES, [STRIPE_GATEWAY])
+    const resolved = (
+      await resolveAccountLines(stub.db, ORG, [
+        {
+          glAccountId: 'acct_1101',
+          accountRole: 'bank',
+          direction: 'credit',
+          amount: 3145,
+          sortOrder: 0,
+          sourceType: 'gl_posting',
+          sourceId: 'post_1',
+        } as GlPostingLineInput,
+      ])
+    )._unsafeUnwrap()
+    expect(resolved.map((account) => account.code)).toEqual(['1101'])
+  })
+
+  it('still refuses the same role when the line has nothing but the role', async () => {
+    const stub = stubDb([railBank], LIVE_SOURCES, [STRIPE_GATEWAY])
+    const result = await resolveAccountLines(stub.db, ORG, [
+      {
+        accountRole: 'bank',
+        direction: 'credit',
+        amount: 3145,
+        sortOrder: 0,
+        sourceType: 'gl_posting',
+        sourceId: 'post_1',
+      } as GlPostingLineInput,
+    ])
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain("'bank'")
+  })
+})

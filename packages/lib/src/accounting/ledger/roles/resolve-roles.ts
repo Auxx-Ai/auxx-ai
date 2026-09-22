@@ -573,9 +573,14 @@ export async function resolveAccountLines(
     // a single source is one call, exactly as before; a two-store group is two.
     // Each call keeps the batch property the resolver's header insists on - it
     // answers for its whole set at once and names every offending role.
+    //
+    // Only a line that RESOLVES through its role goes through the role door. A
+    // reversal carries the original's `glAccountId` plus its role as a
+    // snapshot; asking the role map about it would refuse a rail-scoped role
+    // at org scope for a line that already names its account.
     const buckets = new Map<string, { scope?: RoleSourceScope; roles: Set<string> }>()
     for (const line of lines) {
-      if (!line.accountRole) continue
+      if (!line.accountRole || line.glAccountId || line.accountCode) continue
       const effective = line.sourceScope ?? scope
       const key = scopeBucketKey(effective)
       const bucket = buckets.get(key)

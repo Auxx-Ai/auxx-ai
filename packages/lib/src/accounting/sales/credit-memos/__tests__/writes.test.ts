@@ -20,6 +20,13 @@ const h = vi.hoisted(() => ({
   sumCreditMemoApplications: vi.fn(async () => 0),
   sumSucceededCreditMemoRefunds: vi.fn(async () => 0),
   readEditStamp: vi.fn(async (): Promise<{ openedAt: string; byUserId: string } | null> => null),
+  readiness: vi.fn(async () => ({ ready: true }) as { ready: boolean; reason?: string }),
+}))
+
+vi.mock('../readiness', () => ({ readChannelMemoReadiness: h.readiness }))
+vi.mock('../../../ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => '2026-09-01',
 }))
 
 vi.mock('@auxx/database', async () => {
@@ -51,6 +58,9 @@ vi.mock('../accounting', async (importOriginal) => ({
 }))
 vi.mock('../../../../settings/settings-service', () => ({
   getOrganizationSetting: async () => null,
+}))
+vi.mock('../../../../settings/read', () => ({
+  readOrganizationSettings: async () => ({ 'accounting.cutoffPeriod': '2026-01' }),
 }))
 vi.mock('../../../../field-values/field-value-service', () => ({
   FieldValueService: class {
@@ -190,6 +200,36 @@ describe('issueCreditMemo', () => {
 
     await expect(issueCreditMemo(db, input)).rejects.toThrow('has no number yet')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})
+
+describe('the channel memo gate (88 D2)', () => {
+  it('refuses an unready channel memo, naming what it waits on, before anything is written', async () => {
+    h.memo.source = 'channel'
+    h.memo.orderInstanceId = 'order_1'
+    h.readiness.mockResolvedValueOnce({
+      ready: false,
+      reason: 'receipt mt_1 is a draft awaiting approval',
+    })
+
+    await expect(issueCreditMemo(db, input)).rejects.toThrow(
+      'This credit memo waits on its order: receipt mt_1 is a draft awaiting approval'
+    )
+    expect(h.readiness).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orderInstanceId: 'order_1',
+        issuedAt: '2026-09-01',
+        cutoffPeriod: '2026-01',
+      })
+    )
+    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('never asks for a native memo', async () => {
+    await issueCreditMemo(db, input)
+    expect(h.readiness).not.toHaveBeenCalled()
   })
 })
 

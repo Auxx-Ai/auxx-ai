@@ -1,8 +1,8 @@
 // apps/web/src/components/accounting/ui/ledger/outbox/outbox-toolbar.tsx
 'use client'
 
-import { isExportBatchTab, type OutboxTab } from '@auxx/lib/accounting/export/client'
-import { EXPORT_AVENUES, POSTING_TYPES } from '@auxx/lib/accounting/ledger/client'
+import type { OutboxTab } from '@auxx/lib/accounting/export/client'
+import { EXPORT_AVENUES, type ExportAvenue } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -13,7 +13,6 @@ import { ChevronDown, CircleX, Tags } from 'lucide-react'
 import { SelectAllCheckbox } from '~/components/list-selection'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { EXPORT_AVENUE_LABEL } from '../export-avenue-labels'
-import { MOVEMENT_PURPOSE_LABEL, POSTING_TYPE_LABEL } from '../type-labels'
 import { OUTBOX_LIST_PADDING } from './outbox-tabs'
 
 export interface OutboxFilters {
@@ -25,28 +24,15 @@ export interface OutboxFilters {
 
 export const EMPTY_OUTBOX_FILTERS: OutboxFilters = { search: '', categories: [], from: '', to: '' }
 
-/** Categories follow the record family, with export tabs sharing one vocabulary. */
-export function outboxCategoryOptions(tab: OutboxTab) {
-  const labels = isExportBatchTab(tab)
-    ? EXPORT_AVENUE_LABEL
-    : tab === 'drafts'
-      ? POSTING_TYPE_LABEL
-      : MOVEMENT_PURPOSE_LABEL
-  return Object.entries(labels)
-    .filter(([value]) => value !== 'month_end_reversal')
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label))
-}
+/** Every avenue, labelled and sorted - the same list on every tab. */
+const CATEGORY_OPTIONS = EXPORT_AVENUES.map((value) => ({
+  value,
+  label: EXPORT_AVENUE_LABEL[value],
+})).sort((a, b) => a.label.localeCompare(b.label))
 
-/** Narrow selections to each endpoint's declared category vocabulary. */
-export function outboxCategoryInput(filters: OutboxFilters) {
-  return {
-    drafts: POSTING_TYPES.filter((value) => filters.categories.includes(value)),
-    batches: EXPORT_AVENUES.filter((value) => filters.categories.includes(value)),
-    blocked: (
-      Object.keys(MOVEMENT_PURPOSE_LABEL) as Array<keyof typeof MOVEMENT_PURPOSE_LABEL>
-    ).filter((value) => filters.categories.includes(value)),
-  }
+/** The picker's strings as avenues; anything else is dropped rather than sent. */
+export function outboxCategoryInput(filters: OutboxFilters): ExportAvenue[] {
+  return EXPORT_AVENUES.filter((value) => filters.categories.includes(value))
 }
 
 /** Banking-style narrowing controls beneath the Outbox status tabs. */
@@ -97,7 +83,7 @@ export function OutboxToolbar({
           </PopoverTrigger>
           <PopoverContent align='start' className='w-64 p-0'>
             <MultiSelectPicker
-              options={outboxCategoryOptions(tab)}
+              options={CATEGORY_OPTIONS}
               value={filters.categories}
               multi
               canAdd={false}

@@ -7,7 +7,7 @@ import { parseAsArrayOf, parseAsString, useQueryStates } from 'nuqs'
 import { type ReactNode, useCallback, useMemo } from 'react'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
-import { toFrame } from '~/components/records/record-drill-panels'
+import { type DrawerFrame, toFrame } from '~/components/records/record-drill-panels'
 import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
@@ -28,9 +28,12 @@ interface LedgerDrawersOptions {
 export interface LedgerDrawers {
   postingId: string | null
   movementId: string | null
+  /** A refused shipment from the Outbox's Blocked tab. */
+  shipmentId: string | null
   journalEntryParam: string | null
   openPosting: (glPostingId: string) => void
   openMovement: (moneyTransactionId: string) => void
+  openShipment: (fulfillmentId: string) => void
   openJournalEntry: (id: string) => void
   /** Clears every drawer param. The way out of a route that is leaving. */
   closeDrawers: () => void
@@ -39,8 +42,8 @@ export interface LedgerDrawers {
 }
 
 /**
- * The three ledger drawers — `?posting=`, `?movement=`, `?je=` — for Closeout
- * and Outbox alike, published into the layout's docked outlet.
+ * The ledger drawers — `?posting=`, `?movement=`, `?shipment=`, `?je=` — for
+ * Closeout and Outbox alike, published into the layout's docked outlet.
  *
  * 🛑 They share ONE dock slot (ui-plan.md §2.1), so opening one closes the
  * others rather than letting the params coexist unrendered. A posting and a
@@ -67,19 +70,27 @@ export function useLedgerDrawers({
     posting: parseAsString,
     je: parseAsString,
     movement: parseAsString,
+    shipment: parseAsString,
     peek: parseAsArrayOf(parseAsString),
     panel: parseAsString,
     item: parseAsString,
     [LEDGER_RECORD_TAB_PARAM]: parseAsString,
   })
   const { posting: postingId, je: journalEntryParam, movement: movementId } = params
+  const shipmentId = params.shipment
 
   const setBase = useCallback(
-    (next: { posting?: string | null; je?: string | null; movement?: string | null }) => {
+    (next: {
+      posting?: string | null
+      je?: string | null
+      movement?: string | null
+      shipment?: string | null
+    }) => {
       void setParams({
         posting: next.posting ?? null,
         je: next.je ?? null,
         movement: next.movement ?? null,
+        shipment: next.shipment ?? null,
         peek: null,
         panel: null,
         item: null,
@@ -92,17 +103,20 @@ export function useLedgerDrawers({
   const openPosting = useCallback((id: string) => setBase({ posting: id }), [setBase])
   const openJournalEntry = useCallback((id: string) => setBase({ je: id }), [setBase])
   const openMovement = useCallback((id: string) => setBase({ movement: id }), [setBase])
+  const openShipment = useCallback((id: string) => setBase({ shipment: id }), [setBase])
   const closeDrawers = useCallback(() => setBase({}), [setBase])
 
-  // `je` wins, then `movement`, then `posting` — the params are mutually
+  // `je` wins, then `movement`, `posting`, `shipment` — the params are mutually
   // exclusive by construction, so this only decides a hand-written URL.
-  const baseFrame = journalEntryParam
+  const baseFrame: DrawerFrame | null = journalEntryParam
     ? null
     : movementId
       ? toFrame('movement', movementId)
       : postingId
         ? toFrame('posting', postingId)
-        : null
+        : shipmentId
+          ? toFrame('shipment', shipmentId)
+          : null
 
   const ledgerDrawer = useMemo(
     () => (
@@ -227,9 +241,11 @@ export function useLedgerDrawers({
   return {
     postingId,
     movementId,
+    shipmentId,
     journalEntryParam,
     openPosting,
     openMovement,
+    openShipment,
     openJournalEntry,
     closeDrawers,
     overlays,

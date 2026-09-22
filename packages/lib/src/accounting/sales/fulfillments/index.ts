@@ -19,10 +19,16 @@
 export {
   FULFILLMENT_SOURCE_KIND,
   type FulfillmentPostingResult,
+  markFulfillmentPostingBlock,
   NothingToRecogniseError,
+  PREVIEW_SHIPMENT_ID,
   type PreparedFulfillmentEntry,
   postFulfillmentAccounting,
   prepareFulfillmentEntry,
+  prepareShipmentEntry,
+  readShipmentPostingWindow,
+  type ShipmentPostingWindow,
+  type ShipmentToRecognise,
 } from './accounting'
 export { sweepFulfillmentAccounting } from './accounting-sweep'
 export {
@@ -43,9 +49,13 @@ export {
   requireFulfillmentFieldContext,
 } from './fields'
 export {
+  type BlockedFulfillmentRow,
+  countBlockedFulfillments,
   type FulfillmentCandidateWindow,
   findLiveFulfillmentDraft,
+  listBlockedFulfillments,
   listFulfillmentAccountingCandidates,
+  readBlockedFulfillment,
 } from './posting-reads'
 export {
   readFulfillmentPostingSubject,

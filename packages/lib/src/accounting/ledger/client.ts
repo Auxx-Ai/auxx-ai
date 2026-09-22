@@ -191,12 +191,15 @@ export {
 } from './roles/client'
 export {
   ABSORPTION_RATE_SETTING_KEYS,
+  AUTO_POST_AVENUES,
+  type AutoPostAvenue,
   avenueOfPostingType,
   describeUnscopedSources,
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
   FINALIZED_SETUP_STATE,
+  isSummaryGrainAvenue,
   isValidTimeZone,
   isWholeMinorUnits,
   LEDGER_CURRENCY,

@@ -163,7 +163,7 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
   sync: ['provider_sync'],
   // The supplier's credit note. `vendor_bill` is in the `inventory` family
   // beside the receipt, because it is the half that relieves GRNI.
-  payables: ['vendor_credit', 'landed_cost_clear'],
+  payables: ['vendor_credit', 'landed_cost_clear', 'vendor_payment', 'vendor_refund'],
 }
 
 describe('the export route is declared, total, and per family', () => {

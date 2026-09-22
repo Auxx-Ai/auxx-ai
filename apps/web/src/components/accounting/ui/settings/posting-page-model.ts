@@ -19,6 +19,7 @@
 // the sentence beside it.
 
 import {
+  AUTO_POST_AVENUES,
   avenueOfPostingType,
   type ExportAvenue,
   POSTING_POLICIES,
@@ -133,9 +134,9 @@ export function settingRowTitle(key: string, policy?: PostingPolicy): string {
 
 /**
  * The setting keys this page renders as INPUTS: everything on a policy that no
- * other page owns. Deduplicated - `vendor_bill` and `vendor_credit` share the
- * buy-side avenue's `autoPost` key, and a key listed twice is sent twice in the
- * one batch the save bar writes.
+ * other page owns. Deduplicated - `vendor_payment` and `vendor_refund` share
+ * one avenue's `autoPost` key, and a key listed twice is sent twice in the one
+ * batch the save bar writes.
  */
 export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
   ...new Set(
@@ -149,8 +150,8 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
 //
 // `autoSend` and `summaryGrain` are per AVENUE (`EXPORT_AVENUES`), not per
 // `PostingType` the way `POSTING_POLICY.settings` is declared - several types
-// share one avenue (`invoice_issued` and `write_off` both export as `invoice`;
-// `manual_journal`, `recurring_journal` and every month-end type export as
+// share one avenue (`payment` and `deposit_application` both export as
+// `receipt`; `manual_journal`, `write_off` and every month-end type export as
 // `journal`). Showing the same switch on every one of those sections would be
 // six copies of one control, so this picks ONE policy per avenue to carry it -
 // the type whose section reads as that avenue's home.
@@ -158,13 +159,16 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
 /** Which policy's section carries the avenue's export row. */
 const PRIMARY_POSTING_TYPE_BY_AVENUE: Record<ExportAvenue, PostingType> = {
   fulfillment: 'fulfillment',
+  invoice: 'invoice_issued',
   receipt: 'payment',
   refund: 'refund',
   creditMemo: 'credit_memo',
-  invoice: 'invoice_issued',
   expenseBill: 'vendor_bill',
+  vendorPayment: 'vendor_payment',
+  vendorCredit: 'vendor_credit',
   payout: 'payout',
   bankDeposit: 'bank_deposit',
+  inventory: 'inventory_movement',
   journal: 'manual_journal',
 }
 
@@ -175,26 +179,18 @@ export function exportAvenueForPolicy(policy: PostingPolicy): ExportAvenue | nul
   return PRIMARY_POSTING_TYPE_BY_AVENUE[avenue] === policy.type ? avenue : null
 }
 
-/** The six avenues with a draft step - `accounting.autoPost.<avenue>` exists for these alone. */
-const AUTO_POST_AVENUES: readonly ExportAvenue[] = [
-  'fulfillment',
-  'invoice',
-  'receipt',
-  'refund',
-  'creditMemo',
-  'expenseBill',
-]
-
 export function autoPostKeyForAvenue(avenue: ExportAvenue): string | null {
-  return AUTO_POST_AVENUES.includes(avenue) ? `accounting.autoPost.${avenue}` : null
+  return (AUTO_POST_AVENUES as readonly string[]).includes(avenue)
+    ? `accounting.autoPost.${avenue}`
+    : null
 }
 
 /**
  * The `autoPost` key this policy is gated on, whether or not its section
  * carries the avenue's export row. Keyed on the policy's OWN avenue rather than
- * {@link exportAvenueForPolicy}: a policy sharing an avenue (a vendor credit
- * rides the expense bill's switch) would otherwise render a second control for
- * the primary section's setting.
+ * {@link exportAvenueForPolicy}: a policy sharing an avenue (a vendor refund
+ * rides the vendor payment's switch) would otherwise render a second control
+ * for the primary section's setting.
  */
 export function autoPostKeyForPolicy(policy: PostingPolicy): string | null {
   const avenue = avenueOfPostingType(policy.type)

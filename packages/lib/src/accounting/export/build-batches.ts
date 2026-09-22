@@ -12,12 +12,13 @@ import { DOC_NUMBER_MAX_LENGTH } from '../ledger/builders/doc-number'
 import type { AccountRole } from '../ledger/builders/entry'
 import { readLedgerSummary } from '../ledger/reads/ledger-summary'
 import { findLinkedPostings } from '../ledger/reads/list-postings'
-import { avenueOfPostingType } from '../ledger/setup/export-settings'
+import type { ExportAvenue } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import type { CounterpartyType, PostingType } from '../ledger/types'
 import { readSourceAccounts } from '../money/customer-money/source-reads'
 import { readActiveBookConnection } from '../providers/book-connections'
 import { type AccountingProviderLimits, resolveAccountingProvider } from '../providers/provider'
+import { type UnbuiltGroupKey, unbuiltGroupKeyString } from './client'
 import { type ShapeForPostingLine, shapeForPosting, wantsSalesReceipt } from './object-shape'
 import {
   type ExportJournalPayload,
@@ -36,6 +37,8 @@ export interface BuildExportBatchesInput {
   to: string
   /** Build only these postings - the auto-send path after one commit. */
   glPostingIds?: string[]
+  /** Summary mode: build only this group - the Outbox row's own Build button. */
+  group?: UnbuiltGroupKey
 }
 
 export interface BuildExportBatchesResult {
@@ -50,6 +53,7 @@ export interface BuildExportBatchesResult {
 interface CandidateRow {
   id: string
   postingType: PostingType
+  avenue: ExportAvenue | null
   txnDate: string
   docNumber: string | null
   currency: string
@@ -107,6 +111,7 @@ async function readPostingsPage(
     .select({
       id: schema.GlPosting.id,
       postingType: schema.GlPosting.postingType,
+      avenue: schema.GlPosting.avenue,
       txnDate: schema.GlPosting.txnDate,
       docNumber: schema.GlPosting.docNumber,
       currency: schema.GlPosting.currency,
@@ -348,7 +353,7 @@ export async function buildExportBatches(
     const eligible: CandidateRow[] = []
     let skippedBeforeCutover = 0
     for (const row of rows) {
-      const exportable = avenueOfPostingType(row.postingType) !== null
+      const exportable = row.avenue !== null
       const wanted = !input.glPostingIds?.length || input.glPostingIds.includes(row.id)
       if (!exportable || row.batched || row.txnDate < cutover || !wanted) {
         // Everything not being built now is excluded from the summary read, so a
@@ -439,7 +444,7 @@ export async function buildExportBatches(
         // Absorbed into a Sales Receipt above - not its own candidate this run.
         if (absorbedReceiptIds.has(row.id)) continue
 
-        const avenue = avenueOfPostingType(row.postingType)
+        const avenue = row.avenue
         const receiptIds = receiptIdsByFulfillment.get(row.id) ?? []
         const allLines = [
           ...(byPosting.get(row.id) ?? []),
@@ -541,6 +546,8 @@ export async function buildExportBatches(
     if (summary.isErr()) return err(summary.error)
     for (const group of summary.value) {
       if (group.postingIds.length === 0 || group.lines.length < 2) continue
+      if (input.group && unbuiltGroupKeyString(group) !== unbuiltGroupKeyString(input.group))
+        continue
       const scope = `${group.storeId ?? ''}|${group.railId ?? ''}|${group.currency}`
       const payload = exportJournalSchema.parse({
         v: 1,

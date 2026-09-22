@@ -2,6 +2,8 @@
 // Client-safe surface of the export batch: the state vocabulary and its prose.
 // No `'use client'` - server code imports these too (docs/lib-module-guide.md §7).
 
+import type { ExportAvenue } from '../ledger/setup/export-settings'
+
 /** The batch lifecycle, mirroring `EXPORT_BATCH_STATES` on the Drizzle table. */
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
 export type ExportBatchState = (typeof EXPORT_BATCH_STATES)[number]
@@ -107,4 +109,20 @@ const OBJECT_TYPE_LABELS: Record<string, string> = {
 /** Unknown `objectType` renders as the raw string - never a refusal on the queue row. */
 export function exportObjectTypeLabel(objectType: string): string {
   return OBJECT_TYPE_LABELS[objectType] ?? objectType
+}
+
+/** What one summary batch is keyed on - `ExportBatch_grain_key` without the book. */
+export interface UnbuiltGroupKey {
+  avenue: ExportAvenue
+  grainKey: string
+  storeId: string | null
+  railId: string | null
+  currency: string
+}
+
+/** The group key as one string, stable across reads so a row can be tracked and matched. */
+export function unbuiltGroupKeyString(group: UnbuiltGroupKey): string {
+  return [group.avenue, group.grainKey, group.storeId ?? '', group.railId ?? '', group.currency]
+    .join(' ')
+    .trim()
 }

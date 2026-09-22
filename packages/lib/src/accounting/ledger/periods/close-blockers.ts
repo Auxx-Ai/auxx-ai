@@ -103,7 +103,10 @@ export function describeIncompleteRevenue(counts: IncompleteRevenueCounts): Clos
       label:
         `${draftChannelMemos} channel credit ${draftChannelMemos === 1 ? 'memo is' : 'memos are'} ` +
         'still a draft',
-      remedy: `Issue or void the channel credit memos dated in ${month}.`,
+      remedy:
+        `The channel memo pass issues the ones dated in ${month} once their order's receipts ` +
+        'and shipments have posted; a memo it cannot issue says why on its record. Void any ' +
+        'that should not issue.',
       count: draftChannelMemos,
       ref: periodKey,
     })

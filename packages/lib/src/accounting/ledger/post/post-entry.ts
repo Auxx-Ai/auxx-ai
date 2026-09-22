@@ -1045,6 +1045,18 @@ export async function postDraft(db: Database, options: PostDraftOptions): Promis
     return { status: 'error', failureClass: 'transport', retryable: false, error: message }
   }
   if (result.status === 'posted') await exportApprovedDraft(db, { organizationId, glPostingId })
+  // The claim is held by another posting, so this draft can never post: it
+  // leaves the Outbox instead of answering "already posted" on every approval.
+  if (result.status === 'already_posted' && result.glPostingId !== glPostingId) {
+    const { discardDraftPosting } = await import('./draft-lines')
+    const discarded = await discardDraftPosting(db, { organizationId, glPostingId })
+    if (discarded.isErr())
+      logger.warn('A superseded draft could not be discarded', {
+        organizationId,
+        glPostingId,
+        error: discarded.error.message,
+      })
+  }
   return result
 }
 

@@ -97,7 +97,9 @@ describe('closeBlockerMessage', () => {
       'January 2026 still holds revenue that is not in the books. ' +
         '3 shipments are not posted. The shipment sweep posts the fulfillments for January 2026 ' +
         'on its next pass. Anything it refuses is on the Outbox Blocked tab under its own reason. ' +
-        '14 channel credit memos are still a draft. Issue or void the channel credit memos dated in January 2026.'
+        '14 channel credit memos are still a draft. The channel memo pass issues the ones dated in ' +
+        "January 2026 once their order's receipts and shipments have posted; a memo it cannot " +
+        'issue says why on its record. Void any that should not issue.'
     )
   })
 

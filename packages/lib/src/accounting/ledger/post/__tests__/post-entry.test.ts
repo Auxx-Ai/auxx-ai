@@ -332,6 +332,15 @@ function createFakeDb(chart: Array<{ role: string; account: Account }>) {
         chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
           Promise.resolve()
             .then(() => {
+              // A discard: the draft's lines, then its header, by the ids the WHERE bound.
+              if (table === schema.GlPosting || table === schema.GlPostingLine) {
+                const named = boundValues(condition)
+                const rows = table === schema.GlPosting ? postings : lines
+                const key = table === schema.GlPosting ? 'id' : 'glPostingId'
+                for (let at = rows.length - 1; at >= 0; at--)
+                  if (named.includes(rows[at]![key] as string)) rows.splice(at, 1)
+                return
+              }
               if (table !== schema.GlPostingSource) return
               // Column-aware, unlike `matches`: the reversal's OWN subject row
               // carries the original's id in `sourceId`, so a value-only match
@@ -715,6 +724,33 @@ describe('postDraft', () => {
     expect(result.status).toBe('period_closed')
     expect(fake.postings[0]?.status).toBe('draft')
     expect(fake.sources.filter((s) => s.linkRole === 'subject')).toHaveLength(0)
+  })
+
+  it('discards a draft whose source another posting already claimed - it can never post', async () => {
+    const fake = createFakeDb(CHART)
+    const drafted = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'draft',
+      sources: [SUBJECT],
+    })
+    const posted = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+      mode: 'post',
+      sources: [SUBJECT],
+    })
+
+    const result = await postDraft(fake.db, {
+      organizationId: ORG,
+      glPostingId: drafted.glPostingId as string,
+      lock: OPEN,
+    })
+
+    expect(result).toEqual({ status: 'already_posted', glPostingId: posted.glPostingId })
+    expect(fake.postings.map((row) => row.id)).toEqual([posted.glPostingId])
   })
 
   it('refuses a posting that is not a draft', async () => {
