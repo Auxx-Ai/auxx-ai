@@ -18,7 +18,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, lte, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../../cache'
@@ -32,6 +32,7 @@ import {
 } from '../../../resources/system-records'
 import { listApplicationsByMovement } from '../reads'
 import { resolveBankDepositStatus } from './client'
+import { bankDepositEligibility } from './eligibility'
 import {
   type BankDepositAttribute,
   type DepositBankAccountContext,
@@ -109,17 +110,9 @@ export async function readDepositBankAccount(
 }
 
 /**
- * Receipts that are waiting to be banked: naming no rail and no bank account, and
- * in no deposit.
- *
- * MIGRATION follow-up 9: reads `MoneyTransaction` directly - `cashAccountInstanceId
- * IS NULL AND paymentGatewayId IS NULL` is what "sitting in undeposited funds"
- * means on the row itself, and `bankDepositInstanceId IS NULL` is "in no
- * deposit". All three are SQL filters.
- *
- * ⚠️ A receipt naming a rail or a bank account is never listed: it arrives at the
- * bank on its own line, or a payout drains it, and banking it would assert a bank
- * line that does not exist.
+ * Receipts explicitly recorded into undeposited funds or accepted from a live
+ * manual source, with no bank, processor, or deposit attached. Source eligibility
+ * is filtered in SQL before pagination; empty endpoints alone are insufficient.
  */
 export async function listUndepositedPayments(
   db: Database,
@@ -128,28 +121,28 @@ export async function listUndepositedPayments(
   const { organizationId, method, from, to, limit, offset } = params
   return guard(
     async () => {
-      const where: SQL[] = [
-        eq(schema.MoneyTransaction.organizationId, organizationId),
-        eq(schema.MoneyTransaction.purpose, 'customer_receipt'),
-        isNull(schema.MoneyTransaction.cashAccountInstanceId),
-        isNull(schema.MoneyTransaction.paymentGatewayId),
-        isNull(schema.MoneyTransaction.bankDepositInstanceId),
-      ]
+      const where: SQL[] = [bankDepositEligibility(organizationId)]
       // The explicit method filter stays as a plain predicate; it narrows the
       // list, it no longer decides what belongs in it.
       if (method) where.push(eq(schema.MoneyTransaction.method, method as never))
-      // Hand-recorded receipts (the only kind that ever route to undeposited
-      // funds) always carry `occurredOn` - `record-payment.ts` stamps
-      // `datePrecision: 'date'`. A quote-deposit checkout's `instant` receipt has
-      // no `occurredOn` and is excluded once a date filter narrows the query.
-      if (from) where.push(gte(schema.MoneyTransaction.occurredOn, from))
-      if (to) where.push(lte(schema.MoneyTransaction.occurredOn, to))
-
+      // Match hydrateReceipts' UTC date and groupByDay's ordering before paging,
+      // including its "unknown" bucket, so later pages cannot add newer days above.
+      const receiptDay = sql<string>`coalesce(
+        ${schema.MoneyTransaction.occurredOn}::text,
+        to_char(${schema.MoneyTransaction.occurredAt} at time zone 'UTC', 'YYYY-MM-DD'),
+        'unknown'
+      )`
+      if (from) where.push(gte(receiptDay, from))
+      if (to) where.push(lte(receiptDay, to))
       const rows = await db
         .select(RECEIPT_COLUMNS)
         .from(schema.MoneyTransaction)
         .where(and(...where))
-        .orderBy(desc(schema.MoneyTransaction.createdAt))
+        .orderBy(
+          desc(receiptDay),
+          desc(schema.MoneyTransaction.createdAt),
+          desc(schema.MoneyTransaction.id)
+        )
         .limit(limit ?? DEFAULT_LIMIT)
         .offset(offset ?? 0)
 

@@ -1005,8 +1005,9 @@ export const moneyRouter = createTRPCRouter({
    */
   bankDeposit: createTRPCRouter({
     /**
-     * Payments waiting to be banked: routed to `undeposited_funds` by the org's
-     * route table, and in no deposit. Both halves are SQL filters.
+     * Payments waiting to be banked, paged by payment date newest first.
+     * Local undeposited receipts and accepted manual imports only; processor and
+     * unresolved imports are excluded before pagination by the shared deposit guard.
      */
     listUndeposited: permissionProcedure(PermissionKey.ledgerView)
       .input(
@@ -1016,16 +1017,25 @@ export const moneyRouter = createTRPCRouter({
             from: z.iso.date().optional(),
             to: z.iso.date().optional(),
             limit: z.number().int().min(1).max(500).optional(),
+            cursor: z.number().int().min(0).optional(),
           })
           .optional()
       )
       .query(async ({ ctx, input }) => {
+        const { cursor, limit, ...filters } = input ?? {}
+        const pageSize = limit ?? 50
+        const offset = cursor ?? 0
         const result = await listUndepositedPayments(ctx.db, {
           organizationId: ctx.session.organizationId,
-          ...(input ?? {}),
+          ...filters,
+          limit: pageSize,
+          offset,
         })
         if (result.isErr()) throw result.error
-        return result.value
+        return {
+          items: result.value,
+          nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
+        }
       }),
 
     /** Recorded deposits, newest first. */

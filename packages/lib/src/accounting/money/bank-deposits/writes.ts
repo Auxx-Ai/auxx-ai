@@ -56,6 +56,7 @@ import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen } from './client'
+import { readEligibleDepositPaymentIds } from './eligibility'
 import {
   loadBankDepositFieldContext,
   requireBankDepositFieldContext,
@@ -218,6 +219,16 @@ export async function createBankDeposit(
             `These payments name a payment gateway or a bank account (${methods.join(', ')}), so ` +
               'they arrive at the bank on their own line and must not be grouped.',
             { methods: methods.join(', ') }
+          )
+        }
+
+        const eligibleIds = await readEligibleDepositPaymentIds(txDb, organizationId, uniqueIds)
+        const ineligibleIds = uniqueIds.filter((id) => !eligibleIds.has(id))
+        if (ineligibleIds.length > 0) {
+          throw new UnprocessableEntityError(
+            'Only receipts recorded into undeposited funds or confirmed as manual payments can be grouped. ' +
+              'Processor payments and payments with unresolved routing cannot be included.',
+            { paymentIds: ineligibleIds.join(', ') }
           )
         }
 

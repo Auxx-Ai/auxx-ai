@@ -42,6 +42,7 @@ const h = vi.hoisted(() => ({
   /** What `readDepositBankAccount` answers. Null stands in for "no such account". */
   bankAccount: null as Record<string, unknown> | null,
   isAccountingEnabled: vi.fn(),
+  ineligibleIds: [] as string[],
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -74,6 +75,14 @@ vi.mock('../reads', () => ({
   readBankDepositDetail: async () => h.deposit,
   readDepositPayments: async () => [],
   readDepositBankAccount: async () => h.bankAccount,
+}))
+
+vi.mock('../eligibility', () => ({
+  readEligibleDepositPaymentIds: async (db: unknown, _org: string, ids: string[]) => {
+    h.calls.push('check-eligibility')
+    h.readWith.push(db)
+    return new Set(ids.filter((id) => !h.ineligibleIds.includes(id)))
+  },
 }))
 
 vi.mock('../../../../resources/crud/unified-handler', () => ({
@@ -240,6 +249,7 @@ function bankAccount(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   h.settings = {}
+  h.ineligibleIds = []
   h.payments = [payment()]
   h.deposit = deposit()
   h.postResult = { status: 'posted', glPostingId: 'glp_1' }
@@ -325,6 +335,28 @@ describe('createBankDeposit refusals', () => {
     const result = await createBankDeposit(db, input)
     expect(result._unsafeUnwrapErr().message).toMatch(/name a payment gateway or a bank account/i)
     expect(h.created).toHaveLength(0)
+  })
+
+  it('rejects an unresolved or processor receipt even when its endpoint fields are empty', async () => {
+    h.payments = [payment({ method: null, paymentGatewayId: null, cashAccountInstanceId: null })]
+    h.ineligibleIds = ['pay_1']
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/unresolved routing/i)
+    expect(h.created).toHaveLength(0)
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
+    expect(h.postedEntries).toHaveLength(0)
+    expect(h.calls.indexOf('check-eligibility')).toBeGreaterThan(h.calls.indexOf('lock:update'))
+    expect(h.calls).not.toContain('commit')
+  })
+
+  it('rejects the entire selection when only one receipt is ineligible', async () => {
+    h.payments = [payment(), payment({ paymentId: 'pay_2', method: null })]
+    h.ineligibleIds = ['pay_2']
+    const result = await createBankDeposit(db, { ...input, paymentIds: ['pay_1', 'pay_2'] })
+    expect(result.isErr()).toBe(true)
+    expect(h.created).toHaveLength(0)
+    expect(h.moneyTransactionUpdates).toHaveLength(0)
+    expect(h.postedEntries).toHaveLength(0)
   })
 
   it('refuses mixed currencies explicitly rather than posting at an implied 1.0 rate', async () => {
@@ -485,7 +517,8 @@ describe('createBankDeposit reads its payments under the lock, inside the transa
 
   it('reads the payments with the TRANSACTION handle, never the outer one', async () => {
     await createBankDeposit(db, input)
-    expect(h.readWith).toEqual([tx])
+    expect(h.readWith).toEqual([tx, tx])
+    expect(h.calls.indexOf('check-eligibility')).toBeLessThan(h.calls.indexOf('commit'))
   })
 
   it('reads them before the commit, not after', async () => {
