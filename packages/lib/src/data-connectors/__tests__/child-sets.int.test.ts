@@ -58,7 +58,8 @@ function set(parentExternalId: string, externalIds: string[], m = mapping()): Ch
   }
 }
 
-const archivedIds = () => archive.mock.calls.map((c) => [(c[1] as { id: string }).id, c[2]])
+const archivedIds = (): [string, unknown][] =>
+  archive.mock.calls.map((c: unknown[]) => [(c[1] as { id: string }).id, c[2]])
 
 describe('replaceChildSets', () => {
   it('stamps present children and retires the parent’s absent ones', async () => {
