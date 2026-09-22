@@ -27,7 +27,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
-import { and, count, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, lt, lte, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { PostingSummary } from '../../journals/entries/client'
@@ -78,6 +78,10 @@ export async function listPostings(
     organizationId: string
     periodKey?: string | null
     status?: PostingStatus
+    categories?: PostingType[]
+    search?: string
+    from?: string
+    to?: string
     limit?: number
     offset?: number
   }
@@ -104,6 +108,14 @@ export async function listPostings(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
           ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE),
+          options.categories?.length
+            ? inArray(schema.GlPosting.postingType, options.categories)
+            : undefined,
+          options.from ? gte(schema.GlPosting.txnDate, options.from) : undefined,
+          options.to ? lte(schema.GlPosting.txnDate, options.to) : undefined,
+          options.search
+            ? sql`strpos(lower(concat_ws(' ', ${schema.GlPosting.docNumber}, ${schema.GlPosting.periodKey}, ${schema.GlPosting.built}->>'memo')), lower(${options.search})) > 0`
+            : undefined,
           ...(status ? [eq(schema.GlPosting.status, status)] : []),
           // A Postgres `date` compares to a `YYYY-MM-DD` string directly
           // (drizzle's `date()` is string-mode), and the range is half-open so
@@ -117,7 +129,11 @@ export async function listPostings(
             : [])
         )
       )
-      .orderBy(desc(schema.GlPosting.txnDate), desc(schema.GlPosting.createdAt))
+      .orderBy(
+        desc(schema.GlPosting.txnDate),
+        desc(schema.GlPosting.createdAt),
+        desc(schema.GlPosting.id)
+      )
       .limit(limit)
       .offset(offset)
 

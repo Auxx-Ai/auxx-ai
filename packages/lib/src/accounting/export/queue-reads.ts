@@ -3,7 +3,21 @@
 // rolls up. Same read in both modes (TARGET §6).
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lt, lte } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
 import { monthBounds } from '../ledger/periods/periods'
@@ -45,6 +59,10 @@ export interface ListExportBatchesInput {
   organizationId: string
   /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
   month?: string
+  categories?: string[]
+  search?: string
+  from?: string
+  to?: string
   states?: ExportBatchState[]
   /** Only batches holding one of these postings as a live member - a card or drawer's read. */
   glPostingIds?: string[]
@@ -74,6 +92,34 @@ export async function listExportBatches(
 
     if (input.glPostingIds && input.glPostingIds.length === 0) return ok([])
 
+    const memberMatches = (search?: string) =>
+      exists(
+        db
+          .select({ id: schema.ExportBatchPosting.id })
+          .from(schema.ExportBatchPosting)
+          .innerJoin(
+            schema.GlPosting,
+            and(
+              eq(schema.GlPosting.organizationId, schema.ExportBatchPosting.organizationId),
+              eq(schema.GlPosting.id, schema.ExportBatchPosting.glPostingId)
+            )
+          )
+          .where(
+            and(
+              eq(schema.ExportBatchPosting.organizationId, organizationId),
+              eq(schema.ExportBatchPosting.batchId, schema.ExportBatch.id),
+              isNull(schema.ExportBatchPosting.withdrawnAt),
+              search
+                ? sql`strpos(lower(${schema.GlPosting.docNumber}), lower(${search})) > 0`
+                : undefined,
+              !search && input.from ? gte(schema.GlPosting.txnDate, input.from) : undefined,
+              !search && input.to ? lte(schema.GlPosting.txnDate, input.to) : undefined,
+              !search && monthWindow ? gte(schema.GlPosting.txnDate, monthWindow.first) : undefined,
+              !search && monthWindow ? lt(schema.GlPosting.txnDate, monthWindow.next) : undefined
+            )
+          )
+      )
+
     const batches = await db
       .select()
       .from(schema.ExportBatch)
@@ -81,6 +127,16 @@ export async function listExportBatches(
         and(
           eq(schema.ExportBatch.organizationId, organizationId),
           input.states ? inArray(schema.ExportBatch.state, input.states) : undefined,
+          input.categories?.length
+            ? inArray(schema.ExportBatch.avenue, input.categories)
+            : undefined,
+          input.from || input.to || monthWindow ? memberMatches() : undefined,
+          input.search
+            ? or(
+                sql`strpos(lower(concat_ws(' ', ${schema.ExportBatch.id}, ${schema.ExportBatch.payload}->>'docNumber', ${schema.ExportBatch.providerObjectId}, ${schema.ExportBatch.lastError})), lower(${input.search})) > 0`,
+                memberMatches(input.search)
+              )
+            : undefined,
           input.glPostingIds
             ? exists(
                 db

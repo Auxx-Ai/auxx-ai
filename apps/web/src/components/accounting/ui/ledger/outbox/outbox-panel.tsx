@@ -9,15 +9,8 @@
 // export-batch states. This is the list half - the strip and its counts; each
 // tab's rows live in its own panel beside this file.
 //
-// 🛑 All periods, EVERY tab. The outbox is a backlog that can span months, so
-// every tab reads with no `month` bound. Build is the one month-scoped control
-// and it lives in the module topbar with its own month dropdown
-// (81-one-accounting-shell.md §4), not over these rows.
-//
-// 🛑 The select-all checkbox and the tab strip stay in THIS bar. `BOX_PX = 48`
-// is a `size='sm'` `RadioTab` inside the bar's `py-2`, and `TOOLBAR_INSET_PX`
-// is its `px-3`; lifting either into the topbar (`gap-1 p-1`, `h-7`) puts every
-// `SelectAllCheckbox` offset out by a row (§3).
+// Lists default to all periods. Filters narrow the backlog independently of Build.
+// Select-all leads the second toolbar row.
 
 import {
   type ExportBatchTab,
@@ -27,22 +20,21 @@ import {
 } from '@auxx/lib/accounting/export/client'
 import { EXPORT_AVENUES } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
+import { Button } from '@auxx/ui/components/button'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { type ReactNode, useEffect, useMemo } from 'react'
-import {
-  ListSelectionProvider,
-  SelectAllCheckbox,
-  useListSelection,
-} from '~/components/list-selection'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { ListSelectionProvider, useListSelection } from '~/components/list-selection'
+import { useDebounce } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BatchesPanel } from './batches-panel'
 import { BlockedPanel } from './blocked-panel'
 import { DraftsPanel } from './drafts-panel'
-import { OUTBOX_LIST_PADDING, TAB_ICON, TAB_LABEL } from './outbox-tabs'
+import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
+import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
 
 interface OutboxPanelProps {
   tab: OutboxTab
@@ -99,6 +91,18 @@ function OutboxBody({
   // worse than one never offered. `effectiveTab` catches a pasted link.
   const effectiveTab: OutboxTab =
     (tab === 'drafts' || tab === 'blocked') && !canRelease ? 'ready' : tab
+  const family = isExportBatchTab(effectiveTab) ? 'batches' : effectiveTab
+  const [filterState, setFilterState] = useState({ family, filters: EMPTY_OUTBOX_FILTERS })
+  // Reset incompatible categories synchronously, including URL back/forward changes.
+  if (filterState.family !== family) {
+    setFilterState({ family, filters: { ...filterState.filters, categories: [] } })
+  }
+  const filters = filterState.filters
+  const search = useDebounce(filters.search.trim(), 250)
+  const appliedFilters = { ...filters, search }
+  const filterKey = JSON.stringify([effectiveTab, filters])
+  const searchPending = search !== filters.search.trim()
+  const filtered = !!(search || filters.categories.length || filters.from || filters.to)
   const tabs = useMemo(
     () => OUTBOX_TABS.filter((value) => canRelease || isExportBatchTab(value)),
     [canRelease]
@@ -125,73 +129,117 @@ function OutboxBody({
   const monthLabel = buildMonthLabel || 'this month'
 
   const exitSelection = useListSelection((state) => state.exit)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the tab is the trigger
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the tab and filters trigger a selection reset
   useEffect(() => {
     exitSelection()
-  }, [effectiveTab])
+  }, [filterKey])
+
+  const changeFilters = (next: OutboxFilters) => {
+    exitSelection()
+    setFilterState({ family, filters: next })
+  }
+  const clearFilters = () => changeFilters(EMPTY_OUTBOX_FILTERS)
+  const clearAction = filtered ? (
+    <Button variant='outline' size='sm' onClick={clearFilters}>
+      Clear filters
+    </Button>
+  ) : undefined
 
   const emptyCopy = (value: OutboxTab) =>
-    emptyDescription(value, providerLabel, monthLabel, heldForRelease)
+    filtered
+      ? 'Try another search, category, or date range.'
+      : emptyDescription(value, providerLabel, monthLabel, heldForRelease)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
-      <ListToolbar>
-        <SelectAllCheckbox listPadding={OUTBOX_LIST_PADDING} />
-        <ListToolbarGroup className='shrink-0'>
-          <RadioTab
-            value={effectiveTab}
-            onValueChange={(value) => onTabChange(value as OutboxTab)}
-            size='sm'>
-            {tabs.map((value) => {
-              const Icon = TAB_ICON[value]
-              const count = tally[value]
-              return (
-                <RadioTabItem key={value} value={value}>
-                  <Icon />
-                  {TAB_LABEL[value]}
-                  {count > 0 && <span className='tabular-nums opacity-60'>{count}</span>}
-                </RadioTabItem>
-              )
-            })}
-          </RadioTab>
-        </ListToolbarGroup>
-      </ListToolbar>
+      <div className='shrink-0'>
+        <ListToolbar sticky={false}>
+          <ListToolbarGroup className='shrink-0'>
+            <RadioTab
+              value={effectiveTab}
+              onValueChange={(value) => onTabChange(value as OutboxTab)}
+              size='sm'>
+              {tabs.map((value) => {
+                const Icon = TAB_ICON[value]
+                const count = tally[value]
+                return (
+                  <RadioTabItem key={value} value={value}>
+                    <Icon />
+                    {TAB_LABEL[value]}
+                    {count > 0 && (
+                      <span
+                        title='Total before search, category, and date filters'
+                        className='tabular-nums opacity-60'>
+                        {count}
+                      </span>
+                    )}
+                  </RadioTabItem>
+                )
+              })}
+            </RadioTab>
+          </ListToolbarGroup>
+        </ListToolbar>
+        <OutboxToolbar
+          key={family}
+          tab={effectiveTab}
+          filters={filters}
+          onChange={changeFilters}
+          onClear={clearFilters}
+          selectionDisabled={searchPending}
+        />
+      </div>
 
       {buildNotice}
 
       {/* List page, so the bar pins and only the rows move (§6). */}
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        {effectiveTab === 'blocked' ? (
-          <BlockedPanel
-            emptyDescription={emptyCopy('blocked')}
-            bookTimeZone={bookTimeZone}
-            activeMovementId={activeMovementId}
-            onSelectMovement={onSelectMovement}
-          />
-        ) : effectiveTab === 'drafts' ? (
-          <DraftsPanel
-            emptyDescription={emptyCopy('drafts')}
-            currencyCode={currencyCode}
-            bookTimeZone={bookTimeZone}
-            providerLabel={providerLabel}
-            connectedTenantId={connectedTenantId}
-            activePostingId={activePostingId}
-            onSelectPosting={onSelectPosting}
-          />
+        {searchPending ? (
+          <p role='status' className='p-3 text-sm text-muted-foreground'>
+            Searching…
+          </p>
         ) : (
-          <BatchesPanel
-            // Remounts per tab, so one tab's open rows and selection never leak into the next.
-            key={effectiveTab}
-            tab={effectiveTab}
-            emptyTitle={emptyTitle(effectiveTab)}
-            emptyDescription={emptyCopy(effectiveTab)}
-            bookTimeZone={bookTimeZone}
-            providerLabel={providerLabel}
-            canRelease={canRelease}
-            canRollback={canRollback}
-            activePostingId={activePostingId}
-            onSelectPosting={onSelectPosting}
-          />
+          <div key={filterKey} className='flex flex-1 flex-col'>
+            {effectiveTab === 'blocked' ? (
+              <BlockedPanel
+                filters={appliedFilters}
+                emptyTitle={filtered ? 'No matching results' : undefined}
+                emptyAction={clearAction}
+                emptyDescription={emptyCopy('blocked')}
+                bookTimeZone={bookTimeZone}
+                activeMovementId={activeMovementId}
+                onSelectMovement={onSelectMovement}
+              />
+            ) : effectiveTab === 'drafts' ? (
+              <DraftsPanel
+                filters={appliedFilters}
+                emptyTitle={filtered ? 'No matching results' : undefined}
+                emptyAction={clearAction}
+                emptyDescription={emptyCopy('drafts')}
+                currencyCode={currencyCode}
+                bookTimeZone={bookTimeZone}
+                providerLabel={providerLabel}
+                connectedTenantId={connectedTenantId}
+                activePostingId={activePostingId}
+                onSelectPosting={onSelectPosting}
+              />
+            ) : (
+              <BatchesPanel
+                filters={appliedFilters}
+                emptyAction={clearAction}
+                // Remounts per tab, so one tab's open rows and selection never leak into the next.
+                key={effectiveTab}
+                tab={effectiveTab}
+                emptyTitle={filtered ? 'No matching results' : emptyTitle(effectiveTab)}
+                emptyDescription={emptyCopy(effectiveTab)}
+                bookTimeZone={bookTimeZone}
+                providerLabel={providerLabel}
+                canRelease={canRelease}
+                canRollback={canRollback}
+                activePostingId={activePostingId}
+                onSelectPosting={onSelectPosting}
+              />
+            )}
+          </div>
         )}
       </ScrollArea>
     </div>

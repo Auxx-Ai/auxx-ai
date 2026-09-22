@@ -52,6 +52,7 @@ import {
   listRoleMap,
   listRoleSources,
   monthDateRange,
+  POSTING_TYPES,
   postDraft,
   readCloseBlockers,
   readExportSettings,
@@ -208,9 +209,17 @@ const OUTBOX_PAGE_SIZE = 50
 
 /** Offset paging in `useInfiniteQuery`'s shape - the banking review queue's convention. */
 const outboxPage = z.object({
+  search: z.string().trim().max(200).optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
   limit: z.number().int().min(1).max(200).optional(),
   cursor: z.number().int().min(0).optional(),
 })
+
+/** Reject inverted ranges before querying any outbox family. */
+const validOutboxRange = (input: { from?: string; to?: string }) =>
+  !input.from || !input.to || input.from <= input.to
+const outboxRangeError = { message: 'End date must be on or after start date', path: ['to'] }
 
 /**
  * One line of a journal-entry DRAFT, as the drawer stores it.
@@ -1108,21 +1117,29 @@ export const ledgerRouter = createTRPCRouter({
      */
     list: permissionProcedure(PermissionKey.ledgerView)
       .input(
-        z.object({
-          /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
-          month: z.string().min(1).optional(),
-          tab: z.enum(EXPORT_BATCH_TABS).optional(),
-          glPostingIds: z.array(z.string().min(1)).max(500).optional(),
-          limit: z.number().int().min(1).max(500).optional(),
-          /** The row offset the next page starts at, as `useInfiniteQuery` hands it back. */
-          cursor: z.number().int().min(0).optional(),
-        })
+        z
+          .object({
+            ...outboxPage.shape,
+            categories: z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional(),
+            /** One accounting month, `'2026-09'`. Bounds the read by DETAIL date. */
+            month: z.string().min(1).optional(),
+            tab: z.enum(EXPORT_BATCH_TABS).optional(),
+            glPostingIds: z.array(z.string().min(1)).max(500).optional(),
+            limit: z.number().int().min(1).max(500).optional(),
+            /** The row offset the next page starts at, as `useInfiniteQuery` hands it back. */
+            cursor: z.number().int().min(0).optional(),
+          })
+          .refine(validOutboxRange, outboxRangeError)
       )
       .query(async ({ ctx, input }) => {
         const pageSize = input.limit ?? EXPORT_BATCH_PAGE_SIZE
         const offset = input.cursor ?? 0
         const result = await listExportBatches(ctx.db, {
           organizationId: ctx.session.organizationId,
+          categories: input.categories,
+          search: input.search,
+          from: input.from,
+          to: input.to,
           ...(input.month ? { month: input.month } : {}),
           ...(input.tab ? { states: exportBatchTabStates(input.tab) } : {}),
           ...(input.glPostingIds ? { glPostingIds: input.glPostingIds } : {}),
@@ -1607,13 +1624,21 @@ export const ledgerRouter = createTRPCRouter({
    * discarded, and reviewing what is queued to post is part of that authority.
    */
   listDrafts: permissionProcedure(PermissionKey.ledgerPost)
-    .input(outboxPage)
+    .input(
+      outboxPage
+        .extend({ categories: z.array(z.enum(POSTING_TYPES)).max(POSTING_TYPES.length).optional() })
+        .refine(validOutboxRange, outboxRangeError)
+    )
     .query(async ({ ctx, input }) => {
       const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
       const offset = input.cursor ?? 0
       const result = await listPostings(ctx.db, {
         organizationId: ctx.session.organizationId,
         status: 'draft',
+        categories: input.categories,
+        search: input.search,
+        from: input.from,
+        to: input.to,
         limit: pageSize,
         offset,
       })
@@ -1630,11 +1655,26 @@ export const ledgerRouter = createTRPCRouter({
    * words and the mark clears the moment a retry is accepted.
    */
   listBlockedMovements: permissionProcedure(PermissionKey.ledgerPost)
-    .input(outboxPage)
+    .input(
+      outboxPage
+        .extend({
+          categories: z
+            .array(
+              z.enum(['customer_receipt', 'customer_refund', 'vendor_payment', 'vendor_refund'])
+            )
+            .max(4)
+            .optional(),
+        })
+        .refine(validOutboxRange, outboxRangeError)
+    )
     .query(async ({ ctx, input }) => {
       const pageSize = input.limit ?? OUTBOX_PAGE_SIZE
       const offset = input.cursor ?? 0
       const items = await listBlockedMovements(ctx.db, ctx.session.organizationId, {
+        categories: input.categories,
+        search: input.search,
+        from: input.from,
+        to: input.to,
         limit: pageSize,
         offset,
       })
