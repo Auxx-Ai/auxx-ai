@@ -27,9 +27,25 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey, toIso } from '@auxx/utils/calendar-day'
-import { and, count, desc, eq, gte, inArray, lt, lte, ne, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
+import type { ExportBatchState } from '../../export/client'
 import type { PostingSummary } from '../../journals/entries/client'
 import { monthBounds } from '../periods/periods'
 import type { ExportAvenue } from '../setup/export-settings'
@@ -49,6 +65,21 @@ const logger = createScopedLogger('postings:list-postings')
 const CLOSE_POSTING_TYPE: PostingType = 'month_end_reversal'
 
 const DEFAULT_LIMIT = 200
+
+/** The live export batch holding a posting; `null` on the row when none does. */
+export interface PostingExportState {
+  state: ExportBatchState
+  batchId: string
+  docNumber: string | null
+}
+
+/** An export-state filter value; `'none'` means no live batch holds the posting. */
+export type PostingExportStateFilter = 'none' | ExportBatchState
+
+/** A {@link listPostings} row: the summary plus its live export batch. */
+export interface PostingListRow extends PostingSummary {
+  exportState: PostingExportState | null
+}
 
 /**
  * Every posting in one accounting month except the close entry, newest first.
@@ -84,11 +115,16 @@ export async function listPostings(
     search?: string
     from?: string
     to?: string
+    /** Narrows on the live export batch's state; `'none'` admits unbatched postings. */
+    exportStates?: PostingExportStateFilter[]
+    /** Order on `txnDate`; newest first by default. */
+    direction?: 'asc' | 'desc'
     limit?: number
     offset?: number
   }
-): Promise<Result<PostingSummary[], Error>> {
+): Promise<Result<PostingListRow[], Error>> {
   const { organizationId, periodKey, status, limit = DEFAULT_LIMIT, offset = 0 } = options
+  const order = options.direction === 'asc' ? asc : desc
 
   try {
     // A malformed month is still an error. Only an ABSENT one widens the read:
@@ -104,12 +140,34 @@ export async function listPostings(
     }
 
     const rows = await db
-      .select(POSTING_COLUMNS)
+      .select({
+        ...POSTING_COLUMNS,
+        exportBatchId: schema.ExportBatch.id,
+        exportBatchState: schema.ExportBatch.state,
+        exportDocNumber: sql<string | null>`${schema.ExportBatch.payload}->>'docNumber'`,
+      })
       .from(schema.GlPosting)
+      // The live-membership unique index keeps this at one row per posting.
+      .leftJoin(
+        schema.ExportBatchPosting,
+        and(
+          eq(schema.ExportBatchPosting.organizationId, schema.GlPosting.organizationId),
+          eq(schema.ExportBatchPosting.glPostingId, schema.GlPosting.id),
+          isNull(schema.ExportBatchPosting.withdrawnAt)
+        )
+      )
+      .leftJoin(
+        schema.ExportBatch,
+        and(
+          eq(schema.ExportBatch.organizationId, schema.ExportBatchPosting.organizationId),
+          eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+        )
+      )
       .where(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
           ne(schema.GlPosting.postingType, CLOSE_POSTING_TYPE),
+          exportStateCondition(options.exportStates),
           options.categories?.length
             ? inArray(schema.GlPosting.avenue, options.categories)
             : undefined,
@@ -132,19 +190,41 @@ export async function listPostings(
         )
       )
       .orderBy(
-        desc(schema.GlPosting.txnDate),
-        desc(schema.GlPosting.createdAt),
-        desc(schema.GlPosting.id)
+        order(schema.GlPosting.txnDate),
+        order(schema.GlPosting.createdAt),
+        order(schema.GlPosting.id)
       )
       .limit(limit)
       .offset(offset)
 
-    return ok(rows.map(toSummary))
+    return ok(
+      rows.map(({ exportBatchId, exportBatchState, exportDocNumber, ...row }) => ({
+        ...toSummary(row),
+        exportState:
+          exportBatchId && exportBatchState
+            ? {
+                state: exportBatchState,
+                batchId: exportBatchId,
+                docNumber: exportDocNumber ?? null,
+              }
+            : null,
+      }))
+    )
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list postings', { error, organizationId, periodKey })
     return err(new AuxxError('Internal error'))
   }
+}
+
+/** The `exportStates` predicate over the left-joined batch; `undefined` when unfiltered. */
+function exportStateCondition(filter?: PostingExportStateFilter[]): SQL | undefined {
+  if (!filter?.length) return undefined
+  const states = filter.filter((value): value is ExportBatchState => value !== 'none')
+  return or(
+    filter.includes('none') ? isNull(schema.ExportBatch.id) : undefined,
+    states.length ? inArray(schema.ExportBatch.state, states) : undefined
+  )
 }
 
 /** Drafts awaiting approval across every period - the Outbox tab badge, counted in SQL. */

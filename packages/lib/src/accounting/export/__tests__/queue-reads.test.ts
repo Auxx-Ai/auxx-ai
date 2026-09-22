@@ -68,7 +68,14 @@ beforeEach(() => {
 
 describe('listExportBatches blockers', () => {
   it('preflights the failed rows as well as the ready ones, and carries the items', async () => {
-    const db = fakeDb([[row('b1', 'ready'), row('b2', 'failed'), row('b3', 'sent')], []])
+    // The batch read selects `{ batch, dayKey }`, the member read is flat.
+    const db = fakeDb([
+      [row('b1', 'ready'), row('b2', 'failed'), row('b3', 'sent')].map((batch) => ({
+        batch,
+        dayKey: null,
+      })),
+      [],
+    ])
 
     const result = await listExportBatches(db, { organizationId: ORG })
 

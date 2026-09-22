@@ -45,6 +45,8 @@ export interface ListSelectionState {
   toggle: (id: string, opts?: { shiftKey?: boolean }) => void
   /** Select every visible item (Cmd/Ctrl+A). */
   selectAll: () => void
+  /** Select or clear a set at once - a group header's checkbox. */
+  toggleMany: (ids: string[], on: boolean) => void
   /** Clear the selection but stay in bulk mode. */
   clear: () => void
   /** Clear the selection and leave bulk mode. */
@@ -132,6 +134,18 @@ function createListSelectionStore() {
       }),
 
     selectAll: () => set((state) => ({ bulkMode: true, selectedIds: [...state.itemIds] })),
+
+    toggleMany: (ids, on) =>
+      set((state) => {
+        const selectedIds = on
+          ? [...state.selectedIds, ...ids.filter((id) => !state.selectedIds.includes(id))]
+          : state.selectedIds.filter((id) => !ids.includes(id))
+        return {
+          bulkMode: state.sticky || selectedIds.length > 0,
+          anchorId: selectedIds.length > 0 ? (state.anchorId ?? ids[0] ?? null) : null,
+          selectedIds,
+        }
+      }),
 
     clear: () => set({ selectedIds: [], anchorId: null }),
 

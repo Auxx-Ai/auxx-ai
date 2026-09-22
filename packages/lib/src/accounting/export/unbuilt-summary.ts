@@ -3,21 +3,15 @@
 // posted entry between Approve and Build (TARGET §3, §6), grouped in SQL the
 // way `readLedgerSummary` groups in memory, and paged.
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
-import {
-  EXPORT_AVENUES,
-  type ExportAvenue,
-  type ExportSettings,
-  isSummaryGrainAvenue,
-} from '../ledger/setup/export-settings'
-import { readExportSettings } from '../ledger/setup/read-export-settings'
+import type { ExportAvenue } from '../ledger/setup/export-settings'
 import type { PostingType } from '../ledger/types'
-import { readActiveBookConnection } from '../providers/book-connections'
 import { type UnbuiltGroupKey, unbuiltGroupKeyString } from './client'
 import type { ExportBatchMember } from './queue-reads'
+import { bucketCtes, type SummaryScope, summaryDayKey, summaryScope } from './summary-ctes'
 
 export type { UnbuiltGroupKey } from './client'
 
@@ -30,6 +24,8 @@ export interface UnbuiltSummaryRow extends UnbuiltGroupKey {
   memberCount: number
   /** The earliest posting in the group: the drawer's target when the group IS one posting. */
   firstPostingId: string
+  /** The day (or month) the row reads as - the grain key when it is one, else the first posting's day. */
+  dayKey: string
 }
 
 /** The last row of a page, as `readUnbuiltSummaryPage` orders them. NULL store and rail read as `''`. */
@@ -56,83 +52,14 @@ export interface UnbuiltSummaryFilter {
 export interface ReadUnbuiltSummaryPageInput extends UnbuiltSummaryFilter {
   limit: number
   cursor?: UnbuiltCursor
+  /** `desc` when absent - newest day first, the way the built list reads. */
+  direction?: 'asc' | 'desc'
 }
 
-interface Scope {
-  from: string
-  to: string
-  settings: ExportSettings
-}
-
-/** Empty outside Summary mode, without a connected book, or when the window closes before it opens. */
-async function unbuiltScope(db: Database, input: UnbuiltSummaryFilter): Promise<Scope | null> {
-  const settings = await readExportSettings(input.organizationId)
-  if (settings.mode !== 'summary') return null
-  const connection = await readActiveBookConnection(db, input.organizationId)
-  if (!connection) return null
-
-  const cutover =
-    settings.cutover && settings.cutover > connection.exportFromDate
-      ? settings.cutover
-      : connection.exportFromDate
-  const from = input.from && input.from > cutover ? input.from : cutover
-  // A book-zone date can run a day ahead of UTC; one day of slack covers every zone.
-  const to = input.to ?? new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
-  if (from > to) return null
-  return { from, to, settings }
-}
-
-/** `summaryGrainKey` in SQL: the day, the month, or the posting's own id for a grain-less avenue. */
-function grainKeySql(settings: ExportSettings): SQL {
-  const arms = EXPORT_AVENUES.filter(isSummaryGrainAvenue).map((avenue) =>
-    settings.summaryGrain[avenue] === 'month'
-      ? sql`WHEN ${avenue} THEN to_char(p."txnDate", 'YYYY-MM')`
-      : sql`WHEN ${avenue} THEN p."txnDate"::text`
-  )
-  return sql`CASE p."avenue" ${sql.join(arms, sql` `)} ELSE p."id" END`
-}
-
-/**
- * The CTEs every read shares: `member` is each posted, unbatched posting with
- * its group key; `journal` is each group Build would make a journal of - at
- * least two accounts with a non-zero net, the builder's own rule.
- */
-function unbuiltCtes(input: UnbuiltSummaryFilter, scope: Scope): SQL {
-  const avenues = input.avenues?.length ? [...input.avenues] : null
+/** The shared bucket CTEs over unbatched postings, plus `grp`/`row`: each group Build would make. */
+function unbuiltCtes(input: UnbuiltSummaryFilter, scope: SummaryScope): SQL {
   return sql`
-    WITH member AS (
-      SELECT p."id", p."avenue", ${grainKeySql(scope.settings)} AS "grainKey",
-        coalesce(p."storeId", '') AS "storeId", coalesce(p."railId", '') AS "railId",
-        p."currency", p."txnDate", p."totalMinor", p."docNumber", p."postingType"
-      FROM ${schema.GlPosting} p
-      WHERE p."organizationId" = ${input.organizationId}
-        AND p."status" = 'posted' AND p."avenue" IS NOT NULL
-        AND p."txnDate" >= ${scope.from}::date AND p."txnDate" <= ${scope.to}::date
-        ${
-          avenues
-            ? sql`AND p."avenue" IN (${sql.join(
-                avenues.map((avenue) => sql`${avenue}`),
-                sql`, `
-              )})`
-            : sql``
-        }
-        AND NOT EXISTS (SELECT 1 FROM ${schema.ExportBatchPosting} b
-          WHERE b."organizationId" = p."organizationId" AND b."glPostingId" = p."id"
-            AND b."withdrawnAt" IS NULL)
-    ),
-    account AS (
-      SELECT m."avenue", m."grainKey", m."storeId", m."railId", m."currency", l."glAccountId",
-        sum(CASE WHEN l."direction" = 'debit' THEN l."amountMinor" ELSE -l."amountMinor" END) AS net
-      FROM member m
-      JOIN ${schema.GlPostingLine} l
-        ON l."organizationId" = ${input.organizationId} AND l."glPostingId" = m."id"
-      GROUP BY 1, 2, 3, 4, 5, 6
-    ),
-    journal AS (
-      SELECT "avenue", "grainKey", "storeId", "railId", "currency"
-      FROM account WHERE net <> 0
-      GROUP BY 1, 2, 3, 4, 5 HAVING count(*) >= 2
-    ),
+    ${bucketCtes({ organizationId: input.organizationId, avenues: input.avenues, held: 'exclude' }, scope)},
     grp AS (
       SELECT m."avenue", m."grainKey", m."storeId", m."railId", m."currency",
         sum(m."totalMinor")::bigint AS "totalMinor",
@@ -184,6 +111,7 @@ function toRow(row: GroupRow): UnbuiltSummaryRow {
     txnDateTo: row.txnDateTo,
     memberCount: row.memberCount,
     firstPostingId: row.firstPostingId,
+    dayKey: summaryDayKey(row.grainKey, row.txnDateFrom),
   }
 }
 
@@ -210,19 +138,21 @@ export async function readUnbuiltSummaryPage(
   input: ReadUnbuiltSummaryPageInput
 ): Promise<Result<{ items: UnbuiltSummaryRow[]; nextCursor?: UnbuiltCursor }, Error>> {
   try {
-    const scope = await unbuiltScope(db, input)
+    const scope = await summaryScope(db, input)
     if (!scope) return ok({ items: [] })
     const c = input.cursor
+    const ascending = input.direction === 'asc'
+    const dir = ascending ? sql`ASC` : sql`DESC`
     const result = await db.execute(sql`
       ${unbuiltCtes(input, scope)}
       SELECT * FROM row
       ${
         c
           ? sql`WHERE ("txnDateTo"::date, "avenue", "grainKey", "storeId", "railId", "currency")
-              < (${c.txnDateTo}::date, ${c.avenue}, ${c.grainKey}, ${c.storeId}, ${c.railId}, ${c.currency})`
+              ${ascending ? sql`>` : sql`<`} (${c.txnDateTo}::date, ${c.avenue}, ${c.grainKey}, ${c.storeId}, ${c.railId}, ${c.currency})`
           : sql``
       }
-      ORDER BY "txnDateTo" DESC, "avenue" DESC, "grainKey" DESC, "storeId" DESC, "railId" DESC, "currency" DESC
+      ORDER BY "txnDateTo" ${dir}, "avenue" ${dir}, "grainKey" ${dir}, "storeId" ${dir}, "railId" ${dir}, "currency" ${dir}
       LIMIT ${input.limit}
     `)
     const items = (result.rows as unknown as GroupRow[]).map(toRow)
@@ -243,7 +173,7 @@ export async function countUnbuiltSummaryRows(
   input: UnbuiltSummaryFilter
 ): Promise<Result<number, Error>> {
   try {
-    const scope = await unbuiltScope(db, input)
+    const scope = await summaryScope(db, input)
     if (!scope) return ok(0)
     const result = await db.execute(sql`
       ${unbuiltCtes(input, scope)}
@@ -262,13 +192,13 @@ export async function readUnbuiltSummaryMembers(
   input: { organizationId: string; group: UnbuiltGroupKey }
 ): Promise<Result<ExportBatchMember[], Error>> {
   try {
-    const scope = await unbuiltScope(db, input)
+    const scope = await summaryScope(db, input)
     if (!scope) return ok([])
     const { group } = input
     const result = await db.execute(sql`
       ${unbuiltCtes({ organizationId: input.organizationId, avenues: [group.avenue] }, scope)}
-      SELECT m."id" AS "glPostingId", m."postingType", m."docNumber", m."txnDate"::text AS "txnDate",
-        m."totalMinor"
+      SELECT m."id" AS "glPostingId", m."postingType", m."docNumber", m."memo",
+        m."txnDate"::text AS "txnDate", m."totalMinor"
       FROM member m
       WHERE m."avenue" = ${group.avenue} AND m."grainKey" = ${group.grainKey}
         AND m."storeId" = ${group.storeId ?? ''} AND m."railId" = ${group.railId ?? ''}
@@ -281,6 +211,7 @@ export async function readUnbuiltSummaryMembers(
           glPostingId: string
           postingType: PostingType
           docNumber: string | null
+          memo: string | null
           txnDate: string
           totalMinor: string | number
         }>

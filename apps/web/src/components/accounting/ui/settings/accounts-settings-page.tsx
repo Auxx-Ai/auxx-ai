@@ -352,6 +352,7 @@ export function AccountingAccountsSettingsPage() {
       // The server re-releases the failed batches this unblocks, so an Outbox
       // open in another tab is now showing a stale refusal.
       void utils.ledger.exportBatches.list.invalidate()
+      void utils.ledger.exportBatches.summaryRows.invalidate()
       void utils.ledger.outboxCounts.invalidate()
     },
     [setIdentity, utils]

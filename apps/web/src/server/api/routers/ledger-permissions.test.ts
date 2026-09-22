@@ -61,6 +61,8 @@ vi.mock('@auxx/lib/accounting/export', async () => {
       okResult({ runId: 'run_1', released: ['b1'], skipped: [], blocked: [] })
     ),
     retryExportBatch: vi.fn(async () => okResult({ status: 'sent', attempts: 1 })),
+    sendSummaryBucket: vi.fn(async () => okResult({ status: 'sent', attempts: 1, built: true })),
+    rebuildSummaryBucket: vi.fn(async () => okResult({ status: 'sent' })),
   }
 })
 
@@ -159,7 +161,8 @@ const { settingsRouter } = await import('./setting')
 const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/accounting/ledger')
 const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/accounting/banking')
 const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
-const { releaseExportBatches, retryExportBatch } = await import('@auxx/lib/accounting/export')
+const { rebuildSummaryBucket, releaseExportBatches, retryExportBatch, sendSummaryBucket } =
+  await import('@auxx/lib/accounting/export')
 
 type Capabilities = InstanceType<typeof CapabilitySet>
 
@@ -415,5 +418,39 @@ describe('ledger.exportBatches.retry', () => {
     ).resolves.toMatchObject({ status: 'sent' })
     expect(retryExportBatch).toHaveBeenCalledWith(db, { organizationId: ORG_ID, batchId: 'b1' })
     expect(releaseExportBatches).not.toHaveBeenCalled()
+  })
+})
+
+describe('ledger.exportBatches summary buckets', () => {
+  const key = {
+    avenue: 'receipt',
+    grainKey: '2026-09-01',
+    storeId: null,
+    railId: null,
+    currency: 'USD',
+  } as const
+
+  it('sendBucket admits ledger: Edit', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).exportBatches.sendBucket({ key })
+    ).resolves.toMatchObject({ built: true })
+    expect(sendSummaryBucket).toHaveBeenCalledWith(db, { organizationId: ORG_ID, key })
+  })
+
+  // 95 D3: a rebuild rolls the provider's copy back first, so it sits on `rollback`'s rung.
+  it('rebuildBucket refuses ledger: Edit', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).exportBatches.rebuildBucket({ key })
+    ).rejects.toMatchObject(FORBIDDEN)
+    expect(rebuildSummaryBucket).not.toHaveBeenCalled()
+  })
+
+  it('rebuildBucket admits ledger: Full', async () => {
+    await ledgerCaller(ledgerFull()).exportBatches.rebuildBucket({ key, force: true })
+    expect(rebuildSummaryBucket).toHaveBeenCalledWith(db, {
+      organizationId: ORG_ID,
+      key,
+      force: true,
+    })
   })
 })

@@ -9,6 +9,8 @@ const channel = vi.hoisted(() => ({
   onEvent: undefined as ((event: string, payload: unknown) => void) | undefined,
 }))
 const invalidateList = vi.hoisted(() => vi.fn())
+const invalidateRows = vi.hoisted(() => vi.fn())
+const client = vi.hoisted(() => ({ current: undefined as QueryClient | undefined }))
 const invalidateCounts = vi.hoisted(() => vi.fn())
 
 vi.mock('~/realtime/hooks', () => ({
@@ -18,18 +20,22 @@ vi.mock('~/realtime/hooks', () => ({
   },
 }))
 vi.mock('@trpc/react-query', () => ({
-  getQueryKey: () => [['ledger', 'exportBatches', 'list'], { type: 'infinite' }],
+  getQueryKey: () => [['ledger', 'exportBatches', 'summaryRows'], { type: 'infinite' }],
 }))
 vi.mock('~/trpc/react', () => ({
   api: {
     useUtils: () => ({
       ledger: {
-        exportBatches: { list: { invalidate: invalidateList }, unbuilt: { invalidate: vi.fn() } },
+        exportBatches: {
+          list: { invalidate: invalidateList },
+          summaryRows: { invalidate: invalidateRows },
+        },
+        listExportPostings: { invalidate: vi.fn() },
         outboxCounts: { invalidate: invalidateCounts, setData: vi.fn() },
       },
     }),
     ledger: {
-      exportBatches: { list: {} },
+      exportBatches: { summaryRows: {} },
       outboxCounts: { useQuery: () => ({ data: undefined, isFetching: false }) },
     },
   },
@@ -38,7 +44,41 @@ vi.mock('~/trpc/react', () => ({
 import { RUN_IDLE_MS, useOutboxRealtime } from './use-outbox-realtime'
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+  client.current ??= new QueryClient()
+  return <QueryClientProvider client={client.current}>{children}</QueryClientProvider>
+}
+
+const ROWS_KEY = [
+  ['ledger', 'exportBatches', 'summaryRows'],
+  { input: { tab: 'ready' }, type: 'infinite' },
+]
+
+/** Seeds the summary cache with one row whose live batch is `b1`. */
+function seedRow(state: string, newCount: number) {
+  client.current?.setQueryData(ROWS_KEY, {
+    pageParams: [undefined],
+    pages: [
+      {
+        total: 1,
+        nextCursor: undefined,
+        items: [
+          {
+            key: 'manual 2026-09 USD',
+            newCount,
+            status: 'ready',
+            batch: { id: 'b1', state, attempts: 0, providerObjectUrl: null },
+          },
+        ],
+      },
+    ],
+  })
+}
+
+function cachedRow() {
+  const data = client.current?.getQueryData<{
+    pages: Array<{ items: Array<{ status: string; batch: { state: string; attempts: number } }> }>
+  }>(ROWS_KEY)
+  return data?.pages[0]?.items[0]
 }
 
 function frame(batchId: string, state: string, runId = 'run_1') {
@@ -47,6 +87,7 @@ function frame(batchId: string, state: string, runId = 'run_1') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  client.current = new QueryClient()
   vi.useFakeTimers()
 })
 afterEach(() => {
@@ -75,6 +116,7 @@ describe('useOutboxRealtime run strip', () => {
 
     act(() => vi.advanceTimersByTime(1))
     expect(result.current.run).toBeNull()
+    expect(invalidateRows).toHaveBeenCalled()
     expect(invalidateList).toHaveBeenCalled()
     expect(invalidateCounts).toHaveBeenCalled()
   })
@@ -144,5 +186,29 @@ describe('useOutboxRealtime.watchRun', () => {
     frame('b1', 'sent')
 
     expect(watcher.settle).not.toHaveBeenCalled()
+  })
+})
+
+describe('useOutboxRealtime summary cache', () => {
+  it('patches the row holding the batch and re-derives its status', () => {
+    renderHook(useOutboxRealtime, { wrapper })
+    seedRow('ready', 2)
+
+    frame('b1', 'sent')
+
+    expect(cachedRow()).toMatchObject({ status: 'sent_new', batch: { state: 'sent', attempts: 1 } })
+    expect(invalidateRows).not.toHaveBeenCalled()
+  })
+
+  it('refetches when the batch is withdrawn or not on screen', () => {
+    renderHook(useOutboxRealtime, { wrapper })
+    seedRow('sent', 0)
+
+    frame('b1', 'withdrawn')
+    expect(invalidateRows).toHaveBeenCalledTimes(1)
+    expect(invalidateCounts).toHaveBeenCalledTimes(1)
+
+    frame('b9', 'sent')
+    expect(invalidateRows).toHaveBeenCalledTimes(2)
   })
 })

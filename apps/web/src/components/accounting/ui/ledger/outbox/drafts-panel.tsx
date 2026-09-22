@@ -19,17 +19,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
-import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { MovementBadge } from '../../movement-badge'
 import { EntryBlockers } from '../entry-blockers'
 import { formatAccountingDate, formatMinor } from '../format'
-import { LedgerSourceLink } from '../ledger-source-link'
 import { PostResultOverlay } from '../post-result-callout'
 import { postingTypeLabel } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
+import { PostingLinks } from './posting-links'
 
 interface DraftsPanelProps {
   filters: OutboxFilters
@@ -94,6 +92,7 @@ export function DraftsPanel({
   function refresh() {
     void utils.ledger.listDrafts.invalidate()
     void utils.ledger.listPostings.invalidate()
+    void utils.ledger.listExportPostings.invalidate()
     void utils.ledger.periods.invalidate()
     void utils.ledger.outboxCounts.invalidate()
   }
@@ -240,7 +239,7 @@ export function DraftsPanel({
                     title={posting.docNumber || posting.memo || ''}
                     secondary={
                       <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
-                        <DraftLinks glPostingId={posting.id} />
+                        <PostingLinks glPostingId={posting.id} />
                       </span>
                     }
                     amount={formatMinor(posting.totalMinor, currencyCode)}
@@ -314,40 +313,5 @@ export function DraftsPanel({
       />
       <ConfirmDialog />
     </div>
-  )
-}
-
-/**
- * The records a draft is about, as badges: its `pending` subject (the claim
- * `postDraft` will take), and its `parent` and `counterparty` links.
- */
-function DraftLinks({ glPostingId }: { glPostingId: string }) {
-  const sourcesQuery = api.ledger.postingSources.useQuery({ glPostingId })
-  const sources = sourcesQuery.data ?? []
-  if (sources.length === 0) return null
-  return (
-    // One badge row tall with `overflow-hidden`, so a badge that does not fit
-    // wraps onto a hidden second line and disappears whole rather than clipped.
-    // `box-content p-px` keeps the 1px ring inside the clip box.
-    <span className='box-content flex h-4 min-w-0 flex-wrap items-center gap-1 overflow-hidden p-px'>
-      {sources.map((source) =>
-        source.recordId ? (
-          <RecordBadge
-            key={source.id}
-            recordId={source.recordId}
-            size='sm'
-            showResourceLabel={source.sourceKind === 'stock_movement'}
-          />
-        ) : source.movement ? (
-          <MovementBadge key={source.id} movement={source.movement} size='sm' detail='compact' />
-        ) : (
-          <LedgerSourceLink
-            key={source.id}
-            sourceKind={source.sourceKind}
-            sourceId={source.sourceId}
-          />
-        )
-      )}
-    </span>
   )
 }

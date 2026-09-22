@@ -3,14 +3,20 @@
 // The two batched `GlPostingSource` readers. What matters is the PREDICATE they
 // issue - thirteen hand-written copies disagreed on it - so the stub records the
 // `where` values the module actually passed and the assertions read them back.
+// `listPostings` is checked the same way for its export-state column and filter.
 
 import type { Database } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
-import { findLinkedPostings, findLiveSubjectPostings, type LinkedPosting } from '../list-postings'
+import {
+  findLinkedPostings,
+  findLiveSubjectPostings,
+  type LinkedPosting,
+  listPostings,
+} from '../list-postings'
 
 /** Every scalar the module put into a `where` clause, flattened. See `read-posting.test.ts`. */
 function whereValues(node: unknown, out: string[] = [], depth = 0): string[] {
-  if (depth > 10 || node === null || node === undefined) return out
+  if (depth > 20 || node === null || node === undefined) return out
   if (typeof node === 'string') {
     out.push(node)
     return out
@@ -28,15 +34,22 @@ function whereValues(node: unknown, out: string[] = [], depth = 0): string[] {
 
 function stubDb(rows: unknown[]) {
   let params: string[] = []
+  let order: string[] = []
   let queries = 0
   const chain: Record<string, unknown> = {
     from: () => chain,
     innerJoin: () => chain,
+    leftJoin: () => chain,
     where: (condition: unknown) => {
       params = whereValues(condition)
       return chain
     },
-    orderBy: () => chain,
+    orderBy: (...terms: unknown[]) => {
+      order = whereValues(terms)
+      return chain
+    },
+    limit: () => chain,
+    offset: () => chain,
     // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
     then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
       Promise.resolve(rows).then(resolve, reject),
@@ -47,7 +60,7 @@ function stubDb(rows: unknown[]) {
       return chain
     },
   } as unknown as Database
-  return { db, params: () => params, queries: () => queries }
+  return { db, params: () => params, order: () => order, queries: () => queries }
 }
 
 function row(overrides: Partial<LinkedPosting> & { createdAt?: Date } = {}) {
@@ -169,5 +182,78 @@ describe('findLiveSubjectPostings', () => {
     expect(live.size).toBe(2)
     expect(live.get('ins_1')?.glPostingId).toBe('glp_new')
     expect(live.get('ins_2')?.glPostingId).toBe('glp_2')
+  })
+})
+
+function postingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'glp_1',
+    postingType: 'sales_receipt',
+    periodKey: '2026-09-14',
+    txnDate: '2026-09-14',
+    docNumber: 'SR-0001',
+    status: 'posted',
+    revision: 1,
+    reversesId: null,
+    totalMinor: '1000',
+    built: { memo: 'Sales 14 Sep' },
+    postedAt: null,
+    exportBatchId: null,
+    exportBatchState: null,
+    exportDocNumber: null,
+    ...overrides,
+  }
+}
+
+describe('listPostings', () => {
+  it('carries the live batch on a batched posting and null on an unbatched one', async () => {
+    const stub = stubDb([
+      postingRow({
+        id: 'glp_batched',
+        exportBatchId: 'eb_1',
+        exportBatchState: 'sent',
+        exportDocNumber: 'AUX-0001',
+      }),
+      postingRow({ id: 'glp_loose' }),
+    ])
+    const result = await listPostings(stub.db, { organizationId: 'org_1' })
+    const [batched, loose] = result._unsafeUnwrap()
+    expect(batched?.exportState).toEqual({ state: 'sent', batchId: 'eb_1', docNumber: 'AUX-0001' })
+    expect(batched?.memo).toBe('Sales 14 Sep')
+    expect(loose?.exportState).toBeNull()
+  })
+
+  it('narrows on the batch states it was asked for', async () => {
+    const stub = stubDb([])
+    await listPostings(stub.db, { organizationId: 'org_1', exportStates: ['sent'] })
+    const params = stub.params()
+    expect(params).toContain('sent')
+    expect(params).not.toContain('ready')
+    // 'none' was not asked for, so no `IS NULL` on the batch.
+    expect(params.join('')).not.toContain('is null')
+  })
+
+  it("admits unbatched postings for 'none' beside the batch states", async () => {
+    const stub = stubDb([])
+    await listPostings(stub.db, {
+      organizationId: 'org_1',
+      exportStates: ['none', 'ready', 'sending'],
+    })
+    const params = stub.params()
+    expect(params).toContain('ready')
+    expect(params).toContain('sending')
+    expect(params).not.toContain('none')
+    expect(params.join('')).toContain('is null')
+  })
+
+  it('orders newest first by default and oldest first on asc', async () => {
+    const newest = stubDb([])
+    await listPostings(newest.db, { organizationId: 'org_1' })
+    expect(newest.order().join('')).toContain('desc')
+
+    const oldest = stubDb([])
+    await listPostings(oldest.db, { organizationId: 'org_1', direction: 'asc' })
+    expect(oldest.order().join('')).toContain('asc')
+    expect(oldest.order().join('')).not.toContain('desc')
   })
 })
