@@ -45,6 +45,9 @@ export const DataConnectorItem = pgTable(
         onDelete: 'cascade',
       }),
     externalId: text().notNull(), // upstream stable id
+    // The parent record's externalId, stamped only for fan-out children whose mapping
+    // retires absent siblings per parent (`replaceChildSets`); null everywhere else.
+    parentExternalId: text(),
 
     entityDefinitionId: text()
       .notNull()
@@ -178,6 +181,13 @@ export const DataConnectorItem = pgTable(
       table.dataConnectorId.asc().nullsLast(),
       table.mappingId.asc().nullsLast(),
       table.lastSeenRunId.asc().nullsLast()
+    ),
+    // Per-parent child-set diff: a parent's current children under one mapping.
+    index('DataConnectorItem_dataConnectorId_mappingId_parentExternalId_idx').using(
+      'btree',
+      table.dataConnectorId.asc().nullsLast(),
+      table.mappingId.asc().nullsLast(),
+      table.parentExternalId.asc().nullsLast()
     ),
   ]
 )

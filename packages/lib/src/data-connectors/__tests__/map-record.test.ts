@@ -3,7 +3,7 @@
 import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import type { ConnectorRecord } from '../connectors/types'
-import { mapRecord } from '../map-record'
+import { mapRecord, mapRecordTree } from '../map-record'
 import type { DecodedMapping } from '../service'
 
 /** Build a DecodedMapping with sensible defaults; override what the test cares about. */
@@ -684,5 +684,79 @@ describe('mapRecord', () => {
     const writes = mapRecord([m], source({ meta: ['red', 'blue'] }))
 
     expect(writes[0]?.projected?.fields).toEqual({})
+  })
+})
+
+describe('mapRecordTree child sets', () => {
+  const root = mapping({ id: 'order', rootPath: '' })
+  const taxLines = (over: Partial<DecodedMapping> = {}) =>
+    mapping({
+      id: 'tax',
+      rootPath: 'tax_lines[]',
+      parentMappingId: 'order',
+      relationshipFieldKey: 'order_tax_lines',
+      orphanBehavior: 'archive',
+      ...over,
+    })
+
+  it('emits the full membership of a present array under its parent', () => {
+    const { childSets } = mapRecordTree(
+      [root, taxLines()],
+      source({ updated_at: '2026-09-01T00:00:00Z', tax_lines: [{ id: 't1' }, { id: 't2' }] }),
+      'updated_at'
+    )
+    expect(childSets).toHaveLength(1)
+    expect(childSets[0]).toMatchObject({
+      parentExternalId: 'o1',
+      externalIds: ['t1', 't2'],
+      root: { mappingId: 'order', externalId: 'o1' },
+    })
+    expect(childSets[0]?.root.upstreamUpdatedAt?.toISOString()).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  it('treats an empty array as an empty set, and a missing key as no set', () => {
+    const empty = mapRecordTree([root, taxLines()], source({ tax_lines: [] }))
+    expect(empty.childSets.map((c) => c.externalIds)).toEqual([[]])
+    const missing = mapRecordTree([root, taxLines()], source({}))
+    expect(missing.childSets).toEqual([])
+  })
+
+  it('emits nothing for an ignore mapping, a singleton, or a reference', () => {
+    const payload = source({ tax_lines: [{ id: 't1' }], customer: { id: 'c1' } })
+    const cases = [
+      taxLines({ orphanBehavior: 'ignore' }),
+      taxLines({ rootPath: 'customer' }),
+      taxLines({ linkMode: 'reference' }),
+    ]
+    for (const m of cases) expect(mapRecordTree([root, m], payload).childSets).toEqual([])
+  })
+
+  it('scopes a nested set to its own parent and carries the root', () => {
+    const refunds = mapping({
+      id: 'refund',
+      rootPath: 'refunds[]',
+      parentMappingId: 'order',
+      relationshipFieldKey: 'order_refunds',
+    })
+    const lines = mapping({
+      id: 'refund-line',
+      rootPath: 'refund_line_items[]',
+      parentMappingId: 'refund',
+      relationshipFieldKey: 'refund_lines',
+      orphanBehavior: 'archive',
+    })
+    const { childSets } = mapRecordTree(
+      [root, refunds, lines],
+      source({
+        refunds: [
+          { id: 'r1', refund_line_items: [{ id: 'l1' }] },
+          { id: 'r2', refund_line_items: [] },
+        ],
+      })
+    )
+    expect(childSets.map((c) => [c.parentExternalId, c.externalIds, c.root.externalId])).toEqual([
+      ['r1', ['l1'], 'o1'],
+      ['r2', [], 'o1'],
+    ])
   })
 })

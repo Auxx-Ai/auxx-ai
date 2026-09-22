@@ -1,0 +1,2 @@
+ALTER TABLE "DataConnectorItem" ADD COLUMN "parentExternalId" text;--> statement-breakpoint
+CREATE INDEX "DataConnectorItem_dataConnectorId_mappingId_parentExternalId_idx" ON "DataConnectorItem" USING btree ("dataConnectorId","mappingId","parentExternalId");

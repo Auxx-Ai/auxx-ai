@@ -48,6 +48,33 @@ export interface MappedWrite {
   } | null
 }
 
+/**
+ * The complete membership of one fan-out child array under one parent, for a mapping
+ * that retires absent siblings (see {@link replacesChildSet}). Emitted only when the
+ * array was actually present in the payload: a missing key says nothing, `[]` says "none".
+ */
+export interface ChildSet {
+  mapping: DecodedMapping
+  parentExternalId: string
+  externalIds: string[]
+  /** The root record this set was read from, for the stale-write guard. */
+  root: { mappingId: string; externalId: string; upstreamUpdatedAt: Date | null | undefined }
+}
+
+/**
+ * A mapping whose parent payload carries its whole list: an upsert fan-out child that
+ * declared an orphan behavior. Singletons (`customer`) are excluded — one embedded
+ * record shared by many parents is not owned by any of them.
+ */
+export function replacesChildSet(mapping: DecodedMapping): boolean {
+  return (
+    mapping.parentMappingId != null &&
+    mapping.linkMode === 'upsert' &&
+    mapping.orphanBehavior !== 'ignore' &&
+    mapping.rootPath.includes('[]')
+  )
+}
+
 /** A path segment carrying an explicit array index — `emails[0]`, or a bare `[0]`. */
 const INDEXED_SEGMENT = /^(.*?)\[(\d+)\]$/
 
@@ -350,7 +377,17 @@ export function mapRecord(
    */
   updatedAtPath?: string
 ): MappedWrite[] {
+  return mapRecordTree(mappings, source, updatedAtPath).writes
+}
+
+/** {@link mapRecord}, plus the {@link ChildSet}s of every mapping that replaces its set. */
+export function mapRecordTree(
+  mappings: DecodedMapping[],
+  source: ConnectorRecord,
+  updatedAtPath?: string
+): { writes: MappedWrite[]; childSets: ChildSet[] } {
   const writes: MappedWrite[] = []
+  const childSets: ChildSet[] = []
 
   // Connector-provided hints — used only for a whole-record (`rootPath ''`) root.
   const rootHintId = source.externalId ?? ''
@@ -365,12 +402,26 @@ export function mapRecord(
     childrenOf.set(key, list)
   }
 
-  const walk = (mapping: DecodedMapping, parent: unknown, parentExternalId: string | null) => {
+  const walk = (
+    mapping: DecodedMapping,
+    parent: unknown,
+    parentExternalId: string | null,
+    root: ChildSet['root'] | null
+  ) => {
     const isReference = mapping.linkMode === 'reference'
     const linksParent =
       mapping.parentMappingId != null &&
       mapping.relationshipFieldKey != null &&
       parentExternalId !== null
+
+    const container = mapping.rootPath.slice(0, mapping.rootPath.indexOf('[]'))
+    const childSet =
+      root && parentExternalId !== null && replacesChildSet(mapping)
+        ? Array.isArray(getByPath(parent, container))
+          ? { mapping, parentExternalId, externalIds: [] as string[], root }
+          : null
+        : null
+    if (childSet) childSets.push(childSet)
 
     for (const { value: subtree, index } of extractSubtrees(parent, mapping.rootPath)) {
       // Empty subtree: a `reference` flat-FK clears the edge (clear-on-empty);
@@ -409,6 +460,12 @@ export function mapRecord(
           }
         : null
 
+      // Root records carry the version stamp; children version with the event.
+      const upstreamUpdatedAt =
+        updatedAtPath && mapping.parentMappingId == null
+          ? parseUpstreamUpdatedAt(getByPath(subtree, updatedAtPath))
+          : undefined
+
       if (mapping.linkMode === 'reference') {
         // Reference: no write — just register the pending relation on the parent.
         writes.push({ mapping, projected: null, parentRelation })
@@ -421,26 +478,24 @@ export function mapRecord(
             fields: evaluateFields(mapping, subtree),
             identityCandidates: identityCandidates(mapping, subtree),
             pendingRelations: [],
-            // Root records carry the version stamp; children version with the event.
-            upstreamUpdatedAt:
-              updatedAtPath && mapping.parentMappingId == null
-                ? parseUpstreamUpdatedAt(getByPath(subtree, updatedAtPath))
-                : undefined,
+            upstreamUpdatedAt,
           },
           parentRelation,
         })
       }
+      childSet?.externalIds.push(externalId)
 
       // Recurse into children relative to THIS subtree.
+      const childRoot = root ?? { mappingId: mapping.row.id, externalId, upstreamUpdatedAt }
       for (const child of childrenOf.get(mapping.row.id) ?? []) {
-        walk(child, subtree, externalId)
+        walk(child, subtree, externalId, childRoot)
       }
     }
   }
 
   for (const root of childrenOf.get(null) ?? []) {
-    walk(root, source.fields, null)
+    walk(root, source.fields, null, null)
   }
 
-  return writes
+  return { writes, childSets }
 }
