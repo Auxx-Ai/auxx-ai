@@ -73,6 +73,8 @@ interface BatchesPanelProps {
   canRollback: boolean
   activePostingId: string | null
   onSelectPosting: (glPostingId: string) => void
+  /** A Release went to the worker; the header tallies its frames by `runId`. */
+  onReleased?: (runId: string, total: number) => void
 }
 
 /** One tab's batches, newest first, paged; Release/Send, Retry or Roll back per row and over a selection. */
@@ -88,6 +90,7 @@ export function BatchesPanel({
   canRollback,
   activePostingId,
   onSelectPosting,
+  onReleased,
 }: BatchesPanelProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -167,6 +170,7 @@ export function BatchesPanel({
       // already name which accounts, so the toast only carries the count.
       const blocked = blockedCount(result)
       if (blocked > 0) toastError({ title: `${blocked} not released: accounts unmapped` })
+      onReleased?.(result.runId, result.released.length)
       exitSelection()
       refresh()
     },

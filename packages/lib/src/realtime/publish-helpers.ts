@@ -12,6 +12,7 @@ import type {
   DashboardKopilotTurnEvent,
   DataConnectorSyncEvent,
   DataExportJobEvent,
+  ExportBatchChangedEvent,
   FieldValueUpdateEntry,
   MailSyncEvent,
   MessageMeta,
@@ -269,6 +270,20 @@ export async function publishDataExportJob(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'dataExport:job', data)
+    .catch(() => {})
+}
+
+/**
+ * Publish `exportBatch:changed` on the org channel (see `ExportBatchChangedEvent`). No
+ * `excludeSocketId`: sends run in the worker. Fire-and-forget, like `publishDataExportJob`.
+ */
+export async function publishExportBatchChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: ExportBatchChangedEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'exportBatch:changed', data)
     .catch(() => {})
 }
 

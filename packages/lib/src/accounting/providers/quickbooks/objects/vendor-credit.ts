@@ -118,7 +118,7 @@ export async function send(
     if (notReadyToCreate) return configError(notReadyToCreate)
 
     const lines = payload.lines.map((line) => {
-      const account = accounts.value.get(line.glAccountId)
+      const account = accounts.value.accounts.get(line.glAccountId)
       return {
         accountId: account?.id ?? '',
         amountMinor: line.amountMinor,

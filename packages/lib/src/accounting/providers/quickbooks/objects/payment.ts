@@ -22,6 +22,7 @@ import type {
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { resolveCustomer } from './customers'
 import {
+  echoOf,
   errorMessage,
   QUICKBOOKS_PROVIDER_ID,
   readNativeObject,
@@ -136,7 +137,7 @@ export async function send(
 
     const accounts = await resolveMappedAccounts(tool, [payload.depositTo.glAccountId])
     if (accounts.isErr()) return err(accounts.error)
-    const depositToAccountId = accounts.value.get(payload.depositTo.glAccountId)?.id
+    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
     if (!depositToAccountId)
       return configError('This payment names no resolvable deposit-to account.')
 
@@ -180,6 +181,7 @@ export async function send(
       remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(created),
     })
   } catch (error) {
     // No doc-number net: Payment carries none in QuickBooks, so a create

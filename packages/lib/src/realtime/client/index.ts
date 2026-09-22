@@ -4,6 +4,7 @@ export type {
   AiStatus,
   AiValueMetadata,
   DataConnectorSyncEvent,
+  ExportBatchChangedEvent,
   FieldValuesUpdatedEvent,
   FieldValueUpdateEntry,
   InboxSyncCompletedEvent,

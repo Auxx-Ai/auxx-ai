@@ -11,7 +11,6 @@ import {
   exportSalesReceiptSchema,
   SALES_RECEIPT_OBJECT_TYPE,
 } from '../../../export/payloads/sales-receipt'
-import { listChartAccounts } from '../../../ledger/roles/role-map'
 import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
@@ -26,6 +25,7 @@ import { resolveCustomer, resolvePlaceholderCustomer } from './customers'
 import { resolveItemsForAccounts, toSalesToolLines } from './items'
 import {
   type AdoptedObject,
+  echoOf,
   errorMessage,
   findByDocNumber,
   QUICKBOOKS_PROVIDER_ID,
@@ -97,9 +97,7 @@ export async function send(
     const accounts = await resolveMappedAccounts(tool, glAccountIds)
     if (accounts.isErr()) return err(accounts.error)
 
-    const ourChart = await listChartAccounts(database, organizationId)
-    if (ourChart.isErr()) return configError(ourChart.error.message)
-    const ourChartById = new Map(ourChart.value.map((row) => [row.id, row]))
+    const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
 
     let customerId: string
     let itemIdByAccount: Map<string, string>
@@ -111,13 +109,13 @@ export async function send(
         tool,
         payload.lines.map((line) => line.glAccountId),
         ourChartById,
-        accounts.value
+        accounts.value.accounts
       )
     } catch (error) {
       return configError(errorMessage(error))
     }
 
-    const depositToAccountId = accounts.value.get(payload.depositTo.glAccountId)?.id
+    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
     if (!depositToAccountId) return configError(`${docNumber} names no resolvable deposit account.`)
 
     const notReadyToFind = requireToolInputs(tool, TOOL_FIND, ['docNumber'])
@@ -134,6 +132,7 @@ export async function send(
         remoteVersion: existing.syncToken,
         providerId: QUICKBOOKS_PROVIDER_ID,
         ...(tool.realmId && { tenantId: tool.realmId }),
+        echo: existing.echo,
       })
     }
 
@@ -169,6 +168,7 @@ export async function send(
       remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(created),
     })
   } catch (error) {
     return recoverOrClassify(

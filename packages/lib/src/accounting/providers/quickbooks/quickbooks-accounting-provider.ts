@@ -214,7 +214,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
 
       const accounts = await resolveMappedAccounts(resolved.context, [ourAccount.id])
       if (accounts.isErr()) return err(accounts.error)
-      const account = accounts.value.get(ourAccount.id)
+      const account = accounts.value.accounts.get(ourAccount.id)
       return account ? ok(account.id) : notResolved()
     } catch (error) {
       return err(

@@ -170,6 +170,7 @@ Every helper:
 | `publishAgentUpdated` | orgPresence | `agent:updated` | `realtimeSync` |
 | `publishProcedureUpdated` | orgPresence | `procedure:updated` | `realtimeSync` |
 | `publishEvalCaseChanged` | orgPresence | `eval:case-changed` | `realtimeSync` |
+| `publishExportBatchChanged` | orgPresence | `exportBatch:changed` | none (no flag exists in code today) |
 
 Record lifecycle events (`record:created/updated/deleted/archived`) are published
 inline from the entity CRUD layer

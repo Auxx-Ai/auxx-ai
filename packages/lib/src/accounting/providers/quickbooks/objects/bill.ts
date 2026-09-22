@@ -19,6 +19,7 @@ import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { resolveVendor } from './customers'
 import {
   type AdoptedObject,
+  echoOf,
   errorMessage,
   findByDocNumber,
   QUICKBOOKS_PROVIDER_ID,
@@ -107,6 +108,7 @@ export async function send(
         remoteVersion: existing.syncToken,
         providerId: QUICKBOOKS_PROVIDER_ID,
         ...(tool.realmId && { tenantId: tool.realmId }),
+        echo: existing.echo,
       })
     }
 
@@ -114,7 +116,7 @@ export async function send(
     if (notReadyToCreate) return configError(notReadyToCreate)
 
     const lines = payload.lines.map((line) => {
-      const account = accounts.value.get(line.glAccountId)
+      const account = accounts.value.accounts.get(line.glAccountId)
       return {
         accountId: account?.id ?? '',
         amountMinor: line.amountMinor,
@@ -147,6 +149,7 @@ export async function send(
       remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(created),
     })
   } catch (error) {
     return recoverOrClassify(

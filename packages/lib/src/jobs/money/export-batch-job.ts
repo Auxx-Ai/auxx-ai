@@ -7,10 +7,11 @@ import type { JobContext } from '../types'
 
 const logger = createScopedLogger('jobs:money:export-batch')
 
-/** Payload for {@link exportBatchJob}. One batch, nothing else. */
+/** Payload for {@link exportBatchJob}. One batch, and the release that enqueued it when one did. */
 export interface ExportBatchJobData {
   organizationId: string
   batchId: string
+  runId?: string
 }
 
 export const EXPORT_BATCH_JOB_NAME = 'export-batch'
@@ -24,9 +25,9 @@ export const EXPORT_BATCH_JOB_NAME = 'export-batch'
  * `nextAttemptAt` backoff and the sweep - three retry mechanisms for one send.
  */
 export const exportBatchJob = async (ctx: JobContext<ExportBatchJobData>) => {
-  const { organizationId, batchId } = ctx.data
+  const { organizationId, batchId, runId } = ctx.data
   try {
-    const result = await sendExportBatch(db, { organizationId, batchId })
+    const result = await sendExportBatch(db, { organizationId, batchId, runId })
     if (result.isErr()) {
       logger.warn('Export batch job could not send; the sweep will retry', {
         organizationId,

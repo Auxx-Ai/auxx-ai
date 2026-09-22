@@ -21,6 +21,12 @@ vi.mock('../preflight', async (importOriginal) => ({
   readExportBatchBlockers: (...a: unknown[]) => readExportBatchBlockers(...a),
 }))
 
+// The frames are `realtime.test.ts`'s subject; the real barrel costs seconds to load.
+vi.mock('../realtime', () => ({
+  exportBatchFrame: () => ({}),
+  publishExportBatchState: async () => undefined,
+}))
+
 import { err, ok } from 'neverthrow'
 import { ProviderPostError } from '../../ledger/types'
 import { MAX_AUTO_ATTEMPTS, sendExportBatch } from '../send'
@@ -372,6 +378,63 @@ describe('the readback', () => {
     expect(
       (await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' }))._unsafeUnwrap()
     ).toMatchObject({ status: 'failed' })
+  })
+})
+
+// 93 A2: the create's own answer is the read-back when the provider gives one.
+describe('the echo', () => {
+  const echoing = (echo: Record<string, unknown>) =>
+    provider({ sendObject: vi.fn(async () => ok({ ...SENT, echo })) })
+
+  it('a matching echo settles the batch without a read-back', async () => {
+    const mock = echoing({ docNumber: 'FUL-20260914', totalMinor: 5000, remoteVersion: '1' })
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'sent', providerObjectId: 'qbo_184' })
+    expect(mock.readObject).not.toHaveBeenCalled()
+    expect(sets[1]).toMatchObject({ state: 'sent', providerSyncToken: '1' })
+  })
+
+  it('a mismatched echo fails as data, keeping the id, exactly as a read-back would', async () => {
+    const mock = echoing({ docNumber: 'FUL-20260914', totalMinor: 4999, remoteVersion: '0' })
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db, sets } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'failed', providerObjectId: 'qbo_184' })
+    expect(result._unsafeUnwrap().error).toContain('does not match the 5000')
+    expect(mock.readObject).not.toHaveBeenCalled()
+    expect(sets[1]).toMatchObject({ state: 'failed', failureClass: 'data', nextAttemptAt: null })
+  })
+
+  it('an echo naming another document number fails too', async () => {
+    const mock = echoing({ docNumber: 'SOMEONE-ELSES', totalMinor: null, remoteVersion: '0' })
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db } = fakeDb(batch())
+
+    const result = await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'failed' })
+    expect(mock.readObject).not.toHaveBeenCalled()
+  })
+
+  it('no echo falls back to readObject', async () => {
+    const mock = provider()
+    resolveAccountingProvider.mockResolvedValue(mock)
+    const { db } = fakeDb(batch())
+
+    await sendExportBatch(db, { organizationId: ORG, batchId: 'batch_1' })
+
+    expect(mock.readObject).toHaveBeenCalledTimes(1)
+    expect(mock.readObject).toHaveBeenCalledWith(expect.anything(), {
+      objectType: 'journal',
+      externalId: 'qbo_184',
+      docNumber: 'FUL-20260914',
+    })
   })
 })
 

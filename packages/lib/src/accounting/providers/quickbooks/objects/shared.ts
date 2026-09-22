@@ -14,6 +14,7 @@ import { toMinorUnits } from '../../../ledger/builders/manual'
 import { accountLabel } from '../../../ledger/chart/account-label'
 import { listChartAccounts } from '../../../ledger/roles/role-map'
 import {
+  type ChartAccountRow,
   type PostFailureClass,
   type ProviderAccount,
   ProviderPostError,
@@ -22,11 +23,12 @@ import {
 import type {
   ReadObjectRef,
   ReadObjectResult,
+  SendObjectEcho,
   SendObjectResult,
   WithdrawObjectInput,
 } from '../../provider'
 import { validateProviderMapping } from '../../suggest-account-identities'
-import { listQuickbooksProviderAccounts, readQuickbooksAccountMap } from '../account-map'
+import { listQuickbooksProviderAccounts } from '../account-map'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 
 const logger = createScopedLogger('quickbooks-objects')
@@ -234,6 +236,12 @@ const UNMAPPED_ACCOUNT_REMEDY =
 const INVALID_MAPPING_REMEDY =
   'Re-pick its QuickBooks account under Accounting > Settings > Accounts > Chart of accounts.'
 
+/** {@link resolveMappedAccounts}' answer: the resolved accounts, and OUR chart it read them against. */
+export interface MappedAccounts {
+  accounts: Map<string, ProviderAccount>
+  chart: ChartAccountRow[]
+}
+
 /**
  * Resolve every account an entry names, by `glAccountId`, to a QuickBooks
  * account id, through the `G19` account map. Moved verbatim from
@@ -243,18 +251,13 @@ const INVALID_MAPPING_REMEDY =
 export async function resolveMappedAccounts(
   tool: QuickbooksToolContext,
   glAccountIds: readonly string[]
-): Promise<Result<Map<string, ProviderAccount>, Error>> {
-  const [chart, ourChart] = await Promise.all([
+): Promise<Result<MappedAccounts, Error>> {
+  const [chart, ourChart, map] = await Promise.all([
     fetchChart(tool),
     listChartAccounts(database, tool.organizationId),
+    tool.accountMap(),
   ])
   if (ourChart.isErr()) return err(ourChart.error)
-
-  const map = await readQuickbooksAccountMap({
-    organizationId: tool.organizationId,
-    installationId: tool.installationId,
-    connectionId: tool.connectionId,
-  })
 
   const byId = new Map(ourChart.value.map((row) => [row.id, row]))
   const byProviderId = new Map(chart.map((account) => [account.id, account]))
@@ -310,7 +313,7 @@ export async function resolveMappedAccounts(
       })
     )
   }
-  return ok(resolved)
+  return ok({ accounts: resolved, chart: ourChart.value })
 }
 
 /** One doc-number-keyed object as a `find_quickbooks_*` tool answers it. */
@@ -318,6 +321,34 @@ export interface FoundByDocNumber {
   externalId: string
   syncToken: string | null
   totalAmt: number | null
+  /** The find's own answer about the object, for an adopt that skips the read-back. */
+  echo?: SendObjectEcho
+}
+
+/**
+ * A `create_`/`find_quickbooks_*` answer (`{ docNumber?, totalAmt, syncToken }`)
+ * as a {@link SendObjectEcho}, converted as {@link readNativeObject} converts a
+ * read. `undefined` when it names neither a document number nor a total (an
+ * echo that proves nothing), or when the total will not convert: `send.ts` then
+ * falls back to the read-back rather than a create that landed turning into a throw.
+ */
+export function echoOf(
+  raw: Record<string, unknown> | undefined | null
+): SendObjectEcho | undefined {
+  if (!raw) return undefined
+  const docNumber = typeof raw.docNumber === 'string' ? raw.docNumber : null
+  let totalMinor: number | null = null
+  try {
+    totalMinor = typeof raw.totalAmt === 'number' ? toMinorUnits(raw.totalAmt) : null
+  } catch {
+    return undefined
+  }
+  if (docNumber === null && totalMinor === null) return undefined
+  return {
+    docNumber,
+    totalMinor,
+    remoteVersion: typeof raw.syncToken === 'string' ? raw.syncToken : null,
+  }
 }
 
 /**
@@ -340,6 +371,7 @@ export async function findByDocNumber(
     externalId: String(match[idField]),
     syncToken: typeof match.syncToken === 'string' ? match.syncToken : null,
     totalAmt: typeof match.totalAmt === 'number' ? match.totalAmt : null,
+    echo: echoOf(match),
   }
 }
 

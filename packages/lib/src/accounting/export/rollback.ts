@@ -10,6 +10,7 @@ import { AuxxError, NotFoundError } from '../../errors'
 import { type ProviderObjectContext, resolveAccountingProvider } from '../providers/provider'
 import { INVOICE_OBJECT_TYPE } from './payloads/invoice'
 import { PAYMENT_OBJECT_TYPE } from './payloads/payment'
+import { exportBatchFrame, publishExportBatchState } from './realtime'
 
 const logger = createScopedLogger('postings:export-rollback')
 
@@ -187,6 +188,10 @@ export async function rollbackExportBatch(
         .returning({ id: schema.ExportBatchPosting.id })
       return rows.length
     })
+    await publishExportBatchState(
+      organizationId,
+      exportBatchFrame({ ...batch, state: 'withdrawn' })
+    )
 
     logger.info('Export batch rolled back', {
       organizationId,

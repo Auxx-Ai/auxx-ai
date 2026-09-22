@@ -51,6 +51,7 @@ function connect(
       realmId: 'realm1',
       tools: options.tools ?? [DELETE_TOOL],
       callTool,
+      accountMap: async () => new Map(),
     },
   })
   return callTool

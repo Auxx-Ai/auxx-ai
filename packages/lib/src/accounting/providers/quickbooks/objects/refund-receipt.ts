@@ -1,14 +1,12 @@
 // packages/lib/src/accounting/providers/quickbooks/objects/refund-receipt.ts
 // A `refund` posting, sent as a QuickBooks RefundReceipt (plan 67 §1, §5.1).
 
-import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import {
   exportRefundReceiptSchema,
   REFUND_RECEIPT_OBJECT_TYPE,
 } from '../../../export/payloads/refund-receipt'
-import { listChartAccounts } from '../../../ledger/roles/role-map'
 import { ProviderPostError, type WithdrawResult } from '../../../ledger/types'
 import type {
   ProviderObjectContext,
@@ -23,6 +21,7 @@ import { resolveCustomer } from './customers'
 import { resolveItemsForAccounts, toSalesToolLines } from './items'
 import {
   type AdoptedObject,
+  echoOf,
   errorMessage,
   findByDocNumber,
   QUICKBOOKS_PROVIDER_ID,
@@ -93,9 +92,7 @@ export async function send(
     const accounts = await resolveMappedAccounts(tool, glAccountIds)
     if (accounts.isErr()) return err(accounts.error)
 
-    const ourChart = await listChartAccounts(database, organizationId)
-    if (ourChart.isErr()) return configError(ourChart.error.message)
-    const ourChartById = new Map(ourChart.value.map((row) => [row.id, row]))
+    const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
 
     let customerId: string
     let itemIdByAccount: Map<string, string>
@@ -105,13 +102,13 @@ export async function send(
         tool,
         payload.lines.map((line) => line.glAccountId),
         ourChartById,
-        accounts.value
+        accounts.value.accounts
       )
     } catch (error) {
       return configError(errorMessage(error))
     }
 
-    const paidFromAccountId = accounts.value.get(payload.paidFrom.glAccountId)?.id
+    const paidFromAccountId = accounts.value.accounts.get(payload.paidFrom.glAccountId)?.id
     if (!paidFromAccountId)
       return configError(`${docNumber} names no resolvable paid-from account.`)
 
@@ -129,6 +126,7 @@ export async function send(
         remoteVersion: existing.syncToken,
         providerId: QUICKBOOKS_PROVIDER_ID,
         ...(tool.realmId && { tenantId: tool.realmId }),
+        echo: existing.echo,
       })
     }
 
@@ -164,6 +162,7 @@ export async function send(
       remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(created),
     })
   } catch (error) {
     return recoverOrClassify(

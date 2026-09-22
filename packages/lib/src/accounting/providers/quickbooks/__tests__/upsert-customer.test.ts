@@ -38,6 +38,7 @@ function buildCtx(callTool: ToolMock = vi.fn()): QuickbooksToolContext {
     connectionId: 'conn1',
     userId: 'user1',
     callTool,
+    accountMap: async () => new Map(),
   }
 }
 

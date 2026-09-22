@@ -3,7 +3,6 @@
 // `quickbooks-accounting-provider.ts` unchanged (plan 67 §5.1) - the four
 // idempotency layers documented there still apply verbatim.
 
-import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
@@ -15,7 +14,6 @@ import {
   parseExportJournal,
 } from '../../../export/payloads/journal'
 import { accountLabel } from '../../../ledger/chart/account-label'
-import { listChartAccounts } from '../../../ledger/roles/role-map'
 import {
   type ChartAccountRow,
   type CounterpartyType,
@@ -26,6 +24,7 @@ import type {
   ProviderObjectContext,
   ReadObjectRef,
   ReadObjectResult,
+  SendObjectEcho,
   SendObjectInput,
   SendObjectResult,
   WithdrawObjectInput,
@@ -34,6 +33,7 @@ import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
 import {
+  echoOf,
   errorMessage,
   QUICKBOOKS_PROVIDER_ID,
   recoverOrClassify,
@@ -196,15 +196,14 @@ async function resolveOrCreateCounterparties(
 async function findExistingEntry(
   tool: QuickbooksToolContext,
   docNumber: string
-): Promise<{ externalId: string; syncToken: string | null } | undefined> {
+): Promise<{ externalId: string; syncToken: string | null; echo?: SendObjectEcho } | undefined> {
   const found = await tool.callTool(TOOL_FIND_JOURNAL_ENTRY, { docNumber })
-  const entry = found?.journalEntries?.[0] as
-    | { journalEntryId?: unknown; syncToken?: unknown }
-    | undefined
+  const entry = found?.journalEntries?.[0] as Record<string, unknown> | undefined
   if (!entry?.journalEntryId) return undefined
   return {
     externalId: String(entry.journalEntryId),
     syncToken: typeof entry.syncToken === 'string' ? entry.syncToken : null,
+    echo: echoOf(entry),
   }
 }
 
@@ -239,15 +238,7 @@ export async function send(
     )
     if (accounts.isErr()) return err(accounts.error)
 
-    const ourChart = await listChartAccounts(database, organizationId)
-    if (ourChart.isErr())
-      return err(
-        new ProviderPostError(ourChart.error.message, {
-          failureClass: 'configuration',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-    const counterparties = await resolveOrCreateCounterparties(tool, journal, ourChart.value)
+    const counterparties = await resolveOrCreateCounterparties(tool, journal, accounts.value.chart)
     if (counterparties.isErr())
       return err(
         new ProviderPostError(counterparties.error.message, {
@@ -258,7 +249,7 @@ export async function send(
 
     const lines: QboJournalLine[] = []
     for (const line of [...journal.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
-      const account = accounts.value.get(line.glAccountId)
+      const account = accounts.value.accounts.get(line.glAccountId)
       if (!account) continue
       lines.push({
         amountMinor: line.amountMinor,
@@ -287,6 +278,7 @@ export async function send(
         remoteVersion: existing.syncToken,
         providerId: QUICKBOOKS_PROVIDER_ID,
         ...(tool.realmId && { tenantId: tool.realmId }),
+        echo: existing.echo,
       })
     }
 
@@ -298,9 +290,7 @@ export async function send(
       requestId: input.idempotencyKey,
       currency: journal.currency,
     })
-    const entry = created?.journalEntry as
-      | { journalEntryId?: unknown; syncToken?: unknown }
-      | undefined
+    const entry = created?.journalEntry as Record<string, unknown> | undefined
     if (!entry?.journalEntryId)
       return err(
         new ProviderPostError('QuickBooks returned no journal entry id', {
@@ -321,6 +311,7 @@ export async function send(
       remoteVersion: typeof entry.syncToken === 'string' ? entry.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(entry),
     })
   } catch (error) {
     return recoverOrClassify(
