@@ -9,7 +9,7 @@ import { UnifiedCrudHandler } from '../../../../resources/crud'
 import type { ChartAccountRow, ProviderAccount } from '../../../ledger/types'
 import { readQuickbooksIdField, writeQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
-import { errorMessage, requireToolInputs } from './shared'
+import { errorMessage, memoised, requireToolInputs } from './shared'
 
 const QBO_ITEM_ID_FIELD_KEY = 'qboItemId'
 const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
@@ -26,7 +26,17 @@ export function itemName(account: { code: string | null; id: string }): string {
  * on a miss. `incomeAccountProviderId` is the account's ALREADY-RESOLVED
  * QuickBooks id (`resolveMappedAccounts`), never re-resolved here.
  */
-export async function resolveOrCreateItem(
+export function resolveOrCreateItem(
+  tool: QuickbooksToolContext,
+  account: { id: string; code: string | null },
+  incomeAccountProviderId: string
+): Promise<string> {
+  return memoised(tool, `item:${account.id}`, () =>
+    resolveOrCreateItemOnce(tool, account, incomeAccountProviderId)
+  )
+}
+
+async function resolveOrCreateItemOnce(
   tool: QuickbooksToolContext,
   account: { id: string; code: string | null },
   incomeAccountProviderId: string

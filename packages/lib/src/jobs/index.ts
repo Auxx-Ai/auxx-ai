@@ -318,6 +318,11 @@ export {
   exportBatchJob,
 } from './money/export-batch-job'
 export {
+  EXPORT_BATCHES_JOB_NAME,
+  type ExportBatchesJobData,
+  exportBatchesJob,
+} from './money/export-batches-job'
+export {
   PROVIDER_SYNC_JOB_NAME,
   type ProviderSyncJobData,
   providerSyncJob,

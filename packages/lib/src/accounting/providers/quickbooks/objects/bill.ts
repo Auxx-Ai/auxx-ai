@@ -16,6 +16,7 @@ import type {
   WithdrawObjectInput,
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { resolveVendor } from './customers'
 import {
   type AdoptedObject,
@@ -39,7 +40,7 @@ const TOOL_DELETE = 'delete_quickbooks_bill'
 const FIND_LIST_FIELD = 'bills'
 const ID_FIELD = 'billId'
 
-function configError(message: string): Result<SendObjectResult, Error> {
+function configError<T = SendObjectResult>(message: string): Result<T, Error> {
   return err(
     new ProviderPostError(message, {
       failureClass: 'configuration',
@@ -63,15 +64,11 @@ async function findAdopt(
     : undefined
 }
 
-export async function send(
-  tool: QuickbooksToolContext,
-  ctx: ProviderObjectContext,
-  input: SendObjectInput
-): Promise<Result<SendObjectResult, Error>> {
-  const organizationId = ctx.organizationId
-  let payload: ReturnType<typeof exportBillSchema.parse>
+type BillPayload = ReturnType<typeof exportBillSchema.parse>
+
+function parse(raw: Record<string, unknown>): Result<BillPayload, Error> {
   try {
-    payload = exportBillSchema.parse(input.payload)
+    return ok(exportBillSchema.parse(raw))
   } catch (error) {
     return err(
       new ProviderPostError(`The frozen export payload is not a bill: ${errorMessage(error)}`, {
@@ -80,19 +77,94 @@ export async function send(
       })
     )
   }
-  const docNumber = payload.docNumber
+}
+
+/** Accounts and the vendor, resolved into `create_quickbooks_bill`'s input minus `requestId`. */
+async function build(
+  tool: QuickbooksToolContext,
+  _ctx: ProviderObjectContext,
+  payload: BillPayload
+): Promise<Result<BuiltCreate, Error>> {
+  const glAccountIds = payload.lines.map((line) => line.glAccountId)
+  const accounts = await resolveMappedAccounts(tool, glAccountIds)
+  if (accounts.isErr()) return err(accounts.error)
+
+  let vendorId: string
+  try {
+    vendorId = await resolveVendor(tool, payload.vendor.id)
+  } catch (error) {
+    return configError(errorMessage(error))
+  }
+
+  const lines = payload.lines.map((line) => {
+    const account = accounts.value.accounts.get(line.glAccountId)
+    return {
+      accountId: account?.id ?? '',
+      amountMinor: line.amountMinor,
+      ...(line.memo ? { description: line.memo } : {}),
+    }
+  })
+
+  return ok({
+    create: {
+      vendorId,
+      lines,
+      ...(payload.dueDate ? { dueDate: payload.dueDate } : {}),
+      txnDate: payload.txnDate,
+      docNumber: payload.docNumber,
+      privateNote: payload.privateNote,
+      currency: payload.currency,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const created = raw as Record<string, unknown> | undefined
+  const externalId = created?.billId ? String(created.billId) : undefined
+  if (!externalId)
+    return err(
+      new ProviderPostError('QuickBooks returned no bill id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+
+  return ok({
+    status: 'sent',
+    externalId,
+    remoteVersion: typeof created?.syncToken === 'string' ? created.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(created),
+  })
+}
+
+export const batchObject: QuickbooksBatchObject<BillPayload> = {
+  object: BILL_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: {
+    listField: FIND_LIST_FIELD,
+    idField: ID_FIELD,
+    docNumber: (payload) => payload.docNumber,
+  },
+}
+
+export async function send(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  input: SendObjectInput
+): Promise<Result<SendObjectResult, Error>> {
+  const organizationId = ctx.organizationId
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+  const docNumber = parsed.value.docNumber
 
   try {
-    const glAccountIds = payload.lines.map((line) => line.glAccountId)
-    const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return err(accounts.error)
-
-    let vendorId: string
-    try {
-      vendorId = await resolveVendor(tool, payload.vendor.id)
-    } catch (error) {
-      return configError(errorMessage(error))
-    }
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
 
     const notReadyToFind = requireToolInputs(tool, TOOL_FIND, ['docNumber'])
     if (notReadyToFind) return configError(notReadyToFind)
@@ -115,42 +187,11 @@ export async function send(
     const notReadyToCreate = requireToolInputs(tool, TOOL_CREATE, ['vendorId', 'lines'])
     if (notReadyToCreate) return configError(notReadyToCreate)
 
-    const lines = payload.lines.map((line) => {
-      const account = accounts.value.accounts.get(line.glAccountId)
-      return {
-        accountId: account?.id ?? '',
-        amountMinor: line.amountMinor,
-        ...(line.memo ? { description: line.memo } : {}),
-      }
-    })
-
     const created = await tool.callTool(TOOL_CREATE, {
-      vendorId,
-      lines,
-      ...(payload.dueDate ? { dueDate: payload.dueDate } : {}),
-      txnDate: payload.txnDate,
-      docNumber,
-      privateNote: payload.privateNote,
-      currency: payload.currency,
+      ...built.value.create,
       requestId: input.idempotencyKey,
     })
-    const externalId = created?.billId ? String(created.billId) : undefined
-    if (!externalId)
-      return err(
-        new ProviderPostError('QuickBooks returned no bill id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    return ok({
-      status: 'sent',
-      externalId,
-      remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(created),
-    })
+    return answer(tool, created)
   } catch (error) {
     return recoverOrClassify(
       organizationId,

@@ -31,6 +31,7 @@ import type {
 } from '../../provider'
 import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
 import {
   echoOf,
@@ -207,6 +208,100 @@ async function findExistingEntry(
   }
 }
 
+function parse(raw: Record<string, unknown>): Result<ExportJournalPayload, Error> {
+  try {
+    return ok(parseExportJournal(raw))
+  } catch (error) {
+    return err(
+      new ProviderPostError(`The frozen export payload is not a journal: ${errorMessage(error)}`, {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+  }
+}
+
+/** Accounts and counterparties, resolved into `create_quickbooks_journal_entry`'s input minus `requestId`. */
+async function build(
+  tool: QuickbooksToolContext,
+  _ctx: ProviderObjectContext,
+  journal: ExportJournalPayload
+): Promise<Result<BuiltCreate, Error>> {
+  const accounts = await resolveMappedAccounts(
+    tool,
+    journal.lines.map((line) => line.glAccountId)
+  )
+  if (accounts.isErr()) return err(accounts.error)
+
+  const counterparties = await resolveOrCreateCounterparties(tool, journal, accounts.value.chart)
+  if (counterparties.isErr())
+    return err(
+      new ProviderPostError(counterparties.error.message, {
+        failureClass: 'configuration',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+
+  const lines: QboJournalLine[] = []
+  for (const line of [...journal.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    const account = accounts.value.accounts.get(line.glAccountId)
+    if (!account) continue
+    lines.push({
+      amountMinor: line.amountMinor,
+      postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
+      accountId: account.id,
+      accountName: account.fullyQualifiedName,
+      ...(line.memo && { description: line.memo }),
+      ...(line.counterparty && {
+        entity: counterparties.value.get(
+          counterpartyKey(line.counterparty.type, line.counterparty.id)
+        ),
+      }),
+    })
+  }
+
+  return ok({
+    create: {
+      lines,
+      txnDate: journal.txnDate,
+      docNumber: journal.docNumber,
+      privateNote: journal.privateNote,
+      currency: journal.currency,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const entry = (raw as { journalEntry?: Record<string, unknown> } | undefined)?.journalEntry
+  if (!entry?.journalEntryId)
+    return err(
+      new ProviderPostError('QuickBooks returned no journal entry id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+  return ok({
+    status: 'sent',
+    externalId: String(entry.journalEntryId),
+    remoteVersion: typeof entry.syncToken === 'string' ? entry.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(entry),
+  })
+}
+
+export const batchObject: QuickbooksBatchObject<ExportJournalPayload> = {
+  object: JOURNAL_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: {
+    listField: 'journalEntries',
+    idField: 'journalEntryId',
+    docNumber: (journal) => journal.docNumber,
+  },
+}
+
 /**
  * Create one journal entry in QuickBooks from a frozen, provider-neutral
  * payload. The four idempotency layers are unchanged in substance - see the
@@ -218,52 +313,14 @@ export async function send(
   input: SendObjectInput
 ): Promise<Result<SendObjectResult, Error>> {
   const organizationId = ctx.organizationId
-  let journal: ExportJournalPayload
-  try {
-    journal = parseExportJournal(input.payload)
-  } catch (error) {
-    return err(
-      new ProviderPostError(`The frozen export payload is not a journal: ${errorMessage(error)}`, {
-        failureClass: 'data',
-        providerId: QUICKBOOKS_PROVIDER_ID,
-      })
-    )
-  }
-  const docNumber = journal.docNumber
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+  const docNumber = parsed.value.docNumber
 
   try {
-    const accounts = await resolveMappedAccounts(
-      tool,
-      journal.lines.map((line) => line.glAccountId)
-    )
-    if (accounts.isErr()) return err(accounts.error)
-
-    const counterparties = await resolveOrCreateCounterparties(tool, journal, accounts.value.chart)
-    if (counterparties.isErr())
-      return err(
-        new ProviderPostError(counterparties.error.message, {
-          failureClass: 'configuration',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    const lines: QboJournalLine[] = []
-    for (const line of [...journal.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
-      const account = accounts.value.accounts.get(line.glAccountId)
-      if (!account) continue
-      lines.push({
-        amountMinor: line.amountMinor,
-        postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
-        accountId: account.id,
-        accountName: account.fullyQualifiedName,
-        ...(line.memo && { description: line.memo }),
-        ...(line.counterparty && {
-          entity: counterparties.value.get(
-            counterpartyKey(line.counterparty.type, line.counterparty.id)
-          ),
-        }),
-      })
-    }
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
 
     const existing = await findExistingEntry(tool, docNumber)
     if (existing) {
@@ -283,36 +340,18 @@ export async function send(
     }
 
     const created = await tool.callTool(TOOL_CREATE_JOURNAL_ENTRY, {
-      lines,
-      txnDate: journal.txnDate,
-      docNumber,
-      privateNote: journal.privateNote,
+      ...built.value.create,
       requestId: input.idempotencyKey,
-      currency: journal.currency,
     })
-    const entry = created?.journalEntry as Record<string, unknown> | undefined
-    if (!entry?.journalEntryId)
-      return err(
-        new ProviderPostError('QuickBooks returned no journal entry id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    logger.info('Journal entry created in QuickBooks', {
-      organizationId,
-      docNumber,
-      providerEntryId: String(entry.journalEntryId),
-      lineCount: lines.length,
-    })
-    return ok({
-      status: 'sent',
-      externalId: String(entry.journalEntryId),
-      remoteVersion: typeof entry.syncToken === 'string' ? entry.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(entry),
-    })
+    const result = answer(tool, created)
+    if (result.isOk())
+      logger.info('Journal entry created in QuickBooks', {
+        organizationId,
+        docNumber,
+        providerEntryId: result.value.externalId,
+        lineCount: (built.value.create.lines as unknown[]).length,
+      })
+    return result
   } catch (error) {
     return recoverOrClassify(
       organizationId,

@@ -16,6 +16,7 @@ import type {
   WithdrawObjectInput,
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import {
   echoOf,
   errorMessage,
@@ -32,7 +33,7 @@ const TOOL_GET = 'get_quickbooks_deposit'
 const TOOL_DELETE = 'delete_quickbooks_deposit'
 const ID_FIELD = 'depositId'
 
-function configError(message: string): Result<SendObjectResult, Error> {
+function configError<T = SendObjectResult>(message: string): Result<T, Error> {
   return err(
     new ProviderPostError(message, {
       failureClass: 'configuration',
@@ -41,15 +42,11 @@ function configError(message: string): Result<SendObjectResult, Error> {
   )
 }
 
-export async function send(
-  tool: QuickbooksToolContext,
-  ctx: ProviderObjectContext,
-  input: SendObjectInput
-): Promise<Result<SendObjectResult, Error>> {
-  const organizationId = ctx.organizationId
-  let payload: ReturnType<typeof exportDepositSchema.parse>
+type DepositPayload = ReturnType<typeof exportDepositSchema.parse>
+
+function parse(raw: Record<string, unknown>): Result<DepositPayload, Error> {
   try {
-    payload = exportDepositSchema.parse(input.payload)
+    return ok(exportDepositSchema.parse(raw))
   } catch (error) {
     return err(
       new ProviderPostError(`The frozen export payload is not a deposit: ${errorMessage(error)}`, {
@@ -58,23 +55,27 @@ export async function send(
       })
     )
   }
+}
 
-  try {
-    const glAccountIds = [
-      payload.depositTo.glAccountId,
-      ...payload.lines.map((line) => line.fromAccount.glAccountId),
-    ]
-    const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return err(accounts.error)
+/** The deposit-to and every from-account, resolved into the create's input minus `requestId`. */
+async function build(
+  tool: QuickbooksToolContext,
+  _ctx: ProviderObjectContext,
+  payload: DepositPayload
+): Promise<Result<BuiltCreate, Error>> {
+  const glAccountIds = [
+    payload.depositTo.glAccountId,
+    ...payload.lines.map((line) => line.fromAccount.glAccountId),
+  ]
+  const accounts = await resolveMappedAccounts(tool, glAccountIds)
+  if (accounts.isErr()) return err(accounts.error)
 
-    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
-    if (!depositToAccountId)
-      return configError('This deposit names no resolvable deposit-to account.')
+  const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
+  if (!depositToAccountId)
+    return configError('This deposit names no resolvable deposit-to account.')
 
-    const notReadyToCreate = requireToolInputs(tool, TOOL_CREATE, ['depositToAccountId', 'lines'])
-    if (notReadyToCreate) return configError(notReadyToCreate)
-
-    const created = await tool.callTool(TOOL_CREATE, {
+  return ok({
+    create: {
       depositToAccountId,
       lines: payload.lines.map((line) => ({
         accountId: accounts.value.accounts.get(line.fromAccount.glAccountId)?.id ?? '',
@@ -84,25 +85,61 @@ export async function send(
       txnDate: payload.txnDate,
       privateNote: payload.privateNote,
       currency: payload.currency,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const created = raw as Record<string, unknown> | undefined
+  const externalId = created?.depositId ? String(created.depositId) : undefined
+  if (!externalId)
+    return err(
+      new ProviderPostError('QuickBooks returned no deposit id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+
+  return ok({
+    status: 'sent',
+    externalId,
+    remoteVersion: typeof created?.syncToken === 'string' ? created.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(created),
+  })
+}
+
+export const batchObject: QuickbooksBatchObject<DepositPayload> = {
+  object: DEPOSIT_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: null,
+}
+
+export async function send(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  input: SendObjectInput
+): Promise<Result<SendObjectResult, Error>> {
+  const organizationId = ctx.organizationId
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+
+  try {
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
+
+    const notReadyToCreate = requireToolInputs(tool, TOOL_CREATE, ['depositToAccountId', 'lines'])
+    if (notReadyToCreate) return configError(notReadyToCreate)
+
+    const created = await tool.callTool(TOOL_CREATE, {
+      ...built.value.create,
       requestId: input.idempotencyKey,
     })
-    const externalId = created?.depositId ? String(created.depositId) : undefined
-    if (!externalId)
-      return err(
-        new ProviderPostError('QuickBooks returned no deposit id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    return ok({
-      status: 'sent',
-      externalId,
-      remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(created),
-    })
+    return answer(tool, created)
   } catch (error) {
     // No doc-number net: Deposit carries none in QuickBooks, so a create
     // failure of unknown outcome cannot be resolved by re-querying one.

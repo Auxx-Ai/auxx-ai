@@ -14,6 +14,7 @@ import { readSourceAccounts } from '../../../money/customer-money/source-reads'
 import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
+import { memoised } from './shared'
 
 const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
 /** Not provisioned by the app yet (brief 13 DECIDED, unit 1) - a vendor line always refuses below. */
@@ -24,7 +25,16 @@ const QBO_VENDOR_ID_FIELD_KEY = 'qboVendorId'
  * creating one on a miss exactly as the journal's counterparty resolution
  * does for a receivable line.
  */
-export async function resolveCustomer(
+export function resolveCustomer(
+  tool: QuickbooksToolContext,
+  contactInstanceId: string
+): Promise<string> {
+  return memoised(tool, `customer:${contactInstanceId}`, () =>
+    resolveCustomerOnce(tool, contactInstanceId)
+  )
+}
+
+async function resolveCustomerOnce(
   tool: QuickbooksToolContext,
   contactInstanceId: string
 ): Promise<string> {
@@ -55,7 +65,16 @@ export async function resolveCustomer(
  * provisions yet, so this refuses exactly as the journal path's payable line
  * does. Mirror the customer ladder once a vendor bill actually posts.
  */
-export async function resolveVendor(
+export function resolveVendor(
+  tool: QuickbooksToolContext,
+  companyInstanceId: string
+): Promise<string> {
+  return memoised(tool, `vendor:${companyInstanceId}`, () =>
+    resolveVendorOnce(tool, companyInstanceId)
+  )
+}
+
+async function resolveVendorOnce(
   tool: QuickbooksToolContext,
   companyInstanceId: string
 ): Promise<string> {
@@ -84,7 +103,17 @@ export async function resolveVendor(
  * create or persist a placeholder against, so this refuses rather than
  * minting an unaddressable customer nobody can find again.
  */
-export async function resolvePlaceholderCustomer(
+export function resolvePlaceholderCustomer(
+  db: Database,
+  tool: QuickbooksToolContext,
+  storeId: string | null
+): Promise<string> {
+  return memoised(tool, `placeholder:${storeId ?? ''}`, () =>
+    resolvePlaceholderCustomerOnce(db, tool, storeId)
+  )
+}
+
+async function resolvePlaceholderCustomerOnce(
   db: Database,
   tool: QuickbooksToolContext,
   storeId: string | null

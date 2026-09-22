@@ -70,6 +70,10 @@ export enum Queues {
   // back before it records anything. Kept low anyway because the far side is one
   // company's rate-limited API.
   exportBatchQueue = 'export-batch',
+  // Export batches (plural): one released set of up to `EXPORT_BATCHES_PER_JOB`
+  // batches per job, sent in one or two batch calls (plan 93 D4). Its own queue so
+  // it can run at concurrency 1 while the single-row queue above stays at 3.
+  exportBatchesQueue = 'export-batches',
   // Inbound provider-ledger sync: one slice of the walk over the connected
   // provider's general ledger (plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §4.6).
   // Off the request path for the same reason delivery is, only more so - a walk
