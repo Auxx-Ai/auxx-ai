@@ -1,6 +1,7 @@
 // packages/lib/src/accounting/export/release.ts
 // Gate 2's one verb: a held batch is handed to the worker once, by a person.
 
+import { randomUUID } from 'node:crypto'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
@@ -16,6 +17,8 @@ const logger = createScopedLogger('postings:export-release')
 const ENQUEUE_TIMEOUT_MS = 2_000
 
 export interface ReleaseExportBatchesResult {
+  /** Tags every `exportBatch:changed` frame this release causes; never stored (93 B2). */
+  runId: string
   released: string[]
   /** Batches that are not `ready` or `failed`, so there is nothing to release. */
   skipped: string[]
@@ -68,8 +71,9 @@ export async function releaseExportBatches(
       if (items && items.length > 0) blocked.push({ batchId: row.id, items })
       else released.push(row.id)
     }
-    for (const batchId of released) await enqueueExportBatch({ organizationId, batchId })
-    return ok({ released, skipped, blocked })
+    const runId = randomUUID()
+    for (const batchId of released) await enqueueExportBatch({ organizationId, batchId, runId })
+    return ok({ runId, released, skipped, blocked })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     return err(error instanceof Error ? error : new Error(String(error)))
@@ -146,6 +150,7 @@ export async function releaseFailedBatchesNamingAccount(
 export async function enqueueExportBatch(input: {
   organizationId: string
   batchId: string
+  runId?: string
 }): Promise<void> {
   try {
     const { getQueue, Queues } = await import('../../jobs/queues')

@@ -248,6 +248,7 @@ function connect(
       // a connection whose metadata carries no realm.
       ...(options.realmId ? { realmId: options.realmId } : {}),
       callTool,
+      accountMap: () => readQuickbooksAccountMap(),
     },
   })
   listChartAccounts.mockResolvedValue(ok(OUR_CHART))
@@ -409,6 +410,38 @@ describe('the happy path', () => {
       'create_quickbooks_journal_entry',
       expect.objectContaining({ docNumber: DOC_NUMBER, txnDate: '2026-08-18' })
     )
+  })
+
+  it("echoes the create's docNumber and sync token, and no total - the tool answers none", async () => {
+    connect({
+      create_quickbooks_journal_entry: () => ({
+        journalEntry: {
+          journalEntryId: '201',
+          docNumber: DOC_NUMBER,
+          syncToken: '0',
+          totalDebitMinor: 124999,
+        },
+      }),
+    })
+
+    const result = await send(baseJournal())
+
+    expect(result._unsafeUnwrap().echo).toEqual({
+      docNumber: DOC_NUMBER,
+      totalMinor: null,
+      remoteVersion: '0',
+    })
+  })
+
+  it('reads the account map and our chart once per send', async () => {
+    connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
+    })
+
+    await send(baseJournal())
+
+    expect(readQuickbooksAccountMap).toHaveBeenCalledTimes(1)
+    expect(listChartAccounts).toHaveBeenCalledTimes(1)
   })
 
   it('layer 3 - passes the idempotency key through VERBATIM as requestid', async () => {

@@ -9,11 +9,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   resolveAppToolContext: vi.fn(async (_input: unknown): Promise<unknown> => ({ connected: false })),
+  readQuickbooksAccountMap: vi.fn(async (_input: unknown) => new Map<string, string>()),
 }))
 
 vi.mock('../../../../apps/invoke-app-tool', () => ({
   resolveAppToolContext: h.resolveAppToolContext,
 }))
+
+vi.mock('../account-map', () => ({ readQuickbooksAccountMap: h.readQuickbooksAccountMap }))
 
 import { resolveQuickbooksContext } from '../invoke-quickbooks-tool'
 
@@ -67,7 +70,39 @@ describe('resolveQuickbooksContext', () => {
         userId: 'user_system',
         realmId: 'realm_9',
         callTool,
+        accountMap: expect.any(Function),
       },
+    })
+  })
+
+  it('reads the account map once per context, however often it is asked', async () => {
+    h.resolveAppToolContext.mockResolvedValue({
+      connected: true,
+      context: {
+        organizationId: 'org_1',
+        appSlug: 'quickbooks',
+        installationId: 'inst_1',
+        connectionId: 'cred_1',
+        userId: 'user_system',
+        connectionMetadata: undefined,
+        callTool,
+      },
+    })
+    h.readQuickbooksAccountMap.mockResolvedValue(new Map([['acct_1', '92']]))
+
+    const result = await resolveQuickbooksContext({ organizationId: 'org_1' })
+    if (!result.connected) throw new Error('expected a connected context')
+    const [first, second] = await Promise.all([
+      result.context.accountMap(),
+      result.context.accountMap(),
+    ])
+
+    expect(first).toBe(second)
+    expect(h.readQuickbooksAccountMap).toHaveBeenCalledTimes(1)
+    expect(h.readQuickbooksAccountMap).toHaveBeenCalledWith({
+      organizationId: 'org_1',
+      installationId: 'inst_1',
+      connectionId: 'cred_1',
     })
   })
 

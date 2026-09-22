@@ -17,6 +17,7 @@ import type {
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import {
+  echoOf,
   errorMessage,
   QUICKBOOKS_PROVIDER_ID,
   readNativeObject,
@@ -66,7 +67,7 @@ export async function send(
     const accounts = await resolveMappedAccounts(tool, glAccountIds)
     if (accounts.isErr()) return err(accounts.error)
 
-    const depositToAccountId = accounts.value.get(payload.depositTo.glAccountId)?.id
+    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
     if (!depositToAccountId)
       return configError('This deposit names no resolvable deposit-to account.')
 
@@ -76,7 +77,7 @@ export async function send(
     const created = await tool.callTool(TOOL_CREATE, {
       depositToAccountId,
       lines: payload.lines.map((line) => ({
-        accountId: accounts.value.get(line.fromAccount.glAccountId)?.id ?? '',
+        accountId: accounts.value.accounts.get(line.fromAccount.glAccountId)?.id ?? '',
         amountMinor: line.amountMinor,
         ...(line.memo ? { memo: line.memo } : {}),
       })),
@@ -100,6 +101,7 @@ export async function send(
       remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
       providerId: QUICKBOOKS_PROVIDER_ID,
       ...(tool.realmId && { tenantId: tool.realmId }),
+      echo: echoOf(created),
     })
   } catch (error) {
     // No doc-number net: Deposit carries none in QuickBooks, so a create

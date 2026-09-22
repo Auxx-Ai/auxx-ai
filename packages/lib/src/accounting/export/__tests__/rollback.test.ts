@@ -13,6 +13,12 @@ vi.mock('../../providers/provider', async (importOriginal) => ({
   resolveAccountingProvider: (...a: unknown[]) => resolveAccountingProvider(...a),
 }))
 
+// The frames are `realtime.test.ts`'s subject; the real barrel costs seconds to load.
+vi.mock('../realtime', () => ({
+  exportBatchFrame: () => ({}),
+  publishExportBatchState: async () => undefined,
+}))
+
 import { err, ok } from 'neverthrow'
 import { rollbackExportBatch } from '../rollback'
 

@@ -3,6 +3,7 @@
 import type { ActorId } from '@auxx/types/actor'
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
+import type { ExportBatchState, ExportFailureClass } from '../accounting/export/client'
 import type { EditStamp } from '../resources/picker/types'
 import type { ThreadMergeData } from '../threads/types'
 
@@ -61,6 +62,7 @@ export type ResourceSyncEvent =
   | ResourceDefChangedEvent
   | DataConnectorSyncEvent
   | DataExportJobEvent
+  | ExportBatchChangedEvent
   | RunCompletedEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
@@ -273,6 +275,23 @@ export interface DataExportJobEvent {
     total?: number
     /** Output file name (finished frames). */
     fileName?: string
+  }
+}
+
+/**
+ * One `ExportBatch` settled into a new state, on the org channel (plan accounting/93 §3 B1).
+ * Published from `export/send.ts` and `export/rollback.ts` only; `runId` is the release that caused it.
+ */
+export interface ExportBatchChangedEvent {
+  event: 'exportBatch:changed'
+  data: {
+    batchId: string
+    state: ExportBatchState
+    runId?: string
+    providerObjectId?: string | null
+    failureClass?: ExportFailureClass | null
+    lastError?: string | null
+    attempts: number
   }
 }
 

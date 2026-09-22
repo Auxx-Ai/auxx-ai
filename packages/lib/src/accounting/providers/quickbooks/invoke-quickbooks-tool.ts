@@ -9,6 +9,7 @@
 
 import type { CatalogTool } from '@auxx/database'
 import { type AppToolContext, resolveAppToolContext } from '../../../apps/invoke-app-tool'
+import { readQuickbooksAccountMap } from './account-map'
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
 const QUICKBOOKS_APP_LABEL = 'QuickBooks'
@@ -31,6 +32,8 @@ export interface QuickbooksToolContext {
   serverBundleSha?: string
   /** Invoke one QuickBooks app tool by id, returning its unwrapped `execution_result.data`. */
   callTool: AppToolContext['callTool']
+  /** The confirmed `gl_account -> QuickBooks account` map, read once per context and memoised. */
+  accountMap: () => Promise<Map<string, string>>
 }
 
 export type ResolveQuickbooksContextResult =
@@ -67,6 +70,7 @@ export async function resolveQuickbooksContext(input: {
 
   const { context } = resolved
   const realmId = context.connectionMetadata?.realmId
+  let accountMap: Promise<Map<string, string>> | undefined
   return {
     connected: true,
     context: {
@@ -78,6 +82,18 @@ export async function resolveQuickbooksContext(input: {
       callTool: context.callTool,
       tools: context.tools,
       serverBundleSha: context.serverBundleSha,
+      accountMap: () => {
+        accountMap ??= readQuickbooksAccountMap({
+          organizationId: context.organizationId,
+          installationId: context.installationId,
+          connectionId: context.connectionId,
+        }).catch((error: unknown) => {
+          // A failed read is not memoised, so the next caller retries it.
+          accountMap = undefined
+          throw error
+        })
+        return accountMap
+      },
     },
   }
 }

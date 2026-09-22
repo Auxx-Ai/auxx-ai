@@ -12,6 +12,7 @@ import { ProviderPostError } from '../ledger/types'
 import { type ProviderObjectContext, resolveAccountingProvider } from '../providers/provider'
 import { hashExportPayload } from './payloads/journal'
 import { exportBlockerSentence, readExportBatchBlockers } from './preflight'
+import { exportBatchFrame, publishExportBatchState } from './realtime'
 
 const logger = createScopedLogger('postings:export-send')
 
@@ -54,7 +55,8 @@ async function lease(
   db: Database,
   organizationId: string,
   batchId: string,
-  manual: boolean
+  manual: boolean,
+  runId?: string
 ): Promise<{ batch: ExportBatchEntity; token: string } | 'leased' | 'gone' | 'terminal'> {
   const token = randomUUID()
   const now = new Date()
@@ -85,8 +87,14 @@ async function lease(
     )
     .returning()
   if (!taken) return 'leased'
+  if (runId) leaseRuns.set(taken, runId)
+  // Awaited so a fast refusal's frame cannot overtake this one.
+  await publishExportBatchState(organizationId, exportBatchFrame(taken, runId))
   return { batch: taken, token }
 }
+
+/** The run id each held lease was taken for, so settling can tag its frame without a new parameter. */
+const leaseRuns = new WeakMap<ExportBatchEntity, string>()
 
 async function releaseOwned(
   db: Database,
@@ -94,12 +102,17 @@ async function releaseOwned(
   token: string,
   values: Partial<typeof schema.ExportBatch.$inferInsert>
 ): Promise<boolean> {
-  const rows = await db
+  const [settled] = await db
     .update(schema.ExportBatch)
     .set({ ...values, leaseToken: null, leaseExpiresAt: null })
     .where(and(scoped(batch.organizationId, batch.id), eq(schema.ExportBatch.leaseToken, token)))
-    .returning({ id: schema.ExportBatch.id })
-  return rows.length > 0
+    .returning()
+  if (!settled) return false
+  await publishExportBatchState(
+    batch.organizationId,
+    exportBatchFrame(settled, leaseRuns.get(batch))
+  )
+  return true
 }
 
 /**
@@ -108,10 +121,8 @@ async function releaseOwned(
  * Compared by `payloadHash` when the provider can produce one, and by document
  * number and total when it cannot. `unsupported` is not a failure: a provider
  * with no per-object read cannot answer, and refusing the send afterwards would
- * withdraw an object that is correctly there. Today QuickBooks answers
- * `found` off its document-number lookup and reports no hash, so the comparison
- * is the weaker of the two until the app ships per-object reads (MIGRATION
- * step 2, "Provider read tools").
+ * withdraw an object that is correctly there. QuickBooks reports no hash, so
+ * the comparison is the weaker of the two; it reads the create's echo (93 A2).
  */
 function readbackMismatch(
   batch: ExportBatchEntity,
@@ -160,10 +171,11 @@ function readbackMismatch(
  */
 export async function sendExportBatch(
   db: Database,
-  input: { organizationId: string; batchId: string; manual?: boolean }
+  /** `runId` tags this send's realtime frames with the release that caused it (93 B2). */
+  input: { organizationId: string; batchId: string; manual?: boolean; runId?: string }
 ): Promise<Result<SendExportBatchResult, Error>> {
   const { organizationId, batchId } = input
-  const held = await lease(db, organizationId, batchId, input.manual === true)
+  const held = await lease(db, organizationId, batchId, input.manual === true, input.runId)
   if (held === 'gone') return err(new NotFoundError('Export batch not found', { batchId }))
   if (held === 'terminal') return ok({ batchId, status: 'already_sent', attempts: 0 })
   if (held === 'leased') return ok({ batchId, status: 'leased_elsewhere', attempts: 0 })
@@ -225,11 +237,14 @@ export async function sendExportBatch(
       return ok({ batchId, status: 'waiting', attempts })
     }
 
-    const read = await provider.readObject(ctx, {
-      objectType: batch.objectType,
-      externalId: result.externalId || null,
-      docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
-    })
+    // 93 A2: the create's own answer is the read-back when the provider gives one.
+    const read = result.echo
+      ? ok({ status: 'found' as const, payloadHash: null, ...result.echo })
+      : await provider.readObject(ctx, {
+          objectType: batch.objectType,
+          externalId: result.externalId || null,
+          docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
+        })
     // The object exists at the provider from here on, whatever the read-back
     // says, so every refusal below carries its id.
     const landed = { externalId: result.externalId, remoteVersion: result.remoteVersion }

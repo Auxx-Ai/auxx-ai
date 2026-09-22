@@ -62,7 +62,12 @@ describe('releaseExportBatches', () => {
 
     const result = await releaseExportBatches(db, { organizationId: ORG, batchIds: ['b1', 'b2'] })
 
-    expect(result._unsafeUnwrap()).toEqual({ released: ['b1'], skipped: ['b2'], blocked: [] })
+    expect(result._unsafeUnwrap()).toEqual({
+      runId: expect.any(String),
+      released: ['b1'],
+      skipped: ['b2'],
+      blocked: [],
+    })
     expect(add).toHaveBeenCalledTimes(1)
   })
 
@@ -76,11 +81,29 @@ describe('releaseExportBatches', () => {
     const result = await releaseExportBatches(db, { organizationId: ORG, batchIds: ['b1', 'b2'] })
 
     expect(result._unsafeUnwrap()).toEqual({
+      runId: expect.any(String),
       released: ['b2'],
       skipped: [],
       blocked: [{ batchId: 'b1', items: ITEMS }],
     })
     expect(add).toHaveBeenCalledTimes(1)
+  })
+
+  it('mints one run id, puts it on every job and returns it (93 B2)', async () => {
+    const db = fakeDb([
+      { id: 'b1', state: 'ready', payload: {} },
+      { id: 'b2', state: 'failed', payload: {} },
+    ])
+
+    const { runId } = (
+      await releaseExportBatches(db, { organizationId: ORG, batchIds: ['b1', 'b2'] })
+    )._unsafeUnwrap()
+
+    expect(runId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(add.mock.calls.map(([args]) => (args as unknown[])[1])).toEqual([
+      { organizationId: ORG, batchId: 'b1', runId },
+      { organizationId: ORG, batchId: 'b2', runId },
+    ])
   })
 
   it('asks the mapping table about the releasable rows alone', async () => {

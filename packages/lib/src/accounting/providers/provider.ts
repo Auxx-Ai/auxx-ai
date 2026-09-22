@@ -110,6 +110,16 @@ export interface SendObjectResult {
   tenantId?: string
   /** Present only on `status: 'waiting'` - the sentence `send.ts` records as `lastError`. */
   waitingReason?: string
+  /** What the provider answered about the object itself; when present `send.ts` skips {@link AccountingProvider.readObject}. */
+  echo?: SendObjectEcho
+}
+
+/** The create's (or pre-create find's) own answer, compared exactly as a read-back would be. */
+export interface SendObjectEcho {
+  docNumber: string | null
+  /** Integer minor units. */
+  totalMinor: number | null
+  remoteVersion: string | null
 }
 
 /** What to look for. Both halves are supplied because no provider offers both. */

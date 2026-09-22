@@ -24,6 +24,7 @@ import { Button } from '@auxx/ui/components/button'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Loader } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { ListSelectionProvider, useListSelection } from '~/components/list-selection'
 import { useDebounce } from '~/hooks/use-debounced-value'
@@ -35,6 +36,7 @@ import { BlockedPanel } from './blocked-panel'
 import { DraftsPanel } from './drafts-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
+import { type OutboxRun, useOutboxRealtime } from './use-outbox-realtime'
 
 interface OutboxPanelProps {
   tab: OutboxTab
@@ -104,6 +106,8 @@ function OutboxBody({
     () => OUTBOX_TABS.filter((value) => canRelease || isExportBatchTab(value)),
     [canRelease]
   )
+
+  const live = useOutboxRealtime()
 
   // One SQL read for every badge - no tab's count rides on its rows.
   const countsQuery = api.ledger.outboxCounts.useQuery()
@@ -186,6 +190,7 @@ function OutboxBody({
       </div>
 
       {buildNotice}
+      {live.run && <RunStrip run={live.run} />}
 
       {/* List page, so the bar pins and only the rows move (§6). */}
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
@@ -233,12 +238,26 @@ function OutboxBody({
                 canRollback={canRollback}
                 activePostingId={activePostingId}
                 onSelectPosting={onSelectPosting}
+                onReleased={live.startRun}
               />
             )}
           </div>
         )}
       </ScrollArea>
     </div>
+  )
+}
+
+/** The open release's tally; the rows below move on their own. */
+function RunStrip({ run }: { run: OutboxRun }) {
+  return (
+    <p
+      role='status'
+      className='flex shrink-0 items-center gap-1.5 px-3 pt-3 text-muted-foreground text-xs tabular-nums'>
+      <Loader className='size-3 animate-spin' />
+      {run.sent} of {run.total} sent · {run.failed} failed
+      {run.waiting > 0 && ` · ${run.waiting} waiting`}
+    </p>
   )
 }
 

@@ -1338,9 +1338,10 @@ sent
 Reverse acts on the left column. Retry, rollback and release act on the right. **No verb does
 both.**
 
-🛑 **`release.ts` releases and returns.** A send is three to five sequential round trips to a
-rate-limited third party and a bulk bar acts on forty rows at once, so doing it inline is a
-request nobody holds open. `retry.ts` stays the one-row door, precisely because a single row wants
+🛑 **`release.ts` releases and returns.** A send is two sequential round trips to a rate-limited
+third party (QuickBooks: the layer-2 `find`, then the `create`; plus the chart on an org-cache miss
+and two per cold customer or item, 93 §2), and a bulk bar acts on forty rows at once, so doing it
+inline is a request nobody holds open. `retry.ts` stays the one-row door, precisely because a single row wants
 its refusal back in the same breath.
 
 `sweep.ts` is the scheduled half: due means `ready` on an avenue whose `autoSend` is on, or
@@ -1364,7 +1365,9 @@ it does not touch gate 1: a ledger post never asks whether a provider account ex
 **Send is idempotent by readback**, not by a request-id contract. `idempotencyKey` is derived from
 the batch identity alone, so every retry carries the same key. ⚠️ `readbackMismatch`'s
 `unsupported` is **not a failure**: a provider with no per-object read cannot answer, and refusing
-the send afterwards would withdraw an object that is correctly there.
+the send afterwards would withdraw an object that is correctly there. The comparison reads the
+create's own answer first (`SendObjectResult.echo`, 93 A2) and calls `readObject` only when a
+provider echoes nothing; `readObject` stays on the seam for those providers and for rollback.
 
 🛑 **`rollback.ts` is an EXPORT operation, never a ledger one.** Nothing there reverses, reopens a
 period or releases a claim: the postings stay `posted` and come back to *Ready*. Backing an entry
@@ -1556,6 +1559,19 @@ batch the mapping table already refuses, with Send now disabled (89 D7). 🛑 Th
 sentence names the *Chart of accounts* tab: the role remedy and the account remedy send people to
 one page for two different mappings, and a person who has just mapped the role reads "map it under
 Accounts" as done (89 §1.6).
+
+**The Outbox moves while a send happens** (93 §3). `send.ts` publishes `exportBatch:changed` on the
+org channel at the lease (`sending`) and wherever `releaseOwned` settles (`sent`, `failed`, or back to
+`ready`), and `rollback.ts` publishes `withdrawn` — so the sweep, a Send, a Retry and a Release all
+announce every transition. `export/realtime.ts` wraps the publish; it never throws into a send.
+`use-outbox-realtime.ts` patches the row in every cached `exportBatches.list` page and moves
+`outboxCounts` by the delta (invalidating when the row is not cached, or on `withdrawn`). 🛑 A row
+never leaves its tab on a frame: `sent` leaves Ready on the next refetch, because admission is
+`exportBatchTabAdmits`, the server's rule. `releaseExportBatches` mints a `runId` (never stored),
+puts it on each job and returns it; the header strip reads `n of N sent · f failed` off the frames
+tagged with it and clears when every row has settled, or when a counts read begun after the last
+frame shows nothing `sending`. The panel's invalidate-on-mutation stays as the safety net: realtime
+has no replay.
 
 ---
 
