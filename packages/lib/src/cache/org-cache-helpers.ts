@@ -13,6 +13,7 @@ import type {
   CachedGroup,
   CachedInstalledApp,
   CachedKnowledgeBase,
+  CachedProviderChart,
   DehydratedOrgProfile,
   OrgMemberInfo,
 } from './org-cache-keys'
@@ -443,6 +444,11 @@ export async function getCachedIdentityLink(
   const apps = await getCachedInstalledApps(orgId)
   const app = apps.find((a) => a.app.slug === source)
   return app?.identityLinks?.find((l) => l.appFieldKey === appFieldKey)?.link ?? null
+}
+
+/** The active book's provider chart, inactive accounts included; `null` when no book is active. */
+export async function getCachedProviderChart(orgId: string): Promise<CachedProviderChart | null> {
+  return getOrgCache().get(orgId, 'providerChart')
 }
 
 // ── Channel cache helpers ──

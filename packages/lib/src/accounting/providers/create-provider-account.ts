@@ -38,6 +38,7 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { onCacheEvent } from '../../cache'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { accountLabel } from '../ledger/chart/account-label'
 import { accountPath, accountPathLabel } from '../ledger/chart/account-tree'
@@ -247,6 +248,7 @@ async function createOne(
     actorUserId,
   })
   if (created.isErr()) return err(created.error)
+  await onCacheEvent('accounting.provider-chart.changed', { orgId: organizationId })
   const target = created.value.account
 
   // 🛑 The same gate the picker's confirmation passes through. Reached mainly

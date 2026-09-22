@@ -25,6 +25,7 @@ import type {
   SeatType,
   UserType,
 } from '@auxx/database/types'
+import type { ChartAccountRow, ProviderAccount } from '../accounting/ledger/types'
 import type { CompiledProcedure, TriggerExample } from '../agents/procedures/types'
 import type { ToolCategory } from '../ai/agent-framework/types'
 import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers/types'
@@ -655,6 +656,12 @@ export interface CachedKnowledgeBase {
   kind: string
 }
 
+/** The active book's provider chart, stamped with the company it was read from. */
+export interface CachedProviderChart {
+  companyId: string
+  accounts: ProviderAccount[]
+}
+
 /** All org-scoped cache keys and their data types */
 export interface OrgCacheDataMap {
   // Near-immutable
@@ -692,6 +699,8 @@ export interface OrgCacheDataMap {
   mailFilters: CachedMailFilter[] // every MailFilter row (enabled + disabled); the gate filters in memory
   kbCatalog: KbCatalogEntry[] // published AI-enabled article ToC per KB (agent prompt injection)
   knowledgeBases: CachedKnowledgeBase[] // id + kind for EVERY KB — the article-visibility allow-list (plan v3/06 §5.3)
+  chartAccounts: ChartAccountRow[] // every gl_account row, archived stamped isArchived, in chart-tree order
+  providerChart: CachedProviderChart | null // the active book's live provider chart, inactive rows kept; null = no active book
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
   aiProviderConfigs: Record<string, ProviderConfiguration>
@@ -977,6 +986,11 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // blob a new reader could misread. Bump it the moment `CachedKnowledgeBase`
   // grows a field or a value vocabulary here changes meaning.
   knowledgeBases: { prefix: 'org:knowledge-bases', ttlSeconds: ONE_DAY },
+
+  // Default localTtlMs on purpose: readers post money (see the note on this config).
+  chartAccounts: { prefix: 'org:chart-accounts', ttlSeconds: ONE_DAY },
+  // 900 s: the rows change at the provider, outside our writes (plans/accounting/tasks/84 §7.1).
+  providerChart: { prefix: 'org:provider-chart', ttlSeconds: 900 },
 
   // AI provider data (15-min TTL)
   aiProviderConfigs: { prefix: 'org:ai-provider-configs', ttlSeconds: 900 },

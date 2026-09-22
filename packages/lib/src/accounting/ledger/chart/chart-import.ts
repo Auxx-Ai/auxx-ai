@@ -13,8 +13,10 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { onCacheEvent } from '../../../cache'
 import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../../../errors'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
+import { readProviderChart } from '../../providers/provider-chart'
 import type { AccountRole } from '../builders/entry'
 import { withAccountingCommitLock } from '../post/accounting-commit-lock'
 import { insertDefaultRoleAssignmentsIfAbsent } from '../roles/role-assignments'
@@ -59,7 +61,9 @@ export async function importChartFromProvider(
   try {
     const provider = await resolveAccountingProvider(organizationId)
 
-    const providerChart = await provider.listProviderAccounts(organizationId)
+    // Import is an explicit "read the provider now", so drop the cached chart first.
+    await onCacheEvent('accounting.provider-chart.changed', { orgId: organizationId })
+    const providerChart = await readProviderChart(organizationId)
     if (providerChart.isErr()) return err(providerChart.error)
     const providerAccounts = providerChart.value
 

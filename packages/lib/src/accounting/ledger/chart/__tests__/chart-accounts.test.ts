@@ -25,10 +25,14 @@
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UnprocessableEntityError } from '../../../../errors'
+import type { ChartAccountRow } from '../../types'
 
 const h = vi.hoisted(() => ({
   /** systemAttribute -> the CustomField row, or absent to model an unmigrated org. */
   fields: new Map<string, { id: string; entityDefinitionId: string | null }>(),
+  /** The `chartAccounts` org-cache answer. */
+  chart: [] as ChartAccountRow[],
+  chartReads: 0,
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -37,6 +41,11 @@ vi.mock('../../../../cache', () => ({
       bySystemAttributes: async (attrs: string[]) =>
         Object.fromEntries(attrs.map((a) => [a, h.fields.get(a) ?? null])),
     }),
+    get: async (_orgId: string, key: string) => {
+      if (key !== 'chartAccounts') throw new Error(`unstubbed cache key ${key}`)
+      h.chartReads++
+      return h.chart
+    },
   }),
 }))
 
@@ -377,104 +386,59 @@ describe('loadChartAccountFields', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * A stub answering the two reads this function makes, in order: the live
- * `EntityInstance` rows, then their `FieldValue` rows. Archived accounts are
- * modelled by exclusion, because that is what the real query does.
- */
-function stubDb(accounts: { id: string; archived?: boolean }[], values: ChartAccountValueRow[]) {
-  let call = 0
-  const chain = (rows: unknown[]) => ({
-    where: () => chain(rows),
-    // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
-    then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-      Promise.resolve(rows).then(resolve, reject),
-  })
-
-  const live = accounts.filter((a) => !a.archived)
-  return {
-    reads: () => call,
-    db: {
-      select: () => ({
-        from: () => {
-          call++
-          if (call === 1) return chain(live.map((a) => ({ id: a.id })))
-          return chain(values.filter((v) => live.some((a) => a.id === v.entityId)))
-        },
-      }),
-    } as unknown as Database,
-  }
-}
+/** `loadChartAccountsById` reads the cache, never the db it is handed. */
+const DB = {} as Database
 
 describe('loadChartAccountsById', () => {
-  it('loads and decodes the named accounts', async () => {
-    const stub = stubDb(
-      [{ id: 'a1' }],
-      [
-        value('a1', CODE_FIELD, { valueText: '1310' }),
-        value('a1', NAME_FIELD, { valueText: 'Raw Materials' }),
-        value('a1', TYPE_FIELD, { optionId: 'asset' }),
-      ]
-    )
-    const { accounts } = await loadChartAccountsById(stub.db, ORG, ['a1'], 'nope')
+  const account = (id: string, extra: Partial<ChartAccountRow> = {}): ChartAccountRow => ({
+    id,
+    code: '1310',
+    name: 'Raw Materials',
+    accountType: 'asset',
+    isActive: true,
+    subtype: null,
+    parentId: null,
+    ...extra,
+  })
 
-    expect(accounts.get('a1')).toEqual({
-      id: 'a1',
-      code: '1310',
-      name: 'Raw Materials',
-      accountType: 'asset',
-      isActive: true,
-      subtype: null,
-      parentId: null,
-    })
+  beforeEach(() => {
+    h.chart = []
+    h.chartReads = 0
+  })
+
+  it('answers the named accounts from the cached chart', async () => {
+    h.chart = [account('a1'), account('a2', { code: '1320' })]
+    const read = await loadChartAccountsById(DB, ORG, ['a1'], 'nope')
+
+    expect([...read.accounts.keys()]).toEqual(['a1'])
+    expect(read.accounts.get('a1')).toEqual(account('a1'))
+    expect(read.malformed).toEqual([])
   })
 
   // "Archived" and "deleted" are one fact to every caller: the account the
-  // mapping names is not available. Excluding it in the query rather than after
-  // is what makes them one fact rather than two code paths.
+  // mapping names is not available.
   it('omits an archived account entirely', async () => {
-    const stub = stubDb(
-      [{ id: 'a1', archived: true }],
-      [
-        value('a1', CODE_FIELD, { valueText: '1310' }),
-        value('a1', TYPE_FIELD, { optionId: 'asset' }),
-      ]
-    )
-    const { accounts } = await loadChartAccountsById(stub.db, ORG, ['a1'], 'nope')
+    h.chart = [account('a1', { isArchived: true })]
+    const { accounts } = await loadChartAccountsById(DB, ORG, ['a1'], 'nope')
     expect(accounts.size).toBe(0)
   })
 
   // 🛑 A fresh org has no assignments, so no ids, and must still get an answer
   // rather than a provisioning refusal - `listRoleMap`'s thirteen `unmapped`
   // rows depend on this short-circuit happening BEFORE the cache is touched.
-  it('short-circuits an empty id list without touching the cache or the database', async () => {
+  it('short-circuits an empty id list without touching the cache', async () => {
     h.fields.clear()
-    const stub = stubDb([], [])
-    const read = await loadChartAccountsById(stub.db, ORG, [], 'nope')
+    const read = await loadChartAccountsById(DB, ORG, [], 'nope')
 
     expect(read).toEqual({ accounts: new Map(), malformed: [] })
-    expect(stub.reads()).toBe(0)
-  })
-
-  it('skips the field-value read when no named account is live', async () => {
-    const stub = stubDb([{ id: 'a1', archived: true }], [])
-    await loadChartAccountsById(stub.db, ORG, ['a1'], 'nope')
-    expect(stub.reads()).toBe(1)
-  })
-
-  it('reports an undecodable account as malformed rather than refusing', async () => {
-    const stub = stubDb([{ id: 'a1' }], [value('a1', NAME_FIELD, { valueText: 'No code' })])
-    const { accounts, malformed } = await loadChartAccountsById(stub.db, ORG, ['a1'], 'nope')
-
-    expect(accounts.size).toBe(0)
-    expect(malformed).toEqual(['a1'])
+    expect(h.chartReads).toBe(0)
   })
 
   it('refuses with the caller message when the chart is not provisioned', async () => {
     h.fields.delete('gl_account_type')
-    const stub = stubDb([{ id: 'a1' }], [])
-    await expect(
-      loadChartAccountsById(stub.db, ORG, ['a1'], 'THE CALLER SENTENCE')
-    ).rejects.toThrow('THE CALLER SENTENCE')
+    h.chart = [account('a1')]
+    await expect(loadChartAccountsById(DB, ORG, ['a1'], 'THE CALLER SENTENCE')).rejects.toThrow(
+      'THE CALLER SENTENCE'
+    )
   })
 })

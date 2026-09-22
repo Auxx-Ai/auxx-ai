@@ -22,6 +22,14 @@ vi.mock('../provider', () => ({
     typeof provider.createProviderAccount === 'function',
 }))
 
+// The live provider chart's org-cache key (84 §7). Null (no active book) by default,
+// so the stub provider's `listProviderAccounts` answers.
+const getCachedProviderChart = vi.fn()
+vi.mock('../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../cache')>()),
+  getCachedProviderChart: (...a: unknown[]) => getCachedProviderChart(...a),
+}))
+
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import type { ChartAccountRow, ProviderAccount } from '../../ledger/types'
@@ -107,9 +115,20 @@ function stubProvider(
 beforeEach(() => {
   vi.clearAllMocks()
   listChartAccounts.mockResolvedValue(ok(OUR_CHART))
+  getCachedProviderChart.mockResolvedValue(null)
 })
 
 describe('listAccountIdentities - the checklist', () => {
+  it('reads the provider chart from the org cache when a book is active', async () => {
+    stubProvider({ accounts: [], mappings: new Map([['gl1310', '92']]) })
+    getCachedProviderChart.mockResolvedValue({ companyId: 'realm1', accounts: THEIR_CHART })
+
+    const row = (await listAccountIdentities(db, ORG))._unsafeUnwrap().rows[0]
+
+    expect(row?.state).toBe('confirmed')
+    expect(row?.liveProviderAccount?.id).toBe('92')
+  })
+
   it('returns a row for EVERY account, mapped or not', async () => {
     // The difference between this and a table dump: a screen that rendered only
     // the mappings that exist could never show what is missing.

@@ -5,7 +5,7 @@ import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { disconnectAccountingInstallationInTx } from '../../accounting/providers/book-connections'
-import { getOrgCache } from '../../cache'
+import { getOrgCache, onCacheEvent } from '../../cache'
 import { deleteAppFields } from '../../custom-fields/delete-field'
 import {
   type DeleteSyncedDataBehavior,
@@ -241,6 +241,8 @@ export async function uninstallApp(input: UninstallAppInput) {
   }
 
   const uninstalledInstallation = transactionResult.value
+  // The book may have just been disconnected above; emitted after commit.
+  await onCacheEvent('accounting.book.changed', { orgId: organizationId })
 
   return ok({
     success: true,

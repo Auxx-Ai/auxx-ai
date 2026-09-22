@@ -4,15 +4,16 @@ import { schema, type Transaction } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   accountingOpeningPolicySchema,
+  activateAccountingBookConnection,
   activateAccountingBookConnectionInTx,
   quickbooksCompanyId,
   readPinnedAccountingConnectionInTx,
 } from '../book-connections'
 
 vi.mock('../../ledger/post/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
-vi.mock('../../../cache', () => ({ getCachedInstalledApps: vi.fn() }))
+vi.mock('../../../cache', () => ({ getCachedInstalledApps: vi.fn(), onCacheEvent: vi.fn() }))
 
-import { getCachedInstalledApps } from '../../../cache'
+import { getCachedInstalledApps, onCacheEvent } from '../../../cache'
 
 /** The install probe now answers from the org cache, not `App` + `AppInstallation` reads. */
 function installed(value: boolean) {
@@ -160,5 +161,39 @@ describe('accounting connection bridge', () => {
       })
     ).rejects.toThrow('active accounting connection changed')
     expect(writes.update).not.toHaveBeenCalled()
+  })
+  it('drops the cached provider chart only after the activation commits', async () => {
+    const { tx } = fixture()
+    let committed = false
+    const db = {
+      transaction: async (fn: (t: Transaction) => Promise<unknown>) => {
+        const result = await fn(tx)
+        committed = true
+        return result
+      },
+    }
+    vi.mocked(onCacheEvent).mockImplementation(async () => {
+      expect(committed).toBe(true)
+    })
+    const input = {
+      organizationId: 'org',
+      credentialId: 'credential_a',
+      exportFromDate: policy.exportFromDate,
+      openingPolicy: policy,
+      actorUserId: 'user',
+      expectedActiveConnectionId: null,
+    }
+    await activateAccountingBookConnection(db as never, input)
+    expect(onCacheEvent).toHaveBeenCalledWith('accounting.book.changed', { orgId: 'org' })
+
+    vi.mocked(onCacheEvent).mockClear()
+    await expect(
+      activateAccountingBookConnection(db as never, {
+        ...input,
+        exportFromDate: '2026-10-01',
+        openingPolicy: { ...policy, exportFromDate: '2026-10-01' },
+      })
+    ).rejects.toThrow('active accounting connection changed')
+    expect(onCacheEvent).not.toHaveBeenCalled()
   })
 })

@@ -14,6 +14,7 @@ import { buildDeveloperAccountsProvider } from './providers/build-developer-acco
 import { buildOrganizationsProvider } from './providers/build-organizations-provider'
 import { channelProvidersProvider } from './providers/channel-providers-provider'
 import { channelsProvider } from './providers/channels-provider'
+import { chartAccountsProvider } from './providers/chart-accounts-provider'
 import { customFieldsProvider } from './providers/custom-fields-provider'
 import { entityDefSlugsProvider } from './providers/entity-def-slugs-provider'
 import { entityDefsProvider } from './providers/entity-defs-provider'
@@ -36,6 +37,7 @@ import { overagesProvider } from './providers/overages-provider'
 import { permissionProfilesProvider } from './providers/permission-profiles-provider'
 import { planMapProvider } from './providers/plan-map-provider'
 import { plansProvider } from './providers/plans-provider'
+import { providerChartProvider } from './providers/provider-chart-provider'
 import { publishedAppsProvider } from './providers/published-apps-provider'
 import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourcesProvider } from './providers/resources-provider'
@@ -96,6 +98,8 @@ export function registerAllProviders(
   orgCache.register('mailFilters', mailFiltersProvider)
   orgCache.register('kbCatalog', kbCatalogProvider)
   orgCache.register('knowledgeBases', knowledgeBasesProvider)
+  orgCache.register('chartAccounts', chartAccountsProvider)
+  orgCache.register('providerChart', providerChartProvider)
 
   // Org-scoped: AI provider data
   orgCache.register('aiProviderConfigs', aiProviderConfigsProvider)

@@ -32,10 +32,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // `recordRules` caches DB rules ONLY — system rules resolve per read now, so a
   // customFields change no longer changes what this key holds. `created`/`updated`
   // are kept as harmless redundancy; `deleted` is REQUIRED (below).
-  'custom-field.created': ['resources', 'customFields', 'recordRules'],
+  'custom-field.created': ['resources', 'customFields', 'recordRules', 'chartAccounts'],
   'custom-field.updated': ['resources', 'customFields', 'recordRules'],
   // A field delete cascades its RecordRules away (FK) — bust the rules cache too.
-  'custom-field.deleted': ['resources', 'customFields', 'recordRules'],
+  'custom-field.deleted': ['resources', 'customFields', 'recordRules', 'chartAccounts'],
 
   // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility).
   // recordRules rides along: `deleted` is REQUIRED (a def delete cascades its RecordRules
@@ -72,6 +72,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // Emitted by `invalidateChannelsIfStale` when a live DB read observes channel
   // state (enabled/requiresReauth) the cached snapshot disagrees with.
   'channel.stale-state.detected': ['channels'],
+
+  // Emitted by the four chart-write.ts writers (plans/accounting/tasks/84 §3).
+  'chart-account.changed': ['chartAccounts'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],
@@ -159,6 +162,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'app-connection.created': ['installedApps'],
   'app-connection.deleted': ['installedApps'],
   'app-connection.refreshed': ['installedApps'],
+
+  // The active book's provider chart (plans/accounting/tasks/84 §7.4)
+  'accounting.book.changed': ['providerChart'],
+  'accounting.provider-chart.changed': ['providerChart'],
 
   // MCP server lifecycle events
   'mcp.server.changed': ['mcpServers'], // create/update/delete of McpServer or its ConnectionDefinition

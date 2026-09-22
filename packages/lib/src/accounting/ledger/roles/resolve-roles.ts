@@ -38,24 +38,12 @@
  * `(organizationId, role)` makes `>1 match` unreachable; §"the impossible case"
  * below asserts it anyway.
  *
- * ## Not cached, deliberately - read this before adding a cache key
+ * ## What is cached
  *
- * The obvious move is an `OrgCacheDataMap` key. It was considered and rejected
- * for now, because the invalidation doors this would need do not exist:
- * `gl_account` is an `EntityInstance`, and there is no per-entity-type record
- * event in `INVALIDATION_GRAPH` - only `entity-def.*` and `custom-field.*`,
- * neither of which fires when a bookkeeper renames or archives an ACCOUNT. A
- * cached key wired to the doors that DO exist is correct for an hour and then
- * posts to the account somebody renamed, and it fails OPEN: the entry balances.
- * Task 58's rail scope does not change this argument - it is still `gl_account`
- * that has no invalidation door, whichever axis picked it.
- *
- * The cost of not caching is two indexed reads on a path that runs at a close or
- * per posted event - not a hot request path. When the `G19` wizard lands and
- * gives assignment writes an explicit event of their own, cache it then, and
- * wire `gl_account` create/update/archive at the same time or not at all.
- * `role-assignments.ts`'s `readRoleAssignments` is where that cache key would
- * go (§10.4) - it is the one door every reader of `GlRoleAssignment` now shares.
+ * The accounts come from the `chartAccounts` org-cache key, invalidated by the
+ * four `chart-write.ts` writers (plans/accounting/tasks/84-the-chart-in-the-org-cache.md).
+ * The ASSIGNMENTS are not cached: `GlRoleAssignment` writes have no event yet, and
+ * `role-assignments.ts`'s `readRoleAssignments` is where that key would go (§10.4).
  *
  * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
  */
@@ -482,8 +470,8 @@ async function readLiveGatewayIds(
  * A thin re-key of the shared chart read in `chart-accounts.ts` - `id` becomes
  * `glAccountId`, because a `gl_posting_line` names an ACCOUNT and a bare `id` on
  * a resolved line would not say which id it is. Everything below the re-key -
- * the four attributes, the org-cache field lookup, the archived-excluded-by-the-
- * query rule, the `optionId` read for the type, "missing code or type means
+ * the four attributes, the org-cache field lookup, the archived-excluded
+ * rule, the `optionId` read for the type, "missing code or type means
  * ABSENT, never defaulted", "missing active flag means active" - lives there, so
  * that the role map and this resolver cannot come to disagree about what one
  * account says.

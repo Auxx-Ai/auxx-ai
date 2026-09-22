@@ -20,6 +20,12 @@ vi.mock('../provider', () => ({
     typeof provider.createProviderAccount === 'function',
 }))
 
+const onCacheEvent = vi.fn()
+vi.mock('../../../cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../cache')>()),
+  onCacheEvent: (...a: unknown[]) => onCacheEvent(...a),
+}))
+
 import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
 import type { ChartAccountRow, ProviderAccount } from '../../ledger/types'
@@ -123,6 +129,8 @@ describe('createAndLinkProviderAccount - the happy path', () => {
     expect(value.row.state).toBe('confirmed')
     expect(value.row.providerAccountId).toBe('qbo104')
     expect(value.outcome).toBe('created')
+    // The provider now holds a row the cached provider chart does not (84 §7.4).
+    expect(onCacheEvent).toHaveBeenCalledWith('accounting.provider-chart.changed', { orgId: ORG })
   })
 
   it('carries `existing` and `numberDropped` through instead of flattening them', async () => {
