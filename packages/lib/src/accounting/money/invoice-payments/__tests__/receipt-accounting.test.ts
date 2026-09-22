@@ -177,12 +177,24 @@ describe('acceptInvoiceReceiptAccounting', () => {
     ])
   })
 
-  it('blocks an incomplete application set rather than throwing', async () => {
+  it('credits A/R with the whole movement when only part of it is applied', async () => {
     h.applications = [
       { id: 'ma_1', operation: 'apply', invoiceInstanceId: 'inv_1', amountMinor: 6_000n },
     ]
-    const result = await post()
-    expect(result.status).toBe('blocked')
-    expect((result as { reason: string }).reason).toMatch(/complete applications/)
+    await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
+    expect(lines().map((l) => [l.glAccountId ?? l.accountRole, l.direction, l.amount])).toEqual([
+      ['gl_undep', 'debit', 12_000],
+      ['accounts_receivable', 'credit', 12_000],
+    ])
+  })
+
+  it('posts an unapplied receipt to A/R with no parent and the party as counterparty', async () => {
+    h.applications = []
+    await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
+    expect(lines()[1]!.accountRole).toBe('accounts_receivable')
+    expect(h.postEntry.mock.calls[0]![1].sources).toEqual([
+      { sourceKind: 'money_transaction', sourceId: MOVEMENT, linkRole: 'subject' },
+      { sourceKind: 'contact', sourceId: 'ct_1', linkRole: 'counterparty' },
+    ])
   })
 })

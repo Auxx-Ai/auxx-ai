@@ -85,8 +85,7 @@ import {
   countBlockedWork,
   getPaymentAccount,
   listBlockedWork,
-  postBlockedMovement,
-  readBlockedMovement,
+  listBlockedWorkItems,
   readMovementDetail,
   readMovements,
 } from '@auxx/lib/accounting/money'
@@ -110,11 +109,8 @@ import { mintRailAccounts } from '@auxx/lib/accounting/rails'
 // `payment-gateways` barrel, which reaches Drizzle and the org cache.
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
-import {
-  continueAccountingAfterDraft,
-  postFulfillmentAccounting,
-  readBlockedFulfillment,
-} from '@auxx/lib/accounting/sales'
+import { readShipmentDetail } from '@auxx/lib/accounting/sales'
+import { wakeSources, wakeWorkItemGroup } from '@auxx/lib/accounting/work-items'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -265,6 +261,24 @@ const unbuiltCursor = z.object({
   railId: z.string(),
   currency: z.string(),
 })
+
+/** One Blocked group's identity - its code and wake keys. */
+const workItemGroup = z.object({
+  reasonCode: z.string().min(1),
+  role: z.string().nullable(),
+  railId: z.string().nullable(),
+  glAccountId: z.string().nullable(),
+})
+
+/** The book zone a Blocked date range is cut in, read only when a range is set. */
+async function readOutboxZone(
+  organizationId: string,
+  input: { from?: string; to?: string }
+): Promise<string | undefined> {
+  if (!input.from && !input.to) return undefined
+  const zone = await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
+  return typeof zone === 'string' ? zone : undefined
+}
 
 /** The Outbox's one category vocabulary, on every tab: the avenue. */
 const outboxCategories = z.array(z.enum(EXPORT_AVENUES)).max(EXPORT_AVENUES.length).optional()
@@ -1784,38 +1798,48 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Everything the ledger refused - the Outbox's Blocked tab (75-D1, 88 §4.5):
-   * movements under `postingBlockedReason`, shipments under their marker
-   * fields, merged newest refusal first. Work parked, not lost: each mark clears
-   * the moment a retry is accepted. Two offsets in the cursor, one per read.
+   * The Outbox's Blocked tab: parked accounting work grouped by
+   * `(reasonCode, role, railId, glAccountId)`, newest write first (91 §4.6).
    */
   listBlocked: permissionProcedure(PermissionKey.ledgerPost)
     .input(
-      outboxPage
-        .omit({ cursor: true })
-        .extend({
-          cursor: z
-            .object({ movement: z.number().int().min(0), shipment: z.number().int().min(0) })
-            .optional(),
-          categories: outboxCategories,
-        })
-        .refine(validOutboxRange, outboxRangeError)
+      outboxPage.extend({ categories: outboxCategories }).refine(validOutboxRange, outboxRangeError)
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const bookTimeZone =
-        input.from || input.to
-          ? await getOrganizationSetting({ organizationId, key: 'accounting.bookTimeZone' })
-          : undefined
-      return listBlockedWork(ctx.db, organizationId, {
+      const result = await listBlockedWork(ctx.db, organizationId, {
         limit: input.limit ?? OUTBOX_PAGE_SIZE,
         cursor: input.cursor,
         categories: input.categories,
         search: input.search,
         from: input.from,
         to: input.to,
-        bookTimeZone: typeof bookTimeZone === 'string' ? bookTimeZone : undefined,
+        bookTimeZone: await readOutboxZone(organizationId, input),
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** One Blocked group expanded: its items, paged. */
+  listBlockedItems: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      outboxPage
+        .extend({ categories: outboxCategories, group: workItemGroup })
+        .refine(validOutboxRange, outboxRangeError)
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const result = await listBlockedWorkItems(ctx.db, organizationId, input.group, {
+        limit: input.limit ?? OUTBOX_PAGE_SIZE,
+        cursor: input.cursor,
+        categories: input.categories,
+        search: input.search,
+        from: input.from,
+        to: input.to,
+        bookTimeZone: await readOutboxZone(organizationId, input),
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**
@@ -1845,65 +1869,51 @@ export const ledgerRouter = createTRPCRouter({
     }
   }),
 
-  /** One parked movement for the drawer; `null` once it has posted, so a stale link reads as such. */
-  getBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ moneyTransactionId: z.string().min(1) }))
-    .query(({ ctx, input }) =>
-      readBlockedMovement(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
-    ),
-
-  /** One movement for the drawer, blocked or posted; `reason` is null once it posted (83 §2.3). */
+  /** One movement for the drawer, parked or posted, with its work items (83 §2.3). */
   getMovement: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ moneyTransactionId: z.string().min(1) }))
     .query(({ ctx, input }) =>
       readMovementDetail(ctx.db, ctx.session.organizationId, input.moneyTransactionId)
     ),
 
-  /**
-   * Post one parked movement again, through whichever poster its evidence
-   * names. The outcome is returned rather than thrown: a movement still blocked
-   * on an unmapped role is an answer the row renders, not a 500.
-   */
-  retryBlockedMovement: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ moneyTransactionId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) =>
-      postBlockedMovement(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        moneyTransactionId: input.moneyTransactionId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
-
-  /** One parked shipment for the drawer; `null` once it has posted, so a stale link reads as such. */
-  getBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
+  /** One shipment for the drawer, parked or posted, with its work items. */
+  getShipment: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ fulfillmentId: z.string().min(1) }))
     .query(({ ctx, input }) =>
-      readBlockedFulfillment(ctx.db, ctx.session.organizationId, input.fulfillmentId)
+      readShipmentDetail(ctx.db, ctx.session.organizationId, input.fulfillmentId)
     ),
 
   /**
-   * Post one parked shipment again through the shipment poster. The outcome is
-   * returned rather than thrown, exactly as {@link retryBlockedMovement}'s.
+   * Retry all: make a Blocked group, or one source's rows, due now and return. The
+   * recovery job does the posting, as release does for the outbox (91 §4.6).
    */
-  retryBlockedFulfillment: permissionProcedure(PermissionKey.ledgerPost)
-    .input(z.object({ fulfillmentId: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) =>
-      postFulfillmentAccounting(ctx.db, {
-        organizationId: ctx.session.organizationId,
-        fulfillmentId: input.fulfillmentId,
-        actorUserId: ctx.session.userId,
-      })
-    ),
+  retryBlockedGroup: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.union([
+        z.object({ group: workItemGroup }),
+        z.object({
+          source: z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) }),
+        }),
+      ])
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const woken =
+        'group' in input
+          ? await wakeWorkItemGroup(ctx.db, organizationId, input.group)
+          : await wakeSources(ctx.db, organizationId, {
+              sourceKind: input.source.sourceKind,
+              sourceIds: [input.source.sourceId],
+            })
+      if (woken.isErr()) throw woken.error
+      return { woken: woken.value }
+    }),
 
   /**
    * Promote a draft: re-resolve its roles, re-check the period lock, claim,
    * number, flip to `posted` (TARGET §4 gate 1). Never throws - a closed period
    * or an account the chart no longer holds comes back as a `PostResult` status
    * the Drafts tab renders, exactly as {@link post} does.
-   *
-   * A draft that posts continues its order's chain in the same request (88
-   * D10): the shipment a receipt draft was holding up drafts now, not on the
-   * recovery job's next hour.
    */
   postDraft: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ glPostingId: z.string().min(1) }))
@@ -1911,19 +1921,12 @@ export const ledgerRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       const lock = await resolvePeriodLock(organizationId)
 
-      const result = await postDraft(ctx.db, {
+      return postDraft(ctx.db, {
         organizationId,
         glPostingId: input.glPostingId,
         actorUserId: userId,
         lock,
       })
-      if (result.status === 'posted')
-        await continueAccountingAfterDraft(ctx.db, {
-          organizationId,
-          glPostingId: input.glPostingId,
-          actorUserId: userId,
-        })
-      return result
     }),
 
   /**

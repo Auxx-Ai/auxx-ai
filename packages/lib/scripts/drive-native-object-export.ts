@@ -34,7 +34,6 @@ import {
   JOURNAL_OBJECT_TYPE,
   PAYMENT_OBJECT_TYPE,
   REFUND_RECEIPT_OBJECT_TYPE,
-  SALES_RECEIPT_OBJECT_TYPE,
 } from '../src/accounting/export/payloads'
 import { rollbackExportBatch } from '../src/accounting/export/rollback'
 import { sendExportBatch } from '../src/accounting/export/send'
@@ -55,11 +54,9 @@ import {
  * and catching that fallback is half of what this script is for.
  */
 const EXPECTED_OBJECT_TYPE: Partial<Record<PostingType, string>> = {
-  fulfillment: `${SALES_RECEIPT_OBJECT_TYPE} | ${INVOICE_OBJECT_TYPE}`,
+  fulfillment: INVOICE_OBJECT_TYPE,
   invoice_issued: INVOICE_OBJECT_TYPE,
   payment: PAYMENT_OBJECT_TYPE,
-  // §7, recorded from unit B: a reclass with no bank leg has no Payment shape.
-  deposit_application: JOURNAL_OBJECT_TYPE,
   credit_memo: CREDIT_MEMO_OBJECT_TYPE,
   refund: REFUND_RECEIPT_OBJECT_TYPE,
   payout: DEPOSIT_OBJECT_TYPE,

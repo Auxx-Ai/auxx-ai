@@ -3,6 +3,8 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { wakeSources } from '../../work-items/wake'
+import { upsertWorkItem } from '../../work-items/write'
 import { customerMoneyObservationSchema, orderPaymentEvidenceSchema } from './contracts'
 import { materializeImportedMoneyInTx } from './ingest'
 import type { FinancialWriteProvenance } from './record-storage'
@@ -170,6 +172,8 @@ export async function stageOrderPaymentEvidenceInTx(
     const observationByObject = new Map(observations.map((row) => [row.sourceObjectId, row]))
     const updates: Omit<typeof schema.FinancialSourceAcceptance.$inferInsert, 'organizationId'>[] =
       []
+    const changed = new Set<string>()
+    const rejected = new Set<string>()
     let stale = oldCoverage
     for (const object of objects) {
       const row = unique.get(object.externalId)!,
@@ -204,21 +208,31 @@ export async function stageOrderPaymentEvidenceInTx(
         orderExternalId: evidence.orderExternalId,
         orderInstanceId: input.orderInstanceId,
         state: unchanged ? old.acceptance.state : row.parsed.success ? 'pending' : 'rejected',
-        reason: unchanged
-          ? old.acceptance.reason
-          : row.parsed.success
-            ? null
-            : 'Invalid transaction identity or money evidence',
         unresolvedReferences: {
           ...input.provenance,
           creditMemoInstanceId: row.parsed.success ? row.parsed.data.creditMemoInstanceId : null,
         },
-        // A changed observation is due NOW; null means parked on a change (79 §4.2).
-        nextAttemptAt: unchanged ? old.acceptance.nextAttemptAt : new Date(),
         updatedAt: new Date(),
       })
+      if (!unchanged) (row.parsed.success ? changed : rejected).add(object.id)
     }
-    await upsertAcceptances(tx, input.organizationId, updates)
+    const upserted = await upsertAcceptances(tx, input.organizationId, updates)
+    // A changed observation is due now; an unparseable one is a visible rejection.
+    const idsOf = (objects: Set<string>) =>
+      upserted.filter((row) => objects.has(row.sourceObjectId)).map((row) => row.id)
+    await wakeSources(tx, input.organizationId, {
+      sourceKind: 'financial_source_acceptance',
+      sourceIds: idsOf(changed),
+      stage: 'evidence',
+    })
+    for (const acceptanceId of idsOf(rejected))
+      await upsertWorkItem(tx, input.organizationId, {
+        sourceKind: 'financial_source_acceptance',
+        sourceId: acceptanceId,
+        stage: 'evidence',
+        reasonCode: 'INVALID_EVIDENCE',
+        externalRef: evidence.orderExternalId,
+      })
     if (stale) continue
     const [retained] = await countOrderAcceptanceStates(tx, input.organizationId, {
       orderInstanceIds: [input.orderInstanceId],

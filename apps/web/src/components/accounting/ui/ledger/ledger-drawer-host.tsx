@@ -21,7 +21,6 @@ import {
   DrawerTabParamProvider,
   frameKind,
   RecordStackProvider,
-  toFrame,
   useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
@@ -85,8 +84,6 @@ function LedgerDrawerFrames({
   const isBaseTop = depth <= 1
   const router = useRouter()
 
-  const openPosting = useCallback((id: string) => push(toFrame('posting', id)), [push])
-
   const topKind = top ? frameKind(top) : null
   const topRecordId = topKind?.kind === 'record' ? topKind.recordId : null
 
@@ -105,12 +102,8 @@ function LedgerDrawerFrames({
     isReversing: actions.isReversing,
     onClose: handleClose,
   })
-  const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null, {
-    onOpenPosting: openPosting,
-  })
-  const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null, {
-    onOpenPosting: openPosting,
-  })
+  const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null)
+  const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null)
   const { resource: recordResource } = useResource(
     topRecordId ? parseRecordId(topRecordId).entityDefinitionId : null
   )

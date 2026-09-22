@@ -169,9 +169,8 @@ export interface ReverseInvoiceIssuanceInput {
  * reverse), and a {@link PostResult} carrying the refusal otherwise. The caller
  * turns that into a refusal of the VOID - see the file header.
  *
- * A deposit APPLIED to this invoice would leave a `deposit_application` entry
- * crediting a receivable that is about to disappear; `voidInvoice` refuses
- * outright while any money is still applied, so that entry cannot be stranded.
+ * `voidInvoice` refuses outright while any money is still applied, so no
+ * application is left naming a voided invoice.
  */
 export async function reverseInvoiceIssuance(
   db: Database,

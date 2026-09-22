@@ -56,7 +56,6 @@ export const PAYOUT_ATTRIBUTES = pickSystemAttributes(PAYOUT_FIELDS, [
   'payout_net',
   'payout_unrecognised_net',
   'payout_unrecognised_count',
-  'payout_blocked_reason',
   'payout_bank_transaction_id',
   'payout_payment_gateway',
   'payout_bank_account',

@@ -16,19 +16,14 @@
 // document with no due date - an unapplied payment, a manual adjustment, the
 // opening entry - has nothing to bucket on and is always `current`.
 //
-// DOCUMENT SOURCES. `sourceType` on a posted line names what produced it:
-// `invoice` (a write-off, `build-write-off-entry.ts`), `vendor_bill` (the
-// matched bill entry, `build-entry.ts`), `order` (a fulfillment entry -
-// `build-fulfillment-entry.ts` posts A/R by ORDER, not by invoice; orders
-// carry no due date and settle under the order's own contact/company),
-// `payment_transaction` (a payment or refund, `build-payment-entry.ts` - the
-// sourceType name predates the money model and is unchanged; `sourceId` is a
-// `MoneyTransaction.id`, resolved against its own `partyInstanceId`) and `journal_entry`
-// (a manual or opening entry, which carries no contact). Every one of these
-// is handled; nothing is dropped. A `sourceType` this file does not know
-// about falls into the same "Unapplied and adjustments" catch-all a
-// `journal_entry` line does, so the total still ties even for a source this
-// read has never heard of.
+// DOCUMENT SOURCES. `invoice` and `vendor_bill` age on their due date; `order`
+// (a shipment) carries none. A `money_transaction` line (receipt, refund,
+// vendor payment) is attributed to the documents its `MoneyApplication`s name,
+// prorated, and a `credit_memo` folds into its order or invoice - see
+// `receivable-attribution.ts`. What stays on a movement is unapplied. That,
+// `journal_entry` and any unknown source land in the catch-all, so the total
+// still ties. A document paid only before `accounting.cutoffPeriod` groups as
+// pre-cutover: the opening entry carries that money by account (91 §8.7).
 //
 // No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
 
@@ -43,6 +38,11 @@ import { systemFieldMap } from '../../resources/system-records'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
+import {
+  attributeToDocuments,
+  readAttributionLinks,
+  readPreCutoverDocumentIds,
+} from './receivable-attribution'
 import { type StatementColumn, type StatementRow, totalRow } from './rows'
 import { signedBalance } from './statement-math'
 import { readTrialBalance } from './trial-balance'
@@ -170,6 +170,17 @@ export interface ReadAgingOptions {
 /** The catch-all every document with no resolvable contact/company falls into. Never dropped. */
 export const AGING_UNAPPLIED_GROUP_ID = 'unapplied'
 const UNAPPLIED_GROUP_NAME = 'Unapplied and adjustments'
+
+/** Documents whose every application predates the cutoff (91 §8.7). */
+export const AGING_PRE_CUTOVER_GROUP_ID = 'pre_cutover'
+const PRE_CUTOVER_GROUP_NAME = 'Paid before cutover'
+
+const SYNTHETIC_GROUPS = new Map([
+  [AGING_UNAPPLIED_GROUP_ID, UNAPPLIED_GROUP_NAME],
+  [AGING_PRE_CUTOVER_GROUP_ID, PRE_CUTOVER_GROUP_NAME],
+])
+
+const MOVEMENT_SOURCE_TYPE = 'money_transaction'
 
 const DOCUMENT_SCALAR_ATTRIBUTES = [
   'invoice_due_date',
@@ -302,7 +313,10 @@ export async function readAging(
       else accum.creditMinor += line.amountMinor
     }
 
-    const openDocs = [...byDoc.values()]
+    const links = await readAttributionLinks(db, organizationId, [...byDoc.values()])
+    if (links.isErr()) return err(links.error)
+
+    const openDocs = attributeToDocuments([...byDoc.values()], links.value)
       .map((accum) => ({
         accum,
         openMinor: signedBalance(accum.debitMinor, accum.creditMinor, account.accountType),
@@ -317,8 +331,10 @@ export async function readAging(
       .filter((d) => ['invoice', 'vendor_bill', 'order'].includes(d.accum.sourceType))
       .map((d) => d.accum.sourceId)
     const paymentTransactionIds = openDocs
-      .filter((d) => d.accum.sourceType === 'payment_transaction')
+      .filter((d) => d.accum.sourceType === MOVEMENT_SOURCE_TYPE)
       .map((d) => d.accum.sourceId)
+    const preCutover = await readPreCutoverDocumentIds(db, organizationId, fieldDocumentIds)
+    if (preCutover.isErr()) return err(preCutover.error)
 
     const cf = await systemFieldMap(db, organizationId, [
       ...DOCUMENT_SCALAR_ATTRIBUTES,
@@ -349,7 +365,6 @@ export async function readAging(
           ? db
               .select({
                 id: schema.MoneyTransaction.id,
-                contactInstanceId: schema.MoneyTransaction.partyInstanceId,
                 reference: schema.MoneyTransaction.reference,
                 purpose: schema.MoneyTransaction.purpose,
               })
@@ -366,7 +381,7 @@ export async function readAging(
       ])
     const paymentById = new Map(paymentTransactions.map((p) => [p.id, p]))
 
-    const resolved: ResolvedDocument[] = openDocs.map((doc) => {
+    const resolveDocument = (doc: (typeof openDocs)[number]): ResolvedDocument => {
       const { sourceType, sourceId, docNumber } = doc.accum
 
       if (sourceType === 'invoice') {
@@ -440,12 +455,13 @@ export async function readAging(
         }
       }
 
-      if (sourceType === 'payment_transaction') {
+      // What no application covers: the unapplied remainder, or a refund with no memo yet.
+      if (sourceType === MOVEMENT_SOURCE_TYPE) {
         const payment = paymentById.get(sourceId)
         return {
           accum: doc.accum,
           openMinor: doc.openMinor,
-          groupId: payment?.contactInstanceId ?? AGING_UNAPPLIED_GROUP_ID,
+          groupId: AGING_UNAPPLIED_GROUP_ID,
           label:
             payment?.reference || (payment?.purpose === 'customer_refund' ? 'Refund' : 'Payment'),
           issuedAt: null,
@@ -463,11 +479,17 @@ export async function readAging(
         issuedAt: null,
         dueDate: null,
       }
+    }
+    const resolved = openDocs.map((doc) => {
+      const r = resolveDocument(doc)
+      return preCutover.value.has(r.accum.sourceId)
+        ? { ...r, groupId: AGING_PRE_CUTOVER_GROUP_ID }
+        : r
     })
 
     // ── Names for every resolved contact/company ─────────────────────────
     const groupIds = [
-      ...new Set(resolved.map((r) => r.groupId).filter((id) => id !== AGING_UNAPPLIED_GROUP_ID)),
+      ...new Set(resolved.map((r) => r.groupId).filter((id) => !SYNTHETIC_GROUPS.has(id))),
     ]
     const names =
       groupIds.length > 0
@@ -505,10 +527,7 @@ export async function readAging(
       if (!group) {
         group = {
           groupId: r.groupId,
-          groupName:
-            r.groupId === AGING_UNAPPLIED_GROUP_ID
-              ? UNAPPLIED_GROUP_NAME
-              : nameById.get(r.groupId) || r.groupId,
+          groupName: SYNTHETIC_GROUPS.get(r.groupId) ?? (nameById.get(r.groupId) || r.groupId),
           documents: [],
           bucketTotals: zeroBucketTotals(),
           totalMinor: 0,
@@ -520,11 +539,12 @@ export async function readAging(
       group.totalMinor += document.openMinor
     }
 
-    const groups = [...groupsById.values()].sort((a, b) => {
-      if (a.groupId === AGING_UNAPPLIED_GROUP_ID) return 1
-      if (b.groupId === AGING_UNAPPLIED_GROUP_ID) return -1
-      return a.groupName.localeCompare(b.groupName)
-    })
+    // Contacts first by name, then pre-cutover, then the catch-all.
+    const rank = (id: string) =>
+      id === AGING_UNAPPLIED_GROUP_ID ? 2 : id === AGING_PRE_CUTOVER_GROUP_ID ? 1 : 0
+    const groups = [...groupsById.values()].sort(
+      (a, b) => rank(a.groupId) - rank(b.groupId) || a.groupName.localeCompare(b.groupName)
+    )
     for (const group of groups) {
       group.documents.sort(
         (a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '') || a.label.localeCompare(b.label)

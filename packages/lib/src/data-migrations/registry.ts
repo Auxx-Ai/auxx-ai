@@ -38,8 +38,7 @@ import { migration180CustomerTransactionGatewayIds } from './migrations/180-cust
 import { migration181RewalkProvisionedChartPacks } from './migrations/181-rewalk-provisioned-chart-packs'
 import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-bill-amount-discounted'
 import { migration183EntityDefPalette } from './migrations/183-entity-def-palette'
-import { migration184FulfillmentPostingMarker } from './migrations/184-fulfillment-posting-marker'
-import { migration185CreditMemoIssueMarker } from './migrations/185-credit-memo-issue-marker'
+import { migration186DropPostingMarkers } from './migrations/186-drop-posting-markers'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -67,9 +66,12 @@ const KEPT_IDS: ReadonlySet<string> = new Set([
  * error, by every database that already ran the old one. The deleted files are in git
  * history if you need to read one.
  */
-const RETIRED_ID_NUMBERS: ReadonlySet<string> = new Set(
-  Array.from({ length: 150 }, (_, i) => String(i + 1).padStart(3, '0'))
-)
+const RETIRED_ID_NUMBERS: ReadonlySet<string> = new Set([
+  ...Array.from({ length: 150 }, (_, i) => String(i + 1).padStart(3, '0')),
+  // The two marker migrations 186 undoes; their registry fields are gone.
+  '184',
+  '185',
+])
 
 /**
  * Per-org migrations, authored as {@link PerOrgMigration} (see ./per-org.ts) and
@@ -199,12 +201,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // (75 §1.4, 75-D3).
   migration182VendorBillAmountDiscounted,
   migration183EntityDefPalette,
-  // Two fields on the existing `fulfillment` def, no backfill: why the shipment
-  // poster last refused a shipment and when (88 §7.4).
-  migration184FulfillmentPostingMarker,
-  // Two fields on the existing `credit_memo` def, no backfill: why the channel
-  // memo pass last refused to issue a memo and when (88 §7.4).
-  migration185CreditMemoIssueMarker,
+  // Drops the five marker fields 184 and 185 added (and `payout_blocked_reason`):
+  // parked work is an `AccountingWorkItem` row now (91 §4.6).
+  migration186DropPostingMarkers,
 ]
 
 /**

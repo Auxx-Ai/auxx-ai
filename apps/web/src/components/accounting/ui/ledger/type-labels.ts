@@ -7,10 +7,11 @@
 // provider object shape.
 
 import type { PostingType } from '@auxx/lib/accounting/ledger/client'
+import type { WorkItemSourceKind } from '@auxx/lib/accounting/work-items/client'
 import type { RouterOutputs } from '~/trpc/react'
 
 /** Off the DTO rather than a second copy of the union - `money/client.ts` exports none. */
-type MovementPurpose = NonNullable<RouterOutputs['ledger']['getBlockedMovement']>['purpose']
+type MovementPurpose = NonNullable<RouterOutputs['ledger']['getMovement']>['purpose']
 
 /**
  * Every `POSTING_TYPES` member, curated rather than de-snake_cased: the badge
@@ -33,7 +34,7 @@ export const POSTING_TYPE_LABEL: Record<PostingType, string> = {
   vendor_payment: 'Vendor payment',
   vendor_refund: 'Vendor refund',
   invoice_issued: 'Invoice',
-  // 'Deposit application' is the one label that would not fit the badge column.
+  // No writer since 91 §4.3; TODO(91 S3): drops with the enum value.
   deposit_application: 'Deposit applied',
   credit_memo: 'Credit memo',
   provider_sync: 'Accountant entry',
@@ -57,8 +58,11 @@ export const MOVEMENT_PURPOSE_LABEL: Record<MovementPurpose, string> = {
   vendor_refund: 'Vendor refund',
 }
 
-/** The Blocked tab's category column: a movement's purpose, or the shipment kind (88 §4.5). */
-export const BLOCKED_CATEGORY_LABEL: Record<MovementPurpose | 'shipment', string> = {
-  ...MOVEMENT_PURPOSE_LABEL,
-  shipment: 'Shipment',
+/** The Blocked tab's category column: what a work item names (91 §4.6). */
+export const WORK_SOURCE_LABEL: Record<WorkItemSourceKind, string> = {
+  money_transaction: 'Payment',
+  fulfillment: 'Shipment',
+  credit_memo: 'Credit memo',
+  payout: 'Payout',
+  financial_source_acceptance: 'Channel payment',
 }

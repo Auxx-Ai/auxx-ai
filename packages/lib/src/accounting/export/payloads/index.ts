@@ -10,7 +10,6 @@ import { exportInvoiceSchema, INVOICE_OBJECT_TYPE } from './invoice'
 import { JOURNAL_OBJECT_TYPE, parseExportJournal } from './journal'
 import { exportPaymentSchema, PAYMENT_OBJECT_TYPE } from './payment'
 import { exportRefundReceiptSchema, REFUND_RECEIPT_OBJECT_TYPE } from './refund-receipt'
-import { exportSalesReceiptSchema, SALES_RECEIPT_OBJECT_TYPE } from './sales-receipt'
 import { exportVendorCreditSchema, VENDOR_CREDIT_OBJECT_TYPE } from './vendor-credit'
 
 export {
@@ -46,11 +45,6 @@ export {
   REFUND_RECEIPT_OBJECT_TYPE,
 } from './refund-receipt'
 export {
-  type ExportSalesReceiptPayload,
-  exportSalesReceiptSchema,
-  SALES_RECEIPT_OBJECT_TYPE,
-} from './sales-receipt'
-export {
   type ExportVendorCreditLine,
   type ExportVendorCreditPayload,
   exportVendorCreditSchema,
@@ -60,7 +54,6 @@ export {
 /** Every object type an export batch may carry (plan 67 §1's mapping table). */
 export const EXPORT_OBJECT_TYPES = [
   JOURNAL_OBJECT_TYPE,
-  SALES_RECEIPT_OBJECT_TYPE,
   INVOICE_OBJECT_TYPE,
   PAYMENT_OBJECT_TYPE,
   CREDIT_MEMO_OBJECT_TYPE,
@@ -75,7 +68,7 @@ export type ExportObjectType = (typeof EXPORT_OBJECT_TYPES)[number]
 /**
  * Every `gl_account` id a frozen payload names, de-duplicated (89 D7).
  *
- * A recursive walk rather than nine shape-specific readers, so a tenth payload
+ * A recursive walk rather than eight shape-specific readers, so a ninth payload
  * shape cannot silently drop out of the Ready tab's preflight.
  */
 export function payloadAccountIds(payload: unknown): string[] {
@@ -100,8 +93,6 @@ export function parseExportPayload(objectType: string, payload: unknown): unknow
   switch (objectType) {
     case JOURNAL_OBJECT_TYPE:
       return parseExportJournal(payload)
-    case SALES_RECEIPT_OBJECT_TYPE:
-      return exportSalesReceiptSchema.parse(payload)
     case INVOICE_OBJECT_TYPE:
       return exportInvoiceSchema.parse(payload)
     case PAYMENT_OBJECT_TYPE:

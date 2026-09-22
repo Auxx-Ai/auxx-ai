@@ -79,10 +79,7 @@ export const POSTING_TYPES = [
   //
   // 🛑 Prefix `INI`, never `INV` - `inventory_movement` holds `INV`.
   'invoice_issued',
-  // A held customer deposit reclassed onto an invoice:
-  // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
-  // money moved) nor a manual journal (nobody keyed it)
-  // (plans/accounting/tasks/done/07-customer-deposits.md).
+  // No writer since 91 §4.3: a prepayment stays in A/R. TODO(91 S3): drops with the pgEnum value.
   'deposit_application',
   // A credit memo ISSUED: `Dr revenue_returns_allowances / Dr sales_tax_payable
   // / Cr accounts_receivable`, dated the memo's own `issuedAt`, plus

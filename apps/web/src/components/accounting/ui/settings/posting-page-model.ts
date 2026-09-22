@@ -150,8 +150,8 @@ export const POSTING_PAGE_INPUT_KEYS: readonly string[] = [
 // ── The export table (TARGET §3, §4 gate 2) ─────────────────────────────────
 //
 // `autoSend` and `summaryGrain` are per AVENUE (`EXPORT_AVENUES`), not per
-// `PostingType` - several types share one avenue (`payment` and
-// `deposit_application` both export as `receipt`), so the controls live in one
+// `PostingType` - several types share one avenue (`vendor_payment` and
+// `vendor_refund` both export as `vendorPayment`), so the controls live in one
 // table keyed on the avenue rather than on each type's section.
 
 /** The labels of the posting types that export through `avenue`, in page order. */

@@ -1049,13 +1049,8 @@ export const SYSTEM_ATTRIBUTES = [
   'payout_gl_posting_id', // denormalized backlink; the posting is the authority
   'payout_bank_transaction_id', // the bank_deposit twin, by name and meaning
   'payout_destination', // the gateway's own external-account id (brief 13 §2.3), never last4
-  // 🛑 Set only when the payout could not be posted for lack of a confirmed
-  // bank-account identity. Never a role; naming the payout, the destination and
-  // the remedy (brief 13 §2.3).
-  'payout_blocked_reason',
   // Brief 58 §4.5, D7. Set when the reported destination is not among the
-  // mapped bank account's settlementDestinations. This payout POSTED -
-  // distinct from payout_blocked_reason, which means nothing did.
+  // mapped bank account's settlementDestinations. This payout POSTED.
   'payout_destination_mismatch',
   // Brief 27 §6.1. The rail this payout settled - THE routing key, and half of
   // the idempotency pair with `payout_gateway_id`. Null when no gateway record
@@ -1362,10 +1357,6 @@ export const SYSTEM_ATTRIBUTES = [
   'fulfillment_gl_posting',
   'fulfillment_doc_number',
   'fulfillment_recorded_at',
-  // Why the shipment poster last refused this shipment, and when (88 §7.4).
-  // Written by `postFulfillmentAccounting` only; cleared on accept or draft.
-  'fulfillment_posting_blocked_reason',
-  'fulfillment_posting_blocked_at',
   'fulfillment_lines', // inverse of fulfillment_line_fulfillment, has_many, onDelete cascade
   // Nullable, one-sided belongs_to the logistics fact (brief §2.2) - opportunistic
   // tracking-number match, no field on shipment points back, and nothing in
@@ -1444,9 +1435,6 @@ export const SYSTEM_ATTRIBUTES = [
   'part_return_lines',
   'part_return_part_lines',
   'credit_memo_return', // owning side: the FK is on the memo
-  // Why the channel memo pass last refused to issue this memo, and when (88 §7.4).
-  'credit_memo_issue_blocked_reason',
-  'credit_memo_issue_blocked_at',
 ] as const
 
 /** Union type of all valid system attribute identifiers */

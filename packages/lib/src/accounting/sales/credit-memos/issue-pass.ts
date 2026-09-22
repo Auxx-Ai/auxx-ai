@@ -4,8 +4,8 @@
  * Channel memos issue themselves (88 D3). A channel memo records a refund the
  * sales channel already made; there is nobody to ask. This pass issues every
  * draft channel memo that is ready through `issueCreditMemo` - the same door
- * the drawer's Issue button uses - as the org's system user, and records why
- * the ones it cannot issue are waiting (§7.4).
+ * the drawer's Issue button uses - as the org's system user, and parks the ones
+ * it cannot issue as `issue` work items.
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
@@ -15,11 +15,18 @@ import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../../cache'
 import { AuxxError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
-import { POSTING_RETRY_INTERVAL_MS } from '../../money/blocked-movements'
-import { listChannelMemoIssueCandidates, markCreditMemoIssueBlock } from './readiness'
+import { refusalFromError } from '../../work-items/refusal'
+import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
+import { listChannelMemoIssueCandidates } from './readiness'
 import { issueCreditMemo } from './writes'
 
 const logger = createScopedLogger('credit-memo-issue-pass')
+
+const workKey = (creditMemoInstanceId: string) => ({
+  sourceKind: 'credit_memo',
+  sourceId: creditMemoInstanceId,
+  stage: 'issue' as const,
+})
 
 export interface ChannelMemoPassCounts {
   scanned: number
@@ -29,8 +36,8 @@ export interface ChannelMemoPassCounts {
 
 /**
  * Issue up to `limit` ready channel memos, oldest issue date first. A memo the
- * issuer refuses - not ready, an unmapped role, a locked period - is marked with
- * the refusal and held back for {@link POSTING_RETRY_INTERVAL_MS}.
+ * issuer refuses - not ready, an unmapped role, a locked period - is parked until
+ * its work item is due or woken.
  */
 export async function sweepChannelCreditMemos(
   db: Database,
@@ -49,9 +56,7 @@ export async function sweepChannelCreditMemos(
     {
       cutoffPeriod: settings['accounting.cutoffPeriod'] ?? null,
       // The continuation retries on purpose; only the scheduled pass backs off.
-      retryBefore: input.orderInstanceId
-        ? new Date(started + 1)
-        : new Date(started - POSTING_RETRY_INTERVAL_MS),
+      includeParked: !!input.orderInstanceId,
       orderInstanceId: input.orderInstanceId,
     }
   )
@@ -63,7 +68,7 @@ export async function sweepChannelCreditMemos(
     counts.scanned++
     try {
       await issueCreditMemo(db, { organizationId, userId, creditMemoInstanceId })
-      await markCreditMemoIssueBlock(db, organizationId, creditMemoInstanceId, null)
+      await deleteWorkItem(db, organizationId, workKey(creditMemoInstanceId))
       counts.issued++
     } catch (error) {
       if (!(error instanceof AuxxError)) throw error
@@ -72,7 +77,10 @@ export async function sweepChannelCreditMemos(
         creditMemoInstanceId,
         reason: error.message,
       })
-      await markCreditMemoIssueBlock(db, organizationId, creditMemoInstanceId, error.message)
+      await upsertWorkItem(db, organizationId, {
+        ...workKey(creditMemoInstanceId),
+        ...refusalFromError(error),
+      })
       counts.blocked++
     }
   }

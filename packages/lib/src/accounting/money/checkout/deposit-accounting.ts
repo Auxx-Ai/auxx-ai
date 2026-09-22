@@ -1,17 +1,15 @@
 // packages/lib/src/accounting/money/checkout/deposit-accounting.ts
 
 /**
- * A quote deposit collected online: money in, nothing relieved yet.
+ * A quote deposit collected online.
  *
  * ```
  *   Dr <the cash endpoint — the gateway's clearing account>
- *       Cr customer_deposits
+ *       Cr accounts_receivable
  * ```
  *
- * 🔑 Why this is not `invoice-payments/receipt-accounting.ts`: a deposit is taken
- * before any invoice exists, so there is no receivable to relieve. The money is a
- * LIABILITY until an invoice is raised, and `invoice-payments/apply-money.ts` is
- * what later moves it out of `customer_deposits` into A/R.
+ * A prepayment stays in A/R as a credit until the invoice it is applied to
+ * debits it (91 §4.3); the application is a link and posts nothing.
  *
  * Subject the `MoneyTransaction`, parent the quote, counterparty the customer.
  *
@@ -60,7 +58,7 @@ export async function acceptQuoteDepositAccounting(
         },
         {
           ...loaded.base,
-          accountRole: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
+          accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
           direction: 'credit',
           amount,
           sortOrder: 1,

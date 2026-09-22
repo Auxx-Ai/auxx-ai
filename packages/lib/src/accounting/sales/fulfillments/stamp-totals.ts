@@ -15,6 +15,7 @@ import {
 } from '../../../realtime'
 import { toRecordId } from '../../../resources/resource-id'
 import { systemFieldMap } from '../../../resources/system-records'
+import { wakeTotalsNotStamped } from '../../work-items/wake'
 import { readOrderForFulfillment } from '../orders/reads'
 import { resolveOrderShipments } from './shipment-lines'
 
@@ -60,6 +61,7 @@ export async function stampOrderShipmentTotals(
   const entries: FieldValueUpdateEntry[] = []
   let fulfillmentsWritten = 0
   let skippedPosted = 0
+  const stampedIds: string[] = []
 
   // The tax prior is cumulative, so the walk must follow sequence, not read order.
   for (const shipment of resolveOrderShipments(order)) {
@@ -132,6 +134,7 @@ export async function stampOrderShipmentTotals(
       }
     )
     fulfillmentsWritten++
+    stampedIds.push(fulfillment.id)
     logger.info('Fulfillment totals stamped', {
       organizationId,
       orderInstanceId,
@@ -142,6 +145,9 @@ export async function stampOrderShipmentTotals(
       totalMinor,
     })
   }
+
+  // The shipments parked on these totals are due now; the reconciler path lands here too.
+  await wakeTotalsNotStamped(db, organizationId, { fulfillmentIds: stampedIds })
 
   if (entries.length > 0) {
     publishFieldValueUpdates(getRealtimeService(), organizationId, entries).catch((err) => {

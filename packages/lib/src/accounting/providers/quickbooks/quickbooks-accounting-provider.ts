@@ -82,7 +82,6 @@ import * as invoiceObject from './objects/invoice'
 import * as journalObject from './objects/journal'
 import * as paymentObject from './objects/payment'
 import * as refundReceiptObject from './objects/refund-receipt'
-import * as salesReceiptObject from './objects/sales-receipt'
 import { errorMessage, norm, QUICKBOOKS_PROVIDER_ID, resolveMappedAccounts } from './objects/shared'
 import * as vendorCreditObject from './objects/vendor-credit'
 import { type QuickbooksBatchObject, sendQuickbooksObjects } from './send-objects'
@@ -113,7 +112,6 @@ interface QuickbooksObjectHandler {
 /** Every native object type this adapter can send, read and withdraw (plan 67 §1's table). */
 const OBJECT_HANDLERS: Record<string, QuickbooksObjectHandler> = {
   journal: journalObject,
-  sales_receipt: salesReceiptObject,
   invoice: invoiceObject,
   payment: paymentObject,
   credit_memo: creditMemoObject,
@@ -126,7 +124,6 @@ const OBJECT_HANDLERS: Record<string, QuickbooksObjectHandler> = {
 /** The object types `batch_quickbooks_operations` creates; `vendor_credit` is not one, so it sends alone. */
 const BATCH_OBJECTS: Record<string, QuickbooksBatchObject> = {
   journal: journalObject.batchObject as QuickbooksBatchObject,
-  sales_receipt: salesReceiptObject.batchObject as QuickbooksBatchObject,
   invoice: invoiceObject.batchObject as QuickbooksBatchObject,
   payment: paymentObject.batchObject as QuickbooksBatchObject,
   credit_memo: creditMemoObject.batchObject as QuickbooksBatchObject,
@@ -138,7 +135,6 @@ const BATCH_OBJECTS: Record<string, QuickbooksBatchObject> = {
 /** The deep-link path per object type (plan 67 §5.6). All take `?txnId=`. */
 const OBJECT_URL_PATH: Record<string, string> = {
   journal: '/app/journal',
-  sales_receipt: '/app/salesreceipt',
   invoice: '/app/invoice',
   payment: '/app/recvpayment',
   credit_memo: '/app/creditmemo',
@@ -180,7 +176,6 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
     objects: {
       // No `get_quickbooks_journal_entry`: a journal is found by its DocNumber and reports no total.
       journal: { readsBack: 'docNumber' },
-      sales_receipt: { readsBack: 'object' },
       invoice: { readsBack: 'object' },
       payment: { readsBack: 'object' },
       credit_memo: { readsBack: 'object' },

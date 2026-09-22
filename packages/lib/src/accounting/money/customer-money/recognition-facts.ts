@@ -16,15 +16,13 @@ const attributes = [
   'order_channel',
   'order_currency',
   'order_contact',
-  'line_item_order',
-  'line_item_net_total',
   'tax_line_order',
   'tax_line_title',
   'tax_line_price',
   'tax_line_channel_liable',
 ] as const
 
-/** Exact order values and merchant tax evidence required by both recognition doors. */
+/** The order's own amounts, customer and per-jurisdiction merchant tax lines. */
 export async function readOrderRecognitionFactsInTx(
   tx: Database | Transaction,
   organizationId: string,
@@ -53,26 +51,23 @@ export async function readOrderRecognitionFactsInTx(
         isNull(schema.EntityInstance.archivedAt)
       )
     )
-  if (order.length !== 1) throw new UnprocessableEntityError('Receipt order is missing or archived')
-  // Two calls, not one: the order's lines and its tax lines are different defs,
-  // and a def-less value read would return either org's rows for any of them.
-  const childIds = async (entityType: string, attribute: 'line_item_order' | 'tax_line_order') => {
-    const defId = await systemDefId(tx, organizationId, entityType)
-    if (!defId) return []
-    const found = await findSystemRecordIdsByValue(
-      tx,
-      organizationId,
-      { defId, fields: { [attribute]: fields[attribute] } },
-      { attribute, related: [orderId] }
-    )
-    return found.get(orderId) ?? []
-  }
-  const lineIds = await childIds('line_item', 'line_item_order')
-  const taxLineIds = await childIds('tax_line', 'tax_line_order')
+  if (order.length !== 1) throw new UnprocessableEntityError('Order is missing or archived')
+  // Def-scoped: a def-less value read would return any def's rows for the attribute.
+  const taxLineDefId = await systemDefId(tx, organizationId, 'tax_line')
+  const taxLineIds = taxLineDefId
+    ? ((
+        await findSystemRecordIdsByValue(
+          tx,
+          organizationId,
+          { defId: taxLineDefId, fields: { tax_line_order: fields.tax_line_order } },
+          { attribute: 'tax_line_order', related: [orderId] }
+        )
+      ).get(orderId) ?? [])
+    : []
   const rows = await tx.query.FieldValue.findMany({
     where: and(
       eq(schema.FieldValue.organizationId, organizationId),
-      inArray(schema.FieldValue.entityId, [orderId, ...lineIds, ...taxLineIds]),
+      inArray(schema.FieldValue.entityId, [orderId, ...taxLineIds]),
       inArray(
         schema.FieldValue.fieldId,
         attributes.flatMap((a) => (fields[a] ? [fields[a]!.id] : []))
@@ -99,15 +94,8 @@ export async function readOrderRecognitionFactsInTx(
   const tax = amount(orderId, 'order_tax_total')
   const shipping = amount(orderId, 'order_shipping_total')
   const total = amount(orderId, 'order_total')
-  if (subtotal + tax + shipping !== total)
-    throw new UnprocessableEntityError('Order subtotal, shipping and tax do not equal its total')
   if (cell(orderId, 'order_currency')?.valueText !== 'USD')
     throw new UnprocessableEntityError('Order requires explicit USD currency evidence')
-  if (
-    !lineIds.length ||
-    lineIds.reduce((sum, id) => sum + amount(id, 'line_item_net_total'), 0n) !== subtotal
-  )
-    throw new UnprocessableEntityError('Order lines need exact net totals matching the subtotal')
   const taxComponents = taxLineIds
     .map((taxLineId) => {
       const value = amount(taxLineId, 'tax_line_price')
@@ -129,8 +117,6 @@ export async function readOrderRecognitionFactsInTx(
       }
     })
     .sort((a, b) => a.componentKey.localeCompare(b.componentKey))
-  if (taxComponents.reduce((sum, c) => sum + BigInt(c.amountMinor), 0n) !== tax)
-    throw new UnprocessableEntityError('Tax components do not equal the order tax total')
   const customerInstanceId = cell(orderId, 'order_contact')?.relatedEntityId
   if (!customerInstanceId) throw new UnprocessableEntityError('Order customer is unresolved')
   const customer = await tx.query.EntityInstance.findFirst({

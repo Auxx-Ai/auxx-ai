@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/providers/quickbooks/objects/customers.ts
 // Resolve one native payload's counterparty to a QuickBooks Customer or
 // Vendor (plan 67 §5.2): a named customer through `upsert-customer.ts`, a
-// `null` customer through the channel placeholder on
+// summary journal's receivable through the channel placeholder on
 // `FinancialSourceAccount.providerCustomerRef`, a vendor through the same
 // (refuse-if-unsynced) resolution the journal path already used.
 
@@ -95,7 +95,7 @@ async function resolveVendorOnce(
 }
 
 /**
- * The channel placeholder customer for a `null` counterparty (T14): read from
+ * The channel placeholder customer for a summary batch's receivable (91 §8.14): read from
  * `FinancialSourceAccount.providerCustomerRef.quickbooks`, created on first
  * use as `auxx:<store name or storeId>` and written back to the column.
  *

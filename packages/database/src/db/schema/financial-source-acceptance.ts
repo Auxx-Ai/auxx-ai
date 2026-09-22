@@ -4,8 +4,6 @@ import {
   type AnyPgColumn,
   check,
   foreignKey,
-  index,
-  integer,
   jsonb,
   pgTable,
   sql,
@@ -33,13 +31,10 @@ export const FinancialSourceAcceptance = pgTable(
     sourceObjectId: text().notNull(),
     observationId: text().notNull(),
     state: text().notNull().$type<'pending' | 'accepted' | 'rejected' | 'blocked'>(),
-    reason: text(),
     orderExternalId: text().notNull(),
     orderInstanceId: text(),
     moneyTransactionId: text(),
     unresolvedReferences: jsonb().notNull().default({}),
-    attempts: integer().notNull().default(0),
-    nextAttemptAt: timestamp({ withTimezone: true }),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -67,8 +62,7 @@ export const FinancialSourceAcceptance = pgTable(
     unique('FinancialSourceAcceptance_object_key').on(t.organizationId, t.sourceObjectId),
     check(
       'FinancialSourceAcceptance_state_check',
-      sql`${t.state} IN ('pending','accepted','rejected','blocked') AND ${t.attempts} >= 0`
+      sql`${t.state} IN ('pending','accepted','rejected','blocked')`
     ),
-    index('FinancialSourceAcceptance_recovery_idx').on(t.organizationId, t.state, t.nextAttemptAt),
   ]
 )

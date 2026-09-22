@@ -170,11 +170,7 @@ const RANGE = { organizationId: ORG, from: '2026-09-01', to: '2026-09-30' }
 
 describe('Transaction mode', () => {
   it('builds one batch per posted, un-batched posting, falling back to journal with no role data', async () => {
-    const { db, inserted } = fakeDb([
-      [posting()],
-      [], // parent links for the fulfillment - none
-      [line(), line({ direction: 'credit' })],
-    ])
+    const { db, inserted } = fakeDb([[posting()], [line(), line({ direction: 'credit' })]])
 
     const result = await buildExportBatches(db, RANGE)
 
@@ -202,7 +198,7 @@ describe('Transaction mode', () => {
   })
 
   it('races converge on one batch: a conflicting insert builds nothing', async () => {
-    const { db, inserted } = fakeDb([[posting()], [], [line(), line({ direction: 'credit' })]], {
+    const { db, inserted } = fakeDb([[posting()], [line(), line({ direction: 'credit' })]], {
       conflict: true,
     })
 
@@ -259,7 +255,6 @@ describe('Transaction mode', () => {
           totalMinor: 5000,
         }),
       ],
-      [],
       [
         line({ glPostingId: 'glp_rev', direction: 'credit' }),
         line({ glPostingId: 'glp_rev', direction: 'debit' }),
@@ -272,19 +267,12 @@ describe('Transaction mode', () => {
     expect(inserted[0]).toMatchObject({ grainKey: 'glp_rev' })
   })
 
-  it('a fulfillment fully paid at shipment (auto) becomes one sales_receipt with two members, and its receipt gets no batch of its own', async () => {
+  it('a receipt already sent as a Payment is never absorbed into its later shipment (91 §8.13)', async () => {
     const { db, inserted, members } = fakeDb([
       [
         posting({ storeId: 'store_1' }),
-        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1' }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1', batchedId: 'ebp_1' }),
       ],
-      [{ id: 'store_1', exportShape: 'auto' }],
-      [
-        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
-        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
-      ],
-      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
-      [], // claims - unused, glp_pay is absorbed
       [
         line({
           glAccountId: 'acct_ar',
@@ -293,47 +281,23 @@ describe('Transaction mode', () => {
           ...CUSTOMER,
         }),
         line({ glAccountId: 'acct_rev', accountRole: 'revenue_product', direction: 'credit' }),
-        line({
-          glPostingId: 'glp_pay',
-          glAccountId: 'acct_clearing',
-          accountRole: 'clearing',
-          direction: 'debit',
-        }),
-        line({
-          glPostingId: 'glp_pay',
-          glAccountId: 'acct_ar',
-          accountRole: 'accounts_receivable',
-          direction: 'credit',
-          ...CUSTOMER,
-        }),
       ],
     ])
 
     const result = await buildExportBatches(db, RANGE)
 
     expect(result._unsafeUnwrap().built).toBe(1)
-    expect(inserted).toHaveLength(1)
-    expect(inserted[0]).toMatchObject({ objectType: 'sales_receipt', grainKey: 'glp_1' })
-    expect(members[0]?.map((m) => m.glPostingId).sort()).toEqual(['glp_1', 'glp_pay'])
+    expect(inserted[0]).toMatchObject({ objectType: 'invoice', grainKey: 'glp_1' })
+    expect(members.map((batch) => batch.map((m) => m.glPostingId))).toEqual([['glp_1']])
   })
 
-  it('the same fulfillment not fully paid becomes an invoice, and its receipt a separate payment with appliesTo', async () => {
-    const { db, inserted } = fakeDb([
+  it('a fully paid shipment and its receipt in one run are an Invoice and a Payment applied to it', async () => {
+    const { db, inserted, members } = fakeDb([
       [
         posting({ storeId: 'store_1' }),
-        posting({
-          id: 'glp_pay',
-          postingType: 'payment',
-          docNumber: 'PMT-1',
-          totalMinor: 2000,
-        }),
+        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1' }),
       ],
-      [{ id: 'store_1', exportShape: 'auto' }],
-      [
-        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
-        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
-      ],
-      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 2000, txnDate: '2026-09-14' }],
+      [{ glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' }],
       [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
       [
         line({
@@ -348,14 +312,12 @@ describe('Transaction mode', () => {
           glAccountId: 'acct_clearing',
           accountRole: 'clearing',
           direction: 'debit',
-          amountMinor: 2000,
         }),
         line({
           glPostingId: 'glp_pay',
           glAccountId: 'acct_ar',
           accountRole: 'accounts_receivable',
           direction: 'credit',
-          amountMinor: 2000,
           ...CUSTOMER,
         }),
       ],
@@ -364,7 +326,6 @@ describe('Transaction mode', () => {
     const result = await buildExportBatches(db, RANGE)
 
     expect(result._unsafeUnwrap().built).toBe(2)
-    expect(inserted).toHaveLength(2)
     const fulfillmentBatch = inserted.find((b) => b.grainKey === 'glp_1')
     const paymentBatch = inserted.find((b) => b.grainKey === 'glp_pay')
     expect(fulfillmentBatch?.objectType).toBe('invoice')
@@ -372,49 +333,10 @@ describe('Transaction mode', () => {
     expect((paymentBatch?.payload as { appliesTo: { glPostingId: string } }).appliesTo).toEqual({
       glPostingId: 'glp_1',
     })
-  })
-
-  it('`exportShape: invoice` sends Invoice even for a fully paid fulfillment', async () => {
-    const { db, inserted } = fakeDb([
-      [
-        posting({ storeId: 'store_1' }),
-        posting({ id: 'glp_pay', postingType: 'payment', docNumber: 'PMT-1' }),
-      ],
-      [{ id: 'store_1', exportShape: 'invoice' }],
-      [
-        { glPostingId: 'glp_1', sourceKind: 'order', sourceId: 'order_1' },
-        { glPostingId: 'glp_pay', sourceKind: 'order', sourceId: 'order_1' },
-      ],
-      [{ sourceId: 'order_1', glPostingId: 'glp_pay', totalMinor: 5000, txnDate: '2026-09-14' }],
-      [{ sourceKind: 'order', sourceId: 'order_1', glPostingId: 'glp_1' }],
-      [
-        line({
-          glAccountId: 'acct_ar',
-          accountRole: 'accounts_receivable',
-          direction: 'debit',
-          ...CUSTOMER,
-        }),
-        line({ glAccountId: 'acct_rev', accountRole: 'revenue_product', direction: 'credit' }),
-        line({
-          glPostingId: 'glp_pay',
-          glAccountId: 'acct_clearing',
-          accountRole: 'clearing',
-          direction: 'debit',
-        }),
-        line({
-          glPostingId: 'glp_pay',
-          glAccountId: 'acct_ar',
-          accountRole: 'accounts_receivable',
-          direction: 'credit',
-          ...CUSTOMER,
-        }),
-      ],
+    expect(members.map((batch) => batch.map((m) => m.glPostingId))).toEqual([
+      ['glp_1'],
+      ['glp_pay'],
     ])
-
-    const result = await buildExportBatches(db, RANGE)
-
-    expect(result._unsafeUnwrap().built).toBe(2)
-    expect(inserted.find((b) => b.grainKey === 'glp_1')?.objectType).toBe('invoice')
   })
 
   it('a credit memo becomes a credit_memo', async () => {
@@ -558,7 +480,6 @@ describe('Transaction mode', () => {
   it('a posting whose lines do not fit its native shape falls back to journal, and logs why', async () => {
     const { db, inserted } = fakeDb([
       [posting({ totalMinor: 5200 })],
-      [],
       [
         line({
           glAccountId: 'acct_ar',
@@ -665,6 +586,8 @@ describe('Summary mode', () => {
       objectType: 'journal',
       totalMinor: 9000,
     })
+    // The sender resolves the store's placeholder customer from this (91 §8.14).
+    expect(inserted[0]?.payload).toMatchObject({ summary: { storeId: 'store_1' } })
   })
 
   it('excludes an already-batched posting from the summary, so no row sums it twice', async () => {

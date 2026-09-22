@@ -53,6 +53,7 @@ import {
 import { readActiveBookConnection } from '../../providers/book-connections'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
 import { getPaymentGateway } from '../../rails/reads'
+import { wakeRoleUnmapped } from '../../work-items/wake'
 import {
   ACCOUNT_ROLES,
   type AccountRole,
@@ -555,9 +556,17 @@ export async function setRoleAssignment(
   db: Database | Transaction,
   options: SetRoleAssignmentOptions
 ): Promise<Result<RoleAssignmentRow, Error>> {
-  return db instanceof PgTransaction
-    ? setRoleAssignmentInTx(db, options)
-    : db.transaction((tx) => setRoleAssignmentInTx(tx, options))
+  const result =
+    db instanceof PgTransaction
+      ? await setRoleAssignmentInTx(db, options)
+      : await db.transaction((tx) => setRoleAssignmentInTx(tx, options))
+  // A mapping wakes exactly the work it unblocks (91 §4.6).
+  if (result.isOk() && options.glAccountId?.trim())
+    await wakeRoleUnmapped(db, options.organizationId, {
+      role: options.role,
+      railId: options.paymentGatewayId?.trim() || null,
+    })
+  return result
 }
 
 async function setRoleAssignmentInTx(

@@ -3,6 +3,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import type { RoleSourceScope } from '../../ledger/types'
+import { workItemSentence } from '../../work-items/codes'
 import type { OrderMoneyTransaction } from './client'
 import { exactSourceMoney } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
@@ -20,6 +21,7 @@ export async function listOrderMoneyTransactions(
       object: schema.FinancialSourceObject,
       account: schema.FinancialSourceAccount,
       observation: schema.FinancialSourceObservation,
+      workItem: schema.AccountingWorkItem,
     })
     .from(schema.FinancialSourceAcceptance)
     .innerJoin(
@@ -59,6 +61,18 @@ export async function listOrderMoneyTransactions(
         eq(schema.MoneyTransaction.id, schema.FinancialSourceAcceptance.moneyTransactionId)
       )
     )
+    .leftJoin(
+      schema.AccountingWorkItem,
+      and(
+        eq(
+          schema.AccountingWorkItem.organizationId,
+          schema.FinancialSourceAcceptance.organizationId
+        ),
+        eq(schema.AccountingWorkItem.sourceKind, 'financial_source_acceptance'),
+        eq(schema.AccountingWorkItem.sourceId, schema.FinancialSourceAcceptance.id),
+        eq(schema.AccountingWorkItem.stage, 'evidence')
+      )
+    )
     .where(
       and(
         eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
@@ -85,7 +99,7 @@ export async function listOrderMoneyTransactions(
       },
     ])
   )
-  for (const { acceptance, money, object, account, observation } of rows) {
+  for (const { acceptance, money, object, account, observation, workItem } of rows) {
     const source = readStoredCustomerMoneyObservation(observation.payload)
     let amount: { amountMinor: bigint; currency: string; currencyExponent: number } | null = null
     if (source.success) {
@@ -117,7 +131,10 @@ export async function listOrderMoneyTransactions(
       reportingProvider: account.providerKey,
       sourceExternalId: object.externalId,
       status: acceptance.state,
-      reason: acceptance.state === 'accepted' ? null : acceptance.reason,
+      reason:
+        acceptance.state === 'accepted' || !workItem
+          ? null
+          : workItemSentence(workItem.reasonCode, workItem),
       accounting: accountingByMoney.get(id) ?? null,
     })
   }
@@ -183,7 +200,7 @@ export async function readOrderMoneyCoverage(
  * | --- | --- | --- |
  * | no source evidence at all | `{ store: null }` - the MANUAL bucket | a hand-keyed order genuinely has no connected source, and `fulfillment-posting/reads.ts` takes the same branch (`if (!coverage?.sourceAvailable) continue`) |
  * | one live source account | `{ store: <id> }` | the storefront that sold it |
- * | evidence spanning two | `{}` - the ORG DEFAULT | 🛑 ambiguity falls back, it never guesses. `recognition-source.ts` BLOCKS this case for a posting that has to be exact; here the entry still has to post, so it posts to the account every store shared before this brief |
+ * | evidence spanning two | `{}` - the ORG DEFAULT | ambiguity falls back to the account every store shares; it never guesses |
  *
  * 🛑 **`order_channel` is NOT consulted, and must not be.** It carries
  * `defaultValue: 'manual'` and is documented HUMAN-SET, never derived, so an

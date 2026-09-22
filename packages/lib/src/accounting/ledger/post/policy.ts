@@ -443,12 +443,7 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
       {
         side: 'credit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        what: 'The invoice an incoming payment settles',
-      },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
-        what: 'Any amount not yet applied to an invoice, held as a deposit',
+        what: 'The whole amount; a prepayment leaves the customer in credit until the sale posts',
       },
     ],
     settings: ['accounting.autoPost.receipt'],
@@ -775,30 +770,6 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
     singleWriterRoles: [],
   },
 
-  deposit_application: {
-    type: 'deposit_application',
-    label: 'Deposit application',
-    // money/payments/post-deposit-application.ts `postEntry` call.
-    trigger: { kind: 'event', on: 'A held customer deposit is applied to an invoice' },
-    template: [
-      { side: 'debit', role: ACCOUNT_ROLES.CUSTOMER_DEPOSITS, what: 'The prepayment released' },
-      {
-        side: 'credit',
-        role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-        what: 'The invoice it now settles',
-      },
-    ],
-    settings: [],
-    sentence:
-      'Applying a prepayment to an invoice reclasses it out of customer deposits and onto that receivable; no money moves.',
-    disabledSentence:
-      'Deposit application posting is off, so a prepayment applied to an invoice stays a liability and the receivable stays open.',
-    parameters: [],
-    enabled: true,
-    exportRoute: 'journal',
-    singleWriterRoles: [],
-  },
-
   credit_memo: {
     type: 'credit_memo',
     label: 'Credit memo',
@@ -1108,6 +1079,22 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   },
 
   // ── Never posting, and declared so ──────────────────────────────────────
+
+  // TODO(91 S3): the row leaves with the pgEnum value.
+  deposit_application: {
+    type: 'deposit_application',
+    label: 'Deposit application',
+    trigger: { kind: 'never' },
+    template: [],
+    settings: [],
+    sentence:
+      'Applying a prepayment to an invoice posts nothing: the receipt already credited accounts receivable.',
+    disabledSentence: 'Deposit application posting is off.',
+    parameters: [],
+    enabled: false,
+    exportRoute: 'journal',
+    singleWriterRoles: [],
+  },
 
   month_end_deferral: {
     type: 'month_end_deferral',

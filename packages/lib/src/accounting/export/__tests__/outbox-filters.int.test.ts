@@ -2,7 +2,8 @@
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import { listBlockedMovements } from '../../money/blocked-movements'
+import { listWorkItemsInGroup } from '../../work-items/reads'
+import { upsertWorkItem } from '../../work-items/write'
 
 vi.mock('../../../settings/read', () => ({
   readOrganizationSettings: async () => ({ 'accounting.bookTimeZone': 'America/Los_Angeles' }),
@@ -119,7 +120,7 @@ describe('Outbox filters before pagination', () => {
     )
   })
 
-  it('filters movement purposes and literal references on the book day across DST', async () => {
+  it('filters parked movements by purpose category and a literal reference', async () => {
     const org = await createTestOrganization()
     const [command] = await db()
       .insert(schema.MoneyCommand)
@@ -133,7 +134,6 @@ describe('Outbox filters before pagination', () => {
       .returning()
     const insert = async (
       purpose: 'customer_receipt' | 'vendor_payment' | 'customer_refund',
-      occurredAt: string,
       reference = '100%_literal'
     ) => {
       const [row] = await db()
@@ -146,32 +146,37 @@ describe('Outbox filters before pagination', () => {
           currency: 'USD',
           currencyExponent: 2,
           datePrecision: 'instant',
-          occurredAt: new Date(occurredAt),
+          occurredAt: new Date('2026-03-08T12:00:00Z'),
           reference,
-          postingBlockedReason: 'Missing account',
-          postingBlockedAt: new Date(),
         })
         .returning()
+      await upsertWorkItem(db(), org.id, {
+        sourceKind: 'money_transaction',
+        sourceId: row!.id,
+        stage: 'post',
+        reasonCode: 'ROLE_UNMAPPED',
+        role: 'clearing',
+      })
       return row!.id
     }
-    await insert('customer_receipt', '2026-03-08T07:59:59Z')
-    const first = await insert('customer_receipt', '2026-03-08T08:00:00Z')
-    const second = await insert('vendor_payment', '2026-03-09T06:59:59Z')
-    await insert('vendor_payment', '2026-03-09T07:00:00Z')
-    await insert('customer_refund', '2026-03-08T12:00:00Z')
-    await insert('customer_receipt', '2026-03-08T12:00:00Z', '100xxliteral')
+    const first = await insert('customer_receipt')
+    const second = await insert('vendor_payment')
+    await insert('customer_refund')
+    await insert('customer_receipt', '100xxliteral')
+    const group = { reasonCode: 'ROLE_UNMAPPED', role: 'clearing', railId: null, glAccountId: null }
     const input = {
-      categories: ['customer_receipt', 'vendor_payment'] as Array<
-        'customer_receipt' | 'vendor_payment'
-      >,
-      from: '2026-03-08',
-      to: '2026-03-08',
+      categories: ['receipt', 'vendorPayment'] as Array<'receipt' | 'vendorPayment'>,
       search: '%_LITERAL',
       limit: 1,
     }
-    const a = await listBlockedMovements(db(), org.id, input)
-    const b = await listBlockedMovements(db(), org.id, { ...input, offset: 1 })
-    expect(new Set([...a, ...b].map((row) => row.id))).toEqual(new Set([first, second]))
+    const a = (await listWorkItemsInGroup(db(), org.id, group, input))._unsafeUnwrap()
+    const b = (
+      await listWorkItemsInGroup(db(), org.id, group, { ...input, offset: 1 })
+    )._unsafeUnwrap()
+    expect(a.nextOffset).toBe(1)
+    expect(new Set([...a.items, ...b.items].map((row) => row.sourceId))).toEqual(
+      new Set([first, second])
+    )
   })
 
   it('finds older matching batches, keeps complete members, and excludes withdrawn matches', async () => {

@@ -93,6 +93,8 @@ import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { listPaymentGateways } from '../../rails/reads'
 import { stampPaymentGatewayLastSettlement } from '../../rails/writes'
+import { refusalFromPost } from '../../work-items/refusal'
+import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
 import { type PayoutFieldContext, requirePayoutFieldContext } from './fields'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
@@ -414,7 +416,9 @@ async function ingestOne(
   const attempts = await countPayoutEntryAttempts(db, organizationId, number)
   const entryNumber = attempts === 0 ? number : `${number}-R${attempts + 1}`
 
-  /** Stamp the reason on the record and return the pre-claim result. Nothing is built. */
+  const workKey = { sourceKind: 'payout', sourceId: payoutInstanceId, stage: 'post' as const }
+
+  /** Park the refusal as a work item and return the pre-claim result. Nothing is built. */
   const block = async (reason: string): Promise<PostResult> => {
     logger.warn('Payout blocked before its entry was built', {
       organizationId,
@@ -422,8 +426,12 @@ async function ingestOne(
       payoutId: providerPayoutId,
       reason,
     })
-    await crud.update(toRecordId(fieldCtx.defId, payoutInstanceId), {
-      payout_blocked_reason: reason,
+    await upsertWorkItem(db, organizationId, {
+      ...workKey,
+      reasonCode: 'ROLE_UNMAPPED',
+      role: ACCOUNT_ROLES.BANK,
+      railId: rail.id,
+      detail: { currency },
     })
     return payoutAccountUnmappedResult(reason)
   }
@@ -470,6 +478,11 @@ async function ingestOne(
   // `not_enabled` is unreachable here: the sync returns early for an org that
   // never turned accounting on.
   if (!didLedgerAccept(post)) {
+    if (bankMapped.isOk())
+      await upsertWorkItem(db, organizationId, {
+        ...workKey,
+        ...refusalFromPost(post, { railId: rail.id }),
+      })
     return {
       created,
       posted: false,
@@ -506,11 +519,10 @@ async function ingestOne(
 
   await crud.update(toRecordId(fieldCtx.defId, payoutInstanceId), {
     payout_status: 'paid',
-    // Cleared on success: a payout that was blocked on a prior run and has
-    // since been confirmed must not keep showing the blocker banner.
-    payout_blocked_reason: null,
     payout_destination_mismatch: destinationMismatch,
   })
+  // Success deletes the row, so a payout blocked on a prior run stops showing it.
+  await deleteWorkItem(db, organizationId, workKey)
 
   // The watermark (brief 27 §6.5), advanced AFTER the entry is in the ledger
   // and the record says so. Informational: a rail whose date did not move is

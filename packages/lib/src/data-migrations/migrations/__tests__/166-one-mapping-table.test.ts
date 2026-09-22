@@ -194,12 +194,11 @@ describe('§4.4 — settlementDestinations replaces stripeExternalAccountId', ()
 })
 
 describe('§4.5 — payout.destinationMismatch', () => {
-  it('is TEXT, nullable, and distinct from blockedReason', () => {
+  it('is TEXT and nullable', () => {
     const field = PAYOUT_FIELDS.destinationMismatch
     expect(field?.fieldType).toBe('TEXT')
     expect(field?.systemAttribute).toBe('payout_destination_mismatch')
     expect(field?.nullable).toBe(true)
-    expect(PAYOUT_FIELDS.blockedReason?.systemAttribute).toBe('payout_blocked_reason')
   })
 })
 

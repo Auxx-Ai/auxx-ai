@@ -6,34 +6,24 @@
  * posting. Issuing earlier trips the timeline's posted-memo refusal on the
  * receipt, or books contra-revenue against revenue not yet in the books.
  *
- * Reads only, plus the marker write the issuing pass leaves (§7.4). No
- * permission checks (docs/lib-module-guide.md §6).
+ * Reads only. No permission checks (docs/lib-module-guide.md §6).
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { toCalendarDay } from '@auxx/utils/calendar-day'
-import { requireCachedEntityDefId } from '../../../cache'
-import { createFieldValueContext } from '../../../field-values/field-value-helpers'
-import { setValueWithType } from '../../../field-values/field-value-mutations'
-import { toFieldType } from '../../../field-values/stored-field-type'
-import { toRecordId } from '../../../resources/resource-id'
 import {
   findSystemRecordIdsByValue,
   readSystemRecords,
-  systemFieldMap,
   systemFields,
 } from '../../../resources/system-records'
 import { periodKeyForDate } from '../../ledger/periods/periods'
 import { findLiveSubjectPostings, findPendingDraftPostings } from '../../ledger/reads/list-postings'
 import { listOrderApplications, readMovements } from '../../money/reads'
+import { listParkedSourceIds } from '../../work-items/reads'
 import { isLiveFulfillment } from '../fulfillments/client'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 
 export type ChannelMemoReadiness = { ready: true } | { ready: false; reason: string }
-
-/** The two fields 88 §7.4 puts the pass's last refusal on. */
-const MARKER_ATTRS = ['credit_memo_issue_blocked_reason', 'credit_memo_issue_blocked_at'] as const
 
 /**
  * Is every event of the memo's order dated on or before `issuedAt` in the books?
@@ -120,8 +110,8 @@ export async function readChannelMemoReadiness(
 export interface ChannelMemoCandidateWindow {
   /** `accounting.cutoffPeriod` (`YYYY-MM`). Memos dated on or before it are never issued here. */
   cutoffPeriod: string | null
-  /** Memos refused more recently than this are held back. */
-  retryBefore: Date
+  /** Also offer memos whose work item is not due yet - the continuation retries on purpose. */
+  includeParked?: boolean
   /** Narrow to one order - the approval continuation's scope (88 D10). */
   orderInstanceId?: string
 }
@@ -131,12 +121,11 @@ const CANDIDATE_ATTRS = [
   'credit_memo_source',
   'credit_memo_order',
   'credit_memo_issued_at',
-  'credit_memo_issue_blocked_at',
 ] as const
 
 /**
- * Draft channel memos the pass may try, oldest issue date first. Empty, never a
- * refusal, on an org with no `credit_memo` def.
+ * Draft channel memos the pass may try, oldest issue date first, less those whose
+ * `issue` work item is not due. Empty, never a refusal, on an org with no `credit_memo` def.
  */
 export async function listChannelMemoIssueCandidates(
   db: Database,
@@ -156,48 +145,22 @@ export async function listChannelMemoIssueCandidates(
   const ids = found.get('draft') ?? []
   if (ids.length === 0) return []
   const records = await readSystemRecords(db, organizationId, ctx, { ids })
+  const parked = window.includeParked
+    ? new Set<string>()
+    : await listParkedSourceIds(db, organizationId, {
+        sourceKind: 'credit_memo',
+        stage: 'issue',
+        sourceIds: ids,
+      }).then((result) => (result.isOk() ? result.value : new Set<string>()))
   return records
     .map((record) => ({
       id: record.id,
       issuedAt: toCalendarDay(record.date('credit_memo_issued_at')),
-      blockedAt: record.date('credit_memo_issue_blocked_at'),
     }))
     .filter((row) => row.issuedAt !== null)
     .filter((row) => !window.cutoffPeriod || row.issuedAt!.slice(0, 7) > window.cutoffPeriod)
-    .filter((row) => !row.blockedAt || new Date(row.blockedAt) <= window.retryBefore)
+    .filter((row) => !parked.has(row.id))
     .sort((a, b) => a.issuedAt!.localeCompare(b.issuedAt!) || a.id.localeCompare(b.id))
     .slice(0, limit)
     .map((row) => row.id)
-}
-
-/**
- * Record why the pass could not issue, or clear the mark once it did. No
- * `userId` on the context: the hook chain must not re-enter the totals hook.
- */
-export async function markCreditMemoIssueBlock(
-  db: Database,
-  organizationId: string,
-  creditMemoInstanceId: string,
-  reason: string | null
-): Promise<void> {
-  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...MARKER_ATTRS])
-  const reasonField = fields.credit_memo_issue_blocked_reason
-  const atField = fields.credit_memo_issue_blocked_at
-  // An org that has not run migration 185 has nowhere to record this.
-  if (!reasonField || !atField) return
-  const defId = await requireCachedEntityDefId(organizationId, 'credit_memo')
-  const recordId = toRecordId(defId, creditMemoInstanceId)
-  const context = createFieldValueContext(organizationId, undefined, db)
-  await setValueWithType(context, {
-    recordId,
-    fieldId: reasonField.id,
-    fieldType: toFieldType(reasonField.type),
-    value: reason === null ? null : { type: 'text', value: reason },
-  })
-  await setValueWithType(context, {
-    recordId,
-    fieldId: atField.id,
-    fieldType: toFieldType(atField.type),
-    value: reason === null ? null : { type: 'date', value: new Date().toISOString() },
-  })
 }

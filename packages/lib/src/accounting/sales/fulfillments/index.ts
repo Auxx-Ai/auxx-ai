@@ -19,10 +19,9 @@
 export {
   FULFILLMENT_SOURCE_KIND,
   type FulfillmentPostingResult,
-  markFulfillmentPostingBlock,
   NothingToRecogniseError,
-  PREVIEW_SHIPMENT_ID,
   type PreparedFulfillmentEntry,
+  parkFulfillment,
   postFulfillmentAccounting,
   prepareFulfillmentEntry,
   prepareShipmentEntry,
@@ -49,13 +48,11 @@ export {
   requireFulfillmentFieldContext,
 } from './fields'
 export {
-  type BlockedFulfillmentRow,
-  countBlockedFulfillments,
   type FulfillmentCandidateWindow,
   findLiveFulfillmentDraft,
-  listBlockedFulfillments,
   listFulfillmentAccountingCandidates,
-  readBlockedFulfillment,
+  readShipmentDetail,
+  type ShipmentDetail,
 } from './posting-reads'
 export {
   readFulfillmentPostingSubject,

@@ -3,8 +3,7 @@
 /**
  * The claim key for one money movement's entry — a payment or a refund.
  *
- * PURE. Beside `inventoryPeriodKey` and `depositApplicationPeriodKey`, and for
- * the same reason: `MoneyTransaction` has no number column, its id is a
+ * PURE. Beside `inventoryPeriodKey`, and for the same reason: `MoneyTransaction` has no number column, its id is a
  * 24-character cuid, over the document-number budget on its own.
  */
 

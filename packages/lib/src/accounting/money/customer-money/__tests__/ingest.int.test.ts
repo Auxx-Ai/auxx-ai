@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/money/customer-money/__tests__/ingest.int.test.ts
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 import { accountingBasisHash } from '../../../ledger/builders/basis-hash'
@@ -197,6 +197,14 @@ async function accept(id: string) {
 const readAcceptanceRow = (id: string) =>
   db().query.FinancialSourceAcceptance.findFirst({
     where: eq(schema.FinancialSourceAcceptance.id, id),
+  })
+/** The acceptance's `evidence` work item - where its reason and schedule live now (91 §4.6). */
+const readWorkItem = (acceptanceId: string) =>
+  db().query.AccountingWorkItem.findFirst({
+    where: and(
+      eq(schema.AccountingWorkItem.sourceKind, 'financial_source_acceptance'),
+      eq(schema.AccountingWorkItem.sourceId, acceptanceId)
+    ),
   })
 /** One `credit_memo` record owed to `partyId`, with its own definition. */
 async function creditMemo(partyId: string, apiSlug: string) {
@@ -421,7 +429,8 @@ describe('customer money source acceptance against PostgreSQL', () => {
       await db().query.FinancialSourceAcceptance.findFirst({
         where: eq(schema.FinancialSourceAcceptance.id, refund.id),
       })
-    ).toMatchObject({ state: 'accepted', reason: null })
+    ).toMatchObject({ state: 'accepted' })
+    expect(await readWorkItem(refund.id)).toBeUndefined()
   })
   it('leaves a refund blocked when the memo identity is held on two connections', async () => {
     const capture = await staged()
@@ -448,9 +457,10 @@ describe('customer money source acceptance against PostgreSQL', () => {
       await db().query.FinancialSourceAcceptance.findFirst({
         where: eq(schema.FinancialSourceAcceptance.id, refund.id),
       })
-    ).toMatchObject({
-      state: 'blocked',
-      reason: 'Refund original receipt or credit document is unresolved',
+    ).toMatchObject({ state: 'blocked' })
+    expect(await readWorkItem(refund.id)).toMatchObject({
+      stage: 'evidence',
+      reasonCode: 'REFUND_ORIGINAL_UNRESOLVED',
     })
   })
   it('settles a partial refund once and survives a reconnect with the same store identity', async () => {
@@ -694,56 +704,54 @@ describe('ordinary order evidence staging and shared events', () => {
       acceptedCount: 1,
     })
   })
-  // 79 §4.2/§4.5: the retry class per reason, the wake that re-queues, and the posting
-  // sweep's matching exclusion.
-  it('parks a wake-on-change refusal once, and the order wake re-queues it', async () => {
+  // 79 §4.2/§4.5 on work items: the code decides the schedule, the order wake makes
+  // it due, and the posting sweep leaves a blocked acceptance's movement alone.
+  it('parks a refusal as a coded work item, and the order wake makes it due', async () => {
     const a = await staged({ amount: '101.00' })
     await accept(a.id)
-    expect(await readAcceptanceRow(a.id)).toMatchObject({
-      state: 'blocked',
-      reason: 'Confirmed receipt exceeds the remaining order obligation',
-      attempts: 1,
-      nextAttemptAt: null,
-    })
+    expect(await readAcceptanceRow(a.id)).toMatchObject({ state: 'blocked' })
+    const parked = await readWorkItem(a.id)
+    expect(parked).toMatchObject({ reasonCode: 'RECEIPT_EXCEEDS_ORDER', attempts: 1 })
+    expect(parked!.nextAttemptAt!.getTime()).toBeGreaterThan(Date.now())
     expect(await sweepImportedCustomerMoney(db(), organizationId)).toEqual({
       examined: 0,
       failed: 0,
     })
 
     await requeueAcceptancesForOrders(db(), organizationId, [orderId])
-    expect((await readAcceptanceRow(a.id))?.nextAttemptAt).toBeInstanceOf(Date)
+    expect((await readWorkItem(a.id))!.nextAttemptAt!.getTime()).toBeLessThanOrEqual(Date.now())
     expect(await sweepImportedCustomerMoney(db(), organizationId)).toEqual({
       examined: 1,
       failed: 0,
     })
-    expect(await readAcceptanceRow(a.id)).toMatchObject({ attempts: 2, nextAttemptAt: null })
+    expect(await readWorkItem(a.id)).toMatchObject({
+      reasonCode: 'RECEIPT_EXCEEDS_ORDER',
+      attempts: 2,
+    })
   })
-  it('keeps the posting sweep off a movement parked on a change', async () => {
+  it('keeps the posting sweep off a movement whose acceptance is blocked', async () => {
     const a = await staged({ amount: '101.00' })
     await accept(a.id)
     const [money] = await db().select().from(schema.MoneyTransaction)
-    const window = { cutoffPeriod: null, bookTimeZone: 'UTC', retryBefore: new Date() }
+    const window = { cutoffPeriod: null, bookTimeZone: 'UTC' }
     expect(await listMovementAccountingCandidates(db(), organizationId, 10, window)).toEqual([])
-    // Unparked, it is a candidate again.
-    await requeueAcceptancesForOrders(db(), organizationId, [orderId])
+    // Accepted, it is a candidate again.
+    await db()
+      .update(schema.FinancialSourceAcceptance)
+      .set({ state: 'accepted' })
+      .where(eq(schema.FinancialSourceAcceptance.id, a.id))
     expect(await listMovementAccountingCandidates(db(), organizationId, 10, window)).toMatchObject([
       { id: money!.id },
     ])
   })
-  it('backs a retryable refusal off from 60s, doubling per attempt', async () => {
+  it('parks a missing book zone as a setup refusal, counting attempts', async () => {
     await db().delete(schema.OrganizationSetting)
     const a = await staged()
     await accept(a.id)
-    const first = await readAcceptanceRow(a.id)
-    expect(first).toMatchObject({ reason: 'Book timezone is unresolved or invalid', attempts: 1 })
-    expect(first!.nextAttemptAt!.getTime() - Date.now()).toBeGreaterThan(50_000)
-    expect(first!.nextAttemptAt!.getTime() - Date.now()).toBeLessThanOrEqual(60_000)
+    expect(await readWorkItem(a.id)).toMatchObject({ reasonCode: 'SETUP_INCOMPLETE', attempts: 1 })
 
     await accept(a.id)
-    const second = await readAcceptanceRow(a.id)
-    expect(second).toMatchObject({ attempts: 2 })
-    expect(second!.nextAttemptAt!.getTime() - Date.now()).toBeGreaterThan(110_000)
-    expect(second!.nextAttemptAt!.getTime() - Date.now()).toBeLessThanOrEqual(120_000)
+    expect(await readWorkItem(a.id)).toMatchObject({ reasonCode: 'SETUP_INCOMPLETE', attempts: 2 })
   })
   it('rejects cross-organization order ownership before financial writes', async () => {
     const { stageOrderPaymentEvidenceInTx } = await import('../record-evidence')

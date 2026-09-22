@@ -110,9 +110,8 @@ export async function resolveQuoteDeposit(
  * Apply every deposit still held against a work order to a freshly created
  * invoice, oldest first, stopping at the invoice total.
  *
- * Each application goes through `applyMoneyToInvoice`, which writes the
- * `MoneyApplication` and posts `Dr customer_deposits / Cr accounts_receivable` -
- * the entry that stops the deposit being a liability.
+ * Each application is a `MoneyApplication` link and posts nothing: the deposit
+ * already sits in A/R as a credit, and the invoice's issuance debit nets it (91 §4.3).
  */
 export async function applyHeldDepositsToInvoice(params: {
   organizationId: string

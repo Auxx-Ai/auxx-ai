@@ -14,8 +14,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChartAccountRow } from '../../ledger/types'
 
 vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
+vi.mock('../receivable-attribution', () => ({ readReceivableSplits: vi.fn() }))
 
 import { listChartAccounts } from '../../ledger/roles/role-map'
+import { readReceivableSplits } from '../receivable-attribution'
 import { readTrialBalance } from '../trial-balance'
 
 const ORG = 'org_1'
@@ -312,5 +314,37 @@ describe('readTrialBalance', () => {
       'id_coded',
       'id_uncoded',
     ])
+  })
+
+  it('splits only accounts_receivable-subtype accounts, and only when asked', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({ code: '1000', name: 'Cash' }),
+        account({ code: '1100', name: 'A/R', subtype: 'accounts_receivable' }),
+      ])
+    )
+    vi.mocked(readReceivableSplits).mockResolvedValue(
+      ok(new Map([['id_1100', { receivableMinor: 700, depositsMinor: 200 }]]))
+    )
+    const db = stubDb([groupedRow('1000', 100, 0), groupedRow('1100', 900, 400)])
+
+    const plain = (
+      await readTrialBalance(db, { organizationId: ORG, to: '2026-08-31' })
+    )._unsafeUnwrap()
+    expect(plain.rows.every((r) => r.receivableSplit === undefined)).toBe(true)
+    expect(readReceivableSplits).not.toHaveBeenCalled()
+
+    const split = (
+      await readTrialBalance(db, { organizationId: ORG, to: '2026-08-31', splitReceivables: true })
+    )._unsafeUnwrap()
+    expect(readReceivableSplits).toHaveBeenCalledWith(db, ORG, {
+      from: undefined,
+      to: '2026-08-31',
+      glAccountIds: ['id_1100'],
+    })
+    const ar = split.rows.find((r) => r.glAccountId === 'id_1100')
+    expect(ar?.balanceMinor).toBe(500)
+    expect(ar?.receivableSplit).toEqual({ receivableMinor: 700, depositsMinor: 200 })
+    expect(split.rows.find((r) => r.glAccountId === 'id_1000')?.receivableSplit).toBeUndefined()
   })
 })

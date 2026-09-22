@@ -66,6 +66,7 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   vendor_refund: 'VRF',
   // `INV` is `inventory_movement`'s.
   invoice_issued: 'INI',
+  // No writer since 91 §4.3; TODO(91 S3): drops with the enum value.
   deposit_application: 'DPA',
   credit_memo: 'CRM',
   // Keys on `vendor_credit_number`, ours, for the reason `vendor_bill` does.

@@ -96,7 +96,6 @@ export function exportBatchStateHint(state: ExportBatchState, autoSend: boolean)
 /** Plan 67 §1's mapping table, in the words the outbox shows for `ExportBatchRow.objectType`. */
 const OBJECT_TYPE_LABELS: Record<string, string> = {
   journal: 'Journal entry',
-  sales_receipt: 'Sales receipt',
   invoice: 'Invoice',
   payment: 'Payment',
   credit_memo: 'Credit memo',

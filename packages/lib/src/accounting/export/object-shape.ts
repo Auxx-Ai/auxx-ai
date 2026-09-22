@@ -38,11 +38,6 @@ import {
   exportRefundReceiptSchema,
   REFUND_RECEIPT_OBJECT_TYPE,
 } from './payloads/refund-receipt'
-import {
-  type ExportSalesReceiptPayload,
-  exportSalesReceiptSchema,
-  SALES_RECEIPT_OBJECT_TYPE,
-} from './payloads/sales-receipt'
 import { PRIVATE_NOTE_MAX_LENGTH } from './payloads/shared'
 import {
   type ExportVendorCreditPayload,
@@ -81,16 +76,11 @@ export interface ShapeForPostingCandidate {
 
 export interface ShapeForPostingInput {
   posting: ShapeForPostingCandidate
-  /** This document's lines - for a fully-paid `auto` fulfillment, the fulfillment's AND its absorbed receipts' (D1). */
   lines: ShapeForPostingLine[]
   /** Each line's account role, resolved by the caller. */
   roleByGlAccountId: Map<string, AccountRole | null>
   /** OURS, never a provider id - frozen on the receivable/payable line at post time. */
   counterparty: { type: CounterpartyType; id: string } | null
-  /** The posting's store's `FinancialSourceAccount.exportShape`. `'auto'` when there is no store. */
-  exportShape: 'auto' | 'invoice'
-  /** Only meaningful for a `fulfillment` - see {@link wantsSalesReceipt}. */
-  fullyPaidAtShipment?: boolean
   /** A `payment` payload's `appliesTo.glPostingId` - the invoice/fulfillment posting it settles. */
   appliesToGlPostingId?: string
   /** The destination provider's caps; the note is cut to `noteLength`. */
@@ -106,14 +96,6 @@ export interface ShapedPosting {
 
 interface RoledLine extends ShapeForPostingLine {
   role: AccountRole | null
-}
-
-/** T14/D1: whether a fulfillment should ship as a Sales Receipt rather than an Invoice. */
-export function wantsSalesReceipt(
-  exportShape: 'auto' | 'invoice',
-  fullyPaidAtShipment: boolean | undefined
-): boolean {
-  return exportShape !== 'invoice' && fullyPaidAtShipment === true
 }
 
 const MONEY_ROLES: ReadonlySet<string> = new Set(['bank', 'clearing', 'undeposited_funds'])
@@ -182,34 +164,6 @@ function buildJournal(input: ShapeForPostingInput): ShapedPosting {
 /** A native shape's lines did not fit - correct books over a refusal (plan 67 §2). */
 function fallbackToJournal(input: ShapeForPostingInput, reason: string): ShapedPosting {
   return { ...buildJournal(input), fallbackReason: reason }
-}
-
-function shapeSalesReceipt(input: ShapeForPostingInput): ShapedPosting {
-  const lines = roled(input)
-  const moneyLeg = findMoneyLeg(lines, 'debit')
-  // Merged lines from the fulfillment AND its receipt(s) (D1): AR appears on
-  // BOTH sides (the fulfillment's debit, the receipt's credit) and nets to
-  // nothing a SalesReceipt records, so it is implicit on either side.
-  const itemLines = lines.filter(
-    (line) => line.direction === 'credit' && line.role !== 'accounts_receivable'
-  )
-  const unclassifiedDebits = lines.filter(
-    (line) => line.direction === 'debit' && line.role !== 'accounts_receivable' && line !== moneyLeg
-  )
-  if (!moneyLeg || itemLines.length === 0 || unclassifiedDebits.length > 0) {
-    return fallbackToJournal(
-      input,
-      'A sales receipt needs a bank/clearing deposit line and at least one revenue line'
-    )
-  }
-  const payload = exportSalesReceiptSchema.parse({
-    ...base(input.posting, input.limits),
-    customer: input.counterparty,
-    storeId: input.posting.storeId,
-    lines: toItemLines(itemLines),
-    depositTo: glRef(moneyLeg),
-  } satisfies ExportSalesReceiptPayload)
-  return { objectType: SALES_RECEIPT_OBJECT_TYPE, payload }
 }
 
 function shapeInvoice(input: ShapeForPostingInput): ShapedPosting {
@@ -431,14 +385,11 @@ function shapeVendorCredit(input: ShapeForPostingInput): ShapedPosting {
  */
 export function shapeForPosting(input: ShapeForPostingInput): ShapedPosting {
   switch (input.posting.postingType) {
+    // Every shipment is an Invoice and every receipt a Payment; QuickBooks pairs them (91 §8.13).
     case 'fulfillment':
-      return wantsSalesReceipt(input.exportShape, input.fullyPaidAtShipment)
-        ? shapeSalesReceipt(input)
-        : shapeInvoice(input)
     case 'invoice_issued':
       return shapeInvoice(input)
     case 'payment':
-    case 'deposit_application':
       return shapePayment(input)
     case 'credit_memo':
       return shapeCreditMemo(input)

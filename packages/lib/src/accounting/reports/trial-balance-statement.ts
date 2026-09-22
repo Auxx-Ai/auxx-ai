@@ -115,7 +115,8 @@ export async function readTrialBalanceStatement(
 
     // The same three reads `balance-sheet.ts` makes, for the same reasons.
     const [cumulative, priorYears, currentFy, retainedEarningsAccounts] = await Promise.all([
-      readTrialBalance(db, { organizationId, to: asOf, chart }),
+      // Split per document so the adapter can show a receivable's credits as deposits (91 D3).
+      readTrialBalance(db, { organizationId, to: asOf, chart, splitReceivables: true }),
       readTrialBalance(db, { organizationId, to: dayBeforeFyStart, chart }),
       readTrialBalance(db, { organizationId, from: fyStart, to: asOf, chart }),
       loadRoleAccountCodes(db, organizationId, [ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS]),

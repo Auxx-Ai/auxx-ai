@@ -94,6 +94,7 @@ import {
   recalculateBilledRollupOnCreditLineChange,
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
+import { sweepAccountingWorkItemsOnDelete } from './pre/accounting-work-item-delete'
 import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import {
@@ -236,7 +237,7 @@ export function registerAllHooks(): void {
   registerFulfillmentTotalsReconcilers()
 
   // The imported-money acceptance wake's two drains (79 §4.2). The two hooks below only
-  // MARK; without this a parked acceptance (`nextAttemptAt` null) is never re-queued.
+  // MARK; without this a parked acceptance waits for the sweep's safety-net delay.
   registerMoneyAcceptanceWakeReconcilers()
 
   // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
@@ -799,4 +800,9 @@ export function registerAllHooks(): void {
   registerDeriveHooks('vendor-credit-lines', [recomputeOnVendorCreditLineChange])
   registerEntityPostDeleteHooks('vendor-credit-lines', [recomputeVendorCreditAfterLineDelete])
   registerEntityPreDeleteHooks('vendor-credits', [guardVendorCreditDelete])
+
+  // Parked accounting work goes with its record (91 §8.9). Registered last, so every
+  // guard above refuses before anything is swept.
+  for (const slug of ['fulfillments', 'credit-memos', 'payouts'])
+    registerEntityPreDeleteHooks(slug, [sweepAccountingWorkItemsOnDelete])
 }

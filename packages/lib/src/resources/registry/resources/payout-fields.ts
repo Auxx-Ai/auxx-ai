@@ -404,29 +404,6 @@ export const PAYOUT_FIELDS = defineResourceFields({
       'debit - never last4',
   },
 
-  blockedReason: {
-    id: toFieldId('blockedReason'),
-    key: 'blockedReason',
-    label: 'Blocked Reason',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'payout_blocked_reason',
-    systemSortOrder: 'aF',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    description:
-      'Set when this payout could not be posted for lack of a confirmed bank-account identity ' +
-      '(brief 13 §2.3). Names the payout, the destination id and the remedy. Null once posted',
-  },
-
   bankTransactionId: {
     id: toFieldId('bankTransactionId'),
     key: 'bankTransactionId',
@@ -567,8 +544,7 @@ export const PAYOUT_FIELDS = defineResourceFields({
     },
     description:
       "Set when the reported destination is not among the mapped bank account's " +
-      'settlementDestinations (58 §4.5, §5.4, D7). This payout POSTED - distinct from ' +
-      'blockedReason, which means nothing did',
+      'settlementDestinations (58 §4.5, §5.4, D7). This payout POSTED',
   },
 
   createdBy: CREATED_BY_FIELD,

@@ -52,7 +52,6 @@ const ENABLED_TYPES_PINNED: readonly PostingType[] = [
   'write_off',
   'bank_transaction',
   'invoice_issued',
-  'deposit_application',
   'credit_memo',
   // 71 §5 U7. Declared beside the vendor bill, whose entry it is with the sides
   // flipped, so it lands here rather than at the end of the block.

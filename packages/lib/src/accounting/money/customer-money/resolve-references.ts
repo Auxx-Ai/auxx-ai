@@ -1,10 +1,11 @@
 // packages/lib/src/accounting/money/customer-money/resolve-references.ts
 import { type Database, schema, withAccountingCommitLock } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { recordAudit } from '../../../audit-log'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
+import { wakeSources } from '../../work-items/wake'
 import { findMoneyCommandByKey } from '../commands/run-money-command'
 import { findSourceLink, readMovement } from '../reads'
 import { confirmedCustomerMovement } from './contracts'
@@ -127,7 +128,21 @@ export async function resolveImportedMoneyReferences(
     await updateAcceptancesBySourceObjects(tx, input.organizationId, objectIds, {
       moneyTransactionId: money.id,
       state: 'pending',
-      nextAttemptAt: new Date(),
+    })
+    // A person resolved them: due now.
+    const resolved = await tx
+      .select({ id: schema.FinancialSourceAcceptance.id })
+      .from(schema.FinancialSourceAcceptance)
+      .where(
+        and(
+          eq(schema.FinancialSourceAcceptance.organizationId, input.organizationId),
+          inArray(schema.FinancialSourceAcceptance.sourceObjectId, objectIds)
+        )
+      )
+    await wakeSources(tx, input.organizationId, {
+      sourceKind: 'financial_source_acceptance',
+      sourceIds: resolved.map((row) => row.id),
+      stage: 'evidence',
     })
     await recordAudit(
       {

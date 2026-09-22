@@ -1,136 +1,72 @@
 // packages/lib/src/jobs/maintenance/accounting-recovery-job.ts
-import { database, schema } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, sql } from 'drizzle-orm'
 import { sweepExportBatches } from '../../accounting/export'
 import { sweepMovementAccounting } from '../../accounting/money/blocked-movements'
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
-import { sweepDepositApplicationAccounting } from '../../accounting/money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
+import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
-const CURSOR_KEY = 'accounting.fulfillmentRecoveryCursor'
 
-/** Rotate bounded organization/source pages so queue loss cannot strand accounting work. */
+type PostingSweep = (
+  db: Database,
+  input: { organizationId: string; limit: number; timeBudgetMs: number }
+) => Promise<unknown>
+
+/** Each entry depends only on its own record (91 §4.0), so these run in any order. */
+const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
+  ['Payment accounting', sweepMovementAccounting],
+  ['Shipment accounting', sweepFulfillmentAccounting],
+]
+
+async function attempt(label: string, organizationId: string, run: () => Promise<unknown>) {
+  try {
+    await run()
+  } catch (error) {
+    logger.warn(`${label} recovery needs retry`, {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/** The safety net under every wake: orgs with due work first, each lane bounded by one deadline. */
 export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
-  const organizations = await database
-    .select({ id: schema.Organization.id, cursor: schema.OrganizationSetting.value })
-    .from(schema.Organization)
-    .leftJoin(
-      schema.OrganizationSetting,
-      and(
-        eq(schema.OrganizationSetting.organizationId, schema.Organization.id),
-        eq(schema.OrganizationSetting.key, CURSOR_KEY)
-      )
-    )
-    .orderBy(sql`${schema.OrganizationSetting.updatedAt} ASC NULLS FIRST`, schema.Organization.id)
-    .limit(25)
+  const organizations = await listOrganizationsForSweep(database, { limit: 25 })
   const deadline = Date.now() + 45_000
   let processed = 0
-  for (const organization of organizations) {
+  for (const organizationId of organizations) {
     if (Date.now() >= deadline) break
     processed++
-    // The rotation cursor no longer tracks a fulfillment sweep - a native
-    // shipment posts inside `fulfill.ts`'s own write now (step 1b, TARGET §1),
-    // so there is no batch/effect backlog left to page through. Bumping it
-    // still rotates which orgs this page favours, least-recently-touched first.
-    const previous = typeof organization.cursor === 'string' ? organization.cursor : undefined
-    await saveCursor(organization.id, previous ?? null)
-    // Before the money sweeps that read them: a record with no evidence row has
+    // Before the money sweep that reads them: a record with no evidence row has
     // nothing for the acceptance lane to find (brief 69 §5).
-    try {
-      await sweepFinancialRecordBridge(database, { organizationId: organization.id, limit: 500 })
-    } catch (error) {
-      logger.warn('Financial record bridge needs retry', {
-        organizationId: organization.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-    try {
-      await sweepImportedCustomerMoney(database, organization.id, 100)
-    } catch (error) {
-      logger.warn('Imported payment recovery needs retry', {
-        organizationId: organization.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-    if (Date.now() < deadline) {
-      try {
-        await sweepMovementAccounting(database, {
-          organizationId: organization.id,
-          limit: 100,
-          timeBudgetMs: deadline - Date.now(),
-        })
-      } catch (error) {
-        logger.warn('Payment accounting recovery needs retry', {
-          organizationId: organization.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-    // 88 D5, Trigger 2. After the movement sweep: a receipt that drafts this
-    // pass is what lets its order's shipment through the timeline.
-    if (Date.now() < deadline) {
-      try {
-        await sweepFulfillmentAccounting(database, {
-          organizationId: organization.id,
-          limit: 100,
-          timeBudgetMs: deadline - Date.now(),
-        })
-      } catch (error) {
-        logger.warn('Shipment accounting recovery needs retry', {
-          organizationId: organization.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-    // D19 task B: applications of a held prepayment to an invoice. Runs after
-    // the receipt sweep on purpose - the reclass relieves a receivable the
-    // receipt's own effect is what raised.
-    if (Date.now() < deadline) {
-      try {
-        await sweepDepositApplicationAccounting(database, {
-          organizationId: organization.id,
-          limit: 100,
-          timeBudgetMs: deadline - Date.now(),
-        })
-      } catch (error) {
-        logger.warn('Deposit application accounting recovery needs retry', {
-          organizationId: organization.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+    await attempt('Financial record bridge', organizationId, () =>
+      sweepFinancialRecordBridge(database, { organizationId, limit: 500 })
+    )
+    await attempt('Imported payment', organizationId, () =>
+      sweepImportedCustomerMoney(database, organizationId, 100)
+    )
+    for (const [label, sweep] of POSTING_SWEEPS) {
+      if (Date.now() >= deadline) break
+      await attempt(label, organizationId, () =>
+        sweep(database, { organizationId, limit: 100, timeBudgetMs: deadline - Date.now() })
+      )
     }
     // Gate 2's scheduled half: batches whose avenue auto-sends, and failed ones
     // past their backoff. A held batch is never touched here.
-    try {
-      await sweepExportBatches(database, {
-        organizationId: organization.id,
+    await attempt('Export batch', organizationId, () =>
+      sweepExportBatches(database, {
+        organizationId,
         limit: 5,
         timeBudgetMs: Math.max(1, deadline - Date.now()),
       })
-    } catch (error) {
-      logger.warn('Export batch recovery needs retry', {
-        organizationId: organization.id,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+    )
   }
   logger.info('Accounting recovery page finished', {
     jobId: ctx.jobId,
     organizations: processed,
   })
-}
-
-/** Rotate before slow provider work and persist source progress independently of delivery. */
-async function saveCursor(organizationId: string, value: string | null) {
-  await database
-    .insert(schema.OrganizationSetting)
-    .values({ organizationId, key: CURSOR_KEY, value, scope: 'GENERAL', updatedAt: new Date() })
-    .onConflictDoUpdate({
-      target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
-      set: { value, updatedAt: new Date() },
-    })
 }

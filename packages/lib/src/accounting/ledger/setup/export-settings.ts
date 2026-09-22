@@ -80,9 +80,7 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
       return 'fulfillment'
     case 'invoice_issued':
       return 'invoice'
-    // Rides along with the payment it applies against - TARGET §5: "part of the Payment".
     case 'payment':
-    case 'deposit_application':
       return 'receipt'
     case 'refund':
       return 'refund'
@@ -120,6 +118,8 @@ export function avenueOfPostingType(postingType: PostingType): ExportAvenue | nu
     case 'opening_balance':
     case 'provider_sync':
     case 'bank_transaction':
+    // No writer since 91 §4.3; TODO(91 S3): drops with the enum value.
+    case 'deposit_application':
       return null
   }
 }

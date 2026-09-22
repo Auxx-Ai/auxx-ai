@@ -42,6 +42,8 @@ export const exportJournalSchema = z
     currency: z.literal('USD'),
     totalMinor: z.number().int().nonnegative(),
     lines: z.array(exportJournalLineSchema).min(2),
+    /** Set on a summary batch only: its lines carry no counterparty, so a receivable rides the store's placeholder customer (91 §8.14). */
+    summary: z.object({ storeId: z.string().nullable() }).optional(),
   })
   .superRefine((value, ctx) => {
     let debit = 0

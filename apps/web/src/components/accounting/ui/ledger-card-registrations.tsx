@@ -6,7 +6,7 @@
 // each builder's subject link carries:
 //
 //   invoice        `buildInvoiceEntry` (postings/build-invoice-entry.ts)
-//   money_transaction  `postMovementEntry`/deposit-application writers
+//   money_transaction  `postMovementEntry`
 //   bank_deposit   `createBankDeposit` (money/bank-deposits/writes.ts)
 //   fulfillment    `buildFulfillmentEntry` (money/orders/fulfill.ts)
 //   payout         `buildPayoutEntry` (money/payouts/sync.ts)

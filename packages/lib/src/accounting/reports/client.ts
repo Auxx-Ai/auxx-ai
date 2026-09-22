@@ -20,7 +20,12 @@ export {
   toTrialBalanceRows,
   toTrialBalanceStatementRows,
 } from './adapters'
-export type { BalanceSheet, BalanceSheetRow, BalanceSheetSnapshot } from './balance-sheet'
+export type {
+  BalanceSheet,
+  BalanceSheetRow,
+  BalanceSheetSnapshot,
+  CustomerDepositsRow,
+} from './balance-sheet'
 export type { Completeness, CompletenessItem } from './completeness'
 export {
   DEFAULT_FISCAL_YEAR_START_MONTH,

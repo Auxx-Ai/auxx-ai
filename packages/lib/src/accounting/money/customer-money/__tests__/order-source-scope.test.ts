@@ -92,9 +92,7 @@ describe('readOrderSourceScope', () => {
     expect(await readOrderSourceScope(db, ORG, 'ord_1')).toEqual({ store: null })
   })
 
-  // 🛑 Ambiguity falls back, it never guesses. `recognition-source.ts` BLOCKS
-  // this case for a posting that has to be exact; here the entry still has to
-  // post, so it posts to the account every store shared before this brief.
+  // Ambiguity falls back to the org default; it never guesses a store.
   it('falls back to the org default when evidence spans two stores', async () => {
     const db = stubDb([
       { orderId: 'ord_1', sourceAccountId: STORE_US },

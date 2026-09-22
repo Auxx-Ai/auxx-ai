@@ -3,6 +3,7 @@
 
 export * from './_shared'
 export * from './account'
+export * from './accounting-work-item'
 export * from './agent'
 export * from './agent-procedure'
 export * from './agent-trigger'

@@ -33,14 +33,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { requireCachedEntityDefId } from '../../../cache'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../../errors'
-import { createFieldValueContext } from '../../../field-values/field-value-helpers'
-import { setValueWithType } from '../../../field-values/field-value-mutations'
-import { toFieldType } from '../../../field-values/stored-field-type'
-import { toRecordId } from '../../../resources/resource-id'
-import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import {
   buildFulfillmentEntry,
@@ -62,6 +55,13 @@ import {
   readOrderRecognitionSource,
   requireCompleteOrderRecognitionSource,
 } from '../../money/customer-money/recognition-source'
+import {
+  refusalFromError,
+  refusalFromPost,
+  type WorkItemRefusal,
+  withWorkItemCode,
+} from '../../work-items/refusal'
+import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
 import { type OrderForFulfillment, readOrderForFulfillment } from '../orders/reads'
 import { isLiveFulfillment } from './client'
 import { findLiveFulfillmentDraft } from './posting-reads'
@@ -76,12 +76,6 @@ export const FULFILLMENT_SOURCE_KIND = 'fulfillment'
 
 /** The id a not-yet-written shipment carries through the timeline and the preview. */
 export const PREVIEW_SHIPMENT_ID = 'preview'
-
-/** The two fields 88 §7.4 puts the poster's last refusal on. */
-const MARKER_ATTRS = [
-  'fulfillment_posting_blocked_reason',
-  'fulfillment_posting_blocked_at',
-] as const
 
 /**
  * A refusal that is not a defect: the shipment recognises nothing, so there is
@@ -133,40 +127,24 @@ export type ShipmentToRecognise = Pick<
   shippedAt: string
 }
 
+const workKey = (fulfillmentId: string) => ({
+  sourceKind: FULFILLMENT_SOURCE_KIND,
+  sourceId: fulfillmentId,
+  stage: 'post' as const,
+})
+
 /**
- * Record why the ledger refused, or clear the mark once it accepts.
- *
- * ⚠️ On `db`, never the prepare transaction: a refusal rolls that back, and a
- * mark rolled back with it is a mark the sweep never sees. No `userId` on the
- * context either - the hook chain must not re-enter the totals reconciler.
+ * Park a shipment's refusal as a work item, or clear it with `null`. On `db`: the
+ * prepare transaction the refusal came from rolled back.
  */
-export async function markFulfillmentPostingBlock(
+export async function parkFulfillment(
   db: Database,
   organizationId: string,
   fulfillmentId: string,
-  reason: string | null
+  refusal: WorkItemRefusal | null
 ): Promise<void> {
-  const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...MARKER_ATTRS])
-  const reasonField = fields.fulfillment_posting_blocked_reason
-  const atField = fields.fulfillment_posting_blocked_at
-  // An org that has not run migration 184 has nowhere to record this; the
-  // refusal is still the caller's answer.
-  if (!reasonField || !atField) return
-  const defId = await requireCachedEntityDefId(organizationId, 'fulfillment')
-  const recordId = toRecordId(defId, fulfillmentId)
-  const context = createFieldValueContext(organizationId, undefined, db)
-  await setValueWithType(context, {
-    recordId,
-    fieldId: reasonField.id,
-    fieldType: toFieldType(reasonField.type),
-    value: reason === null ? null : { type: 'text', value: reason },
-  })
-  await setValueWithType(context, {
-    recordId,
-    fieldId: atField.id,
-    fieldType: toFieldType(atField.type),
-    value: reason === null ? null : { type: 'date', value: new Date().toISOString() },
-  })
+  if (refusal) await upsertWorkItem(db, organizationId, { ...workKey(fulfillmentId), ...refusal })
+  else await deleteWorkItem(db, organizationId, workKey(fulfillmentId))
 }
 
 /** A minor-unit string off the allocator, as the builder's integer. */
@@ -187,9 +165,16 @@ export async function readShipmentPostingWindow(
     'accounting.cutoffPeriod',
   ] as const)
   if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
-    throw new UnprocessableEntityError('Finalize accounting setup before posting shipments')
+    throw new UnprocessableEntityError(
+      'Finalize accounting setup before posting shipments',
+      withWorkItemCode('SETUP_INCOMPLETE')
+    )
   const zone = settings['accounting.bookTimeZone']
-  if (!zone) throw new UnprocessableEntityError('Book time zone is not configured')
+  if (!zone)
+    throw new UnprocessableEntityError(
+      'Book time zone is not configured',
+      withWorkItemCode('SETUP_INCOMPLETE')
+    )
   return { zone, cutoff: settings['accounting.cutoffPeriod'] ?? null }
 }
 
@@ -216,11 +201,15 @@ export async function prepareShipmentEntry(
 
   const occurredAt = new Date(shipment.shippedAt)
   if (!Number.isFinite(occurredAt.getTime()))
-    throw new UnprocessableEntityError('Shipment has no shipped date to post against')
+    throw new UnprocessableEntityError(
+      'Shipment has no shipped date to post against',
+      withWorkItemCode('MISSING_DATE')
+    )
   const txnDate = periodKeyForDate(occurredAt, 'day', window.zone)
   if (window.cutoff && txnDate.slice(0, 7) <= window.cutoff)
     throw new UnprocessableEntityError(
-      `Shipment is before the accounting opening cutoff ${window.cutoff}`
+      `Shipment is before the accounting opening cutoff ${window.cutoff}`,
+      withWorkItemCode('BEFORE_CUTOFF')
     )
 
   const facts = await readOrderRecognitionFactsInTx(tx, organizationId, order.orderId)
@@ -344,11 +333,17 @@ export async function prepareFulfillmentEntry(
   if (!isLiveFulfillment(fulfillment))
     throw new NothingToRecogniseError('Shipment is cancelled, so there is nothing to recognise')
   if (subject.subtotalMinor === null)
-    throw new UnprocessableEntityError('Shipment totals are not stamped yet')
+    throw new UnprocessableEntityError(
+      'Shipment totals are not stamped yet',
+      withWorkItemCode('TOTALS_NOT_STAMPED')
+    )
   if (fulfillment.totalMinor === 0)
     throw new NothingToRecogniseError('Shipment is worth nothing, so there is nothing to recognise')
   if (!fulfillment.shippedAt)
-    throw new UnprocessableEntityError('Shipment has no shipped date to post against')
+    throw new UnprocessableEntityError(
+      'Shipment has no shipped date to post against',
+      withWorkItemCode('MISSING_DATE')
+    )
 
   return prepareShipmentEntry(tx, {
     organizationId,
@@ -366,10 +361,9 @@ export async function prepareFulfillmentEntry(
 /**
  * Post one shipment's revenue.
  *
- * **Never throws an `AuxxError`.** Every refusal comes back `blocked` with the
- * poster's own words on {@link markFulfillmentPostingBlock}'s two fields,
- * because the goods have already left the building and the caller records
- * that either way.
+ * **Never throws an `AuxxError`.** Every refusal comes back `blocked` and parks a
+ * work item ({@link parkFulfillment}), because the goods have already left the
+ * building and the caller records that either way.
  */
 export async function postFulfillmentAccounting(
   db: Database,
@@ -385,7 +379,7 @@ export async function postFulfillmentAccounting(
   // the one blocked answer that does not mark it.
   if (live.isErr()) return { status: 'blocked', reason: live.error.message }
   if (live.value) {
-    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
+    await parkFulfillment(db, organizationId, fulfillmentId, null)
     return { status: 'accepted', glPostingId: live.value.id }
   }
   // A draft holds no subject claim, so the read above cannot see it.
@@ -403,7 +397,10 @@ export async function postFulfillmentAccounting(
   } catch (error) {
     if (!(error instanceof AuxxError)) throw error
     if (error instanceof NothingToRecogniseError) {
-      await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
+      // A visible skip the sweep never re-offers, not a refusal.
+      await parkFulfillment(db, organizationId, fulfillmentId, {
+        reasonCode: 'NOTHING_TO_RECOGNISE',
+      })
       return { status: 'skipped', reason: error.message }
     }
     logger.warn('A shipment could not be prepared', {
@@ -411,7 +408,7 @@ export async function postFulfillmentAccounting(
       fulfillmentId,
       error: error.message,
     })
-    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, error.message)
+    await parkFulfillment(db, organizationId, fulfillmentId, refusalFromError(error))
     return { status: 'blocked', reason: error.message }
   }
 
@@ -428,16 +425,20 @@ export async function postFulfillmentAccounting(
     mode: await readAutoPostMode(organizationId, 'fulfillment'),
   })
   if (post.status === 'drafted' && post.glPostingId) {
-    // A draft is not a refusal, so the block clears; the draft's own `pending`
-    // link is what stops the sweep drafting it again.
-    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
+    // A draft is not a refusal; its own `pending` link stops the sweep drafting it again.
+    await parkFulfillment(db, organizationId, fulfillmentId, null)
     return { status: 'drafted', glPostingId: post.glPostingId }
   }
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
-    await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, reason)
+    await parkFulfillment(
+      db,
+      organizationId,
+      fulfillmentId,
+      refusalFromPost(post, { periodKey: prepared.entry.txnDate.slice(0, 7) })
+    )
     return { status: 'blocked', reason }
   }
-  await markFulfillmentPostingBlock(db, organizationId, fulfillmentId, null)
+  await parkFulfillment(db, organizationId, fulfillmentId, null)
   return { status: 'accepted', glPostingId: post.glPostingId }
 }

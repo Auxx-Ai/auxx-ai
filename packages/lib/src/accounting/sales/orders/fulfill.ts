@@ -28,15 +28,15 @@ import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { EntryPreview, PostResult } from '../../ledger/types'
+import { refusalFromError, refusalFromPost, type WorkItemRefusal } from '../../work-items/refusal'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
 // The leaves, not the barrel: `../fulfillments` re-exports `stamp-totals.ts`,
 // whose real dependency chain (field-value writes, realtime) is exactly what
 // `fulfill.test.ts` mocks the barrel to avoid pulling in.
 import {
-  markFulfillmentPostingBlock,
   NothingToRecogniseError,
-  PREVIEW_SHIPMENT_ID,
   type PreparedFulfillmentEntry,
+  parkFulfillment,
   prepareFulfillmentEntry,
   prepareShipmentEntry,
   readShipmentPostingWindow,
@@ -174,7 +174,8 @@ function shapeRequestedShipment(
     context: { orderId: order.orderId },
   })
   return {
-    id: PREVIEW_SHIPMENT_ID,
+    // Not written yet; the preview entry still needs a source id.
+    id: 'preview',
     sequence: order.nextSequence,
     shippedAt: calendarDayToInstant(shippedAt),
     lines,
@@ -260,8 +261,7 @@ export async function previewFulfillment(
  * counterparty the customer's contact (when the order has one) - the links and
  * the scope `prepareFulfillmentEntry` resolved, so the native door's posting
  * is byte-identical to the sweep's (88 D6). `railId` is always `null`: a
- * shipment debits `accounts_receivable` or `customer_deposits`, never a
- * gateway's clearing account (D11).
+ * shipment debits `accounts_receivable`, never a gateway's clearing account (D11).
  *
  * Posts inside the fulfillment's own transaction, so the shipment and its entry
  * commit together. A REFUSAL is not a throw - nothing is written at that
@@ -395,7 +395,7 @@ export async function fulfillOrder(
           // (88 D6). A refusal is a result, and after commit a marker (§7.4);
           // the shipment stands either way.
           let post: InTxPostResult = { status: 'not_enabled' }
-          let blockReason: string | null = null
+          let blocked: WorkItemRefusal | null = null
           if (accountingEnabled) {
             try {
               const prepared = await prepareFulfillmentEntry(tx, {
@@ -409,11 +409,13 @@ export async function fulfillOrder(
                 memo,
               })
               if (!isExpectedPostOutcome(post))
-                blockReason = post.error ?? `The ledger answered ${post.status}`
+                blocked = refusalFromPost(post, {
+                  periodKey: prepared.entry.txnDate.slice(0, 7),
+                })
             } catch (error) {
               if (!(error instanceof AuxxError)) throw error
               post = refusalOf(error)
-              if (!(error instanceof NothingToRecogniseError)) blockReason = error.message
+              if (!(error instanceof NothingToRecogniseError)) blocked = refusalFromError(error)
             }
           }
           const fulfillment: Fulfillment = {
@@ -449,21 +451,15 @@ export async function fulfillOrder(
             shipped,
             shippedAtInstant: shipment.shippedAt,
             post,
-            blockReason,
+            blocked,
           }
         })
       )
       if (committed.owned) await flushTxWriteScope(committed.scope)
-      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant, blockReason } =
+      const { fulfillment, fulfillmentStatus, created, shipped, shippedAtInstant, blocked } =
         committed.result
 
-      if (blockReason)
-        await markFulfillmentPostingBlock(
-          db,
-          organizationId,
-          created.fulfillmentInstanceId,
-          blockReason
-        )
+      if (blocked) await parkFulfillment(db, organizationId, created.fulfillmentInstanceId, blocked)
 
       // The provider push is deliberately outside the transaction: a network
       // call inside one holds the claim's index tuple for an HTTP round trip.

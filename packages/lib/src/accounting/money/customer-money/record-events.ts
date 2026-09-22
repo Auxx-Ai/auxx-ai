@@ -15,7 +15,7 @@
  * declaration change.
  */
 
-import type { Database } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { getCachedEntityDefId } from '../../../cache'
 import { relationshipInstanceIds } from '../../../field-values/relationship-field'
@@ -25,6 +25,7 @@ import { declareSystemRules } from '../../../record-rules/system-rules'
 import { CUSTOMER_TRANSACTION_FIELDS } from '../../../resources/registry/resources/customer-transaction-fields'
 import { PAYOUT_SOURCE_FIELDS } from '../../../resources/registry/resources/payout-source-fields'
 import { PROCESSOR_BALANCE_ENTRY_FIELDS } from '../../../resources/registry/resources/processor-balance-entry-fields'
+import { wakeArrivedOrders } from '../../work-items/wake'
 import { assessPayouts } from '../payouts/assess-payouts'
 import { markPayoutForAssessment, registerPayoutReconciler } from '../payouts/payout-reconciler'
 import { type BridgeRecordKind, bridgeFinancialRecords } from './bridge'
@@ -68,14 +69,18 @@ export function registerFinancialRecordRules(): void {
     if (event.source === 'sync') return
     const kinds = await financialKindByDefId(event.organizationId)
     const userId = event.userId ?? ''
+    const orders: string[] = []
     for (const recordId of new Set(event.recordIds)) {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
       const kind = kinds.get(entityDefinitionId)
       if (!kind) continue
+      if (kind === 'order') orders.push(entityInstanceId)
       if (isPayoutOwner(kind))
         await markPayoutForAssessment(event.organizationId, userId, entityInstanceId)
       else await markOrderEvidence(event.organizationId, userId, kind, entityInstanceId)
     }
+    // An order arriving wakes the work that waited for it by external id (91 §4.6).
+    await wakeArrivedOrders(database, event.organizationId, { orderInstanceIds: orders })
     // A reparented line leaves its old order's evidence stale, and the old order
     // is only knowable from the event's previous value.
     for (const [recordId, old] of Object.entries(event.previousValuesByRecordId ?? {})) {
@@ -159,6 +164,7 @@ export async function reconcileFinancialRecordsAfterBulk(
 ): Promise<void> {
   const kinds = await financialKindByDefId(organizationId)
   const orderMarks: string[] = []
+  const arrivedOrders: string[] = []
   const payoutInstanceIds: string[] = []
   const bridged: Array<{ id: string; kind: BridgeRecordKind }> = []
   const candidates = new Set<RecordId>([
@@ -177,6 +183,7 @@ export async function reconcileFinancialRecordsAfterBulk(
     }
     const orderKind: OrderEvidenceKind = kind
     orderMarks.push(`${orderKind}:${entityInstanceId}`)
+    if (orderKind === 'order') arrivedOrders.push(entityInstanceId)
   }
   for (const fields of Object.values(manifest.deltas ?? {})) {
     for (const orderInstanceId of relationshipInstanceIds(fields.line_item_order?.o))
@@ -189,4 +196,5 @@ export async function reconcileFinancialRecordsAfterBulk(
   if (bridged.length)
     await bridgeFinancialRecords(db, { organizationId, actorUserId: '', records: bridged })
   if (payoutInstanceIds.length) await assessPayouts(db, organizationId, payoutInstanceIds)
+  await wakeArrivedOrders(db, organizationId, { orderInstanceIds: arrivedOrders })
 }

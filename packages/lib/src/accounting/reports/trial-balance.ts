@@ -23,12 +23,14 @@ import { toMinor } from '@auxx/utils/currency'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
+import { GlAccountSubtype } from '../../resources/registry/enum-values'
 import { compareAccountsByCodeThenName } from '../ledger/chart/account-label'
 import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../ledger/chart/default-chart'
 import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { ChartAccountRow } from '../ledger/types'
+import { type ReceivableSplit, readReceivableSplits } from './receivable-attribution'
 import { signedBalance } from './statement-math'
 
 const logger = createScopedLogger('postings:reports:trial-balance')
@@ -80,6 +82,8 @@ export interface TrialBalanceRow {
    * still appears, flagged, rather than being silently dropped.
    */
   inChart: boolean
+  /** Present only when read with `splitReceivables` on an `accounts_receivable`-subtype account. */
+  receivableSplit?: ReceivableSplit
 }
 
 export interface TrialBalance {
@@ -110,6 +114,8 @@ export interface ReadTrialBalanceOptions {
    * reads its own.
    */
   chart?: readonly ChartAccountRow[]
+  /** Net every receivable account per document and fill `receivableSplit`. Statements only. */
+  splitReceivables?: boolean
 }
 
 /**
@@ -200,6 +206,24 @@ export async function readTrialBalance(
         }
       })
       .sort(compareTrialBalanceRows)
+
+    if (options.splitReceivables) {
+      const receivables = rows.filter(
+        (row) => row.subtype === GlAccountSubtype.ACCOUNTS_RECEIVABLE && row.accountType
+      )
+      if (receivables.length > 0) {
+        const splits = await readReceivableSplits(db, organizationId, {
+          from,
+          to,
+          glAccountIds: receivables.map((row) => row.glAccountId),
+        })
+        if (splits.isErr()) return err(splits.error)
+        for (const row of receivables) {
+          const split = splits.value.get(row.glAccountId)
+          if (split) row.receivableSplit = split
+        }
+      }
+    }
 
     const totalDebitMinor = rows.reduce((sum, row) => sum + row.debitMinor, 0)
     const totalCreditMinor = rows.reduce((sum, row) => sum + row.creditMinor, 0)

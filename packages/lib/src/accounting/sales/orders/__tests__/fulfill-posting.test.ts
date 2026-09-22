@@ -85,13 +85,12 @@ vi.mock('../../fulfillments/accounting', async () => {
   const { buildFulfillmentEntry } = await import('../../../ledger/builders/fulfillment')
   const { UnprocessableEntityError } = await import('../../../../errors')
   return {
-    PREVIEW_SHIPMENT_ID: 'preview',
     NothingToRecogniseError: class NothingToRecogniseError extends UnprocessableEntityError {},
     readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
     prepareShipmentEntry: async () => {
       throw new Error('the preview is not exercised here')
     },
-    markFulfillmentPostingBlock: async () => {},
+    parkFulfillment: async () => {},
     prepareFulfillmentEntry: async (_tx: unknown, input: { fulfillmentId: string }) => ({
       entry: buildFulfillmentEntry({
         orderId: ORDER.orderId,

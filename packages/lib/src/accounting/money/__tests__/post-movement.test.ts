@@ -39,6 +39,12 @@ vi.mock('../../../settings/read', () => ({
   readOrganizationSettings: async (_org: string, keys: readonly string[]) =>
     Object.fromEntries(keys.map((key) => [key, h.settings[key] ?? null])),
 }))
+vi.mock('../../work-items/write', () => ({
+  upsertWorkItem: async (_db: unknown, _org: string, input: Record<string, unknown>) =>
+    h.marks.push({ park: input }),
+  deleteWorkItem: async (_db: unknown, _org: string, key: Record<string, unknown>) =>
+    h.marks.push({ clear: key }),
+}))
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
@@ -50,6 +56,8 @@ import { postMovementEntry } from '../post-movement'
 
 const ORG = 'org_1'
 const MOVEMENT = 'mt_1'
+const KEY = { sourceKind: 'money_transaction', sourceId: MOVEMENT, stage: 'post' }
+const CLEARED = [{ clear: KEY }]
 
 function db(): Database {
   const base = {
@@ -76,8 +84,6 @@ function db(): Database {
   return {
     ...base,
     select: () => chain(),
-    // The posting-block mark is written on `db`, never the prepare transaction.
-    update: () => ({ set: (values: unknown) => ({ where: async () => h.marks.push(values) }) }),
     transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(base),
   } as unknown as Database
 }
@@ -168,11 +174,10 @@ describe('postMovementEntry', () => {
     ])
   })
 
-  // What Retry on the Outbox's Blocked tab relies on: mapping the role and
-  // posting again is the whole of clearing the mark (75-D1).
-  it('clears the posting block once the ledger accepts', async () => {
+  // Success deletes the work item (91 §4.6).
+  it('deletes the work item once the ledger accepts', async () => {
     await expect(post()).resolves.toEqual({ status: 'accepted', glPostingId: 'gl_1' })
-    expect(h.marks).toEqual([{ postingBlockedReason: null, postingBlockedAt: null }])
+    expect(h.marks).toEqual(CLEARED)
   })
 
   it('answers accepted when the movement already holds a live posting', async () => {
@@ -184,9 +189,9 @@ describe('postMovementEntry', () => {
   it('answers drafted and clears the block when the avenue posts with autoPost off', async () => {
     h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'gl_draft' })
     await expect(post()).resolves.toEqual({ status: 'drafted', glPostingId: 'gl_draft' })
-    // A draft is not a refusal: the block clears, and the draft's own `pending`
+    // A draft is not a refusal: the work item goes, and the draft's own `pending`
     // link is what the next sweep finds.
-    expect(h.marks).toEqual([{ postingBlockedReason: null, postingBlockedAt: null }])
+    expect(h.marks).toEqual(CLEARED)
   })
 
   it('answers drafted without building again while the movement waits on a live draft', async () => {
@@ -209,6 +214,7 @@ describe('postMovementEntry', () => {
     const result = await post()
     expect(result.status).toBe('blocked')
     expect((result as { reason: string }).reason).toMatch(/Finalize accounting setup/)
+    expect(h.marks).toEqual([{ park: { ...KEY, reasonCode: 'SETUP_INCOMPLETE' } }])
   })
 
   it('blocks when the entry falls on or before the opening cutoff', async () => {
@@ -218,6 +224,7 @@ describe('postMovementEntry', () => {
       status: 'blocked',
       reason: 'Invoice receipt is before the accounting opening cutoff 2026-09',
     })
+    expect(h.marks).toEqual([{ park: { ...KEY, reasonCode: 'BEFORE_CUTOFF' } }])
   })
 
   it('blocks a non-USD movement', async () => {
@@ -281,25 +288,50 @@ describe('postMovementEntry', () => {
     await expect(post()).rejects.toThrow('programmer error')
   })
 
-  it('marks the movement blocked with the reason, and clears it on a later accept', async () => {
+  it('parks a ledger refusal as a coded work item with its month, and clears it on accept', async () => {
     h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed' })
     await post()
     expect(h.marks).toEqual([
-      { postingBlockedReason: 'September is closed', postingBlockedAt: expect.any(Date) },
+      { park: { ...KEY, reasonCode: 'PERIOD_LOCKED', periodKey: '2026-09' } },
     ])
 
     h.marks = []
     h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
     await post()
-    expect(h.marks).toEqual([{ postingBlockedReason: null, postingBlockedAt: null }])
+    expect(h.marks).toEqual(CLEARED)
   })
 
-  it('marks a refusal raised by prepare too', async () => {
+  it('parks an unmapped role with the role and the rail as wake keys', async () => {
+    h.resolveCashEndpoint.mockResolvedValue({
+      glAccountId: 'gl_clearing',
+      kind: 'clearing',
+      railId: 'pg_1',
+    })
+    h.postEntry.mockResolvedValue({
+      status: 'account_unmapped',
+      error: 'Cannot post: ...',
+      items: [{ key: 'unmapped_role', label: 'clearing', remedy: 'map it', ref: 'clearing' }],
+    })
+    await post()
+    expect(h.marks).toEqual([
+      {
+        park: {
+          ...KEY,
+          reasonCode: 'ROLE_UNMAPPED',
+          role: 'clearing',
+          railId: 'pg_1',
+          detail: {},
+        },
+      },
+    ])
+  })
+
+  it('parks a refusal raised by prepare too, its words kept until the thrower has a code', async () => {
     await post(async () => {
       throw new UnprocessableEntityError('no applications')
     })
     expect(h.marks).toEqual([
-      { postingBlockedReason: 'no applications', postingBlockedAt: expect.any(Date) },
+      { park: { ...KEY, reasonCode: 'REFUSED', detail: { message: 'no applications' } } },
     ])
   })
 

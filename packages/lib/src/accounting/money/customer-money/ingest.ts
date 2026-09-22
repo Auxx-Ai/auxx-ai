@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/money/customer-money/ingest.ts
 
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
-import { and, asc, eq, inArray, isNull, lte } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { ConflictError } from '../../../errors'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
@@ -11,6 +11,9 @@ import {
   sumCreditMemoApplications,
   sumReservedCreditMemoRefunds,
 } from '../../sales/credit-memos/reads'
+import type { WorkItemCode } from '../../work-items/codes'
+import { noWorkItem, runWorkItemSweep } from '../../work-items/sweep'
+import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
 import { insertMovement } from '../commands/insert-movement'
 import { findMoneyCommandByKey } from '../commands/run-money-command'
 import { pokePendingMatchesForSourceObject } from '../payouts/match-poke'
@@ -38,30 +41,14 @@ import { refreshOrderCoverageCounts, updateAcceptance } from './source-writes'
 
 const IMPORT_COMMAND_KIND = 'import_customer_money'
 
-/**
- * Reasons no retry can fix (79 §4.2): the inputs are on the order or the credit memo, so
- * these park with `nextAttemptAt = null` and only a wake mark (`acceptance-wake.ts`) or a
- * fresh observation re-queues them. Everything else backs off.
- */
-const WAKE_ON_CHANGE_REASONS: ReadonlySet<string> = new Set([
-  'Order reference is unresolved',
-  'Order customer or currency is unresolved or incompatible',
-  'Order balance is unresolved',
-  'Confirmed receipt exceeds the remaining order obligation',
-  'Refund original receipt or credit document is unresolved',
-  'Movement is already applied; new source evidence cannot apply it again',
-  'Observed customer differs from the immutable movement customer',
-])
+/** The `sourceKind` of an acceptance's `evidence` work item. */
+export const ACCEPTANCE_SOURCE_KIND = 'financial_source_acceptance'
 
-const RETRY_BASE_MS = 60_000
-const RETRY_CAP_MS = 6 * 60 * 60 * 1000
-
-/** `null` parks the row for a wake mark; otherwise 60 s doubling per attempt to a 6 h cap. */
-export function nextAttemptForReason(reason: string, attempts: number): Date | null {
-  if (WAKE_ON_CHANGE_REASONS.has(reason)) return null
-  const spent = Math.max(0, attempts - 1)
-  return new Date(Date.now() + Math.min(RETRY_BASE_MS * 2 ** spent, RETRY_CAP_MS))
-}
+export const acceptanceWorkKey = (acceptanceId: string) => ({
+  sourceKind: ACCEPTANCE_SOURCE_KIND,
+  sourceId: acceptanceId,
+  stage: 'evidence' as const,
+})
 
 async function typedDocument(
   tx: Transaction,
@@ -145,13 +132,15 @@ export async function materializeImportedMoneyInTx(
   await withAccountingCommitLock(tx, organizationId)
   const acceptance = await readAcceptance(tx, organizationId, acceptanceId)
   if (!acceptance) return
-  const attempts = acceptance.attempts + 1
-  // The one place the retry class is chosen, for every refusal below.
-  const park = (reason: string) => ({
-    attempts,
-    reason,
-    nextAttemptAt: nextAttemptForReason(reason, attempts),
-  })
+  // The one place a refusal is parked; its code decides the retry (91 §4.6).
+  const park = (reasonCode: WorkItemCode, detail?: Record<string, unknown>) =>
+    upsertWorkItem(tx, organizationId, {
+      ...acceptanceWorkKey(acceptance.id),
+      reasonCode,
+      externalRef: acceptance.orderExternalId,
+      ...(detail ? { detail } : {}),
+    })
+  const settle = () => deleteWorkItem(tx, organizationId, acceptanceWorkKey(acceptance.id))
   const observation = await tx.query.FinancialSourceObservation.findFirst({
     where: and(
       eq(schema.FinancialSourceObservation.organizationId, organizationId),
@@ -191,57 +180,45 @@ export async function materializeImportedMoneyInTx(
     await updateAcceptance(tx, organizationId, acceptance.id, { orderInstanceId: acquiredOrderId })
   const source = readStoredCustomerMoneyObservation(observation.payload)
   if (!source.success) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'rejected',
-      reason: 'Invalid transaction identity or money evidence',
-    })
+    await park('INVALID_EVIDENCE')
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'rejected' })
     return
   }
   if (
     acceptance.moneyTransactionId &&
     (source.data.status !== 'confirmed' || !['receipt', 'refund'].includes(source.data.kind))
   ) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'blocked',
-      ...park(
-        'Accepted money source no longer reports the same confirmed movement; explicit correction required'
-      ),
-    })
+    await park('MOVEMENT_CHANGED')
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'blocked' })
     return
   }
   const sourceAccount = await readSourceAccount(tx, organizationId, object.sourceAccountId)
   if (!sourceAccount) throw new Error('Source account is outside this organization')
   if (source.data.test || sourceAccount.environment === 'test') {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'accepted',
-      reason: 'Test-mode observation; no operational money created',
-      nextAttemptAt: null,
-    })
+    // Test mode: no operational money is created.
+    await settle()
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'accepted' })
     return
   }
   if (['authorization', 'void'].includes(source.data.kind) || source.data.status === 'failed') {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'accepted',
-      reason: 'Source observation records no confirmed cash movement',
-      nextAttemptAt: null,
-    })
+    // No confirmed cash moved, so there is nothing to materialize.
+    await settle()
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'accepted' })
     return
   }
   if (source.data.status !== 'confirmed') {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'pending',
-      ...park('Transaction success is not yet confirmed'),
-    })
+    await park('NOT_CONFIRMED')
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'pending' })
     return
   }
   let movement: ReturnType<typeof confirmedCustomerMovement>
   try {
     movement = confirmedCustomerMovement(source.data)
   } catch (error) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'rejected',
-      reason: error instanceof Error ? error.message : String(error),
+    await park('INVALID_EVIDENCE', {
+      message: error instanceof Error ? error.message : String(error),
     })
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'rejected' })
     return
   }
   const snapshot = {
@@ -267,10 +244,8 @@ export async function materializeImportedMoneyInTx(
       money.purpose !== movement.purpose ||
       money.occurredAt?.getTime() !== movement.occurredAt.getTime())
   ) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      state: 'blocked',
-      ...park('Observed movement changed; explicit accounting correction required'),
-    })
+    await park('MOVEMENT_CHANGED')
+    await updateAcceptance(tx, organizationId, acceptance.id, { state: 'blocked' })
     return
   }
   const orderId =
@@ -345,27 +320,18 @@ export async function materializeImportedMoneyInTx(
   if (!money) throw new Error('Money materialization failed')
   const base = { moneyTransactionId: money.id, orderInstanceId: orderId }
   if (!orderId || !facts) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      ...base,
-      state: 'blocked',
-      ...park('Order reference is unresolved'),
-    })
+    await park('ORDER_NOT_FOUND')
+    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
     return
   }
   if (!partyId || facts.get('order_currency')?.text !== money.currency) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      ...base,
-      state: 'blocked',
-      ...park('Order customer or currency is unresolved or incompatible'),
-    })
+    await park('CUSTOMER_UNRESOLVED')
+    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
     return
   }
   if (money.partyInstanceId && money.partyInstanceId !== partyId) {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      ...base,
-      state: 'blocked',
-      ...park('Observed customer differs from the immutable movement customer'),
-    })
+    await park('CUSTOMER_CHANGED')
+    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
     return
   }
   if (!money.partyInstanceId)
@@ -382,11 +348,8 @@ export async function materializeImportedMoneyInTx(
     if (typeof zone !== 'string' || !zone.trim()) throw new Error('missing timezone')
     effectiveDate = periodKeyForDate(money.occurredAt!, 'day', zone)
   } catch {
-    await updateAcceptance(tx, organizationId, acceptance.id, {
-      ...base,
-      state: 'blocked',
-      ...park('Book timezone is unresolved or invalid'),
-    })
+    await park('SETUP_INCOMPLETE')
+    await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
     return
   }
   if (money.purpose === 'customer_receipt') {
@@ -401,29 +364,20 @@ export async function materializeImportedMoneyInTx(
     if (!existing) {
       const usedMoney = await sumAppliedToMovement(tx, organizationId, money.id)
       if (usedMoney !== 0n) {
-        await updateAcceptance(tx, organizationId, acceptance.id, {
-          ...base,
-          state: 'blocked',
-          ...park('Movement is already applied; new source evidence cannot apply it again'),
-        })
+        await park('MOVEMENT_ALREADY_APPLIED')
+        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
         return
       }
       const total = facts.get('order_total')?.amount
       if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) {
-        await updateAcceptance(tx, organizationId, acceptance.id, {
-          ...base,
-          state: 'blocked',
-          ...park('Order balance is unresolved'),
-        })
+        await park('ORDER_BALANCE_UNRESOLVED')
+        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
         return
       }
       const applied = await sumAppliedToOrder(tx, organizationId, orderId)
       if (applied + money.amountMinor > BigInt(total)) {
-        await updateAcceptance(tx, organizationId, acceptance.id, {
-          ...base,
-          state: 'blocked',
-          ...park('Confirmed receipt exceeds the remaining order obligation'),
-        })
+        await park('RECEIPT_EXCEEDS_ORDER')
+        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
         return
       }
       await insertApplication(tx, organizationId, command!.id, {
@@ -468,11 +422,8 @@ export async function materializeImportedMoneyInTx(
             )
           : null
       if (!originalLink || !creditId) {
-        await updateAcceptance(tx, organizationId, acceptance.id, {
-          ...base,
-          state: 'blocked',
-          ...park('Refund original receipt or credit document is unresolved'),
-        })
+        await park('REFUND_ORIGINAL_UNRESOLVED')
+        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
         return
       }
       const original = await readMovement(tx, organizationId, originalLink.moneyTransactionId)
@@ -508,11 +459,8 @@ export async function materializeImportedMoneyInTx(
         // order's, which `order_currency` above already matched against this movement.
         creditFacts.get('credit_memo_contact')?.related !== partyId
       ) {
-        await updateAcceptance(tx, organizationId, acceptance.id, {
-          ...base,
-          state: 'blocked',
-          ...park('Refund capacity, credit currency or customer does not match'),
-        })
+        await park('REFUND_CAPACITY_MISMATCH')
+        await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'blocked' })
         return
       }
       await tx.insert(schema.MoneyRefundSettlement).values({
@@ -553,13 +501,8 @@ export async function materializeImportedMoneyInTx(
           )
     }
   }
-  await updateAcceptance(tx, organizationId, acceptance.id, {
-    ...base,
-    attempts,
-    state: 'accepted',
-    reason: null,
-    nextAttemptAt: null,
-  })
+  await settle()
+  await updateAcceptance(tx, organizationId, acceptance.id, { ...base, state: 'accepted' })
 }
 
 /** Refresh acceptance coverage from durable states after relationship recovery. */
@@ -578,53 +521,76 @@ async function refreshMoneyCoverageInTx(
   })
 }
 
-/** Bounded retry through the existing maintenance job; isolate failed records and rotate fairly. */
+/**
+ * Bounded retry through the recovery job: acceptances never tried first, then due
+ * `evidence` work items. A throw parks the acceptance as `blocked` with a transient row.
+ */
 export async function sweepImportedCustomerMoney(
   db: Database,
   organizationId: string,
   limit = 100
-) {
-  const rows = await db.query.FinancialSourceAcceptance.findMany({
-    where: and(
-      eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-      inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked']),
-      // A null `nextAttemptAt` is parked on a change, not due now (79 §4.2/§4.5).
-      lte(schema.FinancialSourceAcceptance.nextAttemptAt, new Date())
-    ),
-    orderBy: asc(schema.FinancialSourceAcceptance.updatedAt),
+): Promise<{ examined: number; failed: number }> {
+  const counts = await runWorkItemSweep(db, {
+    organizationId,
+    stage: 'evidence',
+    sourceKind: ACCEPTANCE_SOURCE_KIND,
     limit: Math.min(Math.max(limit, 1), 100),
-  })
-  let failed = 0
-  for (const row of rows) {
-    try {
-      await db.transaction(async (tx) => {
-        await materializeImportedMoneyInTx(tx, organizationId, row.id)
-        await refreshMoneyCoverageInTx(tx, organizationId, row.id)
-      })
-    } catch (error) {
-      failed++
-      const reason = error instanceof Error ? error.message : 'Source recovery failed'
-      const attempts = row.attempts + 1
-      await db.transaction(async (tx) => {
-        await withAccountingCommitLock(tx, organizationId)
-        await updateAcceptance(
-          tx,
-          organizationId,
-          row.id,
-          {
-            state: 'blocked',
-            reason,
-            attempts,
-            nextAttemptAt: nextAttemptForReason(reason, attempts),
-          },
-          // Only if nothing else has moved the row since this attempt started.
-          and(
-            eq(schema.FinancialSourceAcceptance.observationId, row.observationId),
-            inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
+    listFresh: async (fresh) =>
+      (
+        await db
+          .select({ id: schema.FinancialSourceAcceptance.id })
+          .from(schema.FinancialSourceAcceptance)
+          .where(
+            and(
+              eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
+              inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked']),
+              noWorkItem(organizationId, {
+                stage: 'evidence',
+                sourceKind: ACCEPTANCE_SOURCE_KIND,
+                sourceId: schema.FinancialSourceAcceptance.id,
+              })
+            )
           )
-        )
-      })
-    }
-  }
-  return { examined: rows.length, failed }
+          .orderBy(asc(schema.FinancialSourceAcceptance.updatedAt))
+          .limit(fresh)
+      ).map((row) => row.id),
+    handle: async (acceptanceId) => {
+      const row = await readAcceptance(db, organizationId, acceptanceId)
+      // Accepted or rejected since it was queued: nothing left to do.
+      if (!row || (row.state !== 'pending' && row.state !== 'blocked')) {
+        await deleteWorkItem(db, organizationId, acceptanceWorkKey(acceptanceId))
+        return { status: 'skipped' }
+      }
+      try {
+        await db.transaction(async (tx) => {
+          await materializeImportedMoneyInTx(tx, organizationId, acceptanceId)
+          await refreshMoneyCoverageInTx(tx, organizationId, acceptanceId)
+        })
+        return { status: 'accepted' }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Source recovery failed'
+        await db.transaction(async (tx) => {
+          await withAccountingCommitLock(tx, organizationId)
+          await upsertWorkItem(tx, organizationId, {
+            ...acceptanceWorkKey(acceptanceId),
+            reasonCode: 'TRANSIENT_ERROR',
+            detail: { message },
+          })
+          await updateAcceptance(
+            tx,
+            organizationId,
+            acceptanceId,
+            { state: 'blocked' },
+            // Only if nothing else has moved the row since this attempt started.
+            and(
+              eq(schema.FinancialSourceAcceptance.observationId, row.observationId),
+              inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
+            )
+          )
+        })
+        return { status: 'failed' }
+      }
+    },
+  })
+  return { examined: counts.scanned, failed: counts.failed ?? 0 }
 }

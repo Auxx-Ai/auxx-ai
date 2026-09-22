@@ -725,52 +725,6 @@ export const CREDIT_MEMO_FIELDS = defineResourceFields({
       'card',
   },
 
-  /** Why the issuing pass last refused this channel memo (88 §7.4). Cleared on issue. */
-  issueBlockedReason: {
-    id: toFieldId('issueBlockedReason'),
-    key: 'issueBlockedReason',
-    label: 'Issue Blocked Reason',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'credit_memo_issue_blocked_reason',
-    systemSortOrder: 'aJb',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: false,
-      updatable: false,
-      configurable: false,
-    },
-    description:
-      'Why the channel memo pass last refused to issue this memo, verbatim - what it waits on, ' +
-      'or what the ledger refused. Written by the pass only and cleared on issue',
-  },
-
-  issueBlockedAt: {
-    id: toFieldId('issueBlockedAt'),
-    key: 'issueBlockedAt',
-    label: 'Issue Blocked At',
-    type: BaseType.DATETIME,
-    fieldType: FieldType.DATETIME,
-    isSystem: true,
-    systemAttribute: 'credit_memo_issue_blocked_at',
-    systemSortOrder: 'aJc',
-    showInPanel: false,
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: true,
-      creatable: false,
-      updatable: false,
-      configurable: false,
-    },
-    description:
-      'When that refusal happened - the pass holds a memo back for POSTING_RETRY_INTERVAL_MS after it',
-  },
-
   // `glPosting` (`credit_memo_gl_posting`, systemSortOrder 'aK') is gone
   // (step 1b, TARGET §1): a memo's postings are read through
   // `listPostingsForSource`, off `GlPostingSource`, never off a stamp field.

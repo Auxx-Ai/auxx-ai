@@ -3,6 +3,7 @@
 // `quickbooks-accounting-provider.ts` unchanged (plan 67 §5.1) - the four
 // idempotency layers documented there still apply verbatim.
 
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
@@ -33,6 +34,7 @@ import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
+import { resolvePlaceholderCustomer } from './customers'
 import {
   echoOf,
   errorMessage,
@@ -88,18 +90,24 @@ interface QboJournalLine {
   entity?: { type: 'Customer' | 'Vendor' | 'Employee'; id: string; name?: string }
 }
 
+/** What {@link resolveOrCreateCounterparties} resolved: each named counterparty, and a summary batch's placeholder. */
+interface ResolvedCounterparties {
+  byKey: Map<string, QuickbooksEntity>
+  placeholder?: QuickbooksEntity
+}
+
 /**
  * Resolve every counterparty a receivable or payable line names to a
  * QuickBooks `entity` reference, **creating the customer when there is not
- * one yet**, and refuse a line that carries no counterparty at all (brief 13
- * §1.3, §1.4; task 23 §1). Moved verbatim - see
- * `quickbooks-accounting-provider.ts`'s prior history for the full argument.
+ * one yet** (brief 13 §1.3, §1.4; task 23 §1). A receivable line with no
+ * counterparty rides the store's placeholder customer on a summary batch
+ * (91 §8.14) and refuses everywhere else.
  */
 async function resolveOrCreateCounterparties(
   tool: QuickbooksToolContext,
   input: ExportJournalPayload,
   ourChart: readonly ChartAccountRow[]
-): Promise<Result<Map<string, QuickbooksEntity>, Error>> {
+): Promise<Result<ResolvedCounterparties, Error>> {
   const byId = new Map(ourChart.map((row) => [row.id, row]))
   const handler = new UnifiedCrudHandler(tool.organizationId, tool.userId)
 
@@ -157,6 +165,7 @@ async function resolveOrCreateCounterparties(
   }
 
   const problems = new Set<string>()
+  let placeholder: QuickbooksEntity | undefined
   for (const line of input.lines) {
     const account = byId.get(line.glAccountId)
     const subtype = account?.subtype
@@ -167,6 +176,16 @@ async function resolveOrCreateCounterparties(
     const ourNoun = subtype === 'accounts_receivable' ? 'contact' : 'company'
     const label = account ? accountLabel(account) : (line.accountCode ?? line.glAccountId)
 
+    if (!line.counterparty && kind === 'receivable' && input.summary) {
+      if (placeholder) continue
+      try {
+        const id = await resolvePlaceholderCustomer(database, tool, input.summary.storeId)
+        placeholder = { type: 'Customer', id }
+      } catch (error) {
+        problems.add(`${input.docNumber} posts to ${label}. ${errorMessage(error)}`)
+      }
+      continue
+    }
     if (!line.counterparty) {
       problems.add(
         `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
@@ -190,7 +209,7 @@ async function resolveOrCreateCounterparties(
   if (problems.size > 0) {
     return err(new UnprocessableEntityError([...problems].join(' ')))
   }
-  return ok(resolved)
+  return ok({ byKey: resolved, ...(placeholder && { placeholder }) })
 }
 
 /** What QuickBooks holds under one `DocNumber`, or undefined when it holds none. */
@@ -242,21 +261,24 @@ async function build(
       })
     )
 
+  const { byKey, placeholder } = counterparties.value
+  const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
   const lines: QboJournalLine[] = []
   for (const line of [...journal.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
     const account = accounts.value.accounts.get(line.glAccountId)
     if (!account) continue
+    const entity = line.counterparty
+      ? byKey.get(counterpartyKey(line.counterparty.type, line.counterparty.id))
+      : ourChartById.get(line.glAccountId)?.subtype === 'accounts_receivable'
+        ? placeholder
+        : undefined
     lines.push({
       amountMinor: line.amountMinor,
       postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
       accountId: account.id,
       accountName: account.fullyQualifiedName,
       ...(line.memo && { description: line.memo }),
-      ...(line.counterparty && {
-        entity: counterparties.value.get(
-          counterpartyKey(line.counterparty.type, line.counterparty.id)
-        ),
-      }),
+      ...(entity && { entity }),
     })
   }
 

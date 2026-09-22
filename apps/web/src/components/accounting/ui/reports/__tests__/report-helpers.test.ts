@@ -1,6 +1,10 @@
 // apps/web/src/components/accounting/ui/reports/__tests__/report-helpers.test.ts
 
-import type { StatementRow as LibStatementRow } from '@auxx/lib/accounting/reports/client'
+import {
+  type BalanceSheetSnapshot,
+  type StatementRow as LibStatementRow,
+  toBalanceSheetRows,
+} from '@auxx/lib/accounting/reports/client'
 import { daysBetween } from '@auxx/utils/calendar-day'
 import { describe, expect, it } from 'vitest'
 import {
@@ -15,6 +19,7 @@ import {
   shiftPeriodKey,
   toStatementTableRows,
 } from '../report-helpers'
+import { hasAnyDrillKey } from '../statement-table'
 
 describe('periodStartDate / periodEndDate', () => {
   it('returns the first and last calendar day of an ordinary month', () => {
@@ -260,5 +265,56 @@ describe('toStatementTableRows', () => {
       badge: undefined,
       note: undefined,
     })
+  })
+
+  // 91 D3: the deposits row is computed from a receivable, so it carries a note and no
+  // posting to drill into.
+  it('keeps the customer deposits row inert and its note visible', () => {
+    const snapshot: BalanceSheetSnapshot = {
+      asOf: '2026-08-31',
+      assets: [
+        {
+          glAccountId: 'acct_1100',
+          accountCode: '1100',
+          accountName: 'Shopify receivable',
+          accountType: 'asset',
+          balanceMinor: 30_000,
+          inChart: true,
+        },
+      ],
+      liabilities: [],
+      equity: [],
+      customerDeposits: [
+        {
+          glAccountId: 'acct_1100',
+          accountCode: '1100',
+          accountName: 'Shopify receivable',
+          balanceMinor: 12_000,
+        },
+      ],
+      totalAssetsMinor: 30_000,
+      totalLiabilitiesMinor: 12_000,
+      totalEquityMinor: 18_000,
+      retainedEarnings: {
+        balanceMinor: 18_000,
+        priorYearsSource: 'rolled_forward',
+        priorYearsMinor: 0,
+        postedPriorYearsMinor: 0,
+        currentPeriodMinor: 18_000,
+        accountCode: null,
+      },
+      verdict: true,
+    }
+    const rows = toStatementTableRows(toBalanceSheetRows(snapshot))
+    const deposits = rows
+      .find((r) => r.id === 'liabilities')
+      ?.children?.find((r) => r.id === 'customer-deposits:acct_1100')
+    expect(deposits?.kind).toBe('computed')
+    expect(deposits?.meta?.note).toBeTruthy()
+    expect(deposits && hasAnyDrillKey(deposits)).toBe(false)
+
+    const receivable = rows.find((r) => r.id === 'assets')?.children?.[0]
+    expect(receivable?.meta?.glAccountId).toBe('acct_1100')
+    expect(receivable?.meta?.note).toMatch(/customer deposits/)
   })
 })

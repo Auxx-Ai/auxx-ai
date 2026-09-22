@@ -19,7 +19,8 @@ const h = vi.hoisted(() => ({
   postEntry: vi.fn(),
   resolvePeriodLock: vi.fn(async () => ({})),
   readAutoPostMode: vi.fn(async () => 'post'),
-  setValues: [] as Array<{ fieldId: string; value: unknown }>,
+  /** Every work-item write, park or clear (91 §4.6). */
+  setValues: [] as Array<Record<string, unknown>>,
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -60,26 +61,11 @@ vi.mock('../../../money/customer-money/recognition-source', () => ({
     return value
   },
 }))
-vi.mock('../../../../cache', () => ({
-  requireCachedEntityDefId: async () => 'def_fulfillment',
-}))
-vi.mock('../../../../resources/system-records', () => ({
-  systemFieldMap: async () => ({
-    fulfillment_posting_blocked_reason: { id: 'f_reason', type: 'TEXT' },
-    fulfillment_posting_blocked_at: { id: 'f_at', type: 'DATETIME' },
-  }),
-}))
-vi.mock('../../../../field-values/field-value-helpers', () => ({
-  createFieldValueContext: () => ({}),
-}))
-vi.mock('../../../../field-values/field-value-mutations', () => ({
-  setValueWithType: async (_ctx: unknown, params: { fieldId: string; value: unknown }) => {
-    h.setValues.push({ fieldId: params.fieldId, value: params.value })
-    return []
-  },
-}))
-vi.mock('../../../../field-values/stored-field-type', () => ({
-  toFieldType: (value: string) => value,
+vi.mock('../../../work-items/write', () => ({
+  upsertWorkItem: async (_db: unknown, _org: string, input: Record<string, unknown>) =>
+    h.setValues.push({ park: input }),
+  deleteWorkItem: async (_db: unknown, _org: string, key: Record<string, unknown>) =>
+    h.setValues.push({ clear: key }),
 }))
 vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -97,6 +83,8 @@ import {
 
 const organizationId = 'org_1'
 const fulfillmentId = 'ful_1'
+const KEY = { sourceKind: 'fulfillment', sourceId: fulfillmentId, stage: 'post' }
+const CLEARED = [{ clear: KEY }]
 
 function db(): Database {
   return {
@@ -206,10 +194,7 @@ describe('postFulfillmentAccounting', () => {
     expect(result).toEqual({ status: 'accepted', glPostingId: 'glp_live' })
     expect(h.postEntry).not.toHaveBeenCalled()
     // The marker clears on acceptance.
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    expect(h.setValues).toEqual(CLEARED)
   })
 
   it('answers drafted off a pending link onto a draft', async () => {
@@ -225,20 +210,17 @@ describe('postFulfillmentAccounting', () => {
     expect(result).toEqual({ status: 'skipped', reason: 'Accounting is not enabled' })
   })
 
-  it('blocks, and marks, an org whose setup is not finalized', async () => {
+  it('blocks, and parks, an org whose setup is not finalized', async () => {
     h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
       key === 'accounting.bookTimeZone' ? 'UTC' : null
     )
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result.status).toBe('blocked')
-    expect(h.setValues[0]).toMatchObject({
-      fieldId: 'f_reason',
-      value: { type: 'text', value: expect.stringContaining('Finalize accounting setup') },
-    })
-    expect(h.setValues[1]?.fieldId).toBe('f_at')
+    expect((result as { reason: string }).reason).toContain('Finalize accounting setup')
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'SETUP_INCOMPLETE' } }])
   })
 
-  it('skips a cancelled shipment and leaves no marker', async () => {
+  it('skips a cancelled shipment as a visible skip the sweep never re-offers', async () => {
     const read = order()
     read._unsafeUnwrap().fulfillments[0]!.status = 'cancelled'
     h.readOrderForFulfillment.mockResolvedValue(read)
@@ -247,10 +229,7 @@ describe('postFulfillmentAccounting', () => {
       status: 'skipped',
       reason: 'Shipment is cancelled, so there is nothing to recognise',
     })
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'NOTHING_TO_RECOGNISE' } }])
   })
 
   it('blocks an unstamped shipment with the stamp as the reason', async () => {
@@ -260,6 +239,8 @@ describe('postFulfillmentAccounting', () => {
       status: 'blocked',
       reason: 'Shipment totals are not stamped yet',
     })
+    // The code the totals stamp wakes (91 §4.6).
+    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'TOTALS_NOT_STAMPED' } }])
   })
 
   it('skips a $0 shipment', async () => {
@@ -302,10 +283,7 @@ describe('postFulfillmentAccounting', () => {
     expect(byRole['accounts_receivable:debit']).toBe(800)
     expect(byRole['revenue_product:credit']).toBe(10000)
     expect(h.postEntry.mock.calls[0]![1].railId).toBeNull()
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    expect(h.setValues).toEqual(CLEARED)
   })
 
   it('debits A/R in full on an order with no connected source, never reading the timeline', async () => {
@@ -324,24 +302,26 @@ describe('postFulfillmentAccounting', () => {
     ).toBe(false)
   })
 
-  it('marks the ledger refusal with the ledger words', async () => {
+  it('parks the ledger refusal as a coded work item', async () => {
     h.postEntry.mockResolvedValue({ status: 'error', error: 'Cannot post: revenue_product' })
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result).toEqual({ status: 'blocked', reason: 'Cannot post: revenue_product' })
-    expect(h.setValues[0]).toMatchObject({
-      fieldId: 'f_reason',
-      value: { type: 'text', value: 'Cannot post: revenue_product' },
-    })
+    expect(h.setValues).toEqual([
+      {
+        park: {
+          ...KEY,
+          reasonCode: 'TRANSIENT_ERROR',
+          detail: { message: 'Cannot post: revenue_product' },
+        },
+      },
+    ])
   })
 
   it('clears the marker on a draft - a draft is not a refusal', async () => {
     h.postEntry.mockResolvedValue({ status: 'drafted', glPostingId: 'glp_draft' })
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result).toEqual({ status: 'drafted', glPostingId: 'glp_draft' })
-    expect(h.setValues).toEqual([
-      { fieldId: 'f_reason', value: null },
-      { fieldId: 'f_at', value: null },
-    ])
+    expect(h.setValues).toEqual(CLEARED)
   })
 })
 

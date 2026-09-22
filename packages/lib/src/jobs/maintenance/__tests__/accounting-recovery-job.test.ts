@@ -2,32 +2,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  organizations: [] as Array<{ id: string; cursor: unknown }>,
+  organizations: [] as string[],
   events: [] as string[],
+  orgs: vi.fn(),
   bridge: vi.fn(),
   money: vi.fn(),
   receipt: vi.fn(),
   shipment: vi.fn(),
-  application: vi.fn(),
   delivery: vi.fn(),
 }))
-vi.mock('@auxx/database', () => ({
-  schema: { Organization: {}, OrganizationSetting: {} },
-  database: {
-    select: () => ({
-      from: () => ({
-        leftJoin: () => ({ orderBy: () => ({ limit: async () => h.organizations }) }),
-      }),
-    }),
-    insert: () => ({
-      values: (value: { organizationId: string; value: unknown }) => ({
-        onConflictDoUpdate: async () => {
-          h.events.push(`cursor:${value.organizationId}:${value.value}`)
-        },
-      }),
-    }),
-  },
-}))
+vi.mock('@auxx/database', () => ({ database: {} }))
+vi.mock('../../../accounting/work-items/sweep', () => ({ listOrganizationsForSweep: h.orgs }))
 vi.mock('../../../accounting/money/customer-money/bridge-sweep', () => ({
   sweepFinancialRecordBridge: h.bridge,
 }))
@@ -40,61 +25,36 @@ vi.mock('../../../accounting/money/blocked-movements', () => ({
 vi.mock('../../../accounting/sales/fulfillments/accounting-sweep', () => ({
   sweepFulfillmentAccounting: h.shipment,
 }))
-vi.mock('../../../accounting/money/customer-money/deposit-application-accounting', () => ({
-  sweepDepositApplicationAccounting: h.application,
-}))
 vi.mock('../../../accounting/export', () => ({ sweepExportBatches: h.delivery }))
 
 import type { JobContext } from '../../types/job-context'
 import { accountingRecoveryJob } from '../accounting-recovery-job'
 
+const record =
+  (name: string) => async (_db: unknown, input: { organizationId: string } | string) => {
+    h.events.push(`${name}:${typeof input === 'string' ? input : input.organizationId}`)
+  }
+
 beforeEach(() => {
   vi.clearAllMocks()
   h.events = []
-  h.organizations = [
-    { id: 'A', cursor: 'old-A' },
-    { id: 'B', cursor: null },
-  ]
-  h.bridge.mockImplementation(async (_db, input) => {
-    h.events.push(`bridge:${input.organizationId}`)
-    return { found: 0, bridged: 0, skipped: 0 }
-  })
-  h.money.mockImplementation(async (_db, org) => {
-    h.events.push(`money:${org}`)
-  })
-  h.receipt.mockImplementation(async (_db, input) => {
-    h.events.push(`receipt:${input.organizationId}`)
-  })
-  h.shipment.mockImplementation(async (_db, input) => {
-    h.events.push(`shipment:${input.organizationId}`)
-  })
-  h.application.mockImplementation(async (_db, input) => {
-    h.events.push(`application:${input.organizationId}`)
-  })
-  h.delivery.mockImplementation(async (_db, input) => {
-    h.events.push(`delivery:${input.organizationId}`)
-  })
+  h.organizations = ['A', 'B']
+  h.orgs.mockImplementation(async () => h.organizations)
+  h.bridge.mockImplementation(record('bridge'))
+  h.money.mockImplementation(record('money'))
+  h.receipt.mockImplementation(record('receipt'))
+  h.shipment.mockImplementation(record('shipment'))
+  h.delivery.mockImplementation(record('delivery'))
 })
 afterEach(() => vi.restoreAllMocks())
-describe('accounting recovery organization rotation', () => {
-  it('rotates each organization before provider work and saves progress before delivery', async () => {
+
+describe('accounting recovery job', () => {
+  it('visits the orgs the work-item frame names and runs every lane for each', async () => {
     await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
-    expect(h.events).toEqual([
-      'cursor:A:old-A',
-      'bridge:A',
-      'money:A',
-      'receipt:A',
-      'shipment:A',
-      'application:A',
-      'delivery:A',
-      'cursor:B:null',
-      'bridge:B',
-      'money:B',
-      'receipt:B',
-      'shipment:B',
-      'application:B',
-      'delivery:B',
-    ])
+    expect(h.orgs).toHaveBeenCalledWith(expect.anything(), { limit: 25 })
+    for (const org of ['A', 'B'])
+      for (const lane of ['bridge', 'money', 'receipt', 'shipment', 'delivery'])
+        expect(h.events).toContain(`${lane}:${org}`)
     expect(h.shipment).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ organizationId: 'A', limit: 100, timeBudgetMs: expect.any(Number) })
@@ -104,7 +64,29 @@ describe('accounting recovery organization rotation', () => {
       expect.objectContaining({ organizationId: 'A', limit: 5, timeBudgetMs: expect.any(Number) })
     )
   })
-  it('yields after its time budget so a slow provider cannot keep the whole organization page running', async () => {
+
+  it('no ordering between the movement and shipment sweeps is load-bearing', async () => {
+    // Each sweep gets only its org and budget - nothing the other produced - and a
+    // refusal in either leaves the other to run.
+    h.receipt.mockRejectedValueOnce(new Error('Payment route unavailable'))
+    h.shipment.mockRejectedValueOnce(new Error('Shipment route unavailable'))
+    await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
+    for (const sweep of [h.receipt, h.shipment])
+      for (const call of sweep.mock.calls)
+        expect(Object.keys(call[1]).sort()).toEqual(['limit', 'organizationId', 'timeBudgetMs'])
+    expect(h.shipment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organizationId: 'A' })
+    )
+    expect(h.receipt).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organizationId: 'B' })
+    )
+    expect(h.events).toContain('delivery:A')
+    expect(h.events).toContain('shipment:B')
+  })
+
+  it('yields after its time budget so a slow provider cannot hold the whole page', async () => {
     let now = 1_000
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     h.delivery.mockImplementation(async () => {
@@ -112,14 +94,15 @@ describe('accounting recovery organization rotation', () => {
     })
     await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
     expect(h.money).toHaveBeenCalledTimes(1)
-    expect(h.events).not.toContain('cursor:B:null')
+    expect(h.events).not.toContain('bridge:B')
   })
 
-  it('continues delivery and the next organization when receipt accounting is blocked', async () => {
-    h.receipt.mockRejectedValueOnce(new Error('Payment route unavailable'))
+  it('continues delivery and the next organization when the evidence lanes fail', async () => {
+    h.bridge.mockRejectedValueOnce(new Error('bridge down'))
+    h.money.mockRejectedValueOnce(new Error('ingest down'))
     await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
+    expect(h.events).toContain('receipt:A')
     expect(h.events).toContain('delivery:A')
-    expect(h.events).toContain('receipt:B')
     expect(h.events).toContain('delivery:B')
   })
 })

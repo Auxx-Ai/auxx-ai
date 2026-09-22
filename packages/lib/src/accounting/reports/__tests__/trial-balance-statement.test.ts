@@ -256,6 +256,14 @@ describe('readTrialBalanceStatement', () => {
       DB,
       expect.objectContaining({ from: '2026-07-01', to: '2026-09-16' })
     )
+    // Only the cumulative read nets receivables per document (91 D3).
+    expect(vi.mocked(readTrialBalance)).toHaveBeenCalledWith(
+      DB,
+      expect.objectContaining({ to: '2026-09-16', splitReceivables: true })
+    )
+    expect(
+      vi.mocked(readTrialBalance).mock.calls.filter(([, options]) => options.splitReceivables)
+    ).toHaveLength(1)
   })
 
   it('keeps a deleted account cumulative - it has no statement class to scope by', async () => {

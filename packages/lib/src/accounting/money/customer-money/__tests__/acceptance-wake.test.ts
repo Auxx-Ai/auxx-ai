@@ -1,7 +1,6 @@
 // packages/lib/src/accounting/money/customer-money/__tests__/acceptance-wake.test.ts
 //
-// 79 §4.2: the two marks that re-queue an acceptance parked with `nextAttemptAt = null`,
-// and the reason classifier that decides which rows park in the first place.
+// 79 §4.2: the two marks that make a parked acceptance's work item due again.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FieldChangeRef } from '../../../../field-hooks/types'
@@ -30,7 +29,6 @@ import {
   wakeAcceptancesOnCreditMemoChange,
   wakeAcceptancesOnOrderChange,
 } from '../acceptance-wake'
-import { nextAttemptForReason } from '../ingest'
 
 const ORG = 'org_1'
 const USER = 'usr_1'
@@ -130,29 +128,5 @@ describe('wakeAcceptancesOnCreditMemoChange', () => {
     })
 
     expect(h.requeueAcceptancesForOrders).not.toHaveBeenCalled()
-  })
-})
-
-describe('nextAttemptForReason', () => {
-  it('parks a wake-on-change reason with no next attempt', () => {
-    expect(
-      nextAttemptForReason('Order customer or currency is unresolved or incompatible', 1)
-    ).toBe(null)
-    expect(
-      nextAttemptForReason('Refund original receipt or credit document is unresolved', 9)
-    ).toBe(null)
-  })
-
-  it('doubles a backoff reason from 60 s and caps it at 6 h', () => {
-    const at = (attempts: number) =>
-      nextAttemptForReason('Transaction success is not yet confirmed', attempts)!.getTime() -
-      Date.now()
-
-    expect(at(1)).toBeCloseTo(60_000, -3)
-    expect(at(2)).toBeCloseTo(120_000, -3)
-    expect(at(3)).toBeCloseTo(240_000, -3)
-    expect(at(9)).toBeCloseTo(15_360_000, -3)
-    expect(at(10)).toBeCloseTo(21_600_000, -3)
-    expect(at(97)).toBeCloseTo(21_600_000, -3)
   })
 })

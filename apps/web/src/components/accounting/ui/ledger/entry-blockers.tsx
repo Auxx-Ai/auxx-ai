@@ -7,6 +7,10 @@ import type {
   CloseBlockerItemKey,
   PostResultStatus,
 } from '@auxx/lib/accounting/ledger/client'
+import {
+  type WorkItemSentenceInput,
+  workItemSentence,
+} from '@auxx/lib/accounting/work-items/client'
 import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -448,6 +452,40 @@ const COLUMNS = 'minmax(0,1fr) auto'
  * `period_closed`, every banking refusal) carries no items and renders as it
  * always did: one row, the server's sentence verbatim, one button.
  */
+/** The work-item fields a blocker card needs; the row never stores prose (91 §4.6). */
+export interface WorkItemForBlocker extends WorkItemSentenceInput {
+  reasonCode: string
+}
+
+const WORK_ITEM_STATUS: Partial<Record<string, LedgerBlockerStatus>> = {
+  ROLE_UNMAPPED: 'account_unmapped',
+  ACCOUNT_INVALID: 'account_invalid',
+  PERIOD_LOCKED: 'period_closed',
+  UNBALANCED: 'unbalanced',
+  SETUP_INCOMPLETE: 'setup_incomplete',
+  NOTHING_TO_RECOGNISE: 'nothing_to_recognise',
+}
+
+/** A parked work item as a blocker card: its code picks the remedy, its sentence is the text. */
+export function workItemBlocker(item: WorkItemForBlocker): LedgerBlocker {
+  const error = workItemSentence(item.reasonCode, item)
+  const status = WORK_ITEM_STATUS[item.reasonCode] ?? 'error'
+  if (status !== 'account_unmapped' || !item.role) return { status, error }
+  const roles = Array.isArray(item.detail?.roles)
+    ? (item.detail.roles as unknown[]).filter((role): role is string => typeof role === 'string')
+    : [item.role]
+  return {
+    status,
+    error,
+    items: roles.map((role) => ({
+      key: 'unmapped_role',
+      label: role,
+      remedy: workItemSentence(item.reasonCode, { ...item, role }),
+      ref: role,
+    })),
+  }
+}
+
 export function EntryBlockers({
   blockers,
   onFix,

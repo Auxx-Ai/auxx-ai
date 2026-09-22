@@ -12,6 +12,7 @@ import { getCachedEntityDefId } from '../../cache'
 import { seedSession, UnifiedCrudHandler } from '../../resources/crud'
 import { readOrganizationSettings, updateOrganizationSetting } from '../../settings'
 import { SystemUserService } from '../../users/system-user-service'
+import { wakeReasonCode } from '../work-items/wake'
 
 const logger = createScopedLogger('accounting:guest-contact')
 
@@ -24,13 +25,6 @@ export const GUEST_CONTACT_SETTING_KEY = 'accounting.guestContactId' as const
  */
 export const GUEST_CONTACT_FIRST_NAME = 'Guest'
 export const GUEST_CONTACT_LAST_NAME = 'customer'
-
-/**
- * The acceptance reason the ingest writes when an order has no customer — the
- * rows this mint wakes. Literal rather than imported: `ingest.ts` writes it
- * inline and exports nothing.
- */
-const UNRESOLVED_CUSTOMER_REASON = 'Order customer or currency is unresolved or incompatible'
 
 export interface GuestContactResult {
   /** The guest's `EntityInstance` id, or `null` when the org has no `contact` definition. */
@@ -129,17 +123,6 @@ async function requeueUnresolvedCustomerAcceptances(
   db: Database,
   organizationId: string
 ): Promise<number> {
-  const now = new Date()
-  const rows = await db
-    .update(schema.FinancialSourceAcceptance)
-    .set({ nextAttemptAt: now, updatedAt: now })
-    .where(
-      and(
-        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-        eq(schema.FinancialSourceAcceptance.state, 'blocked'),
-        eq(schema.FinancialSourceAcceptance.reason, UNRESOLVED_CUSTOMER_REASON)
-      )
-    )
-    .returning({ id: schema.FinancialSourceAcceptance.id })
-  return rows.length
+  const woken = await wakeReasonCode(db, organizationId, 'CUSTOMER_UNRESOLVED')
+  return woken.isOk() ? woken.value : 0
 }

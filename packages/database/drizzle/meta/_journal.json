@@ -2731,6 +2731,13 @@
       "when": 1790093545645,
       "tag": "0389_accounting_92_posting_avenue",
       "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1790104074832,
+      "tag": "0390_accounting_work_item",
+      "breakpoints": true
     }
   ]
 }

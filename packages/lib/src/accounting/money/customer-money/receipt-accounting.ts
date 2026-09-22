@@ -1,9 +1,8 @@
 // packages/lib/src/accounting/money/customer-money/receipt-accounting.ts
-import { type Database, schema, type Transaction } from '@auxx/database'
+import { schema, type Transaction } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
-import { periodKeyForDate } from '../../ledger/periods/periods'
 import type { PaymentGatewayRow } from '../../rails/client'
 import {
   type GatewayRoute,
@@ -13,7 +12,12 @@ import {
   toGatewayRoutes,
 } from '../../rails/client'
 import { getPaymentGateway, listPaymentGateways } from '../../rails/reads'
-import { findSourceLink, listMovementApplications, readMovement } from '../reads'
+import {
+  findSourceLink,
+  listMovementApplications,
+  readMovement,
+  selectLiveApplications,
+} from '../reads'
 import { confirmedCustomerMovement } from './contracts'
 import { readStoredCustomerMoneyObservation } from './source-observation-adapter'
 import { readSourceAccount, readSourceObject } from './source-reads'
@@ -22,8 +26,7 @@ import { readSourceAccount, readSourceObject } from './source-reads'
 export async function readCustomerReceiptAccountingSource(
   tx: Transaction,
   organizationId: string,
-  moneyTransactionId: string,
-  bookTimeZone: string
+  moneyTransactionId: string
 ) {
   const money = await readMovement(tx, organizationId, moneyTransactionId, {
     purpose: 'customer_receipt',
@@ -43,22 +46,14 @@ export async function readCustomerReceiptAccountingSource(
     throw new UnprocessableEntityError(
       'Receipt is linked to native payment accounting; repair its existing accounting membership before switching ownership'
     )
-  const effectiveDate = periodKeyForDate(money.occurredAt, 'day', bookTimeZone)
-  const applications = await listMovementApplications(tx, organizationId, moneyTransactionId)
-  const orderId = applications[0]?.orderInstanceId
-  if (
-    !orderId ||
-    applications.some(
-      (a) =>
-        a.operation !== 'apply' ||
-        a.orderInstanceId !== orderId ||
-        a.effectiveDate !== effectiveDate
-    ) ||
-    applications.reduce((sum, a) => sum + a.amountMinor, 0n) !== money.amountMinor
+  // The order is a link, never an input to the lines (91 §4.0): a receipt applied
+  // to no order, part of one, or two posts the same entry.
+  const orders = new Set(
+    selectLiveApplications(
+      await listMovementApplications(tx, organizationId, moneyTransactionId)
+    ).flatMap((a) => (a.orderInstanceId ? [a.orderInstanceId] : []))
   )
-    throw new UnprocessableEntityError(
-      'Receipt needs complete applications to one order on its book date; unapplications require correction'
-    )
+  const orderId = orders.size === 1 ? [...orders][0]! : null
   const acceptances = await tx.query.FinancialSourceAcceptance.findMany({
     where: and(
       eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
@@ -70,12 +65,7 @@ export async function readCustomerReceiptAccountingSource(
     const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
     const account = object && (await readSourceAccount(tx, organizationId, object.sourceAccountId))
     if (!account) continue
-    if (
-      acceptance.state !== 'accepted' ||
-      acceptance.orderInstanceId !== orderId ||
-      account.environment !== 'live' ||
-      account.archivedAt
-    )
+    if (acceptance.state !== 'accepted' || account.environment !== 'live' || account.archivedAt)
       throw new UnprocessableEntityError('Receipt source is unresolved, changed, or test data')
     const observation = await tx.query.FinancialSourceObservation.findFirst({
       where: and(
@@ -150,9 +140,7 @@ export async function readCustomerReceiptAccountingSource(
   }
   return {
     money,
-    applications,
     orderId,
-    effectiveDate,
     paymentGatewayId,
     sourceStoreId: source.account.id,
     sourceProvider: source.account.providerKey,
@@ -169,12 +157,6 @@ export async function readCustomerReceiptAccountingSource(
         currency: money.currency,
         party: money.partyInstanceId,
       },
-      applications: applications.map((a) => ({
-        id: a.id,
-        orderId: a.orderInstanceId,
-        amount: a.amountMinor.toString(),
-        date: a.effectiveDate,
-      })),
       observation: source.observation.contentHash,
       gateway: gateway ? JSON.parse(JSON.stringify(gateway)) : handle,
     }),

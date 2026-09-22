@@ -62,10 +62,6 @@ vi.mock('../../../ledger/post/reverse-entry', () => ({
   reverseEntry: async () => ({ status: 'posted', glPostingId: 'gl-reversal' }),
 }))
 vi.mock('../../../ledger/post/ledger-accepted', () => ({ didLedgerAccept: () => true }))
-vi.mock('../../customer-money/deposit-application-accounting', () => ({
-  acceptDepositApplicationAccounting: async () => ({ status: 'skipped' }),
-  reverseDepositApplicationAccounting: async () => null,
-}))
 vi.mock('../../../sales/invoices/issuance-reads', () => ({
   loadInvoiceForIssuance: async (_tx: unknown, _org: string, invoiceInstanceId: string) => ({
     totalMinor: h.totals.get(invoiceInstanceId) ?? 0,

@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { CloseBlockerItem, PostingStatus } from '@auxx/lib/accounting/ledger/client'
+import type { PostingStatus } from '@auxx/lib/accounting/ledger/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -13,24 +13,16 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import {
-  BookOpenCheck,
-  CalendarClock,
-  CircleAlert,
-  Clock,
-  Coins,
-  Link2,
-  RefreshCw,
-} from 'lucide-react'
+import { BookOpenCheck, CalendarClock, CircleAlert, Coins, Link2, RefreshCw } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { toFrame, useOpenRecord } from '~/components/records/record-drill-panels'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useSettings } from '~/hooks/use-settings'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { EntryBlockers } from './entry-blockers'
-import { formatAccountingDate, formatAuditTimestamp, formatMinor } from './format'
+import { formatAccountingDate, formatMinor } from './format'
 import type { FrameHeader } from './posting-frame'
 import { MOVEMENT_PURPOSE_LABEL, postingTypeLabel } from './type-labels'
+import { WorkItemsSection } from './work-items-section'
 
 type MovementDetail = NonNullable<RouterOutputs['ledger']['getMovement']>
 
@@ -56,54 +48,22 @@ const STATUS_LABEL: Record<PostingStatus, string> = {
 }
 
 /**
- * The roles named in an `account_unmapped` refusal, as the remedy card's items.
- *
- * ⚠️ Parsed back out of the sentence because the reason is all the movement
- * stores - `resolve-roles.ts` writes one `'role' (Label) …` clause per offending
- * role, and widening `MoneyTransaction` to carry the list is not worth a column.
- */
-function unmappedRoleItems(reason: string): CloseBlockerItem[] {
-  const items: CloseBlockerItem[] = []
-  for (const match of reason.matchAll(/'([a-z0-9_]+)'\s*(\([^)]*\))?([^']*)/g)) {
-    const role = match[1]
-    if (!role || items.some((item) => item.ref === role)) continue
-    items.push({
-      key: 'unmapped_role',
-      label: match[2] ? `${role} ${match[2]}` : role,
-      remedy: match[3]?.trim() || 'It is not mapped to any account.',
-      ref: role,
-    })
-  }
-  return items
-}
-
-/**
  * The movement frame's identity strip and its Retry, read by the host: one
  * `DrawerHeader` serves the whole stack (83 §2.4).
  */
-export function useMovementFrameHeader(
-  movementId: string | null,
-  { onOpenPosting }: { onOpenPosting: (glPostingId: string) => void }
-): FrameHeader {
+export function useMovementFrameHeader(movementId: string | null): FrameHeader {
   const utils = api.useUtils()
   const { data: detail } = api.ledger.getMovement.useQuery(
     { moneyTransactionId: movementId ?? '' },
     { enabled: !!movementId }
   )
-  const isBlocked = detail?.reason != null
+  const isBlocked = (detail?.workItems.length ?? 0) > 0
 
-  const retry = api.ledger.retryBlockedMovement.useMutation({
-    onSuccess: (result) => {
+  // Retry makes its rows due now; the recovery job posts it within a minute.
+  const retry = api.ledger.retryBlockedGroup.useMutation({
+    onSuccess: () => {
       void utils.ledger.listBlocked.invalidate()
-      void utils.ledger.listDrafts.invalidate()
-      void utils.ledger.listPostings.invalidate()
-      void utils.ledger.outboxCounts.invalidate()
-      if (result.status === 'accepted' || result.status === 'drafted') {
-        onOpenPosting(result.glPostingId)
-        return
-      }
-      toastError({ title: 'Still not posted', description: result.reason })
-      void utils.ledger.getBlockedMovement.invalidate()
+      void utils.ledger.listBlockedItems.invalidate()
       void utils.ledger.getMovement.invalidate()
     },
     onError: (error) => toastError({ title: 'Could not retry', description: error.message }),
@@ -135,7 +95,9 @@ export function useMovementFrameHeader(
           size='icon-xs'
           aria-label='Post this movement again'
           disabled={retry.isPending}
-          onClick={() => retry.mutate({ moneyTransactionId: detail.id })}>
+          onClick={() =>
+            retry.mutate({ source: { sourceKind: 'money_transaction', sourceId: detail.id } })
+          }>
           <RefreshCw className={retry.isPending ? 'animate-spin' : undefined} />
         </Button>
       </Tooltip>
@@ -162,7 +124,6 @@ export function MovementFrame({ movementId, bookTimeZone }: MovementFrameProps) 
 
   const detailQuery = api.ledger.getMovement.useQuery({ moneyTransactionId: movementId })
   const detail = detailQuery.data ?? null
-  const isBlocked = detail?.reason != null
 
   const postingsQuery = api.ledger.listPostingsForSource.useQuery({
     sourceKind: 'money_transaction',
@@ -215,43 +176,9 @@ export function MovementFrame({ movementId, bookTimeZone }: MovementFrameProps) 
             icon={<Coins className='size-4 text-muted-foreground' />}
             value={formatMinor(detail.amountMinor, detail.currency)}
           />
-          {isBlocked && (
-            <MetricCell
-              label='Refused'
-              icon={<Clock className='size-4 text-muted-foreground' />}
-              className='col-span-2'
-              value={
-                detail.blockedAt
-                  ? formatAuditTimestamp(detail.blockedAt.toISOString(), bookTimeZone)
-                  : '—'
-              }
-            />
-          )}
         </MetricGrid>
 
-        {detail.reason != null && (
-          <Section
-            title='Why it was refused'
-            icon={<CircleAlert className='size-4' />}
-            description='In the ledger’s own words. Retry once the cause is fixed.'
-            collapsible={false}>
-            {detail.reasonKind === 'account_unmapped' ? (
-              // The card's per-role row deep-links to that role under
-              // Settings > Accounts > Roles - that IS the Map action.
-              <EntryBlockers
-                blockers={[
-                  {
-                    status: 'account_unmapped',
-                    error: detail.reason,
-                    items: unmappedRoleItems(detail.reason),
-                  },
-                ]}
-              />
-            ) : (
-              <p className='text-sm'>{detail.reason}</p>
-            )}
-          </Section>
-        )}
+        <WorkItemsSection items={detail.workItems} bookTimeZone={bookTimeZone} />
 
         {postings.length > 0 && (
           <Section

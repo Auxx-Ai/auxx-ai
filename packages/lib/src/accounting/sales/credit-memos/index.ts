@@ -55,7 +55,6 @@ export {
   type ChannelMemoCandidateWindow,
   type ChannelMemoReadiness,
   listChannelMemoIssueCandidates,
-  markCreditMemoIssueBlock,
   readChannelMemoReadiness,
 } from './readiness'
 export {

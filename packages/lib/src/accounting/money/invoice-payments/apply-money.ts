@@ -4,34 +4,11 @@
  * Applying money a customer has already paid to an invoice
  * (plans/accounting/tasks/54-one-money-model.md unit 3).
  *
- * ```
- *   Dr customer_deposits        the applied amount
- *       Cr accounts_receivable    the same
- * ```
+ * Posts nothing: the receipt already credited A/R for the whole movement, so the
+ * application is a link that aging and the invoice balance read (91 §4.3).
  *
- * ## 🔑 The producer `deposit_application` has been waiting for
- *
- * `customer-money/deposit-application-accounting.ts` has been complete,
- * documented and tested since before this task — and idle, because the only
- * writer of `MoneyApplication` (`customer-money/ingest.ts`) applies money to
- * ORDERS and never to invoices, so its candidate query always returned nothing.
- * This is the missing writer. The accounting half is unchanged; this module
- * writes the row and hands off.
- *
- * ## ⚠️ HELD money only, and that is the whole distinction
- *
- * This applies money that arrived without a home — a prepayment, a deposit, an
- * overpayment — and is sitting in `customer_deposits`. It is NOT how a payment
- * taken against a specific invoice is recorded: that is
- * `record-payment.ts`, which posts `Dr cash / Cr accounts_receivable` in one
- * step because the money was never held.
- *
- * 🛑 The receipt is never amended. The prepayment was a liability on the day it
- * arrived and this is a second, later entry saying it stopped being one — the
- * same rule `payments/post-deposit-application.ts:15` states for the lane this
- * replaces.
- *
- * @see plans/accounting/tasks/54-one-money-model.md
+ * Held money only — money that arrived without a home. A payment taken against
+ * a specific invoice is `record-payment.ts`.
  */
 
 import { type Database, schema, type Transaction } from '@auxx/database'
@@ -39,7 +16,6 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { runMoneyCommand } from '../commands/run-money-command'
-import { acceptDepositApplicationAccounting } from '../customer-money/deposit-application-accounting'
 import { readMovement, sumAppliedToInvoice, sumAppliedToMovement } from '../reads'
 import { insertApplication } from '../writes'
 
@@ -126,14 +102,7 @@ async function readInvoiceOutstanding(
   return BigInt(fields.totalMinor) - settled
 }
 
-/**
- * Apply held money to one invoice, then post the reclass.
- *
- * The application is written and committed first; the journal is accepted
- * after, by the module that owns that contract. A ledger that is not set up
- * refuses the posting without also refusing to record that the customer's money
- * now sits against this invoice.
- */
+/** Apply held money to one invoice. */
 export async function applyMoneyToInvoice(
   db: Database,
   input: ApplyMoneyToInvoiceInput
@@ -143,7 +112,7 @@ export async function applyMoneyToInvoice(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveDate))
     throw new BadRequestError('An application needs a calendar date')
 
-  const applied = await runMoneyCommand(
+  return runMoneyCommand(
     db,
     {
       organizationId: input.organizationId,
@@ -184,14 +153,4 @@ export async function applyMoneyToInvoice(
       return { moneyApplicationId: application.id }
     }
   )
-
-  // The `deposit_application` producer, unchanged and finally fed. Never throws
-  // — it returns a `PostResult`, because an application must not fail because
-  // its bookkeeping did.
-  await acceptDepositApplicationAccounting(db, {
-    organizationId: input.organizationId,
-    moneyApplicationId: applied.moneyApplicationId,
-    actorUserId: input.userId,
-  })
-  return applied
 }

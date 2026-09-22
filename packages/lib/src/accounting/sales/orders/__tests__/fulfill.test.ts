@@ -47,7 +47,7 @@ const h = vi.hoisted(() => ({
   /** What the poster throws, when a test says the prepare refuses. */
   prepareError: null as Error | null,
   /** Every marker write after commit. */
-  marked: [] as Array<{ fulfillmentId: string; reason: string | null }>,
+  marked: [] as Array<{ fulfillmentId: string; refusal: Record<string, unknown> | null }>,
 }))
 
 vi.mock('../../fulfillments/accounting', async () => {
@@ -56,7 +56,7 @@ vi.mock('../../fulfillments/accounting', async () => {
   const prepared = () => {
     const contact = h.order.contactInstanceId as string | null
     return {
-      entry: { postingType: 'fulfillment', lines: [] },
+      entry: { postingType: 'fulfillment', txnDate: '2026-09-14', lines: [] },
       sources: [
         { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'subject' },
         { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
@@ -70,7 +70,6 @@ vi.mock('../../fulfillments/accounting', async () => {
     }
   }
   return {
-    PREVIEW_SHIPMENT_ID: 'preview',
     NothingToRecogniseError,
     readShipmentPostingWindow: async () => ({ zone: 'UTC', cutoff: null }),
     prepareFulfillmentEntry: async (
@@ -86,13 +85,13 @@ vi.mock('../../fulfillments/accounting', async () => {
       if (h.prepareError) throw h.prepareError
       return prepared()
     },
-    markFulfillmentPostingBlock: async (
+    parkFulfillment: async (
       _db: unknown,
       _org: string,
       fulfillmentId: string,
-      reason: string | null
+      refusal: Record<string, unknown> | null
     ) => {
-      h.marked.push({ fulfillmentId, reason })
+      h.marked.push({ fulfillmentId, refusal })
     },
   }
 })
@@ -532,9 +531,14 @@ describe('fulfillOrder', () => {
       expect(result._unsafeUnwrap().post.status).toBe('period_closed')
     })
 
-    it('marks the record after commit with the ledger words, so the sweep and the Blocked tab see it (88 §7.4)', async () => {
+    it('parks a coded work item after commit, so the sweep and the Blocked tab see it (91 §4.6)', async () => {
       await fulfillOrder(stubDb(), input)
-      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: 'Period locked' }])
+      expect(h.marked).toEqual([
+        {
+          fulfillmentId: 'ful_1',
+          refusal: { reasonCode: 'PERIOD_LOCKED', periodKey: '2026-09' },
+        },
+      ])
     })
 
     it('leaves no mark on a draft - a draft is not a refusal', async () => {
@@ -557,7 +561,12 @@ describe('fulfillOrder', () => {
         status: 'error',
         error: expect.stringContaining('earlier receipt mt_1 is a draft awaiting approval'),
       })
-      expect(h.marked).toEqual([{ fulfillmentId: 'ful_1', reason: h.prepareError.message }])
+      expect(h.marked).toEqual([
+        {
+          fulfillmentId: 'ful_1',
+          refusal: { reasonCode: 'REFUSED', detail: { message: h.prepareError.message } },
+        },
+      ])
       expect(h.relieved).toHaveLength(1)
     })
 

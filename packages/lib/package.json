@@ -250,6 +250,18 @@
       "import": "./dist/accounting/sales/client.mjs",
       "default": "./src/accounting/sales/client.ts"
     },
+    "./accounting/work-items": {
+      "types": "./src/accounting/work-items/index.ts",
+      "source": "./src/accounting/work-items/index.ts",
+      "import": "./dist/accounting/work-items/index.mjs",
+      "default": "./src/accounting/work-items/index.ts"
+    },
+    "./accounting/work-items/client": {
+      "types": "./src/accounting/work-items/client.ts",
+      "source": "./src/accounting/work-items/client.ts",
+      "import": "./dist/accounting/work-items/client.mjs",
+      "default": "./src/accounting/work-items/client.ts"
+    },
     "./actors": {
       "types": "./src/actors/index.ts",
       "source": "./src/actors/index.ts",

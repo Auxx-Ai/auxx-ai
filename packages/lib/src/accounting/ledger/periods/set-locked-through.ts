@@ -5,6 +5,7 @@ import { onCacheEvent } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
 import { SETTINGS_CATALOG } from '../../../settings/catalog'
 import { readOrganizationSettings } from '../../../settings/read'
+import { wakePeriodLocked } from '../../work-items/wake'
 import { withAccountingCommitLock } from '../post/accounting-commit-lock'
 import { PERIOD_LOCK_SETTING_KEY } from './period-lock'
 import { parsePeriodKey } from './periods'
@@ -66,6 +67,8 @@ export async function setLockedThrough(db: Database, input: SetLockedThroughInpu
       },
       tx
     )
+    // Rows whose month the lock no longer covers are due now.
+    await wakePeriodLocked(tx, input.organizationId, { lockedThrough: input.periodKey })
   })
   await onCacheEvent('org.settings.changed', {
     orgId: input.organizationId,
