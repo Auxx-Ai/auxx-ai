@@ -23,9 +23,10 @@ import { getCachedResourceFields } from '../cache'
 import type { ConditionDiagnostic } from '../conditions/evaluate'
 import type { ConditionGroup } from '../conditions/types'
 import { type ResourceField, resolveFieldRef } from '../resources'
+import { replaceChildSets } from './child-sets'
 import { ConnectorRateLimitError, type ConnectorRecord } from './connectors/types'
 import type { MappedWrite } from './map-record'
-import { mapRecord } from './map-record'
+import { mapRecord, mapRecordTree } from './map-record'
 import { archiveExternalId } from './reconciliation'
 import {
   SystemicSyncFailureError,
@@ -264,7 +265,7 @@ async function sinkOneSourceRecord(
     return
   }
 
-  const writes = mapRecord(mappings, source, updatedAtPath)
+  const { writes, childSets } = mapRecordTree(mappings, source, updatedAtPath)
 
   // Index projected writes by (mapping, instance) so a child attaches its edge to
   // the exact parent instance's pendingRelations before that parent is sunk.
@@ -313,4 +314,5 @@ async function sinkOneSourceRecord(
     if (!w.projected) continue
     await entitySink.upsertRecord(ctx, w.mapping, w.projected)
   }
+  if (childSets.length > 0) await replaceChildSets(ctx, childSets)
 }

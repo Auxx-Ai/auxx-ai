@@ -305,6 +305,9 @@ interface ConnectorMappingBase {
    * ⚠️ Only consulted for a `syncMode: 'snapshot'` stream, where the fetch saw
    * everything and absence therefore means deletion. On an `incremental` stream
    * absence means "unchanged", so this is ignored there no matter what it says.
+   * Exception: on a child array mapping (`rootPath: 'tax_lines[]'`) it also applies,
+   * on every sync, to children missing from their parent's array, so declare it there
+   * only when the payload always carries the complete, unpaged array.
    *
    * - `'mark_deleted'` flags the record as gone upstream and leaves it LIVE for a
    *   person to act on. Declare this when the record has a life of its own beyond

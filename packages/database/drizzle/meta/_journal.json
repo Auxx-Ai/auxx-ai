@@ -2710,6 +2710,13 @@
       "when": 1790007383386,
       "tag": "0386_accounting_77_pending_link",
       "breakpoints": true
+    },
+    {
+      "idx": 387,
+      "version": "7",
+      "when": 1790035412788,
+      "tag": "0387_data_connector_item_parent_external_id",
+      "breakpoints": true
     }
   ]
 }
