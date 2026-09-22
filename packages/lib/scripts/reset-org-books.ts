@@ -2,12 +2,13 @@
 //
 // 🛑 DEV-ONLY. Returns one organization's TRANSACTIONAL state to zero so the
 // whole money + inventory flow can be driven again from scratch: the ledger,
-// every accounting document, orders, builds, movements, purchasing, the sales
-// pipeline, record numbering, connector bindings and the QuickBooks map.
+// every accounting document, the money model and its source evidence, orders,
+// builds, movements, purchasing, the sales pipeline, record numbering, connector
+// bindings, and the QuickBooks map plus every QuickBooks id held on kept records.
 //
-//   npx dotenv -- node --conditions source --import tsx/esm \
+//   npx dotenv -- node --conditions=source --import tsx/esm \
 //     packages/lib/scripts/reset-org-books.ts DemoOrg1
-//   npx dotenv -- node --conditions source --import tsx/esm \
+//   npx dotenv -- node --conditions=source --import tsx/esm \
 //     packages/lib/scripts/reset-org-books.ts DemoOrg1 --confirm
 //
 // `<org>` is an organization id, or a name to match (`DemoOrg1`).
@@ -17,8 +18,13 @@
 //
 // Parts, subparts, vendor parts, tariff codes and rates, the catalog, products,
 // contacts, companies, tickets, inboxes, the chart of accounts and its
-// `GlRoleAssignment` rows, bank accounts and bank rules. The reset is about
-// the transactions, not the master data the transactions refer to.
+// `GlRoleAssignment` rows, bank accounts, bank rules and `FinancialSourceAccount`
+// (the store scope). The reset is about the transactions, not the master data
+// the transactions refer to.
+//
+// The money model and the source-evidence lane go WITH the documents: evidence is
+// keyed on the connector's external ids, so a surviving observation makes the
+// re-sync see an unchanged hash and never re-resolve the order it points at.
 //
 // 🛑 That makes ONE fact load-bearing: `part` is matched on **SKU**
 // (`identityRole: { kind: 'match', exclusive: true }`) and `contact` on email +
@@ -45,11 +51,12 @@
 //    RESTRICT, so a reversal has to go before the row it reverses. A reversal
 //    always claims a revision above its original, so ordering the whole set by
 //    revision descending is sufficient. `GlPostingLine` cascades.
-// 2. **The Drizzle side tables before the instances they point at.**
-//    `PaymentAllocation.invoiceInstanceId` and four `PaymentTransaction`
-//    columns are ON DELETE RESTRICT against `EntityInstance`. They do not
-//    cascade and they are not registry relationships, so nothing else clears
-//    them and the invoice delete simply fails partway.
+// 2. **The Drizzle side tables before the instances they point at.** The money
+//    and evidence tables carry NO ACTION composite FKs into `EntityInstance`
+//    (orders, invoices, credit memos) and into each other, and `MoneyTransfer` /
+//    `ProcessorBalanceEntry` share their id with the `payout` /
+//    `processor_balance_entry` instance. Nothing cascades them, so the instance
+//    delete fails partway. `MONEY_TABLES` spells out their order.
 // 3. **Instances deepest-first.** Children before parents, so a sweep never
 //    runs against a parent that is already gone.
 // 4. **`DataConnectorItem` explicitly.** Its two instance pointers are ON
@@ -75,9 +82,11 @@
 // number the deleted ledger produced. Since EVERY movement goes, the answer is
 // known without a re-SUM: zero, and `out_of_stock` by `deriveStockStatus`.
 
+import { inspect } from 'node:util'
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { listChartAccounts } from '../src/accounting/ledger'
+import { setLockedThrough } from '../src/accounting/ledger/periods/set-locked-through'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
@@ -105,7 +114,7 @@ if (!ORG_ARG) {
       '                            sync: the binding outlives the record with a NULL\n' +
       '                            instance and its contentHash still matches, so the\n' +
       '                            record is counted skipped and never re-created.\n' +
-      '    --keep-quickbooks       do not clear the QuickBooks account map.\n' +
+      '    --keep-quickbooks       do not clear the QuickBooks account map or held ids.\n' +
       '    --force                 past the providerEntryId and part-SKU guards.\n' +
       '    --confirm               actually write. Without it this is a dry run.\n'
   )
@@ -121,12 +130,30 @@ if (!ORG_ARG) {
  * sweep clears both ends, so the whole type goes in one wave.
  */
 const DELETE_WAVES: readonly (readonly string[])[] = [
-  // Order children, and the credit-memo closure that hangs off them.
-  ['line_item', 'tax_line', 'credit_memo_application', 'credit_memo_line', 'credit_memo'],
+  // Order children, the credit-memo closure, and the leaf children of wave-4 documents.
+  // `deleteEntityInstances` does not cascade owned children, so each is listed.
+  [
+    'line_item',
+    'tax_line',
+    'credit_memo_application',
+    'credit_memo_line',
+    'credit_memo',
+    'customer_transaction',
+    'processor_balance_entry',
+    'journal_entry_line',
+    'fulfillment_line',
+    'parcel',
+    'return_part_line',
+    'vendor_credit_line',
+    'vendor_credit_application',
+  ],
+  // The shipment and return families, children first; all hang off the order.
+  ['fulfillment', 'shipment', 'return_line'],
+  ['return'],
   // The inventory ledger, then what wrote it.
   ['stock_movement', 'build'],
   // Purchasing: lines before documents.
-  ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill'],
+  ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill', 'vendor_credit'],
   // The accounting documents.
   ['payment', 'invoice', 'bank_deposit', 'bank_transaction', 'payout', 'journal_entry'],
   // The sales pipeline.
@@ -137,6 +164,13 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
 
 /** Every type this script removes, flattened — used for counts and numbering. */
 const CLEARED_TYPES = DELETE_WAVES.flat()
+
+/** A 121k-id `inArray` overflows the SQL builder's stack; chunk any whole-org id list. */
+function* chunked<T>(items: readonly T[], size = 5000): Generator<T[]> {
+  for (let offset = 0; offset < items.length; offset += size) {
+    yield items.slice(offset, offset + size)
+  }
+}
 
 /**
  * Every `RecordSequence.scope` this script puts back to 0.
@@ -178,6 +212,38 @@ const SIDE_TABLES = [
 ] as const
 
 /**
+ * The money model, the evidence lane, the mirror and parked work, in delete order.
+ *
+ * Every FK among these is NO ACTION, so each table goes before what it points at.
+ * `FinancialSourceAccount` is kept; nothing on it records sync progress.
+ */
+const MONEY_TABLES = [
+  // → FinancialSourceObject, MoneyTransaction, MoneyCommand.
+  { name: 'MoneySourceLink', table: schema.MoneySourceLink },
+  // → FinancialSourceObject/Observation, MoneyTransaction, the order instance.
+  { name: 'FinancialSourceAcceptance', table: schema.FinancialSourceAcceptance },
+  // → MoneyTransaction, MoneyCommand, credit memo / vendor credit instances.
+  { name: 'MoneyRefundSettlement', table: schema.MoneyRefundSettlement },
+  // → MoneyTransaction, MoneyCommand, order / invoice / vendor bill instances. Its
+  // self-FK (`reversesApplicationId`) is NO ACTION, so one statement clears both ends.
+  { name: 'MoneyApplication', table: schema.MoneyApplication },
+  // → MoneyCommand.
+  { name: 'MoneyTransaction', table: schema.MoneyTransaction },
+  { name: 'MoneyCommand', table: schema.MoneyCommand },
+  // id → the payout / processor_balance_entry instance; → FinancialSourceObject/Observation.
+  { name: 'MoneyTransfer', table: schema.MoneyTransfer },
+  { name: 'ProcessorBalanceEntry', table: schema.ProcessorBalanceEntry },
+  // → FinancialSourceObject.
+  { name: 'FinancialSourceObservation', table: schema.FinancialSourceObservation },
+  { name: 'FinancialSourceObject', table: schema.FinancialSourceObject },
+  { name: 'FinancialSourceCoverage', table: schema.FinancialSourceCoverage },
+  // No FKs in; the mirror's lines cascade.
+  { name: 'ProviderLedgerEntry', table: schema.ProviderLedgerEntry },
+  // A parked item would otherwise keep its source from being re-offered.
+  { name: 'AccountingWorkItem', table: schema.AccountingWorkItem },
+] as const
+
+/**
  * Every key the accounting wizard, the close, the inbound sync and the
  * auto-build switch write, returned to its catalog default.
  *
@@ -215,7 +281,9 @@ const SETTING_RESETS = [
   { key: 'accounting.qboOpeningFinishedGoods' as const, value: null },
   { key: 'accounting.qboOpeningJournalRef' as const, value: null },
   { key: 'accounting.providerSyncedThrough' as const, value: null },
-  { key: 'ledger.lockedThroughMonth' as const, value: null },
+  // The inbound mirror's walk position; the mirror rows are wiped above.
+  { key: 'providerSync.state' as const, value: null },
+  // `ledger.lockedThroughMonth` is guarded: only `setLockedThrough` may write it (below).
   { key: 'inventory.autoBuildFromOrders' as const, value: false },
   { key: 'inventory.autoBuildEnabledAt' as const, value: null },
   { key: 'inventory.autoBuildStockRule' as const, value: 'out_of_stock_only' },
@@ -292,6 +360,23 @@ async function resolveQuickbooksConnection(
   if (!connectionId) return null
 
   return { installationId, connectionId }
+}
+
+/** `FieldValue ⋈ CustomField` rows holding a QuickBooks id for this connection. */
+function qboIdCellFilter(organizationId: string, connectionId: string) {
+  return and(
+    eq(schema.FieldValue.organizationId, organizationId),
+    eq(schema.CustomField.connectionId, connectionId),
+    eq(schema.CustomField.isIdentity, true)
+  )
+}
+
+/** Stores holding a QuickBooks summary-mode placeholder customer. */
+function qboPlaceholderFilter(organizationId: string) {
+  return and(
+    eq(schema.FinancialSourceAccount.organizationId, organizationId),
+    sql`jsonb_exists(${schema.FinancialSourceAccount.providerCustomerRef}, ${QUICKBOOKS_APP_SLUG}::text)`
+  )
 }
 
 /** Instance ids per entity type, for the types this script clears. */
@@ -498,10 +583,10 @@ async function main() {
 
   // ── 2. The Drizzle side tables ────────────────────────────────────────────
 
-  heading('2. Drizzle side tables (RESTRICT foreign keys go first)')
+  heading('2. Side tables, money model and evidence (FKs into records first)')
 
   const sideCounts: { name: string; n: number }[] = []
-  for (const { name, table } of SIDE_TABLES) {
+  for (const { name, table } of [...SIDE_TABLES, ...MONEY_TABLES]) {
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(table)
@@ -511,6 +596,8 @@ async function main() {
   for (const { name, n } of sideCounts) {
     console.log(`  ${name.padEnd(30)} ${String(n).padStart(5)}`)
   }
+  const moneyNames = new Set<string>(MONEY_TABLES.map((t) => t.name))
+  const moneyTotal = sideCounts.filter((c) => moneyNames.has(c.name)).reduce((a, c) => a + c.n, 0)
 
   // ── 3. The instances ──────────────────────────────────────────────────────
 
@@ -531,18 +618,20 @@ async function main() {
   console.log('  relation, TimelineEvent and RecordIdentity go with them.')
 
   const allIds = [...idsByType.values()].flat()
-  const [ruleRuns] = allIds.length
-    ? await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(schema.RecordRuleRun)
-        .where(
-          and(
-            eq(schema.RecordRuleRun.organizationId, org.id),
-            inArray(schema.RecordRuleRun.entityInstanceId, allIds)
-          )
+  let ruleRuns = 0
+  for (const chunk of chunked(allIds)) {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.RecordRuleRun)
+      .where(
+        and(
+          eq(schema.RecordRuleRun.organizationId, org.id),
+          inArray(schema.RecordRuleRun.entityInstanceId, chunk)
         )
-    : [{ n: 0 }]
-  console.log(`  RecordRuleRun ${ruleRuns?.n ?? 0} (no foreign key — cleared explicitly)`)
+      )
+    ruleRuns += row?.n ?? 0
+  }
+  console.log(`  RecordRuleRun ${ruleRuns} (no foreign key — cleared explicitly)`)
 
   // ── 4. Connector bindings ─────────────────────────────────────────────────
 
@@ -632,6 +721,9 @@ async function main() {
   let mappings: { glAccountId: string; code: string; name: string; providerAccountId: string }[] =
     []
   let connection: { installationId: string; connectionId: string } | null = null
+  let qboIdentityRows = 0
+  let qboIdCells = 0
+  let qboPlaceholders = 0
 
   if (KEEP_QUICKBOOKS) {
     console.log('--keep-quickbooks: skipped.')
@@ -660,6 +752,44 @@ async function main() {
           console.log(`  ${m.code.padEnd(6)} ${m.name.padEnd(34)} -> ${m.providerAccountId}`)
         }
       }
+
+      const identities = await db
+        .select({
+          entityType: schema.EntityDefinition.entityType,
+          n: sql<number>`count(*)::int`,
+        })
+        .from(schema.RecordIdentity)
+        .innerJoin(
+          schema.EntityDefinition,
+          eq(schema.EntityDefinition.id, schema.RecordIdentity.entityDefinitionId)
+        )
+        .where(
+          and(
+            eq(schema.RecordIdentity.organizationId, org.id),
+            eq(schema.RecordIdentity.connectionId, connection.connectionId)
+          )
+        )
+        .groupBy(schema.EntityDefinition.entityType)
+      const [cells] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.FieldValue)
+        .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+        .where(qboIdCellFilter(org.id, connection.connectionId))
+      const [placeholders] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(schema.FinancialSourceAccount)
+        .where(qboPlaceholderFilter(org.id))
+      qboIdCells = cells?.n ?? 0
+      qboPlaceholders = placeholders?.n ?? 0
+
+      console.log('\nQuickBooks ids held on kept records (the cell is authoritative, the')
+      console.log('RecordIdentity row is its fallback, so both go):')
+      for (const row of identities) {
+        qboIdentityRows += row.n
+        console.log(`  RecordIdentity ${(row.entityType ?? '?').padEnd(20)} ${row.n}`)
+      }
+      console.log(`  id cells (FieldValue)               ${qboIdCells}`)
+      console.log(`  store placeholder customers         ${qboPlaceholders}`)
     }
   }
 
@@ -715,15 +845,31 @@ async function main() {
   }
   console.log(`cleared ${SIDE_TABLES.length} side table(s)`)
 
-  if (allIds.length > 0) {
+  // One transaction: a half-cleared money model is the state this step exists to prevent.
+  await db.transaction(async (tx) => {
+    for (const { table } of MONEY_TABLES) {
+      await tx.delete(table).where(eq(table.organizationId, org.id))
+    }
+  })
+  console.log(`cleared ${MONEY_TABLES.length} money, evidence and mirror table(s)`)
+
+  for (const chunk of chunked(allIds)) {
     await db
       .delete(schema.RecordRuleRun)
       .where(
         and(
           eq(schema.RecordRuleRun.organizationId, org.id),
-          inArray(schema.RecordRuleRun.entityInstanceId, allIds)
+          inArray(schema.RecordRuleRun.entityInstanceId, chunk)
         )
       )
+  }
+
+  // Before the waves: `DataConnectorItem.mintedInstanceId` is an unindexed SET NULL FK, so
+  // every instance delete would otherwise scan the whole binding table and time out.
+  if (!KEEP_CONNECTOR_ITEMS) {
+    await db
+      .delete(schema.DataConnectorItem)
+      .where(eq(schema.DataConnectorItem.organizationId, org.id))
   }
 
   for (const [index, wave] of DELETE_WAVES.entries()) {
@@ -733,7 +879,13 @@ async function main() {
       if (ids.length === 0) continue
       const result = await deleteEntityInstances({ ids, organizationId: org.id })
       if (result.isErr()) {
+        // The Postgres message sits at the bottom of the cause chain; the middle is the query text.
+        let root: { cause?: unknown } = result.error
+        while (root.cause && typeof root.cause === 'object')
+          root = root.cause as { cause?: unknown }
+        const { message, code, detail, constraint, table } = root as Record<string, unknown>
         console.error(`\n🛑 wave ${index + 1} failed on ${type}: ${result.error.message}`)
+        console.error(inspect({ message, code, detail, constraint, table }, { breakLength: 120 }))
         process.exit(1)
       }
       waveCount += result.value.count
@@ -742,10 +894,6 @@ async function main() {
   }
 
   if (!KEEP_CONNECTOR_ITEMS) {
-    await db
-      .delete(schema.DataConnectorItem)
-      .where(eq(schema.DataConnectorItem.organizationId, org.id))
-
     const startedAtIso = new Date().toISOString()
     for (const stream of streams) {
       await db
@@ -801,6 +949,44 @@ async function main() {
       })
     }
     console.log(`cleared ${mappings.length} QuickBooks account mapping(s)`)
+
+    // The next send re-creates customers, vendors and items instead of naming dead ids.
+    const idFields = db
+      .select({ id: schema.CustomField.id })
+      .from(schema.CustomField)
+      .where(
+        and(
+          eq(schema.CustomField.organizationId, org.id),
+          eq(schema.CustomField.connectionId, connection.connectionId),
+          eq(schema.CustomField.isIdentity, true)
+        )
+      )
+    await db
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, org.id),
+          inArray(schema.FieldValue.fieldId, idFields)
+        )
+      )
+    await db
+      .delete(schema.RecordIdentity)
+      .where(
+        and(
+          eq(schema.RecordIdentity.organizationId, org.id),
+          eq(schema.RecordIdentity.connectionId, connection.connectionId)
+        )
+      )
+    await db
+      .update(schema.FinancialSourceAccount)
+      .set({
+        providerCustomerRef: sql`${schema.FinancialSourceAccount.providerCustomerRef} - ${QUICKBOOKS_APP_SLUG}::text`,
+      })
+      .where(qboPlaceholderFilter(org.id))
+    console.log(
+      `cleared ${qboIdCells} QuickBooks id cell(s), ${qboIdentityRows} RecordIdentity row(s), ` +
+        `${qboPlaceholders} placeholder customer(s)`
+    )
   }
 
   await db
@@ -814,6 +1000,7 @@ async function main() {
     )
   console.log(`reset ${sequences.length} record counter(s) to 0`)
 
+  await setLockedThrough(db, { organizationId: org.id, periodKey: null, actorUserId: 'system' })
   await batchUpdateOrganizationSettings({ organizationId: org.id, settings: SETTING_RESETS })
   // 🛑 The ROUTER's job when a human does this, not this function's.
   // `batchUpdateOrganizationSettings` does not bust the `orgSettings` cache, and
@@ -830,7 +1017,7 @@ async function main() {
   console.log(
     `\ndone.\n\n` +
       `  ${postings.length} ledger posting(s), ${instanceTotal} record(s), ` +
-      `${connectorItems} connector binding(s)\n` +
+      `${moneyTotal} money/evidence row(s), ${connectorItems} connector binding(s)\n` +
       `  ${mappings.length} account mapping(s), ${sequences.length} counter(s), ` +
       `${SETTING_RESETS.length} setting(s)\n\n` +
       'Next:\n' +

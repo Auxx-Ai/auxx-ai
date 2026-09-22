@@ -145,6 +145,12 @@ export const Message = pgTable(
       )
       .where(sql`("machineMailTier" IS NOT NULL)`),
     index('Message_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    // SET NULL FKs; a record or storage-location delete scans the table without them.
+    index('Message_signatureId_idx').using('btree', table.signatureId.asc().nullsLast()),
+    index('Message_htmlBodyStorageLocationId_idx').using(
+      'btree',
+      table.htmlBodyStorageLocationId.asc().nullsLast()
+    ),
     // The mining group-by (suggestions plan §1.1). Partial — most mail has no list-id.
     index('Message_organizationId_listId_idx')
       .using('btree', table.organizationId.asc().nullsLast(), table.listId.asc().nullsLast())

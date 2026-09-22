@@ -147,6 +147,12 @@ export const Thread = pgTable(
       table.createdAt.asc().nullsLast()
     ),
     index('Thread_organizationId_idx').using('btree', table.organizationId.asc().nullsLast()),
+    // SET NULL FKs; a record or message delete scans the table without them.
+    index('Thread_primaryEntityInstanceId_idx').using(
+      'btree',
+      table.primaryEntityInstanceId.asc().nullsLast()
+    ),
+    index('Thread_latestMessageId_idx').using('btree', table.latestMessageId.asc().nullsLast()),
     index('Thread_organizationId_status_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
