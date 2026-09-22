@@ -16,25 +16,32 @@ interface AppLayoutProps {
  * Wraps in AppsProvider to load and manage all extensions,
  * then wraps in client component that checks subscription and shows Dashboard or SubscriptionEnded.
  */
+/** The `${key}` open cookie and its `${key}_width` companion, as written by `SidebarProvider`. */
+function readSidebarCookies(store: Awaited<ReturnType<typeof cookies>>, key: string) {
+  const openCookie = store.get(key)?.value
+  const width = Number.parseInt(store.get(`${key}_width`)?.value ?? '', 10)
+  return {
+    open: openCookie ? openCookie !== 'false' : undefined,
+    width: Number.isFinite(width) ? width : undefined,
+  }
+}
+
 export default async function AppLayout({ children }: AppLayoutProps) {
   const session = await getSession()
 
   // Read the persisted sidebar open/width cookies here so the shell renders at the right
-  // size on first paint (no open-flash, no width-flash). Cookie names mirror the provider's
-  // `persistKey` ('sidebar_state') + its `_width` companion.
+  // size on first paint (no open-flash, no width-flash). Names mirror each provider's `persistKey`.
   const cookieStore = await cookies()
-  const sidebarStateCookie = cookieStore.get('sidebar_state')?.value
-  const sidebarWidthCookie = cookieStore.get('sidebar_state_width')?.value
-  const defaultSidebarOpen = sidebarStateCookie ? sidebarStateCookie !== 'false' : undefined
-  const parsedWidth = sidebarWidthCookie ? Number.parseInt(sidebarWidthCookie, 10) : Number.NaN
-  const defaultSidebarWidth = Number.isFinite(parsedWidth) ? parsedWidth : undefined
+  const sidebar = readSidebarCookies(cookieStore, 'sidebar_state')
+  const secondarySidebar = readSidebarCookies(cookieStore, 'secondary_sidebar')
 
   return (
     <AppsProvider>
       <AppLayoutWrapper
         user={session?.user}
-        defaultSidebarOpen={defaultSidebarOpen}
-        defaultSidebarWidth={defaultSidebarWidth}>
+        defaultSidebarOpen={sidebar.open}
+        defaultSidebarWidth={sidebar.width}
+        defaultSecondarySidebar={secondarySidebar}>
         {children}
       </AppLayoutWrapper>
 

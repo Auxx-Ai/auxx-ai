@@ -5,6 +5,7 @@
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { Calculator, Globe, SlidersHorizontal } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { SecondarySidebarProvider } from '~/components/global/secondary-sidebar-provider'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
@@ -76,7 +77,7 @@ export default function PartsSettingsLayout({ children }: { children: React.Reac
     <MainPageContent>
       {/* `md:` must match SidebarSecondary's own breakpoint — at `sm:` the sidebar is
           still in mobile-disclosure mode with no fixed width and collapses to a sliver. */}
-      <div className='flex flex-col md:flex-row h-full flex-1 overflow-hidden'>
+      <SecondarySidebarProvider className='flex-1 flex-col overflow-hidden md:flex-row'>
         <SidebarSecondary
           items={PARTS_SETTINGS}
           baseUrl='/app/parts/settings'
@@ -84,7 +85,7 @@ export default function PartsSettingsLayout({ children }: { children: React.Reac
           title='Settings'
         />
         <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
-      </div>
+      </SecondarySidebarProvider>
     </MainPageContent>
   )
 }

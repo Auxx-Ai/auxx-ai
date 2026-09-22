@@ -9,7 +9,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarResizeHandle,
   sidebarMenuButtonVariants,
+  useSidebar,
 } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown } from 'lucide-react'
@@ -61,6 +63,8 @@ function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch, lin
     [linkQuery]
   )
   const router = useRouter()
+  const { state, isResizing } = useSidebar()
+  const collapsed = state === 'collapsed'
   const groups = useSettingsMenu(items)
   const [query, setQuery] = useState('')
   // Mobile-only disclosure. Desktop ignores it via `md:` classes rather than a JS
@@ -113,74 +117,87 @@ function SidebarSecondary({ items, baseUrl, title, current, autoFocusSearch, lin
     [query]
   )
 
+  // Must render inside a `SecondarySidebarProvider`. Width and collapse are desktop-only;
+  // the inner column keeps full width so content doesn't reflow while the outer animates to 0.
   return (
-    <div className='flex flex-col md:h-full md:w-[16rem] md:shrink-0 md:border-r bg-neutral-50 dark:bg-sidebar text-sidebar-foreground'>
-      {/* Mobile disclosure toggle */}
-      <div className='sticky top-0 z-10 border-b border-neutral-200 dark:border-primary-200 bg-neutral-50 dark:bg-sidebar p-2 md:hidden'>
-        <Button
-          variant='ghost'
-          className='w-full justify-between h-6 px-3'
-          aria-expanded={isOpen}
-          onClick={() => setIsOpen((open) => !open)}>
-          <span className='font-medium'>{title}</span>
-          <ChevronDown className={cn('transition-transform', isOpen && 'rotate-180')} />
-        </Button>
-      </div>
-
-      <Command
-        shouldFilter={false}
-        label={title}
+    <div className='relative flex flex-col md:h-full md:shrink-0 bg-neutral-50 dark:bg-sidebar text-sidebar-foreground'>
+      <div
         className={cn(
-          // `h-auto` cancels the Command base's `h-full`, which would fight `flex-1`.
-          'flex h-auto min-h-0 flex-1 flex-col overflow-hidden rounded-none bg-transparent',
-          'transition-[max-height] duration-300 ease-in-out',
-          // Desktop: always expanded. Mobile: driven by `isOpen`. `svh` so the
-          // software keyboard doesn't bury the results.
-          'md:max-h-none',
-          isOpen ? 'max-h-[60svh]' : 'max-h-0'
+          'flex min-h-0 flex-1 flex-col md:w-(--sidebar-width) md:overflow-hidden md:border-r',
+          'md:transition-[width] md:duration-200 md:ease-linear',
+          collapsed && 'md:w-0 md:border-r-0',
+          isResizing && 'md:transition-none'
         )}>
-        {searchable && (
-          <div className='shrink-0 p-2 pb-1'>
-            <InputSearch
-              ref={inputRef}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onClear={() => setQuery('')}
-              onKeyDown={handleKeyDown}
-              placeholder={`Search ${title.toLowerCase()}...`}
-              role='combobox'
-              aria-expanded={isSearching}
-              aria-label={`Search ${title.toLowerCase()}`}
-            />
+        <div className='flex min-h-0 flex-1 flex-col md:w-(--sidebar-width)'>
+          {/* Mobile disclosure toggle */}
+          <div className='sticky top-0 z-10 border-b border-neutral-200 dark:border-primary-200 bg-neutral-50 dark:bg-sidebar p-2 md:hidden'>
+            <Button
+              variant='ghost'
+              className='w-full justify-between h-6 px-3'
+              aria-expanded={isOpen}
+              onClick={() => setIsOpen((open) => !open)}>
+              <span className='font-medium'>{title}</span>
+              <ChevronDown className={cn('transition-transform', isOpen && 'rotate-180')} />
+            </Button>
           </div>
-        )}
 
-        {isSearching ? (
-          <SearchResults
-            results={results}
-            query={query}
-            onNavigate={handleNavigate}
-            onItemClick={closeMobilePanel}
-            withQuery={withQuery}
-          />
-        ) : (
-          <ScrollArea
-            className='relative min-h-0 flex-1'
-            scrollbarClassName='w-1'
-            fadeClassName='before:bg-gradient-to-b before:from-black/10 after:bg-gradient-to-t after:from-black/10'>
-            {groups.map((group) => (
-              <SidebarNavGroup
-                key={group.id}
-                group={group}
-                baseUrl={baseUrl}
-                current={current}
+          <Command
+            shouldFilter={false}
+            label={title}
+            className={cn(
+              // `h-auto` cancels the Command base's `h-full`, which would fight `flex-1`.
+              'flex h-auto min-h-0 flex-1 flex-col overflow-hidden rounded-none bg-transparent',
+              'transition-[max-height] duration-300 ease-in-out',
+              // Desktop: always expanded. Mobile: driven by `isOpen`. `svh` so the
+              // software keyboard doesn't bury the results.
+              'md:max-h-none',
+              isOpen ? 'max-h-[60svh]' : 'max-h-0'
+            )}>
+            {searchable && (
+              <div className='shrink-0 p-2 pb-1'>
+                <InputSearch
+                  ref={inputRef}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onClear={() => setQuery('')}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Search ${title.toLowerCase()}...`}
+                  role='combobox'
+                  aria-expanded={isSearching}
+                  aria-label={`Search ${title.toLowerCase()}`}
+                />
+              </div>
+            )}
+
+            {isSearching ? (
+              <SearchResults
+                results={results}
+                query={query}
+                onNavigate={handleNavigate}
                 onItemClick={closeMobilePanel}
                 withQuery={withQuery}
               />
-            ))}
-          </ScrollArea>
-        )}
-      </Command>
+            ) : (
+              <ScrollArea
+                className='relative min-h-0 flex-1'
+                scrollbarClassName='w-1'
+                fadeClassName='before:bg-gradient-to-b before:from-black/10 after:bg-gradient-to-t after:from-black/10'>
+                {groups.map((group) => (
+                  <SidebarNavGroup
+                    key={group.id}
+                    group={group}
+                    baseUrl={baseUrl}
+                    current={current}
+                    onItemClick={closeMobilePanel}
+                    withQuery={withQuery}
+                  />
+                ))}
+              </ScrollArea>
+            )}
+          </Command>
+        </div>
+      </div>
+      {!collapsed && <SidebarResizeHandle side='left' className='hidden md:flex' />}
     </div>
   )
 }

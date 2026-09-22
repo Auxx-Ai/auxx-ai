@@ -14,6 +14,10 @@ import { cn } from '@auxx/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
+import {
+  SecondarySidebarTrigger,
+  useSecondarySidebarCollapsed,
+} from '~/components/global/secondary-sidebar-provider'
 
 interface IBradcrumbItem {
   title: string
@@ -75,6 +79,8 @@ export default function SettingsPage({
 }: Props) {
   const headerRow = HEADER_ROW_AT[buttonBreakpoint]
   breadcrumbs = breadcrumbs || []
+  // Without breadcrumbs the bar is skipped, except when it holds the only way to reopen the sidebar.
+  const sidebarCollapsed = useSecondarySidebarCollapsed()
 
   // Track scroll state for shadow effect
   const [isScrolled, setIsScrolled] = useState(false)
@@ -156,9 +162,10 @@ export default function SettingsPage({
       noFade
       className='h-full w-full'
       scrollbarClassName='z-21'>
-      {breadcrumbs.length > 0 && (
+      {(breadcrumbs.length > 0 || sidebarCollapsed) && (
         <header className='w-full flex-none border-b overflow-hidden'>
           <div className='flex items-center gap-2 px-3 py-1.5 no-scrollbar overflow-x-auto'>
+            <SecondarySidebarTrigger className='-ms-1.5 shrink-0' />
             <BreadcrumbList className='gap-1 sm:gap-1 flex-nowrap'>
               {breadcrumbs?.map((breadcrumb, i) => (
                 <React.Fragment key={i}>

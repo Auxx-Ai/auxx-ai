@@ -30,7 +30,6 @@ import {
 } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { AccountingToolbarOutletProvider } from '~/components/accounting/accounting-toolbar-outlet'
-import { useAccountingSidebarStore } from '~/components/accounting/stores/accounting-sidebar-store'
 import { AccountingToolbar } from '~/components/accounting/ui/accounting-toolbar'
 import { AccountingSetupWizardGate } from '~/components/accounting/ui/setup-wizard/setup-wizard-gate'
 import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
@@ -38,6 +37,7 @@ import {
   DockedPanelsOutletProvider,
   useDockedPanelsOutlet,
 } from '~/components/global/docked-panels-outlet'
+import { SecondarySidebarProvider } from '~/components/global/secondary-sidebar-provider'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -250,7 +250,6 @@ function AccountingLayoutHeader() {
 function AccountingShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const dockedPanels = useDockedPanelsOutlet()
-  const railOpen = useAccountingSidebarStore((store) => store.open)
   // The whole query string, not just `?month=`: the reports share a `?from=`/
   // `?to=` window that a bare link would reset, and a param the next route does
   // not read is inert there (the argument the deleted `reports/layout.tsx` made).
@@ -261,21 +260,19 @@ function AccountingShell({ children }: { children: React.ReactNode }) {
     <MainPageContent dockedPanels={dockedPanels}>
       {/* `md:` must match `SidebarSecondary`'s own breakpoint — at `sm:` the rail
           is still in mobile-disclosure mode and collapses to a sliver. */}
-      <div className='flex h-full flex-1 flex-col overflow-hidden md:flex-row'>
-        {railOpen && (
-          <SidebarSecondary
-            items={ACCOUNTING_NAV}
-            baseUrl={BASE_URL}
-            current={current}
-            title='Accounting'
-            linkQuery={linkQuery}
-          />
-        )}
+      <SecondarySidebarProvider className='flex-1 flex-col overflow-hidden md:flex-row'>
+        <SidebarSecondary
+          items={ACCOUNTING_NAV}
+          baseUrl={BASE_URL}
+          current={current}
+          title='Accounting'
+          linkQuery={linkQuery}
+        />
         <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>
           <AccountingToolbar />
           <div className='relative flex min-h-0 flex-1 flex-col overflow-hidden'>{children}</div>
         </div>
-      </div>
+      </SecondarySidebarProvider>
     </MainPageContent>
   )
 }
