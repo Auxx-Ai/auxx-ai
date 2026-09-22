@@ -83,6 +83,12 @@ export const MoneyApplication = pgTable(
     }).onDelete('no action'),
     unique('MoneyApplication_command_key').on(t.organizationId, t.commandId, t.commandItemKey),
     index('MoneyApplication_quote_idx').on(t.organizationId, t.quoteInstanceId),
+    // The read paths (by movement, by document) and the FK checks on a record delete.
+    index('MoneyApplication_movement_idx').on(t.organizationId, t.moneyTransactionId),
+    index('MoneyApplication_order_idx').on(t.organizationId, t.orderInstanceId),
+    index('MoneyApplication_invoice_idx').on(t.organizationId, t.invoiceInstanceId),
+    index('MoneyApplication_vendor_bill_idx').on(t.organizationId, t.vendorBillInstanceId),
+    index('MoneyApplication_reverses_idx').on(t.organizationId, t.reversesApplicationId),
     check(
       'MoneyApplication_shape_check',
       sql`${t.amountMinor} > 0 AND ${t.discountMinor} >= 0 AND num_nonnulls(${t.orderInstanceId}, ${t.invoiceInstanceId}, ${t.vendorBillInstanceId}) = 1 AND ((${t.operation} = 'apply' AND ${t.reversesApplicationId} IS NULL) OR (${t.operation} = 'unapply' AND ${t.reversesApplicationId} IS NOT NULL))`

@@ -73,6 +73,9 @@ export const MoneyTransaction = pgTable(
     index('MoneyTransaction_work_order_idx').on(t.organizationId, t.workOrderInstanceId),
     index('MoneyTransaction_bank_deposit_idx').on(t.organizationId, t.bankDepositInstanceId),
     index('MoneyTransaction_payment_gateway_idx').on(t.organizationId, t.paymentGatewayId),
+    // FK checks when a contact or a bank account record is deleted, and the by-party reads.
+    index('MoneyTransaction_party_idx').on(t.organizationId, t.partyInstanceId),
+    index('MoneyTransaction_cash_account_idx').on(t.organizationId, t.cashAccountInstanceId),
     foreignKey({
       name: 'MoneyTransaction_partyInstanceId_fk',
       columns: [t.organizationId, t.partyInstanceId],

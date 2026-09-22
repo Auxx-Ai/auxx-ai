@@ -2759,6 +2759,13 @@
       "when": 1790114243952,
       "tag": "0393_entity_instance_fk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1790114756268,
+      "tag": "0394_money_and_mail_fk_indexes",
+      "breakpoints": true
     }
   ]
 }
