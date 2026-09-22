@@ -207,6 +207,27 @@ export async function recoverOrClassify(
   )
 }
 
+/**
+ * Run `resolve` once per `key` on a context that carries a memo (a multi-object
+ * send's), and every time on one that does not. A rejection is dropped, so the next caller retries.
+ */
+export function memoised<T>(
+  tool: QuickbooksToolContext,
+  key: string,
+  resolve: () => Promise<T>
+): Promise<T> {
+  const memo = tool.memo
+  if (!memo) return resolve()
+  const hit = memo.get(key)
+  if (hit) return hit as Promise<T>
+  const pending = resolve().catch((error: unknown) => {
+    memo.delete(key)
+    throw error
+  })
+  memo.set(key, pending)
+  return pending
+}
+
 /** Case- and whitespace-insensitive compare, so ' 1310 ' matches '1310'. */
 export function norm(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase()
@@ -253,8 +274,8 @@ export async function resolveMappedAccounts(
   glAccountIds: readonly string[]
 ): Promise<Result<MappedAccounts, Error>> {
   const [chart, ourChart, map] = await Promise.all([
-    fetchChart(tool),
-    listChartAccounts(database, tool.organizationId),
+    memoised(tool, 'providerChart', () => fetchChart(tool)),
+    memoised(tool, 'ourChart', () => listChartAccounts(database, tool.organizationId)),
     tool.accountMap(),
   ])
   if (ourChart.isErr()) return err(ourChart.error)
@@ -363,8 +384,16 @@ export async function findByDocNumber(
   idField: string,
   docNumber: string
 ): Promise<FoundByDocNumber | undefined> {
-  const result = await tool.callTool(findTool, { docNumber })
-  const list = (result as Record<string, unknown[]> | undefined)?.[listField] ?? []
+  return matchByDocNumber(await tool.callTool(findTool, { docNumber }), listField, idField)
+}
+
+/** A `find_quickbooks_*` answer's first hit, read the same way for a single find and a batch query. */
+export function matchByDocNumber(
+  answer: unknown,
+  listField: string,
+  idField: string
+): FoundByDocNumber | undefined {
+  const list = (answer as Record<string, unknown[]> | undefined)?.[listField] ?? []
   const match = list[0] as Record<string, unknown> | undefined
   if (!match || match[idField] == null) return undefined
   return {

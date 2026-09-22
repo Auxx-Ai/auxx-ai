@@ -1338,11 +1338,17 @@ sent
 Reverse acts on the left column. Retry, rollback and release act on the right. **No verb does
 both.**
 
-🛑 **`release.ts` releases and returns.** A send is two sequential round trips to a rate-limited
-third party (QuickBooks: the layer-2 `find`, then the `create`; plus the chart on an org-cache miss
-and two per cold customer or item, 93 §2), and a bulk bar acts on forty rows at once, so doing it
-inline is a request nobody holds open. `retry.ts` stays the one-row door, precisely because a single row wants
-its refusal back in the same breath.
+🛑 **`release.ts` releases and returns.** A single send is two sequential round trips to a
+rate-limited third party (QuickBooks: the layer-2 `find`, then the `create`; plus the chart on an
+org-cache miss and two per cold customer or item, 93 §2), and a bulk bar acts on forty rows at once,
+so doing it inline is a request nobody holds open. A release enqueues `export-batches` jobs of
+`EXPORT_BATCHES_PER_JOB = 10`; `send-many.ts` leases the set in one UPDATE and sends it through
+`sendObjects` — for QuickBooks one batch `query` for the set's DocNumbers and one batch `create` for
+the misses, **two calls per set** where the single path spends two per object (93 D3/D4). A set never
+mixes a payment with an unsent batch it applies to: the walk cuts there, settles, and carries on.
+`retry.ts` and a single Send stay on the one-row `export-batch` job, precisely because a single row
+wants its refusal back in the same breath. The sweep still sends one row at a time, five per org,
+until the throttle question (93 Q2) is answered on the sandbox.
 
 `sweep.ts` is the scheduled half: due means `ready` on an avenue whose `autoSend` is on, or
 `failed` past its `nextAttemptAt` and inside `MAX_AUTO_ATTEMPTS = 3` (backoff 60s / 5m / 30m). A
@@ -1462,10 +1468,10 @@ one an organization has connected — shaped after the house provider/manager pa
 organization with nothing connected gets `NONE_ACCOUNTING_PROVIDER`; its postings are built and
 persisted identically.
 
-Fourteen members: `id`, `init?`, `resolveAccount` (the ONLY place a code becomes a provider
-identifier), `sendObject`, `readObject`, `listProviderAccounts`, `readProviderBalances`,
-`ledgerSlicer`, `listAccountMappings`, `setAccountMapping`, `clearAccountMapping`,
-`withdrawObject`, `objectUrl?`, `createProviderAccount?`.
+Fifteen members: `id`, `init?`, `resolveAccount` (the ONLY place a code becomes a provider
+identifier), `sendObject`, `sendObjects?`, `readObject`, `listProviderAccounts`,
+`readProviderBalances`, `ledgerSlicer`, `listAccountMappings`, `setAccountMapping`,
+`clearAccountMapping`, `withdrawObject`, `objectUrl?`, `createProviderAccount?`.
 
 🛑 **`payload` is OPAQUE above the seam**, and its shape belongs to `objectType`, not to the
 interface: a second provider implements the same three methods over the same three words. No
@@ -1478,7 +1484,14 @@ direction — the sweep's `txnDate, createdAt` ordering is what normally sends t
 🛑 **`withdrawObject` must converge on "not there"** rather than raising when the object is already
 gone — that is what makes an uncertain delete resolvable by retrying.
 🛑 **`objectUrl` is the only place a vendor URL may be built** — never in a component.
-🛑 **`createProviderAccount`'s absence IS the capability flag.**
+🛑 **`createProviderAccount`'s absence IS the capability flag.** So is `sendObjects?`'s: without
+it `send-many.ts` asks `sendObject` row by row. Its answers are aligned with its inputs, each the
+verdict `sendObject` would reach alone; the outer `err` means no object got one. QuickBooks sends
+`vendor_credit` (not in `batch_quickbooks_operations`) through its single tools inside the same call,
+and falls back to them entirely when the installed app has no batch tool. Intuit dedupes a batch
+item only on the call's `requestid` plus the item's `bId`, so both are hashed from the set's
+per-batch idempotency keys (`send-objects.ts`); the layer-2 query and the 6140/6240 net stay the
+real guard when a retry's set differs.
 🛑 **`ledgerSlicer` is a slicer rather than a `readProviderLedger(from, to)`**, because a date
 range is QuickBooks-shaped and cannot serve Xero, whose Journals feed is walked by an offset on
 creation order. `NULL_LEDGER_SLICER.fetchBatch` answers `ok(null)` and **not** an empty batch: an
@@ -1835,7 +1848,8 @@ drawer needs `DockedPanelsOutletProvider` in the layout; `settings` and `banking
 ⚠️ The export worker is deliberately **not** concurrency 1, unlike the bulk posting workers: their
 cap is a correctness cap because they race for a period key, and batches do not — each targets one
 provider object, reads it back before recording anything, and carries a lease. Its cap of 3 is
-about a rate-limited far side.
+about a rate-limited far side. The plural `export-batches` worker in the same file runs at
+concurrency 1, globally (plain BullMQ has no per-org groups), since one job already carries a set.
 
 ### 14.4 Settings
 

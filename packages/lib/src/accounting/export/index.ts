@@ -73,6 +73,7 @@ export {
 } from './queue-reads'
 export {
   enqueueExportBatch,
+  enqueueExportBatches,
   type ReleaseExportBatchesResult,
   type ReleaseFailedBatchesNamingAccountResult,
   releaseExportBatches,
@@ -86,6 +87,11 @@ export {
   type SendExportBatchStatus,
   sendExportBatch,
 } from './send'
+export {
+  EXPORT_BATCHES_PER_JOB,
+  type SendExportBatchesResult,
+  sendExportBatches,
+} from './send-many'
 export { type SweepExportBatchesInput, sweepExportBatches } from './sweep'
 export {
   countUnbuiltSummaryRows,

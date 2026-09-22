@@ -20,6 +20,7 @@ import type {
   WithdrawObjectInput,
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { resolveCustomer } from './customers'
 import {
   echoOf,
@@ -37,7 +38,7 @@ const TOOL_GET = 'get_quickbooks_payment'
 const TOOL_DELETE = 'delete_quickbooks_payment'
 const ID_FIELD = 'paymentId'
 
-function configError(message: string): Result<SendObjectResult, Error> {
+function configError<T = SendObjectResult>(message: string): Result<T, Error> {
   return err(
     new ProviderPostError(message, {
       failureClass: 'configuration',
@@ -88,15 +89,11 @@ async function resolveAppliesToBatch(
   }
 }
 
-export async function send(
-  tool: QuickbooksToolContext,
-  ctx: ProviderObjectContext,
-  input: SendObjectInput
-): Promise<Result<SendObjectResult, Error>> {
-  const organizationId = ctx.organizationId
-  let payload: ReturnType<typeof exportPaymentSchema.parse>
+type PaymentPayload = ReturnType<typeof exportPaymentSchema.parse>
+
+function parse(raw: Record<string, unknown>): Result<PaymentPayload, Error> {
   try {
-    payload = exportPaymentSchema.parse(input.payload)
+    return ok(exportPaymentSchema.parse(raw))
   } catch (error) {
     return err(
       new ProviderPostError(`The frozen export payload is not a payment: ${errorMessage(error)}`, {
@@ -105,23 +102,30 @@ export async function send(
       })
     )
   }
+}
 
-  try {
-    // §5.2's dependency: the invoice (or fulfillment sent as one) this
-    // payment applies to must have SENT before this can. Checked first and
-    // cheaply, before any resolution below spends a QuickBooks call.
-    // `ProviderObjectContext` carries no handle, so the global is the db here.
-    const appliesToBatch = await resolveAppliesToBatch(
-      database,
-      organizationId,
-      payload.appliesTo.glPostingId
-    )
-    if (!appliesToBatch || appliesToBatch.state !== 'sent') {
-      const label = appliesToBatch
-        ? exportObjectTypeLabel(appliesToBatch.objectType).toLowerCase()
-        : 'invoice'
-      const docNumber = appliesToBatch?.docNumber ?? null
-      return ok({
+/** The dependency first, then the deposit-to account and the customer; `settled` when the invoice has not sent. */
+async function build(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  payload: PaymentPayload
+): Promise<Result<BuiltCreate, Error>> {
+  // §5.2's dependency: the invoice (or fulfillment sent as one) this
+  // payment applies to must have SENT before this can. Checked first and
+  // cheaply, before any resolution below spends a QuickBooks call.
+  // `ProviderObjectContext` carries no handle, so the global is the db here.
+  const appliesToBatch = await resolveAppliesToBatch(
+    database,
+    ctx.organizationId,
+    payload.appliesTo.glPostingId
+  )
+  if (!appliesToBatch || appliesToBatch.state !== 'sent') {
+    const label = appliesToBatch
+      ? exportObjectTypeLabel(appliesToBatch.objectType).toLowerCase()
+      : 'invoice'
+    const docNumber = appliesToBatch?.docNumber ?? null
+    return ok({
+      settled: {
         status: 'waiting',
         externalId: '',
         remoteVersion: null,
@@ -129,24 +133,81 @@ export async function send(
         waitingReason: docNumber
           ? `Waiting for ${label} ${docNumber} to send`
           : `Waiting for the ${label} it applies to, to send`,
+      },
+    })
+  }
+  const invoiceExternalId = appliesToBatch.providerObjectId
+  if (!invoiceExternalId)
+    return configError('The invoice this payment applies to has no recorded provider id.')
+
+  const accounts = await resolveMappedAccounts(tool, [payload.depositTo.glAccountId])
+  if (accounts.isErr()) return err(accounts.error)
+  const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
+  if (!depositToAccountId)
+    return configError('This payment names no resolvable deposit-to account.')
+
+  let customerId: string
+  try {
+    customerId = await resolveCustomer(tool, payload.customer.id)
+  } catch (error) {
+    return configError(errorMessage(error))
+  }
+
+  return ok({
+    create: {
+      customerId,
+      amountMinor: payload.amountMinor,
+      depositToAccountId,
+      invoiceId: invoiceExternalId,
+      txnDate: payload.txnDate,
+      paymentRefNum: payload.docNumber,
+      privateNote: payload.privateNote,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const created = raw as Record<string, unknown> | undefined
+  const externalId = created?.paymentId ? String(created.paymentId) : undefined
+  if (!externalId)
+    return err(
+      new ProviderPostError('QuickBooks returned no payment id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
       })
-    }
-    const invoiceExternalId = appliesToBatch.providerObjectId
-    if (!invoiceExternalId)
-      return configError('The invoice this payment applies to has no recorded provider id.')
+    )
 
-    const accounts = await resolveMappedAccounts(tool, [payload.depositTo.glAccountId])
-    if (accounts.isErr()) return err(accounts.error)
-    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
-    if (!depositToAccountId)
-      return configError('This payment names no resolvable deposit-to account.')
+  return ok({
+    status: 'sent',
+    externalId,
+    remoteVersion: typeof created?.syncToken === 'string' ? created.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(created),
+  })
+}
 
-    let customerId: string
-    try {
-      customerId = await resolveCustomer(tool, payload.customer.id)
-    } catch (error) {
-      return configError(errorMessage(error))
-    }
+export const batchObject: QuickbooksBatchObject<PaymentPayload> = {
+  object: PAYMENT_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: null,
+}
+
+export async function send(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  input: SendObjectInput
+): Promise<Result<SendObjectResult, Error>> {
+  const organizationId = ctx.organizationId
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+
+  try {
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
 
     const notReadyToCreate = requireToolInputs(tool, TOOL_CREATE, [
       'customerId',
@@ -157,32 +218,10 @@ export async function send(
     if (notReadyToCreate) return configError(notReadyToCreate)
 
     const created = await tool.callTool(TOOL_CREATE, {
-      customerId,
-      amountMinor: payload.amountMinor,
-      depositToAccountId,
-      invoiceId: invoiceExternalId,
-      txnDate: payload.txnDate,
-      paymentRefNum: payload.docNumber,
-      privateNote: payload.privateNote,
+      ...built.value.create,
       requestId: input.idempotencyKey,
     })
-    const externalId = created?.paymentId ? String(created.paymentId) : undefined
-    if (!externalId)
-      return err(
-        new ProviderPostError('QuickBooks returned no payment id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    return ok({
-      status: 'sent',
-      externalId,
-      remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(created),
-    })
+    return answer(tool, created)
   } catch (error) {
     // No doc-number net: Payment carries none in QuickBooks, so a create
     // failure of unknown outcome cannot be resolved by re-querying one.

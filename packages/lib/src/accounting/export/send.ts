@@ -5,11 +5,18 @@
 import { randomUUID } from 'node:crypto'
 import { type Database, type ExportBatchEntity, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull, lte, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
 import { ProviderPostError } from '../ledger/types'
-import { type ProviderObjectContext, resolveAccountingProvider } from '../providers/provider'
+import {
+  type AccountingProvider,
+  type ProviderObjectContext,
+  resolveAccountingProvider,
+  type SendObjectInput,
+  type SendObjectResult,
+} from '../providers/provider'
+import type { ExportFailureItem } from './client'
 import { hashExportPayload } from './payloads/journal'
 import { exportBlockerSentence, readExportBatchBlockers } from './preflight'
 import { exportBatchFrame, publishExportBatchState } from './realtime'
@@ -95,6 +102,76 @@ async function lease(
 
 /** The run id each held lease was taken for, so settling can tag its frame without a new parameter. */
 const leaseRuns = new WeakMap<ExportBatchEntity, string>()
+
+/** A batch this worker holds, and the token that proves it. */
+export interface HeldBatch {
+  batch: ExportBatchEntity
+  token: string
+}
+
+/**
+ * Take the lease on every free batch among `batchIds` in one UPDATE; the ones not
+ * won (gone, sent, withdrawn, held elsewhere) are simply absent from the answer.
+ */
+export async function leaseBatches(
+  db: Database,
+  input: { organizationId: string; batchIds: string[]; manual: boolean; runId?: string }
+): Promise<HeldBatch[]> {
+  const { organizationId, batchIds, manual, runId } = input
+  if (batchIds.length === 0) return []
+  const token = randomUUID()
+  const now = new Date()
+  const taken = await db
+    .update(schema.ExportBatch)
+    .set({
+      state: 'sending',
+      leaseToken: token,
+      leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+      attempts: manual ? 1 : sql`${schema.ExportBatch.attempts} + 1`,
+      nextAttemptAt: null,
+    })
+    .where(
+      and(
+        eq(schema.ExportBatch.organizationId, organizationId),
+        inArray(schema.ExportBatch.id, batchIds),
+        notInArray(schema.ExportBatch.state, ['sent', 'withdrawn']),
+        or(isNull(schema.ExportBatch.leaseExpiresAt), lte(schema.ExportBatch.leaseExpiresAt, now))
+      )
+    )
+    .returning()
+  if (runId) for (const batch of taken) leaseRuns.set(batch, runId)
+  await Promise.all(
+    taken.map((batch) => publishExportBatchState(organizationId, exportBatchFrame(batch, runId)))
+  )
+  return taken.map((batch) => ({ batch, token }))
+}
+
+/** The create request for one batch; the key is derived from the batch identity alone, so every retry carries the same one. */
+export function sendInputFor(
+  batch: ExportBatchEntity,
+  provider: AccountingProvider
+): SendObjectInput {
+  return {
+    objectType: batch.objectType,
+    payload: batch.payload,
+    idempotencyKey: hashExportPayload([batch.id, batch.payloadHash]).slice(
+      0,
+      provider.limits?.idempotencyKeyLength
+    ),
+  }
+}
+
+/** The refusal `send.ts` records when 89 D8's preflight stops a batch before the provider call. */
+export function preflightRefusal(
+  blockers: ExportFailureItem[],
+  providerId: string
+): ProviderPostError {
+  return new ProviderPostError(blockers.map(exportBlockerSentence).join(' '), {
+    failureClass: 'configuration',
+    providerId,
+    items: blockers,
+  })
+}
 
 async function releaseOwned(
   db: Database,
@@ -193,95 +270,98 @@ export async function sendExportBatch(
     ])
     if (blocked.isErr()) return ok(await fail(db, batch, token, blocked.error))
     const blockers = blocked.value.get(batch.id)
-    if (blockers && blockers.length > 0) {
-      const refusal = new ProviderPostError(blockers.map(exportBlockerSentence).join(' '), {
-        failureClass: 'configuration',
-        providerId: provider.id,
-        items: blockers,
-      })
-      return ok(await fail(db, batch, token, refusal))
-    }
+    if (blockers && blockers.length > 0)
+      return ok(await fail(db, batch, token, preflightRefusal(blockers, provider.id)))
 
-    const sent = await provider.sendObject(ctx, {
-      objectType: batch.objectType,
-      payload: batch.payload,
-      // Derived from the batch identity alone, so every retry carries the same
-      // key and the provider's idempotency guarantee fires where it exists.
-      idempotencyKey: hashExportPayload([batch.id, batch.payloadHash]).slice(
-        0,
-        provider.limits?.idempotencyKeyLength
-      ),
-    })
-    if (sent.isErr()) return ok(await fail(db, batch, token, sent.error))
-    const result = sent.value
-
-    if (result.status === 'not_connected' || result.status === 'disabled') {
-      // Not a fault, so it does not spend the sweep's budget: an org that
-      // switched journal export off would otherwise exhaust three attempts and
-      // need a person to press Retry once it was switched back on.
-      const attempts = Math.max(0, batch.attempts - 1)
-      await releaseOwned(db, batch, token, { state: 'ready', attempts })
-      return ok({ batchId, status: result.status, attempts })
-    }
-
-    if (result.status === 'waiting') {
-      // Plan 67 §5.2: a Payment waiting on its invoice is not a fault either -
-      // it releases the lease and waits for the invoice's own batch to send,
-      // which the sweep's `txnDate, createdAt` order normally does first.
-      const attempts = Math.max(0, batch.attempts - 1)
-      await releaseOwned(db, batch, token, {
-        state: 'ready',
-        attempts,
-        lastError: result.waitingReason ?? 'Waiting for a dependency to send',
-      })
-      return ok({ batchId, status: 'waiting', attempts })
-    }
-
-    // 93 A2: the create's own answer is the read-back when the provider gives one.
-    const read = result.echo
-      ? ok({ status: 'found' as const, payloadHash: null, ...result.echo })
-      : await provider.readObject(ctx, {
-          objectType: batch.objectType,
-          externalId: result.externalId || null,
-          docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
-        })
-    // The object exists at the provider from here on, whatever the read-back
-    // says, so every refusal below carries its id.
-    const landed = { externalId: result.externalId, remoteVersion: result.remoteVersion }
-    if (read.isErr()) return ok(await fail(db, batch, token, read.error, landed))
-    const mismatch = readbackMismatch(batch, provider.id, read.value)
-    if (mismatch) return ok(await fail(db, batch, token, mismatch, landed))
-
-    const kept = await releaseOwned(db, batch, token, {
-      state: 'sent',
-      providerObjectId: result.externalId,
-      providerSyncToken: read.value.remoteVersion ?? result.remoteVersion,
-      sentAt: new Date(),
-      lastError: null,
-      failureClass: null,
-      failureItems: [],
-      nextAttemptAt: null,
-    })
-    if (!kept) return ok({ batchId, status: 'leased_elsewhere', attempts: batch.attempts })
-
-    logger.info('Export batch sent', {
-      organizationId,
-      batchId,
-      avenue: batch.avenue,
-      providerObjectId: result.externalId,
-    })
-    return ok({
-      batchId,
-      status: 'sent',
-      providerObjectId: result.externalId,
-      attempts: batch.attempts,
-    })
+    const sent = await provider.sendObject(ctx, sendInputFor(batch, provider))
+    return ok(await settleSend(db, { batch, token }, provider, ctx, sent))
   } catch (error) {
     return ok(await fail(db, batch, token, error instanceof Error ? error : String(error)))
   }
 }
 
-async function fail(
+/**
+ * Record one provider answer on a held batch: `ready` for a gate or a dependency,
+ * `failed` for a refusal or a failed proof, `sent` once the echo or read-back agrees.
+ * May throw (the read-back); the caller fails the batch on it.
+ */
+export async function settleSend(
+  db: Database,
+  held: HeldBatch,
+  provider: AccountingProvider,
+  ctx: ProviderObjectContext,
+  sent: Result<SendObjectResult, Error>
+): Promise<SendExportBatchResult> {
+  const { batch, token } = held
+  const batchId = batch.id
+  if (sent.isErr()) return fail(db, batch, token, sent.error)
+  const result = sent.value
+
+  if (result.status === 'not_connected' || result.status === 'disabled') {
+    // Not a fault, so it does not spend the sweep's budget: an org that
+    // switched journal export off would otherwise exhaust three attempts and
+    // need a person to press Retry once it was switched back on.
+    const attempts = Math.max(0, batch.attempts - 1)
+    await releaseOwned(db, batch, token, { state: 'ready', attempts })
+    return { batchId, status: result.status, attempts }
+  }
+
+  if (result.status === 'waiting') {
+    // Plan 67 §5.2: a Payment waiting on its invoice is not a fault either -
+    // it releases the lease and waits for the invoice's own batch to send,
+    // which the sweep's `txnDate, createdAt` order normally does first.
+    const attempts = Math.max(0, batch.attempts - 1)
+    await releaseOwned(db, batch, token, {
+      state: 'ready',
+      attempts,
+      lastError: result.waitingReason ?? 'Waiting for a dependency to send',
+    })
+    return { batchId, status: 'waiting', attempts }
+  }
+
+  // 93 A2: the create's own answer is the read-back when the provider gives one.
+  const read = result.echo
+    ? ok({ status: 'found' as const, payloadHash: null, ...result.echo })
+    : await provider.readObject(ctx, {
+        objectType: batch.objectType,
+        externalId: result.externalId || null,
+        docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
+      })
+  // The object exists at the provider from here on, whatever the read-back
+  // says, so every refusal below carries its id.
+  const landed = { externalId: result.externalId, remoteVersion: result.remoteVersion }
+  if (read.isErr()) return fail(db, batch, token, read.error, landed)
+  const mismatch = readbackMismatch(batch, provider.id, read.value)
+  if (mismatch) return fail(db, batch, token, mismatch, landed)
+
+  const kept = await releaseOwned(db, batch, token, {
+    state: 'sent',
+    providerObjectId: result.externalId,
+    providerSyncToken: read.value.remoteVersion ?? result.remoteVersion,
+    sentAt: new Date(),
+    lastError: null,
+    failureClass: null,
+    failureItems: [],
+    nextAttemptAt: null,
+  })
+  if (!kept) return { batchId, status: 'leased_elsewhere', attempts: batch.attempts }
+
+  logger.info('Export batch sent', {
+    organizationId: batch.organizationId,
+    batchId,
+    avenue: batch.avenue,
+    providerObjectId: result.externalId,
+  })
+  return {
+    batchId,
+    status: 'sent',
+    providerObjectId: result.externalId,
+    attempts: batch.attempts,
+  }
+}
+
+/** Record a refusal on a held batch, with the backoff the sweep reads. */
+export async function fail(
   db: Database,
   batch: ExportBatchEntity,
   token: string,

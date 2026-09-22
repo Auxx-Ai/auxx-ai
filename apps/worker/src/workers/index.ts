@@ -21,7 +21,10 @@ import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEnrichmentWorker } from './worker-definitions/enrichment-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
-import { startExportBatchWorker } from './worker-definitions/export-batch-worker'
+import {
+  startExportBatchesWorker,
+  startExportBatchWorker,
+} from './worker-definitions/export-batch-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
@@ -136,6 +139,8 @@ export async function startWorkers() {
   // pinned books per job. This is what keeps a bulk posting run off the
   // QuickBooks round trips - see the worker definition.
   const exportBatchWorker = startExportBatchWorker()
+  // A released set of export batches per job, at concurrency 1 (plan 93 D4).
+  const exportBatchesWorker = startExportBatchesWorker()
 
   // Inbound provider-ledger sync worker: one slice of the walk per job, chained
   // by the runner's directive. Concurrency 1 - see the worker definition for why
@@ -191,6 +196,7 @@ export async function startWorkers() {
     dataConnectorWorker,
     documentPdfWorker,
     exportBatchWorker,
+    exportBatchesWorker,
     providerSyncWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,

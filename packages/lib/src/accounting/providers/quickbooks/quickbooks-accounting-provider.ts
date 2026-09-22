@@ -35,6 +35,9 @@
 // And the net under a create failure: `objects/shared.ts`'s `recoverOrClassify`
 // re-queries by `DocNumber` before reporting a failure, for every object that
 // has one to query by.
+//
+// `sendObjects` keeps every rung: layer 2 is one batch query, layer 3 is the call's
+// `requestid` + each item's `bId` (see `send-objects.ts`), and the net is one batch query.
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -82,6 +85,7 @@ import * as refundReceiptObject from './objects/refund-receipt'
 import * as salesReceiptObject from './objects/sales-receipt'
 import { errorMessage, norm, QUICKBOOKS_PROVIDER_ID, resolveMappedAccounts } from './objects/shared'
 import * as vendorCreditObject from './objects/vendor-credit'
+import { type QuickbooksBatchObject, sendQuickbooksObjects } from './send-objects'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
 
@@ -117,6 +121,18 @@ const OBJECT_HANDLERS: Record<string, QuickbooksObjectHandler> = {
   deposit: depositObject,
   bill: billObject,
   vendor_credit: vendorCreditObject,
+}
+
+/** The object types `batch_quickbooks_operations` creates; `vendor_credit` is not one, so it sends alone. */
+const BATCH_OBJECTS: Record<string, QuickbooksBatchObject> = {
+  journal: journalObject.batchObject as QuickbooksBatchObject,
+  sales_receipt: salesReceiptObject.batchObject as QuickbooksBatchObject,
+  invoice: invoiceObject.batchObject as QuickbooksBatchObject,
+  payment: paymentObject.batchObject as QuickbooksBatchObject,
+  credit_memo: creditMemoObject.batchObject as QuickbooksBatchObject,
+  refund_receipt: refundReceiptObject.batchObject as QuickbooksBatchObject,
+  deposit: depositObject.batchObject as QuickbooksBatchObject,
+  bill: billObject.batchObject as QuickbooksBatchObject,
 }
 
 /** The deep-link path per object type (plan 67 §5.6). All take `?txnId=`. */
@@ -441,6 +457,67 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
           objectType: input.objectType,
         })
       )
+    }
+  }
+
+  /**
+   * Create many objects over one pinned context: one batch query for their
+   * DocNumbers, one batch create for the misses (plan 93 D3). The switch and the
+   * connection are checked once for the whole call, as `sendObject` checks them per object.
+   */
+  async sendObjects(
+    ctx: ProviderObjectContext,
+    inputs: SendObjectInput[]
+  ): Promise<Result<Result<SendObjectResult, Error>[], Error>> {
+    const organizationId = ctx.organizationId
+    const unsent = (status: 'disabled' | 'not_connected') =>
+      ok(
+        inputs.map(() =>
+          ok<SendObjectResult, Error>({
+            status,
+            externalId: '',
+            remoteVersion: null,
+            providerId: QUICKBOOKS_PROVIDER_ID,
+          })
+        )
+      )
+    try {
+      const enabled = await getOrganizationSetting({
+        organizationId,
+        key: 'quickbooks.postJournalEntries',
+      })
+      if (!enabled) return unsent('disabled')
+
+      const tool = await this.contextFor(ctx)
+      if (!tool) return unsent('not_connected')
+
+      return ok(
+        await sendQuickbooksObjects(tool, ctx, inputs, BATCH_OBJECTS, async (shared, input) => {
+          const handler = OBJECT_HANDLERS[input.objectType]
+          if (!handler)
+            return err(
+              new UnprocessableEntityError(
+                `auxx cannot create a QuickBooks '${input.objectType}'.`,
+                {
+                  organizationId,
+                  objectType: input.objectType,
+                }
+              )
+            )
+          try {
+            return await handler.send(shared, ctx, input)
+          } catch (error) {
+            return err(
+              new UnprocessableEntityError(errorMessage(error), {
+                organizationId,
+                objectType: input.objectType,
+              })
+            )
+          }
+        })
+      )
+    } catch (error) {
+      return err(new UnprocessableEntityError(errorMessage(error), { organizationId }))
     }
   }
 

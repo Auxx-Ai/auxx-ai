@@ -13,14 +13,19 @@ vi.mock('../preflight', async (importOriginal) => ({
 }))
 
 const add = vi.fn(async (_args: unknown[]) => undefined)
+const queueNames = vi.fn()
 vi.mock('../../../jobs/queues', () => ({
-  Queues: { exportBatchQueue: 'export-batch' },
-  getQueue: () => ({ add: (...a: unknown[]) => add(a) }),
+  Queues: { exportBatchQueue: 'export-batch', exportBatchesQueue: 'export-batches' },
+  getQueue: (name: string) => {
+    queueNames(name)
+    return { add: (...a: unknown[]) => add(a) }
+  },
 }))
 
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { ok } from 'neverthrow'
 import { releaseExportBatches, releaseFailedBatchesNamingAccount } from '../release'
+import { EXPORT_BATCHES_PER_JOB } from '../send-many'
 
 const ORG = 'org_1'
 
@@ -101,8 +106,7 @@ describe('releaseExportBatches', () => {
 
     expect(runId).toMatch(/^[0-9a-f-]{36}$/)
     expect(add.mock.calls.map(([args]) => (args as unknown[])[1])).toEqual([
-      { organizationId: ORG, batchId: 'b1', runId },
-      { organizationId: ORG, batchId: 'b2', runId },
+      { organizationId: ORG, batchIds: ['b1', 'b2'], runId },
     ])
   })
 
@@ -114,8 +118,45 @@ describe('releaseExportBatches', () => {
     )._unsafeUnwrap()
 
     expect(add.mock.calls.map(([args]) => (args as unknown[])[1])).toEqual([
-      { organizationId: ORG, batchId: 'b1', runId, manual: true },
+      { organizationId: ORG, batchIds: ['b1'], runId, manual: true },
     ])
+  })
+
+  it('chunks the released ids into plural jobs of EXPORT_BATCHES_PER_JOB, in order (93 D5)', async () => {
+    const count = EXPORT_BATCHES_PER_JOB * 2 + 3
+    const ids = Array.from({ length: count }, (_, i) => `b${i}`)
+    const db = fakeDb(ids.map((id) => ({ id, state: 'ready', payload: {} })))
+
+    const { runId } = (
+      await releaseExportBatches(db, { organizationId: ORG, batchIds: ids })
+    )._unsafeUnwrap()
+
+    const jobs = add.mock.calls.map(([args]) => args as unknown[])
+    expect(jobs.map(([name]) => name)).toEqual([
+      'export-batches',
+      'export-batches',
+      'export-batches',
+    ])
+    expect(jobs.map(([, data]) => (data as { batchIds: string[] }).batchIds)).toEqual([
+      ids.slice(0, EXPORT_BATCHES_PER_JOB),
+      ids.slice(EXPORT_BATCHES_PER_JOB, EXPORT_BATCHES_PER_JOB * 2),
+      ids.slice(EXPORT_BATCHES_PER_JOB * 2),
+    ])
+    expect(new Set(jobs.map(([, data]) => (data as { runId: string }).runId))).toEqual(
+      new Set([runId])
+    )
+    // Distinct job ids per chunk, so BullMQ does not collapse them.
+    expect(new Set(jobs.map(([, , opts]) => (opts as { jobId: string }).jobId)).size).toBe(3)
+    expect(queueNames).toHaveBeenCalledWith('export-batches')
+    expect(queueNames).not.toHaveBeenCalledWith('export-batch')
+  })
+
+  it('enqueues nothing when nothing is released', async () => {
+    const db = fakeDb([{ id: 'b1', state: 'sent', payload: {} }])
+
+    await releaseExportBatches(db, { organizationId: ORG, batchIds: ['b1'] })
+
+    expect(add).not.toHaveBeenCalled()
   })
 
   it('asks the mapping table about the releasable rows alone', async () => {

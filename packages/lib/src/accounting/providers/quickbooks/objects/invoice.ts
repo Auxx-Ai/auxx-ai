@@ -16,6 +16,7 @@ import type {
   WithdrawObjectInput,
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { resolveCustomer } from './customers'
 import { resolveItemsForAccounts } from './items'
 import {
@@ -40,7 +41,7 @@ const TOOL_DELETE = 'delete_quickbooks_invoice'
 const FIND_LIST_FIELD = 'invoices'
 const ID_FIELD = 'invoiceId'
 
-function configError(message: string): Result<SendObjectResult, Error> {
+function configError<T = SendObjectResult>(message: string): Result<T, Error> {
   return err(
     new ProviderPostError(message, {
       failureClass: 'configuration',
@@ -64,15 +65,11 @@ async function findAdopt(
     : undefined
 }
 
-export async function send(
-  tool: QuickbooksToolContext,
-  ctx: ProviderObjectContext,
-  input: SendObjectInput
-): Promise<Result<SendObjectResult, Error>> {
-  const organizationId = ctx.organizationId
-  let payload: ReturnType<typeof exportInvoiceSchema.parse>
+type InvoicePayload = ReturnType<typeof exportInvoiceSchema.parse>
+
+function parse(raw: Record<string, unknown>): Result<InvoicePayload, Error> {
   try {
-    payload = exportInvoiceSchema.parse(input.payload)
+    return ok(exportInvoiceSchema.parse(raw))
   } catch (error) {
     return err(
       new ProviderPostError(`The frozen export payload is not an invoice: ${errorMessage(error)}`, {
@@ -81,28 +78,99 @@ export async function send(
       })
     )
   }
-  const docNumber = payload.docNumber
+}
+
+/** Accounts, the customer and the items, resolved into `create_quickbooks_invoice`'s input minus `requestId`. */
+async function build(
+  tool: QuickbooksToolContext,
+  _ctx: ProviderObjectContext,
+  payload: InvoicePayload
+): Promise<Result<BuiltCreate, Error>> {
+  const glAccountIds = payload.lines.map((line) => line.glAccountId)
+  const accounts = await resolveMappedAccounts(tool, glAccountIds)
+  if (accounts.isErr()) return err(accounts.error)
+
+  const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
+
+  let customerId: string
+  let itemIdByAccount: Map<string, string>
+  try {
+    customerId = await resolveCustomer(tool, payload.customer.id)
+    itemIdByAccount = await resolveItemsForAccounts(
+      tool,
+      glAccountIds,
+      ourChartById,
+      accounts.value.accounts
+    )
+  } catch (error) {
+    return configError(errorMessage(error))
+  }
+
+  return ok({
+    create: {
+      customerId,
+      lines: payload.lines.map((line) => ({
+        itemId: itemIdByAccount.get(line.glAccountId) ?? '',
+        amountMinor: line.amountMinor,
+        quantity: 1,
+        ...(line.memo ? { description: line.memo } : {}),
+      })),
+      docNumber: payload.docNumber,
+      ...(payload.dueDate ? { dueDate: payload.dueDate } : {}),
+      txnDate: payload.txnDate,
+      privateNote: payload.privateNote,
+      currency: payload.currency,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const created = raw as Record<string, unknown> | undefined
+  const externalId = created?.invoiceId ? String(created.invoiceId) : undefined
+  if (!externalId)
+    return err(
+      new ProviderPostError('QuickBooks returned no invoice id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+
+  return ok({
+    status: 'sent',
+    externalId,
+    remoteVersion: typeof created?.syncToken === 'string' ? created.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(created),
+  })
+}
+
+export const batchObject: QuickbooksBatchObject<InvoicePayload> = {
+  object: INVOICE_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: {
+    listField: FIND_LIST_FIELD,
+    idField: ID_FIELD,
+    docNumber: (payload) => payload.docNumber,
+  },
+}
+
+export async function send(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  input: SendObjectInput
+): Promise<Result<SendObjectResult, Error>> {
+  const organizationId = ctx.organizationId
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+  const docNumber = parsed.value.docNumber
 
   try {
-    const glAccountIds = payload.lines.map((line) => line.glAccountId)
-    const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return err(accounts.error)
-
-    const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
-
-    let customerId: string
-    let itemIdByAccount: Map<string, string>
-    try {
-      customerId = await resolveCustomer(tool, payload.customer.id)
-      itemIdByAccount = await resolveItemsForAccounts(
-        tool,
-        glAccountIds,
-        ourChartById,
-        accounts.value.accounts
-      )
-    } catch (error) {
-      return configError(errorMessage(error))
-    }
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
 
     const notReadyToFind = requireToolInputs(tool, TOOL_FIND, ['docNumber'])
     if (notReadyToFind) return configError(notReadyToFind)
@@ -126,37 +194,10 @@ export async function send(
     if (notReadyToCreate) return configError(notReadyToCreate)
 
     const created = await tool.callTool(TOOL_CREATE, {
-      customerId,
-      lines: payload.lines.map((line) => ({
-        itemId: itemIdByAccount.get(line.glAccountId) ?? '',
-        amountMinor: line.amountMinor,
-        quantity: 1,
-        ...(line.memo ? { description: line.memo } : {}),
-      })),
-      docNumber,
-      ...(payload.dueDate ? { dueDate: payload.dueDate } : {}),
-      txnDate: payload.txnDate,
-      privateNote: payload.privateNote,
-      currency: payload.currency,
+      ...built.value.create,
       requestId: input.idempotencyKey,
     })
-    const externalId = created?.invoiceId ? String(created.invoiceId) : undefined
-    if (!externalId)
-      return err(
-        new ProviderPostError('QuickBooks returned no invoice id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    return ok({
-      status: 'sent',
-      externalId,
-      remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(created),
-    })
+    return answer(tool, created)
   } catch (error) {
     return recoverOrClassify(
       organizationId,

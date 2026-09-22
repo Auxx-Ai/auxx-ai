@@ -34,6 +34,8 @@ export interface QuickbooksToolContext {
   callTool: AppToolContext['callTool']
   /** The confirmed `gl_account -> QuickBooks account` map, read once per context and memoised. */
   accountMap: () => Promise<Map<string, string>>
+  /** Present on a multi-object send's context, so each resolver runs once per distinct id across the set (93 D3). */
+  memo?: Map<string, Promise<unknown>>
 }
 
 export type ResolveQuickbooksContextResult =

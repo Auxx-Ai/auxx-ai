@@ -21,6 +21,7 @@ import type {
   WithdrawObjectInput,
 } from '../../provider'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
+import type { BuiltCreate, QuickbooksBatchObject } from '../send-objects'
 import { resolveCustomer, resolvePlaceholderCustomer } from './customers'
 import { resolveItemsForAccounts, toSalesToolLines } from './items'
 import {
@@ -45,7 +46,7 @@ const TOOL_DELETE = 'delete_quickbooks_sales_receipt'
 const FIND_LIST_FIELD = 'salesReceipts'
 const ID_FIELD = 'salesReceiptId'
 
-function configError(message: string): Result<SendObjectResult, Error> {
+function configError<T = SendObjectResult>(message: string): Result<T, Error> {
   return err(
     new ProviderPostError(message, {
       failureClass: 'configuration',
@@ -70,15 +71,11 @@ async function findAdopt(
     : undefined
 }
 
-export async function send(
-  tool: QuickbooksToolContext,
-  ctx: ProviderObjectContext,
-  input: SendObjectInput
-): Promise<Result<SendObjectResult, Error>> {
-  const organizationId = ctx.organizationId
-  let payload: ReturnType<typeof exportSalesReceiptSchema.parse>
+type SalesReceiptPayload = ReturnType<typeof exportSalesReceiptSchema.parse>
+
+function parse(raw: Record<string, unknown>): Result<SalesReceiptPayload, Error> {
   try {
-    payload = exportSalesReceiptSchema.parse(input.payload)
+    return ok(exportSalesReceiptSchema.parse(raw))
   } catch (error) {
     return err(
       new ProviderPostError(
@@ -87,36 +84,103 @@ export async function send(
       )
     )
   }
+}
+
+/** Accounts, the customer (or the channel placeholder) and the items, resolved into the create's input minus `requestId`. */
+async function build(
+  tool: QuickbooksToolContext,
+  _ctx: ProviderObjectContext,
+  payload: SalesReceiptPayload
+): Promise<Result<BuiltCreate, Error>> {
   const docNumber = payload.docNumber
+  const glAccountIds = [
+    ...payload.lines.map((line) => line.glAccountId),
+    payload.depositTo.glAccountId,
+  ]
+  const accounts = await resolveMappedAccounts(tool, glAccountIds)
+  if (accounts.isErr()) return err(accounts.error)
+
+  const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
+
+  let customerId: string
+  let itemIdByAccount: Map<string, string>
+  try {
+    customerId = payload.customer
+      ? await resolveCustomer(tool, payload.customer.id)
+      : await resolvePlaceholderCustomer(database, tool, payload.storeId)
+    itemIdByAccount = await resolveItemsForAccounts(
+      tool,
+      payload.lines.map((line) => line.glAccountId),
+      ourChartById,
+      accounts.value.accounts
+    )
+  } catch (error) {
+    return configError(errorMessage(error))
+  }
+
+  const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
+  if (!depositToAccountId) return configError(`${docNumber} names no resolvable deposit account.`)
+
+  return ok({
+    create: {
+      customerId,
+      lines: toSalesToolLines(payload.lines, itemIdByAccount),
+      depositToAccountId,
+      txnDate: payload.txnDate,
+      docNumber,
+      privateNote: payload.privateNote,
+      currency: payload.currency,
+    },
+  })
+}
+
+function answer(tool: QuickbooksToolContext, raw: unknown): Result<SendObjectResult, Error> {
+  const created = raw as Record<string, unknown> | undefined
+  const externalId = created?.salesReceiptId ? String(created.salesReceiptId) : undefined
+  if (!externalId)
+    return err(
+      new ProviderPostError('QuickBooks returned no sales receipt id', {
+        failureClass: 'data',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+      })
+    )
+
+  return ok({
+    status: 'sent',
+    externalId,
+    remoteVersion: typeof created?.syncToken === 'string' ? created.syncToken : null,
+    providerId: QUICKBOOKS_PROVIDER_ID,
+    ...(tool.realmId && { tenantId: tool.realmId }),
+    echo: echoOf(created),
+  })
+}
+
+export const batchObject: QuickbooksBatchObject<SalesReceiptPayload> = {
+  object: SALES_RECEIPT_OBJECT_TYPE,
+  parse,
+  build,
+  answer,
+  find: {
+    listField: FIND_LIST_FIELD,
+    idField: ID_FIELD,
+    docNumber: (payload) => payload.docNumber,
+  },
+}
+
+export async function send(
+  tool: QuickbooksToolContext,
+  ctx: ProviderObjectContext,
+  input: SendObjectInput
+): Promise<Result<SendObjectResult, Error>> {
+  const organizationId = ctx.organizationId
+  const parsed = parse(input.payload)
+  if (parsed.isErr()) return err(parsed.error)
+  const docNumber = parsed.value.docNumber
 
   try {
-    const glAccountIds = [
-      ...payload.lines.map((line) => line.glAccountId),
-      payload.depositTo.glAccountId,
-    ]
-    const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return err(accounts.error)
-
-    const ourChartById = new Map(accounts.value.chart.map((row) => [row.id, row]))
-
-    let customerId: string
-    let itemIdByAccount: Map<string, string>
-    try {
-      customerId = payload.customer
-        ? await resolveCustomer(tool, payload.customer.id)
-        : await resolvePlaceholderCustomer(database, tool, payload.storeId)
-      itemIdByAccount = await resolveItemsForAccounts(
-        tool,
-        payload.lines.map((line) => line.glAccountId),
-        ourChartById,
-        accounts.value.accounts
-      )
-    } catch (error) {
-      return configError(errorMessage(error))
-    }
-
-    const depositToAccountId = accounts.value.accounts.get(payload.depositTo.glAccountId)?.id
-    if (!depositToAccountId) return configError(`${docNumber} names no resolvable deposit account.`)
+    const built = await build(tool, ctx, parsed.value)
+    if (built.isErr()) return err(built.error)
+    if ('settled' in built.value) return ok(built.value.settled)
 
     const notReadyToFind = requireToolInputs(tool, TOOL_FIND, ['docNumber'])
     if (notReadyToFind) return configError(notReadyToFind)
@@ -144,32 +208,10 @@ export async function send(
     if (notReadyToCreate) return configError(notReadyToCreate)
 
     const created = await tool.callTool(TOOL_CREATE, {
-      customerId,
-      lines: toSalesToolLines(payload.lines, itemIdByAccount),
-      depositToAccountId,
-      txnDate: payload.txnDate,
-      docNumber,
-      privateNote: payload.privateNote,
-      currency: payload.currency,
+      ...built.value.create,
       requestId: input.idempotencyKey,
     })
-    const externalId = created?.salesReceiptId ? String(created.salesReceiptId) : undefined
-    if (!externalId)
-      return err(
-        new ProviderPostError('QuickBooks returned no sales receipt id', {
-          failureClass: 'data',
-          providerId: QUICKBOOKS_PROVIDER_ID,
-        })
-      )
-
-    return ok({
-      status: 'sent',
-      externalId,
-      remoteVersion: typeof created.syncToken === 'string' ? created.syncToken : null,
-      providerId: QUICKBOOKS_PROVIDER_ID,
-      ...(tool.realmId && { tenantId: tool.realmId }),
-      echo: echoOf(created),
-    })
+    return answer(tool, created)
   } catch (error) {
     return recoverOrClassify(
       organizationId,

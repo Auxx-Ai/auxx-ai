@@ -197,6 +197,20 @@ export interface AccountingProvider {
   ): Promise<Result<SendObjectResult, Error>>
 
   /**
+   * Create many objects in as few provider calls as its API allows (plan 93 D2).
+   *
+   * Optional, and its absence is the capability: `send-many.ts` falls back to
+   * {@link sendObject} per row. Each answer is aligned with `inputs` and is the
+   * verdict {@link sendObject} would reach for that input alone; the outer `err`
+   * means no object got an answer. The caller never mixes an object with one it
+   * applies to in the same call.
+   */
+  sendObjects?(
+    ctx: ProviderObjectContext,
+    inputs: SendObjectInput[]
+  ): Promise<Result<Result<SendObjectResult, Error>[], Error>>
+
+  /**
    * Read one object back, so a send can be proved rather than assumed.
    *
    * 🛑 Answer `unsupported` rather than inventing a result when the provider has
