@@ -12,7 +12,6 @@ import { BaseEntityDrawer } from '~/components/drawers/base-entity-drawer'
 import { getHeaderActions } from '~/components/drawers/drawer-action-registry'
 import { DuplicateIndicatorButton } from '~/components/duplicates/ui/duplicate-indicator-button'
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
-import { ConnectorSourceBadge } from '~/components/fields/connector-source-badge'
 import { Tooltip } from '~/components/global/tooltip'
 import { CommandContext, RecordCommandActions } from '~/components/kbar/contextual'
 import { KopilotContext } from '~/components/kopilot/context'
@@ -321,20 +320,7 @@ export const RecordDrawer = React.memo(function RecordDrawer({
             )}
           </>
         }
-        cardContent={
-          <RecordIdentityHeader
-            recordId={recordId}
-            readOnly={readOnly}
-            primaryAdornment={
-              <ConnectorSourceBadge
-                sources={cachedRecord?.sources}
-                recordId={recordId}
-                variant='chip'
-                className='shrink-0'
-              />
-            }
-          />
-        }
+        cardContent={<RecordIdentityHeader recordId={recordId} readOnly={readOnly} />}
       />
 
       {/* Edit Dialog — resolves the custom editor per entity type (e.g. Parts). */}
