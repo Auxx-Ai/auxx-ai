@@ -64,7 +64,7 @@ export async function send(
       ...payload.lines.map((line) => line.fromAccount.glAccountId),
     ]
     const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return configError(accounts.error.message)
+    if (accounts.isErr()) return err(accounts.error)
 
     const depositToAccountId = accounts.value.get(payload.depositTo.glAccountId)?.id
     if (!depositToAccountId)

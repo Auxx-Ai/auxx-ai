@@ -1362,6 +1362,10 @@ export const SYSTEM_ATTRIBUTES = [
   'fulfillment_gl_posting',
   'fulfillment_doc_number',
   'fulfillment_recorded_at',
+  // Why the shipment poster last refused this shipment, and when (88 §7.4).
+  // Written by `postFulfillmentAccounting` only; cleared on accept or draft.
+  'fulfillment_posting_blocked_reason',
+  'fulfillment_posting_blocked_at',
   'fulfillment_lines', // inverse of fulfillment_line_fulfillment, has_many, onDelete cascade
   // Nullable, one-sided belongs_to the logistics fact (brief §2.2) - opportunistic
   // tracking-number match, no field on shipment points back, and nothing in

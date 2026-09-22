@@ -15,10 +15,8 @@ import {
 } from '../../../realtime'
 import { toRecordId } from '../../../resources/resource-id'
 import { systemFieldMap } from '../../../resources/system-records'
-import { computeShipmentTotals, shippedLineAmount } from '../../ledger/builders/fulfillment'
 import { readOrderForFulfillment } from '../orders/reads'
-import { isLiveFulfillment } from './client'
-import { type ShipmentLine, shapeShipmentLine } from './shipment-lines'
+import { resolveOrderShipments } from './shipment-lines'
 
 const logger = createScopedLogger('sales:fulfillment-totals')
 
@@ -58,72 +56,23 @@ export async function stampOrderShipmentTotals(
   }
 
   const fulfillmentDefId = await requireCachedEntityDefId(organizationId, 'fulfillment')
-  const orderLinesById = new Map(order.lines.map((line) => [line.lineId, line]))
-  // The tax prior is cumulative, so the walk must follow sequence, not read order.
-  const fulfillments = [...order.fulfillments].sort((a, b) => a.sequence - b.sequence)
-
-  let priorSubtotalMinor = 0
-  let shippingTaken = false
-  const priorShippedByLine = new Map<string, number>()
   const context = createFieldValueContext(organizationId, undefined, db)
   const entries: FieldValueUpdateEntry[] = []
   let fulfillmentsWritten = 0
   let skippedPosted = 0
 
-  for (const fulfillment of fulfillments) {
-    const shipmentLines: ShipmentLine[] = []
-    for (const line of fulfillment.lines) {
-      const orderLine = orderLinesById.get(line.lineItemId)
-      if (!orderLine) {
-        logger.warn('Fulfillment line has no matching order line', {
-          organizationId,
-          orderInstanceId,
-          fulfillmentId: fulfillment.id,
-          lineItemId: line.lineItemId,
-        })
-        continue
-      }
-      shipmentLines.push(
-        shapeShipmentLine(orderLine, line.quantity, priorShippedByLine.get(orderLine.lineId) ?? 0)
-      )
-    }
-
-    let subtotalMinor: number
-    let taxMinor: number
-    let shippingMinor: number
-    const label = `order ${order.number ?? orderInstanceId} shipment ${fulfillment.sequence}`
-
-    if (!isLiveFulfillment(fulfillment)) {
-      subtotalMinor = shipmentLines.reduce((sum, line) => sum + shippedLineAmount(line, label), 0)
-      taxMinor = 0
-      shippingMinor = 0
-    } else {
-      const includeShipping = order.shippingOwed && !shippingTaken
-      const amounts = computeShipmentTotals({
-        label,
-        lines: shipmentLines,
-        orderSubtotalMinor: order.subtotalMinor,
-        orderTaxTotalMinor: order.taxTotalMinor,
-        priorShipmentsSubtotalMinor: priorSubtotalMinor,
-        orderShippingTotalMinor: order.shippingTotalMinor,
-        includeShipping,
-        context: { orderId: orderInstanceId, fulfillmentId: fulfillment.id },
+  // The tax prior is cumulative, so the walk must follow sequence, not read order.
+  for (const shipment of resolveOrderShipments(order)) {
+    const { fulfillment, subtotalMinor, taxMinor, shippingMinor, totalMinor, shippingRecognised } =
+      shipment
+    for (const lineItemId of shipment.unmatchedLineItemIds) {
+      logger.warn('Fulfillment line has no matching order line', {
+        organizationId,
+        orderInstanceId,
+        fulfillmentId: fulfillment.id,
+        lineItemId,
       })
-      subtotalMinor = amounts.subtotalMinor
-      taxMinor = amounts.taxMinor
-      shippingMinor = amounts.shippingMinor
-      priorSubtotalMinor += subtotalMinor
-      shippingTaken ||= shippingMinor > 0
-      for (const line of fulfillment.lines) {
-        priorShippedByLine.set(
-          line.lineItemId,
-          (priorShippedByLine.get(line.lineItemId) ?? 0) + line.quantity
-        )
-      }
     }
-
-    const totalMinor = subtotalMinor + taxMinor + shippingMinor
-    const shippingRecognised = shippingMinor > 0
 
     if (
       fulfillment.subtotalMinor === subtotalMinor &&

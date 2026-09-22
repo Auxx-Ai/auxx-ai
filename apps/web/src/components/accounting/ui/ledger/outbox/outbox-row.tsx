@@ -39,6 +39,8 @@ interface OutboxRowProps {
   expandable?: boolean
   isOpen?: boolean
   onToggleOpen?: () => void
+  /** Split the two gestures: the body does this, the chevron still expands. */
+  onRowClick?: () => void
   children?: ReactNode
 }
 
@@ -66,6 +68,7 @@ export function OutboxRow({
   expandable = false,
   isOpen,
   onToggleOpen,
+  onRowClick,
   children,
 }: OutboxRowProps) {
   const selecting = useBulkMode()
@@ -87,6 +90,8 @@ export function OutboxRow({
       onSelectChange={(_next, event) => toggle(id, { shiftKey: event.shiftKey })}
       selectLabel={selectLabel}
       onToggleOpen={picking ? () => toggle(id) : (onToggleOpen ?? onOpen)}
+      // While picking, a row click extends the selection and nothing else.
+      onRowClick={picking ? undefined : onRowClick}
       description={description}
       title={
         <span className='flex min-w-0 items-center gap-1.5'>

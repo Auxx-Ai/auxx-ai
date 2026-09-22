@@ -364,7 +364,7 @@ export async function resolveProviderAccountIds(
     }
     if (!row.providerAccountId) {
       problems.push(
-        `${accountLabel(row.account)} is not mapped to an account in the connected accounting system. Map it under Accounting > Settings > Accounts.`
+        `${accountLabel(row.account)} is not mapped to an account in the connected accounting system. Pick its account in the connected accounting system under Accounting > Settings > Accounts > Chart of accounts.`
       )
       continue
     }

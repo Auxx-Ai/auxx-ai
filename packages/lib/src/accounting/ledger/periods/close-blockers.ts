@@ -4,11 +4,11 @@
 //
 // ── Why this file exists ────────────────────────────────────────────────────
 //
-// `revenue_incomplete` is not one problem. It is up to three independent ones -
-// a shipment that left with no posting behind it, a channel credit memo nobody
-// has issued or voided, and an issued memo whose entry has never been run - and
-// each is fixed somewhere different. `classifyIncompleteRevenue` computed all
-// three counts separately and then string-joined them into a single sentence,
+// `revenue_incomplete` is not one problem. It is up to two independent ones -
+// a shipment that left with no posting behind it and a channel credit memo
+// nobody has issued or voided - and each is fixed somewhere different.
+// `classifyIncompleteRevenue` computed the counts separately and then
+// string-joined them into a single sentence,
 // which left the close console with one paragraph and one button for three
 // remedies. The button pointed at the orders list, which is the right
 // destination for exactly one of the three.
@@ -29,8 +29,11 @@
 export type CloseBlockerItemKey =
   | 'unposted_shipments'
   | 'draft_channel_memos'
-  | 'unposted_credit_memos'
   | 'unmapped_role'
+  // The export's two (89 D6). Both land on the same account's provider picker;
+  // `ExportFailureItem` in `export/client.ts` is assignable to this interface.
+  | 'unmapped_account'
+  | 'invalid_mapping'
   | 'inventory_unposted'
   | 'inventory_balance'
   | 'inventory_standard_value'
@@ -63,31 +66,32 @@ export interface IncompleteRevenueCounts {
   shipments: number
   /** `channel` credit memos still sitting as a draft. */
   draftChannelMemos: number
-  /** Issued credit memos whose entry has never been run (25 §9.1). */
-  unpostedCreditMemos: number
 }
 
 /**
  * What a month still owes the ledger, as items rather than a paragraph.
  *
  * A zero count produces NO item. An operator with one problem should see one
- * row, not three rows two of which say "nothing to do here" - a satisfied row
+ * row, not two rows one of which says "nothing to do here" - a satisfied row
  * is noise on a card whose whole job is to list work.
  *
- * @param counts The month and its three outstanding counts.
+ * @param counts The month and its outstanding counts.
  * @returns One item per non-zero count, in remedy order. Empty when the month is
  * complete, which is the caller's signal not to refuse at all.
  */
 export function describeIncompleteRevenue(counts: IncompleteRevenueCounts): CloseBlockerItem[] {
-  const { periodKey, shipments, draftChannelMemos, unpostedCreditMemos } = counts
+  const { periodKey, shipments, draftChannelMemos } = counts
   const month = monthLabel(periodKey)
   const items: CloseBlockerItem[] = []
 
   if (shipments > 0) {
     items.push({
+      // Nobody posts a shipment by hand: the recovery sweep does it (88 D5).
       key: 'unposted_shipments',
       label: `${shipments} ${shipments === 1 ? 'shipment is' : 'shipments are'} not posted`,
-      remedy: `Post the fulfillments for ${month} with the posting dialog.`,
+      remedy:
+        `The shipment sweep posts the fulfillments for ${month} on its next pass. ` +
+        'Anything it refuses is on the Outbox Blocked tab under its own reason.',
       count: shipments,
       ref: periodKey,
     })
@@ -105,18 +109,9 @@ export function describeIncompleteRevenue(counts: IncompleteRevenueCounts): Clos
     })
   }
 
-  if (unpostedCreditMemos > 0) {
-    items.push({
-      key: 'unposted_credit_memos',
-      label:
-        `${unpostedCreditMemos} issued credit ` +
-        `${unpostedCreditMemos === 1 ? 'memo is' : 'memos are'} not posted`,
-      remedy: `Post the credit memos for ${month} with the posting dialog.`,
-      count: unpostedCreditMemos,
-      ref: periodKey,
-    })
-  }
-
+  // No `unposted_credit_memos` item (88 D8): an issue the ledger refused never
+  // flips the memo's status (`credit-memos/writes.ts`), so an issued memo with
+  // no posting cannot exist.
   return items
 }
 

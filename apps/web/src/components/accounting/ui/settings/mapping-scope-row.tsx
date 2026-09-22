@@ -3,11 +3,22 @@
 
 import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { TREE_ROW_NESTED_TINT, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
-import { Check, Plus, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react'
+import {
+  TREE_ROW_NESTED_TINT,
+  TreeRow,
+  TreeRowButton,
+  treeRowButtonVariants,
+} from '@auxx/ui/components/tree-row'
+import { Check, Link2, Plus, RotateCcw, Sparkles, TriangleAlert } from 'lucide-react'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { MappingAccountSelect, type MappingAccountValue } from './mapping-account-select'
+
+/** The Chart tab with this account selected, where its provider picker lives (89 D9). */
+export function chartAccountHref(glAccountId: string): string {
+  return `/app/accounting/settings/accounts?s=chart&account=${encodeURIComponent(glAccountId)}`
+}
 
 export interface MappingScopeRowProps {
   /** Usually the scope's name; an editable `AutosizeInput` for an unconfirmed currency-code draft (59 §2.2). */
@@ -40,6 +51,16 @@ export interface MappingScopeRowProps {
   onToggleOpen?: () => void
   /** A role row's "Mark unused"/"Mark used again" — the one hover action neither a scope nor a currency row carries. */
   extraActions?: ReactNode
+  /**
+   * Does the account this row names carry a provider identity (89 D9)? `null`
+   * (nothing connected) and `true` render nothing; `false` shows "Not linked"
+   * and a door to the Chart tab, where the picker that fixes it lives.
+   */
+  linked?: boolean | null
+  /** The `gl_account` the Link action opens. Without it there is nothing to link. */
+  linkAccountId?: string | null
+  /** Names the provider when one is connected — the Link action's tooltip. */
+  linkTooltip?: string
   children?: ReactNode
 }
 
@@ -69,8 +90,12 @@ export function MappingScopeRow({
   isOpen,
   onToggleOpen,
   extraActions,
+  linked,
+  linkAccountId,
+  linkTooltip = 'Link its account in the connected accounting system',
   children,
 }: MappingScopeRowProps) {
+  const notLinked = linked === false && !!linkAccountId
   const hasInherit =
     !noFeedLinked && inheritedAccountName !== undefined && inheritedAccountName !== null
   const isOverride = value !== 'inherit' && value !== 'unused' && value !== null
@@ -100,6 +125,23 @@ export function MappingScopeRow({
               <Sparkles className='size-3' />
               Suggested
             </Badge>
+          )}
+          {notLinked && (
+            <>
+              <Badge variant='outline' size='xs' className='shrink-0'>
+                Not linked
+              </Badge>
+              {/* A Link, not a `TreeRowButton`: the Chart tab's picker is a
+                  destination somebody shares, and a button cannot carry a href. */}
+              <Tooltip content={linkTooltip}>
+                <Link
+                  href={chartAccountHref(linkAccountId as string)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={treeRowButtonVariants({ persistent: true })}>
+                  <Link2 />
+                </Link>
+              </Tooltip>
+            </>
           )}
           {!disabled && (
             <div className='flex shrink-0 items-center gap-1'>

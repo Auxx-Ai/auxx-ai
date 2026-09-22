@@ -6,6 +6,32 @@
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
 export type ExportBatchState = (typeof EXPORT_BATCH_STATES)[number]
 
+/** The adapter's verdict on a refusal, mirrored on `ExportBatch.failureClass` (89 D1). */
+export const EXPORT_FAILURE_CLASSES = ['configuration', 'data', 'transport'] as const
+export type ExportFailureClass = (typeof EXPORT_FAILURE_CLASSES)[number]
+
+/**
+ * One piece of work behind a configuration refusal; both keys land on the same
+ * account's picker. Shape duplicated on `ExportBatch.failureItems` in the schema.
+ */
+export interface ExportFailureItem {
+  key: 'unmapped_account' | 'invalid_mapping'
+  /** The `gl_account` id the remedy targets. */
+  ref: string
+  /** `accountLabel(account)` - what the row prints. */
+  label: string
+  /** One sentence, in `CloseBlockerItem`'s shape so `EntryBlockers` can render it. */
+  remedy: string
+}
+
+/** One line under the Failed badge, by class. Null when the class is unknown. */
+export function exportFailureClassHint(failureClass: ExportFailureClass | null): string | null {
+  if (failureClass === 'configuration') return 'A setup problem'
+  if (failureClass === 'data') return 'The provider refused the data'
+  if (failureClass === 'transport') return 'The provider was unreachable'
+  return null
+}
+
 /**
  * The export tabs, in the order they render. `withdrawn` is history, not a tab,
  * and neither is `sending` (75-D6) - a momentary state is not a place to stand,

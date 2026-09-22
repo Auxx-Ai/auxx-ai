@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   readFieldRelations: vi.fn(),
   stampOrderShipmentTotals: vi.fn(),
+  isFulfillmentCancelled: vi.fn(),
+  reverseFulfillmentPosting: vi.fn(),
 }))
 
 // Real `defineParentReconciler` + real `resolveParentsByRelation` (plan 78's ladder is
@@ -23,6 +25,10 @@ vi.mock('../../../../field-values/read-field-scalars', () => ({
   readFieldRelations: h.readFieldRelations,
 }))
 vi.mock('../stamp-totals', () => ({ stampOrderShipmentTotals: h.stampOrderShipmentTotals }))
+vi.mock('../reads', () => ({ isFulfillmentCancelled: h.isFulfillmentCancelled }))
+vi.mock('../../orders/fulfill', () => ({
+  reverseFulfillmentPosting: h.reverseFulfillmentPosting,
+}))
 vi.mock('@auxx/database', () => ({ database: {} }))
 
 import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
@@ -63,7 +69,11 @@ function lineEvent(
   } as FieldChangeRef
 }
 
-function fulfillmentEvent(instanceId: string, systemAttribute: string): FieldChangeRef {
+function fulfillmentEvent(
+  instanceId: string,
+  systemAttribute: string,
+  isCreate?: boolean
+): FieldChangeRef {
   return {
     recordId: `fulfillment_def:${instanceId}`,
     entityDefinitionId: 'fulfillment_def',
@@ -72,6 +82,7 @@ function fulfillmentEvent(instanceId: string, systemAttribute: string): FieldCha
     field: { id: 'f', systemAttribute } as FieldChangeRef['field'],
     organizationId: ORG,
     userId: USER,
+    ...(isCreate ? { isCreate } : {}),
   } as FieldChangeRef
 }
 
@@ -98,6 +109,8 @@ beforeEach(() => {
     }
   )
   h.stampOrderShipmentTotals.mockResolvedValue({ fulfillmentsWritten: 0, skippedPosted: 0 })
+  h.isFulfillmentCancelled.mockResolvedValue(false)
+  h.reverseFulfillmentPosting.mockResolvedValue(null)
 })
 
 describe('stampTotalsOnFulfillmentLineChange', () => {
@@ -177,5 +190,83 @@ describe('stampTotalsOnFulfillmentChange', () => {
     })
 
     expect(h.stampOrderShipmentTotals).not.toHaveBeenCalled()
+  })
+})
+
+// 88 D9: `reverseFulfillmentPosting` gets its first caller. A cancellation that
+// arrives from the connector frees the claim before the order is re-stamped.
+describe('a cancelled shipment reverses', () => {
+  beforeEach(() => {
+    relations = { fulfillment_order: { ff_1: 'order_1' } }
+    h.isFulfillmentCancelled.mockResolvedValue(true)
+  })
+
+  it('reverses the live posting BEFORE the stamp re-walks the order', async () => {
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.reverseFulfillmentPosting).toHaveBeenCalledWith(
+      {},
+      {
+        organizationId: ORG,
+        fulfillmentInstanceId: 'ff_1',
+        actorUserId: USER,
+        memo: expect.any(String),
+      }
+    )
+    expect(h.reverseFulfillmentPosting.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.stampOrderShipmentTotals.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('reverses on `fulfillment_cancelled_at` too, since either write may land first', async () => {
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_cancelled_at'))
+    })
+
+    expect(h.reverseFulfillmentPosting).toHaveBeenCalledTimes(1)
+  })
+
+  it('is a no-op, not an error, when the shipment never posted', async () => {
+    // `reverseFulfillmentPosting` answers `null` with no live posting, which is
+    // what makes the mark lane's "cancelled now, cause unknown" safe to repeat.
+    h.reverseFulfillmentPosting.mockResolvedValue(null)
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(1)
+  })
+
+  it('still stamps when the reversal throws', async () => {
+    h.reverseFulfillmentPosting.mockRejectedValue(new Error('period locked'))
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reverse a shipment that is not cancelled', async () => {
+    h.isFulfillmentCancelled.mockResolvedValue(false)
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status'))
+    })
+
+    expect(h.reverseFulfillmentPosting).not.toHaveBeenCalled()
+  })
+
+  it('does not read the record at all on the sequence field or on a create', async () => {
+    await runWithDirtyParents(ORG, USER, async () => {
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_sequence'))
+      await stampTotalsOnFulfillmentChange(fulfillmentEvent('ff_1', 'fulfillment_status', true))
+    })
+
+    expect(h.isFulfillmentCancelled).not.toHaveBeenCalled()
+    expect(h.reverseFulfillmentPosting).not.toHaveBeenCalled()
   })
 })

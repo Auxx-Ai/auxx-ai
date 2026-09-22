@@ -272,17 +272,82 @@ async function runFulfillmentReliefForSync(
 }
 
 /**
- * Pass 6: relieve inventory when - and only when - this sync's manifest shows
- * a fulfillment (or fulfillment line) record arriving.
+ * Post the revenue of every live shipment on each order this sync touched, in
+ * `fulfillment_shipped_at` order - Trigger 1 of 88 §4.5.
+ *
+ * The whole order, not only the fulfillments that arrived: the recognition
+ * timeline refuses a shipment whose predecessor has not posted, so posting the
+ * arrival alone would strand it behind a sibling this sync happened not to
+ * touch. The totals stamp has already drained by the time this runs
+ * (`finalize-integrity-passes.ts`'s `runWithDirtyParents` scope above pass 6),
+ * so the stamp the poster reads is there.
+ *
+ * Never throws: a refusal is a `blocked` result the poster has already marked
+ * on the record, and it is logged here the way the relief logs its own.
+ */
+async function runFulfillmentPostingForSync(
+  db: Database,
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver
+): Promise<void> {
+  const [fulfillmentIds, fulfillmentLineIds] = await Promise.all([
+    collectArrivedInstanceIds(manifest, resolveDef, 'fulfillment'),
+    collectArrivedInstanceIds(manifest, resolveDef, 'fulfillment_line'),
+  ])
+  if (fulfillmentIds.length === 0 && fulfillmentLineIds.length === 0) return
+
+  const { resolveParentsByRelation } = await import('../../../reconcilers/parent-reconciler')
+  const allFulfillmentIds = [
+    ...new Set([
+      ...fulfillmentIds,
+      ...(await resolveParentsByRelation(
+        organizationId,
+        'fulfillment_line_fulfillment',
+        fulfillmentLineIds
+      )),
+    ]),
+  ]
+  if (allFulfillmentIds.length === 0) return
+  const orderIds = [
+    ...new Set(
+      await resolveParentsByRelation(organizationId, 'fulfillment_order', allFulfillmentIds)
+    ),
+  ]
+  if (orderIds.length === 0) return
+
+  const { readFulfillmentsForOrders, isLiveFulfillment, postFulfillmentAccounting } = await import(
+    '../../../accounting/sales/fulfillments'
+  )
+  const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
+  const counts = { accepted: 0, drafted: 0, blocked: 0, skipped: 0 }
+  for (const fulfillments of byOrder.values()) {
+    const live = fulfillments
+      .filter(isLiveFulfillment)
+      .sort((a, b) => a.shippedAt.localeCompare(b.shippedAt) || a.sequence - b.sequence)
+    for (const fulfillment of live) {
+      const result = await postFulfillmentAccounting(db, {
+        organizationId,
+        fulfillmentId: fulfillment.id,
+      })
+      counts[result.status]++
+    }
+  }
+  logger.info('integrity fulfillment posting pass done', {
+    organizationId,
+    orders: orderIds.length,
+    ...counts,
+  })
+}
+
+/**
+ * Pass 6: relieve inventory and post revenue when - and only when - this sync's
+ * manifest shows a fulfillment (or fulfillment line) record arriving.
  *
  * **Never throws**, matching every other pass in this module.
  *
- * 🛑 The posting half of this pass is gone (step 1b, TARGET §1): a native
- * shipment now posts inside `money/orders/fulfill.ts`'s own write, and there
- * is no batch/effect lane left for a connector-written fulfillment to be
- * swept into. A fulfillment a sync writes directly - the Shopify connector's
- * own door - does not yet post anything from this pass; that gap is owed to
- * whichever avenue wires the connector write path onto `postEntry` next.
+ * The connector write path posts here (88 D5, Trigger 1); the native door posts
+ * inside its own write (`sales/orders/fulfill.ts`).
  */
 export async function fulfillmentPostingTriggerPass(
   db: Database,
@@ -294,6 +359,14 @@ export async function fulfillmentPostingTriggerPass(
     await runFulfillmentReliefForSync(db, organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity fulfillment relief pass failed', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+  try {
+    await runFulfillmentPostingForSync(db, organizationId, manifest, resolveDef)
+  } catch (error) {
+    logger.error('integrity fulfillment posting pass failed', {
       organizationId,
       error: error instanceof Error ? error.message : String(error),
     })

@@ -7,7 +7,7 @@ import { periodKeyForDate } from '../../ledger/periods/periods'
 import { findLinkedPostings, findLiveSubjectPostings } from '../../ledger/reads/list-postings'
 import { readLiveSourceAccountIds } from '../../ledger/roles/source-scope'
 import { readFulfillmentsForOrder } from '../../sales/fulfillments/reads'
-import { listOrderApplications, listRefundSettlements, readMovements } from '../reads'
+import { listOrderApplications, readMovements } from '../reads'
 import { readOrderMoneyCoverage } from './reads'
 import {
   allocateOrderRecognition,
@@ -154,13 +154,7 @@ export async function readOrderRecognitionSource(
   const moneyById = await readMovements(db, input.organizationId, moneyIds, {
     purpose: 'customer_receipt',
   })
-  if (moneyIds.length) {
-    const refunds = await listRefundSettlements(db, input.organizationId, {
-      originalTransactionIds: moneyIds,
-    })
-    for (const refund of refunds)
-      blockers.push(`receipt ${refund.originalTransactionId} has a refund settlement`)
-  }
+  // A later refund is the credit memo's business, not the receipt's (guide §8.4, 71 D14).
   const events: OrderRecognitionEvent[] = []
   for (const application of applications) {
     const money = moneyById.get(application.moneyTransactionId)
@@ -222,6 +216,10 @@ export async function readOrderRecognitionSource(
       blockers.push(`fulfillment ${fulfillment.id} has inconsistent shipment totals`)
       continue
     }
+    // A free shipment recognises nothing, so it is not an event: emitting it
+    // made the allocator throw and blocked every later receipt on the order
+    // (88 §7.3). The allocator's own zero-shipment throw stays as a guard.
+    if (netMinor + taxMinor === 0n) continue
     shipmentEvents.push({
       event: {
         id: fulfillment.id,

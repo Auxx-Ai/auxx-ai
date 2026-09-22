@@ -20,9 +20,34 @@
  */
 
 import type { RecordId } from '@auxx/types/resource'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+const h = vi.hoisted(() => ({
+  parents: new Map<string, string[]>(),
+  byOrder: new Map<string, unknown[]>(),
+  posted: [] as string[],
+  relieve: vi.fn(async () => ({
+    isErr: () => false,
+    value: { movementIds: [], skippedNoPart: 0, skippedZeroDelta: 0, skippedNoCost: 0 },
+  })),
+}))
+vi.mock('../../../../reconcilers/parent-reconciler', () => ({
+  resolveParentsByRelation: async (_org: string, relation: string, ids: string[]) =>
+    ids.flatMap((id) => h.parents.get(`${relation}:${id}`) ?? []),
+}))
+vi.mock('../../../../accounting/sales/fulfillments', () => ({
+  readFulfillmentsForOrders: async () => h.byOrder,
+  isLiveFulfillment: (row: { status: string }) => row.status !== 'cancelled',
+  postFulfillmentAccounting: async (_db: unknown, input: { fulfillmentId: string }) => {
+    h.posted.push(input.fulfillmentId)
+    return { status: 'drafted' as const, glPostingId: 'glp_1' }
+  },
+}))
+vi.mock('../../../../inventory/relief', () => ({ relieveFulfillmentLines: h.relieve }))
+vi.mock('../../../../cache', () => ({ getOrgCache: () => ({ get: async () => 'user_system' }) }))
+
 import type { SyncChangeManifest } from '../../../../record-rules/sync-manifest-types'
-import { fulfillmentsArrivedThisSync } from '../fulfillment-log-pass'
+import { fulfillmentPostingTriggerPass, fulfillmentsArrivedThisSync } from '../fulfillment-log-pass'
 
 const FULFILLMENT_DEF = 'def_fulfillment'
 const ORDER_DEF = 'def_order'
@@ -107,5 +132,48 @@ describe('fulfillmentsArrivedThisSync', () => {
     })
     expect(await fulfillmentsArrivedThisSync(m, counting)).toBe(false)
     expect(calls).toBe(1)
+  })
+})
+
+describe('fulfillmentPostingTriggerPass', () => {
+  it("posts the manifest's fulfillments after relief, oldest shipment first", async () => {
+    h.parents = new Map([
+      ['fulfillment_order:f1', ['o1']],
+      ['fulfillment_line_fulfillment:', []],
+    ])
+    h.byOrder = new Map([
+      [
+        'o1',
+        [
+          {
+            id: 'f2',
+            status: 'success',
+            shippedAt: '2026-09-05T00:00:00Z',
+            sequence: 2,
+            lines: [],
+          },
+          {
+            id: 'f1',
+            status: 'success',
+            shippedAt: '2026-09-02T00:00:00Z',
+            sequence: 1,
+            lines: [{ id: 'fl1', lineItemId: 'li1', quantity: 1, quantityRelieved: null }],
+          },
+          {
+            id: 'f3',
+            status: 'cancelled',
+            shippedAt: '2026-09-01T00:00:00Z',
+            sequence: 3,
+            lines: [],
+          },
+        ],
+      ],
+    ])
+    h.posted = []
+    const m = manifest({ createdRecordIds: [FULFILLMENT_RID] })
+    await fulfillmentPostingTriggerPass({} as never, 'org_1', m, resolveDef)
+    expect(h.relieve).toHaveBeenCalled()
+    // A cancelled shipment is not posted, and the live pair goes in ship order.
+    expect(h.posted).toEqual(['f1', 'f2'])
   })
 })

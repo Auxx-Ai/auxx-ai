@@ -22,7 +22,8 @@ import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
 import { monthBounds } from '../ledger/periods/periods'
 import type { PostingType } from '../ledger/types'
-import type { ExportBatchState } from './client'
+import type { ExportBatchState, ExportFailureClass, ExportFailureItem } from './client'
+import { readExportBatchBlockers } from './preflight'
 
 /** One posting inside a batch, in the words the row expands to. */
 export interface ExportBatchMember {
@@ -49,6 +50,11 @@ export interface ExportBatchRow {
   docNumber: string | null
   attempts: number
   lastError: string | null
+  /** The last refusal's class and items (89 D1); null and empty before any send. */
+  failureClass: ExportFailureClass | null
+  failureItems: ExportFailureItem[]
+  /** What the mapping table says stops a `ready` or `failed` batch from sending (89 D7); empty otherwise. */
+  blockers: ExportFailureItem[]
   providerObjectId: string | null
   nextAttemptAt: string | null
   sentAt: string | null
@@ -196,6 +202,16 @@ export async function listExportBatches(
       )
       .orderBy(asc(schema.GlPosting.txnDate))
 
+    // 89 D7: `ready` AND `failed` rows. A failed batch's `failureItems` are the
+    // last send's verdict, so an account mapped since then has to drop out of it
+    // - only the live mapping table can say which.
+    const preflight = await readExportBatchBlockers(
+      db,
+      organizationId,
+      batches.filter((batch) => batch.state === 'ready' || batch.state === 'failed')
+    )
+    if (preflight.isErr()) return err(preflight.error)
+
     const byBatch = new Map<string, ExportBatchMember[]>()
     for (const row of memberRows) {
       const member: ExportBatchMember = {
@@ -230,6 +246,9 @@ export async function listExportBatches(
           docNumber: (batch.payload as { docNumber?: string }).docNumber ?? null,
           attempts: batch.attempts,
           lastError: batch.lastError,
+          failureClass: batch.failureClass ?? null,
+          failureItems: batch.failureItems ?? [],
+          blockers: preflight.value.get(batch.id) ?? [],
           providerObjectId: batch.providerObjectId,
           nextAttemptAt: batch.nextAttemptAt?.toISOString() ?? null,
           sentAt: batch.sentAt?.toISOString() ?? null,

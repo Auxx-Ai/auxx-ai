@@ -514,6 +514,53 @@ export const FULFILLMENT_FIELDS = defineResourceFields({
       '(brief §2.2), and nothing in relief or posting may read it',
   },
 
+  /** The poster's own words for its last refusal (88 §7.4). Cleared on accept or draft. */
+  postingBlockedReason: {
+    id: toFieldId('postingBlockedReason'),
+    key: 'postingBlockedReason',
+    label: 'Posting Blocked Reason',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'fulfillment_posting_blocked_reason',
+    systemSortOrder: 'aI',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Why postFulfillmentAccounting last refused this shipment, verbatim. Written by the ' +
+      'poster only and cleared when the entry is accepted or drafted - never set by hand',
+  },
+
+  postingBlockedAt: {
+    id: toFieldId('postingBlockedAt'),
+    key: 'postingBlockedAt',
+    label: 'Posting Blocked At',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'fulfillment_posting_blocked_at',
+    systemSortOrder: 'aJ',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'When that refusal happened - the sweep holds a shipment back for POSTING_RETRY_INTERVAL_MS ' +
+      'after it',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

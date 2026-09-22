@@ -185,6 +185,10 @@ interface ChartAccountEditorProps {
   map: ChartMapView
   /** Pairs this account with a provider account, or clears it with `null`. */
   onSetIdentity: (glAccountId: string, providerAccountId: string | null) => Promise<void>
+  /** Creates this account over in the connected system and links it. Omit to leave the row out. */
+  onCreateInProvider?: (glAccountId: string) => void
+  /** The account whose create-and-link is in flight, if any. */
+  creatingAccountId?: string | null
   /** `PermissionKey.ledgerControl`. False renders every field read-only and
    *  hides Create / Remove / the identity picker / unmap / Confirm suggestion -
    *  the account's current values, its roles and its provider identity stay
@@ -223,6 +227,8 @@ export function ChartAccountEditor({
   onRemove,
   map,
   onSetIdentity,
+  onCreateInProvider,
+  creatingAccountId = null,
   canControl,
 }: ChartAccountEditorProps) {
   // The draft stays active while `selectedId` is its COMMITTED id too - swapping
@@ -246,6 +252,8 @@ export function ChartAccountEditor({
         onRemove={onRemove}
         map={map}
         onSetIdentity={onSetIdentity}
+        onCreateInProvider={onCreateInProvider}
+        creatingAccountId={creatingAccountId}
         canControl={canControl}
       />
     )
@@ -280,6 +288,8 @@ export function ChartAccountEditor({
       onRemove={onRemove}
       map={map}
       onSetIdentity={onSetIdentity}
+      onCreateInProvider={onCreateInProvider}
+      creatingAccountId={creatingAccountId}
       canControl={canControl}
     />
   )
@@ -312,6 +322,8 @@ function ChartAccountForm({
   onRemove,
   map,
   onSetIdentity,
+  onCreateInProvider,
+  creatingAccountId,
   canControl,
 }: {
   account: ChartAccountRow | null
@@ -328,6 +340,8 @@ function ChartAccountForm({
   | 'onRemove'
   | 'map'
   | 'onSetIdentity'
+  | 'onCreateInProvider'
+  | 'creatingAccountId'
   | 'canControl'
 >) {
   const valuesRef = useRef<AccountValues>({
@@ -680,6 +694,8 @@ function ChartAccountForm({
                 }
                 pending={mapping}
                 onSet={handleSetIdentity}
+                onCreateInProvider={onCreateInProvider}
+                creating={!!recordIdRef.current && creatingAccountId === recordIdRef.current}
                 canControl={canControl}
               />
               <FieldError message={errors.mapping} />
@@ -773,6 +789,8 @@ function ProviderAccountField({
   identity,
   pending,
   onSet,
+  onCreateInProvider,
+  creating,
   canControl,
 }: {
   map: ChartMapView
@@ -783,6 +801,9 @@ function ProviderAccountField({
   identity: AccountIdentityRow | undefined
   pending: boolean
   onSet: (providerAccountId: string | null) => Promise<void>
+  onCreateInProvider?: (glAccountId: string) => void
+  /** This account's create-and-link is in flight. */
+  creating?: boolean
   /** `PermissionKey.ledgerControl`. False hides the picker, the unmap clear
    *  affordance and the Confirm-suggestion button - the paired account (or
    *  lack of one) stays visible as text. */
@@ -828,6 +849,7 @@ function ProviderAccountField({
 
   const suggestion = identity.suggestion
   const broken = isMappingBroken(identity)
+  const canCreateHere = map.connected && map.canCreate && !identity.providerAccountId && canControl
 
   // The confirmed target, as it should READ. `liveProviderAccount` is the truth
   // when there is one; the recorded name is the fallback that keeps a BROKEN row
@@ -872,9 +894,17 @@ function ProviderAccountField({
         // 🛑 The LIVE local values, not `identity.account`'s saved ones - see
         // the note on `options` below, which this replaced.
         target={{ accountType, subtype }}
-        disabled={pending}
+        disabled={pending || creating}
         placeholder='Select account'
         onChange={(next) => void onSet(next)}
+        // The same gate `chart-list.tsx` applies, minus the suggestion check: a
+        // suggestion and a create row can coexist in the picker.
+        onCreate={
+          canCreateHere && onCreateInProvider
+            ? () => onCreateInProvider(identity.account.id)
+            : undefined
+        }
+        createLabel={`Create in ${map.providerLabel ?? 'the accounting system'}`}
       />
 
       {suggestion && (

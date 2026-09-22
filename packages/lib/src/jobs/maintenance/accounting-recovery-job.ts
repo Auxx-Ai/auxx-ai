@@ -7,6 +7,7 @@ import { sweepMovementAccounting } from '../../accounting/money/blocked-movement
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepDepositApplicationAccounting } from '../../accounting/money/customer-money/deposit-application-accounting'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
+import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
@@ -64,6 +65,22 @@ export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
         })
       } catch (error) {
         logger.warn('Payment accounting recovery needs retry', {
+          organizationId: organization.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    // 88 D5, Trigger 2. After the movement sweep: a receipt that drafts this
+    // pass is what lets its order's shipment through the timeline.
+    if (Date.now() < deadline) {
+      try {
+        await sweepFulfillmentAccounting(database, {
+          organizationId: organization.id,
+          limit: 100,
+          timeBudgetMs: deadline - Date.now(),
+        })
+      } catch (error) {
+        logger.warn('Shipment accounting recovery needs retry', {
           organizationId: organization.id,
           error: error instanceof Error ? error.message : String(error),
         })

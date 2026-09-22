@@ -38,6 +38,7 @@ import { migration180CustomerTransactionGatewayIds } from './migrations/180-cust
 import { migration181RewalkProvisionedChartPacks } from './migrations/181-rewalk-provisioned-chart-packs'
 import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-bill-amount-discounted'
 import { migration183EntityDefPalette } from './migrations/183-entity-def-palette'
+import { migration184FulfillmentPostingMarker } from './migrations/184-fulfillment-posting-marker'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -197,6 +198,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // (75 §1.4, 75-D3).
   migration182VendorBillAmountDiscounted,
   migration183EntityDefPalette,
+  // Two fields on the existing `fulfillment` def, no backfill: why the shipment
+  // poster last refused a shipment and when (88 §7.4).
+  migration184FulfillmentPostingMarker,
 ]
 
 /**

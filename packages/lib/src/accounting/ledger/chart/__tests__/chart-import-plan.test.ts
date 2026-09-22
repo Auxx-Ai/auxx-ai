@@ -44,6 +44,7 @@ function roleMap(overrides: Record<string, RoleAssignmentRow['state']> = {}): Ro
     axis: roleScopeAxis(role),
     overrides: [],
     railOverrides: [],
+    linked: null,
   }))
 }
 

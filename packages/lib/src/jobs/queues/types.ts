@@ -59,12 +59,6 @@ export enum Queues {
   dataConnectorQueue = 'data-connector',
   // Learned-KB extraction (AI memory from resolved threads) queue
   learnedExtractionQueue = 'learned-extraction',
-  // Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md §2.4).
-  // Its OWN queue at concurrency 1: one job posts every unposted shipment in an
-  // org as one entry per ship day, and two of them running side by side would
-  // race for the same day's period key. The `auto` lane coalesces on a per-org
-  // `jobId`, which only de-dupes against a job that is still QUEUED.
-  fulfillmentPostingQueue = 'fulfillment-posting',
   // Export batch: send ONE batch to the pinned books
   // (QuickBooks today). Off the request path on purpose - a send is 3 to 5
   // sequential Lambda round trips (resolve the context, list the chart, read

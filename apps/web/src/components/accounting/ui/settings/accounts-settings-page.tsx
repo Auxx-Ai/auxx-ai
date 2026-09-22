@@ -35,12 +35,11 @@
 // `catalog_item`'s one required field (task 15 §5 made the code optional), and
 // a validation refusal belongs on an act somebody knowingly performed.
 
-import {
-  type AccountRole,
-  accountPath,
-  type ChartAccountRow,
-  type GlAccountTypeValue,
-  type RoleAssignmentRow,
+import type {
+  AccountRole,
+  ChartAccountRow,
+  GlAccountTypeValue,
+  RoleAssignmentRow,
 } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
@@ -70,6 +69,7 @@ import { ChartAccountsBulkBar } from './chart-accounts-bulk-bar'
 import { ChartList } from './chart-list'
 import { ChartPacksDialog } from './chart-packs-dialog'
 import { MappingList } from './mapping-list'
+import { useCreateProviderAccount } from './use-create-provider-account'
 
 type AccountsTab = 'mapping' | 'chart'
 
@@ -86,11 +86,6 @@ const BREADCRUMBS = [
 
 const PAGE_DESCRIPTION =
   'Which account each posting category lands on, per store and per payment rail, and the chart those accounts live in.'
-
-/** `Sales, 4100 · Product Income` - the accounts a toast has to name. */
-function accountNameList(created: Array<{ row: { account: ChartAccountRow } }>): string {
-  return created.map(({ row }) => formatAccountLabel(row.account)).join(', ')
-}
 
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -354,6 +349,10 @@ export function AccountingAccountsSettingsPage() {
     async (glAccountId: string, providerAccountId: string | null) => {
       await setIdentity.mutateAsync({ glAccountId, providerAccountId })
       await utils.ledger.accountMap.invalidate()
+      // The server re-releases the failed batches this unblocks, so an Outbox
+      // open in another tab is now showing a stale refusal.
+      void utils.ledger.exportBatches.list.invalidate()
+      void utils.ledger.outboxCounts.invalidate()
     },
     [setIdentity, utils]
   )
@@ -386,97 +385,12 @@ export function AccountingAccountsSettingsPage() {
     [handleSetIdentity]
   )
 
-  /**
-   * Create ONE row's account in the connected system and link it.
-   *
-   * 🛑 Confirms first, and the confirm is not a formality: every other write on
-   * this page changes something of ours, and this one adds an account to
-   * somebody's real books. QuickBooks cannot delete an account - the most anyone
-   * can do afterwards is deactivate it - so "are you sure" is the last point at
-   * which a misclick is free.
-   *
-   * Toasts its refusal, like `handleAcceptSuggestion` and for the same reason: a
-   * list row has no field for a sentence to land on, and the row is on screen so
-   * the message can name the account.
-   */
-  const [creatingAccountId, setCreatingAccountId] = useState<string | null>(null)
-  const createInProvider = api.ledger.createProviderAccount.useMutation()
-
-  const handleCreateInProvider = useCallback(
-    async (glAccountId: string) => {
-      const account = accounts.find((row) => row.id === glAccountId)
-      const where = mapView.providerLabel ?? 'the connected accounting system'
-      // A sub-account cannot be nested under a parent the provider does not
-      // have yet, so the parents come along - named here, because they are
-      // accounts somebody did not click and they land in the same real books.
-      const parents = accountPath(accounts, glAccountId)
-        .slice(0, -1)
-        .filter((ancestor) => !mapView.byAccountId.get(ancestor.id)?.providerAccountId)
-      const parentNote =
-        parents.length > 0
-          ? ` Its parent ${parents.length === 1 ? 'account' : 'accounts'} ${parents
-              .map((ancestor) => formatAccountLabel(ancestor))
-              .join(
-                ', '
-              )} ${parents.length === 1 ? 'is' : 'are'} not linked yet and will be created first.`
-          : ''
-      const confirmed = await confirm({
-        title: `Create this account in ${where}?`,
-        description: `${formatAccountLabel(account)} will be added to ${where}'s chart of accounts and linked to this one.${parentNote} ${where} cannot delete an account once it exists - it can only be made inactive.`,
-        confirmText: parents.length > 0 ? 'Create all and link' : 'Create and link',
-        cancelText: 'Cancel',
-      })
-      if (!confirmed) return
-
-      setCreatingAccountId(glAccountId)
-      try {
-        const result = await createInProvider.mutateAsync({
-          glAccountId,
-          includeAncestors: parents.length > 0,
-        })
-        await utils.ledger.accountMap.invalidate()
-        // ⚠️ Not success toasts - the page has none, and the link badge flipping
-        // to Linked is the confirmation. These are the outcomes that are NOT what
-        // the button said it would do, so they are worth a sentence: accounts
-        // nobody clicked were added to the provider's books, the account already
-        // existed and nothing was created, or the code did not survive because
-        // the company keeps no account numbers.
-        if (result.ancestors.length > 0) {
-          const created = result.ancestors.filter((row) => row.outcome === 'created')
-          const existing = result.ancestors.filter((row) => row.outcome === 'existing')
-          toastError({
-            title: `${result.ancestors.length} parent ${result.ancestors.length === 1 ? 'account' : 'accounts'} went to ${where} too`,
-            description: [
-              created.length > 0 &&
-                `${accountNameList(created)} ${created.length === 1 ? 'was' : 'were'} created and linked.`,
-              existing.length > 0 &&
-                `${accountNameList(existing)} already existed there and ${existing.length === 1 ? 'was' : 'were'} linked.`,
-            ]
-              .filter(Boolean)
-              .join(' '),
-          })
-        } else if (result.outcome === 'existing') {
-          toastError({
-            title: `${where} already had this account`,
-            description: `Linked to '${result.row.providerAccountName}'. Nothing was created.`,
-          })
-        } else if (result.numberDropped) {
-          toastError({
-            title: 'Linked, but without the account number',
-            description: `${where} has account numbers turned off, so '${formatAccountLabel(account)}' was created by name only.`,
-          })
-        }
-      } catch (error) {
-        toastError({
-          title: `Error creating the account in ${where}`,
-          description: error instanceof Error ? error.message : 'Could not create the account.',
-        })
-      } finally {
-        setCreatingAccountId(null)
-      }
-    },
-    [accounts, confirm, createInProvider, mapView.byAccountId, mapView.providerLabel, utils]
-  )
+  const { createInProvider: handleCreateInProvider, creatingAccountId } = useCreateProviderAccount({
+    accounts,
+    byAccountId: mapView.byAccountId,
+    providerLabel: mapView.providerLabel,
+    confirm,
+  })
 
   const confirmSuggested = api.ledger.confirmSuggestedAccounts.useMutation({
     onSuccess: async (result) => {
@@ -580,6 +494,10 @@ export function AccountingAccountsSettingsPage() {
               onRemove={handleRemoveAccount}
               map={mapView}
               onSetIdentity={handleSetIdentity}
+              onCreateInProvider={(glAccountId) => {
+                void handleCreateInProvider(glAccountId)
+              }}
+              creatingAccountId={creatingAccountId}
               canControl={canControl}
             />
           }

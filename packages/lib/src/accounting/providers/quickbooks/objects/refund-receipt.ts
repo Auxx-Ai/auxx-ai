@@ -91,7 +91,7 @@ export async function send(
       payload.paidFrom.glAccountId,
     ]
     const accounts = await resolveMappedAccounts(tool, glAccountIds)
-    if (accounts.isErr()) return configError(accounts.error.message)
+    if (accounts.isErr()) return err(accounts.error)
 
     const ourChart = await listChartAccounts(database, organizationId)
     if (ourChart.isErr()) return configError(ourChart.error.message)

@@ -17,6 +17,15 @@
  */
 
 export {
+  FULFILLMENT_SOURCE_KIND,
+  type FulfillmentPostingResult,
+  NothingToRecogniseError,
+  type PreparedFulfillmentEntry,
+  postFulfillmentAccounting,
+  prepareFulfillmentEntry,
+} from './accounting'
+export { sweepFulfillmentAccounting } from './accounting-sweep'
+export {
   defaultFulfillmentName,
   FULFILLMENT_STATUSES,
   type Fulfillment,
@@ -33,8 +42,22 @@ export {
   loadFulfillmentFieldContext,
   requireFulfillmentFieldContext,
 } from './fields'
-export { readFulfillmentsForOrder, readFulfillmentsForOrders } from './reads'
-export { type ShipmentLine, shapeShipmentLine } from './shipment-lines'
+export {
+  type FulfillmentCandidateWindow,
+  findLiveFulfillmentDraft,
+  listFulfillmentAccountingCandidates,
+} from './posting-reads'
+export {
+  readFulfillmentPostingSubject,
+  readFulfillmentsForOrder,
+  readFulfillmentsForOrders,
+} from './reads'
+export {
+  type OrderShipment,
+  resolveOrderShipments,
+  type ShipmentLine,
+  shapeShipmentLine,
+} from './shipment-lines'
 export { stampOrderShipmentTotals } from './stamp-totals'
 export {
   FULFILLMENT_LINE_ORDER_TOTALS_RECONCILER,

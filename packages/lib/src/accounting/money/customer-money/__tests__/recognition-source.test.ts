@@ -2,7 +2,19 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ linked: [] as unknown[], askedFor: [] as unknown[] }))
+const h = vi.hoisted(() => ({
+  linked: [] as unknown[],
+  askedFor: [] as unknown[],
+  applications: [] as unknown[],
+  movements: new Map<string, unknown>(),
+  listRefundSettlements: vi.fn(async () => [] as unknown[]),
+  fulfillments: [] as unknown[],
+}))
+vi.mock('../../reads', () => ({
+  listOrderApplications: async () => h.applications,
+  readMovements: async () => h.movements,
+  listRefundSettlements: h.listRefundSettlements,
+}))
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLinkedPostings: async (_db: unknown, _org: string, options: unknown) => {
     h.askedFor.push(options)
@@ -30,7 +42,9 @@ vi.mock('../reads', () => ({
     sourceStoreIds: [] as string[],
   })),
 }))
-vi.mock('../../../sales/fulfillments/reads', () => ({ readFulfillmentsForOrder: async () => [] }))
+vi.mock('../../../sales/fulfillments/reads', () => ({
+  readFulfillmentsForOrder: async () => h.fulfillments,
+}))
 
 const CREDIT_BLOCKER =
   'Order recognition must include its posted credit components before further posting'
@@ -72,6 +86,84 @@ describe('the credit-memo blocker', () => {
       bookTimeZone: 'UTC',
     })
     expect(source.blockers).toContain(CREDIT_BLOCKER)
+  })
+})
+
+describe('a refunded receipt', () => {
+  it('carries no refund blocker - the memo owns the refund, not the receipt', async () => {
+    h.linked = []
+    h.applications = [
+      {
+        moneyTransactionId: 'mt_1',
+        operation: 'apply',
+        effectiveDate: '2026-09-01',
+        amountMinor: 10800n,
+      },
+    ]
+    h.movements = new Map([
+      [
+        'mt_1',
+        {
+          id: 'mt_1',
+          currency: 'USD',
+          currencyExponent: 2,
+          occurredAt: new Date('2026-09-01T12:00:00Z'),
+          amountMinor: 10800n,
+        },
+      ],
+    ])
+    h.listRefundSettlements.mockClear()
+    const source = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '10000',
+      orderTaxMinor: '800',
+      bookTimeZone: 'UTC',
+    })
+    expect(source.blockers.some((row) => row.includes('refund settlement'))).toBe(false)
+    expect(h.listRefundSettlements).not.toHaveBeenCalled()
+    expect(source.events).toEqual([
+      expect.objectContaining({ id: 'mt_1', kind: 'receipt', amountMinor: '10800' }),
+    ])
+    h.applications = []
+    h.movements = new Map()
+  })
+})
+
+describe('a $0 shipment', () => {
+  it('is not an event - a free shipment recognises nothing (88 §7.3)', async () => {
+    h.linked = []
+    h.applications = []
+    h.movements = new Map()
+    h.fulfillments = [
+      {
+        id: 'ful_free',
+        status: 'success',
+        shippedAt: '2026-09-02 10:00:00+00',
+        subtotalMinor: 0,
+        totalMinor: 0,
+        shippingRecognised: false,
+        glPosting: null,
+      },
+      {
+        id: 'ful_paid',
+        status: 'success',
+        shippedAt: '2026-09-03 10:00:00+00',
+        subtotalMinor: 5000,
+        totalMinor: 5000,
+        shippingRecognised: false,
+        glPosting: null,
+      },
+    ]
+    const source = await readOrderRecognitionSource(db, {
+      organizationId: 'org_1',
+      orderId: 'ord_1',
+      orderNetMinor: '5000',
+      orderTaxMinor: '0',
+      bookTimeZone: 'UTC',
+    })
+    expect(source.events.map((event) => event.id)).toEqual(['ful_paid'])
+    h.fulfillments = []
   })
 })
 

@@ -8,8 +8,10 @@
 
 import {
   type ExportBatchState,
+  type ExportFailureClass,
   exportBatchStateHint,
   exportBatchStateLabel,
+  exportFailureClassHint,
 } from '@auxx/lib/accounting/export/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
@@ -26,15 +28,20 @@ interface ExportBatchStateBadgeProps {
   state: ExportBatchState
   /** Only `ready`'s hint depends on it - see `exportBatchStateHint`. */
   autoSend?: boolean
+  /** The last refusal's class (89 D6). Says WHAT KIND on `failed`; the state stays the state. */
+  failureClass?: ExportFailureClass | null
   size?: 'xs' | 'sm' | 'default'
 }
 
 export function ExportBatchStateBadge({
   state,
   autoSend = false,
+  failureClass = null,
   size = 'xs',
 }: ExportBatchStateBadgeProps) {
-  const hint = exportBatchStateHint(state, autoSend)
+  const hint =
+    (state === 'failed' ? exportFailureClassHint(failureClass) : null) ??
+    exportBatchStateHint(state, autoSend)
   const badge = (
     <Badge variant={EXPORT_BATCH_STATE_VARIANT[state]} size={size}>
       {exportBatchStateLabel(state)}

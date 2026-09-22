@@ -11,10 +11,12 @@ import {
   CommandEmpty,
   CommandGroup,
   CommandInput,
+  CommandItem,
   CommandList,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import {
   accountTypeLabel,
@@ -40,6 +42,9 @@ export interface ProviderAccountPickerProps {
   placeholder?: string
   className?: string
   triggerProps?: PickerTriggerOptions
+  /** Create this account over there and link it. Omit to leave the footer row out. */
+  onCreate?: () => void
+  createLabel?: string
 }
 
 /**
@@ -78,6 +83,8 @@ export function ProviderAccountPicker({
   placeholder = 'Select account…',
   className,
   triggerProps,
+  onCreate,
+  createLabel = 'Create in the accounting system',
 }: ProviderAccountPickerProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -166,6 +173,25 @@ export function ProviderAccountPicker({
               </CommandGroup>
             ))}
           </CommandList>
+          {/* 🛑 Pinned OUTSIDE `CommandList`, the shape `gl-account-picker.tsx`
+              uses: a long provider chart scrolls UNDER this row rather than
+              pushing it past the list's max height, and outside the list it
+              survives an empty search - which is exactly when somebody who has
+              just failed to find an account needs it. */}
+          {onCreate && (
+            <CommandGroup className='border-t' aria-label='Create account'>
+              <CommandItem
+                value='__create'
+                onSelect={() => {
+                  handleOpenChange(false)
+                  onCreate()
+                }}
+                className='h-7.5 cursor-pointer'>
+                <Plus className='text-muted-foreground' />
+                <span>{createLabel}</span>
+              </CommandItem>
+            </CommandGroup>
+          )}
         </Command>
       </PopoverContent>
     </Popover>

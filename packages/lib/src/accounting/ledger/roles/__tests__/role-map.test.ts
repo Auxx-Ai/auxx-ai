@@ -20,6 +20,7 @@
 // stub out of the parameters the module actually passed.
 
 import { type Database, schema } from '@auxx/database'
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../post/accounting-commit-lock', () => ({ withAccountingCommitLock: vi.fn() }))
@@ -30,6 +31,25 @@ import { ACCOUNT_ROLES } from '../../builders/entry'
 const h = vi.hoisted(() => ({
   /** systemAttribute -> the CustomField row, or absent to model an unmigrated org. */
   fields: new Map<string, { id: string; entityDefinitionId: string | null }>(),
+}))
+
+// The provider seam the link state (89 D9) is read through. `listProviderAccounts`
+// is here only so a test can assert it is NEVER called - it is the provider round
+// trip the Mapping tab must not pay for.
+const prov = vi.hoisted(() => ({
+  id: 'none' as string,
+  mappings: new Map<string, string>(),
+  listAccountMappings: vi.fn(),
+  listProviderAccounts: vi.fn(),
+}))
+
+vi.mock('../../../providers/provider', () => ({
+  NONE_PROVIDER_ID: 'none',
+  resolveAccountingProvider: async () => ({
+    id: prov.id,
+    listAccountMappings: prov.listAccountMappings,
+    listProviderAccounts: prov.listProviderAccounts,
+  }),
 }))
 
 vi.mock('../../../../cache', () => ({
@@ -67,6 +87,8 @@ interface Assignment {
   source?: string
   confirmedAt?: Date | null
   markedUnused?: boolean
+  /** Store scope (task 47 §7.3): a `FinancialSourceAccount` id, mutually exclusive with a rail scope. */
+  sourceAccountId?: string | null
   /** Rail scope (task 58 §3): a `payment_gateway` id, mutually exclusive with a store scope. */
   paymentGatewayId?: string | null
   currency?: string | null
@@ -115,7 +137,12 @@ interface Stub {
  * which is what lets "the mapped account was archived" be a real test rather
  * than a fixture returning what it was told to.
  */
-function stubDb(assignments: Assignment[], accounts: Account[]): Stub {
+function stubDb(
+  assignments: Assignment[],
+  accounts: Account[],
+  /** The org's active `ExternalBookConnection`, or none - the link state's second gate (89 D9). */
+  bookConnection: { id: string } | null = null
+): Stub {
   const inserts: Stub['inserts'] = []
   const updates: Record<string, unknown>[] = []
 
@@ -147,9 +174,13 @@ function stubDb(assignments: Assignment[], accounts: Account[]): Stub {
           source: a.source ?? 'seed',
           confirmedAt: a.confirmedAt ?? null,
           markedUnused: a.markedUnused ?? false,
+          sourceAccountId: a.sourceAccountId ?? null,
           paymentGatewayId: a.paymentGatewayId ?? null,
           currency: a.currency ?? null,
         }))
+    }
+    if (table === schema.ExternalBookConnection) {
+      return bookConnection && params.includes(ORG) ? [bookConnection] : []
     }
     if (table === schema.EntityInstance) {
       // Either the by-id read (ids in params) or the whole-def read (DEF in
@@ -238,6 +269,10 @@ const GRNI_ACCOUNT: Account = {
 }
 
 beforeEach(() => {
+  prov.id = 'none'
+  prov.mappings = new Map()
+  prov.listAccountMappings.mockImplementation(async () => ok(prov.mappings))
+  prov.listProviderAccounts.mockImplementation(async () => ok([]))
   h.fields = new Map([
     ['gl_account_code', { id: CODE_FIELD, entityDefinitionId: DEF }],
     ['gl_account_name', { id: NAME_FIELD, entityDefinitionId: DEF }],
@@ -541,6 +576,130 @@ describe('listRoleMap - rail scopes and currency rows (task 58 §3, task 59 V1)'
     const rows = (await listRoleMap(stub.db, ORG))._unsafeUnwrap()
     expect(rows.find((r) => r.role === 'revenue_product')?.railOverrides).toEqual([])
     expect(rows.find((r) => r.role === 'bank')?.overrides).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 🛑 The Mapping tab renders `linked` on every row, so the answer has to come
+// from `listAccountMappings` (one `FieldValue` read) and NEVER from
+// `listProviderAccounts`, which fetches the provider's whole chart. That is the
+// rule `accounts-settings-page.tsx` gates `ledger.accountMap` on the Chart tab
+// for, and the last assertion in each test below is what keeps it true.
+describe('listRoleMap - the provider link state (89 D9)', () => {
+  const CONNECTION = { id: 'conn_1' }
+
+  it('reports linked for an account the provider map carries', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_grni', 'qbo_55']])
+    const stub = stubDb([{ role: 'grni', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT], CONNECTION)
+
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
+
+    expect(row?.linked).toBe(true)
+    expect(prov.listAccountMappings).toHaveBeenCalledTimes(1)
+    expect(prov.listProviderAccounts).not.toHaveBeenCalled()
+  })
+
+  it('reports not linked for an account the provider map does not carry', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_other', 'qbo_55']])
+    const stub = stubDb([{ role: 'grni', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT], CONNECTION)
+
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
+
+    expect(row?.linked).toBe(false)
+    expect(prov.listProviderAccounts).not.toHaveBeenCalled()
+  })
+
+  // One read for the WHOLE map, however many roles name however many accounts.
+  it('reads the provider map once for every role on the list', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_grni', 'qbo_55']])
+    const stub = stubDb(
+      [
+        { role: 'grni', glAccountId: 'acct_grni' },
+        { role: 'accounts_payable', glAccountId: 'acct_ap' },
+      ],
+      [GRNI_ACCOUNT, { ...GRNI_ACCOUNT, id: 'acct_ap', code: '2000', name: 'Accounts Payable' }],
+      CONNECTION
+    )
+
+    const rows = (await listRoleMap(stub.db, ORG))._unsafeUnwrap()
+
+    expect(rows.find((r) => r.role === 'grni')?.linked).toBe(true)
+    expect(rows.find((r) => r.role === 'accounts_payable')?.linked).toBe(false)
+    expect(prov.listAccountMappings).toHaveBeenCalledTimes(1)
+  })
+
+  // "Nothing is connected" and "connected, not linked" are different answers
+  // needing different actions - null renders nothing at all.
+  it('reports null when no provider is connected', async () => {
+    const stub = stubDb([{ role: 'grni', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT], CONNECTION)
+
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
+
+    expect(row?.linked).toBeNull()
+    expect(prov.listAccountMappings).not.toHaveBeenCalled()
+  })
+
+  it('reports null when there is no active book connection', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_grni', 'qbo_55']])
+    const stub = stubDb([{ role: 'grni', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT], null)
+
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
+
+    expect(row?.linked).toBeNull()
+    expect(prov.listAccountMappings).not.toHaveBeenCalled()
+  })
+
+  it('reports null for a role that names no account', async () => {
+    prov.id = 'quickbooks'
+    const stub = stubDb([{ role: 'grni', glAccountId: 'acct_grni' }], [GRNI_ACCOUNT], CONNECTION)
+
+    const rows = (await listRoleMap(stub.db, ORG))._unsafeUnwrap()
+
+    expect(rows.find((r) => r.role === 'accounts_payable')?.linked).toBeNull()
+  })
+
+  it('carries the link state onto a store override row', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_grni', 'qbo_55']])
+    const stub = stubDb(
+      [
+        { role: 'revenue_product', glAccountId: 'acct_grni' },
+        { role: 'revenue_product', glAccountId: 'acct_other', sourceAccountId: 'fsa_shop' },
+      ],
+      [GRNI_ACCOUNT, { ...GRNI_ACCOUNT, id: 'acct_other', code: '4000', name: 'Product Revenue' }],
+      CONNECTION
+    )
+
+    const row = (await listRoleMap(stub.db, ORG))
+      ._unsafeUnwrap()
+      .find((r) => r.role === 'revenue_product')
+
+    expect(row?.linked).toBe(true)
+    expect(row?.overrides[0]?.sourceAccountId).toBe('fsa_shop')
+    expect(row?.overrides[0]?.linked).toBe(false)
+  })
+
+  it('carries the link state onto a rail override row', async () => {
+    prov.id = 'quickbooks'
+    prov.mappings = new Map([['acct_1210', 'qbo_55']])
+    const stub = stubDb(
+      [
+        { role: 'clearing', glAccountId: 'acct_1210' },
+        { role: 'clearing', glAccountId: 'acct_1230', paymentGatewayId: 'pg_stripe' },
+      ],
+      [CLEARING_1210, CLEARING_1230],
+      CONNECTION
+    )
+
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'clearing')
+
+    expect(row?.linked).toBe(true)
+    expect(row?.railOverrides[0]?.linked).toBe(false)
   })
 })
 

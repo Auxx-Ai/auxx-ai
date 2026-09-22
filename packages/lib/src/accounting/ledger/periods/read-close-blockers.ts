@@ -15,7 +15,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
@@ -102,6 +102,96 @@ async function countUnpostedMovements(
         gte(sql`${schema.FieldValue.valueDate}::date`, bounds.first),
         lt(sql`${schema.FieldValue.valueDate}::date`, bounds.next),
         sql`${schema.FieldValue.entityId} NOT IN ${posted}`
+      )
+    )
+
+  return Number(row?.count ?? 0)
+}
+
+/**
+ * Shipments the month recognised nothing for (88 D8): live (not `cancelled`),
+ * stamped, non-zero fulfillments shipped inside the month that hold no live
+ * subject claim.
+ *
+ * "Posted" is the claim and never a stamp field on the record (TARGET §1), and
+ * `live` is `findLiveSubjectPostings`' definition — a reversal deletes the
+ * original's subject row, so anything still `subject` stands in the books now.
+ */
+async function countUnpostedShipments(
+  db: Database,
+  organizationId: string,
+  bounds: { first: string; next: string }
+): Promise<number> {
+  const fields = await systemFieldMap(db, organizationId, [
+    'fulfillment_shipped_at',
+    'fulfillment_status',
+    'fulfillment_subtotal',
+    'fulfillment_total',
+  ] as const)
+  const shippedAt = fields.fulfillment_shipped_at
+  const status = fields.fulfillment_status
+  const subtotal = fields.fulfillment_subtotal
+  const total = fields.fulfillment_total
+  if (!shippedAt || !status || !subtotal || !total) return 0
+
+  const claimed = db
+    .select({ sourceId: schema.GlPostingSource.sourceId })
+    .from(schema.GlPostingSource)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingSource.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
+        eq(schema.GlPostingSource.linkRole, 'subject'),
+        inArray(schema.GlPosting.status, ['draft', 'posted'])
+      )
+    )
+
+  const cancelled = db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, status.id),
+        eq(schema.FieldValue.optionId, 'cancelled')
+      )
+    )
+
+  const subtotalValue = alias(schema.FieldValue, 'fulfillment_subtotal')
+  const totalValue = alias(schema.FieldValue, 'fulfillment_total')
+  const [row] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(schema.FieldValue)
+    // Stamped: `fulfillment_subtotal` written at all. Non-zero: a free shipment
+    // recognises nothing and is not an event (88 D5 step 3).
+    .innerJoin(
+      subtotalValue,
+      and(
+        eq(subtotalValue.organizationId, schema.FieldValue.organizationId),
+        eq(subtotalValue.entityId, schema.FieldValue.entityId),
+        eq(subtotalValue.fieldId, subtotal.id),
+        isNotNull(subtotalValue.valueNumber)
+      )
+    )
+    .innerJoin(
+      totalValue,
+      and(
+        eq(totalValue.organizationId, schema.FieldValue.organizationId),
+        eq(totalValue.entityId, schema.FieldValue.entityId),
+        eq(totalValue.fieldId, total.id),
+        gt(totalValue.valueNumber, 0)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, shippedAt.id),
+        isNotNull(schema.FieldValue.valueDate),
+        gte(sql`${schema.FieldValue.valueDate}::date`, bounds.first),
+        lt(sql`${schema.FieldValue.valueDate}::date`, bounds.next),
+        sql`${schema.FieldValue.entityId} NOT IN ${cancelled}`,
+        sql`${schema.FieldValue.entityId} NOT IN ${claimed}`
       )
     )
 
@@ -301,15 +391,11 @@ export async function readCloseBlockers(
   const items: CloseBlockerItem[] = []
 
   try {
-    const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month: periodKey })
-    items.push(
-      ...describeIncompleteRevenue({
-        periodKey,
-        shipments: 0,
-        draftChannelMemos: memos,
-        unpostedCreditMemos: 0,
-      })
-    )
+    const [shipments, memos] = await Promise.all([
+      countUnpostedShipments(db, organizationId, bounds),
+      countUnissuedChannelCreditMemos(db, { organizationId, month: periodKey }),
+    ])
+    items.push(...describeIncompleteRevenue({ periodKey, shipments, draftChannelMemos: memos }))
   } catch (error) {
     logger.error('Could not check the month for unposted revenue', {
       organizationId,

@@ -774,6 +774,11 @@ question the setup wizard exists to answer.
 either scope branch runs — caught as a validation message, not as a constraint name in a stack
 trace. `ROLES_WITHOUT_DEFAULT` (`bank`) is the one write it always refuses unscoped.
 
+Each row also says whether the account it names is **linked** to a provider account (89 D9):
+`linked` comes from `provider.listAccountMappings` — one local read, never `accountMap`'s provider
+round trip, which the Mapping tab must not pay for — and an unlinked account gets a *Not linked*
+badge and a Link button into the Chart tab's editor. Null when nothing is connected.
+
 ### 6.4 The chart
 
 | File | Owns |
@@ -1289,6 +1294,13 @@ ready → sending → sent
 
 `withdrawn` is terminal; the next build makes a new batch out of the freed postings.
 
+A refusal is kept as more than prose (89 D1): `failureClass` is the adapter's own verdict
+(`configuration` | `data` | `transport`, null on a crash) and `failureItems` the pieces of work
+behind a configuration refusal — one `unmapped_account` / `invalid_mapping` item per `gl_account`,
+the shape `EntryBlockers` renders. 🛑 **Only `transport` is retried automatically** (89 D3):
+`fail()` sets `nextAttemptAt` for that class alone, so a batch refused on setup or data waits for
+a person and the Retry button, exactly as `ledger/types.ts`'s `PostFailureClass` has always said.
+
 Two partial unique indexes carry the design:
 
 - `ExportBatch_grain_key` on `(organizationId, bookId, avenue, grainKey, coalesce(storeId, ''),
@@ -1336,6 +1348,15 @@ its refusal back in the same breath.
 not in JS**: two workers reading the same free lease must not both win, and only the update can
 settle that. `not_connected`, `disabled` and `waiting` decrement `attempts` and return the batch
 to `ready` — they do not spend the sweep budget.
+
+🛑 **The mapping table is read before the provider is** (89 D7/D8). `export/preflight.ts` walks a
+batch's frozen payload for its `glAccountId`s and checks them against `provider.listAccountMappings`
+— our database, no provider call, `unmapped_account` only. `listExportBatches` runs it over `ready`
+rows so the tab shows the refusal before anyone presses Send; `releaseExportBatches` will not
+enqueue a batch it flags; `sendExportBatch` runs it after the lease and fails the batch as
+`configuration` with the items and no round trip. It is a subset of the adapter's own resolution
+at send time (`invalid_mapping` needs the live provider chart), never a contradiction of it, and
+it does not touch gate 1: a ledger post never asks whether a provider account exists (P2).
 
 **Send is idempotent by readback**, not by a request-id contract. `idempotencyKey` is derived from
 the batch identity alone, so every retry carries the same key. ⚠️ `readbackMismatch`'s
@@ -1502,6 +1523,17 @@ unchanged: a thousand refusals must not starve one postable movement.
 
 ⚠️ A **document**-level refusal (a bill's Post button) has no lane here and needs none: it refuses
 synchronously, the callout names the remedy, and nothing is written.
+
+**Failed is the export's parked work** (89 D6), and it refuses in the same voice as Blocked. A
+`configuration` batch with items renders one `EntryBlockers` row per account — Map deep-links to
+`/app/accounting/settings/accounts?s=chart&account=<glAccountId>`, the Chart tab's editor, where the
+`ProviderAccountPicker` is — and the drawer's Export section hosts the picker inline plus **Retry**
+(89 D5: Retry is the one-row door and belongs in the drawer; Un-sync stays on the queue). The
+other classes print `lastError` verbatim under a class hint. **Ready shows the same block** on a
+batch the mapping table already refuses, with Send now disabled (89 D7). 🛑 The unmapped-account
+sentence names the *Chart of accounts* tab: the role remedy and the account remedy send people to
+one page for two different mappings, and a person who has just mapped the role reads "map it under
+Accounts" as done (89 §1.6).
 
 ---
 

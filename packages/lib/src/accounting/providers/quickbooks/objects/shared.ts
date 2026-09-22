@@ -8,6 +8,7 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../../../errors'
+import type { ExportFailureItem } from '../../../export/client'
 import { toMinorUnits } from '../../../ledger/builders/manual'
 import { accountLabel } from '../../../ledger/chart/account-label'
 import { listChartAccounts } from '../../../ledger/roles/role-map'
@@ -219,6 +220,12 @@ async function fetchChart(tool: QuickbooksToolContext): Promise<ProviderAccount[
   return accounts.filter((account) => account.active)
 }
 
+/** Names the tab that fixes it: Accounts has two, and the other one is the role mapping (89 D8). */
+const UNMAPPED_ACCOUNT_REMEDY =
+  'Pick its QuickBooks account under Accounting > Settings > Accounts > Chart of accounts.'
+const INVALID_MAPPING_REMEDY =
+  'Re-pick its QuickBooks account under Accounting > Settings > Accounts > Chart of accounts.'
+
 /**
  * Resolve every account an entry names, by `glAccountId`, to a QuickBooks
  * account id, through the `G19` account map. Moved verbatim from
@@ -246,10 +253,12 @@ export async function resolveMappedAccounts(
 
   const resolved = new Map<string, ProviderAccount>()
   const problems: string[] = []
+  const items: ExportFailureItem[] = []
 
   for (const glAccountId of new Set(glAccountIds)) {
     const account = byId.get(glAccountId)
     if (!account) {
+      // No item: there is nothing to pick for an id the chart does not hold (89 D1).
       problems.push(`No account in this organization's chart has the id '${glAccountId}'.`)
       continue
     }
@@ -257,8 +266,14 @@ export async function resolveMappedAccounts(
     const providerAccountId = map.get(account.id)
     if (!providerAccountId) {
       problems.push(
-        `${accountLabel(account)} is not mapped to a QuickBooks account. Map it under Accounting > Settings > Accounts.`
+        `${accountLabel(account)} is not mapped to a QuickBooks account. ${UNMAPPED_ACCOUNT_REMEDY}`
       )
+      items.push({
+        key: 'unmapped_account',
+        ref: account.id,
+        label: accountLabel(account),
+        remedy: UNMAPPED_ACCOUNT_REMEDY,
+      })
       continue
     }
 
@@ -266,6 +281,12 @@ export async function resolveMappedAccounts(
     const invalid = validateProviderMapping(account, live, providerAccountId)
     if (invalid) {
       problems.push(invalid)
+      items.push({
+        key: 'invalid_mapping',
+        ref: account.id,
+        label: accountLabel(account),
+        remedy: INVALID_MAPPING_REMEDY,
+      })
       continue
     }
 
@@ -273,7 +294,13 @@ export async function resolveMappedAccounts(
   }
 
   if (problems.length > 0) {
-    return err(new UnprocessableEntityError(problems.join(' ')))
+    return err(
+      new ProviderPostError(problems.join(' '), {
+        failureClass: 'configuration',
+        providerId: QUICKBOOKS_PROVIDER_ID,
+        items,
+      })
+    )
   }
   return ok(resolved)
 }
