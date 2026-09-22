@@ -34,9 +34,11 @@ import {
   Undo2,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import {
+  type BulkRunWatch,
   useBulkMode,
   useBulkRunner,
   useListSelection,
@@ -75,6 +77,8 @@ interface BatchesPanelProps {
   onSelectPosting: (glPostingId: string) => void
   /** A Release went to the worker; the header tallies its frames by `runId`. */
   onReleased?: (runId: string, total: number) => void
+  /** Row-by-row settles for a run, so a bulk Retry's overlays clear as each row lands. */
+  watchRun: BulkRunWatch
 }
 
 /** One tab's batches, newest first, paged; Release/Send, Retry or Roll back per row and over a selection. */
@@ -91,6 +95,7 @@ export function BatchesPanel({
   activePostingId,
   onSelectPosting,
   onReleased,
+  watchRun,
 }: BatchesPanelProps) {
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -130,7 +135,14 @@ export function BatchesPanel({
   const selecting = useBulkMode()
   const setItemIds = useListSelection((state) => state.setItemIds)
   const exitSelection = useListSelection((state) => state.exit)
-  const { run: runBulk, ConfirmDialog: BulkConfirmDialog, isRunning: bulkRunning } = useBulkRunner()
+  const {
+    run: runBulk,
+    enqueue: enqueueBulk,
+    ConfirmDialog: BulkConfirmDialog,
+    isRunning: bulkRunning,
+  } = useBulkRunner()
+  // Shallow: `setItemIds` hands back a fresh array on every list render.
+  const pendingIds = useListSelection(useShallow((state) => state.pendingIds))
   useEffect(() => {
     setItemIds(rows.map((batch) => batch.id))
   }, [rows, setItemIds])
@@ -228,19 +240,30 @@ export function BatchesPanel({
   }
 
   async function runRetry(batchIds: string[]) {
-    await runBulk(batchIds, (id) => retry.mutateAsync({ batchId: id }), {
-      title: `Retry ${batchIds.length} batches?`,
-      description: `Each one is sent to ${providerLabel} again, in turn.`,
-      confirmText: 'Retry',
-      destructive: false,
-      pendingLabel: 'Retrying…',
-      removesItem: false,
-      failureTitle: 'Some batches could not be retried',
-      onDone: () => {
-        refresh()
-        exitSelection()
+    await enqueueBulk(
+      batchIds,
+      async (ids) => {
+        const result = await retry.mutateAsync({ batchIds: ids })
+        if (!('runId' in result)) throw new Error('The retry was not queued.')
+        const blocked = blockedCount(result)
+        if (blocked > 0) toastError({ title: `${blocked} not retried: accounts unmapped` })
+        onReleased?.(result.runId, result.released.length)
+        return { runId: result.runId, released: result.released }
       },
-    })
+      {
+        title: `Retry ${batchIds.length} batches?`,
+        description: `Each one is sent to ${providerLabel} again.`,
+        confirmText: 'Retry',
+        destructive: false,
+        pendingLabel: 'Retrying…',
+        failureTitle: 'Some batches could not be retried',
+        watch: watchRun,
+        onDone: () => {
+          refresh()
+          exitSelection()
+        },
+      }
+    )
   }
 
   if (list.isError)
@@ -273,7 +296,12 @@ export function BatchesPanel({
         getKey={(batch: ExportBatchRow) => batch.id}
         renderRow={(batch: ExportBatchRow) => {
           const sending = send.isPending && send.variables?.batchId === batch.id
-          const retrying = retry.isPending && retry.variables?.batchId === batch.id
+          const retrying =
+            pendingIds.includes(batch.id) ||
+            (retry.isPending &&
+              !!retry.variables &&
+              'batchId' in retry.variables &&
+              retry.variables.batchId === batch.id)
           const rollingBack =
             rollback.isPending && (rollback.variables?.batchId === batch.id || bulkRunning)
           const StateIcon = TAB_ICON[batch.state as OutboxTab] ?? CheckCircle2

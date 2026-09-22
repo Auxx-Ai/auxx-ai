@@ -37,9 +37,14 @@ export interface ReleaseExportBatchesResult {
  */
 export async function releaseExportBatches(
   db: Database,
-  input: { organizationId: string; batchIds: string[] }
+  input: {
+    organizationId: string
+    batchIds: string[]
+    /** A person's Retry: the send resets the sweep's attempt budget, as `retryExportBatch` does. */
+    manual?: boolean
+  }
 ): Promise<Result<ReleaseExportBatchesResult, Error>> {
-  const { organizationId, batchIds } = input
+  const { organizationId, batchIds, manual } = input
   try {
     const rows = await db
       .select({
@@ -72,7 +77,8 @@ export async function releaseExportBatches(
       else released.push(row.id)
     }
     const runId = randomUUID()
-    for (const batchId of released) await enqueueExportBatch({ organizationId, batchId, runId })
+    for (const batchId of released)
+      await enqueueExportBatch({ organizationId, batchId, runId, ...(manual ? { manual } : {}) })
     return ok({ runId, released, skipped, blocked })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
@@ -151,6 +157,7 @@ export async function enqueueExportBatch(input: {
   organizationId: string
   batchId: string
   runId?: string
+  manual?: boolean
 }): Promise<void> {
   try {
     const { getQueue, Queues } = await import('../../jobs/queues')

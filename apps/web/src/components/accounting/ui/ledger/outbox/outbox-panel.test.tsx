@@ -17,7 +17,7 @@ vi.mock('~/providers/capabilities-provider', () => ({ useAccess: () => ({ can: (
 vi.mock('~/hooks/use-settings', () => ({ useSettings: () => ({ getSetting: () => false }) }))
 vi.mock('~/hooks/use-confirm', () => ({ useConfirm: () => [vi.fn(), () => null] }))
 vi.mock('./use-outbox-realtime', () => ({
-  useOutboxRealtime: () => ({ run: null, startRun: vi.fn() }),
+  useOutboxRealtime: () => ({ run: null, startRun: vi.fn(), watchRun: vi.fn(() => vi.fn()) }),
 }))
 // Only `tooltipText` names a `TreeRowButton`, so the mock lends it to the
 // accessible name - the rest of the tree primitives stay real.

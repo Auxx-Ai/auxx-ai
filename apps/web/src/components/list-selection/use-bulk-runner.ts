@@ -50,6 +50,33 @@ export interface BulkBatchResult {
   refused: BulkBatchRefusal[]
 }
 
+/** What an `enqueue` mutation returns: the run its frames will carry, and which ids it took. */
+export interface BulkEnqueueResult {
+  runId: string
+  /** The ids actually enqueued; the rest clear at once. Default: every id handed in. */
+  released?: string[]
+}
+
+/** Per-row progress for an enqueued run, fed by whatever carries its events. */
+export interface BulkRunWatcher {
+  /** One row finished, however it ended. */
+  settle: (id: string) => void
+  /** The run is over; clear whatever is left. */
+  end: () => void
+}
+
+/** Subscribe a watcher to one run; returns the unsubscribe. May replay settles synchronously. */
+export type BulkRunWatch = (runId: string, watcher: BulkRunWatcher) => () => void
+
+interface EnqueueOptions extends Omit<RunOptions, 'removesItem'> {
+  watch: BulkRunWatch
+  /** Clear what is still pending after this long without a settle. Default {@link ENQUEUE_IDLE_MS}. */
+  idleMs?: number
+}
+
+/** Bounds an `enqueue` overlay when no event ever arrives (realtime off, worker down). */
+export const ENQUEUE_IDLE_MS = 30_000
+
 /**
  * Shared driver for bulk actions on `ListCard` grids: one confirm up front, then
  * a **sequential** loop over the per-item async mutation, collecting failures and
@@ -59,6 +86,9 @@ export interface BulkBatchResult {
  * `runBatch` is the same choreography over a **single** mutation for the whole
  * set — use it whenever a batch endpoint exists, since the per-item loop costs
  * one round trip per row.
+ *
+ * `enqueue` is `runBatch` for a mutation that only queues the work: the overlays
+ * outlive the round trip and clear per row as `opts.watch` reports each one settled.
  */
 export function useBulkRunner() {
   const [confirm, ConfirmDialog] = useConfirm()
@@ -185,5 +215,82 @@ export function useBulkRunner() {
     [confirm, addPending, removePending, setPendingLabel]
   )
 
-  return { ConfirmDialog, run, runBatch, isRunning }
+  const enqueue = useCallback(
+    async (
+      ids: string[],
+      batchFn: (ids: string[]) => Promise<BulkEnqueueResult>,
+      opts: EnqueueOptions
+    ) => {
+      if (ids.length === 0) return
+      const confirmed = await confirm({
+        title: opts.title,
+        description: opts.description,
+        confirmText: opts.confirmText ?? 'Delete',
+        cancelText: 'Cancel',
+        destructive: opts.destructive ?? true,
+      })
+      if (!confirmed) return
+
+      setPendingLabel(opts.pendingLabel ?? 'Working…')
+      setIsRunning(true)
+      for (const id of ids) addPending(id)
+
+      const outcome = await Promise.resolve()
+        .then(() => batchFn(ids))
+        .then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error })
+        )
+      setIsRunning(false)
+
+      if (!outcome.ok) {
+        for (const id of ids) removePending(id)
+        toastError({
+          title: opts.failureTitle ?? 'Some items could not be processed',
+          description:
+            outcome.error instanceof Error ? outcome.error.message : 'The request failed.',
+        })
+        opts.onDone?.()
+        return
+      }
+
+      const taken = new Set(outcome.value.released ?? ids)
+      const open = new Set(ids.filter((id) => taken.has(id)))
+      for (const id of ids) if (!open.has(id)) removePending(id)
+
+      if (open.size > 0) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let stop: (() => void) | undefined
+        let closed = false
+        const close = () => {
+          if (closed) return
+          closed = true
+          clearTimeout(timer)
+          stop?.()
+          for (const id of open) removePending(id)
+          open.clear()
+        }
+        const arm = () => {
+          clearTimeout(timer)
+          timer = setTimeout(close, opts.idleMs ?? ENQUEUE_IDLE_MS)
+        }
+        arm()
+        stop = opts.watch(outcome.value.runId, {
+          settle: (id) => {
+            if (!open.delete(id)) return
+            removePending(id)
+            if (open.size === 0) close()
+            else arm()
+          },
+          end: close,
+        })
+        // A replayed settle can close the run before `stop` was assigned.
+        if (closed) stop()
+      }
+      opts.onDone?.()
+    },
+    [confirm, addPending, removePending, setPendingLabel]
+  )
+
+  return { ConfirmDialog, run, runBatch, enqueue, isRunning }
 }

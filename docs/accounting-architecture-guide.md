@@ -1569,9 +1569,19 @@ announce every transition. `export/realtime.ts` wraps the publish; it never thro
 never leaves its tab on a frame: `sent` leaves Ready on the next refetch, because admission is
 `exportBatchTabAdmits`, the server's rule. `releaseExportBatches` mints a `runId` (never stored),
 puts it on each job and returns it; the header strip reads `n of N sent · f failed` off the frames
-tagged with it and clears when every row has settled, or when a counts read begun after the last
-frame shows nothing `sending`. The panel's invalidate-on-mutation stays as the safety net: realtime
-has no replay.
+tagged with it and clears when every row has settled, when a counts read begun after the last
+frame shows nothing `sending`, or after `RUN_IDLE_MS` (30 s) with no frame at all — realtime off or
+the worker down — followed by a list refetch. The panel's invalidate-on-mutation stays as the safety
+net: realtime has no replay.
+
+**A bulk Retry enqueues** (93 §4). `exportBatches.retry({ batchIds })` is `releaseExportBatches`
+with `manual: true`, carried on the job so the send resets `attempts` exactly as the one-row
+`retry({ batchId })` does, and answers the same `{ runId, released, skipped, blocked }`. The bar
+drives it through `useBulkRunner.enqueue`: every row goes pending up front and clears as
+`useOutboxRealtime().watchRun` reports its frame settled (settles that beat the answer are
+replayed), when the strip closes the run, or after `ENQUEUE_IDLE_MS` without a settle. 🛑 Rollback
+does not follow (Q3): it stays one synchronous `ledgerControl` call per row, because the provider's
+refusal is the answer the operator pressed it for.
 
 ---
 

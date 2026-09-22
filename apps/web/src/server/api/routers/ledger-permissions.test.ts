@@ -52,6 +52,18 @@ vi.mock('@auxx/lib/accounting/ledger', async () => {
   }
 })
 
+vi.mock('@auxx/lib/accounting/export', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/export')
+  return {
+    ...actual,
+    // 93 C2: the bulk Retry is a release with `manual: true`, answered with its run id.
+    releaseExportBatches: vi.fn(async () =>
+      okResult({ runId: 'run_1', released: ['b1'], skipped: [], blocked: [] })
+    ),
+    retryExportBatch: vi.fn(async () => okResult({ status: 'sent', attempts: 1 })),
+  }
+})
+
 vi.mock('@auxx/lib/seed', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/seed')
   return {
@@ -147,6 +159,7 @@ const { settingsRouter } = await import('./setting')
 const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/accounting/ledger')
 const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/accounting/banking')
 const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
+const { releaseExportBatches, retryExportBatch } = await import('@auxx/lib/accounting/export')
 
 type Capabilities = InstanceType<typeof CapabilitySet>
 
@@ -380,5 +393,27 @@ describe('setting.updateOrganizationSetting is not a second door onto the period
         value: '2026-08',
       })
     ).rejects.toMatchObject(BAD_REQUEST)
+  })
+})
+
+describe('ledger.exportBatches.retry', () => {
+  it('enqueues a batchIds set as a manual release and answers its runId', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).exportBatches.retry({ batchIds: ['b1', 'b2'] })
+    ).resolves.toMatchObject({ runId: 'run_1', released: ['b1'] })
+    expect(releaseExportBatches).toHaveBeenCalledWith(db, {
+      organizationId: ORG_ID,
+      batchIds: ['b1', 'b2'],
+      manual: true,
+    })
+    expect(retryExportBatch).not.toHaveBeenCalled()
+  })
+
+  it('keeps one batchId on the synchronous door', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).exportBatches.retry({ batchId: 'b1' })
+    ).resolves.toMatchObject({ status: 'sent' })
+    expect(retryExportBatch).toHaveBeenCalledWith(db, { organizationId: ORG_ID, batchId: 'b1' })
+    expect(releaseExportBatches).not.toHaveBeenCalled()
   })
 })
