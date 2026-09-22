@@ -41,11 +41,15 @@ import { useLedgerSources } from '../use-ledger-sources'
 import { ExportBatchStateBadge } from './export-batch-badge'
 import { OutboxRow } from './outbox-row'
 import { TAB_ICON } from './outbox-tabs'
+import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
 /** `ExportBatchRow` plus the server-computed deep link (plan 67 §5.6) - never built in the browser. */
 type ExportBatchRow = RouterOutputs['ledger']['exportBatches']['list']['items'][number]
 
 interface BatchesPanelProps {
+  filters: OutboxFilters
+  emptyAction?: React.ReactNode
+
   tab: ExportBatchTab
   /** Owned by `outbox-panel.tsx` so every tab's empty copy is written in one place. */
   emptyTitle: string
@@ -60,6 +64,8 @@ interface BatchesPanelProps {
 
 /** One tab's batches, newest first, paged; Release/Send, Retry or Roll back per row and over a selection. */
 export function BatchesPanel({
+  filters,
+  emptyAction,
   tab,
   emptyTitle,
   emptyDescription,
@@ -75,7 +81,13 @@ export function BatchesPanel({
   const { sourceName } = useLedgerSources()
 
   const list = api.ledger.exportBatches.list.useInfiniteQuery(
-    { tab },
+    {
+      tab,
+      search: filters.search || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      categories: outboxCategoryInput(filters).batches,
+    },
     { getNextPageParam: (page) => page.nextCursor }
   )
   const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
@@ -196,7 +208,13 @@ export function BatchesPanel({
   if (!list.isPending && rows.length === 0)
     return (
       <div className='flex flex-1 flex-col p-3'>
-        <EmptyState icon={TAB_ICON[tab]} title={emptyTitle} description={emptyDescription} />
+        <EmptyState
+          className='py-8'
+          icon={TAB_ICON[tab]}
+          title={emptyTitle}
+          description={emptyDescription}
+          button={emptyAction}
+        />
       </div>
     )
 

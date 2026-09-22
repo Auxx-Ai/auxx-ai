@@ -364,10 +364,35 @@ function toMovementRow({ blocked, ...row }: SelectedMovementRow): Omit<MovementD
 export async function listBlockedMovements(
   db: Database,
   organizationId: string,
-  options: { limit?: number; offset?: number } = {}
+  options: {
+    limit?: number
+    offset?: number
+    categories?: MovementPurpose[]
+    search?: string
+    from?: string
+    to?: string
+  } = {}
 ): Promise<BlockedMovementRow[]> {
+  const settings =
+    options.from || options.to
+      ? await readOrganizationSettings(organizationId, ['accounting.bookTimeZone'])
+      : null
+  const zone = settings?.['accounting.bookTimeZone'] ?? 'UTC'
+  const day = sql`COALESCE(${schema.MoneyTransaction.occurredOn}, (${schema.MoneyTransaction.occurredAt} AT TIME ZONE ${zone})::date)`
   const rows = await selectMovementRows(db, organizationId)
-    .where(blockedWhere(organizationId))
+    .where(
+      and(
+        blockedWhere(organizationId),
+        options.categories?.length
+          ? inArray(schema.MoneyTransaction.purpose, options.categories)
+          : undefined,
+        options.from ? sql`${day} >= ${options.from}::date` : undefined,
+        options.to ? sql`${day} <= ${options.to}::date` : undefined,
+        options.search
+          ? sql`strpos(lower(concat_ws(' ', ${schema.EntityInstance.displayName}, ${schema.MoneyTransaction.reference}, ${schema.MoneyTransaction.note}, ${REASON})), lower(${options.search})) > 0`
+          : undefined
+      )
+    )
     .orderBy(
       sql`${schema.MoneyTransaction.postingBlockedAt} DESC NULLS LAST`,
       asc(schema.MoneyTransaction.id)

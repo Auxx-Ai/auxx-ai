@@ -25,6 +25,7 @@ import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
 import { MOVEMENT_PURPOSE_LABEL } from '../type-labels'
 import { OutboxRow } from './outbox-row'
+import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
 /** The server's row, never rebuilt here - `listBlockedMovements` owns the shape. */
 type BlockedMovementRow = RouterOutputs['ledger']['listBlockedMovements']['items'][number]
@@ -37,6 +38,10 @@ function acceptanceWait(row: BlockedMovementRow): string | null {
 }
 
 interface BlockedPanelProps {
+  filters: OutboxFilters
+  emptyAction?: React.ReactNode
+  emptyTitle?: string
+
   /** Owned by `outbox-panel.tsx` so every tab's empty copy is written in one place. */
   emptyDescription: string
   bookTimeZone: string
@@ -47,6 +52,9 @@ interface BlockedPanelProps {
 
 /** Every parked movement, newest refusal first, paged, with Retry per row and over a selection. */
 export function BlockedPanel({
+  filters,
+  emptyAction,
+  emptyTitle,
   emptyDescription,
   bookTimeZone,
   activeMovementId,
@@ -54,7 +62,12 @@ export function BlockedPanel({
 }: BlockedPanelProps) {
   const utils = api.useUtils()
   const list = api.ledger.listBlockedMovements.useInfiniteQuery(
-    {},
+    {
+      search: filters.search || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      categories: outboxCategoryInput(filters).blocked,
+    },
     { getNextPageParam: (page) => page.nextCursor }
   )
   const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
@@ -118,12 +131,14 @@ export function BlockedPanel({
   }
 
   return (
-    <div className='flex flex-1 flex-col gap-3 p-3 pb-16'>
+    <div className={`flex flex-1 flex-col gap-3 p-3 ${rows.length > 0 ? 'pb-16' : ''}`}>
       {!list.isPending && rows.length === 0 ? (
         <EmptyState
+          className='py-8'
           icon={CircleAlert}
-          title='Nothing has been refused'
+          title={emptyTitle ?? 'Nothing has been refused'}
           description={emptyDescription}
+          button={emptyAction}
         />
       ) : (
         <>

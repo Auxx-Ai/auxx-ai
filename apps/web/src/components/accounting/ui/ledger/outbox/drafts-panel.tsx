@@ -29,8 +29,13 @@ import { LedgerSourceLink } from '../ledger-source-link'
 import { PostResultCallout } from '../post-result-callout'
 import { postingTypeLabel } from '../type-labels'
 import { OutboxRow } from './outbox-row'
+import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
 interface DraftsPanelProps {
+  filters: OutboxFilters
+  emptyAction?: React.ReactNode
+  emptyTitle?: string
+
   /** Owned by `outbox-panel.tsx` so every tab's empty copy is written in one place. */
   emptyDescription: string
   currencyCode: string
@@ -51,6 +56,9 @@ interface DraftsPanelProps {
  * which `PostResultStatus` values are failures, `OUTCOMES` does.
  */
 export function DraftsPanel({
+  filters,
+  emptyAction,
+  emptyTitle,
   emptyDescription,
   currencyCode,
   bookTimeZone,
@@ -62,7 +70,12 @@ export function DraftsPanel({
   const utils = api.useUtils()
   const [confirm, ConfirmDialog] = useConfirm()
   const list = api.ledger.listDrafts.useInfiniteQuery(
-    {},
+    {
+      search: filters.search || undefined,
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      categories: outboxCategoryInput(filters).drafts,
+    },
     { getNextPageParam: (page) => page.nextCursor }
   )
   const rows = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
@@ -189,16 +202,18 @@ export function DraftsPanel({
   }
 
   return (
-    <div className='flex flex-1 flex-col gap-3 p-3 pb-16'>
+    <div className={`flex flex-1 flex-col gap-3 p-3 ${rows.length > 0 ? 'pb-16' : ''}`}>
       {discardRefusal && (
         <EntryBlockers blockers={[{ status: 'discard_refused', error: discardRefusal }]} />
       )}
 
       {!list.isPending && rows.length === 0 ? (
         <EmptyState
+          className='py-8'
           icon={FileClock}
-          title='Nothing is waiting for approval'
+          title={emptyTitle ?? 'Nothing is waiting for approval'}
           description={emptyDescription}
+          button={emptyAction}
         />
       ) : (
         <>
