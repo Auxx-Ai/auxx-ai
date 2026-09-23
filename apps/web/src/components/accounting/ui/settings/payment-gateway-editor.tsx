@@ -41,13 +41,14 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ArrowUpRight, CreditCard, Landmark, PlugZap, Plus, TriangleAlert, X } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { sourceAccountLabel } from '../source-account-label'
 import type { MappingAccountValue } from './mapping-account-select'
 import { MappingScopeRow } from './mapping-scope-row'
@@ -58,6 +59,7 @@ import {
   RailAccountRows,
   type RailRole,
   railReadinessLine,
+  useHandleOptions,
 } from './payment-gateway-rail-rows'
 
 // 🛑 Not a label. `billed` removes the fee leg from this rail's payout entry
@@ -122,17 +124,8 @@ function PaymentGatewayForm({
     if (value.trim()) onPatch({ name: value })
   }, TEXT_COMMIT_DELAY_MS)
 
-  // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
-  // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
-  // and the write stores the raw string - so a stored handle matches no option row.
-  // Handing the picker a literal `[]` made every handle resolve `unknown`: the
-  // trigger rendered it italic-grey as "not in this field's option set", and it
-  // never appeared in the popover at all, so it could not be unchecked. Nothing is
-  // wrong with what is stored; the input has to be told the values ARE the options.
-  const handleOptions = useMemo(
-    () => gateway.handles.map((handle) => ({ label: handle, value: handle })),
-    [gateway.handles]
-  )
+  // A stored handle matches no registry option, so its own values must be in the option set.
+  const handleOptions = useHandleOptions(gateway.handles)
 
   const isClosed = gateway.status === 'closed'
 
@@ -302,6 +295,11 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
     saveMapping.mutate([{ role, scope: { rail: gatewayId }, currency, value }])
   }
 
+  const { providerLabel } = useAccountingProviderStatus()
+  const linkTooltip = providerLabel
+    ? `Link its ${providerLabel} account`
+    : 'Link its account in the connected accounting system'
+
   const ownRow = (role: RailRole) =>
     roleMap.data?.roles
       .find((r) => r.role === role)
@@ -365,6 +363,9 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
             .map((k) => k.slice(role.length))
 
           return {
+            linked: own?.linked ?? null,
+            linkAccountId: own?.accountId ?? null,
+            linkTooltip,
             suggested: !(role in optimistic) && own?.state === 'suggested',
             onConfirmSuggested: own
               ? () =>

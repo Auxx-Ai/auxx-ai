@@ -47,7 +47,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
-import { GlAccountType } from '../../resources/registry/enum-values'
+import { GlAccountSubtype, GlAccountType } from '../../resources/registry/enum-values'
 import { createChartAccount } from '../ledger/chart/chart-write'
 import {
   CLEARING_ACCOUNT_CODE_BAND,
@@ -143,6 +143,8 @@ export async function mintRailAccounts(
     code: clearingCode.value,
     name: clearingAccountName,
     accountType: GlAccountType.ASSET,
+    // The `clearing` role only maps to a `clearing` subtype (`assertMappableAccount`).
+    subtype: GlAccountSubtype.CLEARING,
   })
   if (clearing.isErr()) return err(clearing.error)
 

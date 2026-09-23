@@ -89,7 +89,11 @@ export function PaymentGatewaysSettingsPage() {
   )
 
   const invalidate = useCallback(async () => {
-    await utils.paymentGateway.list.invalidate()
+    // `observedHandles` too: a handle this gateway just claimed stops being offered.
+    await Promise.all([
+      utils.paymentGateway.list.invalidate(),
+      utils.paymentGateway.observedHandles.invalidate(),
+    ])
   }, [utils])
 
   // 🛑 Refusals are surfaced VERBATIM. `updatePaymentGateway` says which
@@ -170,8 +174,8 @@ export function PaymentGatewaysSettingsPage() {
           isLoading={gateways.isPending}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          onAdd={() => {
-            setAddHandle(undefined)
+          onAdd={(handle) => {
+            setAddHandle(handle)
             setAddOpen(true)
           }}
           showArchived={showClosed}

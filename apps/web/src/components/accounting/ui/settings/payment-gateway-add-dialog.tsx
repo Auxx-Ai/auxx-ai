@@ -35,6 +35,7 @@ import {
   RailAccountRows,
   type RailRole,
   railReadinessLine,
+  useHandleOptions,
 } from './payment-gateway-rail-rows'
 
 const FEE_TREATMENT_OPTIONS = PAYMENT_GATEWAY_FEE_TREATMENTS.map((value) => ({
@@ -161,23 +162,7 @@ export function PaymentGatewayAddDialog({
 
   const gateways = api.paymentGateway.list.useQuery(undefined, { enabled: open })
   const roleMap = api.ledger.roleMap.useQuery(undefined, { enabled: open })
-  // Only the UNCLAIMED handles are offered: a claimed one is refused at write time.
-  const observed = api.paymentGateway.observedHandles.useQuery(undefined, { enabled: open })
-  const suggestions = useMemo(
-    () => (observed.data ?? []).filter((row) => !row.claimedBy).map((row) => row.handle),
-    [observed.data]
-  )
-  const handleOptions = useMemo(() => {
-    const seen = new Set<string>()
-    const options: { label: string; value: string }[] = []
-    for (const handle of [...suggestions, ...draft.handles]) {
-      const key = handle.trim().toLowerCase()
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      options.push({ label: handle, value: handle })
-    }
-    return options
-  }, [suggestions, draft.handles])
+  const handleOptions = useHandleOptions(draft.handles, open)
 
   const firstHandle = draft.handles[0] ?? ''
   const sibling = useMemo(

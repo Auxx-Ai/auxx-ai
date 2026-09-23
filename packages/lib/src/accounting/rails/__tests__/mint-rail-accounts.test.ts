@@ -47,7 +47,7 @@ vi.mock('../../ledger/chart/chart-write', () => ({
       code: options.code ?? null,
       name: options.name,
       accountType: options.accountType,
-      subtype: null,
+      subtype: options.subtype ?? null,
       isActive: true,
     } as ChartAccountRow)
   },
@@ -92,6 +92,7 @@ describe('mintRailAccounts', () => {
       code: '1201',
       name: 'Shopify Payments Clearing',
       accountType: 'asset',
+      subtype: 'clearing',
     })
     expect(result._unsafeUnwrap().fee).toBeNull()
   })
