@@ -143,6 +143,8 @@ async function countUnpostedShipments(
         eq(schema.GlPostingSource.organizationId, organizationId),
         eq(schema.GlPostingSource.sourceKind, 'fulfillment'),
         eq(schema.GlPostingSource.linkRole, 'subject'),
+        // The revenue entry; legacy relief entries claimed the fulfillment as `inventory`.
+        eq(schema.GlPostingSource.occurrence, 'original'),
         eq(schema.GlPosting.status, 'posted')
       )
     )

@@ -1,6 +1,6 @@
 // packages/lib/src/field-hooks/post/fulfillment-line-rollups.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
@@ -256,6 +256,7 @@ export async function recalculateFulfillmentLineQuantityRelieved(
  * site, exactly as `purchase-order-line-rollups.ts`'s `readTotalsByLine` does.
  */
 async function readTotalsByLine(
+  db: Database | Transaction,
   organizationId: string,
   lineIds: string[],
   fields: RollupFields
@@ -265,7 +266,7 @@ async function readTotalsByLine(
     sql`, `
   )
 
-  const rows = await database
+  const rows = await db
     .select({
       lineId: sql<string>`fv_line."relatedEntityId"`,
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
@@ -296,6 +297,22 @@ async function readTotalsByLine(
   // Negated per line here, once, rather than at every call site below. `|| 0`
   // normalizes `-0` the same way the single-line function does.
   return new Map(rows.map((row) => [row.lineId, -Number(row.total ?? 0) || 0]))
+}
+
+/**
+ * What the `sale` movements say each line has relieved, on the caller's connection - so a
+ * transaction sees its own and every committed run's rows. A line with none reads as absent.
+ */
+export async function readRelievedQuantities(
+  db: Database | Transaction,
+  organizationId: string,
+  lineIds: string[]
+): Promise<Map<string, number>> {
+  const ids = [...new Set(lineIds)].filter(Boolean)
+  if (ids.length === 0) return new Map()
+  const fields = await resolveRollupFields(organizationId)
+  if (!fields) return new Map()
+  return readTotalsByLine(db, organizationId, ids, fields)
 }
 
 /** The stored roll-up total of every line in the set, keyed by line. */
@@ -357,7 +374,7 @@ export async function recalculateFulfillmentLineQuantityRelievedBatch(
   if (!fields) return
 
   const [relievedByLine, stored] = await Promise.all([
-    readTotalsByLine(organizationId, lineIds, fields),
+    readTotalsByLine(database, organizationId, lineIds, fields),
     readStoredTotals(organizationId, lineIds, fields.targetFieldId),
   ])
 

@@ -60,6 +60,7 @@ import type {
   InventoryMovementLine,
   ReliefCogsSplit,
 } from '../../accounting/ledger/builders/inventory-movement'
+import { withAccountingCommitLock } from '../../accounting/ledger/post/accounting-commit-lock'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
@@ -69,7 +70,11 @@ import {
 import type { PostResult } from '../../accounting/ledger/types'
 import { deleteWorkItemsAtStage, upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
-import { recalculateFulfillmentLineQuantityRelievedBatch } from '../../field-hooks/post/fulfillment-line-rollups'
+import { ConflictError } from '../../errors'
+import {
+  readRelievedQuantities,
+  recalculateFulfillmentLineQuantityRelievedBatch,
+} from '../../field-hooks/post/fulfillment-line-rollups'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import { systemFieldMap } from '../../resources/system-records'
 import { readStandardCost } from '../costing'
@@ -89,9 +94,9 @@ const logger = createScopedLogger('relief')
 export interface FulfillmentLineToRelieve {
   /** The `fulfillment_line` EntityInstance id. */
   fulfillmentLineId: string
-  /** The `fulfillment` this line belongs to. The DOCUMENT its entry is of. */
+  /** The `fulfillment` this line belongs to; each run's entry links it as a parent. */
   fulfillmentId: string
-  /** The `order` the fulfillment shipped against, the entry's parent link. */
+  /** The `order` the fulfillment shipped against, the entry's other parent link. */
   orderId: string
   /** The `line_item` EntityInstance id this line shipped against. */
   lineItemId: string
@@ -133,7 +138,7 @@ export interface RelieveFulfillmentLinesResult {
   skippedNoCost: number
   /** §4.2 - parts this run would leave (or already left) at negative QoH. Warn, never refuse. */
   negativeQoHPartIds: string[]
-  /** One outcome per fulfillment this run posted an inventory entry for. */
+  /** One outcome per fulfillment this run posted an entry for; always this run's own entry. */
   posts: PostResult[]
 }
 
@@ -145,6 +150,8 @@ interface ResolvedReliefLine {
   partInstanceId: string
   /** SIGNED, matching `StockMovementInput.quantity`'s convention. */
   delta: number
+  /** The relieved total `delta` was computed from, re-checked under the lock. */
+  quantityRelieved: number
   occurredAt: Date
 }
 
@@ -321,6 +328,7 @@ async function relieveLines(
           orderId: line.orderId,
           partInstanceId,
           delta,
+          quantityRelieved: line.quantityRelieved ?? 0,
           occurredAt: line.occurredAt,
         })
       }
@@ -480,51 +488,66 @@ async function relieveLines(
       // batchRecalculateQoH. This function owns the transaction boundary -
       // `writeStockMovements` never opens one of its own (its own header) -
       // exactly as `complete-build.ts`'s `db.transaction` wraps `writeCompletion`.
+      // A run that throws here leaves nothing: the movements' ids are minted inside it.
       const session = reliefWriteSession()
       let movementIds: string[] = []
       let affectedPartIds: string[] = []
       let pending: Array<InTxPostResult | null> = []
-      await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        const ctx: StockMovementsCtx = {
-          db: txDb,
-          organizationId,
-          userId,
-          movementDefId,
-          partDefId,
-          lane: { kind: 'quiet', session },
-        }
-        const written = await writeStockMovements(ctx, inputs)
-        if (written.isErr()) throw written.error
-        movementIds = written.value.records.map((record) => record.movementId)
-        affectedPartIds = written.value.affectedPartIds
+      try {
+        await db.transaction(async (tx) => {
+          const txDb = tx as unknown as Database
+          // Serialises relief with every other posting in the org, so the re-read below sees any
+          // run that committed first and a second run cannot write the same units again.
+          await withAccountingCommitLock(tx, organizationId)
+          await assertReliefUnchanged(txDb, organizationId, inputLines)
+          const ctx: StockMovementsCtx = {
+            db: txDb,
+            organizationId,
+            userId,
+            movementDefId,
+            partDefId,
+            lane: { kind: 'quiet', session },
+          }
+          const written = await writeStockMovements(ctx, inputs)
+          if (written.isErr()) throw written.error
+          movementIds = written.value.records.map((record) => record.movementId)
+          affectedPartIds = written.value.affectedPartIds
 
-        // ONE entry per fulfillment - the fulfillment is the document, and a
-        // run that relieves three dispatches posts three entries, not one
-        // journal nobody can trace back to a shipment. Inside the movements'
-        // own transaction, so a dispatch can never be relieved without its COGS.
-        pending = await Promise.all(
-          groupByFulfillment(inputLines, inputStandards, written.value.records).map((document) =>
-            postInventoryMovementInTx(tx, {
-              organizationId,
-              kind: 'sale',
-              cogsSplit: document.cogsSplit,
-              // 🛑 `occurrence: 'inventory'`. The fulfillment already holds an
-              // `original` subject row for its revenue entry (`fulfill.ts`), and
-              // the claim is per `(kind, id, occurrence)`.
-              subject: {
-                sourceKind: 'fulfillment',
-                sourceId: document.fulfillmentId,
-                occurrence: 'inventory',
-              },
-              parent: { sourceKind: 'order', sourceId: document.orderId },
-              txnDate: inventoryTxnDate(document.occurredAt),
-              movements: document.movements,
-              actorUserId: userId,
-            })
+          // One entry per fulfillment per RUN: a dispatch relieved twice (a standard priced
+          // later) posts twice. The run's first movement is the subject, so each run claims its
+          // own identity and doc number; the fulfillment is a parent beside the order.
+          pending = await Promise.all(
+            groupByFulfillment(inputLines, inputStandards, written.value.records).map((document) =>
+              postInventoryMovementInTx(tx, {
+                organizationId,
+                kind: 'sale',
+                cogsSplit: document.cogsSplit,
+                subject: { sourceKind: 'stock_movement', sourceId: document.movements[0]!.id },
+                parents: [
+                  { sourceKind: 'fulfillment', sourceId: document.fulfillmentId },
+                  { sourceKind: 'order', sourceId: document.orderId },
+                ],
+                txnDate: inventoryTxnDate(document.occurredAt),
+                movements: document.movements,
+                actorUserId: userId,
+              })
+            )
           )
-        )
-      })
+          // A fresh movement cannot already be claimed; if it is, these movements would
+          // commit with someone else's entry standing in for their COGS.
+          if (pending.some((post) => post?.status === 'already_posted')) {
+            throw new ConflictError('A relief run found its entry already posted', {
+              organizationId,
+            })
+          }
+        })
+      } catch (error) {
+        // A stale roll-up is what makes the lock's re-read disagree; refresh it for the next run.
+        if (error instanceof ReliefRaceError) {
+          await recalculateFulfillmentLineQuantityRelievedBatch(organizationId, relievedLineIds)
+        }
+        throw error
+      }
 
       const posts: PostResult[] = []
       for (const post of pending) {
@@ -583,6 +606,33 @@ async function guardedReadStandardCost(
     return null
   }
   return result.value
+}
+
+/** The lines' relieved totals moved since this run read them (a race or a stale roll-up). */
+class ReliefRaceError extends ConflictError {}
+
+/**
+ * Refuse a run whose deltas no longer hold: every line's `sale` movements must still sum to the
+ * relieved total its delta was computed from. Called under the commit lock, on the transaction.
+ */
+async function assertReliefUnchanged(
+  tx: Database,
+  organizationId: string,
+  lines: readonly ResolvedReliefLine[]
+): Promise<void> {
+  const relieved = await readRelievedQuantities(
+    tx,
+    organizationId,
+    lines.map((line) => line.fulfillmentLineId)
+  )
+  const moved = lines.filter(
+    (line) => (relieved.get(line.fulfillmentLineId) ?? 0) !== line.quantityRelieved
+  )
+  if (moved.length === 0) return
+  throw new ReliefRaceError(
+    'These shipment lines were relieved since they were read; nothing was written, retry',
+    { organizationId, fulfillmentLineIds: moved.map((line) => line.fulfillmentLineId) }
+  )
 }
 
 /** One fulfillment's movements, as the entry builder reads them. */

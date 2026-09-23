@@ -37,11 +37,7 @@ const logger = createScopedLogger('postings:inventory-movement')
 export interface InventoryDocumentSubject {
   sourceKind: string
   sourceId: string
-  /**
-   * Which pass over that source this is. A fulfillment already carries a
-   * `fulfillment` posting as its subject, so its inventory entry claims
-   * `'inventory'` beside it rather than contending for the same row.
-   */
+  /** Which pass over that source this is, when one source posts more than once. */
   occurrence?: string
 }
 
@@ -49,8 +45,8 @@ export interface PostInventoryMovementInput {
   organizationId: string
   kind: InventoryDocumentKind
   subject: InventoryDocumentSubject
-  /** The order or the purchase order, when the document has one. */
-  parent?: { sourceKind: string; sourceId: string } | null
+  /** The records the document belongs to - an order, a purchase order, a relief's fulfillment. */
+  parents?: readonly { sourceKind: string; sourceId: string }[]
   /** `YYYY-MM-DD`. The document's own accounting date. */
   txnDate: string
   movements: readonly InventoryMovementLine[]
@@ -82,7 +78,16 @@ export async function postInventoryMovementInTx(
   tx: Transaction,
   input: PostInventoryMovementInput
 ): Promise<InTxPostResult | null> {
-  const { organizationId, kind, subject, parent, txnDate, movements, actorUserId, memo } = input
+  const {
+    organizationId,
+    kind,
+    subject,
+    parents = [],
+    txnDate,
+    movements,
+    actorUserId,
+    memo,
+  } = input
 
   if (movements.length === 0) return null
   if (!(await isAccountingEnabled(tx, organizationId))) return null
@@ -106,9 +111,11 @@ export async function postInventoryMovementInTx(
       linkRole: 'subject',
       ...(subject.occurrence ? { occurrence: subject.occurrence } : {}),
     },
-    ...(parent
-      ? [{ sourceKind: parent.sourceKind, sourceId: parent.sourceId, linkRole: 'parent' as const }]
-      : []),
+    ...parents.map((parent) => ({
+      sourceKind: parent.sourceKind,
+      sourceId: parent.sourceId,
+      linkRole: 'parent' as const,
+    })),
     // Every movement, so the posting opens exactly the rows it booked and a
     // movement finds its entry. This IS the subledger link (TARGET §5).
     ...built.memberMovementIds.map((movementId) => ({

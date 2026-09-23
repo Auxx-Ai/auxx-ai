@@ -187,9 +187,8 @@ export async function bulkOpenStockBalance(
       })
 
       // Step 4: the movements and the one entry that raises them, together.
-      // The opening run is a single document dated once, so it claims once -
-      // `occurredAt` is the occurrence, and a second run on a second date opens
-      // its own entry rather than colliding with this one.
+      // Each run is its own document: it claims its first movement, so a second
+      // run (any date) mints its own doc number rather than colliding.
       const { opened, post } = await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
         const rows = await writeInitialMovements(txDb, organizationId, userId, {
@@ -200,26 +199,25 @@ export async function bulkOpenStockBalance(
           kindByPartId: new Map([...parts].map(([id, part]) => [id, part.kind])),
           failed,
         })
+        const booked = rows
+          .filter((row) => row.extendedCost !== 0)
+          .map((row) => ({
+            id: row.movementId,
+            extendedCostMinor: row.extendedCost,
+            glAccountRole: row.glAccount,
+          }))
         return {
           opened: rows,
-          post: await postInventoryMovementInTx(tx, {
-            organizationId,
-            kind: 'opening',
-            subject: {
-              sourceKind: 'opening_stock',
-              sourceId: organizationId,
-              occurrence: inventoryTxnDate(occurredAt),
-            },
-            txnDate: inventoryTxnDate(occurredAt),
-            movements: rows
-              .filter((row) => row.extendedCost !== 0)
-              .map((row) => ({
-                id: row.movementId,
-                extendedCostMinor: row.extendedCost,
-                glAccountRole: row.glAccount,
-              })),
-            actorUserId: userId,
-          }),
+          post: booked[0]
+            ? await postInventoryMovementInTx(tx, {
+                organizationId,
+                kind: 'opening',
+                subject: { sourceKind: 'stock_movement', sourceId: booked[0].id },
+                txnDate: inventoryTxnDate(occurredAt),
+                movements: booked,
+                actorUserId: userId,
+              })
+            : null,
         }
       })
       await exportInventoryMovement(db, post)

@@ -632,9 +632,9 @@ describe('receivePurchaseOrder — one posting for the whole receipt', () => {
       ],
     })
     const input = h.postSpy.mock.calls[0]![1] as {
-      parent?: { sourceKind: string; sourceId: string }
+      parents?: { sourceKind: string; sourceId: string }[]
     }
-    expect(input.parent).toEqual({ sourceKind: 'purchase_order', sourceId: 'po_1' })
+    expect(input.parents).toEqual([{ sourceKind: 'purchase_order', sourceId: 'po_1' }])
   })
 
   it('refuses a receipt whose lines belong to more than one purchase order', async () => {
@@ -657,8 +657,8 @@ describe('receivePurchaseOrder — one posting for the whole receipt', () => {
   it('posts with no parent when the order relation is not materialised', async () => {
     h.materialised.delete(ORDER_ATTR)
     await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
-    const input = h.postSpy.mock.calls[0]![1] as { parent?: unknown }
-    expect(input.parent).toBeUndefined()
+    const input = h.postSpy.mock.calls[0]![1] as { parents?: unknown }
+    expect(input.parents).toBeUndefined()
   })
 
   it('exports the posted entry once, after the transaction commits', async () => {

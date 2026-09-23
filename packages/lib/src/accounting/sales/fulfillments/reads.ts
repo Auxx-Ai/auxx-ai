@@ -90,9 +90,11 @@ export async function readFulfillmentsForOrders(
   // One bulk read of `GlPostingSource` joined to `GlPosting`, the same two
   // tables `listPostingsForSource` reads, shaped for many fulfillments at once
   // rather than one call per id.
+  // `original` is the revenue entry; legacy relief entries claimed the fulfillment as `inventory`.
   const postedById = await findLiveSubjectPostings(db, organizationId, {
     sourceKind: 'fulfillment',
     sourceIds: fulfillmentIds,
+    occurrence: 'original',
   })
 
   for (const record of fulfillments) {

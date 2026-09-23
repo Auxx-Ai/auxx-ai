@@ -78,7 +78,11 @@ async function fulfillment(
 }
 
 /** The claim a posting holds over a shipment. `reversed` deletes the row, so it takes none. */
-async function claim(fulfillmentInstanceId: string, status: 'posted' | 'reversed') {
+async function claim(
+  fulfillmentInstanceId: string,
+  status: 'posted' | 'reversed',
+  occurrence = 'original'
+) {
   const [posting] = await db()
     .insert(schema.GlPosting)
     .values({
@@ -99,6 +103,7 @@ async function claim(fulfillmentInstanceId: string, status: 'posted' | 'reversed
     sourceKind: 'fulfillment',
     sourceId: fulfillmentInstanceId,
     linkRole: 'subject',
+    occurrence,
   })
 }
 
@@ -147,6 +152,12 @@ describe('unposted_shipments', () => {
   it('counts a shipment again once its posting is reversed', async () => {
     // A reversal deletes the subject row, so the claim is free (TARGET §1).
     await claim(await fulfillment(), 'reversed')
+
+    expect(await unpostedShipments()).toBe(1)
+  })
+
+  it('counts a shipment whose only claim is a legacy relief entry', async () => {
+    await claim(await fulfillment(), 'posted', 'inventory')
 
     expect(await unpostedShipments()).toBe(1)
   })

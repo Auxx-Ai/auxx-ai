@@ -212,7 +212,7 @@ export async function writeVendorCreditStockReturns(
     // The FIRST movement anchors the claim, the receipt's shape; every movement
     // — itself included — is linked as a member by the poster.
     subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
-    parent: { sourceKind: 'vendor_credit', sourceId: vendorCreditInstanceId },
+    parents: [{ sourceKind: 'vendor_credit', sourceId: vendorCreditInstanceId }],
     txnDate: inventoryTxnDate(occurredAt),
     movements,
     actorUserId: userId,

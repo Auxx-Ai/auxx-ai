@@ -104,7 +104,7 @@ async function park(
 }
 
 /** The `subject` link a posting holds over a shipment. */
-async function claim(fulfillmentInstanceId: string) {
+async function claim(fulfillmentInstanceId: string, occurrence = 'original') {
   const [posting] = await db()
     .insert(schema.GlPosting)
     .values({
@@ -124,6 +124,7 @@ async function claim(fulfillmentInstanceId: string) {
     sourceKind: 'fulfillment',
     sourceId: fulfillmentInstanceId,
     linkRole: 'subject',
+    occurrence,
   })
 }
 
@@ -163,6 +164,13 @@ describe('listFulfillmentAccountingCandidates', () => {
     await claim(await fulfillment())
 
     expect(await candidates()).toEqual([])
+  })
+
+  it('still offers a shipment whose only claim is a legacy relief entry', async () => {
+    const shipped = await fulfillment()
+    await claim(shipped, 'inventory')
+
+    expect(await candidates()).toEqual([shipped])
   })
 
   it('refuses anything in or before the opening cutoff forever, in SQL', async () => {

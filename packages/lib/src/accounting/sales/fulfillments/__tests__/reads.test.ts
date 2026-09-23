@@ -27,6 +27,20 @@ vi.mock('../../../../resources/system-records', async (importOriginal) => {
   }
 })
 
+/** The options `readFulfillmentsForOrders` asked the live-claim read for. */
+const liveClaimOptions = vi.hoisted(() => [] as Record<string, unknown>[])
+
+vi.mock('../../../ledger/reads/list-postings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../ledger/reads/list-postings')>()
+  return {
+    ...actual,
+    findLiveSubjectPostings: (...args: Parameters<typeof actual.findLiveSubjectPostings>) => {
+      liveClaimOptions.push(args[2])
+      return actual.findLiveSubjectPostings(...args)
+    },
+  }
+})
+
 import { getCachedEntityDefId, getOrgCache } from '../../../../cache'
 import { FULFILLMENT_FIELDS } from '../../../../resources/registry/resources/fulfillment-fields'
 import { FULFILLMENT_LINE_FIELDS } from '../../../../resources/registry/resources/fulfillment-line-fields'
@@ -418,6 +432,8 @@ describe('readFulfillmentsForOrders', () => {
       glPosting: 'gp_1',
       docNumber: 'ORD-0001-F1',
     })
+    // The revenue entry only: legacy relief entries also claimed the fulfillment, as `inventory`.
+    expect(liveClaimOptions.at(-1)).toMatchObject({ occurrence: 'original' })
   })
 })
 

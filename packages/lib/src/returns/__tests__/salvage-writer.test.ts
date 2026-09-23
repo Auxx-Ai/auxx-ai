@@ -37,6 +37,13 @@ const h = vi.hoisted(() => ({
       undefined
   ),
   reverseMovement: vi.fn(),
+  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
+}))
+
+vi.mock('../../accounting/ledger/post/post-inventory-movement', () => ({
+  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
+  exportInventoryMovement: async () => null,
+  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
 }))
 
 vi.mock('../../cache', () => ({
@@ -133,6 +140,7 @@ vi.mock('../../resources/crud/unified-handler', () => ({
 
 import type { Database } from '@auxx/database'
 import { ok } from 'neverthrow'
+import { inventoryPeriodKey } from '../../accounting/ledger/builders/inventory-movement'
 import { buildSalvageTree } from '../salvage-tree'
 import {
   reverseSalvageMovement,
@@ -554,6 +562,48 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
 
     const defs = h.publishRecordsChanged.mock.calls.map((call) => call[2].entityDefinitionId)
     expect(defs).toEqual(['def_movement', 'def_return_part_line'])
+  })
+})
+
+describe('writeSalvageMovements - the entry each run posts', () => {
+  it('gives two lines of one return two entries with distinct document numbers', async () => {
+    let minted = 0
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+      ok({
+        records: (inputs as Array<{ partInstanceId: string }>).map((input) => ({
+          movementId: `mv_${minted++}`,
+          recordId: `def_movement:mv_${minted}`,
+          partInstanceId: input.partInstanceId,
+          quantity: 1,
+          unitCost: 30_000,
+          extendedCost: 30_000,
+          glAccount: 'inventory_raw_materials',
+          occurredAt: new Date(),
+        })),
+        affectedPartIds: ['part_mast'],
+      })
+    )
+
+    for (const returnLineId of ['rl_1', 'rl_2']) {
+      withRows([row('r_mast', 'part_mast', { status: 'good' })])
+      h.returnLine = { ...h.returnLine, returnLineId }
+      h.selectRows = [[{ entityId: 'part_mast', optionId: 'subassembly' }], [{ value: 'RMA-7' }]]
+      unwrap(await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId }))
+    }
+
+    const posted = h.postSpy.mock.calls.map(
+      (call) => call[1] as { subject: { sourceId: string }; parents: unknown }
+    )
+    expect(posted.map((post) => post.subject)).toEqual([
+      { sourceKind: 'stock_movement', sourceId: 'mv_0' },
+      { sourceKind: 'stock_movement', sourceId: 'mv_1' },
+    ])
+    expect(posted[1]!.parents).toEqual([
+      { sourceKind: 'return', sourceId: 'ret_1' },
+      { sourceKind: 'return_line', sourceId: 'rl_2' },
+    ])
+    const numbers = posted.map((post) => inventoryPeriodKey(post.subject.sourceId))
+    expect(new Set(numbers).size).toBe(2)
   })
 })
 

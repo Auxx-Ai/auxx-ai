@@ -411,29 +411,32 @@ export async function writeSalvageMovements(
             },
           }))
         )
-        // The return line's own entry, inside the same transaction: restocked
-        // units go back into inventory and un-book what the sale charged to
-        // cost of goods sold. Subject the RETURN, with the line as the
-        // occurrence, because a return is salvaged one line at a time.
-        post = await postInventoryMovementInTx(tx, {
-          organizationId,
-          kind: 'return',
-          subject: {
-            sourceKind: 'return',
-            sourceId: line.returnId ?? line.returnLineId,
-            occurrence: line.returnLineId,
-          },
-          txnDate: inventoryTxnDate(occurredAt),
-          movements: written.value.records
-            .filter((record) => record.glAccount && record.extendedCost !== 0)
-            .map((record) => ({
-              id: record.movementId,
-              extendedCostMinor: record.extendedCost,
-              glAccountRole: record.glAccount as string,
-            })),
-          actorUserId: userId,
-          memo: reason,
-        })
+        // The run's own entry, inside the same transaction: restocked units go
+        // back into inventory and un-book what the sale charged to COGS. A line
+        // can be salvaged in more than one run, so each run claims its first
+        // movement (its own doc number) and the return and line are parents.
+        const booked = written.value.records
+          .filter((record) => record.glAccount && record.extendedCost !== 0)
+          .map((record) => ({
+            id: record.movementId,
+            extendedCostMinor: record.extendedCost,
+            glAccountRole: record.glAccount as string,
+          }))
+        post = booked[0]
+          ? await postInventoryMovementInTx(tx, {
+              organizationId,
+              kind: 'return',
+              subject: { sourceKind: 'stock_movement', sourceId: booked[0].id },
+              parents: [
+                ...(line.returnId ? [{ sourceKind: 'return', sourceId: line.returnId }] : []),
+                { sourceKind: 'return_line', sourceId: line.returnLineId },
+              ],
+              txnDate: inventoryTxnDate(occurredAt),
+              movements: booked,
+              actorUserId: userId,
+              memo: reason,
+            })
+          : null
 
         // `bulkUpdate` tolerates per-row failures; this caller must not. A row
         // that did not take its link points at no movement, and the next run

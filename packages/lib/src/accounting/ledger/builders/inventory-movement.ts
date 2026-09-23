@@ -115,7 +115,7 @@ export interface InventoryMovementLine {
 
 export interface InventoryMovementEntryInput {
   kind: InventoryDocumentKind
-  /** The subject's source kind - `'fulfillment'`, `'stock_movement'`, `'build'`. */
+  /** The subject's source kind - `'stock_movement'` (a run's first movement) or `'build'`. */
   documentKind: string
   /** The subject's source id. {@link inventoryPeriodKey} of it is the entry's `periodKey`. */
   documentId: string
@@ -157,7 +157,7 @@ function assertMinor(value: number, label: string): void {
  * The claim key for one inventory document — `INV-<6 base36>` of its subject id.
  *
  * 🛑 Hashed, never verbatim: every subject an inventory document has is a
- * 24-character cuid (a movement, a build, a fulfillment, the org), and
+ * 24-character cuid (a movement or a build), and
  * a cuid is 24 characters against the document-number cap. It inherits
  * `hashedPeriodKey`'s collision caveat, which `postInventoryMovementInTx`
  * discharges on `already_posted`.

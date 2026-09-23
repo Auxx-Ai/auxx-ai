@@ -262,7 +262,7 @@ export async function receivePurchaseOrder(
           // `receiveStock`'s own single-movement posting already has.
           subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
           ...(purchaseOrderId
-            ? { parent: { sourceKind: 'purchase_order', sourceId: purchaseOrderId } }
+            ? { parents: [{ sourceKind: 'purchase_order', sourceId: purchaseOrderId }] }
             : {}),
           txnDate: inventoryTxnDate(occurredAt),
           movements: records

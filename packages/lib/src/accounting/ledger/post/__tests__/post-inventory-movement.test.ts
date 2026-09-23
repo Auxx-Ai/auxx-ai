@@ -66,8 +66,11 @@ function lastSources(): Source[] {
 const SALE = {
   organizationId: 'org_1',
   kind: 'sale' as const,
-  subject: { sourceKind: 'fulfillment', sourceId: 'ful_1', occurrence: 'inventory' },
-  parent: { sourceKind: 'order', sourceId: 'ord_1' },
+  subject: { sourceKind: 'stock_movement', sourceId: 'sm_1' },
+  parents: [
+    { sourceKind: 'fulfillment', sourceId: 'ful_1' },
+    { sourceKind: 'order', sourceId: 'ord_1' },
+  ],
   txnDate: '2026-08-18',
   movements: [
     { id: 'sm_1', extendedCostMinor: -1_000, glAccountRole: 'inventory_finished_goods' },
@@ -76,32 +79,28 @@ const SALE = {
 }
 
 describe('the source set one document posts with', () => {
-  it('is one subject, one parent, and one member per movement', async () => {
+  it('is one subject, every parent, and one member per movement', async () => {
     h.postEntryInTx.mockClear()
     await postInventoryMovementInTx(TX, SALE)
 
     expect(lastSources()).toEqual([
-      {
-        sourceKind: 'fulfillment',
-        sourceId: 'ful_1',
-        linkRole: 'subject',
-        occurrence: 'inventory',
-      },
+      { sourceKind: 'stock_movement', sourceId: 'sm_1', linkRole: 'subject' },
+      { sourceKind: 'fulfillment', sourceId: 'ful_1', linkRole: 'parent' },
       { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
       { sourceKind: 'stock_movement', sourceId: 'sm_1', linkRole: 'member' },
       { sourceKind: 'stock_movement', sourceId: 'sm_2', linkRole: 'member' },
     ])
   })
 
-  it('claims a fulfillment under `inventory`, beside its own revenue entry', async () => {
-    // 🛑 The claim is `(kind, id, occurrence)`. Without the occurrence the
-    // inventory entry would contend with `fulfill.ts`'s revenue entry for one
-    // row, and the loser converges to `already_posted` - a SUCCESS.
+  it('never claims the fulfillment itself - its revenue entry holds that subject', async () => {
     h.postEntryInTx.mockClear()
     await postInventoryMovementInTx(TX, SALE)
 
-    const subject = lastSources().find((source) => source.linkRole === 'subject')!
-    expect(subject.occurrence).toBe('inventory')
+    expect(
+      lastSources().some(
+        (source) => source.sourceKind === 'fulfillment' && source.linkRole === 'subject'
+      )
+    ).toBe(false)
   })
 
   it('omits the parent entirely when the document has none', async () => {
@@ -110,7 +109,7 @@ describe('the source set one document posts with', () => {
       ...SALE,
       kind: 'adjust',
       subject: { sourceKind: 'stock_movement', sourceId: 'sm_1' },
-      parent: null,
+      parents: [],
       movements: [{ id: 'sm_1', extendedCostMinor: 500, glAccountRole: 'inventory_raw_materials' }],
     })
 

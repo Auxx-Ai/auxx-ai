@@ -423,7 +423,7 @@ async function writeCompletion(
     organizationId,
     kind: 'build',
     subject: { sourceKind: 'build', sourceId: build.buildId },
-    ...(build.orderId ? { parent: { sourceKind: 'order', sourceId: build.orderId } } : {}),
+    ...(build.orderId ? { parents: [{ sourceKind: 'order', sourceId: build.orderId }] } : {}),
     txnDate: inventoryTxnDate(completedAt),
     movements: movementLines,
     absorbed: { laborMinor: laborCost, overheadMinor: overheadCost },
