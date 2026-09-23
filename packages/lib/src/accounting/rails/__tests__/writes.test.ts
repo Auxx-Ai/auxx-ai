@@ -27,6 +27,7 @@ const state = vi.hoisted(() => ({
   updateCalls: [] as unknown[],
   roleAssignmentCalls: [] as Record<string, unknown>[],
   roleAssignmentError: null as Error | null,
+  mappableError: null as Error | null,
 }))
 
 function baseRow(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow {
@@ -67,6 +68,10 @@ vi.mock('../reads', () => ({
 }))
 
 vi.mock('../../ledger/roles/role-map', () => ({
+  assertMappableAccount: async () => {
+    if (state.mappableError) throw state.mappableError
+    return {}
+  },
   setRoleAssignment: async (_db: unknown, options: Record<string, unknown>) => {
     state.roleAssignmentCalls.push(options)
     if (state.roleAssignmentError) {
@@ -100,6 +105,7 @@ beforeEach(() => {
   state.updateCalls.length = 0
   state.roleAssignmentCalls.length = 0
   state.roleAssignmentError = null
+  state.mappableError = null
 })
 
 describe('createPaymentGateway', () => {
@@ -113,6 +119,20 @@ describe('createPaymentGateway', () => {
     })
     expect(result.isErr()).toBe(true)
     if (result.isErr()) expect(result.error.message).toContain('clearing account')
+    expect(state.roleAssignmentCalls).toHaveLength(0)
+  })
+
+  it('refuses an unmappable clearing account before the record exists', async () => {
+    state.mappableError = new BadRequestError("'clearing' must be mapped to a 'clearing' account")
+    const result = await createPaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      name: 'Authorize.Net',
+      handles: ['authorize.net'],
+      clearingAccountId: CLEARING_ACCOUNT,
+    })
+    expect(result.isErr()).toBe(true)
+    expect(state.createCalls).toHaveLength(0)
     expect(state.roleAssignmentCalls).toHaveLength(0)
   })
 

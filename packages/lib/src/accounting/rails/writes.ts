@@ -22,7 +22,7 @@ import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { toRecordId } from '../../resources/resource-id'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
-import { setRoleAssignment } from '../ledger/roles/role-map'
+import { assertMappableAccount, setRoleAssignment } from '../ledger/roles/role-map'
 import { wakeReasonCode } from '../work-items/wake'
 import {
   normaliseGatewayHandle,
@@ -140,6 +140,17 @@ export async function createPaymentGateway(
       }
 
       await assertHandlesAvailable(db, organizationId, name, handles)
+      // Refuse before the record exists: a gateway without its clearing row still claims its handles.
+      await assertMappableAccount(db, organizationId, ACCOUNT_ROLES.CLEARING, clearingAccountId)
+      const feeAccountId = input.feeAccountId?.trim()
+      if (feeAccountId) {
+        await assertMappableAccount(
+          db,
+          organizationId,
+          ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
+          feeAccountId
+        )
+      }
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       const created = await crud.create(defId, {
@@ -160,7 +171,6 @@ export async function createPaymentGateway(
       })
       if (clearing.isErr()) throw clearing.error
 
-      const feeAccountId = input.feeAccountId?.trim()
       if (feeAccountId) {
         const fee = await setRoleAssignment(db, {
           organizationId,

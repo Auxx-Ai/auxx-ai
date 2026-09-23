@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { sourceAccountLabel } from '../source-account-label'
 import type { MappingAccountValue } from './mapping-account-select'
@@ -134,4 +135,24 @@ export function railReadinessLine(state: {
   if (state.feedLinked && !state.bankMapped)
     return { ready: false, text: 'Needs a receiving bank account for its feed.' }
   return { ready: true, text: 'Ready to post.' }
+}
+
+/**
+ * The handle picker's options: the handles seen on orders that no gateway routes yet, plus the
+ * ones already chosen. A claimed handle is left out because the write would refuse it.
+ */
+export function useHandleOptions(current: readonly string[], enabled = true) {
+  const observed = api.paymentGateway.observedHandles.useQuery(undefined, { enabled })
+  return useMemo(() => {
+    const unclaimed = (observed.data ?? []).filter((row) => !row.claimedBy).map((row) => row.handle)
+    const seen = new Set<string>()
+    const options: { label: string; value: string }[] = []
+    for (const handle of [...current, ...unclaimed]) {
+      const key = handle.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      options.push({ label: handle, value: handle })
+    }
+    return options
+  }, [observed.data, current])
 }

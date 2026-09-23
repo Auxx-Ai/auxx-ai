@@ -821,7 +821,7 @@ export async function saveRoleAssignments(
  * refused close. An entry posted to the wrong KIND of account still balances,
  * so there is no downstream reader that could catch it.
  */
-async function assertMappableAccount(
+export async function assertMappableAccount(
   db: Database | Transaction,
   organizationId: string,
   role: AccountRole,

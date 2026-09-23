@@ -18,7 +18,7 @@ import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { CreditCard, Plus, TriangleAlert } from 'lucide-react'
@@ -33,7 +33,8 @@ interface PaymentGatewaysListProps {
   isLoading: boolean
   selectedId: string | null
   onSelect: (id: string | null) => void
-  onAdd: () => void
+  /** Opens the add dialog, seeded with `handle` when a census row asked for it. */
+  onAdd: (handle?: string) => void
   showArchived: boolean
   onShowArchivedChange: (next: boolean) => void
   /** How many closed gateways the org holds, so the toggle can say so. */
@@ -83,7 +84,7 @@ export function PaymentGatewaysList({
   }, [gateways, search])
 
   const addButton = (
-    <Button variant='outline' size='sm' className='shrink-0' onClick={onAdd}>
+    <Button variant='outline' size='sm' className='shrink-0' onClick={() => onAdd()}>
       <Plus />
       Add gateway
     </Button>
@@ -139,6 +140,14 @@ export function PaymentGatewaysList({
                 depth={1}
                 icon={<CreditCard className='size-4 text-muted-foreground' />}
                 title={<span className='truncate font-mono text-sm'>{row.handle}</span>}
+                actions={
+                  <TreeRowButton
+                    persistent
+                    tooltipText='Set up a gateway for this handle'
+                    onClick={() => onAdd(row.handle)}>
+                    <Plus />
+                  </TreeRowButton>
+                }
                 secondaryFill
                 secondary={
                   <span className='truncate text-muted-foreground text-xs'>
