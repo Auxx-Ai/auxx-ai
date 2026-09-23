@@ -3,6 +3,7 @@
 import { type Database, schema } from '@auxx/database'
 import { and, asc, eq, lte, min, sql } from 'drizzle-orm'
 import type { WorkItemStage } from './codes'
+import { publishAccountingWork } from './realtime'
 import { refusalFromError } from './refusal'
 import { upsertWorkItem } from './write'
 
@@ -95,6 +96,14 @@ export async function runWorkItemSweep(
       })
     }
   }
+  // One frame per sweep that touched anything, never one per row.
+  if (counts.scanned > 0)
+    await publishAccountingWork(input.organizationId, {
+      stage: input.stage,
+      sourceKind: input.sourceKind,
+      scanned: counts.scanned,
+      accepted: counts.accepted,
+    })
   return counts
 }
 

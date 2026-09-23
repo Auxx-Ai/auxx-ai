@@ -37,13 +37,6 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { ArrowUpRight, CreditCard, Landmark, PlugZap, Plus, TriangleAlert, X } from 'lucide-react'
@@ -58,6 +51,14 @@ import { api } from '~/trpc/react'
 import { sourceAccountLabel } from '../source-account-label'
 import type { MappingAccountValue } from './mapping-account-select'
 import { MappingScopeRow } from './mapping-scope-row'
+import {
+  accountText,
+  FeedSelect,
+  RAIL_ROLES,
+  RailAccountRows,
+  type RailRole,
+  railReadinessLine,
+} from './payment-gateway-rail-rows'
 
 // 🛑 Not a label. `billed` removes the fee leg from this rail's payout entry
 // entirely (brief 26 §4), and `gross === net` becomes the expected arithmetic
@@ -77,28 +78,6 @@ export interface PaymentGatewayPatch {
   feeTreatment?: PaymentGatewayRow['feeTreatment']
   lastSettlementAt?: string | null
 }
-
-/** The three rail roles, in the order §3's Accounts section renders them. */
-const RAIL_ROLES = [
-  {
-    role: 'clearing',
-    label: 'Clearing',
-    filterType: 'asset' as GlAccountTypeValue,
-    subtypePin: 'clearing' as GlAccountSubtypeValue,
-  },
-  {
-    role: 'payment_processing_fees',
-    label: 'Fees',
-    filterType: 'expense' as GlAccountTypeValue,
-    subtypePin: undefined,
-  },
-  {
-    role: 'bank',
-    label: 'Bank',
-    filterType: 'asset' as GlAccountTypeValue,
-    subtypePin: 'bank' as GlAccountSubtypeValue,
-  },
-] as const
 
 interface PaymentGatewayEditorProps {
   gateway: PaymentGatewayRow | null
@@ -323,6 +302,23 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
     saveMapping.mutate([{ role, scope: { rail: gatewayId }, currency, value }])
   }
 
+  const ownRow = (role: RailRole) =>
+    roleMap.data?.roles
+      .find((r) => r.role === role)
+      ?.railOverrides.find((o) => o.paymentGatewayId === gatewayId && o.currency === null)
+  const orgDefault = (role: RailRole) => {
+    const account = roleMap.data?.roles.find((r) => r.role === role)?.account
+    return role === 'bank' || !account ? null : accountText(account)
+  }
+  const persisted = (role: RailRole): MappingAccountValue =>
+    ownRow(role)?.accountId ?? (role === 'bank' ? null : 'inherit')
+  const values = Object.fromEntries(
+    RAIL_ROLES.map(({ role }) => [role, role in optimistic ? optimistic[role]! : persisted(role)])
+  ) as Record<RailRole, MappingAccountValue>
+  const inheritedNames = Object.fromEntries(
+    RAIL_ROLES.map(({ role }) => [role, orgDefault(role)])
+  ) as Record<RailRole, string | null>
+
   if (roleMap.isPending) {
     return (
       <Section title='Accounts' icon={<Landmark className='size-4 text-muted-foreground' />}>
@@ -343,18 +339,17 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
           <ArrowUpRight className='size-3' />
         </Link>
       }>
-      <div className='flex flex-col gap-0.5'>
-        {RAIL_ROLES.map(({ role, label, filterType, subtypePin }) => {
+      <RailAccountRows
+        values={values}
+        onChange={(role, next) => commit(role, null, next)}
+        inheritedNames={inheritedNames}
+        disabled={!canControl}
+        rowProps={(role) => {
+          const { filterType, subtypePin } = RAIL_ROLES.find((r) => r.role === role)!
           const row = roleMap.data?.roles.find((r) => r.role === role)
           const isBank = role === 'bank'
-          const own = row?.railOverrides.find(
-            (o) => o.paymentGatewayId === gatewayId && o.currency === null
-          )
-          const persisted: MappingAccountValue = own ? own.accountId : isBank ? null : 'inherit'
-          const key = role
-          const value = key in optimistic ? optimistic[key]! : persisted
-          const inheritedName = isBank ? null : row?.account ? accountText(row.account) : null
-
+          const own = ownRow(role)
+          const inheritedName = inheritedNames[role]
           const currencyRows =
             row?.railOverrides.filter(
               (o) => o.paymentGatewayId === gatewayId && o.currency !== null
@@ -369,113 +364,101 @@ function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canCont
             )
             .map((k) => k.slice(role.length))
 
-          return (
-            <MappingScopeRow
-              key={role}
-              depth={0}
-              title={label}
-              value={value}
-              onChange={(next) => commit(role, null, next)}
-              inheritedAccountName={inheritedName}
-              filterTypes={[filterType]}
-              subtypePin={subtypePin}
-              suggested={!(key in optimistic) && own?.state === 'suggested'}
-              onConfirmSuggested={
-                own
-                  ? () =>
+          return {
+            suggested: !(role in optimistic) && own?.state === 'suggested',
+            onConfirmSuggested: own
+              ? () =>
+                  saveMapping.mutate([{ role, scope: { rail: gatewayId }, value: own.accountId }])
+              : undefined,
+            onAddCurrency: canControl
+              ? () =>
+                  setCurrencyDrafts((prev) => ({
+                    ...prev,
+                    [role]: [...(prev[role] ?? []), ''],
+                  }))
+              : undefined,
+            mismatchMessage: isBank ? bankMismatch : undefined,
+            children: (
+              <>
+                {currencyRows.map((o) => (
+                  <RailRoleCurrencyRow
+                    key={o.currency}
+                    role={role}
+                    currency={o.currency as string}
+                    override={o}
+                    railOwnLabel={own?.account ? accountText(own.account) : null}
+                    isBank={isBank}
+                    orgDefaultLabel={inheritedName}
+                    optimistic={optimistic}
+                    filterType={filterType}
+                    subtypePin={subtypePin}
+                    onCommit={commit}
+                    onConfirm={(accountId) =>
                       saveMapping.mutate([
-                        { role, scope: { rail: gatewayId }, value: own.accountId },
+                        {
+                          role,
+                          scope: { rail: gatewayId },
+                          currency: o.currency,
+                          value: accountId,
+                        },
                       ])
-                  : undefined
-              }
-              onAddCurrency={
-                canControl
-                  ? () =>
+                    }
+                    canControl={canControl}
+                  />
+                ))}
+                {optimisticCurrencies.map((currency) => (
+                  <RailRoleCurrencyRow
+                    key={currency}
+                    role={role}
+                    currency={currency}
+                    override={undefined}
+                    railOwnLabel={own?.account ? accountText(own.account) : null}
+                    isBank={isBank}
+                    orgDefaultLabel={inheritedName}
+                    optimistic={optimistic}
+                    filterType={filterType}
+                    subtypePin={subtypePin}
+                    onCommit={commit}
+                    onConfirm={() => {}}
+                    canControl={canControl}
+                  />
+                ))}
+                {(currencyDrafts[role] ?? []).map((code, index) => (
+                  <CurrencyDraft
+                    key={index}
+                    code={code}
+                    existing={new Set([...existingCurrencies, ...optimisticCurrencies])}
+                    filterType={filterType}
+                    subtypePin={subtypePin}
+                    onChange={(next) =>
+                      setCurrencyDrafts((prev) => {
+                        const list = [...(prev[role] ?? [])]
+                        list[index] = next
+                        return { ...prev, [role]: list }
+                      })
+                    }
+                    onPick={(accountId) => {
+                      commit(role, code, accountId)
                       setCurrencyDrafts((prev) => ({
                         ...prev,
-                        [role]: [...(prev[role] ?? []), ''],
+                        [role]: (prev[role] ?? []).filter((_, i) => i !== index),
                       }))
-                  : undefined
-              }
-              mismatchMessage={isBank ? bankMismatch : undefined}
-              disabled={!canControl}>
-              {currencyRows.map((o) => (
-                <RailRoleCurrencyRow
-                  key={o.currency}
-                  role={role}
-                  currency={o.currency as string}
-                  override={o}
-                  railOwnLabel={own?.account ? accountText(own.account) : null}
-                  isBank={isBank}
-                  orgDefaultLabel={inheritedName}
-                  optimistic={optimistic}
-                  filterType={filterType}
-                  subtypePin={subtypePin}
-                  onCommit={commit}
-                  onConfirm={(accountId) =>
-                    saveMapping.mutate([
-                      { role, scope: { rail: gatewayId }, currency: o.currency, value: accountId },
-                    ])
-                  }
-                  canControl={canControl}
-                />
-              ))}
-              {optimisticCurrencies.map((currency) => (
-                <RailRoleCurrencyRow
-                  key={currency}
-                  role={role}
-                  currency={currency}
-                  override={undefined}
-                  railOwnLabel={own?.account ? accountText(own.account) : null}
-                  isBank={isBank}
-                  orgDefaultLabel={inheritedName}
-                  optimistic={optimistic}
-                  filterType={filterType}
-                  subtypePin={subtypePin}
-                  onCommit={commit}
-                  onConfirm={() => {}}
-                  canControl={canControl}
-                />
-              ))}
-              {(currencyDrafts[role] ?? []).map((code, index) => (
-                <CurrencyDraft
-                  key={index}
-                  code={code}
-                  existing={new Set([...existingCurrencies, ...optimisticCurrencies])}
-                  filterType={filterType}
-                  subtypePin={subtypePin}
-                  onChange={(next) =>
-                    setCurrencyDrafts((prev) => {
-                      const list = [...(prev[role] ?? [])]
-                      list[index] = next
-                      return { ...prev, [role]: list }
-                    })
-                  }
-                  onPick={(accountId) => {
-                    commit(role, code, accountId)
-                    setCurrencyDrafts((prev) => ({
-                      ...prev,
-                      [role]: (prev[role] ?? []).filter((_, i) => i !== index),
-                    }))
-                  }}
-                  onRemove={() =>
-                    setCurrencyDrafts((prev) => ({
-                      ...prev,
-                      [role]: (prev[role] ?? []).filter((_, i) => i !== index),
-                    }))
-                  }
-                />
-              ))}
-            </MappingScopeRow>
-          )
-        })}
-      </div>
+                    }}
+                    onRemove={() =>
+                      setCurrencyDrafts((prev) => ({
+                        ...prev,
+                        [role]: (prev[role] ?? []).filter((_, i) => i !== index),
+                      }))
+                    }
+                  />
+                ))}
+              </>
+            ),
+          }
+        }}
+      />
     </Section>
   )
-}
-
-function accountText(account: { code: string | null; name: string }): string {
-  return account.code ? `${account.code} · ${account.name}` : account.name
 }
 
 function RailRoleCurrencyRow({
@@ -580,7 +563,6 @@ function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl
   const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
   const [linking, setLinking] = useState(false)
   const [pickedFeed, setPickedFeed] = useState<string | null>(null)
-  const unlinked = api.paymentGateway.listUnlinkedFeeds.useQuery(undefined, { enabled: linking })
   const [confirm, ConfirmDialog] = useConfirm()
 
   const invalidate = () =>
@@ -619,11 +601,11 @@ function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl
   }
 
   const readinessLine = readiness.data
-    ? readiness.data.ready
-      ? 'Ready to post.'
-      : !readiness.data.clearingMapped
-        ? 'Needs a clearing account - map it above.'
-        : 'Needs a receiving bank account - the Bank row above is highlighted.'
+    ? railReadinessLine({
+        clearingMapped: readiness.data.clearingMapped,
+        bankMapped: readiness.data.bankMapped,
+        feedLinked: readiness.data.linkedFeeds.length > 0,
+      }).text
     : null
 
   return (
@@ -681,28 +663,7 @@ function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl
 
           {linking && (
             <div className='flex items-center gap-2'>
-              <Select value={pickedFeed ?? undefined} onValueChange={setPickedFeed}>
-                <SelectTrigger size='sm' className='w-full'>
-                  <SelectValue placeholder={unlinked.isPending ? 'Loading…' : 'Select a feed…'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(unlinked.data ?? []).length === 0 && !unlinked.isPending ? (
-                    <div className='p-2 text-muted-foreground text-xs'>
-                      No live feed is reporting activity with nothing claiming it yet.
-                    </div>
-                  ) : (
-                    (unlinked.data ?? []).map((feed) => (
-                      <SelectItem key={feed.processorAccountId} value={feed.processorAccountId}>
-                        {sourceAccountLabel({
-                          providerKey: feed.providerKey,
-                          externalAccountId: feed.externalAccountId,
-                          name: feed.name,
-                        })}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <FeedSelect value={pickedFeed} onChange={setPickedFeed} enabled={linking} />
               <Button
                 variant='outline'
                 size='sm'

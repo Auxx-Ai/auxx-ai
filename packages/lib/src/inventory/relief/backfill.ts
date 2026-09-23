@@ -51,8 +51,8 @@
  * Relief prices at the part's frozen `part_standard_cost` (73 §6.2 rule 3) and
  * skips a line whose part has none, counting it as `skippedNoCost`. Run this
  * BEFORE the builds backfill has given assembled parts a standard and every
- * sale line of one is skipped - not an error, and not loud. Builds first, then
- * relief.
+ * sale line of one is skipped and parked as `STANDARD_COST_MISSING` in Blocked.
+ * Builds first, then relief.
  *
  * No permission checks. A router that exposes this asserts first
  * (`docs/lib-module-guide.md` §6).
@@ -149,6 +149,50 @@ async function readOrderIds(db: Database, organizationId: string): Promise<strin
   return rows.map((row) => row.id)
 }
 
+/** The lines relief is offered for these orders' live dispatches, optionally one dispatch only. */
+export async function readReliefLines(
+  db: Database,
+  organizationId: string,
+  orderIds: readonly string[],
+  onlyFulfillmentId?: string
+): Promise<{
+  lines: FulfillmentLineToRelieve[]
+  fulfillmentsScanned: number
+  fulfillmentsSkippedCancelled: number
+}> {
+  const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
+  const lines: FulfillmentLineToRelieve[] = []
+  let fulfillmentsScanned = 0
+  let fulfillmentsSkippedCancelled = 0
+  for (const [orderId, fulfillments] of byOrder.entries()) {
+    for (const fulfillment of fulfillments) {
+      if (onlyFulfillmentId && fulfillment.id !== onlyFulfillmentId) continue
+      fulfillmentsScanned++
+      // The CALLER filters cancelled dispatches, never `relieveFulfillmentLines` -
+      // `fulfillment-log-pass.ts` makes the same call in the same place.
+      if (!isLiveFulfillment(fulfillment)) {
+        fulfillmentsSkippedCancelled++
+        continue
+      }
+      // The dispatch's OWN date, so a movement written today still lands in the
+      // accounting month the goods left in.
+      const occurredAt = new Date(fulfillment.shippedAt)
+      for (const line of fulfillment.lines) {
+        lines.push({
+          fulfillmentLineId: line.id,
+          fulfillmentId: fulfillment.id,
+          orderId,
+          lineItemId: line.lineItemId,
+          quantity: line.quantity,
+          quantityRelieved: line.quantityRelieved,
+          occurredAt,
+        })
+      }
+    }
+  }
+  return { lines, fulfillmentsScanned, fulfillmentsSkippedCancelled }
+}
+
 function chunk<T>(items: readonly T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let index = 0; index < items.length; index += size) {
@@ -201,39 +245,10 @@ export async function backfillFulfillmentRelief(
       let ordersDone = 0
 
       for (const [index, batchOrderIds] of batches.entries()) {
-        const byOrder = await readFulfillmentsForOrders(db, {
-          organizationId,
-          orderIds: batchOrderIds,
-        })
-
-        const lines: FulfillmentLineToRelieve[] = []
-        for (const [orderId, fulfillments] of byOrder.entries()) {
-          for (const fulfillment of fulfillments) {
-            summary.fulfillmentsScanned++
-            // The CALLER filters cancelled dispatches, never
-            // `relieveFulfillmentLines` - `fulfillment-log-pass.ts` makes the
-            // same call in the same place, and relief only ever sees lines a
-            // caller decided are live.
-            if (!isLiveFulfillment(fulfillment)) {
-              summary.fulfillmentsSkippedCancelled++
-              continue
-            }
-            // The dispatch's OWN date, so a movement written today still lands
-            // in the accounting month the goods left in.
-            const occurredAt = new Date(fulfillment.shippedAt)
-            for (const line of fulfillment.lines) {
-              lines.push({
-                fulfillmentLineId: line.id,
-                fulfillmentId: fulfillment.id,
-                orderId,
-                lineItemId: line.lineItemId,
-                quantity: line.quantity,
-                quantityRelieved: line.quantityRelieved,
-                occurredAt,
-              })
-            }
-          }
-        }
+        const assembled = await readReliefLines(db, organizationId, batchOrderIds)
+        const lines = assembled.lines
+        summary.fulfillmentsScanned += assembled.fulfillmentsScanned
+        summary.fulfillmentsSkippedCancelled += assembled.fulfillmentsSkippedCancelled
 
         ordersDone += batchOrderIds.length
         summary.linesConsidered += lines.length

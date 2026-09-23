@@ -6,6 +6,7 @@ import { and, eq, isNotNull } from 'drizzle-orm'
 import { maxRung } from '../permissions/capabilities/rung'
 import type { Lens } from '../permissions/visibility/lens'
 import type {
+  AccountingWorkChangedEvent,
   ApprovalPingEvent,
   ApprovalResolvedEvent,
   DashboardDraftUpdatedEvent,
@@ -284,6 +285,17 @@ export async function publishExportBatchChanged(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'exportBatch:changed', data)
+    .catch(() => {})
+}
+
+/** Publish `accountingWork:changed` on the org channel. Sweeps run in the worker, so no `excludeSocketId`. */
+export async function publishAccountingWorkChanged(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: AccountingWorkChangedEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'accountingWork:changed', data)
     .catch(() => {})
 }
 

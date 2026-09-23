@@ -7,7 +7,7 @@ export type WorkItemSeverity = 'info' | 'warning' | 'error'
 export type WorkItemStatus = 'waiting' | 'blocked' | 'warning' | 'skipped' | 'rejected'
 
 /** Mirrors `ACCOUNTING_WORK_STAGES` in the schema, restated so this file stays client-safe. */
-export type WorkItemStage = 'evidence' | 'money' | 'post' | 'issue'
+export type WorkItemStage = 'evidence' | 'money' | 'post' | 'issue' | 'relieve'
 
 /** The `sourceKind` values a work item names. */
 export const WORK_ITEM_SOURCE_KINDS = [
@@ -24,6 +24,8 @@ interface WorkItemCodeDef {
   status: WorkItemStatus
   /** Backs off from a minute instead of waiting for a wake. */
   transient?: boolean
+  /** `externalRef` joins the Blocked group key: the remedy differs per value (one handle, one part). */
+  groupsByExternalRef?: true
   /** Rendered with the row's own keys; never stored. */
   sentence: (item: WorkItemSentenceInput) => string
 }
@@ -104,6 +106,7 @@ export const WORK_ITEM_CODES = {
   GATEWAY_UNMAPPED: {
     severity: 'error',
     status: 'blocked',
+    groupsByExternalRef: true,
     sentence: (item) =>
       item.externalRef
         ? `Gateway handle '${item.externalRef}' is not mapped to a payment gateway. Map it under Accounting > Settings > Payment gateways.`
@@ -212,6 +215,17 @@ export const WORK_ITEM_CODES = {
         ? `It is dated in or before the opening cutoff (${item.periodKey}); the opening balance carries it.`
         : 'It is dated in or before the opening cutoff; the opening balance carries it.',
   },
+  STANDARD_COST_MISSING: {
+    severity: 'error',
+    status: 'blocked',
+    groupsByExternalRef: true,
+    sentence: (item) => {
+      const part = detailText(item, 'partName')
+      return part
+        ? `${part} has no standard cost, so its shipments cannot relieve inventory. Set or roll its standard cost.`
+        : 'A part has no standard cost, so its shipments cannot relieve inventory. Set or roll standard costs.'
+    },
+  },
   TRANSIENT_ERROR: {
     severity: 'error',
     status: 'blocked',
@@ -248,6 +262,16 @@ export function workItemStatus(code: string): WorkItemStatus {
 export function workItemSentence(code: string, item: WorkItemSentenceInput = {}): string {
   return codeDef(code).sentence(item)
 }
+
+/** Whether a group of this code is split per `externalRef`. */
+export function groupsByExternalRef(code: string): boolean {
+  return codeDef(code).groupsByExternalRef === true
+}
+
+/** The codes whose Blocked group key carries `externalRef`. */
+export const EXTERNAL_REF_GROUPED_CODES = (Object.keys(WORK_ITEM_CODES) as WorkItemCode[]).filter(
+  groupsByExternalRef
+)
 
 /** Backs off per attempt (from a minute to six hours) rather than waiting on a fixed delay. */
 export function isTransientCode(code: string): boolean {

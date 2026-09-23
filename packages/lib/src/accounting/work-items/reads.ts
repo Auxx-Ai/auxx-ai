@@ -3,7 +3,14 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { ok, type Result } from 'neverthrow'
-import { WORK_ITEM_CODES, type WorkItemCode, type WorkItemStage, workItemStatus } from './codes'
+import {
+  EXTERNAL_REF_GROUPED_CODES,
+  groupsByExternalRef,
+  WORK_ITEM_CODES,
+  type WorkItemCode,
+  type WorkItemStage,
+  workItemStatus,
+} from './codes'
 import type { WorkItemGroupKey } from './wake'
 
 type Db = Database | Transaction
@@ -30,7 +37,10 @@ export interface WorkItemFilters {
 
 /** One Blocked-tab row: every item sharing a code and its wake keys (91 §4.6). */
 export interface WorkItemGroup extends WorkItemGroupKey {
+  externalRef: string | null
   count: number
+  /** Items whose `nextAttemptAt` has come: woken, waiting for the sweep. */
+  dueCount: number
   sourceKinds: string[]
   /** The newest write in the group. */
   latestAt: Date
@@ -106,15 +116,27 @@ function whereItems(organizationId: string, filters: WorkItemFilters, extra: SQL
   return sql.join(conditions, sql` AND `)
 }
 
+/** The `externalRef` half of the group key: the value for codes that group by it, else null. */
+function groupExternalRef(): SQL {
+  if (EXTERNAL_REF_GROUPED_CODES.length === 0) return sql`NULL::text`
+  return sql`CASE WHEN w."reasonCode" IN (${sql.join(
+    EXTERNAL_REF_GROUPED_CODES.map((code) => sql`${code}`),
+    sql`, `
+  )}) THEN w."externalRef" END`
+}
+
 function groupWhere(group: WorkItemGroupKey): SQL {
   const same = (column: string, value: string | null) =>
     value === null
       ? sql`w.${sql.identifier(column)} IS NULL`
       : sql`w.${sql.identifier(column)} = ${value}`
-  return sql`w."reasonCode" = ${group.reasonCode} AND ${same('role', group.role)} AND ${same('railId', group.railId)} AND ${same('glAccountId', group.glAccountId)}`
+  const ref = groupsByExternalRef(group.reasonCode)
+    ? sql` AND ${same('externalRef', group.externalRef ?? null)}`
+    : sql``
+  return sql`w."reasonCode" = ${group.reasonCode} AND ${same('role', group.role)} AND ${same('railId', group.railId)} AND ${same('glAccountId', group.glAccountId)}${ref}`
 }
 
-/** The Blocked tab: one row per `(reasonCode, role, railId, glAccountId)`, newest first. */
+/** The Blocked tab: one row per `(reasonCode, role, railId, glAccountId[, externalRef])`, newest first. */
 export async function listWorkItemGroups(
   db: Db,
   organizationId: string,
@@ -123,15 +145,17 @@ export async function listWorkItemGroups(
   const offset = options.offset ?? 0
   const result = await db.execute(sql`
     SELECT w."reasonCode", w."role", w."railId", w."glAccountId",
+      ${groupExternalRef()} AS "externalRef",
       count(*)::int AS "count", max(w."updatedAt") AS "latestAt",
+      (count(*) FILTER (WHERE w."nextAttemptAt" <= now()))::int AS "dueCount",
       array_agg(DISTINCT w."sourceKind") AS "sourceKinds",
       max(rail."displayName") AS "railName", max(gl."displayName") AS "glAccountName"
     FROM ${fromItems()}
     LEFT JOIN "EntityInstance" rail ON rail."organizationId" = w."organizationId" AND rail."id" = w."railId"
     LEFT JOIN "EntityInstance" gl ON gl."organizationId" = w."organizationId" AND gl."id" = w."glAccountId"
     WHERE ${whereItems(organizationId, options)}
-    GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId"
-    ORDER BY max(w."updatedAt") DESC, w."reasonCode" ASC, w."role" ASC NULLS FIRST
+    GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId", 5
+    ORDER BY max(w."updatedAt") DESC, w."reasonCode" ASC, w."role" ASC NULLS FIRST, 5 ASC NULLS FIRST
     LIMIT ${options.limit + 1} OFFSET ${offset}
   `)
   const rows = (
@@ -140,7 +164,9 @@ export async function listWorkItemGroups(
       role: string | null
       railId: string | null
       glAccountId: string | null
+      externalRef: string | null
       count: number
+      dueCount: number
       latestAt: string | Date
       sourceKinds: string[] | string
       railName: string | null
@@ -149,6 +175,7 @@ export async function listWorkItemGroups(
   ).map((row) => ({
     ...row,
     count: Number(row.count),
+    dueCount: Number(row.dueCount ?? 0),
     latestAt: new Date(row.latestAt),
     sourceKinds: Array.isArray(row.sourceKinds)
       ? row.sourceKinds
@@ -264,7 +291,7 @@ export async function countWorkItemGroups(
               )})`
             : sql``
         }
-      GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId"
+      GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId", ${groupExternalRef()}
     ) groups
   `)
   return ok(Number((result.rows[0] as { total?: number } | undefined)?.total ?? 0))

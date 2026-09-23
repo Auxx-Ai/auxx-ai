@@ -26,6 +26,13 @@ const h = vi.hoisted(() => ({
   recalculateFulfillmentLineQuantityRelievedBatch: vi.fn(async () => {}),
   announceQuietReliefWrites: vi.fn(),
   reliefWriteSession: vi.fn(() => ({ origin: { kind: 'automation' }, mode: { kind: 'quiet' } })),
+  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
+  deleteWorkItemsAtStage: vi.fn(async () => ({ isOk: () => true })),
+}))
+
+vi.mock('../../../accounting/work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
+  deleteWorkItemsAtStage: h.deleteWorkItemsAtStage,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -441,6 +448,51 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().skippedNoCost).toBe(1)
     expect(h.writeStockMovements).not.toHaveBeenCalled()
+  })
+
+  it('task 100 - parks a dispatch with an unpriced part and clears the ones that relieved', async () => {
+    const db = fakeDb({
+      line_item_part: [
+        { entityId: 'li_1', relatedEntityId: 'part_1' },
+        { entityId: 'li_2', relatedEntityId: 'part_2' },
+      ],
+    })
+    h.standardCosts.set('part_2', 4_000)
+    const line = (id: string, fulfillmentId: string, lineItemId: string) => ({
+      fulfillmentLineId: id,
+      fulfillmentId,
+      orderId: 'ord_1',
+      lineItemId,
+      quantity: 1,
+      quantityRelieved: null,
+      occurredAt: OCCURRED_AT,
+    })
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [line('fl_1', 'ful_1', 'li_1'), line('fl_2', 'ful_2', 'li_2')],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_2'],
+      stage: 'relieve',
+    })
+    expect(h.upsertWorkItem).toHaveBeenCalledTimes(1)
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      db,
+      ORG,
+      expect.objectContaining({
+        sourceKind: 'fulfillment',
+        sourceId: 'ful_1',
+        stage: 'relieve',
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: 'part_1',
+        detail: { partIds: ['part_1'] },
+      })
+    )
   })
 
   it('§4.2 - warns and reports a part this run leaves at negative QoH, without refusing', async () => {

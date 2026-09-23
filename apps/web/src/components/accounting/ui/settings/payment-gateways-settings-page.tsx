@@ -13,11 +13,12 @@
 // decides where card and BNPL money lands on the balance sheet, the same rung
 // `bank-accounts-settings-page.tsx` argues for its own mapping.
 
+import { normaliseGatewayHandle } from '@auxx/lib/accounting/rails/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock } from 'lucide-react'
 import { parseAsBoolean, useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
@@ -52,6 +53,9 @@ export function PaymentGatewaysSettingsPage() {
   // 1200"), and a pane that vanishes on refresh cannot be linked to.
   const [gatewayParam, setSelectedId] = useQueryState('gateway')
   const [addOpen, setAddOpen] = useState(false)
+  // `?handle=`: a link from a Blocked row naming the handle to route.
+  const [handleParam, setHandleParam] = useQueryState('handle')
+  const [addHandle, setAddHandle] = useState<string | undefined>()
   const [showClosed, setShowClosed] = useQueryState('closed', parseAsBoolean.withDefault(false))
   const [confirm, ConfirmDialog] = useConfirm()
 
@@ -61,6 +65,19 @@ export function PaymentGatewaysSettingsPage() {
     () => (showClosed ? rows : rows.filter((row) => row.status !== 'closed')),
     [rows, showClosed]
   )
+
+  // An already-routed handle opens its gateway; an unrouted one opens the add dialog seeded with it.
+  useEffect(() => {
+    if (!handleParam || gateways.isPending) return
+    const key = normaliseGatewayHandle(handleParam)
+    const routed = rows.find((row) => row.handles.some((h) => normaliseGatewayHandle(h) === key))
+    if (routed) setSelectedId(routed.id)
+    else {
+      setAddHandle(handleParam)
+      setAddOpen(true)
+    }
+    void setHandleParam(null)
+  }, [handleParam, gateways.isPending, rows, setSelectedId, setHandleParam])
 
   const selectedId =
     gatewayParam && (gateways.isPending || rows.some((row) => row.id === gatewayParam))
@@ -153,7 +170,10 @@ export function PaymentGatewaysSettingsPage() {
           isLoading={gateways.isPending}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          onAdd={() => setAddOpen(true)}
+          onAdd={() => {
+            setAddHandle(undefined)
+            setAddOpen(true)
+          }}
           showArchived={showClosed}
           onShowArchivedChange={setShowClosed}
           closedCount={rows.filter((row) => row.status === 'closed').length}
@@ -164,6 +184,7 @@ export function PaymentGatewaysSettingsPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         onCreated={(gateway) => setSelectedId(gateway.id)}
+        initialHandle={addHandle}
       />
 
       <ConfirmDialog />

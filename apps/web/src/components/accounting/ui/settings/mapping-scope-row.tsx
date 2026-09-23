@@ -47,6 +47,8 @@ export interface MappingScopeRowProps {
   onAddCurrency?: () => void
   /** Viewer lacks `ledgerControl` — every control disabled, no hover actions. */
   disabled?: boolean
+  /** A draft's "Create `<mintLabel>`" option, passed to the picker. */
+  mintLabel?: string
   /** A role row with scopes beneath it. `TreeRow` renders its own chevron. */
   expandable?: boolean
   isOpen?: boolean
@@ -89,6 +91,7 @@ export function MappingScopeRow({
   note,
   onAddCurrency,
   disabled = false,
+  mintLabel,
   expandable = false,
   isOpen,
   onToggleOpen,
@@ -174,6 +177,7 @@ export function MappingScopeRow({
             filterTypes={filterTypes}
             subtypePin={subtypePin}
             disabled={disabled || noFeedLinked}
+            mintLabel={mintLabel}
           />
         </div>
       }>

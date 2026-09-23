@@ -8,6 +8,7 @@ import { sweepImportedCustomerMoney } from '../../accounting/money/customer-mone
 import { sweepChannelCreditMemos } from '../../accounting/sales/credit-memos/issue-pass'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
 import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
+import { sweepFulfillmentRelief } from '../../inventory/relief/relief-sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
@@ -21,6 +22,7 @@ type PostingSweep = (
 const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Payment accounting', sweepMovementAccounting],
   ['Shipment accounting', sweepFulfillmentAccounting],
+  ['Shipment relief', sweepFulfillmentRelief],
   // Issues channel memos and links refunds that posted before their memo arrived.
   ['Credit memo issuing', sweepChannelCreditMemos],
 ]
@@ -37,8 +39,13 @@ async function attempt(label: string, organizationId: string, run: () => Promise
 }
 
 /** The safety net under every wake: orgs with due work first, each lane bounded by one deadline. */
-export async function accountingRecoveryJob(ctx: JobContext): Promise<void> {
-  const organizations = await listOrganizationsForSweep(database, { limit: 25 })
+export async function accountingRecoveryJob(
+  ctx: JobContext<{ organizationId?: string } | undefined>
+): Promise<void> {
+  // A one-off run from Retry names its org; the schedule pages through all of them.
+  const organizations = ctx.data?.organizationId
+    ? [ctx.data.organizationId]
+    : await listOrganizationsForSweep(database, { limit: 25 })
   const deadline = Date.now() + 45_000
   let processed = 0
   for (const organizationId of organizations) {

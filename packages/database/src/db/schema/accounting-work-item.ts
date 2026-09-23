@@ -19,7 +19,7 @@ import {
 import { Organization } from './organization'
 
 /** Where the work stopped. Export state stays on `ExportBatch` (89). */
-export const ACCOUNTING_WORK_STAGES = ['evidence', 'money', 'post', 'issue'] as const
+export const ACCOUNTING_WORK_STAGES = ['evidence', 'money', 'post', 'issue', 'relieve'] as const
 
 export const AccountingWorkItem = pgTable(
   'AccountingWorkItem',
@@ -67,7 +67,7 @@ export const AccountingWorkItem = pgTable(
     index('AccountingWorkItem_due_idx').on(t.organizationId, t.nextAttemptAt),
     check(
       'AccountingWorkItem_stage_check',
-      sql`${t.stage} IN ('evidence','money','post','issue') AND ${t.attempts} >= 0 AND ${t.occurrence} >= 0`
+      sql`${t.stage} IN ('evidence','money','post','issue','relieve') AND ${t.attempts} >= 0 AND ${t.occurrence} >= 0`
     ),
   ]
 )

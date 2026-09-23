@@ -14,6 +14,7 @@ export function getRealtimeService(): RealtimeService {
 }
 
 export type {
+  AccountingWorkChangedEvent,
   AgentUpdatedEvent,
   AiStatus,
   AiValueMetadata,
@@ -60,6 +61,7 @@ export type {
 export { shapeMailEventForLens } from './mail-event-shaping'
 export {
   flushMailBatch,
+  publishAccountingWorkChanged,
   publishAgentUpdated,
   publishApprovalPing,
   publishApprovalResolved,

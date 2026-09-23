@@ -41,7 +41,8 @@
  *    function only ever sees lines a caller decided are live.
  * 3. **A line whose cost cannot be priced at all** (no standard cost, or no
  *    relieved average for a down-delta) is
- *    skipped and counted (`skippedNoCost`), never written at zero. "Never
+ *    skipped, counted (`skippedNoCost`) and parked for Blocked (task 100),
+ *    never written at zero. "Never
  *    post a zero cost" is the same rule `complete-build.ts` enforces from the
  *    build side.
  * 4. **The unit cost is rounded to `RATE_DECIMALS`** via `roundMinorUnits`
@@ -66,6 +67,7 @@ import {
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import type { PostResult } from '../../accounting/ledger/types'
+import { deleteWorkItemsAtStage, upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { recalculateFulfillmentLineQuantityRelievedBatch } from '../../field-hooks/post/fulfillment-line-rollups'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
@@ -236,6 +238,35 @@ export async function relieveFulfillmentLines(
   db: Database,
   input: RelieveFulfillmentLinesInput
 ): Promise<Result<RelieveFulfillmentLinesResult, Error>> {
+  const tracker: ReliefTracker = { unpricedParts: new Map(), standardsUnread: false }
+  const result = await relieveLines(db, input, tracker)
+  // An unread standard is an outage, not a missing standard: leave the rows as they are.
+  if (result.isOk() && !tracker.standardsUnread) {
+    try {
+      await syncReliefWorkItems(db, input.organizationId, input.lines, tracker.unpricedParts)
+    } catch (error) {
+      // The movements committed; a missed park is re-derived by the next relief of the dispatch.
+      logger.error('Relief could not record its work items', {
+        organizationId: input.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+  return result
+}
+
+/** What the run learned that its result does not carry: which dispatches lack a standard. */
+interface ReliefTracker {
+  /** `fulfillmentId -> partIds` with no standard, in line order. */
+  unpricedParts: Map<string, string[]>
+  standardsUnread: boolean
+}
+
+async function relieveLines(
+  db: Database,
+  input: RelieveFulfillmentLinesInput,
+  tracker: ReliefTracker
+): Promise<Result<RelieveFulfillmentLinesResult, Error>> {
   const { organizationId, userId, lines } = input
 
   return guard(
@@ -336,6 +367,7 @@ export async function relieveFulfillmentLines(
       // writer values at standard, and relieving at an average would break the
       // invariant the close now checks (rule 4).
       const standardCosts = await guardedReadStandardCost(db, organizationId, partIds)
+      if (!standardCosts) tracker.standardsUnread = true
 
       const partKinds = await readPartKindsLocal(db, organizationId, partIds)
 
@@ -350,7 +382,7 @@ export async function relieveFulfillmentLines(
       const deltaWrittenByPart = new Map<string, number>()
 
       for (const line of resolved) {
-        const standard = standardCosts.get(line.partInstanceId) ?? null
+        const standard = standardCosts?.get(line.partInstanceId) ?? null
         let unitCostMinor: number | null
         if (line.delta > 0) {
           unitCostMinor = standard?.standardCost ?? null
@@ -363,6 +395,11 @@ export async function relieveFulfillmentLines(
 
         if (unitCostMinor == null) {
           skippedNoCost++
+          if (line.delta > 0) {
+            const parts = tracker.unpricedParts.get(line.fulfillmentId) ?? []
+            if (!parts.includes(line.partInstanceId)) parts.push(line.partInstanceId)
+            tracker.unpricedParts.set(line.fulfillmentId, parts)
+          }
           logger.error('Relief skipped a line - no cost could be determined', {
             organizationId,
             fulfillmentLineId: line.fulfillmentLineId,
@@ -535,7 +572,7 @@ async function guardedReadStandardCost(
   db: Database,
   organizationId: string,
   partIds: string[]
-): Promise<Map<string, PartStandardCost>> {
+): Promise<Map<string, PartStandardCost> | null> {
   const result = await readStandardCost(db, organizationId, partIds)
   if (result.isErr()) {
     logger.error('Relief could not read standard costs - affected lines will be skipped', {
@@ -543,7 +580,7 @@ async function guardedReadStandardCost(
       partIds,
       error: result.error.message,
     })
-    return new Map()
+    return null
   }
   return result.value
 }
@@ -598,4 +635,57 @@ function groupByFulfillment(
     documents.set(line.fulfillmentId, document)
   }
   return [...documents.values()].filter((document) => document.movements.length > 0)
+}
+
+/**
+ * One `relieve` work item per offered dispatch that has a part with no standard
+ * (plans/accounting/tasks/100 §1.3); every other offered dispatch is cleared.
+ * Runs after commit.
+ */
+async function syncReliefWorkItems(
+  db: Database,
+  organizationId: string,
+  lines: readonly FulfillmentLineToRelieve[],
+  unpricedParts: ReadonlyMap<string, string[]>
+): Promise<void> {
+  const offered = [...new Set(lines.map((line) => line.fulfillmentId))]
+  await deleteWorkItemsAtStage(db, organizationId, {
+    sourceKind: 'fulfillment',
+    sourceIds: offered.filter((id) => !unpricedParts.has(id)),
+    stage: 'relieve',
+  })
+  if (unpricedParts.size === 0) return
+
+  const partNames = await readPartNames(db, organizationId, [
+    ...new Set([...unpricedParts.values()].flat()),
+  ])
+  for (const [fulfillmentId, partIds] of unpricedParts) {
+    const partId = partIds[0]!
+    await upsertWorkItem(db, organizationId, {
+      sourceKind: 'fulfillment',
+      sourceId: fulfillmentId,
+      stage: 'relieve',
+      reasonCode: 'STANDARD_COST_MISSING',
+      // The group key: one Blocked row per part, the part a person has to price.
+      externalRef: partId,
+      detail: { partIds, ...(partNames.get(partId) ? { partName: partNames.get(partId) } : {}) },
+    })
+  }
+}
+
+async function readPartNames(
+  db: Database,
+  organizationId: string,
+  partIds: string[]
+): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        inArray(schema.EntityInstance.id, partIds)
+      )
+    )
+  return new Map(rows.flatMap((row) => (row.displayName ? [[row.id, row.displayName]] : [])))
 }

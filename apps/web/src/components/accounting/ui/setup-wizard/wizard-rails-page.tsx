@@ -117,7 +117,7 @@ export function WizardRailsPage() {
     ])
   }
 
-  const createRail = api.paymentGateway.createForRail.useMutation({
+  const createRail = api.paymentGateway.setUp.useMutation({
     onSuccess: async () => {
       setDraft(null)
       await refresh()
@@ -150,11 +150,12 @@ export function WizardRailsPage() {
     createRail.mutate({
       handles: group.handles.map((handle) => handle.handle),
       name: draft.name.trim() || group.name,
-      clearingAccountName: draft.clearingAccountName.trim() || group.suggestion.clearingAccountName,
-      mintFeeAccount: draft.mintFeeAccount,
-      feeAccountName: draft.mintFeeAccount
-        ? draft.feeAccountName.trim() || group.suggestion.feeAccountName
-        : undefined,
+      clearing: {
+        mint: draft.clearingAccountName.trim() || group.suggestion.clearingAccountName,
+      },
+      fee: draft.mintFeeAccount
+        ? { mint: draft.feeAccountName.trim() || group.suggestion.feeAccountName }
+        : null,
       feeTreatment: group.suggestion.feeTreatment,
       status: draft.markClosed ? 'closed' : 'active',
     })

@@ -170,3 +170,27 @@ export async function mintRailAccounts(
 
   return ok({ clearing: clearing.value, fee: fee.value })
 }
+
+/** Mint only a rail's merchant fee account, for a rail whose clearing account already exists. */
+export async function mintRailFeeAccount(
+  db: Database,
+  input: { organizationId: string; actorUserId: string; feeAccountName: string }
+): Promise<Result<ChartAccountRow, Error>> {
+  const { organizationId, actorUserId } = input
+  const name = input.feeAccountName.trim()
+  if (!name) return err(new BadRequestError('The fee account needs a name.', { organizationId }))
+
+  const chart = await listChartAccounts(db, organizationId)
+  if (chart.isErr()) return err(chart.error)
+  const code = nextAccountCode(MERCHANT_FEE_ACCOUNT_CODE_BAND, chart.value)
+  if (code.isErr()) return err(code.error)
+
+  // No `role`, for the same reason as `mintRailAccounts` (file header).
+  return createChartAccount(db, {
+    organizationId,
+    actorUserId,
+    code: code.value,
+    name,
+    accountType: GlAccountType.EXPENSE,
+  })
+}

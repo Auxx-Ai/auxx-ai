@@ -43,6 +43,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
+import { wakeReasonCode } from '../../accounting/work-items/wake'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
@@ -202,6 +203,10 @@ export async function ensureStandardCost(
         writes,
         source: standardCostSourceOf(source.kind),
       })
+
+      // A shipment skipped for want of a standard can relieve now.
+      if (writtenPartIds.length > 0)
+        await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
 
       logger.info('Ensured first standard cost', {
         organizationId,

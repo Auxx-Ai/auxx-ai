@@ -63,6 +63,7 @@ export type ResourceSyncEvent =
   | DataConnectorSyncEvent
   | DataExportJobEvent
   | ExportBatchChangedEvent
+  | AccountingWorkChangedEvent
   | RunCompletedEvent
 
 /** Field values changed (from mutations, triggers, cost recalc, etc.) */
@@ -292,6 +293,17 @@ export interface ExportBatchChangedEvent {
     failureClass?: ExportFailureClass | null
     lastError?: string | null
     attempts: number
+  }
+}
+
+/** A work-item sweep accepted or re-refused parked accounting work; the Blocked tab refetches. */
+export interface AccountingWorkChangedEvent {
+  event: 'accountingWork:changed'
+  data: {
+    stage: string
+    sourceKind: string
+    scanned: number
+    accepted: number
   }
 }
 

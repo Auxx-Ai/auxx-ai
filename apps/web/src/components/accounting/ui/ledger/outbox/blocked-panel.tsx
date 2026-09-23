@@ -3,7 +3,7 @@
 'use client'
 
 // Accounting > Ledger > Outbox > the BLOCKED tab (91 §4.6): parked accounting work,
-// one row per (reasonCode, role, railId, glAccountId), expandable to its items.
+// one row per (reasonCode, role, railId, glAccountId[, externalRef]), expandable to its items.
 
 import {
   type WorkItemSourceKind,
@@ -25,11 +25,13 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PaymentGatewayAddDialog } from '~/components/accounting/ui/settings/payment-gateway-add-dialog'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
 import { MOVEMENT_PURPOSE_LABEL, WORK_SOURCE_LABEL } from '../type-labels'
@@ -38,16 +40,34 @@ import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 
 type BlockedGroup = RouterOutputs['ledger']['listBlocked']['items'][number]
 type BlockedItem = RouterOutputs['ledger']['listBlockedItems']['items'][number]
-type GroupKey = Pick<BlockedGroup, 'reasonCode' | 'role' | 'railId' | 'glAccountId'>
+type GroupKey = Pick<BlockedGroup, 'reasonCode' | 'role' | 'railId' | 'glAccountId'> & {
+  externalRef?: string | null
+}
+
+/** How often a group being retried re-reads while no realtime frame arrives. */
+const RETRYING_REFETCH_MS = 15_000
 
 const groupId = (group: GroupKey) =>
-  [group.reasonCode, group.role ?? '', group.railId ?? '', group.glAccountId ?? ''].join('|')
+  [
+    group.reasonCode,
+    group.role ?? '',
+    group.railId ?? '',
+    group.glAccountId ?? '',
+    group.externalRef ?? '',
+  ].join('|')
 
-const toGroupKey = ({ reasonCode, role, railId, glAccountId }: GroupKey): GroupKey => ({
+const toGroupKey = ({
   reasonCode,
   role,
   railId,
   glAccountId,
+  externalRef,
+}: GroupKey): GroupKey => ({
+  reasonCode,
+  role,
+  railId,
+  glAccountId,
+  externalRef: externalRef ?? null,
 })
 
 function sourceLabel(kind: string): string {
@@ -70,6 +90,11 @@ function mapHref(group: GroupKey): string | null {
     return `/app/accounting/settings/accounts?role=${encodeURIComponent(group.role)}`
   if (group.reasonCode === 'ACCOUNT_INVALID' && group.glAccountId)
     return `/app/accounting/settings/accounts?s=chart&account=${encodeURIComponent(group.glAccountId)}`
+  // With a handle the dialog opens in place; without one the feed is linked on the gateway.
+  if (group.reasonCode === 'GATEWAY_UNMAPPED') return '/app/accounting/settings/payment-gateways'
+  // The group's `externalRef` is the part missing its standard cost.
+  if (group.reasonCode === 'STANDARD_COST_MISSING' && group.externalRef)
+    return `/app/parts/${encodeURIComponent(group.externalRef)}`
   return null
 }
 
@@ -111,6 +136,11 @@ export function BlockedPanel({
   }
   const list = api.ledger.listBlocked.useInfiniteQuery(query, {
     getNextPageParam: (page) => page.nextCursor,
+    // The net under a lost frame: re-read while anything is waiting on the sweep.
+    refetchInterval: (q) =>
+      q.state.data?.pages.some((page) => page.items.some((group) => group.dueCount > 0))
+        ? RETRYING_REFETCH_MS
+        : false,
   })
   const groups = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
   const groupsById = useMemo(
@@ -127,11 +157,22 @@ export function BlockedPanel({
     setItemIds(groups.map(groupId))
   }, [groups, setItemIds])
 
-  function refresh() {
+  const refresh = useCallback(() => {
     void utils.ledger.listBlocked.invalidate()
     void utils.ledger.listBlockedItems.invalidate()
     void utils.ledger.outboxCounts.invalidate()
-  }
+  }, [utils])
+
+  const onEvent = useCallback(
+    (event: string) => {
+      if (event === 'accountingWork:changed') refresh()
+    },
+    [refresh]
+  )
+  useOrgChannel({ onEvent })
+
+  // The handle a Map click opened the add dialog for.
+  const [mapHandle, setMapHandle] = useState<string | null>(null)
 
   // Retry all makes the rows due now and returns; the recovery job posts them (91 §4.6).
   const retry = api.ledger.retryBlockedGroup.useMutation({
@@ -171,6 +212,8 @@ export function BlockedPanel({
     const noun =
       group.sourceKinds.length === 1 ? sourceLabel(group.sourceKinds[0] ?? '') : 'Records'
     const href = mapHref(group)
+    const mapInPlace = group.reasonCode === 'GATEWAY_UNMAPPED' && !!group.externalRef
+    const retrying = group.dueCount > 0
     return (
       <OutboxRow
         id={id}
@@ -179,23 +222,32 @@ export function BlockedPanel({
         typeLabel={noun}
         title={`${group.count} waiting${where ? ` (${where})` : ''}: ${sentence}`}
         description={sentence}
-        amount=''
+        amount={retrying ? `Retrying ${group.dueCount}…` : ''}
         expandable
         isOpen={open.has(id)}
         onToggleOpen={() => toggle(id)}
         actions={
           <>
-            {href && (
-              <TreeRowButton persistent tooltipText='Map it' onClick={() => router.push(href)}>
+            {mapInPlace ? (
+              <TreeRowButton
+                persistent
+                tooltipText='Map it'
+                onClick={() => setMapHandle(group.externalRef)}>
                 <MapIcon />
               </TreeRowButton>
+            ) : (
+              href && (
+                <TreeRowButton persistent tooltipText='Map it' onClick={() => router.push(href)}>
+                  <MapIcon />
+                </TreeRowButton>
+              )
             )}
             <TreeRowButton
               persistent
-              tooltipText='Retry all'
-              disabled={busy}
+              tooltipText={retrying ? `Retrying ${group.dueCount}…` : 'Retry all'}
+              disabled={busy || retrying}
               onClick={() => retry.mutate({ group: toGroupKey(group) })}>
-              <RefreshCw className={busy ? 'animate-spin' : undefined} />
+              <RefreshCw className={busy || retrying ? 'animate-spin' : undefined} />
             </TreeRowButton>
           </>
         }
@@ -264,6 +316,14 @@ export function BlockedPanel({
             onClick: () => void retryMany(selectedIds),
           },
         ]}
+      />
+      <PaymentGatewayAddDialog
+        open={mapHandle !== null}
+        onOpenChange={(next) => {
+          if (!next) setMapHandle(null)
+        }}
+        initialHandle={mapHandle ?? undefined}
+        onCreated={refresh}
       />
     </div>
   )
