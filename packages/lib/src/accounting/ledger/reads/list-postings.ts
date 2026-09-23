@@ -45,6 +45,7 @@ import {
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../../errors'
 import type { ExportBatchState } from '../../export/client'
+import { reversalMayExport } from '../../export/reversal-exportable'
 import type { PostingSummary } from '../../journals/entries/client'
 import { monthBounds } from '../periods/periods'
 import type { ExportAvenue } from '../setup/export-settings'
@@ -219,7 +220,8 @@ function exportStateCondition(filter?: PostingExportStateFilter[]): SQL | undefi
   if (!filter?.length) return undefined
   const states = filter.filter((value): value is ExportBatchState => value !== 'none')
   return or(
-    filter.includes('none') ? isNull(schema.ExportBatch.id) : undefined,
+    // A lone reversal never leaves (`build-batches`), so it does not wait on Ready either.
+    filter.includes('none') ? and(isNull(schema.ExportBatch.id), reversalMayExport()) : undefined,
     states.length ? inArray(schema.ExportBatch.state, states) : undefined
   )
 }

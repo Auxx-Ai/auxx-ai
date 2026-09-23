@@ -484,6 +484,7 @@ export const ledgerRouter = createTRPCRouter({
         actorUserId: userId,
         lock,
         memo: input.memo,
+        onlyIfExported: true,
       })
     }),
 
@@ -523,6 +524,7 @@ export const ledgerRouter = createTRPCRouter({
         actorUserId: userId,
         lock,
         memo: input.memo,
+        onlyIfExported: true,
       })
     }),
 

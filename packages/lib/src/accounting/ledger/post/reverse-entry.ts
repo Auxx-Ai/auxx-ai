@@ -29,10 +29,12 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
+import { canReverseExportedPosting } from '../../export/client'
 import { buildEntry } from '../builders/entry'
 import type { PeriodLock } from '../periods/periods'
 import { readPostingHeader } from '../reads/read-posting'
+import type { ExportAvenue } from '../setup/export-settings'
 import type {
   CounterpartyType,
   GlPostingLineInput,
@@ -55,6 +57,8 @@ export interface ReverseEntryOptions {
   actorUserId?: string
   lock: PeriodLock
   memo?: string
+  /** The person's Reverse: refused until the provider holds the entry. Undo paths leave it off. */
+  onlyIfExported?: boolean
 }
 
 /** A refusal, in the same shape `postEntry` returns. This function never throws either. */
@@ -129,7 +133,7 @@ export async function reverseEntryInTx(
   tx: Transaction,
   options: ReverseEntryOptions
 ): Promise<InTxPostResult> {
-  const { organizationId, glPostingId, actorUserId, lock, memo } = options
+  const { organizationId, glPostingId, actorUserId, lock, memo, onlyIfExported } = options
 
   {
     const db = tx
@@ -148,6 +152,14 @@ export async function reverseEntryInTx(
       return refuse(
         `Posting ${original.docNumber} is ${original.status}, not posted. ` +
           'Only a posted entry can be reversed.',
+        original.id
+      )
+    }
+
+    if (onlyIfExported && !(await isExportedOrLocal(db, organizationId, original.id))) {
+      return refuse(
+        `Posting ${original.docNumber} has not been sent to the provider yet. ` +
+          'Only an entry the provider holds can be reversed.',
         original.id
       )
     }
@@ -304,11 +316,46 @@ export async function reverseEntryInTx(
   }
 }
 
+/** {@link canReverseExportedPosting} against the posting's avenue and its live batch. */
+async function isExportedOrLocal(
+  tx: Transaction,
+  organizationId: string,
+  glPostingId: string
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ avenue: schema.GlPosting.avenue, exportState: schema.ExportBatch.state })
+    .from(schema.GlPosting)
+    .leftJoin(
+      schema.ExportBatchPosting,
+      and(
+        eq(schema.ExportBatchPosting.organizationId, schema.GlPosting.organizationId),
+        eq(schema.ExportBatchPosting.glPostingId, schema.GlPosting.id),
+        isNull(schema.ExportBatchPosting.withdrawnAt)
+      )
+    )
+    .leftJoin(
+      schema.ExportBatch,
+      and(
+        eq(schema.ExportBatch.organizationId, schema.ExportBatchPosting.organizationId),
+        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+      )
+    )
+    .where(
+      and(eq(schema.GlPosting.organizationId, organizationId), eq(schema.GlPosting.id, glPostingId))
+    )
+  if (!row) return false
+  return canReverseExportedPosting({
+    avenue: row.avenue as ExportAvenue | null,
+    exportState: row.exportState ?? null,
+  })
+}
+
 export interface ReverseEntriesOptions {
   organizationId: string
   glPostingIds: string[]
   actorUserId?: string
   memo?: string
+  onlyIfExported?: boolean
 }
 
 /**
@@ -331,7 +378,7 @@ export async function reverseEntries(
   db: Database,
   options: ReverseEntriesOptions & { lock: PeriodLock }
 ): Promise<ReverseManyResult> {
-  const { organizationId, actorUserId, lock, memo } = options
+  const { organizationId, actorUserId, lock, memo, onlyIfExported } = options
   const glPostingIds = [...new Set(options.glPostingIds)]
 
   const outcomes: ReverseOutcome[] = []
@@ -342,6 +389,7 @@ export async function reverseEntries(
       actorUserId,
       lock,
       memo,
+      onlyIfExported,
     })
     outcomes.push({
       glPostingId,

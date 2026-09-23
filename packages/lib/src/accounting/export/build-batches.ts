@@ -26,6 +26,7 @@ import {
   JOURNAL_OBJECT_TYPE,
 } from './payloads'
 import { PRIVATE_NOTE_MAX_LENGTH } from './payloads/shared'
+import { reversalMayExport } from './reversal-exportable'
 
 const logger = createScopedLogger('postings:export:build-batches')
 
@@ -121,6 +122,7 @@ async function readPostingsPage(
       and(
         eq(schema.GlPosting.organizationId, input.organizationId),
         eq(schema.GlPosting.status, 'posted'),
+        reversalMayExport(),
         gte(schema.GlPosting.txnDate, input.from),
         lte(schema.GlPosting.txnDate, input.to),
         // The auto-send path names its postings; read those rows, not the whole day.
