@@ -64,22 +64,18 @@ export const SLICE_BUDGET = { maxPages: 20, maxRecords: 5_000, maxMs: 25_000 } a
 export const SLICE_LOCK_DURATION_MS = 90_000
 
 /**
- * Per-run ingest ceiling (§3). A backfill stops re-enqueuing once its run-level
- * `fetched` count crosses this, so a mis-targeted or unexpectedly huge source can't
- * ingest unbounded volume + flood downstream jobs on shared infra. SOFT bound: the
- * check runs at slice (page) boundaries, so the actual stop overshoots by up to one
- * slice's worth of records; it's a guardrail, not an exact cap. NOT to be confused
- * with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
- *
- * What happens at the ceiling: the run parks `partial`, the connector goes `paused`,
- * and NOTHING re-queues. The next trigger (a human pressing Sync now, a schedule, a
- * webhook) resumes every stream that was mid-backfill from its checkpointed cursor,
- * whatever its `syncMode`; a source larger than the ceiling therefore needs one
- * trigger per ceiling's worth of records, and each such run counts from zero. The
- * ceiling is hard-coded and not per connector. Auto-continue and a configurable
- * ceiling are plans/money/tasks/39 §6.3a step two.
+ * Per-run ingest ceiling (§3): a run boundary, not a cap on the source. Once the
+ * run-level `fetched` count crosses it (checked at slice boundaries, so it overshoots
+ * by up to one slice) the run parks `partial`, links what it can, publishes its
+ * manifest, and a delayed continuation resumes every mid-backfill stream from its
+ * checkpointed cursor in a fresh run that counts from zero. The delay lets sibling
+ * slices still in flight finish before the connector is re-claimed. NOT to be
+ * confused with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
  */
 export const MAX_BACKFILL_RECORDS = 9_000
+
+/** How long a parked run waits before its continuation is picked up — one slice lock. */
+export const BACKFILL_CONTINUE_DELAY_MS = SLICE_LOCK_DURATION_MS
 
 /**
  * A run is presumed dead once its checkpoint heartbeat (`heartbeatAt`, bumped every
@@ -673,9 +669,10 @@ export async function runBackfillSlice(
     }
 
     // §3 ingest ceiling: park the backfill before re-enqueuing once the run crosses
-    // the per-run record cap. Backfill phase only — steady deltas are naturally
-    // bounded by the watermark. Parking releases the connector to `paused` and keeps
-    // the cursor, so a later resume continues mid-chain (NOT page 1).
+    // the per-run record cap, then enqueue the continuation. Backfill phase only —
+    // steady deltas are naturally bounded by the watermark. Parking releases the
+    // connector to `paused` and keeps the cursor, so the continuation resumes
+    // mid-chain (NOT page 1).
     if (run.phase === 'backfill') {
       const fetched = await getRunFetched(db, runId)
       if (fetched >= MAX_BACKFILL_RECORDS) {
@@ -691,13 +688,22 @@ export async function runBackfillSlice(
         // unsynced stay pending; the resumed run's finalize resolves them. The pass
         // logs its resolved / still-pending counts.
         await source.finalizeAtPark()
-        await parkBackfillAtCeiling(db, {
+        const parked = await parkBackfillAtCeiling(db, {
           runId,
           dataConnectorId: connectorId,
           fetched,
           ceiling: MAX_BACKFILL_RECORDS,
           startedAt: run.startedAt,
         })
+        // Only the slice that parked the run continues it; a sibling that crossed
+        // the ceiling in the same window just stops. The job id is keyed on the
+        // parked run so a manual Sync now during the delay is not coalesced away.
+        if (parked) {
+          await enqueueConnectorSync(
+            { connectorId, organizationId, trigger: 'backfill' },
+            { delayMs: BACKFILL_CONTINUE_DELAY_MS, jobKey: `continue-${runId}` }
+          )
+        }
         await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
         return
       }

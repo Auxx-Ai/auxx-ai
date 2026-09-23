@@ -648,8 +648,10 @@ export async function getRunFetched(db: Database, runId: string): Promise<number
  * Park a backfill that crossed the per-run ingest ceiling (§3). Marks the run
  * `partial` (NOT `failed` — it's a clean stop, not an error) with a `paused` note for
  * the status line, and releases the connector to `paused` (NOT left `syncing` — that's
- * the §1 strand trap). The stream cursor is left checkpointed, so a later "resume"
- * (re-trigger after bumping the ceiling) continues mid-chain instead of from page 1.
+ * the §1 strand trap). The stream cursor is left checkpointed, so the continuation
+ * the orchestrator enqueues resumes mid-chain instead of from page 1. Returns false
+ * when a sibling stream's slice parked the run first, so only one continuation is
+ * enqueued and a late sibling cannot flip the resumed connector back to `paused`.
  */
 export async function parkBackfillAtCeiling(
   db: Database,
@@ -660,10 +662,10 @@ export async function parkBackfillAtCeiling(
     ceiling: number
     startedAt: Date
   }
-): Promise<void> {
-  const message = `Backfill paused at ${input.fetched} records (limit ${input.ceiling}). Raise the limit or narrow the source, then resume.`
+): Promise<boolean> {
+  const message = `Backfill reached ${input.fetched} records (limit ${input.ceiling} per run). Continuing in a new run.`
   const T = schema.DataConnectorRun
-  await db
+  const [parked] = await db
     .update(T)
     .set({
       status: 'partial',
@@ -671,7 +673,9 @@ export async function parkBackfillAtCeiling(
       durationMs: Date.now() - input.startedAt.getTime(),
       progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{paused}', jsonb_build_object('reason', 'ingest-ceiling', 'atRecords', ${input.fetched}::int, 'ceiling', ${input.ceiling}::int), true)`,
     })
-    .where(eq(T.id, input.runId))
+    .where(and(eq(T.id, input.runId), eq(T.status, 'running')))
+    .returning({ id: T.id })
+  if (!parked) return false
   // A parked backfill has ingested records (it hit the ceiling), so reflect the real
   // count + stamp `lastSyncedAt` — don't leave the connector showing "0 / never synced".
   const itemCount = await countConnectorItems(db, input.dataConnectorId)
@@ -685,6 +689,7 @@ export async function parkBackfillAtCeiling(
       updatedAt: new Date(),
     })
     .where(eq(schema.DataConnector.id, input.dataConnectorId))
+  return true
 }
 
 /**
