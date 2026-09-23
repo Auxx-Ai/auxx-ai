@@ -69,6 +69,8 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_cost: { id: 'f_std', type: 'CURRENCY' },
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
   part_standard_cost_source: { id: 'f_std_src', type: 'SINGLE_SELECT' },
+  part_labor_cost_per_unit: { id: 'f_lab_rate', type: 'CURRENCY' },
+  part_overhead_cost_per_unit: { id: 'f_ovh_rate', type: 'CURRENCY' },
 }
 
 vi.mock('../../../cache', () => ({
@@ -274,12 +276,12 @@ describe('previewStandardCostRoll', () => {
       fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
       fv(MOTOR, FIELD.part_cost!.id, { number: 2010 }),
       fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      fv(ASSEMBLY, FIELD.part_labor_cost_per_unit!.id, { number: 500 }),
+      fv(ASSEMBLY, FIELD.part_overhead_cost_per_unit!.id, { number: 200 }),
       fv(LIFT, FIELD.part_kind!.id, { option: 'finished_good' }),
+      fv(LIFT, FIELD.part_labor_cost_per_unit!.id, { number: 500 }),
+      fv(LIFT, FIELD.part_overhead_cost_per_unit!.id, { number: 200 }),
     ])
-    h.settings = {
-      'manufacturing.assemblyLaborCostPerUnit': 500,
-      'manufacturing.overheadCostPerUnit': 200,
-    }
 
     // Only the motor is named — the assembly and the lift are carrying standards
     // built from the old number and must be rolled with it.
@@ -473,8 +475,7 @@ describe('rollStandardCost', () => {
         fv(ASSEMBLY, FIELD.part_standard_labor_cost!.id, { number: 500 }),
       ]
     )
-    // ...and is not declared now.
-    h.settings = {}
+    // ...and is not declared now: the part carries no per-part rate.
 
     await rollStandardCost(db, ORG, USER, { effectiveAt: EFFECTIVE_AT })
 

@@ -15,11 +15,10 @@ export {
   type SummaryGrainAvenue,
 } from './export-settings'
 export { LEDGER_CURRENCY } from './ledger-currency'
-// The readiness extension: a fourth requirement whose input is not a setting.
+// The readiness extension: the one requirement whose input is not a setting.
 // Exported here rather than folded into the `setup-readiness` block above so
 // this slot appended, per HANDOFF §9a, instead of editing another slot's lines.
 export {
-  ABSORPTION_RATE_SETTING_KEYS,
   describeUnscopedSources,
   FINALIZED_SETUP_STATE,
   isValidTimeZone,

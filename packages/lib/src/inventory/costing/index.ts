@@ -4,7 +4,6 @@ export {
   absorbedRate,
   absorbsConversionCost,
   type PartKindValue,
-  resolveAbsorptionRates,
   resolvePartKind,
   resolveStandardCostSource,
   rolledStandardCostSource,
@@ -52,12 +51,9 @@ export {
 } from './revalue'
 export { rollStandardCost } from './standard-cost'
 export {
-  loadAbsorptionRates,
-  loadEffectiveAbsorptionRates,
-  loadPartAbsorptionOverrides,
+  loadPartAbsorptionRates,
   loadStandardCostFields,
   loadStandardCostWriteContext,
-  type PartAbsorptionOverrides,
   previewStandardCostRoll,
   readStandardCost,
   type StandardCostFields,

@@ -4,7 +4,6 @@
 import { GuideColumn, GuideConcept, GuideConcepts } from '@auxx/ui/components/guide'
 import {
   Banknote,
-  Calculator,
   CalendarClock,
   CreditCard,
   Equal,
@@ -57,11 +56,6 @@ export function WizardWelcomePage() {
             glyph={<CalendarClock className='size-3.5 text-muted-foreground' />}
             term='Accounting period'>
             The last month your old system closed, and the timezone your books are kept in.
-          </GuideConcept>
-          <GuideConcept
-            glyph={<Calculator className='size-3.5 text-muted-foreground' />}
-            term='Costing'>
-            The labor and overhead absorbed onto every unit you assemble.
           </GuideConcept>
           <GuideConcept
             glyph={<Plug className='size-3.5 text-muted-foreground' />}

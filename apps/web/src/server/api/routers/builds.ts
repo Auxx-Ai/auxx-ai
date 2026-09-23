@@ -33,7 +33,7 @@ import type {
   BackfillStatus,
 } from '@auxx/lib/inventory/builds/client'
 import {
-  loadEffectiveAbsorptionRates,
+  loadPartAbsorptionRates,
   previewStandardCostRoll,
   rollStandardCost,
 } from '@auxx/lib/inventory/costing'
@@ -361,7 +361,7 @@ export const buildsRouter = createTRPCRouter({
    * It re-runs on every override edit, so the numbers under the form are always
    * the numbers the write will freeze. The two absorption rates ride along
    * because the form has to PREFILL the labour and overhead defaults, and a
-   * second round trip for two org settings would leave the prefill arriving
+   * second round trip for the part's two rates would leave the prefill arriving
    * after the person had already typed over it.
    *
    * A `.query()` because it writes nothing at all.
@@ -372,14 +372,10 @@ export const buildsRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
-      // 🛑 The EFFECTIVE rates, not the bare org ones. The dialog previews the
-      // variance this run will post, and `completeBuild` resolves the produced
-      // part's own absorption overrides before it writes — a preview built from
-      // the org rate would disagree with the write on exactly the parts that
-      // carry an override.
+      // The same per-part read `completeBuild` makes, so the previewed variance is the posted one.
       const [plan, rates] = await Promise.all([
         explodeBuildComponents(ctx.db, organizationId, input),
-        loadEffectiveAbsorptionRates(ctx.db, organizationId, input.partId),
+        loadPartAbsorptionRates(ctx.db, organizationId, input.partId),
       ])
       if (plan.isErr()) throw plan.error
 

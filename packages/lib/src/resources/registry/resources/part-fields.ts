@@ -973,18 +973,15 @@ export const PART_FIELDS = defineResourceFields({
       'price and posts no purchase price variance',
   },
 
-  // ─── Per-part absorption overrides (plans/money/tasks/22) ───────────
+  // ─── Per-part absorption rates (plans/money/tasks/22) ───────────
   //
   // The INPUTS whose output is the frozen `part_standard_labor_cost` /
   // `part_standard_overhead_cost` block above — the same relationship
   // `part_cost` has to `part_standard_cost`: one is live and editable, the
   // other is what was agreed and only `rollStandardCost` writes it.
   //
-  // Without these, `standard-cost-roll.ts` reads ONE org-wide rate for every
-  // built part at every level of every bill of materials, so a finished good
-  // assembled from 8 subassemblies carries 9 x the flat rate whether or not
-  // that describes the work. A NULL here means "use the org rate"; a stored 0
-  // means "absorb nothing" and is how a subassembly is made cost-transparent.
+  // The ONLY source of absorption: there is no org-wide fallback. NULL means
+  // "none declared" (stores NULL labour/overhead); a stored 0 is a declared zero.
   //
   // 🛑 `creatable` / `updatable` are TRUE and `computed` is absent — unlike
   // every `part_standard_*` field. That is deliberate and it is what makes
@@ -1029,8 +1026,8 @@ export const PART_FIELDS = defineResourceFields({
       configurable: false,
     },
     description:
-      'Absorbed direct labour per assembled unit for THIS part, integer minor units. Overrides ' +
-      'manufacturing.assemblyLaborCostPerUnit. Empty = use the org rate; 0 = absorb nothing. ' +
+      'Absorbed direct labour per assembled unit for THIS part, integer minor units. ' +
+      'Empty = no labour absorbed; 0 = a declared zero. There is no org-wide default. ' +
       'Ignored on a component, which never absorbs conversion cost (README B11). On re-import a ' +
       'blank cell LEAVES the stored value alone — clearing one needs mergeStrategy: overwrite',
   },
@@ -1063,8 +1060,8 @@ export const PART_FIELDS = defineResourceFields({
       configurable: false,
     },
     description:
-      'Applied overhead per assembled unit for THIS part, integer minor units. Overrides ' +
-      'manufacturing.overheadCostPerUnit. Gated on partKind exactly as laborCostPerUnit is',
+      'Applied overhead per assembled unit for THIS part, integer minor units. Empty = no ' +
+      'overhead absorbed. Gated on partKind exactly as laborCostPerUnit is',
   },
 
   // Reverse relationship: builds (from build.part)

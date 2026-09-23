@@ -28,7 +28,7 @@
 // ── What this is NOT ────────────────────────────────────────────────────────
 //
 // 🛑 This does not gate Post. `previewMonthEnd`'s `blockedBy` does, and the
-// difference is the whole point: this file can say "costing is not set up",
+// difference is the whole point: this file can say "the period is not set",
 // but only the server knows WHICH part has no standard cost or WHICH movement
 // is uncosted. A checklist nudges; a refusal names the row.
 //
@@ -84,16 +84,6 @@ export function readOpeningFromNothing(settings: SettingsRecord): boolean {
 }
 
 /**
- * The absorption rates, which live under `manufacturing.*` rather than
- * `accounting.*` because they predate this module - `G9` calls them business
- * inputs, not a fixture gap.
- */
-export const ABSORPTION_RATE_SETTING_KEYS = {
-  assemblyLabor: 'manufacturing.assemblyLaborCostPerUnit',
-  overhead: 'manufacturing.overheadCostPerUnit',
-} as const
-
-/**
  * Every setting key this predicate reads. Handy for scoping a settings draft.
  *
  * 🛑 `accounting.qboOpeningJournalRef` is deliberately NOT here. It is written
@@ -111,7 +101,6 @@ export const SETUP_READINESS_SETTING_KEYS = [
   'accounting.qboOpeningWip',
   'accounting.qboOpeningFinishedGoods',
   OPENING_FROM_NOTHING_SETTING_KEY,
-  ...Object.values(ABSORPTION_RATE_SETTING_KEYS),
 ] as const
 
 /** A settings record as `useSettings`/`getAllOrganizationSettings` hand it over. */
@@ -231,7 +220,7 @@ export function summariseOpeningTrialBalance(
  * ⚠️ `null` and `0` are NOT interchangeable and this is the one place that most
  * wants to conflate them. `0` is a legitimate opening balance - a business with
  * no work in process at cutover has exactly that - so a null read as zero would
- * report a baseline nobody supplied. Same rule `loadAbsorptionRates` follows.
+ * report a baseline nobody supplied.
  */
 export function readSettingMinorUnits(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
@@ -303,7 +292,6 @@ export function resolveSetupReadiness(
   context: SetupReadinessContext = {}
 ): SetupReadiness {
   const K = OPENING_BASELINE_SETTING_KEYS
-  const R = ABSORPTION_RATE_SETTING_KEYS
 
   const cutoff = readSettingText(settings[K.cutoffPeriod])
   const zone = readSettingText(settings[K.bookTimeZone])
@@ -351,16 +339,7 @@ export function resolveSetupReadiness(
         ? 'The auxx and QuickBooks opening snapshots do not agree.'
         : undefined
 
-  const labor = readSettingMinorUnits(settings[R.assemblyLabor])
-  const overhead = readSettingMinorUnits(settings[R.overhead])
-  const costingReason =
-    labor === null
-      ? 'No assembly labor rate. An unset rate absorbs nothing.'
-      : overhead === null
-        ? 'No overhead rate. An unset rate absorbs nothing.'
-        : undefined
-
-  // The fourth requirement, and the only one whose input is not a setting.
+  // The third requirement, and the only one whose input is not a setting.
   // Absent context reads as met; `SetupReadinessContext` says why.
   //
   // `fromNothing` suppresses the empty branch ONLY. A grid somebody entered and
@@ -387,7 +366,6 @@ export function resolveSetupReadiness(
       met: !trialBalanceReason,
       reason: trialBalanceReason,
     },
-    { key: 'set-costing', met: !costingReason, reason: costingReason },
   ]
 
   return {

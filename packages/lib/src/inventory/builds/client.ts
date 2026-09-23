@@ -214,7 +214,7 @@ export interface BuildCompletionInputs {
   /** An explicit absorbed amount for the whole run, or absent to use the rate. */
   laborCost?: number | null
   overheadCost?: number | null
-  /** The two `manufacturing.*` org rates, per assembled unit. `null` absorbs nothing. */
+  /** The produced part's own two absorption rates, per assembled unit. `null` absorbs nothing. */
   rates: { laborCostPerUnit: number | null; overheadCostPerUnit: number | null }
 }
 

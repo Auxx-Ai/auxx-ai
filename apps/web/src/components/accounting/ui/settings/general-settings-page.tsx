@@ -24,7 +24,6 @@ import { FieldType } from '@auxx/database/enums'
 import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
-import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
 import { CalendarRange, ExternalLink, Lock, Scale, Send } from 'lucide-react'
 import Link from 'next/link'
@@ -49,15 +48,12 @@ import {
 } from '../../hooks/use-accounting-settings-freeze'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
 import {
-  ABSORPTION_DRAFT_KEYS,
   ACCOUNTING_KEYS,
   buildReadinessRecord,
   EXPORT_DRAFT_KEYS,
-  everyMinorUnitValid,
-  minorUnitError,
   PERIOD_DRAFT_KEYS,
-  readMinorUnits,
   readText,
+  STANDARD_COST_DRAFT_KEYS,
 } from './accounting-settings-keys'
 import { FrozenLock } from './frozen-lock'
 import { SetupStatusSection } from './setup-status-section'
@@ -160,19 +156,17 @@ export function AccountingGeneralSettingsPage() {
     return confirmed === true
   }
 
-  // ── Section 3: absorption rates ──────────────────────────────────────────
-  const absorption = useAccountingSetupDraft(ABSORPTION_DRAFT_KEYS)
-  const { draft: absorptionDraft, patch: patchAbsorption } = absorption
+  // ── Section 3: standard cost ─────────────────────────────────────────────
+  const standardCost = useAccountingSetupDraft(STANDARD_COST_DRAFT_KEYS)
+  const { draft: standardCostDraft, patch: patchStandardCost } = standardCost
 
-  const absorptionValid = everyMinorUnitValid(absorptionDraft, ABSORPTION_DRAFT_KEYS)
-
-  const dirty = period.dirty || exportSettings.dirty || absorption.dirty
+  const dirty = period.dirty || exportSettings.dirty || standardCost.dirty
   const isSaving =
-    period.isSaving || exportSettings.isSaving || absorption.isSaving || isBatchUpdatingOrgSettings
-  const saveDisabled =
-    (period.dirty && !periodValid) ||
-    (exportSettings.dirty && !exportValid) ||
-    (absorption.dirty && !absorptionValid)
+    period.isSaving ||
+    exportSettings.isSaving ||
+    standardCost.isSaving ||
+    isBatchUpdatingOrgSettings
+  const saveDisabled = (period.dirty && !periodValid) || (exportSettings.dirty && !exportValid)
 
   async function handleSave() {
     if (exportSettings.dirty && exportModeChanged && !(await confirmModeSwitch())) return
@@ -180,7 +174,7 @@ export function AccountingGeneralSettingsPage() {
     // its Save appears, does nothing, and leaves the bar up.
     if (period.dirty) period.save()
     if (exportSettings.dirty) exportSettings.save()
-    if (absorption.dirty) absorption.save()
+    if (standardCost.dirty) standardCost.save()
   }
 
   function handleFinalize() {
@@ -216,7 +210,7 @@ export function AccountingGeneralSettingsPage() {
           three stacked `lg:grid-cols-2` rows, which forces every row to wait for
           its tallest cell: `Setup status` was a tall action panel and
           `Accounting period` is two fields, so the left side grew a large hole
-          under it before `Absorption rates` could start.
+          under it before the next section could start.
 
           🛑 THE SPLIT IS NOW WHAT THE SAVE BAR COVERS. The height rule it used
           to be is gone, and so is the "left is what you fill in, right is what
@@ -239,7 +233,7 @@ export function AccountingGeneralSettingsPage() {
           off the bottom of the page and read as missing.
 
           ⚠️ On mobile the columns stack, so the reading order is
-          period -> absorption -> setup. That is the trade for column-major flow.
+          period -> standard cost -> setup. That is the trade for column-major flow.
         */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
@@ -355,49 +349,18 @@ export function AccountingGeneralSettingsPage() {
             <SettingsSection
               icon={Scale}
               title='Standard cost'
-              description='Absorption per assembled unit, in whole cents, and how a part first gets a standard. An unset rate absorbs nothing; a zero rate is a real choice.'>
+              description='How a part first gets a standard. Labor and overhead rates are set per part, on the part itself.'>
               <FieldPanel
                 className='mt-1 p-0'
-                resizeId='accounting-general-absorption'
+                resizeId='accounting-general-standard-cost'
                 defaultLabelWidth={220}>
-                <SettingsFieldRow
-                  settingKey={ACCOUNTING_KEYS.assemblyLaborCostPerUnit}
-                  title='Assembly labor'>
-                  <AbsorptionRateField
-                    value={readMinorUnits(
-                      absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit]
-                    )}
-                    error={minorUnitError(
-                      absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit]
-                    )}
-                    onChange={(value) =>
-                      patchAbsorption({
-                        [ACCOUNTING_KEYS.assemblyLaborCostPerUnit]: value as SettingValue,
-                      })
-                    }
-                  />
-                </SettingsFieldRow>
-
-                <SettingsFieldRow
-                  settingKey={ACCOUNTING_KEYS.overheadCostPerUnit}
-                  title='Applied overhead'>
-                  <AbsorptionRateField
-                    value={readMinorUnits(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
-                    error={minorUnitError(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
-                    onChange={(value) =>
-                      patchAbsorption({
-                        [ACCOUNTING_KEYS.overheadCostPerUnit]: value as SettingValue,
-                      })
-                    }
-                  />
-                </SettingsFieldRow>
                 <SettingsFieldRow
                   settingKey={ACCOUNTING_KEYS.autoRollFirstStandard}
                   title='Set a first standard automatically'
                   description='When a part first gets a price, opening stock or a receipt, freeze that as its standard cost.'
-                  value={absorptionDraft[ACCOUNTING_KEYS.autoRollFirstStandard] ?? true}
+                  value={standardCostDraft[ACCOUNTING_KEYS.autoRollFirstStandard] ?? true}
                   onChange={(value) =>
-                    patchAbsorption({
+                    patchStandardCost({
                       [ACCOUNTING_KEYS.autoRollFirstStandard]: value as SettingValue,
                     })
                   }
@@ -405,20 +368,12 @@ export function AccountingGeneralSettingsPage() {
               </FieldPanel>
 
               <p className='text-muted-foreground text-xs'>
-                Conversion cost applies to a subassembly or a finished good only. Applying these
-                rates to a purchased component would capitalize labor that was never spent and
-                overstate raw materials. Setting a first standard never overwrites one that already
-                exists, so a supplier raising a price moves the part&apos;s cost and leaves its
-                standard where it is. Re-valuing is what the roll is for, and the roll lives with
-                the parts:{' '}
-                {/*
-                  🛑 The RATES are set here and the ROLL is run there, and that
-                  split is deliberate (money 52 §2.2, decision 3). The rates are
-                  policy the accountant sets and are draft-backed by the save bar
-                  below; the roll asserts edit on the `part` def, so it belongs on
-                  a page gated the same way. This sentence is the only thing that
-                  connects the two, so it is a link rather than a mention.
-                */}
+                A part absorbs labor and overhead only when it is a subassembly or a finished good
+                and carries its own rate; there is no org-wide default. Setting a first standard
+                never overwrites one that already exists, so a supplier raising a price moves the
+                part&apos;s cost and leaves its standard where it is. Re-valuing is what the roll is
+                for, and the roll lives with the parts:{' '}
+                {/* The roll asserts edit on the `part` def, so it lives on a page gated the same way. */}
                 <Link
                   href='/app/parts/settings/costing'
                   className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
@@ -456,7 +411,7 @@ export function AccountingGeneralSettingsPage() {
           onDiscard={() => {
             if (period.dirty) period.discard()
             if (exportSettings.dirty) exportSettings.discard()
-            if (absorption.dirty) absorption.discard()
+            if (standardCost.dirty) standardCost.discard()
           }}
           saveDisabled={saveDisabled}
         />
@@ -587,59 +542,6 @@ function BookTimeZoneField({
           Unset refuses to post rather than assuming UTC.
         </p>
       )}
-      {error && <p className='px-2 pb-1 text-destructive text-xs'>{error}</p>}
-    </div>
-  )
-}
-
-/**
- * An absorption rate.
- *
- * ⚠️ `null` and `0` MUST read differently. An unset rate absorbs nothing while
- * looking like it worked; a zero rate is a business decision somebody made.
- * `loadAbsorptionRates` returns `null` for unset and must keep doing so, so the
- * screen has to be able to show the difference.
- */
-function AbsorptionRateField({
-  value,
-  error,
-  onChange,
-  disabled,
-  className,
-}: {
-  value: number | null
-  error?: string
-  onChange: (value: number | null) => void
-  disabled?: boolean
-  className?: string
-}) {
-  return (
-    <div className={className}>
-      <div className='flex flex-1 items-center gap-2'>
-        <FieldInputAdapter
-          fieldType={FieldType.CURRENCY}
-          value={value}
-          disabled={disabled}
-          onChange={(next) => onChange((next as number | undefined) ?? null)}
-          placeholder='Not set'
-        />
-        {value === null ? (
-          <Badge variant='amber' size='xs' className='shrink-0 whitespace-nowrap'>
-            Not set
-          </Badge>
-        ) : value === 0 ? (
-          <Badge variant='outline' size='xs' className='shrink-0 whitespace-nowrap'>
-            Zero
-          </Badge>
-        ) : null}
-      </div>
-      <p className='px-2 pb-1 text-muted-foreground text-xs'>
-        {value === null
-          ? 'Unset. Nothing is absorbed, and no build carries this cost.'
-          : value === 0
-            ? 'Zero, deliberately. Nothing is absorbed, but the rate is configured.'
-            : 'Absorbed into every assembled unit.'}
-      </p>
       {error && <p className='px-2 pb-1 text-destructive text-xs'>{error}</p>}
     </div>
   )

@@ -13,8 +13,7 @@ import type { SidebarProps } from '~/constants/menu'
  * Parts settings navigation (25-parts-settings-tab.md §3).
  *
  * General owns the auto-build switch, the only org SETTING the parts domain has:
- * receiving has none, and the `manufacturing.*` absorption rates live in
- * Accounting > General, where a per-part override already overrides them.
+ * receiving has none, and absorption rates are per part, on the part drawer.
  *
  * Tariffs is not a settings catalog page at all - it edits `tariff_code` and
  * `tariff_rate` records (29-tariff-schedule.md §6.1), which is why it gates on
@@ -23,9 +22,7 @@ import type { SidebarProps } from '~/constants/menu'
  * Costing is the same kind of page for the same reason (52-parts-costing-page.md
  * §2.1): it rolls `part_standard_*` and writes `stock_movement` rows through
  * `assertEditEntity`, so it gates on edit of the `part` def. The absorption
- * RATES it rolls with stay on Accounting > General - the org rates are policy
- * the accountant sets, the per-part overrides already live on the part drawer's
- * Costing card, and running the roll is an operation the parts person performs.
+ * rates it rolls with live on each part drawer's Costing card.
  */
 const PARTS_SETTINGS: SidebarProps[] = [
   {

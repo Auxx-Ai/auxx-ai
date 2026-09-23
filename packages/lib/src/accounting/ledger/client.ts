@@ -188,7 +188,6 @@ export {
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from './roles/client'
 export {
-  ABSORPTION_RATE_SETTING_KEYS,
   avenueOfPostingType,
   describeUnscopedSources,
   EXPORT_AVENUES,

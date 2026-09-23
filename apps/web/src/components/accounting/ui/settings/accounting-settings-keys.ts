@@ -36,8 +36,6 @@ export const ACCOUNTING_KEYS = {
   qboOpeningWip: 'accounting.qboOpeningWip',
   qboOpeningFinishedGoods: 'accounting.qboOpeningFinishedGoods',
   qboOpeningJournalRef: 'accounting.qboOpeningJournalRef',
-  assemblyLaborCostPerUnit: 'manufacturing.assemblyLaborCostPerUnit',
-  overheadCostPerUnit: 'manufacturing.overheadCostPerUnit',
   autoRollFirstStandard: 'manufacturing.autoRollFirstStandard',
 } as const
 
@@ -59,11 +57,7 @@ export const EXPORT_DRAFT_KEYS = [
   ACCOUNTING_KEYS.exportModeCutover,
 ] as const
 
-export const ABSORPTION_DRAFT_KEYS = [
-  ACCOUNTING_KEYS.assemblyLaborCostPerUnit,
-  ACCOUNTING_KEYS.overheadCostPerUnit,
-  ACCOUNTING_KEYS.autoRollFirstStandard,
-] as const
+export const STANDARD_COST_DRAFT_KEYS = [ACCOUNTING_KEYS.autoRollFirstStandard] as const
 
 export const OPENING_DRAFT_KEYS = [
   ACCOUNTING_KEYS.openingRawMaterials,
@@ -122,10 +116,6 @@ export const READINESS_LINKS: Record<string, { label: string; href: string }> = 
     label: 'Opening trial balance',
     href: '/app/accounting/settings/opening',
   },
-  'set-costing': {
-    label: 'Absorption rates',
-    href: '/app/accounting/settings/general',
-  },
 }
 
 /**
@@ -134,8 +124,7 @@ export const READINESS_LINKS: Record<string, { label: string; href: string }> = 
  * Built from `SETUP_READINESS_SETTING_KEYS` so the record carries exactly what
  * the predicate reads. `getSetting` falls back to the catalog default, which is
  * `null` for every key here except `accounting.setupState` (`'draft'`), and a
- * `null` must stay a `null`, because an unset currency absorbs nothing while a
- * zero is a real choice.
+ * `null` must stay a `null`, because an unset balance is not a zero balance.
  */
 export function buildReadinessRecord(getSetting: (key: string) => unknown): SettingsRecord {
   const record: SettingsRecord = {}

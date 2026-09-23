@@ -77,7 +77,6 @@ export const DISPATCH_GOAL_KEYS = [
  */
 export const ACCOUNTING_GOAL_KEYS = [
   'set-accounting-period',
-  'set-costing',
   'map-accounts',
   'route-payment-rails',
   'set-opening-balances',

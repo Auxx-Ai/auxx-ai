@@ -3,11 +3,9 @@
 import type { PartKindValue, StandardCostSourceValue } from './client'
 
 /**
- * The two `manufacturing.*` org settings, per assembled unit, in minor units.
+ * One part's `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, per assembled unit.
  *
- * Both are `number | null` and the `null` is load-bearing — see
- * {@link absorbedRate}. They ship unset, and a roll run before they are filled
- * in stores NULL components rather than a confident zero.
+ * `null` is "none declared" and must never collapse to `0` — see {@link absorbedRate}.
  */
 export interface AbsorptionRates {
   laborCostPerUnit: number | null
@@ -126,8 +124,6 @@ export interface StandardCostRollLine extends StandardCostComponents {
 export interface StandardCostRollPlan {
   /** The date the new standards take effect. Stamped onto every changed part. */
   effectiveAt: Date
-  /** The rates in force. A `null` here is visible as "no absorption declared". */
-  rates: AbsorptionRates
   /** Every part in the write scope after ancestor widening, in bottom-up order. */
   lines: StandardCostRollLine[]
   /** Sum of {@link StandardCostRollLine.revaluationDelta} over the non-initial lines. */

@@ -21,13 +21,10 @@
  *     zero labour and zero overhead; capitalising assembly labour onto a motor
  *     we never assembled overstates 1310 Raw Materials.
  *
- *  3. **The rate is per PART, falling back to the org.** One org-wide rate
- *     applied at every level of a bill of materials multiplies with the depth of
- *     the tree: a finished good over 8 subassemblies carries 9 x the flat rate,
- *     which on the real lift was $270.00 of a $441.07 standard against $171.07
- *     of actual material. A stored `0` is how a subassembly is made
- *     cost-transparent, and it must survive as a `0` rather than reading as
- *     unset (plans/money/tasks/22-per-part-absorption.md).
+ *  3. **The rate is the part's own, and nothing else.** An empty
+ *     `part_labor_cost_per_unit` absorbs nothing (stored as NULL, not `0`); there
+ *     is no org-wide fallback, because one flat rate compounds with BOM depth and
+ *     lands on parts nobody assembles.
  *
  * The walk is a memoized DFS with `inProgress` cycle detection, copying the
  * ordering discipline of `calculateAllCosts` in `bom/cost-calculator.ts`. That
@@ -37,13 +34,8 @@
 
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { UnprocessableEntityError } from '../../errors'
-import {
-  absorbedRate,
-  absorbsConversionCost,
-  type PartKindValue,
-  resolveAbsorptionRates,
-} from './client'
-import type { AbsorptionRates, SkippedPart, StandardCostComponents } from './types'
+import { absorbedRate, absorbsConversionCost, type PartKindValue } from './client'
+import type { SkippedPart, StandardCostComponents } from './types'
 
 /** One edge of the bill of materials. Matches `bom/cost-calculator.ts`'s shape. */
 export interface SubpartEdge {
@@ -72,18 +64,12 @@ export interface StandardCostRollInputs {
   subpartGraph: ReadonlyMap<string, SubpartEdge[]>
   /** `part_standard_cost` as currently stored, for parts outside {@link scope}. */
   storedStandardCosts: ReadonlyMap<string, number>
-  /** The org's absorption rates. A `null` is "not declared", never zero. */
-  rates: AbsorptionRates
   /**
-   * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, for the parts
-   * that carry one.
-   *
-   * 🛑 A part is present **only when it has a non-NULL stored value**, so an
-   * absence means "use the org rate" and a present `0` means "absorb nothing".
-   * {@link resolveAbsorptionRates} reads that distinction with `??`.
+   * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, only for parts with a
+   * non-NULL stored value: absent stores NULL, a present `0` stores `0`.
    */
-  laborOverrides: ReadonlyMap<string, number>
-  overheadOverrides: ReadonlyMap<string, number>
+  laborRates: ReadonlyMap<string, number>
+  overheadRates: ReadonlyMap<string, number>
   /** `EntityInstance.displayName` per part, for error messages only. */
   partNames?: ReadonlyMap<string, string>
 }
@@ -260,18 +246,9 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     // at, or a BOM of forty sub-cent screws would restate to a whole cent here.
     const standardMaterialCost = roundMinorUnits(material)
 
-    // 🛑 Resolved HERE and not above the `absorbsConversionCost` branch, however
-    // tempting the hoist looks. A `component`'s zero labour is a fact about a
-    // part we did not assemble (README B11), and an override must never be a
-    // way around that gate: capitalising assembly labour onto a purchased motor
-    // overstates 1310 Raw Materials whether the number came from the org
-    // setting or from the part's own cell.
-    const rates = resolveAbsorptionRates(inputs.rates, {
-      laborCostPerUnit: inputs.laborOverrides.get(partId),
-      overheadCostPerUnit: inputs.overheadOverrides.get(partId),
-    })
-    const standardLaborCost = absorbedRate(rates.laborCostPerUnit)
-    const standardOverheadCost = absorbedRate(rates.overheadCostPerUnit)
+    // Read inside the buildable branch: a rate on a purchased component must not capitalise labour.
+    const standardLaborCost = absorbedRate(inputs.laborRates.get(partId))
+    const standardOverheadCost = absorbedRate(inputs.overheadRates.get(partId))
 
     return {
       standardMaterialCost,

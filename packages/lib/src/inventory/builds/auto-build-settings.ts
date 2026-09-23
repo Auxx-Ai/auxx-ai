@@ -6,8 +6,7 @@
  *
  * plans/products/12-order-triggered-build.md section 5.4.
  *
- * No `db` parameter, matching {@link loadAbsorptionRates}: every one of these
- * comes out of the `orgSettings` org cache (`getOrganizationSetting` merges the
+ * No `db` parameter: every one of these comes out of the `orgSettings` org cache (`getOrganizationSetting` merges the
  * catalog defaults with the persisted rows behind a 100 ms L1 plus one Redis
  * hash GET), so hitting the database here would defeat the invalidation the
  * settings write path already performs.

@@ -9,7 +9,6 @@ import { api } from '~/trpc/react'
 import { WizardAccountMapPage } from './wizard-account-map-page'
 import { WizardAccountsPage } from './wizard-accounts-page'
 import { WizardConnectPage } from './wizard-connect-page'
-import { WizardCostingPage } from './wizard-costing-page'
 import { WizardDonePage } from './wizard-done-page'
 import { WizardOpeningPage } from './wizard-opening-page'
 import { WizardOpeningTbPage } from './wizard-opening-tb-page'
@@ -54,11 +53,10 @@ import { WizardWelcomePage } from './wizard-welcome-page'
 // (plans/accounting/WIZARD-REVIEW.md F5); a number that goes stale on every reorder is not what the
 // header is for. Keep it that way.
 //
-// Ten pages.
+// Nine pages.
 const PAGES = [
   'welcome',
   'period',
-  'costing',
   'connect',
   'accounts',
   'rails',
@@ -78,7 +76,6 @@ const PAGE_TITLES: Record<WizardPage, string> = {
   period: 'Accounting period',
   opening: 'Opening inventory',
   openingTrialBalance: 'Opening trial balance',
-  costing: 'Costing',
   accounts: 'Account roles',
   rails: 'Payment rails',
   connect: 'Accounting system',
@@ -92,9 +89,9 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a ten-page
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a nine-page
  * `DialogNav` wizard covering the things that have to be true before a month-end entry can
- * legally be posted (accounting period, the opening inventory snapshot, the opening trial balance, costing, the
+ * legally be posted (accounting period, the opening inventory snapshot, the opening trial balance, the
  * role map, the payment rails) plus the
  * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
  * ours corresponds to - and a "finalize" page that freezes the opening baseline.
@@ -121,7 +118,6 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
   const periodRef = useRef<WizardStepHandle | null>(null)
   const openingRef = useRef<WizardStepHandle | null>(null)
   const openingTbRef = useRef<WizardStepHandle | null>(null)
-  const costingRef = useRef<WizardStepHandle | null>(null)
 
   // Reset to the first page each time the wizard is (re)opened.
   useEffect(() => {
@@ -160,9 +156,7 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           ? openingRef.current
           : page === 'openingTrialBalance'
             ? openingTbRef.current
-            : page === 'costing'
-              ? costingRef.current
-              : null
+            : null
     return leaveCurrentPage(handle, direction, onAllowed)
   }
 
@@ -212,9 +206,6 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='openingTrialBalance' size='xl'>
             <WizardOpeningTbPage ref={openingTbRef} />
-          </DialogNavPage>
-          <DialogNavPage value='costing' size='lg'>
-            <WizardCostingPage ref={costingRef} />
           </DialogNavPage>
           <DialogNavPage value='connect' size='lg'>
             <WizardConnectPage />

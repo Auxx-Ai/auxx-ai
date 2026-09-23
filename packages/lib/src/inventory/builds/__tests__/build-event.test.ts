@@ -102,16 +102,8 @@ const h = vi.hoisted(() => ({
   defs: new Map<string, string>(),
   /** partId -> frozen standard cost, minor units. Absent = never rolled. */
   standards: new Map<string, number>(),
-  /** The two `manufacturing.*` rates, per unit, minor units. */
+  /** The produced part's two per-part rates, per unit, minor units. */
   rates: { laborCostPerUnit: null as number | null, overheadCostPerUnit: null as number | null },
-  /**
-   * partId -> its two per-part absorption overrides. Absent = falls through to
-   * `h.rates`; a present `0` means "absorbs nothing" and must NOT read as unset.
-   */
-  absorptionOverrides: new Map<
-    string,
-    { laborCostPerUnit?: number | null; overheadCostPerUnit?: number | null }
-  >(),
   /** parentPartId -> direct children, the real depth-1 semantics over a fixture. */
   bom: new Map<string, { childId: string; qty: number }[]>(),
   created: [] as CreatedRecord[],
@@ -174,10 +166,7 @@ vi.mock('../../costing/standard-cost-queries', () => ({
     }
     return ok(map)
   }),
-  loadAbsorptionRates: vi.fn(async () => h.rates),
-  loadPartAbsorptionOverrides: vi.fn(
-    async (_db: unknown, _org: string, partId: string) => h.absorptionOverrides.get(partId) ?? {}
-  ),
+  loadPartAbsorptionRates: vi.fn(async () => h.rates),
 }))
 
 vi.mock('../../costing/qoh', () => ({
@@ -459,7 +448,6 @@ function completedMovementRows(): ValueRow[] {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.absorptionOverrides = new Map()
   h.materialised = new Set([...BUILD_ATTRS, ...MOVEMENT_ATTRS, 'part_kind'])
   h.fieldTypes = FIELD_TYPES
   h.defs = new Map([

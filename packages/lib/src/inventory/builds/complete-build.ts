@@ -67,10 +67,8 @@ import {
   StockMovementType,
 } from '../../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
-import { resolveAbsorptionRates } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
-import { loadAbsorptionRates, loadPartAbsorptionOverrides } from '../costing/standard-cost-queries'
-import type { AbsorptionRates } from '../costing/types'
+import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
 import { type StockMovementInput, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { BUILD_STATUS_BYPASS } from './build-mutations'
@@ -130,18 +128,9 @@ export async function completeBuild(
       const quantityScrapped = input.quantityScrapped ?? 0
       assertQuantities(quantityProduced, quantityScrapped)
 
-      const [ctx, movementCtx, orgRates] = await Promise.all([
+      const [ctx, movementCtx] = await Promise.all([
         requireBuildContext(organizationId),
         requireBuildMovementContext(organizationId),
-        // Read OUTSIDE the transaction: the two absorption rates are org
-        // settings, they are not part of the invariant the row lock protects,
-        // and reading them inside would hold the lock across a settings round
-        // trip for nothing.
-        //
-        // ⚠️ These are the ORG rates. The produced part's own overrides are
-        // applied inside `writeCompletion`, after the lock, because that is the
-        // first point the produced part is known.
-        loadAbsorptionRates(organizationId),
       ])
 
       const completedAt = input.completedAt ?? new Date()
@@ -150,7 +139,6 @@ export async function completeBuild(
         writeCompletion(tx, organizationId, userId, {
           ctx,
           movementCtx,
-          orgRates,
           input,
           quantityProduced,
           quantityScrapped,
@@ -190,11 +178,6 @@ export async function completeBuild(
 interface WriteCompletionArgs {
   ctx: BuildContext
   movementCtx: BuildMovementContext
-  /**
-   * The two `manufacturing.*` settings. The produced part's overrides are
-   * resolved onto these below, once the lock has named the part.
-   */
-  orgRates: AbsorptionRates
   input: CompleteBuildInput
   quantityProduced: number
   quantityScrapped: number
@@ -222,8 +205,7 @@ async function writeCompletion(
   userId: string,
   args: WriteCompletionArgs
 ): Promise<WrittenCompletion> {
-  const { ctx, movementCtx, orgRates, input, quantityProduced, quantityScrapped, completedAt } =
-    args
+  const { ctx, movementCtx, input, quantityProduced, quantityScrapped, completedAt } = args
   const txDb = tx as unknown as Database
 
   // Step 1. The lock IS B8's enforcement - see `lockBuild`.
@@ -263,10 +245,7 @@ async function writeCompletion(
   // completion. Read on `txDb` so it is the same snapshot `planBuildComponents`
   // took its standard costs from, and read here rather than outside the
   // transaction because `build.partId` does not exist until `lockBuild` returns.
-  const rates = resolveAbsorptionRates(
-    orgRates,
-    await loadPartAbsorptionOverrides(txDb, organizationId, build.partId)
-  )
+  const rates = await loadPartAbsorptionRates(txDb, organizationId, build.partId)
 
   // 🛑 The SAME function the completion form runs to preview these five numbers
   // (`client.ts`). The form has to show the variance before the write, because a

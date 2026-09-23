@@ -31,16 +31,6 @@ const GOALS: Record<AccountingGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     href: '/app/accounting/settings/general',
     docsPath: '/help/accounting/set-accounting-period',
   },
-  'set-costing': {
-    label: 'Set up costing',
-    description:
-      'Absorb labor and overhead onto every unit you assemble, then roll standard cost so each part carries a number.',
-    iconId: 'calculator',
-    color: 'amber',
-    ctaText: 'Set up costing',
-    href: '/app/accounting/settings/general',
-    docsPath: '/help/accounting/set-costing',
-  },
   'map-accounts': {
     label: 'Map your accounts',
     description:

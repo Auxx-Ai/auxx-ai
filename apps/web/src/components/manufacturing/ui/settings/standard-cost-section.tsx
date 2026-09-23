@@ -28,11 +28,6 @@
 // reaches this component at all. A read-only branch here would be unreachable
 // by construction, and an unreachable branch that explains a permission is worse
 // than none: it rots without anybody noticing it stopped being true.
-//
-// ⚠️ The cost of the move is that the roll is one page away from two of its
-// three inputs - the `manufacturing.*` absorption rates deliberately stay on
-// Accounting > General (§2.2, decision 3). Rates change rarely; the round trip
-// is rare.
 
 import { FieldType } from '@auxx/database/enums'
 import { skipReasonLabel } from '@auxx/lib/inventory/builds/client'
