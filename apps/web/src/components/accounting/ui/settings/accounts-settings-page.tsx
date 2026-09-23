@@ -164,18 +164,15 @@ export function AccountingAccountsSettingsPage() {
   /**
    * The account map, as the chart tab consumes it.
    *
-   * 🛑 Gate `connected` on the PROVIDER (`providerId`/`providerAccounts`), never
-   * on an empty `rows` array. "Nothing is connected" and "connected but nothing
-   * mapped" are different answers needing different actions, and collapsing them
-   * would tell somebody to map a chart with nothing to map it against.
+   * 🛑 Gate `connected` on `providerId` alone, never on an empty `rows` array and
+   * not on an empty `providerAccounts` either: a freshly purged QuickBooks company
+   * returns no accounts, and the picker's create-in-provider row is the only door
+   * that fills it (97 item 8).
    */
   const mapView = useMemo<ChartMapView>(() => {
     const rows = accountMap.data?.rows ?? []
     return {
-      connected:
-        !!accountMap.data &&
-        accountMap.data.providerId !== 'none' &&
-        accountMap.data.providerAccounts.length > 0,
+      connected: !!accountMap.data && accountMap.data.providerId !== 'none',
       byAccountId: new Map(rows.map((row) => [row.account.id, row])),
       providerAccounts: accountMap.data?.providerAccounts ?? [],
       broken: accountMap.data?.broken ?? [],
@@ -509,7 +506,7 @@ export function AccountingAccountsSettingsPage() {
               is per-list by design, and a selection that survived a tab switch
               would let another tab's bulk bar act on chart rows nobody can see. */}
           <ListSelectionProvider>
-            <ChartAccountsBulkBar />
+            <ChartAccountsBulkBar map={mapView} canControl={canControl} />
             <ChartList
               accounts={accounts}
               isLoading={chart.isPending}

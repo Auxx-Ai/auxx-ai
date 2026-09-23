@@ -80,7 +80,7 @@ import {
   listPaymentGateways,
   normaliseGatewayHandle,
 } from '../accounting/rails'
-import { getCachedEntityDefId } from '../cache'
+import { getCachedEntityDefId, onCacheEvent } from '../cache'
 import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -293,6 +293,9 @@ export async function seedChartAccounts(
   const rolesAssigned = await assignSeededRoles(db, organizationId, byCode, accounts)
 
   if (created > 0 || rolesAssigned > 0) {
+    // The rows went in directly, not through `chart-write.ts`, so nothing else busts
+    // `chartAccounts`; the gateway seed that follows reads the chart through it.
+    await onCacheEvent('chart-account.changed', { orgId: organizationId })
     logger.info('Seeded chart accounts', {
       organizationId,
       ...meta,

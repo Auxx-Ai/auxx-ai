@@ -111,6 +111,19 @@ vi.mock('@auxx/lib/accounting/banking', async () => {
   }
 })
 
+vi.mock('@auxx/lib/accounting/providers', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/accounting/providers')
+  return {
+    ...actual,
+    // 97 item 10. Adds accounts to somebody's real books, so it sits on
+    // `ledgerControl` beside `createProviderAccount`. Mocked to a clean, empty
+    // run: the only thing under test is which rung reaches the resolver body.
+    createProviderAccounts: vi.fn(async () =>
+      okResult({ created: [], skipped: [], ancestorsAdded: [] })
+    ),
+  }
+})
+
 vi.mock('@auxx/lib/settings', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/settings')
   return {
@@ -291,6 +304,30 @@ describe('ledger.unsyncExports', () => {
     await expect(
       ledgerCaller(ledgerFull()).unsyncExports({ glPostingIds: ids.slice(0, 100) })
     ).resolves.toBeDefined()
+  })
+})
+
+describe('ledger.createProviderAccounts', () => {
+  // 🛑 Same rung as `createProviderAccount`, for a stronger version of its
+  // reason: one click adds a whole selection to somebody's real books.
+  // Deleting the `ledgerControl` assert makes the Edit case reach the mocked
+  // lib call and pass, which is what makes it behavioral.
+  it('refuses ledger: Edit', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).createProviderAccounts({ glAccountIds: ['gl_1'] })
+    ).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it('admits ledger: Full', async () => {
+    await expect(
+      ledgerCaller(ledgerFull()).createProviderAccounts({ glAccountIds: ['gl_1'] })
+    ).resolves.toMatchObject({ created: [] })
+  })
+
+  it('refuses a caller with settingsManage but not ledgerControl', async () => {
+    await expect(
+      ledgerCaller(settingsManageOnly()).createProviderAccounts({ glAccountIds: ['gl_1'] })
+    ).rejects.toMatchObject(FORBIDDEN)
   })
 })
 

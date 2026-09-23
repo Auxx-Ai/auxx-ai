@@ -56,6 +56,7 @@ import type {
   ClearAccountMappingInput,
   CreateProviderAccountInput,
   CreateProviderAccountResult,
+  ProviderAccountCreator,
   ProviderObjectContext,
   ReadObjectRef,
   ReadObjectResult,
@@ -336,25 +337,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         )
       )
     }
-
-    try {
-      await setQuickbooksAccountMapping({
-        organizationId: input.orgId,
-        installationId: resolved.context.installationId,
-        connectionId: resolved.context.connectionId,
-        glAccountId: input.glAccountId,
-        providerAccountId: input.providerAccountId,
-        userId: input.actorUserId,
-      })
-      return ok(undefined)
-    } catch (error) {
-      return err(
-        new UnprocessableEntityError(`Could not save the account mapping: ${errorMessage(error)}`, {
-          organizationId: input.orgId,
-          glAccountId: input.glAccountId,
-        })
-      )
-    }
+    return setMappingIn(resolved.context, input)
   }
 
   /** Withdraw one confirmation. The account goes back to unmapped. */
@@ -630,51 +613,31 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         )
       )
     }
+    return createAccountIn(resolved.context, input)
+  }
 
-    const { accountType, accountSubType } = quickbooksAccountType(
-      input.classification,
-      input.subtype
-    )
-
-    try {
-      const result = (await resolved.context.callTool(TOOL_CREATE_ACCOUNT, {
-        name: input.name,
-        ...(input.code ? { acctNum: input.code } : {}),
-        accountType,
-        accountSubType,
-        // TODO(accounting): the tool does not declare `parentId` yet - sent only
-        // when the caller resolved one, so an org with no nested accounts never
-        // exercises an argument the schema may not accept.
-        ...(input.parentProviderId ? { parentId: input.parentProviderId } : {}),
-      })) as {
-        account: MappedAccount
-        outcome: 'created' | 'existing'
-        acctNumDropped: boolean
-      }
-
-      const account = toProviderAccount(result.account)
-      if (!account) {
-        return err(
-          new UnprocessableEntityError(
-            `QuickBooks returned account '${result.account.fullyQualifiedName}' with an unreadable classification '${result.account.classification}'. Link it by hand.`,
-            { organizationId: input.orgId, glAccountId: input.glAccountId }
-          )
-        )
-      }
-
-      return ok({
-        account,
-        outcome: result.outcome,
-        numberDropped: Boolean(result.acctNumDropped),
-      })
-    } catch (error) {
+  /** One resolved connection for a whole batch - `resolveQuickbooksContext` is a credential and installation lookup per call otherwise. */
+  async openProviderAccountCreator(input: {
+    orgId: string
+    actorUserId?: string
+  }): Promise<Result<ProviderAccountCreator, Error>> {
+    const resolved = await resolveQuickbooksContext({
+      organizationId: input.orgId,
+      actorUserId: input.actorUserId,
+    })
+    if (!resolved.connected) {
       return err(
         new UnprocessableEntityError(
-          `Could not create '${input.name}' in QuickBooks: ${errorMessage(error)}`,
-          { organizationId: input.orgId, glAccountId: input.glAccountId, accountType }
+          'QuickBooks is not connected, so an account cannot be created in it.',
+          { organizationId: input.orgId }
         )
       )
     }
+    const { context } = resolved
+    return ok({
+      createProviderAccount: (account) => createAccountIn(context, account),
+      setAccountMapping: (mapping) => setMappingIn(context, mapping),
+    })
   }
 
   /**
@@ -698,6 +661,79 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
     if (resolved.context.installationId !== pinned.appInstallationId)
       throw new UnprocessableEntityError('The pinned accounting installation changed')
     return resolved.context
+  }
+}
+
+/** The create itself, against one resolved context - the per-row method and a batch creator both land here. */
+async function createAccountIn(
+  context: QuickbooksToolContext,
+  input: CreateProviderAccountInput
+): Promise<Result<CreateProviderAccountResult, Error>> {
+  const { accountType, accountSubType } = quickbooksAccountType(input.classification, input.subtype)
+
+  try {
+    const result = (await context.callTool(TOOL_CREATE_ACCOUNT, {
+      name: input.name,
+      ...(input.code ? { acctNum: input.code } : {}),
+      accountType,
+      accountSubType,
+      // TODO(accounting): the tool does not declare `parentId` yet - sent only
+      // when the caller resolved one, so an org with no nested accounts never
+      // exercises an argument the schema may not accept.
+      ...(input.parentProviderId ? { parentId: input.parentProviderId } : {}),
+    })) as {
+      account: MappedAccount
+      outcome: 'created' | 'existing'
+      acctNumDropped: boolean
+    }
+
+    const account = toProviderAccount(result.account)
+    if (!account) {
+      return err(
+        new UnprocessableEntityError(
+          `QuickBooks returned account '${result.account.fullyQualifiedName}' with an unreadable classification '${result.account.classification}'. Link it by hand.`,
+          { organizationId: input.orgId, glAccountId: input.glAccountId }
+        )
+      )
+    }
+
+    return ok({
+      account,
+      outcome: result.outcome,
+      numberDropped: Boolean(result.acctNumDropped),
+    })
+  } catch (error) {
+    return err(
+      new UnprocessableEntityError(
+        `Could not create '${input.name}' in QuickBooks: ${errorMessage(error)}`,
+        { organizationId: input.orgId, glAccountId: input.glAccountId, accountType }
+      )
+    )
+  }
+}
+
+/** The mapping write against one resolved context; `setAccountMapping` and a batch creator share it. */
+async function setMappingIn(
+  context: QuickbooksToolContext,
+  input: SetAccountMappingInput
+): Promise<Result<void, Error>> {
+  try {
+    await setQuickbooksAccountMapping({
+      organizationId: input.orgId,
+      installationId: context.installationId,
+      connectionId: context.connectionId,
+      glAccountId: input.glAccountId,
+      providerAccountId: input.providerAccountId,
+      userId: input.actorUserId,
+    })
+    return ok(undefined)
+  } catch (error) {
+    return err(
+      new UnprocessableEntityError(`Could not save the account mapping: ${errorMessage(error)}`, {
+        organizationId: input.orgId,
+        glAccountId: input.glAccountId,
+      })
+    )
   }
 }
 

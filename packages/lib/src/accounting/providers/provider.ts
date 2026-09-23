@@ -374,6 +374,25 @@ export interface AccountingProvider {
   createProviderAccount?(
     input: CreateProviderAccountInput
   ): Promise<Result<CreateProviderAccountResult, Error>>
+
+  /**
+   * A {@link ProviderAccountCreator} bound to ONE resolved connection, for a
+   * batch of creates. Optional: without it every create-and-link resolves the
+   * connection itself, which is one credential and installation lookup per row.
+   * Meaningless without {@link createProviderAccount}.
+   */
+  openProviderAccountCreator?(input: {
+    orgId: string
+    actorUserId?: string
+  }): Promise<Result<ProviderAccountCreator, Error>>
+}
+
+/** The two calls one create-and-link needs, bound to a resolved connection. */
+export interface ProviderAccountCreator {
+  createProviderAccount(
+    input: CreateProviderAccountInput
+  ): Promise<Result<CreateProviderAccountResult, Error>>
+  setAccountMapping(input: SetAccountMappingInput): Promise<Result<void, Error>>
 }
 
 /**

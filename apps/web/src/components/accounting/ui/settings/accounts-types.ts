@@ -117,7 +117,7 @@ export const ACCOUNT_SUBTYPE_OPTIONS: Array<{
  * field below has an honest value when there is no provider at all.
  */
 export interface ChartMapView {
-  /** A provider is connected AND returned a chart to map against. */
+  /** A provider is connected. Its chart may still be empty (a purged company). */
   connected: boolean
   /** The map row per `gl_account` id. Empty until `ledger.accountMap` resolves. */
   byAccountId: Map<string, AccountIdentityRow>

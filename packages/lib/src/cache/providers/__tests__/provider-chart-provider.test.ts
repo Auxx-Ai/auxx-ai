@@ -10,6 +10,10 @@ vi.mock('../../../accounting/providers/book-connections', () => ({
 
 const listProviderAccounts = vi.fn()
 const resolveAccountingProvider = vi.fn()
+const registerAccountingProviders = vi.fn()
+vi.mock('../../../accounting/providers/accounting-providers', () => ({
+  registerAccountingProviders: (...a: unknown[]) => registerAccountingProviders(...a),
+}))
 vi.mock('../../../accounting/providers/provider', () => ({
   resolveAccountingProvider: (...a: unknown[]) => resolveAccountingProvider(...a),
 }))
@@ -42,7 +46,7 @@ const ACCOUNTS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
-  resolveAccountingProvider.mockResolvedValue({ listProviderAccounts })
+  resolveAccountingProvider.mockResolvedValue({ id: 'quickbooks', listProviderAccounts })
 })
 
 describe('providerChartProvider', () => {
@@ -51,6 +55,7 @@ describe('providerChartProvider', () => {
 
     expect(await providerChartProvider.compute('org1', db)).toBeNull()
     expect(resolveAccountingProvider).not.toHaveBeenCalled()
+    expect(registerAccountingProviders).not.toHaveBeenCalled()
   })
 
   it('stamps the active company and keeps inactive accounts', async () => {
@@ -62,6 +67,19 @@ describe('providerChartProvider', () => {
       accounts: ACCOUNTS,
     })
     expect(listProviderAccounts).toHaveBeenCalledWith('org1')
+    expect(registerAccountingProviders.mock.invocationCallOrder[0]).toBeLessThan(
+      resolveAccountingProvider.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('does not cache an empty chart when the active book provider is unavailable', async () => {
+    readActiveBookCompanyId.mockResolvedValue('realm1')
+    resolveAccountingProvider.mockResolvedValue({ id: 'none', listProviderAccounts })
+
+    await expect(providerChartProvider.compute('org1', db)).rejects.toThrow(
+      'The active accounting book provider is unavailable'
+    )
+    expect(listProviderAccounts).not.toHaveBeenCalled()
   })
 
   it("throws the provider's own error so nothing is cached", async () => {
