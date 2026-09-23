@@ -1,6 +1,13 @@
 // packages/lib/src/accounting/documents/edit-in-place/index.ts
 
 export { type CancelDocumentEditResult, cancelDocumentEdit } from './cancel'
+export {
+  DOCUMENT_EDIT_REFUSED_IN,
+  DOCUMENT_OPEN_STATUSES,
+  type DocumentLockState,
+  type LockedDocumentFamily,
+  readDocumentLockState,
+} from './lock-state'
 export { type DocumentEditInput, openDocumentEdit } from './open'
 export { type DocumentEditState, readDocumentEditState } from './read-state'
 export { type SaveDocumentEditResult, saveDocumentEdit } from './save'

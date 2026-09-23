@@ -19,7 +19,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Check, Download, Send, SquareArrowOutUpRight, Undo2, X } from 'lucide-react'
+import { Check, Download, Pencil, Save, Send, SquareArrowOutUpRight, Undo2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo } from 'react'
@@ -30,6 +30,7 @@ import {
   DocumentSectionActions,
 } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { useDocumentEditLane } from '~/components/money/ui/use-document-edit-lane'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -41,8 +42,8 @@ const QUOTE_STATUS_ATTRS = ['quote_status', 'quote_valid_until', 'quote_work_ord
 const EXPIRABLE_STATUSES = new Set(['draft', 'sent'])
 /** Statuses where a quote can still be (re)sent (money MQ2 build spec §E.2). */
 const SENDABLE_STATUSES = new Set(['draft', 'sent'])
-/** Post-draft statuses that can be returned to draft for editing (mirrors invoice SENT_STATUSES). */
-const REVERTIBLE_STATUSES = new Set(['sent', 'approved', 'declined', 'canceled'])
+/** A closed quote reopens as a draft to be revised; a sent one is edited in place (66 U5). */
+const REVERTIBLE_STATUSES = new Set(['declined', 'canceled'])
 /** Statuses a job can be created from (money plan 20 §2.1) — mirrors the server allowlist
  * in `convertQuoteToWorkOrder`; pre-approval converts get a confirm dialog first. */
 const CONVERTIBLE_STATUSES = new Set(['draft', 'sent', 'approved'])
@@ -65,8 +66,11 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
     return new Date(validUntil).getTime() < Date.now()
   }, [validUntil, status])
 
-  // draft is the only editable state — sent/approved/declined/canceled are all read-only.
-  const readOnly = status !== 'draft'
+  // A draft is typed freely; a sent quote only while an edit is open. The server
+  // enforces the same rule (`field-hooks/pre/document-edit-lock.ts`).
+  const lane = useDocumentEditLane(recordId, 'quote', 'quote')
+  const readOnly = status !== 'draft' && !lane.editing
+  const canEdit = status === 'sent' && !lane.editing
 
   // Shared send/download flow (compose + PDF + no-channel guard).
   const { hasEmailChannel, handleSend, handleDownload, isSending } = useDocumentSendActions(
@@ -114,12 +118,9 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   const handleReturnToDraft = async () => {
     const confirmed = await confirm({
-      title: 'Edit this quote?',
-      description:
-        status === 'sent'
-          ? 'This quote was sent — editing returns it to draft.'
-          : `This quote is ${status} — editing returns it to draft.`,
-      confirmText: 'Edit',
+      title: 'Return this quote to draft?',
+      description: `This quote is ${status}. Returning it to draft lets you revise and send it again.`,
+      confirmText: 'Return to draft',
       cancelText: 'Cancel',
     })
     if (!confirmed) return
@@ -139,27 +140,33 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   // the max-height + internal-scroll treatment to avoid fighting the outer page.
   const isSection = variant === 'section'
 
-  const sendSlot = SENDABLE_STATUSES.has(status)
-    ? {
-        label: status === 'sent' ? 'Resend' : 'Send',
-        onClick: handleSend,
-        isPending: isSending,
-        disabledReason: hasEmailChannel ? undefined : (
-          <div className='flex flex-col gap-1 text-xs'>
-            <span>Connect an email channel to send quotes.</span>
-            <Link href='/app/settings/channels' className='underline'>
-              Go to channel settings
-            </Link>
-          </div>
-        ),
-      }
-    : undefined
+  const sendSlot = lane.editing
+    ? { label: 'Save changes', onClick: lane.saveEdit, isPending: lane.isSaving }
+    : SENDABLE_STATUSES.has(status)
+      ? {
+          label: status === 'sent' ? 'Resend' : 'Send',
+          onClick: handleSend,
+          isPending: isSending,
+          disabledReason: hasEmailChannel ? undefined : (
+            <div className='flex flex-col gap-1 text-xs'>
+              <span>Connect an email channel to send quotes.</span>
+              <Link href='/app/settings/channels' className='underline'>
+                Go to channel settings
+              </Link>
+            </div>
+          ),
+        }
+      : undefined
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
       <DocumentSectionActions
         badge={
-          isExpired ? (
+          lane.editing ? (
+            <Badge variant='amber' size='sm'>
+              Editing
+            </Badge>
+          ) : isExpired ? (
             <Badge variant='amber' size='sm'>
               Expired
             </Badge>
@@ -176,7 +183,24 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             </DropdownMenuItem>
           )}
 
-          {status === 'sent' && (
+          {canEdit && (
+            <DropdownMenuItem onClick={lane.openEdit}>
+              <Pencil /> Edit
+            </DropdownMenuItem>
+          )}
+
+          {lane.editing && (
+            <>
+              <DropdownMenuItem onClick={lane.saveEdit}>
+                <Save /> Save changes
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={lane.cancelEdit}>
+                <Undo2 /> Cancel changes
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {status === 'sent' && !lane.editing && (
             <>
               <DropdownMenuItem onClick={() => approveQuote.mutate({ quoteRecordId: recordId })}>
                 <Check /> Mark approved
@@ -189,7 +213,7 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
             </>
           )}
 
-          {CONVERTIBLE_STATUSES.has(status) && !convertedWorkOrderRecordId && (
+          {CONVERTIBLE_STATUSES.has(status) && !convertedWorkOrderRecordId && !lane.editing && (
             <DropdownMenuItem onClick={handleConvert}>
               <SquareArrowOutUpRight /> Convert to job
             </DropdownMenuItem>
@@ -216,22 +240,18 @@ export function QuoteLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
           )}
         </DocumentActionsCluster>
       </DocumentSectionActions>
-      {/* 
-      {REVERTIBLE_STATUSES.has(status) && (
-        <div className='mx-4 mt-3 flex items-center gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm'>
-          <span className='text-amber-700 dark:text-amber-400'>
-            {status === 'sent'
-              ? 'This quote was sent — use “Return to draft” to edit it.'
-              : `This quote is ${status} — use “Return to draft” to edit it.`}
-          </span>
+      {lane.editing && (
+        <div className='border-amber-300 border-b bg-amber-50 px-1 py-2 text-xs dark:border-amber-800 dark:bg-amber-950/40'>
+          This quote was sent and is open for editing. Save when you are done.
         </div>
-      )} */}
+      )}
 
       <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
         <LineBuilder documentRecordId={recordId} documentType='quote' readOnly={readOnly} />
       </div>
 
       <ConfirmDialog />
+      <lane.ConfirmDialog />
     </div>
   )
 }

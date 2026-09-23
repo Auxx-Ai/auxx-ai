@@ -26,7 +26,12 @@ import { readPostingHeaders } from '../../ledger/reads/read-posting'
 import type { BuiltEntry, GlPostingLineInput } from '../../ledger/types'
 import { readDocumentLedgerState, writeDocumentLedgerGeneration } from '../document-ledger-state'
 import type { DocumentEditInput } from './open'
-import { type DocumentEditDoc, type DocumentEditRow, documentEditRow } from './spec'
+import {
+  type DocumentEditDoc,
+  type DocumentEditRow,
+  documentEditRow,
+  type PlainDocumentEditRow,
+} from './spec'
 
 const logger = createScopedLogger('accounting:document-edit')
 
@@ -37,8 +42,9 @@ export interface SaveDocumentEditResult {
    * `reposted` — the live entry was reversed (or was already gone) and the
    * document posted again.
    * `not_posted` — accounting is off, so there is no entry to keep up to date.
+   * `saved` — the family has no entry of its own; the edit is simply closed.
    */
-  outcome: 'unchanged' | 'reposted' | 'not_posted'
+  outcome: 'unchanged' | 'reposted' | 'not_posted' | 'saved'
   /** The entry's document number, when there is one. */
   docNumber: string | null
   /** Always `null`: the document is locked again. The card stamps it on the record. */
@@ -66,6 +72,8 @@ export async function saveDocumentEdit(
       { family, entityInstanceId }
     )
   }
+
+  if (!row.ledger) return saveWithoutLedger(db, row, input)
 
   const doc = await row.load(db, organizationId, entityInstanceId)
   if (row.editRefusedIn.includes(doc.status)) {
@@ -211,6 +219,24 @@ export async function saveDocumentEdit(
     docNumber: committed.docNumber,
   })
   return { outcome: 'reposted', docNumber: committed.docNumber, edit: null }
+}
+
+/** A family with no entry of its own: Save only closes the edit (66 §2.3). */
+async function saveWithoutLedger(
+  db: Database,
+  row: PlainDocumentEditRow,
+  input: DocumentEditInput
+): Promise<SaveDocumentEditResult> {
+  const { organizationId, family, entityInstanceId, userId } = input
+  const doc = await row.load(db, organizationId, entityInstanceId)
+  if (row.editRefusedIn.includes(doc.status)) {
+    throw new BadRequestError(row.refuseEdit(doc), { family, entityInstanceId, status: doc.status })
+  }
+  await deleteEditSnapshot(db, organizationId, entityInstanceId)
+  await publishStamp(organizationId, family, entityInstanceId)
+  await row.afterSave?.(db, { organizationId, userId, entityInstanceId })
+  logger.info('Saved a document edit', { organizationId, family, entityInstanceId })
+  return { outcome: 'saved', docNumber: null, edit: null }
 }
 
 /**

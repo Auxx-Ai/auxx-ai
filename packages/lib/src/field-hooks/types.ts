@@ -162,6 +162,8 @@ export interface EntityPreDeleteEvent {
   userId: string
   /** Same bypass set used by field pre-hooks. */
   bypass: ReadonlySet<SystemAttribute>
+  /** Collected by a parent's cascade rather than asked for: the parent's delete decides. */
+  cascaded?: boolean
 }
 
 export type EntityPreDeleteHandler = (event: EntityPreDeleteEvent) => Promise<void>

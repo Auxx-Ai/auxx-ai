@@ -13,24 +13,20 @@
 // the drawer variant is a single prop away from the tab and the quote — the shape
 // §5.7 locked the order to — is written exactly this way.
 //
-// Deliberately thinner than quote and invoice: an order carries NO document
-// actions cluster. Quote has Send / Mark approved / Convert-to-job and invoice has
-// Send / Record payment / Void, and those exist because each has a lifecycle whose
-// transitions carry side effects. `order_financial_status` and
-// `order_fulfillment_status` are plain human-set fields with no sanctioned action
-// behind them (which is also why `order-hooks.ts` registers no lifecycle guard),
-// so there is nothing to teleport into the Section header and no read-only state:
-// an order records what was sold and stays editable.
+// Thinner than quote and invoice: no document actions cluster, because an order
+// has no lifecycle with side effects. It is editable until something ships, then
+// only through Edit; a synced order never (66 U7, `document-edit-lock.ts`).
 
 import { getInstanceId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { DocumentSectionActions } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { useDocumentEditLane } from '~/components/money/ui/use-document-edit-lane'
 import { useSystemValues } from '~/components/resources/hooks'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
@@ -65,6 +61,20 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   const financial = firstValue(values.order_financial_status)
   const fulfillment = firstValue(values.order_fulfillment_status)
 
+  // The lock the server enforces; its `synced` is a connector read the client cannot make.
+  const lane = useDocumentEditLane(recordId, 'order', 'order')
+  const lock = api.documentEdit.lockState.useQuery(
+    { family: 'order', recordId: orderId },
+    { enabled: !!orderId }
+  )
+  // A shipment moves the order from open to locked.
+  useEffect(() => {
+    if (orderId)
+      void utils.documentEdit.lockState.invalidate({ family: 'order', recordId: orderId })
+  }, [fulfillment, orderId, utils])
+  const readOnly = !lock.data?.open && !lane.editing
+  const canEdit = !!lock.data?.editable && !lane.editing
+
   const financialBadge = financial ? FINANCIAL_BADGE[financial] : undefined
   const fulfillmentBadge = fulfillment ? FULFILLMENT_BADGE[fulfillment] : undefined
 
@@ -89,7 +99,10 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   // shipped, flips `order_fulfillment_status`, and posts the revenue entry, so
   // it is a ledger write. Hidden once everything has shipped.
   const canFulfill =
-    can('ledger.post') && fulfillment !== 'fulfilled' && connectorManaged.data === false
+    can('ledger.post') &&
+    fulfillment !== 'fulfilled' &&
+    connectorManaged.data === false &&
+    !lane.editing
 
   // `variant='section'`: rendered inside a DetailViewSections <Section> on an
   // outer-owned scroll column instead of a `TabsContent` that grants `h-full`, so
@@ -99,10 +112,20 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      {(financialBadge || fulfillmentBadge || canFulfill || isConnectorManaged) && (
+      {(financialBadge ||
+        fulfillmentBadge ||
+        canFulfill ||
+        isConnectorManaged ||
+        canEdit ||
+        lane.editing) && (
         <DocumentSectionActions
           badge={
             <div className='flex items-center gap-1.5'>
+              {lane.editing && (
+                <Badge variant='amber' size='sm'>
+                  Editing
+                </Badge>
+              )}
               {financialBadge && (
                 <Badge variant={financialBadge.variant} size='sm'>
                   {financialBadge.label}
@@ -115,6 +138,21 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
               )}
             </div>
           }>
+          {canEdit && (
+            <Button variant='outline' size='xs' onClick={lane.openEdit}>
+              Edit
+            </Button>
+          )}
+          {lane.editing && (
+            <>
+              <Button variant='outline' size='xs' onClick={lane.cancelEdit}>
+                Cancel changes
+              </Button>
+              <Button size='xs' onClick={lane.saveEdit} loading={lane.isSaving}>
+                Save changes
+              </Button>
+            </>
+          )}
           {canFulfill && (
             <Button variant='outline' size='xs' onClick={() => setFulfillOpen(true)}>
               Fulfill
@@ -129,7 +167,7 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
       )}
 
       <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
-        <LineBuilder documentRecordId={recordId} documentType='order' />
+        <LineBuilder documentRecordId={recordId} documentType='order' readOnly={readOnly} />
       </div>
 
       <FulfillOrderDialog
@@ -147,6 +185,7 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
           void utils.money.orderForFulfillment.invalidate()
         }}
       />
+      <lane.ConfirmDialog />
     </div>
   )
 }
