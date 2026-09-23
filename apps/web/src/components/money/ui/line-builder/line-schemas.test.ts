@@ -28,6 +28,7 @@ import {
   lineAttributesFor,
   linePatchToFieldValues,
   lineSchemaFor,
+  lineSourceRecordId,
   lineValuesFromSystemValues,
 } from './line-values'
 
@@ -298,6 +299,16 @@ describe('reading values back from the store', () => {
         .partRecordId
     ).toBeNull()
     expect(lineValuesFromSystemValues({}, LINE_SCHEMAS.vendor_bill).partRecordId).toBeNull()
+  })
+
+  it('links a sell-side line to its part first, then its catalog item', () => {
+    const both = { line_item_part: ['part_def:p'], line_item_catalog_item: ['cat_def:c'] }
+    expect(lineSourceRecordId(both, LINE_SCHEMAS.order)).toBe('part_def:p')
+    expect(lineSourceRecordId({ line_item_catalog_item: ['cat_def:c'] }, LINE_SCHEMAS.order)).toBe(
+      'cat_def:c'
+    )
+    expect(lineSourceRecordId({}, LINE_SCHEMAS.order)).toBeNull()
+    expect(lineAttributesFor(LINE_SCHEMAS.order)).toContain('line_item_part')
   })
 
   // A document whose lines carry no unit field must not render the unit control —

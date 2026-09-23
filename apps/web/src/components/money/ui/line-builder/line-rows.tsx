@@ -96,6 +96,7 @@ import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
 import { LinePhotoPopover } from './line-photo-popover'
@@ -109,6 +110,7 @@ import {
   type LineValues,
   lineAttributesFor,
   lineSchemaFor,
+  lineSourceRecordId,
   lineValuesFromSystemValues,
   numberOrNull,
 } from './line-values'
@@ -525,6 +527,7 @@ function OptionalLineTag({
  */
 function LineNameCellView({
   name,
+  sourceRecordId,
   description,
   category,
   categoryOptions,
@@ -553,6 +556,8 @@ function LineNameCellView({
   onOpenPhotos,
 }: {
   name: string
+  /** Part or catalog item the line came from — a drill-in icon beside the read-only name. */
+  sourceRecordId?: RecordId | null
   description: string | null
   category: string | null
   categoryOptions: CategoryOption[]
@@ -748,6 +753,9 @@ function LineNameCellView({
           className={cn('min-w-0 truncate px-1 text-sm', !name && 'text-muted-foreground italic')}>
           {name || 'Untitled line'}
         </span>
+        {sourceRecordId && (
+          <RecordBadge recordId={sourceRecordId} iconOnly size='sm' link openInStack />
+        )}
         {stateBadges}
         {description && <TooltipExplanation text={description} />}
         {photoChip}
@@ -2393,6 +2401,7 @@ export function LineRow({
           ) : (
             <LineNameCellView
               name={line.name}
+              sourceRecordId={lineSourceRecordId(values, schema)}
               description={line.description}
               category={line.category}
               categoryOptions={categoryOptions}
