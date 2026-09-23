@@ -21,7 +21,6 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
-import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -80,52 +79,28 @@ function PartCostBadge({ source }: { source: string }) {
   )
 }
 
-/** A `manufacturing.*` rate off the settings record. Anything non-numeric is unset. */
-function readRate(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
 /**
- * One editable absorption override.
+ * One editable per-part absorption rate.
  *
- * 🛑 **The empty state IS the feature.** `NULL` and a stored `0` are two
- * different claims — "use the org rate" and "this part absorbs nothing" — and a
- * bare currency input renders them identically. The trailing text is what keeps
- * them apart, and it has three cases, not two:
- *
- * | stored | shows | says |
- * | --- | --- | --- |
- * | `null`, org rate set | empty | `Org default ($20.00)` |
- * | `null`, org rate UNSET | empty | `No absorption declared` |
- * | `0` | `$0.00` | `Absorbs nothing` |
- *
- * ⚠️ The middle row is the one that gets missed. `absorbedRate` deliberately
- * keeps an undeclared org rate as `null` rather than collapsing it to zero, so
- * printing `Org default ($0.00)` in an org that has set no rates would state a
- * declared zero nobody declared.
+ * 🛑 `NULL` ("none declared") and a stored `0` ("absorbs nothing, deliberately") render the
+ * same in a bare currency input, so the hint keeps them apart.
  */
-function AbsorptionOverrideRow({
+function AbsorptionRateRow({
   title,
   value,
-  orgRate,
   onChange,
 }: {
   title: string
   value: number | null | undefined
-  orgRate: number | null
   onChange: (next: unknown) => void
 }) {
   const hint =
-    value != null
-      ? value === 0
-        ? 'Absorbs nothing'
-        : null
-      : orgRate != null
-        ? `Org default (${formatCurrency(orgRate)})`
-        : 'No absorption declared'
+    value == null ? 'None: absorbs nothing' : value === 0 ? 'Zero: absorbs nothing' : null
 
   return (
-    <FieldPanelRow title={title} description='Overrides the org rate for this part only'>
+    <FieldPanelRow
+      title={title}
+      description='Absorbed onto each unit of this part when it is built'>
       <div className='flex min-h-8 items-center gap-2'>
         <div className='w-32'>
           <FieldInputAdapter
@@ -133,7 +108,7 @@ function AbsorptionOverrideRow({
             fieldOptions={{ currencyCode: 'USD', decimals: 2, currencyDisplay: 'symbol' }}
             value={value ?? null}
             onChange={onChange}
-            placeholder='Org default'
+            placeholder='None'
           />
         </div>
         {hint && <span className='text-muted-foreground text-xs'>{hint}</span>}
@@ -182,11 +157,11 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   const standardEffectiveAt = values.part_standard_cost_effective_at as string | undefined
 
   // 🛑 The gate for everything absorption-related on this card. A `component`
-  // never absorbs conversion cost (README B11), so on one its overrides are
+  // never absorbs conversion cost (README B11), so on one its rates are
   // read by nothing and its composition line would say the same number twice.
   const absorbs = absorbsConversionCost(resolvePartKind(values.part_kind as string | undefined))
-  const laborOverride = values.part_labor_cost_per_unit as number | null | undefined
-  const overheadOverride = values.part_overhead_cost_per_unit as number | null | undefined
+  const laborRate = values.part_labor_cost_per_unit as number | null | undefined
+  const overheadRate = values.part_overhead_cost_per_unit as number | null | undefined
 
   const hasComparison = purchaseCost != null && rollupCost != null
   const isUncosted = costSource === CostSource.NONE
@@ -215,18 +190,12 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   const driftBasis = absorbs ? standardMaterialCost : standardCost
   const drift = standardCostDrift(liveCost, driftBasis)
 
-  // ── The two editable absorption overrides ──────────────────────────
+  // ── The two editable absorption rates ──────────────────────────────
   //
   // Written through the same `fieldValue.set` door the generic panel uses, so
   // the optimistic store update, the rollback and the realtime publish are the
   // ones every other field write already gets.
   const { canEditEntity } = useAccess()
-  // Read from the dehydrated settings the app already carries — no query. The
-  // placeholder has to name the rate a blank cell will actually fall through
-  // to, or "org default" tells nobody anything.
-  const { getSetting } = useSettings({ scope: 'GENERAL' })
-  const orgLaborRate = readRate(getSetting('manufacturing.assemblyLaborCostPerUnit'))
-  const orgOverheadRate = readRate(getSetting('manufacturing.overheadCostPerUnit'))
   const partDefId = useResourceProperty('part', 'id')
   const canEdit = !!partDefId && canEditEntity(partDefId)
   const { saveFieldValue } = useSaveFieldValue()
@@ -240,14 +209,11 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
     [systemAttributeMap, systemAttributeByDef, ambiguousSystemAttributes]
   )
 
-  const saveOverride = useCallback(
+  const saveRate = useCallback(
     (attribute: 'part_labor_cost_per_unit' | 'part_overhead_cost_per_unit', value: unknown) => {
       const fieldId = resolveSystemAttributeForRecord(attributeMaps, attribute, recordId)
       if (!fieldId) return
-      // 🛑 An empty input writes `null`, which CLEARS the cell and returns the
-      // part to the org rate. A typed `0` writes `0`, which is the different
-      // claim "this part absorbs nothing" — the two must not collapse, so this
-      // normalises only the empty string and passes a real 0 straight through.
+      // An empty input clears the cell (NULL); a typed `0` must pass through as a declared zero.
       const normalized = value === '' || value === undefined ? null : value
       saveFieldValue(recordId, fieldId, normalized, FieldType.CURRENCY)
     },
@@ -401,17 +367,15 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
               frozen output read as one thing. */}
           {absorbs && canEdit && (
             <>
-              <AbsorptionOverrideRow
+              <AbsorptionRateRow
                 title='Labor per unit'
-                value={laborOverride}
-                orgRate={orgLaborRate}
-                onChange={(next) => saveOverride('part_labor_cost_per_unit', next)}
+                value={laborRate}
+                onChange={(next) => saveRate('part_labor_cost_per_unit', next)}
               />
-              <AbsorptionOverrideRow
+              <AbsorptionRateRow
                 title='Overhead per unit'
-                value={overheadOverride}
-                orgRate={orgOverheadRate}
-                onChange={(next) => saveOverride('part_overhead_cost_per_unit', next)}
+                value={overheadRate}
+                onChange={(next) => saveRate('part_overhead_cost_per_unit', next)}
               />
             </>
           )}

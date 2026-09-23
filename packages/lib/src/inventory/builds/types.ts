@@ -233,7 +233,7 @@ export interface CompleteBuildInput {
   /**
    * Absorbed direct labour for the WHOLE run, minor units.
    *
-   * Omitted, it is `round(manufacturing.assemblyLaborCostPerUnit x unitsStarted)`
+   * Omitted, it is `round(part_labor_cost_per_unit x unitsStarted)` for the produced part
    * — the units STARTED, because labour was spent on the scrapped ones too, and
    * because that is what makes the variance come out at exactly the scrapped
    * units' standard cost. An undeclared rate absorbs zero.

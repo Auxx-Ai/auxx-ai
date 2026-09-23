@@ -147,8 +147,6 @@ export async function rollStandardCost(
         revaluationDelta: plan.revaluationDelta,
         revaluationPostedMinor: revaluation.postedMinor,
         initialValue: plan.initialValue,
-        laborRateDeclared: plan.rates.laborCostPerUnit != null,
-        overheadRateDeclared: plan.rates.overheadCostPerUnit != null,
       })
 
       return {

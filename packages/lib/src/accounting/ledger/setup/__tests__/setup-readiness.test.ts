@@ -31,8 +31,6 @@ function settings(overrides: SettingsRecord = {}): SettingsRecord {
     'accounting.qboOpeningWip': 0,
     'accounting.qboOpeningFinishedGoods': 250_00,
     'accounting.qboOpeningJournalRef': 'JE-1042',
-    'manufacturing.assemblyLaborCostPerUnit': 500,
-    'manufacturing.overheadCostPerUnit': 300,
     ...overrides,
   }
 }
@@ -203,22 +201,18 @@ describe('resolveSetupReadiness: the opening trial balance requirement', () => {
   })
 })
 
-describe('resolveSetupReadiness: the three requirements that already existed', () => {
-  it('still reports every original key, in order, with the new row before costing', () => {
+describe('resolveSetupReadiness: the settings requirements', () => {
+  it('reports every key, in order', () => {
     expect(resolveSetupReadiness(settings()).requirements.map((r) => r.key)).toEqual([
       'set-accounting-period',
       'set-opening-balances',
       'set-opening-trial-balance',
-      'set-costing',
     ])
   })
 
   it('is unchanged on a half-configured org when no context is passed', () => {
-    const readiness = resolveSetupReadiness(
-      settings({ 'accounting.cutoffPeriod': null, 'manufacturing.overheadCostPerUnit': null })
-    )
+    const readiness = resolveSetupReadiness(settings({ 'accounting.cutoffPeriod': null }))
     expect(requirement(readiness, 'set-accounting-period').reason).toMatch(/No cutoff period set/)
-    expect(requirement(readiness, 'set-costing').reason).toMatch(/No overhead rate/)
     expect(requirement(readiness, 'set-opening-trial-balance').met).toBe(true)
     expect(readiness.settingsReady).toBe(false)
   })

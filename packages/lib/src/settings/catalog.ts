@@ -887,10 +887,8 @@ export const SETTINGS_CATALOG = {
   // 🛑 Every value below ships NULL except `setupState`. A null opening balance
   // means "not configured" and must never collapse to `0` — `0` is a legitimate
   // opening balance (a business with no WIP at cutover has exactly that), so the
-  // two readings are not interchangeable. This is the same rule
-  // `loadAbsorptionRates` follows for the absorption rates, and for the same
-  // reason: a null read as zero absorbs nothing while looking like it worked.
-  // `readOpeningBaseline` fails CLOSED on a null rather than defaulting.
+  // two readings are not interchangeable. `readOpeningBaseline` fails CLOSED on a
+  // null rather than defaulting.
   //
   // ⚠️ `CURRENCY` values here are integer MINOR units, and the catalog cannot
   // enforce that: `normalizeSettingValue` routes `CURRENCY` through
@@ -1527,53 +1525,6 @@ export const SETTINGS_CATALOG = {
       'the same export prefills instead of asking again.',
   },
 
-  // ── Manufacturing absorption rates (plans/products/build/01-build-plan.md §1.4) ─────────
-  //
-  // Per-UNIT, not per-hour: the merchant supplies a percentage split of a
-  // payroll total, not timesheets, so there are no routings, work centres or
-  // labour tickets behind these two numbers.
-  //
-  // 🛑 Both SHIP EMPTY (`null`). The actual figures are still open (build
-  // README §5 Q3), and nothing reads them until `rollStandardCost` lands in
-  // phase 1 — at which point a NULL rate must read as "no absorption", never as
-  // zero-by-accident. Scoped GENERAL like the other org-wide operational
-  // numbers; there is no MANUFACTURING value in the `SettingScope` pg enum and
-  // adding one would need a Drizzle migration this phase deliberately does not
-  // carry.
-  //
-  // ⚠️ Conversion cost applies only to a `subassembly` or `finished_good`
-  // (README B11). Applying these rates to a purchased `component` capitalises
-  // labour that was never spent and overstates 1310 Raw Materials.
-  'manufacturing.assemblyLaborCostPerUnit': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'CURRENCY',
-    options: {
-      currencyCode: 'USD',
-      decimals: 2,
-      useGrouping: true,
-      currencyDisplay: 'symbol',
-    },
-    defaultValue: null,
-    description:
-      'Absorbed direct labour per assembled unit, integer minor units: ' +
-      '(annual payroll x assembly%) / expected annual units. Unset = no labour absorption.',
-  },
-  'manufacturing.overheadCostPerUnit': {
-    scope: 'GENERAL',
-    access: 'org',
-    fieldType: 'CURRENCY',
-    options: {
-      currencyCode: 'USD',
-      decimals: 2,
-      useGrouping: true,
-      currencyDisplay: 'symbol',
-    },
-    defaultValue: null,
-    description:
-      'Applied overhead per assembled unit, integer minor units: total annual factory ' +
-      'overhead / expected annual units. Unset = no overhead absorption.',
-  },
   // ⚠️ A FIRST standard only. `ensureStandardCost` writes exclusively where
   // `part_standard_cost IS NULL`, so this can never restate a part that already
   // has a standard: a supplier price change moves `part_cost` (live replacement

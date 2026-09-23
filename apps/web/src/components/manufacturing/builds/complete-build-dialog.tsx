@@ -119,7 +119,7 @@ export function CompleteBuildDialog({
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   // Every component the form has ever seen for this run — see `rememberComponents`.
   const [known, setKnown] = useState<readonly KnownComponent[]>([])
-  // `null` means "take the org rate"; a number is what this run actually absorbed.
+  // `null` means "take the part's rate"; a number is what this run actually absorbed.
   const [laborCost, setLaborCost] = useState<number | null>(null)
   const [overheadCost, setOverheadCost] = useState<number | null>(null)
   const [completedAt, setCompletedAt] = useState<string>(() => new Date().toISOString())
@@ -707,7 +707,7 @@ function ComponentRowInput({
 /**
  * Where the amount in an absorption input came from.
  *
- * The input holds `null` while it is showing the org rate's arithmetic, and
+ * The input holds `null` while it is showing the part rate's arithmetic, and
  * `null` is what gets SENT — the server owns the multiplication. So the number
  * on screen would otherwise be unattributable: a person cannot tell a prefilled
  * figure from one somebody typed, and the difference decides whether editing the
@@ -730,7 +730,7 @@ function AbsorptionOrigin({
   if (rate == null) return null
   return (
     <p className='mt-1 text-muted-foreground text-xs tabular-nums'>
-      {formatCurrency(rate, { currencyCode })} × {formatQuantity(started)} units started (org rate)
+      {formatCurrency(rate, { currencyCode })} × {formatQuantity(started)} units started (part rate)
     </p>
   )
 }

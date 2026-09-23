@@ -101,7 +101,7 @@ Four properties carry the whole design:
 | **`partKind`** | `component` \| `subassembly` \| `finished_good`. Decides the inventory account (`1310` / `1330`) and whether a part is *buildable*. Stored and auditable — deliberately not derived. |
 | **L1 / L3** | The GL posting regime. **L1** = one periodic entry per month asserting inventory balances. **L3** = perpetual per-event postings. Exactly one may drive `1310/1320/1330`. |
 | **Buildable** | `subassembly` or `finished_good`. Only these absorb conversion (labour + overhead) cost. |
-| **Absorption rate** | Labour or overhead per assembled unit. Resolved **per part**: `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` if set, else the org's `manufacturing.*` setting. A stored `0` is a declared "absorbs nothing"; NULL is "no override". Absorbed once per BOM **level**, not once per finished good. |
+| **Absorption rate** | Labour or overhead per assembled unit. **Per part only**: `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`. There is no org-wide default — an empty rate absorbs nothing (stored as NULL); a stored `0` is a declared zero. Absorbed once per BOM **level**, not once per finished good. |
 
 ---
 
@@ -538,28 +538,23 @@ finished-good standard remembers its composition.
    everybody runs first. `revaluationDelta` (old non-NULL: a real restatement, and the only one
    that belongs in the 5090 entry) is summed separately from `initialValue` (old NULL: opening
    balance material).
-5. **The absorption rate is resolved PER PART, and one rate compounds with tree depth.** Because
-   rule 1 sums children's `standardCost` and a child's standard already carries its own conversion
-   cost, a single org-wide rate is absorbed **once per level of the bill of materials** — a
-   finished good over 8 subassemblies carries 9 × the rate. That is arithmetically correct (rule 1
-   requires it, and `completeBuild`'s variance closes to zero when each subassembly is genuinely
-   built) but it is only *meaningful* if the rate describes one assembly operation rather than one
-   finished good. `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` override the org
-   setting per part; `resolveAbsorptionRates` (`inventory/costing/client.ts`) is the single place that choice
-   is made, and it uses **`??`, never `||`** — a stored `0` means "this part absorbs nothing" and
-   `0 || rate` would silently reinstate the org rate on exactly the parts somebody zeroed out.
+5. **The absorption rate is the part's own, and nothing else.** `part_labor_cost_per_unit` /
+   `part_overhead_cost_per_unit` are the only source; an empty cell absorbs nothing and stores NULL
+   (not `0`), a stored `0` is a declared zero. There is no org-wide fallback: the
+   `manufacturing.assemblyLaborCostPerUnit` / `overheadCostPerUnit` settings were removed
+   (2026-09-23) because one flat rate absorbed onto every built part — including bought-in finished
+   goods nobody assembles — and compounded once per BOM level. Because rule 1 sums children's
+   `standardCost`, a child's own absorption still carries up into its parent's material.
 
-   🛑 **All three readers must resolve the same overrides**: the roll, `completeBuild`, and
-   `builds.previewCompletion`. If a part's frozen standard carries an override and its run absorbs
-   the bare org rate, `material + labour + overhead − producedValue` stops closing to zero and the
-   difference lands in **5090 on every completion**, on `updatable: false` rows, with no error
-   raised. `completeBuild` resolves **inside** its transaction, after `lockBuild` names the part —
-   the produced part is not known any earlier, and reading on the transaction handle also keeps the
-   rates on the same snapshot the standard costs came from.
+   🛑 **All three readers must read the same per-part rates**: the roll, `completeBuild`, and
+   `builds.previewCompletion` (both of the latter via `loadPartAbsorptionRates`). If the run absorbs
+   a rate the frozen standard was not rolled from, `material + labour + overhead − producedValue`
+   stops closing to zero and the difference lands in **5090 on every completion**, on
+   `updatable: false` rows. `completeBuild` reads the rates **inside** its transaction, after
+   `lockBuild` names the part, on the same snapshot the standard costs came from.
 
-   ⚠️ An override is still gated on `partKind` (rule 2). It is applied inside the buildable branch,
-   never above it: an override must not become a way to capitalise assembly labour onto a purchased
-   component.
+   ⚠️ A rate is still gated on `partKind` (rule 2): it is read inside the buildable branch, so a
+   rate on a purchased component never capitalises assembly labour.
 
 **Abort vs skip:** a *built* part whose child has no standard **throws**; a part with no inputs
 at all is **skipped and reported** — never written, and above all **never zeroed**, because `0`
@@ -1347,7 +1342,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | --- | --- |
 | `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
 | `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
-| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`resolveAbsorptionRates`, `resolvePartKind`) |
+| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
 | `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
 | `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `backfill.ts`, `write-lane.ts` |

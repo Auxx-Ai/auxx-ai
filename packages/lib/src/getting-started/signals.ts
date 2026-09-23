@@ -220,7 +220,6 @@ const hasAccountingPeriod = (ctx: GettingStartedContext) =>
   settingsRequirementMet(ctx, 'set-accounting-period')
 const hasOpeningBalances = (ctx: GettingStartedContext) =>
   settingsRequirementMet(ctx, 'set-opening-balances')
-const hasCostingRates = (ctx: GettingStartedContext) => settingsRequirementMet(ctx, 'set-costing')
 
 /**
  * The opening trial balance exists and balances.
@@ -352,7 +351,6 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
   },
   accounting: {
     'set-accounting-period': hasAccountingPeriod,
-    'set-costing': hasCostingRates,
     'map-accounts': hasRequiredRoleAssignments,
     'route-payment-rails': hasRoutedPaymentRails,
     'set-opening-balances': hasOpeningBalances,

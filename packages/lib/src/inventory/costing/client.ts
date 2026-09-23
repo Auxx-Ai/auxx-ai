@@ -12,7 +12,6 @@
  */
 
 import { roundMinorUnits } from '@auxx/utils/currency'
-import type { AbsorptionRates } from './types'
 
 /** The three values `part_kind` can hold. Mirrors `PartKind` in the registry. */
 export type PartKindValue = 'component' | 'subassembly' | 'finished_good'
@@ -96,7 +95,7 @@ export function rolledStandardCostSource(
  * 🛑 **A NULL rate means "no absorption declared" and must never read as zero.**
  * The two are numerically indistinguishable once summed, so the distinction is
  * kept in the TYPE and carried all the way into storage: a built part rolled
- * while `manufacturing.assemblyLaborCostPerUnit` is unset stores
+ * with an empty `part_labor_cost_per_unit` stores
  * `part_standard_labor_cost = NULL`, not `0`. A stored `0` then means somebody
  * deliberately declared a zero rate, which is a different (and checkable) claim.
  *
@@ -107,38 +106,6 @@ export function absorbedRate(rate: number | null | undefined): number | null {
   if (rate == null) return null
   if (!Number.isFinite(rate)) return null
   return roundMinorUnits(rate)
-}
-
-/**
- * The two absorption rates in force for ONE part.
- *
- * A stored per-part override wins over the org rate, **including a stored `0`**.
- * A NULL override falls through to the org rate, which may itself be NULL.
- *
- * 🛑 **`??`, never `||`.** A stored `0` means "this part absorbs nothing" — the
- * way a subassembly is made cost-transparent without inventing a `phantom` part
- * kind — and `0 || 2000` is `2000`, which silently reinstates the org rate on
- * exactly the parts somebody took the trouble to zero out. The NULL-versus-zero
- * distinction survives six layers between a CSV cell and this function
- * (`isBlankValue('0')` is false; `currencyConverter` turns `'0'` into
- * `{ value: 0 }` and `''` into `null`; `loadStoredPartValues` keeps a `0` in its
- * map and an unset cell out of it). This operator is the last link in that
- * chain and the only one that is new code.
- *
- * @param orgRates the two `manufacturing.*` settings, per assembled unit
- * @param overrides `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`
- */
-export function resolveAbsorptionRates(
-  orgRates: AbsorptionRates,
-  overrides: {
-    laborCostPerUnit?: number | null
-    overheadCostPerUnit?: number | null
-  }
-): AbsorptionRates {
-  return {
-    laborCostPerUnit: overrides.laborCostPerUnit ?? orgRates.laborCostPerUnit,
-    overheadCostPerUnit: overrides.overheadCostPerUnit ?? orgRates.overheadCostPerUnit,
-  }
 }
 
 export type {

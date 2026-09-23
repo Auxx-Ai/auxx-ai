@@ -7,7 +7,6 @@
 
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { describe, expect, it } from 'vitest'
-import { resolveAbsorptionRates } from '../../costing/client'
 import {
   absorbedRunCost,
   buildVariance,
@@ -145,7 +144,7 @@ describe('the run arithmetic', () => {
 })
 
 describe('absorbedRunCost', () => {
-  it('prefers what the completion form stated over the org rate', () => {
+  it("prefers what the completion form stated over the part's rate", () => {
     expect(absorbedRunCost(4200, 500, 12)).toBe(4200)
   })
 
@@ -189,76 +188,50 @@ describe('summarizeBuildCompletion', () => {
 
   // ── The invariant per-part absorption must not break ────────────────
   //
-  // 🛑 A build's variance closes to exactly ZERO when the rates the RUN absorbs
-  // are the rates the produced part's standard was ROLLED from. That is the
-  // only mechanical check that `completeBuild` and `rollStandardCost` resolved
-  // the same overrides; if they disagree, the gap lands in account 5090 on
-  // every completion, on `updatable: false` rows, and no error is raised.
-  //
-  // `resolveAbsorptionRates` is applied to both sides here exactly as the two
-  // production callers apply it (plans/money/tasks/22 §5a).
+  // 🛑 A build's variance closes to exactly ZERO only when the run absorbs the
+  // same per-part rates the produced part's standard was rolled from.
   describe('closes to zero under per-part absorption', () => {
-    const orgRates = { laborCostPerUnit: 500, overheadCostPerUnit: 200 }
     const materialPerUnit = 7_322
 
-    /**
-     * One run of 10, no scrap, whose produced part was rolled from `effective`.
-     * The standard is built the way the roll builds it: material + absorption.
-     */
-    const runVariance = (overrides: {
-      laborCostPerUnit?: number | null
-      overheadCostPerUnit?: number | null
+    /** One run of 10, no scrap, whose produced part was rolled from `rates`. */
+    const runVariance = (rates: {
+      laborCostPerUnit: number | null
+      overheadCostPerUnit: number | null
     }) => {
-      const effective = resolveAbsorptionRates(orgRates, overrides)
       const standardCost =
-        materialPerUnit + (effective.laborCostPerUnit ?? 0) + (effective.overheadCostPerUnit ?? 0)
+        materialPerUnit + (rates.laborCostPerUnit ?? 0) + (rates.overheadCostPerUnit ?? 0)
 
       return summarizeBuildCompletion({
         components: [{ extendedCost: materialPerUnit * 10 }],
         producedUnitCost: standardCost,
         quantityProduced: 10,
         quantityScrapped: 0,
-        rates: effective,
+        rates,
       }).varianceAmount
     }
 
-    it('with no override — the org rate on both sides', () => {
-      expect(runVariance({})).toBe(0)
+    it('with both rates declared', () => {
+      expect(runVariance({ laborCostPerUnit: 4_500, overheadCostPerUnit: 200 })).toBe(0)
     })
 
-    it('with an override higher than the org rate', () => {
-      expect(runVariance({ laborCostPerUnit: 4_500 })).toBe(0)
-    })
-
-    it('with a ZERO override — the phantom case', () => {
+    it('with a declared ZERO rate', () => {
       expect(runVariance({ laborCostPerUnit: 0, overheadCostPerUnit: 0 })).toBe(0)
     })
 
-    it('with no org rate declared and no override', () => {
-      const effective = resolveAbsorptionRates(
-        { laborCostPerUnit: null, overheadCostPerUnit: null },
-        {}
-      )
-      const summary = summarizeBuildCompletion({
-        components: [{ extendedCost: materialPerUnit * 10 }],
-        producedUnitCost: materialPerUnit,
-        quantityProduced: 10,
-        quantityScrapped: 0,
-        rates: effective,
-      })
-      expect(summary.varianceAmount).toBe(0)
+    it('with no rate declared', () => {
+      expect(runVariance({ laborCostPerUnit: null, overheadCostPerUnit: null })).toBe(0)
     })
 
-    // The failure this whole section exists to catch: the standard carries the
-    // override, the run absorbs the bare org rate. 10 units x ($45.00 - $5.00).
-    it('does NOT close when the run absorbs the org rate but the standard did not', () => {
+    // The failure this section exists to catch: the run absorbs a rate the
+    // standard was not rolled from. 10 units x ($45.00 - $5.00).
+    it('does NOT close when the run absorbs a different rate than the standard', () => {
       const standardCost = materialPerUnit + 4_500 + 200
       const summary = summarizeBuildCompletion({
         components: [{ extendedCost: materialPerUnit * 10 }],
         producedUnitCost: standardCost,
         quantityProduced: 10,
         quantityScrapped: 0,
-        rates: orgRates,
+        rates: { laborCostPerUnit: 500, overheadCostPerUnit: 200 },
       })
       expect(summary.varianceAmount).toBe(-40_000)
     })
