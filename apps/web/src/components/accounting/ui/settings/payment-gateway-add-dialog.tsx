@@ -10,6 +10,7 @@ import {
   type PaymentGatewayRow,
 } from '@auxx/lib/accounting/rails/client'
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
+import { defaultMintFeeAccount } from '@auxx/lib/accounting/rails/rail-groups'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -27,7 +28,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
-import { defaultMintFeeAccount } from '../setup-wizard/wizard-rails-model'
 import { type MappingAccountValue, MINT_ACCOUNT_VALUE } from './mapping-account-select'
 import {
   accountText,

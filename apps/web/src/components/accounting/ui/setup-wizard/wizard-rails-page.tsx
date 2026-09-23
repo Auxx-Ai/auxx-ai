@@ -3,6 +3,15 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { ACCOUNT_ROLES } from '@auxx/lib/accounting/ledger/client'
+import {
+  buildRailGroups,
+  defaultMintFeeAccount,
+  isStaleRail,
+  type RailGroup,
+  type RailGroupState,
+  sharedClearingAccounts,
+  warnsAboutFeeFallback,
+} from '@auxx/lib/accounting/rails/rail-groups'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -17,15 +26,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
-import {
-  buildRailGroups,
-  defaultMintFeeAccount,
-  isStaleRail,
-  type RailGroup,
-  type RailGroupState,
-  sharedClearingAccounts,
-  warnsAboutFeeFallback,
-} from './wizard-rails-model'
 
 const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 
