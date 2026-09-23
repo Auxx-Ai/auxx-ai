@@ -6,15 +6,20 @@
 // - already in parent-before-child order - and sets its identity right after,
 // repoints an already-imported account whose provider row gained a parent
 // (CHART-HIERARCHY §6), assigns the unambiguous roles with `source: 'import'`,
-// then (unless `refreshOnly`) creates the role-bearing core accounts the
-// provider lacks, uncoded and with no identity. `db` first, `Result` from
-// neverthrow, no permission checks: the router asserts `ledgerControl` and calls.
+// then (on a full import) creates the role-bearing core accounts the provider
+// has no candidate for, with no identity. `db` first, `Result` from neverthrow,
+// no permission checks: the caller asserts access.
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { onCacheEvent } from '../../../cache'
-import { AuxxError, UniqueValueConflictError, UnprocessableEntityError } from '../../../errors'
+import {
+  AuxxError,
+  NotFoundError,
+  UniqueValueConflictError,
+  UnprocessableEntityError,
+} from '../../../errors'
 import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../../providers/provider'
 import { readProviderChart } from '../../providers/provider-chart'
 import type { AccountRole } from '../builders/entry'
@@ -26,6 +31,7 @@ import type { GlAccountSubtypeValue } from './account-subtype'
 import { planChartImport } from './chart-import-plan'
 import { createChartAccount, updateChartAccount } from './chart-write'
 import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
+import { type CodedAccount, nextAccountCode } from './next-account-code'
 
 const logger = createScopedLogger('postings:chart-import')
 
@@ -34,6 +40,13 @@ export interface ImportChartOptions {
   actorUserId: string
   /** `true` on the Chart tab's refresh: adds, never creates the missing core. */
   refreshOnly?: boolean
+}
+
+export interface ImportProviderAccountsOptions {
+  organizationId: string
+  actorUserId: string
+  /** The provider's own account ids; unknown ids refuse, inactive ones are skipped. */
+  providerAccountIds: readonly string[]
 }
 
 /** What one call to `createChartAccount` needs, stripped of plan bookkeeping. */
@@ -56,8 +69,45 @@ export async function importChartFromProvider(
   db: Database,
   options: ImportChartOptions
 ): Promise<Result<ChartImportResult, Error>> {
-  const { organizationId, actorUserId, refreshOnly } = options
+  return runImport(db, options.organizationId, options.actorUserId, {
+    mintCore: !options.refreshOnly,
+  })
+}
 
+/**
+ * Import just these provider accounts (plus any unlinked parents they nest
+ * under), link each, and assign the unambiguous roles they carry. Never mints
+ * core accounts; already-linked ids count as `alreadyImported`.
+ */
+export async function importProviderAccounts(
+  db: Database,
+  options: ImportProviderAccountsOptions
+): Promise<Result<ChartImportResult, Error>> {
+  if (options.providerAccountIds.length === 0) return ok(emptyResult())
+  return runImport(db, options.organizationId, options.actorUserId, {
+    mintCore: false,
+    only: new Set(options.providerAccountIds),
+  })
+}
+
+function emptyResult(): ChartImportResult {
+  return {
+    created: 0,
+    alreadyImported: 0,
+    skippedInactive: 0,
+    rolesAssigned: [],
+    rolesAmbiguous: [],
+    coreCreated: [],
+    nestedUnder: 0,
+  }
+}
+
+async function runImport(
+  db: Database,
+  organizationId: string,
+  actorUserId: string,
+  scope: { mintCore: boolean; only?: ReadonlySet<string> }
+): Promise<Result<ChartImportResult, Error>> {
   try {
     const provider = await resolveAccountingProvider(organizationId)
 
@@ -67,10 +117,8 @@ export async function importChartFromProvider(
     if (providerChart.isErr()) return err(providerChart.error)
     const providerAccounts = providerChart.value
 
-    // An empty import is not a success (16 §2.2) - whether because nothing is
-    // connected (the null provider always answers `ok([])`) or because a
-    // connected provider's chart happens to be empty, there is nothing to do
-    // and saying so beats silently reporting zero of everything.
+    // Nothing connected (the null provider answers `ok([])`) and an empty chart
+    // both leave nothing to do, and saying so beats reporting zero of everything.
     if (providerAccounts.length === 0) {
       throw new UnprocessableEntityError(
         provider.id === NONE_PROVIDER_ID
@@ -78,6 +126,17 @@ export async function importChartFromProvider(
           : 'The connected accounting system reports no accounts to import.',
         { organizationId, providerId: provider.id }
       )
+    }
+
+    if (scope.only) {
+      const known = new Set(providerAccounts.map((account) => account.id))
+      const unknown = [...scope.only].filter((id) => !known.has(id))
+      if (unknown.length > 0) {
+        throw new NotFoundError(
+          'The connected accounting system does not report one or more of these accounts.',
+          { organizationId, providerAccountIds: unknown }
+        )
+      }
     }
 
     const [mappings, chart, roleMap] = await Promise.all([
@@ -89,45 +148,39 @@ export async function importChartFromProvider(
     if (chart.isErr()) return err(chart.error)
     if (roleMap.isErr()) return err(roleMap.error)
 
-    const plan = planChartImport(providerAccounts, chart.value, mappings.value, roleMap.value)
+    const plan = planChartImport(providerAccounts, chart.value, mappings.value, roleMap.value, {
+      onlyProviderAccountIds: scope.only,
+    })
 
-    // `providerAccountId -> glAccountId`, seeded with what already existed and
-    // grown as this run creates accounts - a role candidate resolved against a
-    // provider account created moments ago needs to find it here too.
-    const glAccountIdByProviderId = new Map<string, string>(
-      plan.alreadyImported.map((row) => [row.providerAccount.id, row.glAccountId])
-    )
+    // `providerAccountId -> glAccountId` over every existing link, grown as this
+    // run creates accounts, so a child or a role candidate finds its account here.
+    const glAccountIdByProviderId = new Map<string, string>()
+    for (const [glAccountId, providerAccountId] of mappings.value) {
+      glAccountIdByProviderId.set(providerAccountId, glAccountId)
+    }
+    const codedAccounts: CodedAccount[] = [...chart.value]
 
     let created = 0
     let nestedUnder = 0
-    // `plan.create` is already parent-before-child (`topoSortByParent`), so a
-    // parent created earlier in this same loop is already in the map by the
-    // time its child looks it up.
     for (const item of plan.create) {
       const parentId = item.providerParentId
         ? glAccountIdByProviderId.get(item.providerParentId)
         : undefined
       if (parentId) nestedUnder++
-      const glAccountId = await createAccount(db, organizationId, actorUserId, {
-        ...item,
-        parentId,
-      })
-      glAccountIdByProviderId.set(item.providerAccount.id, glAccountId)
+      const account = await createAccount(db, organizationId, actorUserId, { ...item, parentId })
+      glAccountIdByProviderId.set(item.providerAccount.id, account.id)
+      codedAccounts.push(account)
       created++
 
       const mapped = await provider.setAccountMapping({
         orgId: organizationId,
-        glAccountId,
+        glAccountId: account.id,
         providerAccountId: item.providerAccount.id,
         actorUserId,
       })
       if (mapped.isErr()) return err(mapped.error)
     }
 
-    // A refresh's other half of §6: an already-imported account whose provider
-    // row gained a parent gets repointed, resolved through the SAME map -
-    // which by now also holds every account this run just created, so a
-    // parent created moments ago is found too.
     for (const item of plan.reparent) {
       const parentId = glAccountIdByProviderId.get(item.providerParentId)
       if (!parentId) continue
@@ -139,8 +192,7 @@ export async function importChartFromProvider(
         actorUserId,
       })
       if (updated.isErr()) {
-        // Same degradation as `createAccount`'s code collision: a refusal here
-        // (type mismatch, depth) must not abort a refresh after partial writes.
+        // A refusal (type mismatch, depth) must not abort a refresh after partial writes.
         logger.warn('Chart import: reparent refused, left where it was', {
           organizationId,
           glAccountId: item.glAccountId,
@@ -151,11 +203,6 @@ export async function importChartFromProvider(
       nestedUnder++
     }
 
-    // Roles this run can resolve without asking - `source: 'import'`, only for
-    // a role `planChartImport` already filtered to `unmapped`. `ON CONFLICT DO
-    // NOTHING` (inside `insertRoleAssignment`) is what makes this idempotent
-    // against a concurrent editor, the same guarantee `assignSeededRoles` gives
-    // the provisioner.
     const rolesAssigned: AccountRole[] = []
     for (const candidate of plan.roleCandidates) {
       const glAccountId = glAccountIdByProviderId.get(candidate.providerAccountId)
@@ -170,24 +217,22 @@ export async function importChartFromProvider(
       if (inserted) rolesAssigned.push(candidate.role)
     }
 
-    // The role-bearing core accounts QuickBooks lacks (16 DECIDED): created
-    // uncoded, with no identity, `source: 'seed'` - never on a refresh, which
-    // only adds what the provider already has.
     const coreCreated: DefaultChartAccount[] = []
-    if (!refreshOnly) {
+    if (scope.mintCore) {
       for (const account of plan.missingCore) {
         if (!account.role) continue
-        const glAccountId = await createAccount(db, organizationId, actorUserId, {
-          code: null,
+        const minted = await createAccount(db, organizationId, actorUserId, {
+          code: mintedCode(account, codedAccounts),
           name: account.name,
           accountType: account.accountType,
           subtype: account.subtype ?? null,
         })
+        codedAccounts.push(minted)
         const inserted = await insertRoleAssignment(
           db,
           organizationId,
           account.role,
-          glAccountId,
+          minted.id,
           'seed'
         )
         if (inserted) coreCreated.push(account)
@@ -199,6 +244,7 @@ export async function importChartFromProvider(
       alreadyImported: plan.alreadyImported.length,
       skippedInactive: plan.skippedInactive.length,
       rolesAssigned,
+      rolesAmbiguous: plan.ambiguousRoles.map((row) => row.role),
       coreCreated,
       nestedUnder,
     })
@@ -210,21 +256,27 @@ export async function importChartFromProvider(
 }
 
 /**
- * Create one account, falling back to no code on a collision.
- *
- * 🛑 **A duplicated `AcctNum` in the provider's chart must not abort the whole
- * import.** `createChartAccount`'s code gate is check-then-write (`chart-write.ts`);
- * on a collision this creates the account anyway, without the code, and logs a
- * warning naming it - reported to the caller only as one more row under
- * `created`, per brief 16 §2.2, because `ChartImportResult` carries counts, not
- * a list of what went almost right.
+ * The default code when the chart is numbered, else the next free one in its
+ * hundred (`4020` -> `4020-4099`); null for an unnumbered chart or a full band.
+ */
+function mintedCode(account: DefaultChartAccount, chart: readonly CodedAccount[]): string | null {
+  const start = Number(account.code)
+  if (!Number.isInteger(start)) return null
+  const end = Math.floor(start / 100) * 100 + 99
+  const code = nextAccountCode({ start, end, label: `${start}-${end}` }, chart)
+  return code.isOk() ? code.value : null
+}
+
+/**
+ * Create one account, falling back to no code on a collision: a duplicated
+ * provider account number must not abort the whole import.
  */
 async function createAccount(
   db: Database,
   organizationId: string,
   actorUserId: string,
   input: CreateAccountInput
-): Promise<string> {
+): Promise<{ id: string; code: string | null }> {
   const result = await createChartAccount(db, {
     organizationId,
     actorUserId,
@@ -234,7 +286,7 @@ async function createAccount(
     subtype: input.subtype,
     parentId: input.parentId,
   })
-  if (result.isOk()) return result.value.id
+  if (result.isOk()) return result.value
 
   if (input.code && result.error instanceof UniqueValueConflictError) {
     logger.warn('Chart import: code collision, created the account without a code', {
@@ -251,7 +303,7 @@ async function createAccount(
       subtype: input.subtype,
       parentId: input.parentId,
     })
-    if (retried.isOk()) return retried.value.id
+    if (retried.isOk()) return retried.value
     throw retried.error
   }
 
@@ -260,12 +312,9 @@ async function createAccount(
 
 /**
  * Point one role at one account, `ON CONFLICT (organizationId, role) DO
- * NOTHING` - the same upsert-free insert `assignSeededRoles` uses, for the
- * same reason: the unique index that makes the resolver's answer unambiguous
- * is the same index that makes this safe to repeat.
+ * NOTHING`, so it is safe to repeat and against a concurrent editor.
  *
- * @returns whether a row was actually inserted - false means the role was
- * already mapped by the time this ran, and the caller must not count it.
+ * @returns whether a row was inserted - false means the role was already mapped.
  */
 async function insertRoleAssignment(
   db: Database,

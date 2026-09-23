@@ -5,52 +5,54 @@
 // accounts are already somebody's identity and which roles are already mapped,
 // decide what to create, what to skip and which roles can be assigned without
 // asking. No database, no io, client-safe. The writer that executes a plan is
-// `chart-import.ts`. The two tables here are DECLARED, not derived: the
-// subtype inverse is deliberately narrower than the mechanical inverse of
-// `SUBTYPE_PROVIDER_ACCOUNT_TYPES`, and the role match list is short on
-// purpose (revenue is the person's call, 16 §2.2).
+// `chart-import.ts`. Provider-neutral: a provider's own type vocabulary is
+// translated to `subtype` / `roleHint` inside its adapter, never here.
 
-import type { AccountRole } from '../builders/entry'
+import {
+  ACCOUNT_ROLES,
+  type AccountRole,
+  ROLE_ACCOUNT_TYPES,
+  ROLES_WITHOUT_DEFAULT,
+} from '../builders/entry'
 import type { ChartAccountRow, ChartImportPlan, ProviderAccount, RoleAssignmentRow } from '../types'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import { CHART_PACKS } from './default-chart'
 
-/** QuickBooks `AccountType` -> our subtype, where the answer is unambiguous. */
-export const PROVIDER_ACCOUNT_TYPE_SUBTYPE: Readonly<Record<string, GlAccountSubtypeValue>> = {
-  Bank: 'bank',
-  'Accounts Receivable': 'accounts_receivable',
-  'Accounts Payable': 'accounts_payable',
-  'Credit Card': 'credit_card',
-  'Fixed Asset': 'fixed_asset',
-  'Cost of Goods Sold': 'cost_of_goods_sold',
-  // 'Other Current Asset' deliberately absent: Undeposited Funds, prepaids and
-  // Inventory Asset all arrive under it (map-account.ts sends no AccountSubType).
+/** How a role finds its account when the provider gave no unique `roleHint` for it. */
+export interface RoleImportMatch {
+  subtype?: GlAccountSubtypeValue
+  names?: readonly string[]
+  /** Last resort: the only account of the role's classification is the one. */
+  sole?: true
 }
 
 /**
- * How a role finds its account among imported ones. Exactly one hit, or nothing.
- *
- * Every other role is left for the Roles tab. Revenue is deliberately absent:
- * QuickBooks ships `Sales`, `Sales of Product Income`, `Services` and a company
- * adds more, and "which of these is product revenue" is the person's call.
- * Names compare through the same `normName` the suggester uses; a plain name
- * or a fully-qualified one both count.
+ * The fallbacks after the provider's `roleHint`, tried in order: our subtype,
+ * then names (compared through `normName`, plain or fully-qualified), then
+ * `sole`. A role absent here matches on its hint alone.
  */
-export const ROLE_IMPORT_MATCH: Partial<
-  Record<AccountRole, { subtype: GlAccountSubtypeValue } | { names: readonly string[] }>
-> = {
+export const ROLE_IMPORT_MATCH: Readonly<Partial<Record<AccountRole, RoleImportMatch>>> = {
   accounts_receivable: { subtype: 'accounts_receivable' },
   accounts_payable: { subtype: 'accounts_payable' },
   undeposited_funds: { names: ['Undeposited Funds'] },
   sales_tax_payable: { names: ['Sales Tax Payable'] },
   equity_retained_earnings: { names: ['Retained Earnings'] },
-  // 🛑 No `equity_opening_balance` row: the role was deleted on 2026-09-10
-  // because no builder emitted it. `3900 Opening Balance Equity` still arrives
-  // from QuickBooks and still lands in the chart - it just carries no role, so
-  // there is nothing here to match it to.
+  equity_opening_balance: { names: ['Opening Balance Equity'] },
   bad_debt_expense: { names: ['Bad Debt', 'Bad Debts', 'Bad Debt Expense'] },
-  // QuickBooks ships this one by name in every US company.
   discounts_given: { names: ['Discounts given'] },
+  revenue_product: {
+    names: ['Sales', 'Sales of Product Income', 'Product Sales', 'Product Revenue'],
+    // Several unmatched income accounts make this a question, never a minted duplicate.
+    sole: true,
+  },
+  revenue_shipping: {
+    names: ['Shipping Income', 'Shipping Revenue', 'Shipping and Delivery Income'],
+  },
+  revenue_service: { names: ['Services', 'Service Income', 'Service Revenue'] },
+  revenue_returns_allowances: {
+    names: ['Sales Returns and Allowances', 'Returns and Allowances'],
+  },
+  inventory_finished_goods: { subtype: 'inventory' },
 }
 
 /**
@@ -89,10 +91,66 @@ function matchesDeclaredName(account: ProviderAccount, names: readonly string[])
   )
 }
 
-/** The single item matching a predicate, or null when none or several do. */
-function pickOne<T>(items: readonly T[], predicate: (item: T) => boolean): T | null {
-  const hits = items.filter(predicate)
-  return hits.length === 1 ? hits[0]! : null
+interface RoleMatchTier {
+  kind: ChartImportPlan['roleCandidates'][number]['match']
+  test: (account: ProviderAccount) => boolean
+}
+
+type RoleResolution =
+  | { kind: 'none' }
+  | { kind: 'one'; account: ProviderAccount; match: RoleMatchTier['kind'] }
+  | { kind: 'ambiguous'; accounts: ProviderAccount[] }
+
+/**
+ * The first tier with any hit decides; several hits are narrowed by the later
+ * tiers, and whatever is still plural is ambiguous rather than guessed.
+ */
+function resolveRole(
+  pool: readonly ProviderAccount[],
+  tiers: readonly RoleMatchTier[],
+  narrowed = false
+): RoleResolution {
+  const [tier, ...rest] = tiers
+  if (!tier) return narrowed ? { kind: 'ambiguous', accounts: [...pool] } : { kind: 'none' }
+  const hits = pool.filter(tier.test)
+  if (hits.length === 0) return resolveRole(pool, rest, narrowed)
+  if (hits.length === 1) return { kind: 'one', account: hits[0]!, match: tier.kind }
+  return resolveRole(hits, rest, true)
+}
+
+function roleTiers(role: AccountRole): RoleMatchTier[] {
+  const match = ROLE_IMPORT_MATCH[role]
+  const tiers: RoleMatchTier[] = [{ kind: 'hint', test: (a) => a.roleHint === role }]
+  const subtype = match?.subtype
+  if (subtype) tiers.push({ kind: 'subtype', test: (a) => a.subtype === subtype })
+  const names = match?.names
+  if (names) tiers.push({ kind: 'name', test: (a) => matchesDeclaredName(a, names) })
+  if (match?.sole) tiers.push({ kind: 'sole', test: () => true })
+  return tiers
+}
+
+/** The requested ids plus every unlinked, active ancestor they need to nest under. */
+function withUnlinkedAncestors(
+  ids: ReadonlySet<string>,
+  active: readonly ProviderAccount[],
+  isLinked: (providerAccountId: string) => boolean
+): Set<string> {
+  const byId = new Map(active.map((account) => [account.id, account]))
+  const closure = new Set<string>()
+  for (const id of ids) {
+    let current = byId.get(id)
+    while (current && !closure.has(current.id)) {
+      closure.add(current.id)
+      const parent = current.parentId ? byId.get(current.parentId) : undefined
+      current = parent && !isLinked(parent.id) ? parent : undefined
+    }
+  }
+  return closure
+}
+
+export interface PlanChartImportOptions {
+  /** A targeted import: only these provider accounts and their missing parents, never core. */
+  onlyProviderAccountIds?: ReadonlySet<string>
 }
 
 /**
@@ -135,7 +193,8 @@ export function planChartImport(
   providerAccounts: readonly ProviderAccount[],
   existingChart: readonly ChartAccountRow[],
   existingIdentities: ReadonlyMap<string, string>,
-  existingRoles: readonly RoleAssignmentRow[]
+  existingRoles: readonly RoleAssignmentRow[],
+  options: PlanChartImportOptions = {}
 ): ChartImportPlan {
   const glAccountIdByProviderId = new Map<string, string>()
   for (const [glAccountId, providerAccountId] of existingIdentities) {
@@ -150,10 +209,16 @@ export function planChartImport(
     else skippedInactive.push(account)
   }
 
+  const only = options.onlyProviderAccountIds
+  const inScope = only
+    ? withUnlinkedAncestors(only, active, (id) => glAccountIdByProviderId.has(id))
+    : null
+
   const toCreate: ProviderAccount[] = []
   const alreadyImported: ChartImportPlan['alreadyImported'] = []
   const reparent: ChartImportPlan['reparent'] = []
   for (const account of active) {
+    if (inScope && !inScope.has(account.id)) continue
     const glAccountId = glAccountIdByProviderId.get(account.id)
     if (!glAccountId) {
       toCreate.push(account)
@@ -185,40 +250,50 @@ export function planChartImport(
     name: account.name,
     providerParentId: account.parentId,
     accountType: account.classification,
-    subtype: PROVIDER_ACCOUNT_TYPE_SUBTYPE[account.accountType] ?? null,
+    subtype: account.subtype ?? null,
   }))
 
-  // Every candidate for a role - whether already imported or about to be
-  // created - is fair game: both will carry a `gl_account` once the writer is
-  // done, and the plan is made before either happens.
+  // Candidates come from the whole active chart, already imported or about to
+  // be, and only from accounts of the role's own statement classification.
   const stateByRole = new Map(existingRoles.map((row) => [row.role, row.state]))
   const roleCandidates: ChartImportPlan['roleCandidates'] = []
-  for (const role of Object.keys(ROLE_IMPORT_MATCH) as AccountRole[]) {
+  const ambiguousRoles: ChartImportPlan['ambiguousRoles'] = []
+  const contestedRoles = new Set<AccountRole>()
+  for (const role of Object.values(ACCOUNT_ROLES)) {
+    if ((ROLES_WITHOUT_DEFAULT as readonly string[]).includes(role)) continue
     if ((stateByRole.get(role) ?? 'unmapped') !== 'unmapped') continue
 
-    const match = ROLE_IMPORT_MATCH[role]
-    if (!match) continue
-
-    const candidate =
-      'subtype' in match
-        ? pickOne(active, (a) => PROVIDER_ACCOUNT_TYPE_SUBTYPE[a.accountType] === match.subtype)
-        : pickOne(active, (a) => matchesDeclaredName(a, match.names))
-
-    if (candidate) {
-      roleCandidates.push({
-        role,
-        match: 'subtype' in match ? 'subtype' : 'name',
-        providerAccountId: candidate.id,
-      })
+    const pool = active.filter((a) => a.classification === ROLE_ACCOUNT_TYPES[role])
+    const resolution = resolveRole(pool, roleTiers(role))
+    if (resolution.kind === 'none') continue
+    contestedRoles.add(role)
+    if (resolution.kind === 'ambiguous') {
+      ambiguousRoles.push({ role, providerAccountIds: resolution.accounts.map((a) => a.id) })
+      continue
     }
+    // A targeted import assigns roles only to what it brings in.
+    if (inScope && !inScope.has(resolution.account.id)) continue
+    roleCandidates.push({ role, match: resolution.match, providerAccountId: resolution.account.id })
   }
 
-  const resolvedRoles = new Set(roleCandidates.map((candidate) => candidate.role))
-  const missingCore = CHART_PACKS.core.accounts.filter((account) => {
-    if (!account.role) return false
-    if (resolvedRoles.has(account.role)) return false
-    return (stateByRole.get(account.role) ?? 'unmapped') === 'unmapped'
-  })
+  // Minted only where the provider has no candidate at all: an ambiguous role is
+  // a person's question, and a duplicate of an account they already have is no answer.
+  const missingCore = inScope
+    ? []
+    : CHART_PACKS.core.accounts.filter(
+        (account) =>
+          account.role !== undefined &&
+          !contestedRoles.has(account.role) &&
+          (stateByRole.get(account.role) ?? 'unmapped') === 'unmapped'
+      )
 
-  return { create, skippedInactive, alreadyImported, reparent, roleCandidates, missingCore }
+  return {
+    create,
+    skippedInactive: only ? skippedInactive.filter((a) => only.has(a.id)) : skippedInactive,
+    alreadyImported,
+    reparent,
+    roleCandidates,
+    ambiguousRoles,
+    missingCore,
+  }
 }

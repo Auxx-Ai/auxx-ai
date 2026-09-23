@@ -115,6 +115,7 @@ const { readQuickbooksAccountMap, toProviderAccount, resolveDerivedParents } = a
   '../account-map'
 )
 const { planChartImport } = await import('../../../ledger/chart/chart-import-plan')
+const { SUBTYPE_PROVIDER_ACCOUNT_TYPES } = await import('../../suggest-account-identities')
 
 const PARAMS = { organizationId: 'org1', installationId: 'inst1', connectionId: 'conn1' }
 
@@ -302,5 +303,58 @@ describe('toProviderAccount / resolveDerivedParents - the ParentRef fallback', (
       mapped({ id: '2', name: 'Product Income', fullyQualifiedName: 'Sales:Product Income' })
     )!
     expect(resolveDerivedParents([child])[0]?.parentId).toBeNull()
+  })
+})
+
+describe('toProviderAccount - QuickBooks types to the neutral subtype and roleHint', () => {
+  const mapped = (over: Partial<Parameters<typeof toProviderAccount>[0]> = {}) => ({
+    id: '1',
+    name: 'Account',
+    fullyQualifiedName: 'Account',
+    acctNum: null,
+    accountType: 'Income',
+    classification: 'Revenue',
+    active: true,
+    ...over,
+  })
+
+  it.each([
+    ['Income', 'SalesOfProductIncome', 'revenue_product'],
+    ['Income', 'ServiceFeeIncome', 'revenue_service'],
+    ['Income', 'DiscountsRefundsGiven', 'discounts_given'],
+    ['Other Current Asset', 'UndepositedFunds', 'undeposited_funds'],
+    ['Other Current Asset', 'Inventory', 'inventory_finished_goods'],
+    ['Equity', 'OpeningBalanceEquity', 'equity_opening_balance'],
+    ['Equity', 'RetainedEarnings', 'equity_retained_earnings'],
+    ['Other Current Liability', 'SalesTaxPayable', 'sales_tax_payable'],
+    ['Cost of Goods Sold', 'SuppliesMaterialsCogs', 'cogs_product_cost'],
+    ['Cost of Goods Sold', 'CostOfLaborCos', 'cogs_direct_labor'],
+  ])('%s / %s hints %s', (accountType, accountSubType, role) => {
+    expect(toProviderAccount(mapped({ accountType, accountSubType }))?.roleHint).toBe(role)
+  })
+
+  it('hints nothing for a detail type with no single meaning, or none at all', () => {
+    expect(toProviderAccount(mapped({ accountSubType: 'OtherPrimaryIncome' }))?.roleHint).toBeNull()
+    expect(toProviderAccount(mapped({ accountSubType: null }))?.roleHint).toBeNull()
+  })
+
+  it('reads our subtype from the account type, and Inventory from the detail type', () => {
+    expect(toProviderAccount(mapped({ accountType: 'Bank' }))?.subtype).toBe('bank')
+    expect(
+      toProviderAccount(mapped({ accountType: 'Other Current Asset', accountSubType: 'Inventory' }))
+        ?.subtype
+    ).toBe('inventory')
+    expect(
+      toProviderAccount(
+        mapped({ accountType: 'Other Current Asset', accountSubType: 'PrepaidExpenses' })
+      )?.subtype
+    ).toBeNull()
+  })
+
+  it('stamps only subtypes whose provider types the identity suggester also accepts', () => {
+    for (const accountType of Object.values(SUBTYPE_PROVIDER_ACCOUNT_TYPES).flat()) {
+      const subtype = toProviderAccount(mapped({ accountType }))?.subtype
+      if (subtype) expect(SUBTYPE_PROVIDER_ACCOUNT_TYPES[subtype]).toContain(accountType)
+    }
   })
 })

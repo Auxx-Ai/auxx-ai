@@ -4,14 +4,9 @@
 // hands it plain arrays and a map and reads the plan back.
 
 import { describe, expect, it } from 'vitest'
-import { SUBTYPE_PROVIDER_ACCOUNT_TYPES } from '../../../providers/suggest-account-identities'
 import { roleScopeAxis } from '../../builders/entry'
 import type { ChartAccountRow, ProviderAccount, RoleAssignmentRow } from '../../types'
-import {
-  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
-  planChartImport,
-  ROLE_IMPORT_MATCH,
-} from '../chart-import-plan'
+import { planChartImport, ROLE_IMPORT_MATCH } from '../chart-import-plan'
 import { CHART_PACKS } from '../default-chart'
 
 function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
@@ -49,19 +44,6 @@ function roleMap(overrides: Record<string, RoleAssignmentRow['state']> = {}): Ro
 }
 
 const EMPTY_CHART: readonly ChartAccountRow[] = []
-
-describe('PROVIDER_ACCOUNT_TYPE_SUBTYPE is consistent with SUBTYPE_PROVIDER_ACCOUNT_TYPES', () => {
-  it('maps every entry to a subtype whose allowed list contains that provider type', () => {
-    for (const [providerType, subtype] of Object.entries(PROVIDER_ACCOUNT_TYPE_SUBTYPE)) {
-      const allowed = SUBTYPE_PROVIDER_ACCOUNT_TYPES[subtype] ?? []
-      expect(allowed, `${providerType} -> ${subtype}`).toContain(providerType)
-    }
-  })
-
-  it('deliberately omits Other Current Asset', () => {
-    expect(PROVIDER_ACCOUNT_TYPE_SUBTYPE['Other Current Asset']).toBeUndefined()
-  })
-})
 
 describe('create', () => {
   it('turns the provider number into the code, and a missing number into null', () => {
@@ -113,9 +95,9 @@ describe('create', () => {
     ])
   })
 
-  it('stamps classification as accountType and the declared inverse as subtype', () => {
+  it('stamps classification as accountType and the provider-supplied subtype', () => {
     const plan = planChartImport(
-      [providerAccount({ id: 'p1', accountType: 'Bank', classification: 'asset' })],
+      [providerAccount({ id: 'p1', classification: 'asset', subtype: 'bank' })],
       EMPTY_CHART,
       new Map(),
       roleMap()
@@ -126,7 +108,7 @@ describe('create', () => {
     expect(created.subtype).toBe('bank')
   })
 
-  it('leaves the subtype null for an ambiguous provider type', () => {
+  it('leaves the subtype null when the provider supplies none', () => {
     const plan = planChartImport(
       [providerAccount({ id: 'p1', accountType: 'Other Current Asset' })],
       EMPTY_CHART,
@@ -283,6 +265,7 @@ describe('roleCandidates', () => {
           id: 'ar1',
           accountType: 'Accounts Receivable',
           classification: 'asset',
+          subtype: 'accounts_receivable',
         }),
       ],
       EMPTY_CHART,
@@ -300,8 +283,18 @@ describe('roleCandidates', () => {
   it('leaves the role unresolved when two candidates tie', () => {
     const plan = planChartImport(
       [
-        providerAccount({ id: 'ar1', accountType: 'Accounts Receivable', classification: 'asset' }),
-        providerAccount({ id: 'ar2', accountType: 'Accounts Receivable', classification: 'asset' }),
+        providerAccount({
+          id: 'ar1',
+          accountType: 'Accounts Receivable',
+          classification: 'asset',
+          subtype: 'accounts_receivable',
+        }),
+        providerAccount({
+          id: 'ar2',
+          accountType: 'Accounts Receivable',
+          classification: 'asset',
+          subtype: 'accounts_receivable',
+        }),
       ],
       EMPTY_CHART,
       new Map(),
@@ -313,7 +306,14 @@ describe('roleCandidates', () => {
 
   it('never proposes a candidate for a role that is already mapped', () => {
     const plan = planChartImport(
-      [providerAccount({ id: 'ar1', accountType: 'Accounts Receivable', classification: 'asset' })],
+      [
+        providerAccount({
+          id: 'ar1',
+          accountType: 'Accounts Receivable',
+          classification: 'asset',
+          subtype: 'accounts_receivable',
+        }),
+      ],
       EMPTY_CHART,
       new Map(),
       roleMap({ accounts_receivable: 'confirmed' })
@@ -383,7 +383,14 @@ describe('missingCore', () => {
 
   it('excludes a core role a candidate resolved, and one already mapped', () => {
     const plan = planChartImport(
-      [providerAccount({ id: 'ar1', accountType: 'Accounts Receivable', classification: 'asset' })],
+      [
+        providerAccount({
+          id: 'ar1',
+          accountType: 'Accounts Receivable',
+          classification: 'asset',
+          subtype: 'accounts_receivable',
+        }),
+      ],
       EMPTY_CHART,
       new Map(),
       roleMap({ accounts_payable: 'confirmed' })
@@ -392,5 +399,208 @@ describe('missingCore', () => {
     const roles = plan.missingCore.map((a) => a.role)
     expect(roles).not.toContain('accounts_receivable')
     expect(roles).not.toContain('accounts_payable')
+  })
+})
+
+describe('roleHint - the provider-neutral match that comes first', () => {
+  const income = (over: Partial<ProviderAccount>) =>
+    providerAccount({ accountType: 'Income', classification: 'revenue', ...over })
+
+  it('assigns a role to the one account hinted for it, whatever its name', () => {
+    const plan = planChartImport(
+      [income({ id: 'r1', name: 'Webshop', roleHint: 'revenue_product' })],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates).toContainEqual({
+      role: 'revenue_product',
+      match: 'hint',
+      providerAccountId: 'r1',
+    })
+    expect(plan.missingCore.map((a) => a.role)).not.toContain('revenue_product')
+  })
+
+  it('prefers a unique hint over a name match on another account', () => {
+    const plan = planChartImport(
+      [
+        income({ id: 'hinted', name: 'Webshop', roleHint: 'revenue_product' }),
+        income({ id: 'named', name: 'Sales' }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates.find((c) => c.role === 'revenue_product')?.providerAccountId).toBe(
+      'hinted'
+    )
+  })
+
+  it('leaves two hinted accounts ambiguous, and mints no duplicate for the role', () => {
+    const plan = planChartImport(
+      [
+        income({ id: 'r1', name: 'Retail', roleHint: 'revenue_product' }),
+        income({ id: 'r2', name: 'Wholesale', roleHint: 'revenue_product' }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates.some((c) => c.role === 'revenue_product')).toBe(false)
+    expect(plan.ambiguousRoles).toContainEqual({
+      role: 'revenue_product',
+      providerAccountIds: ['r1', 'r2'],
+    })
+    expect(plan.missingCore.map((a) => a.role)).not.toContain('revenue_product')
+  })
+
+  it('narrows several hinted accounts by name', () => {
+    const plan = planChartImport(
+      [
+        income({ id: 'd1', name: 'Discounts given', roleHint: 'discounts_given' }),
+        income({ id: 'd2', name: 'Refunds', roleHint: 'discounts_given' }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates).toContainEqual({
+      role: 'discounts_given',
+      match: 'name',
+      providerAccountId: 'd1',
+    })
+  })
+
+  it('ignores a hint on an account of the wrong classification', () => {
+    const plan = planChartImport(
+      [providerAccount({ id: 'x1', classification: 'asset', roleHint: 'revenue_product' })],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates.some((c) => c.role === 'revenue_product')).toBe(false)
+  })
+
+  it('assigns a non-core role from its hint alone', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({
+          id: 'inv',
+          name: 'Inventory Asset',
+          accountType: 'Other Current Asset',
+          subtype: 'inventory',
+          roleHint: 'inventory_finished_goods',
+        }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates).toContainEqual({
+      role: 'inventory_finished_goods',
+      match: 'hint',
+      providerAccountId: 'inv',
+    })
+  })
+})
+
+describe('revenue_product - never a duplicate of an income account the provider has', () => {
+  const income = (over: Partial<ProviderAccount>) =>
+    providerAccount({ accountType: 'Income', classification: 'revenue', ...over })
+
+  it('takes the only income account when nothing names it', () => {
+    const plan = planChartImport(
+      [income({ id: 'only', name: 'Revenue' })],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.roleCandidates).toContainEqual({
+      role: 'revenue_product',
+      match: 'sole',
+      providerAccountId: 'only',
+    })
+  })
+
+  it('asks rather than mints when several unnamed income accounts exist', () => {
+    const plan = planChartImport(
+      [income({ id: 'a', name: 'Online' }), income({ id: 'b', name: 'Retail' })],
+      EMPTY_CHART,
+      new Map(),
+      roleMap()
+    )
+
+    expect(plan.ambiguousRoles.map((r) => r.role)).toContain('revenue_product')
+    expect(plan.missingCore.map((a) => a.role)).not.toContain('revenue_product')
+  })
+
+  it('still mints the core account when the provider has no income account at all', () => {
+    const plan = planChartImport([providerAccount()], EMPTY_CHART, new Map(), roleMap())
+
+    expect(plan.missingCore.map((a) => a.role)).toContain('revenue_product')
+  })
+})
+
+describe('onlyProviderAccountIds - a targeted import', () => {
+  it('creates only the requested accounts plus their unlinked parents, parent first', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({ id: 'grand', name: 'Assets' }),
+        providerAccount({ id: 'parent', name: 'Banks', parentId: 'grand' }),
+        providerAccount({ id: 'child', name: 'Checking', parentId: 'parent' }),
+        providerAccount({ id: 'other', name: 'Savings' }),
+      ],
+      EMPTY_CHART,
+      new Map([['gl_grand', 'grand']]),
+      roleMap(),
+      { onlyProviderAccountIds: new Set(['child']) }
+    )
+
+    expect(plan.create.map((c) => c.providerAccount.id)).toEqual(['parent', 'child'])
+    expect(plan.alreadyImported).toEqual([])
+    expect(plan.missingCore).toEqual([])
+  })
+
+  it('assigns roles only to accounts in scope', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({ id: 'uf', name: 'Undeposited Funds' }),
+        providerAccount({
+          id: 'ar',
+          classification: 'asset',
+          subtype: 'accounts_receivable',
+          roleHint: 'accounts_receivable',
+        }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap(),
+      { onlyProviderAccountIds: new Set(['uf']) }
+    )
+
+    expect(plan.roleCandidates.map((c) => c.role)).toEqual(['undeposited_funds'])
+  })
+
+  it('reports a requested inactive account as skipped, and ignores the rest', () => {
+    const plan = planChartImport(
+      [
+        providerAccount({ id: 'dead', active: false }),
+        providerAccount({ id: 'dead2', active: false }),
+      ],
+      EMPTY_CHART,
+      new Map(),
+      roleMap(),
+      { onlyProviderAccountIds: new Set(['dead']) }
+    )
+
+    expect(plan.create).toEqual([])
+    expect(plan.skippedInactive.map((a) => a.id)).toEqual(['dead'])
   })
 })

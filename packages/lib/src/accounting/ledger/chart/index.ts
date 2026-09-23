@@ -16,9 +16,13 @@ export {
   sortChartTree,
 } from './account-tree'
 // ── plans/accounting/tasks/16: the chart import ─────────────────────────────
-export { type ImportChartOptions, importChartFromProvider } from './chart-import'
 export {
-  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
+  type ImportChartOptions,
+  type ImportProviderAccountsOptions,
+  importChartFromProvider,
+  importProviderAccounts,
+} from './chart-import'
+export {
   planChartImport,
   ROLE_IMPORT_MATCH,
 } from './chart-import-plan'
