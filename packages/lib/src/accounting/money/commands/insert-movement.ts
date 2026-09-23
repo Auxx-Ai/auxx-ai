@@ -30,6 +30,8 @@ export interface InsertMovementInput {
   workOrderInstanceId?: string | null
   /** Defaults to USD/2; the posters still refuse anything else (task 71 §2 Q5). */
   currency?: { code: string; exponent: number }
+  /** Adopted from the provider's ledger (102 D1): the movement never posts. */
+  providerLedgerEntryId?: string | null
 }
 
 /** One `MoneyTransaction` row, validated. The caller writes the application or settlement. */
@@ -66,6 +68,7 @@ export async function insertMovement(
       note: input.note?.trim() || null,
       quoteInstanceId: input.quoteInstanceId ?? null,
       workOrderInstanceId: input.workOrderInstanceId ?? null,
+      providerLedgerEntryId: input.providerLedgerEntryId ?? null,
     })
     .returning()
   if (!money) throw new Error('Money transaction insert returned no row')

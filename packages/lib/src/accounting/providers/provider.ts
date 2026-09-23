@@ -122,6 +122,21 @@ export interface SendObjectEcho {
   remoteVersion: string | null
 }
 
+/** One transaction in the provider's ledger, as the mirror keys it. */
+export interface ProviderTransactionRef {
+  /** The report label verbatim (`'Payment'`, `'Deposit'`), as `ProviderLedgerEntry` stores it. */
+  txnType: string
+  txnId: string
+}
+
+/** See {@link AccountingProvider.readTransactionLinks}. */
+export interface ProviderTransactionLinks {
+  /** The transactions this one names: the Invoice a Payment paid, the Payments a Deposit carries. */
+  linked: ProviderTransactionRef[]
+  /** A Deposit's lines coded straight to an account rather than depositing a payment. */
+  codedLines: Array<{ providerAccountId: string; amountMinor: number }>
+}
+
 /** What to look for. Both halves are supplied because no provider offers both. */
 export interface ReadObjectRef {
   objectType: string
@@ -324,6 +339,16 @@ export interface AccountingProvider {
    * what keeps the queue and the posting drawer provider-neutral.
    */
   objectUrl?(ref: { objectType: string; externalId: string }): string | null
+
+  /**
+   * What one provider-authored transaction links to (brief 102 M3): the invoice a payment paid,
+   * the payments a deposit carries, the accounts a deposit's coded lines credit. Optional, and
+   * its absence is the capability; `null` for a transaction type it cannot read.
+   */
+  readTransactionLinks?(
+    orgId: string,
+    ref: ProviderTransactionRef
+  ): Promise<Result<ProviderTransactionLinks | null, Error>>
 
   /**
    * Create the counterpart of one of OUR accounts in the provider's own chart -

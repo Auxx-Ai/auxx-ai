@@ -49,6 +49,8 @@ export interface RecordInvoicePaymentInput {
    * returns the first run's ids instead of recording the payment twice.
    */
   commandKey: string
+  /** Adopted from the provider's ledger (102 D1): recorded here, posted there, never twice. */
+  providerLedgerEntryId?: string
 }
 
 export interface RecordInvoicePaymentResult extends Record<string, string> {
@@ -135,6 +137,9 @@ export async function recordInvoicePayment(
         method: input.method,
         paymentGatewayId,
         bankAccountInstanceId,
+        ...(input.providerLedgerEntryId
+          ? { providerLedgerEntryId: input.providerLedgerEntryId }
+          : {}),
       },
     },
     async (tx, commandId) => {
@@ -159,6 +164,7 @@ export async function recordInvoicePayment(
         method: input.method,
         reference: input.reference,
         note: input.note,
+        providerLedgerEntryId: input.providerLedgerEntryId,
       })
 
       const application = await insertApplication(tx, input.organizationId, commandId, {

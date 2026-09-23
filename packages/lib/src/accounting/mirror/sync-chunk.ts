@@ -18,7 +18,10 @@
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
 import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { PeriodLock } from '../ledger/periods/periods'
+import { assessProviderMatches } from '../provider-matches/assess'
+import type { AccountingProvider } from '../providers/provider'
 import type {
   OurEntryCheck,
   ProviderLedger,
@@ -29,6 +32,8 @@ import { groupProviderLedgerEntries, planProviderSync } from './plan'
 import { readOurPostedEntries } from './reads'
 import { translateMirrorRange } from './translate'
 import { type OurLedgerIdentity, upsertMirrorChunk } from './writes'
+
+const logger = createScopedLogger('postings:provider-sync')
 
 /** One entry the sync wants to write into a month our own lock has closed. */
 export interface DeferredEntry {
@@ -83,6 +88,8 @@ export interface ChunkContext {
   glAccountIdByProviderId: ReadonlyMap<string, string>
   lock: PeriodLock
   providerId: string
+  /** Reads what a provider transaction links to, for the matcher (brief 102). */
+  provider?: AccountingProvider
   actorUserId?: string
 }
 
@@ -136,6 +143,28 @@ export async function syncOneChunk(
     actorUserId: ctx.actorUserId,
   })
   if (translated.isErr()) throw translated.error
+
+  // Matching never fails the chunk: an entry it could not read is assessed on the next run.
+  if (ctx.provider) {
+    const matched = await assessProviderMatches(db, organizationId, {
+      bookId: ctx.bookId,
+      from: ledger.from,
+      to: ledger.to,
+      provider: ctx.provider,
+      glAccountIdByProviderId: ctx.glAccountIdByProviderId,
+      actorUserId: ctx.actorUserId,
+    })
+    if (matched.isErr())
+      logger.warn('Provider match assessment failed', {
+        organizationId,
+        error: matched.error.message,
+      })
+    else if (matched.value.failures.length > 0)
+      logger.warn('Provider transactions could not be read for matching', {
+        organizationId,
+        failures: matched.value.failures,
+      })
+  }
 
   return {
     from: plan.value.from,

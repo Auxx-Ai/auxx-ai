@@ -244,6 +244,59 @@ describe('resolving one of their entries into our lines', () => {
     expect(message).toContain('888')
   })
 
+  it('names the customer on every line whose provider customer is one of our contacts', () => {
+    const [entry] = groupProviderLedgerEntries([
+      line({
+        txnType: 'Payment',
+        txnId: '401',
+        providerAccountId: '35',
+        debitMinor: 10000,
+        customerId: 'c1',
+      }),
+      line({
+        txnType: 'Payment',
+        txnId: '401',
+        providerAccountId: '41',
+        creditMinor: 10000,
+        customerId: 'c1',
+      }),
+    ])
+    const lines = resolveProviderSyncLines(
+      entry!,
+      mapped,
+      new Map([['c1', 'contact_1']])
+    )._unsafeUnwrap()
+    for (const posted of lines) {
+      expect(posted.counterpartyType).toBe('customer')
+      expect(posted.counterpartyId).toBe('contact_1')
+    }
+  })
+
+  it('posts without a counterparty when the provider customer has no contact of ours', () => {
+    const [entry] = groupProviderLedgerEntries([
+      line({
+        txnType: 'Payment',
+        txnId: '402',
+        providerAccountId: '35',
+        debitMinor: 100,
+        customerId: 'c9',
+      }),
+      line({
+        txnType: 'Payment',
+        txnId: '402',
+        providerAccountId: '41',
+        creditMinor: 100,
+        customerId: 'c9',
+      }),
+    ])
+    const lines = resolveProviderSyncLines(
+      entry!,
+      mapped,
+      new Map([['c1', 'contact_1']])
+    )._unsafeUnwrap()
+    for (const posted of lines) expect(posted.counterpartyId).toBeUndefined()
+  })
+
   it('drops a zero LEG rather than refusing the transaction over it', () => {
     const [entry] = groupProviderLedgerEntries([
       line({ txnType: 'Check', txnId: '10', providerAccountId: '41', debitMinor: 5000 }),
