@@ -58,6 +58,8 @@ import type {
   CreateProviderAccountResult,
   ProviderAccountCreator,
   ProviderObjectContext,
+  ProviderTransactionLinks,
+  ProviderTransactionRef,
   ReadObjectRef,
   ReadObjectResult,
   SendObjectInput,
@@ -86,6 +88,7 @@ import * as refundReceiptObject from './objects/refund-receipt'
 import { errorMessage, norm, QUICKBOOKS_PROVIDER_ID, resolveMappedAccounts } from './objects/shared'
 import * as vendorCreditObject from './objects/vendor-credit'
 import { type QuickbooksBatchObject, sendQuickbooksObjects } from './send-objects'
+import { TRANSACTION_LINK_READERS } from './transaction-links'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
 
@@ -582,6 +585,25 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
    * `null` for an object type this map does not know - which today is never,
    * since every `EXPORT_OBJECT_TYPES` member has a path above.
    */
+  async readTransactionLinks(
+    orgId: string,
+    ref: ProviderTransactionRef
+  ): Promise<Result<ProviderTransactionLinks | null, Error>> {
+    const read = TRANSACTION_LINK_READERS[ref.txnType]
+    if (!read) return ok(null)
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok(null)
+    try {
+      return ok(await read(resolved.context, ref.txnId))
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read QuickBooks ${ref.txnType} ${ref.txnId}: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
   objectUrl(ref: { objectType: string; externalId: string }): string | null {
     const path = OBJECT_URL_PATH[ref.objectType]
     if (!path) return null

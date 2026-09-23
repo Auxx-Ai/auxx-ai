@@ -9,7 +9,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { listWorkItemsForSource, type WorkItemRow } from '../work-items/reads'
@@ -46,6 +46,8 @@ export async function listMovementAccountingCandidates(
 ): Promise<Array<{ id: string; purpose: MovementPurpose }>> {
   const conditions = [
     eq(schema.MoneyTransaction.organizationId, organizationId),
+    // Adopted from the provider's ledger (102 D1): their entry is its posting.
+    isNull(schema.MoneyTransaction.providerLedgerEntryId),
     sql`NOT EXISTS (SELECT 1 FROM ${schema.GlPostingSource} link
         WHERE link."organizationId" = ${organizationId}
         AND link."sourceKind" = 'money_transaction'
@@ -117,6 +119,9 @@ export async function postBlockedMovement(
 ): Promise<MovementPostingResult> {
   const money = await readMovement(db, input.organizationId, input.moneyTransactionId)
   if (!money) throw new NotFoundError('That movement does not exist')
+  // Adopted from the provider's ledger (102 D1): their entry is its posting.
+  if (money.providerLedgerEntryId)
+    return { status: 'skipped', reason: 'Posted in the connected books' }
   const post = await resolvePoster(db, input.organizationId, money)
   return post(db, input)
 }

@@ -27,10 +27,12 @@ import { isPeriodLocked, type PeriodLock, periodMonth } from '../ledger/periods/
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry } from '../ledger/post/post-entry'
 import { reverseEntry } from '../ledger/post/reverse-entry'
+import type { GlPostingLineInput, GlPostingSourceInput } from '../ledger/types'
 import type { ProviderSyncRange } from './client'
 import { PROVIDER_LEDGER_SOURCE_KIND, PROVIDER_SYNC_POSTING_TYPE } from './client'
 import { guard } from './guard'
 import { resolveProviderSyncLines } from './plan'
+import { resolveProviderCustomers } from './provider-customers'
 import { type MirrorEntry, readMirrorForTranslation } from './reads'
 import type { DeferredEntry } from './sync-chunk'
 
@@ -93,6 +95,15 @@ export async function translateMirrorRange(
     refusals: [],
   }
 
+  const contactByProviderCustomerId = await resolveProviderCustomers(
+    db,
+    organizationId,
+    input.providerId,
+    read.value.flatMap((entry) =>
+      entry.lines.flatMap((line) => (line.customerId ? [line.customerId] : []))
+    )
+  )
+
   for (const entry of read.value) {
     // §7.2. Reported, never reopened - the accountant's December adjusting
     // entry arriving in February is the case this whole feature exists for, and
@@ -147,7 +158,8 @@ export async function translateMirrorRange(
         totalCreditMinor,
         balanced: true,
       },
-      input.glAccountIdByProviderId
+      input.glAccountIdByProviderId,
+      contactByProviderCustomerId
     )
     if (lines.isErr()) {
       outcome.refusals.push(lines.error.message)
@@ -190,6 +202,7 @@ export async function translateMirrorRange(
       lock: input.lock,
       sources: [
         { sourceKind: PROVIDER_LEDGER_SOURCE_KIND, sourceId: entry.id, linkRole: 'subject' },
+        ...entryCounterparty(lines.value),
       ],
     })
 
@@ -227,4 +240,13 @@ function deferred(entry: MirrorEntry, action: DeferredEntry['action']): Deferred
     totalMinor: entry.lines.reduce((total, line) => total + line.debitMinor, 0),
     action,
   }
+}
+
+/** The contact the entry's ledger card lists it under: only when its lines name exactly one. */
+function entryCounterparty(lines: readonly GlPostingLineInput[]): GlPostingSourceInput[] {
+  const contacts = new Set(
+    lines.flatMap((line) => (line.counterpartyId ? [line.counterpartyId] : []))
+  )
+  if (contacts.size !== 1) return []
+  return [{ sourceKind: 'contact', sourceId: [...contacts][0]!, linkRole: 'counterparty' }]
 }

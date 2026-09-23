@@ -21,7 +21,7 @@ import { FieldType } from '@auxx/database/enums'
 import { cn } from '@auxx/ui/lib/utils'
 import type { ReactNode, RefObject } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import type { RecordId } from '~/components/resources'
+import { type RecordId, useRecord } from '~/components/resources'
 import { useSystemField } from '~/components/resources/hooks/use-field'
 
 export interface PartCellProps {
@@ -78,6 +78,10 @@ export function PartCell({
   className,
 }: PartCellProps) {
   const partField = useSystemField(partAttribute)
+  const { record: part } = useRecord({
+    recordId: partRecordId,
+    enabled: readOnly && !!partRecordId,
+  })
 
   if (editor != null) return <>{editor}</>
 
@@ -85,8 +89,7 @@ export function PartCell({
     return (
       <div className={cn('flex min-w-0 flex-1 items-center gap-1.5 py-1', className)}>
         <span className='min-w-0 truncate px-1 text-sm'>
-          {partField?.label ?? 'Part'}
-          {partRecordId ? '' : ' -'}
+          {partRecordId ? (part?.displayName ?? '…') : '-'}
         </span>
         {chips}
       </div>

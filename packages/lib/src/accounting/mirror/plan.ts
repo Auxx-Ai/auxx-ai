@@ -276,7 +276,9 @@ export function invertAccountMap(
  */
 export function resolveProviderSyncLines(
   entry: ProviderLedgerEntry,
-  glAccountIdByProviderId: ReadonlyMap<string, string>
+  glAccountIdByProviderId: ReadonlyMap<string, string>,
+  /** `providerCustomerId -> contact id`; a customer with no contact of ours posts without one. */
+  contactByProviderCustomerId: ReadonlyMap<string, string> = new Map()
 ): Result<GlPostingLineInput[], Error> {
   const unmapped: string[] = []
   const malformed: string[] = []
@@ -311,6 +313,7 @@ export function resolveProviderSyncLines(
       sourceType: PROVIDER_SYNC_SOURCE_TYPE,
       sourceId: entry.txnId,
       sortOrder: index,
+      ...counterpartyOf(line, contactByProviderCustomerId),
     })
   })
 
@@ -510,6 +513,14 @@ function union(a: ReadonlyMap<string, Sides>, b: ReadonlyMap<string, Sides>): st
 function ourAccountName(line: OurPostedLine): string {
   const label = accountLabel({ code: line.accountCode, name: line.accountName ?? '' })
   return label || line.glAccountId
+}
+
+function counterpartyOf(
+  line: ProviderLedgerLine,
+  contactByProviderCustomerId: ReadonlyMap<string, string>
+): Pick<GlPostingLineInput, 'counterpartyType' | 'counterpartyId'> {
+  const contactId = line.customerId ? contactByProviderCustomerId.get(line.customerId) : undefined
+  return contactId ? { counterpartyType: 'customer', counterpartyId: contactId } : {}
 }
 
 /** `glAccountId -> label`, harvested from the lines we already hold, for refusals. */

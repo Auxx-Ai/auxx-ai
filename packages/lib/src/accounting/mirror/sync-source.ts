@@ -51,7 +51,11 @@ import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import type { PeriodLock } from '../ledger/periods/periods'
 import { OPENING_BASELINE_SETTING_KEYS } from '../ledger/setup/setup-readiness'
 import { readActiveBookCompanyId } from '../providers/book-connections'
-import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../providers/provider'
+import {
+  type AccountingProvider,
+  NONE_PROVIDER_ID,
+  resolveAccountingProvider,
+} from '../providers/provider'
 import type { ProviderLedgerSlicer, ProviderSyncRange } from './client'
 import { recordProviderSyncedThrough } from './marker-writes'
 import { invertAccountMap } from './plan'
@@ -125,6 +129,7 @@ class ProviderLedgerSyncSource implements SyncSource {
       range: ProviderSyncRange
       slicer: ProviderLedgerSlicer
       providerId: string
+      provider: AccountingProvider
       providerTenantId: string | null
       bookId: string
       lock: PeriodLock
@@ -210,6 +215,7 @@ class ProviderLedgerSyncSource implements SyncSource {
       glAccountIdByProviderId: this.deps.glAccountIdByProviderId,
       lock: this.deps.lock,
       providerId: this.deps.providerId,
+      provider: this.deps.provider,
       actorUserId: this.deps.actorUserId,
     })
     this.chunks.push(outcome)
@@ -340,6 +346,7 @@ export async function createProviderLedgerSyncSource(
     range,
     slicer: provider.ledgerSlicer(),
     providerId: provider.id,
+    provider,
     providerTenantId: await readActiveBookCompanyId(db, organizationId),
     bookId: book.value,
     lock,

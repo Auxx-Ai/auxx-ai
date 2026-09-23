@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from './_shared'
 import { EntityInstance } from './entity-instance'
 import { MoneyCommand } from './money-command'
@@ -66,6 +67,11 @@ export const MoneyTransaction = pgTable(
      * funds.
      */
     bankDepositInstanceId: text(),
+    /**
+     * Brief 102 D1: the provider-authored mirror entry this movement was adopted from. Set, the
+     * movement never posts — their `provider_sync` posting is its ledger entry.
+     */
+    providerLedgerEntryId: text(),
   },
   (t) => [
     unique('MoneyTransaction_org_id_key').on(t.organizationId, t.id),
@@ -76,6 +82,10 @@ export const MoneyTransaction = pgTable(
     // FK checks when a contact or a bank account record is deleted, and the by-party reads.
     index('MoneyTransaction_party_idx').on(t.organizationId, t.partyInstanceId),
     index('MoneyTransaction_cash_account_idx').on(t.organizationId, t.cashAccountInstanceId),
+    uniqueIndex('MoneyTransaction_provider_entry_key').on(
+      t.organizationId,
+      t.providerLedgerEntryId
+    ),
     foreignKey({
       name: 'MoneyTransaction_partyInstanceId_fk',
       columns: [t.organizationId, t.partyInstanceId],

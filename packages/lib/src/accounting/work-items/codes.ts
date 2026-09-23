@@ -16,6 +16,7 @@ export const WORK_ITEM_SOURCE_KINDS = [
   'credit_memo',
   'payout',
   'financial_source_acceptance',
+  'provider_ledger_entry',
 ] as const
 export type WorkItemSourceKind = (typeof WORK_ITEM_SOURCE_KINDS)[number]
 
@@ -208,6 +209,12 @@ export const WORK_ITEM_CODES = {
     status: 'rejected',
     sentence: (item) =>
       detailText(item, 'message') ?? 'The source transaction carries no usable identity or amount.',
+  },
+  PROVIDER_DUPLICATE: {
+    severity: 'warning',
+    status: 'warning',
+    sentence: (item) =>
+      `${item.externalRef ?? 'A transaction'} in the connected books duplicates one we sent. Delete it there; the next sync reverses its copy here.`,
   },
   REFUND_EXCEEDS_MEMO: {
     severity: 'warning',

@@ -275,6 +275,8 @@ export async function readMirrorForTranslation(
           direction: schema.ProviderLedgerLine.direction,
           amountMinor: schema.ProviderLedgerLine.amountMinor,
           memo: schema.ProviderLedgerLine.memo,
+          providerCustomerId: schema.ProviderLedgerLine.providerCustomerId,
+          providerVendorId: schema.ProviderLedgerLine.providerVendorId,
         })
         .from(schema.ProviderLedgerLine)
         .where(inArray(schema.ProviderLedgerLine.entryId, ids))
@@ -303,6 +305,8 @@ export async function readMirrorForTranslation(
           creditMinor: row.direction === 'credit' ? amount : 0,
           docNumber: entry.docNumber,
           memo: row.memo,
+          customerId: row.providerCustomerId,
+          vendorId: row.providerVendorId,
         })
         linesByEntry.set(row.entryId, lines)
       }

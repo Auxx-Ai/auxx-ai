@@ -124,6 +124,8 @@ export async function upsertMirrorChunk(
             direction: (line.debitMinor > 0 ? 'debit' : 'credit') as 'debit' | 'credit',
             amountMinor: line.debitMinor > 0 ? line.debitMinor : line.creditMinor,
             memo: line.memo,
+            providerCustomerId: line.customerId ?? null,
+            providerVendorId: line.vendorId ?? null,
             sortOrder: index,
             raw: line as unknown as Record<string, unknown>,
           }))

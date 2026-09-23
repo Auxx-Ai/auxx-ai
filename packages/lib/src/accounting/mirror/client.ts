@@ -82,6 +82,12 @@ export interface ProviderLedgerLine {
   creditMinor: number
   docNumber: string | null
   memo: string | null
+  /** The provider's customer on this line. Optional: an app deployed before the column omits it. */
+  customerId?: string | null
+  /** The provider's vendor on this line. */
+  vendorId?: string | null
+  /** The provider's cleared status verbatim (QuickBooks: `R` reconciled, `C` cleared). */
+  cleared?: string | null
 }
 
 /**

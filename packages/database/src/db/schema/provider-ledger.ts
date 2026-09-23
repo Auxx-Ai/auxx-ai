@@ -12,6 +12,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  sql,
   text,
   timestamp,
   uniqueIndex,
@@ -55,6 +56,19 @@ export const ProviderLedgerEntry = pgTable(
      * row being deleted (decision G4).
      */
     withdrawnAt: timestamp({ precision: 3 }),
+    /**
+     * Brief 102: an `author: 'provider'` entry matched to a record of ours. Null until the matcher
+     * assessed it; the union is mirrored in `@auxx/lib` `accounting/provider-matches/client.ts`.
+     */
+    matchState: text().$type<'pending' | 'suggested' | 'matched' | 'unmatchable'>(),
+    matchReason: text(),
+    /** `money_transaction` | `money_transfer` — what `matchedId` names. */
+    matchedKind: text(),
+    /** The match when `matched`, the candidate when `suggested`. */
+    matchedId: text(),
+    /** User id when a person accepted or matched; null for the matcher. */
+    matchedBy: text(),
+    matchedAt: timestamp({ precision: 3 }),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 }).defaultNow().notNull(),
   },
@@ -67,6 +81,10 @@ export const ProviderLedgerEntry = pgTable(
     ),
     index('ProviderLedgerEntry_range_idx').on(table.organizationId, table.bookId, table.txnDate),
     index('ProviderLedgerEntry_author_idx').on(table.organizationId, table.bookId, table.author),
+    index('ProviderLedgerEntry_open_match_idx')
+      .on(table.organizationId, table.matchState)
+      .where(sql`${table.matchState} IN ('pending', 'suggested', 'unmatchable')`),
+    index('ProviderLedgerEntry_matched_idx').on(table.organizationId, table.matchedId),
   ]
 )
 

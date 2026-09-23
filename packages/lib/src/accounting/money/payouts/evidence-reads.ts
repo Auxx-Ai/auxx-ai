@@ -708,7 +708,13 @@ async function membershipEntries(
     .limit(2)
   const parsed =
     coverage.length === 1 ? coverageSchema.safeParse(coverage[0]!.fetchedBoundary) : null
-  if (!parsed?.success) return { items: [], nextCursor: null }
+  // No committed membership (none, or an acquisition still pending with no pages): list the
+  // stored items the header's count and the matcher read.
+  if (!parsed?.success || parsed.data.pageObservations.length === 0)
+    return currentEntries(db, {
+      ...input,
+      scope: { sourceAccountId: transfer.sourceAccountId, payoutExternalId: transfer.externalId },
+    })
   const boundary = parsed.data
   const pages = [...boundary.pageObservations].sort((a, b) => a.index - b.index)
   const cursor = input.cursor ? membershipCursor(input.cursor) : null
@@ -822,6 +828,16 @@ export async function listProcessorBalanceEntries(
   input: PageInput & { unassignedOnly?: boolean; transferId?: string }
 ) {
   if (input.transferId) return membershipEntries(db, { ...input, transferId: input.transferId })
+  return currentEntries(db, input)
+}
+
+async function currentEntries(
+  db: Database,
+  input: PageInput & {
+    unassignedOnly?: boolean
+    scope?: { sourceAccountId: string; payoutExternalId: string }
+  }
+) {
   const limit = pageSize(input.limit)
   const rows = await db
     .select({
@@ -848,6 +864,12 @@ export async function listProcessorBalanceEntries(
       and(
         eq(schema.ProcessorBalanceEntry.organizationId, input.organizationId),
         input.unassignedOnly ? isNull(schema.ProcessorBalanceEntry.payoutExternalId) : undefined,
+        input.scope
+          ? and(
+              eq(schema.ProcessorBalanceEntry.sourceAccountId, input.scope.sourceAccountId),
+              eq(schema.ProcessorBalanceEntry.payoutExternalId, input.scope.payoutExternalId)
+            )
+          : undefined,
         input.cursor ? lt(schema.ProcessorBalanceEntry.id, input.cursor) : undefined
       )
     )

@@ -63,4 +63,5 @@ export const WORK_SOURCE_LABEL: Record<WorkItemSourceKind, string> = {
   credit_memo: 'Credit memo',
   payout: 'Payout',
   financial_source_acceptance: 'Channel payment',
+  provider_ledger_entry: 'Connected books',
 }
