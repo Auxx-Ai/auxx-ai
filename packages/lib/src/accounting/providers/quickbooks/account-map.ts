@@ -41,7 +41,7 @@ import { and, eq, isNotNull } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../../cache'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { deleteRecordIdentity } from '../../../identity'
-import type { ProviderAccount } from '../../ledger/client'
+import type { AccountRole, GlAccountSubtypeValue, ProviderAccount } from '../../ledger/client'
 import { findAppField, QUICKBOOKS_SOURCE, writeQuickbooksIdField } from './identity-field'
 import type { QuickbooksToolContext } from './invoke-quickbooks-tool'
 
@@ -60,6 +60,8 @@ export interface MappedAccount {
   fullyQualifiedName: string
   acctNum: string | null
   accountType: string
+  /** QuickBooks' detail type (`SalesOfProductIncome`); null when Intuit omits it. */
+  accountSubType?: string | null
   classification: string
   active: boolean
   /** TODO(accounting): the apps-repo tool does not send `ParentRef` yet - see `toProviderAccount`. */
@@ -85,6 +87,48 @@ const CLASSIFICATION: Record<string, ProviderAccount['classification']> = {
   Equity: 'equity',
   Revenue: 'revenue',
   Expense: 'expense',
+}
+
+/**
+ * QuickBooks `AccountType` -> our subtype, where the answer is unambiguous.
+ * 'Other Current Asset' is absent: Undeposited Funds, prepaids and Inventory
+ * Asset all share it, so the detail type below decides instead.
+ */
+const SUBTYPE_BY_ACCOUNT_TYPE: Readonly<Record<string, GlAccountSubtypeValue>> = {
+  Bank: 'bank',
+  'Accounts Receivable': 'accounts_receivable',
+  'Accounts Payable': 'accounts_payable',
+  'Credit Card': 'credit_card',
+  'Fixed Asset': 'fixed_asset',
+  'Cost of Goods Sold': 'cost_of_goods_sold',
+}
+
+/** QuickBooks `AccountSubType` -> our subtype, for the types the table above leaves open. */
+const SUBTYPE_BY_DETAIL_TYPE: Readonly<Record<string, GlAccountSubtypeValue>> = {
+  Inventory: 'inventory',
+}
+
+/**
+ * QuickBooks `AccountSubType` -> the one role it means (brief 105 C2). Only
+ * detail types whose meaning IS the role; QuickBooks has no income detail
+ * type for shipping, so `revenue_shipping` is left to the import's name rules.
+ */
+const ROLE_BY_DETAIL_TYPE: Readonly<Record<string, AccountRole>> = {
+  AccountsReceivable: 'accounts_receivable',
+  AccountsPayable: 'accounts_payable',
+  UndepositedFunds: 'undeposited_funds',
+  SalesTaxPayable: 'sales_tax_payable',
+  RetainedEarnings: 'equity_retained_earnings',
+  OpeningBalanceEquity: 'equity_opening_balance',
+  SalesOfProductIncome: 'revenue_product',
+  ServiceFeeIncome: 'revenue_service',
+  DiscountsRefundsGiven: 'discounts_given',
+  BadDebts: 'bad_debt_expense',
+  // One Inventory Asset holds everything; finished goods until builds need a split (105 §3 q4).
+  Inventory: 'inventory_finished_goods',
+  SuppliesMaterialsCogs: 'cogs_product_cost',
+  CostOfLaborCos: 'cogs_direct_labor',
+  PayrollClearing: 'payroll_clearing',
 }
 
 /**
@@ -146,6 +190,11 @@ export function toProviderAccount(account: MappedAccount): ProviderAccount | nul
     // TODO(accounting): trust this alone once the tool returns ParentRef -
     // `resolveDerivedParents` fills it in from `fullyQualifiedName` until then.
     parentId: account.parentId ?? null,
+    subtype:
+      SUBTYPE_BY_ACCOUNT_TYPE[account.accountType] ??
+      SUBTYPE_BY_DETAIL_TYPE[account.accountSubType ?? ''] ??
+      null,
+    roleHint: ROLE_BY_DETAIL_TYPE[account.accountSubType ?? ''] ?? null,
   }
 }
 

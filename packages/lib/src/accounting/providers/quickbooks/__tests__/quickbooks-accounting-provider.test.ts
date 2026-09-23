@@ -1378,6 +1378,8 @@ describe('createProviderAccount - the seam run backwards', () => {
       classification: 'asset',
       active: true,
       parentId: null,
+      subtype: null,
+      roleHint: null,
     })
     expect(result._unsafeUnwrap().outcome).toBe('created')
     expect(result._unsafeUnwrap().numberDropped).toBe(false)

@@ -119,7 +119,6 @@ export {
   MERCHANT_FEE_ACCOUNT_CODE_BAND,
   type NamedAccount,
   nextAccountCode,
-  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
   packForRole,
   packState,
   planChartImport,

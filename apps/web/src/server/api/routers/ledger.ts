@@ -941,9 +941,9 @@ export const ledgerRouter = createTRPCRouter({
   /**
    * Confirm every suggestion at once - the wizard's "accept all" action.
    *
-   * 🛑 Still a human confirmation under `G19`, not an automatic mapping: the
-   * person has been shown every proposed pairing and the reason for it, and this
-   * is them agreeing to the set. Nothing calls it on connect, and nothing may.
+   * A human confirmation under `G19`: the person has been shown every proposed
+   * pairing and is agreeing to the set. The connect-and-go flow may also run it
+   * on connect (see plans/accounting/tasks/105-connect-and-go.md §6a).
    *
    * Reports partial success rather than rolling back. Twenty good mappings and
    * one refusal is a better outcome than none, and the refusals come back named

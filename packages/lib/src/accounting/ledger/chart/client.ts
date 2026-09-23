@@ -18,7 +18,6 @@ export {
 // ── plans/accounting/tasks/16: the chart import, pure half ─────────────────
 // PURE. The two declared tables and the planner reach nothing but types.
 export {
-  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
   planChartImport,
   ROLE_IMPORT_MATCH,
 } from './chart-import-plan'

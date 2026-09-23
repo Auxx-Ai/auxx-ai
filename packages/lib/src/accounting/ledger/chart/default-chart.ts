@@ -123,8 +123,8 @@ export interface DefaultChartAccount {
 /**
  * The eight packs, by key. `core` is always provisioned; the other seven are
  * chosen by a person in the wizard's pack picker or the Roles tab's Add
- * accounts action (16 §3). Never provisioned silently off a plan event, an app
- * install or a payout sync (16 §3.3).
+ * accounts action (16 §3), or by the connect-and-go flow when an accounting
+ * provider connects (105 §6a) - never off a plan event or a payout sync.
  */
 export type ChartPackKey =
   | 'core'

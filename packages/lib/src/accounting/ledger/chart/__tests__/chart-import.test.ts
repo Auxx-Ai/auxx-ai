@@ -44,9 +44,13 @@ vi.mock('../../../../cache', async (importOriginal) => ({
 
 import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
-import { UniqueValueConflictError, UnprocessableEntityError } from '../../../../errors'
+import {
+  NotFoundError,
+  UniqueValueConflictError,
+  UnprocessableEntityError,
+} from '../../../../errors'
 import type { ChartAccountRow, ProviderAccount, RoleAssignmentRow } from '../../types'
-import { importChartFromProvider } from '../chart-import'
+import { importChartFromProvider, importProviderAccounts } from '../chart-import'
 
 const ORG = 'org1'
 const USER = 'user1'
@@ -212,6 +216,7 @@ describe('a normal import', () => {
       name: 'Accounts Receivable',
       accountType: 'Accounts Receivable',
       classification: 'asset',
+      subtype: 'accounts_receivable',
     })
     const other = providerAccount({ id: 'p_other', name: 'Checking', accountType: 'Bank' })
     const { setAccountMapping } = stubProvider({ accounts: [other, ar] })
@@ -271,6 +276,7 @@ describe('a normal import', () => {
       name: 'Accounts Receivable',
       accountType: 'Accounts Receivable',
       classification: 'asset',
+      subtype: 'accounts_receivable',
     })
     stubProvider({ accounts: [ar] })
     listRoleMap.mockResolvedValue(ok(roleMapRows({ accounts_receivable: 'confirmed' })))
@@ -333,6 +339,7 @@ describe('refreshOnly', () => {
       name: 'Accounts Receivable',
       accountType: 'Accounts Receivable',
       classification: 'asset',
+      subtype: 'accounts_receivable',
     })
     stubProvider({ accounts: [ar] })
     listRoleMap.mockResolvedValue(ok(roleMapRows()))
@@ -553,5 +560,153 @@ describe('reparent - repoints an already-imported account (CHART-HIERARCHY §6)'
     // existed, and its reparent is the one this test refuses.
     expect(value.created).toBe(2)
     expect(callLog).toContain('create:Checking:null')
+  })
+})
+
+describe('no duplicate core accounts (brief 105 C2)', () => {
+  const income = (over: Partial<ProviderAccount>) =>
+    providerAccount({ accountType: 'Income', classification: 'revenue', ...over })
+
+  it('uses the provider accounts it matched and mints only what has no candidate', async () => {
+    stubProvider({
+      accounts: [
+        income({ id: 'p_sales', name: 'Webshop', roleHint: 'revenue_product' }),
+        providerAccount({
+          id: 'p_obe',
+          name: 'Opening Balance Equity',
+          accountType: 'Equity',
+          classification: 'equity',
+          roleHint: 'equity_opening_balance',
+        }),
+      ],
+    })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db, insertedRows } = stubDb()
+
+    const value = (
+      await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+    )._unsafeUnwrap()
+
+    expect(value.rolesAssigned).toEqual(
+      expect.arrayContaining(['revenue_product', 'equity_opening_balance'])
+    )
+    const minted = value.coreCreated.map((a) => a.role)
+    expect(minted).not.toContain('revenue_product')
+    expect(minted).not.toContain('equity_opening_balance')
+    expect(minted).toContain('revenue_shipping')
+    expect(callLog).not.toContain('create:Product Revenue:null')
+    expect(insertedRows).toContainEqual(
+      expect.objectContaining({ role: 'revenue_product', glAccountId: 'gl_webshop' })
+    )
+  })
+
+  it('reports an ambiguous role and mints nothing for it', async () => {
+    stubProvider({
+      accounts: [
+        income({ id: 'a', name: 'Retail', roleHint: 'revenue_product' }),
+        income({ id: 'b', name: 'Wholesale', roleHint: 'revenue_product' }),
+      ],
+    })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db, insertedRows } = stubDb()
+
+    const value = (
+      await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+    )._unsafeUnwrap()
+
+    expect(value.rolesAmbiguous).toContain('revenue_product')
+    expect(value.coreCreated.map((a) => a.role)).not.toContain('revenue_product')
+    expect(insertedRows.some((row) => row.role === 'revenue_product')).toBe(false)
+  })
+
+  it('codes minted accounts when the chart is numbered, stepping past a taken code', async () => {
+    stubProvider({ accounts: [income({ id: 'p_rev', name: 'Other Income', number: '4020' })] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows({ revenue_product: 'confirmed' })))
+    const { db } = stubDb()
+
+    await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(callLog).toContain('create:Shipping Revenue:4021')
+    expect(callLog).toContain('create:Service Revenue:4030')
+  })
+
+  it('leaves minted accounts uncoded in an unnumbered chart', async () => {
+    stubProvider({ accounts: [providerAccount({ id: 'p1', name: 'Checking' })] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
+
+    expect(callLog).toContain('create:Shipping Revenue:null')
+  })
+})
+
+describe('importProviderAccounts - a targeted import (brief 105 C3)', () => {
+  it('creates and links only the requested account and its unlinked parent, never core', async () => {
+    const parent = providerAccount({ id: 'p_banks', name: 'Banks' })
+    const child = providerAccount({ id: 'p_savings', name: 'Savings', parentId: 'p_banks' })
+    const other = providerAccount({ id: 'p_other', name: 'Petty Cash' })
+    const { setAccountMapping } = stubProvider({ accounts: [child, parent, other] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    const result = await importProviderAccounts(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      providerAccountIds: ['p_savings'],
+    })
+
+    const value = result._unsafeUnwrap()
+    expect(callLog).toEqual(['create:Banks:null', 'create:Savings:null'])
+    expect(createCalls[1]?.parentId).toBe('gl_banks')
+    expect(value.created).toBe(2)
+    expect(value.nestedUnder).toBe(1)
+    expect(value.coreCreated).toEqual([])
+    expect(setAccountMapping).toHaveBeenCalledTimes(2)
+  })
+
+  it('nests under an already-linked parent without re-creating it', async () => {
+    const parent = providerAccount({ id: 'p_banks', name: 'Banks' })
+    const child = providerAccount({ id: 'p_savings', name: 'Savings', parentId: 'p_banks' })
+    stubProvider({ accounts: [parent, child], mappings: new Map([['gl_existing', 'p_banks']]) })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    await importProviderAccounts(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      providerAccountIds: ['p_savings'],
+    })
+
+    expect(callLog).toEqual(['create:Savings:null'])
+    expect(createCalls[0]?.parentId).toBe('gl_existing')
+  })
+
+  it('refuses an id the provider does not report', async () => {
+    stubProvider({ accounts: [providerAccount()] })
+    listRoleMap.mockResolvedValue(ok(roleMapRows()))
+    const { db } = stubDb()
+
+    const result = await importProviderAccounts(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      providerAccountIds: ['nope'],
+    })
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
+    expect(callLog).toEqual([])
+  })
+
+  it('does nothing for an empty list', async () => {
+    const { db } = stubDb()
+
+    const result = await importProviderAccounts(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      providerAccountIds: [],
+    })
+
+    expect(result._unsafeUnwrap().created).toBe(0)
+    expect(resolveAccountingProvider).not.toHaveBeenCalled()
   })
 })

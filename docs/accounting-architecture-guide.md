@@ -735,7 +735,7 @@ at `5091` rather than at `ppv`'s `5090`: a role is unique per account in the see
 cannot share one code even where an org would happily see them in one place.
 
 The two newest are 91 D8's: `discounts_given` (revenue, contra, seeded at `4080` in core,
-store-scoped; the QuickBooks import matches *Discounts given*) and `gift_card_liability`
+store-scoped; the chart import matches it by provider hint or the name *Discounts given*) and `gift_card_liability`
 (liability, `2360` in the `prepayments` pack, unscoped, and **not** subtype-pinned — the obvious
 subtype, `STORED_BALANCES`, is an asset classification). A new role reaches an existing org
 through the wizard's pack picker or the Roles tab's Add, never a data migration.
@@ -839,7 +839,7 @@ badge and a Link button into the Chart tab's editor. Null when nothing is connec
 | `ledger/chart/default-chart.ts` | The seeded default, declared as opt-in **packs** (`card_rail`, `prepayments`, `inventory`, `purchasing`, `payroll`, `fixed_assets`, `debt`). Pure data |
 | `ledger/chart/chart-accounts.ts` | How this codebase reads one org's chart. **Exactly once** — it serves both the resolver and the role-map screen |
 | `ledger/chart/chart-write.ts` | Create / update / remove / restore. Until it existed there was no writer but the seed |
-| `ledger/chart/chart-import.ts` + `chart-import-plan.ts` | One `gl_account` per active provider account, with the provider identity stamped at import. The plan half is pure; its two tables are **declared, not derived**, and the role-match list is short on purpose (revenue is the person's call) |
+| `ledger/chart/chart-import.ts` + `chart-import-plan.ts` | One `gl_account` per active provider account (or just the ones `importProviderAccounts` names), with the provider identity stamped at import. The plan half is pure and provider-neutral: a role resolves by the adapter's `roleHint`, then our `subtype`, then declared names, and only on a unique match. A core role is minted only when the provider has no candidate at all; an ambiguous one is reported (`rolesAmbiguous`) for a person. The provider's own type strings map to `subtype`/`roleHint` inside its adapter (`providers/quickbooks/account-map.ts`) |
 | `ledger/chart/next-account-code.ts` | 🛑 A band is a range, not a cursor — under "highest plus one" you walk straight out of it |
 | `ledger/chart/gl-account-pointers.ts` | Every registry field holding a `gl_account` id **as TEXT** (no `references()`), and the read that finds what points at one account. The archive path needs it to warn |
 | `ledger/chart/resolve-cash-account.ts` | The GL account a `bank_account` record points at, or a refusal naming which link is missing. 🔑 A pointer lookup and not a role, because `bank` is rail-scoped |

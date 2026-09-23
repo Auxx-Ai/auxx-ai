@@ -1077,6 +1077,10 @@ export interface ProviderAccount {
   active: boolean
   /** The provider's own id of the parent account, or null at the top level (CHART-HIERARCHY §6). */
   parentId: string | null
+  /** Our subtype, when the provider adapter can read one off its own type unambiguously. */
+  subtype?: GlAccountSubtypeValue | null
+  /** The role the provider's own detail type means; the import still assigns only a unique match. */
+  roleHint?: AccountRole | null
 }
 
 /**
@@ -1220,8 +1224,14 @@ export interface ChartImportPlan {
    */
   reparent: Array<{ glAccountId: string; providerParentId: string; leafName: string | null }>
   /** Roles with exactly one unambiguous candidate, resolved AFTER creation. */
-  roleCandidates: Array<{ role: AccountRole; match: 'subtype' | 'name'; providerAccountId: string }>
-  /** Core role-bearing accounts the provider chart cannot satisfy. */
+  roleCandidates: Array<{
+    role: AccountRole
+    match: 'hint' | 'subtype' | 'name' | 'sole'
+    providerAccountId: string
+  }>
+  /** Unmapped roles with several equally good candidates - a person's call, never minted. */
+  ambiguousRoles: Array<{ role: AccountRole; providerAccountIds: string[] }>
+  /** Core role-bearing accounts with no candidate at all in the provider chart. */
   missingCore: DefaultChartAccount[]
 }
 
@@ -1235,7 +1245,9 @@ export interface ChartImportResult {
   skippedInactive: number
   /** Written with `source: 'import'`, only for roles that were `unmapped`. */
   rolesAssigned: AccountRole[]
-  /** The uncoded, unmapped core accounts added because the provider lacks them. */
+  /** Unmapped roles left for a person because several provider accounts fit. */
+  rolesAmbiguous: AccountRole[]
+  /** The core accounts added because the provider has no candidate for their role. */
   coreCreated: DefaultChartAccount[]
   /** Created under a parent, or an existing account the refresh just repointed under one. */
   nestedUnder: number
