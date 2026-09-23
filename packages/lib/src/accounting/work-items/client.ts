@@ -1,6 +1,8 @@
 // packages/lib/src/accounting/work-items/client.ts
 
 export {
+  EXTERNAL_REF_GROUPED_CODES,
+  groupsByExternalRef,
   isTransientCode,
   isWorkItemCode,
   nextAttemptDelayMs,

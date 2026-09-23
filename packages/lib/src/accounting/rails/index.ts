@@ -40,6 +40,7 @@ export {
   type MintedRailAccounts,
   type MintRailAccountsInput,
   mintRailAccounts,
+  mintRailFeeAccount,
 } from './mint-rail-accounts'
 // ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
 export {
@@ -59,6 +60,13 @@ export {
 } from './reads'
 export type { ClearingAccountBalance } from './repoint'
 export { readClearingAccountBalance } from './repoint'
+export {
+  type RailAccountChoice,
+  type SetUpFailure,
+  type SetUpPaymentGatewayInput,
+  type SetUpPaymentGatewayResult,
+  setUpPaymentGateway,
+} from './set-up'
 export type { UnlinkedFeed } from './settlement-discovery'
 export { listUnlinkedFeeds } from './settlement-discovery'
 export type {

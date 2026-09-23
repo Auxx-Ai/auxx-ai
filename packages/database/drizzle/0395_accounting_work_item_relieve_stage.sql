@@ -1,0 +1,2 @@
+ALTER TABLE "AccountingWorkItem" DROP CONSTRAINT "AccountingWorkItem_stage_check";--> statement-breakpoint
+ALTER TABLE "AccountingWorkItem" ADD CONSTRAINT "AccountingWorkItem_stage_check" CHECK ("AccountingWorkItem"."stage" IN ('evidence','money','post','issue','relieve') AND "AccountingWorkItem"."attempts" >= 0 AND "AccountingWorkItem"."occurrence" >= 0);

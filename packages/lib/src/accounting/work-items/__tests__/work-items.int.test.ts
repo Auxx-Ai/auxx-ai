@@ -2,12 +2,13 @@
 //
 // `AccountingWorkItem` in real SQL (91 §4.6): one row per stuck thing, a repeat
 // counts on, success deletes, a fix wakes exactly what it unblocks, and the
-// Blocked tab groups by (reasonCode, role, railId, glAccountId).
+// Blocked tab groups by (reasonCode, role, railId, glAccountId[, externalRef]).
 
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { workItemSentence } from '../codes'
 import {
   countWorkItemGroups,
   listParkedSourceIds,
@@ -246,6 +247,65 @@ describe('reads', () => {
         })
       ).sort()
     ).toEqual(['mt_1', 'mt_2'])
+  })
+
+  it('splits a gateway row per handle, and never an order-keyed code per order', async () => {
+    const gateway = (sourceId: string, externalRef: string) =>
+      park({
+        sourceKind: 'money_transaction',
+        sourceId,
+        stage: 'post',
+        reasonCode: 'GATEWAY_UNMAPPED',
+        externalRef,
+      })
+    await gateway('mt_1', 'authorize.net')
+    await gateway('mt_2', 'authorize.net')
+    await gateway('mt_3', 'Affirm')
+    for (const [sourceId, externalRef] of [
+      ['acc_1', '7396358946992'],
+      ['acc_2', '7505197826224'],
+    ] as const)
+      await park({
+        sourceKind: 'financial_source_acceptance',
+        sourceId,
+        stage: 'evidence',
+        reasonCode: 'ORDER_NOT_FOUND',
+        externalRef,
+      })
+
+    const groups = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
+    const gateways = groups.items.filter((group) => group.reasonCode === 'GATEWAY_UNMAPPED')
+    expect(gateways.map((group) => [group.externalRef, group.count]).sort()).toEqual([
+      ['Affirm', 1],
+      ['authorize.net', 2],
+    ])
+    const orders = groups.items.filter((group) => group.reasonCode === 'ORDER_NOT_FOUND')
+    expect(orders).toHaveLength(1)
+    expect(orders[0]).toMatchObject({ count: 2, externalRef: null })
+    expect((await countWorkItemGroups(db(), organizationId))._unsafeUnwrap()).toBe(3)
+
+    const authorize = gateways.find((group) => group.externalRef === 'authorize.net')!
+    expect(workItemSentence(authorize.reasonCode, authorize)).toContain("'authorize.net'")
+
+    const items = (
+      await listWorkItemsInGroup(db(), organizationId, authorize, { limit: 10 })
+    )._unsafeUnwrap()
+    expect(items.items.map((item) => item.sourceId).sort()).toEqual(['mt_1', 'mt_2'])
+    // Retry on one handle leaves the other handle's rows on their own schedule.
+    expect((await wakeWorkItemGroup(db(), organizationId, authorize))._unsafeUnwrap()).toBe(2)
+  })
+
+  it('counts the woken rows of a group as due', async () => {
+    await unmapped('mt_1')
+    await unmapped('mt_2')
+    await unmapped('mt_3')
+    await wakeSources(db(), organizationId, {
+      sourceKind: 'money_transaction',
+      sourceIds: ['mt_1', 'mt_2'],
+    })
+
+    const groups = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
+    expect(groups.items[0]).toMatchObject({ reasonCode: 'ROLE_UNMAPPED', count: 3, dueCount: 2 })
   })
 
   it('narrows to a category and pages by offset', async () => {

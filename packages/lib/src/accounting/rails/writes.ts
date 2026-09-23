@@ -104,7 +104,7 @@ export interface StampPaymentGatewayLastSettlementInput {
  * `setRoleAssignment` writes scoped to the new record's id (task 58 §3), which
  * carry their own account-type/subtype validation. Not one transaction with the
  * entity create: `setRoleAssignment` opens its own, the same accepted gap
- * `createForRail` (`routers/payment-gateways.ts`) already documents for
+ * `setUpPaymentGateway` (`set-up.ts`) already documents for
  * `mintRailAccounts` plus this function.
  */
 export async function createPaymentGateway(

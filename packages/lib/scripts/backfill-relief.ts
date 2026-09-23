@@ -27,13 +27,10 @@
 //
 // ── Run it AFTER the builds backfill ────────────────────────────────────────
 //
-// 🛑 Relief prices at the part's ledger average and falls back to
-// `part_standard_cost` only when on-hand is <= 0. With no `build_produce`
-// movements in the ledger yet, every sale line prices off the fallback, or is
-// skipped as `skippedNoCost` when the part carries no standard cost either.
-// Neither is an error and neither is loud - the run reports success having
-// valued the whole shelf wrong. `skippedNoCost` and the fallback count in the
-// summary below are what say so; read them.
+// 🛑 Relief prices at the part's frozen `part_standard_cost` and nothing else.
+// A line whose part has none is skipped (`skippedNoCost`) and its dispatch is
+// parked in Blocked as `STANDARD_COST_MISSING`; set or roll the standards, and
+// run the builds backfill for assembled parts, before this.
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'

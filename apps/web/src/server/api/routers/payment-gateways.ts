@@ -16,21 +16,20 @@
 
 import {
   archivePaymentGateway,
-  createPaymentGateway,
   linkFeed,
   listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
   listUnlinkedFeeds,
-  mintRailAccounts,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_STATUSES,
   readClearingAccountBalance,
   readiness,
+  setUpPaymentGateway,
   unlinkFeed,
   updatePaymentGateway,
 } from '@auxx/lib/accounting/rails'
-import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
+import { requestAccountingRecovery } from '@auxx/lib/accounting/work-items'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
@@ -55,6 +54,12 @@ const paymentGatewayFields = {
   feeTreatment: z.enum(PAYMENT_GATEWAY_FEE_TREATMENTS),
   lastSettlementAt: dateKey.nullish(),
 }
+
+/** An existing chart account, or a new one minted under this name. */
+const railAccountChoice = z.union([
+  z.object({ accountId: z.string().min(1).max(64) }).strict(),
+  z.object({ mint: z.string().trim().min(1).max(200) }).strict(),
+])
 
 export const paymentGatewaysRouter = createTRPCRouter({
   /**
@@ -169,106 +174,38 @@ export const paymentGatewaysRouter = createTRPCRouter({
     }),
 
   /**
-   * Mint a rail's accounts and route it, in one click (brief 26 §7.4).
-   *
-   * 🛑 **The composition lives HERE, not in `createPaymentGateway`.** That
-   * function's own jsdoc says *"What it must NOT do: mint an account per
-   * gateway"* and §7.4 keeps it true: `clearingAccountId` there names an
-   * EXISTING account, and two rails sharing one stays ordinary. `mintRailAccounts`
-   * is its own door; this procedure is the one place the two are put together,
-   * which is what gives the wizard's create button a single call while leaving
-   * both lib contracts where they were.
-   *
-   * ⚠️ `mintFeeAccount` is the CALLER's answer. §5's defaults are asymmetric on
-   * purpose - a `netted` rail books to the shared `payment_processing_fees`
-   * fallback and a `billed` rail mints its own, because *"has this rail billed
-   * us this month"* is unanswerable once billed fees land in the shared account
-   * - but they are the wizard's checkbox defaults, not a rule this procedure
-   * may apply over whatever somebody just unticked.
-   *
-   * ⚠️ Two writes, not one transaction: if the gateway create refuses after the
-   * mint, the accounts stand. That is the safe half to keep - they are ordinary
-   * chart accounts, visible in the chart editor, and the refusal names what to
-   * fix. The alternative, rolling back a chart write, is a delete on a path
-   * that has no delete.
-   *
-   * `ledgerControl`, the rung both halves already sit on.
+   * Set a rail up in one call: mint or pick its clearing and fee accounts, write the record, map
+   * its bank, link its feed (plans/accounting/tasks/100 §3.2). A bank or feed step that fails
+   * after the record is written comes back in `failures`; the gateway stands.
    */
-  createForRail: permissionProcedure(PermissionKey.ledgerControl)
-    .input(
-      z.object({
-        /** Every handle this rail answers to. The spellings §8's merge grouped together. */
-        handles: paymentGatewayFields.handles,
-        /** The rail's display name. Defaults to the suggestion for the first handle. */
-        name: paymentGatewayFields.name.optional(),
-        /** Overrides the suggested clearing account name. */
-        clearingAccountName: z.string().min(1).max(200).optional(),
-        /** Mint a dedicated fee account as well. §5's asymmetric default is the caller's. */
-        mintFeeAccount: z.boolean(),
-        /** Overrides the suggested fee account name. */
-        feeAccountName: z.string().min(1).max(200).optional(),
-        feeTreatment: paymentGatewayFields.feeTreatment.optional(),
-        /** `closed` for a rail with no recent orders (§9). Its history still routes. */
-        status: z.enum(PAYMENT_GATEWAY_STATUSES).optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-      // Suggestions only, never routing (§7.2): an unknown handle gets a titled
-      // name and the safe defaults rather than a refusal.
-      const suggestion = suggestRail(input.handles[0] ?? '')
-
-      const minted = await mintRailAccounts(ctx.db, {
-        organizationId,
-        actorUserId: userId,
-        clearingAccountName: input.clearingAccountName ?? suggestion.clearingAccountName,
-        mintFeeAccount: input.mintFeeAccount,
-        feeAccountName: input.feeAccountName ?? suggestion.feeAccountName,
-      })
-      if (minted.isErr()) throw minted.error
-
-      const created = await createPaymentGateway(ctx.db, {
-        organizationId,
-        actorUserId: userId,
-        name: input.name?.trim() || suggestion.name,
-        handles: input.handles,
-        clearingAccountId: minted.value.clearing.id,
-        feeAccountId: minted.value.fee?.id ?? null,
-        feeTreatment: input.feeTreatment ?? suggestion.feeTreatment,
-        status: input.status,
-      })
-      if (created.isErr()) throw created.error
-      return { gateway: created.value, accounts: minted.value }
-    }),
-
-  /**
-   * Add a gateway by hand.
-   *
-   * Gated on `ledgerControl`: the clearing account decides where cash lands,
-   * the same reasoning `banking.ts`'s `bankAccount.create` gives.
-   */
-  create: permissionProcedure(PermissionKey.ledgerControl)
+  setUp: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         name: paymentGatewayFields.name,
         handles: paymentGatewayFields.handles,
-        clearingAccountId: paymentGatewayFields.clearingAccountId,
-        feeAccountId: paymentGatewayFields.feeAccountId,
         feeTreatment: paymentGatewayFields.feeTreatment.optional(),
-        lastSettlementAt: paymentGatewayFields.lastSettlementAt,
+        /** `closed` for a rail with no recent orders; its history still routes. */
+        status: z.enum(PAYMENT_GATEWAY_STATUSES).optional(),
+        clearing: railAccountChoice,
+        /** Null inherits the org's fee account. */
+        fee: railAccountChoice.nullish(),
+        bankAccountId: z.string().min(1).max(64).nullish(),
+        sourceAccountId: z.string().min(1).nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const result = await createPaymentGateway(ctx.db, {
+      const result = await setUpPaymentGateway(ctx.db, {
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.userId,
         ...input,
       })
       if (result.isErr()) throw result.error
+      // The receipts this gateway unblocks post now, not on the next scheduled pass.
+      await requestAccountingRecovery(ctx.session.organizationId)
       return result.value
     }),
 
-  /** Edit a gateway. Gated on `ledgerControl`, same reasoning as {@link create}. */
+  /** Edit a gateway. Gated on `ledgerControl`, same reasoning as {@link setUp}. */
   update: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({

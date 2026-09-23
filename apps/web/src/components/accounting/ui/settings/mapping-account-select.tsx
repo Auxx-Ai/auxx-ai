@@ -25,6 +25,9 @@ import { GlAccountList, useChartAccounts } from '../gl-account-picker'
 /** A mapped account id, `'inherit'` (falls through, see {@link inheritedAccountName}), `'unused'` (role marked unused), or `null` (not mapped). */
 export type MappingAccountValue = string | 'inherit' | 'unused' | null
 
+/** A draft's "mint a new account under `mintLabel`" choice; never a stored value. */
+export const MINT_ACCOUNT_VALUE = '__mint'
+
 export interface MappingAccountSelectProps {
   value: MappingAccountValue
   onChange: (value: string | 'inherit') => void
@@ -34,6 +37,8 @@ export interface MappingAccountSelectProps {
   /** Pins the list to one subtype beside `filterTypes` — `bank`/`clearing` (task 58 §3 rule 4). */
   subtypePin?: GlAccountSubtypeValue
   disabled?: boolean
+  /** Offers "Create `<mintLabel>`" above the chart, selecting {@link MINT_ACCOUNT_VALUE}. */
+  mintLabel?: string
 }
 
 /**
@@ -49,6 +54,7 @@ export function MappingAccountSelect({
   filterTypes,
   subtypePin,
   disabled = false,
+  mintLabel,
 }: MappingAccountSelectProps) {
   const { accounts: allAccounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
@@ -65,7 +71,10 @@ export function MappingAccountSelect({
 
   // The two sentinels are strings too, so a plain `typeof value === 'string'` would
   // mistake them for an account id.
-  const accountIdValue = value === 'inherit' || value === 'unused' || value === null ? null : value
+  const accountIdValue =
+    value === 'inherit' || value === 'unused' || value === MINT_ACCOUNT_VALUE || value === null
+      ? null
+      : value
   const selected = useMemo(
     () => accounts.find((account) => account.id === accountIdValue) ?? null,
     [accounts, accountIdValue]
@@ -94,12 +103,20 @@ export function MappingAccountSelect({
           disabled={disabled}
           variant='transparent'
           size='sm'
-          hasValue={value === 'inherit' ? hasInherit : !!selected}
+          hasValue={
+            value === 'inherit'
+              ? hasInherit
+              : value === MINT_ACCOUNT_VALUE
+                ? !!mintLabel
+                : !!selected
+          }
           placeholder={value === 'unused' ? 'Unused' : 'Select account…'}
           asCombobox
           className='h-7 w-60'>
           {value === 'inherit' ? (
             <span className='truncate text-sm'>{inheritLabel}</span>
+          ) : value === MINT_ACCOUNT_VALUE ? (
+            <span className='truncate text-sm'>New · {mintLabel}</span>
           ) : (
             selected && (
               <AccountLabel
@@ -127,6 +144,17 @@ export function MappingAccountSelect({
             onValueChange={setSearch}
             loading={isLoading}
           />
+          {mintLabel && (
+            <CommandGroup>
+              <CommandDetailItem
+                value='__mint'
+                title={`Create ${mintLabel}`}
+                selected={value === MINT_ACCOUNT_VALUE}
+                selectionMode='check'
+                onSelect={() => select(MINT_ACCOUNT_VALUE)}
+              />
+            </CommandGroup>
+          )}
           {hasInherit && (
             <CommandGroup>
               <CommandDetailItem

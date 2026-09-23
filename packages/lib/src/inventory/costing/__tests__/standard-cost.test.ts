@@ -7,6 +7,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../accounting/work-items/wake', () => ({
+  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+}))
+
 const h = vi.hoisted(() => ({
   partRows: [] as unknown[],
   valueRows: [] as unknown[],

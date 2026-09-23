@@ -1,6 +1,7 @@
 // @auxx/lib/realtime/client/index.ts
 
 export type {
+  AccountingWorkChangedEvent,
   AiStatus,
   AiValueMetadata,
   DataConnectorSyncEvent,

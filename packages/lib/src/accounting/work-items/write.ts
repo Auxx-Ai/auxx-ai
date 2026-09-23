@@ -109,6 +109,31 @@ export async function deleteWorkItem(
   })
 }
 
+/** These sources' rows at one stage - a batch of successes, one statement. */
+export async function deleteWorkItemsAtStage(
+  db: Db,
+  organizationId: string,
+  input: { sourceKind: string; sourceIds: readonly string[]; stage: WorkItemStage }
+): Promise<Result<number, Error>> {
+  const ids = [...new Set(input.sourceIds)]
+  if (ids.length === 0) return ok(0)
+  return guarded('Could not clear work items', { organizationId, ...input }, async () => {
+    const t = schema.AccountingWorkItem
+    const rows = await db
+      .delete(t)
+      .where(
+        and(
+          eq(t.organizationId, organizationId),
+          eq(t.sourceKind, input.sourceKind),
+          eq(t.stage, input.stage),
+          inArray(t.sourceId, ids)
+        )
+      )
+      .returning({ id: t.id })
+    return rows.length
+  })
+}
+
 /** Every stage's rows for these sources - a deleted record takes its work with it (91 §8.9). */
 export async function deleteWorkItemsForSources(
   db: Db,

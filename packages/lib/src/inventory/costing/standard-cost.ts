@@ -34,6 +34,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
+import { wakeReasonCode } from '../../accounting/work-items/wake'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
@@ -132,6 +133,10 @@ export async function rollStandardCost(
         partKinds: stored.partKinds,
         effectiveAt: plan.effectiveAt,
       })
+
+      // A shipment skipped for want of a standard can relieve now.
+      if (writtenPartIds.length > 0)
+        await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
 
       logger.info('Rolled standard cost', {
         organizationId,

@@ -29,6 +29,9 @@ vi.mock('../../../accounting/sales/fulfillments/accounting-sweep', () => ({
   sweepFulfillmentAccounting: h.shipment,
 }))
 vi.mock('../../../accounting/export', () => ({ sweepExportBatches: h.delivery }))
+vi.mock('../../../inventory/relief/relief-sweep', () => ({
+  sweepFulfillmentRelief: vi.fn(async () => ({ scanned: 0, accepted: 0, blocked: 0, skipped: 0 })),
+}))
 
 import type { JobContext } from '../../types/job-context'
 import { accountingRecoveryJob } from '../accounting-recovery-job'

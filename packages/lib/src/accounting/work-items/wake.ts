@@ -4,7 +4,7 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, type Column, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import type { WorkItemCode, WorkItemStage } from './codes'
+import { groupsByExternalRef, type WorkItemCode, type WorkItemStage } from './codes'
 
 const logger = createScopedLogger('accounting-work-items:wake')
 
@@ -159,6 +159,8 @@ export interface WorkItemGroupKey {
   role: string | null
   railId: string | null
   glAccountId: string | null
+  /** Set only for codes that group by it (`groupsByExternalRef`); ignored otherwise. */
+  externalRef?: string | null
 }
 
 export async function wakeWorkItemGroup(
@@ -177,7 +179,10 @@ export async function wakeWorkItemGroup(
       eq(t.reasonCode, group.reasonCode),
       same(t.role, group.role),
       same(t.railId, group.railId),
-      same(t.glAccountId, group.glAccountId)
+      same(t.glAccountId, group.glAccountId),
+      groupsByExternalRef(group.reasonCode)
+        ? same(t.externalRef, group.externalRef ?? null)
+        : undefined
     )
   )
 }

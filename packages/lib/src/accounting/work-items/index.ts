@@ -1,6 +1,8 @@
 // packages/lib/src/accounting/work-items/index.ts
 
 export {
+  EXTERNAL_REF_GROUPED_CODES,
+  groupsByExternalRef,
   isTransientCode,
   isWorkItemCode,
   nextAttemptDelayMs,
@@ -28,6 +30,7 @@ export {
   type WorkItemListRow,
   type WorkItemRow,
 } from './reads'
+export { requestAccountingRecovery } from './recovery'
 export {
   refusalFromError,
   refusalFromPost,
@@ -55,6 +58,7 @@ export {
 } from './wake'
 export {
   deleteWorkItem,
+  deleteWorkItemsAtStage,
   deleteWorkItemsForSources,
   upsertWorkItem,
   type WorkItemKey,

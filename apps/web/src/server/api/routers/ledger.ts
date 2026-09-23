@@ -119,7 +119,11 @@ import { mintRailAccounts } from '@auxx/lib/accounting/rails'
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
 import { readShipmentDetail } from '@auxx/lib/accounting/sales'
-import { wakeSources, wakeWorkItemGroup } from '@auxx/lib/accounting/work-items'
+import {
+  requestAccountingRecovery,
+  wakeSources,
+  wakeWorkItemGroup,
+} from '@auxx/lib/accounting/work-items'
 import { getCachedEntityDefId, getCachedInstalledApps } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
@@ -342,6 +346,7 @@ const workItemGroup = z.object({
   role: z.string().nullable(),
   railId: z.string().nullable(),
   glAccountId: z.string().nullable(),
+  externalRef: z.string().nullable().optional(),
 })
 
 /** The book zone a Blocked date range is cut in, read only when a range is set. */
@@ -1200,7 +1205,7 @@ export const ledgerRouter = createTRPCRouter({
    * `createPaymentGateway`'s jsdoc states *"What it must NOT do: mint an
    * account per gateway"* and §7.4 keeps that true: the gateway writer names
    * EXISTING accounts. A caller that wants both in one click calls this and
-   * then `paymentGateway.create` with the ids that come back.
+   * then names the ids that come back (`paymentGateway.setUp` does both).
    *
    * 🛑 **No role, and no way to ask for one.** `mintRailAccounts` offers no
    * role parameter - the rule that killed `clearing_affirm` on 2026-09-10,
@@ -2080,6 +2085,7 @@ export const ledgerRouter = createTRPCRouter({
               sourceIds: [input.source.sourceId],
             })
       if (woken.isErr()) throw woken.error
+      if (woken.value > 0) await requestAccountingRecovery(organizationId)
       return { woken: woken.value }
     }),
 
