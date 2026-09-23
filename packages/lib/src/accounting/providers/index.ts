@@ -27,6 +27,7 @@ export {
   readPinnedAccountingConnectionInTx,
   repairAccountingBookConnection,
 } from './book-connections'
+export type { ProviderCompanySettings } from './company-settings'
 export {
   type CreateAndLinkOptions,
   type CreateAndLinkResult,
