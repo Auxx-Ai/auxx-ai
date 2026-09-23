@@ -292,5 +292,7 @@ export function useBulkRunner() {
     [confirm, addPending, removePending, setPendingLabel]
   )
 
-  return { ConfirmDialog, run, runBatch, enqueue, isRunning }
+  // `confirm` is exposed for a surface whose loop `run` cannot express (halt on
+  // the first failure, say), so it keeps this one dialog rather than a second.
+  return { ConfirmDialog, confirm, run, runBatch, enqueue, isRunning }
 }

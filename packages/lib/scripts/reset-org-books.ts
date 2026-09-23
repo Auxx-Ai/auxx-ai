@@ -1184,8 +1184,15 @@ async function main() {
   console.log(`reset ${SETTING_RESETS.length} setting(s)`)
 
   // The records are gone; anything that cached a count or a list of them is now
-  // describing a world that does not exist.
-  await getOrgCache().invalidateAndRecompute(org.id, ['resources', 'customFields', 'orgSettings'])
+  // describing a world that does not exist. `chartAccounts` has a one-day TTL, so
+  // without this the wizard still sees the dropped chart and skips the pack picker.
+  await getOrgCache().invalidateAndRecompute(org.id, [
+    'resources',
+    'customFields',
+    'orgSettings',
+    'chartAccounts',
+    'providerChart',
+  ])
   console.log('org cache invalidated')
 
   console.log(

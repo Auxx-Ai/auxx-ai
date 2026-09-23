@@ -16,6 +16,8 @@ export {
   type ProviderAgreementStatus,
   planProviderAgreement,
 } from './provider-agreement'
+// PURE: the bulk create-and-link's send order, previewed by the chart tab's confirm.
+export { providerCreateOrder } from './provider-create-order'
 export {
   type AccountSuggestion,
   isMappableTo,

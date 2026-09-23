@@ -147,11 +147,9 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
 
   const { rows, providerAccounts, broken, providerId } = accountMap.data
 
-  // 🛑 Gate on the PROVIDER, not on an empty chart. "Nothing is connected" and
-  // "connected but nothing mapped" are different answers needing different
-  // actions, and collapsing them would tell somebody to map a chart that has
-  // nothing to map against.
-  if (providerId === 'none' || providerAccounts.length === 0) {
+  // 🛑 Gate on the PROVIDER, not on an empty provider chart: a purged QuickBooks
+  // company returns no accounts, and the picker's create row is how it gets them.
+  if (providerId === 'none') {
     return (
       <EmptySection
         icon={<Link2 className='size-5' />}

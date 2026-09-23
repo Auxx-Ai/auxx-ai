@@ -30,8 +30,15 @@ export {
 export {
   type CreateAndLinkOptions,
   type CreateAndLinkResult,
+  type CreatedProviderAccount,
   createAndLinkProviderAccount,
 } from './create-provider-account'
+export {
+  type CreateProviderAccountsOptions,
+  type CreateProviderAccountsResult,
+  createProviderAccounts,
+  type ProviderCreateSkipReason,
+} from './create-provider-accounts'
 export {
   type AccountingProvider,
   type AccountingProviderFactory,
@@ -42,6 +49,7 @@ export {
   listAccountingProviderIds,
   NONE_ACCOUNTING_PROVIDER,
   NONE_PROVIDER_ID,
+  type ProviderAccountCreator,
   registerAccountingProvider,
   resolveAccountingProvider,
   setConnectedProviderResolver,
@@ -55,6 +63,7 @@ export {
   type ProviderAgreementStatus,
   planProviderAgreement,
 } from './provider-agreement'
+export { providerCreateOrder } from './provider-create-order'
 export {
   type AccountSuggestion,
   isMappableTo,

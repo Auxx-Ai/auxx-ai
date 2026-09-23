@@ -47,6 +47,7 @@ import type { AccountIdentityRow, ChartAccountRow } from '../ledger/types'
 import { providerDisplayName } from '../mirror/client'
 import {
   type AccountingProvider,
+  type ProviderAccountCreator,
   resolveAccountingProvider,
   supportsCreatingProviderAccounts,
 } from './provider'
@@ -123,79 +124,113 @@ export async function createAndLinkProviderAccount(
   db: Database,
   options: CreateAndLinkOptions
 ): Promise<Result<CreateAndLinkResult, Error>> {
-  const { organizationId, glAccountId, includeAncestors, actorUserId } = options
-
+  const touched = new Set<string>()
   try {
-    const provider = await resolveAccountingProvider(organizationId)
-    if (!supportsCreatingProviderAccounts(provider) || !provider.createProviderAccount) {
-      throw new UnprocessableEntityError(
-        'The connected accounting system cannot have accounts added to it from auxx. Create the account there, then link it here.',
-        { organizationId, providerId: provider.id }
-      )
-    }
-
-    const chart = await listChartAccounts(db, organizationId)
-    if (chart.isErr()) return err(chart.error)
-
-    const account = chart.value.find((row) => row.id === glAccountId)
-    if (!account) {
-      throw new UnprocessableEntityError(
-        `Account ${glAccountId} does not exist in this organization, or has been archived.`,
-        { organizationId, glAccountId }
-      )
-    }
-
-    const mappings = await provider.listAccountMappings(organizationId)
-    if (mappings.isErr()) return err(mappings.error)
-    const existingMapping = mappings.value.get(glAccountId)
-    if (existingMapping) {
-      throw new UnprocessableEntityError(
-        `${accountLabel(account)} is already linked to an account in the connected accounting system. Unlink it first if it should point somewhere else.`,
-        { organizationId, glAccountId, providerAccountId: existingMapping }
-      )
-    }
-
-    // CHART-HIERARCHY §6: the provider needs the PARENT's own id to nest a
-    // child, and there is no way to reparent afterwards through this seam - so
-    // an unlinked ancestor is either created first, root-first, or refused.
-    const ancestors: CreatedProviderAccount[] = []
-    for (const ancestor of unlinkedAncestors(chart.value, account, mappings.value)) {
-      if (!includeAncestors) {
-        throw new UnprocessableEntityError(
-          `Link ${accountPathLabel(chart.value, ancestor.id)} to ${providerDisplayName(provider.id)} first.`,
-          { organizationId, glAccountId, parentAccountId: ancestor.id }
-        )
-      }
-      const done = await createOne(provider, {
-        organizationId,
-        chart: chart.value,
-        mappings: mappings.value,
-        account: ancestor,
-        actorUserId,
-      })
-      if (done.isErr()) return err(done.error)
-      ancestors.push(done.value)
-    }
-
-    const created = await createOne(provider, {
-      organizationId,
-      chart: chart.value,
-      mappings: mappings.value,
-      account,
-      actorUserId,
-    })
-    if (created.isErr()) return err(created.error)
-
-    return ok({ ...created.value, ancestors })
+    return await createAndLink(db, options, touched)
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to create and link a provider account', {
       error,
-      organizationId,
-      glAccountId,
+      organizationId: options.organizationId,
+      glAccountId: options.glAccountId,
     })
     return err(new AuxxError('Internal error'))
+  } finally {
+    // Once per run, never per row: each emit makes the next reader re-fetch the provider's whole chart.
+    if (touched.size > 0)
+      await onCacheEvent('accounting.provider-chart.changed', { orgId: options.organizationId })
   }
+}
+
+async function createAndLink(
+  db: Database,
+  options: CreateAndLinkOptions,
+  touched: Set<string>
+): Promise<Result<CreateAndLinkResult, Error>> {
+  const { organizationId, glAccountId, includeAncestors, actorUserId } = options
+  const provider = await resolveAccountingProvider(organizationId)
+  const creator = await accountCreatorFor(provider, { orgId: organizationId, actorUserId })
+  if (creator.isErr()) return err(creator.error)
+
+  const chart = await listChartAccounts(db, organizationId)
+  if (chart.isErr()) return err(chart.error)
+
+  const account = chart.value.find((row) => row.id === glAccountId)
+  if (!account) {
+    throw new UnprocessableEntityError(
+      `Account ${glAccountId} does not exist in this organization, or has been archived.`,
+      { organizationId, glAccountId }
+    )
+  }
+
+  const mappings = await provider.listAccountMappings(organizationId)
+  if (mappings.isErr()) return err(mappings.error)
+  const existingMapping = mappings.value.get(glAccountId)
+  if (existingMapping) {
+    throw new UnprocessableEntityError(
+      `${accountLabel(account)} is already linked to an account in the connected accounting system. Unlink it first if it should point somewhere else.`,
+      { organizationId, glAccountId, providerAccountId: existingMapping }
+    )
+  }
+
+  // CHART-HIERARCHY §6: the provider needs the PARENT's own id to nest a
+  // child, and there is no way to reparent afterwards through this seam - so
+  // an unlinked ancestor is either created first, root-first, or refused.
+  const ancestors: CreatedProviderAccount[] = []
+  for (const ancestor of unlinkedAncestors(chart.value, account, mappings.value)) {
+    if (!includeAncestors) {
+      throw new UnprocessableEntityError(
+        `Link ${accountPathLabel(chart.value, ancestor.id)} to ${providerDisplayName(provider.id)} first.`,
+        { organizationId, glAccountId, parentAccountId: ancestor.id }
+      )
+    }
+    const done = await createOneProviderAccount(creator.value, {
+      organizationId,
+      chart: chart.value,
+      mappings: mappings.value,
+      account: ancestor,
+      actorUserId,
+      touched,
+    })
+    if (done.isErr()) return err(done.error)
+    ancestors.push(done.value)
+  }
+
+  const created = await createOneProviderAccount(creator.value, {
+    organizationId,
+    chart: chart.value,
+    mappings: mappings.value,
+    account,
+    actorUserId,
+    touched,
+  })
+  if (created.isErr()) return err(created.error)
+
+  return ok({ ...created.value, ancestors })
+}
+
+/**
+ * The creator for one run: the provider's connection-bound one when it offers
+ * it, else its own two methods. Refuses a provider that cannot create at all.
+ */
+export async function accountCreatorFor(
+  provider: AccountingProvider,
+  input: { orgId: string; actorUserId?: string }
+): Promise<Result<ProviderAccountCreator, Error>> {
+  const create = provider.createProviderAccount
+  if (!supportsCreatingProviderAccounts(provider) || !create) {
+    return err(
+      new UnprocessableEntityError(
+        'The connected accounting system cannot have accounts added to it from auxx. Create the account there, then link it here.',
+        { organizationId: input.orgId, providerId: provider.id }
+      )
+    )
+  }
+  if (provider.openProviderAccountCreator) return provider.openProviderAccountCreator(input)
+  return ok({
+    createProviderAccount: (account) => create.call(provider, account),
+    setAccountMapping: (mapping) => provider.setAccountMapping(mapping),
+  })
 }
 
 /**
@@ -213,31 +248,27 @@ function unlinkedAncestors(
     .filter((ancestor) => !mappings.has(ancestor.id))
 }
 
-interface CreateOneContext {
+export interface CreateOneContext {
   organizationId: string
   chart: readonly ChartAccountRow[]
   /** Mutated as each account is linked, so the next child finds its parent. */
   mappings: Map<string, string>
   account: ChartAccountRow
   actorUserId?: string
+  /** Ids the provider was asked to create; the caller emits `provider-chart.changed` once if any. */
+  touched: Set<string>
 }
 
-/** One account: create the counterpart, validate it, confirm the pairing. */
-async function createOne(
-  provider: AccountingProvider,
+/** One account: create the counterpart, validate it, confirm the pairing. Shared by the single and the batch. */
+export async function createOneProviderAccount(
+  creator: ProviderAccountCreator,
   ctx: CreateOneContext
 ): Promise<Result<CreatedProviderAccount, Error>> {
-  const { organizationId, chart, mappings, account, actorUserId } = ctx
-  if (!provider.createProviderAccount) {
-    throw new UnprocessableEntityError(
-      'The connected accounting system cannot have accounts added to it from auxx. Create the account there, then link it here.',
-      { organizationId, providerId: provider.id }
-    )
-  }
+  const { organizationId, chart, mappings, account, actorUserId, touched } = ctx
 
   const parentProviderId = account.parentId ? mappings.get(account.parentId) : undefined
 
-  const created = await provider.createProviderAccount({
+  const created = await creator.createProviderAccount({
     orgId: organizationId,
     glAccountId: account.id,
     name: account.name,
@@ -248,7 +279,7 @@ async function createOne(
     actorUserId,
   })
   if (created.isErr()) return err(created.error)
-  await onCacheEvent('accounting.provider-chart.changed', { orgId: organizationId })
+  touched.add(account.id)
   const target = created.value.account
 
   // 🛑 The same gate the picker's confirmation passes through. Reached mainly
@@ -266,14 +297,16 @@ async function createOne(
       providerAccountId: target.id,
       outcome: created.value.outcome,
     })
-    throw new UnprocessableEntityError(message, {
-      organizationId,
-      glAccountId: account.id,
-      providerAccountId: target.id,
-    })
+    return err(
+      new UnprocessableEntityError(message, {
+        organizationId,
+        glAccountId: account.id,
+        providerAccountId: target.id,
+      })
+    )
   }
 
-  const written = await provider.setAccountMapping({
+  const written = await creator.setAccountMapping({
     orgId: organizationId,
     glAccountId: account.id,
     providerAccountId: target.id,

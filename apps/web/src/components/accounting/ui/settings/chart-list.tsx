@@ -65,12 +65,14 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
+  SelectAllCheckbox,
   useBulkMode,
   useIsPending,
   useIsSelected,
   useListSelection,
+  useSelectionIds,
 } from '~/components/list-selection'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
@@ -256,7 +258,8 @@ export function ChartList({
           groupVisible,
           search ? new Set(group.map((account) => account.id)) : null
         )
-        return { type, label, group, tree }
+        // `ids` is what the header's checkbox takes: the group as rendered.
+        return { type, label, group, tree, ids: flattenAccountIds(tree) }
       }),
     [filtered, visible, search]
   )
@@ -277,10 +280,7 @@ export function ChartList({
   // left one selected. A row that a bulk action really does remove leaves the
   // selection when the bar calls `exit()` on done.
   const setItemIds = useListSelection((state) => state.setItemIds)
-  const visibleIds = useMemo(
-    () => groupTrees.flatMap(({ tree }) => flattenAccountIds(tree)),
-    [groupTrees]
-  )
+  const visibleIds = useMemo(() => groupTrees.flatMap(({ ids }) => ids), [groupTrees])
   useEffect(() => {
     setItemIds(visibleIds, { pruneSelection: false })
   }, [visibleIds, setItemIds])
@@ -292,6 +292,10 @@ export function ChartList({
   return (
     <div className='flex flex-col gap-3 p-3'>
       <div className='flex items-center gap-2'>
+        {/* The outbox's list-level select, over the store's `itemIds` (`visibleIds`
+            below, so a search narrows what "all" means). `listPadding` is this
+            container's `p-3`; it lines the box up with the group headers' own. */}
+        <SelectAllCheckbox listPadding={12} />
         <InputSearch
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -490,32 +494,27 @@ export function ChartList({
               🛑 A `TreeRow` parent, not a `Section`, for the reason
               `role-map-list.tsx` gives: both levels are then the same primitive
               and the connector draws the nesting. */}
-          {groupTrees.map(({ type, label, group, tree }) => {
+          {groupTrees.map(({ type, label, group, tree, ids }) => {
             // An empty group headed "no accounts here" is noise. A chart that
             // has no equity accounts should read as four groups, not five.
             if (group.length === 0) return null
 
-            const GroupIcon = accountTypeIcon(type)
             const groupLinked = group.filter(
               (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
             ).length
 
             return (
-              <TreeRow
+              <ChartGroupRow
                 key={type}
-                expandable
+                type={type}
+                label={label}
+                ids={ids}
                 // 🛑 A search FORCES every group open, for the reason the Roles
                 // tab gives: `filtered` has already dropped what does not match,
                 // so a collapsed group would hide the hits and read as nothing
                 // found while holding some.
                 isOpen={!!search || !collapsed.includes(type)}
                 onToggleOpen={() => toggleGroup(type)}
-                // 🛑 The group's OWN glyph, from `GL_ACCOUNT_TYPE_META`, not a
-                // blanket `Landmark`. Five groups wearing one icon told the
-                // reader nothing the heading did not already say, and it did not
-                // match the roles tab, which drew its own three-for-five set.
-                icon={<GroupIcon className='size-4 text-muted-foreground' />}
-                title={<span className='truncate font-medium text-sm'>{label}</span>}
                 secondary={
                   <span className='text-muted-foreground text-xs tabular-nums'>
                     {group.length} {group.length === 1 ? 'account' : 'accounts'}
@@ -549,12 +548,70 @@ export function ChartList({
                     canControl={canControl}
                   />
                 ))}
-              </TreeRow>
+              </ChartGroupRow>
             )
           })}
         </div>
       )}
     </div>
+  )
+}
+
+interface ChartGroupRowProps {
+  type: GlAccountTypeValue
+  label: string
+  /** The group's rows as rendered (search ancestors included); the header's checkbox takes them all. */
+  ids: string[]
+  isOpen: boolean
+  onToggleOpen: () => void
+  secondary: ReactNode
+  children: ReactNode
+}
+
+/**
+ * One statement-type header, the outbox's `GroupRow` shape: a tri-state
+ * checkbox over the group's visible rows, hover-revealed and pinned in bulk
+ * mode exactly as the rows' own. A component for the reason
+ * `ChartAccountListRow` is one - it reads the selection store.
+ */
+function ChartGroupRow({
+  type,
+  label,
+  ids,
+  isOpen,
+  onToggleOpen,
+  secondary,
+  children,
+}: ChartGroupRowProps) {
+  const selecting = useBulkMode()
+  const selectedIds = useSelectionIds()
+  const toggleMany = useListSelection((state) => state.toggleMany)
+  const picked = ids.filter((id) => selectedIds.includes(id)).length
+  const all = ids.length > 0 && picked === ids.length
+  // 🛑 The group's OWN glyph, from `GL_ACCOUNT_TYPE_META`, not a blanket
+  // `Landmark`. Five groups wearing one icon told the reader nothing the
+  // heading did not already say, and it did not match the roles tab, which
+  // drew its own three-for-five set.
+  const GroupIcon = accountTypeIcon(type)
+  return (
+    <TreeRow
+      expandable
+      isOpen={isOpen}
+      onToggleOpen={onToggleOpen}
+      icon={<GroupIcon className='size-4 text-muted-foreground' />}
+      selectable
+      selecting={selecting}
+      selected={all ? true : picked > 0 ? 'indeterminate' : false}
+      onSelectChange={(next) => toggleMany(ids, next)}
+      selectLabel={`Select every ${label.toLowerCase()} account`}
+      title={<span className='truncate font-medium text-sm'>{label}</span>}
+      secondary={secondary}
+      rowClassName={cn(
+        'bg-primary-100/50 hover:bg-primary-100',
+        all && 'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
+      )}>
+      {children}
+    </TreeRow>
   )
 }
 
@@ -702,9 +759,15 @@ function ChartAccountListRow({
       // and the chevron (rendered because `expandable`) owns expand/collapse.
       onToggleOpen={hasChildren ? () => onToggleAccount(account.id) : undefined}
       onRowClick={() => onSelect(account.id)}
+      // `info` is what a picked row wears, `primary-*` the row you are looking at (the outbox's rule).
       rowClassName={cn(
         'bg-primary-100/50 hover:bg-primary-100',
         selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200',
+        isSelected &&
+          cn(
+            'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+            selectedId === account.id && 'ring-info/40'
+          ),
         (!account.isActive || account.isArchived) && 'opacity-60',
         // The bulk runner is working on this row. Without it a long batch reads
         // as a frozen list.

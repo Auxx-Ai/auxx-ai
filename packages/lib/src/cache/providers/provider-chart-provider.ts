@@ -14,8 +14,17 @@ export const providerChartProvider: CacheProvider<CachedProviderChart | null> = 
     const companyId = await readActiveBookCompanyId(db, orgId)
     if (!companyId) return null
 
+    // Cache recomputation also runs in API processes and standalone scripts,
+    // which do not necessarily run the web/worker accounting bootstrap.
+    const { registerAccountingProviders } = await import(
+      '../../accounting/providers/accounting-providers'
+    )
+    registerAccountingProviders()
     const { resolveAccountingProvider } = await import('../../accounting/providers/provider')
     const provider = await resolveAccountingProvider(orgId)
+    if (provider.id === 'none') {
+      throw new Error('The active accounting book provider is unavailable; reconnect it and retry.')
+    }
     const accounts = await provider.listProviderAccounts(orgId)
     if (accounts.isErr()) throw accounts.error
     return { companyId, accounts: accounts.value }

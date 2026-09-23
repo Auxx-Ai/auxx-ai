@@ -103,6 +103,7 @@ import {
   activateAccountingBookConnection,
   confirmSuggestedIdentities,
   createAndLinkProviderAccount,
+  createProviderAccounts,
   listAccountIdentities,
   readAccountingBookConnectionStatus,
   readActiveBookConnection,
@@ -829,6 +830,26 @@ export const ledgerRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       // The ancestors were mapped too, and a batch may name one of them.
       for (const created of [...result.value.ancestors, result.value])
+        await rereleaseForAccount(ctx.db, ctx.session.organizationId, created.row.account.id)
+      return result.value
+    }),
+
+  /**
+   * `createProviderAccount` for a selection - the chart tab's bulk action (97
+   * item 10). One resolved connection, parents before children, sequential
+   * against the provider, halting on the first refusal with the rows already
+   * linked kept and reported. Same rung, same reason.
+   */
+  createProviderAccounts: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ glAccountIds: z.array(z.string().min(1)).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await createProviderAccounts(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glAccountIds: input.glAccountIds,
+        actorUserId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      for (const created of result.value.created)
         await rereleaseForAccount(ctx.db, ctx.session.organizationId, created.row.account.id)
       return result.value
     }),
