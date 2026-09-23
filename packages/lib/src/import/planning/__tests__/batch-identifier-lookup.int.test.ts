@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Resource, ResourceField } from '../../../resources'
 import { BaseType } from '../../../workflow-engine/core/types'
 import { hashValue } from '../../hashing/hash-value'
+import { resolutionKey } from '../../hashing/resolution-key'
 import type { ImportMappingProperty } from '../../types/mapping'
 import type { ValueResolution } from '../../types/resolution'
 import {
@@ -58,7 +59,7 @@ function rows(...cells: string[]): Map<number, Record<number, string>> {
 /** A valid split resolution: one cell that yields several identifier values. */
 function splitResolution(rawValue: string, elements: string[]): [string, ValueResolution] {
   return [
-    hashValue(rawValue),
+    resolutionKey('prop-sku', rawValue),
     {
       id: `res-${rawValue}`,
       importJobPropertyId: 'prop-sku',

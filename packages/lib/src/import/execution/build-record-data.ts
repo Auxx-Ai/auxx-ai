@@ -1,6 +1,6 @@
 // packages/lib/src/import/execution/build-record-data.ts
 
-import { hashValue } from '../hashing/hash-value'
+import { resolutionKey } from '../hashing/resolution-key'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ValueResolution } from '../types/resolution'
 
@@ -34,7 +34,7 @@ export function getSourceValue(row: SourceRow, mapping: ImportMappingProperty): 
  *
  * @param rowData - Source row keyed by column index (CSV) or source-field key (connectors)
  * @param mappings - Column mappings
- * @param resolutions - Map of hash → resolution
+ * @param resolutions - Map of {@link resolutionKey} → resolution
  * @returns Object with standard fields and custom fields separated
  */
 export function buildRecordData(
@@ -52,10 +52,7 @@ export function buildRecordData(
     }
 
     const rawValue = getSourceValue(rowData, mapping)
-    const hash = hashValue(rawValue)
-
-    // Get resolved value
-    const resolution = resolutions.get(hash)
+    const resolution = resolutions.get(resolutionKey(mapping.id, rawValue))
     let value: unknown = rawValue
 
     if (resolution && resolution.resolvedValues.length > 0) {
@@ -87,7 +84,7 @@ export function buildRecordData(
  *
  * @param rowsData - Map of rowIndex → { columnIndex: value }
  * @param mappings - Column mappings
- * @param resolutions - Map of hash → resolution
+ * @param resolutions - Map of {@link resolutionKey} → resolution
  * @returns Array of { rowIndex, standardFields, customFields }
  */
 export function buildMultipleRecordData(

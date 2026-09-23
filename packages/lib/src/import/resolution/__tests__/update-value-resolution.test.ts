@@ -5,6 +5,7 @@ import { schema } from '@auxx/database'
 import { describe, expect, it, vi } from 'vitest'
 import { buildRecordData } from '../../execution/build-record-data'
 import { hashValue } from '../../hashing/hash-value'
+import { resolutionKey } from '../../hashing/resolution-key'
 import type { ImportMappingProperty } from '../../types/mapping'
 import type { ResolvedValue, ValueResolution } from '../../types/resolution'
 import { updateValueResolution } from '../update-value-resolution'
@@ -195,7 +196,7 @@ describe('updateValueResolution multi-value overrides', () => {
 
     const resolutions = new Map<string, ValueResolution>([
       [
-        hashValue(raw),
+        resolutionKey('prop_0', raw),
         {
           id: 'res_1',
           importJobPropertyId: 'jobprop_0',
@@ -220,7 +221,7 @@ describe('updateValueResolution multi-value overrides', () => {
 
     const resolutions = new Map<string, ValueResolution>([
       [
-        hashValue(raw),
+        resolutionKey('prop_0', raw),
         {
           id: 'res_1',
           importJobPropertyId: 'jobprop_0',
