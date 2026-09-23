@@ -28,6 +28,7 @@ import {
   type PostingTrigger,
   type PostingType,
   SUMMARY_GRAIN_AVENUES,
+  SUMMARY_GRAINS,
   type SummaryGrain,
   type SummaryGrainAvenue,
 } from '@auxx/lib/accounting/ledger/client'
@@ -175,6 +176,19 @@ export const SUMMARY_GRAIN_LABEL: Record<SummaryGrain, string> = {
   day: 'Per day',
   month: 'Per month',
   payout: 'Per payout',
+}
+
+/** The grain's option text; the trigger keeps {@link SUMMARY_GRAIN_LABEL}. Drop the payout caveat when 94 stamps ids. */
+export const SUMMARY_GRAIN_OPTION_LABEL: Record<SummaryGrain, string> = {
+  ...SUMMARY_GRAIN_LABEL,
+  payout: 'Payout (falls back to day until payout ids are stamped)',
+}
+
+/** A shipment never carries a payout id, so fulfillment is not offered `payout` (101 E7). */
+export function summaryGrainsForAvenue(avenue: ExportAvenue): readonly SummaryGrain[] {
+  return avenue === 'fulfillment'
+    ? SUMMARY_GRAINS.filter((grain) => grain !== 'payout')
+    : SUMMARY_GRAINS
 }
 
 /** Every export-table key the page's form draft needs beyond `POSTING_PAGE_INPUT_KEYS`. */

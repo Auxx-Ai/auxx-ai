@@ -34,6 +34,20 @@ describe('refusalFromError', () => {
     })
   })
 
+  it("carries the thrower's structured detail beside its message", () => {
+    const error = new UnprocessableEntityError(
+      'x',
+      withWorkItemCode('MEMO_INPUT_INCOMPLETE', {
+        message: 'why',
+        detail: { moneyPending: true, pendingRelations: [{ recordId: 'cm_1' }] },
+      })
+    )
+    expect(refusalFromError(error)).toEqual({
+      reasonCode: 'MEMO_INPUT_INCOMPLETE',
+      detail: { moneyPending: true, pendingRelations: [{ recordId: 'cm_1' }], message: 'why' },
+    })
+  })
+
   it("takes the resolver's unresolved roles as the wake key", () => {
     const error = new UnprocessableEntityError('Cannot post: 2 posting role(s) ...', {
       unresolvedRoles: ['clearing', 'bank'],

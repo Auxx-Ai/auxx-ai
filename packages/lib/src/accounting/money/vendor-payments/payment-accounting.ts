@@ -82,6 +82,7 @@ async function prepareVendorPayment(
       sourceType: loaded.base.sourceType,
       sourceId: loaded.base.sourceId,
       glAccountId: endpoint.glAccountId,
+      accountRole: endpoint.role,
       direction: 'credit',
       amount: amountMinor,
       sortOrder: 1,

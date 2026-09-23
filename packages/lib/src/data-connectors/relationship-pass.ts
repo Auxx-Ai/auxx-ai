@@ -21,6 +21,7 @@
 // finalize replay instead.
 
 import { createScopedLogger } from '@auxx/logger'
+import { wakeRecords } from '../accounting/work-items/wake'
 import { toRecordId } from '../resources/resource-id'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
 import {
@@ -59,6 +60,7 @@ export async function resolveRelationships(
   const items = await listItemsWithPendingRelations(ctx.db, ctx.connector.id)
   const { currentTargets, concreteFieldIds } = await readCurrentEdges(ctx, items)
   const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
+  const completed: string[] = []
 
   for (const item of items) {
     if (!item.entityInstanceId) continue
@@ -66,6 +68,7 @@ export async function resolveRelationships(
     const linked = new Set(item.linkedRelations ?? [])
     const pinned = item.pinnedFields ?? []
     const stillPending: PendingRelation[] = []
+    const linkedTargets: string[] = []
     let linkedChanged = false
 
     const parentRecordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
@@ -130,6 +133,7 @@ export async function resolveRelationships(
         ? currentTargets.get(`${item.entityInstanceId}::${concreteFieldId}`)
         : undefined
       if (currentTarget === target.entityInstanceId) {
+        linkedTargets.push(target.entityInstanceId)
         if (!linked.has(rel.fieldKey)) {
           linked.add(rel.fieldKey)
           linkedChanged = true
@@ -149,6 +153,7 @@ export async function resolveRelationships(
           {}
         )
         ctx.touchedDefs.add(item.entityDefinitionId)
+        linkedTargets.push(target.entityInstanceId)
         if (!linked.has(rel.fieldKey)) {
           linked.add(rel.fieldKey)
           linkedChanged = true
@@ -166,6 +171,10 @@ export async function resolveRelationships(
 
     summary.resolved += pending.length - stillPending.length
     summary.stillPending += stillPending.length
+    // The record is complete, and so is the parent a child just linked itself to.
+    if (stillPending.length === 0 && pending.length > 0) {
+      completed.push(item.entityInstanceId, ...linkedTargets)
+    }
 
     if (stillPending.length !== pending.length || linkedChanged) {
       await setItemRelationState(ctx.db, item.id, {
@@ -175,6 +184,10 @@ export async function resolveRelationships(
     }
   }
 
+  // Work parked on a record this pass completed retries now (101 E9); a failed wake
+  // leaves the rows on their own schedule.
+  await wakeRecords(ctx.db, ctx.orgId, { recordIds: completed })
+
   logger.info('relationship pass done', {
     connectorId: ctx.connector.id,
     runId: ctx.runId,
@@ -182,6 +195,7 @@ export async function resolveRelationships(
     items: items.length,
     resolved: summary.resolved,
     stillPending: summary.stillPending,
+    completed: completed.length,
   })
   return summary
 }

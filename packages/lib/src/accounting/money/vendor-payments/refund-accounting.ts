@@ -133,6 +133,7 @@ export async function postVendorRefundAccounting(
         txnDate: loaded.effectiveDate,
         settlements: lines,
         endpointGlAccountId: endpoint.glAccountId,
+        endpointRole: endpoint.role,
         ...(Object.keys(endpointDimensions).length ? { endpointDimensions } : {}),
         vendorInstanceId,
       })

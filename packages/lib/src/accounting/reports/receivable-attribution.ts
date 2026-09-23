@@ -60,6 +60,16 @@ export function documentKey(sourceType: string, sourceId: string): string {
 export function allocateByWeight(total: number, weights: readonly number[]): number[] {
   const sum = weights.reduce((acc, w) => acc + w, 0)
   if (sum <= total) return [...weights]
+  return prorateByWeight(total, weights)
+}
+
+/**
+ * Split `total` (whole minor units, >= 0) pro rata to non-negative `weights`, the cents handed
+ * out by largest remainder so the parts sum to `total` exactly. All zeros when the weights are.
+ */
+export function prorateByWeight(total: number, weights: readonly number[]): number[] {
+  const sum = weights.reduce((acc, w) => acc + w, 0)
+  if (sum <= 0) return weights.map(() => 0)
   // BigInt: amount x weight can pass 2^53 on large books.
   const big = BigInt(total)
   const bigSum = BigInt(sum)

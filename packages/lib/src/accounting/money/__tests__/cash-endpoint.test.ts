@@ -1,7 +1,8 @@
 // packages/lib/src/accounting/money/__tests__/cash-endpoint.test.ts
 //
-// One resolver, three shapes: a rail's clearing scoped by rail and currency, a
-// bank account's own pointer, or the unscoped undeposited funds role.
+// One resolver, four shapes: a rail's clearing scoped by rail and currency, a
+// bank account's own pointer, the unscoped undeposited funds role, or a gift card's
+// liability. Each returns the role it resolved (101 E8).
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,7 +40,12 @@ describe('resolveCashEndpoint', () => {
       { paymentGatewayId: 'pg_1', cashAccountInstanceId: null, currency: 'USD' },
       'Invoice receipt'
     )
-    expect(endpoint).toEqual({ glAccountId: 'gl_clearing', kind: 'clearing', railId: 'pg_1' })
+    expect(endpoint).toEqual({
+      glAccountId: 'gl_clearing',
+      kind: 'clearing',
+      role: 'clearing',
+      railId: 'pg_1',
+    })
     expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['clearing'], {
       rail: 'pg_1',
       currency: 'USD',
@@ -53,7 +59,12 @@ describe('resolveCashEndpoint', () => {
       { paymentGatewayId: null, cashAccountInstanceId: 'ba_1', currency: 'USD' },
       'Refund'
     )
-    expect(endpoint).toEqual({ glAccountId: 'gl_bank', kind: 'bank_account', railId: null })
+    expect(endpoint).toEqual({
+      glAccountId: 'gl_bank',
+      kind: 'bank_account',
+      role: 'bank',
+      railId: null,
+    })
     expect(h.resolveBankAccountGlAccountInTx).toHaveBeenCalledWith(tx, ORG, 'ba_1', 'Refund')
     expect(h.resolveRoles).not.toHaveBeenCalled()
   })
@@ -71,6 +82,7 @@ describe('resolveCashEndpoint', () => {
     expect(endpoint).toEqual({
       glAccountId: 'gl_undep',
       kind: 'undeposited_funds',
+      role: 'undeposited_funds',
       railId: null,
     })
     expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['undeposited_funds'])
@@ -86,7 +98,12 @@ describe('resolveCashEndpoint', () => {
       { paymentGatewayId: null, cashAccountInstanceId: null, currency: 'USD', giftCard: true },
       'Customer payment'
     )
-    expect(endpoint).toEqual({ glAccountId: 'gl_gift', kind: 'gift_card', railId: null })
+    expect(endpoint).toEqual({
+      glAccountId: 'gl_gift',
+      kind: 'gift_card',
+      role: 'gift_card_liability',
+      railId: null,
+    })
     expect(h.resolveRoles).toHaveBeenCalledWith(tx, ORG, ['gift_card_liability'])
   })
 

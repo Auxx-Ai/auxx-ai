@@ -535,6 +535,31 @@ export const CREDIT_MEMO_FIELDS = defineResourceFields({
       'Null means no refund legs exist to sum, which is not the same as a refund of zero',
   },
 
+  // Channel only: a refund transaction is still pending, so `amountRefunded` is short of what
+  // will go back. The memo does not issue while it is true (101 E9); a change wakes the issue.
+  moneyPending: {
+    id: toFieldId('moneyPending'),
+    key: 'moneyPending',
+    label: 'Refund Pending',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'credit_memo_money_pending',
+    systemSortOrder: 'aE1',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true, // the channel connector transcribes it on insert
+      updatable: true, // and overwrites it when the money settles
+      configurable: false,
+    },
+    description:
+      'Channel only: whether a refund transaction on this memo is still pending at the channel. ' +
+      'The memo waits to issue until it clears',
+  },
+
   balance: {
     id: toFieldId('balance'),
     key: 'balance',

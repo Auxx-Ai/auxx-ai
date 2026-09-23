@@ -14,6 +14,7 @@ const BASE = {
   moneyTransactionId: 'mt_1',
   txnDate: '2026-09-18',
   endpointGlAccountId: 'ei_acct_bank',
+  endpointRole: 'bank' as const,
   vendorInstanceId: 'ei_company_supplier',
 }
 
@@ -44,6 +45,7 @@ describe('buildVendorRefundEntry', () => {
     const [endpoint, ...controls] = built.entry.lines
     expect(endpoint).toMatchObject({
       glAccountId: 'ei_acct_bank',
+      accountRole: 'bank',
       direction: 'debit',
       amount: 20_000,
     })

@@ -4,12 +4,14 @@ import { type Database, schema } from '@auxx/database'
 import {
   buildExportBatches,
   countExportBatchesByState,
+  countSkippedBeforeFloor,
   countSummaryRows,
   countUnbuiltSummaryRows,
   EXPORT_BATCH_PAGE_SIZE,
   type ExportBatchRow,
   listExportBatches,
   listSummaryRows,
+  readExportModeSwitchImpact,
   readUnbuiltSummaryMembers,
   readUnbuiltSummaryPage,
   rebuildSummaryBucket,
@@ -1432,6 +1434,20 @@ export const ledgerRouter = createTRPCRouter({
         if (result.isErr()) throw result.error
         return result.value
       }),
+
+    /** Postings dated before the export floor that no batch holds - never exported (101 E6). */
+    skippedBeforeFloor: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+      const result = await countSkippedBeforeFloor(ctx.db, ctx.session.organizationId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+    /** What an Export Mode switch leaves behind: the three counts General's confirm shows. */
+    modeSwitchImpact: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+      const result = await readExportModeSwitchImpact(ctx.db, ctx.session.organizationId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
     /** The postings inside one unbuilt group - read when its row is opened. */
     unbuiltMembers: permissionProcedure(PermissionKey.ledgerView)

@@ -258,6 +258,12 @@ function shapeRefundReceipt(input: ShapeForPostingInput): ShapedPosting {
   return { objectType: REFUND_RECEIPT_OBJECT_TYPE, payload }
 }
 
+function debitsReceivable(input: ShapeForPostingInput): boolean {
+  return roled(input).some(
+    (line) => line.direction === 'debit' && line.role === 'accounts_receivable'
+  )
+}
+
 function shapeDeposit(input: ShapeForPostingInput): ShapedPosting {
   const lines = roled(input)
   const bankLeg = lines.find((line) => line.direction === 'debit' && line.role === 'bank')
@@ -393,8 +399,9 @@ export function shapeForPosting(input: ShapeForPostingInput): ShapedPosting {
       return shapePayment(input)
     case 'credit_memo':
       return shapeCreditMemo(input)
+    // A D4 refund debits the receivable, which a Refund Receipt cannot carry: a journal (101 E1).
     case 'refund':
-      return shapeRefundReceipt(input)
+      return debitsReceivable(input) ? buildJournal(input) : shapeRefundReceipt(input)
     case 'payout':
     case 'bank_deposit':
       return shapeDeposit(input)

@@ -20,6 +20,34 @@ const h = vi.hoisted(() => ({
   sumCreditMemoApplications: vi.fn(async () => 0),
   sumSucceededCreditMemoRefunds: vi.fn(async () => 0),
   readEditStamp: vi.fn(async (): Promise<{ openedAt: string; byUserId: string } | null> => null),
+  pendingItems: vi.fn(
+    async (_db: unknown, _org: string, _input: unknown): Promise<unknown[]> => []
+  ),
+  moneyPending: null as boolean | null,
+  orderLineIds: [] as string[],
+}))
+
+// 101 E9's readiness reads: the connector items around the memo, the money flag, and
+// the order's line items.
+vi.mock('../../../../data-connectors/pending-items', () => ({
+  listPendingItemsAround: h.pendingItems,
+}))
+vi.mock('../../../../resources/system-records', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../resources/system-records')>()),
+  systemDefId: async (_db: unknown, _org: string, type: string) => `def_${type}`,
+  systemFields: async (_db: unknown, _org: string, type: string, attrs: readonly string[]) => ({
+    defId: `def_${type}`,
+    fields: Object.fromEntries(attrs.map((attr) => [attr, { id: attr }])),
+  }),
+  readSystemRecords: async (
+    _db: unknown,
+    _org: string,
+    _ctx: unknown,
+    options: { ids?: string[]; by?: unknown }
+  ) =>
+    options.by
+      ? h.orderLineIds.map((id) => ({ id }))
+      : (options.ids ?? []).map((id) => ({ id, boolean: () => h.moneyPending })),
 }))
 
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
@@ -94,6 +122,8 @@ vi.mock('../settle', () => ({
 }))
 
 import type { Database } from '@auxx/database'
+import { AuxxError } from '../../../../errors'
+import { refusalFromError } from '../../../work-items/refusal'
 import { issueCreditMemo, voidCreditMemo } from '../writes'
 
 const ORG = 'org_1'
@@ -134,7 +164,7 @@ beforeEach(() => {
       subtotalMinor: 100_00,
       taxTotalMinor: null,
       disposition: null,
-      lineItemInstanceId: null,
+      lineItemInstanceId: 'li_1',
       sortOrder: 0,
     },
   ]
@@ -151,6 +181,9 @@ beforeEach(() => {
   h.settleCreditMemo.mockResolvedValue({ status: 'issued' })
   h.sumCreditMemoApplications.mockResolvedValue(0)
   h.sumSucceededCreditMemoRefunds.mockResolvedValue(0)
+  h.pendingItems.mockResolvedValue([])
+  h.moneyPending = null
+  h.orderLineIds = []
 })
 
 describe('issueCreditMemo', () => {
@@ -239,6 +272,94 @@ describe('the channel memo entry (91 D4)', () => {
     expect(result.postingId).toBeNull()
     const write = h.setValuesForEntity.mock.calls[0]![0]
     expect(write.values).toEqual([{ fieldId: 'credit_memo_status', value: 'issued' }])
+  })
+})
+
+describe('a channel memo issues only once its own payload is complete (101 E9)', () => {
+  beforeEach(() => {
+    h.memo.source = 'channel'
+    h.memo.orderInstanceId = 'order_1'
+    h.orderLineIds = ['oli_1', 'oli_2']
+  })
+
+  const pendingOn = (recordId: string, fieldKey: string) => ({
+    itemId: `item_${recordId}`,
+    dataConnectorId: 'dc_1',
+    connectorName: 'Shopify',
+    entityDefinitionId: 'def_x',
+    entityInstanceId: recordId,
+    pendingRelations: [{ fieldKey, targetDef: 'def_y', targetExternalId: 'ext_1' }],
+  })
+
+  async function refusal() {
+    const error = await issueCreditMemo(db, input).then(
+      () => null,
+      (e: unknown) => e
+    )
+    expect(error).toBeInstanceOf(AuxxError)
+    return { error: error as AuxxError, refusal: refusalFromError(error) }
+  }
+
+  it.each([
+    ['itself', MEMO_ID, 'credit_memo_order'],
+    ['a line', 'line_1', 'credit_memo_line_credit_memo'],
+    ['its order', 'order_1', 'order_contact'],
+    ['an order line item', 'oli_2', 'line_item_order'],
+  ])('a pending relation on %s refuses as MEMO_INPUT_INCOMPLETE, nothing built', async (_, recordId, fieldKey) => {
+    h.pendingItems.mockResolvedValue([pendingOn(recordId, fieldKey)])
+
+    const { error, refusal: parked } = await refusal()
+
+    expect(error.message).toBe(
+      'Its data from Shopify is not complete yet. It issues when the sync links it.'
+    )
+    expect(parked).toEqual({
+      reasonCode: 'MEMO_INPUT_INCOMPLETE',
+      detail: {
+        connector: 'Shopify',
+        pendingRelations: [{ recordId, fieldKey, targetExternalId: 'ext_1' }],
+      },
+    })
+    expect(h.readShipped).not.toHaveBeenCalled()
+    expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('asks about the memo, its lines, its order and the order line items', async () => {
+    await issueCreditMemo(db, input)
+
+    expect(h.pendingItems).toHaveBeenCalledWith(expect.anything(), ORG, {
+      instanceIds: [MEMO_ID, 'line_1', 'order_1', 'oli_1', 'oli_2'],
+      pointingFromDefIds: ['def_credit_memo', 'def_credit_memo_line', 'def_line_item'],
+    })
+  })
+
+  it('a refund whose money is still pending is not ready', async () => {
+    h.moneyPending = true
+
+    const { error, refusal: parked } = await refusal()
+
+    expect(error.message).toContain('still pending')
+    expect(parked).toEqual({ reasonCode: 'MEMO_INPUT_INCOMPLETE', detail: { moneyPending: true } })
+    expect(h.postCreditMemoEntry).not.toHaveBeenCalled()
+  })
+
+  it('issues once every relation resolved and the money settled', async () => {
+    h.moneyPending = false
+
+    await issueCreditMemo(db, input)
+
+    expect(h.postCreditMemoEntry).toHaveBeenCalledOnce()
+  })
+
+  it('a native memo with no lines still refuses as line-less, without the readiness read', async () => {
+    h.memo.source = 'native'
+    h.memo.lineIds = []
+    h.lines = []
+
+    await expect(issueCreditMemo(db, input)).rejects.toThrow('at least one line')
+    expect(h.pendingItems).not.toHaveBeenCalled()
   })
 })
 

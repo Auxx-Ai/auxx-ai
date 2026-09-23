@@ -61,7 +61,8 @@ vi.mock('@auxx/logger', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { ConflictError } from '../../../../errors'
+import { ConflictError, UnprocessableEntityError } from '../../../../errors'
+import { withWorkItemCode } from '../../../work-items/refusal'
 import { sweepChannelCreditMemos } from '../issue-pass'
 
 const db = {} as Database
@@ -113,6 +114,26 @@ describe('sweepChannelCreditMemos', () => {
     expect(counts).toEqual({ scanned: 2, issued: 1, blocked: 1 })
     // A refused memo still links the refunds that name it.
     expect(h.linked).toEqual(['cm_wait', 'cm_ok'])
+  })
+
+  it('parks a memo whose payload is incomplete under its own code at the issue stage (101 E9)', async () => {
+    h.memos = [memo('cm_wait')]
+    h.issue.mockRejectedValueOnce(
+      new UnprocessableEntityError(
+        'Its data from Shopify is not complete yet.',
+        withWorkItemCode('MEMO_INPUT_INCOMPLETE', { detail: { connector: 'Shopify' } })
+      )
+    )
+    await sweepChannelCreditMemos(db, { organizationId: 'org_1' })
+    expect(h.marks[0]).toEqual({
+      park: {
+        sourceKind: 'credit_memo',
+        sourceId: 'cm_wait',
+        stage: 'issue',
+        reasonCode: 'MEMO_INPUT_INCOMPLETE',
+        detail: { connector: 'Shopify' },
+      },
+    })
   })
 
   it('cuts on the cutoff and skips parked memos, except when scoped to one order', async () => {

@@ -116,6 +116,7 @@ vi.mock('~/trpc/react', () => {
             }),
           },
           unbuiltMembers: { useQuery: () => ({ data: [], isPending: false }) },
+          skippedBeforeFloor: { useQuery: () => ({ data: { count: 0, floor: null } }) },
           send: { useMutation: noMutation },
           sendBucket: { useMutation: noMutation },
           rebuildBucket: { useMutation: noMutation },

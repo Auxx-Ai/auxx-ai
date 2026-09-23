@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   findItemByDef: vi.fn(),
   readTargets: vi.fn(),
   setRelationState: vi.fn(async () => {}),
+  wakeRecords: vi.fn(async (_db: unknown, _org: string, _input: { recordIds: string[] }) => {}),
   buildWriteKeyToFieldId: vi.fn(),
   // Params mirror `UnifiedCrudHandler.update` so `mock.calls[n]` destructures as the
   // real tuple instead of an empty one.
@@ -41,6 +42,7 @@ vi.mock('../service', async (importOriginal) => ({
   setItemRelationState: h.setRelationState,
 }))
 vi.mock('../field-id-resolver', () => ({ buildWriteKeyToFieldId: h.buildWriteKeyToFieldId }))
+vi.mock('../../accounting/work-items/wake', () => ({ wakeRecords: h.wakeRecords }))
 
 import { resolveRelationships } from '../relationship-pass'
 
@@ -349,5 +351,55 @@ describe('resolveRelationships — unchanged behavior', () => {
 
     expect(h.update).not.toHaveBeenCalled()
     expect(h.readTargets).toHaveBeenCalledWith(expect.anything(), ORG, [])
+  })
+})
+
+describe('resolveRelationships — the wake (101 E9)', () => {
+  it('wakes the work on a record whose pending relations all resolved, and its target', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()])])
+
+    await resolveRelationships(ctx())
+
+    expect(h.wakeRecords).toHaveBeenCalledTimes(1)
+    expect(h.wakeRecords.mock.calls[0]![1]).toBe(ORG)
+    expect(h.wakeRecords.mock.calls[0]![2].recordIds).toEqual([ORDER_INSTANCE, CONTACT_INSTANCE])
+  })
+
+  it('wakes an edge that was already correct as well: the record is complete either way', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()])])
+    h.readTargets.mockResolvedValue(
+      new Map([[`${ORDER_INSTANCE}::${CUSTOMER_FIELD_ID}`, CONTACT_INSTANCE]])
+    )
+
+    await resolveRelationships(ctx())
+
+    expect(h.wakeRecords.mock.calls[0]![2].recordIds).toEqual([ORDER_INSTANCE, CONTACT_INSTANCE])
+  })
+
+  it('wakes nothing when nothing resolved', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()])])
+    h.findItemByDef.mockResolvedValue(null)
+
+    await resolveRelationships(ctx())
+
+    expect(h.wakeRecords.mock.calls[0]![2].recordIds).toEqual([])
+  })
+
+  it('wakes nothing for a record still waiting on another edge', async () => {
+    const unsynced: PendingRelation = {
+      fieldKey: 'order_line',
+      targetDef: 'def_line',
+      targetExternalId: 'ext_missing',
+    }
+    h.listItems.mockResolvedValue([item([setEdge(), unsynced])])
+    h.findItemByDef.mockImplementation(async (_db, _c, _def, externalId: string) =>
+      externalId === 'ext_c1'
+        ? { entityInstanceId: CONTACT_INSTANCE, entityDefinitionId: CONTACT_DEF }
+        : null
+    )
+
+    await resolveRelationships(ctx())
+
+    expect(h.wakeRecords.mock.calls[0]![2].recordIds).toEqual([])
   })
 })

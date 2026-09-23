@@ -28,9 +28,18 @@ import { validateCashEndpointSource } from './client'
 
 export type { CashEndpointKind, CashEndpointSource } from './client'
 
+/** The role each endpoint kind resolves through; `bank` for a bank account's own pointer. */
+export type CashEndpointRole =
+  | typeof ACCOUNT_ROLES.CLEARING
+  | typeof ACCOUNT_ROLES.UNDEPOSITED_FUNDS
+  | typeof ACCOUNT_ROLES.BANK
+  | typeof ACCOUNT_ROLES.GIFT_CARD_LIABILITY
+
 export interface CashEndpoint {
   glAccountId: string
   kind: CashEndpointKind
+  /** The role `glAccountId` holds, stamped beside it on the line as a snapshot (101 E8). */
+  role: CashEndpointRole
   /** The rail, when `kind` is `clearing`. Goes onto `GlPosting.railId` and `scope.rail`. */
   railId: string | null
 }
@@ -64,7 +73,12 @@ export async function resolveCashEndpoint(
         `${subject} gift card liability account is not mapped`,
         ACCOUNT_ROLES.GIFT_CARD_LIABILITY
       )
-    return { glAccountId: liability.glAccountId, kind: 'gift_card', railId: null }
+    return {
+      glAccountId: liability.glAccountId,
+      kind: 'gift_card',
+      role: ACCOUNT_ROLES.GIFT_CARD_LIABILITY,
+      railId: null,
+    }
   }
 
   const railId = source.paymentGatewayId?.trim() || null
@@ -81,7 +95,12 @@ export async function resolveCashEndpoint(
         ACCOUNT_ROLES.CLEARING,
         railId
       )
-    return { glAccountId: clearing.glAccountId, kind: 'clearing', railId }
+    return {
+      glAccountId: clearing.glAccountId,
+      kind: 'clearing',
+      role: ACCOUNT_ROLES.CLEARING,
+      railId,
+    }
   }
 
   const bankAccountInstanceId = source.cashAccountInstanceId?.trim() || null
@@ -93,7 +112,7 @@ export async function resolveCashEndpoint(
         bankAccountInstanceId,
         subject
       )
-      return { glAccountId, kind: 'bank_account', railId: null }
+      return { glAccountId, kind: 'bank_account', role: ACCOUNT_ROLES.BANK, railId: null }
     } catch (error) {
       if (!(error instanceof AuxxError)) throw error
       throw unresolved(error.message)
@@ -108,7 +127,12 @@ export async function resolveCashEndpoint(
       `${subject} undeposited funds account is not mapped`,
       ACCOUNT_ROLES.UNDEPOSITED_FUNDS
     )
-  return { glAccountId: undeposited.glAccountId, kind: 'undeposited_funds', railId: null }
+  return {
+    glAccountId: undeposited.glAccountId,
+    kind: 'undeposited_funds',
+    role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+    railId: null,
+  }
 }
 
 /**

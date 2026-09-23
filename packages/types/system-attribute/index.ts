@@ -650,6 +650,7 @@ export const SYSTEM_ATTRIBUTES = [
   // refund object carries no total at all. Do not rename it to a total.
   'credit_memo_amount_refunded',
   'credit_memo_balance', // total - applied - refunded; zero flips the memo to settled
+  'credit_memo_money_pending', // channel: a refund transaction is still pending (101 E9)
   'credit_memo_lines', // inverse of credit_memo_line_credit_memo
   'credit_memo_applications', // inverse of credit_memo_application_credit_memo
   'credit_memo_pdf_asset', // the documents registry's pointerAttr, like invoice_pdf_asset

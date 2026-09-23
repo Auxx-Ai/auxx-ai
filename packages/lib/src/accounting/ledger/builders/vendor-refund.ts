@@ -15,7 +15,7 @@
 
 import { UnprocessableEntityError } from '../../../errors'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
-import { buildEntry } from './entry'
+import { type AccountRole, buildEntry } from './entry'
 import { movementPeriodKey } from './movement-key'
 import { REFUND_SOURCE_TYPE } from './refund'
 
@@ -42,6 +42,8 @@ export interface BuildVendorRefundEntryInput {
   settlements: VendorRefundSettlementLine[]
   /** The `gl_account` the money arrived in. Resolved by the caller, never a role. */
   endpointGlAccountId: string
+  /** The role that account holds (`resolveCashEndpoint`), stamped on the endpoint line as a snapshot. */
+  endpointRole: AccountRole
   endpointDimensions?: Record<string, string>
   /** The `company` the refund came from, on every control leg. */
   vendorInstanceId: string
@@ -112,6 +114,7 @@ export function buildVendorRefundEntry(input: BuildVendorRefundEntryInput): Buil
       sourceType: REFUND_SOURCE_TYPE,
       sourceId: moneyTransactionId,
       glAccountId: input.endpointGlAccountId,
+      accountRole: input.endpointRole,
       direction: 'debit',
       amount: totalMinor,
       ...(input.endpointDimensions ? { dimensions: input.endpointDimensions } : {}),

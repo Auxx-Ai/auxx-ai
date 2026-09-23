@@ -40,6 +40,7 @@ import { migration182VendorBillAmountDiscounted } from './migrations/182-vendor-
 import { migration183EntityDefPalette } from './migrations/183-entity-def-palette'
 import { migration186DropPostingMarkers } from './migrations/186-drop-posting-markers'
 import { migration187JournalEntryLine } from './migrations/187-journal-entry-line'
+import { migration188CreditMemoMoneyPending } from './migrations/188-credit-memo-money-pending'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -207,6 +208,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration186DropPostingMarkers,
   // The manual journal holds its own lines as `journal_entry_line` children (91 D5).
   migration187JournalEntryLine,
+  // One CHECKBOX on the existing `credit_memo` def, no backfill: a channel refund whose
+  // money is still pending, which holds the memo back from issuing (101 E9).
+  migration188CreditMemoMoneyPending,
 ]
 
 /**

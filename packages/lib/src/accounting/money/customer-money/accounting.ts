@@ -72,6 +72,7 @@ async function prepareReceipt(
     {
       ...base,
       glAccountId: endpoint.glAccountId,
+      accountRole: endpoint.role,
       direction: 'debit',
       amount,
       sortOrder: 0,

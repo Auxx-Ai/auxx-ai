@@ -25,6 +25,7 @@ import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/accounting/led
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { toastError } from '@auxx/ui/components/toast'
 import { CalendarRange, ExternalLink, Lock, Scale, Send } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
@@ -35,10 +36,12 @@ import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import {
   FREEZE_REASON,
@@ -60,6 +63,11 @@ import { FrozenLock } from './frozen-lock'
 import { SetupStatusSection } from './setup-status-section'
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
+const EXPORT_MODE_LABEL = { transaction: 'Transaction', summary: 'Summary' } as const
+
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`
+}
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
 const BREADCRUMBS = [
@@ -118,6 +126,39 @@ export function AccountingGeneralSettingsPage() {
   const exportCutoverError =
     exportCutover && !DATE_KEY.test(exportCutover) ? 'Must be a date, YYYY-MM-DD.' : undefined
   const exportValid = !exportCutoverError
+  const exportModeChanged =
+    readText(exportDraft[ACCOUNTING_KEYS.exportMode]) !==
+    readText(getSetting(ACCOUNTING_KEYS.exportMode))
+  const utils = api.useUtils()
+  const [confirm, ConfirmDialog] = useConfirm()
+
+  /** A mode switch applies to every unbatched posting, so it says what that is first (101 E6). */
+  async function confirmModeSwitch(): Promise<boolean> {
+    const impact = await utils.ledger.exportBatches.modeSwitchImpact
+      .fetch(undefined, { staleTime: 0 })
+      .catch((error: Error) => {
+        toastError({
+          title: 'Could not check the export before switching mode',
+          description: error.message,
+        })
+        return null
+      })
+    if (!impact) return false
+    const next =
+      readText(exportDraft[ACCOUNTING_KEYS.exportMode]) === 'summary' ? 'summary' : 'transaction'
+    const confirmed = await confirm({
+      title: `Switch export to ${EXPORT_MODE_LABEL[next]}?`,
+      description: [
+        `${plural(impact.unbatched, 'unbatched posting')} will leave in ${EXPORT_MODE_LABEL[next]} mode.`,
+        `${plural(impact.held, 'held batch', 'held batches')} keep ${EXPORT_MODE_LABEL[impact.mode]} and send as built.`,
+        `${plural(impact.straddlingOrders, 'order')} with a posted payment and no posted shipment may have the two leave in different modes.`,
+        'Switch at a month boundary with Export from set to it, after the Outbox is empty.',
+      ].join(' '),
+      confirmText: 'Switch mode',
+      cancelText: 'Cancel',
+    })
+    return confirmed === true
+  }
 
   // ── Section 3: absorption rates ──────────────────────────────────────────
   const absorption = useAccountingSetupDraft(ABSORPTION_DRAFT_KEYS)
@@ -132,6 +173,15 @@ export function AccountingGeneralSettingsPage() {
     (period.dirty && !periodValid) ||
     (exportSettings.dirty && !exportValid) ||
     (absorption.dirty && !absorptionValid)
+
+  async function handleSave() {
+    if (exportSettings.dirty && exportModeChanged && !(await confirmModeSwitch())) return
+    // Every slice that counts toward `dirty` must be saved here, or
+    // its Save appears, does nothing, and leaves the bar up.
+    if (period.dirty) period.save()
+    if (exportSettings.dirty) exportSettings.save()
+    if (absorption.dirty) absorption.save()
+  }
 
   function handleFinalize() {
     // The wizard's `done` page writes the same three keys. Both doors, one action.
@@ -265,7 +315,7 @@ export function AccountingGeneralSettingsPage() {
             <SettingsSection
               icon={Send}
               title='Export'
-              description='How postings leave for the accounting provider, and when history stops moving. The books underneath are identical in every mode.'>
+              description='How postings leave for the accounting provider, and the date export starts from. The books underneath are identical in every mode.'>
               <FieldPanel
                 className='mt-1 p-0'
                 resizeId='accounting-general-export'
@@ -276,7 +326,7 @@ export function AccountingGeneralSettingsPage() {
                 />
                 <SettingsFieldRow
                   settingKey={ACCOUNTING_KEYS.exportModeCutover}
-                  title='Export cutover'>
+                  title='Export from'>
                   <DateTextField
                     value={exportCutover}
                     error={exportCutoverError}
@@ -288,10 +338,10 @@ export function AccountingGeneralSettingsPage() {
               </FieldPanel>
 
               <p className='text-muted-foreground text-xs'>
-                A posting dated before the cutover is never batched for export, whatever the mode
-                above says - switching mode only changes entries dated on or after it. Leave the
-                cutover unset to hold every posting to today's mode. The per-avenue hold, send and
-                grain switches are under{' '}
+                Postings dated before this date are never exported, in either mode. Unset, export
+                starts from the date chosen when the book was connected. A mode switch applies to
+                every posting not yet batched; a batch already built keeps its mode. The per-avenue
+                hold, send and grain switches are under{' '}
                 <Link
                   href='/app/accounting/settings/posting'
                   className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
@@ -402,13 +452,7 @@ export function AccountingGeneralSettingsPage() {
         <FormSaveBar
           dirty={dirty}
           isSaving={isSaving}
-          onSave={() => {
-            // Every slice that counts toward `dirty` must be saved here, or
-            // its Save appears, does nothing, and leaves the bar up.
-            if (period.dirty) period.save()
-            if (exportSettings.dirty) exportSettings.save()
-            if (absorption.dirty) absorption.save()
-          }}
+          onSave={handleSave}
           onDiscard={() => {
             if (period.dirty) period.discard()
             if (exportSettings.dirty) exportSettings.discard()
@@ -416,6 +460,7 @@ export function AccountingGeneralSettingsPage() {
           }}
           saveDisabled={saveDisabled}
         />
+        <ConfirmDialog />
       </div>
     </SettingsPage>
   )
@@ -467,7 +512,7 @@ function MonthTextField({
 }
 
 /**
- * The export mode cutover (TARGET §3). `TEXT` in the catalog for the same
+ * Export from, the export floor (101 E6). `TEXT` in the catalog for the same
  * reason `MonthTextField` gives; unlike the cutoff month above it is never
  * frozen by setup - an org may move it any time it changes how it exports.
  */
@@ -491,7 +536,7 @@ function DateTextField({
         value={value ?? ''}
         disabled={disabled}
         onChange={(next) => onChange(((next as string) || null) ?? null)}
-        placeholder='Not set - every posting batches under the current mode'
+        placeholder="Not set - the connected book's start date applies"
       />
       {error && <p className='px-2 pb-1 text-destructive text-xs'>{error}</p>}
     </div>

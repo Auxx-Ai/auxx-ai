@@ -122,7 +122,7 @@ type Line = {
   counterpartyId?: string
 }
 const shape = (lines: Line[]) =>
-  lines.map((line) => [line.accountRole ?? line.glAccountId, line.direction, line.amount])
+  lines.map((line) => [line.glAccountId ?? line.accountRole, line.direction, line.amount])
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -188,6 +188,8 @@ describe('postCustomerReceiptAccounting', () => {
       ['gl_clearing', 'debit', 10_800],
       ['accounts_receivable', 'credit', 10_800],
     ])
+    // 101 E8: the cash line carries the role it resolved through, as a snapshot.
+    expect(lines[0]).toMatchObject({ glAccountId: 'gl_clearing', accountRole: 'clearing' })
     expect(lines[1]).toMatchObject({
       sourceType: 'money_transaction',
       sourceId: moneyTransactionId,
@@ -217,6 +219,7 @@ describe('postCustomerReceiptAccounting', () => {
       ['gl_gift', 'debit', 10_800],
       ['accounts_receivable', 'credit', 10_800],
     ])
+    expect(options.entry.lines[0]).toMatchObject({ accountRole: 'gift_card_liability' })
     expect(options.railId).toBeNull()
     expect(h.resolveRoles).toHaveBeenCalledWith(expect.anything(), organizationId, [
       'gift_card_liability',

@@ -24,6 +24,8 @@ export interface WorkItemTagKeys {
   railId?: string | null
   externalRef?: string | null
   message?: string | null
+  /** Stored as the row's `detail`, beside `message`. */
+  detail?: Record<string, unknown> | null
 }
 
 // `AuxxErrorDetails` holds only strings, so the keys ride flat beside the code.
@@ -34,6 +36,8 @@ const TAG_KEYS = {
   message: 'workItemMessage',
 } as const
 
+const DETAIL_KEY = 'workItemDetail'
+
 /** Tag an `AuxxError`'s details with a work-item code, for a throw site that knows its refusal. */
 export function withWorkItemCode(
   code: WorkItemCode,
@@ -42,9 +46,22 @@ export function withWorkItemCode(
   const details: Record<string, string> = { [WORK_ITEM_CODE_DETAIL]: code }
   for (const [key, detailKey] of Object.entries(TAG_KEYS)) {
     const value = keys[key as keyof WorkItemTagKeys]
-    if (value) details[detailKey] = value
+    if (value && typeof value === 'string') details[detailKey] = value
   }
+  if (keys.detail) details[DETAIL_KEY] = JSON.stringify(keys.detail)
   return details
+}
+
+function parseDetail(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
 }
 
 function taggedKeys(details: Record<PropertyKey, unknown>): Partial<WorkItemRefusal> {
@@ -53,11 +70,12 @@ function taggedKeys(details: Record<PropertyKey, unknown>): Partial<WorkItemRefu
   const railId = read(TAG_KEYS.railId)
   const externalRef = read(TAG_KEYS.externalRef)
   const message = read(TAG_KEYS.message)
+  const detail = { ...parseDetail(read(DETAIL_KEY)), ...(message ? { message } : {}) }
   return {
     ...(role ? { role } : {}),
     ...(railId ? { railId } : {}),
     ...(externalRef ? { externalRef } : {}),
-    ...(message ? { detail: { message } } : {}),
+    ...(Object.keys(detail).length > 0 ? { detail } : {}),
   }
 }
 

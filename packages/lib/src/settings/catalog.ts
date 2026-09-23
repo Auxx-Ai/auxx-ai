@@ -1006,8 +1006,8 @@ export const SETTINGS_CATALOG = {
       ],
     },
     description:
-      'How postings leave for the accounting provider. Switching applies to entries dated on ' +
-      'or after the cutover below; history already sent is untouched.',
+      'How postings leave for the accounting provider. A switch applies to every posting not ' +
+      'yet batched; a batch already built keeps the mode it was built in.',
   },
   'accounting.exportModeCutover': {
     scope: 'GENERAL',
@@ -1015,8 +1015,8 @@ export const SETTINGS_CATALOG = {
     fieldType: 'TEXT',
     defaultValue: null,
     description:
-      'YYYY-MM-DD. A posting dated before this is never batched for export, whatever the mode ' +
-      'above says.',
+      'Export from, YYYY-MM-DD. Postings dated before this date are never exported, in either ' +
+      'mode.',
   },
   // Per avenue: off holds a posted entry's batch for release, on sends it on its own.
   'accounting.autoSend.fulfillment': {
@@ -1118,6 +1118,7 @@ export const SETTINGS_CATALOG = {
   },
   // Summary-mode grain, per avenue that has one. `payout`, `bankDeposit` and
   // `journal` are absent - TARGET §3 says they are inherently one object each.
+  // A shipment never carries a payout id, so fulfillment offers no `payout` grain (101 E7).
   'accounting.summaryGrain.fulfillment': {
     scope: 'GENERAL',
     access: 'org',
@@ -1127,7 +1128,6 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
       ],
     },
     description: 'How many fulfillment postings roll into one Summary-mode export object.',
@@ -1141,7 +1141,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many customer receipt postings roll into one Summary-mode export object.',
@@ -1155,7 +1155,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many refund postings roll into one Summary-mode export object.',
@@ -1169,7 +1169,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many credit memo postings roll into one Summary-mode export object.',
@@ -1183,7 +1183,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many invoice postings roll into one Summary-mode export object.',
@@ -1197,7 +1197,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many expense bill postings roll into one Summary-mode export object.',
@@ -1211,7 +1211,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many vendor payment postings roll into one Summary-mode export object.',
@@ -1225,7 +1225,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many vendor credit postings roll into one Summary-mode export object.',
@@ -1239,7 +1239,7 @@ export const SETTINGS_CATALOG = {
       options: [
         { value: 'day', label: 'One object per day' },
         { value: 'month', label: 'One object per month' },
-        { value: 'payout', label: 'One object per payout, the rest per day' },
+        { value: 'payout', label: 'Payout (falls back to day until payout ids are stamped)' },
       ],
     },
     description: 'How many inventory postings roll into one Summary-mode export object.',

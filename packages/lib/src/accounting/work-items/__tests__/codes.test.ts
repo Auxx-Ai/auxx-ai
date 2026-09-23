@@ -59,6 +59,19 @@ describe('the reason-code vocabulary', () => {
     expect(workItemSentence('GATEWAY_UNMAPPED')).toContain('store feed')
   })
 
+  it('names the connector a channel memo waits on, and its pending money', () => {
+    expect(workItemSeverity('MEMO_INPUT_INCOMPLETE')).toBe('info')
+    expect(workItemStatus('MEMO_INPUT_INCOMPLETE')).toBe('waiting')
+    expect(
+      workItemSentence('MEMO_INPUT_INCOMPLETE', {
+        detail: { connector: 'Shopify', pendingRelations: [{ recordId: 'cm_1' }] },
+      })
+    ).toBe('Its data from Shopify is not complete yet. It issues when the sync links it.')
+    expect(workItemSentence('MEMO_INPUT_INCOMPLETE', { detail: { moneyPending: true } })).toBe(
+      'Its refund is still pending at the connector. It issues once the money settles.'
+    )
+  })
+
   it('waits on evidence, and blocks on a gateway or an ownership conflict', () => {
     expect(workItemSeverity('EVIDENCE_PENDING')).toBe('info')
     expect(workItemSeverity('GATEWAY_UNMAPPED')).toBe('error')

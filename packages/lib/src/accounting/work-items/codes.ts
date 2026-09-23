@@ -142,6 +142,18 @@ export const WORK_ITEM_CODES = {
         ? `Order ${item.externalRef} has not arrived yet. It continues when the order syncs.`
         : 'Its order has not arrived yet. It continues when the order syncs.',
   },
+  MEMO_INPUT_INCOMPLETE: {
+    severity: 'info',
+    status: 'waiting',
+    sentence: (item) => {
+      const connector = detailText(item, 'connector') ?? 'the connector'
+      const relations = item.detail?.pendingRelations
+      const linking = Array.isArray(relations) && relations.length > 0
+      return item.detail?.moneyPending === true && !linking
+        ? `Its refund is still pending at ${connector}. It issues once the money settles.`
+        : `Its data from ${connector} is not complete yet. It issues when the sync links it.`
+    },
+  },
   CUSTOMER_UNRESOLVED: {
     severity: 'info',
     status: 'waiting',

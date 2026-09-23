@@ -30,6 +30,11 @@ export {
   summaryRowStatus,
   unbuiltGroupKeyString,
 } from './client'
+export {
+  countSkippedBeforeFloor,
+  type ExportModeSwitchImpact,
+  readExportModeSwitchImpact,
+} from './floor-reads'
 export { type ShapedPosting, type ShapeForPostingInput, shapeForPosting } from './object-shape'
 export {
   BILL_OBJECT_TYPE,
@@ -105,7 +110,12 @@ export {
   type SummaryRow,
   type SummaryRowFilter,
 } from './summary-rows'
-export { type SweepExportBatchesInput, sweepExportBatches, sweepSummaryBuckets } from './sweep'
+export {
+  type SweepExportBatchesInput,
+  sweepExportBatches,
+  sweepSummaryBuckets,
+  sweepTransactionPostings,
+} from './sweep'
 export {
   countUnbuiltSummaryRows,
   type ReadUnbuiltSummaryPageInput,
