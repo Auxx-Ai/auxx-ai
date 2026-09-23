@@ -66,6 +66,9 @@ interface OutboxPanelProps {
   /** A refused shipment opens its `?shipment=` frame in the same drawer slot. */
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
+  /** A Summary row opens its `?summary=` frame in the same slot. */
+  activeSummaryKey: string | null
+  onSelectSummary: (key: string) => void
 }
 
 /**
@@ -98,6 +101,8 @@ function OutboxBody({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
+  activeSummaryKey,
+  onSelectSummary,
 }: OutboxPanelProps) {
   const { can } = useAccess()
   const canRelease = can(PermissionKey.ledgerPost)
@@ -261,6 +266,8 @@ function OutboxBody({
                 canRollback={canRollback}
                 activePostingId={activePostingId}
                 onSelectPosting={onSelectPosting}
+                activeSummaryKey={activeSummaryKey}
+                onSelectSummary={onSelectSummary}
                 onReleased={live.startRun}
                 watchRun={live.watchRun}
                 emptyTitle={filtered ? 'No matching results' : emptyTitle(effectiveTab)}

@@ -85,6 +85,8 @@ interface SummaryPanelProps {
   canRollback: boolean
   activePostingId: string | null
   onSelectPosting: (glPostingId: string) => void
+  activeSummaryKey: string | null
+  onSelectSummary: (key: string) => void
   /** A retry went to the worker; the header tallies its frames by `runId`. */
   onReleased?: (runId: string, total: number) => void
   /** Row-by-row settles for a run, keyed by batch id. */
@@ -106,6 +108,8 @@ export function SummaryPanel({
   canRollback,
   activePostingId,
   onSelectPosting,
+  activeSummaryKey,
+  onSelectSummary,
   onReleased,
   watchRun,
   emptyTitle,
@@ -389,7 +393,7 @@ export function SummaryPanel({
         </p>
       ) : null
 
-    // A bucket of one IS its posting, so the row opens the drawer; it still unfolds for a refusal.
+    // A bucket of one IS its posting, so it opens that posting's drawer; it still unfolds for a refusal.
     const onlyPostingId =
       row.memberCount === 1 && (!batch || batch.members.length <= 1)
         ? (batch?.members[0]?.glPostingId ?? row.firstPostingId)
@@ -397,6 +401,8 @@ export function SummaryPanel({
     const expandable = !onlyPostingId || refusal !== null
     const isOpen = openKeys.has(row.key)
     const toggleOpen = () => setOpenKeys((prev) => flip(prev, row.key))
+    const openRow = () =>
+      onlyPostingId ? onSelectPosting(onlyPostingId) : onSelectSummary(row.key)
 
     return (
       <OutboxRow
@@ -502,13 +508,13 @@ export function SummaryPanel({
               )}
           </>
         }
-        onOpen={onlyPostingId ? () => onSelectPosting(onlyPostingId) : toggleOpen}
+        onOpen={openRow}
         selectLabel={`Select ${exportAvenueLabel(row.avenue)} summary of ${dateLabel}`}
-        active={!!onlyPostingId && activePostingId === onlyPostingId}
+        active={onlyPostingId ? activePostingId === onlyPostingId : activeSummaryKey === row.key}
         expandable={expandable}
         isOpen={isOpen}
         {...(expandable ? { onToggleOpen: toggleOpen } : {})}
-        {...(onlyPostingId ? { onRowClick: () => onSelectPosting(onlyPostingId) } : {})}>
+        onRowClick={openRow}>
         {refusal}
         {!onlyPostingId && (
           <div className='flex flex-col gap-px py-1'>

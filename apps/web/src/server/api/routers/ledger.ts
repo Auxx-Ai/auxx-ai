@@ -12,6 +12,7 @@ import {
   listExportBatches,
   listSummaryRows,
   readExportModeSwitchImpact,
+  readSummaryBucket,
   readUnbuiltSummaryMembers,
   readUnbuiltSummaryPage,
   rebuildSummaryBucket,
@@ -1491,6 +1492,30 @@ export const ledgerRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+    /** One Summary row's drawer: the journal it sends and the postings it sums. */
+    summaryBucket: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ key: unbuiltGroup }))
+      .query(async ({ ctx, input }) => {
+        const { organizationId } = ctx.session
+        const result = await readSummaryBucket(ctx.db, { organizationId, key: input.key })
+        if (result.isErr()) throw result.error
+        const { batch, members, newMembers } = result.value
+        const sources = await readPostingSources(
+          ctx.db,
+          organizationId,
+          [...members, ...newMembers].map((member) => member.glPostingId)
+        )
+        const withSources = (list: typeof members) =>
+          list.map((member) => ({ ...member, sources: sources.get(member.glPostingId) ?? [] }))
+        const [linked] = batch ? await withProviderObjectUrls(ctx.db, organizationId, [batch]) : []
+        return {
+          ...result.value,
+          batch: linked ?? null,
+          members: withSources(members),
+          newMembers: withSources(newMembers),
+        }
+      }),
 
     /** The postings inside one unbuilt group - read when its row is opened. */
     unbuiltMembers: permissionProcedure(PermissionKey.ledgerView)

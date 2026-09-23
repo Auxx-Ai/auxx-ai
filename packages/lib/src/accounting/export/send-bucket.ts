@@ -2,14 +2,14 @@
 // Send on a Summary row: build that one bucket if it has no live batch, then send
 // it; Rebuild is rollback + build + send (plans/accounting/tasks/95-the-summary-is-the-row.md §3.2, D3).
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, ne, sql } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { buildExportBatches } from './build-batches'
 import type { ExportBatchState, UnbuiltGroupKey } from './client'
 import { type RollbackExportBatchResult, rollbackExportBatch } from './rollback'
 import { type SendExportBatchResult, sendExportBatch } from './send'
+import { readLiveBucketBatch } from './summary-bucket-reads'
 import { summaryScope } from './summary-ctes'
 import { readUnbuiltSummaryMembers } from './unbuilt-summary'
 
@@ -29,32 +29,6 @@ export interface RebuildSummaryBucketResult {
 interface BucketInput {
   organizationId: string
   key: UnbuiltGroupKey
-}
-
-/** The live batch on a bucket's key in this book - `ExportBatch_grain_key` allows one. */
-async function readLiveBucketBatch(
-  db: Database,
-  organizationId: string,
-  bookId: string,
-  key: UnbuiltGroupKey
-): Promise<{ id: string; state: ExportBatchState } | null> {
-  const [row] = await db
-    .select({ id: schema.ExportBatch.id, state: schema.ExportBatch.state })
-    .from(schema.ExportBatch)
-    .where(
-      and(
-        eq(schema.ExportBatch.organizationId, organizationId),
-        eq(schema.ExportBatch.bookId, bookId),
-        eq(schema.ExportBatch.avenue, key.avenue),
-        eq(schema.ExportBatch.grainKey, key.grainKey),
-        sql`coalesce(${schema.ExportBatch.storeId}, '') = ${key.storeId ?? ''}`,
-        sql`coalesce(${schema.ExportBatch.railId}, '') = ${key.railId ?? ''}`,
-        eq(schema.ExportBatch.currency, key.currency),
-        ne(schema.ExportBatch.state, 'withdrawn')
-      )
-    )
-    .limit(1)
-  return row ?? null
 }
 
 async function sendLive(

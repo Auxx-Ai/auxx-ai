@@ -201,6 +201,8 @@ const props = {
   onSelectMovement: vi.fn(),
   activeShipmentId: null,
   onSelectShipment: vi.fn(),
+  activeSummaryKey: null,
+  onSelectSummary: vi.fn(),
 }
 
 describe('Outbox tabs', () => {

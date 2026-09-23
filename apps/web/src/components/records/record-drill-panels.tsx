@@ -241,9 +241,10 @@ export type DrawerFrame =
   | `~posting:${string}`
   | `~movement:${string}`
   | `~shipment:${string}`
+  | `~summary:${string}`
 
 /** The ledger frames a `DrawerFrame` stack can hold beside records. */
-export type LedgerFrameKind = 'posting' | 'movement' | 'shipment'
+export type LedgerFrameKind = 'posting' | 'movement' | 'shipment' | 'summary'
 
 /** Encode a ledger frame for a `DrawerFrame` stack. */
 export function toFrame(kind: LedgerFrameKind, id: string): DrawerFrame {
@@ -254,7 +255,7 @@ export function toFrame(kind: LedgerFrameKind, id: string): DrawerFrame {
 export function frameKind(
   frame: string
 ): { kind: 'record'; recordId: RecordId } | { kind: LedgerFrameKind; id: string } {
-  for (const kind of ['posting', 'movement', 'shipment'] as const) {
+  for (const kind of ['posting', 'movement', 'shipment', 'summary'] as const) {
     const prefix = `~${kind}:`
     if (frame.startsWith(prefix)) return { kind, id: frame.slice(prefix.length) }
   }

@@ -104,6 +104,11 @@ export {
   sendExportBatches,
 } from './send-many'
 export {
+  readSummaryBucket,
+  type SummaryBucketDetail,
+  type SummaryJournalLine,
+} from './summary-bucket-reads'
+export {
   countSummaryRows,
   type ListSummaryRowsInput,
   listSummaryRows,

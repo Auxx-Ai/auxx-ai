@@ -2,7 +2,7 @@
 // Client-safe surface of the export batch: the state vocabulary and its prose.
 // No `'use client'` - server code imports these too (docs/lib-module-guide.md §7).
 
-import type { ExportAvenue } from '../ledger/setup/export-settings'
+import { EXPORT_AVENUES, type ExportAvenue } from '../ledger/setup/export-settings'
 
 /** The batch lifecycle, mirroring `EXPORT_BATCH_STATES` on the Drizzle table. */
 export const EXPORT_BATCH_STATES = ['ready', 'sending', 'sent', 'failed', 'withdrawn'] as const
@@ -157,6 +157,20 @@ export function unbuiltGroupKeyString(group: UnbuiltGroupKey): string {
   return [group.avenue, group.grainKey, group.storeId ?? '', group.railId ?? '', group.currency]
     .join(' ')
     .trim()
+}
+
+/** The inverse of `unbuiltGroupKeyString`, for a key that arrived in a URL; null when malformed. */
+export function parseUnbuiltGroupKey(key: string): UnbuiltGroupKey | null {
+  const [avenue, grainKey, storeId, railId, currency, ...rest] = key.split(' ')
+  if (rest.length || !grainKey || !currency) return null
+  if (!(EXPORT_AVENUES as readonly string[]).includes(avenue ?? '')) return null
+  return {
+    avenue: avenue as ExportAvenue,
+    grainKey,
+    storeId: storeId || null,
+    railId: railId || null,
+    currency,
+  }
 }
 
 /**
