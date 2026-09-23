@@ -11,7 +11,7 @@ import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
 import { typedColumnMatch } from '../../field-values/typed-column-match'
 import type { Resource, ResourceField } from '../../resources'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
-import { hashValue } from '../hashing/hash-value'
+import { resolutionKey } from '../hashing/resolution-key'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ValueResolution } from '../types/resolution'
 import {
@@ -276,7 +276,7 @@ function collectIdentifierValues(
   for (const rowData of rawData.values()) {
     for (const mapping of columns) {
       const raw = rowData[mapping.sourceColumnIndex] ?? ''
-      const resolution = resolutions.get(hashValue(raw))
+      const resolution = resolutions.get(resolutionKey(mapping.id, raw))
       const resolved =
         resolution?.isValid && resolution.resolvedValues.length > 0
           ? resolution.resolvedValues[0]

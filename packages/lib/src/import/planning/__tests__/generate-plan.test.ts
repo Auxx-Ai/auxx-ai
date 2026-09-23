@@ -46,6 +46,7 @@ const { createFindExistingRecord } = await import('../find-existing-record')
 const { createDefaultStrategies } = await import('../create-strategy')
 const { generatePlan } = await import('../generate-plan')
 const { hashValue } = await import('../../hashing/hash-value')
+const { resolutionKey } = await import('../../hashing/resolution-key')
 
 import type { ImportMappingProperty } from '../../types/mapping'
 import type { StrategyType } from '../../types/plan'
@@ -367,7 +368,7 @@ describe('generatePlan, a skipped row records WHY it was skipped', () => {
       // that does not exist, so the column resolves to an error.
       resolutions: new Map([
         [
-          hashValue('M400L'),
+          resolutionKey('prop-sku', 'M400L'),
           {
             hashedValue: hashValue('M400L'),
             rawValue: 'M400L',

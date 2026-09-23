@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, desc, eq } from 'drizzle-orm'
-import { hashValue } from '../hashing/hash-value'
+import { resolutionKey } from '../hashing/resolution-key'
 import { getRawDataAsMap } from '../raw-data'
 import { getAllJobResolutions } from '../resolution'
 import type { StrategyType } from '../types/plan'
@@ -118,12 +118,8 @@ export async function getPlanPreviewRows(
       const cellValue = rowData[mapping.sourceColumnIndex]
       if (!cellValue) continue
 
-      // The cache is keyed by the hash of the raw cell, exactly as
-      // `analyzeRow` and `buildRecordData` read it. This used to look up
-      // `${columnIndex}:${cellValue}`, a key nothing ever wrote, so the
-      // preview showed the raw file text for every column, including money
-      // columns whose resolved value is minor units.
-      const resolution = resolutions.get(hashValue(cellValue))
+      // Keyed exactly as `analyzeRow` and `buildRecordData` read it.
+      const resolution = resolutions.get(resolutionKey(mapping.id, cellValue))
 
       // A relation column resolves to a record id (or, before planning, a
       // pending-lookup envelope). Neither means anything to a reviewer; the

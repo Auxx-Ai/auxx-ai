@@ -2,3 +2,4 @@
 
 export { countOccurrences } from './count-occurrences'
 export { hashValue } from './hash-value'
+export { resolutionKey } from './resolution-key'

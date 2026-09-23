@@ -1,7 +1,7 @@
 // packages/lib/src/import/planning/analyze-row.ts
 
 import { createScopedLogger } from '@auxx/logger'
-import { hashValue } from '../hashing/hash-value'
+import { resolutionKey } from '../hashing/resolution-key'
 import type { ImportMappingProperty, ImportStrategyMode } from '../types/mapping'
 import type { RowAnalysis, StrategyType } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
@@ -86,7 +86,6 @@ export async function analyzeRow(
     }
 
     const rawValue = rowData[mapping.sourceColumnIndex] ?? ''
-    const hash = hashValue(rawValue)
     const columnLabel = mapping.sourceColumnName ?? `Column ${mapping.sourceColumnIndex}`
 
     // Check if this column carries (part of) the identifier
@@ -98,7 +97,7 @@ export async function analyzeRow(
     }
 
     // Look up resolution for this value
-    const resolution = ctx.resolutions.get(hash)
+    const resolution = ctx.resolutions.get(resolutionKey(mapping.id, rawValue))
 
     if (resolution) {
       // Use the resolved value if available

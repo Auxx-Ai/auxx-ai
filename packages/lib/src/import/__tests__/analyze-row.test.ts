@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { hashValue } from '../hashing/hash-value'
+import { resolutionKey } from '../hashing/resolution-key'
 import { analyzeRow } from '../planning/analyze-row'
 import type { FindExistingRecordResult } from '../planning/find-existing-record'
 import type { ImportMappingProperty } from '../types/mapping'
@@ -53,7 +54,10 @@ describe('analyzeRow — multi-value identifier (match-ANY)', () => {
   it('matches ANY element and plans an update when exactly one record matches', async () => {
     const raw = 'a@x.com, b@y.com'
     const resolutions = new Map([
-      [hashValue(raw), resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] })],
+      [
+        resolutionKey('prop-1', raw),
+        resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] }),
+      ],
     ])
     const result = await analyzeRow(
       0,
@@ -71,7 +75,10 @@ describe('analyzeRow — multi-value identifier (match-ANY)', () => {
   it('errors the row when two elements match DIFFERENT records (ambiguous)', async () => {
     const raw = 'a@x.com, b@y.com'
     const resolutions = new Map([
-      [hashValue(raw), resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] })],
+      [
+        resolutionKey('prop-1', raw),
+        resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] }),
+      ],
     ])
     const result = await analyzeRow(
       0,
@@ -90,7 +97,10 @@ describe('analyzeRow — multi-value identifier (match-ANY)', () => {
   it('plans a create with the full array when nothing matches', async () => {
     const raw = 'a@x.com, b@y.com'
     const resolutions = new Map([
-      [hashValue(raw), resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] })],
+      [
+        resolutionKey('prop-1', raw),
+        resolution(raw, { type: 'value', value: ['a@x.com', 'b@y.com'] }),
+      ],
     ])
     const result = await analyzeRow(
       0,
@@ -126,7 +136,7 @@ describe('analyzeRow — warnings', () => {
     const raw = 'a@x.com, broken'
     const resolutions = new Map([
       [
-        hashValue(raw),
+        resolutionKey('prop-1', raw),
         resolution(raw, {
           type: 'warning',
           value: ['a@x.com'],
@@ -479,8 +489,11 @@ describe('analyzeRow, relation identifier legs use the resolved id', () => {
     supplierId: string | null
   ) =>
     new Map([
-      [hashValue(partCell), resolution(partCell, { type: 'value', value: partId })],
-      [hashValue(supplierCell), resolution(supplierCell, { type: 'value', value: supplierId })],
+      [resolutionKey('p-part', partCell), resolution(partCell, { type: 'value', value: partId })],
+      [
+        resolutionKey('p-supplier', supplierCell),
+        resolution(supplierCell, { type: 'value', value: supplierId }),
+      ],
     ])
 
   it('passes resolved record ids, not the raw cells', async () => {
