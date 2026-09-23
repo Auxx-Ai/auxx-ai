@@ -2,8 +2,12 @@
 
 'use client'
 
-import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
-import type { PostingDetail } from '@auxx/lib/accounting/ledger/client'
+import {
+  canReverseExportedPosting,
+  type ExportBatchState,
+  type ExportBatchTab,
+} from '@auxx/lib/accounting/export/client'
+import { avenueOfPostingType, type PostingDetail } from '@auxx/lib/accounting/ledger/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -77,6 +81,7 @@ export function usePostingFrameHeader(
     { enabled: !!postingId }
   )
   const exportBatch = batches?.items[0] ?? null
+  const canReverse = !!detail && isReversible(detail, exportBatch)
 
   function refresh() {
     void utils.ledger.exportBatches.list.invalidate()
@@ -136,7 +141,7 @@ export function usePostingFrameHeader(
             </Button>
           </Tooltip>
         )}
-        {detail?.status === 'posted' && (
+        {canReverse && (
           <Tooltip content='Reverse this posting'>
             <Button
               variant='ghost'
@@ -214,6 +219,7 @@ export function PostingFrame({
   // still on one of the queue's tabs.
   const exportBatchesQuery = api.ledger.exportBatches.list.useQuery({ glPostingIds: [postingId] })
   const exportBatch = exportBatchesQuery.data?.items[0] ?? null
+  const canReverse = !!detail && isReversible(detail, exportBatch)
 
   const utils = api.useUtils()
   /** The same queries `usePostingFrameHeader`'s own refresh invalidates. */
@@ -476,7 +482,7 @@ export function PostingFrame({
           </Section>
         )}
 
-        {detail.status === 'posted' && (
+        {canReverse && (
           <Section
             title='Reverse this posting'
             icon={<Undo2 className='size-4' />}
@@ -511,6 +517,17 @@ export function PostingFrame({
 }
 
 /** Red the moment the export refused - the badge is the only place that says so. */
+/** Posted, and either sent or never exported; a reversal of an entry still in Ready would leave alone. */
+function isReversible(detail: PostingDetail, exportBatch: { state: ExportBatchState } | null) {
+  return (
+    detail.status === 'posted' &&
+    canReverseExportedPosting({
+      avenue: avenueOfPostingType(detail.postingType),
+      exportState: exportBatch?.state ?? null,
+    })
+  )
+}
+
 function statusVariant(status: PostingDetail['status']) {
   return status === 'posted' ? 'green' : 'outline'
 }

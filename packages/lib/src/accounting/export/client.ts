@@ -158,3 +158,14 @@ export function unbuiltGroupKeyString(group: UnbuiltGroupKey): string {
     .join(' ')
     .trim()
 }
+
+/**
+ * Whether Reverse is offered: only once the provider holds the entry, or for one that never
+ * goes there. A reversal of an entry still in Ready would reach the provider alone.
+ */
+export function canReverseExportedPosting(input: {
+  avenue: ExportAvenue | null
+  exportState: ExportBatchState | null
+}): boolean {
+  return input.avenue === null || input.exportState === 'sent'
+}

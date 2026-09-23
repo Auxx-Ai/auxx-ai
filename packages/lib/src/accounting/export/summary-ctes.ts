@@ -12,6 +12,7 @@ import {
 } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import { readActiveBookConnection } from '../providers/book-connections'
+import { reversalMayExport } from './reversal-exportable'
 
 export interface SummaryScope {
   from: string
@@ -95,6 +96,7 @@ export function bucketCtes(input: BucketCteInput, scope: SummaryScope): SQL {
         ON hb."organizationId" = bp."organizationId" AND hb."id" = bp."batchId"
       WHERE p."organizationId" = ${input.organizationId}
         AND p."status" = 'posted' AND p."avenue" IS NOT NULL
+        AND ${reversalMayExport(sql.raw('p'))}
         AND p."txnDate" >= ${scope.from}::date AND p."txnDate" <= ${scope.to}::date
         ${
           avenues
