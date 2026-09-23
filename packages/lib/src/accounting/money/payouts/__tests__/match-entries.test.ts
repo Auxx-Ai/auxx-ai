@@ -80,6 +80,26 @@ describe('assessProcessorEntries near misses', () => {
     })
   })
 
+  it("matches on the receipt's own gateway when its store account has none", async () => {
+    const receipt = candidate('mt-1')
+    receipt.account.paymentGatewayId = null as unknown as string
+    Object.assign(receipt.money, { paymentGatewayId: 'rail-sp' })
+    const { db } = database([gateways, [receipt]])
+    const outcome = await assessProcessorEntries(db, 'org', [entry()])
+    expect(outcome.matches.get('entry-1')).toBe('mt-1')
+  })
+
+  it("prefers the receipt's own gateway over its account's", async () => {
+    const receipt = candidate('mt-1')
+    Object.assign(receipt.money, { paymentGatewayId: 'rail-affirm' })
+    const { db } = database([gateways, [receipt]])
+    const outcome = await assessProcessorEntries(db, 'org', [entry()])
+    expect(outcome.refusals.get('entry-1')).toEqual({
+      reason: 'rail_differs',
+      candidateMoneyTransactionId: 'mt-1',
+    })
+  })
+
   it('refuses two candidates that each fail a different check', async () => {
     const wrongAmount = candidate('mt-1')
     wrongAmount.money.amountMinor = 9500n

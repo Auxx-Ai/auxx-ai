@@ -26,10 +26,9 @@ export async function payoutSyncJob(ctx: JobContext): Promise<void> {
   // the ones a night can actually change, and they are one index read away. The
   // full walk below stays as the disaster path.
   let pending = 0
-  for (const [organizationId, ids] of await listTransfersWithOpenMatches(
-    database,
-    OPEN_MATCH_PAGE
-  )) {
+  for (const [organizationId, ids] of await listTransfersWithOpenMatches(database, {
+    limit: OPEN_MATCH_PAGE,
+  })) {
     ctx.throwIfCancelled()
     pending += await reconcileTransferIds(database, organizationId, ids)
   }

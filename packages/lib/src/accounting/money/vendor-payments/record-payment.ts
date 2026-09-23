@@ -53,6 +53,8 @@ export interface RecordVendorPaymentInput {
   note?: string | null
   /** The idempotency key. A double-submitted dialog returns the first run's ids. */
   commandKey: string
+  /** Adopted from the provider's ledger (102 D1): recorded here, posted there, never twice. */
+  providerLedgerEntryId?: string
 }
 
 export interface RecordVendorPaymentResult extends Record<string, string> {
@@ -188,6 +190,9 @@ export async function recordVendorPayment(
         method: input.method,
         paymentGatewayId,
         bankAccountInstanceId,
+        ...(input.providerLedgerEntryId
+          ? { providerLedgerEntryId: input.providerLedgerEntryId }
+          : {}),
       },
     },
     async (tx, commandId) => {
@@ -211,6 +216,7 @@ export async function recordVendorPayment(
         method: input.method,
         reference: input.reference,
         note: input.note,
+        providerLedgerEntryId: input.providerLedgerEntryId,
       })
 
       const application = await insertApplication(tx, input.organizationId, commandId, {

@@ -82,6 +82,7 @@ import { payoutEvidenceRouter } from './routers/payout-evidence'
 import { permissionsRouter } from './routers/permissions'
 import { procedureRouter } from './routers/procedure'
 import { promptTemplateRouter } from './routers/promptTemplate'
+import { providerMatchRouter } from './routers/provider-matches'
 import { purchasingRouter } from './routers/purchasing'
 import { quickActionRouter } from './routers/quick-actions'
 import { realtimeRouter } from './routers/realtime'
@@ -194,6 +195,7 @@ export const appRouter = createTRPCRouter({
   participant: participantRouter,
   paymentGateway: paymentGatewaysRouter,
   payoutEvidence: payoutEvidenceRouter,
+  providerMatch: providerMatchRouter,
   permissions: permissionsRouter,
   procedure: procedureRouter,
   promptTemplate: promptTemplateRouter,

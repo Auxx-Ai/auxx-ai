@@ -37,6 +37,7 @@ import {
   UNDEPOSITED_VALUE,
 } from '~/components/money/ui/cash-endpoint-select'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { ProviderPaymentNotice } from '~/components/money/ui/provider-payment-notice'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from './payment-method-options'
@@ -240,6 +241,9 @@ export function RecordPaymentDialog({
               : 'Log a cash, check, card, or bank payment.'}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Leads the form so a payment the provider already holds is not recorded twice. */}
+        <ProviderPaymentNotice kind='invoice' recordId={invoiceRecordId} />
 
         {showCredit && (
           <FieldPanel

@@ -16,6 +16,11 @@ import {
 } from '~/components/drawers/cards/related-record-row'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import {
+  ProviderPaymentNotice,
+  useProviderName,
+  useProviderPayments,
+} from '~/components/money/ui/provider-payment-notice'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -54,6 +59,8 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
   // "how much of it is settled".
   const paymentStatus = stringValue(values.vendor_bill_payment_status) ?? 'unpaid'
   const { data: payments } = api.money.billPayments.useQuery({ vendorBillRecordId: recordId })
+  const providerName = useProviderName()
+  const { recordedMovementIds } = useProviderPayments('vendor_bill', recordId)
 
   // A void bill owes nothing by definition; a zero-total bill has nothing to settle
   // and would otherwise offer a payment against an amount nobody has entered yet.
@@ -90,6 +97,8 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
         ]}
       />
 
+      <ProviderPaymentNotice kind='vendor_bill' recordId={recordId} />
+
       {payments?.length ? (
         payments.map((payment) => (
           <TreeRow
@@ -109,6 +118,11 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
                 )}
                 {payment.reference && (
                   <span className='truncate text-muted-foreground'>· {payment.reference}</span>
+                )}
+                {recordedMovementIds.has(payment.moneyTransactionId) && (
+                  <span className='shrink-0 text-muted-foreground'>
+                    · Recorded from {providerName}
+                  </span>
                 )}
               </span>
             }

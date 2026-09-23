@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { listOpenBillsForVendor } from '../purchasing/vendor-credit/reads'
 import { MATCHABLE_PROVIDER_TXN_TYPES } from './client'
 
 /** One provider-authored entry due an assessment, with its lines. */
@@ -147,6 +148,85 @@ export async function listReceiptsOnInvoice(
       )
     )
   return rows.map((row) => row.id)
+}
+
+/** Vendor payments of ours applied to one bill for exactly this amount, not adopted, not claimed. */
+export async function listVendorPaymentsOnBill(
+  db: Database,
+  organizationId: string,
+  input: { vendorBillInstanceId: string; amountMinor: number }
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ id: schema.MoneyTransaction.id })
+    .from(schema.MoneyTransaction)
+    .innerJoin(
+      schema.MoneyApplication,
+      and(
+        eq(schema.MoneyApplication.organizationId, organizationId),
+        eq(schema.MoneyApplication.moneyTransactionId, schema.MoneyTransaction.id),
+        eq(schema.MoneyApplication.operation, 'apply'),
+        eq(schema.MoneyApplication.vendorBillInstanceId, input.vendorBillInstanceId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, 'vendor_payment'),
+        eq(schema.MoneyTransaction.amountMinor, BigInt(input.amountMinor)),
+        isNull(schema.MoneyTransaction.providerLedgerEntryId),
+        notClaimedByAnotherEntry(schema.MoneyTransaction.id)
+      )
+    )
+  return rows.map((row) => row.id)
+}
+
+/** Vendor payments of ours to one vendor, dated in the window, for exactly this amount. */
+export async function listVendorPaymentsToVendor(
+  db: Database,
+  organizationId: string,
+  input: { vendorInstanceId: string; amountMinor: number; from: string; to: string }
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: schema.MoneyTransaction.id })
+    .from(schema.MoneyTransaction)
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.purpose, 'vendor_payment'),
+        eq(schema.MoneyTransaction.partyInstanceId, input.vendorInstanceId),
+        eq(schema.MoneyTransaction.amountMinor, BigInt(input.amountMinor)),
+        gte(schema.MoneyTransaction.occurredOn, input.from),
+        lte(schema.MoneyTransaction.occurredOn, input.to),
+        isNull(schema.MoneyTransaction.providerLedgerEntryId),
+        notClaimedByAnotherEntry(schema.MoneyTransaction.id)
+      )
+    )
+  return rows.map((row) => row.id)
+}
+
+/** One vendor's open bills whose balance is exactly this amount, not suggested to another entry. */
+export async function listOpenBillsForAmount(
+  db: Database,
+  organizationId: string,
+  input: { vendorInstanceId: string; amountMinor: number }
+): Promise<string[]> {
+  const ids = (await listOpenBillsForVendor(db, organizationId, input.vendorInstanceId))
+    .filter((bill) => bill.balanceMinor === input.amountMinor)
+    .map((bill) => bill.vendorBillInstanceId)
+  if (ids.length === 0) return []
+  const claimed = await db
+    .select({ matchedId: schema.ProviderLedgerEntry.matchedId })
+    .from(schema.ProviderLedgerEntry)
+    .where(
+      and(
+        eq(schema.ProviderLedgerEntry.organizationId, organizationId),
+        eq(schema.ProviderLedgerEntry.matchedKind, 'vendor_bill'),
+        inArray(schema.ProviderLedgerEntry.matchState, ['suggested', 'matched']),
+        inArray(schema.ProviderLedgerEntry.matchedId, ids)
+      )
+    )
+  const taken = new Set(claimed.map((row) => row.matchedId))
+  return ids.filter((id) => !taken.has(id))
 }
 
 /** Whether the live posting for this subject has left in a `sent` batch. */

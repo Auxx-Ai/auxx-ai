@@ -83,11 +83,15 @@ export async function listMatchCandidates(
   const purpose = movementPurposeForEntryType(entry.entry.type)
   const search = input.query?.trim()
   const difference = sql<string>`(${schema.MoneyTransaction.amountMinor} - ${gross})`
+  // The receipt's own gateway first: a store account takes payments on several.
+  const gatewayOfReceipt = sql<
+    string | null
+  >`COALESCE(${schema.MoneyTransaction.paymentGatewayId}, ${schema.FinancialSourceAccount.paymentGatewayId})`
 
   const rows = await db
     .select({
       money: schema.MoneyTransaction,
-      paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
+      paymentGatewayId: gatewayOfReceipt,
       differenceMinor: difference,
     })
     .from(schema.MoneyTransaction)
@@ -121,9 +125,7 @@ export async function listMatchCandidates(
         eq(schema.MoneyTransaction.purpose, purpose),
         eq(schema.MoneyTransaction.currency, entry.entry.currency),
         eq(schema.MoneyTransaction.currencyExponent, entry.entry.currencyExponent),
-        entry.paymentGatewayId
-          ? eq(schema.FinancialSourceAccount.paymentGatewayId, entry.paymentGatewayId)
-          : undefined,
+        entry.paymentGatewayId ? sql`${gatewayOfReceipt} = ${entry.paymentGatewayId}` : undefined,
         sql`NOT EXISTS (SELECT 1 FROM ${schema.ProcessorBalanceEntry} claimed WHERE claimed."organizationId" = ${input.organizationId} AND claimed."matchedMoneyTransactionId" = ${schema.MoneyTransaction.id} AND claimed.id <> ${input.entryId} AND claimed."matchState" = 'matched')`,
         search ? searchTerm(search, entry.entry.currencyExponent) : undefined
       )

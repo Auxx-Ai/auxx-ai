@@ -11,6 +11,11 @@ const state = vi.hoisted(() => ({
   onEvent: null as ((event: string, payload?: unknown) => void) | null,
   invalidated: [] as string[],
   dialog: null as { open: boolean; initialHandle?: string } | null,
+  items: [] as Record<string, unknown>[],
+}))
+
+vi.mock('~/components/money/ui/provider-payment-notice', () => ({
+  useProviderName: () => 'QuickBooks',
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
@@ -49,15 +54,21 @@ vi.mock('./outbox-row', () => ({
     title,
     amount,
     actions,
+    onToggleOpen,
+    children,
   }: {
     title?: ReactNode
     amount?: string
     actions?: ReactNode
+    onToggleOpen?: () => void
+    children?: ReactNode
   }) => (
     <div>
       <span>{title}</span>
       <span>{amount}</span>
       {actions}
+      {onToggleOpen && <button type='button' aria-label='Expand' onClick={onToggleOpen} />}
+      {children}
     </div>
   ),
 }))
@@ -83,7 +94,13 @@ vi.mock('~/trpc/react', () => {
             fetchNextPage: vi.fn(),
           }),
         },
-        listBlockedItems: { useInfiniteQuery: () => ({ data: undefined, isPending: true }) },
+        listBlockedItems: {
+          useInfiniteQuery: () => ({
+            data: { pages: [{ items: state.items }] },
+            isPending: false,
+            hasNextPage: false,
+          }),
+        },
         retryBlockedGroup: {
           useMutation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
         },
@@ -134,6 +151,7 @@ beforeEach(() => {
   state.onEvent = null
   state.invalidated = []
   state.dialog = null
+  state.items = []
 })
 
 describe('BlockedPanel', () => {
@@ -152,6 +170,70 @@ describe('BlockedPanel', () => {
     expect(screen.getAllByText('Retrying 3…').length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('Retry all')).toBeNull()
     expect((screen.getByLabelText('Retrying 3…') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('links a provider duplicate to the object to delete in the connected books', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    state.groups = [
+      group({
+        reasonCode: 'PROVIDER_DUPLICATE',
+        externalRef: 'Deposit 403',
+        sourceKinds: ['provider_ledger_entry'],
+      }),
+    ]
+    state.items = [
+      {
+        id: 'wi-1',
+        sourceKind: 'provider_ledger_entry',
+        sourceId: 'ple-1',
+        reasonCode: 'PROVIDER_DUPLICATE',
+        externalRef: 'Deposit 403',
+        detail: null,
+        label: null,
+        recordDefinitionId: null,
+        moneyTransactionId: null,
+        purpose: null,
+        amountMinor: null,
+        currency: null,
+        updatedAt: new Date('2026-09-22T12:00:00Z'),
+        providerObjectUrl: 'https://qbo.example/app/deposit?txnId=403',
+      },
+    ]
+    renderPanel()
+    fireEvent.click(screen.getByLabelText('Expand'))
+    fireEvent.click(screen.getByLabelText('Open in QuickBooks'))
+    expect(open).toHaveBeenCalledWith(
+      'https://qbo.example/app/deposit?txnId=403',
+      '_blank',
+      'noopener'
+    )
+    open.mockRestore()
+  })
+
+  it('offers no provider link on an item without one', () => {
+    state.groups = [group()]
+    state.items = [
+      {
+        id: 'wi-2',
+        sourceKind: 'money_transaction',
+        sourceId: 'mt-1',
+        reasonCode: 'GATEWAY_UNMAPPED',
+        externalRef: 'authorize.net',
+        detail: null,
+        label: 'Acme',
+        recordDefinitionId: null,
+        moneyTransactionId: 'mt-1',
+        purpose: null,
+        amountMinor: null,
+        currency: null,
+        updatedAt: new Date('2026-09-22T12:00:00Z'),
+        providerObjectUrl: null,
+      },
+    ]
+    renderPanel()
+    fireEvent.click(screen.getByLabelText('Expand'))
+    expect(screen.getByText('Acme')).toBeTruthy()
+    expect(screen.queryByLabelText('Open in QuickBooks')).toBeNull()
   })
 
   it('refetches on accountingWork:changed and ignores other frames', () => {

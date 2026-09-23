@@ -13,6 +13,15 @@ const state = vi.hoisted(() => ({
   entriesError: null as { message: string } | null,
   nextPage: false,
   fetchNextPage: vi.fn(),
+  providerSide: undefined as Record<string, unknown> | undefined,
+  canPost: true,
+}))
+
+vi.mock('~/components/money/ui/provider-payment-notice', () => ({
+  useProviderName: () => 'QuickBooks',
+}))
+vi.mock('~/providers/capabilities-provider', () => ({
+  useAccess: () => ({ can: (key: string) => state.canPost || key !== 'ledger.post' }),
 }))
 
 vi.mock('next/link', () => ({
@@ -36,7 +45,19 @@ vi.mock('~/hooks/use-settings', () => ({ useSettings: () => ({ getSetting: () =>
 
 vi.mock('~/trpc/react', () => ({
   api: {
-    useUtils: () => ({ payoutEvidence: { invalidate: vi.fn() } }),
+    useUtils: () => ({
+      payoutEvidence: { invalidate: vi.fn() },
+      providerMatch: {
+        forPayout: { invalidate: vi.fn() },
+        list: { invalidate: vi.fn() },
+        counts: { invalidate: vi.fn() },
+      },
+    }),
+    providerMatch: {
+      forPayout: { useQuery: () => ({ data: state.providerSide, error: null }) },
+      accept: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+      dismiss: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+    },
     payoutEvidence: {
       detail: { useQuery: () => ({ data: state.payout, error: state.detailError }) },
       entries: {
@@ -71,6 +92,7 @@ beforeEach(() => {
   state.entries = []
   state.postings = []
   state.nextPage = false
+  state.providerSide = undefined
   state.fetchNextPage.mockClear()
   state.payout = {
     id: 'transfer-1',
@@ -176,6 +198,35 @@ describe('payout evidence inspection', () => {
   it('expects no bank deposit for a payout that never reached the bank', () => {
     state.payout.status = 'failed'
     detail()
+    expect(screen.queryByText(/No bank deposit matched yet/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the bank route line when no book is connected', () => {
+    state.payout.payoutInstanceId = 'payout-instance-1'
+    state.providerSide = { connected: false, deposit: null, duplicates: [] }
+    detail()
+    expect(screen.getByText(/No bank deposit matched yet/)).toBeInTheDocument()
+  })
+
+  it('shows the QuickBooks side in place of the bank route line when a book is connected', () => {
+    state.payout.payoutInstanceId = 'payout-instance-1'
+    state.providerSide = {
+      connected: true,
+      deposit: {
+        batchState: 'sent',
+        providerObjectId: '555',
+        objectType: 'deposit',
+        bookId: 'book-1',
+        sentAt: null,
+        cleared: 'R',
+        providerObjectUrl: 'https://qbo.test/deposit/555',
+      },
+      duplicates: [],
+    }
+    detail()
+    expect(
+      screen.getByText(/Deposit sent to QuickBooks. Reconciled in QuickBooks./)
+    ).toBeInTheDocument()
     expect(screen.queryByText(/No bank deposit matched yet/)).not.toBeInTheDocument()
   })
 

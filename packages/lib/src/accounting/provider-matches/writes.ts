@@ -69,7 +69,9 @@ export interface ProviderMatchActionInput {
 /**
  * Accept a suggestion (102 D1). Ours unsent → keep theirs: our receipt is marked adopted, then
  * its entry reversed. Ours sent → no ledger change; a work item asks for theirs to be deleted.
- * A payout is always the second: ours carries the fee split a feed *Add* does not.
+ * A payout is always the second: ours carries the fee split a feed *Add* does not. Their expense
+ * paying our bill → no ledger change; a work item asks for it to be linked to the bill there, and
+ * the Bill Payment that replaces it adopts by identity on the next sync.
  */
 export async function acceptProviderMatch(
   db: Database,
@@ -80,6 +82,26 @@ export async function acceptProviderMatch(
   if (entry.matchState !== 'suggested' || !entry.matchedId || !entry.matchedKind)
     return err(new ConflictError('Only a suggested match can be accepted'))
   const reason = entry.matchReason as ProviderMatchReason
+
+  if (entry.matchedKind === 'vendor_bill' && reason === 'pays_bill') {
+    const recorded = await upsertWorkItem(db, input.organizationId, {
+      sourceKind: 'provider_ledger_entry',
+      sourceId: entry.id,
+      stage: 'post',
+      reasonCode: 'PROVIDER_BILL_LEFT_OPEN',
+      externalRef: `${entry.providerTxnType} ${entry.docNumber ?? entry.providerTxnId}`,
+      detail: { matchedKind: 'vendor_bill', matchedId: entry.matchedId },
+    })
+    if (recorded.isErr()) return err(recorded.error)
+    await writeProviderMatch(db, input.organizationId, entry.id, {
+      state: 'matched',
+      reason,
+      kind: 'vendor_bill',
+      matchedId: entry.matchedId,
+      matchedBy: input.actorUserId,
+    })
+    return ok(undefined)
+  }
 
   if (entry.matchedKind === 'money_transaction' && reason === 'ours_unsent') {
     // The marker first: the reversal releases the claim, and an unmarked movement with no

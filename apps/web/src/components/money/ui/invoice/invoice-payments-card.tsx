@@ -16,6 +16,11 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useAdminGate } from '~/components/global/admin-gate'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PaymentsList } from '~/components/money/ui/payments/payments-list'
+import {
+  ProviderPaymentNotice,
+  useProviderName,
+  useProviderPayments,
+} from '~/components/money/ui/provider-payment-notice'
 import { useSystemValues } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
@@ -49,6 +54,9 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
   const balance = (values.invoice_balance as number | null | undefined) ?? 0
   const amountCredited = (values.invoice_amount_credited as number | null | undefined) ?? 0
   const contactRecordId = extractRelationshipRecordIds(values.invoice_contact)[0]
+
+  const providerName = useProviderName()
+  const { recordedMovementIds } = useProviderPayments('invoice', recordId)
 
   const utils = api.useUtils()
   const { data: payments, isLoading } = api.money.listPayments.useQuery({
@@ -94,6 +102,8 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
         </DrawerCardActions>
       )}
 
+      <ProviderPaymentNotice kind='invoice' recordId={recordId} />
+
       <PaymentsList
         payments={payments}
         isLoading={isLoading}
@@ -101,6 +111,11 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
         isAdmin={isAdmin}
         onDelete={handleDelete}
         deletePending={deletePayment.isPending}
+        renderRowSuffix={(payment) =>
+          recordedMovementIds.has(payment.id) && (
+            <span className='shrink-0'>Recorded from {providerName}</span>
+          )
+        }
       />
 
       {amountCredited > 0 && (

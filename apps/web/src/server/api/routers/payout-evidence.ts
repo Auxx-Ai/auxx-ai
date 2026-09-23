@@ -13,6 +13,7 @@ import {
   listRejectedProcessorEvidence,
   listSweepingPayoutPostings,
   matchEntry,
+  recheckOpenPayoutMatches,
   unmatchEntry,
 } from '@auxx/lib/accounting/money/payouts'
 import { NotFoundError } from '@auxx/lib/errors'
@@ -225,4 +226,14 @@ export const payoutEvidenceRouter = createTRPCRouter({
         })
       )
     ),
+
+  /** Re-run the matcher over this org's open items, and re-post what that reverses. */
+  recheckMatches: permissionProcedure(PermissionKey.ledgerPost).mutation(async ({ ctx }) =>
+    unwrap(
+      await recheckOpenPayoutMatches(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.user.id,
+      })
+    )
+  ),
 })

@@ -24,6 +24,8 @@ export interface CostWrite {
   value: { type: 'number'; value: number } | { type: 'option'; optionId: string } | null
   /** The pair's stored row, matched by id so a stale snapshot can never widen the write. */
   rowId: string | null
+  /** The field's own precision; without it an insert is checked at the currency's 2 places. */
+  currencyOptions?: { decimals?: number; currencyCode?: string }
 }
 
 /**
@@ -55,6 +57,7 @@ export async function writeCostValues(
           fieldType: write.fieldType,
           value: write.value,
           sortKey: nKeysAfter(null, 1)[0]!,
+          currencyOptions: write.currencyOptions,
         })
       )
     }

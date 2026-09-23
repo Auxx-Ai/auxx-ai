@@ -31,6 +31,7 @@ import {
   PAYMENT_METHOD_OPTIONS,
   type PaymentMethod,
 } from '~/components/money/ui/invoice/payment-method-options'
+import { ProviderPaymentNotice } from '~/components/money/ui/provider-payment-notice'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 
@@ -138,6 +139,9 @@ export function RecordBillPaymentDialog({
             Pay some or all of this bill. The payment is recorded and posted to the ledger.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Leads the form so a payment the provider already holds is not recorded twice. */}
+        <ProviderPaymentNotice kind='vendor_bill' recordId={billRecordId} />
 
         <FieldPanel
           orientation='responsive'

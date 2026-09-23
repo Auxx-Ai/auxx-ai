@@ -159,14 +159,19 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'inventory',
     defaultSidebarTab: 'overview',
+    // Drawer parity for the overview cards; Inventory is already a main tab here.
+    // Each renders nothing when it has nothing to say (see drawer-config.ts).
+    sidebarCards: [
+      { value: 'costing', label: 'Costing', icon: 'calculator' },
+      { value: 'pricing', label: 'Pricing', icon: 'tag' },
+      { value: 'family', label: 'Family', icon: 'boxes' },
+    ],
   },
 
   product: {
     entityType: 'product',
     // The family page (plans/products/01-product-family.md phase 3): the
     // variants list leads — a product IS its title/image plus a set of parts.
-    // The generic Details field panel lives in the sidebar overview like every
-    // other detail page; no sidebarCards needed.
     mainTabs: [
       { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
@@ -175,6 +180,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'parts',
     defaultSidebarTab: 'overview',
+    // Drawer parity: the same overview cards (see drawer-config.ts).
+    sidebarCards: [
+      { value: 'summary', label: 'Family', icon: 'package', recordResource: 'part' },
+      { value: 'vendor', label: 'Vendor', icon: 'store' },
+    ],
   },
 
   quote: {
@@ -213,6 +223,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // pattern below) — a quote opened as a page must offer the same files.
       { value: 'documents', label: 'Documents', icon: 'paperclip' },
       { value: 'jobs', label: 'Jobs', icon: 'wrench', recordResource: 'work_order' },
+      // Renders nothing when the quote has no deposit charge.
+      {
+        value: 'deposit',
+        label: 'Deposit',
+        icon: 'banknote',
+        permissionKey: 'dispatch.board.view',
+      },
     ],
   },
 
@@ -236,9 +253,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'line-items',
     defaultSidebarTab: 'overview',
-    // No `origin` card (an order has no converted-from source) and no payments —
-    // an order carries no payment ledger (§5.4). `work_order` is the D4 manual
-    // link that stands in for the deferred order→work_order conversion.
+    // No `origin` card: an order has no converted-from source. `work_order` is the
+    // D4 manual link that stands in for the deferred order→work_order conversion.
     sidebarCards: [
       { value: 'customer', label: 'Customer', icon: 'user' },
       // `work-orders`, not the quote's `jobs`: DetailViewSidebar and the drawer read
@@ -246,6 +262,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // and must match `order:work-orders` there and in the order's drawer block.
       // "Jobs" is dispatch vocabulary; an order links work orders (08 §5.8).
       { value: 'work-orders', label: 'Work orders', icon: 'wrench', recordResource: 'work_order' },
+      {
+        value: 'credit-memos',
+        label: 'Credit memos',
+        icon: 'receipt-text',
+        recordResource: 'credit_memo',
+      },
+      { value: 'payments', label: 'Payments and refunds', icon: 'banknote' },
       // Same key as the drawer's `order:ledger` card. HANDOFF slot 2J.
       { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
     ],
@@ -304,9 +327,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
       { value: 'link', label: 'Link to order', icon: 'link-2' },
       { value: 'match', label: 'Match', icon: 'scan-search' },
+      { value: 'landed-cost', label: 'Landed cost', icon: 'ship' },
       { value: 'documents', label: 'Documents', icon: 'paperclip' },
       { value: 'vendor', label: 'Vendor', icon: 'store' },
       { value: 'payment', label: 'Payment', icon: 'credit-card' },
+      { value: 'vendor-credits', label: 'Credits', icon: 'receipt-text' },
       // Accounting migration step 1b, part E - kept in step with
       // `DRAWER_CONFIG_REGISTRY.vendor_bill` (`drawer-card-parity.test.ts`).
       { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },

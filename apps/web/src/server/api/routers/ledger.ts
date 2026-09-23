@@ -395,6 +395,49 @@ async function withProviderObjectUrls<T extends ExportBatchRow>(
   }))
 }
 
+/** Adds `providerObjectUrl` to Blocked items naming a provider entry, under the same book guard. */
+async function withProviderEntryUrls<T extends { sourceKind: string; sourceId: string }>(
+  db: Database,
+  organizationId: string,
+  items: T[]
+): Promise<Array<T & { providerObjectUrl: string | null }>> {
+  const entryIds = items
+    .filter((item) => item.sourceKind === 'provider_ledger_entry')
+    .map((item) => item.sourceId)
+  if (entryIds.length === 0) return items.map((item) => ({ ...item, providerObjectUrl: null }))
+  const e = schema.ProviderLedgerEntry
+  const [entries, connection, provider] = await Promise.all([
+    db
+      .select({
+        id: e.id,
+        bookId: e.bookId,
+        providerTxnType: e.providerTxnType,
+        providerTxnId: e.providerTxnId,
+      })
+      .from(e)
+      .where(and(eq(e.organizationId, organizationId), inArray(e.id, entryIds))),
+    readActiveBookConnection(db, organizationId),
+    resolveAccountingProvider(organizationId),
+  ])
+  const activeBookId = connection?.bookId ?? null
+  const urls = new Map(
+    entries.map((entry) => [
+      entry.id,
+      entry.bookId === activeBookId
+        ? (provider.objectUrl?.({
+            objectType: entry.providerTxnType,
+            externalId: entry.providerTxnId,
+          }) ?? null)
+        : null,
+    ])
+  )
+  return items.map((item) => ({
+    ...item,
+    providerObjectUrl:
+      item.sourceKind === 'provider_ledger_entry' ? (urls.get(item.sourceId) ?? null) : null,
+  }))
+}
+
 /**
  * One `journal_entry_line` child as the drawer sends it. `amountMinor` is integer
  * minor units (the browser converts at the `CurrencyInput` boundary); a zero saves,
@@ -2029,7 +2072,10 @@ export const ledgerRouter = createTRPCRouter({
         bookTimeZone: await readOutboxZone(organizationId, input),
       })
       if (result.isErr()) throw result.error
-      return result.value
+      return {
+        ...result.value,
+        items: await withProviderEntryUrls(ctx.db, organizationId, result.value.items),
+      }
     }),
 
   /**

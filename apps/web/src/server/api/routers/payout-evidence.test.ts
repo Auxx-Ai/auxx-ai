@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   detail: vi.fn(),
   entries: vi.fn(),
   rejected: vi.fn(),
+  recheck: vi.fn(),
 }))
 
 vi.mock('@auxx/lib/accounting/money/payouts', () => ({
@@ -14,15 +15,18 @@ vi.mock('@auxx/lib/accounting/money/payouts', () => ({
   getPayoutEvidence: state.detail,
   listProcessorBalanceEntries: state.entries,
   listRejectedProcessorEvidence: state.rejected,
+  recheckOpenPayoutMatches: state.recheck,
 }))
-vi.mock('@auxx/lib/permissions', () => ({ PermissionKey: { ledgerView: 'ledger.view' } }))
+vi.mock('@auxx/lib/permissions', () => ({
+  PermissionKey: { ledgerView: 'ledger.view', ledgerPost: 'ledger.post' },
+}))
 
 vi.mock('~/server/api/trpc', async () => {
   const { initTRPC, TRPCError } = await import('@trpc/server')
   const t = initTRPC
     .context<{
       db: object
-      session: { organizationId: string }
+      session: { organizationId: string; user: { id: string } }
       permissions: Set<string>
     }>()
     .create()
@@ -42,7 +46,7 @@ const db = {}
 function caller(permissions = ['ledger.view']) {
   return payoutEvidenceRouter.createCaller({
     db,
-    session: { organizationId: 'org-session' },
+    session: { organizationId: 'org-session', user: { id: 'user-session' } },
     permissions: new Set(permissions),
   } as never)
 }
@@ -106,5 +110,24 @@ describe('payout evidence financial read boundary', () => {
     await expect(caller().list({ limit: 0 })).rejects.toMatchObject({ code: 'BAD_REQUEST' })
     expect(state.entries).not.toHaveBeenCalled()
     expect(state.list).not.toHaveBeenCalled()
+  })
+
+  it('re-checks matches only with ledger post access, scoped to the session organization', async () => {
+    state.recheck.mockResolvedValue({
+      isErr: () => false,
+      value: { payouts: 2, changed: 1, reposted: 0 },
+    })
+    await expect(caller().recheckMatches()).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    expect(state.recheck).not.toHaveBeenCalled()
+
+    await expect(caller(['ledger.post']).recheckMatches()).resolves.toEqual({
+      payouts: 2,
+      changed: 1,
+      reposted: 0,
+    })
+    expect(state.recheck).toHaveBeenCalledWith(db, {
+      organizationId: 'org-session',
+      actorUserId: 'user-session',
+    })
   })
 })

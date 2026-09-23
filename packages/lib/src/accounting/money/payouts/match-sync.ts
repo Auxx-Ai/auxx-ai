@@ -338,12 +338,13 @@ export async function syncStoredMatches(
 /**
  * The `MoneyTransfer`s holding an item the matcher has not settled, by
  * organization — the pending-only sweep (§9.2), one query on the partial index.
+ * `organizationId` narrows it to one org (the Payouts page's re-check).
  */
 export async function listTransfersWithOpenMatches(
   db: Database,
-  limit: number
+  options: { limit?: number; organizationId?: string } = {}
 ): Promise<Map<string, string[]>> {
-  const rows = await db
+  const query = db
     .selectDistinct({
       organizationId: schema.MoneyTransfer.organizationId,
       id: schema.MoneyTransfer.id,
@@ -358,9 +359,17 @@ export async function listTransfersWithOpenMatches(
       )
     )
     // Not `unmatchable`: that state is a person's answer, never retried by a sweep.
-    .where(inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested']))
+    .where(
+      and(
+        inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested']),
+        options.organizationId
+          ? eq(schema.ProcessorBalanceEntry.organizationId, options.organizationId)
+          : undefined
+      )
+    )
     .orderBy(schema.MoneyTransfer.organizationId, schema.MoneyTransfer.id)
-    .limit(limit)
+    .$dynamic()
+  const rows = await (options.limit ? query.limit(options.limit) : query)
   const byOrganization = new Map<string, string[]>()
   for (const row of rows) {
     const ids = byOrganization.get(row.organizationId) ?? []

@@ -11,14 +11,25 @@ import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
+import { toastError } from '@auxx/ui/components/toast'
 import { format } from 'date-fns'
-import { Ban, CircleAlert, CircleX, Link2Off, List, type LucideIcon, Undo2 } from 'lucide-react'
+import {
+  Ban,
+  CircleAlert,
+  CircleX,
+  Link2Off,
+  List,
+  type LucideIcon,
+  RefreshCw,
+  Undo2,
+} from 'lucide-react'
 import { type ReactNode, useMemo, useState } from 'react'
 import { sourceAccountLabel } from '~/components/accounting/ui/source-account-label'
 import { SourceProviderIcon } from '~/components/accounting/ui/source-provider-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 /**
@@ -202,6 +213,30 @@ function SourceAccountPicker({ value, onChange }: SourceAccountPickerProps) {
   )
 }
 
+/** Re-run the matcher over the org's open items now, rather than waiting for the nightly pass. */
+function RecheckMatchesButton() {
+  const canPost = useAccess().can('ledger.post')
+  const utils = api.useUtils()
+  const recheckMatches = api.payoutEvidence.recheckMatches.useMutation({
+    onSuccess: () => void utils.payoutEvidence.invalidate(),
+    onError: (error) =>
+      toastError({ title: 'Error re-checking matches', description: error.message }),
+  })
+  if (!canPost) return null
+  return (
+    <Button
+      variant='ghost'
+      size='sm'
+      className='h-7'
+      loading={recheckMatches.isPending}
+      loadingText='Re-checking...'
+      onClick={() => recheckMatches.mutate()}>
+      <RefreshCw />
+      Re-check matches
+    </Button>
+  )
+}
+
 interface PayoutsToolbarProps {
   filters: PayoutFilters
   onChange: (next: PayoutFilters) => void
@@ -306,6 +341,7 @@ export function PayoutsToolbar({ filters, onChange, selectAll }: PayoutsToolbarP
             <Link2Off />
             Needs matching
           </Button>
+          <RecheckMatchesButton />
         </ListToolbarGroup>
 
         <ListToolbarGroup className='shrink-0'>

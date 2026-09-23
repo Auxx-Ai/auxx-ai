@@ -17,11 +17,11 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { InputSearch } from '@auxx/ui/components/input-search'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { Receipt } from 'lucide-react'
 import { useState } from 'react'
-import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../../ledger/format'
 import { formatEvidenceDate } from './evidence-format'
@@ -79,8 +79,8 @@ export function MatchCandidateDialog({
         )}
 
         {!query.isPending && !query.error && candidates.length === 0 ? (
-          <EmptyState
-            icon={Receipt}
+          <EmptySection
+            icon={<Receipt />}
             title='No candidate payments'
             description='No unclaimed customer payment on this gateway and currency matches. Widen the search, or import the payment evidence first.'
           />

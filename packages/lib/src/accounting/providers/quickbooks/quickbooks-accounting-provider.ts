@@ -146,6 +146,9 @@ const OBJECT_URL_PATH: Record<string, string> = {
   deposit: '/app/deposit',
   bill: '/app/bill',
   vendor_credit: '/app/vendorcredit',
+  // The mirror's report labels, for their own transactions (brief 102).
+  Payment: '/app/recvpayment',
+  Deposit: '/app/deposit',
 }
 
 // A cheap exactness check the moment this module loads: every object type the

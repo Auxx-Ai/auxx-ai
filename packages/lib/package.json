@@ -166,6 +166,18 @@
       "import": "./dist/accounting/parties/index.mjs",
       "default": "./src/accounting/parties/index.ts"
     },
+    "./accounting/provider-matches": {
+      "types": "./src/accounting/provider-matches/index.ts",
+      "source": "./src/accounting/provider-matches/index.ts",
+      "import": "./dist/accounting/provider-matches/index.mjs",
+      "default": "./src/accounting/provider-matches/index.ts"
+    },
+    "./accounting/provider-matches/client": {
+      "types": "./src/accounting/provider-matches/client.ts",
+      "source": "./src/accounting/provider-matches/client.ts",
+      "import": "./dist/accounting/provider-matches/client.mjs",
+      "default": "./src/accounting/provider-matches/client.ts"
+    },
     "./accounting/providers": {
       "types": "./src/accounting/providers/index.ts",
       "source": "./src/accounting/providers/index.ts",
