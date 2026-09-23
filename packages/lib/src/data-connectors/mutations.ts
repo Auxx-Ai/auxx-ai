@@ -1580,6 +1580,8 @@ export interface AddStreamInput {
   enabled?: boolean
   /** Set by the app catalog seeder + updater (task 41 D3); absent for hand-made streams. */
   catalogHash?: string | null
+  /** The app's declared per-record filter; absent for hand-made streams. */
+  recordFilter?: RecordFilterConditionGroup[] | null
 }
 
 /** Create a stream under a connector. */
@@ -1591,6 +1593,7 @@ export async function addStream(
 ): Promise<DataConnectorStreamRow> {
   await loadConnectorRow(db, organizationId, dataConnectorId)
   assertSteeringConfigValid(input.requestConfig)
+  assertRecordFilterCompiles(input.recordFilter as ConditionGroup[] | null | undefined)
   const [row] = await db
     .insert(schema.DataConnectorStream)
     .values({
@@ -1603,6 +1606,7 @@ export async function addStream(
       requestConfig: input.requestConfig ?? null,
       enabled: input.enabled ?? true,
       catalogHash: input.catalogHash ?? null,
+      recordFilter: input.recordFilter ?? null,
     })
     .returning()
   if (!row) throw new Error('Failed to add stream')
@@ -1702,14 +1706,14 @@ export async function setStreamRequestConfig(
     syncMode?: SyncMode
     enabled?: boolean
     /** `ConditionGroup[]` over SOURCE PATHS; `null` clears, `undefined` leaves as-is. */
-    recordFilter?: ConditionGroup[] | null
+    recordFilter?: ConditionGroup[] | RecordFilterConditionGroup[] | null
   }
 ): Promise<DataConnectorStreamRow> {
   assertSteeringConfigValid(input.requestConfig)
   // Save-time gate. The sync path fails OPEN on a filter that doesn't compile (see
   // `record-filter.ts`), so without this a typo'd operator is never surfaced anywhere
   // except a run warning — the author would see a filter that silently does nothing.
-  assertRecordFilterCompiles(input.recordFilter)
+  assertRecordFilterCompiles(input.recordFilter as ConditionGroup[] | null | undefined)
   return db.transaction(async (tx) => {
     const existing = await loadStreamRow(tx, organizationId, streamId)
     const impact = classifyStreamRequestChange(existing, input)

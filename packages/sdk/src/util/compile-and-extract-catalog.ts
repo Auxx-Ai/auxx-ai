@@ -306,6 +306,13 @@ export interface CatalogConnectorMapping {
   connectionFields?: CatalogConnectorConnectionField[]
 }
 
+/** One condition group of a stream's record filter, in the platform's stored shape. */
+export interface CatalogRecordFilterGroup {
+  id: string
+  logicalOperator: 'AND' | 'OR'
+  conditions: Array<{ id: string; fieldId: string; operator: string; value: unknown }>
+}
+
 /** One stream (fetch) projected from a data connector. */
 export interface CatalogConnectorStream {
   key: string
@@ -315,6 +322,8 @@ export interface CatalogConnectorStream {
   exampleRecord?: Record<string, unknown>
   /** Per-stream webhook STEERING — see `ConnectorStreamDecl.webhookTrigger` (root types). */
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  /** The stream's `recordFilter` clauses as one AND group with stable ids. */
+  recordFilter?: CatalogRecordFilterGroup[]
 }
 
 /**
@@ -1051,12 +1060,39 @@ export async function compileAndExtractCatalog(): Promise<
         })
       }
 
+      const recordFilter = stream.recordFilter ?? []
+      for (const [i, condition] of recordFilter.entries()) {
+        if (!condition?.fieldId?.trim() || !condition.operator?.trim()) {
+          return errored({
+            code: 'CATALOG_VALIDATION_FAILED',
+            message: `Connector "${connector.id}" stream "${stream.key}": recordFilter[${i}] needs a fieldId and an operator`,
+          })
+        }
+      }
+
       streams.push({
         key: stream.key,
         syncMode: stream.syncMode,
         mappings,
         exampleRecord: stream.exampleRecord,
         webhookTrigger: stream.webhookTrigger,
+        // Ids are minted from the stream key so a redeploy compares equal to the seeded row.
+        ...(recordFilter.length > 0
+          ? {
+              recordFilter: [
+                {
+                  id: `${stream.key}:record-filter`,
+                  logicalOperator: 'AND' as const,
+                  conditions: recordFilter.map((c, i) => ({
+                    id: `${stream.key}:record-filter:${i}`,
+                    fieldId: c.fieldId,
+                    operator: c.operator,
+                    value: c.value ?? null,
+                  })),
+                },
+              ],
+            }
+          : {}),
       })
     }
 
@@ -1388,6 +1424,7 @@ interface RawConnectorStream {
   mappings: RawConnectorMapping[]
   exampleRecord?: Record<string, unknown>
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  recordFilter?: Array<{ fieldId: string; operator: string; value?: unknown }>
 }
 
 interface RawDataConnector {

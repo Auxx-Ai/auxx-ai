@@ -15,6 +15,7 @@ import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
+import { repointGuestReceiptsForOrders } from './repoint-guest-party'
 import { requeueAcceptancesForOrders } from './source-writes'
 
 const logger = createScopedLogger('money:acceptance-wake')
@@ -37,6 +38,8 @@ async function wakeOrders(
   orderInstanceIds: string[]
 ): Promise<void> {
   try {
+    // Accepted receipts have no work item to wake, so their guest party is repointed here.
+    await repointGuestReceiptsForOrders(database, organizationId, orderInstanceIds)
     await requeueAcceptancesForOrders(database, organizationId, orderInstanceIds)
   } catch (error) {
     logger.error('acceptance wake failed — the parked rows stay parked', {

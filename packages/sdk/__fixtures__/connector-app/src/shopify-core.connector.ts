@@ -42,6 +42,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
     {
       key: 'order',
       webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
+      recordFilter: [{ fieldId: 'total_price', operator: '>', value: 0 }],
       mappings: [
         {
           // Root record — owned `orders`. Each field's `key` names a field

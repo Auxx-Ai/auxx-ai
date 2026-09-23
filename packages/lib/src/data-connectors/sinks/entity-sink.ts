@@ -40,6 +40,7 @@ import {
 } from '../service'
 import { type SyncFieldShape, wouldHealField } from '../sync-state'
 import type { FieldMergeStrategy } from '../types'
+import { mintOptionKeys } from './mint-option-keys'
 import {
   executeRowLevelWrites,
   planRowLevelWrites,
@@ -507,7 +508,12 @@ async function buildWriteSet(
     // connector cannot source an array. Split it into the list form the write path
     // understands — otherwise a multi-tag source writes ONE compound tag. Every
     // reference to `value` below is post-coercion by design.
-    const value = coerceListValue(fieldRow?.type, sourceValue, isMulti)
+    const listValue = coerceListValue(fieldRow?.type, sourceValue, isMulti)
+    // Option labels become option keys, minted on the field when allowed — an
+    // identity value is matched verbatim and must not be rewritten.
+    const value = identityRefs.has(rawRef)
+      ? listValue
+      : await mintOptionKeys(ctx.db, ctx.orgId, fieldRow, listValue)
 
     // Pre-flight the format-validated types (EMAIL/URL/PHONE_INTL): a value the
     // write path would refuse costs the WHOLE record if it throws inside

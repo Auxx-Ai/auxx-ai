@@ -3,7 +3,7 @@
 'use client'
 
 import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { api } from '~/trpc/react'
+import type { RouterOutputs } from '~/trpc/react'
 import { MovementBadge } from '../../movement-badge'
 import { LedgerSourceLink } from '../ledger-source-link'
 
@@ -15,10 +15,10 @@ import { LedgerSourceLink } from '../ledger-source-link'
 export const BADGE_ROW_CLASS =
   'box-content flex h-4 min-w-0 flex-wrap items-center gap-1 overflow-hidden p-px'
 
+type PostingSource = RouterOutputs['ledger']['postingSources'][number]
+
 /** The records a posting is about, as badges: its subject, its `parent` and `counterparty` links. */
-export function PostingLinks({ glPostingId }: { glPostingId: string }) {
-  const sourcesQuery = api.ledger.postingSources.useQuery({ glPostingId })
-  const sources = sourcesQuery.data ?? []
+export function PostingLinks({ sources }: { sources: PostingSource[] }) {
   if (sources.length === 0) return null
   return (
     <span className={BADGE_ROW_CLASS}>

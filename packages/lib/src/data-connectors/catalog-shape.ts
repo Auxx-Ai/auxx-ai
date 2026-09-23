@@ -16,6 +16,7 @@ import type {
   CatalogDataConnector,
   CatalogEntity,
   CatalogPayload,
+  RecordFilterConditionGroup,
 } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import {
@@ -274,6 +275,7 @@ export interface StreamShape {
   syncMode: SyncMode
   webhookTrigger: StreamWebhookTrigger | null
   sourceSchema: Record<string, unknown> | null
+  recordFilter: RecordFilterConditionGroup[] | null
 }
 
 /** A derived stream: comparable shape plus its mappings in seeding order (parents first). */
@@ -436,6 +438,8 @@ export function hashStreamShape(shape: StreamShape): string {
       syncMode: shape.syncMode,
       webhookTrigger: shape.webhookTrigger,
       sourceSchema: shape.sourceSchema,
+      // Only when set, so every hash written before the filter existed still matches.
+      ...(shape.recordFilter?.length ? { recordFilter: shape.recordFilter } : {}),
     })
   )
 }
@@ -514,6 +518,7 @@ export function deriveStreamShape(
     syncMode: stream.syncMode ?? 'snapshot',
     webhookTrigger: (stream.webhookTrigger as StreamWebhookTrigger | undefined) ?? null,
     sourceSchema: appCatalogStreamSchema(stream).sourceSchema,
+    recordFilter: stream.recordFilter?.length ? stream.recordFilter : null,
     mappings: [...owned, ...contributing],
   }
 }
@@ -833,6 +838,7 @@ export function shapeFromPersistedStreams(
         syncMode: row.syncMode as SyncMode,
         webhookTrigger: row.requestConfig?.webhookTrigger ?? null,
         sourceSchema: row.sourceSchema ?? null,
+        recordFilter: row.recordFilter?.length ? row.recordFilter : null,
       },
       mappings: row.mappings.map(shapeOf),
     }

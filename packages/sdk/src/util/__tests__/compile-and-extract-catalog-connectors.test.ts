@@ -146,6 +146,16 @@ describe('compileAndExtractCatalog — entities + data connectors', () => {
     expect(stream).toMatchObject({
       key: 'order',
       webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
+      // A flat AND list in the declaration, one group with stable ids in the catalog.
+      recordFilter: [
+        {
+          id: 'order:record-filter',
+          logicalOperator: 'AND',
+          conditions: [
+            { id: 'order:record-filter:0', fieldId: 'total_price', operator: '>', value: 0 },
+          ],
+        },
+      ],
     })
     // Layer A `fields` is gone — the platform builds it from mapping source paths.
     expect(stream).not.toHaveProperty('fields')

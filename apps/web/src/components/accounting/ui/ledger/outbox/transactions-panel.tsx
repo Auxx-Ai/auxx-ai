@@ -93,6 +93,7 @@ export function TransactionsPanel({
           memo: row.memo,
           txnDate: row.txnDate,
           totalMinor: row.totalMinor,
+          sources: row.sources,
         },
         exportState: row.exportState,
         dayKey: row.txnDate,

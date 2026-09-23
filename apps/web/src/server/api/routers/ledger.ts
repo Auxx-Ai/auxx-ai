@@ -128,7 +128,7 @@ import { toRecordId } from '@auxx/lib/resources/client'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { getOrganizationSetting, updateOrganizationSetting } from '@auxx/lib/settings'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
@@ -161,6 +161,71 @@ async function rereleaseForAccount(
 function sourceRoleRank(linkRole: string): number {
   const rank = SOURCE_ROLE_ORDER.indexOf(linkRole)
   return rank === -1 ? SOURCE_ROLE_ORDER.length : rank
+}
+
+/** Every posting's `GlPostingSource` rows, hydrated to badges, in one read for the whole list. */
+async function readPostingSources(db: Database, organizationId: string, glPostingIds: string[]) {
+  const rows = await db
+    .select({
+      id: schema.GlPostingSource.id,
+      glPostingId: schema.GlPostingSource.glPostingId,
+      sourceKind: schema.GlPostingSource.sourceKind,
+      sourceId: schema.GlPostingSource.sourceId,
+      linkRole: schema.GlPostingSource.linkRole,
+      occurrence: schema.GlPostingSource.occurrence,
+    })
+    .from(schema.GlPostingSource)
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        inArray(schema.GlPostingSource.glPostingId, [...new Set(glPostingIds)])
+      )
+    )
+  const hydrated = await hydrateSources(db, organizationId, rows)
+  const bySource = new Map<string, typeof hydrated>()
+  for (const source of hydrated) {
+    const list = bySource.get(source.glPostingId)
+    if (list) list.push(source)
+    else bySource.set(source.glPostingId, [source])
+  }
+  return bySource
+}
+
+async function hydrateSources<
+  T extends { id: string; sourceKind: string; sourceId: string; linkRole: string },
+>(db: Database, organizationId: string, rows: T[]) {
+  const movements = await readMovements(
+    db,
+    organizationId,
+    rows.filter((row) => row.sourceKind === 'money_transaction').map((row) => row.sourceId)
+  )
+  // A `sourceKind` that is an entity type becomes a `RecordId` so the client
+  // renders a badge, a `money_transaction` a `MovementBadge`; the remaining
+  // ledger-only kinds (`gl_posting`, `payout`, …) stay text.
+  const hydrated = await Promise.all(
+    rows.map(async (row) => {
+      const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
+      const movement = movements.get(row.sourceId)
+      return {
+        ...row,
+        recordId: defId ? toRecordId(defId, row.sourceId) : null,
+        movement:
+          row.sourceKind === 'money_transaction' && movement
+            ? {
+                id: movement.id,
+                purpose: movement.purpose,
+                // A string on the wire; the badge only formats it.
+                amountMinor: movement.amountMinor.toString(),
+                currency: movement.currency,
+                currencyExponent: movement.currencyExponent,
+              }
+            : null,
+      }
+    })
+  )
+  return hydrated.sort(
+    (a, b) => sourceRoleRank(a.linkRole) - sourceRoleRank(b.linkRole) || a.id.localeCompare(b.id)
+  )
 }
 
 /**
@@ -577,41 +642,7 @@ export const ledgerRouter = createTRPCRouter({
             eq(schema.GlPostingSource.glPostingId, input.glPostingId)
           )
         )
-      // One read for every movement on the posting, not one per badge.
-      const movements = await readMovements(
-        ctx.db,
-        organizationId,
-        rows.filter((row) => row.sourceKind === 'money_transaction').map((row) => row.sourceId)
-      )
-
-      // A `sourceKind` that is an entity type becomes a `RecordId` so the client
-      // renders a badge, a `money_transaction` a `MovementBadge`; the remaining
-      // ledger-only kinds (`gl_posting`, `payout`, …) stay text.
-      const hydrated = await Promise.all(
-        rows.map(async (row) => {
-          const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
-          const movement = movements.get(row.sourceId)
-          return {
-            ...row,
-            recordId: defId ? toRecordId(defId, row.sourceId) : null,
-            movement:
-              row.sourceKind === 'money_transaction' && movement
-                ? {
-                    id: movement.id,
-                    purpose: movement.purpose,
-                    // A string on the wire; the badge only formats it.
-                    amountMinor: movement.amountMinor.toString(),
-                    currency: movement.currency,
-                    currencyExponent: movement.currencyExponent,
-                  }
-                : null,
-          }
-        })
-      )
-      return hydrated.sort(
-        (a, b) =>
-          sourceRoleRank(a.linkRole) - sourceRoleRank(b.linkRole) || a.id.localeCompare(b.id)
-      )
+      return hydrateSources(ctx.db, organizationId, rows)
     }),
 
   /**
@@ -1308,7 +1339,23 @@ export const ledgerRouter = createTRPCRouter({
           organizationId,
           rows.flatMap((row) => (row.batch ? [row.batch] : []))
         )
-        const byId = new Map(batches.map((batch) => [batch.id, batch]))
+        const sources = await readPostingSources(
+          ctx.db,
+          organizationId,
+          batches.flatMap((batch) => batch.members.map((member) => member.glPostingId))
+        )
+        const byId = new Map(
+          batches.map((batch) => [
+            batch.id,
+            {
+              ...batch,
+              members: batch.members.map((member) => ({
+                ...member,
+                sources: sources.get(member.glPostingId) ?? [],
+              })),
+            },
+          ])
+        )
         const items = rows.map((row) => ({
           ...row,
           batch: row.batch ? (byId.get(row.batch.id) ?? null) : null,
@@ -1383,12 +1430,21 @@ export const ledgerRouter = createTRPCRouter({
     unbuiltMembers: permissionProcedure(PermissionKey.ledgerView)
       .input(z.object({ group: unbuiltGroup }))
       .query(async ({ ctx, input }) => {
+        const { organizationId } = ctx.session
         const result = await readUnbuiltSummaryMembers(ctx.db, {
-          organizationId: ctx.session.organizationId,
+          organizationId,
           group: input.group,
         })
         if (result.isErr()) throw result.error
-        return result.value
+        const sources = await readPostingSources(
+          ctx.db,
+          organizationId,
+          result.value.map((member) => member.glPostingId)
+        )
+        return result.value.map((member) => ({
+          ...member,
+          sources: sources.get(member.glPostingId) ?? [],
+        }))
       }),
 
     /**
@@ -1842,8 +1898,16 @@ export const ledgerRouter = createTRPCRouter({
         offset,
       })
       if (result.isErr()) throw result.error
+      const sources = await readPostingSources(
+        ctx.db,
+        ctx.session.organizationId,
+        result.value.map((posting) => posting.id)
+      )
       return {
-        items: result.value,
+        items: result.value.map((posting) => ({
+          ...posting,
+          sources: sources.get(posting.id) ?? [],
+        })),
         nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
       }
     }),
