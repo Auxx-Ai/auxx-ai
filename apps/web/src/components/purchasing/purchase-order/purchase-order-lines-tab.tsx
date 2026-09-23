@@ -36,7 +36,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Check, Download, Send } from 'lucide-react'
+import { Ban, Check, Download, Pencil, Save, Send, Undo2 } from 'lucide-react'
 import Link from 'next/link'
 import { useCallback } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
@@ -47,6 +47,7 @@ import {
 } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import type { PartPrefillLookup } from '~/components/money/ui/line-builder/line-rows'
+import { useDocumentEditLane } from '~/components/money/ui/use-document-edit-lane'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { useSaveSystemValues, useSystemValues } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -118,6 +119,11 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
   // SINGLE_SELECT values arrive as arrays — take the first (see the
   // `use_system_values_single_select_arrays` convention).
   const status = firstValue(values.purchase_order_status) ?? 'draft'
+  // A draft is typed freely; an issued order only while an edit is open (66 U5).
+  // The per-line evidence lock still freezes what was received or billed.
+  const lane = useDocumentEditLane(recordId, 'purchase_order', 'purchase order')
+  const readOnly = isLoading || (status !== 'draft' && !lane.editing)
+  const canEdit = status === 'issued' && !lane.editing
   const receiptStatus = firstValue(values.purchase_order_receipt_status)
   const billingStatus = firstValue(values.purchase_order_billing_status)
   // Order matters: the decision first, then what actually arrived, then what was
@@ -247,20 +253,26 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
     </div>
   ) : undefined
 
-  const sendSlot = SENDABLE_STATUSES.has(status)
-    ? {
-        label: status === 'draft' ? 'Send' : 'Resend',
-        onClick: handleSend,
-        isPending: isSending,
-        disabledReason: sendDisabledReason,
-      }
-    : undefined
+  const sendSlot = lane.editing
+    ? { label: 'Save changes', onClick: lane.saveEdit, isPending: lane.isSaving }
+    : SENDABLE_STATUSES.has(status)
+      ? {
+          label: status === 'draft' ? 'Send' : 'Resend',
+          onClick: handleSend,
+          isPending: isSending,
+          disabledReason: sendDisabledReason,
+        }
+      : undefined
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
       <DocumentSectionActions
         badge={
-          badges.length > 0 ? (
+          lane.editing ? (
+            <Badge variant='amber' size='sm'>
+              Editing
+            </Badge>
+          ) : badges.length > 0 ? (
             <span className='flex items-center gap-1.5'>
               {badges.map((b) => (
                 <Badge key={b.label} variant={b.variant} size='sm'>
@@ -290,7 +302,24 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
             </DropdownMenuItem>
           )}
 
-          {OPEN_STATUSES.has(status) && (
+          {canEdit && (
+            <DropdownMenuItem onClick={lane.openEdit}>
+              <Pencil /> Edit
+            </DropdownMenuItem>
+          )}
+
+          {lane.editing && (
+            <>
+              <DropdownMenuItem onClick={lane.saveEdit}>
+                <Save /> Save changes
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={lane.cancelEdit}>
+                <Undo2 /> Cancel changes
+              </DropdownMenuItem>
+            </>
+          )}
+
+          {OPEN_STATUSES.has(status) && !lane.editing && (
             <>
               <DropdownMenuSeparator />
               {/*
@@ -309,26 +338,24 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
         </DocumentActionsCluster>
       </DocumentSectionActions>
 
-      {/*
-        🛑 No `readOnly` prop, and that is the rule rather than an omission (§6.5). Status is
-        the wrong predicate in BOTH directions: an `issued` order nobody has shipped against
-        is perfectly safe to edit (real orders get amended when a vendor substitutes a part),
-        while a `draft` order that already carries receipts — legal since §6.1's pull-forward
-        — is not. The lock is per-LINE and evidence-based, enforced server-side by
-        `field-hooks/pre/purchase-order-line-evidence-lock.ts`: a line freezes its
-        `quantity_ordered` and `expected_unit_price` once a `stock_movement` or
-        `vendor_bill_line` points at it. Adding new lines stays open at any status.
-      */}
+      {lane.editing && (
+        <div className='border-amber-300 border-b bg-amber-50 px-1 py-2 text-xs dark:border-amber-800 dark:bg-amber-950/40'>
+          This order was sent and is open for editing. Received and billed lines stay locked.
+        </div>
+      )}
+
       <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
         <LineBuilder
           documentRecordId={recordId}
           documentType='purchase_order'
+          readOnly={readOnly}
           resolvePartPrefill={resolvePartPrefill}
         />
       </div>
 
       <CloseConfirmDialog />
       <CancelConfirmDialog />
+      <lane.ConfirmDialog />
     </div>
   )
 }

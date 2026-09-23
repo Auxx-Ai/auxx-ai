@@ -46,6 +46,11 @@ import {
 import { loadInvoiceForIssuance } from '../../sales/invoices/issuance-reads'
 import { listInvoicePostings } from '../../sales/invoices/post-invoice'
 import { documentEntryKey } from '../document-entry-key'
+import {
+  DOCUMENT_EDIT_REFUSED_IN,
+  type LockedDocumentFamily,
+  readDocumentLockState,
+} from './lock-state'
 
 /** The registry entity types the lane knows. */
 export const DOCUMENT_EDIT_FAMILIES = [
@@ -53,6 +58,9 @@ export const DOCUMENT_EDIT_FAMILIES = [
   'credit_memo',
   'invoice',
   'journal_entry',
+  'quote',
+  'purchase_order',
+  'order',
 ] as const
 
 export type DocumentEditFamily = (typeof DOCUMENT_EDIT_FAMILIES)[number]
@@ -71,6 +79,10 @@ export interface DocumentEditDoc {
   totalMinor: number
   /** Integer minor units already settled against it. Save is refused below this. */
   settledMinor: number
+}
+
+/** A document whose Save brings its own ledger entry up to date. */
+export interface LedgerDocumentEditDoc extends DocumentEditDoc {
   /**
    * Everything a build needs beyond the header, read on demand: Edit and the
    * read never pay for it, and Save reads it once, before any lock.
@@ -105,7 +117,7 @@ export interface DocumentEditAfterSaveInput {
   entityInstanceId: string
 }
 
-export interface DocumentEditRow {
+interface DocumentEditRowBase {
   readonly family: DocumentEditFamily
   /** The document in the words on the screen — `'bill'`. */
   readonly noun: string
@@ -123,15 +135,24 @@ export interface DocumentEditRow {
    * the only writer of the status that gates Record payment.
    */
   afterSave?(db: Database, input: DocumentEditAfterSaveInput): Promise<void>
-  /** The posting type this document claims on its own key. */
-  readonly postingType: string
   /** Lifecycle values Edit refuses outright (74 §1.3). */
   readonly editRefusedIn: readonly string[]
-  load(db: Database, organizationId: string, entityInstanceId: string): Promise<DocumentEditDoc>
   /** Why Edit will not open this document. Called only for a status it refuses. */
   refuseEdit(doc: DocumentEditDoc): string
   /** Why Save will not take the document below what has been settled against it. */
   refuseBelowFloor(doc: DocumentEditDoc): string
+}
+
+/** A family that posts its own entry: Save reverses and re-posts it (73 D4). */
+export interface LedgerDocumentEditRow extends DocumentEditRowBase {
+  readonly ledger: true
+  /** The posting type this document claims on its own key. */
+  readonly postingType: string
+  load(
+    db: Database,
+    organizationId: string,
+    entityInstanceId: string
+  ): Promise<LedgerDocumentEditDoc>
   listPostings(
     db: Database,
     params: { organizationId: string; entityInstanceId: string }
@@ -144,8 +165,17 @@ export interface DocumentEditRow {
   restoredMemo(doc: DocumentEditDoc): string
 }
 
-const vendorBillRow: DocumentEditRow = {
+/** A family with no entry of its own: the snapshot exists only so Cancel can restore (66 §2.3). */
+export interface PlainDocumentEditRow extends DocumentEditRowBase {
+  readonly ledger: false
+  load(db: Database, organizationId: string, entityInstanceId: string): Promise<DocumentEditDoc>
+}
+
+export type DocumentEditRow = LedgerDocumentEditRow | PlainDocumentEditRow
+
+const vendorBillRow: LedgerDocumentEditRow = {
   family: 'vendor_bill',
+  ledger: true,
   noun: 'bill',
   children: ['lines'],
   // `vendor_bill_total`, `_subtotal` and `_tax_total` are transcribed from the
@@ -248,8 +278,9 @@ const vendorBillRow: DocumentEditRow = {
   restoredMemo: (doc) => `Bill ${doc.label} posted again after its entry was discarded`,
 }
 
-const creditMemoRow: DocumentEditRow = {
+const creditMemoRow: LedgerDocumentEditRow = {
   family: 'credit_memo',
+  ledger: true,
   noun: 'credit memo',
   children: ['lines'],
   derivedTotalAttrs: [
@@ -364,8 +395,9 @@ const creditMemoRow: DocumentEditRow = {
   restoredMemo: (doc) => `Credit memo ${doc.label} posted again after its entry was discarded`,
 }
 
-const invoiceRow: DocumentEditRow = {
+const invoiceRow: LedgerDocumentEditRow = {
   family: 'invoice',
+  ledger: true,
   noun: 'invoice',
   children: ['lineItems'],
   derivedTotalAttrs: ['invoice_subtotal', 'invoice_tax_total', 'invoice_total', 'invoice_balance'],
@@ -454,8 +486,9 @@ const invoiceRow: DocumentEditRow = {
   restoredMemo: (doc) => `Invoice ${doc.label} posted again after its entry was discarded`,
 }
 
-const journalEntryRow: DocumentEditRow = {
+const journalEntryRow: LedgerDocumentEditRow = {
   family: 'journal_entry',
+  ledger: true,
   noun: 'journal entry',
   children: ['lines'],
   derivedTotalAttrs: [],
@@ -546,11 +579,90 @@ const journalEntryRow: DocumentEditRow = {
   restoredMemo: (doc) => `Journal entry ${doc.label} posted again`,
 }
 
+/** The lane's row for a family whose lock is `document-edit-lock.ts`. */
+function plainRow(
+  family: LockedDocumentFamily,
+  noun: string,
+  children: readonly string[],
+  derivedTotalAttrs: readonly string[],
+  refuseEdit: (doc: DocumentEditDoc) => string
+): PlainDocumentEditRow {
+  return {
+    family,
+    ledger: false,
+    noun,
+    children,
+    derivedTotalAttrs,
+    editRefusedIn: DOCUMENT_EDIT_REFUSED_IN[family],
+    refuseEdit,
+    // No floor: nothing settles against a quote, an order or a purchase order header.
+    refuseBelowFloor: (doc) => `${noun} ${doc.label} has nothing settled against it.`,
+    async load(db, organizationId, entityInstanceId) {
+      const state = await readDocumentLockState(db, organizationId, family, entityInstanceId)
+      if (!state) {
+        throw new UnprocessableEntityError(`This ${noun} has no status, so it cannot be edited.`, {
+          family,
+          entityInstanceId,
+        })
+      }
+      return {
+        id: entityInstanceId,
+        status: state.status,
+        internalNumber: state.label,
+        label: state.label || `this ${noun}`,
+        totalMinor: 0,
+        settledMinor: 0,
+      }
+    },
+  }
+}
+
+const quoteRow = plainRow(
+  'quote',
+  'quote',
+  ['lineItems'],
+  ['quote_subtotal', 'quote_tax_total', 'quote_total'],
+  (doc) =>
+    doc.status === 'draft'
+      ? 'This quote is a draft and is already editable.'
+      : doc.status === 'approved'
+        ? 'This quote has been approved. An approved quote is not re-opened for editing.'
+        : `This quote is ${doc.status}. Return it to draft to revise it.`
+)
+
+const purchaseOrderRow = plainRow(
+  'purchase_order',
+  'purchase order',
+  ['lines'],
+  ['purchase_order_subtotal', 'purchase_order_total'],
+  (doc) =>
+    doc.status === 'draft'
+      ? 'This purchase order is a draft and is already editable.'
+      : `This purchase order is ${doc.status}. A ${doc.status} order is not edited.`
+)
+
+const orderRow = plainRow(
+  'order',
+  'order',
+  ['lineItems', 'taxLines'],
+  ['order_subtotal', 'order_tax_total', 'order_total'],
+  (doc) =>
+    doc.status === 'synced'
+      ? 'This order is managed by its sales channel. Edit it in the channel and the next sync ' +
+        'brings the change in.'
+      : doc.status === 'cancelled'
+        ? 'This order is cancelled and is not edited.'
+        : 'Nothing has shipped on this order, so it is already editable.'
+)
+
 const DOCUMENT_EDIT_SPEC: Readonly<Record<DocumentEditFamily, DocumentEditRow>> = {
   vendor_bill: vendorBillRow,
   credit_memo: creditMemoRow,
   invoice: invoiceRow,
   journal_entry: journalEntryRow,
+  quote: quoteRow,
+  purchase_order: purchaseOrderRow,
+  order: orderRow,
 }
 
 /** The row for one family. The only way into the spec. */

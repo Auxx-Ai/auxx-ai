@@ -1,6 +1,8 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
+import type { LockedDocumentFamily } from '../accounting/documents/edit-in-place/lock-state'
 import {
   registerMoneyAcceptanceWakeReconcilers,
   wakeAcceptancesOnCreditMemoChange,
@@ -111,6 +113,13 @@ import {
   guardIssuedCreditMemoLineDelete,
   guardIssuedCreditMemoLineFields,
 } from './pre/credit-memo-lock'
+import {
+  DOCUMENT_EDIT_LOCKS,
+  guardDocumentFields,
+  guardDocumentLineCreate,
+  guardDocumentLineDelete,
+  guardDocumentLineFields,
+} from './pre/document-edit-lock'
 import {
   fillGuestCreditMemoContact,
   fillGuestOrderContact,
@@ -628,6 +637,27 @@ export function registerAllHooks(): void {
     registerFieldPreHooks('line-items', attribute, [guardIssuedInvoiceLineFields])
   }
   registerEntityPreCreateHooks('line-items', [guardIssuedInvoiceLineCreate])
+
+  // Quotes, purchase orders and orders (66 U5/U7): the invoice lock's rule for the
+  // families with no ledger. Line hooks register once per line def — `line-items`
+  // carries both quote and order lines and resolves the parent in one read.
+  const documentLineAttrs = new Map<string, Set<SystemAttribute>>()
+  for (const [family, lock] of Object.entries(DOCUMENT_EDIT_LOCKS)) {
+    for (const attribute of lock.headerAttrs) {
+      registerFieldPreHooks(lock.headerSlug, attribute, [
+        guardDocumentFields(family as LockedDocumentFamily),
+      ])
+    }
+    const attrs = documentLineAttrs.get(lock.lineSlug) ?? new Set<SystemAttribute>()
+    for (const attribute of lock.lineAttrs) attrs.add(attribute)
+    documentLineAttrs.set(lock.lineSlug, attrs)
+  }
+  for (const [lineSlug, attrs] of documentLineAttrs) {
+    const guard = guardDocumentLineFields(lineSlug)
+    for (const attribute of attrs) registerFieldPreHooks(lineSlug, attribute, [guard])
+    registerEntityPreCreateHooks(lineSlug, [guardDocumentLineCreate(lineSlug)])
+    registerEntityPreDeleteHooks(lineSlug, [guardDocumentLineDelete(lineSlug)])
+  }
 
   // `(code, country)` is a natural key and `naturalKeyPosition` enforces nothing
   // on create. This must be a PRE-CREATE hook, not a field pre-hook - see the

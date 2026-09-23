@@ -1393,6 +1393,7 @@ async function deleteRecords(
             organizationId: ctx.organizationId,
             userId: ctx.userId,
             bypass: ctx.fieldValueService.ctx.bypassFieldGuards,
+            cascaded: !requested,
           })
         }
         captured.set(record.recordId, eventData)
