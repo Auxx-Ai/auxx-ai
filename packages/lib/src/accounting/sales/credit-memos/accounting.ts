@@ -27,16 +27,19 @@ import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
   CREDIT_MEMO_SOURCE_TYPE,
+  type CreditMemoEntryLine,
   computeCreditMemoAmounts,
 } from '../../ledger/builders/credit-memo'
+import { toAmountMinor } from '../../ledger/builders/fulfillment'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
 import type { BuiltEntry, GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
+import { prorateByWeight } from '../../reports/receivable-attribution'
 import { roundCents } from '../totals/totals'
-import type { CreditMemoLineRecord, CreditMemoRecord } from './reads'
+import type { CreditMemoLineRecord, CreditMemoRecord, ShippedMemoLines } from './reads'
 
 /** The org's document currency, or the ledger's when the setting is blank. */
 export async function organizationCurrency(organizationId: string): Promise<string> {
@@ -52,7 +55,7 @@ export interface CreditMemoEntrySource {
   /** The org's document currency; refused when it differs from the ledger's. */
   currency: string
   /** The memo lines whose goods had shipped before the memo (`readShippedMemoLineIds`). */
-  shippedLineIds: ReadonlySet<string>
+  shippedLineIds: ShippedMemoLines
   /** How many times this memo has posted. 1 (the default) keys on the memo number. */
   generation?: number
 }
@@ -66,12 +69,7 @@ export function buildEntryForCreditMemo(
   source: CreditMemoEntrySource
 ): BuiltCreditMemoEntry | null {
   const { memo, lines, issuedAt, currency, shippedLineIds } = source
-  const entryLines = lines.map((line) => ({
-    subtotal: line.subtotalMinor,
-    taxTotal: line.taxTotalMinor,
-    shipped: shippedLineIds.has(line.id),
-    component: line.disposition === 'shipping' ? ('shipping' as const) : ('goods' as const),
-  }))
+  const entryLines = expandCreditMemoLines({ memo, lines, shippedLineIds })
   const subtotal = roundCents(lines.reduce((sum, line) => sum + line.subtotalMinor, 0))
   const taxTotal = roundCents(lines.reduce((sum, line) => sum + (line.taxTotalMinor ?? 0), 0))
   const amounts = computeCreditMemoAmounts({
@@ -93,6 +91,105 @@ export function buildEntryForCreditMemo(
     contactInstanceId: memo.contactInstanceId,
     memo: `Credit memo ${memo.number} issued`,
   })
+}
+
+/** Split `gross` into net and tax in the ratio `net : tax`, summing exactly. */
+function splitGross(
+  gross: number,
+  net: number,
+  tax: number
+): { subtotal: number; taxTotal: number } {
+  const [subtotal = 0, taxTotal = 0] =
+    net + tax > 0 ? prorateByWeight(gross, [Math.max(0, net), Math.max(0, tax)]) : [gross, 0]
+  return { subtotal, taxTotal }
+}
+
+/**
+ * The memo's lines as the entry posts them (101 E10). Pure; no line record is rewritten.
+ *
+ * On a `channel` memo an item-less line (the connector's refund adjustment) is not a return of
+ * its own: a positive one is spread over the order's parts pro rata to net + tax, each share
+ * split net/tax by its part's ratio and following that part's shipped verdict; a negative one
+ * is netted against the memo's own item lines the same way. A native memo passes through.
+ *
+ * @throws {UnprocessableEntityError} when a positive adjustment has no order lines to spread over,
+ *   or a negative one exceeds the item lines it nets against.
+ */
+export function expandCreditMemoLines(input: {
+  memo: Pick<CreditMemoRecord, 'id' | 'number' | 'source'>
+  lines: readonly CreditMemoLineRecord[]
+  shippedLineIds: ShippedMemoLines
+}): CreditMemoEntryLine[] {
+  const { memo, shippedLineIds } = input
+  // As stored: the builder validates the amounts, so a line nothing touches passes through.
+  const asStored = input.lines.map(
+    (line): CreditMemoEntryLine => ({
+      subtotal: line.subtotalMinor,
+      taxTotal: line.taxTotalMinor,
+      shipped: shippedLineIds.has(line.id),
+      component: line.disposition === 'shipping' ? 'shipping' : 'goods',
+    })
+  )
+  if (memo.source !== 'channel') return asStored
+
+  const minor = input.lines.map((line, index) => {
+    const label = `Credit memo ${memo.number} line ${index + 1}`
+    const subtotal = toAmountMinor(line.subtotalMinor, `${label} subtotal`)
+    const taxTotal = toAmountMinor(line.taxTotalMinor, `${label} tax`)
+    const kind =
+      line.disposition === 'shipping' ? 'shipping' : line.lineItemInstanceId ? 'item' : 'adjustment'
+    return { subtotal, taxTotal, gross: subtotal + taxTotal, kind }
+  })
+  const isAdjustment = (i: number) => minor[i]?.kind === 'adjustment' && minor[i]?.gross !== 0
+  if (!minor.some((_, i) => isAdjustment(i))) return asStored
+  const context = { creditMemoId: memo.id, number: memo.number }
+
+  // The money the merchant kept (a negative remainder) comes off the memo's own item lines.
+  const kept = -minor.reduce((sum, m, i) => sum + (isAdjustment(i) ? Math.min(0, m.gross) : 0), 0)
+  const itemGross = minor.map((m) => (m.kind === 'item' ? Math.max(0, m.gross) : 0))
+  if (kept > itemGross.reduce((sum, g) => sum + g, 0))
+    throw new UnprocessableEntityError(
+      `Credit memo ${memo.number} keeps back ${kept} more than its item lines credit, so there ` +
+        'is nothing left to net the refund adjustment against.',
+      { ...context, keptMinor: String(kept) }
+    )
+  const cuts = prorateByWeight(kept, itemGross)
+
+  const out: CreditMemoEntryLine[] = []
+  const spread: CreditMemoEntryLine[] = []
+  const parts = shippedLineIds.orderParts ?? []
+  const weights = parts.map((part) => Math.max(0, part.netMinor) + Math.max(0, part.taxMinor))
+  minor.forEach((m, i) => {
+    const stored = asStored[i] as CreditMemoEntryLine
+    if (!isAdjustment(i)) {
+      const cut = cuts[i] ?? 0
+      if (cut === 0) return out.push(stored)
+      const off = splitGross(cut, m.subtotal, m.taxTotal)
+      return out.push({
+        ...stored,
+        subtotal: m.subtotal - off.subtotal,
+        taxTotal: m.taxTotal - off.taxTotal,
+      })
+    }
+    if (m.gross < 0) return
+    // A positive remainder stands for the whole order, goods and shipping both.
+    if (!parts.some((part) => part.component === 'goods') || !weights.some((w) => w > 0))
+      throw new UnprocessableEntityError(
+        `Credit memo ${memo.number} refunds an amount with no items named, and its order has no ` +
+          'line items to spread it over. It issues once the order and its lines have synced.',
+        context
+      )
+    prorateByWeight(m.gross, weights).forEach((share, p) => {
+      const part = parts[p]
+      if (!part || share === 0) return
+      spread.push({
+        ...splitGross(share, part.netMinor, part.taxMinor),
+        shipped: part.shipped,
+        component: part.component,
+      })
+    })
+  })
+  return [...out, ...spread]
 }
 
 export interface PostCreditMemoEntryInput {

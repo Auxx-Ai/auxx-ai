@@ -5,24 +5,38 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
+type Item = { id: string; qty: number | null; at: string | null; net?: number; tax?: number }
+
 const h = vi.hoisted(() => ({
-  items: [] as Array<{ id: string; qty: number | null; at: string | null }>,
-  orderItems: [] as Array<{ id: string; qty: number | null; at: string | null }>,
+  items: [] as Item[],
+  orderItems: [] as Item[],
+  orderShipping: 0,
   reads: 0,
 }))
 
 vi.mock('../../../../resources/system-records', () => ({
-  systemFields: async () => ({ fields: { line_item_order: { id: 'f_order' } } }),
+  systemFields: async (_db: unknown, _org: unknown, entity: string) => ({
+    entity,
+    fields: { line_item_order: { id: 'f_order' } },
+  }),
   readSystemRecords: async (
     _db: unknown,
     _org: unknown,
-    _ctx: unknown,
+    ctx: { entity: string },
     query: { by?: unknown }
   ) => {
     h.reads++
+    if (ctx.entity === 'order') return [{ id: 'order_1', number: () => h.orderShipping }]
     return (query.by ? h.orderItems : h.items).map((item) => ({
       id: item.id,
-      number: () => item.qty,
+      number: (attribute: string) =>
+        attribute === 'line_item_fulfilled_qty'
+          ? item.qty
+          : attribute === 'line_item_net_total'
+            ? (item.net ?? null)
+            : attribute === 'line_item_tax_total'
+              ? (item.tax ?? null)
+              : null,
       date: () => item.at,
     }))
   },
@@ -61,7 +75,7 @@ describe('readShippedMemoLineIds', () => {
 
   it('treats a null quantity as the channel saying nothing, not unshipped', async () => {
     h.items = [{ id: 'li_1', qty: null, at: null }]
-    expect(await read([line('l1', 'li_1'), line('l2', null)])).toEqual(new Set(['l1', 'l2']))
+    expect([...(await read([line('l1', 'li_1')]))]).toEqual(['l1'])
   })
 
   it('splits a mixed memo per line', async () => {
@@ -104,6 +118,51 @@ describe('readShippedMemoLineIds', () => {
       h.items = []
       h.orderItems = [{ id: 'li_1', qty: null, at: null }]
       expect(await readShipping()).toEqual(new Set(['s1']))
+    })
+  })
+
+  // 101 E10: an item-less line reads the order's lines and shipping to be spread over.
+  describe('an item-less line on a channel memo', () => {
+    const memo = { source: 'channel', orderInstanceId: 'order_1' }
+    const adjustment = { id: 'adj', lineItemInstanceId: null }
+
+    it('carries each order line with its amounts and verdict, plus the shipping', async () => {
+      h.items = []
+      h.orderItems = [
+        { id: 'li_1', qty: 1, at: '2026-01-02T12:00:00Z', net: 327_500, tax: 27_020 },
+        { id: 'li_2', qty: 0, at: null, net: 1_000, tax: 80 },
+      ]
+      h.orderShipping = 995
+      const result = await readShippedMemoLineIds(DB, 'org_1', memo, [adjustment], '2026-01-14')
+      expect(result.orderParts).toEqual([
+        { netMinor: 327_500, taxMinor: 27_020, shipped: true, component: 'goods' },
+        { netMinor: 1_000, taxMinor: 80, shipped: false, component: 'goods' },
+        { netMinor: 995, taxMinor: 0, shipped: true, component: 'shipping' },
+      ])
+    })
+
+    it('carries no parts when the memo has no order', async () => {
+      h.items = []
+      const result = await readShippedMemoLineIds(
+        DB,
+        'org_1',
+        { source: 'channel', orderInstanceId: null },
+        [adjustment],
+        '2026-01-14'
+      )
+      expect(result.orderParts).toEqual([])
+    })
+
+    it('reads no order for a memo whose lines all name an item', async () => {
+      h.items = [{ id: 'li_1', qty: 1, at: '2026-01-02T12:00:00Z' }]
+      const result = await readShippedMemoLineIds(
+        DB,
+        'org_1',
+        memo,
+        [line('l1', 'li_1')],
+        '2026-01-14'
+      )
+      expect(result.orderParts).toBeUndefined()
     })
   })
 })

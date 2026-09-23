@@ -51,6 +51,7 @@ export async function acceptQuoteDepositAccounting(
         {
           ...loaded.base,
           glAccountId: endpoint.glAccountId,
+          accountRole: endpoint.role,
           direction: 'debit',
           amount,
           sortOrder: 0,

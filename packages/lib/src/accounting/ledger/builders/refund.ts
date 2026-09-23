@@ -15,7 +15,7 @@
 
 import { UnprocessableEntityError } from '../../../errors'
 import type { BuiltEntry, GlPostingLineInput } from '../types'
-import { ACCOUNT_ROLES, buildEntry } from './entry'
+import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './entry'
 import { movementPeriodKey } from './movement-key'
 import { sourceFactsMemo } from './source-facts-memo'
 
@@ -34,6 +34,8 @@ export interface BuildRefundEntryInput {
   amountMinor: number
   /** The `gl_account` the money left by. Resolved by the caller, never a role. */
   endpointGlAccountId: string
+  /** The role that account holds (`resolveCashEndpoint`), stamped on the endpoint line as a snapshot. */
+  endpointRole: AccountRole
   /** Reporting dimensions on the endpoint leg - the method, or the gateway. */
   endpointDimensions?: Record<string, string>
   /** The `contact` the refund is attributable to, on the receivable leg. */
@@ -117,6 +119,7 @@ export function buildRefundEntry(input: BuildRefundEntryInput): BuiltRefundEntry
       sourceType: REFUND_SOURCE_TYPE,
       sourceId: moneyTransactionId,
       glAccountId: input.endpointGlAccountId,
+      accountRole: input.endpointRole,
       direction: 'credit',
       amount: totalMinor,
       ...(input.endpointDimensions ? { dimensions: input.endpointDimensions } : {}),

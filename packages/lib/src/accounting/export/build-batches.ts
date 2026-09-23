@@ -277,8 +277,8 @@ async function insertBatchInTx(
  * Build every batch the range still owes.
  *
  * Idempotent: a second run over the same range finds nothing un-batched and
- * writes nothing. Postings dated before `accounting.exportModeCutover` are
- * skipped entirely - a mode switch leaves history alone (TARGET §3).
+ * writes nothing. Postings dated before the export floor (`exportFloor`) are never
+ * exported, in either mode (101 E6).
  */
 export async function buildExportBatches(
   db: Database,

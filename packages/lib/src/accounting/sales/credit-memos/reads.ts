@@ -20,6 +20,7 @@ import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../../resources/registry/reso
 import { CREDIT_MEMO_FIELDS } from '../../../resources/registry/resources/credit-memo-fields'
 import { CREDIT_MEMO_LINE_FIELDS } from '../../../resources/registry/resources/credit-memo-line-fields'
 import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
+import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
 import { getInstanceId } from '../../../resources/resource-id'
 import {
@@ -138,11 +139,19 @@ const LINE_ITEM_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
 /** The relationship a `line_item` hangs off its order by, for a shipping line's read. */
 const LINE_ITEM_ORDER_ATTRIBUTE = 'line_item_order'
 
-/** The two `line_item` attributes the channel stamps when a line ships (91 D4). */
+/** What the channel stamps when a line ships (91 D4), plus the amounts a spread weighs (101 E10). */
 const LINE_ITEM_SHIPPED_ATTRIBUTES = pickSystemAttributes(LINE_ITEM_FIELDS, [
   'line_item_fulfilled_qty',
   'line_item_fulfilled_at',
+  'line_item_net_total',
+  'line_item_line_total',
+  'line_item_tax_total',
   LINE_ITEM_ORDER_ATTRIBUTE,
+] as const)
+
+/** The order's shipping, the one header figure an item-less memo line is spread over. */
+const ORDER_SHIPPING_ATTRIBUTES = pickSystemAttributes(ORDER_FIELDS, [
+  'order_shipping_total',
 ] as const)
 
 type CreditMemoApplicationAttribute = (typeof CREDIT_MEMO_APPLICATION_ATTRIBUTES)[number]
@@ -632,6 +641,25 @@ export async function loadInvoiceLinesForCredit(
 
 // ─── Shipped lines ──────────────────────────────────────────────────────────
 
+/** One part of the order an item-less channel memo line is spread over (101 E10). */
+export interface OrderSpreadPart {
+  /** Integer minor units, >= 0: the line's `line_item_net_total`, or the order's shipping. */
+  netMinor: number
+  /** Integer minor units, >= 0. Shipping carries 0: no shipping tax figure is stored. */
+  taxMinor: number
+  /** The part had shipped by the memo date (the same verdict the memo's own lines get). */
+  shipped: boolean
+  component: 'goods' | 'shipping'
+}
+
+/**
+ * The memo lines that reverse revenue. `orderParts` rides along when a channel memo has an
+ * item-less line, for `expandCreditMemoLines`; `[]` when the memo has no order to weigh.
+ */
+export interface ShippedMemoLines extends ReadonlySet<string> {
+  readonly orderParts?: readonly OrderSpreadPart[]
+}
+
 /**
  * The memo lines whose goods had shipped on or before `issuedAt`, read off each
  * line's own `line_item` fulfilled qty and date - never off fulfillment records,
@@ -648,7 +676,7 @@ export async function readShippedMemoLineIds(
     disposition?: string | null
   })[],
   issuedAt: string
-): Promise<Set<string>> {
+): Promise<ShippedMemoLines> {
   if (memo.source !== 'channel') return new Set(lines.map((line) => line.id))
   const isShipping = (line: (typeof lines)[number]) => line.disposition === 'shipping'
   const lineItemIds = [
@@ -658,7 +686,8 @@ export async function readShippedMemoLineIds(
       )
     ),
   ]
-  const orderId = lines.some(isShipping) ? (memo.orderInstanceId ?? null) : null
+  const spreads = lines.some((line) => !line.lineItemInstanceId && !isShipping(line))
+  const orderId = lines.some(isShipping) || spreads ? (memo.orderInstanceId ?? null) : null
   const ctx =
     lineItemIds.length || orderId
       ? await systemFields(db, organizationId, 'line_item', LINE_ITEM_SHIPPED_ATTRIBUTES)
@@ -683,8 +712,9 @@ export async function readShippedMemoLineIds(
   }
 
   let orderShipped = true
+  let orderItems: SystemRecord<(typeof LINE_ITEM_SHIPPED_ATTRIBUTES)[number]>[] = []
   if (orderId && ctx) {
-    const orderItems = ctx.fields[LINE_ITEM_ORDER_ATTRIBUTE]
+    orderItems = ctx.fields[LINE_ITEM_ORDER_ATTRIBUTE]
       ? await readSystemRecords(db, organizationId, ctx, {
           by: { attribute: LINE_ITEM_ORDER_ATTRIBUTE, in: [orderId] },
         })
@@ -703,7 +733,33 @@ export async function readShippedMemoLineIds(
     const item = line.lineItemInstanceId ? items.get(line.lineItemInstanceId) : undefined
     if (verdict(item) !== 'not') shipped.add(line.id)
   }
-  return shipped
+  if (!spreads) return shipped
+
+  const orderParts: OrderSpreadPart[] = orderItems.map((item) => ({
+    // Rounded: `valueNumber` is a double, and the spread weighs in whole minor units.
+    netMinor: Math.round(
+      item.number('line_item_net_total') ?? item.number('line_item_line_total') ?? 0
+    ),
+    taxMinor: Math.round(item.number('line_item_tax_total') ?? 0),
+    shipped: verdict(item) !== 'not',
+    component: 'goods',
+  }))
+  // An order with no lines has nothing to weigh; `expandCreditMemoLines` refuses the memo.
+  if (orderId && orderItems.length > 0) {
+    const orderCtx = await systemFields(db, organizationId, 'order', ORDER_SHIPPING_ATTRIBUTES)
+    const [order] = orderCtx
+      ? await readSystemRecords(db, organizationId, orderCtx, { ids: [orderId] })
+      : []
+    const shippingMinor = Math.round(order?.number('order_shipping_total') ?? 0)
+    if (shippingMinor > 0)
+      orderParts.push({
+        netMinor: shippingMinor,
+        taxMinor: 0,
+        shipped: orderShipped,
+        component: 'shipping',
+      })
+  }
+  return Object.assign(shipped, { orderParts })
 }
 
 // ─── The reads the router exposes ───────────────────────────────────────────

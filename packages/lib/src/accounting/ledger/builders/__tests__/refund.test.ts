@@ -11,6 +11,7 @@ const BASE = {
   txnDate: '2026-09-04',
   customerInstanceId: 'ct_1',
   endpointGlAccountId: 'gl_bank',
+  endpointRole: 'bank' as const,
   amountMinor: 20_000,
 }
 
@@ -21,7 +22,7 @@ describe('buildRefundEntry', () => {
     expect(built.totalMinor).toBe(20_000)
     expect(
       built.entry.lines.map((line) => [
-        line.accountRole ?? line.glAccountId,
+        line.glAccountId ?? line.accountRole,
         line.direction,
         line.amount,
       ])
@@ -29,6 +30,8 @@ describe('buildRefundEntry', () => {
       ['accounts_receivable', 'debit', 20_000],
       ['gl_bank', 'credit', 20_000],
     ])
+    // 101 E8: the endpoint carries its role as a snapshot beside the id.
+    expect(built.entry.lines[1]).toMatchObject({ glAccountId: 'gl_bank', accountRole: 'bank' })
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
   })
 
@@ -39,7 +42,7 @@ describe('buildRefundEntry', () => {
     expect(built.totalMinor).toBe(21_500)
     expect(
       built.entry.lines.map((line) => [
-        line.accountRole ?? line.glAccountId,
+        line.glAccountId ?? line.accountRole,
         line.direction,
         line.amount,
       ])

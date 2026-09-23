@@ -51,6 +51,7 @@ export {
   wakeArrivedOrders,
   wakePeriodLocked,
   wakeReasonCode,
+  wakeRecords,
   wakeRoleUnmapped,
   wakeSources,
   wakeTotalsNotStamped,

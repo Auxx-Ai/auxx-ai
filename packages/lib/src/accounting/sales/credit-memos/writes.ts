@@ -45,6 +45,7 @@ import {
 } from './accounting'
 import type { CreditMemoLineInput, CreditMemoReason, CreditMemoSource } from './client'
 import { runCreditCommand } from './command'
+import { assertMemoInputComplete } from './input-complete'
 import {
   type CreditMemoLineRecord,
   type CreditMemoRecord,
@@ -395,6 +396,9 @@ export async function resolveIssue(
       { creditMemoInstanceId, status: memo.status }
     )
   }
+  // Before anything is read for the entry: a channel memo whose links have not landed
+  // would otherwise refuse as line-less, or build over half its lines (101 E9).
+  await assertMemoInputComplete(db, organizationId, memo)
   if (!memo.contactInstanceId) {
     throw new BadRequestError('A credit memo needs a contact before it can be issued', {
       creditMemoInstanceId,

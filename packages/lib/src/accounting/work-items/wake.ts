@@ -153,6 +153,17 @@ export async function wakeSources(
   )
 }
 
+/** Every row, of any kind and stage, whose source is one of these records - a record just completed. */
+export async function wakeRecords(
+  db: Db,
+  organizationId: string,
+  input: { recordIds: readonly string[] }
+): Promise<Result<number, Error>> {
+  const ids = [...new Set(input.recordIds)]
+  if (ids.length === 0) return ok(0)
+  return wake(db, organizationId, 'records', inArray(schema.AccountingWorkItem.sourceId, ids))
+}
+
 /** One Blocked-tab group, or one source inside it: Retry all sets the time and returns. */
 export interface WorkItemGroupKey {
   reasonCode: string

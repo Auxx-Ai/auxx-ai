@@ -13,6 +13,7 @@ import { getOrganizationSetting } from '../../../settings/settings-service'
 import {
   allocateByWeight,
   attributeToDocuments,
+  prorateByWeight,
   readAttributionLinks,
   readPreCutoverDocumentIds,
   readReceivableSplits,
@@ -68,6 +69,18 @@ describe('allocateByWeight', () => {
   it('prorates by largest remainder when the weights exceed the total, summing exactly', () => {
     expect(allocateByWeight(100, [100, 100, 100])).toEqual([34, 33, 33])
     expect(allocateByWeight(9_000, [6_000, 4_000])).toEqual([5_400, 3_600])
+  })
+})
+
+describe('prorateByWeight', () => {
+  it('prorates even when the total exceeds the weights, summing exactly', () => {
+    expect(prorateByWeight(12_000, [10_800, 1_200])).toEqual([10_800, 1_200])
+    expect(prorateByWeight(5_000, [10_834, 3_610])).toEqual([3_750, 1_250])
+    expect(prorateByWeight(20_001, [1, 1])).toEqual([10_001, 10_000])
+  })
+
+  it('gives nothing to zero weights', () => {
+    expect(prorateByWeight(100, [0, 0])).toEqual([0, 0])
   })
 })
 

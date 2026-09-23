@@ -166,7 +166,52 @@ describe('shapeForPosting', () => {
     expect(result.objectType).toBe('credit_memo')
   })
 
-  it('a refund becomes a refund_receipt', () => {
+  // 101 E1: D4's refund relieves the receivable, which a Refund Receipt cannot carry.
+  it('a D4 refund (Dr accounts_receivable / Cr clearing) becomes a journal, not a fallback', () => {
+    const { lines, roleByGlAccountId } = withLines(
+      line('acct_ar', 'accounts_receivable', 'debit', 800, { counterparty: CUSTOMER }),
+      line('acct_clearing', 'clearing', 'credit', 800)
+    )
+    const result = shapeForPosting({
+      posting: posting({
+        id: 'glp_rfd',
+        postingType: 'refund',
+        totalMinor: 800,
+        docNumber: 'RFD-1',
+      }),
+      lines,
+      roleByGlAccountId,
+      counterparty: CUSTOMER,
+    })
+
+    expect(result.objectType).toBe('journal')
+    expect(result.fallbackReason).toBeUndefined()
+  })
+
+  it('a chargeback refund with a dispute fee debit becomes a journal', () => {
+    const { lines, roleByGlAccountId } = withLines(
+      line('acct_ar', 'accounts_receivable', 'debit', 800, { counterparty: CUSTOMER }),
+      line('acct_fees', 'payment_processing_fees', 'debit', 150),
+      line('acct_clearing', 'clearing', 'credit', 950)
+    )
+    const result = shapeForPosting({
+      posting: posting({
+        id: 'glp_cb',
+        postingType: 'refund',
+        totalMinor: 950,
+        docNumber: 'RFD-2',
+      }),
+      lines,
+      roleByGlAccountId,
+      counterparty: CUSTOMER,
+    })
+
+    expect(result.objectType).toBe('journal')
+    expect(result.fallbackReason).toBeUndefined()
+    expect((result.payload as { lines: unknown[] }).lines).toHaveLength(3)
+  })
+
+  it('a refund with no receivable debit still becomes a refund_receipt', () => {
     const { lines, roleByGlAccountId } = withLines(
       line('acct_returns', 'revenue_returns_allowances', 'debit', 800),
       line('acct_clearing', 'clearing', 'credit', 800)

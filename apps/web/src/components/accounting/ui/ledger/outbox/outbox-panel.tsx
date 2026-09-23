@@ -28,12 +28,14 @@ import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { ChevronDown, Layers, List, Loader } from 'lucide-react'
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { ListSelectionProvider, useListSelection } from '~/components/list-selection'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { formatAccountingDate } from '../format'
 import { BlockedPanel } from './blocked-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
@@ -206,6 +208,7 @@ function OutboxBody({
       </div>
 
       {live.run && <RunStrip run={live.run} />}
+      {effectiveTab !== 'blocked' && <SkippedBeforeFloor bookTimeZone={bookTimeZone} />}
 
       {/* List page, so the bar pins and only the rows move (§6). */}
       {/* Keyed so a tab, filter, group or order change starts at the top: a viewport left at the
@@ -281,6 +284,21 @@ function RunStrip({ run }: { run: OutboxRun }) {
       <Loader className='size-3 animate-spin' />
       {run.sent} of {run.total} sent · {run.failed} failed
       {run.waiting > 0 && ` · ${run.waiting} waiting`}
+    </p>
+  )
+}
+
+/** Postings dated before Export from are never exported; says so rather than letting them vanish. */
+function SkippedBeforeFloor({ bookTimeZone }: { bookTimeZone: string }) {
+  const { data } = api.ledger.exportBatches.skippedBeforeFloor.useQuery()
+  if (!data?.count || !data.floor) return null
+  return (
+    <p className='shrink-0 px-3 pt-3 text-muted-foreground text-xs tabular-nums'>
+      {data.count} {data.count === 1 ? 'posting' : 'postings'} dated before{' '}
+      {formatAccountingDate(data.floor, bookTimeZone)} will never be exported.{' '}
+      <Link href='/app/accounting/settings/general' className='text-primary-600 hover:underline'>
+        Export from
+      </Link>
     </p>
   )
 }

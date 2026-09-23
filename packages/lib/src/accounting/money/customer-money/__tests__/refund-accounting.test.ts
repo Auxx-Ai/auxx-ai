@@ -192,7 +192,7 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
     const options = h.postEntry.mock.calls[0]![1]
     expect(
       options.entry.lines.map((line: Record<string, unknown>) => [
-        line.accountRole ?? line.glAccountId,
+        line.glAccountId ?? line.accountRole,
         line.direction,
         line.amount,
         line.counterpartyId ?? null,
@@ -203,6 +203,7 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
       ['accounts_receivable', 'debit', 20_000, CUSTOMER, 'money_transaction', MOVEMENT],
       ['gl_clearing', 'credit', 20_000, null, 'money_transaction', MOVEMENT],
     ])
+    expect(options.entry.lines[1]).toMatchObject({ accountRole: 'clearing' })
     expect(options.railId).toBe('pg_1')
     expect(options.scope).toEqual({ rail: 'pg_1' })
   })
@@ -216,7 +217,7 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
     const options = h.postEntry.mock.calls[0]![1]
     expect(
       options.entry.lines.map((line: Record<string, unknown>) => [
-        line.accountRole ?? line.glAccountId,
+        line.glAccountId ?? line.accountRole,
         line.direction,
         line.amount,
       ])
@@ -245,7 +246,11 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
     await post()
 
     const options = h.postEntry.mock.calls[0]![1]
-    expect(options.entry.lines[1]).toMatchObject({ glAccountId: 'gl_gift', direction: 'credit' })
+    expect(options.entry.lines[1]).toMatchObject({
+      glAccountId: 'gl_gift',
+      accountRole: 'gift_card_liability',
+      direction: 'credit',
+    })
     expect(options.railId).toBeNull()
   })
 
@@ -303,7 +308,11 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
 
     const options = h.postEntry.mock.calls[0]![1]
     expect(options.railId).toBeNull()
-    expect(options.entry.lines[1]).toMatchObject({ glAccountId: 'gl_bank', direction: 'credit' })
+    expect(options.entry.lines[1]).toMatchObject({
+      glAccountId: 'gl_bank',
+      accountRole: 'bank',
+      direction: 'credit',
+    })
   })
 
   it('credits undeposited funds when the refund names neither', async () => {
@@ -313,6 +322,7 @@ describe('the entry: Dr A/R / Cr endpoint (91 D4)', () => {
 
     expect(h.postEntry.mock.calls[0]![1].entry.lines[1]).toMatchObject({
       glAccountId: 'gl_undep',
+      accountRole: 'undeposited_funds',
       direction: 'credit',
     })
   })

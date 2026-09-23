@@ -34,6 +34,10 @@ import {
 } from '../accounting/sales/billing/hooks'
 import { registerBillingReconcilers } from '../accounting/sales/billing/reconciler'
 import {
+  registerCreditMemoInputWakeReconciler,
+  wakeIssueOnMoneyPendingChange,
+} from '../accounting/sales/credit-memos/input-wake'
+import {
   registerFulfillmentTotalsReconcilers,
   stampTotalsOnFulfillmentChange,
   stampTotalsOnFulfillmentLineChange,
@@ -248,6 +252,8 @@ export function registerAllHooks(): void {
   // The imported-money acceptance wake's two drains (79 §4.2). The two hooks below only
   // MARK; without this a parked acceptance waits for the sweep's safety-net delay.
   registerMoneyAcceptanceWakeReconcilers()
+  // A channel memo parked on a pending refund retries when the flag is rewritten (101 E9).
+  registerCreditMemoInputWakeReconciler()
 
   // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
   // hooks below only MARK, so without this an order's fingerprint goes stale —
@@ -329,7 +335,10 @@ export function registerAllHooks(): void {
     stampOrderOnOrderChange,
     wakeAcceptancesOnOrderChange,
   ])
-  registerMarkHooks('credit-memos', [wakeAcceptancesOnCreditMemoChange])
+  registerMarkHooks('credit-memos', [
+    wakeAcceptancesOnCreditMemoChange,
+    wakeIssueOnMoneyPendingChange,
+  ])
 
   // Fulfillment totals for synced shipments (plan 78 §4.3): a Shopify-synced fulfillment
   // writes only identity fields, never `fulfillment_subtotal` / `_total` /

@@ -109,6 +109,7 @@ async function prepareRefund(
     txnDate: loaded.effectiveDate,
     amountMinor: toLedgerMinor(money.amountMinor, 'USD', 2),
     endpointGlAccountId: endpoint.glAccountId,
+    endpointRole: endpoint.role,
     ...(Object.keys(endpointDimensions).length ? { endpointDimensions } : {}),
     customerInstanceId: customerId,
     // A chargeback: the processor's matched dispute row is this movement's own evidence.

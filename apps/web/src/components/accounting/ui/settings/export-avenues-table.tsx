@@ -7,7 +7,6 @@
 import {
   EXPORT_AVENUES,
   type ExportAvenue,
-  SUMMARY_GRAINS,
   type SummaryGrain,
 } from '@auxx/lib/accounting/ledger/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
@@ -31,7 +30,9 @@ import {
   autoSendKeyForAvenue,
   postingLabelsForAvenue,
   SUMMARY_GRAIN_LABEL,
+  SUMMARY_GRAIN_OPTION_LABEL,
   summaryGrainKeyForAvenue,
+  summaryGrainsForAvenue,
 } from './posting-page-model'
 
 interface ExportAvenuesTableProps {
@@ -67,6 +68,7 @@ export function ExportAvenuesTable({ draft, patch }: ExportAvenuesTableProps) {
     const autoSendKey = autoSendKeyForAvenue(avenue)
     const grainKey = summaryGrainKeyForAvenue(avenue)
     const label = EXPORT_AVENUE_LABEL[avenue]
+    const grain = (grainKey && (draft[grainKey] as SummaryGrain | undefined)) || 'day'
 
     return (
       <TreeRow
@@ -86,16 +88,14 @@ export function ExportAvenuesTable({ draft, patch }: ExportAvenuesTableProps) {
             </Cell>
             <Cell>
               {grainKey ? (
-                <Select
-                  value={(draft[grainKey] as SummaryGrain | undefined) ?? 'day'}
-                  onValueChange={(value) => patch({ [grainKey]: value })}>
+                <Select value={grain} onValueChange={(value) => patch({ [grainKey]: value })}>
                   <SelectTrigger size='sm' className='h-7 w-32 text-xs'>
-                    <SelectValue />
+                    <SelectValue>{SUMMARY_GRAIN_LABEL[grain]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {SUMMARY_GRAINS.map((grain) => (
-                      <SelectItem key={grain} value={grain}>
-                        {SUMMARY_GRAIN_LABEL[grain]}
+                    {summaryGrainsForAvenue(avenue).map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {SUMMARY_GRAIN_OPTION_LABEL[option]}
                       </SelectItem>
                     ))}
                   </SelectContent>
