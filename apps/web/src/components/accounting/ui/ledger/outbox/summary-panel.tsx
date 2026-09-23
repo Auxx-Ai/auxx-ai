@@ -17,7 +17,7 @@ import {
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { Badge } from '@auxx/ui/components/badge'
 import { toastError } from '@auxx/ui/components/toast'
-import { TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowButton, TreeRowEmpty } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import {
@@ -673,11 +673,9 @@ function NewPostings({
   onSelectPosting: (glPostingId: string) => void
 }) {
   const members = api.ledger.exportBatches.unbuiltMembers.useQuery({ group: groupKey(row) })
-  if (members.isPending) {
-    return <p className='py-2 text-muted-foreground text-xs'>Loading postings...</p>
-  }
+  if (members.isPending) return <TreeRowEmpty depth={depth} loading />
   if (!row.batch && !members.data?.length) {
-    return <p className='py-2 text-muted-foreground text-xs'>No postings.</p>
+    return <TreeRowEmpty depth={depth} icon={<Layers />} title='No postings' />
   }
   return (
     <>

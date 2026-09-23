@@ -6,6 +6,8 @@ import {
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
   CONTACT_ORDERS_BLOCKS,
+  FULFILLMENT_LINES_BLOCKS,
+  ORDER_FULFILLMENTS_BLOCKS,
   PURCHASING_TAB_ID,
   SHIPMENT_PARCELS_BLOCKS,
   TICKET_RETURNS_BLOCKS,
@@ -370,6 +372,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         },
       ],
     },
+    tabBlocks: { overview: ORDER_FULFILLMENTS_BLOCKS },
   },
 
   // A bank deposit's one cash entry (`Dr cash / Cr undeposited_funds`). The
@@ -400,6 +403,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
+    tabBlocks: { overview: FULFILLMENT_LINES_BLOCKS },
   },
 
   // A payout's `Dr bank Dr fees Cr clearing` entry, rail-scoped (TARGET §5).

@@ -430,9 +430,19 @@ export function LineBuilder({
   // in the same render. A draft becomes non-placeholder before its first
   // `record.create`, so a user edit is never discarded by this cleanup.
   const visibleDrafts = useMemo(() => {
+    if (readOnly) return []
     if (displayRecords.length === 0) return drafts
     return drafts.filter((draft) => !initialDraftIdsRef.current.has(draft.draftId))
-  }, [displayRecords.length, drafts])
+  }, [displayRecords.length, drafts, readOnly])
+
+  // A document can lock while open (an order that ships): its unsaved drafts go
+  // with the lock, and Edit re-seeds from the persisted rows.
+  useEffect(() => {
+    if (!readOnly || draftsRef.current.length === 0) return
+    initialDraftIdsRef.current = new Set()
+    mutateDrafts(() => [])
+    setLastAddedDraftId(null)
+  }, [readOnly, mutateDrafts])
 
   useEffect(() => {
     if (displayRecords.length === 0 || initialDraftIdsRef.current.size === 0) return
