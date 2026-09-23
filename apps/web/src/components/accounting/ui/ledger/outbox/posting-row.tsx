@@ -58,7 +58,7 @@ export function PostingRow({
               new
             </Badge>
           )}
-          <PostingLinks glPostingId={posting.glPostingId} />
+          <PostingLinks sources={posting.sources} />
         </span>
       }
       amount={formatMinor(posting.totalMinor, currencyCode)}
