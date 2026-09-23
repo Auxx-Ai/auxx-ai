@@ -300,6 +300,7 @@ vi.mock('../service', async (importOriginal) => {
       if (run) run.status = 'partial'
       world.connector.status = 'paused'
       world.parkedAtCeiling.push(input.runId)
+      return true
     },
     finalizeConnector: async (_db: unknown, _id: string, input: { ok: boolean }) => {
       world.connector.status = input.ok ? 'live' : 'error'

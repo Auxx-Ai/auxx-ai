@@ -114,14 +114,18 @@ export async function enqueueConnectorTeardown(
 /**
  * Enqueue a connector sync. `jobId` coalesces duplicate manual "Sync now" clicks
  * for the same connector (BullMQ rejects ':' in custom ids — keep it hyphenated).
+ * `jobKey` picks a different id so a delayed continuation never swallows a click.
  */
-export async function enqueueConnectorSync(data: {
-  connectorId: string
-  organizationId: string
-  trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
-  /** Trial-sync §4.1 — a SAMPLE run caps each stream's backfill, then parks for review. */
-  sampleLimit?: number
-}): Promise<void> {
+export async function enqueueConnectorSync(
+  data: {
+    connectorId: string
+    organizationId: string
+    trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
+    /** Trial-sync §4.1 — a SAMPLE run caps each stream's backfill, then parks for review. */
+    sampleLimit?: number
+  },
+  opts: { delayMs?: number; jobKey?: string } = {}
+): Promise<void> {
   try {
     const queue = getQueue(Queues.dataConnectorQueue)
     await queue.add(
@@ -133,7 +137,10 @@ export async function enqueueConnectorSync(data: {
         trigger: data.trigger ?? 'manual',
         sampleLimit: data.sampleLimit,
       },
-      { jobId: `data-connector-sync-manual-${data.connectorId}` }
+      {
+        jobId: `data-connector-sync-${opts.jobKey ?? 'manual'}-${data.connectorId}`,
+        delay: opts.delayMs && opts.delayMs > 0 ? opts.delayMs : undefined,
+      }
     )
   } catch (error) {
     logger.error('Failed to enqueue data connector sync job', {

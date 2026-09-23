@@ -50,7 +50,7 @@ const world = {
   connector: {} as Record<string, unknown>,
   latch: null as number | null,
   sliceQueue: [] as { streamId: string; runId: string }[],
-  syncQueue: [] as { trigger?: string }[],
+  syncQueue: [] as { data: { trigger?: string }; opts?: { delayMs?: number; jobKey?: string } }[],
   parkedAtCeiling: [] as string[],
   finalized: [] as { ok: boolean }[],
   resyncCleared: 0,
@@ -227,9 +227,11 @@ vi.mock('../service', async (importOriginal) => {
       world.runs.find((r) => r.id === runId)?.fetched ?? 0,
     parkBackfillAtCeiling: async (_db: unknown, input: { runId: string }) => {
       const run = world.runs.find((r) => r.id === input.runId)
-      if (run) run.status = 'partial'
+      if (!run || run.status !== 'running') return false
+      run.status = 'partial'
       world.connector.status = 'paused'
       world.parkedAtCeiling.push(input.runId)
+      return true
     },
     finalizeConnector: async (_db: unknown, _id: string, input: { ok: boolean }) => {
       world.connector.status = input.ok ? 'live' : 'error'
@@ -281,8 +283,11 @@ vi.mock('../data-connector-queue', () => ({
   enqueueBackfillSlice: async (data: { streamId: string; runId: string }) => {
     world.sliceQueue.push({ streamId: data.streamId, runId: data.runId })
   },
-  enqueueConnectorSync: async (data: { trigger?: string }) => {
-    world.syncQueue.push(data)
+  enqueueConnectorSync: async (
+    data: { trigger?: string },
+    opts?: { delayMs?: number; jobKey?: string }
+  ) => {
+    world.syncQueue.push({ data, opts })
   },
 }))
 
@@ -382,7 +387,12 @@ vi.mock('../connector-runtime', () => ({
   prepareConnectorFetch: async () => ({ definition: fixtureDefinition(), credential: null }),
 }))
 
-import { backfillPendingChange, runBackfillSlice, startConnectorSync } from '../slice-orchestrator'
+import {
+  BACKFILL_CONTINUE_DELAY_MS,
+  backfillPendingChange,
+  runBackfillSlice,
+  startConnectorSync,
+} from '../slice-orchestrator'
 
 const DB = db as never
 
@@ -420,10 +430,17 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     expect(world.runs[0]?.phase).toBe('backfill')
     await drainSlices()
 
-    // Run 1: two 5 000-record slices cross the 9 000 ceiling; the run parks.
+    // Run 1: two 5 000-record slices cross the 9 000 ceiling; the run parks and
+    // enqueues one delayed continuation keyed on the parked run.
     expect(world.parkedAtCeiling).toEqual(['run1'])
     expect(world.runs[0]?.status).toBe('partial')
     expect(world.connector.status).toBe('paused')
+    expect(world.syncQueue).toEqual([
+      {
+        data: { connectorId: 'dc1', organizationId: 'org1', trigger: 'backfill' },
+        opts: { delayMs: BACKFILL_CONTINUE_DELAY_MS, jobKey: 'continue-run1' },
+      },
+    ])
 
     const customers = state('s-customers')
     expect(customers.phase).toBe('backfill')
@@ -446,8 +463,12 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     const ordersBefore = { ...state('s-orders') }
     const fetchesBefore = world.fetchCalls.length
 
-    // Sync now again (the connector is paused; the claim flips it back to syncing).
-    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    // The continuation the park enqueued (the connector is paused; a `backfill`
+    // trigger may claim a paused connector, so it flips back to syncing).
+    const continuation = world.syncQueue.shift()!
+    await startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: continuation.data.trigger as 'backfill',
+    })
 
     // The trigger reset neither stream: the cursor, the progress and the backfill
     // marker survive on the snapshot stream; the sibling keeps its watermark.
@@ -490,9 +511,13 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     expect(state('s-orders').watermark).toBe('W2')
 
     world.connector.resyncPending = { streamIds: ['s-customers', 's-orders'] }
+    world.syncQueue.length = 0 // drop run1's continuation; this test drives the reset's sync
     await backfillPendingChange(DB, 'org1', 'dc1')
     expect(world.syncQueue).toEqual([
-      { connectorId: 'dc1', organizationId: 'org1', trigger: 'backfill' },
+      {
+        data: { connectorId: 'dc1', organizationId: 'org1', trigger: 'backfill' },
+        opts: undefined,
+      },
     ])
     for (const id of ['s-customers', 's-orders']) {
       expect(state(id).phase).toBe('backfill')
