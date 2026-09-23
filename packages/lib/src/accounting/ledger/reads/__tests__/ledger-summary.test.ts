@@ -11,7 +11,7 @@ import type { Database } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import { avenueOfPostingType } from '../../setup/export-settings'
 import type { PostingType } from '../../types'
-import { readLedgerSummary } from '../ledger-summary'
+import { readLedgerSummary, sumSummaryLines } from '../ledger-summary'
 
 /** Walk a Drizzle condition tree and collect the literal values it binds. */
 function boundValues(condition: unknown): string[] {
@@ -405,5 +405,20 @@ describe('readLedgerSummary', () => {
     const rows = result._unsafeUnwrap()
     expect(rows).toHaveLength(1)
     expect(rows[0]!.avenue).toBe('fulfillment')
+  })
+})
+
+describe('sumSummaryLines', () => {
+  it('sums per account and side, never nets, and drops zero lines', () => {
+    const lines = sumSummaryLines([
+      { glAccountId: 'ar', accountCode: '1200', direction: 'debit', amountMinor: 500 },
+      { glAccountId: 'ar', accountCode: '1200', direction: 'debit', amountMinor: '250' },
+      { glAccountId: 'ar', accountCode: '1200', direction: 'credit', amountMinor: 300 },
+      { glAccountId: 'rev', accountCode: null, direction: 'credit', amountMinor: 0 },
+    ])
+    expect(lines).toEqual([
+      { glAccountId: 'ar', accountCode: '1200', direction: 'debit', amountMinor: 750 },
+      { glAccountId: 'ar', accountCode: '1200', direction: 'credit', amountMinor: 300 },
+    ])
   })
 })

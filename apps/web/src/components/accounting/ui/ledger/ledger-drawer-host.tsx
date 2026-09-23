@@ -29,12 +29,13 @@ import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { MovementFrame, useMovementFrameHeader } from './movement-frame'
 import { type FrameHeader, PostingFrame, usePostingFrameHeader } from './posting-frame'
 import { ShipmentFrame, useShipmentFrameHeader } from './shipment-frame'
+import { SummaryFrame, useSummaryFrameHeader } from './summary-frame'
 
 /** Not `tab`: on the Outbox that is the page's own tab strip, which a record frame's tab bar would switch. */
 export const LEDGER_RECORD_TAB_PARAM = 'rtab'
 
 interface LedgerDrawerHostProps {
-  /** `~posting:` / `~movement:` / `~shipment:` from the matching query param; `null` closes. */
+  /** `~posting:` / `~movement:` / `~shipment:` / `~summary:` from the matching query param; `null` closes. */
   baseFrame: DrawerFrame | null
   onOpenChange: (open: boolean) => void
   isDocked: boolean
@@ -102,6 +103,7 @@ function LedgerDrawerFrames({
   })
   const movementHeader = useMovementFrameHeader(topKind?.kind === 'movement' ? topKind.id : null)
   const shipmentHeader = useShipmentFrameHeader(topKind?.kind === 'shipment' ? topKind.id : null)
+  const summaryHeader = useSummaryFrameHeader(topKind?.kind === 'summary' ? topKind.id : null)
   const { resource: recordResource } = useResource(
     topRecordId ? parseRecordId(topRecordId).entityDefinitionId : null
   )
@@ -133,7 +135,9 @@ function LedgerDrawerFrames({
         ? movementHeader
         : topKind?.kind === 'shipment'
           ? shipmentHeader
-          : recordHeader
+          : topKind?.kind === 'summary'
+            ? summaryHeader
+            : recordHeader
 
   // `DockableDrawer`'s own close paths (outside click, swipe, Escape) bypass
   // `handleClose` — clear the stack there too.
@@ -195,6 +199,12 @@ function LedgerDrawerFrames({
                       <MovementFrame movementId={kind.id} bookTimeZone={bookTimeZone} />
                     ) : kind.kind === 'shipment' ? (
                       <ShipmentFrame fulfillmentId={kind.id} bookTimeZone={bookTimeZone} />
+                    ) : kind.kind === 'summary' ? (
+                      <SummaryFrame
+                        summaryKey={kind.id}
+                        bookTimeZone={bookTimeZone}
+                        providerLabel={providerLabel}
+                      />
                     ) : (
                       <PostingFrame
                         postingId={kind.id}

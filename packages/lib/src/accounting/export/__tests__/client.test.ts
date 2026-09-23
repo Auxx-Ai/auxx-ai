@@ -8,6 +8,8 @@ import {
   exportBatchTabAdmits,
   OUTBOX_TABS,
   parseOutboxTab,
+  parseUnbuiltGroupKey,
+  unbuiltGroupKeyString,
 } from '../client'
 
 describe('the outbox tabs (75-D6)', () => {
@@ -53,5 +55,23 @@ describe('parseOutboxTab', () => {
     expect(parseOutboxTab(null)).toBeNull()
     expect(parseOutboxTab(undefined)).toBeNull()
     expect(parseOutboxTab('')).toBeNull()
+  })
+})
+
+describe('parseUnbuiltGroupKey', () => {
+  it('round-trips a key with an empty store and rail', () => {
+    const key = {
+      avenue: 'fulfillment' as const,
+      grainKey: '2026-01-15',
+      storeId: null,
+      railId: null,
+      currency: 'USD',
+    }
+    expect(parseUnbuiltGroupKey(unbuiltGroupKeyString(key))).toEqual(key)
+  })
+
+  it('refuses an unknown avenue or a short key', () => {
+    expect(parseUnbuiltGroupKey('nope 2026-01-15   USD')).toBeNull()
+    expect(parseUnbuiltGroupKey('fulfillment 2026-01-15')).toBeNull()
   })
 })
