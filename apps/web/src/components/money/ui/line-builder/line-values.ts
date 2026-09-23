@@ -790,6 +790,8 @@ export function lineAttributesFor(schema: LineSchema): string[] {
   // rides beside the part/description chips rather than becoming a LineValues
   // editing key. It still belongs in the same batched read as the other row data.
   if (schema.billingPrefix === 'vendor_bill') attrs.push('vendor_bill_line_vendor_code')
+  // Display-only, for the drill-in badge ({@link lineSourceRecordId}); the builder never writes it.
+  if (schema.lineEntityType === 'line_item') attrs.push('line_item_part')
   // Photos are not part of `LineValues`/`linePatchToFieldValues` — the popover
   // (line-photo-popover.tsx) reads and writes the field directly via
   // `useFieldFileUpload`. Riding along in the same prefetch batch just gives the
@@ -919,6 +921,15 @@ export function numberOrNull(raw: unknown): number | null {
 function firstRecordId(raw: unknown): RecordId | null {
   const value = Array.isArray(raw) ? raw[0] : raw
   return typeof value === 'string' ? (value as RecordId) : null
+}
+
+/** The record a sell-side line came from — its part, else its catalog item — or null. */
+export function lineSourceRecordId(
+  values: Record<string, unknown>,
+  schema: LineSchema
+): RecordId | null {
+  if (schema.lineEntityType !== 'line_item') return null
+  return firstRecordId(values.line_item_part) ?? firstRecordId(values.line_item_catalog_item)
 }
 
 /**

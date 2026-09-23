@@ -77,6 +77,8 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   recordId?: RecordId | null
   /** Whether to show icon/avatar (default: true) */
   showIcon?: boolean
+  /** Render only the icon; the name moves to the accessible label and the hover card. */
+  iconOnly?: boolean
   /** Prefix the display name with the resource's singular label. */
   showResourceLabel?: boolean
   /** Additional CSS classes */
@@ -138,6 +140,7 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
 export function RecordBadge({
   recordId,
   showIcon = true,
+  iconOnly = false,
   showResourceLabel = false,
   className,
   variant,
@@ -178,18 +181,23 @@ export function RecordBadge({
   // Determine variant: if link is provided, default to 'link' variant unless explicitly set
   const effectiveVariant = variant ?? (link ? 'link' : 'default')
 
-  const badgeClassName = cn(recordBadgeVariants({ variant: effectiveVariant, size }), className)
+  const badgeClassName = cn(
+    recordBadgeVariants({ variant: effectiveVariant, size }),
+    iconOnly && 'pe-0.5',
+    className
+  )
+  const ariaLabel = iconOnly && !isLoading ? displayName : undefined
 
   const badgeContent = (
     <>
       {isLoading ? (
         <>
-          {showIcon && <Skeleton />}
-          <Skeleton />
+          {(showIcon || iconOnly) && <Skeleton />}
+          {!iconOnly && <Skeleton />}
         </>
       ) : (
         <>
-          {showIcon && (
+          {(showIcon || iconOnly) && (
             <RecordIcon
               avatarUrl={record?.avatarUrl}
               iconId={resource?.icon || 'circle'}
@@ -197,10 +205,12 @@ export function RecordBadge({
               size={size === 'sm' ? 'xs' : 'xs'}
             />
           )}
-          <span data-slot='record-display' className='truncate'>
-            {showResourceLabel && resource?.label ? `${resource.label} · ` : null}
-            {displayName}
-          </span>
+          {!iconOnly && (
+            <span data-slot='record-display' className='truncate'>
+              {showResourceLabel && resource?.label ? `${resource.label} · ` : null}
+              {displayName}
+            </span>
+          )}
           {onRemove && (
             <button
               type='button'
@@ -225,6 +235,7 @@ export function RecordBadge({
       <Link
         data-slot='record-badge'
         aria-busy={isLoading}
+        aria-label={ariaLabel}
         href={href}
         className={badgeClassName}
         onClick={handleStackOpen}
@@ -232,7 +243,12 @@ export function RecordBadge({
         {badgeContent}
       </Link>
     ) : (
-      <div data-slot='record-badge' aria-busy={isLoading} className={badgeClassName} {...props}>
+      <div
+        data-slot='record-badge'
+        aria-busy={isLoading}
+        aria-label={ariaLabel}
+        className={badgeClassName}
+        {...props}>
         {badgeContent}
       </div>
     )
