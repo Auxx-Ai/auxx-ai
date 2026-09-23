@@ -10,7 +10,8 @@ import {
 import { payoutMembershipWindowKey } from './client'
 import type { MatchReason, MatchState } from './match-reasons'
 import { syncStoredMatches } from './match-sync'
-import { reverseStalePayoutPosting } from './repost-writes'
+import { listTransfersAwaitingRepost } from './repost-reads'
+import { repostStoredPayouts, reverseStalePayoutPosting } from './repost-writes'
 
 const OWNER_BATCH_SIZE = 100
 const OBSERVATION_BATCH_SIZE = 100
@@ -352,24 +353,32 @@ async function assessTransfers(
   }
 }
 
+/** What one reconcile wrote, and how many payouts it booked again from stored data. */
+export interface ReconcileTransfersResult {
+  changed: number
+  reposted: number
+}
+
 /**
  * Reconcile canonical transfer IDs in bounded transactions, preserving
  * source-write serialization.
  *
  * A payout whose stored match has outgrown its posting is reversed here, once,
  * AFTER its chunk commits (§13 Q6) - never inside the assessment transaction,
- * which holds the accounting commit lock. The re-post is `sweepPayouts`'s: the
- * reversal is what frees the subject claim it needs.
+ * which holds the accounting commit lock - and then re-posted from stored data,
+ * as is any payout in the chunk reversed earlier and never re-booked.
  */
 export async function reconcileTransferIds(
   db: Database,
   organizationId: string,
   ids: string[],
-  options?: { reverseStale?: boolean }
-): Promise<number> {
+  options?: { reverseStale?: boolean; actorUserId?: string }
+): Promise<ReconcileTransfersResult> {
   const reverseStale = options?.reverseStale ?? true
+  const actorUserId = options?.actorUserId
   const uniqueIds = [...new Set(ids)]
   let changed = 0
+  let reposted = 0
   const reassess = new Set<string>()
   for (let offset = 0; offset < uniqueIds.length; offset += OWNER_BATCH_SIZE) {
     const chunk = uniqueIds.slice(offset, offset + OWNER_BATCH_SIZE)
@@ -389,18 +398,30 @@ export async function reconcileTransferIds(
     changed += outcome.changed
     if (!reverseStale) continue
     for (const { transferId, glPostingId } of outcome.stale) {
-      const reversal = await reverseStalePayoutPosting(db, { organizationId, glPostingId })
+      const reversal = await reverseStalePayoutPosting(db, {
+        organizationId,
+        glPostingId,
+        transferId,
+        actorUserId,
+      })
       if (reversal.reversed) reassess.add(transferId)
     }
+    const repost = await repostStoredPayouts(db, {
+      organizationId,
+      targets: await listTransfersAwaitingRepost(db, organizationId, chunk),
+      actorUserId,
+    })
+    reposted += repost.postedTransferIds.length
+    for (const id of repost.postedTransferIds) reassess.add(id)
   }
   // One more pass, with no second round of reversals: the postings are
-  // `reversed` now, so this pass finds nothing stale and drops the blocker it
-  // wrote a moment ago.
+  // `reversed` or re-posted now, so this pass finds nothing stale and drops
+  // the blocker it wrote a moment ago.
   if (reassess.size)
-    changed += await reconcileTransferIds(db, organizationId, [...reassess], {
-      reverseStale: false,
-    })
-  return changed
+    changed += (
+      await reconcileTransferIds(db, organizationId, [...reassess], { reverseStale: false })
+    ).changed
+  return { changed, reposted }
 }
 
 /**
@@ -473,7 +494,7 @@ export async function assessPayouts(
       )
     for (const row of transfers) owners.add(row.id)
   }
-  return reconcileTransferIds(db, organizationId, [...owners])
+  return (await reconcileTransferIds(db, organizationId, [...owners])).changed
 }
 
 /** One bounded recovery page. The caller checkpoints nextCursor before fetching another page. */
@@ -491,7 +512,15 @@ export async function recoverPayoutReconciliationPage(db: Database, cursor?: str
     byOrganization.set(row.organizationId, ids)
   }
   let changed = 0
-  for (const [organizationId, ids] of byOrganization)
-    changed += await reconcileTransferIds(db, organizationId, ids)
-  return { changed, nextCursor: rows.length === OWNER_BATCH_SIZE ? rows.at(-1)!.id : null }
+  let reposted = 0
+  for (const [organizationId, ids] of byOrganization) {
+    const outcome = await reconcileTransferIds(db, organizationId, ids)
+    changed += outcome.changed
+    reposted += outcome.reposted
+  }
+  return {
+    changed,
+    reposted,
+    nextCursor: rows.length === OWNER_BATCH_SIZE ? rows.at(-1)!.id : null,
+  }
 }

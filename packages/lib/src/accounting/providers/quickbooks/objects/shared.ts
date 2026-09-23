@@ -36,6 +36,14 @@ const logger = createScopedLogger('quickbooks-objects')
 /** The id this adapter registers under. Canonical here so no object file needs a circular import of the provider class. */
 export const QUICKBOOKS_PROVIDER_ID = 'quickbooks'
 
+/** A Customer, Vendor or Item name QuickBooks accepts: no colon (its sub-level separator), tab or newline. */
+export function quickbooksName(value: string): string {
+  return value
+    .replace(/[:\t\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

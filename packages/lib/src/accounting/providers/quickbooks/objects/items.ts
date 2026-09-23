@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/providers/quickbooks/objects/items.ts
 // One generic Service item per income `gl_account` (T13, plan 67 §5.2):
 // `qboItemId` on the account, `find_quickbooks_item` by name before
-// `create_quickbooks_item`, named `auxx:<accountCode|glAccountId>`.
+// `create_quickbooks_item`, named `auxx <accountCode|glAccountId>`.
 
 import { toRecordId } from '@auxx/types/resource'
 import { UnprocessableEntityError } from '../../../../errors'
@@ -9,16 +9,16 @@ import { UnifiedCrudHandler } from '../../../../resources/crud'
 import type { ChartAccountRow, ProviderAccount } from '../../../ledger/types'
 import { readQuickbooksIdField, writeQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
-import { errorMessage, memoised, requireToolInputs } from './shared'
+import { errorMessage, memoised, quickbooksName, requireToolInputs } from './shared'
 
 const QBO_ITEM_ID_FIELD_KEY = 'qboItemId'
 const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
 const TOOL_FIND_ITEM = 'find_quickbooks_item'
 const TOOL_CREATE_ITEM = 'create_quickbooks_item'
 
-/** `auxx:<accountCode|glAccountId>` - the generic item's name (T13). */
+/** `auxx <accountCode|glAccountId>` - the generic item's name (T13). */
 export function itemName(account: { code: string | null; id: string }): string {
-  return `auxx:${account.code ?? account.id}`
+  return quickbooksName(`auxx ${account.code ?? account.id}`)
 }
 
 /**

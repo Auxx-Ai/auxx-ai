@@ -48,7 +48,7 @@ export interface StoredMatchSummary {
   /**
    * Live payout postings whose `unidentified_receipts` credit no longer equals
    * what the stored match says is unrecognised — the T26 re-post trigger (§13 Q6).
-   * The caller reverses them AFTER its transaction; the sweep re-posts.
+   * The caller reverses them AFTER its transaction and re-posts from stored data.
    */
   stalePostingIds: string[]
 }

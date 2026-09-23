@@ -466,6 +466,7 @@ async function hydrate(
       paymentGatewayId: record.related('payout_payment_gateway'),
       bankAccountId: record.related('payout_bank_account'),
       glPostingId: null,
+      destination: record.text('payout_destination'),
       destinationMismatch: record.text('payout_destination_mismatch'),
       source: resolvePayoutSource(record.option('payout_source')),
       createdAt: record.createdAt,

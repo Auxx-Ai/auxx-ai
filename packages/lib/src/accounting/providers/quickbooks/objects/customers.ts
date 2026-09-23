@@ -14,7 +14,7 @@ import { readSourceAccounts } from '../../../money/customer-money/source-reads'
 import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
-import { memoised } from './shared'
+import { memoised, quickbooksName } from './shared'
 
 const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
 /** Not provisioned by the app yet (brief 13 DECIDED, unit 1) - a vendor line always refuses below. */
@@ -97,7 +97,7 @@ async function resolveVendorOnce(
 /**
  * The channel placeholder customer for a summary batch's receivable (91 §8.14): read from
  * `FinancialSourceAccount.providerCustomerRef.quickbooks`, created on first
- * use as `auxx:<store name or storeId>` and written back to the column.
+ * use as `<store name> (auxx)` and written back to the column.
  *
  * 🛑 Requires a store. A `null` counterparty with no store has nothing to
  * create or persist a placeholder against, so this refuses rather than
@@ -136,7 +136,9 @@ async function resolvePlaceholderCustomerOnce(
   const existing = store.providerCustomerRef?.quickbooks?.customerId
   if (existing) return existing
 
-  const displayName = `auxx:${store.name ?? storeId}`
+  const displayName = quickbooksName(
+    `${store.name ?? `${store.providerKey} ${store.externalAccountId}`} (auxx)`
+  )
   const found = await tool.callTool('find_quickbooks_customer', { displayName })
   const customerId =
     found?.found && found.customer?.customerId

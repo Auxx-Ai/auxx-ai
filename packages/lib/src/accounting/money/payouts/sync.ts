@@ -105,6 +105,7 @@ import {
   listPayoutMemberEntryIds,
   readBankAccountSettlementDestinations,
 } from './reads'
+import { isPayoutHeldReversed } from './repost-reads'
 import type { PayoutHeader, PayoutSource, PayoutSourceCtx } from './source'
 import { getPayoutSource, listPayoutSources } from './source-registry'
 import type { SyncPayoutsResult } from './types'
@@ -240,6 +241,73 @@ export async function syncPayoutSource(
   )
 }
 
+/** What re-offering one stored payout did. `refused` has parked a `payout` work item. */
+export type StoredRepostOutcome =
+  | { status: 'posted' | 'live' }
+  | { status: 'skipped' | 'refused'; reason: string }
+
+/**
+ * Post a payout the sync already raised, from its stored record and evidence rows. No provider
+ * call, so the lookback is no bar; the entry is `ingestOne`'s, as on a fresh sync (§13 Q6).
+ */
+export async function repostStoredPayout(
+  db: Database,
+  params: { ctx: PayoutSourceCtx; providerPayoutId: string; actorUserId?: string; now?: Date }
+): Promise<Result<StoredRepostOutcome, Error>> {
+  const { ctx, providerPayoutId, now = new Date() } = params
+  const { organizationId, rail } = ctx
+  return guard(
+    async (): Promise<StoredRepostOutcome> => {
+      if (!(await isAccountingEnabled(db, organizationId)))
+        return { status: 'skipped', reason: 'Accounting is not enabled' }
+      const fieldCtx = await requirePayoutFieldContext(db, organizationId)
+      const record = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
+      if (!record) return { status: 'skipped', reason: 'The sync never raised this payout' }
+      if (await findLivePayoutPosting(db, organizationId, record.payoutId))
+        return { status: 'live' }
+      // A payout the provider failed was reversed on purpose and stays so.
+      if (record.status !== 'paid' || !record.paidAt || !record.currency)
+        return { status: 'skipped', reason: `The payout is ${record.status}` }
+
+      if (!(await resolveMemberEntryIds(db, ctx, providerPayoutId)).length) {
+        const reason =
+          `Payout ${record.number ?? providerPayoutId} was reversed, but its feed no longer ` +
+          'holds its items, so it cannot be re-posted from stored evidence.'
+        await upsertWorkItem(db, organizationId, {
+          sourceKind: 'payout',
+          sourceId: record.payoutId,
+          stage: 'post',
+          reasonCode: 'REFUSED',
+          railId: rail.id,
+          detail: { message: reason },
+        })
+        return { status: 'refused', reason }
+      }
+
+      const actorUserId =
+        params.actorUserId ?? (await SystemUserService.getSystemUserForActions(organizationId))
+      // The header the sync transcribed onto the record; `payoutValues` in reverse.
+      const header: PayoutHeader = {
+        providerPayoutId,
+        paidAt: record.paidAt,
+        currency: record.currency,
+        status: 'paid',
+        depositedMinor: record.depositedMinor,
+        destinationHint: record.destination ?? undefined,
+      }
+      // No `listItems` and no totals: `gatherPayout` splits off the stored rows or refuses.
+      const source: PayoutSource = { id: ctx.sourceId, kind: 'file', listPayouts: async () => [] }
+      const outcome = await ingestOne(db, { ctx, source, header, actorUserId, fieldCtx, now })
+      if (outcome.refusal) return { status: 'refused', reason: outcome.refusal }
+      if (outcome.heldReversed)
+        return { status: 'skipped', reason: 'Its entry was reversed by a person' }
+      return { status: outcome.posted ? 'posted' : 'live' }
+    },
+    'Failed to re-post a stored payout',
+    { organizationId, providerPayoutId }
+  )
+}
+
 function emptyResult(): SyncPayoutsResult {
   return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [], failed: [] }
 }
@@ -284,6 +352,7 @@ interface IngestOutcome {
   created: boolean
   posted: boolean
   alreadyPosted: boolean
+  heldReversed?: boolean
   refusal?: string
 }
 
@@ -362,6 +431,10 @@ async function ingestOne(
   // posting yet, because the subject row names the record.
   if (existing && (await findLivePayoutPosting(db, organizationId, existing.payoutId))) {
     return { created: false, posted: false, alreadyPosted: true }
+  }
+  // A person's reversal stands; only the matcher's own reversal is re-booked (§13 Q6).
+  if (existing?.number && (await isPayoutHeldReversed(db, organizationId, existing.number))) {
+    return { created: false, posted: false, alreadyPosted: false, heldReversed: true }
   }
 
   const gathered = await gatherPayout(db, { ctx, source, header })

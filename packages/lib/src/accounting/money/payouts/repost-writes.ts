@@ -3,12 +3,10 @@
 /**
  * The T26 correction: an item matched after its payout posted, so the entry's
  * `unidentified_receipts` credit is no longer what the stored match adds up to
- * (`plans/accounting/payout-links.md` §13 Q6).
- *
- * There is no re-post mechanism here and there must not be one. Reversing frees
- * the subject claim and unfreezes the members (§9.1), and the next
- * `sweepPayouts` finds no live posting and posts the payout again off the new
- * split. This file only backs the stale entry out.
+ * (`plans/accounting/payout-links.md` §13 Q6). Reversing frees the subject claim
+ * and unfreezes the members (§9.1); {@link repostStoredPayouts} books it again
+ * off the new split, from stored data, so a payout past the sync's lookback is
+ * not left unbooked.
  */
 
 import type { Database } from '@auxx/database'
@@ -16,6 +14,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
+import { listPaymentGateways } from '../../rails/reads'
+import { upsertWorkItem } from '../../work-items/write'
+import { findPayoutByGatewayId } from './reads'
+import { type RepostTarget, STALE_REVERSAL_LINK } from './repost-reads'
+import { getPayoutSource } from './source-registry'
+import { repostStoredPayout } from './sync'
 
 const logger = createScopedLogger('payouts:repost')
 
@@ -41,9 +45,9 @@ export interface StaleReversal {
  */
 export async function reverseStalePayoutPosting(
   db: Database,
-  params: { organizationId: string; glPostingId: string; actorUserId?: string }
+  params: { organizationId: string; glPostingId: string; transferId: string; actorUserId?: string }
 ): Promise<StaleReversal> {
-  const { organizationId, glPostingId, actorUserId } = params
+  const { organizationId, glPostingId, transferId, actorUserId } = params
   const lock = await resolvePeriodLock(organizationId)
   const reversal = await reverseEntry(db, {
     organizationId,
@@ -51,9 +55,10 @@ export async function reverseStalePayoutPosting(
     actorUserId,
     lock,
     memo: 'Reversing a payout settled against items that have since been matched',
+    links: [{ ...STALE_REVERSAL_LINK, sourceId: transferId }],
   })
   if (didLedgerAccept(reversal)) {
-    logger.info('Reversed a stale payout posting so the sweep can re-post it', {
+    logger.info('Reversed a stale payout posting so it can be re-posted', {
       organizationId,
       glPostingId,
     })
@@ -72,4 +77,80 @@ export async function reverseStalePayoutPosting(
     error: reversal.error,
   })
   return { glPostingId, reversed: false, refusal }
+}
+
+export interface StoredRepostSummary {
+  /** Transfers whose payout now carries a fresh entry. */
+  postedTransferIds: string[]
+  /** Refused by the ledger or unpostable from stored data; each parked a `payout` work item. */
+  refused: number
+}
+
+/**
+ * Re-post each target's payout from its stored record and evidence rows.
+ *
+ * **Never throws.** Call it outside any transaction: every post takes the accounting commit lock.
+ */
+export async function repostStoredPayouts(
+  db: Database,
+  params: { organizationId: string; targets: readonly RepostTarget[]; actorUserId?: string }
+): Promise<StoredRepostSummary> {
+  const { organizationId, targets, actorUserId } = params
+  const summary: StoredRepostSummary = { postedTransferIds: [], refused: 0 }
+  if (!targets.length) return summary
+  const gateways = await listPaymentGateways(db, organizationId)
+  if (gateways.isErr()) {
+    logger.error('Could not read the rails to re-post payouts', {
+      organizationId,
+      error: gateways.error.message,
+    })
+    return summary
+  }
+  for (const target of targets) {
+    const source = getPayoutSource(target.providerKey)
+    if (source.isErr()) {
+      logger.error('A reversed payout has no registered source to re-post through', {
+        organizationId,
+        transferId: target.transferId,
+        providerKey: target.providerKey,
+      })
+      continue
+    }
+    const rail = gateways.value.find((row) => row.id === target.paymentGatewayId)
+    if (!rail) {
+      const record = await findPayoutByGatewayId(
+        db,
+        organizationId,
+        target.payoutExternalId,
+        target.paymentGatewayId
+      )
+      if (record?.status === 'paid') {
+        summary.refused++
+        await upsertWorkItem(db, organizationId, {
+          sourceKind: 'payout',
+          sourceId: record.payoutId,
+          stage: 'post',
+          reasonCode: 'GATEWAY_UNMAPPED',
+        })
+      }
+      continue
+    }
+    const result = await repostStoredPayout(db, {
+      ctx: { organizationId, sourceId: source.value.id, rail, handle: null },
+      providerPayoutId: target.payoutExternalId,
+      actorUserId,
+    })
+    if (result.isErr()) continue
+    const outcome = result.value
+    if (outcome.status === 'posted') summary.postedTransferIds.push(target.transferId)
+    else if (outcome.status === 'refused') {
+      summary.refused++
+      logger.warn('A reversed payout could not be re-posted', {
+        organizationId,
+        transferId: target.transferId,
+        reason: outcome.reason,
+      })
+    }
+  }
+  return summary
 }
