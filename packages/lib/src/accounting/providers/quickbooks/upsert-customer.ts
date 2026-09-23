@@ -10,6 +10,7 @@ import type { UnifiedCrudHandler } from '../../../resources/crud'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { readQuickbooksIdField, writeQuickbooksIdField } from './identity-field'
 import type { QuickbooksToolContext } from './invoke-quickbooks-tool'
+import { quickbooksName } from './objects/shared'
 
 const logger = createScopedLogger('quickbooks-upsert-customer')
 
@@ -352,7 +353,7 @@ function buildDisplayNames(contactInstanceId: string, fields: QuickbooksCustomer
   // unique, so a label carrying one cannot collide with another contact's.
   labels.push(`${base} (${contactInstanceId.slice(-ID_SUFFIX_LENGTH)})`)
 
-  return labels
+  return labels.map(quickbooksName)
 }
 
 /** One `find_quickbooks_customer` call. Null when nothing matched. */

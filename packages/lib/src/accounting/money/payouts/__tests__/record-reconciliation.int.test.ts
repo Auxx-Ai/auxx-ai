@@ -11,6 +11,7 @@ import {
   reconcileTransferIds,
   recoverPayoutReconciliationPage,
 } from '../assess-payouts'
+import { isPayoutHeldReversed, listTransfersAwaitingRepost } from '../repost-reads'
 
 let organizationId: string
 let actorUserId: string
@@ -378,5 +379,97 @@ describe('shared payout records and event reconciliation against PostgreSQL', ()
     // entry rows, their accounts, the frozen ids and one batched correction).
     expect(hundred).toBeLessThanOrEqual(16)
     expect(nextChunk).toBeLessThanOrEqual(hundred * 2)
+  })
+
+  it('re-books only a payout whose latest reversal was the matcher’s', async () => {
+    const [record, unposted] = await write([evidence('p1'), evidence('p2')])
+    const ids = [record!.id, unposted!.id]
+    const [entry] = await getTestDb()
+      .select({ id: schema.ProcessorBalanceEntry.id })
+      .from(schema.ProcessorBalanceEntry)
+      .where(eq(schema.ProcessorBalanceEntry.payoutExternalId, 'p1'))
+    const insertPosting = async (values: {
+      docNumber: string
+      periodKey: string
+      status: 'posted' | 'reversed'
+      revision?: number
+      reversesId?: string
+    }) => {
+      const [row] = await getTestDb()
+        .insert(schema.GlPosting)
+        .values({
+          organizationId,
+          postingType: 'payout',
+          txnDate: '2025-11-03',
+          totalMinor: 9700,
+          built: {},
+          postedAt: new Date(),
+          ...values,
+        })
+        .returning({ id: schema.GlPosting.id })
+      return row!.id
+    }
+    /** An original naming the item, then its reversal - the matcher's when `stale`. */
+    const postAndReverse = async (key: string, stale: boolean) => {
+      const original = await insertPosting({ docNumber: key, periodKey: key, status: 'reversed' })
+      await getTestDb().insert(schema.GlPostingSource).values({
+        organizationId,
+        glPostingId: original,
+        sourceKind: 'processor_balance_entry',
+        sourceId: entry!.id,
+        linkRole: 'member',
+      })
+      const reversal = await insertPosting({
+        docNumber: `${key}-REV`,
+        periodKey: key,
+        status: 'posted',
+        revision: 1,
+        reversesId: original,
+      })
+      if (stale)
+        await getTestDb().insert(schema.GlPostingSource).values({
+          organizationId,
+          glPostingId: reversal,
+          sourceKind: 'money_transfer',
+          sourceId: record!.id,
+          linkRole: 'parent',
+        })
+    }
+    const awaiting = () => listTransfersAwaitingRepost(getTestDb(), organizationId, ids)
+
+    expect(await awaiting()).toEqual([])
+
+    // A person's reversal stands.
+    await postAndReverse('PAY-0001', false)
+    expect(await awaiting()).toEqual([])
+    expect(await isPayoutHeldReversed(getTestDb(), organizationId, 'PAY-0001')).toBe(true)
+
+    // The matcher's later reversal of a later entry is re-booked.
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await postAndReverse('PAY-0001-R2', true)
+    expect(await awaiting()).toEqual([
+      {
+        transferId: record!.id,
+        payoutExternalId: 'p1',
+        providerKey: 'gateway_a',
+        paymentGatewayId: null,
+      },
+    ])
+    expect(await isPayoutHeldReversed(getTestDb(), organizationId, 'PAY-0001')).toBe(false)
+
+    // Re-posted: its live entry names the same items, so a second pass finds nothing to do.
+    const live = await insertPosting({
+      docNumber: 'PAY-0001-R3',
+      periodKey: 'PAY-0001-R3',
+      status: 'posted',
+    })
+    await getTestDb().insert(schema.GlPostingSource).values({
+      organizationId,
+      glPostingId: live,
+      sourceKind: 'processor_balance_entry',
+      sourceId: entry!.id,
+      linkRole: 'member',
+    })
+    expect(await awaiting()).toEqual([])
   })
 })

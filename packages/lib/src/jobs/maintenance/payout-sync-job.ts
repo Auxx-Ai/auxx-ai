@@ -18,7 +18,8 @@ const OPEN_MATCH_PAGE = 500
 /**
  * Recover persisted financial records in bounded pages, then run legacy payout sources
  * whose processor accounts have not moved to the shared financial record path.
- * Scheduled nightly; each recovery page saves its cursor for job retries.
+ * Scheduled nightly; each recovery page saves its cursor for job retries. The recovery walk
+ * visits every transfer, so it is also what re-posts a payout reversed at any age.
  */
 export async function payoutSyncJob(ctx: JobContext): Promise<void> {
   logger.info('Running payout sync sweep', { jobId: ctx.jobId })
@@ -26,24 +27,33 @@ export async function payoutSyncJob(ctx: JobContext): Promise<void> {
   // the ones a night can actually change, and they are one index read away. The
   // full walk below stays as the disaster path.
   let pending = 0
+  let reposted = 0
   for (const [organizationId, ids] of await listTransfersWithOpenMatches(database, {
     limit: OPEN_MATCH_PAGE,
   })) {
     ctx.throwIfCancelled()
-    pending += await reconcileTransferIds(database, organizationId, ids)
+    const outcome = await reconcileTransferIds(database, organizationId, ids)
+    pending += outcome.changed
+    reposted += outcome.reposted
   }
-  logger.info('Open payout matches reconciled', { jobId: ctx.jobId, changed: pending })
+  logger.info('Open payout matches reconciled', { jobId: ctx.jobId, changed: pending, reposted })
   let cursor =
     typeof ctx.data?.reconciliationCursor === 'string' ? ctx.data.reconciliationCursor : undefined
   let changed = 0
+  let recovered = 0
   do {
     ctx.throwIfCancelled()
     const page = await recoverPayoutReconciliationPage(database, cursor)
     changed += page.changed
+    recovered += page.reposted
     cursor = page.nextCursor ?? undefined
     await ctx.job.updateData({ ...ctx.job.data, reconciliationCursor: cursor ?? null })
   } while (cursor)
-  logger.info('Persisted payout reconciliation recovered', { jobId: ctx.jobId, changed })
+  logger.info('Persisted payout reconciliation recovered', {
+    jobId: ctx.jobId,
+    changed,
+    reposted: recovered,
+  })
   const summary = await sweepPayouts()
   logger.info('Payout sync sweep finished', { jobId: ctx.jobId, ...summary })
 }

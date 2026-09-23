@@ -1,21 +1,17 @@
 // packages/lib/src/accounting/money/payouts/recheck.ts
 
 import type { Database } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { reconcileTransferIds } from './assess-payouts'
 import { guard } from './guard'
 import { listTransfersWithOpenMatches } from './match-sync'
-import { syncPayouts } from './sync'
-
-const logger = createScopedLogger('payouts:recheck')
 
 export interface RecheckPayoutMatchesResult {
   /** Payouts that held a `pending`/`suggested` item and were re-assessed. */
   payouts: number
   /** Payouts whose stored reconciliation changed. */
   changed: number
-  /** Payouts this org's sync posted afterwards — re-posts of entries the re-check reversed. */
+  /** Payouts re-posted from stored data after the new matches reversed their entry. */
   reposted: number
 }
 
@@ -33,20 +29,10 @@ export async function recheckOpenPayoutMatches(
       const open = await listTransfersWithOpenMatches(db, { organizationId })
       const ids = open.get(organizationId) ?? []
       if (!ids.length) return { payouts: 0, changed: 0, reposted: 0 }
-
-      const changed = await reconcileTransferIds(db, organizationId, ids)
-      if (!changed) return { payouts: ids.length, changed, reposted: 0 }
-
-      // The reconcile reverses postings the new matches made stale; this org's sync re-posts them.
-      const sync = await syncPayouts(db, { organizationId, actorUserId })
-      if (sync.isErr()) {
-        logger.warn('Re-post after re-check failed; the nightly sweep retries it', {
-          organizationId,
-          error: sync.error.message,
-        })
-        return { payouts: ids.length, changed, reposted: 0 }
-      }
-      return { payouts: ids.length, changed, reposted: sync.value.posted }
+      const { changed, reposted } = await reconcileTransferIds(db, organizationId, ids, {
+        actorUserId,
+      })
+      return { payouts: ids.length, changed, reposted }
     },
     'Failed to re-check payout matches',
     { organizationId }

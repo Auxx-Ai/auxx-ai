@@ -38,6 +38,7 @@ import type { ExportAvenue } from '../setup/export-settings'
 import type {
   CounterpartyType,
   GlPostingLineInput,
+  GlPostingSourceInput,
   PostingType,
   PostResult,
   ReverseManyResult,
@@ -59,6 +60,8 @@ export interface ReverseEntryOptions {
   memo?: string
   /** The person's Reverse: refused until the provider holds the entry. Undo paths leave it off. */
   onlyIfExported?: boolean
+  /** Extra non-subject links on the reversal, e.g. what the correction was made for. */
+  links?: GlPostingSourceInput[]
 }
 
 /** A refusal, in the same shape `postEntry` returns. This function never throws either. */
@@ -133,7 +136,7 @@ export async function reverseEntryInTx(
   tx: Transaction,
   options: ReverseEntryOptions
 ): Promise<InTxPostResult> {
-  const { organizationId, glPostingId, actorUserId, lock, memo, onlyIfExported } = options
+  const { organizationId, glPostingId, actorUserId, lock, memo, onlyIfExported, links } = options
 
   {
     const db = tx
@@ -311,6 +314,7 @@ export async function reverseEntryInTx(
           linkRole: 'subject',
           occurrence: 'reversal',
         },
+        ...(links ?? []).filter((link) => link.linkRole !== 'subject'),
       ],
     })
   }

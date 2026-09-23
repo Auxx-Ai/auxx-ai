@@ -60,6 +60,7 @@ export const PAYOUT_ATTRIBUTES = pickSystemAttributes(PAYOUT_FIELDS, [
   'payout_payment_gateway',
   'payout_bank_account',
   'payout_source',
+  'payout_destination',
   'payout_destination_mismatch',
 ] as const)
 

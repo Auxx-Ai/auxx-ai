@@ -58,6 +58,8 @@ export interface PayoutRecord {
   paymentGatewayId: string | null
   /** The `bank_account` record the money landed in. Stamped when the entry posts. */
   bankAccountId: string | null
+  /** The destination the source last reported (Stripe: `ba_…`), as the sync transcribed it. */
+  destination: string | null
   /**
    * Set when the source reported a destination the mapped bank account's
    * `settlementDestinations` does not carry (58 §4.5, §5.4 rule 2, D7). The entry still posted -
