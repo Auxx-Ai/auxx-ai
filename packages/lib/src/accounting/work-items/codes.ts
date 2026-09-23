@@ -216,6 +216,12 @@ export const WORK_ITEM_CODES = {
     sentence: (item) =>
       `${item.externalRef ?? 'A transaction'} in the connected books duplicates one we sent. Delete it there; the next sync reverses its copy here.`,
   },
+  PROVIDER_BILL_LEFT_OPEN: {
+    severity: 'warning',
+    status: 'warning',
+    sentence: (item) =>
+      `${item.externalRef ?? 'An expense'} in the connected books pays a bill we sent, but as an expense, so the bill stays open there. Pay the bill there instead; the next sync records it here.`,
+  },
   REFUND_EXCEEDS_MEMO: {
     severity: 'warning',
     status: 'warning',

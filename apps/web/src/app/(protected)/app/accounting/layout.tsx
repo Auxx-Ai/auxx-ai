@@ -18,6 +18,7 @@ import {
   Calculator,
   FileText,
   FileUp,
+  GitCompareArrows,
   HandCoins,
   Inbox,
   Landmark,
@@ -106,6 +107,15 @@ const ACCOUNTING_NAV: SidebarProps[] = [
         icon: <Banknote />,
         description: 'Payouts and processor activity as the provider reported them',
         keywords: ['evidence', 'processor', 'unassigned', 'import issues'],
+        permissionKey: 'ledger.post',
+      },
+      {
+        id: 'accounting-banking-matches',
+        label: 'Matches',
+        slug: 'banking/matches',
+        icon: <GitCompareArrows />,
+        description: 'Payments and deposits in the connected books, matched against ours',
+        keywords: ['quickbooks', 'duplicate', 'provider', 'suggested', 'adopt'],
         permissionKey: 'ledger.post',
       },
       {

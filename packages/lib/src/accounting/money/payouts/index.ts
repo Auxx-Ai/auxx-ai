@@ -73,6 +73,7 @@ export {
   listPayoutMemberEntryIds,
   listPayouts,
 } from './reads'
+export { type RecheckPayoutMatchesResult, recheckOpenPayoutMatches } from './recheck'
 export { readRecognisedChargeIds, recognise } from './recognise'
 export {
   type EntryReferenceResolver,

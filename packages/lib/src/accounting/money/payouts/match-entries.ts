@@ -202,7 +202,8 @@ export async function assessProcessorEntries(
       }
       const graded = candidates.map(({ money, account }) => ({
         money,
-        railOk: account.paymentGatewayId === gatewayId,
+        // The receipt's own gateway first: a store account takes payments on several.
+        railOk: (money.paymentGatewayId ?? account.paymentGatewayId) === gatewayId,
         amountOk:
           money.amountMinor === (entry.grossMinor < 0n ? -entry.grossMinor : entry.grossMinor),
       }))

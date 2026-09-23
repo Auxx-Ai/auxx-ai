@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   counts: { rejected: 0, unassignedCount: 0, unassignedTotals: [] } as Record<string, unknown>,
   /** The last input `payoutEvidence.list` was called with — the contract under test. */
   listInput: null as Record<string, unknown> | null,
+  canPost: true,
+  recheck: vi.fn(),
 }))
 
 /**
@@ -37,7 +39,7 @@ vi.mock('next/link', () => ({
 }))
 vi.mock('~/providers/capabilities-provider', () => ({
   useRequireCapability: () => {},
-  useAccess: () => ({ can: () => true }),
+  useAccess: () => ({ can: () => state.canPost }),
 }))
 vi.mock('~/components/global/docked-panels-outlet', () => ({ useRegisterDockedPanels: () => {} }))
 vi.mock('~/hooks/use-media', () => ({ useMedia: () => false }))
@@ -68,6 +70,9 @@ vi.mock('~/trpc/react', () => ({
       },
       sourceAccounts: { useQuery: () => ({ data: state.accounts, isPending: false }) },
       counts: { useQuery: () => ({ data: state.counts }) },
+      recheckMatches: {
+        useMutation: () => ({ mutate: state.recheck, isPending: false }),
+      },
     },
   },
 }))
@@ -154,6 +159,8 @@ beforeEach(() => {
   state.accounts = [ACCOUNT]
   state.counts = { rejected: 0, unassignedCount: 0, unassignedTotals: [] }
   state.listInput = null
+  state.canPost = true
+  state.recheck.mockClear()
 })
 
 describe('payouts filter toolbar', () => {
@@ -233,6 +240,18 @@ describe('payouts filter toolbar', () => {
     renderPage()
     expect(screen.getByText('16 need matching')).toBeInTheDocument()
     expect(screen.queryByText('Feed has no gateway')).not.toBeInTheDocument()
+  })
+
+  it('re-checks matches from beside the worklist toggle', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Re-check matches'))
+    expect(state.recheck).toHaveBeenCalledOnce()
+  })
+
+  it('hides Re-check matches without ledger post access', () => {
+    state.canPost = false
+    renderPage()
+    expect(screen.queryByText('Re-check matches')).not.toBeInTheDocument()
   })
 })
 

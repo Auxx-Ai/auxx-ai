@@ -23,6 +23,7 @@ import { api } from '~/trpc/react'
 import { formatAccountingDate, formatAuditTimestamp, formatMinor } from '../../ledger/format'
 import { LedgerCard } from '../../ledger-card'
 import { formatEvidenceDate } from './evidence-format'
+import { PayoutProviderSide } from './payout-provider-side'
 import { ProcessorActivity } from './processor-activity'
 
 /** Accounting > Settings > Payment gateways — where a feed is pointed at a rail. */
@@ -172,11 +173,22 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
             and the instruction was generic enough to be true of every payout on
             the page. The blocker is the sentence worth keeping. `nextActions`
             is still on the DTO; nothing reads it now. */}
-        <BankDepositLine
-          bankDeposit={payout.bankDeposit}
-          status={payout.status}
-          currency={payout.destinationCurrency}
+        {payout.bankDeposit && (
+          <BankDepositLine
+            bankDeposit={payout.bankDeposit}
+            currency={payout.destinationCurrency}
+            bookTimeZone={bookTimeZone}
+          />
+        )}
+        <PayoutProviderSide
+          payoutId={payout.payoutInstanceId}
+          deposited={DEPOSITED_STATUSES.has(payout.status)}
           bookTimeZone={bookTimeZone}
+          fallback={
+            !payout.bankDeposit && DEPOSITED_STATUSES.has(payout.status) ? (
+              <NoBankDepositLine />
+            ) : null
+          }
         />
       </div>
 
@@ -211,7 +223,6 @@ const DEPOSITED_STATUSES = new Set(['paid', 'in_transit'])
 /** The bank line a reviewer matched this payout to in Banking review. */
 function BankDepositLine({
   bankDeposit,
-  status,
   currency,
   bookTimeZone,
 }: {
@@ -220,28 +231,27 @@ function BankDepositLine({
     postedAt: string | null
     amountMinor: number
     bankAccountName: string | null
-  } | null
-  status: string
+  }
   currency: string
   bookTimeZone: string
 }) {
-  if (bankDeposit) {
-    return (
-      <p className='text-muted-foreground text-xs'>
-        Deposited:{' '}
-        <Link
-          href={`/app/accounting/banking?txn=${bankDeposit.transactionId}`}
-          className='text-foreground underline-offset-2 hover:underline'>
-          bank line
-          {bankDeposit.postedAt &&
-            ` on ${formatAccountingDate(bankDeposit.postedAt, bookTimeZone)}`}
-          , {formatMinor(bankDeposit.amountMinor, currency)}
-        </Link>
-        {bankDeposit.bankAccountName && ` in ${bankDeposit.bankAccountName}`}
-      </p>
-    )
-  }
-  if (!DEPOSITED_STATUSES.has(status)) return null
+  return (
+    <p className='text-muted-foreground text-xs'>
+      Deposited:{' '}
+      <Link
+        href={`/app/accounting/banking?txn=${bankDeposit.transactionId}`}
+        className='text-foreground underline-offset-2 hover:underline'>
+        bank line
+        {bankDeposit.postedAt && ` on ${formatAccountingDate(bankDeposit.postedAt, bookTimeZone)}`},{' '}
+        {formatMinor(bankDeposit.amountMinor, currency)}
+      </Link>
+      {bankDeposit.bankAccountName && ` in ${bankDeposit.bankAccountName}`}
+    </p>
+  )
+}
+
+/** With no connected book, a bank line is the only confirmation a deposit landed. */
+function NoBankDepositLine() {
   return (
     <p className='text-muted-foreground text-xs'>
       No bank deposit matched yet.{' '}

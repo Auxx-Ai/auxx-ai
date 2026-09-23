@@ -20,6 +20,7 @@ import {
   CircleAlert,
   CircleSlash,
   Clock,
+  ExternalLink,
   Map as MapIcon,
   RefreshCw,
   TriangleAlert,
@@ -30,6 +31,7 @@ import { PaymentGatewayAddDialog } from '~/components/accounting/ui/settings/pay
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
+import { useProviderName } from '~/components/money/ui/provider-payment-notice'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -37,6 +39,7 @@ import { formatAccountingDate, formatMinor } from '../format'
 import { MOVEMENT_PURPOSE_LABEL, WORK_SOURCE_LABEL } from '../type-labels'
 import { OutboxRow } from './outbox-row'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
+import { StandardCostDialog } from './standard-cost-dialog'
 
 type BlockedGroup = RouterOutputs['ledger']['listBlocked']['items'][number]
 type BlockedItem = RouterOutputs['ledger']['listBlockedItems']['items'][number]
@@ -92,9 +95,6 @@ function mapHref(group: GroupKey): string | null {
     return `/app/accounting/settings/accounts?s=chart&account=${encodeURIComponent(group.glAccountId)}`
   // With a handle the dialog opens in place; without one the feed is linked on the gateway.
   if (group.reasonCode === 'GATEWAY_UNMAPPED') return '/app/accounting/settings/payment-gateways'
-  // The group's `externalRef` is the part missing its standard cost.
-  if (group.reasonCode === 'STANDARD_COST_MISSING' && group.externalRef)
-    return `/app/parts/${encodeURIComponent(group.externalRef)}`
   return null
 }
 
@@ -173,6 +173,8 @@ export function BlockedPanel({
 
   // The handle a Map click opened the add dialog for.
   const [mapHandle, setMapHandle] = useState<string | null>(null)
+  // The part a Map click opened the standard-cost dialog for.
+  const [costPartId, setCostPartId] = useState<string | null>(null)
 
   // Retry all makes the rows due now and returns; the recovery job posts them (91 §4.6).
   const retry = api.ledger.retryBlockedGroup.useMutation({
@@ -212,7 +214,10 @@ export function BlockedPanel({
     const noun =
       group.sourceKinds.length === 1 ? sourceLabel(group.sourceKinds[0] ?? '') : 'Records'
     const href = mapHref(group)
-    const mapInPlace = group.reasonCode === 'GATEWAY_UNMAPPED' && !!group.externalRef
+    // The group's `externalRef` is the gateway handle, or the part missing its standard cost.
+    const mapInPlace =
+      (group.reasonCode === 'GATEWAY_UNMAPPED' || group.reasonCode === 'STANDARD_COST_MISSING') &&
+      !!group.externalRef
     const retrying = group.dueCount > 0
     return (
       <OutboxRow
@@ -232,7 +237,11 @@ export function BlockedPanel({
               <TreeRowButton
                 persistent
                 tooltipText='Map it'
-                onClick={() => setMapHandle(group.externalRef)}>
+                onClick={() =>
+                  group.reasonCode === 'STANDARD_COST_MISSING'
+                    ? setCostPartId(group.externalRef)
+                    : setMapHandle(group.externalRef)
+                }>
                 <MapIcon />
               </TreeRowButton>
             ) : (
@@ -325,6 +334,12 @@ export function BlockedPanel({
         initialHandle={mapHandle ?? undefined}
         onCreated={refresh}
       />
+      <StandardCostDialog
+        partId={costPartId}
+        onOpenChange={(next) => {
+          if (!next) setCostPartId(null)
+        }}
+      />
     </div>
   )
 }
@@ -356,6 +371,7 @@ function BlockedGroupItems({
   onSelectShipment,
   onRetry,
 }: BlockedGroupItemsProps) {
+  const providerName = useProviderName()
   const list = api.ledger.listBlockedItems.useInfiniteQuery(
     { ...query, group },
     { getNextPageParam: (page) => page.nextCursor }
@@ -404,9 +420,20 @@ function BlockedGroupItems({
                 : ''
             }
             actions={
-              <TreeRowButton persistent tooltipText='Retry' onClick={() => onRetry(item)}>
-                <RefreshCw />
-              </TreeRowButton>
+              <>
+                {item.providerObjectUrl && (
+                  <TreeRowButton
+                    persistent
+                    tooltipText={`Open in ${providerName}`}
+                    aria-label={`Open in ${providerName}`}
+                    onClick={() => window.open(item.providerObjectUrl ?? '', '_blank', 'noopener')}>
+                    <ExternalLink />
+                  </TreeRowButton>
+                )}
+                <TreeRowButton persistent tooltipText='Retry' onClick={() => onRetry(item)}>
+                  <RefreshCw />
+                </TreeRowButton>
+              </>
             }
             onOpen={onOpen}
             active={active}

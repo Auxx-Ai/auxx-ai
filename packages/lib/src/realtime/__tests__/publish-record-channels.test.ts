@@ -98,6 +98,39 @@ describe('publishFieldValueUpdates — per-def fanout', () => {
     expect(bFrames[0]?.data.entries).toHaveLength(1)
   })
 
+  it('keeps every frame under the server event cap when values are large', async () => {
+    const { service, frames } = fakeService()
+    // 50 entries of ~6.6KB: the 332KB frame the echtzeit server rejected with a 413.
+    const big = Array.from({ length: 50 }, (_, i) => ({
+      ...entry(DEF_A, `inst-${i}`, `field-${i}`),
+      value: { id: `v-${i}`, type: 'text' as const, value: 'x'.repeat(6_600) },
+    }))
+
+    await publishFieldValueUpdates(service, ORG, big)
+
+    expect(frames.length).toBeGreaterThan(1)
+    for (const frame of frames) {
+      expect(Buffer.byteLength(JSON.stringify(frame.data))).toBeLessThan(100 * 1024)
+    }
+    expect(frames.flatMap((f) => f.data.entries ?? [])).toEqual(big)
+  })
+
+  it('invalidates the def instead of publishing a value no frame can carry', async () => {
+    const { service, frames } = fakeService()
+    const small = entry(DEF_A, 'inst-a1', 'field-a1')
+    const huge = {
+      ...entry(DEF_A, 'inst-a2', 'field-a2'),
+      value: { id: 'v-huge', type: 'text' as const, value: 'x'.repeat(200_000) },
+    }
+
+    await publishFieldValueUpdates(service, ORG, [small, huge])
+
+    expect(frames).toEqual([
+      { roomKey: ROOM_A, event: 'fieldValues:updated', data: { entries: [small] } },
+      { roomKey: ROOM_A, event: 'records:invalidated', data: { entityDefinitionId: DEF_A } },
+    ])
+  })
+
   it('publishes nothing for an empty entry list', async () => {
     const { service, frames } = fakeService()
     await publishFieldValueUpdates(service, ORG, [])

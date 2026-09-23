@@ -131,10 +131,15 @@ export interface ProviderTransactionRef {
 
 /** See {@link AccountingProvider.readTransactionLinks}. */
 export interface ProviderTransactionLinks {
-  /** The transactions this one names: the Invoice a Payment paid, the Payments a Deposit carries. */
-  linked: ProviderTransactionRef[]
+  /**
+   * The transactions this one names: the Invoice a Payment paid, the Payments a Deposit carries,
+   * the Bills a Bill Payment paid (with the amount its line applied, when the object says).
+   */
+  linked: Array<ProviderTransactionRef & { amountMinor?: number }>
   /** A Deposit's lines coded straight to an account rather than depositing a payment. */
   codedLines: Array<{ providerAccountId: string; amountMinor: number }>
+  /** The provider vendor a Bill Payment or Purchase names; absent or null when it names none. */
+  vendorId?: string | null
 }
 
 /** What to look for. Both halves are supplied because no provider offers both. */

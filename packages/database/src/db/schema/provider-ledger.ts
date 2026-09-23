@@ -62,7 +62,7 @@ export const ProviderLedgerEntry = pgTable(
      */
     matchState: text().$type<'pending' | 'suggested' | 'matched' | 'unmatchable'>(),
     matchReason: text(),
-    /** `money_transaction` | `money_transfer` — what `matchedId` names. */
+    /** `money_transaction` | `payout` | `invoice` — what `matchedId` names. */
     matchedKind: text(),
     /** The match when `matched`, the candidate when `suggested`. */
     matchedId: text(),

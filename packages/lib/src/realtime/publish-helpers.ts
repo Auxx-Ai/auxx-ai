@@ -30,6 +30,38 @@ import type { RealtimeService } from './realtime-service'
 import { CHANNEL_LENSES, rooms } from './rooms'
 
 const CHUNK_SIZE = 50
+/** Under the echtzeit server's 100KB event cap, leaving room for the envelope. */
+const MAX_FRAME_BYTES = 90_000
+
+/**
+ * Pack entries into frames of at most `CHUNK_SIZE` entries and `MAX_FRAME_BYTES`;
+ * an entry too large to fit any frame on its own is returned in `oversized`.
+ */
+function packFrames(entries: FieldValueUpdateEntry[]): {
+  frames: FieldValueUpdateEntry[][]
+  oversized: FieldValueUpdateEntry[]
+} {
+  const frames: FieldValueUpdateEntry[][] = []
+  const oversized: FieldValueUpdateEntry[] = []
+  let current: FieldValueUpdateEntry[] = []
+  let currentBytes = 0
+  for (const entry of entries) {
+    const bytes = Buffer.byteLength(JSON.stringify(entry)) + 1
+    if (bytes > MAX_FRAME_BYTES) {
+      oversized.push(entry)
+      continue
+    }
+    if (current.length >= CHUNK_SIZE || currentBytes + bytes > MAX_FRAME_BYTES) {
+      frames.push(current)
+      current = []
+      currentBytes = 0
+    }
+    current.push(entry)
+    currentBytes += bytes
+  }
+  if (current.length > 0) frames.push(current)
+  return { frames, oversized }
+}
 
 /**
  * Bucket field-value entries by the entity def they belong to.
@@ -54,7 +86,7 @@ function groupEntriesByDef(entries: FieldValueUpdateEntry[]): Map<string, FieldV
 
 /**
  * Publish field value updates on the per-def record channels
- * (`rooms.orgRecords`), chunking if needed (Pusher 10KB limit).
+ * (`rooms.orgRecords`), chunked by entry count and frame size.
  * Fire-and-forget — errors are logged by the provider, not thrown.
  *
  * One call routinely spans several defs (a relationship write touches both
@@ -81,24 +113,18 @@ export async function publishFieldValueUpdates(
   for (const [entityDefinitionId, defEntries] of groupEntriesByDef(entries)) {
     const roomKey = rooms.orgRecords(organizationId, entityDefinitionId)
 
-    if (defEntries.length <= CHUNK_SIZE) {
+    const { frames, oversized } = packFrames(defEntries)
+    frames.forEach((frame, index) => {
+      const data =
+        frames.length === 1
+          ? { entries: frame }
+          : { entries: frame, chunk: { index, total: frames.length } }
+      promises.push(realtimeService.publish(roomKey, 'fieldValues:updated', data, options))
+    })
+    // A value too large for any frame cannot ride the event, so open clients refetch the def.
+    if (oversized.length > 0) {
       promises.push(
-        realtimeService.publish(roomKey, 'fieldValues:updated', { entries: defEntries }, options)
-      )
-      continue
-    }
-
-    // Chunk into multiple messages, per def bucket.
-    const totalChunks = Math.ceil(defEntries.length / CHUNK_SIZE)
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = defEntries.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-      promises.push(
-        realtimeService.publish(
-          roomKey,
-          'fieldValues:updated',
-          { entries: chunk, chunk: { index: i, total: totalChunks } },
-          options
-        )
+        realtimeService.publish(roomKey, 'records:invalidated', { entityDefinitionId }, options)
       )
     }
   }

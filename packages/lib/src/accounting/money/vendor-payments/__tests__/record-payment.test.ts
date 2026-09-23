@@ -149,6 +149,11 @@ describe('recordVendorPayment', () => {
     })
   })
 
+  it('stamps the provider entry it was adopted from (102 D1)', async () => {
+    await run({ providerLedgerEntryId: 'ple_1' })
+    expect(h.inserts[0]![1]).toMatchObject({ providerLedgerEntryId: 'ple_1' })
+  })
+
   it('stamps the rail the money left on', async () => {
     await run({ paymentGatewayId: 'pg_1' })
     expect(h.inserts[0]![1]).toMatchObject({

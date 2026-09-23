@@ -4,24 +4,34 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../cache'
 
-/** The identity key each provider's app writes its customer id under (`identity-field.ts`). */
-const CUSTOMER_ID_FIELD_KEY: Record<string, string> = { quickbooks: 'qboCustomerId' }
+export type ProviderPartyKind = 'customer' | 'vendor'
+
+/** Which of our records a provider party maps to, and the identity key its app writes the id under. */
+const PARTY_IDENTITY: Record<
+  ProviderPartyKind,
+  { entitySlug: string; fieldKeyByProvider: Record<string, string> }
+> = {
+  customer: { entitySlug: 'contact', fieldKeyByProvider: { quickbooks: 'qboCustomerId' } },
+  vendor: { entitySlug: 'company', fieldKeyByProvider: { quickbooks: 'qboVendorId' } },
+}
 
 /**
- * `providerCustomerId -> contact id` for the customers our contacts are linked to, in one read
- * of `RecordIdentity`. A customer created in the provider with no contact of ours is absent.
+ * `providerPartyId -> our record id` for the parties our records are linked to, in one read of
+ * `RecordIdentity`. A party created in the provider with no record of ours is absent.
  */
-export async function resolveProviderCustomers(
+export async function resolveProviderParties(
   db: Database,
   organizationId: string,
   providerId: string,
-  providerCustomerIds: readonly string[]
+  kind: ProviderPartyKind,
+  providerPartyIds: readonly string[]
 ): Promise<Map<string, string>> {
-  const byCustomer = new Map<string, string>()
-  const appFieldKey = CUSTOMER_ID_FIELD_KEY[providerId]
-  if (!appFieldKey || providerCustomerIds.length === 0) return byCustomer
-  const contactDefId = await getCachedEntityDefId(organizationId, 'contact')
-  if (!contactDefId) return byCustomer
+  const byParty = new Map<string, string>()
+  const identity = PARTY_IDENTITY[kind]
+  const appFieldKey = identity.fieldKeyByProvider[providerId]
+  if (!appFieldKey || providerPartyIds.length === 0) return byParty
+  const entityDefId = await getCachedEntityDefId(organizationId, identity.entitySlug)
+  if (!entityDefId) return byParty
 
   const rows = await db
     .select({
@@ -32,15 +42,25 @@ export async function resolveProviderCustomers(
     .where(
       and(
         eq(schema.RecordIdentity.organizationId, organizationId),
-        eq(schema.RecordIdentity.entityDefinitionId, contactDefId),
+        eq(schema.RecordIdentity.entityDefinitionId, entityDefId),
         eq(schema.RecordIdentity.source, providerId),
         eq(schema.RecordIdentity.appFieldKey, appFieldKey),
-        inArray(schema.RecordIdentity.externalId, [...new Set(providerCustomerIds)])
+        inArray(schema.RecordIdentity.externalId, [...new Set(providerPartyIds)])
       )
     )
   for (const row of rows) {
-    if (row.externalId && !byCustomer.has(row.externalId))
-      byCustomer.set(row.externalId, row.entityInstanceId)
+    if (row.externalId && !byParty.has(row.externalId))
+      byParty.set(row.externalId, row.entityInstanceId)
   }
-  return byCustomer
+  return byParty
+}
+
+/** `providerCustomerId -> contact id`; see {@link resolveProviderParties}. */
+export function resolveProviderCustomers(
+  db: Database,
+  organizationId: string,
+  providerId: string,
+  providerCustomerIds: readonly string[]
+): Promise<Map<string, string>> {
+  return resolveProviderParties(db, organizationId, providerId, 'customer', providerCustomerIds)
 }

@@ -777,6 +777,7 @@ async function persistCosts(
             fieldType: toFieldType(write.field.type),
             value: write.value,
             rowId: previous.rowIds.get(pairKey(entry.partId, write.field.id)) ?? null,
+            currencyOptions: write.field.options as CostWrite['currencyOptions'],
           })
         }
       }
