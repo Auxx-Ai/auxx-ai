@@ -72,7 +72,7 @@ function ledgerBlock(input: {
   /** Forward field on the TARGET pointing back at the host, in `def:field` form. */
   hostFieldId: string
   /** System attribute on the target whose value renders as the row's badge. */
-  statusAttr: string
+  statusAttr?: string
   emptyLabel: string
   /**
    * Server sort, when {@link NEWEST_FIRST} is the wrong column.
@@ -297,6 +297,40 @@ export const TICKET_RETURNS_BLOCKS: LayoutBlock[] = [
     statusAttr: 'return_status',
     emptyLabel: 'No returns',
     actionsComponent: 'ticket-returns',
+  }),
+]
+
+/**
+ * Fulfillments on the ORDER drawer overview: every shipment the order produced,
+ * in sequence. A `query` source for the order, not the mirror, because
+ * `order_fulfillments` is unordered; bounded by its order, so one page holds all.
+ */
+export const ORDER_FULFILLMENTS_BLOCKS: LayoutBlock[] = [
+  ledgerBlock({
+    id: 'order:fulfillments',
+    label: 'Fulfillments',
+    icon: 'truck',
+    definition: 'fulfillment',
+    hostFieldId: 'fulfillment:order',
+    statusAttr: 'fulfillment_status',
+    emptyLabel: 'Nothing shipped yet',
+    sort: { fieldId: 'sequence' },
+    pageSize: PARCEL_PAGE_SIZE,
+  }),
+]
+
+/** What one fulfillment shipped: each row is the order line and the quantity it carried. */
+export const FULFILLMENT_LINES_BLOCKS: LayoutBlock[] = [
+  ledgerBlock({
+    id: 'fulfillment:lines',
+    label: 'Shipped lines',
+    icon: 'package-check',
+    definition: 'fulfillment_line',
+    hostFieldId: 'fulfillment_line:fulfillment',
+    // The row's badge slot prints a non-option value raw, so it carries the count.
+    statusAttr: 'fulfillment_line_quantity',
+    emptyLabel: 'No lines',
+    pageSize: PARCEL_PAGE_SIZE,
   }),
 ]
 

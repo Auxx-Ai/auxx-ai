@@ -11,6 +11,7 @@ import {
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
   CONTACT_ORDERS_BLOCKS,
+  ORDER_FULFILLMENTS_BLOCKS,
   PURCHASING_TAB_ID,
   TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
@@ -248,6 +249,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // Same key as the drawer's `order:ledger` card. HANDOFF slot 2J.
       { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
     ],
+    // Parity with the drawer; inert here, as the contact's Orders block is above.
+    tabBlocks: { overview: ORDER_FULFILLMENTS_BLOCKS },
   },
 
   purchase_order: {
