@@ -19,6 +19,8 @@ const h = vi.hoisted(() => ({
   defIds: { stock_movement: 'def_stock_movement', part: 'def_part' } as Record<string, string>,
   ledgerAverages: new Map<string, unknown>(),
   relievedAverages: new Map<string, unknown>(),
+  /** What the `sale` movements say each line has relieved, as the in-tx re-read sees it. */
+  relievedQuantities: new Map<string, number>(),
   standardCosts: new Map<string, unknown>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   writeStockMovements: vi.fn(),
@@ -77,6 +79,11 @@ vi.mock('../../costing/qoh', () => ({
 vi.mock('../../../field-hooks/post/fulfillment-line-rollups', () => ({
   recalculateFulfillmentLineQuantityRelievedBatch:
     h.recalculateFulfillmentLineQuantityRelievedBatch,
+  readRelievedQuantities: async () => h.relievedQuantities,
+}))
+
+vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
+  withAccountingCommitLock: async () => {},
 }))
 
 vi.mock('../../movements', async () => {
@@ -118,6 +125,7 @@ beforeEach(() => {
   h.fieldsByAttr = { line_item_part: { id: 'f_part' }, part_kind: { id: 'f_kind' } }
   h.ledgerAverages = new Map()
   h.relievedAverages = new Map()
+  h.relievedQuantities = new Map()
   h.standardCosts = new Map()
   h.reliefWriteSession.mockReturnValue({
     origin: { kind: 'automation' },
@@ -290,6 +298,7 @@ describe('relieveFulfillmentLines', () => {
       relievedValueMinor: 50_400,
       unitCostMinor: 4_200,
     })
+    h.relievedQuantities.set('fl_1', 12)
 
     const result = await relieveFulfillmentLines(db, {
       organizationId: ORG,
@@ -386,6 +395,7 @@ describe('relieveFulfillmentLines', () => {
       standardOverheadCost: 300,
     })
     h.relievedAverages.set('fl_1', { fulfillmentLineId: 'fl_1', unitCostMinor: 4_200 })
+    h.relievedQuantities.set('fl_1', 12)
     h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
@@ -564,6 +574,86 @@ describe('relieveFulfillmentLines', () => {
     expect(h.batchRecalculateQoH).toHaveBeenCalledWith(ORG, ['part_1'])
     expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
     expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_stock_movement', ['mv_0'])
+  })
+})
+
+describe('each relief run is its own document', () => {
+  const pricedLine = {
+    fulfillmentLineId: 'fl_1',
+    fulfillmentId: 'ful_1',
+    orderId: 'ord_1',
+    lineItemId: 'li_1',
+    quantity: 3,
+    quantityRelieved: null,
+    occurredAt: OCCURRED_AT,
+  }
+
+  function pricedDb(): Database {
+    h.standardCosts.set('part_1', 1_000)
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+      ok({
+        records: (inputs as Array<{ partInstanceId: string; quantity: number }>).map(
+          (input, index) => ({
+            movementId: `mv_${index}`,
+            recordId: `def_stock_movement:mv_${index}`,
+            partInstanceId: input.partInstanceId,
+            quantity: input.quantity,
+            unitCost: 1_000,
+            extendedCost: input.quantity * 1_000,
+            glAccount: 'inventory_finished_goods',
+            occurredAt: OCCURRED_AT,
+          })
+        ),
+        affectedPartIds: ['part_1'],
+      })
+    )
+    return fakeDb({
+      line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
+      part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
+    })
+  }
+
+  it("claims the run's first movement, with the fulfillment and the order as parents", async () => {
+    const db = pricedDb()
+    await relieveFulfillmentLines(db, { organizationId: ORG, userId: USER, lines: [pricedLine] })
+
+    const posted = h.postSpy.mock.calls[0]![1] as { subject: unknown; parents: unknown }
+    expect(posted.subject).toEqual({ sourceKind: 'stock_movement', sourceId: 'mv_0' })
+    expect(posted.parents).toEqual([
+      { sourceKind: 'fulfillment', sourceId: 'ful_1' },
+      { sourceKind: 'order', sourceId: 'ord_1' },
+    ])
+  })
+
+  it('refuses a run whose lines another run relieved since they were read, and refreshes the roll-up', async () => {
+    const db = pricedDb()
+    // The stored roll-up says nothing was relieved; the movements say all three were.
+    h.relievedQuantities.set('fl_1', 3)
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [pricedLine],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
+  })
+
+  it('never lets a run that wrote movements settle for an existing entry', async () => {
+    const db = pricedDb()
+    h.postSpy.mockResolvedValueOnce({ status: 'already_posted', glPostingId: 'gp_other' })
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [pricedLine],
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(h.announceQuietReliefWrites).not.toHaveBeenCalled()
   })
 })
 

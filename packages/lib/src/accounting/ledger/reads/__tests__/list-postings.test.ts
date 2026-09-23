@@ -168,6 +168,23 @@ describe('findLiveSubjectPostings', () => {
     expect(params).not.toContain('reversed')
   })
 
+  it('narrows to one occurrence only when asked', async () => {
+    const narrowed = stubDb([])
+    await findLiveSubjectPostings(narrowed.db, 'org_1', {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_1'],
+      occurrence: 'original',
+    })
+    expect(narrowed.params()).toContain('original')
+
+    const open = stubDb([])
+    await findLiveSubjectPostings(open.db, 'org_1', {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_1'],
+    })
+    expect(open.params()).not.toContain('original')
+  })
+
   it('keys by source, and the newest posting wins when one source has two', async () => {
     const stub = stubDb([
       row({ sourceKind: 'payout', sourceId: 'ins_1', linkRole: 'subject', glPostingId: 'glp_new' }),

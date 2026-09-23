@@ -266,6 +266,7 @@ export async function postFulfillmentAccounting(
     organizationId,
     sourceKind: FULFILLMENT_SOURCE_KIND,
     sourceId: fulfillmentId,
+    occurrence: 'original',
   })
   // A failed read of the posting index says nothing about the shipment, so it is
   // the one blocked answer that does not mark it.

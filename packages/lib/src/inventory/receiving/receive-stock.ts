@@ -500,7 +500,7 @@ async function postReceipt(
     // The PO LINE, not the order: it is what the receipt was against and what
     // the three-way match reads, and the order is one hop from it.
     ...(record.purchaseOrderLineId
-      ? { parent: { sourceKind: 'purchase_order_line', sourceId: record.purchaseOrderLineId } }
+      ? { parents: [{ sourceKind: 'purchase_order_line', sourceId: record.purchaseOrderLineId }] }
       : {}),
     txnDate: inventoryTxnDate(record.occurredAt),
     movements: [

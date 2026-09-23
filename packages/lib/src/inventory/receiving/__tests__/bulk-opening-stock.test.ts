@@ -26,6 +26,7 @@
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { inventoryPeriodKey } from '../../../accounting/ledger/builders/inventory-movement'
 import { BadRequestError, NotFoundError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ const h = vi.hoisted(() => ({
   standards: new Map<string, number | null>(),
   /** Index -> message, to model `bulkCreate`'s per-item failures. */
   createErrors: new Map<number, string>(),
+  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
 }))
 
 vi.mock('../../../cache', () => ({
@@ -335,6 +337,38 @@ describe('bulkOpenStockBalance — the movements it writes', () => {
   })
 })
 
+describe('bulkOpenStockBalance — the entry each run posts', () => {
+  it('gives two runs on two dates two entries with distinct document numbers', async () => {
+    let minted = 0
+    h.bulkCreateSpy.mockImplementation(async (_defId: string, items: unknown[]) => ({
+      created: items.map(() => ({ id: `mv_${minted++}` })),
+      errors: [],
+    }))
+
+    for (const [partId, day] of [
+      ['part_1', '2026-01-01'],
+      ['part_2', '2026-02-01'],
+    ] as const) {
+      const result = await bulkOpenStockBalance(db, ORG, USER, {
+        occurredAt: new Date(`${day}T00:00:00.000Z`),
+        entries: [{ partId, quantity: 2, unitCost: 100 }],
+      })
+      expect(result.isOk()).toBe(true)
+      h.moved.add(partId)
+    }
+
+    const subjects = h.postSpy.mock.calls.map(
+      (call) => (call[1] as { subject: { sourceKind: string; sourceId: string } }).subject
+    )
+    expect(subjects).toEqual([
+      { sourceKind: 'stock_movement', sourceId: 'mv_0' },
+      { sourceKind: 'stock_movement', sourceId: 'mv_1' },
+    ])
+    const numbers = subjects.map((subject) => inventoryPeriodKey(subject.sourceId))
+    expect(new Set(numbers).size).toBe(2)
+  })
+})
+
 describe('bulkOpeningStock — quantity on hand has exactly one owner', () => {
   // ✅ The ordinary lane, so `mfg-stock-movements-created` fires and
   // `recalculatePartQoH` is what writes `part_quantity_on_hand`. HANDOFF rule 5
@@ -620,7 +654,7 @@ describe('bulkSetPartKind', () => {
 // The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about the movements. `vi.mock` is hoisted, so placement is free.
 vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: async () => null,
+  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
   reverseInventoryMovementPosting: async () => null,

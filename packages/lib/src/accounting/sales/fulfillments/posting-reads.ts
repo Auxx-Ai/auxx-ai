@@ -85,7 +85,8 @@ export async function listFulfillmentAccountingCandidates(
         WHERE link."organizationId" = ${organizationId}
           AND link."sourceKind" = 'fulfillment'
           AND link."sourceId" = ship."entityId"
-          AND link."linkRole" = 'subject')
+          AND link."linkRole" = 'subject'
+          AND link."occurrence" = 'original')
     ORDER BY ship."valueDate" ASC, ship."entityId" ASC
     LIMIT ${limit}
   `)

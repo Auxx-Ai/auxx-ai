@@ -426,6 +426,8 @@ export interface FindLinkedPostingsOptions {
    * row is deleted by the reversal. A caller that wants any status says so.
    */
   statuses: readonly PostingStatus[]
+  /** Narrow to one pass over each source - `'original'` for a record's own first entry. */
+  occurrence?: string
 }
 
 /**
@@ -439,7 +441,7 @@ export async function findLinkedPostings(
   organizationId: string,
   options: FindLinkedPostingsOptions
 ): Promise<LinkedPosting[]> {
-  const { sourceKind, sourceIds, linkRole, postingTypes, statuses } = options
+  const { sourceKind, sourceIds, linkRole, postingTypes, statuses, occurrence } = options
   const ids = [...new Set(sourceIds)]
   if (ids.length === 0 || statuses.length === 0) return []
   const roles = Array.isArray(linkRole) ? [...linkRole] : [linkRole as PostingLinkRole]
@@ -475,6 +477,7 @@ export async function findLinkedPostings(
           ? eq(schema.GlPostingSource.linkRole, roles[0] as PostingLinkRole)
           : inArray(schema.GlPostingSource.linkRole, roles),
         ...(postingTypes?.length ? [inArray(schema.GlPosting.postingType, [...postingTypes])] : []),
+        ...(occurrence ? [eq(schema.GlPostingSource.occurrence, occurrence)] : []),
         statuses.length === 1
           ? eq(schema.GlPosting.status, statuses[0] as PostingStatus)
           : inArray(schema.GlPosting.status, [...statuses])
@@ -504,11 +507,12 @@ const LIVE_SUBJECT_STATUSES = ['posted'] as const satisfies readonly PostingStat
 export async function findLiveSubjectPostings(
   db: Database | Transaction,
   organizationId: string,
-  options: { sourceKind: string; sourceIds: readonly string[] }
+  options: { sourceKind: string; sourceIds: readonly string[]; occurrence?: string }
 ): Promise<Map<string, LinkedPosting>> {
   const rows = await findLinkedPostings(db, organizationId, {
     sourceKind: options.sourceKind,
     sourceIds: options.sourceIds,
+    occurrence: options.occurrence,
     linkRole: 'subject',
     statuses: LIVE_SUBJECT_STATUSES,
   })

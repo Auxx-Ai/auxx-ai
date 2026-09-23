@@ -314,8 +314,12 @@ export async function reverseFulfillmentPosting(
     sourceId: fulfillmentInstanceId,
   })
   if (found.isErr()) throw found.error
+  // `original` is the revenue entry; legacy relief entries claimed the fulfillment as `inventory`.
   const live = found.value.find(
-    (posting) => posting.linkRole === 'subject' && posting.status !== 'reversed'
+    (posting) =>
+      posting.linkRole === 'subject' &&
+      posting.occurrence === 'original' &&
+      posting.status !== 'reversed'
   )
   if (!live) return null
   const lock = await resolvePeriodLock(organizationId)

@@ -947,10 +947,20 @@ sale can carry a hundred movements and one entry.
   unreachable rather than merely detectable. The provider push is the one thing that stays
   outside the transaction.
 
-  The subject link is the document; `occurrence` distinguishes passes over one source — a
-  fulfillment already carries a `fulfillment` posting as its subject, so its inventory entry
-  claims `'inventory'` beside it rather than contending for the same row. The parent link is the
-  order or the purchase order where there is one.
+  The subject link is the document; `occurrence` distinguishes passes over one source. The parent
+  links are the order or the purchase order where there is one.
+
+  🛑 **A relief run is the document, not the fulfillment.** Relief can run more than once per
+  dispatch (a line skipped for a missing standard is relieved when the standard appears), so each
+  run's entry claims its own first `stock_movement` as subject, and the fulfillment and the order
+  are both `parent` links. Claiming the fulfillment made the second run mint the first run's doc
+  number and die on `GlPosting_org_docNumber_key`. Entries posted before this carry the old
+  `(fulfillment, 'inventory')` subject; the revenue readers narrow to occurrence `'original'`.
+  Because the per-fulfillment claim no longer stops a repeat, `relieveFulfillmentLines` takes the
+  accounting commit lock and re-reads each line's relieved total before writing. A salvage run
+  (parents: the return and the return line) and an opening-stock run claim their first movement
+  the same way; `inventoryPeriodKey` hashes the subject id alone, so an `occurrence` never made
+  two passes over one source mint two doc numbers.
 
 > The A/P leg still has a hard external ordering constraint: the provider's A/P account is not
 > addressable until one `Bill` object has existed in it.
