@@ -129,6 +129,7 @@ packages/lib/src/
     mirror/      the raw copy of the provider's ledger, and the translation off it
     providers/   the AccountingProvider seam, book connections, quickbooks/
     rails/       payment rails, rail accounts, rail fee status
+    connect-and-go/  headless setup steps over rails, banking and the book connection (brief 105)
     money/       MoneyTransaction / MoneyApplication, invoice payments, deposits,
                  payouts, checkout, stripe-connect, and the two evidence
                  reconcilers (customer-money/order-evidence-reconciler.ts,
@@ -1396,6 +1397,7 @@ naming one would need a role per gateway, and the vocabulary is closed (§6.1).
 | `rails/rail-fee-status.ts` | What the close can honestly say about a rail's processor fees. 🛑 **A fact, never an alarm and never a refusal** — it produces a date, and `prepareClose` does not call it |
 | `rails/feeds.ts` | Linking a processor feed to a rail (`FinancialSourceAccount.paymentGatewayId`) and whether a rail is ready to post |
 | `rails/repoint.ts` | What moving a gateway's clearing account is about to strand. ⚠️ It reads what is *posted to the account*, which is not the same as what *this gateway put there*, and the transfer entry is deliberately not here |
+| `rails/rail-groups.ts` | The census grouped by rail (`buildRailGroups`) and the setup defaults (`defaultMintFeeAccount`, `isStaleRail`). Pure and client-safe; the wizard and `connect-and-go/auto-route-rails.ts` share it |
 | `rails/settlement-discovery.ts` | Live processor sources with settlement evidence and no rail linked yet |
 
 **Netted vs billed.** A rail with a linked live `FinancialSourceAccount` is polled by its

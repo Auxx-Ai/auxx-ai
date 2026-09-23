@@ -238,6 +238,12 @@
       "import": "./dist/accounting/rails/rail-catalogue.mjs",
       "default": "./src/accounting/rails/rail-catalogue.ts"
     },
+    "./accounting/rails/rail-groups": {
+      "types": "./src/accounting/rails/rail-groups.ts",
+      "source": "./src/accounting/rails/rail-groups.ts",
+      "import": "./dist/accounting/rails/rail-groups.mjs",
+      "default": "./src/accounting/rails/rail-groups.ts"
+    },
     "./accounting/reports": {
       "types": "./src/accounting/reports/index.ts",
       "source": "./src/accounting/reports/index.ts",

@@ -1,4 +1,4 @@
-// apps/web/src/components/accounting/ui/setup-wizard/__tests__/wizard-rails-model.test.ts
+// packages/lib/src/accounting/rails/__tests__/rail-groups.test.ts
 //
 // The pure functions behind the wizard's payment-rails page (brief 26 §8, §9,
 // §13 decision 1): the rail grouping and its merge offer, §5's asymmetric
@@ -6,15 +6,15 @@
 // the fee-fallback warning. No query, no component - the same shape
 // `pack-picker.test.ts` takes for the chart-pack cascade.
 
-import type { GatewayHandleCensusRow, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
 import { describe, expect, it } from 'vitest'
+import type { GatewayHandleCensusRow, PaymentGatewayRow } from '../client'
 import {
   buildRailGroups,
   defaultMintFeeAccount,
   isStaleRail,
   sharedClearingAccounts,
   warnsAboutFeeFallback,
-} from '../wizard-rails-model'
+} from '../rail-groups'
 
 function census(
   handle: string,
@@ -32,6 +32,9 @@ function gateway(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow 
     clearingGlAccountId: 'gl_1200',
     feeGlAccountId: null,
     settlementSource: 'manual',
+    processorAccountId: null,
+    settlementCurrency: null,
+    bankAccountId: null,
     feeTreatment: 'netted',
     status: 'active',
     lastSettlementAt: null,
