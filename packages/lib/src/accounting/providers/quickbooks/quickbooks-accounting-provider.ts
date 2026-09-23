@@ -49,6 +49,7 @@ import { listChartAccounts } from '../../ledger/roles/role-map'
 import type { ProviderAccount, ProviderBalanceSheet, WithdrawResult } from '../../ledger/types'
 import type { ProviderLedgerSlicer } from '../../mirror/client'
 import { readPinnedAccountingConnection } from '../book-connections'
+import type { ProviderCompanySettings } from '../company-settings'
 import type {
   AccountingProvider,
   AccountingProviderCapabilities,
@@ -96,8 +97,20 @@ export { QUICKBOOKS_PROVIDER_ID }
 
 /** Brief 19 section 3: the opening-balance suggestion's one report read. */
 const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
+const TOOL_GET_COMPANY_SETTINGS = 'get_quickbooks_company_settings'
 /** The one call that runs the seam BACKWARDS - see `createProviderAccount`. */
 const TOOL_CREATE_ACCOUNT = 'create_quickbooks_account'
+
+/** What `get_quickbooks_company_settings` returns, in QuickBooks' own terms. */
+interface QuickbooksCompanySettings {
+  companyName?: string | null
+  fiscalYearStartMonth?: number | null
+  country?: string | null
+  homeCurrency?: string | null
+  multiCurrencyEnabled?: boolean | null
+  bookCloseDate?: string | null
+  reportBasis?: 'Accrual' | 'Cash' | null
+}
 
 /** One native object's `send`/`read`/`withdraw`, in the seam's own shapes. */
 interface QuickbooksObjectHandler {
@@ -291,6 +304,35 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       return err(
         new UnprocessableEntityError(
           `Could not read the QuickBooks balance sheet: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
+  /** `CompanyInfo` + `Preferences`, as setup reads them. Null when QuickBooks is not connected. */
+  async readCompanySettings(orgId: string): Promise<Result<ProviderCompanySettings | null, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok(null)
+
+    try {
+      const raw = (await resolved.context.callTool(
+        TOOL_GET_COMPANY_SETTINGS,
+        {}
+      )) as QuickbooksCompanySettings
+      return ok({
+        companyName: raw.companyName ?? null,
+        fiscalYearStartMonth: raw.fiscalYearStartMonth ?? null,
+        country: raw.country ?? null,
+        homeCurrency: raw.homeCurrency ?? null,
+        multiCurrencyEnabled: raw.multiCurrencyEnabled ?? null,
+        lockDate: raw.bookCloseDate ?? null,
+        reportingBasis:
+          raw.reportBasis === 'Accrual' ? 'accrual' : raw.reportBasis === 'Cash' ? 'cash' : null,
+      })
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read the QuickBooks company settings: ${errorMessage(error)}`
         )
       )
     }

@@ -21,6 +21,7 @@ import type { GlAccountSubtypeValue } from '../ledger/chart/account-subtype'
 import type { GlAccountTypeValue } from '../ledger/chart/default-chart'
 import type { ProviderAccount, ProviderBalanceSheet, WithdrawResult } from '../ledger/types'
 import type { ProviderLedgerSlicer } from '../mirror/client'
+import type { ProviderCompanySettings } from './company-settings'
 
 const logger = createScopedLogger('postings-provider')
 
@@ -354,6 +355,15 @@ export interface AccountingProvider {
     orgId: string,
     ref: ProviderTransactionRef
   ): Promise<Result<ProviderTransactionLinks | null, Error>>
+
+  /**
+   * The connected company's fiscal year, currency, lock date and reporting basis. Optional; `null`
+   * means nothing is connected. Xero would map Organisation `FinancialYearEndMonth` (+1),
+   * `BaseCurrency` and `PeriodLockDate`.
+   */
+  readCompanySettings?(
+    organizationId: string
+  ): Promise<Result<ProviderCompanySettings | null, Error>>
 
   /**
    * Create the counterpart of one of OUR accounts in the provider's own chart -

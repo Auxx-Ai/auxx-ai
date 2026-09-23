@@ -79,6 +79,7 @@ vi.mock('../upsert-customer', () => ({
 
 import type { ExportJournalLine, ExportJournalPayload } from '../../../export/payloads/journal'
 import { ProviderPostError } from '../../../ledger/types'
+import { NONE_ACCOUNTING_PROVIDER } from '../../provider'
 import { listQuickbooksProviderAccounts } from '../account-map'
 import {
   createQuickbooksAccountingProvider,
@@ -1418,5 +1419,67 @@ describe('createProviderAccount - the seam run backwards', () => {
     const result = await provider.createProviderAccount(input)
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('not connected')
+  })
+})
+
+describe('readCompanySettings', () => {
+  const QBO_SETTINGS = {
+    companyName: 'Sandbox Company_US_1',
+    fiscalYearStartMonth: 4,
+    country: 'US',
+    homeCurrency: 'USD',
+    multiCurrencyEnabled: false,
+    bookCloseDate: '2025-12-31',
+    reportBasis: 'Cash',
+  }
+
+  it("maps the tool's QuickBooks terms into the neutral shape", async () => {
+    const callTool = connect({ get_quickbooks_company_settings: () => QBO_SETTINGS })
+    const result = await provider.readCompanySettings('org1')
+
+    expect(callTool).toHaveBeenCalledWith('get_quickbooks_company_settings', {})
+    expect(result._unsafeUnwrap()).toEqual({
+      companyName: 'Sandbox Company_US_1',
+      fiscalYearStartMonth: 4,
+      country: 'US',
+      homeCurrency: 'USD',
+      multiCurrencyEnabled: false,
+      lockDate: '2025-12-31',
+      reportingBasis: 'cash',
+    })
+  })
+
+  it('answers null for every field the tool did not return', async () => {
+    connect({ get_quickbooks_company_settings: () => ({ reportBasis: 'Weird' }) })
+    const result = await provider.readCompanySettings('org1')
+
+    expect(result._unsafeUnwrap()).toEqual({
+      companyName: null,
+      fiscalYearStartMonth: null,
+      country: null,
+      homeCurrency: null,
+      multiCurrencyEnabled: null,
+      lockDate: null,
+      reportingBasis: null,
+    })
+  })
+
+  it('answers null with nothing connected', async () => {
+    resolveQuickbooksContext.mockResolvedValue({ connected: false })
+    expect((await provider.readCompanySettings('org1'))._unsafeUnwrap()).toBeNull()
+  })
+
+  it("turns the tool's failure into an error", async () => {
+    connect({
+      get_quickbooks_company_settings: () => {
+        throw new Error('AuthenticationFailed')
+      },
+    })
+    const result = await provider.readCompanySettings('org1')
+    expect(result._unsafeUnwrapErr().message).toContain('AuthenticationFailed')
+  })
+
+  it('is absent on the null provider', () => {
+    expect(NONE_ACCOUNTING_PROVIDER.readCompanySettings).toBeUndefined()
   })
 })
