@@ -14,12 +14,16 @@ import {
 } from '../ingest'
 import { listOrderMoneyTransactions } from '../reads'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from '../record-evidence'
+import { repointGuestReceiptsForOrders } from '../repoint-guest-party'
 import { requeueAcceptancesForOrders } from '../source-writes'
 
 const db = () => getTestDb()
 let organizationId: string
 let orderId: string
 let accountId: string
+let partyId: string
+let contactDefId: string
+let contactFieldId: string
 const sample: z.infer<typeof customerMoneyObservationSchema> = {
   version: 2,
   raw: {},
@@ -107,6 +111,8 @@ beforeEach(async () => {
     .values({ organizationId, entityDefinitionId: def!.id, updatedAt: new Date() })
     .returning()
   orderId = order!.id
+  partyId = party!.id
+  contactDefId = partyDef!.id
   for (const [attribute, value] of [
     ['order_total', 10000],
     ['order_currency', 'USD'],
@@ -128,6 +134,7 @@ beforeEach(async () => {
         updatedAt: new Date(),
       })
       .returning()
+    if (attribute === 'order_contact') contactFieldId = field!.id
     await db()
       .insert(schema.FieldValue)
       .values({
@@ -195,6 +202,29 @@ async function staged(patch: Partial<typeof sample> = {}, withOrder = true) {
     .returning()
   return acceptance!
 }
+/** A second contact, and the org's guest customer when `asGuest`. */
+async function contact(asGuest = false) {
+  const [row] = await db()
+    .insert(schema.EntityInstance)
+    .values({ organizationId, entityDefinitionId: contactDefId, updatedAt: new Date() })
+    .returning()
+  if (asGuest)
+    await db().insert(schema.OrganizationSetting).values({
+      organizationId,
+      key: 'accounting.guestContactId',
+      value: row!.id,
+      updatedAt: new Date(),
+    })
+  return row!.id
+}
+const setOrderContact = (contactId: string) =>
+  db()
+    .update(schema.FieldValue)
+    .set({ relatedEntityId: contactId })
+    .where(
+      and(eq(schema.FieldValue.entityId, orderId), eq(schema.FieldValue.fieldId, contactFieldId))
+    )
+const theMoney = async () => (await db().select().from(schema.MoneyTransaction))[0]!
 async function accept(id: string) {
   await db().transaction((tx) => materializeImportedMoneyInTx(tx, organizationId, id))
 }
@@ -302,6 +332,37 @@ describe('customer money source acceptance against PostgreSQL', () => {
     expect(await db().select().from(schema.MoneyTransaction)).toHaveLength(1)
     expect(await db().select().from(schema.MoneyApplication)).toHaveLength(1)
     expect(await readWorkItem(a.id)).toBeUndefined()
+  })
+  // The guest is a stand-in: a synced order arrives on the guest and is repointed by the
+  // connector's relationship pass, after its receipts were ingested.
+  it('takes the customer the order names once the guest stand-in is replaced', async () => {
+    const guestId = await contact(true)
+    await setOrderContact(guestId)
+    const a = await staged()
+    await accept(a.id)
+    expect((await theMoney()).partyInstanceId).toBe(guestId)
+    await setOrderContact(partyId)
+    await accept(a.id)
+    expect((await theMoney()).partyInstanceId).toBe(partyId)
+    expect(await readWorkItem(a.id)).toBeUndefined()
+  })
+  it('still parks a receipt whose order now names a different real customer', async () => {
+    const a = await staged()
+    await accept(a.id)
+    await setOrderContact(await contact())
+    await accept(a.id)
+    expect(await readWorkItem(a.id)).toMatchObject({ reasonCode: 'CUSTOMER_CHANGED' })
+    expect((await theMoney()).partyInstanceId).toBe(partyId)
+  })
+  it('repoints an accepted guest receipt when the order-contact wake fires', async () => {
+    const guestId = await contact(true)
+    await setOrderContact(guestId)
+    const a = await staged()
+    await accept(a.id)
+    await setOrderContact(partyId)
+    expect(await repointGuestReceiptsForOrders(db(), organizationId, [orderId])).toBe(1)
+    expect((await theMoney()).partyInstanceId).toBe(partyId)
+    expect(await repointGuestReceiptsForOrders(db(), organizationId, [orderId])).toBe(0)
   })
   // 91 §8.6: post now, link later. The receipt stands on its own facts; its order is a pending link.
   it('accepts an orderless receipt on its own facts and records the pending order link', async () => {

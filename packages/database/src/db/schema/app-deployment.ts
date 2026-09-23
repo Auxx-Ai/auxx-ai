@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, jsonb, pgTable, text, timestamp } from './_shared'
 import { App } from './app'
 import { AppBundle } from './app-bundle'
+import type { RecordFilterConditionGroup } from './data-connector-types'
 import { Organization } from './organization'
 
 /**
@@ -398,6 +399,11 @@ export interface CatalogConnectorStream {
    * for the connector-level SIGNAL this steering pairs with.
    */
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  /**
+   * Per-record filter over the raw payload, seeded onto `DataConnectorStream.recordFilter`
+   * at install and updated on redeploy; a record that fails it is skipped before mapping.
+   */
+  recordFilter?: RecordFilterConditionGroup[]
 }
 
 /**

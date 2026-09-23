@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getCachedCustomFields, getCachedEntityDefId } from '../../cache'
 import {
   catalogFixtureV1,
+  catalogFixtureV2,
   FIXTURE_DEF_FIELDS,
   FIXTURE_DEF_IDS,
   fixturePersistedContext,
@@ -124,6 +125,18 @@ describe('deriveStreamShape agrees with the seeder', () => {
     expect(streams.map((s) => s.key)).toEqual(['product', 'customer'])
     expect(streams[1]?.syncMode).toBe('snapshot')
     expect(streams[1]?.sourceSchema).toMatchObject({ type: 'object' })
+    expect(streams[1]?.recordFilter).toBeNull()
+  })
+
+  it('carries a declared record filter and hashes it only when present', () => {
+    const [v1, v2] = [catalogFixtureV1(), catalogFixtureV2()].map(
+      (c) => deriveConnectorShape(c, [], 'shopify', fixtureResolver())[1]!
+    )
+    expect(v2?.recordFilter?.[0]?.conditions).toEqual([
+      { id: 'customer:record-filter:0', fieldId: 'orders_count', operator: '>', value: 0 },
+    ])
+    expect(hashStreamShape(v1!)).toBe(hashStreamShape({ ...v1!, recordFilter: null }))
+    expect(hashStreamShape(v2!)).not.toBe(hashStreamShape({ ...v2!, recordFilter: null }))
   })
 })
 

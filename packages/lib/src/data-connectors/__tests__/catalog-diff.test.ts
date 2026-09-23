@@ -110,6 +110,15 @@ describe('diffConnectorCatalog: unedited rows', () => {
     expect(customer?.conflict).toBe(false)
   })
 
+  it('a declared record filter is a stream change that re-backfills', () => {
+    const customer = entries.find(
+      (e) =>
+        e.change.kind === 'stream' && e.change.op === 'change' && e.change.streamKey === 'customer'
+    )
+    expect(customer?.change).toMatchObject({ fields: expect.arrayContaining(['recordFilter']) })
+    expect(customer?.impact.reasons).toContain('record-filter')
+  })
+
   it('nothing the app did not change is listed', () => {
     // Every entry is one of the six v2 changes (the product schema refresh rides along
     // with the binding edits since the declared paths did not change).

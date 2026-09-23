@@ -8,6 +8,7 @@
 // (`edit-impact.ts`), computed against the persisted row exactly as `applyConnectorCatalogUpdate`
 // will patch it. Pure: no DB, no cache.
 
+import type { RecordFilterConditionGroup } from '@auxx/database'
 import {
   type BindingShape,
   bindingKey,
@@ -46,7 +47,7 @@ export interface BindingSummary {
   connectionMetaKey: string | null
 }
 
-export type StreamShapeField = 'syncMode' | 'webhookTrigger' | 'sourceSchema'
+export type StreamShapeField = 'syncMode' | 'webhookTrigger' | 'sourceSchema' | 'recordFilter'
 
 /**
  * Mapping columns that can change WITHOUT a rebind: the manifest's policy choices,
@@ -228,7 +229,12 @@ function eq(a: unknown, b: unknown): boolean {
   return stableStringify(a) === stableStringify(b)
 }
 
-const STREAM_FIELDS: StreamShapeField[] = ['syncMode', 'webhookTrigger', 'sourceSchema']
+const STREAM_FIELDS: StreamShapeField[] = [
+  'syncMode',
+  'webhookTrigger',
+  'sourceSchema',
+  'recordFilter',
+]
 
 /**
  * Whether a persisted row still carries the app default it was seeded with, when no
@@ -342,11 +348,16 @@ export function diffConnectorCatalog(
       if (O ? !eq(P.shape[field], O[field]) : streamEdited) streamConflict = true
     }
     if (changedFields.length > 0) {
-      const patch: { requestConfig?: StreamRequestConfig; syncMode?: SyncMode } = {}
+      const patch: {
+        requestConfig?: StreamRequestConfig
+        syncMode?: SyncMode
+        recordFilter?: RecordFilterConditionGroup[] | null
+      } = {}
       if (changedFields.includes('webhookTrigger')) {
         patch.requestConfig = nextStreamRequestConfig(P.row, N)
       }
       if (changedFields.includes('syncMode')) patch.syncMode = N.syncMode
+      if (changedFields.includes('recordFilter')) patch.recordFilter = N.recordFilter
       push(
         {
           id: `stream:${N.key}`,

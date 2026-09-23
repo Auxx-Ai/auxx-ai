@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   readFieldRelations: vi.fn(),
   requeueAcceptancesForOrders: vi.fn(),
+  repointGuestReceiptsForOrders: vi.fn(),
 }))
 
 // Real `defineParentReconciler` + real `resolveParentsByRelation`; only the two queries
@@ -21,6 +22,9 @@ vi.mock('../../../../field-values/read-field-scalars', () => ({
 }))
 vi.mock('../source-writes', () => ({
   requeueAcceptancesForOrders: h.requeueAcceptancesForOrders,
+}))
+vi.mock('../repoint-guest-party', () => ({
+  repointGuestReceiptsForOrders: h.repointGuestReceiptsForOrders,
 }))
 
 import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
@@ -78,6 +82,7 @@ beforeEach(() => {
     }
   )
   h.requeueAcceptancesForOrders.mockResolvedValue(undefined)
+  h.repointGuestReceiptsForOrders.mockResolvedValue(0)
 })
 
 describe('wakeAcceptancesOnOrderChange', () => {
@@ -89,6 +94,10 @@ describe('wakeAcceptancesOnOrderChange', () => {
 
       expect(h.requeueAcceptancesForOrders).toHaveBeenCalledTimes(1)
       expect(h.requeueAcceptancesForOrders).toHaveBeenCalledWith(expect.anything(), ORG, [
+        'order_1',
+      ])
+      // Accepted receipts have no work item to wake; their guest party is repointed directly.
+      expect(h.repointGuestReceiptsForOrders).toHaveBeenCalledWith(expect.anything(), ORG, [
         'order_1',
       ])
     })

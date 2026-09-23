@@ -196,6 +196,24 @@ function customerStream(v2: boolean): CatalogConnectorStream {
   return {
     key: 'customer',
     syncMode: v2 ? 'incremental' : 'snapshot',
+    ...(v2
+      ? {
+          recordFilter: [
+            {
+              id: 'customer:record-filter',
+              logicalOperator: 'AND' as const,
+              conditions: [
+                {
+                  id: 'customer:record-filter:0',
+                  fieldId: 'orders_count',
+                  operator: '>',
+                  value: 0,
+                },
+              ],
+            },
+          ],
+        }
+      : {}),
     mappings: [
       {
         rootPath: '',
@@ -304,6 +322,7 @@ export function persistedRowsFromDerived(
       schemaSource: 'catalog',
       syncMode: stream.syncMode,
       requestConfig: stream.webhookTrigger ? { webhookTrigger: stream.webhookTrigger } : null,
+      recordFilter: stream.recordFilter,
       state: {},
       sampleRunId: null,
       catalogHash: withHash ? hashStreamShape(stream) : null,

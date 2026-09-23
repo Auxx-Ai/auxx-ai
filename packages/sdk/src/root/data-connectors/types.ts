@@ -355,6 +355,15 @@ export interface ContributingConnectorMapping extends ConnectorMappingBase {
  */
 export type ConnectorMapping = OwnedConnectorMapping | ContributingConnectorMapping
 
+/** One AND'd clause of a stream's `recordFilter`. */
+export interface ConnectorRecordFilterCondition {
+  /** A source path into the raw record: `orders_count`, `customer.email`. */
+  fieldId: string
+  /** A platform condition operator key: `'>'`, `'equals'`, `'is_not_empty'`. */
+  operator: string
+  value?: unknown
+}
+
 /** One stream (fetch) declaration. */
 export interface ConnectorStreamDecl {
   /** Provider resource id / endpoint key, e.g. `'order'`. */
@@ -386,6 +395,12 @@ export interface ConnectorStreamDecl {
     paths: string[]
     debounceMs?: number
   }
+  /**
+   * Per-record filter over the RAW payload, AND'd: a record that fails is skipped
+   * before mapping and counts as `skipped`. Seeded onto the stream at install, so a
+   * merchant can loosen it later. A repeated path (`line_items[].sku`) is refused.
+   */
+  recordFilter?: readonly ConnectorRecordFilterCondition[]
 }
 
 /**

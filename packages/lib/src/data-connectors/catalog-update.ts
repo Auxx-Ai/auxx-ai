@@ -149,6 +149,7 @@ export async function applyConnectorCatalogUpdate(
             requestConfig: step.derived.webhookTrigger
               ? { webhookTrigger: step.derived.webhookTrigger }
               : null,
+            recordFilter: step.derived.recordFilter,
             catalogHash: hashStreamShape(step.derived),
           })
           persistedStreamIdByKey.set(step.derived.key, row.id)
@@ -158,10 +159,17 @@ export async function applyConnectorCatalogUpdate(
         }
         case 'stream-change': {
           const streamId = step.persisted.row.id
-          if (step.fields.includes('syncMode') || step.fields.includes('webhookTrigger')) {
+          if (
+            step.fields.includes('syncMode') ||
+            step.fields.includes('webhookTrigger') ||
+            step.fields.includes('recordFilter')
+          ) {
             await writers.setStreamRequestConfig(db, organizationId, streamId, {
               requestConfig: nextStreamRequestConfig(step.persisted.row, step.derived),
               syncMode: step.derived.syncMode,
+              ...(step.fields.includes('recordFilter')
+                ? { recordFilter: step.derived.recordFilter }
+                : {}),
             })
           }
           if (step.fields.includes('sourceSchema') && step.derived.sourceSchema) {

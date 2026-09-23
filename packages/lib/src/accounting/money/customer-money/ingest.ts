@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { GUEST_CONTACT_SETTING_KEY } from '../../parties'
 import type { WorkItemCode } from '../../work-items/codes'
 import { noWorkItem, runWorkItemSweep } from '../../work-items/sweep'
 import { wakeSources } from '../../work-items/wake'
@@ -343,8 +344,16 @@ export async function materializeImportedMoneyInTx(
   }
   if (!partyId || facts.get('order_currency')?.text !== money.currency)
     return block('CUSTOMER_UNRESOLVED')
-  if (money.partyInstanceId && money.partyInstanceId !== partyId) return block('CUSTOMER_CHANGED')
-  if (!money.partyInstanceId)
+  // The guest is a stand-in: a receipt ingested while its order still named the
+  // guest takes the customer the order names now, never a `CUSTOMER_CHANGED`.
+  const guestId = await getOrganizationSetting({
+    organizationId,
+    key: GUEST_CONTACT_SETTING_KEY,
+    db: tx,
+  })
+  const provisional = !money.partyInstanceId || money.partyInstanceId === guestId
+  if (!provisional && money.partyInstanceId !== partyId) return block('CUSTOMER_CHANGED')
+  if (money.partyInstanceId !== partyId)
     await tx
       .update(schema.MoneyTransaction)
       .set({ partyInstanceId: partyId })
