@@ -82,7 +82,7 @@ export function LedgerBanners({
         </Alert>
       )}
 
-      {/* 🛑 `gap-0.5`, like `StatementNotices`. These two are one list of
+      {/* 🛑 `gap-0.5`. These two are one list of
           standing conditions on the month and have to sit tight against each
           other; at the column's own `gap-2` they read as two unrelated notices. */}
       <div className='flex flex-col gap-0.5'>

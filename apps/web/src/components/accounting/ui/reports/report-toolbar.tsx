@@ -15,10 +15,11 @@ import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
 import { dayKeyOfLocalDate, localDateOfDayKey } from '@auxx/utils/calendar-day'
 import { format } from 'date-fns'
-import { CalendarIcon, ChevronDown, FileDown, FileSpreadsheet, X } from 'lucide-react'
+import { CalendarIcon, ChevronDown, ChevronRight, FileDown, FileSpreadsheet, X } from 'lucide-react'
 import { DateTimePicker } from '~/components/pickers/date-time-picker'
 import { ProviderSyncStatus } from './provider-sync-status'
 import type { CompareOption } from './report-helpers'
+import { ReportNotices } from './report-notices'
 import type { ReportAsOfPreset, ReportRangePreset } from './report-range-presets'
 
 const COMPARE_LABEL: Record<CompareOption, string> = {
@@ -211,7 +212,42 @@ export interface ReportToolbarActionsProps {
   isDownloadingPdf?: boolean
 }
 
-/** A report's RIGHT half of the topbar (`tasks/81` §4): sync status, PDF, CSV. */
+/**
+ * The report's name, first in the toolbar. Drilled into an account it becomes the way
+ * back: `Trial balance › 1200 · Accounts receivable`.
+ */
+export function ReportBreadcrumb({
+  reportLabel,
+  current,
+  onBack,
+}: {
+  reportLabel: string
+  /** The drilled account's label; omit on the report itself. */
+  current?: string | null
+  onBack?: () => void
+}) {
+  const drilled = current !== undefined
+  return (
+    <>
+      <div className='flex min-w-0 items-center'>
+        {drilled ? (
+          <>
+            <Button variant='ghost' size='sm' onClick={onBack} className='text-muted-foreground'>
+              {reportLabel}
+            </Button>
+            <ChevronRight className='size-3.5 shrink-0 text-muted-foreground' />
+            <span className='truncate px-2 font-medium text-sm'>{current ?? 'Account'}</span>
+          </>
+        ) : (
+          <span className='truncate px-2 font-medium text-sm'>{reportLabel}</span>
+        )}
+      </div>
+      <Separator orientation='vertical' className='h-6' />
+    </>
+  )
+}
+
+/** A report's RIGHT half of the topbar (`tasks/81` §4): notices, sync status, PDF, CSV. */
 export function ReportToolbarActions({
   onDownloadPdf,
   onDownloadCsv,
@@ -220,6 +256,7 @@ export function ReportToolbarActions({
 }: ReportToolbarActionsProps) {
   return (
     <>
+      {through && <ReportNotices through={through} />}
       {through && <ProviderSyncStatus through={through} />}
 
       <Separator orientation='vertical' className='h-6' />

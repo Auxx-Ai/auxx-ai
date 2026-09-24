@@ -19,7 +19,7 @@ import { accountDepth, GL_ACCOUNT_TYPES, sortChartTree } from '@auxx/lib/account
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { formatAccountLabel } from '../account-label-format'
 import { formatMinor } from '../ledger/format'
-import type { StatementColumn, StatementRow } from '../reports/statement-table'
+import type { StatementColumn, StatementRow } from '../reports/statement-parts'
 import { StatementTable } from '../reports/statement-table'
 import { useChartAccounts } from '../use-chart-accounts'
 import { accountTypeLabel } from './accounts-types'

@@ -5,7 +5,6 @@
 import { toCsvRows } from '@auxx/lib/accounting/reports/client'
 import type { RecordId } from '@auxx/types/resource'
 import { isRecordId } from '@auxx/types/resource'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { todayInZone } from '@auxx/utils/calendar-day'
@@ -22,11 +21,11 @@ import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../ledger/format'
 import { ReportErrorCard } from './report-error-card'
+import { ReportGrid } from './report-grid'
 import { periodStartDate, toStatementTableRows } from './report-helpers'
+import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { reportAsOfPresets } from './report-range-presets'
-import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
-import { StatementNotices } from './statement-notices'
-import { StatementTable } from './statement-table'
+import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { useReportAsOf } from './use-report-window'
 
 export interface AgingReportPageProps {
@@ -35,10 +34,28 @@ export interface AgingReportPageProps {
 
 const COPY: Record<
   AgingReportPageProps['side'],
-  { icon: typeof Users; noun: string; verdictLabel: string; kind: 'ar-aging' | 'ap-aging' }
+  {
+    icon: typeof Users
+    label: string
+    noun: string
+    verdictLabel: string
+    kind: 'ar-aging' | 'ap-aging'
+  }
 > = {
-  receivable: { icon: Users, noun: 'A/R', verdictLabel: 'A/R', kind: 'ar-aging' },
-  payable: { icon: Building2, noun: 'A/P', verdictLabel: 'A/P', kind: 'ap-aging' },
+  receivable: {
+    icon: Users,
+    label: 'A/R aging',
+    noun: 'A/R',
+    verdictLabel: 'A/R',
+    kind: 'ar-aging',
+  },
+  payable: {
+    icon: Building2,
+    label: 'A/P aging',
+    noun: 'A/P',
+    verdictLabel: 'A/P',
+    kind: 'ap-aging',
+  },
 }
 
 /**
@@ -128,14 +145,17 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
     useMemo(
       () => ({
         left: (
-          <ReportToolbarControls
-            mode='asOf'
-            asOf={asOf}
-            onSelectAsOf={setAsOf}
-            asOfPresets={asOfPresets}
-            cutoff={cutoff}
-            disabled={!asOf}
-          />
+          <>
+            <ReportBreadcrumb reportLabel={copy.label} />
+            <ReportToolbarControls
+              mode='asOf'
+              asOf={asOf}
+              onSelectAsOf={setAsOf}
+              asOfPresets={asOfPresets}
+              cutoff={cutoff}
+              disabled={!asOf}
+            />
+          </>
         ),
         right: (
           <ReportToolbarActions
@@ -147,6 +167,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
         ),
       }),
       [
+        copy.label,
         asOf,
         setAsOf,
         asOfPresets,
@@ -163,59 +184,60 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
   // groups (`trial-balance.tsx`'s own `rows.length > 1` reasoning).
   const hasActivity = rows.length > 1
 
-  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
-  // also owns the topbar this page registers into (`tasks/81` §6): a document
-  // page is one `ScrollArea` over everything.
   return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <StatementNotices through={asOf} />
-          {period.isLoading ? (
+    <div className='flex min-h-0 min-w-0 flex-1 flex-col'>
+      <ReportPageLayout>
+        {period.isLoading || (!!asOf && query.isPending) ? (
+          <ReportMessage>
             <Skeleton className='h-64 w-full' />
-          ) : !asOf ? (
+          </ReportMessage>
+        ) : !asOf ? (
+          <ReportMessage>
             <EmptyState
               icon={copy.icon}
               title='Nothing has posted yet'
               description={`${copy.noun} aging has nothing to show until the ledger is set up and something posts to it.`}
             />
-          ) : query.isPending ? (
-            <Skeleton className='h-64 w-full' />
-          ) : query.error ? (
+          </ReportMessage>
+        ) : query.error ? (
+          <ReportMessage>
             <ReportErrorCard message={query.error.message} />
-          ) : !hasActivity ? (
+          </ReportMessage>
+        ) : !hasActivity ? (
+          <ReportMessage>
             <EmptyState
               icon={copy.icon}
               title={`No open ${copy.noun}`}
               description={`Nothing is open on ${copy.noun} as of this date.`}
             />
-          ) : (
-            <StatementTable
-              columns={query.data?.columns ?? []}
-              rows={rows}
-              currency={period.currencyCode}
-              verdict={
-                query.data
-                  ? {
-                      label: `Total equals the balance sheet's ${copy.verdictLabel} as of this date`,
-                      ok: query.data.verdict,
-                      detail: query.data.verdict
-                        ? undefined
-                        : `off by ${formatMinor(query.data.differenceMinor, period.currencyCode)}`,
-                    }
-                  : undefined
-              }
-              // A contact/vendor GROUP row has no `recordId`, so it is not
-              // drillable and its body falls through to expand. Payment and
-              // manual-line documents have none either, and open nothing.
-              canRowDrill={(row) => !!row.meta?.recordId}
-              onRowClick={(row) =>
-                row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
-              }
-            />
-          )}
-        </div>
-      </ScrollArea>
+          </ReportMessage>
+        ) : (
+          <ReportGrid
+            reportKey={copy.kind}
+            columns={query.data?.columns ?? []}
+            rows={rows}
+            currency={period.currencyCode}
+            verdict={
+              query.data
+                ? {
+                    label: `Total equals the balance sheet's ${copy.verdictLabel} as of this date`,
+                    ok: query.data.verdict,
+                    detail: query.data.verdict
+                      ? undefined
+                      : `off by ${formatMinor(query.data.differenceMinor, period.currencyCode)}`,
+                  }
+                : undefined
+            }
+            // A contact/vendor group row has no `recordId`, so its body expands;
+            // payment and manual-line documents have none either and open nothing.
+            canRowDrill={(row) => !!row.meta?.recordId}
+            isRowActive={(row) => !!selectedRecordId && row.meta?.recordId === selectedRecordId}
+            onRowClick={(row) =>
+              row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
+            }
+          />
+        )}
+      </ReportPageLayout>
       {overlays}
     </div>
   )

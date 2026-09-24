@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { useResource } from '~/components/resources'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { formatAccountLabel } from '../account-label'
-import type { StatementColumn, StatementRow } from '../reports/statement-table'
+import type { StatementColumn, StatementRow } from '../reports/statement-parts'
 import { StatementTable } from '../reports/statement-table'
 import { formatMinor } from './format'
 

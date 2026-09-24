@@ -1,4 +1,4 @@
-// apps/web/src/components/accounting/ui/reports/__tests__/statement-table.test.ts
+// apps/web/src/components/accounting/ui/reports/__tests__/statement-parts.test.ts
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -9,7 +9,7 @@ import {
   type StatementRow,
   verdictRowId,
   verdictText,
-} from '../statement-table'
+} from '../statement-parts'
 
 function row(overrides: Partial<StatementRow> & Pick<StatementRow, 'id'>): StatementRow {
   return {

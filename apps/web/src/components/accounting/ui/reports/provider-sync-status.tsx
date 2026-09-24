@@ -15,13 +15,12 @@ export interface ProviderSyncStatusProps {
  * "Synced through 2026-09-16" in the report toolbar, beside the PDF and CSV
  * buttons.
  *
- * Only the `current` reading. The other three are warnings and belong in the
- * page body where they have room to explain themselves - see
- * `provider-sync-marker.tsx`.
+ * Only the `current` reading. The warnings are popover buttons beside it, where
+ * they have room to explain themselves - see `report-notices.tsx`.
  */
 export function ProviderSyncStatus({ through }: ProviderSyncStatusProps) {
   const { data } = api.ledgerReports.providerSyncMarker.useQuery(undefined, {
-    // Shared cache entry with `ProviderSyncMarker`, so mounting both is one request.
+    // Shared cache entry with `ReportNotices`, so mounting both is one request.
     staleTime: 60_000,
   })
 

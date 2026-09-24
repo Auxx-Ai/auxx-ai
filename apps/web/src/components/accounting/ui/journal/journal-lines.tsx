@@ -42,7 +42,7 @@ import {
   useChartAccounts,
 } from '~/components/accounting/ui/gl-account-picker'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
-import { StatementVerdictMark } from '~/components/accounting/ui/reports/statement-table'
+import { StatementVerdictMark } from '~/components/accounting/ui/reports/statement-parts'
 import { useLineNav } from '~/components/line-grid/hooks/use-line-nav'
 import { CurrencyCellInput } from '~/components/money/ui/line-builder/line-rows'
 import { RecordPicker } from '~/components/pickers/record-picker/record-picker'

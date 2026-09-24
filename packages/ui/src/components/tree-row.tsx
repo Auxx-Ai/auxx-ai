@@ -129,7 +129,7 @@ export const INDENT_REM = 1.5
 
 /** The connector line / icon center offset from a row's content start: row
  *  px-1 (0.25rem) + half of the size-7 icon box (0.875rem). */
-const ICON_CENTER_REM = 1.125
+export const ICON_CENTER_REM = 1.125
 
 const stopPropagation = (e: React.MouseEvent) => e.stopPropagation()
 

@@ -2,184 +2,111 @@
 
 'use client'
 
-import { GENERAL_LEDGER_COLUMNS, toCsvRows } from '@auxx/lib/accounting/reports/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { toastError } from '@auxx/ui/components/toast'
 import { todayInZone } from '@auxx/utils/calendar-day'
-import { BookOpen, TriangleAlert } from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
-import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../account-label'
-import { PostingDrawerHost, usePostingDrawer } from './posting-drawer-host'
-import { ReportErrorCard } from './report-error-card'
-import { periodEndDate, periodStartDate, toStatementTableRows } from './report-helpers'
+import { GeneralLedgerView, useGeneralLedgerExports } from './general-ledger-view'
+import { periodEndDate, periodStartDate } from './report-helpers'
+import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { generalLedgerRangePresets } from './report-range-presets'
-import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
-import { StatementNotices } from './statement-notices'
-import { StatementTable } from './statement-table'
-
-/**
- * What a truncated ledger says on the screen.
- *
- * 🛑 This is the THIRD place the same fact is stated, not the only one.
- * `toGeneralLedgerRows` prepends its own `INCOMPLETE` row ahead of every
- * account, so the warning is already row 1 of the table, row 1 of the CSV and
- * row 1 of the PDF - the exports carry it because they render the same rows
- * this page does. This card and the verdict on the table's Total row are the
- * screen's own, louder copies, because a person scanning figures reads a
- * bordered red card and does not read row 1.
- */
-const TRUNCATED_HEADLINE = 'This general ledger is incomplete'
+import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 
 /**
  * `/app/accounting/reports/general-ledger` (`plans/accounting/tasks/
- * 21-the-books-stand-alone.md` §5) - the sixth statement, and the one a
- * filing accountant asks for first.
- *
- * A from/to RANGE like the P&L, not an as-of point: a general ledger is every
- * posted line over a period, one section per account, each with its opening
- * balance, its lines and its ending balance. The row model, the toolbar, the
- * completeness banner and the drill-down are all the siblings' - see
- * `trial-balance.tsx` for the shape.
- *
- * 🛑 The one thing this report does that the other five do not is
- * `truncated`. Every other statement is bounded by the CHART; this one is
- * bounded by TRANSACTION VOLUME, so a wide range hits the router's
- * `GENERAL_LEDGER_MAX_LINES` cap and comes back partial - and a partial
- * general ledger does not tie to the trial balance for the same range, with
- * nothing in the figures to say why. It is stated FOUR times when it happens:
- * the adapter's own `INCOMPLETE` first row (which is what reaches the CSV and
- * the PDF), `TruncatedBanner` above the table, the verdict on its Total row, and
- * the `-INCOMPLETE` suffix on the CSV filename.
+ * 21-the-books-stand-alone.md` §5): every posted line over a range, one section
+ * per account. Sections come from one summary read and their lines load a page
+ * at a time (108 §3.2), so no range is ever cut short.
  */
 export function GeneralLedgerReportPage() {
   const period = useLedgerPeriod()
-  const posting = usePostingDrawer()
   const [fromParam, setFromParam] = useQueryState('from')
   const [toParam, setToParam] = useQueryState('to')
-  // Set when a trial balance / balance sheet / P&L row drilled in here. The
-  // ledger IS the account drill-down, at one zoom level rather than two
-  // reports that have to agree with each other.
+  // A record drawer's "Open in ledger" and old statement links narrow to one account.
   const [accountParam, setAccountParam] = useQueryState('account')
-  // `<sourceKind>:<sourceId>` — a record drawer's "Open in ledger": every posting
-  // linked to that record, any link role, no opening balances.
+  // `<sourceKind>:<sourceId>`: every posting linked to that record, no opening balances.
   const [sourceParam, setSourceParam] = useQueryState('source')
   const source = useMemo(() => parseSourceParam(sourceParam), [sourceParam])
 
-  // The current period, same default the P&L takes - the month a person is
-  // working in is the range they almost always want, and it is also the range
-  // least likely to truncate.
+  // The current period by default: the month being worked in.
   const fallbackKey = period.resolvedPeriodKey
   const from = fromParam || (fallbackKey ? periodStartDate(fallbackKey) : '')
   const to = toParam || (fallbackKey ? periodEndDate(fallbackKey) : '')
 
-  // 🛑 A SHORTER preset list than every other statement's, on purpose: this is
-  // the one report bounded by transaction volume rather than by the chart, so
-  // offering "Last 12 months" here is a one-click route to a truncated ledger.
   const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
   const presets = useMemo(
     () => generalLedgerRangePresets(todayInZone(period.bookTimeZone)),
     [period.bookTimeZone]
   )
 
-  const query = api.ledgerReports.generalLedger.useQuery(
+  // The narrowed account's label, off the same summary the view reads (cached).
+  const accountSummary = api.ledgerReports.generalLedgerSummary.useQuery(
     { from, to, glAccountId: accountParam ?? undefined, source },
-    { enabled: !!from && !!to }
+    { enabled: !!accountParam && !!from && !!to }
   )
-  const renderPdf = api.ledgerReports.renderStatementPdf.useMutation({
-    onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
-  })
-
-  const truncated = !!query.data?.truncated
-
-  // The filtered account's own label, read off the section the query came
-  // back with rather than fetched again.
-  const filtered = accountParam ? query.data?.accounts[0] : undefined
+  const filtered = accountParam ? accountSummary.data?.accounts[0] : undefined
   const accountLabel = filtered
-    ? formatAccountLabel({ code: filtered.accountCode, name: filtered.accountName })
+    ? filtered.nested
+      ? filtered.label
+      : formatAccountLabel({ code: filtered.accountCode, name: filtered.accountName })
     : null
 
-  // The handlers are `useCallback`s only because the toolbar registration below
-  // is memoised over them - a fresh identity each render republishes forever.
-  const renderPdfMutate = renderPdf.mutate
-  const handleDownloadPdf = useCallback(() => {
-    renderPdfMutate(
-      { kind: 'general-ledger', from, to, glAccountId: accountParam ?? undefined, source },
-      {
-        onSuccess: ({ assetId }) =>
-          window.open(`/api/files/download/asset:${assetId}`, '_blank', 'noopener,noreferrer'),
-      }
-    )
-  }, [renderPdfMutate, from, to, accountParam, source])
-
-  const data = query.data
-  const currencyCode = period.currencyCode
-  const handleDownloadCsv = useCallback(() => {
-    if (!data) return
-    // `rows[0]` is already the adapter's `INCOMPLETE` row when the read
-    // truncated, so the warning is in the file without anything being added
-    // here. The FILENAME is this page's own contribution: a file that gets
-    // forwarded, renamed or attached is read by its name long before anyone
-    // opens it.
-    downloadCsv(
-      toCsvRows(data.rows, GENERAL_LEDGER_COLUMNS, currencyCode),
-      `general-ledger-${accountLabel ? `${accountLabel.replace(/[^\w.-]+/g, '-')}-` : ''}${source ? `${source.sourceKind}-${source.sourceId}-` : ''}${from}-to-${to}${truncated ? '-INCOMPLETE' : ''}.csv`
-    )
-  }, [data, currencyCode, accountLabel, source, from, to, truncated])
+  const exports = useGeneralLedgerExports({
+    from,
+    to,
+    glAccountId: accountParam ?? undefined,
+    source,
+    currency: period.currencyCode,
+    fileLabel: accountLabel ?? undefined,
+  })
 
   useRegisterAccountingToolbar(
     useMemo(
       () => ({
         left: (
-          <ReportToolbarControls
-            mode='range'
-            from={from}
-            to={to}
-            onSelectRange={(next) => {
-              void setFromParam(next.from)
-              void setToParam(next.to)
-            }}
-            presets={presets}
-            cutoff={cutoff}
-            filter={
-              accountParam
-                ? {
-                    label: accountLabel ?? 'One account',
-                    onClear: () => void setAccountParam(null),
-                  }
-                : source
+          <>
+            <ReportBreadcrumb reportLabel='General ledger' />
+            <ReportToolbarControls
+              mode='range'
+              from={from}
+              to={to}
+              onSelectRange={(next) => {
+                void setFromParam(next.from)
+                void setToParam(next.to)
+              }}
+              presets={presets}
+              cutoff={cutoff}
+              filter={
+                accountParam
                   ? {
-                      label: `One ${humanizeSourceKind(source.sourceKind)}`,
-                      onClear: () => void setSourceParam(null),
+                      label: accountLabel ?? 'One account',
+                      onClear: () => void setAccountParam(null),
                     }
-                  : undefined
-            }
-            disabled={!from || !to}
-          />
+                  : source
+                    ? {
+                        label: `One ${source.sourceKind.replace(/_/g, ' ')}`,
+                        onClear: () => void setSourceParam(null),
+                      }
+                    : undefined
+              }
+              disabled={!from || !to}
+            />
+          </>
         ),
-        // 🛑 Both exports stay ENABLED while the ledger is truncated, and that
-        // is a deliberate call. `renderStatementPdf` reads under the SAME
-        // `GENERAL_LEDGER_MAX_LINES` cap and renders through the SAME
-        // `toGeneralLedgerRows`, so the printed copy opens on the identical
-        // `INCOMPLETE` row the screen does - the export cannot leave the
-        // building looking finished. Disabling them would only push a person
-        // toward screenshotting a partial ledger instead, which carries no
-        // warning at all.
         right: (
           <ReportToolbarActions
-            onDownloadPdf={handleDownloadPdf}
-            onDownloadCsv={handleDownloadCsv}
+            onDownloadPdf={exports.downloadPdf}
+            onDownloadCsv={exports.downloadCsv}
             through={to}
-            isDownloadingPdf={renderPdf.isPending}
+            isDownloadingPdf={exports.isDownloadingPdf}
           />
         ),
       }),
@@ -195,88 +122,45 @@ export function GeneralLedgerReportPage() {
         setAccountParam,
         source,
         setSourceParam,
-        handleDownloadPdf,
-        handleDownloadCsv,
-        renderPdf.isPending,
+        exports.downloadPdf,
+        exports.downloadCsv,
+        exports.isDownloadingPdf,
       ]
     )
   )
 
-  const rows = query.data ? toStatementTableRows(query.data.rows) : []
-  const isEmpty = !!query.data && query.data.accounts.length === 0
-
-  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
-  // also owns the topbar this page registers into (`tasks/81` §6): a document
-  // page is one `ScrollArea` over everything.
   return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          {truncated && <TruncatedBanner maxLines={query.data?.maxLines} />}
-          <StatementNotices through={to} />
-          {period.isLoading ? (
-            <Skeleton className='h-64 w-full' />
-          ) : !from || !to ? (
-            // No periods exist for this org at all - setup was never
-            // finalized, so there is no month for a ledger to cover. Distinct
-            // from `isEmpty` below (periods exist, nothing posted in the
-            // range), and see `trial-balance.tsx`'s matching branch.
-            <EmptyState
-              icon={BookOpen}
-              title='Nothing has posted yet'
-              description='The general ledger has no lines to show until the ledger is set up and something posts to it.'
-              button={
-                <Button asChild variant='outline' size='sm'>
-                  <Link href='/app/accounting'>Go to the ledger</Link>
-                </Button>
-              }
-            />
-          ) : query.isPending ? (
-            <Skeleton className='h-64 w-full' />
-          ) : query.error ? (
-            <ReportErrorCard message={query.error.message} />
-          ) : isEmpty ? (
-            // Not an error and not a setup problem: the books are fine, this
-            // range simply has no posted lines in it.
-            <EmptyState
-              icon={BookOpen}
-              title='No posted lines in this range'
-              description='Nothing posted between these two dates. Widen the range, or pick a month with activity.'
-            />
-          ) : (
-            <StatementTable
-              columns={GENERAL_LEDGER_COLUMNS}
-              rows={rows}
-              currency={period.currencyCode}
-              searchable
-              // Closed by default, unlike the other statements: one account can hold
-              // thousands of lines, and a collapsed section already shows its opening
-              // balance, debit/credit totals and ending balance. Search force-opens.
-              verdict={
-                query.data
-                  ? truncated
-                    ? {
-                        label: TRUNCATED_HEADLINE,
-                        ok: false,
-                        detail: 'Debits and credits cannot tie on a partial read.',
-                      }
-                    : { label: 'Debits = Credits', ok: query.data.balanced }
-                  : undefined
-              }
-              // 🛑 `glPostingId`, not the generic gate. This report's account
-              // SECTIONS carry `glAccountId` too, and letting them read as
-              // drillable would take the row body away from `onToggleOpen` and
-              // stop them expanding.
-              canRowDrill={(row) => !!row.meta?.glPostingId}
-              onRowClick={(row) => {
-                if (row.meta?.glPostingId) posting.open(row.meta.glPostingId)
-              }}
-            />
-          )}
-        </div>
-      </ScrollArea>
-      <PostingDrawerHost postingId={posting.postingId} onClose={posting.close} />
-    </div>
+    <ReportPageLayout>
+      {period.isLoading ? (
+        <ReportMessage>
+          <Skeleton className='h-64 w-full' />
+        </ReportMessage>
+      ) : !from || !to ? (
+        // No periods at all: setup was never finalized, so there is no month to cover.
+        <ReportMessage>
+          <EmptyState
+            icon={BookOpen}
+            title='Nothing has posted yet'
+            description='The general ledger has no lines to show until the ledger is set up and something posts to it.'
+            button={
+              <Button asChild variant='outline' size='sm'>
+                <Link href='/app/accounting'>Go to the ledger</Link>
+              </Button>
+            }
+          />
+        </ReportMessage>
+      ) : (
+        <GeneralLedgerView
+          key={`${accountParam ?? ''}|${sourceParam ?? ''}`}
+          from={from}
+          to={to}
+          glAccountId={accountParam ?? undefined}
+          source={source}
+          currency={period.currencyCode}
+          reportKey='general-ledger'
+        />
+      )}
+    </ReportPageLayout>
   )
 }
 
@@ -286,37 +170,4 @@ function parseSourceParam(value: string | null) {
   const at = value.indexOf(':')
   if (at <= 0 || at === value.length - 1) return undefined
   return { sourceKind: value.slice(0, at), sourceId: value.slice(at + 1) }
-}
-
-function humanizeSourceKind(kind: string) {
-  return kind.replace(/_/g, ' ')
-}
-
-/**
- * The warning above the table.
- *
- * `ReportErrorCard`'s destructive tone rather than `CompletenessBanner`'s
- * neutral one, and deliberately: completeness says "here is what this report
- * does not cover", which is context. This says "the numbers under this are
- * wrong", which is a refusal to be read past. It sits ABOVE the completeness
- * banner for the same reason.
- */
-function TruncatedBanner({ maxLines }: { maxLines?: number }) {
-  return (
-    <Alert variant='destructive'>
-      <TriangleAlert />
-      <AlertTitle>{TRUNCATED_HEADLINE}</AlertTitle>
-      <p className='text-sm'>
-        This range is bigger than one read can return
-        {maxLines ? `, so it stopped at ${maxLines.toLocaleString('en-US')} lines` : ''}. The
-        accounts and figures below are only part of the ledger, and they will not tie to the trial
-        balance for the same range.{' '}
-        <span className='font-medium'>Narrow the range - a month at a time always fits.</span>
-      </p>
-      <AlertDescription>
-        The CSV and the PDF are still available and carry this same warning as their first row, but
-        neither one is a ledger you can file against until the range fits.
-      </AlertDescription>
-    </Alert>
-  )
 }

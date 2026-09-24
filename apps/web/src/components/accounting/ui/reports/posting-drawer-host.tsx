@@ -14,8 +14,7 @@ import { LedgerDrawerHost } from '~/components/accounting/ui/ledger/ledger-drawe
 import { outboxHref } from '~/components/accounting/ui/ledger/outbox-route'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { toFrame } from '~/components/records/record-drill-panels'
-import { useDockedPanels } from '~/hooks/use-docked-panels'
-import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
+import { useMedia } from '~/hooks/use-media'
 import { useDockStore } from '~/stores/dock-store'
 
 /** Owns `?posting=<id>` for a report that opens a posting without leaving the page. */
@@ -42,7 +41,9 @@ interface PostingDrawerHostProps {
 export function PostingDrawerHost({ postingId, onClose }: PostingDrawerHostProps) {
   const period = useLedgerPeriod()
   const provider = useAccountingProviderStatus()
-  const isDocked = useEffectiveDockState()
+  // Docked whenever the screen is wide enough, like the Outbox (`use-ledger-drawers.tsx`);
+  // the global dock preference would float it over the statement.
+  const isDocked = useMedia('(min-width: 1024px)')
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
   const router = useRouter()
@@ -81,27 +82,23 @@ export function PostingDrawerHost({ postingId, onClose }: PostingDrawerHostProps
     ]
   )
 
-  /**
-   * ⚠️ `overlay: true` unconditionally. The panel only DOCKS when there is a
-   * posting, but the overlay node stays mounted either way so `DockableDrawer`
-   * can animate itself shut on its own `open` - unmounting it the moment the id
-   * clears would cut that exit short.
-   *
-   * Memoised: a fresh array every render re-runs the outlet's publish effect.
-   */
   const panels = useMemo(
-    () => [
-      {
-        key: 'posting',
-        open: { docked: !!postingId, overlay: true },
-        content: drawer,
-        width: { value: dockedWidth, set: setDockedWidth, min: 380, max: 800 },
-      },
-    ],
-    [postingId, drawer, dockedWidth, setDockedWidth]
+    () =>
+      isDocked && postingId
+        ? [
+            {
+              key: 'posting',
+              content: drawer,
+              width: dockedWidth,
+              onWidthChange: setDockedWidth,
+              minWidth: 380,
+              maxWidth: 800,
+            },
+          ]
+        : [],
+    [isDocked, postingId, drawer, dockedWidth, setDockedWidth]
   )
-  const { dockedPanels, overlays } = useDockedPanels(panels)
-  useRegisterDockedPanels(dockedPanels)
+  useRegisterDockedPanels(panels)
 
-  return overlays
+  return !isDocked && postingId ? drawer : null
 }
