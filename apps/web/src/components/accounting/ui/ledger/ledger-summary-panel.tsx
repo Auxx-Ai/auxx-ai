@@ -13,11 +13,11 @@
 import type { PostingSummary } from '@auxx/lib/accounting/journals/client'
 import type { LedgerSummaryRow } from '@auxx/lib/accounting/ledger'
 import { Badge } from '@auxx/ui/components/badge'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ChartBar, PanelRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
 import { firstDayOfPeriod, lastDayOfPeriod } from '../journal/period-helpers'
 import { exportAvenueLabel } from './export-avenue-labels'
@@ -109,8 +109,9 @@ export function LedgerSummaryPanel({
 
   if (!isLoading && rows.length === 0) {
     return (
-      <EmptyState
-        icon={ChartBar}
+      <EmptySection
+        className='mx-3'
+        icon={<ChartBar className='size-5' />}
         title='Nothing posted this month'
         description='Summary groups posted entries by avenue, period, store, rail and currency, with member postings a drilldown away. Nothing has posted yet.'
       />
