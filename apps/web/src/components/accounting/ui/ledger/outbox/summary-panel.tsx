@@ -49,7 +49,6 @@ import { api, type RouterOutputs } from '~/trpc/react'
 import { EntryBlockers } from '../entry-blockers'
 import { exportAvenueLabel } from '../export-avenue-labels'
 import { formatMinor } from '../format'
-import { SummaryStatusBadge } from './export-batch-badge'
 import { remainingFailureItems } from './export-failure-remedy'
 import { dayKeyLabel, GroupRow, groupConsecutiveByDay, totalsLabel } from './group-row'
 import { OutboxRow } from './outbox-row'
@@ -412,6 +411,7 @@ export function SummaryPanel({
         icon={<StateIcon className='size-4 text-muted-foreground' />}
         date={dateLabel}
         typeLabel={exportAvenueLabel(row.avenue)}
+        typeCount={row.memberCount}
         title={
           <span className='flex min-w-0 items-center gap-1.5'>
             {batch?.docNumber && (
@@ -431,9 +431,6 @@ export function SummaryPanel({
         secondary={
           <span className={BADGE_ROW_CLASS}>
             {row.railId && <RailBadge railId={row.railId} />}
-            <Badge variant='outline' size='xs'>
-              {row.memberCount} {row.memberCount === 1 ? 'posting' : 'postings'}
-            </Badge>
             {batch && batch.attempts > 0 && (
               <Badge variant='outline' size='xs'>
                 {batch.attempts} {batch.attempts === 1 ? 'attempt' : 'attempts'}
@@ -454,24 +451,25 @@ export function SummaryPanel({
         amount={formatMinor(row.totalMinor, row.currency)}
         actions={
           <>
-            {status === 'sending' && <Loader className='size-3.5 animate-spin text-primary-400' />}
-            {/* Silent when it would only restate the tab. */}
-            {status !== tab && (
-              <SummaryStatusBadge
-                status={status}
-                newCount={row.newCount}
-                failureClass={batch?.failureClass ?? null}
-              />
+            {/* The tab already names the state; the drawer carries the full badge. */}
+            {(status === 'ready_new' || status === 'sent_new') && (
+              <Badge variant='blue' size='xs'>
+                {row.newCount} new
+              </Badge>
             )}
-            {SENDABLE.includes(status) && canRelease && (
+            {(status === 'sending' || (SENDABLE.includes(status) && canRelease)) && (
               <TreeRowButton
                 persistent
                 tooltipText={
-                  blockedSend ? 'Map the accounts first' : `Send now to ${providerLabel}`
+                  sending || status === 'sending'
+                    ? `Sending to ${providerLabel}…`
+                    : blockedSend
+                      ? 'Map the accounts first'
+                      : `Send now to ${providerLabel}`
                 }
-                disabled={sending || blockedSend}
+                disabled={sending || status === 'sending' || blockedSend}
                 onClick={() => sendBucket.mutate({ key: groupKey(row) })}>
-                <Send className={cn(sending && 'animate-pulse')} />
+                {sending || status === 'sending' ? <Loader className='animate-spin' /> : <Send />}
               </TreeRowButton>
             )}
             {status === 'failed' && batch && canRelease && (
