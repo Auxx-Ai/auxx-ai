@@ -5,7 +5,6 @@ import { FieldType } from '@auxx/database/enums'
 import {
   BILL_INTAKE_PHASE_LABELS,
   BILL_INTAKE_PHASES,
-  type BillIntakePhase,
   type BillIntakeRunView,
 } from '@auxx/lib/accounting/purchasing/bill-intake/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
@@ -18,13 +17,14 @@ import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { PhaseList } from '@auxx/ui/components/phase-list'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import { formatBytes } from '@auxx/utils/file'
-import { Check, Loader2, Trash2, TriangleAlert } from 'lucide-react'
+import { Trash2, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -657,17 +657,13 @@ function ReadingPage({
   const needsVendor = run?.status === 'needs_vendor'
   return (
     <div className='flex flex-col gap-3 p-3'>
-      <ul className='flex flex-col gap-2'>
-        {BILL_INTAKE_PHASES.map((phase) => (
-          <PhaseRow
-            key={phase}
-            phase={phase}
-            current={run?.phase ?? null}
-            done={run?.status === 'created'}
-            failed={failed}
-          />
-        ))}
-      </ul>
+      <PhaseList
+        phases={BILL_INTAKE_PHASES}
+        labels={BILL_INTAKE_PHASE_LABELS}
+        current={run?.phase ?? null}
+        done={run?.status === 'created'}
+        failed={failed}
+      />
       {needsVendor && (
         <div className='flex flex-col gap-2 rounded-xl border p-3'>
           <p className='font-medium text-sm'>Choose the vendor for this invoice</p>
@@ -749,39 +745,6 @@ function ReadingPage({
         </p>
       )}
     </div>
-  )
-}
-
-function PhaseRow({
-  phase,
-  current,
-  done,
-  failed,
-}: {
-  phase: BillIntakePhase
-  current: BillIntakePhase | null
-  done: boolean
-  failed: boolean
-}) {
-  const index = BILL_INTAKE_PHASES.indexOf(phase)
-  const currentIndex = current ? BILL_INTAKE_PHASES.indexOf(current) : -1
-  const isDone = done || index < currentIndex
-  const isActive = !done && index === currentIndex
-  return (
-    <li className='flex items-center gap-2.5 text-sm'>
-      <span className='flex size-5 items-center justify-center'>
-        {isDone ? (
-          <Check className='size-4 text-green-600' />
-        ) : isActive && !failed ? (
-          <Loader2 className='size-4 animate-spin text-muted-foreground' />
-        ) : (
-          <span className='size-1.5 rounded-full bg-muted-foreground/40' />
-        )}
-      </span>
-      <span className={isDone || isActive ? '' : 'text-muted-foreground'}>
-        {BILL_INTAKE_PHASE_LABELS[phase]}
-      </span>
-    </li>
   )
 }
 

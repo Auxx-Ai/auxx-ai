@@ -31,6 +31,7 @@ import {
   type RoleRailAssignmentRow,
   type RoleSourceRow,
 } from '@auxx/lib/accounting/ledger/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -48,6 +49,7 @@ import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { cn } from '@auxx/ui/lib/utils'
 import { Ban, CreditCard, Plus, RotateCcw, Sparkles, Store, Unlink, X } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
@@ -119,10 +121,13 @@ function parseRailKey(key: string): { role: string; railId: string; currency: st
 export function MappingList({
   canControl,
   onAddAccounts,
+  className,
 }: {
   canControl: boolean
-  /** Opens `chart-packs-dialog.tsx` (brief 16 §3.2) - owned by the page, since it also feeds the Chart tab. */
-  onAddAccounts: () => void
+  /** Opens `chart-packs-dialog.tsx` (brief 16 §3.2) - owned by the page, since it also feeds the Chart tab. Omitted, no Add accounts. */
+  onAddAccounts?: () => void
+  /** Merged over the list's page padding (`p-3 sm:p-6`). */
+  className?: string
 }) {
   const roleMap = api.ledger.roleMap.useQuery()
   const gateways = api.paymentGateway.list.useQuery()
@@ -259,7 +264,7 @@ export function MappingList({
   ]
 
   return (
-    <div className='flex flex-1 flex-col gap-3 p-3 sm:p-6'>
+    <div className={cn('flex flex-1 flex-col gap-3 p-3 sm:p-6', className)}>
       {(unlinkedFeeds.data ?? []).length > 0 && (
         <div className='flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40'>
           <div className='flex flex-wrap items-center gap-2'>
@@ -286,23 +291,24 @@ export function MappingList({
       )}
 
       {suggestedEdits.length > 0 && (
-        <div className='flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40'>
-          <Sparkles className='size-4 shrink-0 text-amber-600 dark:text-amber-400' />
-          <span className='text-sm'>
-            Review suggested mappings ({suggestedEdits.length}) - auxx guessed these from your
-            chart, nobody has confirmed them yet.
-          </span>
+        <Alert variant='warning'>
+          <Sparkles />
+          <AlertTitle>Review {suggestedEdits.length} suggested mappings</AlertTitle>
+          <AlertDescription>
+            Auxx picked these from your chart. Change any that are wrong, then confirm them.
+          </AlertDescription>
           {canControl && (
-            <Button
-              variant='outline'
-              size='sm'
-              className='ml-auto shrink-0'
-              loading={saveMapping.isPending}
-              onClick={() => saveMapping.mutate(suggestedEdits)}>
-              Confirm all
-            </Button>
+            <div className='pt-1.5'>
+              <Button
+                variant='outline'
+                size='sm'
+                loading={saveMapping.isPending}
+                onClick={() => saveMapping.mutate(suggestedEdits)}>
+                Confirm all
+              </Button>
+            </div>
           )}
-        </div>
+        </Alert>
       )}
 
       <div className='flex flex-wrap items-center gap-2'>
@@ -312,7 +318,7 @@ export function MappingList({
           placeholder='Search roles and accounts...'
           className='flex-1'
         />
-        {canControl && (
+        {canControl && onAddAccounts && (
           <Button variant='outline' size='sm' className='shrink-0' onClick={onAddAccounts}>
             <Plus />
             Add accounts

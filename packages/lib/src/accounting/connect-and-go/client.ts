@@ -4,6 +4,7 @@
 // bank-account planner. See plans/accounting/tasks/105-connect-and-go.md §4.
 
 import type { AccountRole } from '../ledger/builders/entry'
+import type { ExportSettings } from '../ledger/setup/export-settings'
 import type { ChartImportResult } from '../ledger/types'
 import type { ProviderCompanySettings } from '../providers/company-settings'
 import type { ProposedCutover } from './cutover'
@@ -164,11 +165,12 @@ export interface ConnectAndGoPrepareReport {
   /** Setup was already finalized; the screen shows the outcome, not the questions. */
   finalized: boolean
   company: ProviderCompanySettings | null
-  /** The fiscal year start written from the provider, or null when left alone. */
-  fiscalYearStartMonthWritten: number | null
-  /** The book timezone after this run; null when neither the setting nor the actor had one. */
+  /** Proposed: the provider's fiscal year start, else the saved one. Written by Finish. */
+  fiscalYearStartMonth: number
+  /** Proposed: the saved book timezone, else the actor's; null when neither has one. Written by Finish. */
   bookTimeZone: string | null
-  bookTimeZoneWritten: boolean
+  /** The saved export mode. */
+  exportMode: ExportSettings['mode']
   proposedCutover: ProposedCutover
   chart: { mode: 'full' | 'refresh'; suggestionsLinked: number; result: ChartImportResult } | null
   /** Default accounts minted for roles the enabled posting types need and nothing in the chart fit. */
@@ -198,8 +200,11 @@ export interface ConnectAndGoAnswers {
   railBanks?: { paymentGatewayId: string; glAccountId: string }[]
   /** `BankAccountProposalKey`s the person accepted. */
   acceptBankAccounts?: string[]
-  /** Written only while `accounting.bookTimeZone` is unset. */
   bookTimeZone?: string | null
+  fiscalYearStartMonth?: number | null
+  exportMode?: ExportSettings['mode'] | null
+  /** `accounting.autoSend.*` and `accounting.summaryGrain.*` values; any other key is refused. */
+  exportSettings?: { key: string; value: boolean | string }[]
 }
 
 export const CONNECT_AND_GO_COMPLETE_STEPS = [
@@ -235,6 +240,8 @@ export interface ConnectAndGoCompleteReport {
   opening: { filledCount: number; differenceMinor: number; importedAccounts: number } | null
   finalize: { finalizedNow: boolean; openingStatus: string | null } | null
   inventoryAdjustment: { differenceMinor: number; status: string | null } | null
+  /** Every setting this run can write, read back after it, so a client can refresh its copy. */
+  settings: Record<string, unknown>
 }
 
 /** What the recovery sweeps would post after the cutover, and roughly what leaves for the provider. */
@@ -247,7 +254,7 @@ export interface ConnectAndGoBacklogPreview {
   relief: number
   /** Imported payments still to materialize into movements. */
   importedPayments: number
-  exportMode: 'transaction' | 'summary'
+  exportMode: ExportSettings['mode']
   /** About how many provider objects the backlog exports as. */
   estimatedExports: number
   drainMinutes: number

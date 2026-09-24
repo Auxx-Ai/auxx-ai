@@ -5,20 +5,30 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
 import { postOpeningInventoryAdjustment } from '../../inventory/receiving/opening-inventory-adjustment'
+import type { SettingKey } from '../../settings/catalog'
 import { readOrganizationSettings } from '../../settings/read'
 import { batchUpdateOrganizationSettings } from '../../settings/settings-service'
+import type { SettingValue } from '../../settings/types'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
+import { cutoverDateFor } from '../ledger/builders/opening-balance'
 import { importProviderAccounts } from '../ledger/chart/chart-import'
 import { assertAccountingSetupUnfrozen } from '../ledger/periods/settled-periods'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { setRoleAssignment } from '../ledger/roles/role-map'
+import {
+  isSetupExportSettingKey,
+  SETUP_EXPORT_SETTING_KEYS,
+} from '../ledger/setup/read-export-settings'
 import {
   FINALIZED_SETUP_STATE,
   isMonthKey,
   isValidTimeZone,
   readOpeningFromNothing,
 } from '../ledger/setup/setup-readiness'
-import { fillOpeningTrialBalanceFromProvider } from '../opening/fill-from-provider'
+import {
+  fillOpeningTrialBalanceFromProvider,
+  NO_PROVIDER_BALANCES,
+} from '../opening/fill-from-provider'
 import { finalizeAccountingSetup } from '../opening/finalize-setup'
 import { readOpeningPresence } from '../opening/reads'
 import { createProviderAccounts } from '../providers/create-provider-accounts'
@@ -36,11 +46,24 @@ import { listProviderAccountsToCreate } from './provider-accounts-to-create'
 
 const logger = createScopedLogger('accounting:connect-and-go')
 
+/** What a run can write: its own steps plus finalize's stamp. */
+const COMPLETE_SETTING_KEYS = [
+  'accounting.cutoffPeriod',
+  'accounting.bookTimeZone',
+  'accounting.fiscalYearStartMonth',
+  'accounting.exportMode',
+  'accounting.openingFromNothing',
+  'accounting.setupState',
+  'accounting.setupFinalizedAt',
+  'accounting.setupFinalizedByUserId',
+  ...SETUP_EXPORT_SETTING_KEYS,
+] as const
+
 /** A step's own refusal: stops the run with this sentence. */
 class StepFailure extends Error {}
 
 /**
- * The person has confirmed the cutover and answered the questions: write them, create our
+ * The person has confirmed the cutover, book settings and questions: write them, create our
  * unlinked accounts in the provider, activate exports, fill the opening from the provider, finalize and post it, then the inventory
  * adjustment. Stops at the first refusal and keeps what landed; every step is idempotent, so
  * calling again resumes. Refuses outright only on a malformed cutover or timezone.
@@ -63,6 +86,17 @@ export async function completeConnectAndGo(
   const answeredZone = answers.bookTimeZone?.trim() || null
   if (answeredZone && !isValidTimeZone(answeredZone)) {
     return err(new BadRequestError(`"${answeredZone}" is not a valid IANA timezone.`))
+  }
+  const fiscalMonth = answers.fiscalYearStartMonth
+  if (
+    fiscalMonth != null &&
+    !(Number.isInteger(fiscalMonth) && fiscalMonth >= 1 && fiscalMonth <= 12)
+  ) {
+    return err(new BadRequestError(`${fiscalMonth} is not a month from 1 to 12.`))
+  }
+  const strayKey = answers.exportSettings?.find((row) => !isSetupExportSettingKey(row.key))
+  if (strayKey) {
+    return err(new BadRequestError(`${strayKey.key} is not an export setting.`))
   }
   try {
     return ok(
@@ -97,6 +131,7 @@ async function completeLocked(
     opening: null,
     finalize: null,
     inventoryAdjustment: null,
+    settings: {},
   }
 
   const run = async (
@@ -129,6 +164,9 @@ async function completeLocked(
       'accounting.cutoffPeriod',
       'accounting.bookTimeZone',
       'accounting.openingFromNothing',
+      'accounting.fiscalYearStartMonth',
+      'accounting.exportMode',
+      ...SETUP_EXPORT_SETTING_KEYS,
     ] as const,
     db
   )
@@ -140,16 +178,20 @@ async function completeLocked(
     [
       'cutover',
       async () => {
-        const writes: {
-          key: 'accounting.cutoffPeriod' | 'accounting.bookTimeZone'
-          value: string
-        }[] = []
-        if (settings['accounting.cutoffPeriod']?.trim() !== cutoffPeriod)
-          writes.push({ key: 'accounting.cutoffPeriod', value: cutoffPeriod })
-        if (!settings['accounting.bookTimeZone']?.trim()) {
-          if (!answeredZone) throw new StepFailure('Choose the timezone your books are kept in.')
-          writes.push({ key: 'accounting.bookTimeZone', value: answeredZone })
+        const writes: { key: SettingKey; value: SettingValue }[] = []
+        const setIfChanged = (key: SettingKey, value: SettingValue) => {
+          if (String(settings[key as keyof typeof settings] ?? '') !== String(value ?? ''))
+            writes.push({ key, value })
         }
+        setIfChanged('accounting.cutoffPeriod', cutoffPeriod)
+        if (answeredZone) setIfChanged('accounting.bookTimeZone', answeredZone)
+        else if (!settings['accounting.bookTimeZone']?.trim())
+          throw new StepFailure('Choose the timezone your books are kept in.')
+        if (answers.fiscalYearStartMonth != null)
+          setIfChanged('accounting.fiscalYearStartMonth', String(answers.fiscalYearStartMonth))
+        if (answers.exportMode) setIfChanged('accounting.exportMode', answers.exportMode)
+        for (const row of answers.exportSettings ?? [])
+          setIfChanged(row.key as SettingKey, row.value)
         if (writes.length === 0) return { skipped: 'Already set' }
         await assertAccountingSetupUnfrozen(
           organizationId,
@@ -248,6 +290,15 @@ async function completeLocked(
         if ((await readOpeningPresence(db, organizationId)).posted)
           return { skipped: 'Already posted' }
         const filled = await fillOpening(db, organizationId, actorUserId)
+        if (!filled) {
+          // The provider's books start after the cutover, so there is nothing to open with.
+          await batchUpdateOrganizationSettings({
+            organizationId,
+            settings: [{ key: 'accounting.openingFromNothing', value: true }],
+            db,
+          })
+          return `No transactions on or before ${cutoverDateFor(cutoffPeriod)}, so the books open at zero`
+        }
         report.opening = filled
         return `${filled.filledCount} accounts filled`
       },
@@ -290,6 +341,7 @@ async function completeLocked(
   }
 
   report.completed = report.failedAt === null
+  report.settings = await readOrganizationSettings(organizationId, COMPLETE_SETTING_KEYS, db)
   // The backlog after the cutover starts draining now rather than at the next scheduled page.
   if (report.completed) await requestAccountingRecovery(organizationId)
   logger.info('Connect and go completed', {
@@ -300,13 +352,17 @@ async function completeLocked(
   return report
 }
 
-/** Fill the opening; on unmatched provider balances import those accounts and try once more. */
+/**
+ * Fill the opening; on unmatched provider balances import those accounts and try once more.
+ * Null when the provider has no data at the cutover.
+ */
 async function fillOpening(
   db: Database,
   organizationId: string,
   actorUserId: string
-): Promise<{ filledCount: number; differenceMinor: number; importedAccounts: number }> {
+): Promise<{ filledCount: number; differenceMinor: number; importedAccounts: number } | null> {
   const first = await fillOpeningTrialBalanceFromProvider(db, organizationId, actorUserId)
+  if (first.isErr() && errorReason(first.error) === NO_PROVIDER_BALANCES) return null
   if (first.isOk())
     return {
       filledCount: first.value.filledCount,
@@ -331,6 +387,10 @@ async function fillOpening(
     differenceMinor: second.value.differenceMinor,
     importedAccounts: imported.value.created,
   }
+}
+
+function errorReason(error: Error): unknown {
+  return error instanceof AuxxError ? (error.details as { reason?: unknown }).reason : undefined
 }
 
 function unmatchedProviderAccountIds(error: Error): string[] {

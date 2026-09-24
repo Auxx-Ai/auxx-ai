@@ -287,6 +287,8 @@ const SETTING_RESETS = [
   { key: 'accounting.bookTimeZone' as const, value: null },
   { key: 'accounting.openingSource' as const, value: 'manual' },
   { key: 'accounting.openingSourceAsOf' as const, value: null },
+  // A leftover `true` makes Connect-and-go's Finish skip the provider opening.
+  { key: 'accounting.openingFromNothing' as const, value: false },
   { key: 'accounting.providerSyncedThrough' as const, value: null },
   // The inbound mirror's walk position; the mirror rows are wiped above.
   { key: 'providerSync.state' as const, value: null },

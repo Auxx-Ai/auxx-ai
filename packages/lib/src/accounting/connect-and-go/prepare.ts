@@ -6,7 +6,6 @@ import type { Result } from 'neverthrow'
 import { getCachedMembersByUserIds } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
-import { batchUpdateOrganizationSettings } from '../../settings/settings-service'
 import { importChartFromProvider, mintMissingRoleAccounts } from '../ledger/chart/chart-import'
 import { ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES } from '../ledger/roles/regime'
 import { listChartAccounts, listRoleMap } from '../ledger/roles/role-map'
@@ -37,12 +36,13 @@ const PREPARE_SETTING_KEYS = [
   'accounting.cutoffPeriod',
   'accounting.bookTimeZone',
   'accounting.fiscalYearStartMonth',
+  'accounting.exportMode',
 ] as const
 
 /**
- * Everything setup can do from the connected provider before anyone answers: fiscal year and
- * timezone, the chart, rails, the accounts Finish will create there, and the bank-account plan.
- * Reads the provider only, posts nothing and writes no cutover. Idempotent. A step's refusal is reported and the rest run.
+ * Everything setup can do from the connected provider before anyone answers: the chart, rails,
+ * the accounts Finish will create there, and the bank-account plan. Reads the provider only,
+ * posts nothing and writes no setting. Idempotent. A step's refusal is reported and the rest run.
  * No permission checks - the router asserts. See plans/accounting/tasks/105-connect-and-go.md §4.
  */
 export async function prepareConnectAndGo(
@@ -79,7 +79,7 @@ async function prepareLocked(
   const settings = await readOrganizationSettings(organizationId, PREPARE_SETTING_KEYS, db)
   const finalized = settings['accounting.setupState'] === FINALIZED_SETUP_STATE
 
-  // 1. The company's own settings: fiscal year, and a timezone while none is set.
+  // 1. The company's own settings: the fiscal year and lock date proposed below.
   let company: ConnectAndGoPrepareReport['company'] = null
   if (provider.readCompanySettings) {
     const read = await provider.readCompanySettings(organizationId)
@@ -87,32 +87,15 @@ async function prepareLocked(
     else company = read.value
   }
 
-  const writes: { key: (typeof PREPARE_SETTING_KEYS)[number]; value: string }[] = []
-  const fiscalMonth = company?.fiscalYearStartMonth ?? null
-  let fiscalYearStartMonthWritten: number | null = null
-  if (
-    fiscalMonth &&
-    fiscalMonth >= 1 &&
-    fiscalMonth <= 12 &&
-    String(settings['accounting.fiscalYearStartMonth'] ?? '') !== String(fiscalMonth)
-  ) {
-    writes.push({ key: 'accounting.fiscalYearStartMonth', value: String(fiscalMonth) })
-    fiscalYearStartMonthWritten = fiscalMonth
-  }
-
-  let bookTimeZone = settings['accounting.bookTimeZone']?.trim() || null
-  let bookTimeZoneWritten = false
-  if (!bookTimeZone) {
-    const actorZone = await actorTimeZone(organizationId, actorUserId)
-    if (actorZone) {
-      writes.push({ key: 'accounting.bookTimeZone', value: actorZone })
-      bookTimeZone = actorZone
-      bookTimeZoneWritten = true
-    }
-  }
-  if (writes.length > 0) {
-    await batchUpdateOrganizationSettings({ organizationId, settings: writes, db })
-  }
+  // Proposed only; Finish writes what the person confirms. Once finalized the saved value stands.
+  const savedFiscalMonth = asMonthNumber(settings['accounting.fiscalYearStartMonth'])
+  const fiscalYearStartMonth =
+    (finalized ? savedFiscalMonth : asMonthNumber(company?.fiscalYearStartMonth)) ??
+    savedFiscalMonth ??
+    1
+  const bookTimeZone =
+    settings['accounting.bookTimeZone']?.trim() ||
+    (await actorTimeZone(organizationId, actorUserId))
 
   const proposedCutover = proposeCutover({
     currentCutoffPeriod: settings['accounting.cutoffPeriod'] ?? null,
@@ -181,9 +164,9 @@ async function prepareLocked(
     preparedAt: new Date().toISOString(),
     finalized,
     company,
-    fiscalYearStartMonthWritten,
+    fiscalYearStartMonth,
     bookTimeZone,
-    bookTimeZoneWritten,
+    exportMode: settings['accounting.exportMode'] === 'summary' ? 'summary' : 'transaction',
     proposedCutover,
     chart,
     rolesMinted,
@@ -243,4 +226,9 @@ async function actorTimeZone(organizationId: string, userId: string): Promise<st
   const [member] = await getCachedMembersByUserIds(organizationId, [userId])
   const zone = member?.user?.preferredTimezone?.trim()
   return zone && isValidTimeZone(zone) ? zone : null
+}
+
+function asMonthNumber(value: unknown): number | null {
+  const month = Number(value)
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null
 }

@@ -34,7 +34,7 @@ export interface MappingScopeRowProps {
   inheritedAccountName?: string | null
   filterTypes?: GlAccountTypeValue[]
   subtypePin?: GlAccountSubtypeValue
-  /** `source: 'suggested'` (task 58/59 D5): an amber chip beside the picker and a hover Confirm action. */
+  /** `source: 'suggested'` (task 58/59 D5): an amber chip in the secondary slot and a hover Confirm action. */
   suggested?: boolean
   onConfirmSuggested?: () => void
   /** The sentence from task 58 §5.4 when a bank row's account disagrees with the payout's reported destination. */
@@ -123,16 +123,11 @@ export function MappingScopeRow({
           noFeedLinked={noFeedLinked}
           mismatchMessage={mismatchMessage}
           note={note}
+          suggested={!!suggested}
         />
       }
       trailing={
         <div className='flex items-center gap-1.5'>
-          {suggested && (
-            <Badge variant='amber' size='xs' className='shrink-0'>
-              <Sparkles className='size-3' />
-              Suggested
-            </Badge>
-          )}
           {notLinked && (
             <>
               <Badge variant='outline' size='xs' className='shrink-0'>
@@ -186,17 +181,22 @@ export function MappingScopeRow({
   )
 }
 
-/** One row's secondary slot: a mismatch warning wins over "no feed linked", which wins over the "Not mapped" chip. */
+/**
+ * One row's secondary slot: a mismatch warning wins over "no feed linked", which wins over the
+ * "Not mapped" chip, which wins over "Suggested".
+ */
 function ScopeRowSecondary({
   notMapped,
   noFeedLinked,
   mismatchMessage,
   note,
+  suggested,
 }: {
   notMapped: boolean
   noFeedLinked: boolean
   mismatchMessage?: string
   note?: string
+  suggested: boolean
 }) {
   if (mismatchMessage) {
     return (
@@ -220,6 +220,18 @@ function ScopeRowSecondary({
           </Badge>
         </div>
       </Tooltip>
+    )
+  }
+
+  if (suggested) {
+    return (
+      <span className='flex min-w-0 items-center gap-1.5'>
+        <Badge variant='amber' size='xs' className='shrink-0'>
+          <Sparkles className='size-3' />
+          Suggested
+        </Badge>
+        {note && <span className='truncate text-muted-foreground text-xs'>{note}</span>}
+      </span>
     )
   }
 

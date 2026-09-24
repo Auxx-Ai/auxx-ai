@@ -753,6 +753,37 @@ describe('mintMissingRoleAccounts', () => {
     ])
   })
 
+  it('maps a role to the same-named account already in the chart instead of minting a twin', async () => {
+    listChartAccounts.mockResolvedValue(
+      ok([
+        {
+          id: 'gl_raw',
+          code: '1310',
+          name: 'Raw Materials / Parts',
+          accountType: 'asset',
+          subtype: 'inventory',
+          isActive: true,
+        } as ChartAccountRow,
+      ])
+    )
+    listRoleMap.mockResolvedValue(ok(rows({ inventory_raw_materials: 'unmapped' })))
+    const { db, insertedRows } = stubDb()
+
+    const minted = (
+      await mintMissingRoleAccounts(db, {
+        organizationId: ORG,
+        actorUserId: USER,
+        roles: ['inventory_raw_materials'],
+      })
+    )._unsafeUnwrap()
+
+    expect(createChartAccountMock).not.toHaveBeenCalled()
+    expect(minted).toEqual([])
+    expect(insertedRows.map((row) => [row.role, row.source])).toEqual([
+      ['inventory_raw_materials', 'seed'],
+    ])
+  })
+
   it('leaves mapped roles and roles with no default account alone', async () => {
     listRoleMap.mockResolvedValue(ok(rows({ inventory_wip: 'suggested', bank: 'unmapped' })))
     const { db } = stubDb()

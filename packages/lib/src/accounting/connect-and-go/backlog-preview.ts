@@ -4,7 +4,7 @@ import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { BadRequestError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
-import type { SummaryGrain } from '../ledger/setup/export-settings'
+import type { ExportSettings, SummaryGrain } from '../ledger/setup/export-settings'
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import { isMonthKey } from '../ledger/setup/setup-readiness'
 import { countMovementAccountingBacklog } from '../money/blocked-movements'
@@ -22,7 +22,13 @@ import { guard } from './guard'
  */
 export async function previewConnectAndGoBacklog(
   db: Database,
-  params: { organizationId: string; cutoffPeriod: string; bookTimeZone?: string | null }
+  params: {
+    organizationId: string
+    cutoffPeriod: string
+    /** The draft's; the saved one when absent. */
+    bookTimeZone?: string | null
+    exportMode?: ExportSettings['mode'] | null
+  }
 ): Promise<Result<ConnectAndGoBacklogPreview, Error>> {
   const { organizationId, cutoffPeriod } = params
   return guard(
@@ -34,7 +40,7 @@ export async function previewConnectAndGoBacklog(
         'accounting.bookTimeZone',
       ] as const)
       const bookTimeZone =
-        settings['accounting.bookTimeZone']?.trim() || params.bookTimeZone?.trim() || 'UTC'
+        params.bookTimeZone?.trim() || settings['accounting.bookTimeZone']?.trim() || 'UTC'
       const window = { cutoffPeriod, bookTimeZone }
 
       const [shipments, movements, relief, importedPayments, exportSettings] = await Promise.all([
@@ -45,8 +51,9 @@ export async function previewConnectAndGoBacklog(
         readExportSettings(organizationId),
       ])
 
+      const exportMode = params.exportMode ?? exportSettings.mode
       const estimatedExports =
-        exportSettings.mode === 'transaction'
+        exportMode === 'transaction'
           ? shipments.count + movements.count
           : buckets(shipments, exportSettings.summaryGrain.fulfillment) +
             buckets(movements, exportSettings.summaryGrain.receipt)
@@ -58,7 +65,7 @@ export async function previewConnectAndGoBacklog(
         movements: movements.count,
         relief,
         importedPayments,
-        exportMode: exportSettings.mode,
+        exportMode,
         estimatedExports,
         drainMinutes: estimateDrainMinutes([
           shipments.count,
