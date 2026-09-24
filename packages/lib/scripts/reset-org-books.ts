@@ -28,14 +28,8 @@
 // keyed on the connector's external ids, so a surviving observation makes the
 // re-sync see an unchanged hash and never re-resolve the order it points at.
 //
-// 🛑 That makes ONE fact load-bearing: `part` is matched on **SKU**
-// (`identityRole: { kind: 'match', exclusive: true }`) and `contact` on email +
-// phone, so wiping their `DataConnectorItem` bindings re-links them on the next
-// sync rather than minting duplicates. `order`, `line_item`, `product` and
-// `catalog_item` carry an `externalId` role only, so they re-mint — which is
-// what is wanted, since they are being deleted here. Before trusting the part
-// half of that, this script CHECKS it: a bound part with a blank or duplicated
-// SKU cannot be re-matched and would come back as a second part, so it refuses.
+// Only the bindings of deleted records go, so a kept record stays bound and the
+// re-crawl skips it. Catalog items depend on that: they have no identity to re-link by.
 //
 // ── Why this is not `reset-accounting.ts` ───────────────────────────────────
 //
@@ -61,10 +55,10 @@
 //    delete fails partway. `MONEY_TABLES` spells out their order.
 // 3. **Instances deepest-first.** Children before parents, so a sweep never
 //    runs against a parent that is already gone.
-// 4. **`DataConnectorItem` explicitly.** Its two instance pointers are ON
-//    DELETE **SET NULL**, not cascade. Left alone, the binding survives the
-//    record with a NULL instance and its `contentHash` still matches, so the
-//    next sync counts the record `skipped` and re-creates nothing.
+// 4. **`DataConnectorItem` explicitly, for deleted records only.** Its two
+//    instance pointers are ON DELETE **SET NULL**, not cascade. Left alone, the
+//    binding survives the record with a NULL instance and its `contentHash` still
+//    matches, so the next sync counts the record `skipped` and re-creates nothing.
 // 5. **The configuration after the waves, the chart last.** `GlRoleAssignment` and
 //    `FinancialSourceAccount.paymentGatewayId` are NO ACTION FKs into the gateway
 //    instance; the QuickBooks map is a cell on the `gl_account` row, cleared first
@@ -92,7 +86,7 @@
 
 import { inspect } from 'node:util'
 import { database as db, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { listChartAccounts } from '../src/accounting/ledger'
 import {
   findGlAccountPointers,
@@ -122,14 +116,14 @@ if (!ORG_ARG) {
   console.error(
     'usage: reset-org-books.ts <organizationId|name> [options]\n\n' +
       '  options:\n' +
-      '    --keep-connector-items  leave DataConnectorItem + stream watermarks alone.\n' +
+      "    --keep-connector-items  leave the deleted records' bindings + stream watermarks alone.\n" +
       '                            🛑 Deleted records then do NOT come back on the next\n' +
       '                            sync: the binding outlives the record with a NULL\n' +
       '                            instance and its contentHash still matches, so the\n' +
       '                            record is counted skipped and never re-created.\n' +
       '    --keep-quickbooks       do not clear the QuickBooks account map or held ids.\n' +
       '    --keep-config           keep the chart, role map, bank accounts, bank rules, gateways.\n' +
-      '    --force                 past the providerEntryId and part-SKU guards.\n' +
+      '    --force                 past the providerEntryId guard.\n' +
       '    --confirm               actually write. Without it this is a dry run.\n'
   )
   process.exit(1)
@@ -425,88 +419,34 @@ async function readInstanceIds(
 }
 
 /**
- * Refuse when a connector-bound part could not be re-matched after its binding
- * is dropped.
- *
- * The part mapping's match key is SKU. A bound part with a blank SKU has
- * nothing to match on and a duplicated SKU is refused by the `exclusive` rule,
- * so either one comes back as a SECOND part on the next sync — the one outcome
- * "do not delete parts" is supposed to rule out. Checked rather than assumed,
- * because it is a property of the data and not of the code.
+ * Bindings whose record this reset deletes, or whose record is already gone.
+ * Kept records keep theirs.
  */
-async function assertPartsCanRematch(organizationId: string): Promise<number> {
-  const skuField = await db
-    .select({ id: schema.CustomField.id })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.systemAttribute, 'part_sku')
-      )
-    )
-    .limit(1)
-
-  const fieldId = skuField[0]?.id
-  if (!fieldId) {
-    console.log('parts: no part_sku field in this org — nothing bound to check\n')
-    return 0
-  }
-
-  const bound = await db
-    .select({
-      instanceId: schema.DataConnectorItem.entityInstanceId,
-      sku: schema.FieldValue.valueText,
-    })
+async function readBindingIdsToDrop(
+  organizationId: string,
+  deletedTypes: readonly string[]
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: schema.DataConnectorItem.id })
     .from(schema.DataConnectorItem)
-    .innerJoin(
-      schema.EntityDefinition,
-      eq(schema.EntityDefinition.id, schema.DataConnectorItem.entityDefinitionId)
+    .leftJoin(
+      schema.EntityInstance,
+      eq(schema.EntityInstance.id, schema.DataConnectorItem.entityInstanceId)
     )
     .leftJoin(
-      schema.FieldValue,
-      and(
-        eq(schema.FieldValue.entityId, schema.DataConnectorItem.entityInstanceId),
-        eq(schema.FieldValue.fieldId, fieldId)
-      )
+      schema.EntityDefinition,
+      eq(schema.EntityDefinition.id, schema.EntityInstance.entityDefinitionId)
     )
     .where(
       and(
         eq(schema.DataConnectorItem.organizationId, organizationId),
-        eq(schema.EntityDefinition.entityType, 'part'),
-        isNotNull(schema.DataConnectorItem.entityInstanceId)
+        or(
+          isNull(schema.EntityInstance.id),
+          inArray(schema.EntityDefinition.entityType, [...deletedTypes])
+        )
       )
     )
-
-  const blank = bound.filter((row) => !row.sku || row.sku.trim() === '')
-  const seen = new Map<string, number>()
-  for (const row of bound) {
-    const sku = row.sku?.trim()
-    if (sku) seen.set(sku, (seen.get(sku) ?? 0) + 1)
-  }
-  const duplicated = [...seen.entries()].filter(([, n]) => n > 1)
-
-  console.log(
-    `parts: ${bound.length} connector-bound, ${blank.length} with a blank SKU, ` +
-      `${duplicated.length} duplicated SKU(s)`
-  )
-
-  if ((blank.length > 0 || duplicated.length > 0) && !FORCE) {
-    console.error(
-      '\n🛑 REFUSING to drop the connector bindings. The part mapping matches on SKU, so a\n' +
-        '   part with a blank or duplicated SKU cannot be re-matched and comes back as a\n' +
-        '   SECOND part on the next sync.\n\n' +
-        (duplicated.length > 0
-          ? `   duplicated: ${duplicated
-              .slice(0, 10)
-              .map(([sku, n]) => `${sku} (x${n})`)
-              .join(', ')}\n`
-          : '') +
-        '\n   Fix the SKUs, pass --keep-connector-items, or pass --force.\n'
-    )
-    process.exit(1)
-  }
-  console.log('')
-  return bound.length
+  return rows.map((r) => r.id)
 }
 
 /** `deleteEntityInstances`, exiting with the Postgres error when it fails. */
@@ -729,8 +669,7 @@ async function main() {
 
   heading('4. Connector bindings and stream watermarks')
 
-  let boundParts = 0
-  let connectorItems = 0
+  let bindingIds: string[] = []
   const streams: { id: string; streamKey: string | null; state: unknown }[] = []
 
   if (KEEP_CONNECTOR_ITEMS) {
@@ -738,13 +677,10 @@ async function main() {
     console.log('🛑 Deleted records will NOT come back on the next sync — the binding outlives')
     console.log('   the record and its contentHash still matches, so it is counted skipped.\n')
   } else {
-    boundParts = await assertPartsCanRematch(org.id)
-
-    const [items] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(schema.DataConnectorItem)
-      .where(eq(schema.DataConnectorItem.organizationId, org.id))
-    connectorItems = items?.n ?? 0
+    bindingIds = await readBindingIdsToDrop(
+      org.id,
+      KEEP_CONFIG ? CLEARED_TYPES : [...CLEARED_TYPES, ...CONFIG_TYPES]
+    )
 
     const streamRows = await db
       .select({
@@ -760,8 +696,9 @@ async function main() {
       )
       .where(eq(schema.DataConnectorStream.organizationId, org.id))
 
-    console.log(`DataConnectorItem  ${connectorItems} binding(s) across every connector`)
-    console.log(`  of which parts   ${boundParts} (re-match on SKU, no duplicates)`)
+    console.log(
+      `DataConnectorItem  ${bindingIds.length} binding(s) of deleted records; kept records keep theirs`
+    )
     console.log(`streams            ${streamRows.length} reset to a fresh backfill`)
     for (const s of streamRows) {
       const state = (s.state ?? {}) as { phase?: string; watermark?: string }
@@ -1031,12 +968,11 @@ async function main() {
       )
   }
 
-  // Before the waves: `DataConnectorItem.mintedInstanceId` is an unindexed SET NULL FK, so
-  // every instance delete would otherwise scan the whole binding table and time out.
+  // Before the waves, so no instance delete has a SET NULL binding row to update.
   if (!KEEP_CONNECTOR_ITEMS) {
-    await db
-      .delete(schema.DataConnectorItem)
-      .where(eq(schema.DataConnectorItem.organizationId, org.id))
+    for (const chunk of chunked(bindingIds)) {
+      await db.delete(schema.DataConnectorItem).where(inArray(schema.DataConnectorItem.id, chunk))
+    }
   }
 
   for (const [index, wave] of DELETE_WAVES.entries()) {
@@ -1070,7 +1006,7 @@ async function main() {
       .where(eq(schema.DataConnector.organizationId, org.id))
 
     console.log(
-      `deleted ${connectorItems} connector binding(s); ${streams.length} stream(s) back to backfill`
+      `deleted ${bindingIds.length} connector binding(s); ${streams.length} stream(s) back to backfill`
     )
   }
 
@@ -1191,7 +1127,7 @@ async function main() {
   console.log(
     `\ndone.\n\n` +
       `  ${postings.length} ledger posting(s), ${instanceTotal} record(s), ` +
-      `${moneyTotal} money/evidence row(s), ${connectorItems} connector binding(s)\n` +
+      `${moneyTotal} money/evidence row(s), ${bindingIds.length} connector binding(s)\n` +
       `  ${mappings.length} account mapping(s), ${sequences.length} counter(s), ` +
       `${SETTING_RESETS.length} setting(s)\n` +
       (KEEP_CONFIG
@@ -1208,7 +1144,7 @@ async function main() {
       '     The account map is empty, so the first Post refuses until the accounts are\n' +
       '     re-mapped. That refusal is the mapping step working.\n' +
       '  2. Sync the connectors. Every stream is back to backfill phase with no\n' +
-      '     watermark, so history is re-crawled: parts and contacts re-match, orders\n' +
+      '     watermark, so history is re-crawled: kept records stay bound, orders\n' +
       '     re-mint from ORD-0001.' +
       (KEEP_CONFIG
         ? '\n'

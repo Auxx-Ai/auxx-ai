@@ -46,6 +46,8 @@ export interface WorkItemGroup extends WorkItemGroupKey {
   latestAt: Date
   railName: string | null
   glAccountName: string | null
+  /** The newest item's detail, only where the group is one `externalRef` (e.g. the part's name). */
+  detail: Record<string, unknown> | null
 }
 
 /** One item inside a group, with enough of its source to render and open it. */
@@ -149,7 +151,9 @@ export async function listWorkItemGroups(
       count(*)::int AS "count", max(w."updatedAt") AS "latestAt",
       (count(*) FILTER (WHERE w."nextAttemptAt" <= now()))::int AS "dueCount",
       array_agg(DISTINCT w."sourceKind") AS "sourceKinds",
-      max(rail."displayName") AS "railName", max(gl."displayName") AS "glAccountName"
+      max(rail."displayName") AS "railName", max(gl."displayName") AS "glAccountName",
+      (array_agg(w."detail" ORDER BY w."updatedAt" DESC)
+        FILTER (WHERE ${groupExternalRef()} IS NOT NULL))[1] AS "detail"
     FROM ${fromItems()}
     LEFT JOIN "EntityInstance" rail ON rail."organizationId" = w."organizationId" AND rail."id" = w."railId"
     LEFT JOIN "EntityInstance" gl ON gl."organizationId" = w."organizationId" AND gl."id" = w."glAccountId"
@@ -171,6 +175,7 @@ export async function listWorkItemGroups(
       sourceKinds: string[] | string
       railName: string | null
       glAccountName: string | null
+      detail: Record<string, unknown> | null
     }>
   ).map((row) => ({
     ...row,

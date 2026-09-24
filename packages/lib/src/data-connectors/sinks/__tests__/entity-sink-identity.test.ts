@@ -40,8 +40,10 @@ vi.mock('../../../cache', () => ({
 }))
 
 const upsertRecordIdentity = vi.fn()
+const findRecordByIdentity = vi.fn()
 vi.mock('../../../identity', () => ({
   upsertRecordIdentity: (...a: unknown[]) => upsertRecordIdentity(...a),
+  findRecordByIdentity: (...a: unknown[]) => findRecordByIdentity(...a),
 }))
 
 import { entitySink } from '../entity-sink'
@@ -127,6 +129,8 @@ beforeEach(() => {
   )
   upsertRecordIdentity.mockReset()
   upsertRecordIdentity.mockResolvedValue({ ok: true, value: { id: 'ri1' } })
+  findRecordByIdentity.mockReset()
+  findRecordByIdentity.mockResolvedValue(null)
 })
 
 describe('entitySink identity write-ownership rule', () => {
@@ -252,6 +256,38 @@ describe('entitySink identity write-ownership rule', () => {
     expect(selectDistinct).not.toHaveBeenCalled()
     expect(buildWriteKeyToFieldId).not.toHaveBeenCalled()
     expect(ctx.counters.skipped).toBe(1)
+  })
+
+  it('re-binds an unbound record to the instance RecordIdentity already holds', async () => {
+    findItem.mockResolvedValue(null)
+    findRecordByIdentity.mockResolvedValue({ recordId: `${DEF_ID}:inst_kept`, displayName: 'Jane' })
+    getFieldValues.mockResolvedValue(new Map())
+    const ctx = makeCtx()
+
+    await entitySink.upsertRecord(ctx, mapping(), record())
+
+    expect(findRecordByIdentity.mock.calls[0]?.[0]).toMatchObject({
+      organizationId: 'org1',
+      entityDefinitionId: DEF_ID,
+      source: 'shopify',
+      connectionId: 'conn1',
+      appFieldKey: 'customerId',
+      externalId: '207119551',
+    })
+    expect(create).not.toHaveBeenCalled()
+    expect(update.mock.calls[0]?.[0]).toBe(`${DEF_ID}:inst_kept`)
+    expect(upsertItem.mock.calls[0]?.[1]).toMatchObject({ entityInstanceId: 'inst_kept' })
+  })
+
+  it('creates when RecordIdentity holds nothing for the external id', async () => {
+    findItem.mockResolvedValue(null)
+    create.mockResolvedValue({ instance: { id: 'inst1' } })
+    const ctx = makeCtx()
+
+    await entitySink.upsertRecord(ctx, mapping(), record())
+
+    expect(findRecordByIdentity).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledTimes(1)
   })
 })
 

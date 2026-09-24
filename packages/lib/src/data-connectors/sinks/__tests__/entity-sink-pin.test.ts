@@ -43,7 +43,10 @@ vi.mock('../../../cache', () => ({
   getCachedResource: (...a: unknown[]) => getCachedResource(...a),
 }))
 
-vi.mock('../../../identity', () => ({ upsertRecordIdentity: vi.fn() }))
+vi.mock('../../../identity', () => ({
+  upsertRecordIdentity: vi.fn(),
+  findRecordByIdentity: vi.fn().mockResolvedValue(null),
+}))
 
 vi.mock('../../../field-values/field-value-helpers', () => ({
   createFieldValueContext: vi.fn(() => ({})),
