@@ -188,3 +188,18 @@ describe('derivePurchaseOrderStatuses — the edges', () => {
     expect(derivePurchaseOrderStatuses(lines)).toEqual(derivePurchaseOrderStatuses(lines))
   })
 })
+
+describe('derivePurchaseOrderStatuses — a service is never received (107-D10)', () => {
+  it('leaves a service line out of the receipt axis but not the billing axis', () => {
+    const derived = derivePurchaseOrderStatuses([
+      line({ quantityReceived: 10, quantityBilled: 10 }),
+      line({ service: true, quantityBilled: 4 }),
+    ])
+    expect(derived.receiptStatus).toBe('received')
+    expect(derived.billingStatus).toBe('partially_billed')
+  })
+
+  it('reads an order of services only as received', () => {
+    expect(derivePurchaseOrderStatuses([line({ service: true })]).receiptStatus).toBe('received')
+  })
+})

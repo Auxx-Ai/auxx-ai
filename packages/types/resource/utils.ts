@@ -153,7 +153,6 @@ export const ENTITY_DEFINITION_TYPES = [
   'service_request',
   'quote',
   'line_item',
-  'catalog_item',
   'catalog_group',
   'invoice',
   'payment',

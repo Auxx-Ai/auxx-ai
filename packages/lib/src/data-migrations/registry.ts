@@ -42,6 +42,9 @@ import { migration186DropPostingMarkers } from './migrations/186-drop-posting-ma
 import { migration187JournalEntryLine } from './migrations/187-journal-entry-line'
 import { migration188CreditMemoMoneyPending } from './migrations/188-credit-memo-money-pending'
 import { migration189ThreadTriageFields } from './migrations/189-thread-triage-fields'
+import { migration190PartsAndServices } from './migrations/190-parts-and-services'
+import { migration191PartSellingFields } from './migrations/191-part-selling-fields'
+import { migration192RemoveCatalogItem } from './migrations/192-remove-catalog-item'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -215,6 +218,12 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Four dbColumn-backed fields on the existing `thread` def, no backfill: the triage
   // mail classification writes (decision 03 §5.2).
   migration189ThreadTriageFields,
+  // Relabels the part def and appends `part_kind`'s `service` option (107 D1, D2).
+  migration190PartsAndServices,
+  // Four fields on the existing `part` def, no backfill: the part is the sell-side register (107).
+  migration191PartSellingFields,
+  // Deletes the catalog_item def and its relationship sides: the part is the one register (107 D1).
+  migration192RemoveCatalogItem,
 ]
 
 /**

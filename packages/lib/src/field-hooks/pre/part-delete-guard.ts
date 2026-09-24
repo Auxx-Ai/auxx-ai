@@ -38,7 +38,7 @@ import { readMovementsByRelation } from './guarded-movements'
  *     publishes a lifecycle event per cascaded row, so `mfg-subparts-deleted`,
  *     `mfg-vendor-parts-deleted` and `mfg-stock-movements-deleted` still fire
  *     and still recompute their roll-ups on the SURVIVING parent.
- *   - `purchase_order_line`, `vendor_bill_line`, `catalog_item` and `line_item`
+ *   - `purchase_order_line`, `vendor_bill_line` and `line_item`
  *     carry `onDelete: 'unlink'`. Those are somebody else's document: a vendor
  *     really did bill us for that thing, and a bill's totals are transcribed,
  *     never computed (`docs/inventory-costing-architecture-guide.md`). They

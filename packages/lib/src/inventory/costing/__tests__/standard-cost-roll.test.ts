@@ -670,6 +670,53 @@ describe('computeStandardCosts', () => {
     const { order } = computeStandardCosts(shared)
     expect(order.filter((id) => id === MOTOR)).toHaveLength(1)
   })
+
+  describe('a service (107-D10)', () => {
+    const SERVICE = 'part_service'
+
+    it('is skipped with reason `service`, never valued and never an error', () => {
+      const { costs, skipped } = computeStandardCosts(
+        inputs({
+          scope: new Set([SERVICE, MOTOR]),
+          partKinds: new Map<string, PartKindValue>([
+            [SERVICE, 'service'],
+            [MOTOR, 'component'],
+          ]),
+          liveCosts: new Map([
+            [SERVICE, 5000],
+            [MOTOR, 2009.8],
+          ]),
+        })
+      )
+
+      expect(costs.has(SERVICE)).toBe(false)
+      expect(costs.get(MOTOR)?.standardCost).toBe(2009.8)
+      expect(skipped).toEqual([{ partId: SERVICE, reason: 'service', partName: null }])
+    })
+
+    it('leaves a parent that lists it unvalued, blaming the service', () => {
+      const { costs, skipped } = computeStandardCosts(
+        inputs({
+          scope: new Set([SERVICE, ASSEMBLY]),
+          partKinds: new Map<string, PartKindValue>([
+            [SERVICE, 'service'],
+            [ASSEMBLY, 'subassembly'],
+          ]),
+          subpartGraph: new Map([[ASSEMBLY, [{ childId: SERVICE, qty: 1 }]]]),
+          partNames: new Map([[SERVICE, 'Installation']]),
+        })
+      )
+
+      expect(costs.has(ASSEMBLY)).toBe(false)
+      expect(skipped).toContainEqual(
+        expect.objectContaining({
+          partId: ASSEMBLY,
+          reason: 'component-not-valuable',
+          blockedByPartName: 'Installation',
+        })
+      )
+    })
+  })
 })
 
 describe('widenToAncestors', () => {

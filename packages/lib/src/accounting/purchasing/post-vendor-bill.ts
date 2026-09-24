@@ -101,6 +101,7 @@ export function buildEntryForVendorBill(source: VendorBillEntrySource): BuiltVen
         lineTotalMinor: line.lineTotalMinor,
         quantityBilled: line.quantityBilled,
         purchaseOrderLineId: line.purchaseOrderLineId,
+        service: line.service,
         unitPriceExpectedMinor: line.unitPriceExpectedMinor,
         glAccountId: line.glAccountId,
         landedPoolKey: landed?.poolKey,

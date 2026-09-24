@@ -14,6 +14,7 @@ import { AuxxError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
+import { isServicePartKind } from '../../inventory/costing/client'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -64,6 +65,8 @@ const STATUS_ATTRS = [
   'purchase_order_status',
   'purchase_order_receipt_status',
   'purchase_order_billing_status',
+  'purchase_order_line_part',
+  'part_kind',
 ] as const
 
 /** The seven fields this pass needs, resolved from the org cache. */
@@ -76,6 +79,9 @@ interface StatusFields {
   statusField: CustomFieldEntity | undefined
   receiptStatusField: CustomFieldEntity
   billingStatusField: CustomFieldEntity
+  /** Optional pair: absent reads every line as goods. */
+  partRelField: CustomFieldEntity | undefined
+  partKindField: CustomFieldEntity | undefined
 }
 
 /**
@@ -360,6 +366,8 @@ async function resolveStatusFields(organizationId: string): Promise<StatusFields
     statusField: statusField ?? undefined,
     receiptStatusField,
     billingStatusField,
+    partRelField: fields.purchase_order_line_part ?? undefined,
+    partKindField: fields.part_kind ?? undefined,
   }
 }
 
@@ -427,6 +435,14 @@ async function readOrderStatusInputs(
       statusOption: currentOption(fields.statusField?.id),
       receiptStatusOption: currentOption(fields.receiptStatusField.id),
       billingStatusOption: currentOption(fields.billingStatusField.id),
+      partKind: sql<string | null>`(SELECT fv_kind."optionId" FROM "FieldValue" fv_part
+        JOIN "FieldValue" fv_kind ON fv_kind."entityId" = fv_part."relatedEntityId"
+          AND fv_kind."fieldId" = ${fields.partKindField?.id ?? ''}
+          AND fv_kind."organizationId" = ${organizationId}
+        WHERE fv_part."entityId" = ${schema.FieldValue.entityId}
+          AND fv_part."fieldId" = ${fields.partRelField?.id ?? ''}
+          AND fv_part."organizationId" = ${organizationId}
+        LIMIT 1)`,
     })
     .from(schema.FieldValue)
     .leftJoin(
@@ -479,6 +495,7 @@ async function readOrderStatusInputs(
       quantityOrdered: Number(row.ordered ?? 0),
       quantityReceived: Number(row.received ?? 0),
       quantityBilled: Number(row.billed ?? 0),
+      service: isServicePartKind(row.partKind),
     })),
     current,
   }

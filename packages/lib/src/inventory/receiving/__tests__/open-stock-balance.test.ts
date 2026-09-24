@@ -315,6 +315,23 @@ describe('openStockBalance — opening is ONCE', () => {
   })
 })
 
+describe('a service is never stocked (107-D10)', () => {
+  it('openStockBalance refuses it with BadRequest and writes nothing', async () => {
+    h.partKind = 'service'
+    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
+    expect(error).toBeInstanceOf(BadRequestError)
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('adjustStock refuses it as a service, not as a part missing a standard', async () => {
+    h.partKind = 'service'
+    const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('openStockBalance — the quantity and cost guards', () => {
   it.each([0, -5])('refuses a quantity of %s and writes nothing', async (quantity) => {
     const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, quantity }))

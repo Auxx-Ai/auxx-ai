@@ -67,6 +67,7 @@ import {
   StockMovementType,
 } from '../../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
+import { isServicePartKind } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
 import { type StockMovementInput, writeStockMovements } from '../movements'
@@ -264,6 +265,9 @@ async function writeCompletion(
     })
 
   const producedKinds = await readPartKinds(txDb, organizationId, [build.partId])
+  if (isServicePartKind(producedKinds.get(build.partId))) {
+    throw new BadRequestError('A service is not stocked, so it cannot be built')
+  }
   // The one construction site for the quiet lane. See `write-lane.ts`.
   const buildSession = buildWriteSession()
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {

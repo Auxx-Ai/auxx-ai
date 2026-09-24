@@ -223,13 +223,10 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     permissionKey: 'ledger.view',
   },
   {
-    // The sellable catalog's first-class entry (plans/products/01-product-family.md
-    // §6). Deliberate: `catalog_item`/`catalog_group` stay `isVisible: false`, so
-    // the entity sidebar never auto-links them — this entry is the promotion.
-    // Gates match the page's own (`useRequireCapability(settingsManage)` +
-    // `FeatureKey.dispatch` in catalog-page.tsx).
+    // Pricing: catalog groups and tax rates (107 D9). Gates match the page's own
+    // (`useRequireCapability(settingsManage)` + `FeatureKey.dispatch` in catalog-page.tsx).
     id: 'catalog',
-    label: 'Products and Services',
+    label: 'Pricing',
     slug: 'catalog',
     icon: <Tags />,
     featureKey: 'dispatch',

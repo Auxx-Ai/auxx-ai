@@ -114,4 +114,18 @@ describe('planning a supplier return', () => {
       planVendorCreditStockReturns(db, 'org_1', [line({ description: null, partInstanceId: null })])
     ).rejects.toThrow(/Line 1 has no part/)
   })
+
+  it('sends nothing back for a flagged service, and needs no standard on it (107-D10)', async () => {
+    h.readStandardCost.mockResolvedValue(ok(new Map([['part_m', { standardCost: 1_600 }]])))
+    h.readPartKind.mockImplementation(async (_db: unknown, _org: string, partId: string) =>
+      ok(partId === 'part_svc' ? 'service' : 'raw_material')
+    )
+
+    const plans = await planVendorCreditStockReturns(db, 'org_1', [
+      line(),
+      line({ id: 'vcl_2', description: 'Install labour', partInstanceId: 'part_svc' }),
+    ])
+
+    expect(plans.map((plan) => plan.lineId)).toEqual(['vcl_1'])
+  })
 })

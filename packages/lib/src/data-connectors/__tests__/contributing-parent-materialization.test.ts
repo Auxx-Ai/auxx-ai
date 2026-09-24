@@ -1,8 +1,8 @@
 // packages/lib/src/data-connectors/__tests__/contributing-parent-materialization.test.ts
 // Contributing mappings parenting onto contributing siblings (full contribute mode):
 // `'' → product` parents `variants[] → part`, and a FLAT drilled child (explicit
-// `parentRootPath`, same subtree) contributes the part's `catalog_item` with a
-// pre-existing SYSTEM relationship edge (`system:part_catalog_items`) resolved at
+// `parentRootPath`, same subtree) contributes the part's `vendor_part` with a
+// pre-existing SYSTEM relationship edge (`system:part_vendor_parts`) resolved at
 // install to the concrete `defId:fieldId` ref the manual editor stores. DB + org
 // cache are mocked; the assertions read the inserted `DataConnectorMapping` values.
 
@@ -31,7 +31,7 @@ const APP = 'shopify'
 const DEF_IDS: Record<string, string> = {
   product: 'def_product',
   part: 'def_part',
-  catalog_item: 'def_catalog',
+  vendor_part: 'def_vendor_part',
 }
 
 /** Minimal cached-field rows per def (id + systemAttribute drive resolution). */
@@ -43,17 +43,17 @@ const DEF_FIELDS: Record<string, Array<Record<string, unknown>>> = {
   def_part: [
     { id: 'f_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
     {
-      id: 'f_ci',
-      name: 'Catalog Items',
-      systemAttribute: 'part_catalog_items',
+      id: 'f_vp',
+      name: 'Vendor Parts',
+      systemAttribute: 'part_vendor_parts',
       type: 'RELATIONSHIP',
     },
   ],
-  def_catalog: [
+  def_vendor_part: [
     {
       id: 'f_price',
-      name: 'Default Unit Price',
-      systemAttribute: 'catalog_item_default_unit_price',
+      name: 'Unit Price',
+      systemAttribute: 'vendor_part_unit_price',
       type: 'CURRENCY',
     },
   ],
@@ -82,7 +82,7 @@ function mockDb() {
   return { db: db as unknown as Database, inserted }
 }
 
-/** The full-contribute-mode product stream: product root + part child + flat catalog_item. */
+/** The full-contribute-mode product stream: product root + part child + flat vendor_part. */
 const STREAM: CatalogConnectorStream = {
   key: 'product',
   mappings: [
@@ -97,9 +97,9 @@ const STREAM: CatalogConnectorStream = {
     {
       rootPath: 'variants[]',
       parentRootPath: 'variants[]',
-      relationshipFieldKey: 'system:part_catalog_items',
-      target: { entityKind: 'catalog_item' },
-      fields: [{ sourcePath: 'price', target: 'catalog_item_default_unit_price' }],
+      relationshipFieldKey: 'system:part_vendor_parts',
+      target: { entityKind: 'vendor_part' },
+      fields: [{ sourcePath: 'price', target: 'vendor_part_unit_price' }],
     },
   ],
 }
@@ -112,12 +112,12 @@ beforeEach(() => {
 })
 
 describe('materializeAppContributingMappings — contributing parents', () => {
-  it('chains product → part → catalog_item with correct parentMappingId + stored rootPaths', async () => {
+  it('chains product → part → vendor_part with correct parentMappingId + stored rootPaths', async () => {
     const { db, inserted } = mockDb()
     await materializeAppContributingMappings(db, ORG, STREAM_ID, STREAM, APP)
 
     expect(inserted).toHaveLength(3)
-    const [product, part, catalog] = inserted
+    const [product, part, vendorPart] = inserted
 
     // Root: no parent, no edge.
     expect(product).toMatchObject({
@@ -140,18 +140,18 @@ describe('materializeAppContributingMappings — contributing parents', () => {
 
     // The flat child: explicit parentRootPath, stored rootPath '' (the drilled shape
     // mapRecord fans out), parented onto the part row.
-    expect(catalog).toMatchObject({
+    expect(vendorPart).toMatchObject({
       rootPath: '',
-      entityDefinitionId: 'def_catalog',
+      entityDefinitionId: 'def_vendor_part',
       parentMappingId: part?.id,
     })
-    expect(catalog?.relationshipFieldKey).toBe(toResourceFieldId('def_part', 'f_ci'))
+    expect(vendorPart?.relationshipFieldKey).toBe(toResourceFieldId('def_part', 'f_vp'))
   })
 
   it('binds declared fields, sourcePath already relative on both siblings', async () => {
     const { db, inserted } = mockDb()
     await materializeAppContributingMappings(db, ORG, STREAM_ID, STREAM, APP)
-    const [, part, catalog] = inserted
+    const [, part, vendorPart] = inserted
 
     const partFms = part?.fieldMappings as Array<Record<string, unknown>>
     expect(partFms.some((fm) => fm.targetFieldRef === toResourceFieldId('def_part', 'f_sku'))).toBe(
@@ -160,10 +160,10 @@ describe('materializeAppContributingMappings — contributing parents', () => {
     expect(partFms.find((fm) => fm.targetFieldRef?.toString().endsWith('f_sku'))?.expression).toBe(
       '{sku}'
     )
-    const catFms = catalog?.fieldMappings as Array<Record<string, unknown>>
+    const vpFms = vendorPart?.fieldMappings as Array<Record<string, unknown>>
     // The flat child's fields are already relative to its OWN mapping (`price`), matching
     // the parent subtree its stored `''` rootPath reads.
-    expect(catFms.find((fm) => fm.targetFieldRef?.toString().endsWith('f_price'))?.expression).toBe(
+    expect(vpFms.find((fm) => fm.targetFieldRef?.toString().endsWith('f_price'))?.expression).toBe(
       '{price}'
     )
   })
@@ -212,17 +212,17 @@ describe('resolveContributingRelationshipFieldKey', () => {
     await expect(
       resolveContributingRelationshipFieldKey(
         ORG,
-        'system:part_catalog_items',
+        'system:part_vendor_parts',
         APP,
         'part',
         'def_part'
       )
-    ).resolves.toBe(toResourceFieldId('def_part', 'f_ci'))
+    ).resolves.toBe(toResourceFieldId('def_part', 'f_vp'))
   })
 
   it('drops a system edge with no contributing parent def (warn, edge-less mapping)', async () => {
     await expect(
-      resolveContributingRelationshipFieldKey(ORG, 'system:part_catalog_items', APP, 'part', null)
+      resolveContributingRelationshipFieldKey(ORG, 'system:part_vendor_parts', APP, 'part', null)
     ).resolves.toBeNull()
   })
 

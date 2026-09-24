@@ -140,7 +140,7 @@ export async function writeQuickbooksIdField(params: {
   installationId: string
   connectionId: string
   appFieldKey: string
-  /** System entity type slug ('contact' | 'catalog_item' | 'invoice') — not the UUID def id. */
+  /** System entity type slug ('contact' | 'gl_account') — not the UUID def id. */
   entityType: string
   entityInstanceId: string
   externalId: string

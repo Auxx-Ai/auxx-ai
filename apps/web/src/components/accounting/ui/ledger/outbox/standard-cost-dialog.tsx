@@ -45,12 +45,12 @@ export function StandardCostDialog({ partId, onOpenChange }: StandardCostDialogP
         )}
         <DialogFooter>
           {partId && (
-            <Button variant='ghost' size='sm' asChild>
+            <Button variant='outline' size='sm' className='sm:mr-auto' asChild>
               <Link href={`/app/parts/${encodeURIComponent(partId)}`}>Open part</Link>
             </Button>
           )}
-          <Button variant='outline' size='sm' onClick={() => onOpenChange(false)}>
-            Done <Kbd shortcut='esc' variant='outline' size='sm' />
+          <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -432,11 +432,14 @@ export const PartKind = {
   COMPONENT: 'component',
   SUBASSEMBLY: 'subassembly',
   FINISHED_GOOD: 'finished_good',
+  /** Sold but never stocked: no movements, no standard cost, no BOM (107-D10). */
+  SERVICE: 'service',
 
   values: [
     { value: 'component', label: 'Component', color: 'gray' },
     { value: 'subassembly', label: 'Subassembly', color: 'blue' },
     { value: 'finished_good', label: 'Finished Good', color: 'green' },
+    { value: 'service', label: 'Service', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const
 

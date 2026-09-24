@@ -302,6 +302,8 @@ export function skipReasonLabel(skip: {
       return skip.blockedByPartName
         ? `needs a price on "${skip.blockedByPartName}"`
         : 'a component below it has no price'
+    case 'service':
+      return 'a service, which is never stocked'
     default:
       return skip.reason
   }

@@ -181,7 +181,6 @@ export type EntityRefKind =
   | 'order'
   | 'invoice'
   | 'line_item'
-  | 'catalog_item'
   | 'part'
   | 'product'
   | 'build'

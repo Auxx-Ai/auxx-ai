@@ -5,7 +5,7 @@ import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { generateId } from '@auxx/utils'
-import { Boxes, Lock, Package, Percent } from 'lucide-react'
+import { Boxes, Lock, Percent } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -16,40 +16,20 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import type { CatalogDraftHandle } from './settings/catalog-draft-types'
 import { GroupEditor } from './settings/group-editor'
 import { GroupsList } from './settings/groups-list'
-import { ProductEditor } from './settings/product-editor'
-import { ProductsList } from './settings/products-list'
 import { TaxRateEditor } from './settings/tax-rate-editor'
 import type { TaxRate } from './settings/tax-rate-types'
 import { TaxRatesList } from './settings/tax-rates-list'
 
-type CatalogTab = 'items' | 'groups' | 'tax-rates'
+type CatalogTab = 'groups' | 'tax-rates'
 
-const TABS: { value: CatalogTab; label: string; icon: typeof Package }[] = [
-  { value: 'items', label: 'Catalog items', icon: Package },
-  { value: 'groups', label: 'Catalog groups', icon: Boxes },
+const TABS: { value: CatalogTab; label: string; icon: typeof Boxes }[] = [
+  { value: 'groups', label: 'Groups', icon: Boxes },
   { value: 'tax-rates', label: 'Tax rates', icon: Percent },
 ]
 
 /**
- * Products and Services, the single home for the sellable catalog, at
- * `/app/catalog` (plans/products/01-product-family.md §6, surface promotion).
- *
- * This route is now the ONLY one. `/app/dispatch/settings/products` used to
- * render an identical copy of these same lists and editors plus the tax-rates
- * tab, so the two surfaces duplicated ~90 lines of draft/selection
- * orchestration and gave a merchant two places to look; that route is now a
- * redirect here (tab query preserved) and its dispatch-settings sidebar entry
- * is gone. Tax rates moved with it, they are an org setting
- * (`documents.taxRates`), but keeping them one tab away from the prices they
- * apply to beats keeping them beside a settings page that no longer exists.
- *
- * `catalog_item` and `catalog_group` stay `isVisible: false`, so the entity
- * sidebar never auto-links them, this route plus its deliberate sidebar entry
- * IS the promotion, not a visibility flip.
- *
- * One phantom draft per record tab (money 15-settings-phantom-editors.md phase
- * 2), dropped when untouched on selecting another row or switching tabs. Tax
- * rates have no draft: they are a settings array, committed on add.
+ * Pricing at `/app/catalog`: catalog groups and tax rates (107 D9). What you sell
+ * lives on Parts & Services; one phantom group draft, dropped when left untouched.
  */
 export function CatalogPage() {
   useRequireCapability(PermissionKey.settingsManage)
@@ -57,36 +37,18 @@ export function CatalogPage() {
 
   // `tax-rates` is the value the old settings route used, so the deep links
   // that carried `?s=tax-rates` there keep landing on this tab.
-  const [tab, setTab] = useQueryState('s', { defaultValue: 'items' as string })
-  const activeTab: CatalogTab =
-    tab === 'groups' ? 'groups' : tab === 'tax-rates' ? 'tax-rates' : 'items'
+  const [tab, setTab] = useQueryState('s', { defaultValue: 'groups' as string })
+  const activeTab: CatalogTab = tab === 'tax-rates' ? 'tax-rates' : 'groups'
 
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedTaxRateId, setSelectedTaxRateId] = useState<string | null>(null)
-  const [itemDraft, setItemDraft] = useState<CatalogDraftHandle | null>(null)
   const [groupDraft, setGroupDraft] = useState<CatalogDraftHandle | null>(null)
 
-  function handleSelectItem(id: string | null) {
-    if (itemDraft && id !== itemDraft.draftId && id !== itemDraft.recordId) {
-      setItemDraft(null)
-    }
-    setSelectedItemId(id)
-  }
   function handleSelectGroup(id: string | null) {
     if (groupDraft && id !== groupDraft.draftId && id !== groupDraft.recordId) {
       setGroupDraft(null)
     }
     setSelectedGroupId(id)
-  }
-  function handleAddItemDraft() {
-    if (itemDraft && !itemDraft.recordId) {
-      setSelectedItemId(itemDraft.draftId)
-      return
-    }
-    const draftId = generateId('draft')
-    setItemDraft({ draftId, name: '' })
-    setSelectedItemId(draftId)
   }
   function handleAddGroupDraft() {
     if (groupDraft && !groupDraft.recordId) {
@@ -97,25 +59,17 @@ export function CatalogPage() {
     setGroupDraft({ draftId, name: '' })
     setSelectedGroupId(draftId)
   }
-  function handleItemDraftNameChange(name: string) {
-    setItemDraft((prev) => (prev ? { ...prev, name } : prev))
-  }
   function handleGroupDraftNameChange(name: string) {
     setGroupDraft((prev) => (prev ? { ...prev, name } : prev))
   }
   // First create resolved: swap selection to the real id but KEEP the draft so
   // the editor form stays mounted (mid-typing text + pending debounced commit).
-  function handleItemDraftCommitted(recordId: string) {
-    setItemDraft((prev) => (prev ? { ...prev, recordId } : prev))
-    setSelectedItemId(recordId)
-  }
   function handleGroupDraftCommitted(recordId: string) {
     setGroupDraft((prev) => (prev ? { ...prev, recordId } : prev))
     setSelectedGroupId(recordId)
   }
   function handleTabChange(next: string) {
     setTab(next)
-    if (itemDraft) setItemDraft(null)
     if (groupDraft) setGroupDraft(null)
   }
 
@@ -135,7 +89,7 @@ export function CatalogPage() {
       <MainPageContent>
         <EmptyState
           icon={Lock}
-          title='Products and Services Not Available'
+          title='Pricing Not Available'
           description='Upgrade your plan to use quoting and dispatch.'
           button={<div className='h-12' />}
         />
@@ -178,22 +132,10 @@ export function CatalogPage() {
   }
 
   const selectedTaxRate = taxRates.find((r) => r.id === selectedTaxRateId) ?? null
-  const selectedId =
-    activeTab === 'items'
-      ? selectedItemId
-      : activeTab === 'groups'
-        ? selectedGroupId
-        : selectedTaxRateId
+  const selectedId = activeTab === 'groups' ? selectedGroupId : selectedTaxRateId
 
   const editorContent =
-    activeTab === 'items' ? (
-      <ProductEditor
-        selectedId={selectedItemId}
-        draft={itemDraft}
-        onDraftNameChange={handleItemDraftNameChange}
-        onDraftCommitted={handleItemDraftCommitted}
-      />
-    ) : activeTab === 'groups' ? (
+    activeTab === 'groups' ? (
       <GroupEditor
         selectedId={selectedGroupId}
         currency={currency}
@@ -226,30 +168,14 @@ export function CatalogPage() {
           id='money-catalog'
           scroll='columns'
           pane={editorContent}
-          paneTitle={
-            activeTab === 'items'
-              ? 'Edit item'
-              : activeTab === 'groups'
-                ? 'Edit group'
-                : 'Edit tax rate'
-          }
+          paneTitle={activeTab === 'groups' ? 'Edit group' : 'Edit tax rate'}
           paneOpen={!!selectedId}
           onPaneClose={() => {
-            setSelectedItemId(null)
             setSelectedGroupId(null)
             setSelectedTaxRateId(null)
-            setItemDraft(null)
             setGroupDraft(null)
           }}>
-          {activeTab === 'items' ? (
-            <ProductsList
-              selectedId={selectedItemId}
-              onSelect={handleSelectItem}
-              currency={currency}
-              draft={itemDraft}
-              onAddDraft={handleAddItemDraft}
-            />
-          ) : activeTab === 'groups' ? (
+          {activeTab === 'groups' ? (
             <GroupsList
               selectedId={selectedGroupId}
               onSelect={handleSelectGroup}

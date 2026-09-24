@@ -268,6 +268,7 @@ async function runFulfillmentReliefForSync(
     skippedNoPart: result.value.skippedNoPart,
     skippedZeroDelta: result.value.skippedZeroDelta,
     skippedNoCost: result.value.skippedNoCost,
+    skippedService: result.value.skippedService,
   })
 }
 

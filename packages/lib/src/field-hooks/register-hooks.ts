@@ -46,8 +46,7 @@ import { generateDraftOnCompletion } from '../accounting/sales/invoices/auto-inv
 import {
   pauseMarkupOnPriceEdit,
   recomputePriceOnMarkupChange,
-  syncCatalogCostOnPartChange,
-} from '../accounting/sales/totals/catalog-pricing'
+} from '../accounting/sales/totals/part-pricing'
 import {
   recomputeCreditMemoAfterLineDelete,
   recomputeLineTotalsBatch,
@@ -92,7 +91,6 @@ import {
   reanchorInvoiceOnDueDateChange,
 } from '../sequences/field-change-hooks'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
-import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import {
   recalculateBilledRollupOnBillLineChange,
@@ -146,6 +144,7 @@ import {
 } from './pre/lifecycle-status-guard'
 import { guardOrderDelete } from './pre/order-delete-guard'
 import { guardPartDelete } from './pre/part-delete-guard'
+import { guardPartKindService } from './pre/part-kind-service-guard'
 import { guardPurchaseOrderDelete } from './pre/purchase-order-delete-guard'
 import {
   EVIDENCE_LOCKED_LINE_ATTRS,
@@ -159,6 +158,7 @@ import {
   OVER_RETURN_GUARDED_ATTRS,
 } from './pre/return-line-over-return-guard'
 import { guardReturnLifecycleTransition } from './pre/return-status-guard'
+import { guardSubpartServiceCreate } from './pre/subpart-service-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -311,18 +311,9 @@ export function registerAllHooks(): void {
   // the quote's or invoice's own billing fields (discount type/value, tax rate) change.
   // Keyed by apiSlug — line_item's is 'line-items', quote's is 'quotes', invoice's is
   // 'invoices'.
-  // ⚠️ `stampPartOnCatalogItemChange` is the SECOND door for the 08 §6.2 stamp. The system
-  // hook in `resources/hooks/line-item-hooks.ts` only fires for writes through
-  // `UnifiedCrudHandler` — how the LineBuilder ADDS a line. Every EDIT goes through
-  // `fieldValue.set` → `FieldValueService`, which never reads the system-hook registry, so
-  // re-pointing a line at another catalog item reaches only this handler. Verified against
-  // the running app: without it, a re-point left `line_item_part` NULL.
   registerDeriveHooks('line-items', [recomputeOnLineChange], {
     batch: recomputeLineTotalsBatch,
   })
-  // `skipOnCreate` (plans/events/10 §5): on a composed create the pre-create system hook has
-  // already stamped the part, and re-resolving it per line duplicates that write.
-  registerDeriveHooks('line-items', [stampPartOnCatalogItemChange], { skipOnCreate: true })
   registerMarkHooks('line-items', [
     syncBillingOnLineChange,
     // Model A+ (plans/products/13): a line's part, quantity or parent order
@@ -411,18 +402,13 @@ export function registerAllHooks(): void {
   registerMarkHooks('invoices', [recomputeOnInvoiceBillingChange, syncBillingOnInvoiceChange])
   registerDeriveHooks('invoices', [enrollInvoiceReminderOnSent, reanchorInvoiceOnDueDateChange])
 
-  // Part cost sync + markup pricing (money plan 17 §3) — the three interactive
-  // triggers: linking/unlinking a part syncs (or clears) `cost`; setting a markup
-  // recomputes `price`; hand-editing `price` clears markup (the pause switch). All
-  // writes go through the hook-free writer in `catalog-pricing.ts`, so these can never
-  // recurse into each other. The bulk-recalc ripple (vendor price / BOM composition
-  // changes) chains in separately at the end of `recalculateAllPartCosts` /
-  // `recalculateAffectedParts` (`bom/cost-calculator.ts`), not through this door.
-  registerDeriveHooks('catalog-items', [
-    syncCatalogCostOnPartChange,
-    recomputePriceOnMarkupChange,
-    pauseMarkupOnPriceEdit,
-  ])
+  // Markup pricing on the part (107 D5): a markup recomputes the price, a hand-typed price
+  // clears the markup. Writes are hook-free, so the two cannot recurse. Skipped on create:
+  // there is no cost yet, and a price typed with a markup would wrongly pause it.
+  // The cost-change ripple runs from `cost-calculator.ts`, not through this door.
+  registerDeriveHooks('parts', [recomputePriceOnMarkupChange, pauseMarkupOnPriceEdit], {
+    skipOnCreate: true,
+  })
 
   // Address field (plans/address-field/01-single-input-address-field.md §5 items 2-3,
   // decision #5/#13): field-type-keyed (NOT entity-scoped) so it runs for every ADDRESS_STRUCT
@@ -675,6 +661,7 @@ export function registerAllHooks(): void {
   // the same value bag the create writes (task 30 §8). Edits to either leg
   // re-stamp it through the field-change door below.
   registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness, stampTariffCodeLabel])
+  registerEntityPreCreateHooks('subparts', [guardSubpartServiceCreate])
   registerDeriveHooks('tariff-codes', [restampTariffCodeLabel], { skipOnCreate: true })
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
@@ -753,6 +740,7 @@ export function registerAllHooks(): void {
   // reversal and `vendor-bills` a posted/part-paid status, both read off the
   // captured values.
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
+  registerFieldPreHooks('parts', 'part_kind', [guardPartKindService])
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])

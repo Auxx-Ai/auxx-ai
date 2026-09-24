@@ -61,6 +61,7 @@ import { LayoutBlockSection } from './blocks'
 import { ThreadVisitCard } from './cards/thread-visit-card'
 import { DrawerCardActionsProvider } from './drawer-card-actions'
 import { getTabCardComponent, getTabComponent, isRestrictedDrawerTab } from './drawer-tab-registry'
+import { usePartKindGate } from './use-part-kind-gate'
 
 interface BaseEntityDrawerProps {
   /** RecordId in format "entityDefinitionId:entityInstanceId" */
@@ -243,7 +244,14 @@ export function DrawerRecordFrame({
 
   const [layoutEditorOpen, setLayoutEditorOpen] = React.useState(false)
 
-  const isBlockVisible = useBlockVisibility({ entityType: entityType ?? '', readOnly })
+  const isBlockGateVisible = useBlockVisibility({ entityType: entityType ?? '', readOnly })
+  // A service part drops its stock tabs and cards (107 D10).
+  const isHiddenForKind = usePartKindGate(recordId, entityType)
+  const isBlockVisible = React.useCallback(
+    (block: LayoutBlock) =>
+      !(block.kind === 'card' && isHiddenForKind(block.cardValue)) && isBlockGateVisible(block),
+    [isBlockGateVisible, isHiddenForKind]
+  )
 
   // Registry tab definitions by id, for the gates a `ResolvedLayoutTab` does not
   // carry. Placement is layout data; capability is always read back from the
@@ -264,12 +272,13 @@ export function DrawerRecordFrame({
   const isTabAllowed = React.useCallback(
     (tab: ResolvedLayoutTab) => {
       const definition = tabDefinitions.get(tab.id)
+      if (isHiddenForKind(tab.id)) return false
       if (!definition) return true
       if (definition.featureGate && !hasAccess(definition.featureGate)) return false
       if (definition.permissionKey && !can(definition.permissionKey)) return false
       return canViewRecordResource(definition.recordResource)
     },
-    [tabDefinitions, hasAccess, can, canViewRecordResource]
+    [tabDefinitions, hasAccess, can, canViewRecordResource, isHiddenForKind]
   )
 
   const visibilityCtx = React.useMemo<TabVisibilityContext>(

@@ -16,6 +16,7 @@ import {
 import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
+import { usePartKindGate } from '~/components/drawers/use-part-kind-gate'
 import { NoAccess } from '~/components/permissions/ui/no-access'
 import { useBlockVisibility } from '~/components/records/layout/use-block-visibility'
 import { useRecordLayout } from '~/components/records/layout/use-record-layout'
@@ -121,6 +122,7 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
   // Filter once at the detail-view boundary so the tab strip, rendered
   // sections, active-tab fallback, and lazy query owners all consume the same
   // list. This also handles a hidden default or a denied `?tab=` deep link.
+  const isHiddenForKind = usePartKindGate(recordId, entityType)
   const visibleMainTabs = useMemo(
     () =>
       config.mainTabs
@@ -129,8 +131,10 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
         // records (contact → Tickets, part → Subparts/Vendors). Load-bearing on
         // this surface specifically: `tickets` is the contact page's DEFAULT tab,
         // so without it a `tickets: None` member lands on it.
-        .filter((tab) => canViewRecordResource(tab.recordResource)),
-    [config.mainTabs, can, canViewRecordResource]
+        .filter((tab) => canViewRecordResource(tab.recordResource))
+        // A service part has no stock tabs (107 D10).
+        .filter((tab) => !isHiddenForKind(tab.value)),
+    [config.mainTabs, can, canViewRecordResource, isHiddenForKind]
   )
   const { layout } = useRecordLayout({
     entityDefinitionId,

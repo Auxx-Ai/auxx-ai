@@ -20,7 +20,7 @@
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { UnprocessableEntityError } from '../../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import type { BuildRecord, CreateBuildInput } from '../types'
 
 const ORG = 'org_1'
@@ -246,6 +246,15 @@ describe('a batch build is still a build', () => {
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.created).toHaveLength(0)
+  })
+
+  it('refuses a service with BadRequest (107-D10)', async () => {
+    h.kinds = new Map([[PART, 'service']])
+
+    const result = await createBuild(db, ORG, USER, batchInput())
+
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     expect(h.created).toHaveLength(0)
   })
 

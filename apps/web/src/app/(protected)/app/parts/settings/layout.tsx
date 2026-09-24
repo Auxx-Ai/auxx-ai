@@ -27,7 +27,7 @@ import type { SidebarProps } from '~/constants/menu'
 const PARTS_SETTINGS: SidebarProps[] = [
   {
     id: 'parts-settings',
-    label: 'Parts',
+    label: 'Parts & Services',
     type: 'header',
     items: [
       {

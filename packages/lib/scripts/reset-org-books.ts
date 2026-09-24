@@ -18,7 +18,7 @@
 //
 // ── What this KEEPS, and why that is the whole point ────────────────────────
 //
-// Parts, subparts, vendor parts, tariff codes and rates, the catalog, products,
+// Parts, subparts, vendor parts, tariff codes and rates, catalog groups, products,
 // contacts, companies, tickets, inboxes, `FinancialSourceAccount` (the store
 // scope, with its gateway link cleared) and the QuickBooks OAuth credential.
 // Nothing accounting-configuration-shaped survives: the wizard re-creates the
@@ -29,7 +29,7 @@
 // re-sync see an unchanged hash and never re-resolve the order it points at.
 //
 // Only the bindings of deleted records go, so a kept record stays bound and the
-// re-crawl skips it. Catalog items depend on that: they have no identity to re-link by.
+// re-crawl skips it.
 //
 // ── Why this is not `reset-accounting.ts` ───────────────────────────────────
 //
@@ -535,7 +535,9 @@ async function main() {
       `${KEEP_QUICKBOOKS ? '' : ' + QuickBooks map'}` +
       `${KEEP_CONFIG ? '' : ' +\n             chart + role map + bank accounts + bank rules + gateways'}`
   )
-  console.log('keeps        parts, products, catalog, contacts, companies, tickets, inboxes,')
+  console.log(
+    'keeps        parts, products, catalog groups, contacts, companies, tickets, inboxes,'
+  )
   console.log(
     `             FinancialSourceAccount, the QuickBooks credential${KEEP_CONFIG ? ', the configuration' : ''}\n`
   )

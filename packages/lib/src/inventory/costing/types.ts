@@ -60,6 +60,8 @@ export type SkipReason =
    * is a state a person can see and fix, an understated number is not.
    */
   | 'component-not-valuable'
+  /** A `service`: never stocked, so it carries no standard (107-D10). */
+  | 'service'
 
 /** One part the roll declined to value, with the reason a person can act on. */
 export interface SkippedPart {

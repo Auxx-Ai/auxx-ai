@@ -45,6 +45,8 @@ export interface PurchaseOrderLineQuantities {
   quantityOrdered: number
   quantityReceived: number
   quantityBilled: number
+  /** The line's part is a `service`: never received, so it sits out the receipt axis (107-D10). */
+  service?: boolean
 }
 
 /** Both derived verdicts for one purchase order. */
@@ -132,8 +134,13 @@ function classifyAxis<T extends string>(
 export function derivePurchaseOrderStatuses(
   lines: readonly PurchaseOrderLineQuantities[]
 ): PurchaseOrderDerivedStatuses {
+  const goods = lines.filter((line) => !line.service)
   return {
-    receiptStatus: classifyAxis(lines, (line) => line.quantityReceived, RECEIPT_AXIS),
+    // An order of services only has nothing to receive, so it reads received.
+    receiptStatus:
+      lines.length > 0 && goods.length === 0
+        ? RECEIPT_AXIS.complete
+        : classifyAxis(goods, (line) => line.quantityReceived, RECEIPT_AXIS),
     billingStatus: classifyAxis(lines, (line) => line.quantityBilled, BILLING_AXIS),
   }
 }

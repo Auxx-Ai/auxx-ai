@@ -227,7 +227,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     'line_item_category',
     'line_item_discount',
     'line_item_sort_order',
-    'line_item_catalog_item',
+    'line_item_part',
     'line_item_optional',
     'line_item_optional_selected',
     'line_item_source_line',
@@ -265,7 +265,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     lineCf.line_item_category,
     lineCf.line_item_discount,
     lineCf.line_item_sort_order,
-    lineCf.line_item_catalog_item,
+    lineCf.line_item_part,
     lineCf.line_item_optional,
     lineCf.line_item_optional_selected,
     lineCf.line_item_photos,
@@ -290,7 +290,7 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
     const categoryTyped = get(lineCf.line_item_category)
     const discountTyped = get(lineCf.line_item_discount)
     const sortOrderTyped = get(lineCf.line_item_sort_order)
-    const catalogItemTyped = get(lineCf.line_item_catalog_item)
+    const partTyped = get(lineCf.line_item_part)
     const optionalTyped = get(lineCf.line_item_optional)
     const optionalSelectedTyped = get(lineCf.line_item_optional_selected)
     const photos = lineCf.line_item_photos
@@ -327,8 +327,8 @@ export async function convertQuoteToWorkOrder(input: ConvertQuoteToWorkOrderInpu
       // `.ref` (same MediaAsset), so no asset duplication (plan 37b §3).
       line_item_photos: photos.length > 0 ? photos : undefined,
     }
-    if (catalogItemTyped?.type === 'relationship') {
-      copyValues.line_item_catalog_item = catalogItemTyped.recordId
+    if (partTyped?.type === 'relationship') {
+      copyValues.line_item_part = partTyped.recordId
     }
     // Provenance back to the source quote line (money plan 20 §E) — enables a future
     // accept-time auto-reconcile. Gated on the field existing (pre-migration-047 orgs).

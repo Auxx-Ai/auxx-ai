@@ -68,7 +68,6 @@ const CATEGORY: Record<string, keyof typeof CATEGORY_COLOR> = {
   part: 'goods',
   vendor_part: 'goods',
   subpart: 'goods',
-  catalog_item: 'goods',
   catalog_group: 'goods',
   stock_movement: 'goods',
   build: 'goods',

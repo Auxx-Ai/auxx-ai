@@ -25,7 +25,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 
 const BREADCRUMBS = [
-  { title: 'Parts', href: '/app/parts' },
+  { title: 'Parts & Services', href: '/app/parts' },
   { title: 'Settings' },
   { title: 'General' },
 ]

@@ -288,11 +288,6 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     aiVisible: false,
     sidebar: 'never',
   }, // automation config, not a record a user asks about
-  catalog_item: {
-    searchable: false,
-    inPromptCatalog: false,
-    sidebar: 'never',
-  }, // dispatch settings; already AI-visible
   catalog_group: {
     searchable: false,
     inPromptCatalog: false,

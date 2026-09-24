@@ -72,6 +72,8 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   // The aging leg (P24): PO line -> purchase order -> the header's expected date.
   purchase_order_line_purchase_order: { id: 'f-pol-po', type: 'RELATIONSHIP' },
   purchase_order_expected_at: { id: 'f-po-expected', type: 'DATETIME' },
+  purchase_order_line_part: { id: 'f-pol-part', type: 'RELATIONSHIP' },
+  part_kind: { id: 'f-part-kind', type: 'SINGLE_SELECT' },
 }
 
 /** Field values keyed by recordId, assembled per test. */
@@ -203,6 +205,22 @@ describe('rematchBill', () => {
     expect(written('f-match')).toBe('matched')
     expect(written('f-variance')).toBe(0)
     expect(written('f-notes')).toBeNull()
+  })
+
+  it('matches a service line on price alone: nothing is ever received (107-D10)', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 0, 500, LONG_OVERDUE)
+    recordValues['purchase_order_line:pol-1']!['f-pol-part'] = {
+      type: 'relationship',
+      recordId: 'part:part-svc',
+    }
+    recordValues['part:part-svc'] = { 'f-part-kind': { type: 'option', optionId: 'service' } }
+
+    await rematch()
+
+    expect(written('f-match')).toBe('matched')
+    expect(written('f-variance')).toBe(0)
   })
 
   it('writes `awaiting_receipt` — not an exception — when the goods have not landed', async () => {

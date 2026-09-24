@@ -16,6 +16,8 @@
 // The descriptor widened the blast radius of that class of bug from the billing
 // prefix to the line vocabulary itself, so these assertions widened with it.
 
+import { FieldType } from '@auxx/database/enums'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { describe, expect, it } from 'vitest'
 import { LINE_COLS, relKeyForDocumentType } from './line-rows'
 import {
@@ -195,7 +197,6 @@ describe('absent attributes are dropped, never written as null', () => {
       unitPriceCents: 12_500,
       optional: true,
       optionalSelected: false,
-      catalogItemRecordId: null,
     }
     const written = linePatchToFieldValues(patch, LINE_SCHEMAS.purchase_order)
     expect(written.map((u) => u.fieldId)).toEqual([
@@ -301,14 +302,19 @@ describe('reading values back from the store', () => {
     expect(lineValuesFromSystemValues({}, LINE_SCHEMAS.vendor_bill).partRecordId).toBeNull()
   })
 
-  it('links a sell-side line to its part first, then its catalog item', () => {
-    const both = { line_item_part: ['part_def:p'], line_item_catalog_item: ['cat_def:c'] }
-    expect(lineSourceRecordId(both, LINE_SCHEMAS.order)).toBe('part_def:p')
-    expect(lineSourceRecordId({ line_item_catalog_item: ['cat_def:c'] }, LINE_SCHEMAS.order)).toBe(
-      'cat_def:c'
+  it('links a sell-side line to its part, and a pick writes line_item_part', () => {
+    expect(lineSourceRecordId({ line_item_part: ['part_def:p'] }, LINE_SCHEMAS.order)).toBe(
+      'part_def:p'
     )
     expect(lineSourceRecordId({}, LINE_SCHEMAS.order)).toBeNull()
     expect(lineAttributesFor(LINE_SCHEMAS.order)).toContain('line_item_part')
+    const written = linePatchToFieldValues(
+      { partRecordId: 'part_def:p' as RecordId },
+      LINE_SCHEMAS.quote
+    )
+    expect(written).toEqual([
+      { fieldId: 'line_item_part', value: 'part_def:p', fieldType: FieldType.RELATIONSHIP },
+    ])
   })
 
   // A document whose lines carry no unit field must not render the unit control —
@@ -343,7 +349,7 @@ describe('capabilities match the vocabulary', () => {
     if (capabilities.category) expect(attrs.category).not.toBeNull()
     if (capabilities.unit) expect(attrs.unit).not.toBeNull()
     if (capabilities.photos) expect(photosAttr).not.toBeNull()
-    if (capabilities.catalogPicker) expect(attrs.catalogItemRecordId).not.toBeNull()
+    if (capabilities.catalogPicker) expect(attrs.partRecordId).not.toBeNull()
     // The row has to have something to render in its leading text cell.
     expect(attrs[primaryTextKey]).not.toBeNull()
   })
@@ -352,9 +358,8 @@ describe('capabilities match the vocabulary', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).capabilities.optional)).toEqual(['quote'])
   })
 
-  // 🛑 `useLineHotkeys` gates the `/`-on-empty-cell shortcut on this flag. Turning
-  // it on for a purchasing line opens an empty catalog over the row — a PO line
-  // picks a part/vendor_part, not a sell-side catalog_item.
+  // `useLineHotkeys` gates the `/` shortcut on this flag; a purchasing line picks
+  // through `PartCell`, not the sell-side picker.
   it('purchasing lines have no catalog picker', () => {
     expect(LINE_SCHEMAS.purchase_order.capabilities.catalogPicker).toBe(false)
     expect(LINE_SCHEMAS.vendor_bill.capabilities.catalogPicker).toBe(false)

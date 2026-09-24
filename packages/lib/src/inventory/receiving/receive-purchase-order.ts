@@ -56,6 +56,8 @@ import {
   systemDefId,
   systemFields,
 } from '../../resources/system-records'
+import { readPartKinds } from '../builds/build-queries'
+import { isServicePartKind } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { readStandardCost } from '../costing/standard-cost-queries'
 import { type StockMovementInput, writeStockMovements } from '../movements'
@@ -121,8 +123,12 @@ export async function receivePurchaseOrder(
 ): Promise<Result<MovementRecord[], Error>> {
   return guard(
     async () => {
-      const lines = input.lines ?? []
-      assertReceivableLines(lines)
+      assertReceivableLines(input.lines ?? [])
+      // A service order line is never received (107-D10): dropped, so the goods beside it still land.
+      const lines = await withoutServiceLines(db, organizationId, input.lines ?? [])
+      if (lines.length === 0) {
+        throw new BadRequestError('Nothing on this receipt is stocked: a service is never received')
+      }
 
       const poLines = await readPurchaseOrderLines(db, organizationId, lines)
       const unitCosts = lines.map((line, index) =>
@@ -324,6 +330,19 @@ export async function receivePurchaseOrder(
     'Failed to receive purchase order',
     { organizationId, lineCount: input.lines?.length ?? 0 }
   )
+}
+
+async function withoutServiceLines(
+  db: Database,
+  organizationId: string,
+  lines: readonly ReceivePurchaseOrderLineInput[]
+): Promise<ReceivePurchaseOrderLineInput[]> {
+  const kinds = await readPartKinds(
+    db,
+    organizationId,
+    lines.map((line) => line.partId)
+  )
+  return lines.filter((line) => !isServicePartKind(kinds.get(line.partId)))
 }
 
 /** Unwrap a neverthrow `Result` back into the imperative style `guard()` expects. */

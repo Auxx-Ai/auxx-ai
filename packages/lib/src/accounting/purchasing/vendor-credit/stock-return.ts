@@ -17,6 +17,7 @@
 import type { Database, Transaction } from '@auxx/database'
 import { requireCachedEntityDefId } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
+import { isServicePartKind } from '../../../inventory/costing/client'
 import { readStandardCost } from '../../../inventory/costing/standard-cost-queries'
 import { type StockMovementInput, writeStockMovements } from '../../../inventory/movements'
 import { resolveInventoryRoleForPartKind } from '../../../inventory/movements/client'
@@ -99,6 +100,10 @@ export async function planVendorCreditStockReturns(
   const returns: VendorCreditStockReturn[] = []
   for (const { line, index } of withPart) {
     const partInstanceId = line.partInstanceId as string
+    const kind = await readPartKind(db, organizationId, partInstanceId)
+    if (kind.isErr()) throw kind.error
+    // A service holds no stock, so there is nothing to send back; the credit still posts (107-D10).
+    if (isServicePartKind(kind.value)) continue
     const standardUnitCost = standards.value.get(partInstanceId)?.standardCost ?? 0
     if (!standardUnitCost || standardUnitCost <= 0) {
       refusals.push(
@@ -106,8 +111,6 @@ export async function planVendorCreditStockReturns(
       )
       continue
     }
-    const kind = await readPartKind(db, organizationId, partInstanceId)
-    if (kind.isErr()) throw kind.error
     returns.push({
       lineId: line.id,
       partInstanceId,

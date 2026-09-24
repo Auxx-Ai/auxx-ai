@@ -13,8 +13,8 @@
 
 import { roundMinorUnits } from '@auxx/utils/currency'
 
-/** The three values `part_kind` can hold. Mirrors `PartKind` in the registry. */
-export type PartKindValue = 'component' | 'subassembly' | 'finished_good'
+/** The values `part_kind` can hold. Mirrors `PartKind` in the registry. */
+export type PartKindValue = 'component' | 'subassembly' | 'finished_good' | 'service'
 
 /** The two kinds a build can produce, and the only two that absorb conversion cost. */
 const BUILT_PART_KINDS: ReadonlySet<PartKindValue> = new Set<PartKindValue>([
@@ -37,8 +37,18 @@ const BUILT_PART_KINDS: ReadonlySet<PartKindValue> = new Set<PartKindValue>([
  * that somebody added a fourth part kind.
  */
 export function resolvePartKind(raw: string | null | undefined): PartKindValue {
-  if (raw === 'subassembly' || raw === 'finished_good') return raw
+  if (raw === 'subassembly' || raw === 'finished_good' || raw === 'service') return raw
   return 'component'
+}
+
+/** A service is sold but never stocked: no movement, standard, BOM or stock status (107-D10). */
+export function isServicePartKind(raw: string | null | undefined): boolean {
+  return raw === 'service'
+}
+
+/** Whether a build can produce this kind: `subassembly` or `finished_good`. */
+export function isBuildablePartKind(partKind: PartKindValue): boolean {
+  return BUILT_PART_KINDS.has(partKind)
 }
 
 /**

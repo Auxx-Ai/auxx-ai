@@ -122,10 +122,10 @@ describe('collectStreamSourceFields', () => {
       mappings: [
         {
           rootPath: 'variants[]',
-          target: { entityKind: 'catalog_item' },
+          target: { entityKind: 'part' },
           fields: [
-            { sourcePath: 'title', target: 'catalog_item_name' },
-            { constant: 'material', target: 'catalog_item_category' },
+            { sourcePath: 'title', target: 'part_title' },
+            { constant: 'finished_good', target: 'part_kind' },
           ],
         },
       ],
@@ -727,28 +727,28 @@ describe('buildContributingFieldBindings', () => {
   })
 
   describe('constant bindings', () => {
-    const catalogFields: ContributingTargetField[] = [
+    const partFields: ContributingTargetField[] = [
       {
-        id: 'f_category',
-        name: 'Category',
-        systemAttribute: 'catalog_item_category',
+        id: 'f_kind',
+        name: 'Kind',
+        systemAttribute: 'part_kind',
         type: 'SINGLE_SELECT',
       },
     ]
 
     it('binds a constant as a QUOTED literal with no sourceFields', () => {
       const bindings = buildContributingFieldBindings(
-        'def_catalog',
+        'def_part',
         'shopify',
-        [{ constant: 'material', target: 'catalog_item_category' }],
-        catalogFields
+        [{ constant: 'finished_good', target: 'part_kind' }],
+        partFields
       )
       expect(bindings).toHaveLength(1)
       expect(bindings[0]).toMatchObject({
-        targetFieldRef: 'def_catalog:f_category',
-        // Quoting is load-bearing: a bare `material` parses as a FIELD REFERENCE
+        targetFieldRef: 'def_part:f_kind',
+        // Quoting is load-bearing: a bare `finished_good` parses as a FIELD REFERENCE
         // and resolves to undefined against the empty sourceFields map.
-        expression: '"material"',
+        expression: '"finished_good"',
         sourceFields: {},
       })
       expect(bindings[0]!.identityRole).toBeUndefined()
@@ -756,23 +756,25 @@ describe('buildContributingFieldBindings', () => {
 
     it('evaluates back to the constant through the real CALC evaluator', () => {
       const [binding] = buildContributingFieldBindings(
-        'def_catalog',
+        'def_part',
         'shopify',
-        [{ constant: 'material', target: 'catalog_item_category' }],
-        catalogFields
+        [{ constant: 'finished_good', target: 'part_kind' }],
+        partFields
       )
-      expect(evaluateCalcExpression(binding!.expression, binding!.sourceFields)).toBe('material')
+      expect(evaluateCalcExpression(binding!.expression, binding!.sourceFields)).toBe(
+        'finished_good'
+      )
     })
 
     it('round-trips number and boolean constants', () => {
       const bindings = buildContributingFieldBindings(
-        'def_catalog',
+        'def_part',
         'shopify',
         [
-          { constant: 42, target: 'catalog_item_category' },
-          { constant: true, target: 'Category' },
+          { constant: 42, target: 'part_kind' },
+          { constant: true, target: 'Kind' },
         ],
-        catalogFields
+        partFields
       )
       expect(bindings.map((b) => evaluateCalcExpression(b.expression, b.sourceFields))).toEqual([
         42,
@@ -782,20 +784,20 @@ describe('buildContributingFieldBindings', () => {
 
     it('carries a declared mergeStrategy', () => {
       const [binding] = buildContributingFieldBindings(
-        'def_catalog',
+        'def_part',
         'shopify',
-        [{ constant: 'material', target: 'catalog_item_category', mergeStrategy: 'fill_blank' }],
-        catalogFields
+        [{ constant: 'finished_good', target: 'part_kind', mergeStrategy: 'fill_blank' }],
+        partFields
       )
       expect(binding!.mergeStrategy).toBe('fill_blank')
     })
 
     it('drops a constant whose target does not resolve', () => {
       const bindings = buildContributingFieldBindings(
-        'def_catalog',
+        'def_part',
         'shopify',
-        [{ constant: 'material', target: 'no_such_field' }],
-        catalogFields
+        [{ constant: 'finished_good', target: 'no_such_field' }],
+        partFields
       )
       expect(bindings).toHaveLength(0)
     })

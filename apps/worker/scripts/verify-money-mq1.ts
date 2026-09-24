@@ -97,7 +97,7 @@ async function main() {
   const createdLineIds: string[] = []
   const createdWorkOrderIds: string[] = []
   const createdRequestIds: string[] = []
-  const createdCatalogItemIds: string[] = []
+  const createdPartIds: string[] = []
 
   try {
     // Find a contact to hang quotes/requests off of (contact is required on quote).
@@ -544,13 +544,14 @@ async function main() {
 
     // ── 9: convertQuoteToWorkOrder on the approved quote ────────────────────
     console.log('9: convertQuoteToWorkOrder')
-    // A catalog item to prove the catalogItem rel is preserved on the WO copy.
-    const catalogItem = await handler.create('catalog_item', {
-      catalog_item_name: '[MQ1-verify] Catalog item',
-      catalog_item_default_unit_price: 20,
+    // A service part to prove the line's part rel is preserved on the WO copy.
+    const part = await handler.create('part', {
+      part_title: '[MQ1-verify] Service part',
+      part_kind: 'service',
+      part_sell_price: 20,
     })
-    const createdCatalogItemId = catalogItem.instance.id
-    createdCatalogItemIds.push(createdCatalogItemId)
+    const createdPartId = part.instance.id
+    createdPartIds.push(createdPartId)
 
     // Give the approved quote (from §8) a couple of lines to duplicate.
     const convertLine1 = await handler.create('line_item', {
@@ -559,7 +560,7 @@ async function main() {
       line_item_unit_price: 20,
       line_item_taxable: true,
       line_item_quote: toRecordId('quote', quoteForLifecycle.instance.id),
-      line_item_catalog_item: toRecordId('catalog_item', createdCatalogItemId),
+      line_item_part: toRecordId('part', createdPartId),
     })
     createdLineIds.push(convertLine1.instance.id)
     const convertLine2 = await handler.create('line_item', {
@@ -648,7 +649,7 @@ async function main() {
     check('WO got 2 duplicated lines', woLines.ids.length === 2, woLines.ids.length)
 
     let copiesHaveNoQuoteRel = true
-    let catalogRelPreservedOnCopy = false
+    let partRelPreservedOnCopy = false
     for (const lineInstanceId of woLines.ids) {
       const quoteRel = await fieldValueByAttr(
         organizationId,
@@ -658,16 +659,16 @@ async function main() {
       )
       if (quoteRel?.relatedEntityId) copiesHaveNoQuoteRel = false
 
-      const catalogRel = await fieldValueByAttr(
+      const partRel = await fieldValueByAttr(
         organizationId,
         'line_item',
         lineInstanceId,
-        'line_item_catalog_item'
+        'line_item_part'
       )
-      if (catalogRel?.relatedEntityId === createdCatalogItemId) catalogRelPreservedOnCopy = true
+      if (partRel?.relatedEntityId === createdPartId) partRelPreservedOnCopy = true
     }
     check('copies have NO line_item_quote', copiesHaveNoQuoteRel)
-    check('catalogItem rel preserved on the copy that had one', catalogRelPreservedOnCopy)
+    check('part rel preserved on the copy that had one', partRelPreservedOnCopy)
 
     const originalQuoteLines = await handler.listFiltered({
       entityDefinitionId: 'line_item',
@@ -771,7 +772,7 @@ async function main() {
     console.log(
       `Cleanup: deleting ${createdLineIds.length} lines, ${createdWorkOrderIds.length} work orders, ` +
         `${createdQuoteIds.length} quotes, ${createdRequestIds.length} requests, ` +
-        `${createdCatalogItemIds.length} catalog items`
+        `${createdPartIds.length} parts`
     )
     for (const id of [...new Set(createdLineIds)]) {
       try {
@@ -810,14 +811,11 @@ async function main() {
         )
       }
     }
-    for (const id of createdCatalogItemIds) {
+    for (const id of createdPartIds) {
       try {
-        await handler.delete(toRecordId('catalog_item', id))
+        await handler.delete(toRecordId('part', id))
       } catch (err) {
-        console.log(
-          `  cleanup failed for catalog_item:${id}:`,
-          err instanceof Error ? err.message : err
-        )
+        console.log(`  cleanup failed for part:${id}:`, err instanceof Error ? err.message : err)
       }
     }
   }

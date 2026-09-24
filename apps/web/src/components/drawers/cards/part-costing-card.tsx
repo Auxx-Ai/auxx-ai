@@ -23,6 +23,7 @@ import { useResourceStore } from '~/components/resources/store/resource-store'
 import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+import { isServiceKind } from '../part-kind-gates'
 
 /**
  * The three provenance fields migration 100 added under `part_cost`, plus the
@@ -249,6 +250,8 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   })
   const hasSubparts = subpartRecords.length > 0
 
+  // A service carries no cost basis or standard (107 D10); the detail sidebar renders this ungated.
+  if (isServiceKind(values.part_kind)) return null
   if (!hasComparison && !isUncosted && !hasStandardBlock) return null
 
   const noneMeta = COST_SOURCE_BY_VALUE[CostSource.NONE]

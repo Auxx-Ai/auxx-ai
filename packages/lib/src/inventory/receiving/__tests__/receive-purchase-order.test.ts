@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   /** The raw `purchase_order_line_purchase_order` relation rows the org holds. */
   orderIds: [] as (string | null)[],
   partKind: null as string | null,
+  /** `part` id -> `part_kind`, as the batched kind read returns it. */
+  partKinds: new Map<string, string>(),
   /** The winning supplier row's adders, per `vendor_part` id. */
   vendorTerms: new Map<string, Record<string, number | null>>(),
   /** `part` id -> its frozen standard, as `readStandardCost` returns it. */
@@ -84,6 +86,10 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     create = h.createSpy
   },
+}))
+
+vi.mock('../../builds/build-queries', () => ({
+  readPartKinds: vi.fn(async () => h.partKinds),
 }))
 
 vi.mock('../receipt-queries', async () => {
@@ -195,6 +201,7 @@ beforeEach(() => {
       purchaseOrderLineRecords(options.ids)
   )
   h.partKind = null
+  h.partKinds = new Map()
   h.vendorTerms = new Map()
   h.standardCosts = new Map()
   h.replaceSpy.mockImplementation(async () => {
@@ -288,6 +295,26 @@ describe('receivePurchaseOrder — validation', () => {
     h.defs.delete('stock_movement')
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(NotFoundError)
+  })
+})
+
+describe('receivePurchaseOrder — a service is never received (107-D10)', () => {
+  it('drops a service line and still receives the goods beside it', async () => {
+    h.partKinds = new Map([['part_svc', 'service']])
+    const result = await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_svc', purchaseOrderLineId: 'pol_2' })],
+    })
+    expect(result._unsafeUnwrap().map((record) => record.purchaseOrderLineId)).toEqual(['pol_1'])
+    expect(h.createSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a receipt of services only, writing nothing', async () => {
+    h.partKinds = new Map([['part_svc', 'service']])
+    const error = await expectErr(
+      receivePurchaseOrder(db, ORG, USER, { lines: [line({ partId: 'part_svc' })] })
+    )
+    expect(error).toBeInstanceOf(BadRequestError)
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 })
 

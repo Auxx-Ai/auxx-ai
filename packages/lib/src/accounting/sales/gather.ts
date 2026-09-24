@@ -77,7 +77,7 @@ export const LINE_COPY_ATTRS = [
   'line_item_category',
   'line_item_discount',
   'line_item_sort_order',
-  'line_item_catalog_item',
+  'line_item_part',
   'line_item_work_order',
   'line_item_invoice',
   'line_item_photos',
@@ -357,7 +357,7 @@ export async function copyLineOntoInvoice(input: {
   const categoryTyped = get(lineCf.line_item_category)
   const discountTyped = get(lineCf.line_item_discount)
   const sortOrderTyped = get(lineCf.line_item_sort_order)
-  const catalogItemTyped = get(lineCf.line_item_catalog_item)
+  const partTyped = get(lineCf.line_item_part)
   const photos = lineCf.line_item_photos
     ? fileEnvelopes(values.get(lineCf.line_item_photos.id))
     : []
@@ -383,8 +383,8 @@ export async function copyLineOntoInvoice(input: {
     line_item_photos: photos.length > 0 ? photos : undefined,
     ...extraValues,
   }
-  if (catalogItemTyped?.type === 'relationship') {
-    copyValues.line_item_catalog_item = catalogItemTyped.recordId
+  if (partTyped?.type === 'relationship') {
+    copyValues.line_item_part = partTyped.recordId
   }
 
   // T-1b: a copied line is STRUCTURAL to the invoice it is being copied onto.

@@ -11,19 +11,19 @@ import { generateId } from '@auxx/utils'
 export interface CatalogGroupEntry {
   /** `generateId('cge')` — stable identity for edit/reorder (the fieldMappings entry-array convention). */
   id: string
-  /** EntityInstance id of the referenced `catalog_item` (NOT the branded RecordId). */
-  catalogItemId: string
+  /** EntityInstance id of the referenced `part` (NOT the branded RecordId). */
+  partId: string
   /** Preset quantity, default 1. */
   qty: number
-  /** Overrides the item's default description on insert. */
+  /** Overrides the part's description on insert. */
   description?: string | null
-  /** Overrides the item's taxable flag on insert; absent = inherit from the item. */
+  /** Overrides the part's taxable flag on insert; absent = inherit from the part. */
   taxable?: boolean
 }
 
-/** New entry for a picked catalog item, qty 1, no overrides. */
-export function newCatalogGroupEntry(catalogItemId: string): CatalogGroupEntry {
-  return { id: generateId('cge'), catalogItemId, qty: 1 }
+/** New entry for a picked part, qty 1, no overrides. */
+export function newCatalogGroupEntry(partId: string): CatalogGroupEntry {
+  return { id: generateId('cge'), partId, qty: 1 }
 }
 
 /**
@@ -43,7 +43,7 @@ function isCatalogGroupEntry(entry: unknown): entry is CatalogGroupEntry {
     !!entry &&
     typeof entry === 'object' &&
     typeof (entry as CatalogGroupEntry).id === 'string' &&
-    typeof (entry as CatalogGroupEntry).catalogItemId === 'string' &&
+    typeof (entry as CatalogGroupEntry).partId === 'string' &&
     typeof (entry as CatalogGroupEntry).qty === 'number'
   )
 }
@@ -53,7 +53,7 @@ function isCatalogGroupEntry(entry: unknown): entry is CatalogGroupEntry {
  * entries array. Handles the `{ entries: [...] }` envelope (the storage shape),
  * bare arrays, JSON strings, one-element-array read wrappers, and the
  * `{ type: 'json', value }` typed-value shape. Rows missing the required shape
- * are dropped — dangling `catalogItemId`s are kept (the editor surfaces them as
+ * are dropped — dangling `partId`s are kept (the editor surfaces them as
  * "Deleted item" rows; the explode skips them).
  */
 export function parseCatalogGroupEntries(raw: unknown): CatalogGroupEntry[] {

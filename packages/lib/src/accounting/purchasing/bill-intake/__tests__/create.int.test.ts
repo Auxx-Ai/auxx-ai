@@ -201,4 +201,47 @@ describe('createBillFromIntake with real CRUD', () => {
     )
     expect(linked?.relatedEntityId).toBe(fixture.purchaseOrderLineId)
   })
+
+  it('an order of services only reads received once billed (107-D10)', async () => {
+    const kindField = await fieldId(fixture, 'part_kind')
+    await db()
+      .update(schema.FieldValue)
+      .set({ optionId: 'service' })
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, kindField),
+          eq(schema.FieldValue.entityId, fixture.partId)
+        )
+      )
+    const receivedField = await fieldId(fixture, 'purchase_order_line_quantity_received')
+    await db()
+      .update(schema.FieldValue)
+      .set({ valueNumber: 0 })
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, receivedField),
+          eq(schema.FieldValue.entityId, fixture.purchaseOrderLineId)
+        )
+      )
+
+    const result = await createBillFromIntake(
+      db(),
+      fixture.organizationId,
+      fixture.userId,
+      run(fixture)
+    )
+    expect(result.isOk()).toBe(true)
+
+    const statusField = await fieldId(fixture, 'purchase_order_receipt_status')
+    const [receipt] = await db()
+      .select({ optionId: schema.FieldValue.optionId })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.fieldId, statusField),
+          eq(schema.FieldValue.entityId, fixture.purchaseOrderId)
+        )
+      )
+    expect(receipt?.optionId).toBe('received')
+  })
 })

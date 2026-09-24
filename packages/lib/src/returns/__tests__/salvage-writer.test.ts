@@ -345,6 +345,26 @@ describe('writeSalvageMovements - what writes and what does not', () => {
     expect(result.movements.map((movement) => movement.partId)).toEqual(['part_pump'])
   })
 
+  it('skips a good service without refusing the run, and still restocks the good beside it', async () => {
+    withRows([
+      row('r_mast', 'part_mast', { status: 'good' }),
+      row('r_pump', 'part_pump', { status: 'good' }),
+    ])
+    // A service carries no standard cost: pruned before invariant 3, it cannot refuse the run.
+    h.standardCosts.delete('part_pump')
+    h.selectRows[0] = [
+      { entityId: 'part_mast', optionId: 'subassembly' },
+      { entityId: 'part_pump', optionId: 'service' },
+    ]
+
+    const result = unwrap(
+      await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
+    )
+
+    expect(result.skippedService).toBe(1)
+    expect(writtenInputs().map((input) => input.partInstanceId)).toEqual(['part_mast'])
+  })
+
   it('skips a good row of zero units rather than writing an empty movement', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good', quantity: 0 })])
 

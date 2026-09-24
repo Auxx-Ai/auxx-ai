@@ -112,11 +112,11 @@ describe('deriveStreamShape agrees with the seeder', () => {
     const stream = catalogFixtureV1().streams[0]!
     const derived = deriveStreamShape(stream, 'shopify', [], fixtureResolver())
     const part = derived.mappings.find((m) => m.targetKey === 'def_part')
-    const catalog = derived.mappings.find((m) => m.targetKey === 'def_catalog')
+    const vendorPart = derived.mappings.find((m) => m.targetKey === 'def_vendor_part')
     expect(part?.rootPath).toBe('variants[]')
-    expect(catalog?.rootPath).toBe('')
-    expect(catalog?.parentKey).toBe(part?.key)
-    expect(catalog?.storedRelationshipFieldKey).toBe(toResourceFieldId('def_part', 'f_ci'))
+    expect(vendorPart?.rootPath).toBe('')
+    expect(vendorPart?.parentKey).toBe(part?.key)
+    expect(vendorPart?.storedRelationshipFieldKey).toBe(toResourceFieldId('def_part', 'f_vp'))
     expect(part?.storedRelationshipFieldKey).toBe(toResourceFieldId('def_product', 'f_parts'))
   })
 

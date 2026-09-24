@@ -98,7 +98,8 @@ Four properties carry the whole design:
 | **PPV** | Purchase price variance — account `5090`. The delta between what a receipt cost and the frozen standard. |
 | **GRNI** | Goods Received Not Invoiced, account `2160`. The clearing account between "we have the goods" and "we have the invoice". |
 | **Three-way match** | PO price × receipt quantity × bill amount, compared with tolerances. Produces `matched` or `exception`. |
-| **`partKind`** | `component` \| `subassembly` \| `finished_good`. Decides the inventory account (`1310` / `1330`) and whether a part is *buildable*. Stored and auditable — deliberately not derived. |
+| **`partKind`** | `component` \| `subassembly` \| `finished_good` \| `service`. Decides the inventory account (`1310` / `1330`) and whether a part is *buildable*. Stored and auditable — deliberately not derived. |
+| **Service** | `partKind = service`: sold, never stocked. No inventory role (`resolveInventoryRoleForPartKind` throws), so no receiving, opening stock, adjustment, build, BOM, standard cost, relief or COGS; relief skips the line and never parks on it. A part with stock, builds or BOM links cannot become one (`part-kind-service-guard.ts`). |
 | **L1 / L3** | The GL posting regime. **L1** = one periodic entry per month asserting inventory balances. **L3** = perpetual per-event postings. Exactly one may drive `1310/1320/1330`. |
 | **Buildable** | `subassembly` or `finished_good`. Only these absorb conversion (labour + overhead) cost. |
 | **Absorption rate** | Labour or overhead per assembled unit. **Per part only**: `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`. There is no org-wide default — an empty rate absorbs nothing (stored as NULL); a stored `0` is a declared zero. Absorbed once per BOM **level**, not once per finished good. |
@@ -122,7 +123,7 @@ Seeded in `packages/lib/src/seed/entity-seeder/constants.ts`:
 | `vendor_bill_line` | ❌ | `quantityBilled`, `unitPriceBilled`, the `purchaseOrderLine` match key. |
 | `stock_movement` | — | The ledger. Append-only, `updatable: false` throughout. |
 | `build` | ✅ | A production run: consume components, produce a finished good. |
-| `part` | ✅ | The stock master. Carries `partKind`, QoH, and the five frozen standard-cost fields. |
+| `part` | ✅ | The one item register, labelled *Parts & Services* (singular *Item*): everything bought, stocked or sold. Carries `partKind`, QoH, the five frozen standard-cost fields, and the selling fields `part_sell_price` / `part_markup` / `part_taxable` / `part_sellable` (§7.1). Sell and buy lines both point at it through their part relation. |
 | `vendor_part` | ❌ | The `(part, supplier)` price row. Prefill and provenance only. |
 | `gl_account` | ❌ | Our chart of accounts. The provider's id hangs off it via `RecordIdentity`. |
 | ~~`gl_posting`~~ | — | 🛑 **NOT an entity.** One journal entry is a **`GlPosting` Drizzle table** row. The def was deleted 2026-08-28 (entity migration 114). |
@@ -502,7 +503,7 @@ month.
 
 | Field | Written by | Answers |
 | --- | --- | --- |
-| `part_cost` | `recalculateAffectedParts`, on every vendor-price change | *What would this cost to buy next?* — **replacement cost**. Drives markup pricing. |
+| `part_cost` | `recalculateAffectedParts`, on every vendor-price change | *What would this cost to buy next?* — **replacement cost**. Drives markup pricing: with `part_markup` set, `part_sell_price` on the same record is recomputed from it (`accounting/sales/totals/part-pricing.ts`); a manual price edit clears the markup, and a part whose price a connector manages is skipped. |
 | `part_standard_cost` | `rollStandardCost`, `ensureStandardCost`, and the first receipt of a provisional part (§11). `updatable: false`, `computed: true` | *What do we value this at?* — **the value every movement stamps**, receipts included. |
 | `part_average_cost` | — | Only exists if moving-average is ever chosen over standard. |
 

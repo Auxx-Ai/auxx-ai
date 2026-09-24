@@ -2,7 +2,7 @@
 
 /**
  * Canonical line-item units of measure (money plan 13 §1) — the single source of truth for
- * catalog default units, line-item units, the smart quantity editor's parser, and every
+ * part units, line-item units, the smart quantity editor's parser, and every
  * customer-facing document renderer. Client-safe: zero server-only imports. Do not duplicate
  * this list or its alias parsing anywhere else (settings selectors, PDFs, document payloads);
  * import from here.
@@ -12,7 +12,7 @@
  * quantity or price (decision #6).
  */
 interface LineItemUnitDefinition {
-  /** Stable stored value — persisted on catalog items and line items. */
+  /** Stable stored value — persisted on parts and line items. */
   readonly value: string
   /** Label shown in settings selectors and registry SINGLE_SELECT option lists. */
   readonly label: string
@@ -116,8 +116,7 @@ export type LineItemUnitDisplayMode = 'compact' | 'document'
 
 /**
  * Options for registry SINGLE_SELECT field definitions (e.g. `LINE_ITEM_FIELDS.unit`,
- * `CATALOG_ITEM_FIELDS.defaultUnit`) and plain settings selectors. Mirrors the minimal shape
- * `CATALOG_CATEGORY_OPTIONS` uses — units don't need a `color`.
+ * `PART_FIELDS.unit`) and plain settings selectors. Units don't need a `color`.
  */
 export const LINE_ITEM_UNIT_OPTIONS: ReadonlyArray<{ label: string; value: LineItemUnit }> =
   LINE_ITEM_UNITS.map(({ label, value }) => ({ label, value }))

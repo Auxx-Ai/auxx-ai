@@ -232,12 +232,12 @@ export {
 } from './send-email'
 export {
   computeMarkupPrice,
+  listConnectorPricedPartIds,
   pauseMarkupOnPriceEdit,
   recomputePriceOnMarkupChange,
   shouldPauseMarkup,
-  syncCatalogCostOnPartChange,
-  syncCatalogItemPricing,
-} from './totals/catalog-pricing'
+  syncPartPricing,
+} from './totals/part-pricing'
 export { reorderLines } from './totals/reorder'
 
 export { computeDocumentTotals, computeLineTotal, roundCents } from './totals/totals'

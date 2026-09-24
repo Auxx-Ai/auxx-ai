@@ -112,6 +112,8 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
+  // A service part hides Components, Suppliers, Inventory and Costing (107 D10):
+  // `apps/web/src/components/drawers/part-kind-gates.ts`.
   part: {
     entityType: 'part',
     additionalTabs: [
@@ -125,10 +127,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         // The card renders nothing for a part with a single cost candidate
         // (the common case), which hides the whole section.
         { value: 'costing', label: 'Costing', icon: 'calculator' },
-        // Sellable toggle / pricing row — "sellable" is derived from the
-        // backing catalog_item, never stored (plans/products/01-product-family.md
-        // §6.1). Renders nothing for a part with no catalog item — unless it's
-        // a finished good, whose missing price surfaces prominently.
+        // The part's own selling fields: sellable, price, markup, taxable (107 D3, D5).
         { value: 'pricing', label: 'Pricing', icon: 'tag' },
         // Product-family membership + the finished-good suggestion
         // (plans/products/01-product-family.md phase 3). Renders nothing for a

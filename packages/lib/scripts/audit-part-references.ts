@@ -117,7 +117,6 @@ const REFERENCE_ATTRIBUTES = [
   'vendor_part_part',
   'subpart_parent_part',
   'subpart_child_part',
-  'catalog_item_part',
   'line_item_part',
   'product_parts',
   // → build
@@ -180,7 +179,6 @@ const PARENTS: readonly ParentSpec[] = [
         disposition: 'leave',
       },
       { entityType: 'vendor_bill_line', attribute: 'vendor_bill_line_part', disposition: 'leave' },
-      { entityType: 'catalog_item', attribute: 'catalog_item_part', disposition: 'leave' },
       { entityType: 'line_item', attribute: 'line_item_part', disposition: 'leave' },
     ],
   },

@@ -3,8 +3,7 @@
 // The Variants tab's summary line (plans/products/09-variant-ui.md §4.3, §9).
 // Every case here is a way the line could print a number that is not true:
 // a never-counted family reading as zero stock, a price range built from
-// inactive catalog items, `$199–$199`, or a page total presented as a family
-// total.
+// unsellable parts, `$199–$199`, or a page total presented as a family total.
 
 import { describe, expect, it } from 'vitest'
 import { buildVariantSummaryLabel, summarizeVariants, type VariantRow } from './summarize-variants'
@@ -16,7 +15,6 @@ const row = (overrides: Partial<VariantRow> = {}): VariantRow => ({
   id: 'part-1',
   quantityOnHand: 0,
   priceCents: null,
-  catalogItemCount: 0,
   ...overrides,
 })
 
@@ -58,13 +56,13 @@ describe('summarizeVariants', () => {
   })
 
   it('spans the price range over priced variants only', () => {
-    // `priceCents: null` is how the tab reports "no catalog item", "inactive",
-    // and "more than one item" alike — none may reach the range.
+    // `priceCents: null` is how the tab reports "no price" and "not sellable"
+    // alike — neither may reach the range.
     const summary = summarizeVariants([
-      row({ id: 'a', priceCents: 19900, catalogItemCount: 1 }),
-      row({ id: 'b', priceCents: null, catalogItemCount: 0 }),
-      row({ id: 'c', priceCents: null, catalogItemCount: 2 }),
-      row({ id: 'd', priceCents: 34900, catalogItemCount: 1 }),
+      row({ id: 'a', priceCents: 19900 }),
+      row({ id: 'b', priceCents: null }),
+      row({ id: 'c', priceCents: null }),
+      row({ id: 'd', priceCents: 34900 }),
     ])
     expect(summary.priceRange).toEqual({ min: 19900, max: 34900 })
     expect(summary.pricedCount).toBe(2)
@@ -93,8 +91,8 @@ describe('summarizeVariants', () => {
 describe('buildVariantSummaryLabel', () => {
   it('renders the full line', () => {
     const summary = summarizeVariants([
-      row({ id: 'a', quantityOnHand: 12, priceCents: 19900, catalogItemCount: 1 }),
-      row({ id: 'b', quantityOnHand: 25, priceCents: 34900, catalogItemCount: 1 }),
+      row({ id: 'a', quantityOnHand: 12, priceCents: 19900 }),
+      row({ id: 'b', quantityOnHand: 25, priceCents: 34900 }),
     ])
     expect(buildVariantSummaryLabel(summary, money)).toBe(
       '2 variants · 37 on hand · $199.00–$349.00'
@@ -103,8 +101,8 @@ describe('buildVariantSummaryLabel', () => {
 
   it('renders a single distinct price as one figure, not a degenerate range', () => {
     const summary = summarizeVariants([
-      row({ id: 'a', priceCents: 19900, catalogItemCount: 1 }),
-      row({ id: 'b', priceCents: 19900, catalogItemCount: 1 }),
+      row({ id: 'a', priceCents: 19900 }),
+      row({ id: 'b', priceCents: 19900 }),
     ])
     expect(buildVariantSummaryLabel(summary, money)).toBe('2 variants · 0 on hand · $199.00')
   })
@@ -117,8 +115,8 @@ describe('buildVariantSummaryLabel', () => {
   it('says the aggregates describe a page when more rows exist', () => {
     const summary = summarizeVariants(
       [
-        row({ id: 'a', quantityOnHand: 12, priceCents: 19900, catalogItemCount: 1 }),
-        row({ id: 'b', quantityOnHand: 25, priceCents: 34900, catalogItemCount: 1 }),
+        row({ id: 'a', quantityOnHand: 12, priceCents: 19900 }),
+        row({ id: 'b', quantityOnHand: 25, priceCents: 34900 }),
       ],
       { total: 128, hasNextPage: true }
     )

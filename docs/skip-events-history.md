@@ -106,7 +106,7 @@ used to be global `'*'` hooks (since 2026-09-02 they are steps of
 
 …plus every scoped one: inbox cache invalidation, work-order visit/draft-invoice/
 sequence hooks, **quote & invoice total recomputation** (`money/totals-hooks.ts`),
-QuickBooks mirror enqueue, catalog markup pricing, `ADDRESS_STRUCT` normalization +
+QuickBooks mirror enqueue, part markup pricing, `ADDRESS_STRUCT` normalization +
 geocoding, and `PHONE_INTL` geo derivation.
 
 ⚠️ Lost **at write time** — since 2026-09-21 the registered chain is replayed once at sync

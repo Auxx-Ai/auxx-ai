@@ -858,7 +858,7 @@ export async function recalculateAllPartCosts(orgId: string): Promise<string[]> 
   })
 
   if (changedIds.length > 0) {
-    await syncCatalogPricingSafely(orgId, changedIds)
+    await syncPartPricingSafely(orgId, changedIds)
   }
 
   return changedIds
@@ -914,24 +914,23 @@ export async function recalculateAffectedParts(
   })
 
   if (changedIds.length > 0) {
-    await syncCatalogPricingSafely(orgId, changedIds)
+    await syncPartPricingSafely(orgId, changedIds)
   }
 
   return changedIds
 }
 
 /**
- * Ripple changed part costs into linked catalog items (plan 17 §2) — lazy `import()`
- * so this bom module doesn't gain a static edge onto `money/` (no existing lazy-import
- * convention in this file otherwise; new for this call site). Swallows its own errors:
- * a catalog-pricing bug must never fail the part-cost recalc that triggered it.
+ * Recompute marked-up sell prices for the parts whose cost changed (107 D5). Lazy import keeps
+ * costing free of a static edge onto `accounting/sales`; a pricing failure never fails the recalc.
  */
-async function syncCatalogPricingSafely(orgId: string, changedPartIds: string[]): Promise<void> {
+async function syncPartPricingSafely(orgId: string, changedPartIds: string[]): Promise<void> {
   try {
-    const { syncCatalogItemPricing } = await import('../../accounting/sales/totals/catalog-pricing')
-    await syncCatalogItemPricing(orgId, changedPartIds)
+    const { syncPartPricing } = await import('../../accounting/sales/totals/part-pricing')
+    const result = await syncPartPricing(orgId, changedPartIds)
+    if (result.isErr()) throw result.error
   } catch (error) {
-    logger.error('Failed to sync catalog item pricing after part cost recalc', {
+    logger.error('Failed to recompute part prices after part cost recalc', {
       orgId,
       error: error instanceof Error ? error.message : String(error),
     })

@@ -3,7 +3,7 @@
 import { formatCurrency } from '@auxx/utils/currency'
 
 /**
- * Format a CURRENCY field value (stored in MINOR UNITS, see `use-catalog-items.ts`)
+ * Format a CURRENCY field value (stored in MINOR UNITS)
  * for display using the org's currency code (`organization.currency` setting).
  *
  * Scale and fraction digits come from the code via `@auxx/utils`, so a

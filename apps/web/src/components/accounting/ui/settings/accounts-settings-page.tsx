@@ -31,9 +31,9 @@
 //
 // The chart tab keeps a phantom draft (`ChartDraftHandle`) exactly as the
 // products-services page does, with one difference: the create fires on an
-// explicit button, not on a commit. `gl_account` needs a name and a type to
-// `catalog_item`'s one required field (task 15 §5 made the code optional), and
-// a validation refusal belongs on an act somebody knowingly performed.
+// explicit button, not on a commit. `gl_account` needs a name and a type (task 15
+// §5 made the code optional), and a validation refusal belongs on an act somebody
+// knowingly performed.
 
 import type {
   AccountRole,

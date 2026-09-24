@@ -47,7 +47,7 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
-import { resolvePartKind } from '../costing/client'
+import { isBuildablePartKind, resolvePartKind } from '../costing/client'
 import { readPartQuantitiesOnHand } from './auto-build-queries'
 import type { BackfillCoverage, BackfillDemandLine, BackfillPlanInput } from './backfill-types'
 import { readPartKinds, requireBuildContext } from './build-queries'
@@ -135,8 +135,8 @@ export async function readBackfillPlanReads(
 
       // Step 3 before step 2, as `reconcileOrderBuilds` does it: a purchased
       // part can never be built, so its bill of materials is never read.
-      const buildablePartIds = partIds.filter(
-        (partId) => resolvePartKind(partKinds.get(partId)) !== 'component'
+      const buildablePartIds = partIds.filter((partId) =>
+        isBuildablePartKind(resolvePartKind(partKinds.get(partId)))
       )
       const hasBom = await readHasBom(db, organizationId, buildablePartIds)
 

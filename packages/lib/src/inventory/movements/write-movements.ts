@@ -41,9 +41,11 @@
 
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
-import { UnprocessableEntityError } from '../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { isRecordId, type RecordId, toRecordId } from '../../resources/resource-id'
+import { readPartKinds } from '../builds/build-queries'
+import { isServicePartKind } from '../costing/client'
 import { guard } from './guard'
 import type {
   StockMovementInput,
@@ -159,6 +161,26 @@ function buildHandler(ctx: StockMovementsCtx): UnifiedCrudHandler {
 }
 
 /**
+ * Refuse any input whose part is a `service` (107-D10). A reversal is exempt: it
+ * undoes a movement written while the part was still stocked.
+ */
+async function assertNoServiceParts(
+  ctx: StockMovementsCtx,
+  inputs: readonly StockMovementInput[]
+): Promise<void> {
+  const partIds = inputs
+    .filter((input) => !input.links?.reversesMovementId)
+    .map((input) => input.partInstanceId)
+  if (partIds.length === 0) return
+  const kinds = await readPartKinds(ctx.db, ctx.organizationId, partIds)
+  const services = partIds.filter((partId) => isServicePartKind(kinds.get(partId)))
+  if (services.length === 0) return
+  throw new BadRequestError('A service holds no stock, so it cannot have a stock movement', {
+    partIds: [...new Set(services)],
+  })
+}
+
+/**
  * Write one or more `stock_movement` rows, atomically in the sense that every
  * write shares one `UnifiedCrudHandler` and the caller decides the
  * transaction boundary (§2's "no lane changes" - this function never opens
@@ -179,6 +201,7 @@ export async function writeStockMovements(
 ): Promise<Result<WriteStockMovementsResult, Error>> {
   return guard(
     async () => {
+      await assertNoServiceParts(ctx, inputs)
       const crud = buildHandler(ctx)
       const records: WrittenStockMovement[] = []
       const affectedPartIds = new Set<string>()

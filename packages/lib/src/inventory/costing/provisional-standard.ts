@@ -107,6 +107,7 @@ export async function replaceProvisionalStandard(
     async () => {
       const context = await loadStandardCostWriteContext(db, organizationId)
       if (!context.allPartIds.has(partId)) return UNCHANGED
+      if (context.partKinds.get(partId) === 'service') return UNCHANGED
       if (context.standardCostSources.get(partId) !== 'provisional') return UNCHANGED
 
       const previousStandard = context.standardCosts.get(partId) ?? null

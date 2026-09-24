@@ -325,6 +325,7 @@ export interface BulkOpeningStockInput {
  * | `invalid_quantity` | failed | not finite, or not above zero |
  * | `invalid_unit_cost` | failed | not finite, not above zero, or finer than `RATE_DECIMALS` |
  * | `unknown_part` | failed | no such part in this org, or it is archived |
+ * | `service_part` | failed | a service is never stocked (107-D10) |
  * | `no_standard_cost` | failed | the part would have been left holding stock nothing can value |
  * | `write_failed` | failed | the movement itself was refused |
  */
@@ -334,6 +335,7 @@ export type OpeningStockSkipReason =
   | 'invalid_quantity'
   | 'invalid_unit_cost'
   | 'unknown_part'
+  | 'service_part'
   | 'no_standard_cost'
   | 'write_failed'
 
@@ -344,6 +346,12 @@ export type OpeningStockSkipReason =
  * top, which is 44 §7.2b's rule and what the backfill and post-fulfillments
  * dialogs both already do.
  */
+/** A part `bulkSetPartKind` left unchanged, and why. `detail` is safe to render as-is. */
+export interface PartKindSkip {
+  partId: string
+  detail: string
+}
+
 export interface OpeningStockSkip {
   partId: string
   reason: OpeningStockSkipReason

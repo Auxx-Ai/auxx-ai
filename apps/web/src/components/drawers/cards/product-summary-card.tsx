@@ -17,10 +17,8 @@ import { summarizeVariants, type VariantRow } from '../tabs/summarize-variants'
 
 /** The product's own status. */
 const PRODUCT_ATTRIBUTES = ['product_status'] as const
-/** Hop 1 — each variant's own values. Title/SKU/image ride the list payload. */
-const VARIANT_ATTRIBUTES = ['part_quantity_on_hand', 'part_catalog_items'] as const
-/** Hop 2 — the catalog items behind them. */
-const CATALOG_ITEM_ATTRIBUTES = ['catalog_item_default_unit_price', 'catalog_item_active'] as const
+/** Each variant's own values. Title/SKU/image ride the list payload. */
+const VARIANT_ATTRIBUTES = ['part_quantity_on_hand', 'part_sell_price', 'part_sellable'] as const
 
 /** `ProductStatus.values` keyed by option value, for badge label + colour. */
 const PRODUCT_STATUS_BY_VALUE = Object.fromEntries(ProductStatus.values.map((v) => [v.value, v]))
@@ -36,7 +34,7 @@ const PRODUCT_STATUS_BY_VALUE = Object.fromEntries(ProductStatus.values.map((v) 
  * Renders NOTHING for a family with no variants, so `TabCardSection` hides the
  * whole section — the documented contract for every card in that registry.
  *
- * Reads are the same two batched ALL-DIRECT hops the Variants tab uses (§4.1),
+ * Reads are the same batched ALL-DIRECT hop the Variants tab uses (§4.1),
  * for the same reason: one `FieldPath` drill ref would flip `batchGetValues`
  * off its single-query fast path and resolve every ref sequentially.
  */
@@ -80,56 +78,27 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
     [partDefId, recordIds]
   )
 
-  const { valuesById } = useSystemValuesForRecords(rowRecordIds, VARIANT_ATTRIBUTES, {
+  const { valuesById, loadedById } = useSystemValuesForRecords(rowRecordIds, VARIANT_ATTRIBUTES, {
     autoFetch: true,
     enabled: rowRecordIds.length > 0,
   })
 
-  const itemRecordIds = useMemo(() => {
-    const ids = new Set<RecordId>()
-    for (const id of rowRecordIds) {
-      const items = valuesById[id]?.part_catalog_items as RecordId[] | undefined
-      for (const item of items ?? []) ids.add(item)
-    }
-    return [...ids]
-  }, [rowRecordIds, valuesById])
-
-  const { valuesById: itemValues, loadedById: itemLoaded } = useSystemValuesForRecords(
-    itemRecordIds,
-    CATALOG_ITEM_ATTRIBUTES,
-    { autoFetch: true, enabled: itemRecordIds.length > 0 }
-  )
-
-  /**
-   * Whether hop 2 has actually answered for every catalog item in play.
-   *
-   * Until it has, every variant looks unpriced — and "0 of 4 priced" is a
-   * wrong number, not a loading state. `undefined` in `valuesById` means
-   * not-yet-fetched; `loadedById` is the distinction, surfaced.
-   */
-  const pricesLoaded = itemRecordIds.every((id) => itemLoaded[id]?.catalog_item_active === true)
+  // Until every price is fetched each variant looks unpriced, and "0 of 4 priced" is a wrong number.
+  const pricesLoaded = rowRecordIds.every((id) => loadedById[id]?.part_sell_price === true)
 
   const rows: VariantRow[] = useMemo(
     () =>
       recordIds.map((id, index) => {
         const own = valuesById[rowRecordIds[index] as RecordId]
-        const items = (own?.part_catalog_items as RecordId[] | undefined) ?? []
-        // Only a SINGLE backing item supplies a price — price tiers are not a
-        // price, and picking one arbitrarily would put a wrong number in the
-        // range. Same call `part-pricing-card` makes for the has_many case.
-        const soleItem = items.length === 1 ? (items[0] as RecordId) : undefined
-        const soleValues = soleItem ? itemValues[soleItem] : undefined
-        const active = (soleValues?.catalog_item_active as boolean | null | undefined) ?? true
-        const price =
-          (soleValues?.catalog_item_default_unit_price as number | null | undefined) ?? null
+        const price = (own?.part_sell_price as number | null | undefined) ?? null
         return {
           id,
           quantityOnHand: (own?.part_quantity_on_hand as number | null | undefined) ?? null,
-          priceCents: soleItem && active ? price : null,
-          catalogItemCount: items.length,
+          // An unsellable part's price is not offered, so it is not a price (107 D3).
+          priceCents: own?.part_sellable === true ? price : null,
         }
       }),
-    [recordIds, rowRecordIds, valuesById, itemValues]
+    [recordIds, rowRecordIds, valuesById]
   )
 
   const summary = useMemo(
@@ -181,8 +150,7 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
         </FieldPanelRow>
       )}
 
-      {/* Withheld until hop 2 answers: an unfetched price is not an absent one,
-          and "0 of 4 priced" would be a wrong number rather than a spinner. */}
+      {/* Withheld until prices are fetched: an unfetched price is not an absent one. */}
       {pricesLoaded && (
         <FieldPanelRow title='Priced'>
           <div className='flex min-h-8 items-center text-sm'>
@@ -191,9 +159,7 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
             </span>
             {summary.pricedCount < summary.measuredCount && (
               <span className='ms-1.5 text-xs text-muted-foreground'>
-                {/* "Sellable" is derived from an active catalog item, never
-                    stored — the same rule the part's Pricing card applies. */}
-                variants have a sell price
+                sellable variants have a price
               </span>
             )}
           </div>

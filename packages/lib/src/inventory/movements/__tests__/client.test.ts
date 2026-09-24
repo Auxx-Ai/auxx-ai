@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { ACCOUNT_ROLES } from '../../../accounting/ledger/client'
+import { BadRequestError } from '../../../errors'
 import {
   computeExtendedCost,
   DEFAULT_RECEIPT_INVENTORY_ROLE,
@@ -37,6 +38,11 @@ describe('resolveInventoryRoleForPartKind', () => {
     // stamped raw materials is correctable, a receipt that failed to write is a
     // pallet nobody counted.
     expect(resolveInventoryRoleForPartKind('work_in_process')).toBe(DEFAULT_RECEIPT_INVENTORY_ROLE)
+  })
+
+  it('refuses a service: it has no inventory role and must never fall to Raw Materials', () => {
+    expect(() => resolveInventoryRoleForPartKind('service')).toThrow(BadRequestError)
+    expect(INVENTORY_ROLE_BY_PART_KIND.service).toBeUndefined()
   })
 
   it('never resolves to work in process — receiving does not produce WIP', () => {

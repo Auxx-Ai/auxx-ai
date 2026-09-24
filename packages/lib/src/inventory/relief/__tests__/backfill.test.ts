@@ -61,6 +61,7 @@ vi.mock('../relieve', async () => {
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
+        skippedService: 0,
         negativeQoHPartIds: [],
         ...(next?.extra ?? {}),
       })
@@ -260,6 +261,7 @@ describe('backfillFulfillmentRelief', () => {
           skippedNoPart: 1,
           skippedZeroDelta: 2,
           skippedNoCost: 3,
+          skippedService: 4,
           negativeQoHPartIds: ['p2'],
         },
       },
@@ -271,6 +273,7 @@ describe('backfillFulfillmentRelief', () => {
           skippedNoPart: 10,
           skippedZeroDelta: 20,
           skippedNoCost: 30,
+          skippedService: 40,
           negativeQoHPartIds: ['p9'],
         },
       },
@@ -283,6 +286,7 @@ describe('backfillFulfillmentRelief', () => {
     expect(summary.skippedNoPart).toBe(11)
     expect(summary.skippedZeroDelta).toBe(22)
     expect(summary.skippedNoCost).toBe(33)
+    expect(summary.skippedService).toBe(44)
     expect(summary.affectedPartIds.sort()).toEqual(['p1', 'p2', 'p3'])
     expect(summary.negativeQoHPartIds.sort()).toEqual(['p2', 'p9'])
   })

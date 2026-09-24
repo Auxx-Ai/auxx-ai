@@ -12,17 +12,14 @@ import { Tags } from 'lucide-react'
 
 const BASE_PATH = '/app/catalog'
 
-/**
- * Products and Services layout, the products-route recipe: a plain breadcrumb
- * shell around the catalog surface (plans/products/01-product-family.md §6).
- */
+/** Pricing layout: a plain breadcrumb shell around catalog groups and tax rates (107 D9). */
 export default function CatalogLayout({ children }: { children: React.ReactNode }) {
   return (
     <MainPage>
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem
-            title='Products and Services'
+            title='Pricing'
             href={BASE_PATH}
             icon={<Tags className='size-4' />}
           />

@@ -616,38 +616,7 @@ export const PART_FIELDS = defineResourceFields({
     description: 'Assemblies that use this part as a component',
   },
 
-  // Reverse relationship: catalogItems (one-to-many from catalog_item.part)
-  catalogItems: {
-    id: toFieldId('catalogItems'),
-    key: 'catalogItems',
-    label: 'Catalog Items',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'part_catalog_items',
-    systemSortOrder: 'a9',
-    showInPanel: false, // parts drawer doesn't need it v1
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'catalog_item:part' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description: 'Catalog (product/service) entries backed by this part',
-  },
-
-  // Reverse relationship: lineItems (one-to-many from line_item.part). The
-  // counterpart of the STAMPED `line_item_part`
-  // (plans/products/08-order-build.md §6.2) — this is what makes revenue by
-  // part a single join instead of the three-hop
-  // line -> catalog_item -> part -> product chain.
+  // Reverse relationship: lineItems (one-to-many from line_item.part).
   lineItems: {
     id: toFieldId('lineItems'),
     key: 'lineItems',
@@ -706,6 +675,108 @@ export const PART_FIELDS = defineResourceFields({
     },
     placeholder: 'Select product',
     description: 'The product family this part belongs to',
+  },
+
+  // Selling fields (107 D3, D5). `showInPanel: false` because the drawer's Pricing card
+  // renders them together with the Auto badge and the connector lock.
+
+  // No registry default: it depends on `part_kind`, so `PART_HOOKS` fills it at create.
+  sellable: {
+    id: toFieldId('sellable'),
+    key: 'sellable',
+    label: 'Sellable',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'part_sellable',
+    systemSortOrder: 'a9c',
+    nullable: false,
+    showInPanel: false,
+    showInTable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Listed in the sell-side picker. Defaults on for services and finished goods',
+  },
+
+  sellPrice: {
+    id: toFieldId('sellPrice'),
+    key: 'sellPrice',
+    label: 'Price',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_sell_price',
+    systemSortOrder: 'a9d',
+    nullable: true,
+    showInPanel: false,
+    showInTable: true,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
+    options: {
+      currencyCode: 'USD',
+      decimals: RATE_DECIMALS,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter price',
+    description: 'Per-unit sell price copied onto a line when this item is picked',
+  },
+
+  markup: {
+    id: toFieldId('markup'),
+    key: 'markup',
+    label: 'Markup (%)',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'part_markup',
+    systemSortOrder: 'a9e',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Markup percentage',
+    description: 'Percent over cost that drives the price. Empty pauses auto-pricing',
+  },
+
+  taxable: {
+    id: toFieldId('taxable'),
+    key: 'taxable',
+    label: 'Taxable',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'part_taxable',
+    systemSortOrder: 'a9f',
+    nullable: false,
+    showInPanel: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    defaultValue: true,
+    description: 'Copied onto lines when this item is picked',
   },
 
   // Reverse relationship: purchaseOrderLines (from purchase_order_line.part)

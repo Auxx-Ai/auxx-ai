@@ -65,7 +65,7 @@ function readRecordId(raw: unknown): RecordId | null {
 /**
  * Read `company_primary_contact` off a company.
  *
- * Three-state on purpose, mirroring `resolveCatalogItemPart`:
+ * Three-state on purpose:
  * - a `RecordId` — the company names that person as its primary contact
  * - `null` — the company resolved and names NOBODY
  * - `undefined` — the primary contact could not be resolved at all (the org has no

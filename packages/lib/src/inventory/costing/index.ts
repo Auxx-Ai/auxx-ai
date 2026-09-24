@@ -3,6 +3,8 @@
 export {
   absorbedRate,
   absorbsConversionCost,
+  isBuildablePartKind,
+  isServicePartKind,
   type PartKindValue,
   resolvePartKind,
   resolveStandardCostSource,

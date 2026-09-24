@@ -100,6 +100,16 @@ describe('no build yet — the admission tests (12 §5.3 steps 2, 3, 4)', () => 
     ])
   })
 
+  it('skips a service, even one with a bill of materials (107-D10)', () => {
+    expect(
+      plan({
+        desired: new Map([['part_svc', 1]]),
+        partKinds: new Map([['part_svc', 'service']]),
+        hasBom: new Map([['part_svc', true]]),
+      })
+    ).toEqual([{ kind: 'skip', partId: 'part_svc', buildId: null, reason: 'not-a-built-part' }])
+  })
+
   it('skips an unclassified part, because a NULL part_kind reads as component', () => {
     expect(plan({ desired: new Map([['part_mystery', 2]]) })).toEqual([
       { kind: 'skip', partId: 'part_mystery', buildId: null, reason: 'not-a-built-part' },

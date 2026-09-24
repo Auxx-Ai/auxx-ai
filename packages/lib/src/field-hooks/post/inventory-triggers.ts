@@ -108,9 +108,15 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
   const partDefId = await requireCachedEntityDefId(organizationId, 'part')
   const ctx = createFieldValueContext(organizationId)
   const realtimeService = getRealtimeService()
+  const kinds = await readKinds(
+    organizationId,
+    recordIds.map((recordId) => parseRecordId(recordId).entityInstanceId)
+  )
 
   for (const recordId of recordIds) {
     const { entityInstanceId } = parseRecordId(recordId)
+    // A service has no stock status (107-D10).
+    if (kinds.get(entityInstanceId) === 'service') continue
 
     logger.info('Recalculating stock status after reorder point change', {
       partInstanceId: entityInstanceId,
@@ -242,6 +248,9 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   const recordId = toRecordId(partDefId, partInstanceId) as RecordId
   const ctx = createFieldValueContext(organizationId)
   const status = deriveStockStatus(qoh, reorderPoint)
+  const writeStatus =
+    !!statusField &&
+    (await readKinds(organizationId, [partInstanceId])).get(partInstanceId) !== 'service'
 
   // Write QoH + stock status in parallel
   const writes: Promise<unknown>[] = [
@@ -253,7 +262,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     }),
   ]
 
-  if (statusField) {
+  if (statusField && writeStatus) {
     writes.push(
       setValueWithType(ctx, {
         recordId,
@@ -275,7 +284,7 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     },
   ]
 
-  if (statusField) {
+  if (statusField && writeStatus) {
     entries.push({
       key: buildFieldValueKey(recordId, statusField.id as FieldId),
       value: { type: 'option', optionId: status },
@@ -290,6 +299,12 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   })
 
   logger.info('QoH recalculated', { partInstanceId, qoh, status })
+}
+
+/** `part_kind` per part. Imported lazily, as `part-kind-derivation.ts` does, to keep hook loading light. */
+async function readKinds(organizationId: string, partIds: string[]): Promise<Map<string, string>> {
+  const { readPartKinds } = await import('../../inventory/builds/build-queries')
+  return readPartKinds(database, organizationId, partIds)
 }
 
 /**

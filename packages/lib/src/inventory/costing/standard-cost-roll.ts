@@ -168,6 +168,12 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
   function computeOne(partId: string): StandardCostComponents | null {
     const partKind = inputs.partKinds.get(partId) ?? 'component'
 
+    if (partKind === 'service') {
+      skipped.push({ partId, reason: 'service', partName: partName(partId) })
+      blameFor.set(partId, partName(partId))
+      return null
+    }
+
     // ── A purchased part: its landed cost, and nothing else ──
     if (!absorbsConversionCost(partKind)) {
       const live = inputs.liveCosts.get(partId)

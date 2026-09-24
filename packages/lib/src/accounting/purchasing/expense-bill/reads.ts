@@ -13,6 +13,8 @@
 import type { Database } from '@auxx/database'
 import { toCalendarDay } from '@auxx/utils/calendar-day'
 import { NotFoundError } from '../../../errors'
+import { readPartKinds } from '../../../inventory/builds/build-queries'
+import { isServicePartKind } from '../../../inventory/costing/client'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../../resources/registry/resources/purchase-order-line-fields'
 import { VENDOR_BILL_FIELDS } from '../../../resources/registry/resources/vendor-bill-fields'
 import { VENDOR_BILL_LINE_FIELDS } from '../../../resources/registry/resources/vendor-bill-line-fields'
@@ -48,12 +50,14 @@ const VENDOR_BILL_LINE_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_LINE_FIELDS
   'vendor_bill_line_line_total',
   'vendor_bill_line_gl_account',
   'vendor_bill_line_purchase_order_line',
+  'vendor_bill_line_part',
   'vendor_bill_line_sort_order',
 ] as const)
 
 /** The order-line figures a LINKED bill line is posted against (73 D2). */
 const PURCHASE_ORDER_LINE_ATTRIBUTES = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
   'purchase_order_line_expected_unit_price',
+  'purchase_order_line_part',
 ] as const)
 
 /** One line of a bill, as the builder reads it. */
@@ -70,6 +74,8 @@ export interface VendorBillLineRecord {
   purchaseOrderLineId: string | null
   /** The agreed unit price off that order line, integer minor units. */
   unitPriceExpectedMinor: number | null
+  /** The line's part (its own, else its order line's) is a `service`. */
+  service: boolean
   sortOrder: number
 }
 
@@ -191,29 +197,36 @@ export async function loadVendorBillLines(
       glAccountId: line.text('vendor_bill_line_gl_account'),
       purchaseOrderLineId: line.related('vendor_bill_line_purchase_order_line'),
       unitPriceExpectedMinor: null as number | null,
+      partId: line.related('vendor_bill_line_part'),
+      service: false,
       sortOrder: line.number('vendor_bill_line_sort_order') ?? index,
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder)
 
-  const expected = await loadExpectedUnitPrices(
+  const orderLines = await loadOrderLineTerms(
     db,
     organizationId,
     lines.map((line) => line.purchaseOrderLineId).filter((id): id is string => !!id)
   )
   for (const line of lines) {
-    line.unitPriceExpectedMinor = line.purchaseOrderLineId
-      ? (expected.get(line.purchaseOrderLineId) ?? null)
-      : null
+    const orderLine = line.purchaseOrderLineId ? orderLines.get(line.purchaseOrderLineId) : null
+    line.unitPriceExpectedMinor = orderLine?.unitPriceExpectedMinor ?? null
+    line.partId ??= orderLine?.partId ?? null
   }
-  return lines
+  const partIds = lines.map((line) => line.partId).filter((id): id is string => !!id)
+  const kinds = await readPartKinds(db, organizationId, partIds)
+  return lines.map(({ partId, ...line }) => ({
+    ...line,
+    service: !!partId && isServicePartKind(kinds.get(partId)),
+  }))
 }
 
-/** The agreed unit price per order line, integer minor units. */
-async function loadExpectedUnitPrices(
+/** The agreed unit price and the part per order line. */
+async function loadOrderLineTerms(
   db: Database,
   organizationId: string,
   purchaseOrderLineIds: readonly string[]
-): Promise<Map<string, number | null>> {
+): Promise<Map<string, { unitPriceExpectedMinor: number | null; partId: string | null }>> {
   if (purchaseOrderLineIds.length === 0) return new Map()
   const ctx = await systemFields(
     db,
@@ -226,6 +239,12 @@ async function loadExpectedUnitPrices(
     ids: [...new Set(purchaseOrderLineIds)],
   })
   return new Map(
-    records.map((record) => [record.id, record.number('purchase_order_line_expected_unit_price')])
+    records.map((record) => [
+      record.id,
+      {
+        unitPriceExpectedMinor: record.number('purchase_order_line_expected_unit_price'),
+        partId: record.related('purchase_order_line_part'),
+      },
+    ])
   )
 }

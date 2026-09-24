@@ -9,7 +9,7 @@
 // Reads come from the per-org cache; only limit-1 DB lookups touch the database directly.
 
 import { type Database, database, schema } from '@auxx/database'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import {
   ENABLED_POSTING_TYPES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
@@ -150,7 +150,29 @@ async function hasTaxRate(ctx: GettingStartedContext): Promise<boolean> {
   return Array.isArray(rates) && rates.length > 0
 }
 
-const hasCatalogItem = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'catalog_item')
+/** At least one unarchived part marked sellable — a product or service the org can put on a quote. */
+async function hasSellablePart(ctx: GettingStartedContext): Promise<boolean> {
+  const cf = await getOrgCache()
+    .from(ctx.organizationId, 'customFields')
+    .bySystemAttributes(['part_sellable'] as const)
+  if (!cf.part_sellable) return false
+  const db = ctx.db ?? database
+  const rows = await db
+    .select({ id: schema.FieldValue.id })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        eq(schema.FieldValue.fieldId, cf.part_sellable.id),
+        eq(schema.FieldValue.valueBoolean, true),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+  return rows.length > 0
+}
+
 const hasServiceRequest = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'service_request')
 const hasWorkOrder = (ctx: GettingStartedContext) => hasEntityInstance(ctx, 'work_order')
 
@@ -289,7 +311,7 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'add-workers': hasWorkers,
     'set-address': hasBusinessAddress,
     'set-hours': hasOrgHours,
-    'add-product': hasCatalogItem,
+    'add-product': hasSellablePart,
     'set-tax-rate': hasTaxRate,
     'create-request': hasServiceRequest,
     'create-work-order': hasWorkOrder,

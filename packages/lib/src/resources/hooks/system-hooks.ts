@@ -7,8 +7,8 @@ import { CONTACT_HOOKS } from './contact-hooks'
 import { CREDIT_MEMO_HOOKS } from './credit-memo-hooks'
 import { INVOICE_HOOKS } from './invoice-hooks'
 import { JOURNAL_ENTRY_HOOKS } from './journal-entry-hooks'
-import { LINE_ITEM_HOOKS } from './line-item-hooks'
 import { ORDER_HOOKS } from './order-hooks'
+import { PART_HOOKS } from './part-hooks'
 import { PAYOUT_HOOKS } from './payout-hooks'
 import { PURCHASE_ORDER_HOOKS, VENDOR_BILL_HOOKS } from './purchasing-hooks'
 import { QUOTE_HOOKS } from './quote-hooks'
@@ -38,7 +38,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   return_line: RETURN_LINE_HOOKS,
   invoice: INVOICE_HOOKS,
   order: ORDER_HOOKS,
-  line_item: LINE_ITEM_HOOKS,
+  part: PART_HOOKS,
   purchase_order: PURCHASE_ORDER_HOOKS,
   vendor_bill: VENDOR_BILL_HOOKS,
   build: BUILD_HOOKS,

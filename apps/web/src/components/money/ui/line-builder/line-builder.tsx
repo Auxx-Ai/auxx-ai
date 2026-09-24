@@ -95,7 +95,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LineGridFrame } from '~/components/line-grid/ui/line-grid-frame'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogGroups } from '~/components/money/hooks/use-catalog-groups'
-import { useCatalogItems } from '~/components/money/hooks/use-catalog-items'
+import { useCatalogParts } from '~/components/money/hooks/use-catalog-parts'
 import {
   parseRecordId,
   type RecordId,
@@ -250,16 +250,16 @@ export function LineBuilder({
   )
   // Catalog data is shared by every row picker. Editable builders preload it
   // once so opening a picker or resolving a product group never starts a fetch.
-  const catalogEnabled = !!entityDefinitionId && !readOnly
+  const catalogEnabled = !!entityDefinitionId && !readOnly && schema.capabilities.catalogPicker
   const {
-    items: catalogItems,
-    itemMap: catalogItemMap,
-    isLoading: catalogItemsLoading,
-  } = useCatalogItems({ enabled: catalogEnabled })
+    parts: catalogParts,
+    partMap: catalogPartMap,
+    isLoading: catalogPartsLoading,
+  } = useCatalogParts({ enabled: catalogEnabled })
   const { groups: catalogGroups, isLoading: catalogGroupsLoading } = useCatalogGroups({
     enabled: catalogEnabled,
   })
-  const catalogLoading = catalogItemsLoading || catalogGroupsLoading
+  const catalogLoading = catalogPartsLoading || catalogGroupsLoading
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
@@ -758,7 +758,6 @@ export function LineBuilder({
       if (snapshot.description) set('description', snapshot.description)
       if (snapshot.category) set('category', snapshot.category)
       if (snapshot.unitPriceCents !== null) set('unitPriceCents', snapshot.unitPriceCents)
-      if (snapshot.catalogItemRecordId) set('catalogItemRecordId', snapshot.catalogItemRecordId)
       if (snapshot.partRecordId) set('partRecordId', snapshot.partRecordId)
       // Transcribed on a `stored` document, absent (and so dropped by `set`)
       // everywhere else, where the server totals hook owns the amount.
@@ -1128,7 +1127,7 @@ export function LineBuilder({
    */
   const handleGroupPick = useCallback(
     (recordId: RecordId, group: CatalogGroup) => {
-      const pick = resolveCatalogGroup(group, catalogItemMap)
+      const pick = resolveCatalogGroup(group, catalogPartMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
@@ -1152,13 +1151,13 @@ export function LineBuilder({
       applyGroupBilling(pick)
       void createDrafts(bundleDrafts)
     },
-    [catalogItemMap, updateLine, stageBundleDrafts, applyGroupBilling, createDrafts]
+    [catalogPartMap, updateLine, stageBundleDrafts, applyGroupBilling, createDrafts]
   )
 
   /** Same explode intent as {@link handleGroupPick}, targeting a phantom draft. */
   const handleGroupPickDraft = useCallback(
     (draftId: string, group: CatalogGroup) => {
-      const pick = resolveCatalogGroup(group, catalogItemMap)
+      const pick = resolveCatalogGroup(group, catalogPartMap)
       if (pick.skippedCount > 0) {
         console.warn(`Catalog group "${pick.name}" skipped ${pick.skippedCount} dangling item(s).`)
       }
@@ -1185,7 +1184,7 @@ export function LineBuilder({
       // nothing visually. `createDraft` never rejects (it toasts internally).
       void firstCreate.then(() => createDrafts(bundleDrafts))
     },
-    [catalogItemMap, createDraft, stageBundleDrafts, applyGroupBilling, createDrafts]
+    [catalogPartMap, createDraft, stageBundleDrafts, applyGroupBilling, createDrafts]
   )
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -1310,9 +1309,9 @@ export function LineBuilder({
                   readOnly={readOnly}
                   currencyCode={currencyCode}
                   documentType={documentType}
-                  catalogItems={catalogItems}
+                  catalogParts={catalogParts}
                   catalogGroups={catalogGroups}
-                  catalogItemMap={catalogItemMap}
+                  catalogPartMap={catalogPartMap}
                   catalogLoading={catalogLoading}
                   matchScopeRecordId={matchScopeRecordId}
                   renderMatchKeyEditor={renderMatchKeyEditor}
@@ -1333,9 +1332,9 @@ export function LineBuilder({
                   categoryOptions={categoryOptions}
                   currencyCode={currencyCode}
                   documentType={documentType}
-                  catalogItems={catalogItems}
+                  catalogParts={catalogParts}
                   catalogGroups={catalogGroups}
-                  catalogItemMap={catalogItemMap}
+                  catalogPartMap={catalogPartMap}
                   catalogLoading={catalogLoading}
                   matchScopeRecordId={matchScopeRecordId}
                   renderMatchKeyEditor={renderMatchKeyEditor}

@@ -33,6 +33,8 @@ import {
 } from '../../../field-hooks/post/purchase-order-line-rollups'
 import { getOrgCurrencyCode } from '../../../field-values/org-currency'
 import { convertTempAssetToPermanent } from '../../../files/assets/asset-mutations'
+import { readPartKinds } from '../../../inventory/builds/build-queries'
+import { isServicePartKind } from '../../../inventory/costing/client'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { systemFieldMap } from '../../../resources/system-records'
 import { parseIntakeTotal, resolveIntakeUnitPrice } from '../intake/client'
@@ -174,6 +176,17 @@ export async function createBillFromIntake(
         })
       }
 
+      // A service is never received, so its linked line has no GRNI to relieve (107-D10).
+      const linkedPartIds = run.proposals.flatMap((proposal) => {
+        const partRecordId = proposal.candidates.find(
+          (candidate) => candidate.orderLineRecordId === proposal.linkedOrderLineRecordId
+        )?.partRecordId
+        return partRecordId ? [parseRecordId(partRecordId).entityInstanceId] : []
+      })
+      const partKinds = hasLinkedLine
+        ? await readPartKinds(db, organizationId, linkedPartIds)
+        : new Map<string, string>()
+
       const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
       const headerValues = defined({
@@ -232,7 +245,14 @@ export async function createBillFromIntake(
           vendor_bill_line_quantity_billed: quantity,
           vendor_bill_line_unit_price: resolveIntakeUnitPrice(printed, quantity ?? 0, currency),
           vendor_bill_line_line_total: parseIntakeTotal(printed.lineTotalText, currency),
-          vendor_bill_line_gl_account: linkedOrderLineRecordId ? grniAccountId : null,
+          vendor_bill_line_gl_account:
+            linkedOrderLineRecordId &&
+            !(
+              partRecordId &&
+              isServicePartKind(partKinds.get(parseRecordId(partRecordId).entityInstanceId))
+            )
+              ? grniAccountId
+              : null,
           vendor_bill_line_sort_order: index,
         })
 
