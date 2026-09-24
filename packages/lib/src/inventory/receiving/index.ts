@@ -10,12 +10,19 @@ export {
   type ReceiptCostParts,
 } from './client'
 export { openStockBalance } from './open-stock-balance'
+export {
+  type OpeningInventoryAdjustmentOutcome,
+  openingAdjustmentOccurrence,
+  postOpeningInventoryAdjustment,
+} from './opening-inventory-adjustment'
+export {
+  type OpeningInventoryDifference,
+  type OpeningInventoryDifferenceRow,
+  readOpeningInventoryDifference,
+} from './opening-inventory-difference'
 export { listOpeningStockCandidates } from './opening-stock-queries'
 export {
-  DERIVABLE_OPENING_STOCK_ROLES,
-  findOpeningStockDivergences,
   OPENING_STOCK_INVENTORY_ROLES,
-  type OpeningStockDivergence,
   type OpeningStockInventoryRole,
   type OpeningStockSubledgerTotals,
   readOpeningStockSubledgerTotals,

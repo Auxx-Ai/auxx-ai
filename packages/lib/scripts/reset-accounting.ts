@@ -158,15 +158,8 @@ const WIZARD_KEYS = [
   { key: 'accounting.setupFinalizedByUserId' as const, value: null },
   { key: 'accounting.cutoffPeriod' as const, value: null },
   { key: 'accounting.bookTimeZone' as const, value: null },
-  { key: 'accounting.openingRawMaterials' as const, value: null },
-  { key: 'accounting.openingWip' as const, value: null },
-  { key: 'accounting.openingFinishedGoods' as const, value: null },
   { key: 'accounting.openingSource' as const, value: 'manual' },
   { key: 'accounting.openingSourceAsOf' as const, value: null },
-  { key: 'accounting.qboOpeningRawMaterials' as const, value: null },
-  { key: 'accounting.qboOpeningWip' as const, value: null },
-  { key: 'accounting.qboOpeningFinishedGoods' as const, value: null },
-  { key: 'accounting.qboOpeningJournalRef' as const, value: null },
   { key: 'accounting.providerSyncedThrough' as const, value: null },
 ]
 

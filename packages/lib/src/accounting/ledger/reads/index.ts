@@ -23,6 +23,11 @@ export {
   type SourcePosting,
 } from './list-postings'
 export {
+  OPENING_INVENTORY_ADJUSTMENT_SOURCE,
+  type OpeningInventoryLedger,
+  readOpeningInventoryLedger,
+} from './opening-inventory'
+export {
   countPostingsForLineSource,
   getPosting,
   type PostingHeader,

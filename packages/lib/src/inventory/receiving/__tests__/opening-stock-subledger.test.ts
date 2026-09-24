@@ -1,8 +1,7 @@
 // packages/lib/src/inventory/receiving/__tests__/opening-stock-subledger.test.ts
 //
-// The opening-stock subledger read and the finalize reconciliation. The org
-// cache, the settings service and the drizzle chain are all doubles, so nothing
-// here needs a database.
+// The opening-stock subledger read. The org cache and the drizzle chain are
+// doubles, so nothing here needs a database.
 //
 // What is pinned:
 //
@@ -11,14 +10,6 @@
 //     filtered - the offender scan runs before the sum and refuses naming ids
 //   - 🛑 an unknown role reaching the sum still throws, so the scan cannot be
 //     defeated by a later edit
-//   - the reconciliation compares ONLY the two derivable roles: WIP is never a
-//     divergence, whatever the setting says
-//   - unset is not zero: an unset setting diverges only when something is counted
-//   - a divergence carries the account and BOTH numbers, so a panel can name them
-//
-// 🛑 There is no assert/gate here on purpose. This comparison must never refuse
-// a finalize - the close replaces pre-cutoff history with the baseline rather
-// than reconciling against it. See the module header.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,8 +22,6 @@ const h = vi.hoisted(() => ({
   offenderRows: [] as Array<{ id: string }>,
   /** What the grouped sum returns. */
   sumRows: [] as Array<{ role: string | null; total: string | number }>,
-  /** settingKey -> stored value. */
-  settings: new Map<string, unknown>(),
   /** How many statements were issued. */
   queries: 0,
 }))
@@ -49,17 +38,8 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-vi.mock('../../../settings/settings-service', () => ({
-  getOrganizationSetting: vi.fn(async ({ key }: { key: string }) => h.settings.get(key) ?? null),
-}))
-
 import { UnprocessableEntityError } from '../../../errors'
-import {
-  DERIVABLE_OPENING_STOCK_ROLES,
-  findOpeningStockDivergences,
-  OPENING_STOCK_INVENTORY_ROLES,
-  readOpeningStockSubledgerTotals,
-} from '../opening-stock-subledger'
+import { readOpeningStockSubledgerTotals } from '../opening-stock-subledger'
 
 const ORG = 'org_1'
 
@@ -104,7 +84,6 @@ beforeEach(() => {
   h.defs = new Map([['stock_movement', 'def_mv']])
   h.offenderRows = []
   h.sumRows = []
-  h.settings = new Map()
 })
 
 describe('readOpeningStockSubledgerTotals', () => {
@@ -194,80 +173,5 @@ describe('readOpeningStockSubledgerTotals', () => {
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('whole number of minor units')
-  })
-})
-
-describe('findOpeningStockDivergences', () => {
-  it('compares only the two derivable roles', () => {
-    expect([...DERIVABLE_OPENING_STOCK_ROLES]).toEqual([
-      'inventory_raw_materials',
-      'inventory_finished_goods',
-    ])
-    expect([...OPENING_STOCK_INVENTORY_ROLES]).toContain('inventory_wip')
-  })
-
-  it('finds nothing when both derivable roles match to the cent', async () => {
-    h.sumRows = [
-      { role: 'inventory_raw_materials', total: 5_000_000 },
-      { role: 'inventory_finished_goods', total: 250 },
-    ]
-    h.settings.set('accounting.openingRawMaterials', 5_000_000)
-    h.settings.set('accounting.openingFinishedGoods', 250)
-
-    const result = await findOpeningStockDivergences(db, ORG)
-
-    expect(result._unsafeUnwrap()).toEqual([])
-  })
-
-  it('never reports WIP, whatever the setting holds', async () => {
-    h.settings.set('accounting.openingWip', 999_999)
-
-    const result = await findOpeningStockDivergences(db, ORG)
-
-    expect(result._unsafeUnwrap()).toEqual([])
-  })
-
-  it('treats an unset setting as unset, not as zero, when nothing is counted', async () => {
-    const result = await findOpeningStockDivergences(db, ORG)
-
-    expect(result._unsafeUnwrap()).toEqual([])
-  })
-
-  it('reports an unset setting as a divergence once the subledger holds something', async () => {
-    h.sumRows = [{ role: 'inventory_raw_materials', total: 4_730_000 }]
-
-    const result = await findOpeningStockDivergences(db, ORG)
-
-    expect(result._unsafeUnwrap()).toEqual([
-      {
-        role: 'inventory_raw_materials',
-        accountCode: '1310',
-        accountName: 'Raw Materials / Parts',
-        settingKey: 'accounting.openingRawMaterials',
-        countedMinor: 4_730_000,
-        baselineMinor: null,
-      },
-    ])
-  })
-
-  it('reports a set setting that differs, carrying both numbers', async () => {
-    h.sumRows = [{ role: 'inventory_finished_goods', total: 4_730_000 }]
-    h.settings.set('accounting.openingFinishedGoods', 5_000_000)
-
-    const [divergence] = (await findOpeningStockDivergences(db, ORG))._unsafeUnwrap()
-
-    expect(divergence).toMatchObject({
-      accountCode: '1330',
-      countedMinor: 4_730_000,
-      baselineMinor: 5_000_000,
-    })
-  })
-
-  it('propagates the read refusal rather than reconciling against a partial sum', async () => {
-    h.offenderRows = [{ id: 'mv_1' }]
-
-    const result = await findOpeningStockDivergences(db, ORG)
-
-    expect(result.isErr()).toBe(true)
   })
 })

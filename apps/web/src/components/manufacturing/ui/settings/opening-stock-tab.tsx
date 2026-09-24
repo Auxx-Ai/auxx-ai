@@ -76,10 +76,6 @@ function OpeningStockTabInner() {
     <OpeningStockRun
       accountTotals={opening.accountTotals}
       totalExtended={opening.totalExtended}
-      countedByRole={opening.countedByRole}
-      openingBaseline={opening.openingBaseline}
-      onProposeBaseline={opening.proposeBaseline}
-      isProposingBaseline={opening.isProposingBaseline}
       entryCount={opening.entries.length}
       exclusions={opening.exclusions}
       currencyCode={opening.currencyCode}

@@ -66,6 +66,9 @@ const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>([
   'accounting.providerSyncedThrough',
   'providerSync.state',
   'providerSync.schedule',
+  'accounting.setupState',
+  'accounting.setupFinalizedAt',
+  'accounting.setupFinalizedByUserId',
 ])
 
 const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
@@ -77,6 +80,10 @@ const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
     'written by the provider sync worker after every chunk it reads, and cannot be set by hand. It is where the walk IS, not a preference',
   'providerSync.schedule':
     'set through ledger.setProviderSyncSchedule, which also registers the job scheduler. A cadence written here alone would never fire',
+  'accounting.setupState':
+    'written by ledger.finalizeSetup, which re-checks readiness and posts the opening entry',
+  'accounting.setupFinalizedAt': 'stamped by ledger.finalizeSetup',
+  'accounting.setupFinalizedByUserId': 'stamped by ledger.finalizeSetup',
 }
 
 function assertNotRouterOwned(key: string): void {

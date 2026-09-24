@@ -6,7 +6,7 @@
 // function - `listJournalEntries`, `listChartAccounts`, `loadRoleAccountCodes`,
 // `postEntry`, `UnifiedCrudHandler` - so the doubles are at THOSE seams rather
 // than at a fake Postgres. What is actually under test is the assembly: which
-// entry wins, where a locked row's number comes from, what the freeze refuses,
+// entry wins, what the freeze refuses,
 // and that the posted entry is keyed on the cutover date rather than on the
 // record number.
 //
@@ -141,7 +141,6 @@ vi.mock('../../../resources/resource-id', () => ({
   toRecordId: (a: string, b: string) => `${a}:${b}`,
 }))
 
-import { findLockedRowDivergences, type OpeningTrialBalanceRow } from '../client'
 import { readOpeningTrialBalance } from '../reads'
 import {
   postOpeningTrialBalance,
@@ -173,9 +172,6 @@ beforeEach(() => {
     ['accounting.bookTimeZone', 'America/New_York'],
     ['accounting.setupState', 'draft'],
     ['organization.currency', 'USD'],
-    ['accounting.openingRawMaterials', 100_00],
-    ['accounting.openingWip', 0],
-    ['accounting.openingFinishedGoods', 250_00],
   ])
   h.entries = []
   h.chart = [
@@ -231,88 +227,26 @@ describe('readOpeningTrialBalance', () => {
     expect(view.rows).toHaveLength(5)
   })
 
-  it('marks the inventory account locked and reads its amount from the SETTINGS', async () => {
-    // 🛑 Even when the stored draft disagrees. `readOpeningBaseline` hands the
-    // first close the settings figure, so a draft that won here would post a
-    // ledger the close then contradicts.
+  it('reads the inventory row from the stored draft like any other row - no settings own it', async () => {
     h.entries = [draft([{ glAccountId: 'a3', direction: 'debit', amountMinor: 999_99 }])]
     const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
     const inventory = rows.find((r) => r.accountCode === '1310')
-    expect(inventory?.lockedByRole).toBe('inventory_raw_materials')
-    expect(inventory?.debitMinor).toBe(100_00)
+    expect(inventory).not.toHaveProperty('lockedByRole')
+    expect(inventory?.debitMinor).toBe(999_99)
     expect(inventory?.creditMinor).toBeNull()
   })
 
-  it('resolves the lock by ROLE, so a renumbered chart still locks the right row', async () => {
-    h.roleAccounts = new Map([
-      ['inventory_raw_materials', { glAccountId: 'a1', code: '1000', name: 'Renumbered RM' }],
-    ])
-    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
-    expect(rows.find((r) => r.accountCode === '1000')?.lockedByRole).toBe('inventory_raw_materials')
-    expect(rows.find((r) => r.accountCode === '1310')?.lockedByRole).toBeUndefined()
-  })
-
-  it('reads an unset inventory setting as null, never as zero', async () => {
-    h.settings.delete('accounting.openingRawMaterials')
-    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
-    expect(rows.find((r) => r.accountCode === '1310')?.debitMinor).toBeNull()
-  })
-
-  it('SUMS every role that lands on one account, which is the QuickBooks-imported case', async () => {
-    // 🛑 The regression this exists for. QuickBooks ships a single `Inventory
-    // Asset`, so an imported chart puts all three roles on one account. Keying
-    // the lock map by account and `set`ting per role kept only the last one, the
-    // row rendered 250_00 instead of 350_00, and the trial balance was short by
-    // the other two - so Finalize could not be reached on any imported chart.
-    // Found by driving on 2026-09-10, not by a test; brief 19's DRIVEN block.
-    h.roleAccounts = new Map([
-      ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-      ['inventory_wip', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-      ['inventory_finished_goods', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-    ])
-    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
-    const inventory = rows.find((r) => r.accountCode === '1310')
-    expect(inventory?.debitMinor).toBe(350_00) // 100_00 + 0 + 250_00
-    expect(inventory?.lockedRoles).toEqual([
-      'inventory_raw_materials',
-      'inventory_wip',
-      'inventory_finished_goods',
-    ])
-    // The representative role survives for the badge and the divergence label.
-    expect(inventory?.lockedByRole).toBe('inventory_raw_materials')
-  })
-
-  it('leaves a shared account NULL while any contributing role is unset', async () => {
-    // ⚠️ `null` is "nobody entered this", never zero. A partial sum would claim
-    // a number nobody supplied; `set-opening-balances` is the requirement that
-    // names the gap instead.
-    h.roleAccounts = new Map([
-      ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-      ['inventory_wip', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-      ['inventory_finished_goods', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
-    ])
-    h.settings.delete('accounting.openingFinishedGoods')
-    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
-    expect(rows.find((r) => r.accountCode === '1310')?.debitMinor).toBeNull()
-  })
-
-  it('reads a FRACTIONAL inventory setting as null - the close would refuse it anyway', async () => {
-    h.settings.set('accounting.openingRawMaterials', 12.5)
-    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
-    expect(rows.find((r) => r.accountCode === '1310')?.debitMinor).toBeNull()
-  })
-
-  it('fills unlocked rows from the stored draft, both sides', async () => {
+  it('fills rows from the stored draft, both sides', async () => {
     h.entries = [
       draft([
         { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 },
         { glAccountId: 'a4', direction: 'credit', amountMinor: 600_00 },
       ]),
     ]
     const { rows, summary } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
     expect(rows.find((r) => r.accountCode === '1000')?.debitMinor).toBe(500_00)
     expect(rows.find((r) => r.accountCode === '3900')?.creditMinor).toBe(600_00)
-    // The verdict counts the locked inventory row too: 500_00 + 100_00 vs 600_00.
     expect(summary).toEqual({
       debitMinor: 600_00,
       creditMinor: 600_00,
@@ -410,9 +344,6 @@ describe('previewOpeningTrialBalance', () => {
     h.entries = [
       draft([
         { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
-        // The locked inventory row, carrying exactly what
-        // `accounting.openingRawMaterials` says. A draft that disagreed is
-        // refused - see the divergence test below.
         { glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 },
         { glAccountId: 'a4', direction: 'credit', amountMinor: 600_00 },
       ]),
@@ -452,9 +383,6 @@ describe('previewOpeningTrialBalance', () => {
 describe('postOpeningTrialBalance', () => {
   const balanced = [
     { glAccountId: 'a1', direction: 'debit' as const, amountMinor: 500_00 },
-    // 1310 (a3) is LOCKED to `accounting.openingRawMaterials` (100_00 in the
-    // fixture). A draft that carries a different number for it is refused
-    // before anything is claimed - see the last case in this block.
     { glAccountId: 'a3', direction: 'debit' as const, amountMinor: 100_00 },
     { glAccountId: 'a4', direction: 'credit' as const, amountMinor: 600_00 },
   ]
@@ -546,12 +474,7 @@ describe('postOpeningTrialBalance', () => {
     expect(postEntry).not.toHaveBeenCalled()
   })
 
-  it('refuses a draft whose LOCKED inventory row disagrees with its setting, naming the account', async () => {
-    // 🛑 `readOpeningTrialBalance` renders 1310 from
-    // `accounting.openingRawMaterials`; the builder posts what is STORED. A
-    // divergent draft therefore shows one number on screen and writes another -
-    // and the settings are what `readOpeningBaseline` hands the first close, so
-    // the very next month-end assertion would contradict the ledger.
+  it('posts whatever inventory figure the draft holds - nothing locks it any more', async () => {
     h.entries = [
       draft([
         { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
@@ -559,116 +482,14 @@ describe('postOpeningTrialBalance', () => {
         { glAccountId: 'a4', direction: 'credit', amountMinor: 1499_99 },
       ]),
     ]
-    const error = (await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr()
-    expect(error.message).toMatch(/1310 Raw Materials/)
-    expect(error.message).toMatch(/99999/)
-    expect(error.message).toMatch(/10000/)
-    expect(postEntry).not.toHaveBeenCalled()
-  })
-
-  it('refuses a draft that OMITS a locked row the settings give a balance to', async () => {
-    h.entries = [
-      draft([
-        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
-        { glAccountId: 'a4', direction: 'credit', amountMinor: 500_00 },
-      ]),
-    ]
-    expect((await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr().message).toMatch(
-      /1310 Raw Materials/
-    )
-    expect(postEntry).not.toHaveBeenCalled()
-  })
-
-  it('posts a draft whose locked row matches, and one with no inventory setting at all', async () => {
-    h.settings.delete('accounting.openingRawMaterials')
-    h.entries = [
-      draft([
-        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
-        { glAccountId: 'a4', direction: 'credit', amountMinor: 500_00 },
-      ]),
-    ]
     expect((await postOpeningTrialBalance(db, ORG, USER)).isErr()).toBe(false)
     expect(postEntry).toHaveBeenCalledTimes(1)
   })
 
-  it('still reports an EMPTY draft as an empty trial balance, not as three divergences', async () => {
+  it('reports an EMPTY draft as an empty trial balance', async () => {
     h.entries = [draft([])]
     expect((await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr().message).toMatch(
       /opening trial balance is empty/i
     )
-  })
-})
-
-describe('findLockedRowDivergences', () => {
-  function lockedRow(overrides: Partial<OpeningTrialBalanceRow> = {}): OpeningTrialBalanceRow {
-    return {
-      accountId: 'a3',
-      accountCode: '1310',
-      accountName: 'Raw Materials',
-      accountType: 'asset',
-      isActive: true,
-      lockedByRole: 'inventory_raw_materials',
-      debitMinor: 100_00,
-      creditMinor: null,
-      ...overrides,
-    }
-  }
-
-  it('is empty when the stored line matches the setting', () => {
-    expect(
-      findLockedRowDivergences(
-        [lockedRow()],
-        [{ glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 }]
-      )
-    ).toEqual([])
-  })
-
-  it('is empty for a row with no setting and no stored line - the ordinary "no WIP" case', () => {
-    expect(findLockedRowDivergences([lockedRow({ debitMinor: null })], [])).toEqual([])
-  })
-
-  it('ignores unlocked rows entirely - only the three settings-owned rows are checked', () => {
-    const unlocked = lockedRow({ accountCode: '1000', lockedByRole: undefined, debitMinor: 42 })
-    expect(findLockedRowDivergences([unlocked], [])).toEqual([])
-  })
-
-  it('reports a stored amount that differs, with both numbers', () => {
-    expect(
-      findLockedRowDivergences(
-        [lockedRow()],
-        [{ glAccountId: 'a3', direction: 'debit', amountMinor: 999_99 }]
-      )
-    ).toEqual([
-      {
-        accountId: 'a3',
-        accountCode: '1310',
-        accountName: 'Raw Materials',
-        role: 'inventory_raw_materials',
-        settingMinor: 100_00,
-        storedMinor: 999_99,
-      },
-    ])
-  })
-
-  it('treats a CREDIT of the same magnitude as a divergence, never as a match', () => {
-    // Signed, so a stored credit of 100_00 against a setting debit of 100_00 is
-    // a 20,000-minor-unit disagreement rather than a match on magnitude.
-    const [divergence] = findLockedRowDivergences(
-      [lockedRow()],
-      [{ glAccountId: 'a3', direction: 'credit', amountMinor: 100_00 }]
-    )
-    expect(divergence?.storedMinor).toBe(-100_00)
-  })
-
-  it('nets two stored lines for the same account before comparing', () => {
-    expect(
-      findLockedRowDivergences(
-        [lockedRow()],
-        [
-          { glAccountId: 'a3', direction: 'debit', amountMinor: 150_00 },
-          { glAccountId: 'a3', direction: 'credit', amountMinor: 50_00 },
-        ]
-      )
-    ).toEqual([])
   })
 })

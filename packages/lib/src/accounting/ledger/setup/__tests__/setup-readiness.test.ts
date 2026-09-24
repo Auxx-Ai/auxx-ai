@@ -1,10 +1,7 @@
 // packages/lib/src/accounting/ledger/setup/__tests__/setup-readiness.test.ts
 //
-// The predicate is PURE, so the whole of it is reachable from here. These tests
-// cover the FOURTH requirement added by HANDOFF slot 1C and the two pure
-// helpers behind it, plus the one property the extension had to preserve: the
-// two existing callers pass no context, and neither may start reporting a
-// requirement they never looked up.
+// The predicate is PURE, so the whole of it is reachable from here: the period,
+// the one opening requirement (plans/accounting/tasks/103 §5a) and the helpers.
 
 import { describe, expect, it } from 'vitest'
 import { ACCOUNTING_GOAL_KEYS } from '../../../../getting-started/client'
@@ -24,13 +21,6 @@ function settings(overrides: SettingsRecord = {}): SettingsRecord {
     'accounting.setupState': 'draft',
     'accounting.cutoffPeriod': '2026-12',
     'accounting.bookTimeZone': 'America/New_York',
-    'accounting.openingRawMaterials': 100_00,
-    'accounting.openingWip': 0,
-    'accounting.openingFinishedGoods': 250_00,
-    'accounting.qboOpeningRawMaterials': 100_00,
-    'accounting.qboOpeningWip': 0,
-    'accounting.qboOpeningFinishedGoods': 250_00,
-    'accounting.qboOpeningJournalRef': 'JE-1042',
     ...overrides,
   }
 }
@@ -96,242 +86,100 @@ describe('summariseOpeningTrialBalance', () => {
 
 describe('the requirement keys and the checklist goal keys', () => {
   it('🛑 every requirement this predicate emits is a goal in ACCOUNTING_GOAL_KEYS', () => {
-    // The invariant F1 caught: `set-opening-trial-balance` was emitted here with
-    // no goal key for three briefs, so `WIZARD_GOAL_KEYS` could not name it and
-    // an org finished setup with no opening entry and was never asked again. The
-    // file header claimed the two lists matched; nothing checked it.
+    // A requirement with no goal key is one the wizard's gate can never ask about.
     const emitted = resolveSetupReadiness(settings()).requirements.map((r) => r.key)
     const goals = new Set<string>(ACCOUNTING_GOAL_KEYS)
     expect(emitted.filter((key) => !goals.has(key))).toEqual([])
   })
 })
 
-describe('resolveSetupReadiness: the opening trial balance requirement', () => {
-  it('reports it MET when no context is given, and says nothing about it', () => {
-    // 🛑 The `getting-started/signals.ts` contract. That caller runs server-side
-    // over cached settings and has no journal-entry read in hand; reporting the
-    // requirement unmet there would light an onboarding row red on a fact it
-    // never looked up, and the checklist would then disagree with the wizard.
-    const readiness = resolveSetupReadiness(settings())
-    const row = requirement(readiness, 'set-opening-trial-balance')
-    expect(row.met).toBe(true)
-    expect(row.reason).toBeUndefined()
-    expect(readiness.settingsReady).toBe(true)
-  })
+const BALANCED = { debitMinor: 500_00, creditMinor: 500_00, rows: 4 }
+const EMPTY = { debitMinor: 0, creditMinor: 0, rows: 0 }
 
-  it('reports it met when the caller passes a balanced trial balance', () => {
-    const readiness = resolveSetupReadiness(settings(), {
-      openingTrialBalance: { debitMinor: 500_00, creditMinor: 500_00, rows: 4 },
-    })
-    expect(requirement(readiness, 'set-opening-trial-balance').met).toBe(true)
-    expect(readiness.settingsReady).toBe(true)
-  })
-
-  it('reports "nothing entered" separately from "does not balance"', () => {
-    const readiness = resolveSetupReadiness(settings(), {
-      openingTrialBalance: { debitMinor: 0, creditMinor: 0, rows: 0 },
-    })
-    const row = requirement(readiness, 'set-opening-trial-balance')
-    expect(row.met).toBe(false)
-    expect(row.reason).toMatch(/No opening trial balance entered/)
-  })
-
-  it('accepts an EMPTY trial balance once the org declares it starts from nothing', () => {
-    // The case brief 03 had no way to reach: a business whose books begin at the
-    // cutover has no opening entry to make, and `buildOpeningBalanceEntry` says
-    // so itself. Without an explicit signal the refusal cannot tell that apart
-    // from "I have not filled this in yet", so both were refused.
-    const readiness = resolveSetupReadiness(
-      settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }),
-      { openingTrialBalance: { debitMinor: 0, creditMinor: 0, rows: 0 } }
-    )
-    const row = requirement(readiness, 'set-opening-trial-balance')
-    expect(row.met).toBe(true)
-    expect(row.reason).toBeUndefined()
-    expect(readiness.settingsReady).toBe(true)
-  })
-
-  it('🛑 still refuses an ENTERED trial balance that does not balance, from-nothing or not', () => {
-    // The declaration suppresses the empty branch ONLY. A plug account is the
-    // worst thing that can happen on this page and a checkbox must not open a
-    // door to one.
-    const readiness = resolveSetupReadiness(
-      settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }),
-      { openingTrialBalance: { debitMinor: 500_00, creditMinor: 400_00, rows: 4 } }
-    )
-    const row = requirement(readiness, 'set-opening-trial-balance')
-    expect(row.met).toBe(false)
-    expect(row.reason).toMatch(/out of balance by 10000/)
-    expect(row.reason).toMatch(/plug account/)
-  })
-
-  it('reads only a literal `true` as the declaration', () => {
-    // The key is absent on every org that has never seen the checkbox, and a
-    // truthy-but-not-true value must not silently disable the refusal.
-    expect(readOpeningFromNothing(settings())).toBe(false)
-    expect(readOpeningFromNothing(settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: 'yes' }))).toBe(
-      false
-    )
-    expect(readOpeningFromNothing(settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }))).toBe(
-      true
-    )
-  })
-
-  it('names the difference in cents when it does not balance', () => {
-    const readiness = resolveSetupReadiness(settings(), {
-      openingTrialBalance: { debitMinor: 500_00, creditMinor: 400_00, rows: 4 },
-    })
-    const row = requirement(readiness, 'set-opening-trial-balance')
-    expect(row.met).toBe(false)
-    expect(row.reason).toMatch(/out of balance by 10000/)
-    // The trap the brief opens with: a plug account is the single worst thing
-    // that can happen here, so the message says so rather than only reporting a
-    // number.
-    expect(row.reason).toMatch(/plug account/)
-    expect(readiness.settingsReady).toBe(false)
-  })
-
-  it('reports an imbalance in either direction', () => {
-    const readiness = resolveSetupReadiness(settings(), {
-      openingTrialBalance: { debitMinor: 400_00, creditMinor: 500_00, rows: 4 },
-    })
-    expect(requirement(readiness, 'set-opening-trial-balance').reason).toMatch(
-      /out of balance by 10000/
-    )
-  })
-})
-
-describe('resolveSetupReadiness: the settings requirements', () => {
-  it('reports every key, in order', () => {
+describe('resolveSetupReadiness: the opening requirement', () => {
+  it('emits exactly the period and the opening, in order', () => {
     expect(resolveSetupReadiness(settings()).requirements.map((r) => r.key)).toEqual([
       'set-accounting-period',
       'set-opening-balances',
-      'set-opening-trial-balance',
     ])
   })
 
-  it('is unchanged on a half-configured org when no context is passed', () => {
-    const readiness = resolveSetupReadiness(settings({ 'accounting.cutoffPeriod': null }))
-    expect(requirement(readiness, 'set-accounting-period').reason).toMatch(/No cutoff period set/)
-    expect(requirement(readiness, 'set-opening-trial-balance').met).toBe(true)
+  it('reads an absent opening as met, so a loading screen does not flash red', () => {
+    const readiness = resolveSetupReadiness(settings())
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+    expect(readiness.settingsReady).toBe(true)
+  })
+
+  it('is met by a posted opening entry, whatever the draft summary says', () => {
+    const readiness = resolveSetupReadiness(settings(), {
+      opening: { posted: true, summary: EMPTY },
+    })
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+  })
+
+  it('is met by a balanced draft ready to post', () => {
+    const readiness = resolveSetupReadiness(settings(), {
+      opening: { posted: false, summary: BALANCED },
+    })
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+    expect(readiness.settingsReady).toBe(true)
+  })
+
+  it('is unmet on an empty draft, naming what to do', () => {
+    const readiness = resolveSetupReadiness(settings(), {
+      opening: { posted: false, summary: EMPTY },
+    })
+    const opening = requirement(readiness, 'set-opening-balances')
+    expect(opening.met).toBe(false)
+    expect(opening.reason).toMatch(/No opening balances yet/)
     expect(readiness.settingsReady).toBe(false)
   })
 
-  it('still reads finalized off accounting.setupState alone', () => {
+  it('is unmet on an unbalanced draft, naming the difference', () => {
+    const readiness = resolveSetupReadiness(settings(), {
+      opening: { posted: false, summary: { debitMinor: 500_00, creditMinor: 400_00, rows: 3 } },
+    })
+    const opening = requirement(readiness, 'set-opening-balances')
+    expect(opening.met).toBe(false)
+    expect(opening.reason).toMatch(/out of balance by 10000 cents/)
+  })
+
+  it('is met from nothing, even with no draft at all', () => {
+    const readiness = resolveSetupReadiness(
+      settings({ [OPENING_FROM_NOTHING_SETTING_KEY]: true }),
+      {
+        opening: { posted: false, summary: EMPTY },
+      }
+    )
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+  })
+
+  it('asks for nothing about inventory or a provider', () => {
+    expect(
+      SETUP_READINESS_SETTING_KEYS.some((key) => /qbo|openingRaw|openingWip|Finished/.test(key))
+    ).toBe(false)
+  })
+})
+
+describe('resolveSetupReadiness: the period requirement', () => {
+  it('names a missing cutoff', () => {
+    const readiness = resolveSetupReadiness(settings({ 'accounting.cutoffPeriod': null }))
+    expect(requirement(readiness, 'set-accounting-period').reason).toMatch(/No cutoff period set/)
+    expect(readiness.settingsReady).toBe(false)
+  })
+
+  it('reads finalized off accounting.setupState alone', () => {
     expect(resolveSetupReadiness(settings()).finalized).toBe(false)
     expect(
       resolveSetupReadiness(settings({ 'accounting.setupState': 'finalized' })).finalized
     ).toBe(true)
   })
-
-  it('blocks on the trial balance even when every setting is met', () => {
-    const readiness = resolveSetupReadiness(settings({ 'accounting.setupState': 'draft' }), {
-      openingTrialBalance: { debitMinor: 1, creditMinor: 0, rows: 1 },
-    })
-    expect(readiness.settingsReady).toBe(false)
-  })
 })
 
-// ── brief 22: the provider snapshot is asked for only when there is a provider ──
-//
-// 🛑 Every case below was reachable before and none was covered: the `qbo*`
-// keys and the journal reference appeared only in the happy fixture above, so
-// the two gates that blocked DemoOrg1's first wizard drive had no test of their
-// own. That is why a live drive found them and 960 test files did not.
-
-/** A standalone org: every auxx key set, every provider key absent. */
-function standalone(overrides: SettingsRecord = {}): SettingsRecord {
-  return settings({
-    'accounting.qboOpeningRawMaterials': null,
-    'accounting.qboOpeningWip': null,
-    'accounting.qboOpeningFinishedGoods': null,
-    'accounting.qboOpeningJournalRef': null,
-    ...overrides,
-  })
-}
-
-describe('resolveSetupReadiness: opening balances are provider-conditional', () => {
-  it('an org with nothing connected is READY on its own three balances alone', () => {
-    // `21` DECIDED 1: a company must never be forced to connect QuickBooks to
-    // get a correct balance sheet. Before this, Finalize stayed disabled until
-    // somebody typed three QuickBooks balances for a system they do not have.
-    const readiness = resolveSetupReadiness(standalone())
-    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
-    expect(readiness.settingsReady).toBe(true)
-  })
-
-  it('the SAME settings are not ready once a provider is connected', () => {
-    const readiness = resolveSetupReadiness(standalone(), { providerConnected: true })
-    const row = requirement(readiness, 'set-opening-balances')
-    expect(row.met).toBe(false)
-    expect(row.reason).toMatch(/Some opening balances are not set/)
-    expect(readiness.settingsReady).toBe(false)
-  })
-
-  it('absent providerConnected reads as NOT connected', () => {
-    // The opposite default to `openingTrialBalance`, deliberately: demanding a
-    // QuickBooks figure on the strength of a connection nobody looked up is the
-    // defect, not the safeguard.
-    expect(resolveSetupReadiness(standalone()).settingsReady).toBe(true)
-    expect(resolveSetupReadiness(standalone(), {}).settingsReady).toBe(true)
-  })
-
-  it('still refuses a connected org whose two snapshots disagree', () => {
-    const readiness = resolveSetupReadiness(
-      settings({ 'accounting.qboOpeningRawMaterials': 999_00 }),
-      { providerConnected: true }
-    )
-    const row = requirement(readiness, 'set-opening-balances')
-    expect(row.met).toBe(false)
-    expect(row.reason).toMatch(/do not agree/)
-  })
-
-  it('never reports a disagreement for a standalone org, because there is none to have', () => {
-    // `openingDifference` skips a pair whose either side is null, so it returns
-    // 0 regardless - the old gate made a standalone org type its own figures
-    // into a second column so a subtraction against a copy of itself could come
-    // out zero. It proved nothing and refused until it was done.
-    const readiness = resolveSetupReadiness(standalone())
-    expect(requirement(readiness, 'set-opening-balances').reason).toBeUndefined()
-  })
-
-  it('still refuses a fractional provider balance, but only when connected', () => {
-    const fractional = settings({ 'accounting.qboOpeningWip': 12.5 })
-    expect(
-      requirement(
-        resolveSetupReadiness(fractional, { providerConnected: true }),
-        'set-opening-balances'
-      ).reason
-    ).toMatch(/whole number of cents/)
-    expect(requirement(resolveSetupReadiness(fractional), 'set-opening-balances').met).toBe(true)
-  })
-
-  it('still refuses an org missing one of its OWN balances, connected or not', () => {
-    const missing = standalone({ 'accounting.openingWip': null })
-    for (const context of [{}, { providerConnected: true }]) {
-      expect(requirement(resolveSetupReadiness(missing, context), 'set-opening-balances').met).toBe(
-        false
-      )
-    }
-  })
-})
-
-describe('resolveSetupReadiness: the journal reference is not a gate', () => {
-  it('is ready with no QuickBooks opening journal reference, even when connected', () => {
-    // Nothing reads it. `opening-baseline.ts` lists it under "What this reader
-    // deliberately does NOT read", and `settled-periods.ts` excludes it from
-    // the frozen keys because it "feeds no comparison". A value not worth
-    // protecting after finalize is not worth refusing to finalize over.
-    const readiness = resolveSetupReadiness(settings({ 'accounting.qboOpeningJournalRef': null }), {
-      providerConnected: true,
-    })
-    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
-    expect(readiness.settingsReady).toBe(true)
-  })
-
-  it('is not one of the keys the predicate declares it reads', () => {
-    // `buildReadinessRecord` feeds the predicate from this array, so a key left
-    // here would keep being collected for a rule that no longer exists.
-    expect(SETUP_READINESS_SETTING_KEYS).not.toContain('accounting.qboOpeningJournalRef')
+describe('readOpeningFromNothing', () => {
+  it('is true only for a literal true', () => {
+    expect(readOpeningFromNothing({ [OPENING_FROM_NOTHING_SETTING_KEY]: true })).toBe(true)
+    expect(readOpeningFromNothing({ [OPENING_FROM_NOTHING_SETTING_KEY]: 'true' })).toBe(false)
+    expect(readOpeningFromNothing({})).toBe(false)
   })
 })

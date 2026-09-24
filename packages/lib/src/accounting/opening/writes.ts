@@ -45,18 +45,12 @@ import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/c
 import { requireJournalEntryFieldContext } from '../journals/entries/fields'
 import { createJournalEntry, updateJournalEntry } from '../journals/entries/writes'
 import { buildOpeningBalanceEntry } from '../ledger/builders/opening-balance'
-import { accountLabel } from '../ledger/chart/account-label'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { assertAccountingSetupUnfrozen } from '../ledger/periods/settled-periods'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry, previewEntry } from '../ledger/post/post-entry'
 import type { EntryPreview, PostResult } from '../ledger/types'
-import {
-  findLockedRowDivergences,
-  OPENING_TRIAL_BALANCE_FREEZE_KEY,
-  OPENING_TRIAL_BALANCE_KIND,
-  type OpeningTrialBalanceRow,
-} from './client'
+import { OPENING_TRIAL_BALANCE_FREEZE_KEY, OPENING_TRIAL_BALANCE_KIND } from './client'
 import { guard } from './guard'
 import { findOpeningTrialBalanceEntry, readOpeningTrialBalance } from './reads'
 
@@ -143,12 +137,8 @@ export async function previewOpeningTrialBalance(
 ): Promise<Result<EntryPreview, Error>> {
   return guard(
     async () => {
-      const { entry, cutoffPeriod, bookTimeZone, rows } = await requireDraftContext(
-        db,
-        organizationId
-      )
+      const { entry, cutoffPeriod, bookTimeZone } = await requireDraftContext(db, organizationId)
       const lines = input.lines ?? entry.lines
-      assertLockedRowsMatchSettings(organizationId, rows, lines)
       const built = buildOpeningBalanceEntry({
         cutoffPeriod,
         bookTimeZone,
@@ -186,10 +176,7 @@ export async function postOpeningTrialBalance(
   return guard(
     async () => {
       const ctx = await requireJournalEntryFieldContext(db, organizationId)
-      const { entry, cutoffPeriod, bookTimeZone, rows } = await requireDraftContext(
-        db,
-        organizationId
-      )
+      const { entry, cutoffPeriod, bookTimeZone } = await requireDraftContext(db, organizationId)
 
       if (entry.status !== 'draft') {
         throw new ConflictError(
@@ -199,8 +186,6 @@ export async function postOpeningTrialBalance(
           { journalEntryId: entry.id, status: entry.status }
         )
       }
-
-      assertLockedRowsMatchSettings(organizationId, rows, entry.lines)
 
       const built = buildOpeningBalanceEntry({
         cutoffPeriod,
@@ -272,51 +257,7 @@ async function requireDraftContext(db: Database, organizationId: string) {
       { organizationId, cutoffPeriod: cutoffPeriod ?? '', bookTimeZone: bookTimeZone ?? '' }
     )
   }
-  return { entry, cutoffPeriod, bookTimeZone, rows: view.value.rows }
-}
-
-/**
- * Refuse when a locked inventory row's STORED amount disagrees with the setting
- * that owns it, naming the account.
- *
- * `readOpeningTrialBalance` shows the SETTINGS value for those three rows and
- * the builder posts the STORED one, so a divergence is a screen that says one
- * number and a post that writes another - and the settings are also what
- * `readOpeningBaseline` hands the first close, so the ledger would then be
- * contradicted by the very next month-end assertion.
- *
- * Refusing rather than substituting: see {@link findLockedRowDivergences}. The
- * grid's lock makes this unreachable through the UI, so reaching it means
- * something wrote around it and a person should look.
- */
-function assertLockedRowsMatchSettings(
-  organizationId: string,
-  rows: readonly OpeningTrialBalanceRow[],
-  lines: readonly JournalEntryLine[]
-): void {
-  // An EMPTY draft is not a divergence to report - it is an empty trial
-  // balance, and `buildOpeningBalanceEntry` refuses it with the message that
-  // actually helps ("nothing has been entered"). Reporting three locked rows as
-  // disagreeing with their settings would bury that.
-  if (lines.length === 0) return
-
-  const divergences = findLockedRowDivergences(rows, lines)
-  if (divergences.length === 0) return
-  const named = divergences
-    .map(
-      (d) =>
-        `${accountLabel({ code: d.accountCode, name: d.accountName })} (${d.role}): the draft holds ` +
-        `${d.storedMinor} and the setting says ${d.settingMinor}`
-    )
-    .join('; ')
-  throw new ConflictError(
-    `The opening trial balance disagrees with the opening inventory settings on ${named}. ` +
-      'Those three rows are owned by the accounting.opening* settings - they are what the first ' +
-      'month-end close measures its delta from - so posting this draft would put a number in the ' +
-      'ledger that the next close contradicts. Re-open the opening balances page so the locked ' +
-      'rows are rewritten from the settings, then post again.',
-    { organizationId, accounts: divergences.map((d) => d.accountId).join(',') }
-  )
+  return { entry, cutoffPeriod, bookTimeZone }
 }
 
 /**

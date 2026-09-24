@@ -14,15 +14,14 @@ import { AlertTriangle, Check, PartyPopper } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useSettings } from '~/hooks/use-settings'
-import { useUser } from '~/hooks/use-user'
 import {
   useDehydratedOrganizationId,
   useDehydratedStateContext,
 } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
-import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { EntryBlockers, type LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryJournal } from '../ledger/entry-journal'
+import { OpeningFillButton } from '../settings/opening-fill-button'
 
 interface WizardDonePageProps {
   /** Stamps `setWizardCompleted` and closes the dialog. */
@@ -30,52 +29,20 @@ interface WizardDonePageProps {
 }
 
 /**
- * Last page of `AccountingSetupWizard` - what is about to post, the readiness
- * verdict, and one of the two Finalize doors.
- *
- * ✅ Finalize lives BOTH here and on `settings/general`, deliberately. The
- * settings page is its primary home because this wizard has "Set up later" on
- * every page and stamps completion either way, so a Finalize that existed only
- * inside it could be walked straight past.
- *
- * 🛑 Finalizing freezes the opening baseline. After it, a mistake is corrected
- * with a reversal and a re-entry, never by editing setup history - changing an
- * opening balance or the book timezone afterwards would rewrite the arithmetic
- * behind a journal entry that has already been booked.
- *
- * ## Finalize is two writes, in one order, and the order is the point
- *
- * 1. **The settings finalize** flips `accounting.setupState` to `finalized`.
- *    Nothing may post until it reads that: `readOpeningBaseline` refuses on
- *    anything else, and it is the gate the whole module hangs off.
- * 2. **`ledgerOpening.post`** then posts the opening entry, dated the last day
- *    of the cutoff month.
- *
- * The other order would post an entry into books that are still officially in
- * setup, and `assertAccountingSetupUnfrozen` would then refuse the settings
- * write that was supposed to open them - a setup that cannot be finished.
- *
- * 🛑 A refused post is rendered as an `EntryBlockers` card, never a toast
- * (ground rule 9). A toast disappears; the refusal names the account or the
- * period that has to be fixed and is the screen's content until it is.
+ * Last page of `AccountingSetupWizard`: what is about to post, the readiness verdict, and
+ * Finalize - which is `ledger.finalizeSetup`, the same server door the settings page uses.
+ * A refused post renders as an `EntryBlockers` card, never a toast; pressing Finalize again
+ * retries only the post.
  */
 export function WizardDonePage({ onFinish }: WizardDonePageProps) {
-  const { user } = useUser()
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const organizationId = useDehydratedOrganizationId()
   const { patchSettings } = useDehydratedStateContext()
   const utils = api.useUtils()
 
-  // 🛑 The settings write goes through the tRPC mutation DIRECTLY rather than
-  // through `useSettings`, which fires `.mutate` and returns void. The two
-  // writes below have to happen in order - see the JSDoc - and there is no
-  // ordering to be had from a fire-and-forget call. The local settings store is
-  // patched by hand afterwards, which is exactly what `useSettings` does.
-  const finalizeSettings = api.setting.batchUpdateOrganizationSettings.useMutation()
-  const providerStatus = useAccountingProviderStatus()
+  const finalizeSetup = api.ledger.finalizeSetup.useMutation()
   const opening = api.ledgerOpening.get.useQuery()
   const preview = api.ledgerOpening.preview.useMutation()
-  const post = api.ledgerOpening.post.useMutation()
 
   const [blockers, setBlockers] = useState<LedgerBlocker[]>([])
 
@@ -83,31 +50,19 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
   for (const key of SETUP_READINESS_SETTING_KEYS) record[key] = getSetting(key as SettingKey)
   const fromNothing = readOpeningFromNothing(record)
 
-  // The trial balance is the one requirement that is not a setting, so it is
-  // passed in. An absent summary reads as met - see `SetupReadinessContext` -
-  // which is why the query's own loading state is not a blocker here.
-  //
-  // ⚠️ `providerConnected` takes the opposite treatment while loading, and the
-  // asymmetry is the point. `useAccountingProviderStatus` reports
-  // `connected: false` for a beat after `installed` turns true, so passing it
-  // raw would drop the provider snapshot from the requirements and ENABLE
-  // Finalize on a connected org for that beat. Reading a load as connected
-  // errs toward one extra requirement briefly showing unmet, which resolves
-  // itself; the other direction posts an opening entry against a baseline
-  // nobody reconciled (brief 22 §2.5).
+  const entry = opening.data?.entry ?? null
+  const posted = entry?.status === 'posted'
+  // An absent opening reads as met while loading; the server re-checks on Finalize.
   const readiness = resolveSetupReadiness(record, {
-    ...(opening.data ? { openingTrialBalance: opening.data.summary } : {}),
-    providerConnected: providerStatus.loading || providerStatus.connected,
+    ...(opening.data ? { opening: { posted, summary: opening.data.summary } } : {}),
   })
   const unmet = readiness.requirements.filter((requirement) => !requirement.met)
+  // Finalized with the opening still a draft: a previous post was refused, so offer the retry.
+  const awaitingPost = readiness.finalized && !fromNothing && !!entry && !posted
 
-  // Preview once the query has an entry, so the journal below shows the lines
-  // that are actually about to post rather than the grid's own arithmetic. An
-  // arithmetic refusal (an unbalanced trial balance) throws, and it is already
-  // reported by the readiness row above, so the preview's own error is not
-  // surfaced a second time here.
+  // The preview's own arithmetic refusal is already reported by the readiness row above.
   const previewData = preview.data
-  const entryId = opening.data?.entry?.id ?? null
+  const entryId = entry?.id ?? null
   const runPreview = preview.mutate
   useEffect(() => {
     if (entryId) runPreview({})
@@ -115,77 +70,49 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
 
   const finalize = async () => {
     setBlockers([])
-    const patch = {
-      'accounting.setupState': 'finalized',
-      'accounting.setupFinalizedAt': new Date().toISOString(),
-      'accounting.setupFinalizedByUserId': user?.id ?? null,
-    }
     try {
-      await finalizeSettings.mutateAsync({
-        settings: Object.entries(patch).map(([key, value]) => ({ key, value })),
-      })
-      if (organizationId) patchSettings(organizationId, patch)
-    } catch (error) {
-      setBlockers([{ status: 'error', error: messageOf(error) }])
-      return
-    }
-
-    // Nothing to post: either no draft was ever raised, or the org declared its books start from
-    // nothing. `buildOpeningBalanceEntry` refuses an empty entry ("an organization that genuinely
-    // opened with nothing has no opening entry to make"), so reaching it would turn a finished
-    // setup into a red card. The settings finalize above is the whole job here.
-    if (!entryId || fromNothing) return
-
-    try {
-      const result = await post.mutateAsync({})
-      // `postEntry` never throws: a closed period, an account that has left the
-      // chart and a provider refusal all arrive as a status the card renders.
-      //
-      // 🛑 This MUST be `didLedgerAccept`, not `posted || already_posted`. The
-      // opening entry is `opening_balance`, which `EXPORT_ROUTE_BY_POSTING_TYPE`
-      // routes to `'none'`, so a perfectly good one comes back `not_exported` -
-      // and `EntryBlockers` has no remedy for it, so it fell through to
-      // `FALLBACK` and rendered the red "The entry could not be built" box over
-      // an entry that had posted. Before brief 22 §5 the same entry came back
-      // `not_connected` and rendered "No accounting system is connected" at an
-      // org with QuickBooks connected, which is the bug §5 was written about;
-      // fixing the status moved the lie rather than removing it.
-      if (!didLedgerAccept(result)) {
+      const result = await finalizeSetup.mutateAsync()
+      if (organizationId) patchSettings(organizationId, { 'accounting.setupState': 'finalized' })
+      // `didLedgerAccept`, not `posted`: the opening entry never exports, so a good one can
+      // come back `not_exported`.
+      if (result.opening && !didLedgerAccept(result.opening)) {
         setBlockers([
           {
-            status: result.status as PostResultStatus,
-            error: result.error ?? `The opening entry came back ${result.status}.`,
+            status: result.opening.status as PostResultStatus,
+            error: result.opening.error ?? `The opening entry came back ${result.opening.status}.`,
           },
         ])
       }
     } catch (error) {
-      // An arithmetic refusal - an unbalanced or empty trial balance - throws
-      // rather than returning a status, because there is no entry to report on.
-      setBlockers([{ status: 'unbalanced', error: messageOf(error) }])
+      setBlockers([{ status: 'error', error: messageOf(error) }])
     } finally {
       await utils.ledgerOpening.get.invalidate()
     }
   }
 
-  const isFinalizing = finalizeSettings.isPending || post.isPending
-  const posted = opening.data?.entry?.status === 'posted'
+  const done = readiness.finalized && !awaitingPost
 
   return (
     <div className='flex flex-col gap-3 px-4 py-6'>
       <div className='flex flex-col items-center gap-3 text-center'>
         <PartyPopper className='size-8 text-muted-foreground' />
         <h2 className='font-medium text-base text-foreground'>
-          {readiness.finalized ? "You're set" : 'One last step'}
+          {done ? "You're set" : 'One last step'}
         </h2>
 
-        {readiness.finalized ? (
+        {done ? (
           <p className='max-w-sm text-muted-foreground text-sm'>
-            Your opening baseline is frozen and the ledger is open for business. Head to Accounting
+            Your opening balances are frozen and the ledger is open for business. Head to Accounting
             when you are ready to close your first month.
+          </p>
+        ) : awaitingPost ? (
+          <p className='max-w-sm text-muted-foreground text-sm'>
+            Setup is finalized, but the opening entry has not posted yet. Fix what is named below
+            and post it again.
           </p>
         ) : unmet.length === 0 ? (
           <p className='max-w-sm text-muted-foreground text-sm'>
-            Everything checks out. Finalizing freezes your opening baseline and posts the opening
+            Everything checks out. Finalizing freezes your opening balances and posts the opening
             entry below. After that, a correction is a reversal and a re-entry, never an edit.
           </p>
         ) : (
@@ -208,13 +135,16 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
         )}
       </div>
 
-      {/*
-        What is about to post, read-only, above the button that posts it. The
-        opening entry is the first thing in the org's ledger and it is
-        permanent, so it is shown rather than described. `EntryJournal` is the
-        same component the close console renders a month-end entry with, so the
-        layout a bookkeeper checks it in is the one they already know.
-      */}
+      {/* With an accounting system connected, the opening is filled from its balance sheet. */}
+      {!readiness.finalized && !fromNothing && (
+        <div className='flex justify-center'>
+          <OpeningFillButton
+            frozen={opening.data?.frozen ?? false}
+            cutoverDate={opening.data?.cutoverDate ?? null}
+          />
+        </div>
+      )}
+
       {previewData && previewData.lines.length > 0 && (
         <div className='flex flex-col gap-2'>
           <div className='flex flex-wrap items-baseline justify-between gap-2'>
@@ -242,7 +172,7 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
         <Button variant='ghost' size='sm' onClick={onFinish}>
           Close
         </Button>
-        {readiness.finalized ? (
+        {done ? (
           <Button variant='outline' size='sm' asChild onClick={onFinish}>
             <Link href='/app/accounting'>Open the ledger</Link>
           </Button>
@@ -251,11 +181,11 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
             variant='outline'
             size='sm'
             disabled={unmet.length > 0}
-            loading={isFinalizing}
+            loading={finalizeSetup.isPending}
             loadingText='Finalizing...'
             onClick={finalize}>
             <Check />
-            Finalize setup
+            {awaitingPost ? 'Post the opening entry' : 'Finalize setup'}
           </Button>
         )}
       </div>

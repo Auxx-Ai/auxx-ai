@@ -18,9 +18,7 @@
 //      opening inventory on the balance sheet, and the split by account is
 //      literally the opening journal entry - nobody can check the run without
 //      it. This block keeps the account NAME spelled out; the list's narrow
-//      column is the one that shows just the number. Beside each counted total
-//      it shows the `accounting.opening*` baseline that owns the same row, the
-//      difference between them, and the action that proposes one from the other.
+//      column is the one that shows just the number.
 //   3. The readiness line: how many parts are in the run, and how many are
 //      held back, counted per reason with the reason's own sentence as a
 //      tooltip.
@@ -49,7 +47,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
-import { PlayCircle, Scale } from 'lucide-react'
+import { PlayCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Fragment, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -58,13 +56,10 @@ import { formatQuantity } from '~/components/purchasing/purchasing-summary-strip
 import { useConfirm } from '~/hooks/use-confirm'
 import type {
   OpeningStockAccountTotal,
-  OpeningStockBaseline,
   OpeningStockExclusion,
   OpeningStockExclusionReason,
   OpeningStockRunSummary,
 } from '../../hooks/use-opening-stock'
-import { PROPOSABLE_OPENING_ROLES } from '../../hooks/use-opening-stock'
-import { inventoryAccountLabelForRole } from '../../parts/opening-stock-input'
 
 /** Where the accounting cutoff is set, for the unset-cutoff note. */
 const ACCOUNTING_GENERAL_HREF = '/app/accounting/settings/general'
@@ -116,13 +111,6 @@ interface OpeningStockRunProps {
   accountTotals: OpeningStockAccountTotal[]
   /** Minor units. */
   totalExtended: number
-  /** What the run counts per proposable role. Minor units, `0` for an empty role. */
-  countedByRole: Record<string, number>
-  /** `accounting.opening*` per role. `null` is UNSET, and it is not zero. */
-  openingBaseline: OpeningStockBaseline
-  /** Writes the counted totals into the two derivable baseline settings. */
-  onProposeBaseline: () => Promise<void>
-  isProposingBaseline: boolean
   /** Exactly what the run will write. */
   entryCount: number
   exclusions: OpeningStockExclusion[]
@@ -141,10 +129,6 @@ interface OpeningStockRunProps {
 export function OpeningStockRun({
   accountTotals,
   totalExtended,
-  countedByRole,
-  openingBaseline,
-  onProposeBaseline,
-  isProposingBaseline,
   entryCount,
   exclusions,
   currencyCode,
@@ -181,45 +165,6 @@ export function OpeningStockRun({
         title: 'Error opening stock',
         description:
           error instanceof Error ? error.message : 'Could not write the opening balances.',
-      })
-    }
-  }
-
-  /**
-   * Propose the counted totals as the opening baseline.
-   *
-   * 🛑 Behind a confirm that NAMES BOTH AMOUNTS, because these settings freeze
-   * the moment a ledger entry stands on them: after that a correction is a
-   * reversal and a re-entry, never an edit to the baseline.
-   *
-   * 🛑 The freeze itself is not pre-empted here.
-   * `setting.batchUpdateOrganizationSettings` already calls
-   * `assertAccountingSetupUnfrozen`, so a second guess in the browser could only
-   * disagree with the server. Its refusal names the reversal path, and that
-   * sentence is what the toast carries.
-   */
-  const handlePropose = async () => {
-    const confirmed = await confirm({
-      title: 'Use the counted totals as the opening baseline?',
-      description:
-        `${proposalSentence(countedByRole, currencyCode)} Those two settings own the inventory ` +
-        'rows of the opening trial balance and are what the first month-end close measures its ' +
-        'delta from. They FREEZE once a ledger entry stands on them, and after that a ' +
-        'correction is a reversal and a re-entry, never an edit. Work in Process is not ' +
-        'written: no part kind resolves to it.',
-      confirmText: 'Use these totals',
-      cancelText: 'Cancel',
-      destructive: false,
-    })
-    if (!confirmed) return
-
-    try {
-      await onProposeBaseline()
-    } catch (error) {
-      toastError({
-        title: 'Error setting the opening baseline',
-        description:
-          error instanceof Error ? error.message : 'Could not write the opening baseline.',
       })
     }
   }
@@ -270,12 +215,8 @@ export function OpeningStockRun({
           <OpeningInventoryReconciliation
             accountTotals={accountTotals}
             totalExtended={totalExtended}
-            countedByRole={countedByRole}
-            openingBaseline={openingBaseline}
             entryCount={entryCount}
             currencyCode={currencyCode}
-            isProposing={isProposingBaseline}
-            onPropose={handlePropose}
           />
 
           <Separator />
@@ -320,290 +261,79 @@ export function OpeningStockRun({
   )
 }
 
-/** One account's line of the reconciliation. */
-interface ReconciliationLine {
-  role: string
-  /** `1310 Raw Materials / Parts`. */
-  account: string
-  parts: number
-  units: number
-  /** What the typed rows sum to, minor units. */
-  counted: number
-  /** `accounting.opening*`, minor units, or `null` when nobody has set one. */
-  baseline: number | null
-}
-
 /**
- * The lines to render, over the two DERIVABLE roles rather than over the
- * accounts that happen to have typed rows.
- *
- * ⚠️ A role with a baseline and no counted rows is still a line. That is exactly
- * the disagreement the finalize gate refuses on - a baseline claiming $50,000 of
- * finished goods that no part accounts for - and grouping only by what somebody
- * typed would hide the one case a person most needs to see.
- *
- * A role that is neither counted nor baselined is omitted, so an untouched page
- * shows the empty-state sentence rather than a grid of zeros.
- *
- * The trailing loop covers an account somebody's rows landed in that is NOT a
- * proposable role. There is none today; it is there so a fourth part kind cannot
- * drop silently out of the opening journal entry.
- */
-function buildReconciliation(
-  accountTotals: OpeningStockAccountTotal[],
-  countedByRole: Record<string, number>,
-  openingBaseline: OpeningStockBaseline
-): ReconciliationLine[] {
-  const byRole = new Map(accountTotals.map((total) => [total.role, total]))
-  const lines: ReconciliationLine[] = []
-
-  for (const role of PROPOSABLE_OPENING_ROLES) {
-    const total = byRole.get(role)
-    const baseline = openingBaseline[role] ?? null
-    const counted = countedByRole[role] ?? 0
-    if (!total && baseline === null && counted === 0) continue
-    lines.push({
-      role,
-      account: total?.account ?? inventoryAccountLabelForRole(role),
-      parts: total?.parts ?? 0,
-      units: total?.units ?? 0,
-      counted,
-      baseline,
-    })
-  }
-
-  for (const total of accountTotals) {
-    if (lines.some((line) => line.role === total.role)) continue
-    lines.push({
-      role: total.role,
-      account: total.account,
-      parts: total.parts,
-      units: total.units,
-      counted: total.extended,
-      baseline: openingBaseline[total.role] ?? null,
-    })
-  }
-
-  return lines
-}
-
-/**
- * Section 2: the opening journal entry beside the baseline that owns the same
- * three rows, the difference between them, and the action that proposes one from
- * the other.
- *
- * 🛑 **The count is the INPUT to the baseline, not a check against it.** The
- * baseline is "the frozen December 31 physical count, valued at CPA-approved
- * costs" (`postings/opening-baseline.ts`), and this page is where that count is
- * entered. So with no baseline set the panel shows no difference and no zero -
- * it says the totals will become it. A difference against an unset setting would
- * be a difference against a number nobody supplied.
+ * Section 2: the opening inventory the run writes, by the account each part's kind
+ * resolves to. The ledger's side is the opening entry; any gap between the two is
+ * posted once as an adjustment after cutover (plans/accounting/tasks/103 §5a).
  */
 function OpeningInventoryReconciliation({
   accountTotals,
   totalExtended,
-  countedByRole,
-  openingBaseline,
   entryCount,
   currencyCode,
-  isProposing,
-  onPropose,
 }: {
   accountTotals: OpeningStockAccountTotal[]
   totalExtended: number
-  countedByRole: Record<string, number>
-  openingBaseline: OpeningStockBaseline
   entryCount: number
   currencyCode: string
-  isProposing: boolean
-  onPropose: () => Promise<void>
 }) {
-  const lines = buildReconciliation(accountTotals, countedByRole, openingBaseline)
-  const anyBaseline = lines.some((line) => line.baseline !== null)
-  const anyDifference = lines.some(
-    (line) => line.baseline !== null && line.baseline !== line.counted
-  )
-  // The total's difference is only shown when EVERY line has a baseline. A
-  // partial sum compared against the full count is a number that means nothing.
-  const baselineTotal =
-    lines.length > 0 && lines.every((line) => line.baseline !== null)
-      ? lines.reduce((sum, line) => sum + (line.baseline ?? 0), 0)
-      : null
-
   return (
     <section className='flex flex-col gap-1.5'>
       <h3 className='font-medium text-foreground text-sm'>Opening inventory</h3>
       <p className='text-muted-foreground text-xs'>
         The sum of every opening balance, by the inventory account each part's kind resolves to.
-        This is the opening journal entry, and it is what the opening baseline is meant to say.
+        Where it differs from the opening balances in your books, setup posts the difference once,
+        the day after the cutover.
       </p>
 
-      {lines.length === 0 ? (
+      {accountTotals.length === 0 ? (
         <p className='rounded-md border border-dashed p-3 text-muted-foreground text-xs'>
           Nothing is in the run yet. Type a quantity against a part on the left.
         </p>
       ) : (
-        <>
-          <div className='overflow-x-auto rounded-md border'>
-            <Table>
-              <TableHeader>
-                <TableRow className='hover:bg-transparent'>
-                  <TableHead className='min-w-[140px] text-muted-foreground'>Account</TableHead>
-                  <TableHead className='text-right text-muted-foreground'>Counted</TableHead>
-                  <TableHead className='text-right text-muted-foreground'>Baseline</TableHead>
-                  <TableHead className='text-right text-muted-foreground'>Difference</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line) => (
-                  <TableRow key={line.role} className='hover:bg-transparent'>
-                    <TableCell className='align-top text-xs'>
-                      <span className='block'>{line.account}</span>
-                      <span className='block text-[11px] text-muted-foreground'>
-                        {line.parts} {line.parts === 1 ? 'part' : 'parts'}
-                        {' · '}
-                        {formatQuantity(line.units)} units
-                      </span>
-                    </TableCell>
-                    <TableCell className='align-top text-right text-xs tabular-nums'>
-                      {formatCurrency(line.counted, { currencyCode })}
-                    </TableCell>
-                    <TableCell className='align-top text-right text-xs tabular-nums'>
-                      {line.baseline === null ? (
-                        <span className='text-muted-foreground'>Not set</span>
-                      ) : (
-                        formatCurrency(line.baseline, { currencyCode })
-                      )}
-                    </TableCell>
-                    <TableCell className='align-top text-right text-xs tabular-nums'>
-                      {line.baseline !== null && (
-                        <Difference
-                          counted={line.counted}
-                          baseline={line.baseline}
-                          currencyCode={currencyCode}
-                        />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                <TableRow className='hover:bg-transparent'>
-                  <TableCell className='align-top font-medium text-xs'>
-                    Total
-                    <span className='block font-normal text-[11px] text-muted-foreground'>
-                      {entryCount} {entryCount === 1 ? 'part' : 'parts'} in the run
+        <div className='overflow-x-auto rounded-md border'>
+          <Table>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead className='min-w-[140px] text-muted-foreground'>Account</TableHead>
+                <TableHead className='text-right text-muted-foreground'>Counted</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {accountTotals.map((total) => (
+                <TableRow key={total.role} className='hover:bg-transparent'>
+                  <TableCell className='align-top text-xs'>
+                    <span className='block'>{total.account}</span>
+                    <span className='block text-[11px] text-muted-foreground'>
+                      {total.parts} {total.parts === 1 ? 'part' : 'parts'}
+                      {' · '}
+                      {formatQuantity(total.units)} units
                     </span>
                   </TableCell>
-                  <TableCell className='align-top text-right font-medium text-sm tabular-nums'>
-                    {formatCurrency(totalExtended, { currencyCode })}
-                  </TableCell>
                   <TableCell className='align-top text-right text-xs tabular-nums'>
-                    {baselineTotal !== null && formatCurrency(baselineTotal, { currencyCode })}
-                  </TableCell>
-                  <TableCell className='align-top text-right text-xs tabular-nums'>
-                    {baselineTotal !== null && (
-                      <Difference
-                        counted={totalExtended}
-                        baseline={baselineTotal}
-                        currencyCode={currencyCode}
-                      />
-                    )}
+                    {formatCurrency(total.extended, { currencyCode })}
                   </TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-
-          {!anyBaseline && (
-            <p className='text-muted-foreground text-xs'>
-              No opening baseline is set yet, so there is nothing to differ from: these totals will
-              become it. The baseline is the frozen cutoff physical count, valued at approved costs,
-              and this run is that count.
-            </p>
-          )}
-
-          {/* ⚠️ States what a difference IS and makes no claim about what it
-              prevents, because it prevents nothing. The close does not compare
-              these two numbers: the baseline REPLACES pre-cutoff subledger
-              history (`gather-month-end-inventory.ts` - at cutover "the opening
-              baseline stands in", and the close's window starts after the
-              cutoff), so a difference here reaches no journal entry and lands in
-              no COGS plug. An earlier pass gated finalize on this and it was
-              removed; do not describe it as a blocker. */}
-          {anyDifference && (
-            <p className='text-muted-foreground text-xs'>
-              Counted does not match the baseline. Worth resolving - either the baseline figure or
-              the count is the one to correct - but nothing is blocked by it: the opening baseline
-              is what the balance sheet carries, and the first close measures its delta from that
-              rather than from these movements.
-            </p>
-          )}
-        </>
+              ))}
+              <TableRow className='hover:bg-transparent'>
+                <TableCell className='align-top font-medium text-xs'>
+                  Total
+                  <span className='block font-normal text-[11px] text-muted-foreground'>
+                    {entryCount} {entryCount === 1 ? 'part' : 'parts'} in the run
+                  </span>
+                </TableCell>
+                <TableCell className='align-top text-right font-medium text-sm tabular-nums'>
+                  {formatCurrency(totalExtended, { currencyCode })}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <p className='text-muted-foreground text-xs'>{WIP_NOTE}</p>
-
-      <div className='flex flex-col items-end gap-1'>
-        <Button
-          variant='outline'
-          size='sm'
-          disabled={totalExtended === 0}
-          loading={isProposing}
-          loadingText='Setting the baseline...'
-          onClick={() => void onPropose()}>
-          <Scale />
-          Use totals as the baseline
-        </Button>
-        {totalExtended === 0 && (
-          <p className='text-muted-foreground text-xs'>
-            Nothing is counted yet, so there is no total to propose.
-          </p>
-        )}
-      </div>
     </section>
   )
-}
-
-/**
- * `$2,700 unaccounted`, `$400 over baseline`, or `Matches`.
- *
- * Signed against the BASELINE, because that is the direction a person repairs
- * in: the baseline is the number the CPA signed off, so a short count means
- * inventory nothing on this page can name a part for.
- */
-function Difference({
-  counted,
-  baseline,
-  currencyCode,
-}: {
-  counted: number
-  baseline: number
-  currencyCode: string
-}) {
-  const delta = counted - baseline
-  if (delta === 0) return <span className='text-muted-foreground'>Matches</span>
-  return (
-    <span className='text-amber-600 dark:text-amber-500'>
-      {formatCurrency(Math.abs(delta), { currencyCode })}{' '}
-      {delta < 0 ? 'unaccounted' : 'over baseline'}
-    </span>
-  )
-}
-
-/**
- * `1310 Raw Materials / Parts becomes $47,300.00, and 1330 Finished Goods
- * becomes $0.00.`
- *
- * ⚠️ BOTH amounts, always, including a zero. The propose action writes both
- * derivable settings, and a confirm that named only the non-zero one would hide
- * half of what it is about to freeze.
- */
-function proposalSentence(countedByRole: Record<string, number>, currencyCode: string): string {
-  const parts = PROPOSABLE_OPENING_ROLES.map(
-    (role) =>
-      `${inventoryAccountLabelForRole(role)} becomes ` +
-      `${formatCurrency(countedByRole[role] ?? 0, { currencyCode })}`
-  )
-  return `${parts.join(', and ')}.`
 }
 
 /**

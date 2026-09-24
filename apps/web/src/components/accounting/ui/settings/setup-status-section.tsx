@@ -8,11 +8,8 @@
 // somebody picks off a dropdown. The catalog does declare it as a
 // SINGLE_SELECT, and that is exactly the shape this screen must not expose.
 //
-// 🛑 Readiness comes from the shared pure predicate `resolveSetupReadiness`
-// over the settings record, not from a query. One authority, two callers: this
-// page client-side over hydrated `useSettings`, and `signals.ts` server-side
-// over cached settings for the checklist widget. Writing the arithmetic twice
-// is what would rot.
+// Readiness comes from the shared pure predicate `resolveSetupReadiness`; Finalize
+// is `ledger.finalizeSetup`, which re-checks it server-side and posts the opening.
 
 import type { SetupReadiness } from '@auxx/lib/accounting/ledger/client'
 import { toActorId } from '@auxx/types/actor'
@@ -36,6 +33,8 @@ interface SetupStatusSectionProps {
   /** True while any section on this page holds unsaved edits. */
   hasUnsavedChanges: boolean
   isFinalizing: boolean
+  /** Finalized, but the opening entry has not posted (a refused post): offer the retry. */
+  awaitingPost: boolean
   onFinalize: () => void
 }
 
@@ -45,6 +44,7 @@ export function SetupStatusSection({
   finalizedByUserId,
   hasUnsavedChanges,
   isFinalizing,
+  awaitingPost,
   onFinalize,
 }: SetupStatusSectionProps) {
   const { finalized, requirements, settingsReady } = readiness
@@ -176,8 +176,9 @@ export function SetupStatusSection({
           )}
           {finalized && (
             <span className='mr-auto text-muted-foreground text-xs'>
-              Already finalized. Correcting the baseline now goes through reversal and re-entry,
-              never an edit to setup history.
+              {awaitingPost
+                ? 'Finalized, but the opening entry has not posted. Fix what it named and post it again.'
+                : 'Already finalized. Correcting the baseline now goes through reversal and re-entry, never an edit to setup history.'}
             </span>
           )}
           <Button
@@ -185,9 +186,11 @@ export function SetupStatusSection({
             size='sm'
             loading={isFinalizing}
             loadingText='Finalizing...'
-            disabled={finalized || !settingsReady || hasUnsavedChanges || isFinalizing}
+            disabled={
+              (finalized && !awaitingPost) || !settingsReady || hasUnsavedChanges || isFinalizing
+            }
             onClick={onFinalize}>
-            Finalize setup
+            {awaitingPost ? 'Post the opening entry' : 'Finalize setup'}
           </Button>
         </div>
       </div>

@@ -24,8 +24,7 @@ export interface LedgerPeriodOption {
 export interface LedgerPeriodModel {
   /**
    * Setup is not finalized, so the module home renders the checklist instead of
-   * a month. Read from `accounting.setupState`, which is the same key the wizard
-   * writes and the same one `readOpeningBaseline` refuses on server-side.
+   * a month. Read from `accounting.setupState`, which `ledger.finalizeSetup` writes.
    */
   isSetupDraft: boolean
   /** The period list is still in flight. Gate "nothing to close" copy on this. */

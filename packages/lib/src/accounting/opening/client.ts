@@ -18,13 +18,8 @@ import type { ChartAccountRow, PostingStatus } from '../ledger/types'
  * 🛑 There is no such setting. It is a key SHAPE, handed to
  * `assertAccountingSetupUnfrozen`, whose `isFrozenSetupSettingKey` matches on
  * the `accounting.opening` prefix. The trial balance lives on a `journal_entry`
- * record rather than in the catalog (HANDOFF decision 6.7), but it is exactly
- * as frozen as the three `accounting.opening*` scalars it sits beside: both are
- * the baseline every posted entry was computed from, and the server guard that
- * protects one has to protect the other or the freeze has a door in it.
- *
- * Naming it here rather than inlining the string keeps the two facts - that it
- * is not a real key, and that the prefix is load-bearing - in one place.
+ * record rather than in the catalog, and freezes with the rest of the setup once
+ * the ledger holds an entry.
  */
 export const OPENING_TRIAL_BALANCE_FREEZE_KEY = 'accounting.openingTrialBalance'
 
@@ -39,31 +34,6 @@ export interface OpeningTrialBalanceRow {
   accountName: string
   accountType: GlAccountTypeValue
   isActive: boolean
-  /**
-   * Set when this account carries one of the three inventory roles, naming the
-   * role.
-   *
-   * ⚠️ A locked row is NOT read-only because it is unimportant - it is
-   * read-only because its value already has an authority: the
-   * `accounting.opening*` settings, which the previous wizard page writes and
-   * which `readOpeningBaseline` reads as the first close's baseline. Two doors
-   * onto one number is how the ledger and the subledger start disagreeing.
-   */
-  lockedByRole?: string
-  /**
-   * EVERY inventory role that lands on this account, in `INVENTORY_ROLES`
-   * order. Present whenever {@link lockedByRole} is.
-   *
-   * 🛑 More than one role on one account is the COMMON case, not the exotic
-   * one: QuickBooks ships a single `Inventory Asset`, so every chart imported
-   * from it has all three roles pointing at the same account. The row's amount
-   * is then the SUM of the three settings, and a reader that took one role's
-   * figure would leave the trial balance short by the other two - which it did,
-   * found by driving on 2026-09-10 (brief 19's DRIVEN block). `lockedByRole`
-   * survives as the representative role for the lock badge and the divergence
-   * label; anything computing an AMOUNT must read this instead.
-   */
-  lockedRoles?: readonly string[]
   /** Integer minor units, or null for a row with no opening balance. */
   debitMinor: number | null
   creditMinor: number | null
@@ -161,71 +131,6 @@ export function rowsToJournalEntryLines(
   return lines
 }
 
-/** One locked row whose stored draft amount disagrees with its setting. */
-export interface LockedRowDivergence {
-  accountId: string
-  /** A label only (task 15 §5) - may be null. `accountId` is what is keyed on. */
-  accountCode: string | null
-  accountName: string
-  role: string
-  /** What the `accounting.opening*` setting says, in integer minor units. */
-  settingMinor: number
-  /** What the stored draft's lines net to for this account, debit-positive. */
-  storedMinor: number
-}
-
-/**
- * Every locked inventory row whose STORED draft amount disagrees with the
- * setting that owns it.
- *
- * PURE. `rows` come from `readOpeningTrialBalance`, which deliberately OVERRIDES
- * a locked row's amount from the `accounting.opening*` settings rather than
- * reading it out of the draft. `lines` are the draft as stored, which is what
- * the builder actually posts. So the screen can show one number while the post
- * writes another, and the two only ever diverge if something wrote around the
- * grid's lock.
- *
- * 🛑 **Divergence is a REFUSAL rather than a silent correction**, and the choice
- * matters. Building from the read's rows instead would post whatever the
- * settings say and quietly discard the number a person had stored - a general
- * ledger amount changed without anybody being told. Refusing costs one manual
- * fix in a case the UI already makes unreachable, and it names the account. The
- * settings are also what `readOpeningBaseline` hands the first close, so a
- * divergence means the ledger and the subledger are about to disagree; that is
- * exactly the thing to stop rather than to paper over.
- *
- * Debits are positive and credits negative, so an inventory row stored as a
- * credit reads as a disagreement rather than as a match on magnitude. A missing
- * setting and a missing line are both `0`, so the ordinary "this org holds no
- * WIP" case is silent.
- */
-export function findLockedRowDivergences(
-  rows: readonly OpeningTrialBalanceRow[],
-  lines: readonly JournalEntryLine[]
-): LockedRowDivergence[] {
-  const storedById = new Map<string, number>()
-  for (const line of lines) {
-    const signed = line.direction === 'debit' ? line.amountMinor : -line.amountMinor
-    storedById.set(line.glAccountId, (storedById.get(line.glAccountId) ?? 0) + signed)
-  }
-
-  const divergences: LockedRowDivergence[] = []
-  for (const row of rows) {
-    if (!row.lockedByRole) continue
-    const settingMinor = (row.debitMinor ?? 0) - (row.creditMinor ?? 0)
-    const storedMinor = storedById.get(row.accountId) ?? 0
-    if (settingMinor === storedMinor) continue
-    divergences.push({
-      accountId: row.accountId,
-      accountCode: row.accountCode,
-      accountName: row.accountName,
-      role: row.lockedByRole,
-      settingMinor,
-      storedMinor,
-    })
-  }
-  return divergences
-}
 // ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
 // PURE. No database, no io - see opening-fill-plan.ts's own header.
 export {

@@ -3,11 +3,6 @@
 // The three pure helpers behind the opening trial-balance grid. Both doors (the
 // wizard page and the settings twin) share them, which is what stops the two
 // screens from disagreeing about whether the books balance.
-//
-// `overlayInventorySettings` is here because it is a DRIVEN bug fix: the locked
-// inventory rows arrived empty in the browser, because every page of the wizard
-// mounts at once and `ledgerOpening.get` therefore fires before the previous
-// page's settings write lands.
 
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
 import { describe, expect, it } from 'vitest'
@@ -16,7 +11,6 @@ import {
   applyOpeningCellChange,
   openingEvidenceInstruction,
   openingVerdict,
-  overlayInventorySettings,
 } from '../opening-tb-grid'
 
 function row(
@@ -68,13 +62,6 @@ describe('applyOpeningCellChange', () => {
     expect(applyOpeningCellChange(rows, 'acct_1000', 'debit', null)[0]?.debitMinor).toBeNull()
   })
 
-  it('never changes a LOCKED row, whatever it is handed', () => {
-    // The lock is the whole reason the inventory numbers cannot drift from the
-    // settings the first close reads.
-    const rows = [row('1310', { lockedByRole: 'inventory_wip', debitMinor: 100_00 })]
-    expect(applyOpeningCellChange(rows, 'acct_1310', 'credit', 999)[0]).toEqual(rows[0])
-  })
-
   it('leaves every other row untouched and does not mutate the input', () => {
     const rows = [row('1000'), row('2000'), row('3900')]
     const snapshot = JSON.parse(JSON.stringify(rows))
@@ -82,57 +69,6 @@ describe('applyOpeningCellChange', () => {
     expect(rows).toEqual(snapshot)
     expect(next[0]).toBe(rows[0])
     expect(next[2]).toBe(rows[2])
-  })
-})
-
-describe('overlayInventorySettings', () => {
-  const byRole = {
-    inventory_raw_materials: 100_00,
-    inventory_wip: 0,
-    inventory_finished_goods: null,
-  }
-
-  it('fills a locked row from the settings, as a DEBIT', () => {
-    const rows = [row('1310', { lockedByRole: 'inventory_raw_materials' })]
-    expect(overlayInventorySettings(rows, byRole)[0]).toMatchObject({
-      debitMinor: 100_00,
-      creditMinor: null,
-    })
-  })
-
-  it('overrides whatever the stored draft said, because the settings win', () => {
-    const rows = [row('1310', { lockedByRole: 'inventory_raw_materials', debitMinor: 999_99 })]
-    expect(overlayInventorySettings(rows, byRole)[0]?.debitMinor).toBe(100_00)
-  })
-
-  it('applies a zero, which is a real balance', () => {
-    const rows = [row('1320', { lockedByRole: 'inventory_wip', debitMinor: 999 })]
-    expect(overlayInventorySettings(rows, byRole)[0]?.debitMinor).toBe(0)
-  })
-
-  it('never blanks a server value with a browser null', () => {
-    // 🛑 The second half of the driving session. `getSetting` answers null both
-    // for "unset" and for "this store has not loaded that key", and letting the
-    // null win wiped the figures the server had already resolved.
-    const rows = [row('1330', { lockedByRole: 'inventory_finished_goods', debitMinor: 250_000 })]
-    expect(overlayInventorySettings(rows, byRole)[0]).toBe(rows[0])
-  })
-
-  it('leaves an unset row unset when nobody has a number for it', () => {
-    const rows = [row('1330', { lockedByRole: 'inventory_finished_goods' })]
-    expect(overlayInventorySettings(rows, byRole)[0]?.debitMinor).toBeNull()
-  })
-
-  it('touches no unlocked row', () => {
-    const rows = [row('1000', { debitMinor: 500_00 })]
-    expect(overlayInventorySettings(rows, byRole)[0]).toBe(rows[0])
-  })
-
-  it('leaves a locked row alone when the role has no entry at all', () => {
-    // A chart with a fourth inventory role, or a settings read that failed:
-    // better an untouched row than one blanked by an absent key.
-    const rows = [row('1340', { lockedByRole: 'inventory_something_else', debitMinor: 7 })]
-    expect(overlayInventorySettings(rows, byRole)[0]).toBe(rows[0])
   })
 })
 
@@ -203,7 +139,7 @@ describe('openingEvidenceInstruction', () => {
     // is why it ends by telling them to check rather than that they are done.
     const instruction = openingEvidenceInstruction('provider', '2025-12-31')
     expect(instruction).toBe(
-      'These are book balances from QuickBooks as of 2025-12-31. They already account for ' +
+      'These are book balances from your accounting system as of 2025-12-31. They already account for ' +
         'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
         'not replace them with the statement figure. Check them against what you expect.'
     )

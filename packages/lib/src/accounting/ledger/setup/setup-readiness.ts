@@ -15,19 +15,20 @@
 // `accounting.*` key is in hand on load at ZERO queries.
 //
 // 🛑 So there is deliberately no `setupReadiness` endpoint. What there is
-// instead is ONE predicate with TWO callers:
+// instead is ONE predicate with three callers:
 //
 //   * `getting-started/signals.ts` calls it server-side against cached settings,
 //     to light up the onboarding checklist.
 //   * the accounting settings pages call it client-side against `useSettings`,
 //     to render "not configured yet" hints inline.
+//   * `finalizeAccountingSetup` re-checks it server-side and refuses when unmet.
 //
 // Writing that arithmetic twice is the thing that would rot: the two copies
 // drift and the checklist starts disagreeing with the button.
 //
 // ── What this is NOT ────────────────────────────────────────────────────────
 //
-// 🛑 This does not gate Post. `previewMonthEnd`'s `blockedBy` does, and the
+// 🛑 This does not gate an individual post. `previewMonthEnd`'s `blockedBy` does, and the
 // difference is the whole point: this file can say "the period is not set",
 // but only the server knows WHICH part has no standard cost or WHICH movement
 // is uncosted. A checklist nudges; a refusal names the row.
@@ -45,22 +46,11 @@
 // already holds - and because the alternative was a second copy of the sentence
 // in the one screen that renders it.
 
-/**
- * The settings the opening baseline is read from.
- *
- * 🛑 Declared HERE rather than in `opening-baseline.ts` even though that is the
- * module that reads them, because this file is client-safe and that one is not -
- * it imports `settings-service`, which reaches the database. A browser importing
- * these keys through that file would drag the server graph into the bundle.
- * `opening-baseline.ts` re-exports them, so the server side is unaffected.
- */
+/** The setup settings every posting path and the setup screens read. */
 export const OPENING_BASELINE_SETTING_KEYS = {
   setupState: 'accounting.setupState',
   cutoffPeriod: 'accounting.cutoffPeriod',
   bookTimeZone: 'accounting.bookTimeZone',
-  inventory_raw_materials: 'accounting.openingRawMaterials',
-  inventory_wip: 'accounting.openingWip',
-  inventory_finished_goods: 'accounting.openingFinishedGoods',
 } as const
 
 /** The value `accounting.setupState` must hold before anything may post. */
@@ -68,13 +58,8 @@ export const FINALIZED_SETUP_STATE = 'finalized' as const
 
 /**
  * The org's declaration that its books begin at the cutover, so there is no
- * opening entry to make.
- *
- * 🛑 An affirmation rather than an inference. An empty grid means both "we
- * started from nothing" and "I have not filled this in yet", and the second is
- * the failure the opening-balance refusals exist to catch - so the first needs
- * a signal of its own. Only the "nothing entered" branch is suppressed; an
- * entered-but-unbalanced trial balance is still refused.
+ * opening entry to make. An affirmation, because an empty opening cannot tell
+ * "we started from nothing" from "nobody filled this in".
  */
 export const OPENING_FROM_NOTHING_SETTING_KEY = 'accounting.openingFromNothing' as const
 
@@ -83,23 +68,9 @@ export function readOpeningFromNothing(settings: SettingsRecord): boolean {
   return settings[OPENING_FROM_NOTHING_SETTING_KEY] === true
 }
 
-/**
- * Every setting key this predicate reads. Handy for scoping a settings draft.
- *
- * 🛑 `accounting.qboOpeningJournalRef` is deliberately NOT here. It is written
- * by the wizard and read by nothing: `opening-baseline.ts` names it under
- * "What this reader deliberately does NOT read", and
- * `settled-periods.ts`'s `FROZEN_SETUP_SETTING_KEYS` excludes it because - in
- * that file's own test name - it "feeds no comparison". A value not worth
- * protecting after finalize is not worth refusing to finalize over, so it is
- * optional provenance on the settings page and not a requirement here
- * (brief 22 §1).
- */
+/** Every setting key this predicate reads. Handy for scoping a settings draft. */
 export const SETUP_READINESS_SETTING_KEYS = [
   ...Object.values(OPENING_BASELINE_SETTING_KEYS),
-  'accounting.qboOpeningRawMaterials',
-  'accounting.qboOpeningWip',
-  'accounting.qboOpeningFinishedGoods',
   OPENING_FROM_NOTHING_SETTING_KEY,
 ] as const
 
@@ -116,7 +87,7 @@ export interface ReadinessRequirement {
 }
 
 export interface SetupReadiness {
-  /** Every settings-derived requirement, in display order. */
+  /** Every requirement, in display order. */
   requirements: ReadinessRequirement[]
   /** True when every requirement above is met. Says nothing about the row-level facts. */
   settingsReady: boolean
@@ -124,7 +95,7 @@ export interface SetupReadiness {
   finalized: boolean
 }
 
-/** The trial-balance summary {@link resolveSetupReadiness} is given, if any. */
+/** The trial-balance summary of the opening entry's lines. */
 export interface OpeningTrialBalanceSummary {
   /** Σ of every debit row, integer minor units. */
   debitMinor: number
@@ -134,64 +105,23 @@ export interface OpeningTrialBalanceSummary {
   rows: number
 }
 
-/**
- * Everything this predicate needs that is NOT a setting.
- *
- * 🛑 The opening trial balance is the first requirement that is not eleven
- * scalar keys. It is up to 35 rows now and unbounded once the chart is edited,
- * so it lives on a `journal_entry` record of kind `opening_balance` (HANDOFF
- * decision 6.7) rather than in the settings catalog - which means this
- * otherwise-pure predicate cannot read it.
- *
- * ⚠️ **An absent `openingTrialBalance` reads as MET, not as unmet**, and the
- * choice matters because the two callers are asymmetric:
- *
- * - `getting-started/signals.ts` runs server-side over `getOrgCache().get(orgId,
- *   'orgSettings')` and has no journal-entry read in hand. It passes nothing.
- *   Reporting "opening trial balance not balanced" there would light an
- *   onboarding row red for every org on the strength of a fact the caller never
- *   looked up, and the checklist would then disagree with the wizard - the one
- *   failure `setup-readiness.ts` exists to prevent.
- * - the wizard's done page and `settings/opening` both hold the entry (from
- *   `ledgerOpening.get`) and pass it, so the requirement is answered from the
- *   real rows exactly where somebody is about to act on it.
- *
- * Met-unknown is safe because this predicate NEVER gates a post: `postEntry`
- * refuses an unbalanced entry on its own arithmetic, and it cannot be talked
- * out of that by a checklist. See the "What this is NOT" section above.
- */
-export interface SetupReadinessContext {
-  openingTrialBalance?: OpeningTrialBalanceSummary
-  /**
-   * Whether an accounting system is connected.
-   *
-   * 🛑 **Absent reads as NOT connected**, which is the opposite default to
-   * `openingTrialBalance` above, and deliberately so. That field defaults to
-   * met because reporting a failure on a fact the caller never looked up is
-   * worse than being permissive. The same instinct points the other way here:
-   * demanding a QuickBooks figure from an organization whose connection nobody
-   * looked up is precisely the defect this flag exists to fix (brief 22 §2.4).
-   *
-   * ⚠️ Both callers answer it truthfully, so the checklist and the wizard
-   * cannot drift the way `:169` warns about: the wizard and `settings/opening`
-   * pass `useAccountingProviderStatus().connected`, and
-   * `getting-started/signals.ts` resolves the provider for the org.
-   */
-  providerConnected?: boolean
+/** Where the opening entry stands: posted, or a draft with these totals. */
+export interface OpeningPresence {
+  posted: boolean
+  summary: OpeningTrialBalanceSummary
 }
 
-/**
- * Σ debits − Σ credits over a trial balance, in integer minor units.
- *
- * PURE, and the ONE place the trial balance's verdict is computed. The wizard
- * page renders it under the grid, the settings twin renders it under its own,
- * and this file turns it into a requirement - three screens, one arithmetic.
- *
- * `direction` is the only carrier of sign (ground rule 2), so a row's
- * `amountMinor` is added, never subtracted: an amount that arrived negative is
- * `buildManualEntry`'s refusal to make, naming the row, not this function's to
- * silently absorb into a difference that then reads as balanced.
- */
+/** Everything this predicate needs that is NOT a setting. */
+export interface SetupReadinessContext {
+  /**
+   * The opening entry, from `readOpeningPresence` or `ledgerOpening.get`. Absent reads as
+   * met so a screen still loading it does not flash red; `finalizeAccountingSetup` always
+   * passes it, and that is the gate.
+   */
+  opening?: OpeningPresence
+}
+
+/** Σ debits − Σ credits over a trial balance, in integer minor units. */
 export function openingTrialBalanceDifference(
   lines: readonly { direction: 'debit' | 'credit'; amountMinor: number }[]
 ): number {
@@ -214,45 +144,6 @@ export function summariseOpeningTrialBalance(
   return { debitMinor, creditMinor, rows, differenceMinor: debitMinor - creditMinor }
 }
 
-/**
- * A `CURRENCY` setting, normalized.
- *
- * ⚠️ `null` and `0` are NOT interchangeable and this is the one place that most
- * wants to conflate them. `0` is a legitimate opening balance - a business with
- * no work in process at cutover has exactly that - so a null read as zero would
- * report a baseline nobody supplied.
- */
-export function readSettingMinorUnits(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null
-  return value
-}
-
-/**
- * ⚠️ The catalog cannot enforce integer minor units and it was verified that it
- * does not: `normalizeSettingValue` routes `CURRENCY` through
- * `fieldValueSchemas.number`, which accepts `12.5` and even coerces `"12.50"`.
- * `readOpeningBaseline` refuses a fractional value on the read side, so without a
- * check here the failure mode is a setup that SAVES and then cannot close.
- */
-export function isWholeMinorUnits(value: unknown): boolean {
-  const n = readSettingMinorUnits(value)
-  return n !== null && Number.isInteger(n)
-}
-
-/**
- * The same rule as {@link isWholeMinorUnits}, phrased for a form field.
- *
- * `null` is deliberately NOT an error here - "not configured" is
- * {@link resolveSetupReadiness}'s answer to give, not this one's. A field that
- * reported both would say "required" twice in two vocabularies.
- */
-export function minorUnitError(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 'Must be a number of cents.'
-  if (!Number.isInteger(value)) return 'Must be a whole number of cents, with no fraction.'
-  return undefined
-}
-
 export function readSettingText(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -271,21 +162,32 @@ export function isValidTimeZone(zone: string): boolean {
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
 
+/** Why the opening is not ready, or undefined when it is (plans/accounting/tasks/103 §5a). */
+function openingReason(
+  settings: SettingsRecord,
+  opening: OpeningPresence | undefined
+): string | undefined {
+  if (readOpeningFromNothing(settings) || !opening || opening.posted) return undefined
+  const { summary } = opening
+  if (summary.rows === 0) {
+    return (
+      'No opening balances yet. Fill them from the connected accounting system, enter them, ' +
+      'or declare that the books start from nothing.'
+    )
+  }
+  if (summary.debitMinor !== summary.creditMinor) {
+    return (
+      `The opening balances are out of balance by ` +
+      `${Math.abs(summary.debitMinor - summary.creditMinor)} cents. They have to balance ` +
+      'before they can post.'
+    )
+  }
+  return undefined
+}
+
 /**
- * Resolve every settings-derived setup requirement.
- *
- * Coarse on purpose - one requirement per wizard page, and every key here is a
- * goal in `ACCOUNTING_GOAL_KEYS`. Cutoff and book timezone are two inputs on one
- * page and are reported as one row.
- *
- * 🛑 The two lists must stay in step. `set-opening-trial-balance` was a
- * requirement here with no goal key for three briefs, so `WIZARD_GOAL_KEYS`
- * could not name it and an org finished setup with no opening entry and was
- * never asked again (plans/accounting/WIZARD-REVIEW.md F1).
- *
- * @param context what this predicate cannot read out of settings. Optional, and
- *   an omitted `openingTrialBalance` reads as met - see
- *   {@link SetupReadinessContext} for why, and for which caller passes what.
+ * Resolve every setup requirement. Every key here is a goal in
+ * `ACCOUNTING_GOAL_KEYS`; the two lists must stay in step.
  */
 export function resolveSetupReadiness(
   settings: SettingsRecord,
@@ -305,133 +207,18 @@ export function resolveSetupReadiness(
           ? `"${zone}" is not a valid IANA timezone.`
           : undefined
 
-  const auxxKeys = [K.inventory_raw_materials, K.inventory_wip, K.inventory_finished_goods]
-  const qboKeys = [
-    'accounting.qboOpeningRawMaterials',
-    'accounting.qboOpeningWip',
-    'accounting.qboOpeningFinishedGoods',
-  ]
-
-  // 🛑 The provider's snapshot is asked for ONLY when there is a provider.
-  //
-  // `21` DECIDED 1: a company must never be forced to connect QuickBooks to get
-  // a correct balance sheet. Requiring `qboOpening*` unconditionally forced a
-  // standalone organization to fill in three QuickBooks balances for a system
-  // it does not have, and Finalize stayed disabled until it did.
-  //
-  // The comparison those keys exist for is also vacuous without a provider:
-  // `openingDifference` skips a pair whose either side is null, so it returns 0
-  // regardless. The old gate made a standalone org type its own figures into a
-  // second column so a subtraction of a number against a copy of itself could
-  // come out zero. It proved nothing and refused until it was done (brief 22 §2).
-  const compared = context.providerConnected ? [...auxxKeys, ...qboKeys] : auxxKeys
-  const missingBalance = compared.some((k) => readSettingMinorUnits(settings[k]) === null)
-  const fractional = compared.some(
-    (k) => readSettingMinorUnits(settings[k]) !== null && !isWholeMinorUnits(settings[k])
-  )
-  const difference = openingDifference(settings)
-
-  const openingReason = missingBalance
-    ? 'Some opening balances are not set. Zero is a real balance; unset is not.'
-    : fractional
-      ? 'An opening balance is not a whole number of cents.'
-      : context.providerConnected && difference !== 0
-        ? 'The auxx and QuickBooks opening snapshots do not agree.'
-        : undefined
-
-  // The third requirement, and the only one whose input is not a setting.
-  // Absent context reads as met; `SetupReadinessContext` says why.
-  //
-  // `fromNothing` suppresses the empty branch ONLY. A grid somebody entered and
-  // left out of balance is still out of balance, whatever they declared.
-  const trialBalance = context.openingTrialBalance
-  const fromNothing = readOpeningFromNothing(settings)
-  const trialBalanceReason = !trialBalance
-    ? undefined
-    : trialBalance.rows === 0
-      ? fromNothing
-        ? undefined
-        : 'No opening trial balance entered. Every account with a balance at the cutover needs one.'
-      : trialBalance.debitMinor !== trialBalance.creditMinor
-        ? `The opening trial balance is out of balance by ${Math.abs(trialBalance.debitMinor - trialBalance.creditMinor)} ` +
-          'cents. It has to balance before it can post - a plug account to make it balance is the ' +
-          'one thing that must not happen here.'
-        : undefined
+  const opening = openingReason(settings, context.opening)
 
   const requirements: ReadinessRequirement[] = [
     { key: 'set-accounting-period', met: !periodReason, reason: periodReason },
-    { key: 'set-opening-balances', met: !openingReason, reason: openingReason },
-    {
-      key: 'set-opening-trial-balance',
-      met: !trialBalanceReason,
-      reason: trialBalanceReason,
-    },
+    { key: 'set-opening-balances', met: !opening, reason: opening },
   ]
 
   return {
     requirements,
     settingsReady: requirements.every((r) => r.met),
-    finalized: readSettingText(settings[K.setupState]) === 'finalized',
+    finalized: readSettingText(settings[K.setupState]) === FINALIZED_SETUP_STATE,
   }
-}
-
-/**
- * Auxx total minus QuickBooks total, in minor units.
- *
- * 🛑 Neither number silently overrides the other, which is why this is a
- * difference rather than a fallback. A difference falling into January's
- * balancing plug would classify a cutover problem as January COGS; the auxx
- * number alone would let QuickBooks and the subledger disagree from day one.
- *
- * Returns `0` when a figure is missing - "not configured" is reported by
- * {@link resolveSetupReadiness}, not smuggled in here as a fake disagreement.
- */
-export function openingDifference(settings: SettingsRecord): number {
-  const K = OPENING_BASELINE_SETTING_KEYS
-  const pairs: Array<[string, string]> = [
-    [K.inventory_raw_materials, 'accounting.qboOpeningRawMaterials'],
-    [K.inventory_wip, 'accounting.qboOpeningWip'],
-    [K.inventory_finished_goods, 'accounting.qboOpeningFinishedGoods'],
-  ]
-  return pairs.reduce((total, [auxxKey, qboKey]) => {
-    const auxx = readSettingMinorUnits(settings[auxxKey])
-    const qbo = readSettingMinorUnits(settings[qboKey])
-    if (auxx === null || qbo === null) return total
-    return total + (auxx - qbo)
-  }, 0)
-}
-
-/** Per-account difference rows, for the reconciliation panel. */
-export function openingDifferenceRows(settings: SettingsRecord): Array<{
-  role: 'inventory_raw_materials' | 'inventory_wip' | 'inventory_finished_goods'
-  auxx: number | null
-  qbo: number | null
-  difference: number | null
-}> {
-  const K = OPENING_BASELINE_SETTING_KEYS
-  const rows = [
-    {
-      role: 'inventory_raw_materials' as const,
-      a: K.inventory_raw_materials,
-      q: 'accounting.qboOpeningRawMaterials',
-    },
-    { role: 'inventory_wip' as const, a: K.inventory_wip, q: 'accounting.qboOpeningWip' },
-    {
-      role: 'inventory_finished_goods' as const,
-      a: K.inventory_finished_goods,
-      q: 'accounting.qboOpeningFinishedGoods',
-    },
-  ]
-  return rows.map(({ role, a, q }) => {
-    const auxx = readSettingMinorUnits(settings[a])
-    const qbo = readSettingMinorUnits(settings[q])
-    return {
-      role,
-      auxx,
-      qbo,
-      difference: auxx === null || qbo === null ? null : auxx - qbo,
-    }
-  })
 }
 
 /**

@@ -284,6 +284,7 @@ export {
   type ExportAvenue,
   type ExportSettings,
   isSummaryGrainAvenue,
+  type OpeningPresence,
   type OpeningTrialBalanceSummary,
   openingTrialBalanceDifference,
   readBookTimeZone,

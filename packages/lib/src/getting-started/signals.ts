@@ -15,13 +15,8 @@ import {
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from '../accounting/ledger/roles/regime'
 import { readRoleAssignments } from '../accounting/ledger/roles/role-assignments'
-import {
-  readOpeningFromNothing,
-  resolveSetupReadiness,
-  summariseOpeningTrialBalance,
-} from '../accounting/ledger/setup/setup-readiness'
-import { findOpeningTrialBalanceEntry } from '../accounting/opening/reads'
-import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../accounting/providers/provider'
+import { resolveSetupReadiness } from '../accounting/ledger/setup/setup-readiness'
+import { readOpeningPresence } from '../accounting/opening/reads'
 import { listObservedGatewayHandles } from '../accounting/rails'
 import {
   getAllCachedCustomFields,
@@ -177,74 +172,25 @@ async function hasScheduledVisit(ctx: GettingStartedContext): Promise<boolean> {
 
 // ── accounting checklist signals ──
 //
-// 🛑 Three of the seven delegate to `resolveSetupReadiness` rather than
-// re-implementing the arithmetic. That predicate is ALSO what the accounting
-// settings pages call client-side against hydrated `useSettings`, and writing
-// the same rules twice is the thing that rots: the two copies drift and the
-// checklist starts disagreeing with the button.
-//
-// ⚠️ None of these gate Post. `previewMonthEnd`'s `blockedBy` does. A checklist
-// says "set up costing"; a refusal names the part with no standard cost.
+// Two of these delegate to `resolveSetupReadiness`, the same predicate the settings
+// pages and `finalizeAccountingSetup` use, so the checklist cannot disagree with them.
+// None of these gate Post.
 
-/**
- * Is an accounting system connected?
- *
- * ⚠️ Resolved rather than defaulted. `SetupReadinessContext.providerConnected`
- * treats absent as NOT connected, so passing nothing here would tell a
- * QuickBooks-connected org that its provider snapshot is not required while the
- * wizard - which does know - still demanded it. That is exactly the checklist /
- * wizard disagreement the comment above says this module exists to prevent.
- *
- * Fails safe: `resolveAccountingProvider` answers `NONE_ACCOUNTING_PROVIDER`
- * when no resolver is installed, when the org has connected nothing, and when
- * it names a provider that is not registered.
- */
-async function isAccountingProviderConnected(ctx: GettingStartedContext): Promise<boolean> {
-  const provider = await resolveAccountingProvider(ctx.organizationId)
-  return provider.id !== NONE_PROVIDER_ID
-}
-
-/** One settings-derived requirement from the shared predicate. */
-async function settingsRequirementMet(ctx: GettingStartedContext, key: string): Promise<boolean> {
-  const [settings, providerConnected] = await Promise.all([
+/** One setup requirement from the shared predicate, with the opening entry read for real. */
+async function setupRequirementMet(ctx: GettingStartedContext, key: string): Promise<boolean> {
+  const db = (ctx.db ?? database) as Database
+  const [settings, opening] = await Promise.all([
     getOrgCache().get(ctx.organizationId, 'orgSettings'),
-    isAccountingProviderConnected(ctx),
+    readOpeningPresence(db, ctx.organizationId),
   ])
-  const readiness = resolveSetupReadiness(settings as Record<string, unknown>, {
-    providerConnected,
-  })
+  const readiness = resolveSetupReadiness(settings as Record<string, unknown>, { opening })
   return readiness.requirements.find((r) => r.key === key)?.met ?? false
 }
 
 const hasAccountingPeriod = (ctx: GettingStartedContext) =>
-  settingsRequirementMet(ctx, 'set-accounting-period')
+  setupRequirementMet(ctx, 'set-accounting-period')
 const hasOpeningBalances = (ctx: GettingStartedContext) =>
-  settingsRequirementMet(ctx, 'set-opening-balances')
-
-/**
- * The opening trial balance exists and balances.
- *
- * 🛑 The only accounting signal that does NOT go through
- * `settingsRequirementMet`. The trial balance is a `journal_entry` record, not a
- * setting, so `resolveSetupReadiness` cannot see it from the org cache and
- * treats an absent summary as met - which is right for that predicate and wrong
- * for a checklist row whose whole job is to say whether it was entered.
- *
- * `readOpeningFromNothing` short-circuits it for an org that declared it carries
- * no opening balances: there is no entry to make, so the goal is done.
- */
-async function hasOpeningTrialBalance(ctx: GettingStartedContext): Promise<boolean> {
-  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
-  if (readOpeningFromNothing(settings as Record<string, unknown>)) return true
-
-  const db = ctx.db ?? database
-  const entry = await findOpeningTrialBalanceEntry(db as Database, ctx.organizationId)
-  if (!entry) return false
-  const summary = summariseOpeningTrialBalance(
-    entry.lines.map((line) => ({ direction: line.direction, amountMinor: line.amountMinor }))
-  )
-  return summary.rows > 0 && summary.debitMinor === summary.creditMinor
-}
+  setupRequirementMet(ctx, 'set-opening-balances')
 
 /** `accounting.setupState === 'finalized'`. */
 async function isSetupFinalized(ctx: GettingStartedContext): Promise<boolean> {
@@ -354,7 +300,6 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'map-accounts': hasRequiredRoleAssignments,
     'route-payment-rails': hasRoutedPaymentRails,
     'set-opening-balances': hasOpeningBalances,
-    'set-opening-trial-balance': hasOpeningTrialBalance,
     'finalize-setup': isSetupFinalized,
     'post-first-entry': hasPostedEntry,
   },

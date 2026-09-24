@@ -40,16 +40,9 @@
  * inventory accounts: without them the ledger's inventory starts at zero, and
  * the first close would then report the whole opening stock as a movement.
  *
- * It does not double count, because the month-end inventory entry never reads
- * this entry. `gather-month-end-inventory.ts` takes its prior assertion from
- * `readOpeningBaseline`, which reads the `accounting.opening*` SETTINGS, and
- * posts `target − baseline`. So after the first close the ledger holds
- * `opening + (target − opening) = target`, exactly once.
- *
- * And the two numbers cannot disagree, because the wizard prefills the three
- * inventory rows FROM those settings and locks them (`FrozenLock`, "set on the
- * previous page"). The settings are the single source; this entry is their
- * ledger form.
+ * It is the close's inventory baseline (`readOpeningInventoryLedger`); a gap to
+ * the parts' value is posted once, the day after, by `postOpeningInventoryAdjustment`
+ * (plans/accounting/tasks/103 §5a).
  *
  * That is also why `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.opening_balance` is
  * `[]` in `regime.ts`: an opening entry drives no ROLE at all, so

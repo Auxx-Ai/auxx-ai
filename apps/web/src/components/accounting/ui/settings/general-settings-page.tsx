@@ -21,7 +21,12 @@
 // standard cost.
 
 import { FieldType } from '@auxx/database/enums'
-import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/accounting/ledger/client'
+import {
+  didLedgerAccept,
+  isValidTimeZone,
+  OPENING_FROM_NOTHING_SETTING_KEY,
+  resolveSetupReadiness,
+} from '@auxx/lib/accounting/ledger/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -39,9 +44,12 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
+import {
+  useDehydratedOrganizationId,
+  useDehydratedStateContext,
+} from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
-import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import {
   FREEZE_REASON,
   useAccountingSettingsFreeze,
@@ -79,24 +87,26 @@ export function AccountingGeneralSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
   const { hasAccess } = useFeatureFlags()
   const { userId } = useUser()
-  const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
-    scope: 'GENERAL',
-  })
+  const { getSetting, isBatchUpdatingOrgSettings } = useSettings({ scope: 'GENERAL' })
+  const organizationId = useDehydratedOrganizationId()
+  const { patchSettings } = useDehydratedStateContext()
   const { frozen } = useAccountingSettingsFreeze()
 
-  // The shared predicate, over the settings record. No query.
-  //
-  // ⚠️ This is the SECOND Finalize door (see `wizard-done-page`), so it has to
-  // answer `providerConnected` the same way the wizard does or the two doors
-  // disagree about the same org. A load reads as connected for the reason given
-  // there: erring toward one requirement briefly unmet beats enabling Finalize
-  // against a baseline nobody reconciled (brief 22 §2.5).
-  const providerStatus = useAccountingProviderStatus()
-  const providerConnected = providerStatus.loading || providerStatus.connected
+  // The shared predicate, over the settings record and the opening entry. The server
+  // re-checks it on Finalize (`ledger.finalizeSetup`), the same door the wizard uses.
+  const opening = api.ledgerOpening.get.useQuery()
+  const openingPosted = opening.data?.entry?.status === 'posted'
+  const openingSummary = opening.data?.summary
   const readiness = useMemo(
-    () => resolveSetupReadiness(buildReadinessRecord(getSetting), { providerConnected }),
-    [getSetting, providerConnected]
+    () =>
+      resolveSetupReadiness(buildReadinessRecord(getSetting), {
+        ...(openingSummary ? { opening: { posted: openingPosted, summary: openingSummary } } : {}),
+      }),
+    [getSetting, openingPosted, openingSummary]
   )
+  const fromNothing = getSetting(OPENING_FROM_NOTHING_SETTING_KEY) === true
+  const awaitingPost =
+    readiness.finalized && !fromNothing && !!opening.data?.entry && !openingPosted
 
   // ── Section 1: accounting period ─────────────────────────────────────────
   // A SEPARATE draft slice per section: the two validate independently, and the
@@ -177,13 +187,31 @@ export function AccountingGeneralSettingsPage() {
     if (standardCost.dirty) standardCost.save()
   }
 
-  function handleFinalize() {
-    // The wizard's `done` page writes the same three keys. Both doors, one action.
-    batchUpdateOrganizationSettings([
-      { key: ACCOUNTING_KEYS.setupState, value: 'finalized' },
-      { key: ACCOUNTING_KEYS.setupFinalizedAt, value: new Date().toISOString() },
-      { key: ACCOUNTING_KEYS.setupFinalizedByUserId, value: userId ?? null },
-    ])
+  const finalizeSetup = api.ledger.finalizeSetup.useMutation()
+  async function handleFinalize() {
+    try {
+      const result = await finalizeSetup.mutateAsync()
+      if (organizationId && result.finalizedNow) {
+        patchSettings(organizationId, {
+          [ACCOUNTING_KEYS.setupState]: 'finalized',
+          [ACCOUNTING_KEYS.setupFinalizedAt]: new Date().toISOString(),
+          [ACCOUNTING_KEYS.setupFinalizedByUserId]: userId ?? null,
+        })
+      }
+      if (result.opening && !didLedgerAccept(result.opening)) {
+        toastError({
+          title: 'Setup is finalized, but the opening entry did not post',
+          description: result.opening.error ?? `It came back ${result.opening.status}.`,
+        })
+      }
+    } catch (error) {
+      toastError({
+        title: 'Error finalizing setup',
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      await utils.ledgerOpening.get.invalidate()
+    }
   }
 
   if (!hasAccess(FeatureKey.accounting)) {
@@ -391,7 +419,8 @@ export function AccountingGeneralSettingsPage() {
               finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
               finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
               hasUnsavedChanges={dirty}
-              isFinalizing={isBatchUpdatingOrgSettings}
+              isFinalizing={finalizeSetup.isPending}
+              awaitingPost={awaitingPost}
               onFinalize={handleFinalize}
             />
           </div>

@@ -105,139 +105,58 @@ describe('a full fill', () => {
   })
 })
 
-describe('the inventory rule', () => {
-  it('keeps the locked count value in `rows` and puts the providers figure in `inventory`, null count staying null', () => {
-    const rawMaterials = row({
-      accountId: 'rawMaterials',
-      accountCode: '1310',
-      accountName: 'Raw Materials',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      debitMinor: 50_000,
-    })
-    const wip = row({
-      accountId: 'wip',
-      accountCode: '1320',
-      accountName: 'WIP',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_WIP,
-      debitMinor: null, // nobody has typed a count yet
-    })
-    const finishedGoods = row({
-      accountId: 'finishedGoods',
-      accountCode: '1330',
-      accountName: 'Finished Goods',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-      debitMinor: 20_000,
-    })
+describe('inventory comes from the provider like every other account (103 §5a)', () => {
+  it('puts a single provider Inventory Asset on the finished-goods account it is linked to', () => {
+    const rawMaterials = row({ accountId: 'raw', accountCode: '1310', debitMinor: 99_999 })
+    const finishedGoods = row({ accountId: 'fg', accountCode: '1330' })
+    const equity = row({ accountId: 'obe', accountType: 'equity' })
 
     const plan = planProviderOpeningFill({
       sheet: sheet([
-        accountRow({ providerAccountId: 'p_raw', name: 'Inventory Asset', minorSigned: 60_000 }),
-        accountRow({ providerAccountId: 'p_wip', name: 'Inventory Asset', minorSigned: 25_000 }),
-        accountRow({ providerAccountId: 'p_fg', name: 'Inventory Asset', minorSigned: 15_000 }),
+        accountRow({ providerAccountId: 'p_inv', name: 'Inventory Asset', minorSigned: 42_000 }),
+        accountRow({ providerAccountId: 'p_obe', name: 'Opening Equity', minorSigned: -42_000 }),
       ]),
-      rows: [rawMaterials, wip, finishedGoods],
+      rows: [rawMaterials, finishedGoods, equity],
       accountMap: new Map([
-        ['rawMaterials', 'p_raw'],
-        ['wip', 'p_wip'],
-        ['finishedGoods', 'p_fg'],
+        ['fg', 'p_inv'],
+        ['obe', 'p_obe'],
       ]),
-      roleAccounts: new Map([
-        [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, 'rawMaterials'],
-        [ACCOUNT_ROLES.INVENTORY_WIP, 'wip'],
-        [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS, 'finishedGoods'],
-      ]),
+      roleAccounts: new Map(),
     })
 
-    expect(plan.inventoryRefusal).toBeNull()
-    expect(plan.inventory).toEqual({
-      qboOpeningRawMaterials: 60_000,
-      qboOpeningWip: 25_000,
-      qboOpeningFinishedGoods: 15_000,
+    expect(plan.rows.find((r) => r.accountId === 'fg')).toMatchObject({ debitMinor: 42_000 })
+    // An unlinked row is cleared, never kept at a stale figure.
+    expect(plan.rows.find((r) => r.accountId === 'raw')).toMatchObject({
+      debitMinor: null,
+      creditMinor: null,
     })
-    // The three locked rows are untouched - same debit values they came in with.
-    expect(plan.rows.find((r) => r.accountId === 'rawMaterials')?.debitMinor).toBe(50_000)
-    expect(plan.rows.find((r) => r.accountId === 'wip')?.debitMinor).toBeNull()
-    expect(plan.rows.find((r) => r.accountId === 'finishedGoods')?.debitMinor).toBe(20_000)
-    // None of the three count as "filled" - they kept the count, not a provider figure.
-    expect(plan.filledCount).toBe(0)
+    expect(plan.unmatched).toEqual([])
+    expect(plan.differenceMinor).toBe(0)
+    expect(rowsToJournalEntryLines(plan.rows)).toContainEqual({
+      glAccountId: 'fg',
+      direction: 'debit',
+      amountMinor: 42_000,
+    })
   })
 
-  it('sums the provider-minus-count gap across the three roles, treating a null count as zero', () => {
-    const rawMaterials = row({
-      accountId: 'rawMaterials',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      debitMinor: 10_000,
-    })
-    const wip = row({
-      accountId: 'wip',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_WIP,
-      debitMinor: null, // blank count
-    })
-    const finishedGoods = row({
-      accountId: 'finishedGoods',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-      debitMinor: 20_000,
-    })
-
+  it('fills each of three separate provider inventory accounts onto its own linked account', () => {
     const plan = planProviderOpeningFill({
       sheet: sheet([
-        accountRow({ providerAccountId: 'p_raw', minorSigned: 15_000 }),
-        accountRow({ providerAccountId: 'p_wip', minorSigned: 25_000 }),
-        accountRow({ providerAccountId: 'p_fg', minorSigned: 15_000 }),
+        accountRow({ providerAccountId: 'p_raw', minorSigned: 1_000 }),
+        accountRow({ providerAccountId: 'p_wip', minorSigned: 200 }),
+        accountRow({ providerAccountId: 'p_fg', minorSigned: 3_000 }),
       ]),
-      rows: [rawMaterials, wip, finishedGoods],
+      rows: [row({ accountId: 'raw' }), row({ accountId: 'wip' }), row({ accountId: 'fg' })],
       accountMap: new Map([
-        ['rawMaterials', 'p_raw'],
+        ['raw', 'p_raw'],
         ['wip', 'p_wip'],
-        ['finishedGoods', 'p_fg'],
+        ['fg', 'p_fg'],
       ]),
-      roleAccounts: new Map([
-        [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, 'rawMaterials'],
-        [ACCOUNT_ROLES.INVENTORY_WIP, 'wip'],
-        [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS, 'finishedGoods'],
-      ]),
+      roleAccounts: new Map(),
     })
 
-    // (15000-10000) + (25000-0) + (15000-20000) = 5000 + 25000 - 5000 = 25000
-    expect(plan.inventoryGapMinor).toBe(25_000)
-  })
-
-  it('refuses the qboOpening* fill and leaves all three figures null when the three roles share one account', () => {
-    const sharedAccount = row({
-      accountId: 'inventoryAsset',
-      accountCode: '1310',
-      accountName: 'Inventory Asset',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-      debitMinor: 400_000,
-    })
-
-    const plan = planProviderOpeningFill({
-      sheet: sheet([
-        accountRow({
-          providerAccountId: 'p_shared',
-          name: 'Inventory Asset',
-          minorSigned: 41_288_000,
-        }),
-      ]),
-      rows: [sharedAccount],
-      accountMap: new Map([['inventoryAsset', 'p_shared']]),
-      roleAccounts: new Map([
-        [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, 'inventoryAsset'],
-        [ACCOUNT_ROLES.INVENTORY_WIP, 'inventoryAsset'],
-        [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS, 'inventoryAsset'],
-      ]),
-    })
-
-    expect(plan.inventory).toEqual({
-      qboOpeningRawMaterials: null,
-      qboOpeningWip: null,
-      qboOpeningFinishedGoods: null,
-    })
-    expect(plan.inventoryRefusal).toContain('Inventory Asset')
-    expect(plan.inventoryRefusal).toContain('$412,880.00')
-    // The locked row itself is untouched either way.
-    expect(plan.rows[0]?.debitMinor).toBe(400_000)
-    expect(plan.inventoryGapMinor).toBe(41_288_000 - 400_000)
+    expect(plan.rows.map((r) => r.debitMinor)).toEqual([1_000, 200, 3_000])
+    expect(plan.filledCount).toBe(3)
   })
 })
 
@@ -367,50 +286,5 @@ describe('unmatched', () => {
     )
     expect(plan.unmatched).toHaveLength(2)
     expect(plan.unmatchedTotalMinor).toBe(-50_000 + 30_000)
-  })
-
-  it('never lists a provider row that landed on an inventory-role account', () => {
-    const rawMaterials = row({
-      accountId: 'rawMaterials',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      debitMinor: 10_000,
-    })
-
-    const plan = planProviderOpeningFill({
-      sheet: sheet([
-        accountRow({ providerAccountId: 'p_raw', name: 'Inventory Asset', minorSigned: 15_000 }),
-      ]),
-      rows: [rawMaterials],
-      accountMap: new Map([['rawMaterials', 'p_raw']]),
-      roleAccounts: new Map([[ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, 'rawMaterials']]),
-    })
-
-    expect(plan.unmatched).toEqual([])
-  })
-})
-
-describe('rowsToJournalEntryLines(plan.rows)', () => {
-  it('includes the locked inventory rows at their count value - the section 4.3 trap: a plan that dropped them would store zero and Finalize would then refuse with the locked-row ConflictError', () => {
-    const rawMaterials = row({
-      accountId: 'rawMaterials',
-      lockedByRole: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-      debitMinor: 50_000,
-    })
-    const checking = row({ accountId: 'checking' })
-
-    const plan = planProviderOpeningFill({
-      sheet: sheet([accountRow({ providerAccountId: 'p_checking', minorSigned: 20_000 })]),
-      rows: [rawMaterials, checking],
-      accountMap: new Map([['checking', 'p_checking']]),
-      roleAccounts: new Map([[ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS, 'rawMaterials']]),
-    })
-
-    const lines = rowsToJournalEntryLines(plan.rows)
-    expect(lines).toEqual(
-      expect.arrayContaining([
-        { glAccountId: 'rawMaterials', direction: 'debit', amountMinor: 50_000 },
-        { glAccountId: 'checking', direction: 'debit', amountMinor: 20_000 },
-      ])
-    )
   })
 })

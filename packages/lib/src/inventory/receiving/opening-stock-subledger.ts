@@ -1,54 +1,12 @@
 // packages/lib/src/inventory/receiving/opening-stock-subledger.ts
 
 /**
- * What the opening-stock SUBLEDGER is worth, per inventory account, and whether
- * it agrees with the opening baseline settings that own the same three rows.
+ * What the opening-stock SUBLEDGER is worth, per inventory role: the parts' side
+ * of the opening, compared with the ledger's by `readOpeningInventoryDifference`
+ * (plans/accounting/tasks/103 §5a).
  *
- * ── Why this read exists ────────────────────────────────────────────────────
- *
- * `accounting.openingRawMaterials` / `…Wip` / `…FinishedGoods` are the frozen
- * December 31 physical count, valued at CPA-approved costs
- * (`postings/opening-baseline.ts`). They OWN the three inventory rows of the
- * opening trial balance: `opening-trial-balance/writes.ts` refuses to post a
- * draft whose locked row disagrees with the setting.
- *
- * The `initial` stock movements are the per-part half of that same count, so a
- * difference between the two is worth showing somebody: it is inventory the
- * balance sheet claims and no part accounts for (or the reverse), and the repair
- * is either a figure re-entered or stock nobody has opened yet.
- *
- * ── 🛑 A difference is NOT an arithmetic fault, and nothing here blocks ─────
- *
- * This is a REPORT. It is deliberately not a gate on anything, and the reason is
- * that the close does not compare these two numbers at all: the opening baseline
- * **replaces** pre-cutoff subledger history rather than being checked against it.
- * `postings/gather-month-end-inventory.ts` is explicit - at cutover there is no
- * prior posting and "the opening baseline stands in"; pre-cutoff movements are
- * ignored because "the opening snapshot replaces that history entirely, which is
- * the whole reason the window starts where it does"; a month at or before the
- * cutoff is refused as covered by the frozen opening balances; and the closing
- * balance is `openingBalances.<role> + movements.byRole.<role>` over POST-cutoff
- * movements only.
- *
- * So a $1,000 baseline against zero `initial` movements closes to
- * `nothing_to_close`, not to a phantom COGS plug. 🛑 **Do not add a finalize
- * refusal on this comparison.** One was built and removed: it made an org that
- * could finalize unable to, for no arithmetic reason. The "difference falls into
- * January's balancing plug" warning in `postings/opening-baseline.ts` is about a
- * DIFFERENT reconciliation - `accounting.opening<X>` against the provider's own
- * `accounting.qboOpening<X>` on the same date - and conflating the two is what
- * produced the refusal.
- *
- * ── 🛑 Only TWO of the three roles are derivable, and that is structural ────
- *
- * `INVENTORY_ROLE_BY_PART_KIND` (`client.ts`) maps `component` and
- * `subassembly` to raw materials and `finished_good` to finished goods.
- * **Nothing maps to `inventory_wip`**, and `postings/build-entry.ts` states it
- * outright: only two of the three inventory roles are reachable from
- * `partKind`. WIP is structurally zero here because `completeBuild` writes the
- * consume and the produce legs in ONE call, so material never rests in work in
- * process. {@link findOpeningStockDivergences} therefore compares the two
- * derivable roles only, and never reports WIP as a difference.
+ * Nothing maps a part kind to `inventory_wip` (`INVENTORY_ROLE_BY_PART_KIND`), so
+ * WIP is structurally zero here.
  *
  * ── 🛑 The role is read off the MOVEMENT, never re-derived ──────────────────
  *
@@ -74,17 +32,14 @@
 
 import { type Database, schema } from '@auxx/database'
 import { toMinor } from '@auxx/utils/currency'
-import { and, eq, isNull, notInArray, or, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lte, notInArray, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { err, ok, type Result } from 'neverthrow'
-import { DEFAULT_CHART_OF_ACCOUNTS } from '../../accounting/ledger/chart/default-chart'
-import { OPENING_BASELINE_SETTING_KEYS } from '../../accounting/ledger/setup/setup-readiness'
+import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { StockMovementType } from '../../resources/registry/enum-values'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { systemDefId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
-import { getOrganizationSetting } from '../../settings/settings-service'
 import { guard } from './guard'
 
 /** The three inventory roles a movement's frozen `gl_account` may name. */
@@ -96,32 +51,8 @@ export const OPENING_STOCK_INVENTORY_ROLES = [
 
 export type OpeningStockInventoryRole = (typeof OPENING_STOCK_INVENTORY_ROLES)[number]
 
-/**
- * The roles a part's kind can actually reach, and therefore the only ones the
- * reconciliation may compare. See the module header for why WIP is not one.
- */
-export const DERIVABLE_OPENING_STOCK_ROLES = [
-  'inventory_raw_materials',
-  'inventory_finished_goods',
-] as const satisfies readonly OpeningStockInventoryRole[]
-
 /** Σ signed `extendedCost` of every `initial` movement, per inventory role. */
 export type OpeningStockSubledgerTotals = Record<OpeningStockInventoryRole, number>
-
-/** One inventory role where the subledger and the baseline setting disagree. */
-export interface OpeningStockDivergence {
-  role: OpeningStockInventoryRole
-  /** The seeded chart's number for {@link OpeningStockDivergence.role}, `1310`. */
-  accountCode: string
-  /** The seeded chart's name, `Raw Materials / Parts`. */
-  accountName: string
-  /** The org settings key that owns this row. */
-  settingKey: string
-  /** Σ of the `initial` movements stamped with this role, integer minor units. */
-  countedMinor: number
-  /** The setting's value, integer minor units, or `null` when nobody set one. */
-  baselineMinor: number | null
-}
 
 /** The movement attributes this reader needs. Every one is required. */
 const MOVEMENT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
@@ -156,12 +87,14 @@ const MAX_NAMED_OFFENDERS = 10
  *
  * @param db The database handle. Reads only.
  * @param organizationId The organization whose subledger is being valued.
+ * @param options `onOrBefore` (`YYYY-MM-DD`) keeps only movements dated on or before it.
  * @returns One figure per inventory role, in integer minor units, or an
  *   {@link UnprocessableEntityError} naming the movements that cannot be valued.
  */
 export async function readOpeningStockSubledgerTotals(
   db: Database,
-  organizationId: string
+  organizationId: string,
+  options: { onOrBefore?: string } = {}
 ): Promise<Result<OpeningStockSubledgerTotals, Error>> {
   return guard(
     async () => {
@@ -199,7 +132,10 @@ export async function readOpeningStockSubledgerTotals(
         eq(schema.EntityInstance.organizationId, organizationId),
         eq(schema.EntityInstance.entityDefinitionId, movementDefId),
         isNull(schema.EntityInstance.archivedAt),
-        eq(movementType.optionId, StockMovementType.INITIAL)
+        eq(movementType.optionId, StockMovementType.INITIAL),
+        ...(options.onOrBefore
+          ? [await datedOnOrBefore(db, organizationId, options.onOrBefore)]
+          : [])
       )
 
       // ── The hard stop, first and on its own ─────────────────────────────
@@ -283,57 +219,34 @@ export async function readOpeningStockSubledgerTotals(
   )
 }
 
-/**
- * Which of the two derivable inventory roles the subledger and the opening
- * baseline settings disagree about.
- *
- * Unset is not zero (`opening-baseline.ts` is explicit about that), so an unset
- * setting is reported as a divergence only when the subledger holds something -
- * "no baseline, no movements" is an org that has not started, not a
- * disagreement. A setting that IS present must match to the cent.
- *
- * 🛑 The answer is REPORTING, never a gate. See the module header: the close
- * replaces pre-cutoff history with the baseline rather than reconciling against
- * it, so a difference here is something for a person to resolve and not
- * something that may refuse a finalize, a post or a close.
- *
- * @param db The database handle. Reads only.
- * @param organizationId The organization being reconciled.
- * @returns The divergences, empty when the two agree, or the read's own refusal.
- */
-export async function findOpeningStockDivergences(
-  db: Database,
-  organizationId: string
-): Promise<Result<OpeningStockDivergence[], Error>> {
-  const totals = await readOpeningStockSubledgerTotals(db, organizationId)
-  if (totals.isErr()) return err(totals.error)
-
-  const divergences: OpeningStockDivergence[] = []
-  for (const role of DERIVABLE_OPENING_STOCK_ROLES) {
-    const settingKey = OPENING_BASELINE_SETTING_KEYS[role]
-    const raw = await getOrganizationSetting({ organizationId, key: settingKey })
-    const baselineMinor = typeof raw === 'number' && Number.isFinite(raw) ? raw : null
-    const countedMinor = totals.value[role]
-
-    if (baselineMinor === null ? countedMinor === 0 : baselineMinor === countedMinor) continue
-
-    const account = DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role)
-    divergences.push({
-      role,
-      accountCode: account?.code ?? role,
-      accountName: account?.name ?? '',
-      settingKey,
-      countedMinor,
-      baselineMinor,
-    })
-  }
-  return ok(divergences)
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function emptyTotals(): OpeningStockSubledgerTotals {
   return { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 }
+}
+
+/** Movements whose `occurredAt` falls on or before `date`; refuses when the field is unprovisioned. */
+async function datedOnOrBefore(db: Database, organizationId: string, date: string): Promise<SQL> {
+  const fields = await systemFieldMap(db, organizationId, ['stock_movement_occurred_at'] as const)
+  const occurredAt = fields.stock_movement_occurred_at
+  if (!occurredAt) {
+    throw new UnprocessableEntityError(
+      'The opening-stock subledger cannot be dated until the stock movement date field is ' +
+        'provisioned.',
+      { organizationId }
+    )
+  }
+  const dated = db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, occurredAt.id),
+        lte(sql`${schema.FieldValue.valueDate}::date`, date)
+      )
+    )
+  return inArray(schema.EntityInstance.id, dated)
 }
 
 function isOpeningStockInventoryRole(value: string): value is OpeningStockInventoryRole {

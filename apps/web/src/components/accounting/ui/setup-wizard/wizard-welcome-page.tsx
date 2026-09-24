@@ -2,15 +2,7 @@
 'use client'
 
 import { GuideColumn, GuideConcept, GuideConcepts } from '@auxx/ui/components/guide'
-import {
-  Banknote,
-  CalendarClock,
-  CreditCard,
-  Equal,
-  ListChecks,
-  ListTree,
-  Plug,
-} from 'lucide-react'
+import { CalendarClock, CreditCard, Equal, ListChecks, ListTree, Plug } from 'lucide-react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 
 /**
@@ -80,16 +72,10 @@ export function WizardWelcomePage() {
             Which account in your chart each accounting role posts to.
           </GuideConcept>
           <GuideConcept
-            glyph={<Banknote className='size-3.5 text-muted-foreground' />}
-            term='Opening inventory'>
-            The stock you were carrying at the cutoff. The first month-end close measures its delta
-            from this.
-          </GuideConcept>
-          <GuideConcept
             glyph={<Equal className='size-3.5 text-muted-foreground' />}
-            term='Opening trial balance'>
-            What every other account was worth at the cutoff, as one balanced entry — or a tick to
-            say your books start from nothing.
+            term='Opening balances'>
+            What every account, inventory included, was worth at the cutoff, as one balanced entry —
+            filled from your accounting system, or a tick to say your books start from nothing.
           </GuideConcept>
         </GuideConcepts>
       </GuideColumn>
