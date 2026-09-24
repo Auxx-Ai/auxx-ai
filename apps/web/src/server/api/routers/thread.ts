@@ -1,7 +1,7 @@
 // ~/server/api/routers/thread.ts ---
 
 import { schema } from '@auxx/database'
-import { IdentifierType } from '@auxx/database/enums'
+import { IdentifierType, ThreadSentimentValues, TicketPriorityValues } from '@auxx/database/enums'
 import { getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
@@ -227,6 +227,13 @@ const handleServiceError = (
   })
 }
 // --- tRPC Router Definition ---
+/** Manual triage overrides shared by `update` and `updateBulk`; null clears. */
+const triageUpdatesSchema = {
+  priority: z.enum(TicketPriorityValues).nullable().optional(),
+  needsReply: z.boolean().nullable().optional(),
+  sentiment: z.enum(ThreadSentimentValues).nullable().optional(),
+}
+
 export const threadRouter = createTRPCRouter({
   /**
    * Returns only thread IDs with pagination info.
@@ -675,6 +682,7 @@ export const threadRouter = createTRPCRouter({
           isUnread: z.boolean().optional(),
           // Merge routing: when present, the lib service redirects to ThreadMergeService.
           mergedIntoThreadId: recordIdSchema.nullable().optional(),
+          ...triageUpdatesSchema,
         }),
       })
     )
@@ -770,6 +778,7 @@ export const threadRouter = createTRPCRouter({
           ticketId: recordIdSchema.nullable().optional(),
           isUnread: z.boolean().optional(),
           mergedIntoThreadId: recordIdSchema.nullable().optional(),
+          ...triageUpdatesSchema,
         }),
       })
     )

@@ -1,6 +1,7 @@
 // packages/lib/src/threads/thread-mutation.service.ts
 
 import { type Database, schema } from '@auxx/database'
+import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { type ActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { getInstanceId, parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
@@ -59,7 +60,14 @@ export interface ThreadUpdates {
    * call routes through {@link ThreadMergeService.unmerge}.
    */
   mergedIntoThreadId?: RecordId | null
+  /** Manual triage overrides; null clears. See plans/ai/decision/08-triage-indicators.md §7. */
+  priority?: TicketPriority | null
+  needsReply?: boolean | null
+  sentiment?: ThreadSentiment | null
 }
+
+/** Triage columns `update`/`updateBulk` write and publish as-is. */
+const TRIAGE_UPDATE_KEYS = ['priority', 'needsReply', 'sentiment'] as const
 
 /**
  * Standard result returned by all mutation operations.
@@ -223,6 +231,9 @@ export class ThreadMutationService {
       if (updates.status !== undefined) {
         dbUpdates.status = updates.status
       }
+      for (const key of TRIAGE_UPDATE_KEYS) {
+        if (updates[key] !== undefined) dbUpdates[key] = updates[key]
+      }
       if (updates.subject !== undefined) {
         dbUpdates.subject = updates.subject.trim().substring(0, 100)
       }
@@ -313,6 +324,9 @@ export class ThreadMutationService {
       // pattern in maybeUpdateDisplayValue.
       const patch: Partial<ThreadMeta> = {}
       if ('status' in dbUpdates) patch.status = dbUpdates.status
+      for (const key of TRIAGE_UPDATE_KEYS) {
+        if (key in dbUpdates) patch[key] = dbUpdates[key]
+      }
       if ('subject' in dbUpdates) patch.subject = dbUpdates.subject
       if ('assigneeId' in dbUpdates) {
         // ActorId on the wire, same as the fetch path
@@ -635,6 +649,9 @@ export class ThreadMutationService {
       if (updates.status !== undefined) {
         dbUpdates.status = updates.status
       }
+      for (const key of TRIAGE_UPDATE_KEYS) {
+        if (updates[key] !== undefined) dbUpdates[key] = updates[key]
+      }
       if (updates.assigneeId !== undefined) {
         dbUpdates.assigneeId = updates.assigneeId ? parseActorId(updates.assigneeId).id : null
       }
@@ -709,6 +726,9 @@ export class ThreadMutationService {
 
       const patch: Partial<ThreadMeta> = {}
       if ('status' in dbUpdates) patch.status = dbUpdates.status
+      for (const key of TRIAGE_UPDATE_KEYS) {
+        if (key in dbUpdates) patch[key] = dbUpdates[key]
+      }
       if ('assigneeId' in dbUpdates) {
         // ActorId on the wire, same as the single-thread patch above (§3.4).
         patch.assigneeId = dbUpdates.assigneeId ? toActorId('user', dbUpdates.assigneeId) : null

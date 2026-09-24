@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
@@ -68,7 +69,7 @@ import { ThreadMergeBadge } from './thread-merge-badge'
 import { ThreadParticipantButton } from './thread-participant-button'
 import { useThreadContext } from './thread-provider'
 import { ThreadTicketControl } from './thread-ticket-control'
-import { ThreadTriageIndicators } from './thread-triage-indicators'
+import { ThreadTriageIndicators, TriageSubMenus } from './thread-triage-indicators'
 
 /**
  * Header component for thread details with thread actions.
@@ -534,6 +535,9 @@ export function ThreadHeader() {
                     Remember this thread
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuSeparator />
+                <TriageSubMenus thread={thread ?? {}} onChange={handlers.updateTriage} />
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handlePermanentlyDelete} variant='destructive'>
                   <Trash />
                   Permanently delete
@@ -556,7 +560,12 @@ export function ThreadHeader() {
               onSave={handleSubjectChange}
             />
           </div>
-          <ThreadTriageIndicators thread={thread} mode='all' variant='badges' />
+          <ThreadTriageIndicators
+            thread={thread}
+            mode='all'
+            variant='badges'
+            onChange={handlers.updateTriage}
+          />
           {thread.tagIds && thread.tagIds.length > 0 && (
             <div className='flex flex-row no-wrap gap-2 shrink-0'>
               {thread.tagIds.map((tagId) => (

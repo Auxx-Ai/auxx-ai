@@ -13,10 +13,12 @@ import { useHotkey } from '@tanstack/react-hotkeys'
 import {
   Archive,
   Ban,
+  ChevronsUp,
   Mail,
   MailOpen,
   Merge,
   Play,
+  Reply,
   Tags,
   Trash,
   Trash2,
@@ -40,6 +42,7 @@ import {
 import { MassWorkflowTriggerDialog } from '~/components/workflow/mass-workflow-trigger-dialog'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
+import { TriagePicker, type TriageUpdates } from './thread-triage-indicators'
 
 /**
  * A toolbar component that appears when multiple threads are selected,
@@ -143,6 +146,14 @@ export default function BulkActionToolbar() {
       }
     },
     [updateBulk, selectedThreadIds, selectionCount, clearSelection]
+  )
+
+  // Keeps the selection, so priority and needs-reply can be set on the same threads in a row.
+  const handleTriage = useCallback(
+    (updates: TriageUpdates) => {
+      if (selectionCount > 0) updateBulk(selectedThreadIds, updates)
+    },
+    [updateBulk, selectedThreadIds, selectionCount]
   )
 
   const handleToggleRead = useCallback(() => {
@@ -410,6 +421,28 @@ export default function BulkActionToolbar() {
         },
       },
       {
+        id: 'priority',
+        label: 'Priority',
+        icon: ChevronsUp,
+        disabled: isBulkUpdating || disabled,
+        tooltip: 'Set priority',
+        picker: {
+          component: TriagePicker as ComponentType<PickerComponentProps>,
+          props: { field: 'priority', onChange: handleTriage },
+        },
+      },
+      {
+        id: 'needsReply',
+        label: 'Needs reply',
+        icon: Reply,
+        disabled: isBulkUpdating || disabled,
+        tooltip: 'Set needs reply',
+        picker: {
+          component: TriagePicker as ComponentType<PickerComponentProps>,
+          props: { field: 'needsReply', onChange: handleTriage },
+        },
+      },
+      {
         id: 'merge',
         label: 'Merge',
         icon: Merge,
@@ -445,6 +478,7 @@ export default function BulkActionToolbar() {
       handleToggleRead,
       anySelectedUnread,
       handleAssign,
+      handleTriage,
       handleTagChange,
       handlePermanentlyDelete,
       handleMerge,

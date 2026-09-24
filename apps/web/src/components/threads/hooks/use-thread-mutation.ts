@@ -20,7 +20,16 @@ import { type ThreadMeta, useThreadSelectionStore, useThreadStore } from '../sto
 export type ThreadUpdates = Partial<
   Pick<
     ThreadMeta,
-    'status' | 'subject' | 'assigneeId' | 'inboxId' | 'ticketId' | 'isUnread' | 'mergedIntoThreadId'
+    | 'status'
+    | 'subject'
+    | 'assigneeId'
+    | 'inboxId'
+    | 'ticketId'
+    | 'isUnread'
+    | 'mergedIntoThreadId'
+    | 'priority'
+    | 'needsReply'
+    | 'sentiment'
   >
 >
 

@@ -3,6 +3,19 @@
 
 import { MAIL_CLASSIFY_SPAM_THRESHOLD } from '@auxx/lib/mail-classification/client'
 import { Badge } from '@auxx/ui/components/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   ChevronDown,
@@ -16,7 +29,9 @@ import {
   ShieldAlert,
   ShieldCheck,
   Smile,
+  X,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { ThreadMeta } from '~/components/threads/store/thread-store'
 
@@ -99,6 +114,190 @@ export function getTriageIndicators(
   return mode === 'all' ? out : out.filter((i) => i.notable)
 }
 
+/** The triage fields a human can set; `spamScore` is model-only (08 §7.1 E1). */
+export type TriageUpdates = Partial<Pick<ThreadMeta, 'priority' | 'needsReply' | 'sentiment'>>
+export type TriageEditField = keyof TriageUpdates
+
+interface TriageOption {
+  /** Radix radio values are strings; `needsReply` round-trips through 'true' / 'false'. */
+  value: string
+  label: string
+  icon: LucideIcon
+  color: TriageColor
+}
+
+const option = (value: string, o: Omit<TriageIndicator, 'key' | 'notable'>, label: string) => ({
+  value,
+  label,
+  icon: o.icon,
+  color: o.color,
+})
+
+export const TRIAGE_EDIT_FIELDS: Record<
+  TriageEditField,
+  { label: string; icon: LucideIcon; options: TriageOption[] }
+> = {
+  priority: {
+    label: 'Priority',
+    icon: ChevronsUp,
+    options: [
+      option('URGENT', PRIORITY.URGENT, 'Urgent'),
+      option('HIGH', PRIORITY.HIGH, 'High'),
+      option('MEDIUM', PRIORITY.MEDIUM, 'Medium'),
+      option('LOW', PRIORITY.LOW, 'Low'),
+    ],
+  },
+  needsReply: {
+    label: 'Needs reply',
+    icon: Reply,
+    options: [
+      { value: 'true', label: 'Needs a reply', icon: Reply, color: 'blue' },
+      { value: 'false', label: 'No reply needed', icon: Reply, color: 'gray' },
+    ],
+  },
+  sentiment: {
+    label: 'Sentiment',
+    icon: Meh,
+    options: [
+      option('NEGATIVE', SENTIMENT.NEGATIVE, 'Negative'),
+      option('NEUTRAL', SENTIMENT.NEUTRAL, 'Neutral'),
+      option('POSITIVE', SENTIMENT.POSITIVE, 'Positive'),
+    ],
+  },
+}
+
+/** Radio string → the update for `field`; `null` clears. */
+export function toTriageUpdate(field: TriageEditField, value: string | null): TriageUpdates {
+  if (value === null) return { [field]: null }
+  if (field === 'needsReply') return { needsReply: value === 'true' }
+  return { [field]: value } as TriageUpdates
+}
+
+const toRadioValue = (value: TriageUpdates[TriageEditField] | undefined) =>
+  value == null ? '' : String(value)
+
+/** Radio items for one field plus Clear, for any `DropdownMenuContent`. */
+function TriageMenuItems({
+  field,
+  value,
+  onChange,
+}: {
+  field: TriageEditField
+  value: TriageUpdates[TriageEditField] | undefined
+  onChange: (updates: TriageUpdates) => void
+}) {
+  return (
+    <>
+      <DropdownMenuRadioGroup
+        value={toRadioValue(value)}
+        onValueChange={(v) => onChange(toTriageUpdate(field, v))}>
+        {TRIAGE_EDIT_FIELDS[field].options.map(({ value: v, label, icon: Icon, color }) => (
+          <DropdownMenuRadioItem key={v} value={v}>
+            <Icon className={TEXT_COLOR[color]} />
+            {label}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem disabled={value == null} onClick={() => onChange({ [field]: null })}>
+        <X />
+        Clear
+      </DropdownMenuItem>
+    </>
+  )
+}
+
+/** Priority / Needs reply / Sentiment submenus: the way in for a field with no badge yet. */
+export function TriageSubMenus({
+  thread,
+  onChange,
+}: {
+  thread: TriageUpdates
+  onChange: (updates: TriageUpdates) => void
+}) {
+  return (
+    <>
+      {(Object.keys(TRIAGE_EDIT_FIELDS) as TriageEditField[]).map((field) => {
+        const { label, icon: Icon } = TRIAGE_EDIT_FIELDS[field]
+        return (
+          <DropdownMenuSub key={field}>
+            <DropdownMenuSubTrigger>
+              <Icon />
+              {label}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <TriageMenuItems field={field} value={thread[field]} onChange={onChange} />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )
+      })}
+    </>
+  )
+}
+
+interface TriagePickerProps {
+  field: TriageEditField
+  onChange: (updates: TriageUpdates) => void
+  /** Trigger; omitted when the ActionBar overflow anchors the picker via `anchorRef`. */
+  children?: React.ReactNode
+  anchorRef?: React.RefObject<HTMLElement | null>
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  disabled?: boolean
+  align?: 'start' | 'center' | 'end'
+}
+
+/** One triage field's values as a popover list, for the bulk toolbar's `picker` slot. */
+export function TriagePicker({
+  field,
+  onChange,
+  children,
+  anchorRef,
+  open,
+  onOpenChange,
+  disabled,
+  align = 'end',
+}: TriagePickerProps) {
+  const [innerOpen, setInnerOpen] = useState(false)
+  const isOpen = open ?? innerOpen
+  const setOpen = (next: boolean) => {
+    setInnerOpen(next)
+    onOpenChange?.(next)
+  }
+  const pick = (updates: TriageUpdates) => {
+    onChange(updates)
+    setOpen(false)
+  }
+  const items = [
+    ...TRIAGE_EDIT_FIELDS[field].options,
+    { value: null, label: 'Clear', icon: X, color: 'gray' as const },
+  ]
+
+  return (
+    <Popover open={isOpen} onOpenChange={setOpen}>
+      {anchorRef ? (
+        <PopoverAnchor virtualRef={anchorRef} />
+      ) : (
+        <PopoverTrigger asChild disabled={disabled}>
+          {children}
+        </PopoverTrigger>
+      )}
+      <PopoverContent className='w-44 p-1' align={align}>
+        {items.map(({ value, label, icon: Icon, color }) => (
+          <button
+            key={value ?? 'clear'}
+            type='button'
+            className='flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent [&_svg]:size-4'
+            onClick={() => pick(toTriageUpdate(field, value))}>
+            <Icon className={TEXT_COLOR[color]} />
+            {label}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 interface ThreadTriageIndicatorsProps {
   thread: TriageFields
   mode: 'all' | 'notable'
@@ -108,6 +307,8 @@ interface ThreadTriageIndicatorsProps {
   max?: number
   /** Selected row: glyphs take the row's foreground colour. */
   highlighted?: boolean
+  /** `badges` only: the editable fields' badges open a menu to change them. */
+  onChange?: (updates: TriageUpdates) => void
   className?: string
 }
 
@@ -118,6 +319,7 @@ export function ThreadTriageIndicators({
   variant,
   max,
   highlighted,
+  onChange,
   className,
 }: ThreadTriageIndicatorsProps) {
   const indicators = getTriageIndicators(thread, mode).slice(0, max)
@@ -126,13 +328,33 @@ export function ThreadTriageIndicators({
   if (variant === 'badges') {
     return (
       <div className={cn('flex shrink-0 items-center gap-1', className)}>
-        {indicators.map(({ key, icon: Icon, color, label }) => (
-          <Tooltip key={key} content={label} delayDuration={300}>
-            <Badge variant={color} size='xs' className='h-5 px-1' aria-label={label}>
-              <Icon />
-            </Badge>
-          </Tooltip>
-        ))}
+        {indicators.map(({ key, icon: Icon, color, label }) => {
+          if (!onChange || key === 'spam') {
+            return (
+              <Tooltip key={key} content={label} delayDuration={300}>
+                <Badge variant={color} size='xs' className='h-5 px-1' aria-label={label}>
+                  <Icon />
+                </Badge>
+              </Tooltip>
+            )
+          }
+          return (
+            <DropdownMenu key={key}>
+              <Tooltip content={label} delayDuration={300}>
+                <DropdownMenuTrigger asChild>
+                  <Badge variant={color} size='xs' className='h-5 px-1 cursor-pointer' asChild>
+                    <button type='button' aria-label={`${label}, change`}>
+                      <Icon />
+                    </button>
+                  </Badge>
+                </DropdownMenuTrigger>
+              </Tooltip>
+              <DropdownMenuContent align='start'>
+                <TriageMenuItems field={key} value={thread[key]} onChange={onChange} />
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        })}
       </div>
     )
   }
