@@ -13,9 +13,10 @@ import {
   type DecryptedConnectionData,
   mergeConnectionVariables,
 } from '@auxx/services/app-connections'
-import { interpolateTemplate } from '@auxx/utils'
+import { interpolateUrlTemplate, UnsafeUrlTemplateError } from '@auxx/utils'
 import { err, ok, type Result } from 'neverthrow'
 import { credentialLock } from '../credentials/credential-lock'
+import { BadRequestError } from '../errors'
 import { defaultAuthApply } from './auth-apply'
 import {
   getDefinitionRuntimeById,
@@ -159,11 +160,9 @@ async function shapeFromRevealed(
   )
   const value = secretValue(secrets)
   const fields = connectionFields(record, secrets)
-  // Interpolate the connection's base-URL template (e.g. '{shop}' / '{value}') from
-  // the resolved token + fields — no URL-encoding (a value may itself be a URL or a
-  // path-safe token). The transport prepends the result to a relative path.
+  // Not URL-encoded (a value may itself be a URL); a host-position value is validated instead.
   const baseUrl = def.baseUrlTemplate
-    ? interpolateTemplate(def.baseUrlTemplate, { ...(fields ?? {}), value })
+    ? interpolateBaseUrl(def.baseUrlTemplate, { ...(fields ?? {}), value })
     : undefined
   return {
     id: record.id,
@@ -177,6 +176,15 @@ async function shapeFromRevealed(
     baseUrl,
     metadata: record.metadata,
     expiresAt: record.expiresAt?.toISOString(),
+  }
+}
+
+function interpolateBaseUrl(template: string, vars: Record<string, string>): string {
+  try {
+    return interpolateUrlTemplate(template, vars)
+  } catch (error) {
+    if (error instanceof UnsafeUrlTemplateError) throw new BadRequestError(error.message)
+    throw error
   }
 }
 

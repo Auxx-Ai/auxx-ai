@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { ImapFlow } from 'imapflow'
+import { BlockedAddressError, resolvePublicHost } from '../../net/safe-fetch'
 import { IMAP_CONNECTION_TIMEOUT_MS, IMAP_GREETING_TIMEOUT_MS } from './constants'
 import type { ImapCredentialData } from './types'
 import { parseImapConnectionError } from './utils/parse-imap-error'
@@ -12,8 +13,12 @@ export class ImapClientProvider {
   async getClient(credentials: ImapCredentialData): Promise<ImapFlow> {
     const { imap } = credentials
 
+    const target = await resolvePublicHost(imap.host).catch((error) => {
+      throw error instanceof BlockedAddressError ? error : parseImapConnectionError(error)
+    })
     const client = new ImapFlow({
-      host: imap.host,
+      host: target.address,
+      servername: target.servername,
       port: imap.port,
       secure: imap.secure,
       auth: {

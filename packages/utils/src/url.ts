@@ -97,6 +97,35 @@ export function interpolateTemplate(
   return result
 }
 
+/** A `{key}` value would move a URL template's host off the domain the template pins. */
+export class UnsafeUrlTemplateError extends Error {
+  constructor(key: string) {
+    super(`Connection value "${key}" is not a valid hostname part`)
+    this.name = 'UnsafeUrlTemplateError'
+  }
+}
+
+const TEMPLATE_AUTHORITY = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i
+const HOST_PART = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i
+
+/**
+ * {@link interpolateTemplate} for a URL template. A placeholder that shares the
+ * host with literal text (`https://{shop}.myshopify.com`) must be hostname
+ * characters only, so a value like `evil.com/x?` cannot re-home the request.
+ * A template whose whole host is one placeholder is tenant-chosen by design.
+ */
+export function interpolateUrlTemplate(template: string, vars: Record<string, string>): string {
+  const authority = TEMPLATE_AUTHORITY.exec(template)?.[1] ?? ''
+  const hostKeys = unresolvedPlaceholders(authority)
+  if (hostKeys.length > 0 && !/^\{[^}]+\}$/.test(authority)) {
+    for (const key of hostKeys) {
+      const value = vars[key]
+      if (value !== undefined && !HOST_PART.test(value)) throw new UnsafeUrlTemplateError(key)
+    }
+  }
+  return interpolateTemplate(template, vars)
+}
+
 /** The `{key}` placeholder names left unresolved in `template` (for validation). */
 export function unresolvedPlaceholders(template: string): string[] {
   return [...template.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!)

@@ -10,12 +10,15 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const h = vi.hoisted(() => ({ sendMail: vi.fn() }))
+const h = vi.hoisted(() => ({ sendMail: vi.fn(), createTransport: vi.fn(), resolve: vi.fn() }))
 
-vi.mock('nodemailer', () => ({
-  createTransport: () => ({ sendMail: h.sendMail, verify: vi.fn(), close: vi.fn() }),
+vi.mock('nodemailer', () => ({ createTransport: h.createTransport }))
+vi.mock('../../../net/safe-fetch', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  resolvePublicHost: h.resolve,
 }))
 
+import { BlockedAddressError } from '../../../net/safe-fetch'
 import { ImapSmtpSendService } from '../imap-send-message'
 
 const CREDENTIALS = {
@@ -41,6 +44,36 @@ const sentHeaders = () => h.sendMail.mock.calls.at(-1)?.[0]?.headers ?? {}
 beforeEach(() => {
   vi.clearAllMocks()
   h.sendMail.mockResolvedValue({ messageId: '<smtp-generated@example.com>' })
+  h.createTransport.mockReturnValue({ sendMail: h.sendMail, verify: vi.fn(), close: vi.fn() })
+  h.resolve.mockResolvedValue({ address: '203.0.113.10', servername: 'smtp.example.com' })
+})
+
+describe('ImapSmtpSendService — outbound host guard', () => {
+  it('dials the vetted address and keeps the hostname for TLS', async () => {
+    const svc = await service()
+    await svc.sendMessage({ from: 'a@x.com', to: 'b@y.com', subject: 's', text: 't' } as never)
+
+    expect(h.resolve).toHaveBeenCalledWith('smtp.example.com')
+    expect(h.createTransport.mock.calls[0]?.[0]).toMatchObject({
+      host: '203.0.113.10',
+      tls: { servername: 'smtp.example.com' },
+    })
+  })
+
+  it('refuses a host that resolves to a private address without sending', async () => {
+    h.resolve.mockRejectedValue(new BlockedAddressError('10.0.0.5'))
+    const svc = await service()
+
+    await expect(
+      svc.sendMessage({ from: 'a@x.com', to: 'b@y.com', subject: 's', text: 't' } as never)
+    ).rejects.toThrow(/private or reserved address/)
+    expect(h.sendMail).not.toHaveBeenCalled()
+  })
+
+  it('does no DNS work at initialize', async () => {
+    await service()
+    expect(h.resolve).not.toHaveBeenCalled()
+  })
 })
 
 describe('ImapSmtpSendService — X-AuxxAi-Message-Id', () => {
