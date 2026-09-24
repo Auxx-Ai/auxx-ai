@@ -6,8 +6,8 @@
  *
  * Pure on purpose: every clause here is a way to print a wrong number, and
  * each one is cheaper to pin down in a test than in a browser. The module owns
- * no reads — the tab resolves each row first (including which catalog item, if
- * any, supplies a price) and hands the result in.
+ * no reads — the tab resolves each row first (including whether the part is
+ * sellable) and hands the result in.
  */
 
 import { pluralize } from '@auxx/utils'
@@ -18,17 +18,8 @@ export interface VariantRow {
   id: string
   /** `part_quantity_on_hand`. `null` means no value, NOT zero. */
   quantityOnHand: number | null
-  /**
-   * Sell price in minor units, or `null` when this variant has none.
-   *
-   * `null` covers three different situations deliberately — no catalog item,
-   * an inactive one, or more than one (price tiers, where picking one
-   * arbitrarily would be a lie; §4.2 renders "n items" for that row instead).
-   * None of them belong in a price range.
-   */
+  /** `part_sell_price` in minor units; `null` when unpriced or not sellable (107 D3). */
   priceCents: number | null
-  /** How many catalog items back this part — drives the row's "n items" case. */
-  catalogItemCount: number
 }
 
 /** What {@link summarizeVariants} answers. */
@@ -39,7 +30,7 @@ export interface VariantSummary {
   measuredCount: number
   /** Sum over rows that HAVE a value. `null` when none did — never `0`. */
   totalOnHand: number | null
-  /** Spans only variants with a single active catalog item. `null` when none. */
+  /** Spans only sellable, priced variants. `null` when none. */
   priceRange: { min: number; max: number } | null
   /** Variants carrying a usable price — the "3 of 4 priced" numerator. */
   pricedCount: number

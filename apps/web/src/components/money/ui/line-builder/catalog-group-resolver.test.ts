@@ -3,23 +3,25 @@
 import type { RecordId } from '@auxx/lib/resources/client'
 import { describe, expect, it } from 'vitest'
 import type { CatalogGroup } from '../../hooks/use-catalog-groups'
-import type { CatalogItem } from '../../hooks/use-catalog-items'
-import { resolveCatalogGroup, resolvedCatalogGroupTotal } from './catalog-group-resolver'
+import type { CatalogPart } from '../../hooks/use-catalog-parts'
+import {
+  groupSellableParts,
+  resolveCatalogGroup,
+  resolvedCatalogGroupTotal,
+} from './catalog-group-resolver'
 
-function catalogItem(overrides: Partial<CatalogItem> = {}): CatalogItem {
+function catalogPart(overrides: Partial<CatalogPart> = {}): CatalogPart {
   return {
     id: 'item-1',
-    recordId: 'catalog-def:item-1' as RecordId,
+    recordId: 'part-def:item-1' as RecordId,
     name: 'Service visit',
     description: 'Default description',
-    category: 'service',
-    defaultUnitPriceCents: 12500,
-    defaultUnit: 'hour',
+    sku: null,
+    isService: true,
+    sellPriceCents: 12500,
+    unit: 'hour',
     taxable: true,
-    active: true,
-    partRecordId: null,
-    cost: null,
-    markup: null,
+    sellable: true,
     ...overrides,
   }
 }
@@ -41,28 +43,29 @@ function catalogGroup(overrides: Partial<CatalogGroup> = {}): CatalogGroup {
 
 describe('resolveCatalogGroup', () => {
   it('snapshots item values and applies entry overrides in source order', () => {
-    const second = catalogItem({
+    const second = catalogPart({
       id: 'item-2',
-      recordId: 'catalog-def:item-2' as RecordId,
+      recordId: 'part-def:item-2' as RecordId,
       name: 'Replacement filter',
-      active: false,
-      defaultUnitPriceCents: 5000,
-      defaultUnit: 'each',
+      isService: false,
+      sellable: false,
+      sellPriceCents: 5000,
+      unit: 'each',
     })
     const itemMap = new Map([
-      ['item-1', catalogItem()],
+      ['item-1', catalogPart()],
       ['item-2', second],
     ])
     const group = catalogGroup({
       entries: [
         {
           id: 'entry-1',
-          catalogItemId: 'item-1',
+          partId: 'item-1',
           qty: 2,
           description: 'Group description',
           taxable: false,
         },
-        { id: 'entry-2', catalogItemId: 'item-2', qty: 1 },
+        { id: 'entry-2', partId: 'item-2', qty: 1 },
       ],
     })
 
@@ -77,11 +80,12 @@ describe('resolveCatalogGroup', () => {
       qty: 2,
       unit: 'hour',
       unitPriceCents: 12500,
-      catalogItemRecordId: 'catalog-def:item-1',
+      partRecordId: 'part-def:item-1',
     })
     expect(resolved.lines[1]).toMatchObject({
       name: 'Replacement filter',
       description: 'Default description',
+      category: 'material',
       taxable: true,
       qty: 1,
     })
@@ -91,15 +95,31 @@ describe('resolveCatalogGroup', () => {
   it('skips dangling item ids and reports one aggregate count', () => {
     const group = catalogGroup({
       entries: [
-        { id: 'missing-1', catalogItemId: 'deleted-1', qty: 1 },
-        { id: 'valid', catalogItemId: 'item-1', qty: 1 },
-        { id: 'missing-2', catalogItemId: 'deleted-2', qty: 1 },
+        { id: 'missing-1', partId: 'deleted-1', qty: 1 },
+        { id: 'valid', partId: 'item-1', qty: 1 },
+        { id: 'missing-2', partId: 'deleted-2', qty: 1 },
       ],
     })
 
-    const resolved = resolveCatalogGroup(group, new Map([['item-1', catalogItem()]]))
+    const resolved = resolveCatalogGroup(group, new Map([['item-1', catalogPart()]]))
 
     expect(resolved.lines.map((line) => line.name)).toEqual(['Service visit'])
     expect(resolved.skippedCount).toBe(2)
+  })
+})
+
+describe('groupSellableParts', () => {
+  it('lists only sellable parts, services before goods, matching name or SKU', () => {
+    const parts = [
+      catalogPart({ id: 'a', name: 'Visit' }),
+      catalogPart({ id: 'b', name: 'Filter', isService: false, sku: 'FLT-1' }),
+      catalogPart({ id: 'c', name: 'Bearing', isService: false, sellable: false }),
+    ]
+
+    expect(groupSellableParts(parts).map((s) => [s.key, s.rows.map((r) => r.id)])).toEqual([
+      ['services', ['a']],
+      ['goods', ['b']],
+    ])
+    expect(groupSellableParts(parts, 'flt').map((s) => s.key)).toEqual(['goods'])
   })
 })

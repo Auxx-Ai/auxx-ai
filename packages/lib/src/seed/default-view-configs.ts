@@ -19,6 +19,67 @@ export type DefaultViewDefinition = {
   config: ViewConfig
 }
 
+type PartCondition = ViewConfig['filters'][number]['conditions'][number]
+
+/** A stock-status view must not list services, which never carry stock (107 D10). */
+const NOT_A_SERVICE: PartCondition = {
+  id: 'not-a-service',
+  fieldId: 'field_part_kind',
+  // `is not`, not `not in`: only `is not` keeps parts whose kind is unset.
+  operator: 'is not',
+  value: 'service',
+  isConstant: true,
+}
+
+/** One AND group; stock-status groups also exclude services. */
+function partFilter(id: string, condition: PartCondition): ViewConfig['filters'][number] {
+  const isStockFilter = condition.fieldId === 'field_part_stock_status'
+  return {
+    id,
+    logicalOperator: 'AND',
+    conditions: isStockFilter ? [condition, NOT_A_SERVICE] : [condition],
+  }
+}
+
+/** The shared Parts & Services table: identity, kind, stock and price columns. */
+function partTableView(filters: ViewConfig['filters']): ViewConfig {
+  return {
+    viewType: 'table' as const,
+    columnVisibility: {
+      field_part_title: true,
+      field_part_sku: true,
+      field_part_kind: true,
+      field_part_description: true,
+      field_part_quantity_on_hand: true,
+      field_part_cost: true,
+      field_part_sell_price: true,
+      field_created_at: true,
+      // Hide many-to-many relationship columns — managed via drawer tabs, not the table
+      field_part_vendor_parts: false,
+      field_part_subparts: false,
+      field_part_used_in_assemblies: false,
+    },
+    columnOrder: [
+      'field_part_sku',
+      'field_part_title',
+      'field_part_kind',
+      'field_part_description',
+      'field_part_quantity_on_hand',
+      'field_part_cost',
+      'field_part_sell_price',
+      'field_created_at',
+    ],
+    columnPinning: {
+      left: ['_checkbox', 'field_part_sku', 'field_part_title'],
+    },
+    sorting: [{ id: 'field_part_sku', desc: false }],
+    filters,
+    columnSizing: {},
+    columnLabels: {},
+    columnFormatting: {},
+  }
+}
+
 /**
  * Default view configurations for system entities.
  * Each entity gets one or more views; ordering controls display order in the
@@ -454,184 +515,62 @@ export const DEFAULT_VIEW_CONFIGS = {
 
   part: [
     {
-      name: 'All Parts',
-      description: 'Default view for parts',
+      name: 'All Items',
+      description: 'Default view for parts and services',
       isDefault: true,
-      config: {
-        viewType: 'table' as const,
-        columnVisibility: {
-          field_part_title: true,
-          field_part_sku: true,
-          field_part_description: true,
-          field_part_quantity_available: true,
-          field_part_unit_cost: true,
-          field_created_at: true,
-          // Hide many-to-many relationship columns — managed via drawer tabs, not the table
-          field_part_vendor_parts: false,
-          field_part_subparts: false,
-          field_part_used_in_assemblies: false,
-        },
-        columnOrder: [
-          'field_part_sku',
-          'field_part_title',
-          'field_part_description',
-          'field_part_quantity_available',
-          'field_part_unit_cost',
-          'field_created_at',
-        ],
-        columnPinning: {
-          left: ['_checkbox', 'field_part_sku', 'field_part_title'],
-        },
-        sorting: [{ id: 'field_part_sku', desc: false }],
-        filters: [],
-        columnSizing: {},
-        columnLabels: {},
-        columnFormatting: {},
-      } satisfies ViewConfig,
+      config: partTableView([]),
+    },
+    {
+      name: 'Services',
+      description: 'Labor and other services — sold, never stocked',
+      config: partTableView([
+        partFilter('services-group', {
+          id: 'services-kind-is',
+          fieldId: 'field_part_kind',
+          operator: 'is',
+          value: 'service',
+          isConstant: true,
+        }),
+      ]),
     },
     {
       name: 'Low Stock',
       description: 'Parts at or below reorder point — needs purchasing attention',
-      config: {
-        viewType: 'table' as const,
-        columnVisibility: {
-          field_part_title: true,
-          field_part_sku: true,
-          field_part_description: true,
-          field_part_quantity_available: true,
-          field_part_unit_cost: true,
-          field_created_at: true,
-          field_part_vendor_parts: false,
-          field_part_subparts: false,
-          field_part_used_in_assemblies: false,
-        },
-        columnOrder: [
-          'field_part_sku',
-          'field_part_title',
-          'field_part_description',
-          'field_part_quantity_available',
-          'field_part_unit_cost',
-          'field_created_at',
-        ],
-        columnPinning: {
-          left: ['_checkbox', 'field_part_sku', 'field_part_title'],
-        },
-        sorting: [{ id: 'field_part_sku', desc: false }],
-        filters: [
-          {
-            id: 'low-stock-group',
-            logicalOperator: 'AND',
-            conditions: [
-              {
-                id: 'low-stock-status-in',
-                fieldId: 'field_part_stock_status',
-                operator: 'in',
-                value: ['low_stock', 'out_of_stock'],
-                isConstant: true,
-              },
-            ],
-          },
-        ],
-        columnSizing: {},
-        columnLabels: {},
-        columnFormatting: {},
-      } satisfies ViewConfig,
+      config: partTableView([
+        partFilter('low-stock-group', {
+          id: 'low-stock-status-in',
+          fieldId: 'field_part_stock_status',
+          operator: 'in',
+          value: ['low_stock', 'out_of_stock'],
+          isConstant: true,
+        }),
+      ]),
     },
     {
       name: 'Out of Stock',
       description: 'Critical purchasing view — parts with zero quantity on hand',
-      config: {
-        viewType: 'table' as const,
-        columnVisibility: {
-          field_part_title: true,
-          field_part_sku: true,
-          field_part_description: true,
-          field_part_quantity_available: true,
-          field_part_unit_cost: true,
-          field_created_at: true,
-          field_part_vendor_parts: false,
-          field_part_subparts: false,
-          field_part_used_in_assemblies: false,
-        },
-        columnOrder: [
-          'field_part_sku',
-          'field_part_title',
-          'field_part_description',
-          'field_part_quantity_available',
-          'field_part_unit_cost',
-          'field_created_at',
-        ],
-        columnPinning: {
-          left: ['_checkbox', 'field_part_sku', 'field_part_title'],
-        },
-        sorting: [{ id: 'field_part_sku', desc: false }],
-        filters: [
-          {
-            id: 'out-of-stock-group',
-            logicalOperator: 'AND',
-            conditions: [
-              {
-                id: 'out-of-stock-status-out',
-                fieldId: 'field_part_stock_status',
-                operator: 'is',
-                value: 'out_of_stock',
-                isConstant: true,
-              },
-            ],
-          },
-        ],
-        columnSizing: {},
-        columnLabels: {},
-        columnFormatting: {},
-      } satisfies ViewConfig,
+      config: partTableView([
+        partFilter('out-of-stock-group', {
+          id: 'out-of-stock-status-out',
+          fieldId: 'field_part_stock_status',
+          operator: 'is',
+          value: 'out_of_stock',
+          isConstant: true,
+        }),
+      ]),
     },
     {
       name: 'In Stock',
       description: 'Parts with healthy inventory — what we can ship today',
-      config: {
-        viewType: 'table' as const,
-        columnVisibility: {
-          field_part_title: true,
-          field_part_sku: true,
-          field_part_description: true,
-          field_part_quantity_available: true,
-          field_part_unit_cost: true,
-          field_created_at: true,
-          field_part_vendor_parts: false,
-          field_part_subparts: false,
-          field_part_used_in_assemblies: false,
-        },
-        columnOrder: [
-          'field_part_sku',
-          'field_part_title',
-          'field_part_description',
-          'field_part_quantity_available',
-          'field_part_unit_cost',
-          'field_created_at',
-        ],
-        columnPinning: {
-          left: ['_checkbox', 'field_part_sku', 'field_part_title'],
-        },
-        sorting: [{ id: 'field_part_sku', desc: false }],
-        filters: [
-          {
-            id: 'in-stock-group',
-            logicalOperator: 'AND',
-            conditions: [
-              {
-                id: 'in-stock-status-in',
-                fieldId: 'field_part_stock_status',
-                operator: 'is',
-                value: 'in_stock',
-                isConstant: true,
-              },
-            ],
-          },
-        ],
-        columnSizing: {},
-        columnLabels: {},
-        columnFormatting: {},
-      } satisfies ViewConfig,
+      config: partTableView([
+        partFilter('in-stock-group', {
+          id: 'in-stock-status-in',
+          fieldId: 'field_part_stock_status',
+          operator: 'is',
+          value: 'in_stock',
+          isConstant: true,
+        }),
+      ]),
     },
   ],
 

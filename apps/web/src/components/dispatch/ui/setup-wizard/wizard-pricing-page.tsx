@@ -8,7 +8,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { Percent, Plus } from 'lucide-react'
 import { forwardRef, useImperativeHandle, useState } from 'react'
-import { useCatalogItems } from '~/components/money/hooks/use-catalog-items'
+import { useCatalogParts } from '~/components/money/hooks/use-catalog-parts'
 import { formatMoney } from '~/components/money/ui/settings/format-money'
 import type { TaxRate } from '~/components/money/ui/settings/tax-rate-types'
 import { useSettings } from '~/hooks/use-settings'
@@ -23,20 +23,20 @@ function toCents(input: string): number | null {
 
 /**
  * Page 5 of `DispatchSetupWizard` — the two pricing prerequisites a quote or invoice needs before
- * it can be built, on one page: a first catalog item (Products & Services) and a default tax rate.
+ * it can be built, on one page: a first sellable service and a default tax rate.
  *
- * They write to two different places, exactly as the Products & Services settings page does:
- * a product is a `catalog_item` record (`record.create`, `catalog_item_name` is the only required
- * value), while tax rates are entries in the `documents.taxRates` org setting — a JSON array whose
- * `isDefault` entry `money/gather.ts` reads for every new line. The first rate added is always the
- * default, matching the settings page's exactly-one-default invariant.
+ * A service is a `part` record (`part_kind = service`, `part_sellable`), while tax rates are entries
+ * in the `documents.taxRates` org setting — a JSON array whose `isDefault` entry `money/gather.ts`
+ * reads for every new line. The first rate added is always the default, matching the Pricing
+ * page's exactly-one-default invariant.
  *
  * Both halves commit on their own "Add" button, so nothing is held hostage by navigation; the
  * {@link WizardStepHandle} exists only to flush a row the user typed but never added.
  */
 export const WizardPricingPage = forwardRef<WizardStepHandle>(
   function WizardPricingPage(_props, ref) {
-    const { items, entityDefinitionId, refresh } = useCatalogItems()
+    const { parts, entityDefinitionId, refresh } = useCatalogParts()
+    const sellable = parts.filter((part) => part.sellable)
     const { getSetting: getGeneralSetting } = useSettings({ scope: 'GENERAL' })
     const { getSetting: getDocumentsSetting, updateOrganizationSetting } = useSettings({
       scope: 'DOCUMENTS',
@@ -51,7 +51,7 @@ export const WizardPricingPage = forwardRef<WizardStepHandle>(
     const [taxRate, setTaxRate] = useState('')
 
     const createRecord = api.record.create.useMutation({
-      onError: (error) => toastError({ title: 'Error adding product', description: error.message }),
+      onError: (error) => toastError({ title: 'Error adding service', description: error.message }),
     })
 
     const addProduct = () => {
@@ -62,11 +62,12 @@ export const WizardPricingPage = forwardRef<WizardStepHandle>(
         {
           entityDefinitionId,
           values: {
-            catalog_item_name: name,
-            catalog_item_category: 'service',
-            catalog_item_taxable: true,
-            catalog_item_active: true,
-            ...(cents === null ? {} : { catalog_item_default_unit_price: cents }),
+            part_title: name,
+            part_kind: 'service',
+            part_sellable: true,
+            part_taxable: true,
+            part_unit: 'each',
+            ...(cents === null ? {} : { part_sell_price: cents }),
           },
         },
         {
@@ -106,18 +107,18 @@ export const WizardPricingPage = forwardRef<WizardStepHandle>(
       <div className='flex flex-col gap-5 p-4'>
         <p className='text-muted-foreground text-sm'>
           What you sell and what you charge tax at — both go straight onto quotes and invoices. You
-          can add the rest later in Dispatch settings.
+          can add the rest later in Parts &amp; Services.
         </p>
 
         <section className='flex flex-col gap-2'>
-          <Label className='text-foreground text-sm'>Products &amp; services</Label>
-          {items.length > 0 && (
+          <Label className='text-foreground text-sm'>Services</Label>
+          {sellable.length > 0 && (
             <ul className='flex flex-col gap-1 rounded-lg border p-2'>
-              {items.slice(0, 4).map((item) => (
-                <li key={item.id} className='flex items-center justify-between gap-2 px-1 text-sm'>
-                  <span className='truncate'>{item.name}</span>
+              {sellable.slice(0, 4).map((part) => (
+                <li key={part.id} className='flex items-center justify-between gap-2 px-1 text-sm'>
+                  <span className='truncate'>{part.name}</span>
                   <span className='shrink-0 text-muted-foreground'>
-                    {formatMoney(item.defaultUnitPriceCents, currency)}
+                    {formatMoney(part.sellPriceCents, currency)}
                   </span>
                 </li>
               ))}

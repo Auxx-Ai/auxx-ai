@@ -25,7 +25,6 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
-import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Link2, MoreHorizontal, Package, Plus, Unlink } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
@@ -50,7 +49,7 @@ import { buildVariantSummaryLabel, summarizeVariants, type VariantRow } from './
 /**
  * Hop 1 — the part's OWN values.
  *
- * Four attributes, not seven: `part_title`, `part_sku` and `part_image` are
+ * Five attributes, not eight: `part_title`, `part_sku` and `part_image` are
  * already in the list payload as `displayName` / `secondaryInfo` / `avatarUrl`
  * (`DISPLAY_FIELD_CONFIG.part` maps exactly those three), so fetching them
  * again buys nothing (plans/products/09-variant-ui.md §2 V5b).
@@ -59,11 +58,9 @@ const VARIANT_ATTRIBUTES = [
   'part_cost',
   'part_quantity_on_hand',
   'part_kind',
-  'part_catalog_items',
+  'part_sell_price',
+  'part_sellable',
 ] as const
-
-/** Hop 2 — the backing catalog items', for the Price column. */
-const CATALOG_ITEM_ATTRIBUTES = ['catalog_item_default_unit_price', 'catalog_item_active'] as const
 
 /** `PartKind.values` keyed by option value, for badge label + colour. */
 const PART_KIND_BY_VALUE = Object.fromEntries(PartKind.values.map((v) => [v.value, v]))
@@ -72,7 +69,7 @@ const PART_KIND_BY_VALUE = Object.fromEntries(PartKind.values.map((v) => [v.valu
 interface VariantRowValues extends VariantRow {
   cost: number | null
   kind: string | undefined
-  /** Whether hop 2 has actually answered — `—` until it has, never a guessed 0. */
+  /** Whether the price has actually been fetched — `—` until it has, never a guessed 0. */
   priceLoaded: boolean
 }
 
@@ -102,7 +99,7 @@ function selectValue(raw: unknown): string | undefined {
  * owns closing it, together with the disconnect/undo questions it already has
  * open.
  *
- * Reads are two batched, ALL-DIRECT hops (§4.1) — never a drill path. One
+ * Reads are one batched, ALL-DIRECT hop (§4.1) — never a drill path. One
  * `FieldPath` ref in a batch flips `batchGetValues` off its single-query fast
  * path and resolves every ref in that batch sequentially, so the round trip it
  * saves on the client is paid for several times over on the server.
@@ -161,60 +158,29 @@ export function ProductPartsTab({ entityInstanceId }: DrawerTabProps) {
   )
 
   // ── Hop 1: the parts' own values, one batch ───────────────────────
-  const { valuesById } = useSystemValuesForRecords(rowRecordIds, VARIANT_ATTRIBUTES, {
+  const { valuesById, loadedById } = useSystemValuesForRecords(rowRecordIds, VARIANT_ATTRIBUTES, {
     autoFetch: true,
     enabled: rowRecordIds.length > 0,
   })
-
-  // ── Hop 2: the catalog items behind them, one batch ───────────────
-  // Serial after hop 1 by necessity — these ids only exist inside hop 1's
-  // answer. The guard matters: without it the hook fires with an empty array on
-  // first paint.
-  const itemRecordIds = useMemo(() => {
-    const ids = new Set<RecordId>()
-    for (const recordId of rowRecordIds) {
-      const items = valuesById[recordId]?.part_catalog_items as RecordId[] | undefined
-      for (const item of items ?? []) ids.add(item)
-    }
-    return [...ids]
-  }, [rowRecordIds, valuesById])
-
-  const { valuesById: itemValues, loadedById: itemLoaded } = useSystemValuesForRecords(
-    itemRecordIds,
-    CATALOG_ITEM_ATTRIBUTES,
-    { autoFetch: true, enabled: itemRecordIds.length > 0 }
-  )
 
   const rows: VariantRowValues[] = useMemo(
     () =>
       records.map((record, index) => {
         const recordId = rowRecordIds[index] as RecordId
         const own = valuesById[recordId]
-        const items = (own?.part_catalog_items as RecordId[] | undefined) ?? []
-
-        // Exactly one backing item supplies a price. Zero has none; more than
-        // one is price tiers, and picking one arbitrarily would be a lie — §4.2
-        // renders "n items" for that row instead, the same call
-        // `part-pricing-card` makes for the has_many case.
-        const soleItem = items.length === 1 ? (items[0] as RecordId) : undefined
-        const soleValues = soleItem ? itemValues[soleItem] : undefined
-        // A missing `active` reads as the registry default, true — the same
-        // collapse `useCatalogItems` applies.
-        const active = (soleValues?.catalog_item_active as boolean | null | undefined) ?? true
-        const price =
-          (soleValues?.catalog_item_default_unit_price as number | null | undefined) ?? null
+        const price = (own?.part_sell_price as number | null | undefined) ?? null
 
         return {
           id: record.id,
           quantityOnHand: (own?.part_quantity_on_hand as number | null | undefined) ?? null,
           cost: (own?.part_cost as number | null | undefined) ?? null,
           kind: selectValue(own?.part_kind),
-          catalogItemCount: items.length,
-          priceCents: soleItem && active ? price : null,
-          priceLoaded: !soleItem || itemLoaded[soleItem]?.catalog_item_active === true,
+          // An unsellable part's price is not offered, so it is not a price (107 D3).
+          priceCents: own?.part_sellable === true ? price : null,
+          priceLoaded: loadedById[recordId]?.part_sell_price === true,
         }
       }),
-    [records, rowRecordIds, valuesById, itemValues, itemLoaded]
+    [records, rowRecordIds, valuesById, loadedById]
   )
 
   const summary = useMemo(
@@ -428,7 +394,7 @@ function ProductPartRow({
   canEdit,
   onDetach,
 }: ProductPartRowProps) {
-  const { cost, quantityOnHand, kind, priceCents, catalogItemCount, priceLoaded } = values
+  const { cost, quantityOnHand, kind, priceCents, priceLoaded } = values
   const kindMeta = kind ? PART_KIND_BY_VALUE[kind] : undefined
   const title = record.displayName ?? 'Untitled'
 
@@ -457,11 +423,7 @@ function ProductPartRow({
         )}
       </TableCell>
       <TableCell className='text-right tabular-nums'>
-        <VariantPriceCell
-          priceCents={priceCents}
-          catalogItemCount={catalogItemCount}
-          priceLoaded={priceLoaded}
-        />
+        <VariantPriceCell priceCents={priceCents} priceLoaded={priceLoaded} />
       </TableCell>
       <TableCell className='text-right tabular-nums'>
         {cost != null ? formatCurrency(cost) : <span className='text-muted-foreground'>—</span>}
@@ -491,23 +453,11 @@ function ProductPartRow({
   )
 }
 
-/**
- * The Price cell's three answers: a price, "n items" when the part carries
- * price tiers, and a dash for everything else — including while hop 2 is still
- * in flight, which must never render as a zero.
- */
+/** A price, or a dash — including while the read is in flight, which must never render as a zero. */
 function VariantPriceCell({
   priceCents,
-  catalogItemCount,
   priceLoaded,
-}: Pick<VariantRowValues, 'priceCents' | 'catalogItemCount' | 'priceLoaded'>) {
-  if (catalogItemCount > 1) {
-    return (
-      <span className='text-xs text-muted-foreground'>
-        {catalogItemCount} {pluralize(catalogItemCount, 'item')}
-      </span>
-    )
-  }
+}: Pick<VariantRowValues, 'priceCents' | 'priceLoaded'>) {
   if (!priceLoaded || priceCents == null) return <span className='text-muted-foreground'>—</span>
   return <>{formatCurrency(priceCents)}</>
 }

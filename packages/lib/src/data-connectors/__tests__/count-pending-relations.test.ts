@@ -47,9 +47,9 @@ const lineToPart: PendingRelationTargetCount = {
   records: 563,
   edges: 563,
 }
-const catalogToPart: PendingRelationTargetCount = {
-  sourceDef: 'def_catalog',
-  sourceLabel: 'Catalog item',
+const vendorPartToPart: PendingRelationTargetCount = {
+  sourceDef: 'def_vendor_part',
+  sourceLabel: 'Vendor part',
   targetDef: 'def_part',
   apiSlug: 'part',
   label: 'Part',
@@ -59,12 +59,12 @@ const catalogToPart: PendingRelationTargetCount = {
 
 describe('countPendingRelationsByTarget', () => {
   it('runs one statement and returns the grouped rows as Postgres ordered them', async () => {
-    const { db, calls } = makeDb([lineToPart, catalogToPart])
+    const { db, calls } = makeDb([lineToPart, vendorPartToPart])
 
     const result = await countPendingRelationsByTarget(db, 'org1', 'dc1')
 
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toEqual([lineToPart, catalogToPart])
+    expect(result._unsafeUnwrap()).toEqual([lineToPart, vendorPartToPart])
     expect(calls).toHaveLength(1)
   })
 

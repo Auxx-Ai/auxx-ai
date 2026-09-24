@@ -36,6 +36,7 @@ import {
   openingStockAccountLabel,
   validateOpeningStock,
 } from './opening-stock-input'
+import { displayedSellable, partFormSections } from './part-form-sections'
 import {
   defaultVendorPartValues,
   VendorPartFields,
@@ -165,6 +166,8 @@ export function PartFormDialog({
   // this file, so an org that changes the default gets it everywhere and there
   // is one source of truth for the fact (task 15 §4c).
   const partKindField = useSystemField('part_kind', partDefId)
+  const unitField = useSystemField('part_unit', partDefId)
+  const sellPriceField = useSystemField('part_sell_price', partDefId)
 
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
@@ -191,6 +194,11 @@ export function PartFormDialog({
     // the person saw it and pressed the button. A server-side fill on a key the
     // form never sent is what it refuses, because nobody was ever shown it.
     kind: '',
+    sellPrice: null as number | null,
+    unit: '',
+    taxable: true,
+    // `null` until touched: an absent `part_sellable` lets the create hook fill the kind default.
+    sellable: null as boolean | null,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showSupplier, setShowSupplier] = useState(false)
@@ -227,6 +235,10 @@ export function PartFormDialog({
           // Edit mode ignores the prop: the Details panel owns this relation.
           productId: '',
           kind: '',
+          sellPrice: null,
+          unit: '',
+          taxable: true,
+          sellable: null,
         })
       } else if (!isEditMode) {
         setValues({
@@ -238,6 +250,10 @@ export function PartFormDialog({
           category: [],
           productId: lockedProductId ?? '',
           kind: '',
+          sellPrice: null,
+          unit: '',
+          taxable: true,
+          sellable: null,
         })
       }
       setErrors({})
@@ -291,6 +307,20 @@ export function PartFormDialog({
     setValues((prev) => (prev.kind ? prev : { ...prev, kind: preselect }))
   }, [open, isEditMode, partKindField?.defaultValue])
 
+  // Same late-hydration fill as Kind, for the unit's registry default.
+  useEffect(() => {
+    if (!open || isEditMode) return
+    const preselect = unitField?.defaultValue
+    if (typeof preselect !== 'string' || !preselect) return
+    setValues((prev) => (prev.unit ? prev : { ...prev, unit: preselect }))
+  }, [open, isEditMode, unitField?.defaultValue])
+
+  // A service drops the stock-only sections; a Product locked by the caller stays.
+  const sections = partFormSections(values.kind)
+  const showProductRow = sections.product || !!lockedProductId
+  const withSupplier = sections.supplier && showSupplier
+  const withOpeningStock = sections.openingStock && showOpeningStock
+
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
@@ -313,7 +343,7 @@ export function PartFormDialog({
 
     // Validate vendor part fields if supplier section is shown
     const vpErrors: Record<string, string> = {}
-    if (showSupplier) {
+    if (withSupplier) {
       // Supplier only. The supplier's own part number is optional — see the
       // matching note in `vendor-part-dialog.tsx`.
       if (!vendorPartValues.entityInstanceId) vpErrors.entityInstanceId = 'Supplier is required'
@@ -324,7 +354,7 @@ export function PartFormDialog({
     // and answered: a quantity with no cost is not an opening balance, it is a
     // hand-valued adjustment, which §2.2 refuses outright.
     const osErrors =
-      showOpeningStock && !isOpeningStockEmpty(openingStockValues)
+      withOpeningStock && !isOpeningStockEmpty(openingStockValues)
         ? validateOpeningStock(openingStockValues)
         : {}
     setOpeningStockErrors(osErrors)
@@ -339,7 +369,7 @@ export function PartFormDialog({
   // Create mutation via entity system
   const createRecord = api.record.create.useMutation({
     onError: (error) => {
-      toastError({ title: 'Error creating part', description: error.message })
+      toastError({ title: 'Error creating item', description: error.message })
     },
   })
 
@@ -395,17 +425,21 @@ export function PartFormDialog({
             part_sku: values.sku,
             part_description: values.description || undefined,
             category: values.category.length ? values.category : undefined,
-            hs_code: values.hsCode || undefined,
+            hs_code: (sections.hsCode && values.hsCode) || undefined,
             part_product:
-              values.productId && productDefId
+              showProductRow && values.productId && productDefId
                 ? toRecordId(productDefId, values.productId)
                 : undefined,
             part_kind: values.kind || undefined,
+            part_sell_price: values.sellPrice ?? undefined,
+            part_unit: values.unit || undefined,
+            part_taxable: values.taxable,
+            ...(values.sellable !== null && { part_sellable: values.sellable }),
           },
         })
 
         // Chain vendor part creation if supplier section is shown
-        if (showSupplier && vendorPartValues.entityInstanceId && vendorPartDefId) {
+        if (withSupplier && vendorPartValues.entityInstanceId && vendorPartDefId) {
           await createRecord.mutateAsync({
             entityDefinitionId: vendorPartDefId,
             values: {
@@ -437,7 +471,7 @@ export function PartFormDialog({
         // rest: the part is already saved by now, so a refused opening balance
         // is a toast and a drawer to finish the job in, not a lost form.
         const openingStock =
-          showOpeningStock && !isOpeningStockEmpty(openingStockValues)
+          withOpeningStock && !isOpeningStockEmpty(openingStockValues)
             ? buildOpeningStockInput(result.instance.id, openingStockValues)
             : null
         if (openingStock) {
@@ -489,9 +523,9 @@ export function PartFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-[500px]' position='tc'>
         <DialogHeader>
-          <DialogTitle>{isEditMode ? 'Edit Part' : 'Create New Part'}</DialogTitle>
+          <DialogTitle>{isEditMode ? 'Edit Item' : 'Create New Item'}</DialogTitle>
           <DialogDescription>
-            {isEditMode ? 'Make changes to this part' : 'Add a new part to your inventory system'}
+            {isEditMode ? 'Make changes to this item' : 'Add a part or service to Parts & Services'}
           </DialogDescription>
         </DialogHeader>
 
@@ -513,7 +547,7 @@ export function PartFormDialog({
               fieldType={FieldType.TEXT}
               value={values.title}
               onChange={(val) => handleChange('title', val)}
-              placeholder='Part name'
+              placeholder='Name'
               disabled={isPending}
             />
           </FieldPanelRow>
@@ -521,7 +555,7 @@ export function PartFormDialog({
           {/* SKU */}
           <FieldPanelRow
             title='SKU'
-            description='This must be unique across all parts'
+            description='This must be unique across all items'
             type={BaseType.STRING}
             showIcon
             isRequired
@@ -531,7 +565,7 @@ export function PartFormDialog({
               fieldType={FieldType.TEXT}
               value={values.sku}
               onChange={(val) => handleChange('sku', val)}
-              placeholder='Unique part number'
+              placeholder='Unique item number'
               disabled={isPending}
             />
             {!isEditMode && skuSuggestion && values.sku !== skuSuggestion && (
@@ -567,7 +601,7 @@ export function PartFormDialog({
 
           {/* Product family — locked when the dialog was opened from a product.
               Create mode only: in edit mode the Details panel owns the relation. */}
-          {!isEditMode && (
+          {!isEditMode && showProductRow && (
             <FieldPanelRow
               title='Product'
               description='Optional product family this part is a variant of'
@@ -601,7 +635,7 @@ export function PartFormDialog({
           {!isEditMode && (
             <FieldPanelRow
               title='Kind'
-              description='Which inventory account this part belongs to'
+              description='Which inventory account this part belongs to. A service is never stocked'
               type={BaseType.ENUM}
               showIcon>
               <FieldInputAdapter
@@ -619,19 +653,21 @@ export function PartFormDialog({
           {/* HS Code. ⚠️ Read by nothing (29 §0.1). The duty comes from the
               supplier offer's tariff code, which pairs a code with an origin;
               this is a hint the supplier form shows under that picker. */}
-          <FieldPanelRow
-            title='HS Code'
-            description="A hint for the supplier's tariff code picker. The duty itself comes from each supplier offer's tariff code, which pairs the code with a country of origin."
-            type={BaseType.STRING}
-            showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={values.hsCode}
-              onChange={(val) => handleChange('hsCode', val)}
-              placeholder='Harmonized System Code'
-              disabled={isPending}
-            />
-          </FieldPanelRow>
+          {sections.hsCode && (
+            <FieldPanelRow
+              title='HS Code'
+              description="A hint for the supplier's tariff code picker. The duty itself comes from each supplier offer's tariff code, which pairs the code with a country of origin."
+              type={BaseType.STRING}
+              showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={values.hsCode}
+                onChange={(val) => handleChange('hsCode', val)}
+                placeholder='Harmonized System Code'
+                disabled={isPending}
+              />
+            </FieldPanelRow>
+          )}
 
           {/* Description */}
           <FieldPanelRow title='Description' type={BaseType.STRING} showIcon>
@@ -639,15 +675,79 @@ export function PartFormDialog({
               fieldType={FieldType.TEXT}
               value={values.description}
               onChange={(val) => handleChange('description', val)}
-              placeholder='Enter a detailed description of the part'
+              placeholder='Enter a detailed description'
               disabled={isPending}
               fieldOptions={{ multiline: true }}
             />
           </FieldPanelRow>
         </FieldPanel>
 
-        {/* Collapsible Supplier Section - Only shown in create mode */}
+        {/* Selling — the drawer's Pricing card owns these after create. */}
         {!isEditMode && (
+          <div className='border-t pt-4 mt-4'>
+            <div className='mb-2 text-sm text-muted-foreground'>Selling</div>
+            <FieldPanel
+              orientation='responsive'
+              breakpoint='md'
+              resizeId='part-form'
+              defaultLabelWidth={200}
+              className='p-0'>
+              <FieldPanelRow title='Sell price' type={BaseType.CURRENCY} showIcon>
+                <FieldInputAdapter
+                  fieldType={FieldType.CURRENCY}
+                  fieldOptions={sellPriceField?.options ?? { currencyCode, decimals: 2 }}
+                  triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                  value={values.sellPrice}
+                  onChange={(val) => handleChange('sellPrice', (val as number | undefined) ?? null)}
+                  placeholder='0.00'
+                  disabled={isPending}
+                />
+              </FieldPanelRow>
+              <FieldPanelRow title='Unit' type={BaseType.ENUM} showIcon>
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={unitField?.options}
+                  triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                  value={values.unit}
+                  onChange={(val) =>
+                    handleChange('unit', (Array.isArray(val) ? val[0] : val) ?? '')
+                  }
+                  placeholder='Select unit'
+                  disabled={isPending}
+                />
+              </FieldPanelRow>
+              <FieldPanelRow title='Taxable' type={BaseType.BOOLEAN} showIcon>
+                <div className='flex min-h-8 items-center'>
+                  <FieldInputAdapter
+                    fieldType={FieldType.CHECKBOX}
+                    fieldOptions={{ variant: 'switch' }}
+                    value={values.taxable}
+                    onChange={(val) => handleChange('taxable', val === true)}
+                    disabled={isPending}
+                  />
+                </div>
+              </FieldPanelRow>
+              <FieldPanelRow
+                title='Sellable'
+                description='Listed when adding lines to quotes, orders and invoices'
+                type={BaseType.BOOLEAN}
+                showIcon>
+                <div className='flex min-h-8 items-center'>
+                  <FieldInputAdapter
+                    fieldType={FieldType.CHECKBOX}
+                    fieldOptions={{ variant: 'switch' }}
+                    value={displayedSellable(values.kind, values.sellable)}
+                    onChange={(val) => handleChange('sellable', val === true)}
+                    disabled={isPending}
+                  />
+                </div>
+              </FieldPanelRow>
+            </FieldPanel>
+          </div>
+        )}
+
+        {/* Collapsible Supplier Section - Only shown in create mode */}
+        {!isEditMode && sections.supplier && (
           <div className='border-t pt-4 mt-4'>
             <button
               type='button'
@@ -680,11 +780,12 @@ export function PartFormDialog({
         {/* Opening stock — the same collapsible-optional pattern as Supplier,
             chained into a second mutation after the part is created.
 
-            Never gated on Kind (task 15 §2.2, "DECIDED: no gate"). A disabled
+            Gated on Kind only for a service (107 D10), which has no stock. Otherwise
+            never gated (task 15 §2.2, "DECIDED: no gate"). A disabled
             section teaches nobody anything; naming the account the movement will
             be stamped with does, and somebody creating a lift who reads "Raw
             Materials" under it notices. */}
-        {!isEditMode && (
+        {!isEditMode && sections.openingStock && (
           <div className='border-t pt-4 mt-4'>
             <button
               type='button'
@@ -789,7 +890,7 @@ export function PartFormDialog({
             loadingText={isEditMode ? 'Updating...' : 'Creating...'}
             disabled={!partDefId}
             data-dialog-submit>
-            {isEditMode ? 'Update Part' : 'Create Part'} <KbdSubmit variant='outline' size='sm' />
+            {isEditMode ? 'Update Item' : 'Create Item'} <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -144,6 +144,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
+  // A service part hides Inventory, Components, Vendors and Costing (107 D10).
   part: {
     entityType: 'part',
     mainTabs: [

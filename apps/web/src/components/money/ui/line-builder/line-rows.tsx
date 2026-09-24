@@ -93,11 +93,11 @@ import {
 } from '~/components/line-grid/ui/line-row-menu'
 import { PartCell } from '~/components/line-grid/ui/part-cell'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
-import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
+import type { CatalogPart } from '~/components/money/hooks/use-catalog-parts'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { catalogItemToLinePatch } from './catalog-group-resolver'
+import { partToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
 import { LinePhotoPopover } from './line-photo-popover'
 import {
@@ -503,10 +503,10 @@ function OptionalLineTag({
 
 /**
  * Primary line cell — a free-text name `<input>` that owns everything about
- * the item. Type any product name (an ad-hoc line, no catalog rel); press `/`
+ * the item. Type any product name (an ad-hoc line, no part); press `/`
  * on an empty cell (or click the pick button while editing) to open the
- * catalog picker and drop in a pre-existing product, which overwrites
- * name/price/category/taxable and keeps the catalog relationship.
+ * part picker and drop in a sellable part, which overwrites
+ * name/price/category/taxable/unit and writes `line_item_part`.
  *
  * Cell anatomy, left to right:
  * - name text (swaps to the input on focus; pick is the one editing-only
@@ -534,9 +534,9 @@ function LineNameCellView({
   taxable,
   readOnly,
   currencyCode,
-  catalogItems,
+  catalogParts,
   catalogGroups,
-  catalogItemMap,
+  catalogPartMap,
   catalogLoading,
   autoFocus = false,
   showOptionalControls,
@@ -545,7 +545,7 @@ function LineNameCellView({
   onToggleOptional,
   onToggleOptionalSelected,
   onToggleTaxable,
-  onPickCatalogItem,
+  onPickPart,
   onSelectGroup,
   onFreeText,
   onCommitDescription,
@@ -556,7 +556,7 @@ function LineNameCellView({
   onOpenPhotos,
 }: {
   name: string
-  /** Part or catalog item the line came from — the read-only name links to it. */
+  /** Part the line came from — the read-only name links to it. */
   sourceRecordId?: RecordId | null
   description: string | null
   category: string | null
@@ -564,9 +564,9 @@ function LineNameCellView({
   taxable: boolean
   readOnly: boolean
   currencyCode: string
-  catalogItems: CatalogItem[]
+  catalogParts: CatalogPart[]
   catalogGroups: CatalogGroup[]
-  catalogItemMap: Map<string, CatalogItem>
+  catalogPartMap: Map<string, CatalogPart>
   catalogLoading: boolean
   /** Focus the name input on mount — set for a freshly added draft row. */
   autoFocus?: boolean
@@ -577,7 +577,7 @@ function LineNameCellView({
   onToggleOptional: (next: boolean) => void
   onToggleOptionalSelected: (next: boolean) => void
   onToggleTaxable: (next: boolean) => void
-  onPickCatalogItem: (item: CatalogItem) => void
+  onPickPart: (part: CatalogPart) => void
   onSelectGroup: (group: CatalogGroup) => void
   onFreeText: (text: string) => void
   onCommitDescription: (value: string | null) => void
@@ -785,11 +785,11 @@ function LineNameCellView({
         onOpenChange={setPickerOpen}
         initialQuery={value}
         currencyCode={currencyCode}
-        items={catalogItems}
+        parts={catalogParts}
         groups={catalogGroups}
-        itemMap={catalogItemMap}
+        partMap={catalogPartMap}
         isLoading={catalogLoading}
-        onSelectCatalogItem={onPickCatalogItem}
+        onSelectPart={onPickPart}
         onSelectGroup={onSelectGroup}
         onFreeText={onFreeText}
         onCloseFocus={() => inputRef.current?.focus()}>
@@ -2264,9 +2264,9 @@ export function LineRow({
   readOnly,
   currencyCode,
   documentType,
-  catalogItems,
+  catalogParts,
   catalogGroups,
-  catalogItemMap,
+  catalogPartMap,
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
@@ -2288,9 +2288,9 @@ export function LineRow({
   readOnly: boolean
   currencyCode: string
   documentType: DocumentType
-  catalogItems: CatalogItem[]
+  catalogParts: CatalogPart[]
   catalogGroups: CatalogGroup[]
-  catalogItemMap: Map<string, CatalogItem>
+  catalogPartMap: Map<string, CatalogPart>
   catalogLoading: boolean
   /** Resolved from `schema.matchScopeAttr` by the builder; scopes the match picker. */
   matchScopeRecordId: RecordId | null
@@ -2418,9 +2418,9 @@ export function LineRow({
               taxable={line.taxable}
               readOnly={readOnly}
               currencyCode={currencyCode}
-              catalogItems={catalogItems}
+              catalogParts={catalogParts}
               catalogGroups={catalogGroups}
-              catalogItemMap={catalogItemMap}
+              catalogPartMap={catalogPartMap}
               catalogLoading={catalogLoading}
               showOptionalControls={showOptional}
               optional={line.optional}
@@ -2430,7 +2430,7 @@ export function LineRow({
                 onUpdateLine(recordId, { optionalSelected })
               }
               onToggleTaxable={(taxable) => onUpdateLine(recordId, { taxable })}
-              onPickCatalogItem={(item) => onUpdateLine(recordId, catalogItemToLinePatch(item))}
+              onPickPart={(part) => onUpdateLine(recordId, partToLinePatch(part))}
               onSelectGroup={(group) => onSelectGroup(recordId, group)}
               onFreeText={(name) => onUpdateLine(recordId, { name })}
               onCommitDescription={(description) => onUpdateLine(recordId, { description })}
@@ -2521,9 +2521,9 @@ export function DraftLineRow({
   categoryOptions,
   currencyCode,
   documentType,
-  catalogItems,
+  catalogParts,
   catalogGroups,
-  catalogItemMap,
+  catalogPartMap,
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
@@ -2547,9 +2547,9 @@ export function DraftLineRow({
   categoryOptions: CategoryOption[]
   currencyCode: string
   documentType: DocumentType
-  catalogItems: CatalogItem[]
+  catalogParts: CatalogPart[]
   catalogGroups: CatalogGroup[]
-  catalogItemMap: Map<string, CatalogItem>
+  catalogPartMap: Map<string, CatalogPart>
   catalogLoading: boolean
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
@@ -2679,9 +2679,9 @@ export function DraftLineRow({
             taxable={draft.taxable}
             readOnly={false}
             currencyCode={currencyCode}
-            catalogItems={catalogItems}
+            catalogParts={catalogParts}
             catalogGroups={catalogGroups}
-            catalogItemMap={catalogItemMap}
+            catalogPartMap={catalogPartMap}
             catalogLoading={catalogLoading}
             autoFocus={autoFocus}
             showOptionalControls={showOptional}
@@ -2692,9 +2692,7 @@ export function DraftLineRow({
               void createDraft(draft.draftId, { optionalSelected: next })
             }
             onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-            onPickCatalogItem={(item) =>
-              void createDraft(draft.draftId, catalogItemToLinePatch(item))
-            }
+            onPickPart={(part) => void createDraft(draft.draftId, partToLinePatch(part))}
             onSelectGroup={(group) => onSelectGroup(draft.draftId, group)}
             onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
             onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}

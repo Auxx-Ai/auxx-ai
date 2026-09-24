@@ -92,8 +92,7 @@ export class FieldValueService {
    *
    * This service is the SECOND door and it has to be wrapped too: an EDIT goes
    * through `fieldValue.set` -> `FieldValueService` and never touches
-   * `UnifiedCrudHandler`, which is the same asymmetry `register-hooks.ts`
-   * records for `stampPartOnCatalogItemChange`. Nesting joins, so a write that
+   * `UnifiedCrudHandler`. Nesting joins, so a write that
    * came through the handler still produces one drain, not two.
    */
   private inReconcileScope<T>(fn: () => Promise<T>): Promise<T> {

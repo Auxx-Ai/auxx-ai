@@ -46,6 +46,8 @@ const h = vi.hoisted(() => ({
   standards: new Map<string, number | null>(),
   /** Index -> message, to model `bulkCreate`'s per-item failures. */
   createErrors: new Map<number, string>(),
+  /** partId -> why it cannot become a service. */
+  serviceBlockers: new Map<string, string>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
 }))
 
@@ -78,6 +80,11 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
 
 vi.mock('../../costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
+}))
+
+vi.mock('../../costing/service-kind-blockers', () => ({
+  readServiceKindBlockers: vi.fn(async () => h.serviceBlockers),
+  serviceKindRefusal: (reason: string) => `refused: ${reason}`,
 }))
 
 // 🛑 Not because it is called — because it must NOT be. See the header.
@@ -183,6 +190,7 @@ const ALL_ATTRS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.serviceBlockers = new Map()
   h.materialised = new Set(ALL_ATTRS)
   h.defs = new Map([
     ['part', 'def_part'],
@@ -632,7 +640,7 @@ describe('bulkSetPartKind', () => {
       'fld_part_kind',
       'finished_good'
     )
-    expect(result._unsafeUnwrap()).toEqual({ count: 2 })
+    expect(result._unsafeUnwrap()).toEqual({ count: 2, failed: [] })
   })
 
   it('de-duplicates the selection', async () => {
@@ -656,7 +664,29 @@ describe('bulkSetPartKind', () => {
 
   it('writes nothing for an empty selection', async () => {
     const result = await bulkSetPartKind(db, ORG, USER, [], 'component')
-    expect(result._unsafeUnwrap()).toEqual({ count: 0 })
+    expect(result._unsafeUnwrap()).toEqual({ count: 0, failed: [] })
+    expect(h.bulkSetFieldValueSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses service per part when the part is stocked, and writes the rest', async () => {
+    h.serviceBlockers = new Map([['part_1', 'it has stock movements']])
+    h.bulkSetFieldValueSpy.mockResolvedValue({ count: 1 })
+    const result = await bulkSetPartKind(db, ORG, USER, ['part_1', 'part_2'], 'service')
+    expect(h.bulkSetFieldValueSpy).toHaveBeenCalledWith(
+      ['def_part:part_2'],
+      'fld_part_kind',
+      'service'
+    )
+    expect(result._unsafeUnwrap()).toEqual({
+      count: 1,
+      failed: [{ partId: 'part_1', detail: 'refused: it has stock movements' }],
+    })
+  })
+
+  it('writes nothing when every part is refused as a service', async () => {
+    h.serviceBlockers = new Map([['part_1', 'it has builds']])
+    const result = await bulkSetPartKind(db, ORG, USER, ['part_1'], 'service')
+    expect(result._unsafeUnwrap().count).toBe(0)
     expect(h.bulkSetFieldValueSpy).not.toHaveBeenCalled()
   })
 })

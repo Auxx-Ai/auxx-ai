@@ -2,16 +2,8 @@
 
 'use client'
 
-// Catalog combobox picker (money MQ1 build spec §H.2, 01-ui.md #2) — a `Command`
-// combobox in a `Popover`, composed from the `combo-picker.tsx` /
-// `record-picker-content.tsx` structural pattern (Popover + Command + grouped
-// CommandItems + a trailing "create" affordance), not those components directly —
-// our option shape (name + price + category + part) doesn't fit the plain
-// Option/OptionGroup shape ComboPicker expects.
-//
-// Data is owned by `LineBuilder`: one `useCatalogItems` / `useCatalogGroups`
-// load serves every row. This component only filters the supplied data while
-// open and emits the selected domain object.
+// The sell-side part picker (107 D7): sellable parts by kind, plus catalog groups.
+// Data is loaded once by `LineBuilder`; this component only filters it while open.
 
 import {
   Command,
@@ -23,16 +15,19 @@ import {
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
-import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
 import Link from 'next/link'
 import { type ReactNode, useMemo, useState } from 'react'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
-import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
+import type { CatalogPart } from '~/components/money/hooks/use-catalog-parts'
 import { useUser } from '~/hooks/use-user'
-import { resolveCatalogGroup, resolvedCatalogGroupTotal } from './catalog-group-resolver'
+import {
+  groupSellableParts,
+  resolveCatalogGroup,
+  resolvedCatalogGroupTotal,
+} from './catalog-group-resolver'
 
 /** `price` is integer MINOR UNITS (FieldType.CURRENCY storage convention). */
 function formatPrice(price: number | null, currencyCode: string): string {
@@ -40,9 +35,10 @@ function formatPrice(price: number | null, currencyCode: string): string {
   return formatCurrency(price, { currencyCode })
 }
 
-function titleCase(value: string): string {
-  return value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value
-}
+const FOOTER_LINK = cn(
+  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-muted-foreground text-xs',
+  'hover:bg-accent hover:text-accent-foreground'
+)
 
 export interface CatalogPickerProps {
   open: boolean
@@ -51,15 +47,15 @@ export interface CatalogPickerProps {
   initialQuery?: string
   /** Org currency code (from `organization.currency`) for price display. */
   currencyCode?: string
-  /** Shared catalog data loaded once by `LineBuilder`. */
-  items: CatalogItem[]
+  /** Every non-archived part, loaded once by `LineBuilder`; the picker lists the sellable ones. */
+  parts: CatalogPart[]
   groups: CatalogGroup[]
-  itemMap: Map<string, CatalogItem>
+  partMap: Map<string, CatalogPart>
   isLoading: boolean
-  onSelectCatalogItem: (item: CatalogItem) => void
+  onSelectPart: (part: CatalogPart) => void
   /** Picking a group lets `LineBuilder` resolve and explode its entries. */
   onSelectGroup: (group: CatalogGroup) => void
-  /** User typed text with no catalog match — add as an ad-hoc line, no catalog rel. */
+  /** User typed text with no match — add as an ad-hoc line with no part. */
   onFreeText: (text: string) => void
   /** Return focus to the name input once the picker closes (pick / Escape / outside). */
   onCloseFocus?: () => void
@@ -68,22 +64,20 @@ export interface CatalogPickerProps {
 }
 
 /**
- * Combobox popover anchored to the line builder's name cell. Doubles as a
- * free-text input: typed text with no match surfaces "Add '<text>' as one-off
- * line". Picking a catalog item copies its values onto the line (snapshot —
- * catalog price changes never rewrite existing lines) and keeps the
- * `catalogItem` relationship for reporting.
+ * Combobox popover anchored to the line builder's name cell. Picking a part copies
+ * its values onto the line (a snapshot: later price changes never rewrite lines)
+ * and writes `line_item_part`.
  */
 export function CatalogPicker({
   open,
   onOpenChange,
   initialQuery = '',
   currencyCode = 'USD',
-  items,
+  parts,
   groups: catalogGroups,
-  itemMap,
+  partMap,
   isLoading,
-  onSelectCatalogItem,
+  onSelectPart,
   onSelectGroup,
   onFreeText,
   onCloseFocus,
@@ -99,37 +93,19 @@ export function CatalogPicker({
     const filtered = q ? active.filter((group) => group.name.toLowerCase().includes(q)) : active
 
     return filtered
-      .map((group) => ({ group, resolved: resolveCatalogGroup(group, itemMap) }))
+      .map((group) => ({ group, resolved: resolveCatalogGroup(group, partMap) }))
       .sort((a, b) => a.group.name.localeCompare(b.group.name))
-  }, [open, catalogGroups, itemMap, query])
+  }, [open, catalogGroups, partMap, query])
 
-  const itemGroups = useMemo(() => {
-    if (!open) return []
-    const q = query.trim().toLowerCase()
-    const active = items.filter((item) => item.active)
-    const filtered = q ? active.filter((item) => item.name.toLowerCase().includes(q)) : active
+  const partSections = useMemo(
+    () => (open ? groupSellableParts(parts, query) : []),
+    [open, parts, query]
+  )
 
-    const byCategory = new Map<string, CatalogItem[]>()
-    for (const item of filtered) {
-      const category = item.category || 'other'
-      const bucket = byCategory.get(category) ?? []
-      bucket.push(item)
-      byCategory.set(category, bucket)
-    }
+  const hasAnyMatch = partSections.length > 0 || groupPicks.length > 0
 
-    return [...byCategory.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, rows]) => ({
-        category,
-        label: titleCase(category),
-        rows: rows.sort((a, b) => a.name.localeCompare(b.name)),
-      }))
-  }, [open, items, query])
-
-  const hasAnyMatch = itemGroups.some((group) => group.rows.length > 0) || groupPicks.length > 0
-
-  const handlePick = (item: CatalogItem) => {
-    onSelectCatalogItem(item)
+  const handlePick = (part: CatalogPart) => {
+    onSelectPart(part)
     onOpenChange(false)
   }
 
@@ -165,7 +141,7 @@ export function CatalogPicker({
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder='Search products & services…'
+            placeholder='Search parts & services…'
           />
           <CommandList
             scrollAreaClassName='max-h-none'
@@ -173,7 +149,7 @@ export function CatalogPicker({
               height: 'min(300px, calc(var(--radix-popover-content-available-height) - 78px))',
             }}>
             {!isLoading && !hasAnyMatch && !query.trim() && (
-              <CommandEmpty>No products or services yet</CommandEmpty>
+              <CommandEmpty>No sellable parts or services yet</CommandEmpty>
             )}
 
             {groupPicks.length > 0 && (
@@ -203,40 +179,28 @@ export function CatalogPicker({
               </CommandGroup>
             )}
 
-            {itemGroups.map(
-              (group) =>
-                group.rows.length > 0 && (
-                  <CommandGroup key={group.category} heading={group.label}>
-                    {group.rows.map((item) => (
-                      <CommandDetailItem
-                        key={item.id}
-                        value={item.id}
-                        onSelect={() => handlePick(item)}
-                        title={item.name}
-                        secondary={
-                          item.partRecordId ? (
-                            // Icon, not the words "Linked part": the row already carries a
-                            // name and a price, and the label competed with both for a fact
-                            // that only matters on hover. `line_item_part` is stamped from
-                            // this link at write time (08 §6.2), so it is provenance the
-                            // picker should surface quietly.
-                            <SimpleTooltip content='Linked to a part' side='top'>
-                              <span className='inline-flex text-muted-foreground'>
-                                <Package className='size-3.5' aria-label='Linked to a part' />
-                              </span>
-                            </SimpleTooltip>
-                          ) : undefined
-                        }
-                        trailing={
-                          <span className='text-muted-foreground text-xs'>
-                            {formatPrice(item.defaultUnitPriceCents, currencyCode)}
-                          </span>
-                        }
-                      />
-                    ))}
-                  </CommandGroup>
-                )
-            )}
+            {partSections.map((section) => (
+              <CommandGroup key={section.key} heading={section.label}>
+                {section.rows.map((part) => (
+                  <CommandDetailItem
+                    key={part.id}
+                    value={part.id}
+                    onSelect={() => handlePick(part)}
+                    title={part.name}
+                    secondary={
+                      part.sku ? (
+                        <span className='text-muted-foreground text-xs'>{part.sku}</span>
+                      ) : undefined
+                    }
+                    trailing={
+                      <span className='text-muted-foreground text-xs'>
+                        {formatPrice(part.sellPriceCents, currencyCode)}
+                      </span>
+                    }
+                  />
+                ))}
+              </CommandGroup>
+            ))}
 
             {query.trim() && (
               <CommandGroup>
@@ -252,22 +216,15 @@ export function CatalogPicker({
 
           <CommandSeparator />
           <div className='p-1'>
-            {isAdminOrOwner ? (
-              <Link
-                href='/app/catalog'
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-muted-foreground text-xs',
-                  'hover:bg-accent hover:text-accent-foreground'
-                )}
-                onClick={() => onOpenChange(false)}>
+            <Link href='/app/parts' className={FOOTER_LINK} onClick={() => onOpenChange(false)}>
+              <Package className='size-3.5' />
+              Manage parts & services
+            </Link>
+            {isAdminOrOwner && (
+              <Link href='/app/catalog' className={FOOTER_LINK} onClick={() => onOpenChange(false)}>
                 <Settings2 className='size-3.5' />
-                Manage products & services
+                Pricing: groups & tax rates
               </Link>
-            ) : (
-              <div className='flex items-center gap-2 px-2 py-1.5 text-muted-foreground text-xs'>
-                <Package className='size-3.5' />
-                Ask an admin to manage products & services
-              </div>
             )}
           </div>
         </Command>

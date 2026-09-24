@@ -40,7 +40,7 @@ import { OpeningStockTab } from './opening-stock-tab'
 import { StandardCostSection } from './standard-cost-section'
 
 const BREADCRUMBS = [
-  { title: 'Parts', href: '/app/parts' },
+  { title: 'Parts & Services', href: '/app/parts' },
   { title: 'Settings' },
   { title: 'Costing' },
 ]

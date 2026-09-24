@@ -125,12 +125,9 @@ describe('diffConnectorCatalog: unedited rows', () => {
     const untouched = entries.filter(
       (e) =>
         e.change.kind === 'binding' &&
-        [
-          'primary_email',
-          'product_title',
-          'catalog_item_default_unit_price',
-          'storeDomain',
-        ].includes(e.change.targetLabel)
+        ['primary_email', 'product_title', 'vendor_part_unit_price', 'storeDomain'].includes(
+          e.change.targetLabel
+        )
     )
     expect(untouched).toEqual([])
     expect(entries.some((e) => e.change.kind === 'mapping')).toBe(false)

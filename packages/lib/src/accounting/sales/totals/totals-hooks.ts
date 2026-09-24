@@ -47,7 +47,8 @@ const logger = createScopedLogger('money:totals-hooks')
  * Fields on `line-items` whose write should trigger a recompute (money MQ1 build
  * spec §F.2). The rel triggers (`line_item_quote` / `line_item_work_order`) catch
  * attach/detach side effects — a line just linked to a quote needs its contribution
- * folded into that quote's totals.
+ * folded into that quote's totals. `line_item_part` is absent: the part is never a pricing
+ * input, and a pick's price and taxable land through their own trigger fields.
  */
 export const LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'line_item_qty',

@@ -28,8 +28,7 @@
 //     summary numbers; a hash of the swept variant set (sku, variantId pairs)
 //     would be the natural staleness key if item 3 wants one, computed over
 //     `rows` before persisting.
-//  3. `catalog_item` in `EntityRefKind` — untouched; this module never reads
-//     or writes `catalog_item`, only `part`.
+//  3. Resolved: `catalog_item` is gone (107); this module only ever wrote `part`.
 //  4. Cost of the sweep — confirmed real. `sweepConnectorFetch`
 //     (`../connector-runtime.ts`) runs synchronously to exhaustion with only a
 //     page-count ceiling (`maxPages`, throws past it); there is no job,

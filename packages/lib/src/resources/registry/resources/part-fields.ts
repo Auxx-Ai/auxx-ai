@@ -643,11 +643,7 @@ export const PART_FIELDS = defineResourceFields({
     description: 'Catalog (product/service) entries backed by this part',
   },
 
-  // Reverse relationship: lineItems (one-to-many from line_item.part). The
-  // counterpart of the STAMPED `line_item_part`
-  // (plans/products/08-order-build.md §6.2) — this is what makes revenue by
-  // part a single join instead of the three-hop
-  // line -> catalog_item -> part -> product chain.
+  // Reverse relationship: lineItems (one-to-many from line_item.part).
   lineItems: {
     id: toFieldId('lineItems'),
     key: 'lineItems',

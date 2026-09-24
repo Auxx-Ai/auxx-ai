@@ -16,7 +16,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogGroup, useCatalogGroups } from '../../hooks/use-catalog-groups'
-import { useCatalogItems } from '../../hooks/use-catalog-items'
+import { useCatalogParts } from '../../hooks/use-catalog-parts'
 import type { CatalogDraftHandle } from './catalog-draft-types'
 import { formatMoney } from './format-money'
 import type { TaxRate } from './tax-rate-types'
@@ -33,14 +33,14 @@ interface GroupsListProps {
 
 /**
  * Left column of the Product groups tab: search + "Add group" above a flat
- * `TreeRow` list (products-list.tsx master–detail recipe). Rows show a Boxes
+ * `TreeRow` list (master–detail). Rows show a Boxes
  * icon · name · "N items · computed total" + discount/tax badges when set ·
  * a trailing active `Switch`. A phantom draft (if any) renders as a final,
  * action-less row.
  */
 export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }: GroupsListProps) {
   const { groups, entityDefinitionId, isLoading, removeRecord } = useCatalogGroups()
-  const { itemMap } = useCatalogItems()
+  const { partMap } = useCatalogParts()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
   const [search, setSearch] = useState('')
@@ -54,7 +54,7 @@ export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }
   async function handleDelete(group: CatalogGroup) {
     const confirmed = await confirm({
       title: 'Delete group?',
-      description: `“${group.name}” will be removed. Its items stay in the catalog.`,
+      description: `“${group.name}” will be removed. Its parts are not affected.`,
       confirmText: 'Delete',
       destructive: true,
     })
@@ -74,10 +74,10 @@ export function GroupsList({ selectedId, onSelect, currency, draft, onAddDraft }
     let total = 0
     let hasResolved = false
     for (const entry of group.entries) {
-      const item = itemMap.get(entry.catalogItemId)
-      if (!item || item.defaultUnitPriceCents === null) continue
+      const part = partMap.get(entry.partId)
+      if (!part || part.sellPriceCents === null) continue
       hasResolved = true
-      total += item.defaultUnitPriceCents * entry.qty
+      total += part.sellPriceCents * entry.qty
     }
     return hasResolved ? total : null
   }

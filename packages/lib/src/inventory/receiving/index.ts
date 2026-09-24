@@ -48,6 +48,7 @@ export type {
   OpeningStockSkip,
   OpeningStockSkipReason,
   OpenStockBalanceInput,
+  PartKindSkip,
   ReceiptRow,
   ReceivePurchaseOrderInput,
   ReceivePurchaseOrderLineInput,

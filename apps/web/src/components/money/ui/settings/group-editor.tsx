@@ -51,7 +51,8 @@ import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { type CatalogGroup, useCatalogGroups } from '../../hooks/use-catalog-groups'
-import { type CatalogItem, useCatalogItems } from '../../hooks/use-catalog-items'
+import { type CatalogPart, useCatalogParts } from '../../hooks/use-catalog-parts'
+import { groupSellableParts } from '../line-builder/catalog-group-resolver'
 import type { CatalogDraftHandle } from './catalog-draft-types'
 import { formatMoney } from './format-money'
 import type { TaxRate } from './tax-rate-types'
@@ -117,7 +118,7 @@ export function GroupEditor({
 }
 
 function GroupEditorForm({ group, currency }: { group: CatalogGroup; currency: string }) {
-  const { itemMap, items } = useCatalogItems()
+  const { partMap, parts } = useCatalogParts()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
   const taxOptions = useMemo(
@@ -228,8 +229,8 @@ function GroupEditorForm({ group, currency }: { group: CatalogGroup; currency: s
 
       <EntriesSection
         entries={group.entries}
-        itemMap={itemMap}
-        items={items}
+        partMap={partMap}
+        parts={parts}
         currency={currency}
         onChange={commitEntries}
       />
@@ -307,7 +308,7 @@ function GroupDraftEditorForm({
   onDraftNameChange: (name: string) => void
   onDraftCommitted: (recordId: string) => void
 }) {
-  const { itemMap, items } = useCatalogItems()
+  const { partMap, parts } = useCatalogParts()
   const { entityDefinitionId, appendRecord } = useCatalogGroups()
   const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
   const taxRates = (getSetting('documents.taxRates') as TaxRate[] | null) ?? []
@@ -518,8 +519,8 @@ function GroupDraftEditorForm({
 
       <EntriesSection
         entries={values.entries}
-        itemMap={itemMap}
-        items={items}
+        partMap={partMap}
+        parts={parts}
         currency={currency}
         onChange={(next) => commitDraft({ entries: next })}
       />
@@ -611,14 +612,14 @@ function DiscountEditor({
 
 function EntriesSection({
   entries,
-  itemMap,
-  items,
+  partMap,
+  parts,
   currency,
   onChange,
 }: {
   entries: CatalogGroupEntry[]
-  itemMap: Map<string, CatalogItem>
-  items: CatalogItem[]
+  partMap: Map<string, CatalogPart>
+  parts: CatalogPart[]
   currency: string
   onChange: (next: CatalogGroupEntry[]) => void
 }) {
@@ -638,8 +639,8 @@ function EntriesSection({
     onChange(arrayMove(entries, oldIndex, newIndex))
   }
 
-  function handleAddItem(catalogItemId: string) {
-    onChange([...entries, newCatalogGroupEntry(catalogItemId)])
+  function handleAddItem(partId: string) {
+    onChange([...entries, newCatalogGroupEntry(partId)])
     setAddOpen(false)
   }
 
@@ -658,7 +659,7 @@ function EntriesSection({
         <AddItemPopover
           open={addOpen}
           onOpenChange={setAddOpen}
-          items={items}
+          parts={parts}
           currency={currency}
           onPick={handleAddItem}
         />
@@ -680,7 +681,7 @@ function EntriesSection({
                 <GroupEntryRow
                   key={entry.id}
                   entry={entry}
-                  item={itemMap.get(entry.catalogItemId)}
+                  item={partMap.get(entry.partId)}
                   currency={currency}
                   onPatch={(patch) => handlePatch(entry.id, patch)}
                   onRemove={() => handleRemove(entry.id)}
@@ -702,7 +703,7 @@ function GroupEntryRow({
   onRemove,
 }: {
   entry: CatalogGroupEntry
-  item: CatalogItem | undefined
+  item: CatalogPart | undefined
   currency: string
   onPatch: (patch: Partial<CatalogGroupEntry>) => void
   onRemove: () => void
@@ -749,8 +750,8 @@ function GroupEntryRow({
     else onPatch({ taxable: undefined })
   }
 
-  // Dangling entry — the referenced catalog item no longer resolves. Deleting a
-  // product doesn't rewrite groups; this row is where staleness surfaces.
+  // Dangling entry — the referenced part was deleted or archived. Groups are not
+  // rewritten on delete; this row is where staleness surfaces.
   if (!item) {
     return (
       <div ref={setNodeRef} style={style}>
@@ -769,8 +770,7 @@ function GroupEntryRow({
     )
   }
 
-  const subtotal =
-    item.defaultUnitPriceCents === null ? null : item.defaultUnitPriceCents * entry.qty
+  const subtotal = item.sellPriceCents === null ? null : item.sellPriceCents * entry.qty
   const TaxableIcon =
     entry.taxable === undefined ? CircleDashed : entry.taxable ? CircleCheck : CircleX
   const taxableLabel =
@@ -784,11 +784,11 @@ function GroupEntryRow({
     <div ref={setNodeRef} style={style} className='flex flex-col'>
       <TreeRow
         icon={dragHandle}
-        title={<span className={cn('text-sm', !item.active && 'opacity-60')}>{item.name}</span>}
+        title={<span className={cn('text-sm', !item.sellable && 'opacity-60')}>{item.name}</span>}
         rowClassName='bg-primary-50 hover:bg-primary-100'
         secondary={
           <span className='truncate text-muted-foreground text-xs'>
-            {formatMoney(item.defaultUnitPriceCents, currency)} × {entry.qty}
+            {formatMoney(item.sellPriceCents, currency)} × {entry.qty}
             {subtotal !== null && ` = ${formatMoney(subtotal, currency)}`}
           </span>
         }
@@ -839,52 +839,25 @@ function GroupEntryRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// "Add item" popover — a slim local copy of catalog-picker.tsx's grouped
-// Command list, over ACTIVE catalog items only (catalog-picker itself is
-// line-oriented and doesn't fit this shape).
+// "Add item" popover over sellable parts — the same sections as the line picker.
 // ─────────────────────────────────────────────────────────────────────────────
-
-function titleCase(value: string): string {
-  const first = value[0]
-  return first ? first.toUpperCase() + value.slice(1) : value
-}
 
 function AddItemPopover({
   open,
   onOpenChange,
-  items,
+  parts,
   currency,
   onPick,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  items: CatalogItem[]
+  parts: CatalogPart[]
   currency: string
-  onPick: (catalogItemId: string) => void
+  onPick: (partId: string) => void
 }) {
   const [query, setQuery] = useState('')
 
-  const groups = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const active = items.filter((item) => item.active)
-    const filtered = q ? active.filter((item) => item.name.toLowerCase().includes(q)) : active
-
-    const byCategory = new Map<string, CatalogItem[]>()
-    for (const item of filtered) {
-      const bucket = byCategory.get(item.category) ?? []
-      bucket.push(item)
-      byCategory.set(item.category, bucket)
-    }
-
-    return [...byCategory.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, rows]) => ({
-        category,
-        rows: rows.sort((a, b) => a.name.localeCompare(b.name)),
-      }))
-  }, [items, query])
-
-  const hasAnyMatch = groups.some((g) => g.rows.length > 0)
+  const sections = useMemo(() => groupSellableParts(parts, query), [parts, query])
 
   return (
     <Popover
@@ -904,29 +877,26 @@ function AddItemPopover({
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder='Search catalog items…'
+            placeholder='Search parts & services…'
           />
           <CommandList>
-            {!hasAnyMatch && <CommandEmpty>No active items</CommandEmpty>}
-            {groups.map(
-              (group) =>
-                group.rows.length > 0 && (
-                  <CommandGroup key={group.category} heading={titleCase(group.category)}>
-                    {group.rows.map((item) => (
-                      <CommandItem
-                        key={item.id}
-                        value={item.id}
-                        onSelect={() => onPick(item.id)}
-                        className='flex items-center justify-between gap-2'>
-                        <span className='truncate'>{item.name}</span>
-                        <span className='shrink-0 text-muted-foreground text-xs'>
-                          {formatMoney(item.defaultUnitPriceCents, currency)}
-                        </span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )
-            )}
+            {sections.length === 0 && <CommandEmpty>No sellable parts or services</CommandEmpty>}
+            {sections.map((section) => (
+              <CommandGroup key={section.key} heading={section.label}>
+                {section.rows.map((part) => (
+                  <CommandItem
+                    key={part.id}
+                    value={part.id}
+                    onSelect={() => onPick(part.id)}
+                    className='flex items-center justify-between gap-2'>
+                    <span className='truncate'>{part.name}</span>
+                    <span className='shrink-0 text-muted-foreground text-xs'>
+                      {formatMoney(part.sellPriceCents, currency)}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>

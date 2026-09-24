@@ -2,10 +2,9 @@
 
 /**
  * The minimal "is there a phantom draft, and what's its display name" handle
- * the catalog-page owner keeps for each record tab (items/groups).
- * The full draft field set (description, category, price, entries, …) lives
- * entirely inside the editor component instance (`ProductDraftEditorForm` /
- * `GroupDraftEditorForm`, keyed by `draftId`) — the page only needs enough to
+ * the catalog-page owner keeps for the Groups tab.
+ * The full draft field set (description, entries, …) lives entirely inside
+ * `GroupDraftEditorForm` (keyed by `draftId`) — the page only needs enough to
  * render the phantom row in the list and to know whether the currently
  * selected id is a draft or a real record.
  */

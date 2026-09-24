@@ -90,7 +90,7 @@ interface UseCatalogGroupsResult {
 /**
  * Fetch every catalog group (Product Groups tab, hidden `catalog_group` system
  * entity — plans/dispatch/money/09-product-groups.md) via the generic record
- * system. Same "small dataset, no pagination" shape as `useCatalogItems`.
+ * system. Same "small dataset, no pagination" shape as `useCatalogParts`.
  */
 export function useCatalogGroups(options: { enabled?: boolean } = {}): UseCatalogGroupsResult {
   const { enabled = true } = options

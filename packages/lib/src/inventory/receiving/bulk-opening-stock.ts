@@ -93,6 +93,7 @@ import {
 } from '../../resources/system-records'
 import { isServicePartKind } from '../costing/client'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
+import { readServiceKindBlockers, serviceKindRefusal } from '../costing/service-kind-blockers'
 import { buildStockMovementValues } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
@@ -104,6 +105,7 @@ import type {
   OpeningStockEntry,
   OpeningStockSkip,
   OpeningStockSkipReason,
+  PartKindSkip,
 } from './types'
 
 const logger = createScopedLogger('receiving:bulk-opening-stock')
@@ -278,8 +280,8 @@ export async function bulkOpenStockBalance(
  * schema protects one door; this protects the worker, the seeder and every
  * later caller too.
  *
- * @param kind A `PartKind` value: `component`, `subassembly` or `finished_good`.
- * @returns How many parts the write actually changed.
+ * @param kind A `PartKind` value: `component`, `subassembly`, `finished_good` or `service`.
+ * @returns How many parts the write changed, and each part refused as a `service` (107 F3).
  */
 export async function bulkSetPartKind(
   db: Database,
@@ -287,7 +289,7 @@ export async function bulkSetPartKind(
   userId: string,
   partIds: string[],
   kind: string
-): Promise<Result<{ count: number }, Error>> {
+): Promise<Result<{ count: number; failed: PartKindSkip[] }, Error>> {
   return guard(
     async () => {
       if (!PART_KINDS.has(kind)) {
@@ -297,7 +299,18 @@ export async function bulkSetPartKind(
       }
 
       const unique = [...new Set(partIds.filter(Boolean))]
-      if (unique.length === 0) return { count: 0 }
+      const failed: PartKindSkip[] = []
+      let writable = unique
+      if (isServicePartKind(kind)) {
+        // Mirrors the `part_kind` field guard so one blocked part does not fail the whole write.
+        const blockers = await readServiceKindBlockers(db, organizationId, unique)
+        writable = unique.filter((partId) => {
+          const reason = blockers.get(partId)
+          if (reason) failed.push({ partId, detail: serviceKindRefusal(reason) })
+          return !reason
+        })
+      }
+      if (writable.length === 0) return { count: 0, failed }
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
       const fields = await systemFieldMap(db, organizationId, PART_KIND_PICK)
@@ -307,8 +320,9 @@ export async function bulkSetPartKind(
       }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      const recordIds = unique.map((partId) => toRecordId(partDefId, partId) as RecordId)
-      return crud.bulkSetFieldValue(recordIds, kindField.id, kind)
+      const recordIds = writable.map((partId) => toRecordId(partDefId, partId) as RecordId)
+      const { count } = await crud.bulkSetFieldValue(recordIds, kindField.id, kind)
+      return { count, failed }
     },
     'Failed to set part kind in bulk',
     { organizationId, partIds: partIds.length, kind }

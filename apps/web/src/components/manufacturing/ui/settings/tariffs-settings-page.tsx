@@ -74,7 +74,7 @@ import { TariffResyncDialog } from './tariff-resync-dialog'
 import { TariffStarterDialog } from './tariff-starter-dialog'
 
 const BREADCRUMBS = [
-  { title: 'Parts', href: '/app/parts' },
+  { title: 'Parts & Services', href: '/app/parts' },
   { title: 'Settings' },
   { title: 'Tariffs' },
 ]

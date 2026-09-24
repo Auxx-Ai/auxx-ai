@@ -346,6 +346,12 @@ export type OpeningStockSkipReason =
  * top, which is 44 §7.2b's rule and what the backfill and post-fulfillments
  * dialogs both already do.
  */
+/** A part `bulkSetPartKind` left unchanged, and why. `detail` is safe to render as-is. */
+export interface PartKindSkip {
+  partId: string
+  detail: string
+}
+
 export interface OpeningStockSkip {
   partId: string
   reason: OpeningStockSkipReason

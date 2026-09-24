@@ -161,7 +161,7 @@ export function buildReferenceAnchor(): FieldMapping {
 /**
  * Prefix a manifest `relationshipFieldKey` may carry to name a PRE-EXISTING SYSTEM
  * relationship field on the parent def by its `systemAttribute`, e.g.
- * `'system:part_catalog_items'`. Nothing is provisioned for it; the key resolves at
+ * `'system:part_vendor_parts'`. Nothing is provisioned for it; the key resolves at
  * install to the concrete `defId:fieldId` ref the manual editor stores. A bare key (no
  * prefix) keeps the `@app:` envelope path ({@link appRelationshipFieldKey}).
  */

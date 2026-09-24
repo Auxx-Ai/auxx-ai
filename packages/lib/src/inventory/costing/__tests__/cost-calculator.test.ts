@@ -3,8 +3,7 @@
 // Cover for plans/parts/cost-provenance-and-stale-values.md §1, §5.3-§5.5: `persistCosts`
 // used to be write-only, so a part that lost its last vendor part kept the number it had at
 // the time; and `part_cost` was one output with two silent meanings, so a NULL there carried
-// no information. Harness style follows `money/catalog-pricing.test.ts` and
-// `field-hooks/post/bom-cost-triggers.test.ts` — mock `@auxx/database` with a sequential
+// no information. Harness style follows `field-hooks/post/bom-cost-triggers.test.ts` — mock `@auxx/database` with a sequential
 // result queue and assert on the writer's calls rather than on drizzle column identity.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,7 +14,7 @@ const h = vi.hoisted(() => ({
   createFieldValueContext: vi.fn((organizationId: string) => ({ organizationId })),
   getRealtimeService: vi.fn(() => ({})),
   publishFieldValueUpdates: vi.fn(async (_svc: unknown, _orgId: string, _entries: unknown[]) => {}),
-  syncCatalogItemPricing: vi.fn(async () => {}),
+  syncPartPricing: vi.fn(async (_orgId: string, _partIds: string[]) => ({ isErr: () => false })),
   // The schedule read behind a classified offer (task 30 §1). Keyed by
   // `tariff_code` instance id; empty unless a test loads one.
   loadTariffSchedule: vi.fn(async () => new Map<string, unknown[]>()),
@@ -100,8 +99,8 @@ vi.mock('../../../realtime', () => ({
   publishFieldValueUpdates: h.publishFieldValueUpdates,
 }))
 
-vi.mock('../../../accounting/sales/totals/catalog-pricing', () => ({
-  syncCatalogItemPricing: h.syncCatalogItemPricing,
+vi.mock('../../../accounting/sales/totals/part-pricing', () => ({
+  syncPartPricing: h.syncPartPricing,
 }))
 
 vi.mock('../../tariffs/tariff-schedule', () => ({
@@ -249,6 +248,8 @@ describe('recalculateAffectedParts — clearing values', () => {
     expect(writesFor(FIELD.part_purchase_cost!.id)).toEqual([
       { recordId: `part_def:${ASSEMBLY}`, value: null },
     ])
+    // A changed cost re-derives the marked-up sell price on the same parts (107 D5).
+    expect(h.syncPartPricing).toHaveBeenCalledWith(ORG, [ASSEMBLY])
   })
 
   it('flips cost source from vendor to bom when the last supplier goes away', async () => {

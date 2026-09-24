@@ -63,4 +63,23 @@ describe('copyLineOntoInvoice — T-1b', () => {
     expect(values.line_item_invoice).toBe(INVOICE_RECORD_ID)
     expect(values.line_item_visit_id).toBe('visit_1')
   })
+  it('copies the line part, never a catalog item', async () => {
+    const handler = fakeHandler()
+    handler.getFieldValues.mockResolvedValueOnce(
+      new Map([['f_part', { type: 'relationship', recordId: 'part:p_1' }]])
+    )
+
+    await copyLineOntoInvoice({
+      handler: handler as never,
+      fieldValueService: {} as never,
+      lineCf: { line_item_part: { id: 'f_part' } } as never,
+      lineFieldIds: ['f_part'],
+      lineInstanceId: 'line_1',
+      invoiceRecordId: INVOICE_RECORD_ID,
+    })
+
+    const [, values] = handler.create.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    expect(values.line_item_part).toBe('part:p_1')
+    expect(values).not.toHaveProperty('line_item_catalog_item')
+  })
 })

@@ -39,8 +39,7 @@ function readRelationshipRecordId(raw: unknown): RecordId | null {
  * `FieldValueService`, which consults only `getFieldPreHooks` /
  * `getEntityFieldChangeHooks` and never reads the system-hook registry at all.
  * Re-pointing an order at a different supplier reaches ONLY this handler. The same
- * split is recorded on `line-item-part-stamp.ts` and on the two
- * `purchase_order_status` guards.
+ * split is recorded on the two `purchase_order_status` guards.
  *
  * ⚠️ **Registered under `purchase_order_vendor`, not `purchase_order_contact`.**
  * `runPreHooks` skips a system hook on UPDATE unless its own registered
@@ -50,7 +49,7 @@ function readRelationshipRecordId(raw: unknown): RecordId | null {
  *
  * ## This is a PREFILL, not a stamp
  *
- * `line_item_part` is a provenance STAMP and always overwrites. A contact is a
+ * A stamp always overwrites. A contact is a
  * person somebody chose, so the rule is narrower — **replace our own prefill,
  * never a human's pick**:
  *

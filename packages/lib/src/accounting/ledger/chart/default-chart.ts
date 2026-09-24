@@ -335,7 +335,7 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     //
     // ONE service revenue account, not a per-line mapping. A line-level
     // revenue account is a real want and a much larger change - a field on
-    // `line_item` or the catalog item, plus a resolver and a fallback - and
+    // `line_item` or the part, plus a resolver and a fallback - and
     // splitting this later is a chart edit plus a resolver, not a rewrite of
     // the builder.
     code: '4030',

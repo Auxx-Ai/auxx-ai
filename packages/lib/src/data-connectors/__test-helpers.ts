@@ -90,7 +90,7 @@ import type { StreamWithRawMappings } from './service'
 export const FIXTURE_DEF_IDS: Record<string, string> = {
   product: 'def_product',
   part: 'def_part',
-  catalog_item: 'def_catalog',
+  vendor_part: 'def_vendor_part',
   contact: 'def_contact',
   fulfillment: 'def_fulfillment',
 }
@@ -104,17 +104,17 @@ export const FIXTURE_DEF_FIELDS: Record<string, ContributingTargetField[]> = {
     { id: 'f_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
     { id: 'f_title', name: 'Title', systemAttribute: 'part_title', type: 'TEXT' },
     {
-      id: 'f_ci',
-      name: 'Catalog Items',
-      systemAttribute: 'part_catalog_items',
+      id: 'f_vp',
+      name: 'Vendor Parts',
+      systemAttribute: 'part_vendor_parts',
       type: 'RELATIONSHIP',
     },
   ],
-  def_catalog: [
+  def_vendor_part: [
     {
       id: 'f_price',
-      name: 'Default Unit Price',
-      systemAttribute: 'catalog_item_default_unit_price',
+      name: 'Unit Price',
+      systemAttribute: 'vendor_part_unit_price',
       type: 'CURRENCY',
     },
   ],
@@ -184,9 +184,9 @@ function productStream(v2: boolean): CatalogConnectorStream {
       {
         rootPath: 'variants[]',
         parentRootPath: 'variants[]',
-        relationshipFieldKey: 'system:part_catalog_items',
-        target: { entityKind: 'catalog_item' },
-        fields: [{ sourcePath: 'price', target: 'catalog_item_default_unit_price' }],
+        relationshipFieldKey: 'system:part_vendor_parts',
+        target: { entityKind: 'vendor_part' },
+        fields: [{ sourcePath: 'price', target: 'vendor_part_unit_price' }],
       },
     ],
   }

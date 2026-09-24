@@ -110,7 +110,7 @@ export interface LineCapabilities {
   unit: boolean
   /** Per-line photo popover (plans 37b §4 / 40). */
   photos: boolean
-  /** `/`-on-empty-cell catalog picker and catalog-group explode. */
+  /** `/`-on-empty-cell part picker (sellable parts + groups) and catalog-group explode. */
   catalogPicker: boolean
   /**
    * 🛑 Whether a draft row may only MATERIALIZE once its part is picked — split
@@ -129,9 +129,8 @@ export interface LineCapabilities {
    */
   draftRequiresPart: boolean
   /**
-   * Buy-side part picker in the row's leading cell, in place of the free-text
-   * name. Mutually exclusive with {@link catalogPicker}: a sell-side line picks a
-   * `catalog_item`, a purchasing line picks a `part`.
+   * Buy-side part relation picker in the row's leading cell, in place of the
+   * free-text name. Mutually exclusive with {@link catalogPicker}.
    */
   partPicker: boolean
   /** Invoice-only ledger mirrors (amount paid / balance) rendered under the totals. */
@@ -159,9 +158,8 @@ export interface LineValues {
   unitPriceCents: number | null
   optional: boolean
   optionalSelected: boolean
-  catalogItemRecordId: RecordId | null
   /**
-   * Buy-side only: the part this line orders.
+   * The part this line sells or orders. Sell side: written by the picker (107 D6).
    *
    * 🛑 `purchase_order_line.part` is `required: true` and leg 2 of the natural key
    * `(purchaseOrder, part)` — a PO line has no identity without it, which is what
@@ -319,7 +317,6 @@ const NO_LINE_ATTRS: LineAttrMap = {
   unitPriceCents: null,
   optional: null,
   optionalSelected: null,
-  catalogItemRecordId: null,
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
@@ -341,10 +338,7 @@ const LINE_ITEM_ATTRS: LineAttrMap = {
   unitPriceCents: 'line_item_unit_price',
   optional: 'line_item_optional',
   optionalSelected: 'line_item_optional_selected',
-  catalogItemRecordId: 'line_item_catalog_item',
-  // `line_item.part` exists (it is stamped from the catalog item, #1917) but the
-  // builder never edits it directly — the catalog pick is the only writer.
-  partRecordId: null,
+  partRecordId: 'line_item_part',
   // 🛑 `line_item_line_total` EXISTS and is deliberately unmapped: it is
   // `creatable: false, updatable: false` with the totals engine as its only
   // writer. Mapping it would let a patch name a field the server owns.
@@ -381,10 +375,8 @@ const BUY_SIDE_CAPABILITIES: LineCapabilities = {
   category: false,
   unit: false,
   photos: false,
-  // 🛑 Off, and it must stay off until a picker exists. `line_item` picks a
-  // `catalog_item` (a SELL-side SKU); a purchasing line picks a `part` /
-  // `vendor_part`. `useLineHotkeys` gates the `/` shortcut on this same flag, so
-  // turning it on without a picker opens an empty catalog over the row.
+  // Off: a purchasing line picks through `PartCell`. `useLineHotkeys` gates the
+  // `/` shortcut on this flag, so turning it on opens the sell-side picker here.
   catalogPicker: false,
   partPicker: true,
   // Overridden to `true` by `purchase_order`, whose part is required. A bill's is
@@ -790,8 +782,6 @@ export function lineAttributesFor(schema: LineSchema): string[] {
   // rides beside the part/description chips rather than becoming a LineValues
   // editing key. It still belongs in the same batched read as the other row data.
   if (schema.billingPrefix === 'vendor_bill') attrs.push('vendor_bill_line_vendor_code')
-  // Display-only, for the drill-in badge ({@link lineSourceRecordId}); the builder never writes it.
-  if (schema.lineEntityType === 'line_item') attrs.push('line_item_part')
   // Photos are not part of `LineValues`/`linePatchToFieldValues` — the popover
   // (line-photo-popover.tsx) reads and writes the field directly via
   // `useFieldFileUpload`. Riding along in the same prefetch batch just gives the
@@ -817,7 +807,6 @@ export const DEFAULT_LINE_VALUES: LineValues = {
   unitPriceCents: null,
   optional: false,
   optionalSelected: true,
-  catalogItemRecordId: null,
   partRecordId: null,
   lineTotal: null,
   purchaseOrderLineRecordId: null,
@@ -841,7 +830,6 @@ const LINE_FIELD_TYPES: Record<keyof LineValues, FieldTypeValue> = {
   unitPriceCents: FieldType.CURRENCY,
   optional: FieldType.CHECKBOX,
   optionalSelected: FieldType.CHECKBOX,
-  catalogItemRecordId: FieldType.RELATIONSHIP,
   partRecordId: FieldType.RELATIONSHIP,
   lineTotal: FieldType.CURRENCY,
   purchaseOrderLineRecordId: FieldType.RELATIONSHIP,
@@ -923,13 +911,13 @@ function firstRecordId(raw: unknown): RecordId | null {
   return typeof value === 'string' ? (value as RecordId) : null
 }
 
-/** The record a sell-side line came from — its part, else its catalog item — or null. */
+/** The part a sell-side line came from, or null. */
 export function lineSourceRecordId(
   values: Record<string, unknown>,
   schema: LineSchema
 ): RecordId | null {
   if (schema.lineEntityType !== 'line_item') return null
-  return firstRecordId(values.line_item_part) ?? firstRecordId(values.line_item_catalog_item)
+  return firstRecordId(values.line_item_part)
 }
 
 /**
@@ -961,7 +949,6 @@ export function lineValuesFromSystemValues(
     unitPriceCents: read<number | null>('unitPriceCents') ?? null,
     optional: supportsOptional && read<boolean>('optional') === true,
     optionalSelected: !supportsOptional || read<boolean>('optionalSelected') !== false,
-    catalogItemRecordId: null,
     partRecordId: readRecordId('partRecordId'),
     lineTotal: read<number | null>('lineTotal') ?? null,
     purchaseOrderLineRecordId: readRecordId('purchaseOrderLineRecordId'),

@@ -250,10 +250,10 @@ export function useNavigationActions(): PaletteAction[] {
     if (recordVisible('parts')) {
       actions.push({
         id: 'nav.parts',
-        label: 'Parts',
-        subtitle: 'View your parts inventory',
+        label: 'Parts & Services',
+        subtitle: 'View your parts and services',
         icon: 'package',
-        keywords: 'parts inventory manufacturing',
+        keywords: 'parts services items inventory manufacturing',
         shortcut: SHORTCUTS['nav.parts'],
         perform: () => nav('/parts'),
       })
@@ -379,10 +379,10 @@ export function useNavigationActions(): PaletteAction[] {
     if (hasAccess('dispatch') && can('settings.manage')) {
       actions.push({
         id: 'nav.catalog',
-        label: 'Catalog',
-        subtitle: 'The sellable catalog',
+        label: 'Pricing',
+        subtitle: 'Line groups and tax rates',
         icon: 'tags',
-        keywords: 'catalog items groups products sellable services',
+        keywords: 'pricing catalog groups bundles tax rates',
         perform: () => nav('/catalog'),
       })
     }

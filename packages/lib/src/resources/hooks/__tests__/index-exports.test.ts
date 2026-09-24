@@ -23,7 +23,6 @@ const REGISTERED = [
   ['contact', 'CONTACT_HOOKS'],
   ['invoice', 'INVOICE_HOOKS'],
   ['journal_entry', 'JOURNAL_ENTRY_HOOKS'],
-  ['line_item', 'LINE_ITEM_HOOKS'],
   ['order', 'ORDER_HOOKS'],
   ['purchase_order', 'PURCHASE_ORDER_HOOKS'],
   ['quote', 'QUOTE_HOOKS'],

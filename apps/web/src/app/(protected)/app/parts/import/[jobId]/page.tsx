@@ -41,7 +41,7 @@ export default async function PartsImportStepPage({ params, searchParams }: Page
   return (
     <ImportPage
       entityDefinitionId={resolved.importer?.entityDefinitionId ?? HOST_DEF_ID}
-      resourceLabel='Parts'
+      resourceLabel='Parts & Services'
       importTitle={resolved.importer?.label}
       basePath='/app/parts'
       importBasePath='/app/parts/import'

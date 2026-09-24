@@ -91,7 +91,6 @@ import {
   reanchorInvoiceOnDueDateChange,
 } from '../sequences/field-change-hooks'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
-import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import {
   recalculateBilledRollupOnBillLineChange,
@@ -145,6 +144,7 @@ import {
 } from './pre/lifecycle-status-guard'
 import { guardOrderDelete } from './pre/order-delete-guard'
 import { guardPartDelete } from './pre/part-delete-guard'
+import { guardPartKindService } from './pre/part-kind-service-guard'
 import { guardPurchaseOrderDelete } from './pre/purchase-order-delete-guard'
 import {
   EVIDENCE_LOCKED_LINE_ATTRS,
@@ -311,18 +311,9 @@ export function registerAllHooks(): void {
   // the quote's or invoice's own billing fields (discount type/value, tax rate) change.
   // Keyed by apiSlug — line_item's is 'line-items', quote's is 'quotes', invoice's is
   // 'invoices'.
-  // ⚠️ `stampPartOnCatalogItemChange` is the SECOND door for the 08 §6.2 stamp. The system
-  // hook in `resources/hooks/line-item-hooks.ts` only fires for writes through
-  // `UnifiedCrudHandler` — how the LineBuilder ADDS a line. Every EDIT goes through
-  // `fieldValue.set` → `FieldValueService`, which never reads the system-hook registry, so
-  // re-pointing a line at another catalog item reaches only this handler. Verified against
-  // the running app: without it, a re-point left `line_item_part` NULL.
   registerDeriveHooks('line-items', [recomputeOnLineChange], {
     batch: recomputeLineTotalsBatch,
   })
-  // `skipOnCreate` (plans/events/10 §5): on a composed create the pre-create system hook has
-  // already stamped the part, and re-resolving it per line duplicates that write.
-  registerDeriveHooks('line-items', [stampPartOnCatalogItemChange], { skipOnCreate: true })
   registerMarkHooks('line-items', [
     syncBillingOnLineChange,
     // Model A+ (plans/products/13): a line's part, quantity or parent order
@@ -749,6 +740,7 @@ export function registerAllHooks(): void {
   // reversal and `vendor-bills` a posted/part-paid status, both read off the
   // captured values.
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
+  registerFieldPreHooks('parts', 'part_kind', [guardPartKindService])
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])

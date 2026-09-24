@@ -48,7 +48,7 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { PackagePlus, Receipt, ReceiptText, TriangleAlert, Truck, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
-import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
+import type { CatalogPart } from '~/components/money/hooks/use-catalog-parts'
 import {
   applyPartPrefill,
   type DraftLine,
@@ -173,9 +173,9 @@ export function IntakeLineRow({
         categoryOptions={EMPTY_CATEGORIES}
         currencyCode={currency}
         documentType='purchase_order'
-        catalogItems={EMPTY_ITEMS}
+        catalogParts={EMPTY_PARTS}
         catalogGroups={EMPTY_GROUPS}
-        catalogItemMap={EMPTY_ITEM_MAP}
+        catalogPartMap={EMPTY_PART_MAP}
         catalogLoading={false}
         matchScopeRecordId={null}
         resolvePartPrefill={resolvePartPrefill}
@@ -513,6 +513,6 @@ function formatPrintedQuantity(line: IntakeLine): string {
  * render would restart every memo downstream of them if that ever changed.
  */
 const EMPTY_CATEGORIES: never[] = []
-const EMPTY_ITEMS: CatalogItem[] = []
+const EMPTY_PARTS: CatalogPart[] = []
 const EMPTY_GROUPS: CatalogGroup[] = []
-const EMPTY_ITEM_MAP = new Map<string, CatalogItem>()
+const EMPTY_PART_MAP = new Map<string, CatalogPart>()
