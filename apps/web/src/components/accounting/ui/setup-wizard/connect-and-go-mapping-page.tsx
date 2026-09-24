@@ -9,7 +9,7 @@ import { MappingList } from '../settings/mapping-list'
 export function ConnectAndGoMappingPage() {
   const { can } = useAccess()
   return (
-    <div className='p-4'>
+    <div className='p-3'>
       <MappingList canControl={can(PermissionKey.ledgerControl)} className='p-0 sm:p-0' />
     </div>
   )
