@@ -41,8 +41,8 @@ export interface MappingScopeRowProps {
   mismatchMessage?: string
   /** A `bank` rail with no linked feed: forces the picker disabled, drops Inherit, and shows this as secondary text. */
   noFeedLinked?: boolean
-  /** One muted line of context under the title when nothing more urgent is shown. */
-  note?: string
+  /** Context behind the title's help icon. */
+  description?: string
   /** A rail scope row: hover "+ currency" to add a currency sub-row. */
   onAddCurrency?: () => void
   /** Viewer lacks `ledgerControl` — every control disabled, no hover actions. */
@@ -88,7 +88,7 @@ export function MappingScopeRow({
   onConfirmSuggested,
   mismatchMessage,
   noFeedLinked = false,
-  note,
+  description,
   onAddCurrency,
   disabled = false,
   mintLabel,
@@ -113,6 +113,7 @@ export function MappingScopeRow({
       depth={depth}
       icon={icon}
       title={<span className='truncate'>{title}</span>}
+      description={description}
       rowClassName={nested ? TREE_ROW_NESTED_TINT : undefined}
       expandable={expandable}
       isOpen={isOpen}
@@ -122,7 +123,6 @@ export function MappingScopeRow({
           notMapped={notMapped}
           noFeedLinked={noFeedLinked}
           mismatchMessage={mismatchMessage}
-          note={note}
           suggested={!!suggested}
         />
       }
@@ -189,13 +189,11 @@ function ScopeRowSecondary({
   notMapped,
   noFeedLinked,
   mismatchMessage,
-  note,
   suggested,
 }: {
   notMapped: boolean
   noFeedLinked: boolean
   mismatchMessage?: string
-  note?: string
   suggested: boolean
 }) {
   if (mismatchMessage) {
@@ -225,17 +223,14 @@ function ScopeRowSecondary({
 
   if (suggested) {
     return (
-      <span className='flex min-w-0 items-center gap-1.5'>
-        <Badge variant='amber' size='xs' className='shrink-0'>
-          <Sparkles className='size-3' />
+      <div className='shrink-0 p-[1px]'>
+        <Badge variant='amber' size='xs' className='[&_svg]:size-2.5'>
+          <Sparkles />
           Suggested
         </Badge>
-        {note && <span className='truncate text-muted-foreground text-xs'>{note}</span>}
-      </span>
+      </div>
     )
   }
-
-  if (note) return <span className='truncate text-muted-foreground text-xs'>{note}</span>
 
   return null
 }

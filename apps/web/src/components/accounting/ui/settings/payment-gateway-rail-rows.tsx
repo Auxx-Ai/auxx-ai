@@ -21,7 +21,7 @@ export const RAIL_ROLES = [
     role: 'clearing',
     label: 'Clearing',
     filterType: 'asset' as GlAccountTypeValue,
-    subtypePin: 'clearing' as GlAccountSubtypeValue,
+    subtypePin: undefined,
   },
   {
     role: 'payment_processing_fees',

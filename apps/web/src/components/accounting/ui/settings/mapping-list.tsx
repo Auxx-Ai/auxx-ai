@@ -31,7 +31,6 @@ import {
   type RoleRailAssignmentRow,
   type RoleSourceRow,
 } from '@auxx/lib/accounting/ledger/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { AutosizeInput } from '@auxx/ui/components/autosize-input'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -58,6 +57,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { useChartAccounts } from '../gl-account-picker'
+import { WARNING_RING, WARNING_ROW } from '../tone-rows'
 import {
   ACCOUNT_TYPE_OPTIONS,
   accountTypeIcon,
@@ -291,24 +291,28 @@ export function MappingList({
       )}
 
       {suggestedEdits.length > 0 && (
-        <Alert variant='warning'>
-          <Sparkles />
-          <AlertTitle>Review {suggestedEdits.length} suggested mappings</AlertTitle>
-          <AlertDescription>
-            Auxx picked these from your chart. Change any that are wrong, then confirm them.
-          </AlertDescription>
-          {canControl && (
-            <div className='pt-1.5'>
+        <TreeRow
+          rowClassName={cn(WARNING_ROW, WARNING_RING)}
+          icon={<Sparkles className='size-4 text-yellow-600 dark:text-yellow-500' />}
+          title={
+            <span className='truncate text-amber-800 dark:text-amber-400'>
+              Review {suggestedEdits.length} suggested mappings
+            </span>
+          }
+          description='Auxx picked these from your chart. Change any that are wrong, then confirm them.'
+          actions={
+            canControl && (
               <Button
-                variant='outline'
-                size='sm'
+                variant='ghost'
+                size='xs'
+                className='border border-amber-300 bg-amber-50/50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 dark:border-amber-300/30 dark:bg-amber-50/10 dark:text-amber-400 dark:hover:bg-amber-300/10'
                 loading={saveMapping.isPending}
                 onClick={() => saveMapping.mutate(suggestedEdits)}>
                 Confirm all
               </Button>
-            </div>
-          )}
-        </Alert>
+            )
+          }
+        />
       )}
 
       <div className='flex flex-wrap items-center gap-2'>
@@ -693,7 +697,9 @@ function StoreScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
-      note={roleKey === 'accounts_receivable' ? storeReceivableNote(providerName) : undefined}
+      description={
+        roleKey === 'accounts_receivable' ? storeReceivableNote(providerName) : undefined
+      }
       linked={override?.linked ?? null}
       linkAccountId={override?.accountId ?? null}
       linkTooltip={linkTooltip}

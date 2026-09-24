@@ -115,29 +115,3 @@ describe('MappingScopeRow - the link state', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })
-
-// The A/R store row's QuickBooks note (91 §4.3): shown when mapped, yields to "Not mapped".
-describe('MappingScopeRow - the note', () => {
-  const note = 'QuickBooks invoices and payments use its default A/R'
-
-  it('shows the note on a mapped row', () => {
-    renderRow(
-      <MappingScopeRow
-        title='Main storefront'
-        value='acct_1210'
-        onChange={() => {}}
-        inheritedAccountName='1200 Accounts Receivable'
-        note={note}
-      />
-    )
-    expect(screen.getByText(note)).toBeInTheDocument()
-  })
-
-  it('shows "Not mapped" instead of the note', () => {
-    renderRow(
-      <MappingScopeRow title='Main storefront' value={null} onChange={() => {}} note={note} />
-    )
-    expect(screen.getByText('Not mapped')).toBeInTheDocument()
-    expect(screen.queryByText(note)).not.toBeInTheDocument()
-  })
-})
