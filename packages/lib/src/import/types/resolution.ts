@@ -29,6 +29,7 @@ export type ResolutionType =
   | 'domain:value' // Parse domain
   | 'url:value' // URL validation (scheme/path preserved — write-path normalized)
   | 'array:split' // Split to array
+  | 'file:url' // Image URL, downloaded into a MediaAsset at execution time
 
 /** Configuration for resolution */
 export interface ResolutionConfig {
@@ -171,6 +172,8 @@ export interface ResolvedValue {
    * shape: the row imports with no link rather than with a garbage one.
    */
   relationCreate?: RelationCreateRequest
+  /** Present only on `file:url` values still waiting for `materializeFileFetches` to download them. */
+  fileFetch?: { url: string }
 }
 
 /** Resolution result for a single raw value */

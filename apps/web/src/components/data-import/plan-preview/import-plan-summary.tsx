@@ -6,6 +6,7 @@ import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
 import { Ban, Plus, RefreshCw, Rows3, SearchX } from 'lucide-react'
 import type { ImportPlan } from '../types'
 import { ErrorSummary, WarningSummary } from './error-summary'
+import { FileFetchSummary } from './file-fetch-summary'
 import { RelationCreateSummary } from './relation-create-summary'
 import { SelectCreateSummary } from './select-create-summary'
 
@@ -78,6 +79,8 @@ export function ImportPlanSummary({ plan, jobId, loading = false }: ImportPlanSu
       {/* …and the OPTIONS a `select:create` column will append, named, for the
           same reason: a typo becomes a permanent option on the field. */}
       {!loading && jobId && <SelectCreateSummary jobId={jobId} />}
+
+      {!loading && jobId && <FileFetchSummary jobId={jobId} />}
 
       {/* Errors */}
       {!loading && estimates && estimates.withErrors > 0 && plan && (

@@ -41,9 +41,15 @@ export function buildRecordData(
   rowData: SourceRow,
   mappings: ImportMappingProperty[],
   resolutions: Map<string, ValueResolution>
-): { standardFields: Record<string, unknown>; customFields: Record<string, unknown> } {
+): {
+  standardFields: Record<string, unknown>
+  customFields: Record<string, unknown>
+  /** Values dropped from the payload that the row should report (failed image downloads) */
+  warnings: string[]
+} {
   const standardFields: Record<string, unknown> = {}
   const customFields: Record<string, unknown> = {}
+  const warnings: string[] = []
 
   for (const mapping of mappings) {
     // Skip unmapped columns
@@ -55,7 +61,17 @@ export function buildRecordData(
     const resolution = resolutions.get(resolutionKey(mapping.id, rawValue))
     let value: unknown = rawValue
 
-    if (resolution && resolution.resolvedValues.length > 0) {
+    if (mapping.resolutionType?.startsWith('file:')) {
+      const file = readFileValue(rawValue, resolution)
+      if (file.omit) {
+        if (file.warning) {
+          const column = mapping.sourceColumnName ?? `Column ${mapping.sourceColumnIndex}`
+          warnings.push(`Column "${column}": Image not imported: ${file.warning}`)
+        }
+        continue
+      }
+      value = file.value
+    } else if (resolution && resolution.resolvedValues.length > 0) {
       const resolvedValue = resolution.resolvedValues[0]!
       if (resolvedValue.type === 'value' || resolvedValue.type === 'warning') {
         // 'warning' carries the valid subset of a split cell — use it; the
@@ -76,7 +92,37 @@ export function buildRecordData(
     }
   }
 
-  return { standardFields, customFields }
+  return { standardFields, customFields, warnings }
+}
+
+/**
+ * The FILE payload for a `file:url` cell. Anything but a downloaded `{ ref }` is omitted: the
+ * raw URL would reach the FILE normalizer as `null` and clear the stored image on update.
+ */
+function readFileValue(
+  rawValue: string,
+  resolution: ValueResolution | undefined
+): { omit: false; value: unknown } | { omit: true; warning?: string } {
+  const first = resolution?.resolvedValues[0]
+  if (!resolution) {
+    return rawValue.trim()
+      ? { omit: true, warning: 'the URL was not resolved' }
+      : { omit: false, value: null }
+  }
+  // A skip override empties the list: nothing to import, nothing to report.
+  if (!first) return { omit: true }
+  if (first.type === 'error') {
+    return { omit: true, warning: first.error ?? resolution.errorMessage ?? 'download failed' }
+  }
+  // An unusable URL: omit rather than write null (`overwrite` would clear); planning already warned.
+  if (first.type === 'warning' && first.value == null) return { omit: true }
+  const stored = first.value as { ref?: unknown } | null | undefined
+  if (stored === null || stored === undefined) return { omit: false, value: null }
+  // One-element array: a bare object lands on the scalar path and cannot be read back.
+  if (typeof stored === 'object' && typeof stored.ref === 'string') {
+    return { omit: false, value: [stored] }
+  }
+  return { omit: true, warning: 'it was not downloaded' }
 }
 
 /**

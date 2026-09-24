@@ -92,6 +92,12 @@ function resolveOverrides(
         resolved.error ?? `"${override.value}" is not a valid value for this column`
       )
     }
+    // A warning with nothing usable (a `file:url` the resolver skipped) is no fix either.
+    if (resolved.type === 'warning' && resolved.value == null) {
+      throw new UnprocessableEntityError(
+        resolved.warning ?? `"${override.value}" is not a valid value for this column`
+      )
+    }
     return resolved
   })
 }

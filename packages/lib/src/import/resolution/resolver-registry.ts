@@ -12,6 +12,7 @@ import {
 } from './resolvers/date'
 import { resolveDomain } from './resolvers/domain'
 import { resolveEmail } from './resolvers/email'
+import { resolveFileUrl } from './resolvers/file'
 import { resolveMultiselectSplit } from './resolvers/multiselect'
 import { resolveDecimal, resolveInteger } from './resolvers/number'
 import { resolvePhone } from './resolvers/phone'
@@ -54,6 +55,7 @@ const RESOLVER_REGISTRY: Record<ResolutionType, ResolverFn> = {
   'domain:value': resolveDomain,
   'url:value': resolveUrl,
   'array:split': resolveArraySplit,
+  'file:url': resolveFileUrl,
 }
 
 /**

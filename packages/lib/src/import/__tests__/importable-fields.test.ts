@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { ResourceField } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import { getImportableFields } from '../fields/get-importable-fields'
+import { getValidResolutionTypes } from '../fields/suggest-resolution-type'
 
 /**
  * A creatable field that is ALSO an identifier (SKU, Ticket #, Email) used to be
@@ -94,5 +95,44 @@ describe('getImportableFields — identifier / scalar overlap', () => {
 
     expect(fields.filter((f) => f.key === 'part_sku')).toHaveLength(1)
     expect(fields[0]?.isIdentifier).toBe(false)
+  })
+})
+
+describe('getImportableFields — FILE fields', () => {
+  const fileField = (key: string, allowedFileTypes: string[], allowMultiple = false) =>
+    resourceField({
+      id: toFieldId(key),
+      key,
+      label: key,
+      type: 'file' as never,
+      fieldType: 'FILE' as never,
+      systemAttribute: undefined,
+      isIdentifier: false,
+      options: { file: { allowMultiple, allowedFileTypes } } as never,
+      capabilities: {
+        filterable: false,
+        sortable: false,
+        creatable: true,
+        updatable: true,
+        configurable: false,
+      },
+    })
+
+  it('keeps single-image FILE fields, and drops document-only and multi-file ones', () => {
+    const fields = getImportableFields(
+      resourceWith([
+        fileField('image', ['image']),
+        fileField('attachment', ['document']),
+        fileField('gallery', ['image'], true),
+      ])
+    )
+
+    expect(fields.map((f) => f.key)).toEqual(['image'])
+    expect(fields[0]?.fileOptions).toEqual({
+      allowedFileTypes: ['image'],
+      maxFiles: undefined,
+      allowMultiple: false,
+    })
+    expect(getValidResolutionTypes(fields[0]!)).toEqual(['file:url'])
   })
 })

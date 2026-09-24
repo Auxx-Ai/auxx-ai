@@ -63,6 +63,10 @@ export const RESOLUTION_TYPE_LABELS: Record<ResolutionType, ResolutionTypeLabel>
     label: 'Linked record (create if new)',
     hint: 'Creates the target record when nothing matches',
   },
+  'file:url': {
+    label: 'Download image from URL',
+    hint: 'One image per record, downloaded when the import runs',
+  },
 }
 
 /**

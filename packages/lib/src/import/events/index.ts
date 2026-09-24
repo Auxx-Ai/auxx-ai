@@ -10,6 +10,7 @@ export type {
   ImportEvent,
   ImportEventType,
   JobStatusEvent,
+  MaterializeProgressEvent,
   PlanningCompleteEvent,
   PlanningProgressEvent,
   PlanningRowEvent,

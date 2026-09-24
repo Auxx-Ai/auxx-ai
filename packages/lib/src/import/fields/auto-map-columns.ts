@@ -150,6 +150,11 @@ const FIELD_ALIASES: Record<string, string[]> = {
   notes: ['notes', 'note', 'comments', 'comment', 'description', 'memo', 'remarks'],
   createdAt: ['createdat', 'created', 'datecreated', 'creationdate', 'createdon'],
   updatedAt: ['updatedat', 'updated', 'datemodified', 'modifieddate', 'modifiedon'],
+  // Image FILE fields, keyed by output key (`systemAttribute`); `imagesrc` is Shopify's export header.
+  product_image: ['image', 'imageurl', 'imagesrc', 'photo', 'picture', 'thumbnail', 'productimage'],
+  part_image: ['image', 'imageurl', 'imagesrc', 'photo', 'picture', 'thumbnail', 'partimage'],
+  contact_avatar: ['avatar', 'avatarurl', 'photo', 'picture', 'profilephoto', 'profilepicture'],
+  company_logo: ['logo', 'logourl', 'companylogo'],
   // NOTE: the `external_id` array attribute is retired (identities now live in
   // the `RecordIdentity` index). Auto-mapping `externalid`/`customerid`/… into
   // the index under a user-named source is a follow-up (needs import-mapping UI

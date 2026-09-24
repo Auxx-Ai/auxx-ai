@@ -51,6 +51,8 @@ export interface UniqueValueWithResolution {
    * empty resolved value.
    */
   relationCreate?: RelationCreateRequest
+  /** Present while a `file:url` value (or its override) is waiting to be downloaded */
+  fileFetch?: { url: string }
 }
 
 /** Return type including field config */
@@ -83,6 +85,11 @@ function extractResolvedValue(resolvedValues: unknown): string | null {
     // is what the user typed and the only part of the envelope that means anything
     // to them.
     if (isPendingRelationLookup(first.value)) return first.value.searchValue
+    // A downloaded image is `{ ref, sourceUrl }`; the URL is what the user recognises.
+    const file = first.value as { ref?: unknown; sourceUrl?: unknown } | null
+    if (file && typeof file === 'object' && typeof file.ref === 'string') {
+      return typeof file.sourceUrl === 'string' ? file.sourceUrl : file.ref
+    }
     return typeof first.value === 'string' ? first.value : String(first.value ?? '')
   }
   return null
@@ -130,6 +137,7 @@ function buildFieldConfig(
   else if (resolutionType.startsWith('relation:')) type = 'relationship'
   else if (resolutionType.startsWith('email:')) type = 'email'
   else if (resolutionType.startsWith('phone:')) type = 'phone'
+  else if (resolutionType.startsWith('file:')) type = 'url'
 
   return {
     key: mappingProp.targetFieldKey,
@@ -339,6 +347,7 @@ export async function getUniqueValuesWithResolution(
         isOverridden,
         overrideValues,
         relationCreate: extractRelationCreate(resolution?.resolvedValues ?? []),
+        fileFetch: resolution?.resolvedValues[0]?.fileFetch,
       }
     }),
   }

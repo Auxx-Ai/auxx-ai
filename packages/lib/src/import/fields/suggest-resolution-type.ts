@@ -88,6 +88,10 @@ export function suggestResolutionType(
     case 'tags':
       return 'array:split'
 
+    // Only image-capable FILE fields are importable (see `getImportableFields`).
+    case 'file':
+      return 'file:url'
+
     case 'text':
     case 'string':
     default: {
@@ -235,6 +239,10 @@ function validResolutionTypesFor(field: ImportableField): ResolutionType[] {
 
     case 'relation':
       return ['relation:id', 'relation:match', 'relation:create', 'text:cuid', 'text:value']
+
+    // A URL string written as-is would reach the FILE normalizer and be dropped.
+    case 'file':
+      return ['file:url']
 
     case 'text':
     case 'string':

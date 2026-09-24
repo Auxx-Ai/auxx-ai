@@ -129,6 +129,8 @@ export interface UniqueValueSummary {
    * is the only description the review step has of a pending create.
    */
   relationCreate?: RelationCreateRequest
+  /** Present while a `file:url` value is waiting to be downloaded at execution */
+  fileFetch?: { url: string }
 }
 
 /**
@@ -187,6 +189,8 @@ export interface ExecutionProgress {
   failed: number
   /** Rows that imported with at least one warning */
   warnings: number
+  /** Image downloads before rows are written; absent when the import has none */
+  images?: { downloaded: number; failed: number; total: number }
 }
 
 /** SSE Resolution progress event data */

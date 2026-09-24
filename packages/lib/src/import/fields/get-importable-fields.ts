@@ -59,6 +59,31 @@ export interface ImportableField {
    * drifts from the writer that enforces it.
    */
   canCreateOptions?: boolean
+  /** FILE fields only: the field's `options.file` limits. */
+  fileOptions?: { allowedFileTypes?: string[]; maxFiles?: number; allowMultiple?: boolean }
+}
+
+/** The subset of a resource field the FILE-importability check reads. */
+type FileFieldShape = Pick<Resource['fields'][number], 'type' | 'fieldType' | 'options'>
+
+/** File settings off a FILE field's options, or undefined for any other field. */
+function readFileOptions(field: FileFieldShape): ImportableField['fileOptions'] {
+  if (String(field.type) !== 'file' && String(field.fieldType ?? '') !== 'FILE') return undefined
+  const file = (field.options as { file?: NonNullable<ImportableField['fileOptions']> })?.file
+  return {
+    allowedFileTypes: file?.allowedFileTypes,
+    maxFiles: file?.maxFiles,
+    allowMultiple: file?.allowMultiple,
+  }
+}
+
+/** A FILE field is importable only as a single image: the import replaces it, so a gallery would lose its other files. */
+function isImportableFileField(field: FileFieldShape): boolean {
+  const fileOptions = readFileOptions(field)
+  if (!fileOptions) return true
+  return (
+    (fileOptions.allowedFileTypes ?? []).includes('image') && fileOptions.allowMultiple !== true
+  )
 }
 
 /** Options for getImportableFields */
@@ -119,6 +144,7 @@ export function getImportableFields(
       (field) => field.capabilities.creatable && !field.capabilities.hidden && !field.relationship
     )
     .filter((field) => !emittedKeys.has(getFieldOutputKey(field)))
+    .filter(isImportableFileField)
     .map((field) => {
       const isCustomField = !field.isSystem
       const eligibility = getIdentifierEligibility(field)
@@ -147,6 +173,7 @@ export function getImportableFields(
         identifierTier: eligibility?.tier,
         identifierCompositeOnly: eligibility?.compositeOnly,
         identifierNote: eligibility?.note,
+        fileOptions: readFileOptions(field),
       }
     })
   fields.push(...scalarFields)

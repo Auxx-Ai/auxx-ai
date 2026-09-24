@@ -13,6 +13,7 @@ export type ImportEventType =
   | 'planning:row'
   | 'planning:progress'
   | 'planning:complete'
+  | 'materialize:progress'
   | 'execution:progress'
   | 'execution:complete'
   | 'row:warning'
@@ -76,6 +77,15 @@ export interface PlanningCompleteEvent extends ImportEvent {
   estimates: PlanEstimates
 }
 
+/** Image download progress at execution start, counted by distinct URL */
+export interface MaterializeProgressEvent extends ImportEvent {
+  type: 'materialize:progress'
+  kind: 'images'
+  downloaded: number
+  failed: number
+  total: number
+}
+
 /** Execution progress event */
 export interface ExecutionProgressEvent extends ImportEvent {
   type: 'execution:progress'
@@ -116,6 +126,7 @@ export type AnyImportEvent =
   | PlanningRowEvent
   | PlanningProgressEvent
   | PlanningCompleteEvent
+  | MaterializeProgressEvent
   | ExecutionProgressEvent
   | ExecutionCompleteEvent
   | RowWarningEvent

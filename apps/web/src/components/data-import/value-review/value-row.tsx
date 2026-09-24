@@ -190,7 +190,13 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
             <ValueCreateBadge create={{ kind: 'relation', request: value.relationCreate }} />
           </div>
         )}
+        {value.fileFetch && !isSkipped && (
+          <div className='shrink-0 me-2'>
+            <ValueCreateBadge create={{ kind: 'file', url: value.fileFetch.url }} />
+          </div>
+        )}
         {!value.relationCreate &&
+          !value.fileFetch &&
           value.originalStatus === 'create' &&
           value.resolvedValue &&
           !isSkipped &&

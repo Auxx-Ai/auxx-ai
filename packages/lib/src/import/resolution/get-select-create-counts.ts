@@ -190,6 +190,8 @@ export async function loadPendingSelectCreates(
     // A relation create is the OTHER producer of `status: 'create'`; it carries
     // a `relationCreate` request and belongs to `materializeRelationCreates`.
     if (!resolved || resolved.relationCreate) continue
+    // A pending image download is also `status: 'create'`; minting its URL as an option is the bug.
+    if (resolved.fileFetch) continue
     if (typeof resolved.value !== 'string') continue
     const label = normalizeLabel(resolved.value)
     // Blank cells resolve to `{ type: 'value', value: null }` and never reach
