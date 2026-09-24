@@ -195,7 +195,7 @@ function assertAdjustableQuantity(quantity: number): void {
 /**
  * Step 2: read the part's frozen standard cost, or refuse naming the part.
  *
- * Rounding is applied BEFORE the positivity check so a sub-half-cent standard
+ * Rounding is applied BEFORE the zero check so a sub-half-cent standard
  * cost is rejected here rather than stored as a zero the ledger cannot explain -
  * the same ordering `resolveReceiptPrice` uses, and for the same reason.
  *
@@ -233,7 +233,8 @@ async function resolveAdjustmentCost(
   }
 
   const unitCost = roundMinorUnits(standardCost)
-  if (unitCost <= 0) {
+  // A stored $0 is a real standard and adjusts at $0 (103 §5a); a positive one must not round to it.
+  if (unitCost < 0 || (unitCost === 0 && standardCost !== 0)) {
     throw new UnprocessableEntityError(
       `Cannot adjust ${partLabel}: its standard cost rounds to zero. A movement written at zero cost sums into the inventory balance as nothing and cannot be told apart from a genuinely free part. Roll standard cost for this part first.`,
       { partId }

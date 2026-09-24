@@ -470,6 +470,13 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
                 </p>
               )}
 
+              {/* Allowed (103 §5a); warned only on a built part, where it usually means a missing BOM price. */}
+              {absorbs && standardCost === 0 && (
+                <p className='text-amber-600 text-xs dark:text-amber-500'>
+                  A $0 standard: shipping this part posts no cost of goods sold.
+                </p>
+              )}
+
               {/* No "roll it here" — the button is one line up. This says only the
                   thing the button cannot: that 205 parts do not need 205 clicks. */}
               {rollWouldValueIt && (

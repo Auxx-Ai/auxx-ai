@@ -20,6 +20,7 @@ import { requireCachedEntityDefId } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import {
+  isUsableStoredStandard,
   type PartKindValue,
   resolvePartKind,
   resolveStandardCostSource,
@@ -189,6 +190,8 @@ export interface StoredPartValues {
   effectiveDates: Map<string, string>
   /** `part_standard_cost_source` as stored. Absence means nobody has stamped one. */
   standardCostSources: Map<string, StandardCostSourceValue>
+  /** Parts carrying a `part_standard_cost_origin`: what makes a stored `0` a standard. */
+  standardCostOrigins: Set<string>
   /** `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, only where non-NULL. */
   laborRates: Map<string, number>
   overheadRates: Map<string, number>
@@ -209,6 +212,7 @@ async function loadStoredPartValues(
     standardCosts: new Map(),
     effectiveDates: new Map(),
     standardCostSources: new Map(),
+    standardCostOrigins: new Set(),
     laborRates: new Map(),
     overheadRates: new Map(),
   }
@@ -223,6 +227,7 @@ async function loadStoredPartValues(
     fields.standard.id,
     fields.effectiveAt.id,
     fields.source?.id,
+    fields.origin?.id,
     fields.laborRate?.id,
     fields.overheadRate?.id,
   ].filter((id): id is string => Boolean(id))
@@ -267,6 +272,8 @@ async function loadStoredPartValues(
       // id, so the stored key is the raw option value.
       const source = resolveStandardCostSource(row.optionId)
       if (source) values.standardCostSources.set(row.entityId, source)
+    } else if (fields.origin && row.fieldId === fields.origin.id) {
+      if (row.optionId != null) values.standardCostOrigins.add(row.entityId)
     } else if (fields.laborRate && row.fieldId === fields.laborRate.id) {
       // `!= null`, not truthiness: a stored `0` is a declared zero and stores `0`, not NULL.
       if (row.valueNumber != null) values.laborRates.set(row.entityId, row.valueNumber)
@@ -276,6 +283,17 @@ async function loadStoredPartValues(
   }
 
   return values
+}
+
+/** `part_standard_cost` as stored, less the values {@link isUsableStoredStandard} rejects. */
+function usableStoredStandards(stored: StoredPartValues): Map<string, number> {
+  const usable = new Map<string, number>()
+  for (const [partId, standardCost] of stored.standardCosts) {
+    if (isUsableStoredStandard(standardCost, stored.standardCostOrigins.has(partId))) {
+      usable.set(partId, standardCost)
+    }
+  }
+  return usable
 }
 
 /** Everything `rollStandardCost` needs to turn a plan into writes. */
@@ -339,10 +357,11 @@ export async function planStandardCostRoll(
   // because an ancestor pulled in by the upward walk has its own unvalued
   // children, and leaving those out reproduces the same abort one level up.
   const requested = input.partIds?.filter((id) => allPartIds.has(id)) ?? []
+  const usableStandards = usableStoredStandards(stored)
   let scope: Set<string>
   if (input.partIds && input.partIds.length > 0) {
     const upward = widenToAncestors(requested, parentGraph)
-    const downward = widenToUnvaluedDescendants(upward, subpartGraph, stored.standardCosts)
+    const downward = widenToUnvaluedDescendants(upward, subpartGraph, usableStandards)
     scope = new Set([...upward, ...downward].filter((id) => allPartIds.has(id)))
   } else {
     scope = allPartIds
@@ -353,7 +372,7 @@ export async function planStandardCostRoll(
     partKinds: stored.partKinds,
     liveCosts: stored.liveCosts,
     subpartGraph,
-    storedStandardCosts: stored.standardCosts,
+    storedStandardCosts: usableStandards,
     laborRates: stored.laborRates,
     overheadRates: stored.overheadRates,
     partNames,
@@ -420,8 +439,7 @@ export async function planStandardCostRoll(
   // the parts list, not about the roll in front of you.
   let standardCount = 0
   let confirmedStandardCount = 0
-  for (const [partId, standardCost] of stored.standardCosts) {
-    if (!(standardCost > 0)) continue
+  for (const partId of usableStandards.keys()) {
     standardCount += 1
     if (stored.standardCostSources.get(partId) === 'confirmed') confirmedStandardCount += 1
   }
@@ -468,24 +486,12 @@ export async function previewStandardCostRoll(
 }
 
 /**
- * The batch read `completeBuild` uses: the frozen standard for these parts.
+ * The batch read `completeBuild`, relief, receiving and salvage use: the frozen standard for these parts.
  *
- * Returns an entry ONLY for a part that has a **usable** `part_standard_cost`. A
- * part missing from the map has never been rolled, and the caller must treat
- * that as a refusal — never as a zero. `completeBuild`'s "never post a zero
- * cost" rule is the same rule stated from the other side.
- *
- * 🛑 **A stored `0` is omitted too, exactly like a NULL.** The invariant every
- * caller enforces is *positive*, not *non-null*: `assertPlanIsPostable` says
- * this function "omits a part that has never been rolled rather than defaulting
- * it, precisely so this check can exist", and its error reads *"Refusing to
- * complete a build at zero cost"*. Keeping a zero here made that check unable to
- * fire for the one case it is named after — `missingStandardPartIds` stayed
- * empty, `completeBuild` proceeded, and `unitCost: 0` froze onto an
- * `updatable: false` movement forever. A zero standard only ever arrives from a
- * part that could not be valued (`part_cost = 0` reads as a real cost to
- * `planStandardCostRoll`, which is fixed at its own end in `standard-cost-roll.ts`);
- * it is never somebody asserting a part is genuinely free.
+ * A part missing from the map has no usable standard and the caller refuses or parks it, never
+ * defaults it. A stored `0` is a standard only when it carries a `part_standard_cost_origin`: every
+ * door has stamped one since 106 D9 and the roll never writes a zero, so an origin-less zero is a
+ * pre-106 roll of an unpriced part (103 §5a allows a deliberate zero, not that one).
  */
 export async function readStandardCost(
   db: Database,
@@ -503,12 +509,13 @@ export async function readStandardCost(
         | 'standardLaborCost'
         | 'standardOverheadCost'
         | 'standardCost'
-      const byField = new Map<string, NumericKey | 'effectiveAt'>([
+      const byField = new Map<string, NumericKey | 'effectiveAt' | 'origin'>([
         [fields.material.id, 'standardMaterialCost'],
         [fields.labor.id, 'standardLaborCost'],
         [fields.overhead.id, 'standardOverheadCost'],
         [fields.standard.id, 'standardCost'],
         [fields.effectiveAt.id, 'effectiveAt'],
+        ...(fields.origin ? [[fields.origin.id, 'origin'] as const] : []),
       ])
 
       const rows = await db
@@ -517,6 +524,7 @@ export async function readStandardCost(
           fieldId: schema.FieldValue.fieldId,
           valueNumber: schema.FieldValue.valueNumber,
           valueDate: schema.FieldValue.valueDate,
+          optionId: schema.FieldValue.optionId,
         })
         .from(schema.FieldValue)
         .where(
@@ -527,12 +535,14 @@ export async function readStandardCost(
           )
         )
 
-      const draft = new Map<string, Partial<PartStandardCost>>()
+      const draft = new Map<string, Partial<PartStandardCost> & { hasOrigin?: boolean }>()
       for (const row of rows) {
         const key = byField.get(row.fieldId)
         if (!key) continue
         const entry = draft.get(row.entityId) ?? {}
-        if (key === 'effectiveAt') {
+        if (key === 'origin') {
+          entry.hasOrigin = row.optionId != null
+        } else if (key === 'effectiveAt') {
           entry.effectiveAt = row.valueDate ? new Date(row.valueDate) : null
         } else if (row.valueNumber != null) {
           entry[key] = row.valueNumber
@@ -541,11 +551,7 @@ export async function readStandardCost(
       }
 
       for (const [partId, entry] of draft) {
-        // No `standardCost` means the part has never been rolled, and a stored
-        // `0` means it was rolled from a cost that could not value it. Both are
-        // omitted rather than defaulted, so a caller cannot mistake either for a
-        // number it may freeze onto a movement. See the header.
-        if (entry.standardCost == null || entry.standardCost <= 0) continue
+        if (!isUsableStoredStandard(entry.standardCost, entry.hasOrigin === true)) continue
         result.set(partId, {
           partId,
           standardMaterialCost: entry.standardMaterialCost ?? entry.standardCost,

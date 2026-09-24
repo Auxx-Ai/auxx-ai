@@ -100,6 +100,14 @@ describe('planning a supplier return', () => {
     )
   })
 
+  it('returns a part standing at a $0 standard at $0, never refusing it (103 §5a)', async () => {
+    h.readStandardCost.mockResolvedValue(ok(new Map([['part_m', { standardCost: 0 }]])))
+
+    const [plan] = await planVendorCreditStockReturns(db, 'org_1', [line()])
+
+    expect(plan).toMatchObject({ standardUnitCost: 0, grniReliefMinor: 2_400 })
+  })
+
   it('names every bad line in one refusal, not just the first', async () => {
     await expect(
       planVendorCreditStockReturns(db, 'org_1', [

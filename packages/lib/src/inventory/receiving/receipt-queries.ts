@@ -34,6 +34,7 @@ import {
   systemRecordScope,
   systemValueJoin,
 } from '../../resources/system-records'
+import { isUsableStoredStandard } from '../costing/client'
 import { resolveOfferTariff } from '../costing/vendor-cost'
 import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import type { ReceiptCostInputs } from './client'
@@ -396,6 +397,9 @@ export async function readPartKind(
 /**
  * One part's frozen standard cost and its display name, in a single query.
  *
+ * An unusable stored value (negative, or a zero with no origin) reads as `null`, the same rule as
+ * `readStandardCost`.
+ *
  * 🛑 **Returns `standardCost: null` rather than a fallback.** The one number
  * that must never substitute for it is `part_cost`: that is LIVE REPLACEMENT
  * cost, rewritten on every vendor-price change, so valuing a movement with it
@@ -424,8 +428,10 @@ export async function readPartStandardCost(
         includeArchived: true,
       })
 
+      const stored = record?.number('part_standard_cost') ?? null
+      const hasOrigin = record?.option('part_standard_cost_origin') != null
       return {
-        standardCost: record?.number('part_standard_cost') ?? null,
+        standardCost: isUsableStoredStandard(stored, hasOrigin) ? stored : null,
         displayName: record?.displayName ?? null,
       }
     },
@@ -436,4 +442,7 @@ export async function readPartStandardCost(
 
 const PART_KIND_PICK = pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
 
-const PART_STANDARD_COST_PICK = pickSystemAttributes(PART_FIELDS, ['part_standard_cost'] as const)
+const PART_STANDARD_COST_PICK = pickSystemAttributes(PART_FIELDS, [
+  'part_standard_cost',
+  'part_standard_cost_origin',
+] as const)

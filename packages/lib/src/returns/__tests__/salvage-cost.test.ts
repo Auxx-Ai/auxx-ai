@@ -35,10 +35,9 @@ describe('isUsableStandardCost', () => {
     expect(isUsableStandardCost(0.001)).toBe(true)
   })
 
-  it('rejects null, undefined, zero, negatives and non-finite values', () => {
+  it('rejects null, undefined, negatives and non-finite values', () => {
     expect(isUsableStandardCost(null)).toBe(false)
     expect(isUsableStandardCost(undefined)).toBe(false)
-    expect(isUsableStandardCost(0)).toBe(false)
     expect(isUsableStandardCost(-1)).toBe(false)
     expect(isUsableStandardCost(Number.NaN)).toBe(false)
     expect(isUsableStandardCost(Number.POSITIVE_INFINITY)).toBe(false)
@@ -124,15 +123,10 @@ describe('computeSalvageUnitCost', () => {
     }
   })
 
-  it('refuses a standard cost of exactly zero', () => {
-    const result = unitCost(0, 60)
-    expect(result.isErr()).toBe(true)
-    if (result.isErr()) {
-      expect(result.error.reason).toBe('missing_standard_cost')
-      if (result.error instanceof MissingStandardCostError) {
-        expect(result.error.standardCost).toBe(0)
-      }
-    }
+  // 103 §5a: a $0 standard is a real standard; readStandardCost already dropped the legacy zeros.
+  it('salvages a $0 standard at $0', () => {
+    expect(isUsableStandardCost(0)).toBe(true)
+    expect(unitCost(0, 60)._unsafeUnwrap()).toBe(0)
   })
 
   it('refuses an undefined and a negative standard cost', () => {

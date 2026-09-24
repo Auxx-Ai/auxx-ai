@@ -6,6 +6,7 @@ export {
   absorbsConversionCost,
   isBuildablePartKind,
   isServicePartKind,
+  isUsableStoredStandard,
   type PartKindValue,
   resolvePartKind,
   resolveStandardCostSource,

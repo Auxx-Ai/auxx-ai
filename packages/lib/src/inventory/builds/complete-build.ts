@@ -457,12 +457,8 @@ export async function recalculateAfterCommit(
 /**
  * Refuse a plan that cannot be valued, naming the parts.
  *
- * 🛑 **Never post a zero cost.** `readStandardCost` omits a part that has never
- * been rolled rather than defaulting it, precisely so this check can exist: a
- * missing standard is a refusal, not a zero. The two failure modes it prevents
- * are the same failure seen from either end - an unvalued consume row
- * understates COGS forever, and an unvalued produce row creates inventory at
- * nothing.
+ * `readStandardCost` omits a part with no usable standard rather than defaulting it, so a missing
+ * standard is a refusal here. A deliberate $0 standard (103 §5a) is present and builds at $0.
  */
 function assertPlanIsPostable(plan: BuildComponentPlan): void {
   if (plan.components.length === 0) {
@@ -472,7 +468,7 @@ function assertPlanIsPostable(plan: BuildComponentPlan): void {
   }
   if (plan.missingStandardPartIds.length > 0) {
     throw new UnprocessableEntityError(
-      'Refusing to complete a build at zero cost: roll the standard cost for these parts first',
+      'Refusing to complete a build without a standard cost: roll the standard cost for these parts first',
       { partIds: plan.missingStandardPartIds }
     )
   }

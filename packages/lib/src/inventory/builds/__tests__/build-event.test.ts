@@ -788,7 +788,7 @@ describe('completeBuild', () => {
       completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
     )
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(error.message).toContain('zero cost')
+    expect(error.message).toContain('without a standard cost')
     expect(h.created).toEqual([])
     expect(h.updated).toEqual([])
   })
@@ -964,6 +964,22 @@ describe('completeBuild', () => {
     expect(value.materialCost).toBe(73220)
     expect(value.producedValue).toBe(73220)
     expect(value.varianceAmount).toBe(0)
+  })
+
+  it('completes at a $0 standard rather than refusing it (103 §5a)', async () => {
+    h.rates = { laborCostPerUnit: null, overheadCostPerUnit: null }
+    h.standards.set(PART_ASM, 0)
+    h.standards.set(PART_LIFT, 0)
+    const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    const value = result._unsafeUnwrap()
+
+    expect(value.materialCost).toBe(0)
+    expect(value.producedValue).toBe(0)
+    expect(value.varianceAmount).toBe(0)
+    const consumes = movementWrites().filter(
+      (values) => values.stock_movement_type === 'build_consume'
+    )
+    expect(consumes[0]?.stock_movement_unit_cost).toBe(0)
   })
 
   it('refuses a completion that produces nothing', async () => {

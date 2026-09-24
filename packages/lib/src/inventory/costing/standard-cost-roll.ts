@@ -62,7 +62,10 @@ export interface StandardCostRollInputs {
   liveCosts: ReadonlyMap<string, number>
   /** Bill of materials: parent -> children. */
   subpartGraph: ReadonlyMap<string, SubpartEdge[]>
-  /** `part_standard_cost` as currently stored, for parts outside {@link scope}. */
+  /**
+   * Usable `part_standard_cost` as stored: parts outside {@link scope}, and an explicit `0` on a
+   * purchased part with no live cost, which is kept and contributes zero (103 §5a).
+   */
   storedStandardCosts: ReadonlyMap<string, number>
   /**
    * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, only for parts with a
@@ -127,6 +130,9 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
    */
   const blameFor = new Map<string, string | null>()
 
+  /** In-scope purchased parts left at their explicit $0 standard: never written, contribute zero. */
+  const keptZero = new Set<string>()
+
   /**
    * The standard a PARENT should multiply by its quantity.
    *
@@ -137,7 +143,9 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     if (!inputs.scope.has(partId)) {
       return inputs.storedStandardCosts.get(partId) ?? null
     }
-    return roll(partId)?.standardCost ?? null
+    const rolled = roll(partId)
+    if (rolled) return rolled.standardCost
+    return keptZero.has(partId) ? 0 : null
   }
 
   function roll(partId: string): StandardCostComponents | null {
@@ -177,15 +185,13 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     // ── A purchased part: its landed cost, and nothing else ──
     if (!absorbsConversionCost(partKind)) {
       const live = inputs.liveCosts.get(partId)
-      // 🛑 `<= 0` belongs here with the nulls. `part_cost` is written as a real
-      // `0` for a part with no supplier price and no priced bill of materials,
-      // not left NULL, so a null-only test read "unpriced" as "worth nothing"
-      // and froze a $0.00 standard onto it. That standard then passes every
-      // downstream guard, because those test `== null` too, and ends up as
-      // `unitCost: 0` on an append-only movement. `ensureStandardCost` already
-      // refuses an explicit `unitCost <= 0` for the same reason; this is the
-      // same rule at the other door.
+      // `part_cost` stores a real `0` for an unpriced part, so `<= 0` is "no price", never "free".
       if (live == null || !Number.isFinite(live) || live <= 0) {
+        // Not a skip: a person set $0 on purpose. The roll still never writes a zero itself.
+        if (inputs.storedStandardCosts.get(partId) === 0) {
+          keptZero.add(partId)
+          return null
+        }
         skipped.push({ partId, reason: 'no-live-cost', partName: partName(partId) })
         // Its own root cause: this is the part somebody has to go price.
         blameFor.set(partId, partName(partId))

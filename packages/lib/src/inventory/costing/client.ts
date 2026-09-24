@@ -150,3 +150,12 @@ export {
   resolveTariffRate,
   selectWinningVendor,
 } from './vendor-cost'
+
+/** A stored standard a movement may be valued at: positive, or a zero some door stamped an origin on. */
+export function isUsableStoredStandard(
+  standardCost: number | null | undefined,
+  hasOrigin: boolean
+): standardCost is number {
+  if (standardCost == null || !Number.isFinite(standardCost) || standardCost < 0) return false
+  return standardCost > 0 || hasOrigin
+}

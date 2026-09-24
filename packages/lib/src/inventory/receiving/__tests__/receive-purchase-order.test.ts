@@ -535,6 +535,20 @@ describe('receivePurchaseOrder — the standard is frozen and the landed parts a
     expect(movement.accrual.grniMinor).toBe(28_000)
   })
 
+  it('103 §5a - receives at a $0 standard and still posts the accruals, the price all ppv', async () => {
+    h.standardCosts.set('part_1', 0)
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
+    })
+    expect(writtenValues(0).stock_movement_unit_cost).toBe(0)
+    const input = h.postSpy.mock.calls[0]![1] as {
+      movements: Array<{ extendedCostMinor: number; accrual: ReceiveAccrualInput }>
+    }
+    expect(input.movements).toHaveLength(1)
+    expect(input.movements[0]!.extendedCostMinor).toBe(0)
+    expect(input.movements[0]!.accrual.grniMinor).toBe(12_000)
+  })
+
   it('falls back to the landed estimate for a part with no readable standard', async () => {
     h.standardCosts = new Map()
     await receivePurchaseOrder(db, ORG, USER, {

@@ -582,9 +582,9 @@ export async function reverseSalvageMovement(
  * `part_standard_cost` for the parts that would be salvaged, in minor units.
  *
  * `readStandardCost` returns an entry only for a part with a **usable**
- * standard, omitting a stored `0` exactly as it omits a NULL, so a part missing
- * from this map is one `findMissingStandardCosts` must refuse - which is the
- * whole of invariant 3 and the reason it is read here rather than defaulted.
+ * standard, so a part missing from this map is one `findMissingStandardCosts`
+ * must refuse - which is the whole of invariant 3 and the reason it is read here
+ * rather than defaulted.
  */
 async function readSalvageStandardCosts(
   db: Database,

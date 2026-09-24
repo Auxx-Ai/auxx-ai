@@ -624,6 +624,38 @@ describe('computeStandardCosts', () => {
     })
   })
 
+  // 103 §5a: a deliberate $0 standard is kept, never rewritten, and costs its parent nothing.
+  it('keeps an explicit $0 standard on an unpriced component and rolls its parent over it', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([ASSEMBLY, MOTOR, TUBE]),
+        partKinds: new Map<string, PartKindValue>([
+          [ASSEMBLY, 'subassembly'],
+          [MOTOR, 'component'],
+          [TUBE, 'component'],
+        ]),
+        liveCosts: new Map([
+          [MOTOR, 0],
+          [TUBE, 951],
+        ]),
+        storedStandardCosts: new Map([[MOTOR, 0]]),
+        subpartGraph: new Map<string, SubpartEdge[]>([
+          [
+            ASSEMBLY,
+            [
+              { childId: MOTOR, qty: 2 },
+              { childId: TUBE, qty: 1 },
+            ],
+          ],
+        ]),
+      })
+    )
+
+    expect(skipped).toEqual([])
+    expect(costs.has(MOTOR)).toBe(false)
+    expect(costs.get(ASSEMBLY)!.standardMaterialCost).toBe(951)
+  })
+
   it('skips a buildable part that has no bill of materials yet', () => {
     const { costs, skipped } = computeStandardCosts(
       inputs({
