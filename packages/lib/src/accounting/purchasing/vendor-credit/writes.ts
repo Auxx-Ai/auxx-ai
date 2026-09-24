@@ -16,6 +16,8 @@ import {
   recalculatePurchaseOrderLineRollups,
 } from '../../../field-hooks/post/purchase-order-line-rollups'
 import { FieldValueService } from '../../../field-values/field-value-service'
+import { readPartKinds } from '../../../inventory/builds/build-queries'
+import { isServicePartKind } from '../../../inventory/costing/client'
 import { batchRecalculateQoH } from '../../../inventory/costing/qoh'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import {
@@ -170,6 +172,14 @@ export async function createVendorCredit(
   const needsPrefill =
     !!input.purchaseOrderInstanceId && lines.some((line) => !line.glAccountInstanceId)
   const grniAccountId = needsPrefill ? await resolveGrniAccountId(db, organizationId) : null
+  // A service was never received, so it has no GRNI to credit back (107-D10).
+  const partKinds = needsPrefill
+    ? await readPartKinds(
+        db,
+        organizationId,
+        lines.map((line) => line.partInstanceId).filter((id): id is string => !!id)
+      )
+    : new Map<string, string>()
 
   const items = lines.map((line, index) => {
     const values: Record<string, unknown> = {
@@ -180,7 +190,8 @@ export async function createVendorCredit(
       vendor_credit_line_sort_order: index,
     }
     if (line.description) values.vendor_credit_line_description = line.description
-    const glAccountId = line.glAccountInstanceId ?? grniAccountId
+    const isService = !!line.partInstanceId && isServicePartKind(partKinds.get(line.partInstanceId))
+    const glAccountId = line.glAccountInstanceId ?? (isService ? null : grniAccountId)
     if (glAccountId) values.vendor_credit_line_gl_account = glAccountId
     if (line.partInstanceId)
       values.vendor_credit_line_part = toRecordId('part', line.partInstanceId)

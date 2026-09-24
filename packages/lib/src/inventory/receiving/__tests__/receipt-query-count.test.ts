@@ -123,7 +123,7 @@ function routeModuleSelect(query: Query): unknown[] {
     case 'relatedEntityId':
       return [{ relatedEntityId: PO }]
     // readOrderStatusInputs — parent, lines and current statuses in one read
-    case 'billed,billingStatusOption,orderId,ordered,receiptStatusOption,received,statusOption':
+    case 'billed,billingStatusOption,orderId,ordered,partKind,receiptStatusOption,received,statusOption':
       return statusRows()
     // recalculatePurchaseOrderLineRollup — one line's SUM plus its stored total.
     // The line is named in the join predicate, not the projection.

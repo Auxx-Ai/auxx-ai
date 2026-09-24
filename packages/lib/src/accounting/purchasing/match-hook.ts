@@ -1,6 +1,6 @@
 // packages/lib/src/accounting/purchasing/match-hook.ts
 
-import type { Database } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
@@ -10,6 +10,8 @@ import type { EntityPostDeleteHandler, MarkHandler } from '../../field-hooks/typ
 import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { readFieldRelations, readFieldScalars } from '../../field-values/read-field-scalars'
+import { readPartKinds } from '../../inventory/builds/build-queries'
+import { isServicePartKind } from '../../inventory/costing/client'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { systemFieldMap } from '../../resources/system-records'
 import {
@@ -120,6 +122,7 @@ const MATCH_ATTRS = [
   'vendor_bill_line_purchase_order_line',
   'purchase_order_line_quantity_received',
   'purchase_order_line_expected_unit_price',
+  'purchase_order_line_part',
   // The aging leg (P24). `expectedAt` lives on the purchase order HEADER, not the
   // line, so reaching it costs one relationship hop from the PO line.
   'purchase_order_line_purchase_order',
@@ -241,12 +244,21 @@ export async function rematchBill(params: {
     .filter((id): id is string => !!id)
 
   const orderRelId = cf.purchase_order_line_purchase_order?.id
+  const partRelId = cf.purchase_order_line_part?.id
+  const poLineRelIds = [orderRelId, partRelId].filter((id): id is string => !!id)
   const [poLineValues, poLineOrderRels] = await Promise.all([
     readFieldScalars(db, organizationId, poLineIds, poLineFieldIds),
-    orderRelId
-      ? readFieldRelations(db, organizationId, poLineIds, [orderRelId])
+    poLineRelIds.length > 0
+      ? readFieldRelations(db, organizationId, poLineIds, poLineRelIds)
       : Promise.resolve(new Map<string, Map<string, string>>()),
   ])
+  const partOf = (poLineId: string) =>
+    partRelId ? poLineOrderRels.get(poLineId)?.get(partRelId) : undefined
+  const partKinds = await readPartKinds(
+    db ?? database,
+    organizationId,
+    poLineIds.map(partOf).filter((id): id is string => !!id)
+  )
 
   const expectedAtFieldId = cf.purchase_order_expected_at?.id
   const orderIds = poLineIds
@@ -308,14 +320,20 @@ export async function rematchBill(params: {
       continue
     }
 
+    const quantityBilled = num(line, cf.vendor_bill_line_quantity_billed?.id) ?? 0
+    const partId = partOf(purchaseOrderLineId)
+    // A service is never received (107-D10): it has no receipt leg, only the price arm.
+    const service = !!partId && isServicePartKind(partKinds.get(partId))
     matchLines.push({
-      quantityBilled: num(line, cf.vendor_bill_line_quantity_billed?.id) ?? 0,
+      quantityBilled,
       // Nothing received yet reads as 0 — and under P24 that is NOT an exception.
       // Vendors here often will not ship until the invoice is paid, so billed >
       // received is the normal state of a CORRECT bill for weeks. `matchBill`
       // calls it `awaiting_receipt` and ages it off the order's `expectedAt`
       // below; it becomes a real `receipt_overdue` exception only once late.
-      quantityReceived: num(poLine, cf.purchase_order_line_quantity_received?.id) ?? 0,
+      quantityReceived: service
+        ? quantityBilled
+        : (num(poLine, cf.purchase_order_line_quantity_received?.id) ?? 0),
       unitPriceBilled,
       unitPriceExpected: num(poLine, cf.purchase_order_line_expected_unit_price?.id) ?? 0,
       // The PO HEADER's expected date, shared by every line of one order. Null when

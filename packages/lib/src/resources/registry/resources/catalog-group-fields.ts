@@ -15,7 +15,7 @@ const CATALOG_GROUP_DISCOUNT_TYPE_OPTIONS = [
 /**
  * Field definitions for the Catalog Group resource (product-bundle "packages",
  * plans/dispatch/money/09-product-groups.md). Hidden system entity — managed from dispatch
- * settings, never shown in the entity sidebar. Mirrors CATALOG_ITEM_FIELDS.
+ * settings, never shown in the entity sidebar.
  */
 export const CATALOG_GROUP_FIELDS: Record<string, ResourceField> = {
   id: {
@@ -101,7 +101,7 @@ export const CATALOG_GROUP_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Ordered array of catalog-item entries (catalogItemId, qty, overrides)',
+    description: 'Ordered array of part entries (partId, qty, overrides)',
   },
 
   taxRateId: {

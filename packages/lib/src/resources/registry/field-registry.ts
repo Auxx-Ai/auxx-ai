@@ -11,7 +11,6 @@ import { BANK_RULE_FIELDS } from './resources/bank-rule-fields'
 import { BANK_TRANSACTION_FIELDS } from './resources/bank-transaction-fields'
 import { BUILD_FIELDS } from './resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
-import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { CREDIT_MEMO_APPLICATION_FIELDS } from './resources/credit-memo-application-fields'
@@ -157,7 +156,6 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   service_request: SERVICE_REQUEST_FIELDS,
   quote: QUOTE_FIELDS,
   line_item: LINE_ITEM_FIELDS,
-  catalog_item: CATALOG_ITEM_FIELDS,
   catalog_group: CATALOG_GROUP_FIELDS,
   invoice: INVOICE_FIELDS,
   product: PRODUCT_FIELDS,

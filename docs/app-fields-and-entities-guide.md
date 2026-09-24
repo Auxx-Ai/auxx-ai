@@ -222,7 +222,7 @@ Each field carries:
 
 ```
 contact · company · ticket · article · thread · order · invoice · line_item ·
-catalog_item · part · product · build · purchase_order · vendor_bill ·
+part · product · build · purchase_order · vendor_bill ·
 gl_account · credit_memo · credit_memo_line · credit_memo_application ·
 tax_line · shipment · parcel · fulfillment · fulfillment_line
 ```
@@ -475,8 +475,8 @@ the target stream's backfill completes.
 
 Unchanged: it lets a mapping declare a sibling under the same `rootPath` as another mapping (a "flat
 drilled child") without re-nesting the source tree: used when one subtree fans out to two different
-target entities (§5.2's `variants[]` → `part` and `variants[]` → `catalog_item` mappings both read
-the same source subtree).
+target entities. No shipped connector uses it: Shopify's variants, the former case, now map to one
+`part` (§5.2).
 
 ### Reserved targets
 
@@ -510,7 +510,8 @@ from the new per-mapping field lists instead of the stream-wide flat map.
 ### Worked example 1: the Shopify product stream (owned + contributing, mixed)
 
 From the Shopify brief §7.1. Two owned entities (`product`, `part`: both platform system entities,
-so `entityKind` not `entityKey`), one flat-drilled contributing child:
+so `entityKind` not `entityKey`). Each variant is one part carrying its sell price
+(`plans/accounting/tasks/107-parts-and-services.md` D11):
 
 ```ts
 streams: [{
@@ -537,18 +538,13 @@ streams: [{
         { sourcePath: 'shopifyId',         appField: 'variantId' },     // identity -> externalId
         { sourcePath: 'title',             target: 'part_title' },
         { sourcePath: 'sku',               target: 'part_sku' },
-        { sourcePath: 'price',             appField: 'price' },
+        { sourcePath: 'price',             appField: 'price' },            // provenance
+        { sourcePath: 'price',             target: 'part_sell_price' },    // Shopify owns it
+        // `partKind` is derived at extract: requires_shipping === false -> 'service',
+        // else 'finished_good'. Fill-blank, so a person's kind wins.
+        { sourcePath: 'partKind',          target: 'part_kind', mergeStrategy: 'fill_blank' },
+        { sourcePath: 'sellable',          target: 'part_sellable', mergeStrategy: 'fill_blank' },
         { sourcePath: 'inventoryQuantity', appField: 'externalQuantity' },
-      ] },
-
-    // FLAT DRILLED CHILD: the same variants[] subtree also contributes the catalog item
-    // that carries the sell price. Needs parentRootPath.
-    { rootPath: 'variants[]', parentRootPath: 'variants[]',
-      relationshipFieldKey: 'system:part_catalog_items',
-      target: { entityKind: 'catalog_item' },
-      fields: [
-        { sourcePath: 'title', target: 'catalog_item_name' },
-        { sourcePath: 'price', target: 'catalog_item_default_unit_price' },
       ] },
   ],
 }]

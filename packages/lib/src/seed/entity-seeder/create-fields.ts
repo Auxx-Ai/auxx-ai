@@ -11,7 +11,6 @@ import { BANK_RULE_FIELDS } from '../../resources/registry/resources/bank-rule-f
 import { BANK_TRANSACTION_FIELDS } from '../../resources/registry/resources/bank-transaction-fields'
 import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from '../../resources/registry/resources/catalog-group-fields'
-import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../resources/registry/resources/credit-memo-application-fields'
@@ -92,7 +91,6 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   service_request: SERVICE_REQUEST_FIELDS,
   quote: QUOTE_FIELDS,
   line_item: LINE_ITEM_FIELDS,
-  catalog_item: CATALOG_ITEM_FIELDS,
   catalog_group: CATALOG_GROUP_FIELDS,
   invoice: INVOICE_FIELDS,
   product: PRODUCT_FIELDS,

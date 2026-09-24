@@ -97,6 +97,7 @@ import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { loadSubpartGraph } from '../inventory/bom/subpart-graph'
 import { readStandardCost } from '../inventory/costing'
+import { isServicePartKind } from '../inventory/costing/client'
 import { batchRecalculateQoH } from '../inventory/costing/qoh'
 import {
   reverseMovement,
@@ -225,6 +226,8 @@ export interface WriteSalvageMovementsResult {
   skippedAlreadySalvaged: number
   /** `good` nodes of zero units. A decision about nothing writes nothing. */
   skippedZeroQuantity: number
+  /** `good` nodes whose part is a `service`: never stocked, so nothing to restock (107-D10). */
+  skippedService: number
 }
 
 /**
@@ -254,6 +257,23 @@ export async function writeSalvageMovements(
       const rows = await readReturnPartLines(db, organizationId, input.returnLineId)
       const tree = await assembleSalvageTree(db, organizationId, line, rows)
 
+      // Pruned before the invariants: a service carries no standard cost and must not refuse the run.
+      const goodKinds = await readSalvagePartKinds(
+        db,
+        organizationId,
+        selectSalvageMovementNodes(tree.nodes).map((node) => node.partId)
+      )
+      let skippedService = 0
+      const pruneServices = (nodes: readonly SalvageNode[]): SalvageNode[] =>
+        nodes.flatMap((node) => {
+          if (isServicePartKind(goodKinds.get(node.partId))) {
+            if (node.status === 'good') skippedService++
+            return []
+          }
+          return [{ ...node, children: node.children ? pruneServices(node.children) : null }]
+        })
+      const roots = pruneServices(tree.nodes)
+
       // The bill of materials again, for invariant 2's allowances.
       // `assembleSalvageTree` loads it to build the tree and does not hand it
       // back; re-loading is one recursive CTE on a button press, and the
@@ -264,14 +284,14 @@ export async function writeSalvageMovements(
       const standardCosts = await readSalvageStandardCosts(
         db,
         organizationId,
-        selectSalvageMovementNodes(tree.nodes)
+        selectSalvageMovementNodes(roots)
       )
 
       // The single entry point for all three invariants (section 6.6), so they
       // cannot be applied in different combinations by different callers. It
       // answers with the nodes that move stock.
       const selected = checkSalvageTree({
-        roots: tree.nodes,
+        roots,
         graph,
         rootPartId: tree.rootPartId,
         returnLineQuantity: tree.returnLineQuantity,
@@ -321,11 +341,12 @@ export async function writeSalvageMovements(
           affectedPartIds: [],
           skippedAlreadySalvaged,
           skippedZeroQuantity,
+          skippedService,
         }
       }
 
-      const partIds = [...new Set(pending.map((entry) => entry.node.partId))]
-      const partKinds = await readSalvagePartKinds(db, organizationId, partIds)
+      // Every pending node was a `good` node of the unpruned tree, so its kind is already read.
+      const partKinds = goodKinds
       const reason = await salvageMovementReason(db, organizationId, line.returnId)
       const occurredAt = input.occurredAt ?? new Date()
 
@@ -472,6 +493,7 @@ export async function writeSalvageMovements(
         written: movements.length,
         skippedAlreadySalvaged,
         skippedZeroQuantity,
+        skippedService,
       })
 
       return {
@@ -480,6 +502,7 @@ export async function writeSalvageMovements(
         affectedPartIds,
         skippedAlreadySalvaged,
         skippedZeroQuantity,
+        skippedService,
       }
     },
     'Failed to write salvage movements',

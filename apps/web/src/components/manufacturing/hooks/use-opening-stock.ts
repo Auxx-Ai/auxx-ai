@@ -34,6 +34,7 @@ import {
   resolveInventoryRoleForPartKind,
 } from '@auxx/lib/inventory/movements/client'
 import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { toastError } from '@auxx/ui/components/toast'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { useCallback, useMemo, useState } from 'react'
 import {
@@ -482,12 +483,22 @@ export function useOpeningStock() {
   const setKind = useCallback(
     async (partIds: string[], kind: OpeningStockKind) => {
       if (partIds.length === 0) return
-      await bulkSetPartKind.mutateAsync({ partIds, kind })
+      const { failed } = await bulkSetPartKind.mutateAsync({ partIds, kind })
+      const failedIds = new Set(failed.map((skip) => skip.partId))
       setWrittenKinds((prev) => {
         const next = { ...prev }
-        for (const partId of partIds) next[partId] = kind
+        for (const partId of partIds) if (!failedIds.has(partId)) next[partId] = kind
         return next
       })
+      if (failed.length > 0) {
+        const titles = new Map((candidates.data ?? []).map((row) => [row.partId, row.title]))
+        toastError({
+          title: `${failed.length} ${failed.length === 1 ? 'part was' : 'parts were'} not changed`,
+          description: failed
+            .map((skip) => `${titles.get(skip.partId) ?? skip.partId}: ${skip.detail}`)
+            .join('\n'),
+        })
+      }
       void candidates.refetch()
     },
     [bulkSetPartKind, candidates]

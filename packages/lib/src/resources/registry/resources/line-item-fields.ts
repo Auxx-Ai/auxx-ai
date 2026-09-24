@@ -7,14 +7,20 @@ import { LINE_ITEM_UNIT_OPTIONS } from '../../../accounting/sales/totals/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { defineResourceFields } from '../system-attributes'
-import { CATALOG_CATEGORY_OPTIONS } from './catalog-item-fields'
 
 /**
  * The `line_item_category` a connector writes for a gift card line (Shopify `gift_card: true`):
  * its shipment credits `gift_card_liability`, never revenue (91 D8). A line-only option, since a
- * catalog item is never sold as one.
+ * part is never sold as one.
  */
 export const LINE_ITEM_GIFT_CARD_CATEGORY = 'gift_card'
+
+/** Seeded `line_item_category` options; org-extendable (01-ui #6). */
+const LINE_ITEM_CATEGORY_OPTIONS = [
+  { label: 'Service', value: 'service', color: 'blue' },
+  { label: 'Material', value: 'material', color: 'orange' },
+  { label: 'Labor', value: 'labor', color: 'green' },
+] as const
 
 /**
  * Field definitions for the Line Item resource — quote/work-order/invoice line rows
@@ -54,7 +60,7 @@ export const LINE_ITEM_FIELDS = defineResourceFields({
     isSystem: true,
     systemAttribute: 'line_item_name',
     systemSortOrder: 'a1',
-    // Optional — the line builder creates EMPTY lines that the catalog picker
+    // Optional — the line builder creates EMPTY lines that the part picker
     // fills in afterwards.
     nullable: true,
     capabilities: {
@@ -517,7 +523,7 @@ export const LINE_ITEM_FIELDS = defineResourceFields({
     nullable: true,
     options: {
       options: [
-        ...CATALOG_CATEGORY_OPTIONS,
+        ...LINE_ITEM_CATEGORY_OPTIONS,
         { label: 'Gift card', value: LINE_ITEM_GIFT_CARD_CATEGORY, color: 'purple' },
       ],
     },
@@ -608,36 +614,6 @@ export const LINE_ITEM_FIELDS = defineResourceFields({
       creatable: true,
       updatable: true,
       configurable: false,
-    },
-  },
-
-  catalogItem: {
-    id: toFieldId('catalogItem'),
-    key: 'catalogItem',
-    label: 'Catalog Item',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'line_item_catalog_item',
-    systemSortOrder: 'aE',
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'catalog_item:lineItems' as ResourceFieldId,
-      relationshipType: 'belongs_to',
-      isInverse: false,
-    },
-    relationshipConfig: {
-      relatedEntityType: 'catalog_item',
-      relationshipType: 'belongs_to',
-      inverseName: 'Line Items',
-      inverseSystemAttribute: 'catalog_item_line_items',
     },
   },
 

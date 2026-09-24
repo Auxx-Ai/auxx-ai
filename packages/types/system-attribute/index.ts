@@ -231,7 +231,6 @@ export const SYSTEM_ATTRIBUTES = [
   'part_vendor_parts',
   'part_subparts',
   'part_used_in_assemblies',
-  'part_catalog_items', // inverse of catalog_item_part
   'part_product', // belongs_to product; inverse is product_parts
   // Selling fields (107 D3, D5): the part is the sell-side register.
   'part_sellable',
@@ -453,28 +452,14 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_sort_order',
   'line_item_visit_id',
   'line_item_source_line',
-  'line_item_catalog_item',
   'line_item_quote',
   'line_item_work_order',
   'line_item_invoice',
   'line_item_order',
-  'line_item_part', // stamped from the line's catalog item, not hand-set (08 §6.2)
+  'line_item_part', // written by the part picker (107 D6)
   'line_item_photos', // scouting/line-level photos (plan 37b §1)
   'line_item_credit_memo_lines', // inverse of credit_memo_line_line_item (accounting/10 §2.2)
   'line_item_fulfillment_lines', // inverse of fulfillment_line_line_item (plans/money/tasks/55)
-
-  // ─── Catalog Item fields ────────────────────────────────────────
-  'catalog_item_name',
-  'catalog_item_description',
-  'catalog_item_category',
-  'catalog_item_default_unit_price',
-  'catalog_item_default_unit',
-  'catalog_item_taxable',
-  'catalog_item_active',
-  'catalog_item_part',
-  'catalog_item_cost',
-  'catalog_item_markup',
-  'catalog_item_line_items', // inverse of line_item_catalog_item
 
   // ─── Product fields ─────────────────────────────────────────────
   // The family above `part` (plans/products/01-product-family.md §1).

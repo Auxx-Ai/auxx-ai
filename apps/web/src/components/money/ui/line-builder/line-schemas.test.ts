@@ -308,7 +308,6 @@ describe('reading values back from the store', () => {
     )
     expect(lineSourceRecordId({}, LINE_SCHEMAS.order)).toBeNull()
     expect(lineAttributesFor(LINE_SCHEMAS.order)).toContain('line_item_part')
-    expect(lineAttributesFor(LINE_SCHEMAS.order)).not.toContain('line_item_catalog_item')
     const written = linePatchToFieldValues(
       { partRecordId: 'part_def:p' as RecordId },
       LINE_SCHEMAS.quote

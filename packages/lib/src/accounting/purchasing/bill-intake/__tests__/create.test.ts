@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   rollups: [] as { org: string; lineIds: string[]; spec: string }[],
   rematches: [] as { vendorBillInstanceId: string }[],
   grniAccountId: 'gl_grni' as string | null,
+  partKinds: new Map<string, string>(),
   orderCurrency: null as string | null,
   orgCurrency: 'USD',
   failConvert: false,
@@ -43,6 +44,10 @@ vi.mock('../../../../cache', () => ({
       bySystemAttributes: async () => ({ purchase_order_currency: { id: 'fld_currency' } }),
     }),
   }),
+}))
+
+vi.mock('../../../../inventory/builds/build-queries', () => ({
+  readPartKinds: vi.fn(async () => h.partKinds),
 }))
 
 vi.mock('../link', () => ({
@@ -214,6 +219,7 @@ beforeEach(() => {
   h.rollups = []
   h.rematches = []
   h.grniAccountId = 'gl_grni'
+  h.partKinds = new Map()
   h.orderCurrency = null
   h.orgCurrency = 'USD'
   h.failConvert = false
@@ -384,6 +390,18 @@ describe('createBillFromIntake - the lines', () => {
       vendor_bill_line_sort_order: 0,
     })
     expect(line?.options).toEqual({ absorbInto: 'def_vendor_bill:inst_1' })
+  })
+
+  it('a line linked to a service is left uncoded: nothing was received into GRNI (107-D10)', async () => {
+    h.partKinds = new Map([['part_1', 'service']])
+    await createBillFromIntake(db, 'org_1', 'user_1', run())
+
+    const line = h.creates.find((c) => c.def === 'vendor_bill_line')
+    expect(line?.values).toHaveProperty(
+      'vendor_bill_line_purchase_order_line',
+      'def_purchase_order_line:pol_1'
+    )
+    expect(line?.values).not.toHaveProperty('vendor_bill_line_gl_account')
   })
 
   it('an unlinked line carries none of the three', async () => {

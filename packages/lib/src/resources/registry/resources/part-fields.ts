@@ -616,33 +616,6 @@ export const PART_FIELDS = defineResourceFields({
     description: 'Assemblies that use this part as a component',
   },
 
-  // Reverse relationship: catalogItems (one-to-many from catalog_item.part)
-  catalogItems: {
-    id: toFieldId('catalogItems'),
-    key: 'catalogItems',
-    label: 'Catalog Items',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'part_catalog_items',
-    systemSortOrder: 'a9',
-    showInPanel: false, // parts drawer doesn't need it v1
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'catalog_item:part' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'unlink',
-      isInverse: true,
-    },
-    description: 'Catalog (product/service) entries backed by this part',
-  },
-
   // Reverse relationship: lineItems (one-to-many from line_item.part).
   lineItems: {
     id: toFieldId('lineItems'),

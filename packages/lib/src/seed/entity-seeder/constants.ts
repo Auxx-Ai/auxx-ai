@@ -180,22 +180,13 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: true,
   },
   {
-    entityType: 'catalog_item',
-    apiSlug: 'catalog-items',
-    singular: 'Catalog Item',
-    plural: 'Catalog Items',
-    icon: 'tags',
-    color: 'teal',
-    isVisible: false, // Internal entity, managed from dispatch settings (vendor_part recipe)
-  },
-  {
     entityType: 'catalog_group',
     apiSlug: 'catalog-groups',
     singular: 'Catalog Group',
     plural: 'Catalog Groups',
     icon: 'boxes',
     color: 'teal',
-    isVisible: false, // Internal entity, managed from dispatch settings (catalog_item recipe)
+    isVisible: false, // Internal entity, managed from the Pricing page
   },
   {
     entityType: 'quote',
@@ -802,10 +793,6 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     secondaryDisplayField: 'number',
   },
   line_item: {
-    primaryDisplayField: 'name',
-    secondaryDisplayField: undefined,
-  },
-  catalog_item: {
     primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
   },

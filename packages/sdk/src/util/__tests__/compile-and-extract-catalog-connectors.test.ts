@@ -420,8 +420,8 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
   })
 
   // A constant binding writes a fixed value the provider has no column for ,
-  // e.g. "a Shopify product variant is always a `material`" onto the closed
-  // `catalog_item_category` enum, which no free-text Shopify field can fill.
+  // e.g. "a Shopify product variant is always a `finished_good`" onto the closed
+  // `part_kind` enum, which no free-text Shopify field can fill.
   it('accepts a contributing constant field bound to a target', async () => {
     const result = await runApp(`
       import { defineDataConnector } from '@auxx/sdk/data-connectors'
@@ -433,10 +433,10 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
           requiresConnection: false,
           streams: [{
             key: 'thing',
-            mappings: [{ rootPath: 'variants[]', target: { entityKind: 'catalog_item' },
+            mappings: [{ rootPath: 'variants[]', target: { entityKind: 'part' },
               fields: [
-                { sourcePath: 'title', target: 'catalog_item_name' },
-                { constant: 'material', target: 'catalog_item_category' },
+                { sourcePath: 'title', target: 'part_title' },
+                { constant: 'finished_good', target: 'part_kind' },
               ] }],
           }],
           execute: async () => ({ records: [], nextState: {} }),
@@ -457,8 +457,8 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
           requiresConnection: false,
           streams: [{
             key: 'thing',
-            mappings: [{ rootPath: '', target: { entityKind: 'catalog_item' },
-              fields: [{ constant: 'material', sourcePath: 'kind', target: 'catalog_item_category' }] }],
+            mappings: [{ rootPath: '', target: { entityKind: 'part' },
+              fields: [{ constant: 'finished_good', sourcePath: 'kind', target: 'part_kind' }] }],
           }],
           execute: async () => ({ records: [], nextState: {} }),
         })],
@@ -480,8 +480,8 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
           requiresConnection: false,
           streams: [{
             key: 'thing',
-            mappings: [{ rootPath: '', target: { entityKind: 'catalog_item' },
-              fields: [{ constant: 'material', target: 'catalog_item_category', match: true }] }],
+            mappings: [{ rootPath: '', target: { entityKind: 'part' },
+              fields: [{ constant: 'finished_good', target: 'part_kind', match: true }] }],
           }],
           execute: async () => ({ records: [], nextState: {} }),
         })],

@@ -830,6 +830,11 @@ export interface VendorBillLineInput {
   description?: string | null
   /** The `purchase_order_line` this line matches, when it names one. */
   purchaseOrderLineId?: string | null
+  /**
+   * The line's part is a `service` (107-D10). A service is never received, so a linked one has
+   * no GRNI to relieve and posts to its coded account like an unlinked line.
+   */
+  service?: boolean
   /** `vendor_bill_line_quantity_billed`. Read on a LINKED line only. */
   quantityBilled?: number | null
   /**
@@ -940,6 +945,7 @@ export interface BuiltVendorBillEntry {
  * linked line     Dr grni                billed qty x expected price
  *                 Dr/Cr ppv              line total - billed x expected, less its discount share
  * unlinked line   Dr <its coded account> line total, less its discount share (signed)
+ *   or a service  (linked or not: nothing was received, so there is no GRNI)
  * landed line     Dr <the accrual>       up to what that shipment still has accrued
  *                 Dr ppv                 the excess over it       (74 D4)
  * shipping        Dr freight_accrual     the header, one leg      (the receipt accrued it)
@@ -1014,6 +1020,7 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
   // Batched rather than fail-fast: a bill with four uncoded lines names all
   // four, so the bookkeeper fixes them in one pass instead of four.
   const uncoded: string[] = []
+  const uncodedServices: string[] = []
   const untyped: string[] = []
   const read: Array<{
     line: VendorBillLineInput
@@ -1030,7 +1037,7 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
     const amountMinor = toAmountMinor(line.lineTotalMinor, `Bill ${number} ${label}`)
     lineSumMinor += amountMinor
 
-    if (line.purchaseOrderLineId) {
+    if (line.purchaseOrderLineId && !line.service) {
       if (line.unitPriceExpectedMinor == null || line.quantityBilled == null) {
         untyped.push(label)
         continue
@@ -1044,7 +1051,7 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
     // A zero line needs no account: `buildEntry` refuses a leg that moves
     // nothing, so it is dropped rather than refused. Checked after the drop.
     if (!glAccountId && amountMinor !== 0) {
-      uncoded.push(label)
+      ;(line.purchaseOrderLineId ? uncodedServices : uncoded).push(label)
       continue
     }
     read.push({ line, label, amountMinor, grniMinor: null, glAccountId: glAccountId ?? null })
@@ -1057,6 +1064,15 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
         `${untyped.join(', ')}. Type the quantity billed, or unlink the line and code it to an ` +
         'account.',
       { vendorBillId, number, lines: untyped.join(', ') }
+    )
+  }
+
+  if (uncodedServices.length > 0) {
+    throw new UnprocessableEntityError(
+      `Bill ${number} has ${uncodedServices.length === 1 ? 'a service line' : `${uncodedServices.length} service lines`} ` +
+        `with no GL account: ${uncodedServices.join(', ')}. A service is never received, so it ` +
+        'has no goods-received accrual to relieve - code it to the expense account it belongs in.',
+      { vendorBillId, number, lines: uncodedServices.join(', ') }
     )
   }
 

@@ -140,14 +140,16 @@ type DisplayColumn = 'displayName' | 'secondaryDisplayValue' | 'avatarUrl'
 /**
  * Permanently delete a custom entity definition with full relationship +
  * connector teardown. Throws `NotFoundError` if the def doesn't exist in the
- * org and `ForbiddenError` for system entities (any non-null `entityType`).
+ * org and `ForbiddenError` for system entities (any non-null `entityType`)
+ * unless `allowSystemEntity` is set — only a data migration retiring a system def may.
  */
 export async function deleteEntityDefinitionDeep(params: {
   id: string
   organizationId: string
   db?: Database
+  allowSystemEntity?: boolean
 }): Promise<EntityDefinitionDeleteSummary> {
-  const { id, organizationId, db = database } = params
+  const { id, organizationId, db = database, allowSystemEntity = false } = params
 
   // ── Guard: exists, in-org, and is a deletable (custom) entity ──────────────
   const [def] = await db
@@ -166,7 +168,7 @@ export async function deleteEntityDefinitionDeep(params: {
   // and connector-owned defs have `null` — but a legacy owned-def create path wrote an
   // empty string, so treat '' the same as null (a truthy check), else those defs are
   // wrongly refused as "system" and can never be deleted (e.g. on connector teardown).
-  if (def.entityType) {
+  if (def.entityType && !allowSystemEntity) {
     throw new ForbiddenError('System entities cannot be deleted')
   }
 

@@ -260,6 +260,26 @@ describe('buildVendorBillEntry - the one bill entry (73 D2, D3, D5)', () => {
     expect(role(built, ACCOUNT_ROLES.ACCOUNTS_PAYABLE)?.amount).toBe(56_000)
   })
 
+  it('a service matched to an order line debits its coded account, never GRNI (107-D10)', () => {
+    const built = buildVendorBillEntry({
+      ...BILL,
+      lines: [{ ...LINKED, service: true, glAccountId: 'ei_subcontract' }],
+    })
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.GRNI)
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.PPV)
+    expect(built.entry.lines.find((line) => line.glAccountId)).toMatchObject({
+      glAccountId: 'ei_subcontract',
+      direction: 'debit',
+      amount: 50_000,
+    })
+  })
+
+  it('refuses an uncoded service matched to an order line, naming it', () => {
+    expect(() => buildVendorBillEntry({ ...BILL, lines: [{ ...LINKED, service: true }] })).toThrow(
+      /service line with no GL account: Motors/
+    )
+  })
+
   it('debits PPV when the vendor billed HIGH and credits it when LOW', () => {
     const high = buildVendorBillEntry({
       ...BILL,

@@ -14,9 +14,9 @@ import { NodeRunningStatus, WorkflowNodeType } from '../../../core/types'
  * variable on `resourceMeta.id`). Two consequences, both pinned below:
  *
  * - the nine multi-word resource labels lowercase into keys containing spaces
- *   and slashes — `<node>.knowledge base`, `<node>.product / service` — which no
- *   variable path can address, and which drift from the `kb` / `catalog_item`
- *   the picker offers;
+ *   — `<node>.knowledge base`, `<node>.purchase order` — which no variable path
+ *   can address, and which drift from the `kb` / `purchase_order` the picker
+ *   offers;
  * - on a custom entity the label write sat in the `else` branch of
  *   `isCustomResourceId(resourceType) && result`, so it only fired when NOTHING
  *   was found. A custom-entity findOne that succeeded had no expressible output
@@ -105,11 +105,11 @@ const RESOURCES = [
     plural: 'Line Items',
   },
   {
-    id: 'entitydefcuidcatalogitem0',
-    entityType: 'catalog_item',
-    apiSlug: 'catalog-items',
-    label: 'Product / Service',
-    plural: 'Products & Services',
+    id: 'entitydefcuidpurchaseorde',
+    entityType: 'purchase_order',
+    apiSlug: 'purchase-orders',
+    label: 'Purchase Order',
+    plural: 'Purchase Orders',
   },
   {
     id: 'entitydefcuidcataloggroup',

@@ -116,7 +116,6 @@ async function main() {
     line_item_name: 'VERIFY batched realtime publish',
     line_item_category: 'service',
     line_item_unit_price: 100000,
-    line_item_catalog_item: 'elppl4chr8dhnjfibwryu5to:plqbitfsnl1hpkfq0nqt18wp',
   })
   console.log(`created ${created.recordId} in ${Date.now() - t0}ms; capturing frames for 5s…`)
 
