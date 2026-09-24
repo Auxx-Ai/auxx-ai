@@ -31,8 +31,8 @@ const logger = createScopedLogger('mail-classification')
 
 /**
  * Platform models for mail classification, always on SYSTEM credentials and billed to the
- * org's AI credits — never the org's own decision or LLM default. The fallback is Limited-Use
- * safe, so Gmail orgs (where TypeSafe is blocked) land on it.
+ * org's AI credits — never the org's own decision or LLM default. Both must stay on
+ * `LIMITED_USE_SAFE_PROVIDERS`, or Gmail orgs lose one of them.
  */
 export const MAIL_CLASSIFICATION_MODEL = parseModelOverride(
   process.env.MAIL_CLASSIFICATION_MODEL_OVERRIDE,

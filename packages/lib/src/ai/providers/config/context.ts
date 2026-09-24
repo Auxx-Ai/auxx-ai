@@ -29,8 +29,10 @@ export const SYSTEM_ELIGIBLE_PROVIDERS = new Set(['anthropic', 'openai', 'typesa
  *
  * `google` belongs here only on the PAID Gemini tier; the free AI Studio tier trains on
  * prompts. Re-check before adding a provider — this list is a compliance assertion.
+ *
+ * TODO(MK): cite TypeSafe's no-training terms in plans/google-limited-use-provider-gate.md §1.
  */
-export const LIMITED_USE_SAFE_PROVIDERS = new Set(['openai', 'anthropic', 'google'])
+export const LIMITED_USE_SAFE_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'typesafe'])
 
 /**
  * Whether a provider is blocked for an org, given the org's already-resolved gate state.
