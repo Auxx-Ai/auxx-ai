@@ -118,6 +118,12 @@
       "import": "./dist/name-case.js",
       "default": "./src/name-case.ts"
     },
+    "./net": {
+      "types": "./src/net/index.ts",
+      "source": "./src/net/index.ts",
+      "import": "./dist/net/index.js",
+      "default": "./src/net/index.ts"
+    },
     "./objects": {
       "types": "./src/objects.ts",
       "source": "./src/objects.ts",
@@ -190,7 +196,8 @@
     "date-fns": "catalog:",
     "date-fns-tz": "^3.2.0",
     "libphonenumber-js": "catalog:",
-    "nanoid": "^5.1.5"
+    "nanoid": "^5.1.5",
+    "undici": "^7.22.0"
   },
   "devDependencies": {
     "@auxx/typescript-config": "workspace:*",

@@ -5,6 +5,10 @@
 // `created[gte]` floor, and advances the watermark over ALL events.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 import { genericRestConnector } from '../generic-rest'
 import { type ConnectorFetchArgs, type ConnectorYield, isConnectorCheckpoint } from '../types'
 

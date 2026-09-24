@@ -17,6 +17,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { BadRequestError } from '../errors'
+import { safeFetch } from '../net/safe-fetch'
 
 const logger = createScopedLogger('mail-unsubscribe:one-click')
 
@@ -39,12 +40,8 @@ export interface OneClickPostResult {
 /**
  * Reject anything that is not a public HTTPS endpoint.
  *
- * Hostname-literal checks only — this deliberately does NOT resolve DNS, so a
- * name that resolves to a private address still gets through (classic DNS
- * rebinding). That residual risk is accepted here: the request carries no
- * credentials and no secret, its body is a fixed 26-byte constant, and the
- * response is discarded, so the worst outcome is an unauthenticated POST to an
- * internal endpoint. Egress filtering is the right layer for the rest.
+ * Hostname-literal checks only, as a cheap early reject; the resolved address is
+ * checked at connect time by the default fetch (safeFetch).
  *
  * @throws BadRequestError — never a bare `Error`, so the router maps it to 400
  * rather than a 500 that reads like our bug.
@@ -121,10 +118,14 @@ export function assertPublicHttpsUrl(rawUrl: string): URL {
  */
 export async function postOneClickUnsubscribe(
   httpUrl: string,
-  opts: { timeoutMs?: number; fetchImpl?: typeof fetch } = {}
+  opts: {
+    timeoutMs?: number
+    fetchImpl?: (url: string, init: RequestInit) => Promise<Response>
+  } = {}
 ): Promise<OneClickPostResult> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const doFetch = opts.fetchImpl ?? fetch
+  // safeFetch re-checks each hop's resolved IP; the hostname check above can't see DNS.
+  const doFetch = opts.fetchImpl ?? ((u, init) => safeFetch(u, { ...init, timeoutMs }))
 
   let url = assertPublicHttpsUrl(httpUrl)
   const controller = new AbortController()

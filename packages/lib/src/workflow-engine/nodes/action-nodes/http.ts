@@ -17,6 +17,7 @@
 
 import { z } from 'zod'
 import { applyAuth, resolveConnectionForRuntime } from '../../../connections'
+import { type SafeFetchInit, safeFetch } from '../../../net/safe-fetch'
 import {
   coerceDefaultValue,
   ErrorStrategy,
@@ -394,7 +395,7 @@ export class HttpProcessor extends BaseNodeProcessor {
       const response = await this.executeWithRetries(
         applied.url,
         options,
-        config,
+        config.retry_config,
         contextManager,
         node.nodeId
       )
@@ -646,7 +647,7 @@ export class HttpProcessor extends BaseNodeProcessor {
     config: HttpNodeConfig,
     contextManager: ExecutionContextManager,
     node: WorkflowNode
-  ): Promise<{ url: string; options: RequestInit }> {
+  ): Promise<{ url: string; options: SafeFetchInit }> {
     // Extract URL
     const url = await this.processText(config.url, contextManager)
 
@@ -694,11 +695,11 @@ export class HttpProcessor extends BaseNodeProcessor {
       urlWithParams.searchParams.append(key, value)
     })
 
-    const options: RequestInit = {
+    const options: SafeFetchInit = {
       method: config.method.toUpperCase(),
       headers,
       body: data,
-      signal: AbortSignal.timeout(timeout),
+      timeoutMs: timeout,
       redirect: 'follow',
     }
 
@@ -942,19 +943,19 @@ export class HttpProcessor extends BaseNodeProcessor {
    */
   private async executeWithRetries(
     url: string,
-    options: RequestInit,
-    config: HttpNodeConfig,
+    options: SafeFetchInit,
+    retryConfig: HttpNodeConfig['retry_config'] | undefined,
     contextManager: ExecutionContextManager,
     nodeId: string
   ): Promise<Response> {
-    const maxRetries = config.retry_config.retry_enabled ? config.retry_config.max_retries : 0
+    const maxRetries = retryConfig?.retry_enabled ? retryConfig.max_retries : 0
     let lastError: Error | null = null
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (attempt > 0) {
           // Convert retry_interval from seconds to milliseconds and apply exponential backoff
-          const baseDelay = config.retry_config.retry_interval
+          const baseDelay = retryConfig?.retry_interval ?? 0
           const delay = baseDelay * 2 ** (attempt - 1)
           contextManager.log(
             'INFO',
@@ -965,10 +966,10 @@ export class HttpProcessor extends BaseNodeProcessor {
           await new Promise((resolve) => setTimeout(resolve, delay))
         }
 
-        const response = await fetch(url, options)
+        const response = await safeFetch(url, options)
 
         // Check if we should retry based on status code
-        if (config.retry_config.retry_enabled && response.status >= 500 && attempt < maxRetries) {
+        if (retryConfig?.retry_enabled && response.status >= 500 && attempt < maxRetries) {
           throw new Error(`Server error: ${response.status} ${response.statusText}`)
         }
 
@@ -1113,9 +1114,13 @@ export class HttpProcessor extends BaseNodeProcessor {
   /**
    * Convert preprocessed data to fetch RequestInit format
    */
-  private async buildRequestFromPreprocessed(inputs: any): Promise<RequestInit> {
+  private async buildRequestFromPreprocessed(inputs: any): Promise<SafeFetchInit> {
     const headers: Record<string, string> = { ...inputs.headers }
-    const options: RequestInit = { method: inputs.method, headers }
+    const options: SafeFetchInit = {
+      method: inputs.method,
+      headers,
+      timeoutMs: this.buildTimeout(inputs.timeout),
+    }
 
     // Add body if present
     if (inputs.body && inputs.bodyType !== 'none') {
@@ -1142,11 +1147,6 @@ export class HttpProcessor extends BaseNodeProcessor {
       headers['Authorization'] = `Basic ${credentials}`
     } else if (inputs.auth.type === 'api-key') {
       headers[inputs.auth.headerName] = inputs.auth.apiKey
-    }
-
-    // Add timeout if specified
-    if (inputs.timeout?.connect) {
-      options.signal = AbortSignal.timeout(inputs.timeout.connect * 1000)
     }
 
     return options

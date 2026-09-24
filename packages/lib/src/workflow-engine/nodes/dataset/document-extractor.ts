@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { ExtractorFactory } from '../../../datasets/extractors/extractor-factory'
 import { getFolderFile, getFolderFileContent } from '../../../files/folder-files'
 import { createS3StoragePort } from '../../../files/storage/ports'
+import { safeFetch } from '../../../net/safe-fetch'
 import { ErrorStrategy, normalizeErrorStrategy } from '../../catalog/error-handling'
 import {
   type DocumentExtractorNodeData as CatalogDocumentExtractorNodeData,
@@ -431,11 +432,11 @@ export class DocumentExtractorProcessor extends BaseNodeProcessor {
     contextManager.log('DEBUG', node.name, 'Extracting from URL', { url })
 
     // Fetch content from URL
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       headers: {
         'User-Agent': 'Auxx-DocumentExtractor/1.0',
       },
-      signal: AbortSignal.timeout(60000), // 60 second timeout
+      timeoutMs: 60_000,
     })
 
     if (!response.ok) {

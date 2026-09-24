@@ -1,4 +1,4 @@
-// packages/lib/src/net/__tests__/private-address.test.ts
+// packages/utils/src/net/__tests__/private-address.test.ts
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isBlockedAddress, isOutboundAddressAllowed } from '../private-address'

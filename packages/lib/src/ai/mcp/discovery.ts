@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { safeFetch } from '../../net/safe-fetch'
 import { withMcpSession } from './client'
 import { McpAuthError } from './errors'
 
@@ -34,7 +35,7 @@ function parseResourceMetadata(header: string | undefined): string | undefined {
 
 async function fetchJson(url: string): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    const res = await safeFetch(url, { headers: { Accept: 'application/json' } })
     if (!res.ok) return null
     return (await res.json()) as Record<string, unknown>
   } catch {
@@ -140,7 +141,7 @@ export async function registerDcrClient(opts: {
   Result<{ clientId: string; clientSecret?: string; registrationAccessToken?: string }, DcrError>
 > {
   try {
-    const res = await fetch(opts.registrationEndpoint, {
+    const res = await safeFetch(opts.registrationEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({

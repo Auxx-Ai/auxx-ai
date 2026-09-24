@@ -5,6 +5,7 @@
 // consumers previously hand-rolled. Consumers: generic-rest data connectors today;
 // the workflow HTTP node and connection-backed agent tools next.
 
+import { safeFetch } from '../../net/safe-fetch'
 import { acquireSlot, reportRetryAfter } from '../../utils/rate-limiter/pacer'
 import { connectionQuota, type Quota } from '../../utils/rate-limiter/quota'
 import { applyAuth, type RequestParts } from '../auth-apply'
@@ -235,15 +236,12 @@ export const httpTransport: HttpTransport = {
         rateLimitWaitMs += await acquireSlot(quota, { signal: req.signal })
       }
 
-      // Combine the caller's cancellation with the per-attempt timeout.
-      const timeout = AbortSignal.timeout(req.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-      const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout
-
-      const res = await fetch(parts.url, {
+      const res = await safeFetch(parts.url, {
         method: req.method,
         headers: parts.headers,
         body,
-        signal,
+        signal: req.signal,
+        timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         redirect: 'follow',
       })
       const text = await res.text()

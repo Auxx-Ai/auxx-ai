@@ -13,6 +13,7 @@ import {
   uploadSessionRedis,
 } from '../files/upload/session'
 import { createScopedLogger } from '../logger'
+import { safeFetch } from '../net/safe-fetch'
 
 const logger = createScopedLogger('user-avatar-service')
 
@@ -40,7 +41,7 @@ export class UserAvatarService {
       logger.info('Starting avatar download from OAuth provider', { userId, imageUrl })
 
       // 1. Download image from URL
-      const response = await fetch(imageUrl)
+      const response = await safeFetch(imageUrl, { timeoutMs: 10_000 })
       if (!response.ok) {
         logger.error('Failed to download image', { imageUrl, status: response.status })
         return null

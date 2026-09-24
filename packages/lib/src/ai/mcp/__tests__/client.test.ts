@@ -1,6 +1,7 @@
 // packages/lib/src/ai/mcp/__tests__/client.test.ts
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BlockedAddressError } from '../../../net/safe-fetch'
 import { mcpCallTool, mcpListTools } from '../client'
 import { McpAuthError } from '../errors'
 import { type MockMcpServerHandle, startMockMcpServer } from '../testing/mock-server'
@@ -9,7 +10,15 @@ describe('mcp client', () => {
   let server: MockMcpServerHandle
 
   afterEach(async () => {
+    vi.unstubAllEnvs()
     await server?.close()
+  })
+
+  it('refuses a loopback endpoint in production before the server sees a request', async () => {
+    server = await startMockMcpServer()
+    vi.stubEnv('NODE_ENV', 'production')
+    await expect(mcpListTools({ endpoint: server.url })).rejects.toBeInstanceOf(BlockedAddressError)
+    expect(server.calls).toEqual([])
   })
 
   it('lists tools with annotations preserved', async () => {

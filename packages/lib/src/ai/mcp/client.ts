@@ -6,9 +6,12 @@
 import type { McpToolDescriptor } from '@auxx/database'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { safeFetch } from '../../net/safe-fetch'
 import { McpAuthError } from './errors'
 
 const CLIENT_INFO = { name: 'auxx', version: '1.0.0' }
+/** Backstop only: the SDK aborts its own requests, and SSE response streams outlive safeFetch's 30 s default. */
+const MCP_FETCH_TIMEOUT_MS = 10 * 60_000
 
 export interface McpSessionOpts {
   endpoint: string
@@ -31,7 +34,8 @@ export async function withMcpSession<T>(
   let wwwAuthenticate: string | undefined
 
   const wrappedFetch: typeof fetch = async (input, init) => {
-    const res = await fetch(input, init)
+    const url = input instanceof Request ? input.url : input
+    const res = await safeFetch(url, { ...init, timeoutMs: MCP_FETCH_TIMEOUT_MS })
     if (res.status === 401 || res.status === 403) {
       authStatus = res.status
       wwwAuthenticate = res.headers.get('www-authenticate') ?? undefined

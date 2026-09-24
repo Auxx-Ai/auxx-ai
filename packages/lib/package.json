@@ -1240,6 +1240,12 @@
       "import": "./dist/messages/index.mjs",
       "default": "./src/messages/index.ts"
     },
+    "./net": {
+      "types": "./src/net/index.ts",
+      "source": "./src/net/index.ts",
+      "import": "./dist/net/index.mjs",
+      "default": "./src/net/index.ts"
+    },
     "./notifications": {
       "types": "./src/notifications/index.ts",
       "source": "./src/notifications/index.ts",
