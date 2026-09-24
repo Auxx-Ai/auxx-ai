@@ -149,7 +149,7 @@ export function BankAccountsList({
   )
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
+    <div className='flex min-h-full flex-col gap-3 p-3'>
       {/* 🛑 ONE control for two routes, the `chart-list.tsx` shape. Two sibling
           buttons squeeze `InputSearch` to about forty pixels, which is what
           forced this toolbar across two rows before. */}

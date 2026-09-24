@@ -94,7 +94,7 @@ export function PaymentGatewaysList({
   const routedCount = observedCount - unrouted.length
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
+    <div className='flex min-h-full flex-col gap-3 p-3'>
       {/* The handles census, as a collapsible group - `role-map-list.tsx`'s
           "{mapped} of {needed} mapped" group, same shape and same reason.
           🛑 A row renders in EVERY state, including pending and empty. This

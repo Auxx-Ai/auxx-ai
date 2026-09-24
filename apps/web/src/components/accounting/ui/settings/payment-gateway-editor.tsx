@@ -97,8 +97,12 @@ interface PaymentGatewayEditorProps {
 export function PaymentGatewayEditor({ gateway, ...rest }: PaymentGatewayEditorProps) {
   if (!gateway) {
     return (
-      <div className='p-4 text-muted-foreground text-sm'>
-        Select a gateway to map it to your chart, or add one.
+      <div className='p-3'>
+        <EmptySection
+          orientation='horizontal'
+          icon={<CreditCard className='size-4' />}
+          title='Select a gateway to map it to your chart, or add one.'
+        />
       </div>
     )
   }
