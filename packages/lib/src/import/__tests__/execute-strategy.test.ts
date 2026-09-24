@@ -32,8 +32,10 @@ const { executeStrategy } = await import('../execution/execute-strategy')
 
 import { UniqueValueConflictError } from '../../errors'
 import type { BatchRecordData, BulkCreateRecordResult } from '../execution/execute-batch'
+import { resolutionKey } from '../hashing/resolution-key'
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlanStrategy, StrategyType } from '../types/plan'
+import type { ValueResolution } from '../types/resolution'
 
 const getCachedCustomFieldsMock = vi.mocked(getCachedCustomFields)
 const getBatchRowDataMock = vi.mocked(getBatchRowData)
@@ -125,6 +127,7 @@ function run(
     rowData?: Map<number, Record<number, string>>
     createRecord?: (data: BatchRecordData) => Promise<{ id: string }>
     bulkCreate?: (records: BatchRecordData[]) => Promise<BulkCreateRecordResult[]>
+    resolutions?: Map<string, ValueResolution>
   } = {}
 ) {
   const planRows = options.rows ?? [{ id: 'pr-1', rowIndex: 0, existingRecordId: 'inst-1' }]
@@ -149,7 +152,7 @@ function run(
       jobId: 'job-1',
       entityDefinitionId: 'def-part',
       mappings: options.mappings ?? MAPPINGS,
-      resolutions: new Map(),
+      resolutions: options.resolutions ?? new Map(),
       createRecord,
       bulkCreate: options.bulkCreate,
       updateRecord,
@@ -460,5 +463,45 @@ describe('executeStrategy shared storage batch creation', () => {
     expect(params).toContain('created-A')
     expect(params).toContain('created-C')
     expect(params).toContain('Invalid source amount')
+  })
+})
+
+describe('executeStrategy, a failed image download', () => {
+  it('updates the other columns, leaves the image alone, and warns the row', async () => {
+    const url = 'https://cdn.example.com/a.png'
+    const image: ImportMappingProperty = {
+      ...mapping(3, 'cf-image', 'image'),
+      customFieldId: null,
+      targetFieldKey: 'product_image',
+      sourceColumnName: 'Image',
+      resolutionType: 'file:url',
+    }
+    const resolutions = new Map<string, ValueResolution>([
+      [
+        resolutionKey(image.id, url),
+        {
+          id: 'res-img',
+          importJobPropertyId: 'jp-img',
+          hashedValue: 'h',
+          rawValue: url,
+          cellCount: 1,
+          resolvedValues: [{ type: 'error', error: 'Fetch failed: HTTP 404' }],
+          isValid: false,
+          errorMessage: 'Fetch failed: HTTP 404',
+        },
+      ],
+    ])
+    const { updateRecord, executed, result } = run('update', {
+      mappings: [...MAPPINGS, image],
+      rowData: new Map([[0, { 0: 'M400L', 1: 'restocked', 2: '', 3: url }]]),
+      resolutions,
+    })
+    const outcome = await result
+
+    expect(updateRecord.mock.calls[0]![1].standardFields).not.toHaveProperty('product_image')
+    expect(outcome.warnings).toBe(1)
+    expect(executed.flatMap((s) => s.params)).toContain(
+      'Column "Image": Image not imported: Fetch failed: HTTP 404'
+    )
   })
 })

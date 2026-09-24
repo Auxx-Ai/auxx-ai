@@ -13,7 +13,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { safeFetch } from '../../net/safe-fetch'
 import { UserAvatarService } from '../user-avatar-service'
+
+vi.mock('../../net/safe-fetch', () => ({ safeFetch: vi.fn() }))
+// Partial Response stubs; the service only reads ok/status/headers/arrayBuffer.
+const fetchMock = vi.mocked(safeFetch as unknown as () => Promise<unknown>)
 
 // Mock dependencies
 const mockLimit = vi.fn()
@@ -128,7 +133,7 @@ describe('UserAvatarService', () => {
   describe('downloadAndCreateAvatarAsset', () => {
     it('should successfully download and create avatar asset', async () => {
       // Mock fetch response
-      global.fetch = vi.fn().mockResolvedValue({
+      fetchMock.mockResolvedValue({
         ok: true,
         headers: {
           get: vi.fn().mockReturnValue('image/jpeg'),
@@ -143,11 +148,13 @@ describe('UserAvatarService', () => {
       )
 
       expect(result).toBe('test-asset-id')
-      expect(global.fetch).toHaveBeenCalledWith('https://example.com/avatar.jpg')
+      expect(safeFetch).toHaveBeenCalledWith('https://example.com/avatar.jpg', {
+        timeoutMs: 10_000,
+      })
     })
 
     it('should return null if image download fails', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
+      fetchMock.mockResolvedValue({
         ok: false,
         status: 404,
       })
@@ -165,7 +172,7 @@ describe('UserAvatarService', () => {
       // Mock a 6MB image (over the 5MB limit)
       const largeBuffer = new ArrayBuffer(6 * 1024 * 1024)
 
-      global.fetch = vi.fn().mockResolvedValue({
+      fetchMock.mockResolvedValue({
         ok: true,
         headers: {
           get: vi.fn().mockReturnValue('image/jpeg'),

@@ -3,6 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { McpAuthError } from '../errors'
 
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 /** Set per-test to control the no-auth probe (`withMcpSession`). */
 const stubs = {
   probeImpl: undefined as undefined | (() => unknown),

@@ -4,6 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db, schema } from '@auxx/database'
 import { saveMcpConnection, syncMcpTools } from '@auxx/lib/ai/mcp'
 import { onCacheEvent } from '@auxx/lib/cache'
+import { safeFetch } from '@auxx/lib/net'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -127,7 +128,7 @@ export async function GET(
     if (resolved.clientSecret) tokenRequestBody.client_secret = resolved.clientSecret
     if (metadata.codeVerifier) tokenRequestBody.code_verifier = metadata.codeVerifier as string
 
-    const tokenResponse = await fetch(resolved.accessTokenUrl, {
+    const tokenResponse = await safeFetch(resolved.accessTokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

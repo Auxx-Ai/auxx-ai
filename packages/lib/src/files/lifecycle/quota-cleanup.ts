@@ -21,6 +21,7 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { UsageLimitError } from '../../errors'
 import { FeaturePermissionService } from '../../permissions/feature-permission-service'
 import { FeatureKey } from '../../permissions/types'
 import type { FilesCtx } from '../ctx'
@@ -194,6 +195,23 @@ export async function calculateStorageUsage(ctx: FilesCtx): Promise<StorageQuota
     percentUsed: quotaLimit === UNLIMITED ? 0 : Math.round((totalUsed / quotaLimit) * 100),
     fileCount,
   }
+}
+
+/**
+ * Throws {@link UsageLimitError} (403, the upload route's `USAGE_LIMIT`) when storing `bytes`
+ * more would take the org past its hard storage limit. One SUM query per call; batch callers
+ * should check once and track a running total.
+ */
+export async function assertStorageQuota(ctx: FilesCtx, bytes: number): Promise<void> {
+  const { totalUsed, quotaLimit } = await calculateStorageUsage(ctx)
+  if (quotaLimit === UNLIMITED || totalUsed + bytes <= quotaLimit) return
+  const toGb = (n: number) => Math.round((n / BYTES_PER_GB) * 100) / 100
+  throw new UsageLimitError({
+    metric: 'storageGb',
+    current: toGb(totalUsed),
+    limit: toGb(quotaLimit),
+    message: `You have reached your storage limit. Usage: ${toGb(totalUsed)}GB/${toGb(quotaLimit)}GB. Upgrade your plan for more storage.`,
+  })
 }
 
 /**

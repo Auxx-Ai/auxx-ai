@@ -18,6 +18,7 @@ export {
 } from './date'
 export { resolveDomain } from './domain'
 export { resolveEmail } from './email'
+export { resolveFileUrl } from './file'
 export { resolveMultiselectSplit } from './multiselect'
 export { resolveDecimal, resolveInteger } from './number'
 export { resolvePhone } from './phone'

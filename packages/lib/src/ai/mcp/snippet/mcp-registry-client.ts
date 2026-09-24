@@ -7,8 +7,8 @@
 // description/icon enrichment lifted from the matched server.json.
 
 import { createScopedLogger } from '@auxx/logger'
+import { safeFetch } from '../../../net/safe-fetch'
 import { stripPackageAffixes } from './naming'
-import { assertSafeOutboundUrl } from './ssrf'
 
 const logger = createScopedLogger('mcp-registry')
 const REGISTRY_BASE = 'https://registry.modelcontextprotocol.io'
@@ -92,20 +92,13 @@ function pickRemote(
 async function searchRegistry(search: string): Promise<RegistryServer[] | null> {
   const url = `${REGISTRY_BASE}/v0.1/servers?search=${encodeURIComponent(search)}&version=latest`
   try {
-    await assertSafeOutboundUrl(url)
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-    try {
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      })
-      if (!res.ok) return null
-      const body = (await res.json()) as { servers?: RegistryServer[] }
-      return body.servers ?? []
-    } finally {
-      clearTimeout(timer)
-    }
+    const res = await safeFetch(url, {
+      headers: { Accept: 'application/json' },
+      timeoutMs: TIMEOUT_MS,
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { servers?: RegistryServer[] }
+    return body.servers ?? []
   } catch (error) {
     logger.warn('Registry search failed', {
       search,

@@ -4,6 +4,10 @@
 // and an unresolved token fails the fetch before any HTTP call.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 import { genericRestConnector } from '../generic-rest'
 import type { ConnectorFetchArgs } from '../types'
 

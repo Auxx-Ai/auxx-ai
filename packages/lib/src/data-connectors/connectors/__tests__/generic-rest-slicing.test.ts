@@ -4,6 +4,10 @@
 // throttle error when the transport is told not to sleep (H1).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 import { genericRestConnector } from '../generic-rest'
 import {
   type ConnectorFetchArgs,

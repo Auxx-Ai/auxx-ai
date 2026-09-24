@@ -39,6 +39,7 @@ import { startProviderSyncWorker } from './worker-definitions/provider-sync-work
 import { startPurchaseIntakeWorker } from './worker-definitions/purchase-intake-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
+import { startRemoteImageWorker } from './worker-definitions/remote-image-worker'
 import { startReturnIntakeWorker } from './worker-definitions/return-intake-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
@@ -162,6 +163,9 @@ export async function startWorkers() {
   // from the events worker (plans/company/v4-enrichment-doors.md §6)
   const enrichmentWorker = startEnrichmentWorker()
 
+  // Connector image-URL fetches (plans/remote-image-ingest/03-connector.md §3)
+  const remoteImageWorker = startRemoteImageWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -202,6 +206,7 @@ export async function startWorkers() {
     purchaseIntakeWorker,
     returnIntakeWorker,
     enrichmentWorker,
+    remoteImageWorker,
   ]
 
   return Promise.all(workers)

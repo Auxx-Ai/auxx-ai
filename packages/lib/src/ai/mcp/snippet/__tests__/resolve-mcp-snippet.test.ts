@@ -19,20 +19,12 @@ vi.mock('../mcp-registry-client', () => ({
   lookupRegistryRemote: (...a: unknown[]) => registryLookup(...a),
 }))
 
-// Make the SSRF guard a no-op except for an explicit private-IP host used in one test.
-vi.mock('../ssrf', () => ({
-  assertSafeOutboundUrl: async (url: string) => {
-    if (url.includes('10.0.0.1'))
-      throw new Error('Refusing to connect to a private address (10.0.0.1)')
-    return new URL(url)
-  },
-}))
-
 // Skip the favicon network hop.
-vi.stubGlobal(
-  'fetch',
-  vi.fn(async () => ({ ok: false, headers: { get: () => null } }) as unknown as Response)
-)
+vi.mock('../../../../net/safe-fetch', () => ({
+  safeFetch: vi.fn(
+    async () => ({ ok: false, headers: { get: () => null } }) as unknown as Response
+  ),
+}))
 
 import { resolveMcpSnippet } from '../resolve-mcp-snippet'
 
@@ -143,9 +135,21 @@ describe('resolveMcpSnippet', () => {
     expect(result).toMatchObject({ kind: 'remote', curatedServerId: 'curated-1' })
   })
 
-  it('SSRF rejection of a private-IP URL → unresolved', async () => {
+  it('a plain-http URL is rejected before any probe', async () => {
+    const [result] = await resolveMcpSnippet('http://mcp.example.com/mcp')
+    expect(result).toMatchObject({ kind: 'unresolved', reason: 'Only https:// URLs are allowed' })
+    expect(discover).not.toHaveBeenCalled()
+  })
+
+  it('a probe refused at connect time (private address) → unresolved with the reason', async () => {
+    discover.mockResolvedValue(
+      err({
+        code: 'PROBE_FAILED',
+        message: 'Refusing to connect to a private or reserved address (10.0.0.1)',
+      })
+    )
     const [result] = await resolveMcpSnippet('https://10.0.0.1/mcp')
     expect(result?.kind).toBe('unresolved')
-    expect(discover).not.toHaveBeenCalled()
+    expect(result && 'reason' in result ? result.reason : '').toContain('private or reserved')
   })
 })

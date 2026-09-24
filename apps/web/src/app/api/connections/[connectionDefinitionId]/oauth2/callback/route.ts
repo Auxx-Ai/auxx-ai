@@ -10,6 +10,7 @@ import {
   saveConnection,
   splitConnectionVariablesBySecrecy,
 } from '@auxx/lib/connections'
+import { safeFetch } from '@auxx/lib/net'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -221,7 +222,7 @@ export async function GET(
       tokenUrl: connDef.oauth2AccessTokenUrl,
     })
 
-    const tokenResponse = await fetch(resolved.accessTokenUrl, {
+    const tokenResponse = await safeFetch(resolved.accessTokenUrl, {
       method: 'POST',
       headers: tokenRequestHeaders,
       body: new URLSearchParams(tokenRequestBody).toString(),

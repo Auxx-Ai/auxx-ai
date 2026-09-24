@@ -84,3 +84,77 @@ describe('buildRecordData', () => {
     expect(standardFields).toEqual({ unit_price: 1200, minimum_quantity: 12 })
   })
 })
+
+describe('buildRecordData on a file:url column', () => {
+  const image = mapping({
+    id: 'prop-img',
+    sourceColumnName: 'Image',
+    targetFieldKey: 'product_image',
+    resolutionType: 'file:url',
+  })
+  const url = 'https://cdn.example.com/a.png'
+  const withResolution = (resolved: ValueResolution['resolvedValues'], errorMessage?: string) =>
+    new Map<string, ValueResolution>([
+      [
+        resolutionKey('prop-img', url),
+        {
+          id: 'res-img',
+          importJobPropertyId: 'jp-img',
+          hashedValue: hashValue(url),
+          rawValue: url,
+          cellCount: 1,
+          resolvedValues: resolved,
+          isValid: resolved[0]?.type !== 'error',
+          errorMessage,
+        },
+      ],
+    ])
+
+  it('writes a downloaded image as a one-element { ref, sourceUrl } array', () => {
+    const value = { ref: 'asset:a1', sourceUrl: url }
+    const built = buildRecordData({ 0: url }, [image], withResolution([{ type: 'value', value }]))
+    expect(built.standardFields).toEqual({ product_image: [value] })
+    expect(built.warnings).toEqual([])
+  })
+
+  it('omits the key on a failed download and reports it, so an update keeps the stored image', () => {
+    const built = buildRecordData(
+      { 0: url },
+      [image],
+      withResolution([{ type: 'error', error: 'Fetch failed: HTTP 404' }], 'Fetch failed: HTTP 404')
+    )
+    expect(built.standardFields).not.toHaveProperty('product_image')
+    expect(built.warnings).toEqual(['Column "Image": Image not imported: Fetch failed: HTTP 404'])
+  })
+
+  it('omits the key for a URL the resolver skipped, without repeating the planning warning', () => {
+    const built = buildRecordData(
+      { 0: url },
+      [image],
+      withResolution([
+        { type: 'warning', value: null, warning: 'Invalid image URL — image skipped: x' },
+      ])
+    )
+    expect(built.standardFields).not.toHaveProperty('product_image')
+    expect(built.warnings).toEqual([])
+  })
+
+  it('never writes an undownloaded URL string', () => {
+    const built = buildRecordData(
+      { 0: url },
+      [image],
+      withResolution([{ type: 'create', value: url, fileFetch: { url } }])
+    )
+    expect(built.standardFields).not.toHaveProperty('product_image')
+    expect(built.warnings).toHaveLength(1)
+  })
+
+  it('passes a blank cell through as null and a skipped value silently', () => {
+    expect(buildRecordData({ 0: '' }, [image], new Map()).standardFields).toEqual({
+      product_image: null,
+    })
+    const skipped = buildRecordData({ 0: url }, [image], withResolution([]))
+    expect(skipped.standardFields).toEqual({})
+    expect(skipped.warnings).toEqual([])
+  })
+})

@@ -375,6 +375,8 @@ export {
   type TranscribeRecordingJobData,
   transcribeRecordingJob,
 } from './recording'
+// Remote image (connector image URLs; plans/remote-image-ingest/03-connector.md §4)
+export { fetchRecordImageJob } from './remote-image/fetch-record-image-job'
 // Returns (photographed return labels → draft returns; plans/money/tasks/57 §3)
 export {
   enqueueReturnIntake,

@@ -267,10 +267,13 @@ export async function executeStrategy(
     // Build batch records
     const batchRecords: BatchRecord[] = []
     const noOpRows: typeof batchRows = []
+    const buildWarnings = new Map<number, string[]>()
 
     for (const row of batchRows) {
       const rowData = rawData.get(row.rowIndex) || {}
-      let { standardFields, customFields } = buildRecordData(rowData, mappings, resolutions)
+      const built = buildRecordData(rowData, mappings, resolutions)
+      let { standardFields, customFields } = built
+      if (built.warnings.length > 0) buildWarnings.set(row.rowIndex, built.warnings)
 
       if (isUpdate) {
         const policy = {
@@ -301,6 +304,10 @@ export async function executeStrategy(
     // Close out the no-ops: completed, unwritten, warned, and not counted as
     // executed. They still reach a terminal ImportPlanRow status so the plan
     // stays fully accounted for.
+    const withBuildWarnings = (rowIndex: number, warning: string | undefined) =>
+      [...(buildWarnings.get(rowIndex) ?? []), ...(warning ? [warning] : [])].join('; ') ||
+      undefined
+
     await flushPlanRowUpdates(
       db,
       noOpRows.map((row) => ({
@@ -308,14 +315,14 @@ export async function executeStrategy(
         status: 'completed' as const,
         resultRecordId: null,
         errorMessage: null,
-        warningMessage: NO_OP_WARNING,
+        warningMessage: withBuildWarnings(row.rowIndex, NO_OP_WARNING)!,
       }))
     )
 
     for (const row of noOpRows) {
       noops++
       warned++
-      await onRowWarning?.(row.rowIndex, NO_OP_WARNING)
+      await onRowWarning?.(row.rowIndex, withBuildWarnings(row.rowIndex, NO_OP_WARNING)!)
     }
 
     // Execute batch
@@ -335,6 +342,9 @@ export async function executeStrategy(
     // Update plan row statuses, one statement for the whole batch.
     const rowUpdates: PlanRowUpdate[] = []
     for (const rowResult of result.results) {
+      if (rowResult.success) {
+        rowResult.warning = withBuildWarnings(rowResult.rowIndex, rowResult.warning)
+      }
       const planRow = batchRows.find((r) => r.rowIndex === rowResult.rowIndex)
       if (!planRow) continue
       rowUpdates.push({

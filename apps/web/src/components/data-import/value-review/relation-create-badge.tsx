@@ -5,7 +5,7 @@
 import type { RelationCreateRequest } from '@auxx/lib/import/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { EntityIcon } from '@auxx/ui/components/icons'
-import { Plus } from 'lucide-react'
+import { Download, Plus } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResource } from '~/components/resources'
 
@@ -14,6 +14,8 @@ export type ValueCreateDescriptor =
   | { kind: 'relation'; request: RelationCreateRequest }
   /** A select/tags option; `label` is the trimmed cell text to be minted. */
   | { kind: 'option'; label: string }
+  /** An image URL downloaded at execution; never fetched or rendered by the browser. */
+  | { kind: 'file'; url: string }
 
 interface ValueCreateBadgeProps {
   create: ValueCreateDescriptor
@@ -56,6 +58,19 @@ function RelationCreateContent({ request }: { request: RelationCreateRequest }) 
 export function ValueCreateBadge({ create }: ValueCreateBadgeProps) {
   if (create.kind === 'relation') {
     return <RelationCreateContent request={create.request} />
+  }
+
+  if (create.kind === 'file') {
+    return (
+      <Tooltip content={`This image will be downloaded when the import runs: ${create.url}`}>
+        <span className='inline-flex'>
+          <Badge variant='blue' size='sm' className='shrink-0'>
+            <Download />
+            Will download
+          </Badge>
+        </span>
+      </Tooltip>
+    )
   }
 
   return (

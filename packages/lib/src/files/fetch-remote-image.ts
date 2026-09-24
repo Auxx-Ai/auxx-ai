@@ -2,23 +2,15 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { AuxxError, BadRequestError } from '../errors'
+import { safeFetch } from '../net/safe-fetch'
 import { createAssetWithVersion } from './assets'
 import { detectImageType } from './core/image-processing'
+import { assertStorageQuota } from './lifecycle/quota-cleanup'
 import { createStorageManager } from './storage/storage-manager'
 import { ALLOWED_IMAGE_TYPES } from './thumbnails/presets'
 
-/**
- * Shared "fetch a remote image URL → store it as a MediaAsset" pipeline.
- *
- * Used by the company-website enrichment trigger (homepage logo candidates)
- * and by the extension's avatar upload endpoint (LinkedIn profile / company
- * avatar URLs captured during Save to Auxx).
- *
- * Flow: SSRF-guard the URL → fetch with timeout → sniff the real image type
- * from magic bytes and enforce the thumbnailable allowlist → upload bytes to S3
- * → create StorageLocation → create MediaAsset+Version → return `asset:<id>`
- * ref consumable by FILE fields.
- */
+// Fetch a remote image URL through the SSRF guard and store it as a PUBLIC `SYSTEM_BLOB` MediaAsset.
 
 const logger = createScopedLogger('files:fetch-remote-image')
 
@@ -27,15 +19,7 @@ const DEFAULT_MAX_BYTES = 5_000_000
 const USER_AGENT = 'AuxxAi-Enrichment/1.0 (+https://auxx.ai/bot)'
 
 export interface FetchRemoteImageInput {
-  /**
-   * The client the `MediaAsset` + version write runs on.
-   *
-   * Required, not defaulted: this used to construct
-   * `createMediaAssetService(organizationId, userId)`, whose `db` defaulted to
-   * the process-wide pool, so a caller already inside a transaction wrote
-   * outside it. Routers pass `ctx.db`; background triggers pass the pool
-   * explicitly.
-   */
+  /** The client the `MediaAsset` + version write runs on; pass `ctx.db` inside a transaction. */
   db: Database | Transaction
   url: string
   organizationId: string
@@ -48,8 +32,12 @@ export interface FetchRemoteImageInput {
   name: string
   /** Hard cap on fetched bytes. Defaults to 5 MB. */
   maxBytes?: number
-  /** Fetch timeout. Defaults to 10 s. */
+  /** Whole-request timeout. Defaults to 10 s. */
   timeoutMs?: number
+  /** SVG can carry external references, so it is refused unless the caller opts in. */
+  allowSvg?: boolean
+  /** For callers that already checked the storage quota once for a batch. */
+  skipQuotaCheck?: boolean
 }
 
 export interface FetchRemoteImageResult {
@@ -58,6 +46,33 @@ export interface FetchRemoteImageResult {
   ref: string
   mimeType: string
   size: number
+}
+
+/**
+ * Whether a `fetchAndStoreRemoteImage` failure is worth retrying: timeouts, 5xx and network
+ * errors are; `AuxxError`s (blocked, too large, not an image, 4xx, quota) are not.
+ */
+export function isRetryableFetchError(error: unknown): boolean {
+  return !(error instanceof AuxxError)
+}
+
+/** Rewrites Dropbox and Google Drive share links, which serve an HTML page, to their direct-download form. */
+export function normalizeImageUrl(url: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(url.trim())
+  } catch {
+    return url
+  }
+  const host = parsed.hostname.toLowerCase()
+  if (host === 'www.dropbox.com' || host === 'dropbox.com') {
+    parsed.searchParams.delete('dl')
+    parsed.searchParams.set('raw', '1')
+    return parsed.toString()
+  }
+  const driveId = host === 'drive.google.com' && parsed.pathname.match(/^\/file\/d\/([^/]+)/)?.[1]
+  if (driveId) return `https://drive.google.com/uc?export=download&id=${driveId}`
+  return url
 }
 
 export async function fetchAndStoreRemoteImage(
@@ -73,35 +88,39 @@ export async function fetchAndStoreRemoteImage(
     name,
     maxBytes = DEFAULT_MAX_BYTES,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    allowSvg = false,
+    skipQuotaCheck = false,
   } = input
 
-  assertPublicHost(url)
-
-  const res = await fetchWithTimeout(url, timeoutMs)
+  const res = await safeFetch(normalizeImageUrl(url), {
+    timeoutMs,
+    redirect: 'follow',
+    headers: { 'user-agent': USER_AGENT },
+  })
   if (!res.ok) {
-    throw new Error(`Fetch failed: HTTP ${res.status}`)
+    await res.body?.cancel()
+    const retryable = res.status >= 500 || res.status === 408 || res.status === 429
+    const message = `Fetch failed: HTTP ${res.status}`
+    throw retryable ? new Error(message) : new BadRequestError(message)
   }
 
-  const buf = Buffer.from(await res.arrayBuffer())
+  const buf = await readCapped(res, maxBytes)
   if (buf.byteLength === 0) {
-    throw new Error('Empty response body')
-  }
-  if (buf.byteLength > maxBytes) {
-    throw new Error(`Response too large: ${buf.byteLength} > ${maxBytes}`)
+    throw new BadRequestError('Empty response body')
   }
 
-  // Determine the real image type from the bytes rather than trusting the
-  // Content-Type header — many `/favicon.ico` URLs serve PNG bytes labelled
-  // `image/x-icon` (and vice versa). Uses magic bytes with an SVG text-sniff
-  // fallback (SVG has none). Only accept types the thumbnail pipeline can
-  // render — its `normalizeImageSource` step decodes ICO and rasterizes SVG to
-  // PNG, so both are in the allowlist even though sharp can't read them raw.
+  // Sniff the bytes rather than trusting Content-Type: favicons routinely mislabel PNG/ICO.
   const mimeType = await detectImageType(buf)
-  if (
-    !mimeType ||
-    !ALLOWED_IMAGE_TYPES.includes(mimeType as (typeof ALLOWED_IMAGE_TYPES)[number])
-  ) {
-    throw new Error(`Unsupported image type: ${mimeType ?? 'undetected'}`)
+  const allowed =
+    !!mimeType &&
+    ALLOWED_IMAGE_TYPES.includes(mimeType as (typeof ALLOWED_IMAGE_TYPES)[number]) &&
+    (allowSvg || mimeType !== 'image/svg+xml')
+  if (!allowed) {
+    throw new BadRequestError(`Unsupported image type: ${mimeType ?? 'undetected'}`)
+  }
+
+  if (!skipQuotaCheck) {
+    await assertStorageQuota({ db, organizationId }, buf.byteLength)
   }
 
   const storageManager = createStorageManager(organizationId)
@@ -154,18 +173,30 @@ export async function fetchAndStoreRemoteImage(
   }
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: { 'user-agent': USER_AGENT },
-    })
-  } finally {
-    clearTimeout(timer)
+/** Reads the body, refusing on the declared length and again once the running total passes `maxBytes`. */
+async function readCapped(res: Response, maxBytes: number): Promise<Buffer> {
+  const tooLarge = () => new BadRequestError(`Response too large: over ${maxBytes} bytes`)
+  const declared = Number(res.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await res.body?.cancel()
+    throw tooLarge()
   }
+  if (!res.body) return Buffer.alloc(0)
+
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel()
+      throw tooLarge()
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks)
 }
 
 function extensionFor(contentType: string): string {
@@ -194,52 +225,4 @@ function cryptoRandomHex(): string {
   return Math.floor(Math.random() * 0xffffffff)
     .toString(16)
     .padStart(8, '0')
-}
-
-/**
- * Reject URLs that resolve to private/loopback/link-local IP addresses to
- * avoid server-side request forgery against internal services.
- * Also rejects non-http(s) protocols and bare hostnames that are explicitly
- * private (localhost, *.local, *.internal).
- *
- * Exported so other server-side fetch paths (e.g. website metadata scrapes)
- * can share the same allowlist.
- */
-export function assertPublicHost(urlStr: string): void {
-  const url = new URL(urlStr)
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error(`Unsupported protocol: ${url.protocol}`)
-  }
-
-  const hostname = url.hostname.toLowerCase()
-  if (
-    hostname === 'localhost' ||
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname === '0.0.0.0'
-  ) {
-    throw new Error(`Refusing to fetch private hostname: ${hostname}`)
-  }
-
-  // Literal IPv4 check
-  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (ipv4) {
-    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])]
-    const isPrivate =
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      a === 0 ||
-      a >= 224
-    if (isPrivate) {
-      throw new Error(`Refusing to fetch private IP: ${hostname}`)
-    }
-  }
-
-  // Literal IPv6 loopback / link-local
-  if (hostname.startsWith('[::1]') || hostname === '::1' || hostname.startsWith('fe80:')) {
-    throw new Error(`Refusing to fetch private IPv6: ${hostname}`)
-  }
 }

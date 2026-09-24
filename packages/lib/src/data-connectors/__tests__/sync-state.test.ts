@@ -71,6 +71,10 @@ describe('wouldHealField', () => {
     expect(wouldHealField(binding({ mergeStrategy: 'overwrite' }), multi)).toBe(false)
   })
 
+  it('a FILE field is never healed (the remote-image job writes it without the marker)', () => {
+    expect(wouldHealField(binding({ mergeStrategy: 'overwrite' }), { type: 'FILE' })).toBe(false)
+  })
+
   it('ignore and the other conservative strategies do not heal', () => {
     expect(wouldHealField(binding({ mergeStrategy: 'ignore' }), scalar)).toBe(false)
     expect(wouldHealField(binding({ mergeStrategy: 'connector_owned_only' }), scalar)).toBe(false)

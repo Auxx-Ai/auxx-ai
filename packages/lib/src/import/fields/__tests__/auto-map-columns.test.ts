@@ -162,3 +162,14 @@ describe('autoMapColumns — resources that already worked keep working', () => 
     })
   })
 })
+
+describe('autoMapColumns, image columns', () => {
+  it('maps common image headers onto the image FILE field as file:url', () => {
+    const image = field('product_image', 'Image', { type: 'file' })
+    for (const name of ['Image Src', 'Photo', 'image_url']) {
+      const [result] = autoMapColumns([{ index: 0, name }], [image])
+      expect(result?.matchedField?.key).toBe('product_image')
+      expect(result?.resolutionType).toBe('file:url')
+    }
+  })
+})

@@ -225,6 +225,20 @@ export function useImportSSE({
       }
     })
 
+    // --- Image download progress (before rows are written) ---
+    eventSource.addEventListener('materialize:progress', (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        setProgress((prev) => ({
+          ...prev,
+          phase: 'executing',
+          images: { downloaded: data.downloaded, failed: data.failed, total: data.total },
+        }))
+      } catch (e) {
+        console.error('Failed to parse materialize:progress event:', e)
+      }
+    })
+
     // --- Execution Progress Event ---
     eventSource.addEventListener('execution:progress', (event) => {
       try {
@@ -239,6 +253,7 @@ export function useImportSSE({
           skipped: 0,
           failed: data.failed ?? 0,
           warnings: prev.warnings,
+          images: prev.images,
         }))
       } catch (e) {
         console.error('Failed to parse execution:progress event:', e)

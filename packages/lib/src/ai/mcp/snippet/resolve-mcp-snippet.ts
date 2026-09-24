@@ -3,16 +3,17 @@
 // Network resolution: each parsed candidate → a `ResolvedMcpSnippet`. Remote candidates are probed
 // (with their pasted headers) for auth posture; stdio candidates are mapped to a hosted remote via
 // the local-only list / known map / official registry, or reported as unresolvable. Every outbound
-// fetch goes through the SSRF guard.
+// fetch goes through safeFetch, which refuses private addresses at connect time.
 
 import { database as db, schema } from '@auxx/database'
 import { isNull } from 'drizzle-orm'
+import { safeFetch } from '../../../net/safe-fetch'
 import { discoverMcpAuth } from '../discovery'
 import { knownRemote, localOnlyReason } from './known-servers'
 import { lookupRegistryRemote, type RegistryRemoteHit } from './mcp-registry-client'
 import { extractPackageId, prettifyName, stripPackageAffixes } from './naming'
 import { parseMcpSnippet } from './parse-mcp-snippet'
-import { assertSafeOutboundUrl } from './ssrf'
+import { assertHttpsUrl } from './ssrf'
 import type { McpSnippetCandidate, ResolvedMcpSnippet } from './types'
 
 /** Parse + resolve a pasted snippet into one result per detected server. */
@@ -41,7 +42,7 @@ async function resolveRemote(
 ): Promise<ResolvedMcpSnippet> {
   let url = rawUrl
   try {
-    await assertSafeOutboundUrl(url)
+    assertHttpsUrl(url)
   } catch (error) {
     return { kind: 'unresolved', name: candidate.name, reason: errMsg(error) }
   }
@@ -242,16 +243,8 @@ async function resolveFavicon(endpoint: string): Promise<string | undefined> {
   for (const candidate of subdomainChain(host)) {
     const faviconUrl = `https://${candidate}/favicon.ico`
     try {
-      await assertSafeOutboundUrl(faviconUrl)
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 3_000)
-      try {
-        const res = await fetch(faviconUrl, { signal: controller.signal })
-        if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/'))
-          return faviconUrl
-      } finally {
-        clearTimeout(timer)
-      }
+      const res = await safeFetch(faviconUrl, { timeoutMs: 3_000 })
+      if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/')) return faviconUrl
     } catch {
       // try the next host up the chain
     }

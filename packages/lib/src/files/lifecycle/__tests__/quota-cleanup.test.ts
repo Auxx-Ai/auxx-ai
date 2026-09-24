@@ -17,8 +17,14 @@
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { UsageLimitError } from '../../../errors'
 import { makeCtx, makeDb } from '../../__tests__/support'
-import { calculateStorageUsage, resolveWarnThresholdBytes, UNLIMITED } from '../quota-cleanup'
+import {
+  assertStorageQuota,
+  calculateStorageUsage,
+  resolveWarnThresholdBytes,
+  UNLIMITED,
+} from '../quota-cleanup'
 
 const h = vi.hoisted(() => ({
   /** Raw `FeaturePermissionService.getLimit` answers, keyed by feature. */
@@ -198,3 +204,31 @@ function collectStrings(clause: unknown): string[] {
   walk(clause)
   return found
 }
+
+describe('assertStorageQuota', () => {
+  const nearlyFull: AggregateRow = { totalSize: String(GB - 100), count: '1' }
+
+  it('passes while the write fits under the hard limit', async () => {
+    h.limits = { storageGbHard: 1 }
+    const db = usage(nearlyFull, NOTHING)
+    await expect(
+      assertStorageQuota(makeCtx({ db: db.db, organizationId: 'org-1' }), 100)
+    ).resolves.toBeUndefined()
+  })
+
+  it('throws a UsageLimitError when the write would pass it', async () => {
+    h.limits = { storageGbHard: 1 }
+    const db = usage(nearlyFull, NOTHING)
+    await expect(
+      assertStorageQuota(makeCtx({ db: db.db, organizationId: 'org-1' }), 101)
+    ).rejects.toBeInstanceOf(UsageLimitError)
+  })
+
+  it('never throws for an uncapped plan', async () => {
+    h.limits = {}
+    const db = usage(nearlyFull, NOTHING)
+    await expect(
+      assertStorageQuota(makeCtx({ db: db.db, organizationId: 'org-1' }), 10 * GB)
+    ).resolves.toBeUndefined()
+  })
+})

@@ -292,3 +292,24 @@ describe('updateValueResolution free-text overrides', () => {
     expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'rec_acme' }])
   })
 })
+
+describe('updateValueResolution on a file:url column', () => {
+  it('re-resolves a corrected URL into a fresh download marker', async () => {
+    const db = new FakeDb('file:url', 'product_image')
+    const url = 'https://cdn.example.com/fixed.png'
+
+    await override(db, [{ type: 'value', value: url }])
+
+    expect(db.captured.values?.resolvedValues).toEqual([
+      { type: 'create', value: url, fileFetch: { url } },
+    ])
+    expect(db.captured.values?.isValid).toBe(true)
+  })
+
+  it('refuses a corrected value that is not a usable image URL', async () => {
+    const db = new FakeDb('file:url', 'product_image')
+
+    await expect(override(db, [{ type: 'value', value: 'ftp://x.com/a.png' }])).rejects.toThrow()
+    expect(db.captured.values).toBeNull()
+  })
+})

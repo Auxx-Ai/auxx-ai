@@ -8,6 +8,7 @@
 
 import { database as db, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { safeFetch } from '@auxx/utils/net'
 import { eq } from 'drizzle-orm'
 import { recordRefreshFailure, recordRefreshSuccess, revealSecrets, rotateSecrets } from '../store'
 import { mergeConnectionVariables } from './interpolate-connection'
@@ -336,7 +337,8 @@ async function postOAuth2TokenRequest(
     delete tokenRequestBody.client_secret
   }
 
-  const response = await fetch(tokenUrl, {
+  // Token URLs are tenant-editable (MCP overrides, discovered AS metadata), so guard the address.
+  const response = await safeFetch(tokenUrl, {
     method: 'POST',
     headers,
     body: new URLSearchParams(tokenRequestBody).toString(),

@@ -1732,6 +1732,9 @@ importers:
       '@auxx/types':
         specifier: workspace:*
         version: link:../types
+      '@auxx/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@auxx/workflow-nodes':
         specifier: workspace:*
         version: link:../workflow-nodes
@@ -2170,6 +2173,9 @@ importers:
       turndown:
         specifier: 'catalog:'
         version: 7.2.2
+      undici:
+        specifier: ^7.22.0
+        version: 7.22.0
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -2801,6 +2807,9 @@ importers:
       nanoid:
         specifier: ^5.1.5
         version: 5.1.6
+      undici:
+        specifier: ^7.22.0
+        version: 7.22.0
     devDependencies:
       '@auxx/typescript-config':
         specifier: workspace:*

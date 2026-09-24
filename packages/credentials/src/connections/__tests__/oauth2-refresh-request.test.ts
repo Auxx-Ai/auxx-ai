@@ -9,6 +9,10 @@ import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@auxx/config/server', () => ({ WEBAPP_URL: 'https://app.example.com' }))
+// Route the guarded token fetch to the stubbed global fetch.
+vi.mock('@auxx/utils/net', () => ({
+  safeFetch: (url: string, init?: RequestInit) => globalThis.fetch(url, init),
+}))
 vi.mock('@auxx/credentials', () => ({
   CredentialTypeRegistry: class {},
   configService: { get: () => null },

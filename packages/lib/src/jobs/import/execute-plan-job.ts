@@ -14,6 +14,7 @@ import {
   markJobCompleted,
   markJobExecuting,
   markJobFailed,
+  materializeFileFetches,
   materializeRelationCreates,
   materializeSelectCreates,
   parseResolutionConfig,
@@ -235,6 +236,16 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
         failures: selectCreates.failures.length,
       })
     }
+
+    // Image URLs (`file:url`) download here, for the same reason: no orphan assets from an
+    // abandoned wizard. A failed download becomes a row warning in `buildRecordData`.
+    await materializeFileFetches(db, {
+      organizationId,
+      jobId,
+      userId,
+      onProgress: (progress) =>
+        publishEvent({ type: 'materialize:progress', kind: 'images', ...progress }),
+    })
 
     // Load resolutions AFTER materialization, the rewritten rows are the ones
     // execution must read.

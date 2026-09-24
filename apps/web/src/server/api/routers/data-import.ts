@@ -6,6 +6,7 @@ import {
   createImportJob,
   deleteJob,
   finalizeUpload,
+  getFileFetchCounts,
   getImportableFields,
   getJobByOrg,
   getJobFailureSummary,
@@ -668,6 +669,17 @@ export const dataImportRouter = createTRPCRouter({
       await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getSelectCreateCounts(ctx.db, input.jobId)
+    }),
+
+  /** How many distinct images `file:url` columns will download when the import runs. */
+  getFileFetchCounts: capabilityProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      return getFileFetchCounts(ctx.db, input.jobId)
     }),
 
   /**

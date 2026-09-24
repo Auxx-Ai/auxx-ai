@@ -16,8 +16,12 @@ interface ExecutionProgressProps {
  * Updates via SSE connection.
  */
 export function ExecutionProgress({ progress, isConnected }: ExecutionProgressProps) {
-  const percentage =
-    progress.totalRows > 0 ? Math.round((progress.rowsProcessed / progress.totalRows) * 100) : 0
+  // Images download before any row is written; show that phase instead of a stalled 0 rows.
+  const images = progress.images
+  const downloading = !!images && images.downloaded + images.failed < images.total
+  const done = downloading ? images.downloaded + images.failed : progress.rowsProcessed
+  const total = downloading ? images.total : progress.totalRows
+  const percentage = total > 0 ? Math.round((done / total) * 100) : 0
 
   const phaseLabel = {
     idle: 'Idle...',
@@ -42,8 +46,12 @@ export function ExecutionProgress({ progress, isConnected }: ExecutionProgressPr
           <div className='flex items-center gap-3 min-w-0'>
             <EntityIcon iconId='upload' variant='muted' />
             <div className='min-w-0'>
-              <p className='font-medium text-sm'>{phaseLabel}</p>
-              <p className='text-sm text-muted-foreground'>{strategyLabel ?? 'Processing rows'}</p>
+              <p className='font-medium text-sm'>
+                {downloading ? 'Downloading images...' : phaseLabel}
+              </p>
+              <p className='text-sm text-muted-foreground'>
+                {downloading ? 'Before rows are imported' : (strategyLabel ?? 'Processing rows')}
+              </p>
             </div>
           </div>
           <Loader2 className='size-5 text-primary animate-spin' />
@@ -59,8 +67,7 @@ export function ExecutionProgress({ progress, isConnected }: ExecutionProgressPr
           </div>
           <div className='flex items-center justify-between mt-2 text-sm'>
             <span className='text-muted-foreground'>
-              {progress.rowsProcessed.toLocaleString()} of {progress.totalRows.toLocaleString()}{' '}
-              rows
+              {done.toLocaleString()} of {total.toLocaleString()} {downloading ? 'images' : 'rows'}
             </span>
             <span className='font-medium'>{percentage}%</span>
           </div>

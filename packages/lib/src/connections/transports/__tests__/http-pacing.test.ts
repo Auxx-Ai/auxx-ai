@@ -5,6 +5,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 vi.mock('@auxx/logger', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@auxx/logger')>()),
   createScopedLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),

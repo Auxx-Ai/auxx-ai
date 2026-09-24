@@ -1,6 +1,10 @@
 // packages/lib/src/connections/transports/__tests__/http.test.ts
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// safeFetch → the stubbed global fetch (see net/__mocks__/safe-fetch.ts).
+vi.mock('../../../net/safe-fetch')
+
 import type { RuntimeConnectionData } from '../../resolve-connection-for-runtime'
 import { httpTransport } from '../http'
 

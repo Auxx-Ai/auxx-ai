@@ -14,6 +14,14 @@ export {
   effectiveOptionKeys,
   type ResolutionStatus,
 } from './effective-status'
+// Image downloads for `file:url` columns
+export {
+  type FileFetchColumnCount,
+  type FileFetchCounts,
+  getFileFetchCounts,
+  loadPendingFileFetches,
+  type PendingFileFetchRow,
+} from './get-file-fetch-counts'
 // Pending lookup query
 export { getPendingRelationLookups } from './get-pending-relation-lookups'
 // Relation auto-create (03 §3.2)
@@ -44,6 +52,12 @@ export {
 } from './get-unique-values-with-status'
 // Per-target import authority, shared by the plan-time and execution-time gates
 export { buildImportAuthority, type ImportAuthorityOptions } from './import-authority'
+export {
+  type FileFetchProgress,
+  type MaterializeFileFetchesOptions,
+  type MaterializeFileFetchesResult,
+  materializeFileFetches,
+} from './materialize-file-fetches'
 export {
   createRelationTargetWriter,
   type MaterializeRelationCreatesOptions,
@@ -134,6 +148,7 @@ export {
   resolveDomain,
   resolveEmail,
   resolveEmailSplit,
+  resolveFileUrl,
   resolveInteger,
   resolveMultiselectSplit,
   resolvePhone,

@@ -13,7 +13,8 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { load } from 'cheerio'
-import { assertPublicHost, fetchAndStoreRemoteImage } from '../../files/fetch-remote-image'
+import { fetchAndStoreRemoteImage } from '../../files/fetch-remote-image'
+import { safeFetch } from '../../net/safe-fetch'
 
 const logger = createScopedLogger('companies:enrichment')
 
@@ -110,14 +111,9 @@ export function emptyMetadata(): WebsiteMetadata {
  * just the domain back at us, which is what parked pages and many small sites serve.
  */
 export async function fetchWebsiteMetadata(url: string, domain: string): Promise<WebsiteMetadata> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT_MS)
-
   try {
-    assertPublicHost(url)
-
-    const res = await fetch(url, {
-      signal: controller.signal,
+    const res = await safeFetch(url, {
+      timeoutMs: HTML_FETCH_TIMEOUT_MS,
       redirect: 'follow',
       headers: {
         'user-agent': USER_AGENT,
@@ -193,8 +189,6 @@ export async function fetchWebsiteMetadata(url: string, domain: string): Promise
   } catch (err) {
     logger.warn('Fetch website metadata failed', { url, error: (err as Error).message })
     return emptyMetadata()
-  } finally {
-    clearTimeout(timer)
   }
 }
 
