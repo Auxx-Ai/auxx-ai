@@ -57,6 +57,7 @@ const ModelName = ({
       speech2text: 'STT',
       moderation: 'MOD',
       tts: 'TTS',
+      decision: 'DEC',
     }
     return typeMap[modelType] || modelType.toUpperCase()
   }

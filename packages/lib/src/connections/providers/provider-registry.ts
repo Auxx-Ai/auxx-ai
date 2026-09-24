@@ -9,9 +9,9 @@ const BY_KEY = new Map<string, PlatformProviderDef>(
   PLATFORM_PROVIDER_DEFS.map((def) => [def.providerKey, def])
 )
 
-/** All platform built-in providers (the connect-catalog source of truth). */
+/** Platform built-in providers offered in the connect catalog; internal ones are omitted. */
 export function getAllProviders(): PlatformProviderDef[] {
-  return PLATFORM_PROVIDER_DEFS
+  return PLATFORM_PROVIDER_DEFS.filter((def) => def.visibility !== 'internal')
 }
 
 /** Look up a single provider by its key (= ConnectionDefinition.providerKey / Credential.type). */

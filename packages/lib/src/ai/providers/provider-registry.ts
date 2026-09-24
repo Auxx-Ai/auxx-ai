@@ -13,6 +13,7 @@ import { KIMI_CAPABILITIES, KIMI_MODELS } from './kimi/kimi-defaults'
 import { OPENAI_CAPABILITIES, OPENAI_MODELS } from './openai/openai-defaults'
 import { QWEN_CAPABILITIES, QWEN_MODELS } from './qwen/qwen-defaults'
 import type { ModelCapabilities, ProviderCapabilities } from './types'
+import { TYPESAFE_CAPABILITIES, TYPESAFE_MODELS } from './typesafe/typesafe-defaults'
 import { ZAI_CAPABILITIES, ZAI_MODELS } from './zai/zai-defaults'
 
 const logger = createScopedLogger('ProviderRegistry')
@@ -28,6 +29,7 @@ const serverLoaders: Record<string, () => Promise<any>> = {
   kimi: () => import('./kimi'),
   zai: () => import('./zai'),
   grok: () => import('./grok'),
+  typesafe: () => import('./typesafe'),
 }
 
 /**
@@ -44,6 +46,7 @@ export const providerPositions: string[] = [
   'kimi',
   'zai',
   'grok',
+  'typesafe',
 ]
 
 export interface ProviderRegistration {
@@ -85,6 +88,7 @@ export class ProviderRegistry {
     ...KIMI_MODELS,
     ...ZAI_MODELS,
     ...GROK_MODELS,
+    ...TYPESAFE_MODELS,
   }
 
   /** Static provider capabilities imported from provider-specific files */
@@ -98,6 +102,7 @@ export class ProviderRegistry {
     kimi: KIMI_CAPABILITIES,
     zai: ZAI_CAPABILITIES,
     grok: GROK_CAPABILITIES,
+    typesafe: TYPESAFE_CAPABILITIES,
   }
 
   /** Provider definitions for dynamic loading */
@@ -146,6 +151,11 @@ export class ProviderRegistry {
       id: 'grok',
       modulePath: './grok',
       clientClassName: 'GrokClient',
+    },
+    {
+      id: 'typesafe',
+      modulePath: './typesafe',
+      clientClassName: 'TypeSafeClient',
     },
   ]
 
@@ -355,6 +365,11 @@ export class ProviderRegistry {
 
   static getAllProviders(): Record<string, ProviderCapabilities> {
     return { ...ProviderRegistry.staticProviders }
+  }
+
+  /** Whether a provider is hidden from settings and pickers (still reachable via `createClient`). */
+  static isInternalProvider(provider: string): boolean {
+    return ProviderRegistry.staticProviders[provider]?.visibility === 'internal'
   }
 
   static isValidProvider(provider: string): boolean {

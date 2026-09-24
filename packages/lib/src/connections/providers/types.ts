@@ -130,4 +130,6 @@ export type PlatformProviderDef = {
   baseUrlTemplate?: string
 
   uiMetadata?: ProviderUiMetadata
+  /** Seeded like any other def but left out of the connect catalog (`getAllProviders`). */
+  visibility?: 'internal'
 }

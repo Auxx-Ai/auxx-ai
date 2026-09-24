@@ -15,6 +15,7 @@ export const AI_PROVIDER_CONNECTION_KEY: Record<string, string> = {
   kimi: 'kimiApi',
   zai: 'zaiApi',
   grok: 'grokApi',
+  typesafe: 'typesafeApi',
   cohere: 'cohereApi',
 }
 
@@ -49,5 +50,6 @@ export const AI_SYSTEM_ENV_MAP: Record<string, Record<string, string>> = {
   kimi: { apiKey: 'KIMI_API_KEY' },
   zai: { apiKey: 'ZAI_API_KEY' },
   grok: { apiKey: 'XAI_API_KEY' },
+  typesafe: { apiKey: 'TYPESAFE_API_KEY' },
   cohere: { apiKey: 'COHERE_API_KEY' },
 }

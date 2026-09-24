@@ -181,6 +181,8 @@ export function getModelTypeForModel(model: string): ModelType {
     return ModelType.VISION
   } else if (capabilities?.features.includes('tts')) {
     return ModelType.TTS
+  } else if (capabilities?.features.includes('decision')) {
+    return ModelType.DECISION
   } else {
     return ModelType.LLM
   }
@@ -209,6 +211,11 @@ export function isModelCompatible(model: string, modelType: ModelType): boolean 
       return capabilities.features.includes('moderation')
     case ModelType.RERANK:
       return capabilities.features.includes('rerank')
+    case ModelType.DECISION:
+      return (
+        capabilities.features.includes('decision') ||
+        (capabilities.features.includes('chat') && capabilities.supports.structured)
+      )
     default:
       return false
   }
@@ -222,17 +229,28 @@ export async function getUnifiedModelData(
     modelTypes?: ModelType[]
     includeUnconfigured?: boolean
     includeRetired?: boolean
+    /** Keep `visibility: 'internal'` providers; no UI caller should set this. */
+    includeInternal?: boolean
   } = {}
 ): Promise<{
   providers: ProviderConfiguration[]
   defaultModels: Record<string, { provider: string; model: string }>
 }> {
-  const { modelTypes = [], includeUnconfigured = false, includeRetired = false } = options
+  const {
+    modelTypes = [],
+    includeUnconfigured = false,
+    includeRetired = false,
+    includeInternal = false,
+  } = options
 
   try {
     const configurations = await getProviderConfigs(ctx)
 
-    let providers = getSortedProviders(Object.values(configurations.configurations))
+    let providers = getSortedProviders(
+      Object.values(configurations.configurations).filter(
+        (p) => includeInternal || !ProviderRegistry.isInternalProvider(p.provider)
+      )
+    )
 
     if (!includeUnconfigured || modelTypes.length > 0) {
       providers = providers

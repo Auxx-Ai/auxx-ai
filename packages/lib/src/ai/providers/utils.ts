@@ -385,6 +385,7 @@ export function sortProviders(providers: string[]): string[] {
     'kimi',
     'zai',
     'grok',
+    'typesafe',
   ]
 
   return providers.sort((a, b) => {

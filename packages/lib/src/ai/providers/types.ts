@@ -12,6 +12,7 @@ export enum ModelType {
   SPEECH2TEXT = 'speech2text',
   MODERATION = 'moderation',
   VISION = 'vision',
+  DECISION = 'decision',
 }
 
 export enum ProviderType {
@@ -172,6 +173,8 @@ export interface ProviderCapabilities {
   description?: string
   documentationUrl?: string
   setupInstructions?: string
+  /** Internal providers are usable by the runner but never listed in settings or pickers. */
+  visibility?: 'internal'
 }
 
 /**
@@ -560,6 +563,7 @@ export const SUPPORTED_PROVIDERS = [
   'kimi',
   'zai',
   'grok',
+  'typesafe',
 ] as const
 
 export type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number]

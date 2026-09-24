@@ -773,6 +773,14 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  TYPESAFE_API_KEY: {
+    key: 'TYPESAFE_API_KEY',
+    description: 'TypeSafe AI API key (Jev decision model)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.AI,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
   USE_BACKUP_MODEL: {
     key: 'USE_BACKUP_MODEL',
     description: 'Enable fallback to backup AI model',

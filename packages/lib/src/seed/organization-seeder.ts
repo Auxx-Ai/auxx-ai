@@ -821,7 +821,8 @@ export class OrganizationSeeder {
     const periodEnd = new Date(now)
     periodEnd.setMonth(periodEnd.getMonth() + 1)
 
-    const providers = ['openai', 'anthropic']
+    // Must match SYSTEM_ELIGIBLE_PROVIDERS (ai/providers/config/context.ts).
+    const providers = ['openai', 'anthropic', 'typesafe']
 
     for (const provider of providers) {
       await this.db

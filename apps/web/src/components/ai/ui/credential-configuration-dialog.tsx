@@ -70,6 +70,7 @@ const MODEL_TYPE_OPTIONS = [
   { value: ModelType.VISION, label: 'Vision' },
   { value: ModelType.MODERATION, label: 'Moderation' },
   { value: ModelType.RERANK, label: 'Rerank' },
+  { value: ModelType.DECISION, label: 'Decision' },
 ] as const
 
 const MODEL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/

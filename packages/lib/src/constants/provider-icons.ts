@@ -72,6 +72,13 @@ export const PROVIDER_THEMES: Record<string, ProviderTheme> = {
     textColor: 'text-white',
     borderColor: 'border-gray-200',
   },
+  typesafe: {
+    icon: 'typesafe',
+    color: '#111827',
+    bgColor: 'bg-gray-900',
+    textColor: 'text-white',
+    borderColor: 'border-gray-200',
+  },
 }
 
 // Icon mappings for backwards compatibility
@@ -85,4 +92,5 @@ export const PROVIDER_ICON_LETTERS: Record<string, string> = {
   kimi: 'Ki',
   zai: 'Z',
   grok: 'Gr',
+  typesafe: 'Ts',
 }

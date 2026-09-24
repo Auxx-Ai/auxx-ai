@@ -1,6 +1,7 @@
 // packages/lib/src/ai/clients/base/index.ts
 
 export { BaseSpecializedClient } from './base-specialized-client'
+export { DecisionClient, type DecisionEvaluateParams } from './decision-client'
 export { LLMClient } from './llm-client'
 export { ModerationClient } from './moderation-client'
 export { Speech2TextClient } from './speech2text-client'

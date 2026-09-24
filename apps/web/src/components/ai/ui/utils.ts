@@ -47,6 +47,7 @@ export const FEATURE_BADGES = {
   tts: { label: 'Speech', color: 'pink' },
   moderation: { label: 'Moderation', color: 'red' },
   rerank: { label: 'Rerank', color: 'indigo' },
+  decision: { label: 'Decision', color: 'amber' },
 } as const
 
 /**

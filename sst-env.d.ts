@@ -118,6 +118,10 @@ declare module "sst" {
       "type": "sst.sst.Secret"
       "value": string
     }
+    "TYPESAFE_API_KEY": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "InboundEmailBucket": {
       "name": string
       "type": "sst.aws.Bucket"
