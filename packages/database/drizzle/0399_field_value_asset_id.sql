@@ -1,0 +1,3 @@
+ALTER TABLE "FieldValue" ADD COLUMN "assetId" text GENERATED ALWAYS AS (CASE WHEN coalesce("valueJson"->'v'->>'ref', "valueJson"->>'ref') LIKE 'asset:%' THEN substr(coalesce("valueJson"->'v'->>'ref', "valueJson"->>'ref'), 7) END) STORED;--> statement-breakpoint
+ALTER TABLE "FieldValue" ADD CONSTRAINT "FieldValue_assetId_MediaAsset_id_fk" FOREIGN KEY ("assetId") REFERENCES "public"."MediaAsset"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "FieldValue_organizationId_assetId_idx" ON "FieldValue" USING btree ("organizationId","assetId") WHERE "assetId" IS NOT NULL;

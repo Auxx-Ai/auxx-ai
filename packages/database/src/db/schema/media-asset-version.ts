@@ -40,8 +40,10 @@ export const MediaAssetVersion = pgTable(
       onDelete: 'cascade',
     }),
     deletedAt: timestamp({ precision: 3 }),
+    // Cascade: the reaper removes locations in no order, and a source's version goes with its location.
     derivedFromVersionId: text().references((): AnyPgColumn => MediaAssetVersion.id, {
       onUpdate: 'cascade',
+      onDelete: 'cascade',
     }),
     preset: text(),
     metadata: jsonb().default({}),
