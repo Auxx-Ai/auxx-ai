@@ -9,6 +9,7 @@ import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { ConnectAndGoPage } from './connect-and-go-page'
 import { WizardAccountsPage } from './wizard-accounts-page'
+import { type BooksMode, WizardBooksChoicePage } from './wizard-books-choice-page'
 import { WizardConnectPage } from './wizard-connect-page'
 import { WizardDonePage } from './wizard-done-page'
 import { WizardOpeningTbPage } from './wizard-opening-tb-page'
@@ -19,22 +20,26 @@ import {
   type WizardLeaveDirection,
   type WizardStepHandle,
 } from './wizard-step-handle'
+import { WizardWelcomePage } from './wizard-welcome-page'
 
-// With nothing connected: connect first (connecting switches to the one-screen flow), then the
-// chart before the rails that mint into it, and the opening grid over that chart.
-const MANUAL_PAGES = [
-  'connect',
+const INTRO_PAGES = ['welcome', 'choice'] as const
+// Connect shows only until a provider is connected; everything after is derived from it (105 §4).
+const IMPORT_PAGES = [...INTRO_PAGES, 'connect', 'connectAndGo'] as const
+const IMPORT_CONNECTED_PAGES = [...INTRO_PAGES, 'connectAndGo'] as const
+// The chart before the rails that mint into it, and the opening grid over that chart.
+const STANDALONE_PAGES = [
+  ...INTRO_PAGES,
   'period',
   'accounts',
   'rails',
   'openingTrialBalance',
   'done',
 ] as const
-// With an accounting system connected, everything else is derived from it (105 §4).
-const CONNECTED_PAGES = ['connectAndGo'] as const
-type WizardPage = (typeof MANUAL_PAGES)[number] | (typeof CONNECTED_PAGES)[number]
+type WizardPage = (typeof IMPORT_PAGES)[number] | (typeof STANDALONE_PAGES)[number]
 
 const PAGE_TITLES: Record<WizardPage, string> = {
+  welcome: 'Welcome',
+  choice: 'How to keep the books',
   connect: 'Accounting system',
   period: 'Accounting period',
   accounts: 'Account roles',
@@ -50,8 +55,8 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * The accounting setup dialog. With an accounting system connected it is one result screen
- * (`ConnectAndGoPage`); without, the manual pages through Finalize.
+ * The accounting setup dialog: welcome, then how to keep the books. Import connects if needed and
+ * runs `ConnectAndGoPage`; standalone walks the manual pages through Finalize.
  *
  * Pages holding a dirty draft expose a {@link WizardStepHandle} the shell consults before leaving
  * the page, so Back, Continue and "Set up later" never lose work. "Set up later" and finishing
@@ -59,16 +64,32 @@ export interface AccountingSetupWizardProps {
  */
 export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWizardProps) {
   const providerStatus = useAccountingProviderStatus()
-  const pages: readonly WizardPage[] = providerStatus.connected ? CONNECTED_PAGES : MANUAL_PAGES
-  const [page, setPage] = useState<WizardPage>(pages[0] ?? 'connect')
+  const [page, setPage] = useState<WizardPage>('welcome')
+  // Null until picked; import is the default while a provider is connected.
+  const [pickedMode, setPickedMode] = useState<BooksMode | null>(null)
+  const mode = pickedMode ?? (providerStatus.connected ? 'import' : null)
   const periodRef = useRef<WizardStepHandle | null>(null)
   const openingTbRef = useRef<WizardStepHandle | null>(null)
 
-  // Reset to the first page on each open, and when connecting swaps the page set.
-  const firstPage = pages[0] ?? 'connect'
+  const pages: readonly WizardPage[] =
+    mode === 'standalone'
+      ? STANDALONE_PAGES
+      : mode === 'import'
+        ? providerStatus.connected && page !== 'connect'
+          ? IMPORT_CONNECTED_PAGES
+          : IMPORT_PAGES
+        : INTRO_PAGES
+
   useEffect(() => {
-    if (open) setPage(firstPage)
-  }, [open, firstPage])
+    if (!open) return
+    setPage('welcome')
+    setPickedMode(null)
+  }, [open])
+
+  // Connecting from the connect page moves straight on to the import.
+  useEffect(() => {
+    if (page === 'connect' && providerStatus.connected) setPage('connectAndGo')
+  }, [page, providerStatus.connected])
 
   const utils = api.useUtils()
   // Write the stamp into the cache up front, then invalidate: `finish()` often precedes a
@@ -109,8 +130,8 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
   }
 
   const goNext = () =>
-    leaveVia('next', () => setPage(pages[Math.min(index + 1, pages.length - 1)] ?? 'done'))
-  const goBack = () => leaveVia('back', () => setPage(pages[Math.max(index - 1, 0)] ?? firstPage))
+    leaveVia('next', () => setPage(pages[Math.min(index + 1, pages.length - 1)] ?? page))
+  const goBack = () => leaveVia('back', () => setPage(pages[Math.max(index - 1, 0)] ?? 'welcome'))
   const finish = () =>
     leaveVia('exit', () => {
       setWizardCompleted.mutate({ checklist: 'accounting' })
@@ -118,6 +139,8 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
     })
 
   const linear = page !== 'connectAndGo' && page !== 'done'
+  const canContinue =
+    page === 'choice' ? mode !== null : page === 'connect' ? providerStatus.connected : true
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && finish()}>
@@ -125,11 +148,17 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
         <DialogNav
           title='Set up accounting'
           description='A few things to configure before your books can be closed from Auxx.'
-          onBack={linear && index > 0 ? goBack : undefined}
+          onBack={page !== 'done' && index > 0 ? goBack : undefined}
           crumbs={[{ label: PAGE_TITLES[page] }]}
         />
 
         <DialogNavPages value={page}>
+          <DialogNavPage value='welcome' size='lg'>
+            <WizardWelcomePage />
+          </DialogNavPage>
+          <DialogNavPage value='choice' size='lg'>
+            <WizardBooksChoicePage value={mode} onChange={setPickedMode} />
+          </DialogNavPage>
           <DialogNavPage value='connectAndGo' size='xl'>
             <ConnectAndGoPage onFinish={finish} />
           </DialogNavPage>
@@ -159,7 +188,12 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
               Set up later
             </Button>
             {linear && (
-              <Button variant='outline' size='sm' onClick={goNext} loading={leaving}>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={goNext}
+                loading={leaving}
+                disabled={!canContinue}>
                 Continue
               </Button>
             )}

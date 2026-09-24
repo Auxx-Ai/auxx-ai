@@ -1,30 +1,8 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-connect-page.tsx
 'use client'
 
-// `AccountingSetupWizard`'s connect page - the accounting system, immediately
-// before the page that maps the chart onto it.
-//
-// 🛑 THIS STEP IS SKIPPABLE, AND IT MUST STAY SKIPPABLE. Decision `P1` makes
-// "nothing connected" a first-class outcome: entries are still built, balanced
-// and persisted, and the result is `not_connected` rather than a failure. So
-// this page has no destructive variant, no "action required", and Continue is
-// never blocked - `quickbooks-section.tsx` carries the same instruction for the
-// same reason, and `getting-started.ts` records that `connect-quickbooks` is
-// deliberately not a checklist goal.
-//
-// What the step DOES earn its place with is ordering, and brief 16 §2.3 doubled
-// the reason for it: the very next page ("accounts") can now offer "Import from
-// QuickBooks" as the source of the org's chart, which needs a connection to say
-// anything about, so connecting has to come first. The account map two pages
-// later still cannot show a single row until a provider chart exists to map
-// against, so it keeps following `connect` too - the pair just has "accounts"
-// between them now instead of sitting back to back.
-//
-// 🛑 CONNECT AND MANAGE OPEN `AppSettingsDialog`, they do not navigate - the
-// same call `quickbooks-section.tsx` makes. Sending somebody to
-// `/app/settings/apps/quickbooks` from inside a wizard drops them out of it
-// mid-setup with no way back but the browser button, and the dialog is where the
-// OAuth flow lives anyway.
+// The import path's connect page, shown only while nothing is connected. Connect opens
+// `AppSettingsDialog` rather than navigating, so the person stays in the wizard.
 
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -36,15 +14,7 @@ import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { AppSettingsDialog } from '~/components/apps/ui/app-settings-dialog'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 
-/**
- * Install / connect / connected, as one wizard page.
- *
- * Three states off `useAccountingProviderStatus()`, none of them a failure:
- *
- * 1. not installed - an install button, and the honest note that skipping is fine
- * 2. installed, not connected - "Connect QuickBooks" opens the OAuth dialog
- * 3. connected - which company, and what the next page will do with it
- */
+/** Install, then connect; once connected the wizard moves on to the import by itself. */
 export function WizardConnectPage() {
   const status = useAccountingProviderStatus()
   const pathname = usePathname()
@@ -53,9 +23,8 @@ export function WizardConnectPage() {
   return (
     <div className='flex flex-col gap-4 p-4'>
       <p className='text-muted-foreground text-sm'>
-        Auxx keeps the ledger either way - entries are built, balanced and stored here whether or
-        not an accounting system is connected. Connecting one lets Auxx also push each month's
-        journal entry to it.
+        Connect your accounting system to import from it. To set up without one, go back and choose
+        Use Auxx on its own.
       </p>
 
       {status.loading ? (
@@ -75,8 +44,7 @@ export function WizardConnectPage() {
           {status.connected ? (
             <>
               <p className='text-muted-foreground text-xs'>
-                {status.connection?.label ?? 'Connected'}. On the next page you can import your
-                QuickBooks chart, or start from the default one.
+                {status.connection?.label ?? 'Connected'}. Continue to import from it.
               </p>
               <div>
                 <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
@@ -99,8 +67,7 @@ export function WizardConnectPage() {
           ) : (
             <>
               <p className='text-muted-foreground text-xs'>
-                Not installed. You can add it now, or skip this and set it up later - nothing on the
-                remaining pages depends on it.
+                Not installed. Add it, then connect it.
               </p>
               <div>
                 <InlineAppInstallButton appSlug='quickbooks' />
@@ -111,8 +78,7 @@ export function WizardConnectPage() {
       )}
 
       <p className='text-muted-foreground text-xs'>
-        Nothing is pushed to QuickBooks until you post a month, and posting is off until you turn it
-        on in Accounting settings.
+        Nothing is sent to your accounting system until you finish setup.
       </p>
 
       {status.installed && status.installationType && (

@@ -174,11 +174,8 @@ export interface ConnectAndGoPrepareReport {
   /** Default accounts minted for roles the enabled posting types need and nothing in the chart fit. */
   rolesMinted: { role: AccountRole; glAccountId: string; name: string }[]
   rails: RailRouteReport | null
-  /** Our accounts created in the provider and linked. */
-  providerAccounts: {
-    created: number
-    failed: { glAccountId: string; message: string } | null
-  } | null
+  /** Our accounts with no provider counterpart, created there on Finish; null when the provider cannot create. */
+  providerAccountsToCreate: ProviderAccountToCreate[] | null
   bankAccounts: BankAccountPlan | null
   questions: {
     roles: ConnectAndGoRoleQuestion[]
@@ -186,6 +183,13 @@ export interface ConnectAndGoPrepareReport {
     bankAccounts: BankAccountProposal[]
   }
   failures: ConnectAndGoFailure[]
+}
+
+/** One of our accounts Finish will create in the provider and link. */
+export interface ProviderAccountToCreate {
+  glAccountId: string
+  name: string
+  code: string | null
 }
 
 /** A person's answers to the prepare report's questions. */
@@ -203,6 +207,7 @@ export const CONNECT_AND_GO_COMPLETE_STEPS = [
   'roles',
   'rail_banks',
   'bank_accounts',
+  'provider_accounts',
   'book_connection',
   'opening',
   'finalize',
@@ -224,6 +229,8 @@ export interface ConnectAndGoCompleteReport {
   failedAt: ConnectAndGoCompleteStep | null
   message: string | null
   bankAccounts: BankAccountApplyReport | null
+  /** Our accounts created in the provider and linked by this run. */
+  providerAccounts: { created: number } | null
   bookConnection: BookConnectionSetupResult | null
   opening: { filledCount: number; differenceMinor: number; importedAccounts: number } | null
   finalize: { finalizedNow: boolean; openingStatus: string | null } | null
