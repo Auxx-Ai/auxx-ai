@@ -736,10 +736,12 @@ settling into one bank and the bank feed's own line for the same money could lan
 accounts and still balance, with nothing comparing them. ⚠️ **That argument is false once the map
 has a rail scope.** `BANK` is admissible precisely because it can never be unscoped:
 `ROLES_WITHOUT_DEFAULT` refuses an org-wide `bank` row, so the role only ever answers "which bank
-*this rail* pays into". `bank`, `clearing` and — since 91 — `accounts_receivable` are the three
-roles with a subtype pin in `ROLE_ACCOUNT_SUBTYPES`, checked by `setRoleAssignment` before it
-writes and by `resolveRoles` on every read. The A/R pin is what lets aging and the statement split
-find every receivable account, per-store ones included, by subtype (§13.2).
+*this rail* pays into". `bank` and — since 91 — `accounts_receivable` are the two roles with a
+subtype pin in `ROLE_ACCOUNT_SUBTYPES`, checked by `assertMappableAccount` before a mapping is
+written. The A/R pin is what lets aging and the statement split find every receivable account,
+per-store ones included, by subtype (§13.2). `clearing` is not pinned: nothing downstream reads it,
+and QuickBooks has no clearing subtype, so an imported clearing account would be unmappable. Accounts
+auxx mints still carry `subtype: 'clearing'`, which `auto-route-rails` uses to reuse its own.
 
 The four newest are the buy side's: `cogs_direct_labor` (`5010`, the labour share of a relieved
 unit, beside `cogs_product_cost` and `applied_overhead`), `purchase_tax` (`5040`, tax a vendor

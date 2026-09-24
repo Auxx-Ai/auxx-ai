@@ -473,11 +473,11 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
  * The subtype pin beside {@link ROLE_ACCOUNT_TYPES} (§3 rule 4 of task 58); every other role
  * pins only its statement type. `accounts_receivable` is pinned because aging, the statement
  * split and the QuickBooks journal's customer rule find a receivable by its subtype.
+ * `clearing` is not pinned: nothing reads it, and a provider chart (QuickBooks) has no such subtype.
  */
 export const ROLE_ACCOUNT_SUBTYPES: Readonly<Partial<Record<AccountRole, GlAccountSubtypeValue>>> =
   {
     [ACCOUNT_ROLES.BANK]: GlAccountSubtype.BANK,
-    [ACCOUNT_ROLES.CLEARING]: GlAccountSubtype.CLEARING,
     [ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE]: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   }
 
