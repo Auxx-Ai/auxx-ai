@@ -14,6 +14,7 @@ import {
 } from '~/components/threads/store'
 import { useReplyBox } from '~/hooks/use-reply-box'
 import { api } from '~/trpc/react'
+import type { TriageUpdates } from './thread-triage-indicators'
 
 /** Reply box UI state */
 interface ReplyBoxState {
@@ -44,6 +45,7 @@ interface ThreadHandlers {
   updateSubject: (subject: string) => Promise<void>
   moveToInbox: (inboxId: RecordId) => Promise<void>
   linkTicket: (ticketInstanceId: string | null) => Promise<void>
+  updateTriage: (updates: TriageUpdates) => void
   createAndLinkTicket: () => Promise<string | null>
   openReplyBox: (mode: EditorMode | 'generic', message?: any) => void
   closeReplyBox: () => void
@@ -180,6 +182,10 @@ export function ThreadProvider({
         // Use optimistic update via unified hook
         update(threadId, { inboxId })
         toastSuccess({ title: 'Thread moved to inbox' })
+      },
+
+      updateTriage: (updates: TriageUpdates) => {
+        update(threadId, updates)
       },
 
       linkTicket: async (ticketInstanceId: string | null) => {

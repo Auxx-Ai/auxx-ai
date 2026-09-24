@@ -47,8 +47,8 @@ export function toClassificationMarker(result: MailClassificationResult): MailCl
 }
 
 /**
- * Write the four triage columns onto the thread (03 §5.2) and publish them as a
- * `thread:updated` patch. The model records fields, filters decide what to do with them.
+ * Fill the four triage columns (03 §5.2) where they are still null and publish the stored
+ * values. Only-empty keeps manual edits and the first message's answers (08 §7.3).
  *
  * Never throws.
  */
@@ -59,25 +59,33 @@ export async function writeThreadTriage(params: {
   triage: MailClassificationTriage
 }): Promise<void> {
   const { db, organizationId, threadId, triage } = params
-  const patch = {
-    priority: triage.priority,
-    needsReply: triage.needsReply,
-    sentiment: triage.sentiment,
-    spamScore: triage.spamScore,
-  }
+  const t = schema.Thread
   try {
     const [row] = await db
-      .update(schema.Thread)
-      .set(patch)
-      .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
-      .returning({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
+      .update(t)
+      .set({
+        priority: sql`COALESCE(${t.priority}, ${triage.priority}::"TicketPriority")`,
+        needsReply: sql`COALESCE(${t.needsReply}, ${triage.needsReply}::boolean)`,
+        sentiment: sql`COALESCE(${t.sentiment}, ${triage.sentiment}::"ThreadSentiment")`,
+        spamScore: sql`COALESCE(${t.spamScore}, ${triage.spamScore}::real)`,
+      })
+      .where(and(eq(t.id, threadId), eq(t.organizationId, organizationId)))
+      .returning({
+        inboxId: t.inboxId,
+        assigneeId: t.assigneeId,
+        priority: t.priority,
+        needsReply: t.needsReply,
+        sentiment: t.sentiment,
+        spamScore: t.spamScore,
+      })
     if (!row) return
 
+    const { inboxId, assigneeId, ...patch } = row
     const { getRealtimeService, publishThreadUpdated } = await import('../realtime')
     await publishThreadUpdated(getRealtimeService(), organizationId, {
       threadId,
-      inboxId: row.inboxId,
-      assigneeId: row.assigneeId,
+      inboxId,
+      assigneeId,
       patch,
     })
   } catch (error) {

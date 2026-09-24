@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/nodes/action-nodes/crud.ts
 
 import { database } from '@auxx/database'
+import { ThreadSentimentValues, TicketPriorityValues } from '@auxx/database/enums'
 import { isActorId, toActorId } from '@auxx/types/actor'
 import {
   getRelatedEntityDefinitionId,
@@ -100,6 +101,21 @@ const TAG_OPERATION_BY_UPDATE_MODE: Record<RelationUpdateModeType, 'add' | 'remo
   [RelationUpdateMode.REMOVE]: 'remove',
   [RelationUpdateMode.DYNAMIC]: 'set',
 }
+
+/** A triage enum from node input: '' / null clears, anything outside `values` throws. */
+function parseTriageEnum<T extends string>(
+  raw: unknown,
+  values: readonly T[],
+  field: string
+): T | null {
+  if (raw === null || raw === '') return null
+  const value = String(raw).toUpperCase()
+  if (!(values as readonly string[]).includes(value)) {
+    throw new Error(`Invalid ${field} "${String(raw)}". Expected one of: ${values.join(', ')}`)
+  }
+  return value as T
+}
+
 /**
  * CRUD node processor for handling create, read, update, delete operations
  * Supports both system resources (contact, ticket) and custom entities
@@ -1029,7 +1045,7 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
    * - Only UPDATE mode is supported (threads are created via email sync)
    *
    * Field Handling:
-   * - status, subject, assigneeId, inboxId -> ThreadMutationService.update()
+   * - status, subject, assigneeId, inboxId, priority, needsReply, sentiment -> ThreadMutationService.update()
    * - readStatus -> UnreadService.setReadStatus()
    * - tags -> ThreadMutationService.tagThreadsBulk()
    */
@@ -1148,6 +1164,18 @@ export class CrudNodeProcessor extends BaseNodeProcessor {
           ? (rawInbox as RecordId)
           : toRecordId('inbox', rawInbox)
         : null
+    }
+    // Triage (08 §7): '' or null clears; an out-of-enum value is an error, not a DB enum throw.
+    if (data.priority !== undefined) {
+      unifiedUpdates.priority = parseTriageEnum(data.priority, TicketPriorityValues, 'priority')
+    }
+    if (data.sentiment !== undefined) {
+      unifiedUpdates.sentiment = parseTriageEnum(data.sentiment, ThreadSentimentValues, 'sentiment')
+    }
+    if (data.needsReply !== undefined) {
+      const v = data.needsReply
+      unifiedUpdates.needsReply =
+        v === null || v === '' ? null : v === true || String(v).toLowerCase() === 'true'
     }
 
     // Execute actions in parallel

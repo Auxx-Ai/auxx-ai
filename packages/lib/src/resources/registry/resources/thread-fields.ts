@@ -113,6 +113,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
   },
 
   // Triage written by mail classification (plans/ai/decision/03 §5); empty until evaluated.
+  // Hand edits go through ThreadMutationService.update, like status (08 §7).
   priority: {
     id: toFieldId('priority'),
     key: 'priority',
@@ -129,10 +130,10 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: true,
       creatable: false,
-      updatable: false,
+      updatable: true,
       configurable: false,
     },
-    description: 'How urgent the first inbound message is, as classified',
+    description: 'How urgent the first inbound message is, as classified or set by hand',
   },
 
   needsReply: {
@@ -150,10 +151,10 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: false,
       creatable: false,
-      updatable: false,
+      updatable: true,
       configurable: false,
     },
-    description: 'Whether the sender expects an answer, as classified',
+    description: 'Whether the sender expects an answer, as classified or set by hand',
   },
 
   sentiment: {
@@ -172,10 +173,10 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
       filterable: true,
       sortable: false,
       creatable: false,
-      updatable: false,
+      updatable: true,
       configurable: false,
     },
-    description: "The sender's mood in the first inbound message, as classified",
+    description: "The sender's mood in the first inbound message, as classified or set by hand",
   },
 
   spamScore: {
