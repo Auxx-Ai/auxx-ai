@@ -60,6 +60,8 @@ interface AiModelPickerProps {
   onProviderConfigure?: (provider: string) => void
   /** Custom trigger button */
   triggerButton?: React.ReactNode
+  /** Trigger text when nothing is selected, e.g. what runs instead of a default. */
+  emptyLabel?: string
   /** Custom className for the trigger button */
   triggerClassName?: string
   /** Trigger button variant */
@@ -98,6 +100,11 @@ function isModelCompatibleClient(model: ModelData, modelType: ModelType): boolea
       return model.features.includes('moderation')
     case ModelType.RERANK:
       return model.features.includes('rerank')
+    case ModelType.DECISION:
+      return (
+        model.features.includes('decision') ||
+        (model.features.includes('chat') && model.supports.structured)
+      )
     default:
       return false
   }
@@ -117,6 +124,7 @@ export function AiModelPicker({
   enableProviderConfiguration = false,
   onProviderConfigure,
   triggerButton,
+  emptyLabel,
   triggerClassName,
   triggerVariant = 'outline',
   popoverOpen: externalOpen,
@@ -288,7 +296,7 @@ export function AiModelPicker({
                     />
                   </>
                 ) : (
-                  'No model available'
+                  (emptyLabel ?? 'No model available')
                 )}
               </div>
             )}

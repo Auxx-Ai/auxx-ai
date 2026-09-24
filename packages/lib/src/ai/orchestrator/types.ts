@@ -226,6 +226,8 @@ export interface UsageTrackingRequest {
   source?: UsageSource
   /** ID of the source entity (workflow ID, dataset ID, etc.) if applicable */
   sourceId?: string
+  /** Modality of the call as written to `AiUsage.modelType`; defaults to `'llm'`. */
+  modelType?: string
 }
 
 export interface UsageTrackingService {

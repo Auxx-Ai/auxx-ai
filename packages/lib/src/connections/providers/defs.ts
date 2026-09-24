@@ -1105,6 +1105,26 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     uiMetadata: { icon: 'brand:grok', category: 'ai', brandColor: '#000000' },
   },
   {
+    providerKey: 'typesafeApi',
+    connectionType: 'secret',
+    label: 'TypeSafe API',
+    global: true,
+    authApply: null,
+    // SYSTEM key only until BYO ships (plans/ai/decision/02-typesafe-provider.md §7).
+    visibility: 'internal',
+    connectionVariables: [
+      {
+        key: 'apiKey',
+        label: 'API Key',
+        secret: true,
+        required: true,
+        description: 'Your TypeSafe (Jev) API key from https://typesafe.ai',
+        validation: { minLength: 20 },
+      },
+    ],
+    uiMetadata: { icon: 'brain', category: 'ai', brandColor: '#111827' },
+  },
+  {
     providerKey: 'cohereApi',
     connectionType: 'secret',
     label: 'Cohere API',

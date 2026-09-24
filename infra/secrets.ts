@@ -99,6 +99,10 @@ export const secretsConfig = {
     secret: new sst.Secret('GROQ_API_KEY'),
     description: 'Groq API key for LLM inference',
   },
+  TYPESAFE_API_KEY: {
+    secret: new sst.Secret('TYPESAFE_API_KEY'),
+    description: 'TypeSafe AI API key for the Jev decision model',
+  },
 
   // AWS Services
   BEDROCK_ACCESS_KEY: {

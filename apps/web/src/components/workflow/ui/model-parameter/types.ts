@@ -15,6 +15,7 @@ export enum ModelTypeEnum {
   speech2text = 'speech2text',
   moderation = 'moderation',
   tts = 'tts',
+  decision = 'decision',
 }
 
 export const MODEL_TYPE_TEXT = {
@@ -24,6 +25,7 @@ export const MODEL_TYPE_TEXT = {
   [ModelTypeEnum.speech2text]: 'Speech2text',
   [ModelTypeEnum.moderation]: 'Moderation',
   [ModelTypeEnum.tts]: 'TTS',
+  [ModelTypeEnum.decision]: 'Decision',
 }
 
 export enum ConfigurationMethodEnum {

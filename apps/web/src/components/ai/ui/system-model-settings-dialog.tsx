@@ -29,6 +29,8 @@ const MODEL_TYPE_CONFIG: Array<{
   type: ModelType
   label: string
   description: string
+  /** Trigger text when no default is set; states what runs instead. */
+  emptyLabel?: string
 }> = [
   {
     type: ModelType.LLM,
@@ -64,6 +66,13 @@ const MODEL_TYPE_CONFIG: Array<{
     type: ModelType.VISION,
     label: 'Vision',
     description: 'Default model for image analysis',
+  },
+  {
+    type: ModelType.DECISION,
+    label: 'Decisions',
+    description:
+      'Classification and routing. Answers a fixed question with a confidence. A small model is enough.',
+    emptyLabel: 'Uses your language model',
   },
 ]
 
@@ -156,25 +165,34 @@ export function SystemModelSettingsDialog({
         </DialogHeader>
 
         <FieldPanel orientation='responsive' breakpoint='md' resizeId='ai-system-model'>
-          {MODEL_TYPE_CONFIG.map(({ type, label, description }) => (
-            <FieldPanelRow key={type} title={label} description={description}>
-              {unifiedModelData ? (
-                <AiModelPicker
-                  data={unifiedModelData}
-                  value={getCurrentValue(type)}
-                  onChange={(model) => handleModelChange(type, model)}
-                  modelTypes={[type]}
-                  showUnconfigured={false}
-                  placeholder={`Select ${label.toLowerCase()}...`}
-                  triggerVariant='transparent'
-                  triggerClassName='w-full justify-between flex-1'
-                  isUpdating={pendingModelType === type}
-                />
-              ) : (
-                <Skeleton className='mt-2 h-5 w-25' />
-              )}
-            </FieldPanelRow>
-          ))}
+          {MODEL_TYPE_CONFIG.map(({ type, label, description, emptyLabel }) => {
+            const value = getCurrentValue(type)
+            const isUpdating = pendingModelType === type
+            return (
+              <FieldPanelRow
+                key={type}
+                title={label}
+                description={description}
+                onClear={value && !isPending ? () => handleModelChange(type, null) : undefined}>
+                {unifiedModelData ? (
+                  <AiModelPicker
+                    data={unifiedModelData}
+                    value={value}
+                    onChange={(model) => handleModelChange(type, model)}
+                    modelTypes={[type]}
+                    showUnconfigured={false}
+                    placeholder={`Select ${label.toLowerCase()}...`}
+                    triggerVariant='transparent'
+                    triggerClassName='w-full justify-between flex-1'
+                    emptyLabel={emptyLabel}
+                    isUpdating={isUpdating}
+                  />
+                ) : (
+                  <Skeleton className='mt-2 h-5 w-25' />
+                )}
+              </FieldPanelRow>
+            )
+          })}
         </FieldPanel>
 
         <DialogFooter>

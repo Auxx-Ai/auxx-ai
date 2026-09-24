@@ -112,7 +112,7 @@ export class UsageTrackingService {
       userId: request.userId || null,
       provider: request.provider,
       model: request.model,
-      modelType: 'llm',
+      modelType: request.modelType ?? 'llm',
       inputTokens,
       outputTokens,
       totalTokens,
@@ -147,7 +147,7 @@ export class UsageTrackingService {
   async trackUsageBatch(requests: UsageTrackingRequest[]): Promise<void> {
     if (requests.length === 0) return
 
-    // Aggregate entries by provider+model into a single row per combination.
+    // Aggregate entries by provider+model+modelType into a single row per combination.
     const grouped = new Map<
       string,
       {
@@ -163,7 +163,7 @@ export class UsageTrackingService {
     >()
 
     for (const req of requests) {
-      const key = `${req.provider}:${req.model}`
+      const key = `${req.provider}:${req.model}:${req.modelType ?? 'llm'}`
       const existing = grouped.get(key)
       const inputTokens = req.usage.prompt_tokens || 0
       const outputTokens = req.usage.completion_tokens || 0
@@ -213,7 +213,7 @@ export class UsageTrackingService {
       userId: g.ref.userId || null,
       provider: g.ref.provider,
       model: g.ref.model,
-      modelType: 'llm' as const,
+      modelType: g.ref.modelType ?? 'llm',
       inputTokens: g.inputTokens,
       outputTokens: g.outputTokens,
       totalTokens: g.inputTokens + g.outputTokens,

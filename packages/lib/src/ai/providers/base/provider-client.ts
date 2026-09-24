@@ -3,8 +3,14 @@
 import type { ConnectionVariable, Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
 import type { BaseSpecializedClient } from '../../clients/base/base-specialized-client'
+import type { DecisionClient } from '../../clients/base/decision-client'
 import { type ModelCapabilities, ModelType, type ProviderCapabilities } from '../types'
-import type { ConnectionTestResult, ProviderCredentials, ValidationResult } from './types'
+import {
+  type ConnectionTestResult,
+  type ProviderCredentials,
+  ProviderError,
+  type ValidationResult,
+} from './types'
 import { ValidationUtils } from './validation'
 
 /**
@@ -78,6 +84,15 @@ export abstract class ProviderClient {
    * This is the new method that provides access to specialized clients
    */
   abstract getClient(modelType: ModelType, credentials: ProviderCredentials): BaseSpecializedClient
+
+  /** Native decision client; only providers with a decision-only model override this. */
+  getDecisionClient(_credentials: ProviderCredentials): DecisionClient {
+    throw new ProviderError(
+      `Provider '${this.getProviderId()}' has no native decision client`,
+      this.getProviderId(),
+      'DECISION_NOT_SUPPORTED'
+    )
+  }
 
   // ===== CONCRETE METHODS (common implementation) =====
 

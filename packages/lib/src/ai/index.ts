@@ -117,6 +117,7 @@ export type {
   ProviderData,
   ProviderType,
 } from './providers/types'
+export { TypeSafeClient } from './providers/typesafe/typesafe-client'
 export { ZaiClient } from './providers/zai/zai-client'
 // ===== QUOTA MANAGEMENT =====
 export { QuotaService } from './quota'

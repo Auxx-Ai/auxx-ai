@@ -1,6 +1,7 @@
 // packages/lib/src/ai/quota/index.ts
 
 export { CREDIT_USD_VALUE, UNPRICED_FALLBACK_CREDITS, usdToCredits } from './credit-conversion'
+export { type EnforceAiQuotaInput, enforceAiQuota } from './enforce-ai-quota'
 export {
   blendedCostPer1kTokens,
   type CostPer1kTokens,

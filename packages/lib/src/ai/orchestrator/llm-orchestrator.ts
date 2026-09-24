@@ -2,8 +2,6 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger, type Logger } from '@auxx/logger'
-import { UsageLimitError } from '../../errors'
-import { createUsageGuard } from '../../usage/create-usage-guard'
 import type { LLMClient } from '../clients/base/llm-client'
 import type {
   LLMInvokeParams,
@@ -13,11 +11,10 @@ import type {
   ToolCall,
   UsageMetrics,
 } from '../clients/base/types'
-import { QuotaExceededError } from '../errors/quota-errors'
 import { getCredentials, getSystemCredentials } from '../providers/config'
 import { ProviderRegistry } from '../providers/provider-registry'
 import { type CredentialsResponse, ModelType } from '../providers/types'
-import { QuotaService } from '../quota/quota-service'
+import { enforceAiQuota } from '../quota/enforce-ai-quota'
 import type {
   AICallbacks,
   BatchLLMRequest,
@@ -152,7 +149,11 @@ export class LLMOrchestrator {
         // Determine source from context
         const source = (context?.source as UsageSource) ?? 'other'
         const sourceId =
-          context?.workflowId ?? context?.datasetId ?? context?.sessionId ?? undefined
+          context?.sourceId ??
+          context?.workflowId ??
+          context?.datasetId ??
+          context?.sessionId ??
+          undefined
 
         await this.usageService.trackUsage({
           organizationId,
@@ -574,18 +575,8 @@ export class LLMOrchestrator {
   // ===== PRIVATE METHODS =====
 
   /**
-   * Prepare for an LLM invocation in a single pass:
-   *   1. Fetch the LLM client + credential metadata (providerType / credentialSource).
-   *   2. If `enableQuotaEnforcement` is on and the call is SYSTEM-credentialed,
-   *      check the org's credit quota (monthly + admin-granted bonus pool).
-   *      Throws {@link QuotaExceededError} when both pools are exhausted.
-   *   3. Regardless of credential source, consume one unit of the
-   *      `aiCompletions` abuse rate-limit. Throws {@link UsageLimitError} when
-   *      the ceiling is hit.
-   *
-   * Returning the client from here avoids a double DB lookup — `getClientWithMetadata`
-   * already tells us the providerType, so we don't need a separate
-   * `ProviderPreference` + `ProviderConfiguration` read to gate the quota.
+   * Resolve the LLM client with its credential metadata, then run {@link enforceAiQuota}.
+   * Returning the client here avoids a second lookup to learn the providerType.
    */
   private async enforceQuotaGate(
     provider: string,
@@ -604,40 +595,13 @@ export class LLMOrchestrator {
 
     if (!this.config.enableQuotaEnforcement || !this.db) return clientMeta
 
-    // Tier 1: SYSTEM credit quota. Runs when forceSystem (we just forced
-    // SYSTEM creds, so the org owes credits for the call) OR when the
-    // org is naturally on SYSTEM tier.
-    if (options.forceSystem || clientMeta.providerType === 'SYSTEM') {
-      const quota = new QuotaService(this.db, organizationId)
-      const status = await quota.getQuotaStatus()
-      if (status && status.isExceeded) {
-        throw new QuotaExceededError(
-          "You're out of AI credits. They'll refill at the start of your next billing cycle.",
-          {
-            provider,
-            quotaUsed: status.quotaUsed,
-            quotaLimit: status.quotaLimit,
-            bonusCredits: status.bonusCredits,
-            resetsAt: status.quotaPeriodEnd,
-          }
-        )
-      }
-    }
-
-    // Tier 2: abuse-prevention rate limit. Counts raw call rate, not credit cost.
-    const guard = await createUsageGuard(this.db)
-    if (guard) {
-      const usageResult = await guard.consume(organizationId, 'aiCompletions', { userId })
-      if (!usageResult.allowed) {
-        throw new UsageLimitError({
-          metric: 'aiCompletions',
-          current: usageResult.current ?? 0,
-          limit: usageResult.limit ?? 0,
-          message:
-            'AI request rate limit reached for this billing period. Please contact support if this is unexpected.',
-        })
-      }
-    }
+    await enforceAiQuota(this.db, {
+      provider,
+      organizationId,
+      userId,
+      providerType: clientMeta.providerType,
+      forceSystem: options.forceSystem,
+    })
 
     return clientMeta
   }

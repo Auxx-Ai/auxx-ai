@@ -68,6 +68,7 @@ APP_SECRET_KEYS=(
   "ANTHROPIC_API_KEY"
   "GOOGLE_API_KEY" # Assuming this is the AI models one (from your variable list)
   "GROQ_API_KEY"
+  "TYPESAFE_API_KEY"
   "PUSHER_APP_ID" # Include if needed explicitly in secret string
   "PUSHER_KEY" # Include if needed explicitly in secret string
   "PUSHER_SECRET"
