@@ -1,15 +1,10 @@
 // packages/lib/src/accounting/opening/__tests__/fill-from-provider.test.ts
 //
-// `fillOpeningTrialBalanceFromProvider` wires the pure planner into the
-// existing read/write path. Everything it touches through a table is somebody
-// else's tested function - `readOpeningTrialBalance`, `saveOpeningTrialBalance`,
-// `postOpeningTrialBalance` are the REAL functions here, doubled at the same
-// seams `opening-trial-balance.test.ts` doubles them at - so what is under test
-// is the assembly, and in particular the section 4.3 trap: a fill that saved
-// `rows` WITHOUT the locked inventory rows would store zero for them, and the
-// moment the count column holds a value `postOpeningTrialBalance` throws the
-// "re-open the opening balances page" `ConflictError`. This is that regression
-// test, run against the real write path rather than the pure planner alone.
+// `fillOpeningTrialBalanceFromProvider` wires the pure planner into the real
+// read/write path (`readOpeningTrialBalance`, `saveOpeningTrialBalance`,
+// `postOpeningTrialBalance`), doubled only at their table seams. Under test: the
+// provider's balance sheet is the opening INCLUDING inventory (103 §5a), and an
+// unmatched provider balance refuses before anything is saved.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -189,33 +184,29 @@ beforeEach(() => {
     ['accounting.bookTimeZone', 'America/New_York'],
     ['accounting.setupState', 'draft'],
     ['organization.currency', 'USD'],
-    // The count column is already set - the section 4.3 trap only bites when
-    // it holds a value the locked row must be re-emitted at.
-    ['accounting.openingRawMaterials', 100_00],
-    ['accounting.openingWip', 0],
-    ['accounting.openingFinishedGoods', 0],
   ])
   h.entries = []
   h.chart = [
     account('a1', '1000', 'Cash', 'asset'),
     account('a2', '2000', 'Accounts Payable', 'liability'),
-    account('a3', '1310', 'Raw Materials', 'asset'),
+    account('a3', '1330', 'Finished Goods', 'asset'),
   ]
-  h.roleAccounts = new Map([
-    ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Raw Materials' }],
-  ])
+  h.roleAccounts = new Map()
   h.accountMap = new Map([
     ['a1', 'p_cash'],
     ['a2', 'p_ap'],
+    ['a3', 'p_inv'],
   ])
-  // Balances with the locked row's 100_00 count included: 400_00 + 100_00 debit
-  // vs 500_00 credit.
   h.sheet = {
     asOf: '2026-12-31',
     currency: 'USD',
     reportBasis: 'Accrual',
     hasData: true,
-    rows: [accountRow('p_cash', 400_00, 'Cash'), accountRow('p_ap', -500_00, 'Accounts Payable')],
+    rows: [
+      accountRow('p_cash', 400_00, 'Cash'),
+      accountRow('p_inv', 100_00, 'Inventory Asset'),
+      accountRow('p_ap', -500_00, 'Accounts Payable'),
+    ],
   }
   h.standingPostings = 0
   h.postResult = { status: 'posted', glPostingId: 'glp_1' }
@@ -228,34 +219,53 @@ beforeEach(() => {
 })
 
 describe('fillOpeningTrialBalanceFromProvider', () => {
-  it('saves a draft that includes the locked inventory row, so Finalize does not throw the locked-row ConflictError', async () => {
+  it('saves the provider inventory figure like any other row, and the draft posts', async () => {
     const filled = await fillOpeningTrialBalanceFromProvider(db, ORG, USER)
-    expect(filled.isErr()).toBe(false)
+    expect(filled._unsafeUnwrap()).toMatchObject({ filledCount: 3, differenceMinor: 0 })
 
-    // The section 4.3 trap: an early draft of the planner excluded locked rows
-    // from `rows`, which stored zero for them and made this call throw.
+    const lines = (h.created[0] as { lines: unknown[] }).lines
+    expect(lines).toContainEqual({ glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 })
+
     const posted = await postOpeningTrialBalance(db, ORG, USER)
     expect(posted.isErr()).toBe(false)
     expect(postEntry).toHaveBeenCalledTimes(1)
   })
 
-  it('writes the provenance settings, and does not opt out of the cache bust', async () => {
+  it('refuses on a provider balance with no account of ours, listing it, and saves nothing', async () => {
+    h.sheet = {
+      ...(h.sheet as object),
+      rows: [
+        accountRow('p_cash', 400_00, 'Cash'),
+        accountRow('p_inv', 100_00, 'Inventory Asset'),
+        accountRow('p_loan', -50_00, 'Bank Loan'),
+        accountRow('p_ap', -450_00, 'Accounts Payable'),
+      ],
+    }
+    const result = await fillOpeningTrialBalanceFromProvider(db, ORG, USER)
+    const error = result._unsafeUnwrapErr() as Error & { details: Record<string, unknown> }
+    expect(error.message).toMatch(/Bank Loan/)
+    expect(error.details.providerAccountIds).toEqual(['p_loan'])
+    expect(h.created).toEqual([])
+    expect(h.batchUpdateSettings).not.toHaveBeenCalled()
+  })
+
+  it('does not refuse on an unmatched provider account with a zero balance', async () => {
+    h.sheet = {
+      ...(h.sheet as object),
+      rows: [...(h.sheet as { rows: unknown[] }).rows, accountRow('p_empty', 0, 'Unused')],
+    }
+    const result = await fillOpeningTrialBalanceFromProvider(db, ORG, USER)
+    expect(result.isErr()).toBe(false)
+  })
+
+  it('writes the provenance settings and nothing about inventory', async () => {
     await fillOpeningTrialBalanceFromProvider(db, ORG, USER)
-    expect(h.batchUpdateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organizationId: ORG,
-        settings: expect.arrayContaining([
-          { key: 'accounting.openingSource', value: 'provider' },
-          { key: 'accounting.openingSourceAsOf', value: '2026-12-31' },
-        ]),
-      })
-    )
-    // The bust lives in `batchUpdateOrganizationSettings` now, which this file
-    // mocks - so it is not observable here. What must stay true is that the
-    // batch is not told to skip it: the browser's store hydrates from the
-    // per-user `userSettings` cache, and brief 19 learned by driving that an
-    // un-busted write leaves a reload showing the manual instruction.
-    expect(h.batchUpdateSettings.mock.calls[0]![0]).not.toHaveProperty('skipCacheInvalidation')
+    const call = h.batchUpdateSettings.mock.calls[0]![0] as { settings: unknown[] }
+    expect(call.settings).toEqual([
+      { key: 'accounting.openingSource', value: 'provider' },
+      { key: 'accounting.openingSourceAsOf', value: '2026-12-31' },
+    ])
+    expect(call).not.toHaveProperty('skipCacheInvalidation')
   })
 
   it('refuses when nothing is connected', async () => {

@@ -219,7 +219,7 @@ packages/lib/src/
     ledger/      the books: chart/, roles/, builders/, post/, periods/, reads/, setup/
     reports/     trial balance, P&L, balance sheet, GL, aging, 1099, pdf/
     journals/    entries/ and recurring/
-    opening/     opening trial balance, baseline, fill plan
+    opening/     the opening entry, its fill from the provider, finalize
     export/      export batches, payloads/, send, retry, rollback, sweep
     mirror/      the inbound copy of the provider's ledger
     providers/   the AccountingProvider seam, book connections, quickbooks/

@@ -100,6 +100,7 @@ import {
   readMovementDetail,
   readMovements,
 } from '@auxx/lib/accounting/money'
+import { finalizeAccountingSetup } from '@auxx/lib/accounting/opening'
 import { ensureGuestContact } from '@auxx/lib/accounting/parties'
 import {
   accountingOpeningPolicySchema,
@@ -499,6 +500,16 @@ export const ledgerRouter = createTRPCRouter({
         openingPolicy: input.openingPolicy,
       })
     ),
+
+  /** Finalize setup server-side, then post the opening entry - both Finalize buttons call this. */
+  finalizeSetup: permissionProcedure(PermissionKey.ledgerControl).mutation(async ({ ctx }) => {
+    const result = await finalizeAccountingSetup(ctx.db, {
+      organizationId: ctx.session.organizationId,
+      actorUserId: ctx.session.userId,
+    })
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 
   /**
    * Back out a posted entry with a second, opposite one.

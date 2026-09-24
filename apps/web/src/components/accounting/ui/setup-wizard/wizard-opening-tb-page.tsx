@@ -2,10 +2,7 @@
 'use client'
 
 import {
-  ACCOUNT_ROLES,
-  OPENING_BASELINE_SETTING_KEYS,
   OPENING_FROM_NOTHING_SETTING_KEY,
-  readSettingMinorUnits,
   summariseOpeningTrialBalance,
 } from '@auxx/lib/accounting/ledger/client'
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
@@ -19,25 +16,17 @@ import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryBlockers } from '../ledger/entry-blockers'
-import { OpeningFillButton } from '../settings/opening-fill-button'
 import {
   applyOpeningCellChange,
   OpeningTbGrid,
   openingEvidenceInstruction,
-  openingRowsDifferFromServer,
   openingVerdict,
-  overlayInventorySettings,
 } from '../settings/opening-tb-grid'
 import type { WizardStepHandle } from './wizard-step-handle'
 
-/** Why the three inventory rows cannot be typed in here. */
-const LOCK_REASON =
-  'Set on the previous page. This is the inventory snapshot the first month-end close measures ' +
-  'its delta from, so it has one authority.'
-
 /**
- * The opening trial balance
- * (plans/accounting/tasks/done/03-opening-balances.md, ui-plan §2.2).
+ * The opening trial balance, typed by hand - shown only when no accounting system is
+ * connected; with one, the opening is filled from its balance sheet (103 §5a).
  *
  * 🛑 **"These books start from nothing" is an affirmation, not an inference.** An empty grid means
  * both *"we started from nothing"* and *"I have not filled this in yet"*, and the second is exactly
@@ -57,12 +46,6 @@ const LOCK_REASON =
  * grid, never as a toast (HANDOFF ground rule 9). A toast is gone in four
  * seconds and takes the only explanation of a disabled Continue with it.
  *
- * ⚠️ The three inventory rows are prefilled from the `accounting.opening*`
- * settings the PREVIOUS page writes, and are locked. They are the same number
- * `readOpeningBaseline` hands the first close, so a second editable copy here
- * would let the ledger and the subledger disagree from day one - and the
- * disagreement would arrive as an unexplainable COGS plug.
- *
  * The draft is persisted through `ledgerOpening.save` on leave, in every
  * direction, for the reason every other draft-holding page in this wizard does:
  * a page that can lose typing has no escape hatch.
@@ -71,9 +54,6 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
   function WizardOpeningTbPage(_props, ref) {
     const utils = api.useUtils()
     const opening = api.ledgerOpening.get.useQuery()
-    // The browser's copy of the three inventory figures, and of where the
-    // grid's numbers came from. Fresher than the server read - see
-    // `overlayInventorySettings`.
     const { getSetting, batchUpdateOrganizationSettings } = useSettings({ scope: 'GENERAL' })
     const fromNothing = getSetting(OPENING_FROM_NOTHING_SETTING_KEY) === true
     const openingSource = fromNothing
@@ -85,10 +65,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
       onSuccess: () => utils.ledgerOpening.get.invalidate(),
     })
 
-    // `edited` holds ONLY what somebody typed into the grid. The three locked
-    // inventory rows are overlaid at RENDER time from the settings store, not
-    // written into state, so the previous page's numbers can land after this
-    // query did without discarding anything typed here.
+    // `edited` holds ONLY what somebody typed into the grid.
     const [edited, setEdited] = useState<OpeningTrialBalanceRow[] | null>(null)
     const [dirty, setDirty] = useState(false)
     // The refusal Continue raised, held so it renders as a card rather than a
@@ -105,20 +82,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
       setDirty(false)
     }, [serverRows])
 
-    const K = OPENING_BASELINE_SETTING_KEYS
-    const rawMaterialsMinor = readSettingMinorUnits(getSetting(K.inventory_raw_materials))
-    const wipMinor = readSettingMinorUnits(getSetting(K.inventory_wip))
-    const finishedGoodsMinor = readSettingMinorUnits(getSetting(K.inventory_finished_goods))
-
-    const rows = useMemo(
-      () =>
-        overlayInventorySettings(edited ?? serverRows ?? [], {
-          [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS]: rawMaterialsMinor,
-          [ACCOUNT_ROLES.INVENTORY_WIP]: wipMinor,
-          [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]: finishedGoodsMinor,
-        }),
-      [edited, serverRows, rawMaterialsMinor, wipMinor, finishedGoodsMinor]
-    )
+    const rows = edited ?? serverRows ?? []
 
     const summary = useMemo(
       () =>
@@ -140,16 +104,6 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
     // `fromNothing` clears the empty case and nothing else: an entered grid that does not balance
     // is still unbalanced, whatever was declared.
     const unbalanced = summary.rows === 0 ? !fromNothing : summary.differenceMinor !== 0
-
-    // 🛑 Dirty is "what is on screen differs from what the server holds", not
-    // "somebody typed in a cell". The three locked rows are overlaid at render
-    // time from the PREVIOUS page's settings, so a changed inventory figure
-    // moves this grid without touching `dirty` - and `wizard-done-page` posts
-    // the STORED draft, which would still hold the old number.
-    const overlayDirty = useMemo(
-      () => openingRowsDifferFromServer(rows, serverRows),
-      [rows, serverRows]
-    )
 
     // The card clears itself the moment the books agree; leaving it up over a
     // balanced grid would be the same lie a stale toast is.
@@ -229,7 +183,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
         // Back and "Set up later" save whatever is there and let the user out. An org that
         // declared it starts from nothing has nothing to save: `buildOpeningBalanceEntry` refuses
         // an empty entry, and a zero-row draft would only reach it to be refused.
-        if ((dirty || overlayDirty) && !(fromNothing && summary.rows === 0)) {
+        if (dirty && !(fromNothing && summary.rows === 0)) {
           try {
             await persist()
           } catch (error) {
@@ -282,8 +236,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             return's figure is not usable, and the restart this module was built
             for is blocked on collecting bank statements instead. Shared with the
             settings twin and conditional on where the grid's numbers came from
-            (`openingEvidenceInstruction`), so a fill from QuickBooks and this
-            paragraph never give two different pieces of accounting advice.
+            (`openingEvidenceInstruction`).
           */}
           <p className='font-medium text-foreground text-sm'>
             {openingEvidenceInstruction(openingSource, cutoverDate)}
@@ -291,12 +244,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
         </div>
 
         <div className='flex flex-wrap items-center justify-between gap-2'>
-          {/*
-            The affirmation, beside the import rather than under the grid: these are the two ways
-            not to type 35 rows by hand, and a person who has one of them should see the other.
-            Disabled once anything is entered - the declaration is about an EMPTY trial balance,
-            and ticking it over a filled grid would say two things at once.
-          */}
+          {/* Disabled once anything is entered: the declaration is about an EMPTY trial balance. */}
           <div className='flex items-center gap-2'>
             <Checkbox
               id='opening-from-nothing'
@@ -310,7 +258,6 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
               These books start from nothing
             </Label>
           </div>
-          <OpeningFillButton frozen={frozen} cutoverDate={cutoverDate} />
         </div>
 
         {fromNothing && summary.rows === 0 && (
@@ -329,7 +276,6 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             rows={rows}
             currency={currency}
             readOnly={frozen}
-            lockReason={LOCK_REASON}
             onCellChange={(accountId, column, minor) => {
               setEdited((prev) =>
                 applyOpeningCellChange(prev ?? serverRows ?? [], accountId, column, minor)

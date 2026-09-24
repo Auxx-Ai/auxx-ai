@@ -242,12 +242,8 @@ interface Refusal {
  * close - which posts `target − baseline` - would then report the entire
  * opening stock as a movement.
  *
- * It does not become a second writer, because the month-end assertion never
- * reads this entry. `gather-month-end-inventory.ts` takes its prior assertion
- * from `readOpeningBaseline`, i.e. the `accounting.opening*` SETTINGS, so the
- * ledger lands on `opening + (target − opening) = target` exactly once. And the
- * two numbers cannot disagree: the wizard prefills those three rows FROM those
- * settings and locks them.
+ * It is the inventory baseline the close measures from (`readOpeningInventoryLedger`),
+ * and any gap to the parts' value is posted once by `postOpeningInventoryAdjustment`.
  *
  * `manual_journal` keeps the refusal in full. A bookkeeper's adjusting entry
  * against an asserted account IS reversed by the next close, with the residual

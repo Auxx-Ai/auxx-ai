@@ -124,7 +124,7 @@ packages/lib/src/
     ledger/      the books: chart/ roles/ builders/ post/ periods/ reads/ setup/
     reports/     trial balance, P&L, balance sheet, GL, aging, 1099, pdf/
     journals/    entries/ (manual) and recurring/
-    opening/     the opening trial balance, its baseline and its fill plan
+    opening/     the opening entry, its fill from the provider, and finalize
     export/      export batches, payloads/, send, retry, release, rollback, sweep
     mirror/      the raw copy of the provider's ledger, and the translation off it
     providers/   the AccountingProvider seam, book connections, quickbooks/
@@ -526,8 +526,20 @@ tuple for the length of an HTTP round trip. `postEntryInTx` returns a `pendingEx
 hands to `exportPostedEntry` **after** commit.
 
 🛑 **`cash` is deliberately not refused** by the inventory guard, and `opening_balance` is not
-checked at all: an opening entry must name all three inventory accounts, and it is not a second
-writer because it is measured from the `accounting.opening*` settings rather than read back.
+checked at all: an opening entry carries the inventory accounts at the cutover (from the
+provider's balance sheet when one is connected, 103 §5a), and it is the close's inventory
+baseline (`ledger/reads/opening-inventory.ts`), not a second writer. The gap between it and the
+parts' opening value (`initial` movements on or before the cutover) is posted once, the day
+after the cutover, by `postOpeningInventoryAdjustment` (`inventory/receiving/`): an
+`inventory_movement` against `inventory_revaluation`, claimed on `(opening_balance, <org>,
+inventory_adjustment:<cutover>)`, its lines stamped `sourceType: opening_inventory_adjustment`
+so the close counts it as baseline rather than a movement.
+
+**Finalize is one server door.** `finalizeAccountingSetup` (`opening/finalize-setup.ts`, router
+`ledger.finalizeSetup`) re-checks `resolveSetupReadiness` against the real opening entry, writes
+`setupState`/`setupFinalizedAt`/`setupFinalizedByUserId` (router-owned keys; the settings batch
+refuses them), then posts the opening entry unless `accounting.openingFromNothing`. Re-running it
+on a finalized org retries only the post.
 
 ### 5.5 No drafts in the ledger
 
@@ -2033,8 +2045,8 @@ concurrency 1, globally (plain BullMQ has no per-org groups), since one job alre
 | `accounting.autoSend.<avenue>` | Gate 2 — hold or send. There is no gate 1 (§5.5) |
 | `accounting.summaryGrain.<avenue>` | The summary bucket, `day`, `month` or `payout` |
 | `accounting.guestContactId` | The contact a receipt or refund names when the customer is unknown (§8.3) |
-| `accounting.opening*`, `qboOpening*` | The opening trial balance. Frozen by prefix after the first posting |
-| `accounting.setupState`, `setupFinalizedAt/ByUserId` | Wizard completion |
+| `accounting.openingFromNothing`, `.openingSource`, `.openingSourceAsOf` | The opening decision and its provenance; the figures live on the opening `journal_entry`. Frozen by prefix after the first posting |
+| `accounting.setupState`, `setupFinalizedAt/ByUserId` | Written only by `ledger.finalizeSetup` (router-owned) |
 | `accounting.providerSyncedThrough` | 🛑 The inbound marker — advance it only over a chunk that succeeded |
 | `providerSync.state`, `providerSync.schedule` | The walk's own progress. 🛑 Prefixed so it does not take the accounting lock |
 | `quickbooks.postJournalEntries` | 🛑 Whether money leaves for a third-party ledger |

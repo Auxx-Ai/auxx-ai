@@ -299,8 +299,8 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
   opening_balance: {
     type: 'opening_balance',
     label: 'Opening balance',
-    // postings/opening-trial-balance/writes.ts `postOpeningTrialBalance`.
-    trigger: { kind: 'console', where: 'Post on the opening trial balance in accounting setup' },
+    // opening/finalize-setup.ts `finalizeAccountingSetup` -> `postOpeningTrialBalance`.
+    trigger: { kind: 'console', where: 'Finalize in accounting setup' },
     template: [
       { side: 'debit', role: 'by id', what: 'Each account with a balance on the cutover date' },
       { side: 'credit', role: 'by id', what: 'Each account with a balance on the cutover date' },

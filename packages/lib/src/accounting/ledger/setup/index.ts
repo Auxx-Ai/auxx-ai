@@ -14,6 +14,7 @@ export {
 } from './export-settings'
 export { readExportSettings } from './read-export-settings'
 export {
+  type OpeningPresence,
   type OpeningTrialBalanceSummary,
   openingTrialBalanceDifference,
   resolveSetupReadiness,

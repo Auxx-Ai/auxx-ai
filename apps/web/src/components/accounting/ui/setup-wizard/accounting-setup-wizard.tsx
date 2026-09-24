@@ -6,11 +6,11 @@ import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { WizardAccountMapPage } from './wizard-account-map-page'
 import { WizardAccountsPage } from './wizard-accounts-page'
 import { WizardConnectPage } from './wizard-connect-page'
 import { WizardDonePage } from './wizard-done-page'
-import { WizardOpeningPage } from './wizard-opening-page'
 import { WizardOpeningTbPage } from './wizard-opening-tb-page'
 import { WizardPeriodPage } from './wizard-period-page'
 import { WizardRailsPage } from './wizard-rails-page'
@@ -21,39 +21,13 @@ import {
 } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
-// This list has been reordered twice, for two different reasons.
+// The order is load-bearing: `connect` before `accounts` (the provider's chart can be
+// the source of ours), `rails` between `accounts` and `accountMap` (a rail's accounts
+// come from the chart and must be mapped after), and the opening grid after the chart
+// it is a grid over. Page files name themselves, not their position.
 //
-// 🛑 First (brief 16 §1.5, §2.3): `connect` moved ahead of `accounts`. The
-// provider's chart can now be the SOURCE of ours (`ImportChartButton
-// mode='wizard'` on the accounts page), so connecting has to happen before
-// the accounts page can offer it. `connect` still sits immediately before
-// `accountMap`, and that pair is unchanged - the mapping page cannot render a
-// single row until a provider chart exists to map against.
-//
-// 🛑 Second (brief 19 §2): `opening` and `openingTrialBalance` moved from
-// right after `period` to right before `done`. The opening trial balance is a
-// grid over `listChartAccounts`, and the only door onto a chart is
-// `ledger.provisionChart` on the `accounts` page, four pages later in the old
-// order - so on a fresh org the grid was empty, `summary.rows === 0`, and
-// Continue refused over a table with nothing in it and nothing the person
-// could do about it. The reorder puts the chart-provisioning pages ahead of
-// the grid that reads them. It also means QuickBooks is connected before the
-// opening pages, which is what lets a later "Suggest from QuickBooks" fill
-// have a chart and an account map to hang itself on.
-//
-// 🛑 Third (brief 26 §8): `rails` was inserted between `accounts` and
-// `accountMap`, and BOTH ends of that are hard. A rail's clearing account is
-// either picked from the chart or minted into it, so the chart-provisioning
-// page has to come first; and the QuickBooks mapping page has to see the
-// accounts this page just created, so it has to come after. Skippable like
-// every other page - `P1` again.
-//
-// 🛑 This order has now changed three times, so the page files name themselves ("the rails page")
-// rather than their position. Four headers still said "Page 3"/"Page 6" for a page that had moved
-// (plans/accounting/WIZARD-REVIEW.md F5); a number that goes stale on every reorder is not what the
-// header is for. Keep it that way.
-//
-// Nine pages.
+// The opening grid is for an org with no accounting system connected; with one, the
+// opening is filled from its balance sheet instead (plans/accounting/tasks/103 §5a).
 const PAGES = [
   'welcome',
   'period',
@@ -61,11 +35,6 @@ const PAGES = [
   'accounts',
   'rails',
   'accountMap',
-  'opening',
-  // 🛑 The trial balance sits AFTER the inventory snapshot and the order is
-  // load-bearing: its three inventory rows are prefilled from the
-  // `accounting.opening*` keys the previous page writes, and locked. Put it
-  // first and those rows would be blank with no way to fill them.
   'openingTrialBalance',
   'done',
 ] as const
@@ -74,12 +43,11 @@ type WizardPage = (typeof PAGES)[number]
 const PAGE_TITLES: Record<WizardPage, string> = {
   welcome: 'Set up accounting',
   period: 'Accounting period',
-  opening: 'Opening inventory',
-  openingTrialBalance: 'Opening trial balance',
+  openingTrialBalance: 'Opening balances',
   accounts: 'Account roles',
   rails: 'Payment rails',
   connect: 'Accounting system',
-  accountMap: 'QuickBooks accounts',
+  accountMap: 'Accounting system accounts',
   done: 'Finalize',
 }
 
@@ -89,10 +57,9 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a nine-page
- * `DialogNav` wizard covering the things that have to be true before a month-end entry can
- * legally be posted (accounting period, the opening inventory snapshot, the opening trial balance, the
- * role map, the payment rails) plus the
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a `DialogNav`
+ * wizard covering the things that have to be true before a month-end entry can legally be
+ * posted (accounting period, the opening balances, the role map, the payment rails) plus the
  * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
  * ours corresponds to - and a "finalize" page that freezes the opening baseline.
  *
@@ -116,8 +83,11 @@ export interface AccountingSetupWizardProps {
 export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWizardProps) {
   const [page, setPage] = useState<WizardPage>('welcome')
   const periodRef = useRef<WizardStepHandle | null>(null)
-  const openingRef = useRef<WizardStepHandle | null>(null)
   const openingTbRef = useRef<WizardStepHandle | null>(null)
+  const providerStatus = useAccountingProviderStatus()
+  const pages: readonly WizardPage[] = providerStatus.connected
+    ? PAGES.filter((name) => name !== 'openingTrialBalance')
+    : PAGES
 
   // Reset to the first page each time the wizard is (re)opened.
   useEffect(() => {
@@ -139,7 +109,7 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
     onSettled: () => utils.gettingStarted.getStatus.invalidate(),
   })
 
-  const index = PAGES.indexOf(page)
+  const index = Math.max(pages.indexOf(page), 0)
 
   /**
    * Ask the current page (if it registered a handle) whether it is safe to navigate away.
@@ -152,11 +122,9 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
     const handle =
       page === 'period'
         ? periodRef.current
-        : page === 'opening'
-          ? openingRef.current
-          : page === 'openingTrialBalance'
-            ? openingTbRef.current
-            : null
+        : page === 'openingTrialBalance'
+          ? openingTbRef.current
+          : null
     return leaveCurrentPage(handle, direction, onAllowed)
   }
 
@@ -176,8 +144,8 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
   }
 
   const goNext = () =>
-    leaveVia('next', () => setPage(PAGES[Math.min(index + 1, PAGES.length - 1)] ?? 'done'))
-  const goBack = () => leaveVia('back', () => setPage(PAGES[Math.max(index - 1, 0)] ?? 'welcome'))
+    leaveVia('next', () => setPage(pages[Math.min(index + 1, pages.length - 1)] ?? 'done'))
+  const goBack = () => leaveVia('back', () => setPage(pages[Math.max(index - 1, 0)] ?? 'welcome'))
   const finish = () =>
     leaveVia('exit', () => {
       setWizardCompleted.mutate({ checklist: 'accounting' })
@@ -200,9 +168,6 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='period' size='lg'>
             <WizardPeriodPage ref={periodRef} />
-          </DialogNavPage>
-          <DialogNavPage value='opening' size='xl'>
-            <WizardOpeningPage ref={openingRef} />
           </DialogNavPage>
           <DialogNavPage value='openingTrialBalance' size='xl'>
             <WizardOpeningTbPage ref={openingTbRef} />

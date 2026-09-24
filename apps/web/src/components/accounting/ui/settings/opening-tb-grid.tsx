@@ -10,12 +10,6 @@
 // failure the shared `setup-readiness` predicate exists to prevent one level
 // up.
 //
-// 🛑 The three inventory rows are LOCKED, not merely prefilled. Their number
-// comes from the `accounting.opening*` settings, which is what
-// `readOpeningBaseline` hands the first close as its baseline. Two editable
-// doors onto one number is how the ledger and the subledger start disagreeing,
-// and the disagreement would surface as a COGS plug nobody can explain.
-//
 // Built on `StatementTable` (slot 1F) rather than a table of its own: it is the
 // primitive every statement, the aging report and this grid render through, and
 // its edit mode exists for this screen.
@@ -29,7 +23,6 @@ import type { StatementColumn, StatementRow } from '../reports/statement-table'
 import { StatementTable } from '../reports/statement-table'
 import { useChartAccounts } from '../use-chart-accounts'
 import { accountTypeLabel } from './accounts-types'
-import { FrozenLock } from './frozen-lock'
 
 /** Which money column a cell belongs to. `direction` by another name. */
 export type OpeningColumnKey = 'debit' | 'credit'
@@ -84,9 +77,6 @@ export function accountIdFromRowId(rowId: string): string | null {
  * representable and would post two lines that net to nothing, which
  * `buildManualEntry` can only report afterwards as a warning. Clearing is the
  * cheaper answer and it is the one a bookkeeper expects.
- *
- * A LOCKED row is never changed, whatever it is handed. The lock is the whole
- * reason the inventory numbers cannot drift from their settings.
  */
 export function applyOpeningCellChange(
   rows: readonly OpeningTrialBalanceRow[],
@@ -95,62 +85,10 @@ export function applyOpeningCellChange(
   minor: number | null
 ): OpeningTrialBalanceRow[] {
   return rows.map((row) => {
-    if (row.accountId !== accountId || row.lockedByRole) return row
+    if (row.accountId !== accountId) return row
     return column === 'debit'
       ? { ...row, debitMinor: minor, creditMinor: null }
       : { ...row, debitMinor: null, creditMinor: minor }
-  })
-}
-
-/**
- * Overlay the three locked inventory rows with the amounts the BROWSER holds.
- *
- * 🛑 Found by driving, not by a test. `ledgerOpening.get` reads the
- * `accounting.opening*` settings on the server, and every page of the wizard
- * mounts at once - so the query fires before the previous page's settings save
- * has landed, and the three locked rows arrive empty and stay empty. The verdict
- * then reads "Nothing entered yet" over a grid nobody can fix, because the rows
- * that hold the numbers are the ones that cannot be typed in.
- *
- * `useSettings` is patched synchronously by the write on the previous page
- * (`patchSettings`), so the browser's copy is the fresher of the two. Keyed by
- * ROLE rather than by account code, because `G8` says the code differs per org
- * and the server is the one that resolved which account carries which role.
- *
- * 🛑 **A browser `null` never blanks a value the server supplied**, and this is
- * the second half of the same driving session. `getSetting` answers `null` both
- * for "this org has not set it" and for "this store was hydrated before that key
- * existed" - the two are indistinguishable from here. Letting a `null` win
- * wiped the correct 100000 / 0 / 250000 the server had already resolved and put
- * the grid back to three em-dashes. So the browser wins only when it has a
- * number; otherwise the server's stands, and the next refetch settles it.
- *
- * PURE, and exported so both doors and a test can use it.
- */
-export function overlayInventorySettings(
-  rows: readonly OpeningTrialBalanceRow[],
-  minorByRole: Readonly<Record<string, number | null>>
-): OpeningTrialBalanceRow[] {
-  return rows.map((row) => {
-    if (!row.lockedByRole) return row
-    // 🛑 SUM every role on this account, not just one. All three roles share one
-    // account on any chart imported from QuickBooks, and reading a single role
-    // here left the grid short by the other two - the browser half of the same
-    // defect `reads.ts` had (brief 19's DRIVEN block). `lockedRoles` is the
-    // authority; `lockedByRole` is only the badge's label.
-    const roles = row.lockedRoles ?? [row.lockedByRole]
-    let total = 0
-    for (const role of roles) {
-      const minor = minorByRole[role]
-      // `undefined` is a role this caller knows nothing about; `null` is a store
-      // that may simply not have loaded the key. Neither may overwrite - and one
-      // unknown role poisons the whole sum, because a partial total would claim
-      // a number nobody supplied.
-      if (minor === undefined || minor === null) return row
-      total += minor
-    }
-    // An inventory account is an asset: its opening balance is a debit.
-    return { ...row, debitMinor: total, creditMinor: null }
   })
 }
 
@@ -185,7 +123,7 @@ export function openingEvidenceInstruction(
   }
   if (source === 'provider') {
     return (
-      `These are book balances from QuickBooks as of ${cutoverDate}. They already account for ` +
+      `These are book balances from your accounting system as of ${cutoverDate}. They already account for ` +
       'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
       'not replace them with the statement figure. Check them against what you expect.'
     )
@@ -196,45 +134,11 @@ export function openingEvidenceInstruction(
   )
 }
 
-/**
- * Whether the rows ON SCREEN say something different from the rows the server
- * last handed back.
- *
- * 🛑 The overlay above is applied at RENDER time and is deliberately not held
- * in state, so a locked inventory figure that moved on the panel/page above
- * left both doors' dirty flags - which only a manual cell edit sets - false.
- * The screen then showed one trial balance while the stored draft, which is
- * what `buildOpeningBalanceEntry` posts, still held the old one. Both doors
- * therefore treat a difference from `serverRows` as dirty, whether a person
- * typed it or the overlay produced it.
- *
- * PURE. Compares by account id and by both money columns; row ORDER is the
- * server's in both lists, so a positional walk is enough.
- */
-export function openingRowsDifferFromServer(
-  rows: readonly OpeningTrialBalanceRow[],
-  serverRows: readonly OpeningTrialBalanceRow[] | undefined
-): boolean {
-  if (!serverRows) return false
-  if (rows.length !== serverRows.length) return true
-  return rows.some((row, index) => {
-    const server = serverRows[index]
-    return (
-      !server ||
-      server.accountId !== row.accountId ||
-      (server.debitMinor ?? null) !== (row.debitMinor ?? null) ||
-      (server.creditMinor ?? null) !== (row.creditMinor ?? null)
-    )
-  })
-}
-
 interface OpeningTbGridProps {
   rows: OpeningTrialBalanceRow[]
   currency: string
   /** After the freeze, or on a posted entry: every cell renders as a value. */
   readOnly?: boolean
-  /** Why a locked inventory row cannot be typed in. Rendered in its tooltip. */
-  lockReason: string
   onCellChange?: (accountId: string, column: OpeningColumnKey, minor: number | null) => void
   /** The `entry-journal.tsx` strip: Debits / Credits / Difference. */
   verdict?: { label: string; ok: boolean; detail?: string }
@@ -244,7 +148,6 @@ export function OpeningTbGrid({
   rows,
   currency,
   readOnly,
-  lockReason,
   onCellChange,
   verdict,
 }: OpeningTbGridProps) {
@@ -256,7 +159,7 @@ export function OpeningTbGrid({
   return (
     <StatementTable
       columns={COLUMNS}
-      rows={toStatementRows(rows, currency, lockReason, accounts)}
+      rows={toStatementRows(rows, currency, accounts)}
       currency={currency}
       mode={readOnly ? 'read' : 'edit'}
       // 🛑 Open. The reports open collapsed because a statement is something you
@@ -317,7 +220,6 @@ function withTreeOrder(
 function toStatementRows(
   rows: readonly OpeningTrialBalanceRow[],
   currency: string,
-  lockReason: string,
   chart: readonly ChartAccountRow[]
 ): StatementRow[] {
   const out: StatementRow[] = []
@@ -344,11 +246,7 @@ function toStatementRows(
         id: `${ACCOUNT_ROW_PREFIX}${row.accountId}`,
         label: formatAccountLabel({ code: row.accountCode, name: row.accountName }),
         depth: 1 + accountDepth(chart, row.accountId),
-        // 🛑 `computed`, not `line`, is what makes a locked row read-only:
-        // `StatementTable`'s edit mode puts a `CurrencyInput` in a `line` and
-        // nowhere else. A `disabled` prop on the input would have been a second
-        // mechanism for the same fact.
-        kind: row.lockedByRole ? 'computed' : 'line',
+        kind: 'line',
         values: [row.debitMinor ?? null, row.creditMinor ?? null],
         meta: {
           accountCode: row.accountCode,
@@ -359,7 +257,6 @@ function toStatementRows(
           // muted prefix - one screen's accounts not looking like another's.
           accountName: row.accountName,
           accountType: row.accountType,
-          ...(row.lockedByRole ? { badge: <FrozenLock reason={lockReason} /> } : {}),
           ...(row.isActive ? {} : { note: 'This account is inactive in the chart.' }),
         },
       })

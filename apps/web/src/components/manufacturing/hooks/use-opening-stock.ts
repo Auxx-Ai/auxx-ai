@@ -27,11 +27,7 @@
 // write resolved 1310 off the stored `component`, which is exactly the
 // disagreement the paragraph above forbids.
 
-import {
-  ACCOUNT_ROLES,
-  cutoverDateFor,
-  OPENING_BASELINE_SETTING_KEYS,
-} from '@auxx/lib/accounting/ledger/client'
+import { cutoverDateFor } from '@auxx/lib/accounting/ledger/client'
 import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import {
   computeExtendedCost,
@@ -54,10 +50,6 @@ import {
 import { useResourceProperty } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
-import {
-  useDehydratedOrganizationId,
-  useDehydratedStateContext,
-} from '~/providers/dehydrated-state-provider'
 import { api, type RouterInputs, type RouterOutputs } from '~/trpc/react'
 import { openingStockAccountCode, openingStockAccountLabel } from '../parts/opening-stock-input'
 
@@ -183,31 +175,6 @@ export interface OpeningStockAccountTotal {
   extended: number
 }
 
-/**
- * The opening baseline settings, per inventory role: the frozen physical count
- * the first month-end close measures its delta from.
- *
- * `null` is UNSET, and it is not `0` - an org with no finished goods at cutover
- * has exactly zero, and the panel says something different in each case.
- */
-export type OpeningStockBaseline = Record<string, number | null>
-
-/**
- * 🛑 The two roles a `part_kind` can actually reach, and therefore the only ones
- * the reconciliation compares or proposes.
- *
- * `INVENTORY_ROLE_BY_PART_KIND` maps `component`/`subassembly` to raw materials
- * and `finished_good` to finished goods. **Nothing maps to `inventory_wip`**,
- * and `postings/build-entry.ts` says so outright. WIP is structurally zero here
- * because `completeBuild` writes the consume and the produce legs in one call,
- * so material never rests in work in process. Proposing a WIP baseline from a
- * count that cannot produce one would be inventing a number.
- */
-export const PROPOSABLE_OPENING_ROLES = [
-  ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
-  ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-] as const
-
 /** The counts the chips carry. The counts ARE the checklist (§4). */
 export interface OpeningStockCounts {
   all: number
@@ -290,28 +257,6 @@ export function useOpeningStock() {
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const cutoffPeriod = (getSetting('accounting.cutoffPeriod') as string | null) ?? null
-
-  /**
-   * The opening baseline the count is reconciled against, per role.
-   *
-   * ⚠️ No query. `useSettings` rides the org cache, hydrated by the provider,
-   * so every `accounting.*` key is already in hand on load at ZERO cost -
-   * `postings/setup-readiness.ts`'s header is explicit that this is why there is
-   * no readiness endpoint. A fresh read here would defeat the invalidation the
-   * settings writes already fire.
-   *
-   * A non-number reads as UNSET rather than as zero. `0` is a legitimate
-   * baseline (an org with no finished goods at cutover has exactly zero) and
-   * collapsing the two would make the panel show a difference against a number
-   * nobody supplied.
-   */
-  const openingBaseline = useMemo<OpeningStockBaseline>(() => {
-    const entries = PROPOSABLE_OPENING_ROLES.map((role) => {
-      const value = getSetting(OPENING_BASELINE_SETTING_KEYS[role])
-      return [role, typeof value === 'number' && Number.isFinite(value) ? value : null] as const
-    })
-    return Object.fromEntries(entries)
-  }, [getSetting])
 
   /**
    * The opening date the cutoff implies: the last day of the last month the
@@ -506,20 +451,6 @@ export function useOpeningStock() {
 
   const totalExtended = accountTotals.reduce((sum, total) => sum + total.extended, 0)
 
-  /**
-   * What the run counts per proposable role, `0` for a role nothing landed in.
-   *
-   * Every proposable role is always present, because the propose action writes
-   * BOTH settings: leaving finished goods unset while raw materials is set would
-   * make the reconciliation pass on a row nobody counted.
-   */
-  const countedByRole = useMemo<Record<string, number>>(() => {
-    const map: Record<string, number> = {}
-    for (const role of PROPOSABLE_OPENING_ROLES) map[role] = 0
-    for (const total of accountTotals) map[total.role] = total.extended
-    return map
-  }, [accountTotals])
-
   // ── Drafts ──────────────────────────────────────────────────────────────
 
   const setQuantity = useCallback((partId: string, quantity: number | null) => {
@@ -537,9 +468,6 @@ export function useOpeningStock() {
 
   const bulkSetPartKind = api.purchasing.bulkSetPartKind.useMutation()
   const runOpeningStock = api.purchasing.runOpeningStock.useMutation()
-  const proposeBaselineSettings = api.setting.batchUpdateOrganizationSettings.useMutation()
-  const organizationId = useDehydratedOrganizationId()
-  const { patchSettings } = useDehydratedStateContext()
   const { ConfirmDialog: KindConfirmDialog, runBatch } = useBulkRunner()
 
   /**
@@ -613,43 +541,6 @@ export function useOpeningStock() {
     return result
   }, [runOpeningStock, occurredAt, entries, candidates, clearSelection])
 
-  /**
-   * Write the counted totals into `accounting.openingRawMaterials` and
-   * `accounting.openingFinishedGoods`.
-   *
-   * The count is the INPUT to the baseline, not a check against it: the baseline
-   * IS the frozen physical count, valued at CPA-approved costs
-   * (`postings/opening-baseline.ts`), and this page is where that count is
-   * entered. So this proposes the totals; it never writes a trial-balance row,
-   * which those settings own.
-   *
-   * 🛑 **`accounting.openingWip` is NEVER written.** See
-   * {@link PROPOSABLE_OPENING_ROLES} - no part kind resolves to work in process,
-   * so there is no counted figure to propose and a zero written here would be an
-   * assertion the count cannot support.
-   *
-   * 🛑 No freeze check of its own. `setting.batchUpdateOrganizationSettings`
-   * already calls `assertAccountingSetupUnfrozen`, so the server refuses once an
-   * entry stands on these settings; a second guess here could only disagree with
-   * it. The refusal reaches the caller as the mutation's own error.
-   *
-   * Through the tRPC mutation directly rather than through `useSettings`, which
-   * fires `.mutate` and returns void - a refusal has to be awaitable to be
-   * reportable. The dehydrated settings are patched by hand afterwards, which is
-   * exactly what `useSettings` does, so the panel re-renders against the new
-   * baseline without a refetch.
-   */
-  const proposeBaseline = useCallback(async (): Promise<void> => {
-    const settings = PROPOSABLE_OPENING_ROLES.map((role) => ({
-      key: OPENING_BASELINE_SETTING_KEYS[role] as string,
-      value: countedByRole[role] ?? 0,
-    }))
-    await proposeBaselineSettings.mutateAsync({ settings })
-    if (organizationId) {
-      patchSettings(organizationId, Object.fromEntries(settings.map((s) => [s.key, s.value])))
-    }
-  }, [proposeBaselineSettings, countedByRole, organizationId, patchSettings])
-
   return {
     rows,
     counts,
@@ -658,10 +549,6 @@ export function useOpeningStock() {
     entries,
     accountTotals,
     totalExtended,
-    countedByRole,
-    openingBaseline,
-    proposeBaseline,
-    isProposingBaseline: proposeBaselineSettings.isPending,
     isLoading: candidates.isLoading,
     currencyCode,
     cutoffPeriod,

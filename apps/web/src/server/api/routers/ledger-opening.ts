@@ -136,17 +136,9 @@ export const ledgerOpeningRouter = createTRPCRouter({
     }),
 
   /**
-   * Suggest the opening trial balance from the connected accounting provider's
-   * balance sheet (plans/accounting/tasks/done/19-opening-balances-from-the-provider.md
-   * section 4.5), and save it through the same write path {@link save} uses.
-   *
-   * Gated on `ledgerControl`, not `ledgerPost` and not `ledgerView`: this
-   * writes the same draft `save` does. It only ever suggests - nothing here
-   * posts, and the person still presses Continue.
-   *
-   * Refuses `UnprocessableEntityError` / `ConflictError`; both reach the
-   * browser as `AuxxError`s and render as `EntryBlockers` cards, never a
-   * toast.
+   * Fill the opening draft from the connected accounting system's balance sheet at the
+   * cutover, inventory included (plans/accounting/tasks/103 §5a). Saves the draft, never
+   * posts - `ledger.finalizeSetup` does. `ledgerControl`, like {@link save}.
    */
   fillFromProvider: permissionProcedure(PermissionKey.ledgerControl).mutation(async ({ ctx }) => {
     const { organizationId, userId } = ctx.session

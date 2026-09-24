@@ -3,22 +3,9 @@
 /**
  * Every READ behind the opening trial balance: the draft record, the whole
  * chart in statement order, and the two settings that decide what date the
- * entry carries.
+ * entry carries. One assembled view, so the grid and its verdict never flicker.
  *
- * Reads only. The writes live in `writes.ts`, because a file that both queries
- * and mutates is the first step back toward a service class
- * (`docs/lib-module-guide.md` §5).
- *
- * No permission checks anywhere in this file. The router asserts `ledgerView`
- * (`docs/lib-module-guide.md` §6).
- *
- * ## One read, not five
- *
- * The wizard page and the settings twin both render a grid over the WHOLE
- * chart, prefilled from a draft, with three rows locked to the inventory
- * settings and a verdict under it. Every one of those needs a different table,
- * and a screen that fetched them separately would render a chart with no
- * amounts, then a verdict that flickers. So this returns the assembled view.
+ * Reads only; no permission checks - the router asserts `ledgerView`.
  */
 
 import type { Database } from '@auxx/database'
@@ -26,15 +13,13 @@ import type { Result } from 'neverthrow'
 import { readOrganizationSettings } from '../../settings/read'
 import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/client'
 import { listJournalEntries } from '../journals/entries/reads'
-import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { cutoverDateFor } from '../ledger/builders/opening-balance'
 import { hasStandingEntry } from '../ledger/periods/settled-periods'
 import { getPosting } from '../ledger/reads/read-posting'
-import { INVENTORY_ROLES } from '../ledger/roles/regime'
-import { loadRoleAccountCodes } from '../ledger/roles/resolve-roles'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import {
   OPENING_BASELINE_SETTING_KEYS,
+  type OpeningPresence,
   summariseOpeningTrialBalance,
 } from '../ledger/setup/setup-readiness'
 import {
@@ -67,14 +52,24 @@ export async function findOpeningTrialBalanceEntry(
   return entries.find((entry) => entry.status === 'draft') ?? entries[0] ?? null
 }
 
+/** Whether the opening entry is posted, or else its draft's totals - what readiness asks. */
+export async function readOpeningPresence(
+  db: Database,
+  organizationId: string
+): Promise<OpeningPresence> {
+  const entry = await findOpeningTrialBalanceEntry(db, organizationId)
+  return {
+    posted: entry?.status === 'posted',
+    summary: summariseOpeningTrialBalance(entry?.lines ?? []),
+  }
+}
+
 /**
  * Everything the opening trial balance screens render, in one read.
  *
- * @returns the assembled {@link OpeningTrialBalanceView}. Never refuses on a
- *   half-configured org: an unset cutoff, an unprovisioned `journal_entry` def
- *   and an empty chart all come back as nulls and empty arrays, because this is
- *   the read the SETUP screens use and refusing would leave somebody with no
- *   way to finish the setup being complained about.
+ * Never refuses on a half-configured org: an unset cutoff, an unprovisioned
+ * `journal_entry` def and an empty chart come back as nulls and empty arrays,
+ * because the setup screens read this to finish the setup being complained about.
  */
 export async function readOpeningTrialBalance(
   db: Database,
@@ -89,36 +84,23 @@ export async function readOpeningTrialBalance(
         K.bookTimeZone,
         K.setupState,
         'organization.currency',
-        K.inventory_raw_materials,
-        K.inventory_wip,
-        K.inventory_finished_goods,
       ] as const)
-      const cutoffRaw = settings[K.cutoffPeriod]
-      const zoneRaw = settings[K.bookTimeZone]
-      const stateRaw = settings[K.setupState]
-      const currencyRaw = settings['organization.currency']
-      const rawMaterials = settings[K.inventory_raw_materials]
-      const wip = settings[K.inventory_wip]
-      const finishedGoods = settings[K.inventory_finished_goods]
 
-      const [entry, chart, inventoryAccounts, frozen] = await Promise.all([
+      const [entry, chart, frozen] = await Promise.all([
         findOpeningTrialBalanceEntry(db, organizationId),
         listChartAccounts(db, organizationId).then((result) =>
           result.isErr() ? [] : result.value
         ),
-        loadRoleAccountCodes(db, organizationId, [...INVENTORY_ROLES]),
         hasStandingEntry(db, organizationId),
       ])
 
       // A settings form that clears a text input writes '' rather than
       // deleting the row, so both spellings of "nothing is set" collapse to null.
-      const cutoffPeriod = cutoffRaw?.trim() || null
-      const bookTimeZone = zoneRaw?.trim() || null
-      const setupState = stateRaw.trim() || 'draft'
+      const cutoffPeriod = settings[K.cutoffPeriod]?.trim() || null
+      const bookTimeZone = settings[K.bookTimeZone]?.trim() || null
+      const setupState = settings[K.setupState].trim() || 'draft'
 
-      // A malformed cutoff must not take the screen down: it is exactly what
-      // the person is on this page to fix, and `cutoverDateFor` throwing here
-      // would replace the form with an error.
+      // A malformed cutoff is what the person is on this page to fix, so it must not throw.
       let cutoverDate: string | null = null
       if (cutoffPeriod) {
         try {
@@ -128,69 +110,19 @@ export async function readOpeningTrialBalance(
         }
       }
 
-      // role -> the id THIS org gave the account, and the settings value that
-      // owns that row. `G8` read backwards: the account differs per org, so the
-      // lock has to be resolved rather than hardcoded to three fixed accounts.
-      // 🛑 COLLECTED, never overwritten. Keyed by account, and more than one
-      // role lands on one account in the COMMON case: QuickBooks ships a single
-      // `Inventory Asset`, so every chart imported from it has all three roles
-      // pointing there. A `Map.set` per role kept only the last one, the row
-      // rendered that role's figure instead of the sum, and the trial balance
-      // was short by the other two - so Finalize could not be reached on any
-      // imported chart at all. Found by driving on 2026-09-10; brief 19's
-      // DRIVEN block has the reproduction. This is the same collect-not-
-      // overwrite rule §0.6 already demanded of the PROVIDER map, one layer
-      // over in the ROLE map.
-      const inventoryById = new Map<string, { roles: string[]; minor: number | null }>()
-      // Keyed off `ACCOUNT_ROLES`, never off `INVENTORY_ROLES`'s ordering: the
-      // three settings and the three roles are paired by NAME in
-      // `OPENING_BASELINE_SETTING_KEYS`, and pairing them by array index would
-      // silently swap WIP and finished goods the day that list is reordered.
-      const settingsByRole: Record<string, number | null> = {
-        [ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS]: minor(rawMaterials),
-        [ACCOUNT_ROLES.INVENTORY_WIP]: minor(wip),
-        [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]: minor(finishedGoods),
-      }
-      for (const [role, account] of inventoryAccounts) {
-        const existing = inventoryById.get(account.glAccountId)
-        const roleMinor = settingsByRole[role] ?? null
-        if (!existing) {
-          inventoryById.set(account.glAccountId, { roles: [role], minor: roleMinor })
-          continue
-        }
-        existing.roles.push(role)
-        // ⚠️ `null` is "nobody entered this", NOT zero - the distinction this
-        // whole module is built on. So a sum is only a claim about money once
-        // EVERY contributing role has a number; until then the row stays empty
-        // and `resolveSetupReadiness`'s `set-opening-balances` requirement is
-        // what names the gap, in its own words, rather than this row showing a
-        // partial total nobody supplied.
-        existing.minor =
-          existing.minor === null || roleMinor === null ? null : existing.minor + roleMinor
-      }
-
       const byId = collectLinesById(entry?.lines ?? [])
 
       const rows: OpeningTrialBalanceRow[] = sortChartAccountsForStatement(chart).map((account) => {
-        const locked = inventoryById.get(account.id)
         const stored = byId.get(account.id)
-        // 🛑 A locked row reads its amount from the SETTINGS, never from the
-        // stored draft, even when the draft holds a different number. The
-        // settings are what `readOpeningBaseline` hands the first close, so a
-        // draft that disagreed would post a ledger the close then contradicts.
-        // The lock in the UI is what stops them ever diverging; this is what
-        // happens if one already has.
-        const debitMinor = locked ? (locked.minor ?? null) : (stored?.debitMinor ?? null)
-        const creditMinor = locked ? null : (stored?.creditMinor ?? null)
         return {
           accountId: account.id,
           accountCode: account.code,
           accountName: account.name,
           accountType: account.accountType,
           isActive: account.isActive,
-          ...(locked ? { lockedByRole: locked.roles[0], lockedRoles: locked.roles } : {}),
-          debitMinor,
-          creditMinor,
+          // A side with nothing on it is null, not 0 - the grid renders a blank cell.
+          debitMinor: stored?.debitMinor || null,
+          creditMinor: stored?.creditMinor || null,
         }
       })
 
@@ -210,7 +142,7 @@ export async function readOpeningTrialBalance(
         setupState,
         finalized: setupState === 'finalized',
         frozen,
-        currency: currencyRaw.trim() || 'USD',
+        currency: settings['organization.currency'].trim() || 'USD',
         entry,
         rows,
         summary,
@@ -234,13 +166,7 @@ function collectLinesById(lines: readonly JournalEntryLine[]) {
   return byId
 }
 
-/**
- * The posting the opening entry became, for the "reverse it from the ledger"
- * link on the settings twin.
- *
- * Null when there is no entry, no posting id, or the posting has vanished. A
- * missing posting is not an error here: the screen simply loses a link.
- */
+/** The posting the opening entry became; null when there is none or it has vanished. */
 async function readPosting(
   db: Database,
   organizationId: string,
@@ -258,18 +184,4 @@ async function readPosting(
     status: posting.status,
     totalMinor: posting.totalMinor,
   }
-}
-
-/**
- * A `CURRENCY` setting as minor units.
- *
- * ⚠️ `null` and `0` are not interchangeable: an org with no work in process at
- * cutover has exactly zero, and one that never entered the figure has nothing.
- * A fractional value is read as null rather than rounded - `readOpeningBaseline`
- * refuses it on the same read, and quietly rounding here would post a ledger
- * that the first close then refuses to build against.
- */
-function minor(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return null
-  return value
 }

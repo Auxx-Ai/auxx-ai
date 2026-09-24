@@ -127,31 +127,13 @@ export function describeSettledPeriods(settled: Map<string, number>, noun: strin
  * The setup keys that become read-only once the books hold an entry
  * (plans/accounting/HANDOFF.md slot 0D; plans/money/README.md rank 2b).
  *
- * Every `accounting.opening*` key, plus the two that define the period
- * keyspace. The three inventory openings are what every month-end entry
- * computes its delta FROM, so rewriting one after a close restates the
- * baseline under a filed entry with nothing to flag it. The zone and the
- * cutoff move every period boundary.
- *
- * 🛑 **The three `qboOpening*` keys are here BY NAME because the prefix does not
- * reach them**, and they are the other half of the same fact. `setup-readiness.ts`
- * and the reconciliation panel compare `accounting.opening<X>` against
- * `accounting.qboOpening<X>` PAIRWISE - the auxx subledger's opening figure
- * against what QuickBooks said on the same date - and a readiness check whose
- * two sides are not equally frozen is not a check: freeze one and leave the
- * other editable, and anybody can make a settled cutover reconcile by rewriting
- * the side nobody guards. Both halves freeze together or neither is worth
- * anything.
+ * Every `accounting.opening*` key (and the opening entry, through
+ * `OPENING_TRIAL_BALANCE_FREEZE_KEY`), plus the two that define the period
+ * keyspace: the zone and the cutoff move every period boundary.
  */
 export const FROZEN_SETUP_SETTING_KEYS = {
   prefix: 'accounting.opening',
-  exact: [
-    'accounting.bookTimeZone',
-    'accounting.cutoffPeriod',
-    'accounting.qboOpeningRawMaterials',
-    'accounting.qboOpeningWip',
-    'accounting.qboOpeningFinishedGoods',
-  ],
+  exact: ['accounting.bookTimeZone', 'accounting.cutoffPeriod'],
 } as const
 
 /** Whether one setting key is frozen by a standing ledger entry. */

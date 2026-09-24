@@ -22,6 +22,7 @@ import { readOrganizationSettings } from '../../../settings/read'
 import { readTrialBalance } from '../../reports/trial-balance'
 import { countUnissuedChannelCreditMemos } from '../../sales/credit-memos/reads'
 import { cutoverDateFor } from '../builders/opening-balance'
+import { readOpeningInventoryLedger } from '../reads/opening-inventory'
 import { INVENTORY_ROLES } from '../roles/regime'
 import { readRoleAssignments } from '../roles/role-assignments'
 import { OPENING_BASELINE_SETTING_KEYS } from '../setup/setup-readiness'
@@ -352,21 +353,32 @@ async function readPartsListStandardValue(
   return Math.round(Number(row?.total ?? 0))
 }
 
-/** Where the old system's books end and what inventory was worth there. */
+/**
+ * Where the old system's books end and what inventory was worth there: the opening
+ * entry's inventory lines plus the opening inventory adjustment, which is baseline
+ * rather than a movement.
+ */
 async function readCutover(
+  db: Database,
   organizationId: string
 ): Promise<{ cutoverDate: string | null; openingMinor: number }> {
   const K = OPENING_BASELINE_SETTING_KEYS
-  const settings = await readOrganizationSettings(organizationId, [
-    K.cutoffPeriod,
-    K.inventory_raw_materials,
-    K.inventory_wip,
-    K.inventory_finished_goods,
-  ] as const)
+  const [settings, assignments] = await Promise.all([
+    readOrganizationSettings(organizationId, [K.cutoffPeriod] as const),
+    readRoleAssignments(db, organizationId),
+  ])
   const cutoff = settings[K.cutoffPeriod]?.trim() || null
-  const openingMinor = [K.inventory_raw_materials, K.inventory_wip, K.inventory_finished_goods]
-    .map((key) => settings[key])
-    .reduce<number>((sum, value) => sum + (typeof value === 'number' ? value : 0), 0)
+  const inventoryAccountIds = [
+    ...new Set(
+      assignments
+        .filter((row) => (INVENTORY_ROLES as readonly string[]).includes(row.role))
+        .map((row) => row.glAccountId)
+    ),
+  ]
+  const ledger = await readOpeningInventoryLedger(db, organizationId, inventoryAccountIds)
+  let openingMinor = 0
+  for (const minor of ledger.openingByAccount.values()) openingMinor += minor
+  for (const minor of ledger.adjustmentByAccount.values()) openingMinor += minor
   return { cutoverDate: cutoff ? cutoverDateFor(cutoff) : null, openingMinor }
 }
 
@@ -407,7 +419,7 @@ export async function readCloseBlockers(
   }
 
   try {
-    const cutover = await readCutover(organizationId)
+    const cutover = await readCutover(db, organizationId)
     const [unpostedMovements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
       countUnpostedMovements(db, organizationId, bounds),
       readSubledgerValue(db, organizationId, { ...cutover, lastDay: bounds.last }),

@@ -109,15 +109,6 @@ export const EXTERNAL_SETTING_HOMES: Readonly<Record<string, { label: string; hr
   'accounting.cutoffPeriod': { label: 'General', href: '/app/accounting/settings/general' },
   'accounting.bookTimeZone': { label: 'General', href: '/app/accounting/settings/general' },
   'ledger.lockedThroughMonth': { label: 'the ledger', href: '/app/accounting' },
-  'accounting.openingRawMaterials': {
-    label: 'Opening balances',
-    href: '/app/accounting/settings/opening',
-  },
-  'accounting.openingWip': { label: 'Opening balances', href: '/app/accounting/settings/opening' },
-  'accounting.openingFinishedGoods': {
-    label: 'Opening balances',
-    href: '/app/accounting/settings/opening',
-  },
 }
 
 /**

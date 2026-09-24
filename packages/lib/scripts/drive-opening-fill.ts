@@ -5,8 +5,8 @@
 // Runs `fillOpeningTrialBalanceFromProvider` for one org exactly as the
 // `ledgerOpening.fillFromProvider` mutation would, then re-reads the opening
 // trial balance and prints the outcome, the rows that received an amount, and
-// the verdict. It WRITES the org's opening draft and the `accounting.qboOpening*`
-// and provenance settings, the same writes the button makes. Nothing is posted.
+// the verdict. It WRITES the org's opening draft and the provenance
+// settings, the same writes the button makes. Nothing is posted.
 //
 //   npx dotenv -- npx tsx packages/lib/scripts/drive-opening-fill.ts <orgId> [userId]
 //
@@ -59,11 +59,10 @@ async function main() {
   const { rows, summary, cutoverDate, entry } = view.value
   console.log('\nDRAFT', entry?.id, entry?.status, 'dated', entry?.date, 'cutover', cutoverDate)
   for (const row of rows) {
-    if (row.debitMinor || row.creditMinor || row.lockedByRole) {
+    if (row.debitMinor || row.creditMinor) {
       console.log(
         `${(row.accountCode ?? '').padEnd(6)} ${row.accountName.padEnd(40)} ` +
-          `dr ${String(row.debitMinor ?? '').padStart(9)} cr ${String(row.creditMinor ?? '').padStart(9)}` +
-          (row.lockedByRole ? `  [locked: ${row.lockedByRole}]` : '')
+          `dr ${String(row.debitMinor ?? '').padStart(9)} cr ${String(row.creditMinor ?? '').padStart(9)}`
       )
     }
   }
