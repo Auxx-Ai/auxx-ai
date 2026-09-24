@@ -13,9 +13,14 @@ import {
   ROLE_ACCOUNT_SUBTYPES,
   ROLE_ACCOUNT_TYPES,
 } from '@auxx/lib/accounting/ledger/client'
-import { Checkbox } from '@auxx/ui/components/checkbox'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
+import { Section } from '@auxx/ui/components/section'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { pluralize } from '@auxx/utils'
+import { CalendarClock, CreditCard, Landmark, ListTree, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
@@ -31,12 +36,7 @@ export interface ConnectAndGoDraft {
   acceptBankAccounts: string[]
 }
 
-const CUTOVER_SOURCE_NOTE: Record<ConnectAndGoPrepareReport['proposedCutover']['source'], string> =
-  {
-    current: 'The cutover already set.',
-    lock_date: 'The month your books are closed through in',
-    last_full_month: 'The last full month.',
-  }
+type CutoverSource = ConnectAndGoPrepareReport['proposedCutover']['source']
 
 interface ConnectAndGoQuestionsProps {
   report: ConnectAndGoPrepareReport
@@ -60,63 +60,69 @@ export function ConnectAndGoQuestions({
     [accounts]
   )
   const { roles, rails, bankAccounts } = report.questions
-  const source = report.proposedCutover.source
 
   return (
-    <div className='flex flex-col gap-4'>
-      <FieldPanel
-        orientation='responsive'
-        breakpoint='md'
-        resizeId='accounting-connect-and-go'
-        defaultLabelWidth={170}
-        className='p-0'>
-        <FieldPanelRow
-          title='Cutover month'
-          type={BaseType.STRING}
-          showIcon
-          isRequired
-          description={
-            source === 'lock_date'
-              ? `${CUTOVER_SOURCE_NOTE.lock_date} ${providerLabel}.`
-              : CUTOVER_SOURCE_NOTE[source]
-          }>
-          <FieldInputAdapter
-            fieldType={FieldType.TEXT}
-            value={draft.cutoffPeriod}
-            placeholder='2025-12'
-            disabled={disabled || report.finalized}
-            onChange={(value) => onChange({ cutoffPeriod: ((value as string) ?? '').trim() })}
-          />
-        </FieldPanelRow>
-        {!report.bookTimeZone && (
-          <FieldPanelRow
-            title='Book timezone'
-            type={BaseType.STRING}
-            showIcon
-            isRequired
-            description='The IANA timezone your books are kept in. There is no UTC fallback.'>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={draft.bookTimeZone}
-              placeholder='America/New_York'
-              disabled={disabled}
-              onChange={(value) => onChange({ bookTimeZone: ((value as string) ?? '').trim() })}
-            />
-          </FieldPanelRow>
-        )}
-      </FieldPanel>
-
-      <p className='rounded-lg border bg-muted/40 p-3 text-muted-foreground text-xs'>
-        Everything after the cutover is posted and exported by Auxx. If another app already writes
-        your Shopify sales into {providerLabel} (its native app, Synder, A2X), stop it at the
-        cutover, or those sales are counted twice. Everything on or before the cutover comes in as
-        the opening entry and is never posted order by order.
-      </p>
+    <>
+      <Section
+        title='Cutover'
+        icon={<CalendarClock className='size-4 text-muted-foreground' />}
+        collapsible={false}>
+        <div className='flex flex-col gap-3'>
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='accounting-connect-and-go'
+            defaultLabelWidth={170}
+            className='p-0'>
+            <FieldPanelRow
+              title='Cutover month'
+              type={BaseType.STRING}
+              showIcon
+              isRequired
+              description={cutoverNote(report.proposedCutover.source, providerLabel)}>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={draft.cutoffPeriod}
+                placeholder='2025-12'
+                disabled={disabled || report.finalized}
+                onChange={(value) => onChange({ cutoffPeriod: ((value as string) ?? '').trim() })}
+              />
+            </FieldPanelRow>
+            {!report.bookTimeZone && (
+              <FieldPanelRow
+                title='Book timezone'
+                type={BaseType.STRING}
+                showIcon
+                isRequired
+                description='The IANA timezone your books are kept in. There is no UTC fallback.'>
+                <FieldInputAdapter
+                  fieldType={FieldType.TEXT}
+                  value={draft.bookTimeZone}
+                  placeholder='America/New_York'
+                  disabled={disabled}
+                  onChange={(value) => onChange({ bookTimeZone: ((value as string) ?? '').trim() })}
+                />
+              </FieldPanelRow>
+            )}
+          </FieldPanel>
+          <Alert variant='warning'>
+            <TriangleAlert />
+            <AlertDescription>
+              Everything after the cutover is posted and exported by Auxx. If another app already
+              writes your Shopify sales into {providerLabel} (its native app, Synder, A2X), stop it
+              at the cutover, or those sales are counted twice. Everything on or before the cutover
+              comes in as the opening entry and is never posted order by order.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </Section>
 
       {roles.length > 0 && (
-        <QuestionGroup
+        <Section
           title='Which account?'
-          description={`${providerLabel} has more than one account that could take these.`}>
+          description={`${providerLabel} has more than one account that could take these.`}
+          icon={<ListTree className='size-4 text-muted-foreground' />}
+          collapsible={false}>
           <FieldPanel
             orientation='responsive'
             breakpoint='md'
@@ -152,13 +158,15 @@ export function ConnectAndGoQuestions({
               )
             })}
           </FieldPanel>
-        </QuestionGroup>
+        </Section>
       )}
 
       {rails.length > 0 && (
-        <QuestionGroup
+        <Section
           title='Where each payment rail pays out'
-          description='The bank account each processor deposits into.'>
+          description='The bank account each processor deposits into.'
+          icon={<CreditCard className='size-4 text-muted-foreground' />}
+          collapsible={false}>
           <FieldPanel
             orientation='responsive'
             breakpoint='md'
@@ -207,66 +215,97 @@ export function ConnectAndGoQuestions({
                     <Link
                       href='/app/accounting/settings/payment-gateways'
                       className='underline underline-offset-2'>
-                      Review in rails settings
+                      Review in payment gateways
                     </Link>
                   </p>
                 </FieldPanelRow>
               )
             )}
           </FieldPanel>
-        </QuestionGroup>
+        </Section>
       )}
 
       {bankAccounts.length > 0 && (
-        <QuestionGroup
-          title='Bank accounts'
-          description='Tick the ones to add. Nothing is created until you finish.'>
-          <ul className='flex flex-col divide-y rounded-lg border'>
-            {bankAccounts.map((proposal) => (
-              <li key={proposal.key} className='flex items-start gap-2 px-3 py-2'>
-                <Checkbox
-                  id={proposal.key}
-                  checked={draft.acceptBankAccounts.includes(proposal.key)}
-                  disabled={disabled}
-                  onCheckedChange={(checked) =>
-                    onChange({
-                      acceptBankAccounts: checked
-                        ? [...draft.acceptBankAccounts, proposal.key]
-                        : draft.acceptBankAccounts.filter((key) => key !== proposal.key),
-                    })
-                  }
-                />
-                <label htmlFor={proposal.key} className='flex flex-col text-sm'>
-                  <span>{proposalTitle(proposal)}</span>
-                  <span className='text-muted-foreground text-xs'>{proposalDetail(proposal)}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </QuestionGroup>
+        <BankAccountProposals
+          proposals={bankAccounts}
+          accepted={draft.acceptBankAccounts}
+          onChange={(acceptBankAccounts) => onChange({ acceptBankAccounts })}
+          providerLabel={providerLabel}
+          disabled={disabled}
+        />
       )}
-    </div>
+    </>
   )
 }
 
-function QuestionGroup({
-  title,
-  description,
-  children,
+/** Proposed bank accounts under one collapsed parent row; ticked ones are created on Finish. */
+function BankAccountProposals({
+  proposals,
+  accepted,
+  onChange,
+  providerLabel,
+  disabled,
 }: {
-  title: string
-  description: string
-  children: React.ReactNode
+  proposals: BankAccountProposal[]
+  accepted: string[]
+  onChange: (accepted: string[]) => void
+  providerLabel: string
+  disabled?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const toggle = (key: string, next: boolean) => {
+    if (disabled) return
+    onChange(next ? [...accepted, key] : accepted.filter((row) => row !== key))
+  }
+
   return (
-    <div className='flex flex-col gap-1.5'>
-      <div className='flex flex-col'>
-        <span className='font-medium text-sm'>{title}</span>
-        <span className='text-muted-foreground text-xs'>{description}</span>
-      </div>
-      {children}
-    </div>
+    <Section
+      title='Bank accounts'
+      description='Tick the ones to add. Nothing is created until you finish.'
+      icon={<Landmark className='size-4 text-muted-foreground' />}
+      collapsible={false}>
+      <TreeRow
+        expandable
+        isOpen={open}
+        onToggleOpen={() => setOpen((value) => !value)}
+        icon={<Landmark className='size-4 text-muted-foreground' />}
+        title={<span className='truncate text-sm'>Bank accounts from {providerLabel}</span>}
+        secondary={
+          <span className='text-muted-foreground text-xs tabular-nums'>
+            {accepted.length} of {proposals.length} {pluralize(proposals.length, 'account')} ticked
+          </span>
+        }>
+        <TreeRowList
+          items={proposals}
+          getKey={(proposal) => proposal.key}
+          renderRow={(proposal) => (
+            <TreeRow
+              depth={1}
+              selectable
+              selecting
+              selected={accepted.includes(proposal.key)}
+              onSelectChange={(next) => toggle(proposal.key, next)}
+              onRowClick={() => toggle(proposal.key, !accepted.includes(proposal.key))}
+              selectLabel={proposalTitle(proposal)}
+              title={<span className='truncate text-sm'>{proposalTitle(proposal)}</span>}
+              secondaryFill
+              secondary={
+                <span className='truncate text-muted-foreground text-xs'>
+                  {proposalDetail(proposal)}
+                </span>
+              }
+            />
+          )}
+        />
+      </TreeRow>
+    </Section>
   )
+}
+
+function cutoverNote(source: CutoverSource, providerLabel: string): string {
+  if (source === 'current') return 'The cutover already set.'
+  if (source === 'lock_date') return `The month your books are closed through in ${providerLabel}.`
+  return 'The last full month.'
 }
 
 function proposalTitle(proposal: BankAccountProposal): string {
@@ -277,6 +316,6 @@ function proposalTitle(proposal: BankAccountProposal): string {
 
 function proposalDetail(proposal: BankAccountProposal): string {
   return proposal.kind === 'create'
-    ? `A bank account on ${proposal.glAccountName}${proposal.last4 ? `, ending ${proposal.last4}` : ''}.`
-    : `Its feed posts to ${proposal.glAccountName}.`
+    ? `A bank account on ${proposal.glAccountName}${proposal.last4 ? `, ending ${proposal.last4}` : ''}`
+    : `Its feed posts to ${proposal.glAccountName}`
 }

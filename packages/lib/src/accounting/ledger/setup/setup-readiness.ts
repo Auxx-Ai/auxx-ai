@@ -162,6 +162,11 @@ export function isValidTimeZone(zone: string): boolean {
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
 
+/** A well-formed `YYYY-MM` month key. */
+export function isMonthKey(value: string): boolean {
+  return MONTH_KEY.test(value)
+}
+
 /** Why the opening is not ready, or undefined when it is (plans/accounting/tasks/103 §5a). */
 function openingReason(
   settings: SettingsRecord,

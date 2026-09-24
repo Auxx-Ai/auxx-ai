@@ -16,7 +16,6 @@ export {
 export {
   type CutoverSource,
   estimateDrainMinutes,
-  isMonthKey,
   type ProposedCutover,
   proposeCutover,
   RECOVERY_PER_LANE,

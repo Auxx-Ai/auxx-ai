@@ -1,7 +1,12 @@
 // apps/web/src/components/accounting/ui/setup-wizard/connect-and-go-backlog.tsx
 'use client'
 
-import { isMonthKey } from '@auxx/lib/accounting/connect-and-go/client'
+import { isMonthKey } from '@auxx/lib/accounting/ledger/client'
+import { Section } from '@auxx/ui/components/section'
+import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
+import { pluralize } from '@auxx/utils'
+import { formatDistanceStrict } from 'date-fns'
+import { Clock, Package, Send, Wallet, Waypoints } from 'lucide-react'
 import { api } from '~/trpc/react'
 
 /** What the catch-up after this cutover will post and export, and roughly how long it takes. */
@@ -19,56 +24,57 @@ export function ConnectAndGoBacklog({
     { cutoffPeriod, bookTimeZone },
     { enabled: valid }
   )
-
   if (!valid) return null
   const data = preview.data
-  if (!data) {
-    return (
-      <p className='text-muted-foreground text-xs'>
-        {preview.isError ? preview.error.message : 'Counting what comes after the cutover…'}
-      </p>
-    )
-  }
 
-  const nothing = data.shipments + data.movements + data.relief + data.importedPayments === 0
+  const cards: StatCardData[] = [
+    {
+      title: 'Shipments',
+      body: (data?.shipments ?? 0).toLocaleString(),
+      icon: <Package />,
+      description: 'Posted after the cutover',
+    },
+    {
+      title: 'Money movements',
+      body: (data?.movements ?? 0).toLocaleString(),
+      icon: <Wallet />,
+      description: data?.importedPayments
+        ? `+ ${data.importedPayments.toLocaleString()} imported ${pluralize(data.importedPayments, 'payment')}`
+        : 'Payments, refunds, payouts',
+    },
+    {
+      title: `Exports to ${providerLabel}`,
+      body: `~${(data?.estimatedExports ?? 0).toLocaleString()}`,
+      icon: <Send />,
+      description: data?.exportMode === 'summary' ? 'Summary mode' : 'One per document',
+    },
+    {
+      title: 'Time to catch up',
+      // The recovery job takes 100 per kind every minute.
+      body: data?.drainMinutes ? formatDistanceStrict(0, data.drainMinutes * 60_000) : 'None',
+      icon: <Clock />,
+      description: '100 per kind every minute',
+    },
+  ]
+
   return (
-    <div className='flex flex-col gap-1 rounded-lg border p-3 text-sm'>
-      <span className='font-medium'>After the cutover</span>
-      {nothing ? (
-        <span className='text-muted-foreground text-xs'>
-          Nothing dated after {cutoffPeriod} is waiting to post.
-        </span>
-      ) : (
-        <>
-          <span className='text-muted-foreground text-xs'>
-            {count(data.shipments, 'shipment')}, {count(data.movements, 'money movement')}
-            {data.importedPayments > 0
-              ? `, ${count(data.importedPayments, 'imported payment')}`
-              : ''}
-            {data.relief > 0
-              ? ` and ${count(data.relief, 'shipment')} waiting on stock relief`
-              : ''}{' '}
-            will post once you finish.
-          </span>
-          <span className='text-muted-foreground text-xs'>
-            About {count(data.estimatedExports, 'object')} go to {providerLabel} (
-            {data.exportMode === 'summary' ? 'summary mode' : 'one per document'}). The catch-up
-            takes 100 per kind every minute, so it is done in about {duration(data.drainMinutes)}.
-          </span>
-        </>
-      )}
-    </div>
+    <Section
+      title='After the cutover'
+      description='What posts and exports once you finish.'
+      icon={<Waypoints className='size-4 text-muted-foreground' />}
+      collapsible={false}>
+      <div className='flex flex-col gap-2'>
+        <StatCards cards={cards} loading={preview.isLoading} className='rounded-lg border' />
+        {preview.isError && (
+          <p className='text-muted-foreground text-xs'>{preview.error.message}</p>
+        )}
+        {!!data?.relief && (
+          <p className='text-muted-foreground text-xs'>
+            {data.relief.toLocaleString()} {pluralize(data.relief, 'shipment')} also waiting on
+            stock relief.
+          </p>
+        )}
+      </div>
+    </Section>
   )
-}
-
-function count(n: number, noun: string): string {
-  return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`
-}
-
-function duration(minutes: number): string {
-  if (minutes < 60) return count(Math.max(minutes, 1), 'minute')
-  const hours = Math.round((minutes / 60) * 2) / 2
-  const whole = Math.floor(hours)
-  const text = hours === whole ? `${whole}` : whole === 0 ? '½' : `${whole}½`
-  return `${text} hour${hours === 1 ? '' : 's'}`
 }

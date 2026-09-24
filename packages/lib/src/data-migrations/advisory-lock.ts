@@ -10,7 +10,7 @@ import type { Pool, PoolClient } from 'pg'
 export const DATA_MIGRATION_LOCK_KEY = 4_307_748_291n
 
 /** Reach through the drizzle client (and the replica wrapper, if present) to the pg Pool. */
-export function getPool(db: Database): Pool {
+function getPool(db: Database): Pool {
   const anyDb = db as unknown as { $client?: Pool; $primary?: { $client: Pool } }
   const pool = anyDb.$client ?? anyDb.$primary?.$client
   if (!pool) throw new Error('Could not resolve a pg Pool from the database client')

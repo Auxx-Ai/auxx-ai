@@ -14,6 +14,7 @@ import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { setRoleAssignment } from '../ledger/roles/role-map'
 import {
   FINALIZED_SETUP_STATE,
+  isMonthKey,
   isValidTimeZone,
   readOpeningFromNothing,
 } from '../ledger/setup/setup-readiness'
@@ -28,7 +29,6 @@ import type {
   ConnectAndGoCompleteReport,
   ConnectAndGoCompleteStep,
 } from './client'
-import { isMonthKey } from './cutover'
 import { withSetupLock } from './lock'
 
 const logger = createScopedLogger('accounting:connect-and-go')

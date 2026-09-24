@@ -21,6 +21,7 @@ export { LEDGER_CURRENCY } from './ledger-currency'
 export {
   describeUnscopedSources,
   FINALIZED_SETUP_STATE,
+  isMonthKey,
   isValidTimeZone,
   OPENING_BASELINE_SETTING_KEYS,
   OPENING_FROM_NOTHING_SETTING_KEY,

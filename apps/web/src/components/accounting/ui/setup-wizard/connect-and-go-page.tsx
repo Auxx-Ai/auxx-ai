@@ -6,8 +6,7 @@ import type {
   ConnectAndGoCompleteReport,
   ConnectAndGoPrepareReport,
 } from '@auxx/lib/accounting/connect-and-go/client'
-import { isMonthKey } from '@auxx/lib/accounting/connect-and-go/client'
-import { isValidTimeZone } from '@auxx/lib/accounting/ledger/client'
+import { isMonthKey, isValidTimeZone } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
@@ -44,9 +43,16 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
   const { patchSettings } = useDehydratedStateContext()
   const utils = api.useUtils()
 
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prepare = api.ledger.connectAndGo.prepare.useMutation({
-    onError: (error) =>
-      toastError({ title: `Could not set up from ${providerLabel}`, description: error.message }),
+    onError: (error) => {
+      // The run queued on connect holds the setup lock; wait for it rather than failing.
+      if (error.data?.code === 'CONFLICT') {
+        retryTimer.current = setTimeout(() => void runPrepare(), 5_000)
+        return
+      }
+      toastError({ title: `Could not set up from ${providerLabel}`, description: error.message })
+    },
   })
   const complete = api.ledger.connectAndGo.complete.useMutation({
     onError: (error) => toastError({ title: 'Could not finish setup', description: error.message }),
@@ -79,6 +85,9 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
     if (started.current) return
     started.current = true
     void runPrepare()
+    return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+    }
   }, [])
 
   const invalid = !isMonthKey(draft.cutoffPeriod)
@@ -92,11 +101,12 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
       .mutateAsync({
         cutoffPeriod: draft.cutoffPeriod,
         answers: {
-          roles: answered(draft.roles).map(([role, glAccountId]) => ({ role, glAccountId })),
-          railBanks: answered(draft.railBanks).map(([paymentGatewayId, glAccountId]) => ({
-            paymentGatewayId,
-            glAccountId,
-          })),
+          roles: Object.entries(draft.roles).flatMap(([role, glAccountId]) =>
+            glAccountId ? [{ role, glAccountId }] : []
+          ),
+          railBanks: Object.entries(draft.railBanks).flatMap(([paymentGatewayId, glAccountId]) =>
+            glAccountId ? [{ paymentGatewayId, glAccountId }] : []
+          ),
           acceptBankAccounts: draft.acceptBankAccounts,
           bookTimeZone: report?.bookTimeZone ? null : draft.bookTimeZone,
         },
@@ -128,7 +138,7 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
   if (!report) {
     return (
       <div className='flex flex-col items-center gap-3 p-6'>
-        {prepare.isPending || !prepare.isError ? (
+        {prepare.isPending || !prepare.isError || prepare.error?.data?.code === 'CONFLICT' ? (
           <>
             <EmptySection loading />
             <p className='text-muted-foreground text-sm'>
@@ -148,25 +158,19 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
   const currencyCode = report.company?.homeCurrency ?? 'USD'
 
   return (
-    <div className='flex flex-col gap-4 p-4'>
-      <div className='flex flex-col gap-1.5'>
-        <span className='font-medium text-sm'>Done from {providerLabel}</span>
-        <ConnectAndGoDoneList report={report} providerLabel={providerLabel} />
-      </div>
+    <div className='flex flex-col'>
+      <ConnectAndGoDoneList report={report} providerLabel={providerLabel} />
 
       {outcome && (
-        <div className='flex flex-col gap-1.5'>
-          <span className='font-medium text-sm'>Finishing</span>
-          <ConnectAndGoStepList
-            report={outcome}
-            providerLabel={providerLabel}
-            currencyCode={currencyCode}
-          />
-        </div>
+        <ConnectAndGoStepList
+          report={outcome}
+          providerLabel={providerLabel}
+          currencyCode={currencyCode}
+        />
       )}
 
       {done ? (
-        <p className='text-muted-foreground text-sm'>
+        <p className='px-4 py-3 text-muted-foreground text-sm'>
           Your opening is posted and the ledger is open. Everything after {draft.cutoffPeriod} now
           posts and exports on its own.
         </p>
@@ -184,11 +188,11 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
             bookTimeZone={report.bookTimeZone ?? (draft.bookTimeZone || null)}
             providerLabel={providerLabel}
           />
-          {invalid && <p className='text-muted-foreground text-xs'>{invalid}</p>}
+          {invalid && <p className='px-4 pt-3 text-muted-foreground text-xs'>{invalid}</p>}
         </>
       )}
 
-      <div className='flex flex-wrap items-center justify-end gap-2'>
+      <div className='flex flex-wrap items-center justify-end gap-2 p-4'>
         {done ? (
           <Button variant='outline' size='sm' asChild onClick={onFinish}>
             <Link href='/app/accounting'>Open the ledger</Link>
@@ -220,8 +224,4 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
       </div>
     </div>
   )
-}
-
-function answered(values: Record<string, string | null>): [string, string][] {
-  return Object.entries(values).filter((entry): entry is [string, string] => !!entry[1])
 }
