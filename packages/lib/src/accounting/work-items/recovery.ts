@@ -12,10 +12,11 @@ export async function requestAccountingRecovery(organizationId: string): Promise
       import('../../jobs/queues'),
       import('../../jobs/queues/types'),
     ])
+    // BullMQ rejects a custom jobId containing ':' ("Custom Id cannot contain :").
     await getQueue(Queues.maintenanceQueue).add(
       'accountingRecoveryJob',
       { organizationId },
-      { jobId: `recovery:${organizationId}`, removeOnComplete: true, removeOnFail: true }
+      { jobId: `recovery-${organizationId}`, removeOnComplete: true, removeOnFail: true }
     )
   } catch (error) {
     logger.warn('Could not enqueue an accounting recovery run; the schedule still picks it up', {
