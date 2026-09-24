@@ -72,7 +72,7 @@ export interface StandardCostFields {
    * has not run reads every standard as sourceless.
    */
   source: CustomFieldEntity | null
-  /** `part_standard_cost_origin` (106 D9). Absent on an org short of migration 193; never read back. */
+  /** `part_standard_cost_origin` (106 D9). Absent on an org short of migration 190; never read back. */
   origin?: CustomFieldEntity | null
   /** Read-only inputs. Absent on an org whose earlier migrations have not run. */
   partKind: CustomFieldEntity | null
