@@ -4,21 +4,30 @@
 import type {
   ConnectAndGoCompleteReport,
   ConnectAndGoPrepareReport,
+  ProviderAccountToCreate,
 } from '@auxx/lib/accounting/connect-and-go/client'
 import { FISCAL_YEAR_START_MONTH_OPTIONS } from '@auxx/lib/accounting/reports/client'
 import { Section } from '@auxx/ui/components/section'
-import { formatCurrency } from '@auxx/utils'
-import { AlertTriangle, Check, ListChecks, Minus, Sparkles } from 'lucide-react'
+import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
+import { formatCurrency, pluralize } from '@auxx/utils'
+import { AlertTriangle, Check, ListChecks, ListPlus, Minus, Sparkles } from 'lucide-react'
+import { useState } from 'react'
 
-const STEP_LABELS: Record<ConnectAndGoCompleteReport['steps'][number]['step'], string> = {
-  cutover: 'Cutover saved',
-  roles: 'Accounts chosen',
-  rail_banks: 'Rail banks chosen',
-  bank_accounts: 'Bank accounts added',
-  book_connection: 'Exports switched on',
-  opening: 'Opening filled',
-  finalize: 'Setup finalized, opening posted',
-  inventory_adjustment: 'Inventory adjusted',
+function stepLabels(
+  providerLabel: string
+): Record<ConnectAndGoCompleteReport['steps'][number]['step'], string> {
+  return {
+    cutover: 'Cutover saved',
+    roles: 'Accounts chosen',
+    rail_banks: 'Rail banks chosen',
+    bank_accounts: 'Bank accounts added',
+    provider_accounts: `Accounts created in ${providerLabel}`,
+    book_connection: 'Exports switched on',
+    opening: 'Opening filled',
+    finalize: 'Setup finalized, opening posted',
+    inventory_adjustment: 'Inventory adjusted',
+  }
 }
 
 /** One line per thing prepare did, then prepare's refusals. */
@@ -56,8 +65,6 @@ export function ConnectAndGoDoneList({
   const railsCreated = report.rails?.created ?? []
   if (railsCreated.length > 0)
     lines.push(`Set up payment rails: ${railsCreated.map((rail) => rail.name).join(', ')}`)
-  if (report.providerAccounts && report.providerAccounts.created > 0)
-    lines.push(`Created ${report.providerAccounts.created} of your accounts in ${providerLabel}`)
 
   return (
     <Section
@@ -98,6 +105,7 @@ export function ConnectAndGoStepList({
   currencyCode: string
 }) {
   const adjustment = report.inventoryAdjustment
+  const labels = stepLabels(providerLabel)
   return (
     <Section
       title='Finishing'
@@ -115,7 +123,7 @@ export function ConnectAndGoStepList({
                 <AlertTriangle className='mt-0.5 size-3.5 shrink-0 text-amber-500' />
               )}
               <span className={step.status === 'done' ? '' : 'text-muted-foreground'}>
-                {STEP_LABELS[step.step]}
+                {labels[step.step]}
                 {step.detail ? ` — ${step.detail}` : ''}
               </span>
             </li>
@@ -131,6 +139,51 @@ export function ConnectAndGoStepList({
           </p>
         )}
       </div>
+    </Section>
+  )
+}
+
+/** Our accounts Finish creates in the provider, under one collapsed row. */
+export function ConnectAndGoProviderAccounts({
+  accounts,
+  providerLabel,
+}: {
+  accounts: ProviderAccountToCreate[]
+  providerLabel: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Section
+      title={`Will be added to ${providerLabel} when you finish`}
+      description={`Nothing is written to ${providerLabel} before then.`}
+      icon={<ListPlus className='size-4 text-muted-foreground' />}
+      collapsible={false}>
+      <TreeRow
+        expandable
+        isOpen={open}
+        onToggleOpen={() => setOpen((value) => !value)}
+        icon={<ListPlus className='size-4 text-muted-foreground' />}
+        title={<span className='truncate text-sm'>Accounts only Auxx has</span>}
+        secondary={
+          <span className='text-muted-foreground text-xs tabular-nums'>
+            {accounts.length} {pluralize(accounts.length, 'account')}
+          </span>
+        }>
+        <TreeRowList
+          items={accounts}
+          getKey={(account) => account.glAccountId}
+          renderRow={(account) => (
+            <TreeRow
+              depth={1}
+              title={
+                <span className='truncate text-sm'>
+                  {account.code ? `${account.code} · ${account.name}` : account.name}
+                </span>
+              }
+            />
+          )}
+        />
+      </TreeRow>
     </Section>
   )
 }

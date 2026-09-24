@@ -24,7 +24,11 @@ import {
 } from '../../hooks/use-accounting-provider-status'
 import { ConnectAndGoBacklog } from './connect-and-go-backlog'
 import { type ConnectAndGoDraft, ConnectAndGoQuestions } from './connect-and-go-questions'
-import { ConnectAndGoDoneList, ConnectAndGoStepList } from './connect-and-go-summary'
+import {
+  ConnectAndGoDoneList,
+  ConnectAndGoProviderAccounts,
+  ConnectAndGoStepList,
+} from './connect-and-go-summary'
 
 interface ConnectAndGoPageProps {
   /** Stamps the wizard completed and closes the dialog. */
@@ -32,8 +36,8 @@ interface ConnectAndGoPageProps {
 }
 
 /**
- * The setup wizard for an org with an accounting system connected: prepare runs on open, then
- * one screen of what was done, the few questions, the backlog, and Finish.
+ * The import path's one screen: prepare runs when the page is reached (never on dialog open), then
+ * what was done, the few questions, what Finish adds to the provider, the backlog, and Finish.
  * See plans/accounting/tasks/105-connect-and-go.md §4.
  */
 export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
@@ -80,7 +84,7 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
   }
 
   const started = useRef(false)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: prepare runs once per open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: prepare runs once per visit to this page.
   useEffect(() => {
     if (started.current) return
     started.current = true
@@ -183,6 +187,12 @@ export function ConnectAndGoPage({ onFinish }: ConnectAndGoPageProps) {
             providerLabel={providerLabel}
             disabled={complete.isPending}
           />
+          {report.providerAccountsToCreate && report.providerAccountsToCreate.length > 0 && (
+            <ConnectAndGoProviderAccounts
+              accounts={report.providerAccountsToCreate}
+              providerLabel={providerLabel}
+            />
+          )}
           <ConnectAndGoBacklog
             cutoffPeriod={draft.cutoffPeriod}
             bookTimeZone={report.bookTimeZone ?? (draft.bookTimeZone || null)}

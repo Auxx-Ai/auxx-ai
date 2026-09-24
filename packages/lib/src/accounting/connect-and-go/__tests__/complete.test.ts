@@ -18,6 +18,12 @@ const h = vi.hoisted(() => ({
   finalizeStatus: 'posted' as string,
   adjustment: null as { status: string } | null,
   recoveryRequested: 0,
+  identities: [] as {
+    account: { id: string; name: string }
+    providerAccountId: string | null
+    suggestion: null
+  }[],
+  pushed: [] as string[][],
 }))
 
 vi.mock('../lock', () => ({
@@ -57,6 +63,31 @@ vi.mock('../bank-account-writes', () => ({
       linked: [],
       skipped: [],
       failed: [],
+    })
+  },
+}))
+vi.mock('../../providers/provider', () => ({
+  resolveAccountingProvider: async () => ({
+    id: 'acme',
+    createProviderAccount: async () => ok({}),
+  }),
+  supportsCreatingProviderAccounts: () => true,
+}))
+vi.mock('../../providers/account-identities', () => ({
+  listAccountIdentities: async () => ok({ rows: h.identities }),
+}))
+// Links each account as it lands, like the real one, so a second run finds nothing to create.
+vi.mock('../../providers/create-provider-accounts', () => ({
+  createProviderAccounts: async (_db: unknown, options: { glAccountIds: string[] }) => {
+    h.calls.push('push')
+    h.pushed.push(options.glAccountIds)
+    for (const row of h.identities)
+      if (options.glAccountIds.includes(row.account.id))
+        row.providerAccountId = `p_${row.account.id}`
+    return ok({
+      created: options.glAccountIds.map((id) => ({ id })),
+      skipped: [],
+      ancestorsAdded: [],
     })
   },
 }))
@@ -136,6 +167,8 @@ beforeEach(() => {
   h.finalizeStatus = 'posted'
   h.adjustment = { status: 'posted' }
   h.recoveryRequested = 0
+  h.identities = []
+  h.pushed = []
 })
 
 describe('completeConnectAndGo', () => {
@@ -145,7 +178,11 @@ describe('completeConnectAndGo', () => {
     expect(h.calls).toEqual([])
   })
 
-  it('writes the answers, then activates, fills, finalizes and adjusts, in that order', async () => {
+  it('writes the answers, creates provider accounts, then activates, fills, finalizes and adjusts', async () => {
+    h.identities = [
+      { account: { id: 'gl_wip', name: 'WIP' }, providerAccountId: null, suggestion: null },
+      { account: { id: 'gl_cash', name: 'Cash' }, providerAccountId: 'p_cash', suggestion: null },
+    ]
     const report = (
       await completeConnectAndGo(db, {
         ...base,
@@ -163,11 +200,14 @@ describe('completeConnectAndGo', () => {
       'role',
       'role',
       'banks',
+      'push',
       'activate',
       'fill',
       'finalize',
       'adjust',
     ])
+    expect(h.pushed).toEqual([['gl_wip']])
+    expect(report.providerAccounts).toEqual({ created: 1 })
     expect(h.writes[0]).toEqual([{ key: 'accounting.cutoffPeriod', value: '2025-12' }])
     expect(h.roleWrites[1]).toMatchObject({
       role: 'bank',
@@ -177,6 +217,7 @@ describe('completeConnectAndGo', () => {
     expect(report.completed).toBe(true)
     expect(report.failedAt).toBeNull()
     expect(report.steps.map((step) => step.status)).toEqual([
+      'done',
       'done',
       'done',
       'done',
@@ -261,6 +302,20 @@ describe('completeConnectAndGo', () => {
     expect(report.steps.find((step) => step.step === 'cutover')?.status).toBe('skipped')
     expect(report.steps.find((step) => step.step === 'opening')?.status).toBe('skipped')
     expect(report.completed).toBe(true)
+  })
+
+  it('creates provider accounts once: a second Finish finds them linked', async () => {
+    h.identities = [
+      { account: { id: 'gl_wip', name: 'WIP' }, providerAccountId: null, suggestion: null },
+    ]
+    await completeConnectAndGo(db, base)
+    const again = (await completeConnectAndGo(db, base))._unsafeUnwrap()
+    expect(h.pushed).toEqual([['gl_wip']])
+    expect(again.steps.find((step) => step.step === 'provider_accounts')).toEqual({
+      step: 'provider_accounts',
+      status: 'skipped',
+      detail: 'Every account is linked',
+    })
   })
 
   it('skips the fill once the opening has posted', async () => {

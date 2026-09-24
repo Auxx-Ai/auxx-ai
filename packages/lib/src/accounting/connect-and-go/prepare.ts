@@ -12,8 +12,7 @@ import { ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES } from '../ledger/roles/regime'
 import { listChartAccounts, listRoleMap } from '../ledger/roles/role-map'
 import { FINALIZED_SETUP_STATE, isValidTimeZone } from '../ledger/setup/setup-readiness'
 import type { ChartImportResult } from '../ledger/types'
-import { confirmSuggestedIdentities, listAccountIdentities } from '../providers/account-identities'
-import { createProviderAccounts } from '../providers/create-provider-accounts'
+import { confirmSuggestedIdentities } from '../providers/account-identities'
 import {
   NONE_PROVIDER_ID,
   resolveAccountingProvider,
@@ -29,6 +28,7 @@ import type {
 import { proposeCutover } from './cutover'
 import { guard } from './guard'
 import { withSetupLock } from './lock'
+import { listProviderAccountsToCreate } from './provider-accounts-to-create'
 
 const logger = createScopedLogger('accounting:connect-and-go')
 
@@ -41,8 +41,8 @@ const PREPARE_SETTING_KEYS = [
 
 /**
  * Everything setup can do from the connected provider before anyone answers: fiscal year and
- * timezone, the chart, rails, pushing our own accounts, and the bank-account plan. Posts
- * nothing and writes no cutover. Idempotent. A step's refusal is reported and the rest run.
+ * timezone, the chart, rails, the accounts Finish will create there, and the bank-account plan.
+ * Reads the provider only, posts nothing and writes no cutover. Idempotent. A step's refusal is reported and the rest run.
  * No permission checks - the router asserts. See plans/accounting/tasks/105-connect-and-go.md §4.
  */
 export async function prepareConnectAndGo(
@@ -143,7 +143,7 @@ async function prepareLocked(
     else chart = { mode: empty ? 'full' : 'refresh', suggestionsLinked, result: imported.value }
   }
 
-  // 3. Rails, before the push: a rail mints clearing and fee accounts of ours.
+  // 3. Rails, before the account list: a rail mints clearing and fee accounts of ours.
   const rails = await autoRouteRails(db, { organizationId, actorUserId, today: params.today })
   if (rails.isErr()) fail('rails', rails.error)
 
@@ -161,31 +161,13 @@ async function prepareLocked(
     else rolesMinted = minted.value
   }
 
-  // 5. Our accounts the provider has no counterpart for, the ones just minted included.
-  let providerAccounts: ConnectAndGoPrepareReport['providerAccounts'] = null
+  // 5. Our accounts the provider has no counterpart for, the ones just minted included. Only
+  // listed: nothing is written to the provider before Finish.
+  let providerAccountsToCreate: ConnectAndGoPrepareReport['providerAccountsToCreate'] = null
   if (supportsCreatingProviderAccounts(provider)) {
-    const identities = await listAccountIdentities(db, organizationId)
-    if (identities.isErr()) fail('provider_accounts', identities.error)
-    else {
-      const unlinked = identities.value.rows
-        .filter((row) => !row.providerAccountId && !row.suggestion && !row.account.isArchived)
-        .map((row) => row.account.id)
-      if (unlinked.length > 0) {
-        const pushed = await createProviderAccounts(db, {
-          organizationId,
-          glAccountIds: unlinked,
-          actorUserId,
-        })
-        if (pushed.isErr()) fail('provider_accounts', pushed.error)
-        else {
-          providerAccounts = {
-            created: pushed.value.created.length,
-            failed: pushed.value.failed ?? null,
-          }
-          if (pushed.value.failed) fail('provider_accounts', new Error(pushed.value.failed.message))
-        }
-      } else providerAccounts = { created: 0, failed: null }
-    }
+    const listed = await listProviderAccountsToCreate(db, organizationId)
+    if (listed.isErr()) fail('provider_accounts', listed.error)
+    else providerAccountsToCreate = listed.value
   }
 
   // 6. Bank accounts are proposed, never created here.
@@ -206,7 +188,7 @@ async function prepareLocked(
     chart,
     rolesMinted,
     rails: rails.isOk() ? rails.value : null,
-    providerAccounts,
+    providerAccountsToCreate,
     bankAccounts: bankAccounts.isOk() ? bankAccounts.value : null,
     questions: {
       roles: roles instanceof Error ? [] : roles,

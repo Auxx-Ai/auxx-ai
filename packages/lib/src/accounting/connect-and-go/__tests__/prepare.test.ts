@@ -91,7 +91,7 @@ vi.mock('../../ledger/chart/chart-import', () => ({
     for (const row of minted) {
       h.mapped.add(row.role)
       h.identities.push({
-        account: { id: row.glAccountId },
+        account: { id: row.glAccountId, name: row.name, code: null },
         providerAccountId: null,
         suggestion: null,
       })
@@ -168,26 +168,28 @@ describe('prepareConnectAndGo', () => {
     expect(result.isErr()).toBe(true)
   })
 
-  it('runs company settings, chart, rails, push and bank plan in that order', async () => {
+  it('runs company settings, chart, rails and bank plan in that order, writing nothing to the provider', async () => {
     h.identities = [
-      { account: { id: 'gl_minted' }, providerAccountId: null, suggestion: null },
+      {
+        account: { id: 'gl_minted', name: 'WIP', code: '1310' },
+        providerAccountId: null,
+        suggestion: null,
+      },
       { account: { id: 'gl_linked' }, providerAccountId: 'p_1', suggestion: null },
       { account: { id: 'gl_suggested' }, providerAccountId: null, suggestion: { account: {} } },
+      {
+        account: { id: 'gl_archived', isArchived: true },
+        providerAccountId: null,
+        suggestion: null,
+      },
     ]
     const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
 
-    expect(h.calls).toEqual([
-      'lock',
-      'company',
-      'settings',
-      'chart',
-      'rails',
-      'mint',
-      'push',
-      'banks',
+    expect(h.calls).toEqual(['lock', 'company', 'settings', 'chart', 'rails', 'mint', 'banks'])
+    expect(h.pushed).toEqual([])
+    expect(report.providerAccountsToCreate).toEqual([
+      { glAccountId: 'gl_minted', name: 'WIP', code: '1310' },
     ])
-    expect(h.pushed).toEqual([['gl_minted']])
-    expect(report.providerAccounts).toEqual({ created: 1, failed: null })
     expect(report.questions.rails).toHaveLength(1)
     expect(report.questions.bankAccounts).toEqual([{ key: 'create:gl_bank', kind: 'create' }])
     expect(report.failures).toEqual([])
@@ -267,7 +269,7 @@ describe('prepareConnectAndGo', () => {
 })
 
 describe('prepareConnectAndGo: roles nothing in the chart fits', () => {
-  it('mints the unmapped roles the enabled posting types need, and pushes them', async () => {
+  it('mints the unmapped roles the enabled posting types need, and lists them for Finish', async () => {
     h.mintable = ['inventory_raw_materials', 'inventory_wip']
     const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
 
@@ -276,7 +278,11 @@ describe('prepareConnectAndGo: roles nothing in the chart fits', () => {
       'inventory_raw_materials',
       'inventory_wip',
     ])
-    expect(h.pushed).toEqual([['gl_inventory_raw_materials', 'gl_inventory_wip']])
+    expect(h.pushed).toEqual([])
+    expect(report.providerAccountsToCreate?.map((row) => row.glAccountId)).toEqual([
+      'gl_inventory_raw_materials',
+      'gl_inventory_wip',
+    ])
   })
 
   it('never mints a role that is a question', async () => {

@@ -21,6 +21,8 @@ import {
 import { fillOpeningTrialBalanceFromProvider } from '../opening/fill-from-provider'
 import { finalizeAccountingSetup } from '../opening/finalize-setup'
 import { readOpeningPresence } from '../opening/reads'
+import { createProviderAccounts } from '../providers/create-provider-accounts'
+import { resolveAccountingProvider, supportsCreatingProviderAccounts } from '../providers/provider'
 import { requestAccountingRecovery } from '../work-items/recovery'
 import { activateBookConnectionForSetup } from './activate-book-connection'
 import { applyBankAccountProposals } from './bank-account-writes'
@@ -30,6 +32,7 @@ import type {
   ConnectAndGoCompleteStep,
 } from './client'
 import { withSetupLock } from './lock'
+import { listProviderAccountsToCreate } from './provider-accounts-to-create'
 
 const logger = createScopedLogger('accounting:connect-and-go')
 
@@ -37,8 +40,8 @@ const logger = createScopedLogger('accounting:connect-and-go')
 class StepFailure extends Error {}
 
 /**
- * The person has confirmed the cutover and answered the questions: write them, activate
- * exports, fill the opening from the provider, finalize and post it, then the inventory
+ * The person has confirmed the cutover and answered the questions: write them, create our
+ * unlinked accounts in the provider, activate exports, fill the opening from the provider, finalize and post it, then the inventory
  * adjustment. Stops at the first refusal and keeps what landed; every step is idempotent, so
  * calling again resumes. Refuses outright only on a malformed cutover or timezone.
  * No permission checks - the router asserts.
@@ -89,6 +92,7 @@ async function completeLocked(
     failedAt: null,
     message: null,
     bankAccounts: null,
+    providerAccounts: null,
     bookConnection: null,
     opening: null,
     finalize: null,
@@ -201,6 +205,27 @@ async function completeLocked(
         const failed = applied.value.failed[0]
         if (failed) throw new StepFailure(failed.message)
         return `${applied.value.created.length} created, ${applied.value.linked.length} linked`
+      },
+    ],
+    [
+      // Before the book connection and the fill: both need every account linked.
+      'provider_accounts',
+      async () => {
+        const provider = await resolveAccountingProvider(organizationId)
+        if (!supportsCreatingProviderAccounts(provider))
+          return { skipped: 'The accounting system cannot create accounts' }
+        const listed = await listProviderAccountsToCreate(db, organizationId)
+        if (listed.isErr()) throw listed.error
+        if (listed.value.length === 0) return { skipped: 'Every account is linked' }
+        const pushed = await createProviderAccounts(db, {
+          organizationId,
+          glAccountIds: listed.value.map((row) => row.glAccountId),
+          actorUserId,
+        })
+        if (pushed.isErr()) throw pushed.error
+        report.providerAccounts = { created: pushed.value.created.length }
+        if (pushed.value.failed) throw new StepFailure(pushed.value.failed.message)
+        return `${pushed.value.created.length} created`
       },
     ],
     [
