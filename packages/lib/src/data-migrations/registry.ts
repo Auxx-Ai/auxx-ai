@@ -43,6 +43,7 @@ import { migration187JournalEntryLine } from './migrations/187-journal-entry-lin
 import { migration188CreditMemoMoneyPending } from './migrations/188-credit-memo-money-pending'
 import { migration189ThreadTriageFields } from './migrations/189-thread-triage-fields'
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
+import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -219,6 +220,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Parts & Services: relabel + `service` kind, selling and channel-cost fields, and
   // catalog_item deleted — the part is the one register (107, 106 D5, D9).
   migration190PartsAndServices,
+  // Appends one option to an existing system SINGLE_SELECT: Shopify's `UNLISTED` product status (D10).
+  migration191ProductStatusUnlisted,
 ]
 
 /**

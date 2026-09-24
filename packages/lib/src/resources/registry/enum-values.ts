@@ -470,11 +470,14 @@ export const PartKind = {
 export const ProductStatus = {
   DRAFT: 'draft',
   ACTIVE: 'active',
+  /** Sellable by direct link but hidden from search and listings (Shopify `UNLISTED`); not `active`. */
+  UNLISTED: 'unlisted',
   ARCHIVED: 'archived',
 
   values: [
     { value: 'draft', label: 'Draft', color: 'gray' },
     { value: 'active', label: 'Active', color: 'green' },
+    { value: 'unlisted', label: 'Unlisted', color: 'blue' },
     { value: 'archived', label: 'Archived', color: 'amber' },
   ] satisfies FieldOptionItem[],
 } as const

@@ -202,7 +202,7 @@ export const PRODUCT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select status',
-    description: 'Draft, active, or archived',
+    description: 'Draft, active, unlisted, or archived',
   },
 
   // Same inline TAGS convention as `part.category` — the shared open-tag
