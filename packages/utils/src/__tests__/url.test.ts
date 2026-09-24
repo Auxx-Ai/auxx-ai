@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   buildAuxxArticleUrl,
   interpolateTemplate,
+  interpolateUrlTemplate,
   isAuxxUrl,
   parseAuxxArticleUrl,
+  UnsafeUrlTemplateError,
   unresolvedPlaceholders,
 } from '../url'
 
@@ -84,5 +86,45 @@ describe('unresolvedPlaceholders', () => {
 
   it('returns empty for a fully-resolved string', () => {
     expect(unresolvedPlaceholders('https://acme.x/orders')).toEqual([])
+  })
+})
+
+describe('interpolateUrlTemplate', () => {
+  const shopify = 'https://{shop}.myshopify.com/admin/api/2024-10'
+
+  it('interpolates a valid host-position value', () => {
+    expect(interpolateUrlTemplate(shopify, { shop: 'acme-store' })).toBe(
+      'https://acme-store.myshopify.com/admin/api/2024-10'
+    )
+  })
+
+  it.each([
+    'evil.com/x?',
+    'evil.com#',
+    'evil.com?',
+    'user@evil.com',
+    'evil.com:443/',
+    'a\\b',
+    'x y',
+  ])('rejects %j in a pinned host', (shop) => {
+    expect(() => interpolateUrlTemplate(shopify, { shop })).toThrow(UnsafeUrlTemplateError)
+  })
+
+  it('leaves a template whose whole host is one placeholder to the tenant', () => {
+    expect(interpolateUrlTemplate('https://{domain}/api', { domain: 'my.host.io' })).toBe(
+      'https://my.host.io/api'
+    )
+  })
+
+  it('leaves a whole-URL placeholder raw', () => {
+    expect(interpolateUrlTemplate('{value}', { value: 'https://x.supabase.co/rest/v1' })).toBe(
+      'https://x.supabase.co/rest/v1'
+    )
+  })
+
+  it('does not validate path-position values', () => {
+    expect(interpolateUrlTemplate('https://api.x.com/{account}/v1', { account: 'a:b' })).toBe(
+      'https://api.x.com/a:b/v1'
+    )
   })
 })

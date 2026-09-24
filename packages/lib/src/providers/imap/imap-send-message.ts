@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { createTransport, type Transporter } from 'nodemailer'
 import { BadRequestError } from '../../errors'
+import { resolvePublicHost } from '../../net/safe-fetch'
 import type { SendMessageOptions } from '../channel-provider.interface'
 import {
   SMTP_CONNECTION_TIMEOUT_MS,
@@ -14,13 +15,18 @@ import type { ImapCredentialData } from './types'
 const logger = createScopedLogger('imap-smtp')
 
 export class ImapSmtpSendService {
-  private transporter: Transporter | null = null
+  private smtp: ImapCredentialData['smtp'] | null = null
 
   async initialize(credentials: ImapCredentialData): Promise<void> {
-    const { smtp } = credentials
+    this.smtp = credentials.smtp
+  }
 
-    this.transporter = createTransport({
-      host: smtp.host,
+  // Resolved per send, not at initialize: provider init also serves sync, and a vetted
+  // address must not go stale across a long-lived provider.
+  private async createTransporter(smtp: ImapCredentialData['smtp']): Promise<Transporter> {
+    const target = await resolvePublicHost(smtp.host)
+    return createTransport({
+      host: target.address,
       port: smtp.port,
       secure: smtp.secure,
       auth: {
@@ -32,17 +38,18 @@ export class ImapSmtpSendService {
       socketTimeout: SMTP_SOCKET_TIMEOUT_MS,
       tls: {
         rejectUnauthorized: !smtp.allowUnauthorizedCerts,
+        servername: target.servername,
       },
     })
   }
 
   async sendMessage(options: SendMessageOptions): Promise<{ id?: string; success: boolean }> {
-    if (!this.transporter) {
+    if (!this.smtp) {
       throw new BadRequestError('SMTP not initialized')
     }
-
     try {
-      const result = await this.transporter.sendMail({
+      const transporter = await this.createTransporter(this.smtp)
+      const result = await transporter.sendMail({
         from: options.from,
         to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
         cc: options.cc?.join(', '),
@@ -81,10 +88,12 @@ export class ImapSmtpSendService {
   }
 
   async verify(): Promise<boolean> {
-    if (!this.transporter) return false
+    if (!this.smtp) return false
 
     try {
-      await this.transporter.verify()
+      const transporter = await this.createTransporter(this.smtp)
+      await transporter.verify()
+      transporter.close()
       return true
     } catch {
       return false
@@ -92,10 +101,7 @@ export class ImapSmtpSendService {
   }
 
   async close(): Promise<void> {
-    if (this.transporter) {
-      this.transporter.close()
-      this.transporter = null
-    }
+    this.smtp = null
   }
 
   private parseSmtpError(error: unknown): Error {

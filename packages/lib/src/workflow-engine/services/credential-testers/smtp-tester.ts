@@ -2,6 +2,7 @@
 
 import type { CredentialTestResult } from '@auxx/workflow-nodes/types'
 import nodemailer from 'nodemailer'
+import { resolvePublicHost } from '../../../net/safe-fetch'
 
 /**
  * SMTP credential testing implementation
@@ -30,8 +31,9 @@ export class SmtpTester {
       }
 
       // Create transporter with credential data
+      const target = await resolvePublicHost(host)
       const transporter = nodemailer.createTransport({
-        host,
+        host: target.address,
         port,
         secure,
         auth: {
@@ -41,6 +43,7 @@ export class SmtpTester {
         // Security and timeout settings
         tls: {
           rejectUnauthorized: !ignoreTLS,
+          servername: target.servername,
         },
         connectionTimeout: 10000,
         greetingTimeout: 5000,

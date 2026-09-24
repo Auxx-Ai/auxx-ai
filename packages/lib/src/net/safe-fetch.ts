@@ -2,13 +2,20 @@
 
 import {
   BlockedAddressError as BaseBlockedAddressError,
+  resolvePublicHost as baseResolvePublicHost,
   safeFetch as baseSafeFetch,
+  type ResolvedPublicHost,
   type SafeFetchInit,
   UnsafeUrlError,
 } from '@auxx/utils/net'
 import { BadRequestError } from '../errors'
 
-export { guardedLookup, type SafeFetchInit, safeDispatcher } from '@auxx/utils/net'
+export {
+  guardedLookup,
+  type ResolvedPublicHost,
+  type SafeFetchInit,
+  safeDispatcher,
+} from '@auxx/utils/net'
 
 /** A server-side request tried to reach a private, loopback or reserved address. */
 export class BlockedAddressError extends BadRequestError {
@@ -27,6 +34,16 @@ export async function safeFetch(url: string | URL, init?: SafeFetchInit): Promis
   } catch (error) {
     if (error instanceof BaseBlockedAddressError) throw new BlockedAddressError(error.address)
     if (error instanceof UnsafeUrlError) throw new BadRequestError(error.message)
+    throw error
+  }
+}
+
+/** Vet a tenant-supplied host for a raw TCP client (IMAP, SMTP, Postgres); dial the returned address. */
+export async function resolvePublicHost(host: string): Promise<ResolvedPublicHost> {
+  try {
+    return await baseResolvePublicHost(host)
+  } catch (error) {
+    if (error instanceof BaseBlockedAddressError) throw new BlockedAddressError(error.address)
     throw error
   }
 }

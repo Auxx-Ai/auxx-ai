@@ -1,6 +1,7 @@
 // packages/lib/src/workflow-engine/services/credential-testers/postgres-tester.ts
 
 import type { CredentialTestResult } from '@auxx/workflow-nodes/types'
+import { resolvePublicHost } from '../../../net/safe-fetch'
 
 /**
  * PostgreSQL credential testing implementation
@@ -45,13 +46,17 @@ export class PostgresTester {
         }
       }
 
+      const target = await resolvePublicHost(host)
       const client = new Client({
-        host,
+        host: target.address,
         port: port || 5432,
         database,
         user,
         password,
-        ssl: sslMode !== 'disable' ? { rejectUnauthorized: sslMode === 'require' } : false,
+        ssl:
+          sslMode !== 'disable'
+            ? { rejectUnauthorized: sslMode === 'require', servername: target.servername }
+            : false,
         connectionTimeoutMillis: 10000,
       })
 

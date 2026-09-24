@@ -200,9 +200,11 @@ export {
   deriveTitleFromUrl,
   formatUrlForDisplay,
   interpolateTemplate,
+  interpolateUrlTemplate,
   isAuxxUrl,
   isLikelyUrlInput,
   normalizeUrl,
   parseAuxxArticleUrl,
+  UnsafeUrlTemplateError,
   unresolvedPlaceholders,
 } from './url'
