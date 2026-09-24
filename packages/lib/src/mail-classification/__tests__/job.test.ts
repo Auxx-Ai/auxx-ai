@@ -2,7 +2,7 @@
 // The job is orchestration only, so what is worth pinning is the ORDER and the
 // two things that cost money or silence the feature:
 //   • every guard exit short-circuits BEFORE the model call (C8);
-//   • the §4.1 filter re-run happens after a tag is applied, and only then.
+//   • the §4.1 filter re-run happens whenever the marker was written (03 §5.1).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   classify: vi.fn(),
   apply: vi.fn(),
   mark: vi.fn(),
+  triage: vi.fn(),
   rerun: vi.fn(),
 }))
 
@@ -24,6 +25,7 @@ vi.mock('../apply', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../apply')>()),
   applyClassificationTag: h.apply,
   markMessageClassified: h.mark,
+  writeThreadTriage: h.triage,
 }))
 vi.mock('../rerun-filters', () => ({ rerunMailFiltersAfterClassification: h.rerun }))
 
@@ -36,8 +38,21 @@ const CONTEXT = {
   threadId: 'thr_1',
   inboxId: 'ibx_1',
   labels: [{ tagId: 'tag_billing', title: 'Billing', description: null }],
-  message: { subject: 's', from: 'a@b.com', textPlain: 'b' },
+  message: { subject: 's', from: 'a@b.com', textPlain: 'b', senderAuthenticated: null },
 }
+
+const TRIAGE = {
+  priority: 'HIGH',
+  needsReply: true,
+  sentiment: 'NEUTRAL',
+  spamScore: 0.1,
+  answers: {
+    priority: { level: 3, confidence: 0.9 },
+    needsReply: { probability: 0.8 },
+    sentiment: { level: 3, confidence: 0.9 },
+    spam: { probability: 0.1 },
+  },
+} as const
 
 function ctx(data: Partial<MailClassificationJobData> = {}) {
   return {
@@ -51,8 +66,10 @@ beforeEach(() => {
   h.classify.mockResolvedValue({
     tagId: 'tag_billing',
     confidence: 0.9,
+    confidenceKind: 'self-reported',
     model: 'gpt-x',
     inferred: true,
+    triage: TRIAGE,
   })
   h.apply.mockResolvedValue(true)
   h.mark.mockResolvedValue(undefined)
@@ -136,54 +153,51 @@ describe('mailClassificationJob — the happy path', () => {
     })
   })
 
-  it('carries the summary and the candidate label onto the marker (08 phase 1)', async () => {
-    h.classify.mockResolvedValue({
-      tagId: null,
-      confidence: 0.5,
-      reason: 'below-threshold',
-      model: 'gpt-x',
-      inferred: true,
-      messageSummary: 'The sender wants to open a wholesale account.',
-      altTagName: 'wholesale enquiry',
-    })
-
+  it('carries the confidence kind and the raw triage answers onto the marker', async () => {
     await mailClassificationJob(ctx())
 
     expect(h.mark.mock.calls[0]?.[0]?.marker).toMatchObject({
-      messageSummary: 'The sender wants to open a wholesale account.',
-      altTagName: 'wholesale enquiry',
+      confidenceKind: 'self-reported',
+      triage: TRIAGE.answers,
     })
   })
 
-  it('omits the two keys entirely when the model returned nothing usable', async () => {
+  it('writes the triage columns onto the classified thread', async () => {
     await mailClassificationJob(ctx())
 
-    const marker = h.mark.mock.calls[0]?.[0]?.marker
-    expect(marker).not.toHaveProperty('messageSummary')
-    expect(marker).not.toHaveProperty('altTagName')
+    expect(h.triage).toHaveBeenCalledWith({
+      db: expect.anything(),
+      organizationId: 'org_1',
+      threadId: 'thr_1',
+      triage: TRIAGE,
+    })
   })
 })
 
 describe('mailClassificationJob — nothing applied', () => {
-  it('below threshold: marks the message, applies no tag, re-runs no filters (C10)', async () => {
+  it('below threshold: marks and triages, applies no tag, still re-runs filters', async () => {
     h.classify.mockResolvedValue({
       tagId: null,
       confidence: 0.4,
       reason: 'below-threshold',
       model: 'gpt-x',
       inferred: true,
+      triage: TRIAGE,
     })
 
     await expect(mailClassificationJob(ctx())).resolves.toEqual({
       classified: false,
       confidence: 0.4,
       skipped: 'below-threshold',
+      firedFilterIds: ['flt_category'],
     })
 
-    // The inference happened and was billed, so the marker still goes down.
+    // The inference happened and was billed, so the marker still goes down; a
+    // filter may condition on the triage columns alone (03 §5.1).
     expect(h.mark).toHaveBeenCalledTimes(1)
+    expect(h.triage).toHaveBeenCalledTimes(1)
     expect(h.apply).not.toHaveBeenCalled()
-    expect(h.rerun).not.toHaveBeenCalled()
+    expect(h.rerun).toHaveBeenCalledTimes(1)
   })
 
   it('no default model: NO marker, so the message stays classifiable once one is set', async () => {
@@ -220,6 +234,7 @@ describe('mailClassificationJob — nothing applied', () => {
       })
 
       expect(h.mark).not.toHaveBeenCalled()
+      expect(h.triage).not.toHaveBeenCalled()
       expect(h.apply).not.toHaveBeenCalled()
       expect(h.rerun).not.toHaveBeenCalled()
     })
@@ -241,13 +256,13 @@ describe('mailClassificationJob — nothing applied', () => {
     expect(h.mark).not.toHaveBeenCalled()
   })
 
-  it('a failed tag write does not trigger a filter re-run over a tag that is not there', async () => {
+  it('a failed tag write reports an error but still re-runs filters over the triage', async () => {
     h.apply.mockResolvedValue(false)
 
     await expect(mailClassificationJob(ctx())).resolves.toMatchObject({
       classified: false,
       skipped: 'error',
     })
-    expect(h.rerun).not.toHaveBeenCalled()
+    expect(h.rerun).toHaveBeenCalledTimes(1)
   })
 })

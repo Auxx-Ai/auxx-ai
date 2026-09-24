@@ -1139,6 +1139,8 @@ export type ThreadHandoffState = (typeof ThreadHandoffStateValues)[number]
 
 export const TicketPriorityValues = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
 
+export const ThreadSentimentValues = ['NEGATIVE', 'NEUTRAL', 'POSITIVE'] as const
+
 export const TicketStatusValues = [
   'OPEN',
   'IN_PROGRESS',

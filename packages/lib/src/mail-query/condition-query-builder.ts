@@ -1,7 +1,11 @@
 // packages/lib/src/mail-query/condition-query-builder.ts
 
 import { database as db, schema } from '@auxx/database'
-import { MessageTypeValues } from '@auxx/database/enums'
+import {
+  MessageTypeValues,
+  ThreadSentimentValues,
+  TicketPriorityValues,
+} from '@auxx/database/enums'
 
 const { Thread } = schema
 
@@ -356,6 +360,15 @@ function dispatchConditionQuery(
       return buildDateQuery(op, value, 'createdAt')
     case 'lastMessageAt':
       return buildDateQuery(op, value, 'lastMessageAt')
+    // Mail classification triage (plans/ai/decision/03 §5.1)
+    case 'priority':
+      return buildEnumColumnQuery(op, value, Thread.priority, TicketPriorityValues)
+    case 'sentiment':
+      return buildEnumColumnQuery(op, value, Thread.sentiment, ThreadSentimentValues)
+    case 'needsReply':
+      return buildBooleanColumnQuery(op, value, Thread.needsReply)
+    case 'spamScore':
+      return buildDirectNumberColumnQuery(op, value, Thread.spamScore)
     default:
       return UNKNOWN_FIELD
   }
@@ -1324,7 +1337,7 @@ function buildDirectColumnQuery(
 function buildDirectNumberColumnQuery(
   operator: Operator,
   value: any,
-  column: typeof Thread.messageCount
+  column: typeof Thread.messageCount | typeof Thread.spamScore
 ): SQL<unknown> | null {
   const numValue = value !== null && value !== undefined ? Number(value) : null
 
@@ -1343,6 +1356,62 @@ function buildDirectNumberColumnQuery(
       return numValue !== null && !Number.isNaN(numValue) ? gte(column, numValue) : null
     case '<=':
       return numValue !== null && !Number.isNaN(numValue) ? lte(column, numValue) : null
+    case 'in':
+    case 'not in': {
+      const nums = textList(value)
+        .map(Number)
+        .filter((n) => !Number.isNaN(n))
+      if (nums.length === 0) return null
+      return operator === 'in' ? inArray(column, nums) : not(inArray(column, nums))
+    }
+    case 'empty':
+      return isNull(column)
+    case 'not empty':
+      return isNotNull(column)
+    default:
+      return null
+  }
+}
+
+/**
+ * A nullable enum column on `Thread`. Values outside the enum are dropped; an empty
+ * list declines rather than emitting `IN ()`. NULL (never classified) matches only `empty`.
+ */
+function buildEnumColumnQuery(
+  operator: Operator,
+  value: unknown,
+  column: typeof Thread.priority | typeof Thread.sentiment,
+  allowed: readonly string[]
+): SQL<unknown> | null {
+  const values = textList(value).filter((v) => allowed.includes(v))
+  switch (operator) {
+    case 'is':
+    case 'in':
+      return values.length > 0 ? inArray(column, values as any) : null
+    case 'is not':
+    case 'not in':
+      return values.length > 0 ? not(inArray(column, values as any)) : null
+    case 'empty':
+      return isNull(column)
+    case 'not empty':
+      return isNotNull(column)
+    default:
+      return null
+  }
+}
+
+/** A nullable boolean column on `Thread`; NULL (never classified) is neither true nor false. */
+function buildBooleanColumnQuery(
+  operator: Operator,
+  value: unknown,
+  column: typeof Thread.needsReply
+): SQL<unknown> | null {
+  const isTrue = value === true || value === 'true'
+  switch (operator) {
+    case 'is':
+      return eq(column, isTrue)
+    case 'is not':
+      return eq(column, !isTrue)
     case 'empty':
       return isNull(column)
     case 'not empty':

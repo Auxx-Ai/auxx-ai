@@ -17,7 +17,12 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { JobContext } from '../jobs/types/job-context'
-import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+import {
+  applyClassificationTag,
+  markMessageClassified,
+  toClassificationMarker,
+  writeThreadTriage,
+} from './apply'
 import { guardClassification } from './classification-gate'
 import { classifyMessage } from './classify'
 import type { MailClassificationSkipReason } from './client'
@@ -50,8 +55,8 @@ export interface MailClassificationJobResult {
  * Four steps, in this order and no other:
  *   1. the §3.1 guard (six exits, cheapest first)
  *   2. one model call (§3.2)
- *   3. the marker + the tag (§3.3, C9 before C5 so a crash between them costs an
- *      inference rather than repeating one)
+ *   3. the marker, the triage columns, the tag (§3.3, C9 before C5 so a crash
+ *      between them costs an inference rather than repeating one)
  *   4. **the mandatory filter re-run** (§4.1) — without it the whole feature is
  *      silently dead
  */
@@ -97,37 +102,52 @@ export async function mailClassificationJob(
   // leave the message classifiable exactly as `'no-default-model'` does. Marking
   // those disqualified the message forever, silently, for a condition that
   // typically resolves on its own.
-  if (result.inferred) {
-    await markMessageClassified({
-      db,
-      organizationId,
-      messageId,
-      marker: toClassificationMarker(result),
-    })
-  }
-
-  if (!result.tagId) {
+  if (!result.inferred) {
     return { classified: false, confidence: result.confidence, skipped: result.reason }
   }
 
-  const applied = await applyClassificationTag({
+  const { threadId: classifiedThreadId } = gate.context
+  await markMessageClassified({
     db,
     organizationId,
-    threadId: gate.context.threadId,
-    tagId: result.tagId,
+    messageId,
+    marker: toClassificationMarker(result),
   })
-  if (!applied) {
-    return { classified: false, confidence: result.confidence, skipped: 'error' }
+  if (result.triage) {
+    await writeThreadTriage({
+      db,
+      organizationId,
+      threadId: classifiedThreadId,
+      triage: result.triage,
+    })
   }
 
-  // ⚠️ §4.1 — MANDATORY. Applying a tag does not re-run filters; nothing else
-  // calls the engine for this message ever again. Full set, `source: 'live'`.
+  const applied = result.tagId
+    ? await applyClassificationTag({
+        db,
+        organizationId,
+        threadId: classifiedThreadId,
+        tagId: result.tagId,
+      })
+    : false
+
+  // ⚠️ §4.1 — MANDATORY whenever the marker was written: the tag or the triage
+  // columns may be what a filter conditions on, and nothing else re-runs them.
   const firedFilterIds = await rerunMailFiltersAfterClassification({
     db,
     organizationId,
-    threadId: gate.context.threadId,
+    threadId: classifiedThreadId,
     messageId,
   })
+
+  if (!result.tagId || !applied) {
+    return {
+      classified: false,
+      confidence: result.confidence,
+      skipped: result.tagId ? 'error' : result.reason,
+      firedFilterIds,
+    }
+  }
 
   return {
     classified: true,

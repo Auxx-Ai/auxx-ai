@@ -6,7 +6,7 @@ import { createContext, type ReactNode, useContext, useMemo } from 'react'
 
 // Types for view mode and sorting
 export type ViewMode = 'view' | 'edit'
-export type SortOption = 'newest' | 'oldest' | 'sender' | 'subject'
+export type SortOption = 'newest' | 'oldest' | 'sender' | 'subject' | 'priority'
 export type SortDirection = 'asc' | 'desc'
 
 /**

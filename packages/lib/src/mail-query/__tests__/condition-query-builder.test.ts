@@ -871,3 +871,46 @@ describe('messageType', () => {
     expect(toSql(result.sql)).toBe(baseScopeSql())
   })
 })
+
+// Mail-classification triage columns on `Thread` (plans/ai/decision/03 §5.1).
+describe('priority / needsReply / sentiment / spamScore — every offered operator compiles', () => {
+  const SAMPLES: Record<string, { single: unknown; multiple: unknown }> = {
+    priority: { single: 'URGENT', multiple: ['HIGH', 'URGENT'] },
+    sentiment: { single: 'NEGATIVE', multiple: ['NEGATIVE', 'NEUTRAL'] },
+    needsReply: { single: true, multiple: [true] },
+    spamScore: { single: 0.8, multiple: [0.8] },
+  }
+
+  for (const [fieldId, sample] of Object.entries(SAMPLES)) {
+    it(`\`${fieldId}\` drops nothing and always narrows`, () => {
+      const operators = offeredOperators(fieldId)
+      expect(operators.length).toBeGreaterThan(0)
+
+      for (const operator of operators) {
+        const value =
+          operator.valueType === 'none'
+            ? undefined
+            : operator.valueType === 'multiple'
+              ? sample.multiple
+              : sample.single
+        const result = buildOne(fieldId, operator.key, value)
+
+        expect({ operator: operator.key, dropped: result.droppedConditions }).toEqual({
+          operator: operator.key,
+          dropped: [],
+        })
+        expect(toSql(result.sql)).not.toBe(baseScopeSql())
+      }
+    })
+  }
+
+  it('passes only enum members through', () => {
+    const params = toParams(buildOne('sentiment', 'in', ['NEGATIVE', 'ANGRY']).sql)
+    expect(params).toContain('NEGATIVE')
+    expect(params).not.toContain('ANGRY')
+  })
+
+  it('drops an enum value outside the column enum rather than widening', () => {
+    expect(buildOne('priority', 'is', 'CRITICAL').allConditionsDropped).toBe(true)
+  })
+})

@@ -20,7 +20,7 @@ import {
 } from '@auxx/ui/components/empty'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { cn } from '@auxx/ui/lib/utils'
-import { ArrowUpDown, ChevronDown, Clock, FileText, Loader2, Mail, User } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Clock, FileText, Flag, Loader2, Mail, User } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 // import { useAutoAnimate } from '@formkit/auto-animate/react'
@@ -449,7 +449,7 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
 
   const handleSortChange = (sort: SortOption) => {
     setSortBy?.(sort)
-    if (sort === 'newest') {
+    if (sort === 'newest' || sort === 'priority') {
       setSortDirection?.('desc')
     } else if (sort === 'oldest') {
       // 'oldest' shares `lastMessageAt` with 'newest' (see `mapSortByToField`),
@@ -471,6 +471,8 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
         return 'By Sender'
       case 'subject':
         return 'By Subject'
+      case 'priority':
+        return 'By Priority'
       default:
         return 'Sort'
     }
@@ -543,6 +545,12 @@ function ThreadListMenu({ threadIds }: ThreadListMenuProps) {
               className={cn(sortBy === 'subject' && 'font-bold')}>
               <FileText />
               By Subject
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleSortChange('priority')}
+              className={cn(sortBy === 'priority' && 'font-bold')}>
+              <Flag />
+              By Priority
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

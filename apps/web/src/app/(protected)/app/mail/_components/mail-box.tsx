@@ -381,7 +381,9 @@ function MailboxInner({
   )
 
   // Helper to map UI sort options to sort field names
-  const mapSortByToField = (sortBy: string): 'lastMessageAt' | 'subject' | 'sender' => {
+  const mapSortByToField = (
+    sortBy: string
+  ): 'lastMessageAt' | 'subject' | 'sender' | 'priority' => {
     switch (sortBy) {
       case 'newest':
       case 'oldest':
@@ -390,6 +392,8 @@ function MailboxInner({
         return 'subject'
       case 'sender':
         return 'sender'
+      case 'priority':
+        return 'priority'
       default:
         return 'lastMessageAt'
     }

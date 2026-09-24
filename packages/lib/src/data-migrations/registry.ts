@@ -41,6 +41,7 @@ import { migration183EntityDefPalette } from './migrations/183-entity-def-palett
 import { migration186DropPostingMarkers } from './migrations/186-drop-posting-markers'
 import { migration187JournalEntryLine } from './migrations/187-journal-entry-line'
 import { migration188CreditMemoMoneyPending } from './migrations/188-credit-memo-money-pending'
+import { migration189ThreadTriageFields } from './migrations/189-thread-triage-fields'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -211,6 +212,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // One CHECKBOX on the existing `credit_memo` def, no backfill: a channel refund whose
   // money is still pending, which holds the memo back from issuing (101 E9).
   migration188CreditMemoMoneyPending,
+  // Four dbColumn-backed fields on the existing `thread` def, no backfill: the triage
+  // mail classification writes (decision 03 §5.2).
+  migration189ThreadTriageFields,
 ]
 
 /**

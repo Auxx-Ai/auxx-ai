@@ -4,14 +4,18 @@
 import { createId } from '@paralleldrive/cuid2'
 import {
   type AnyPgColumn,
+  boolean,
   index,
   integer,
   jsonb,
   pgTable,
+  real,
   sql,
   text,
   threadHandoffState,
+  threadSentiment,
   threadStatus,
+  ticketPriority,
   timestamp,
   uniqueIndex,
 } from './_shared'
@@ -95,6 +99,12 @@ export const Thread = pgTable(
     closedAt: timestamp({ precision: 3 }),
     repliedAt: timestamp({ precision: 3 }),
     waitingSince: timestamp({ precision: 3 }),
+    // Triage written by mail classification; NULL means never evaluated (plans/ai/decision/03 §5.2).
+    priority: ticketPriority(),
+    needsReply: boolean(),
+    sentiment: threadSentiment(),
+    /** Probability 0–1 that the first inbound message is spam; filters act on it, the model never does. */
+    spamScore: real(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     metadata: jsonb(),
     /** Soft-merge pointer: when set, this thread is hidden from lists and treated as merged into the target. */

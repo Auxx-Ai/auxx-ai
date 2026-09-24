@@ -7,16 +7,22 @@
 // the classifier and the settings catalog all read these constants), and the
 // directive would turn every export into a client-reference proxy there.
 
+import type { ConfidenceKind } from '../ai/decision/client'
+
 /**
- * Minimum model confidence before a tag is applied (plan Q4).
+ * Minimum confidence before a tag is applied, per how the confidence was produced (D4).
  *
- * Below it the classifier applies NOTHING (C10) — no tag is both the safe state
- * and the correct one, because a mail filter must never act on a guess. Tuned
- * against the `info` line `classify.ts` logs on EVERY call, including the
- * below-threshold ones: there is no column and no audit row, the log IS the
- * tuning data (`scope='mail-classification'` in OpenObserve).
+ * Below it the classifier applies NOTHING (C10). Tuned against the `info` line
+ * `classify.ts` logs on every call (`scope='mail-classification'` in OpenObserve).
+ * `calibrated` is TypeSafe's cookbook figure until shadow mode measures one.
  */
-export const MAIL_CLASSIFY_CONFIDENCE_THRESHOLD = 0.7
+export const MAIL_CLASSIFY_CONFIDENCE_THRESHOLD: Record<ConfidenceKind, number> = {
+  'self-reported': 0.7,
+  calibrated: 0.9,
+}
+
+/** Probability at or above which `needsReply` is stored as true. */
+export const MAIL_CLASSIFY_NEEDS_REPLY_THRESHOLD = 0.5
 
 /**
  * `orgSettings` key holding the ids of the inboxes that opted in (plan §5).
@@ -54,18 +60,8 @@ export const MAIL_CLASSIFY_NO_CATEGORY = '__none__'
  */
 export const MAIL_CLASSIFY_BODY_CHARS = 2000
 
-/**
- * Ceiling on the one-line message summary (08 §3.1).
- *
- * ⚠️ Enforced in TypeScript, NOT by a `maxLength` in the schema (08 §2). Strict-
- * mode keyword support differs per provider — `sanitizeFormatsForOpenAiStrict`
- * already strips things the OpenAI API rejects outright — so the schema states
- * the limit for the model's benefit and the clamp is what actually holds.
- */
-export const MAIL_CLASSIFY_SUMMARY_CHARS = 200
-
-/** Ceiling on a candidate tag label (08 §3.1). Clamped in TypeScript, as above. */
-export const MAIL_CLASSIFY_ALT_TAG_CHARS = 60
+/** Ceiling on each tag description in the `category` question; the native path caps state + question at 32k tokens. */
+export const MAIL_CLASSIFY_DESCRIPTION_CHARS = 500
 
 /**
  * Key under `Message.metadata` holding the classification marker.
@@ -180,27 +176,20 @@ export interface MailClassificationMarker {
   tagId: string | null
   confidence: number
   model?: string
-  /**
-   * One-line summary of THIS MESSAGE (08 T10).
-   *
-   * ⚠️ Not a thread summary and must never be surfaced as one: it is written
-   * once, from the first inbound message only, against a body truncated to
-   * {@link MAIL_CLASSIFY_BODY_CHARS} with no quoted history, and is never
-   * updated as the conversation grows.
-   */
-  messageSummary?: string
-  /**
-   * The topic label the model WOULD have used, when the taxonomy did not fit
-   * (08 §3.1). Present only on abstentions — `'no-category'` or
-   * `'below-threshold'`.
-   *
-   * ⚠️ Recorded, never applied (08 invariant 5). The classifier's output set
-   * stays closed over the eligible tags (`05-…` invariant 12); nothing may turn
-   * this string into a tag without a human accepting a suggestion. Stored
-   * verbatim — normalization and clustering happen at mine time (08 T5), so rows
-   * written under one strategy never need a backfill under the next.
-   */
-  altTagName?: string
+  /** Absent on markers written before the decision runner; treat those as `'self-reported'`. */
+  confidenceKind?: ConfidenceKind
+  /** Raw triage answers, kept so thresholds can be re-tuned without re-asking. */
+  triage?: MailClassificationTriageAnswers
+}
+
+/** The four triage answers as the model gave them (plans/ai/decision/03 §5). */
+export interface MailClassificationTriageAnswers {
+  /** 1-based level on Informational · Normal · Needs a reply today · Blocking the customer. */
+  priority: { level: number; confidence: number }
+  needsReply: { probability: number }
+  /** 1-based level on Angry or threatening · Frustrated · Neutral · Positive. */
+  sentiment: { level: number; confidence: number }
+  spam: { probability: number }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

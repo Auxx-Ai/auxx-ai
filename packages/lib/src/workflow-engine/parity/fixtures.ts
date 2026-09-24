@@ -478,6 +478,10 @@ export const THREAD_ROW = {
   lastMessageAt: new Date('2026-08-12T10:00:00Z'),
   closedAt: null,
   createdAt: new Date('2026-08-01T09:00:00Z'),
+  priority: 'HIGH',
+  needsReply: true,
+  sentiment: 'NEGATIVE',
+  spamScore: 0.02,
 }
 
 export const THREAD_ROW_2 = {

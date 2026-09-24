@@ -9,12 +9,12 @@ import type { ConditionGroup } from '../conditions/types'
  * Allowed fields that can be used when sorting thread lists.
  *
  * `'relevance'` is **server-derived, not client-supplied** — `thread.listIds`'
- * zod input enumerates only the three column sorts, and the ranked ordering is
+ * zod input enumerates only the column sorts, and the ranked ordering is
  * chosen by `ThreadQueryService.resolveListSort` when the filter carries a
- * free-text term. It is part of this union because the keyset cursor encodes the
+ * free-text term. `'priority'` orders by the classified `Thread.priority`, then recency. It is part of this union because the keyset cursor encodes the
  * active sort field and has to be able to say "this page was ordered by rank".
  */
-export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender' | 'relevance'
+export type ThreadSortField = 'lastMessageAt' | 'subject' | 'sender' | 'priority' | 'relevance'
 
 /**
  * Denormalized merge state stored on `Thread.mergeData`.
