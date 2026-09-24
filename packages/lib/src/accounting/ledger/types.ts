@@ -1245,8 +1245,8 @@ export interface ChartImportResult {
   skippedInactive: number
   /** Written with `source: 'import'`, only for roles that were `unmapped`. */
   rolesAssigned: AccountRole[]
-  /** Unmapped roles left for a person because several provider accounts fit. */
-  rolesAmbiguous: AccountRole[]
+  /** Unmapped roles left for a person because several provider accounts fit, with those accounts. */
+  rolesAmbiguous: Array<{ role: AccountRole; providerAccountIds: string[] }>
   /** The core accounts added because the provider has no candidate for their role. */
   coreCreated: DefaultChartAccount[]
   /** Created under a parent, or an existing account the refresh just repointed under one. */

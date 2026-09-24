@@ -31,6 +31,26 @@ export async function listDueWorkItems(
   return rows.map((row) => row.sourceId)
 }
 
+/** Every row at a stage, due or not - what a sweep of that lane will get to eventually. */
+export async function countWorkItemsAtStage(
+  db: Database,
+  organizationId: string,
+  input: { stage: WorkItemStage; sourceKind: string }
+): Promise<number> {
+  const t = schema.AccountingWorkItem
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(t)
+    .where(
+      and(
+        eq(t.organizationId, organizationId),
+        eq(t.stage, input.stage),
+        eq(t.sourceKind, input.sourceKind)
+      )
+    )
+  return Number(row?.count ?? 0)
+}
+
 /** `NOT EXISTS` a row for this source at this stage - what "never tried" means in a candidate query. */
 export function noWorkItem(
   organizationId: string,

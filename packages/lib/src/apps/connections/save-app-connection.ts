@@ -21,6 +21,7 @@ import { ConflictError } from '../../errors'
 import { triggerAppEvent } from '../events'
 import { reconcileInstallationAppFields } from '../installations/app-field-provisioning'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
+import { runAppConnectionAddedHooks } from './connection-added-hooks'
 
 /**
  * Pick the secret keys (present only) out of an app-connection's credential data.
@@ -491,6 +492,15 @@ export async function saveAppConnection(
       }
     }
   }
+
+  await runAppConnectionAddedHooks({
+    organizationId,
+    appId,
+    appInstallationId,
+    credentialId: created.id,
+    actorUserId: createdById,
+    userId,
+  })
 
   return ok({ credentialId: created.id, matchedExisting: false })
 }

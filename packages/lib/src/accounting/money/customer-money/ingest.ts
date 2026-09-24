@@ -585,6 +585,23 @@ async function refreshMoneyCoverageInTx(
   })
 }
 
+/** How many acceptances the ingest sweep still has to materialize, parked ones included. */
+export async function countImportedCustomerMoneyBacklog(
+  db: Database,
+  organizationId: string
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(schema.FinancialSourceAcceptance)
+    .where(
+      and(
+        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
+        inArray(schema.FinancialSourceAcceptance.state, ['pending', 'blocked'])
+      )
+    )
+  return Number(row?.count ?? 0)
+}
+
 /**
  * Bounded retry through the recovery job: acceptances never tried first, then due
  * `evidence` work items. A throw parks the acceptance as `blocked` with a transient row.

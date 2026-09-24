@@ -7,7 +7,7 @@ import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/di
 import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
-import { WizardAccountMapPage } from './wizard-account-map-page'
+import { ConnectAndGoPage } from './connect-and-go-page'
 import { WizardAccountsPage } from './wizard-accounts-page'
 import { WizardConnectPage } from './wizard-connect-page'
 import { WizardDonePage } from './wizard-done-page'
@@ -19,36 +19,29 @@ import {
   type WizardLeaveDirection,
   type WizardStepHandle,
 } from './wizard-step-handle'
-import { WizardWelcomePage } from './wizard-welcome-page'
 
-// The order is load-bearing: `connect` before `accounts` (the provider's chart can be
-// the source of ours), `rails` between `accounts` and `accountMap` (a rail's accounts
-// come from the chart and must be mapped after), and the opening grid after the chart
-// it is a grid over. Page files name themselves, not their position.
-//
-// The opening grid is for an org with no accounting system connected; with one, the
-// opening is filled from its balance sheet instead (plans/accounting/tasks/103 §5a).
-const PAGES = [
-  'welcome',
-  'period',
+// With nothing connected: connect first (connecting switches to the one-screen flow), then the
+// chart before the rails that mint into it, and the opening grid over that chart.
+const MANUAL_PAGES = [
   'connect',
+  'period',
   'accounts',
   'rails',
-  'accountMap',
   'openingTrialBalance',
   'done',
 ] as const
-type WizardPage = (typeof PAGES)[number]
+// With an accounting system connected, everything else is derived from it (105 §4).
+const CONNECTED_PAGES = ['connectAndGo'] as const
+type WizardPage = (typeof MANUAL_PAGES)[number] | (typeof CONNECTED_PAGES)[number]
 
 const PAGE_TITLES: Record<WizardPage, string> = {
-  welcome: 'Set up accounting',
+  connect: 'Accounting system',
   period: 'Accounting period',
-  openingTrialBalance: 'Opening balances',
   accounts: 'Account roles',
   rails: 'Payment rails',
-  connect: 'Accounting system',
-  accountMap: 'Accounting system accounts',
+  openingTrialBalance: 'Opening balances',
   done: 'Finalize',
+  connectAndGo: 'Set up from your accounting system',
 }
 
 export interface AccountingSetupWizardProps {
@@ -57,67 +50,41 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a `DialogNav`
- * wizard covering the things that have to be true before a month-end entry can legally be
- * posted (accounting period, the opening balances, the role map, the payment rails) plus the
- * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
- * ours corresponds to - and a "finalize" page that freezes the opening baseline.
- *
- * 🛑 The two `G19` pages are SKIPPABLE, like every other page here. `P1` makes
- * "nothing connected" a supported configuration rather than an unfinished setup: the ledger is
- * ours, entries are still built, balanced and persisted, and only the export does not happen.
- * Neither page may ever block Continue.
- *
- * 🛑 Pages write REAL data through the settings catalog keys, never a wizard-local progress
- * record. That is task 12's scalar-keys decision and it is what lets the settings pages, the
- * checklist and the Post gate all read one source and agree.
+ * The accounting setup dialog. With an accounting system connected it is one result screen
+ * (`ConnectAndGoPage`); without, the manual pages through Finalize.
  *
  * Pages holding a dirty draft expose a {@link WizardStepHandle} the shell consults before leaving
- * the page in any direction - saving a dirty draft, or blocking Continue when the draft is
- * invalid - so Back, Continue and "Set up later" never lose work. Only Continue is ever refused;
- * see `wizard-step-handle.ts` for why the exits stay open.
- *
- * "Set up later" (any page) and reaching the last page both call `setWizardCompleted` for the
- * `accounting` checklist - one timestamp, so the wizard never auto-opens again either way.
+ * the page, so Back, Continue and "Set up later" never lose work. "Set up later" and finishing
+ * both stamp `setWizardCompleted`, so the wizard never auto-opens again either way.
  */
 export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWizardProps) {
-  const [page, setPage] = useState<WizardPage>('welcome')
+  const providerStatus = useAccountingProviderStatus()
+  const pages: readonly WizardPage[] = providerStatus.connected ? CONNECTED_PAGES : MANUAL_PAGES
+  const [page, setPage] = useState<WizardPage>(pages[0] ?? 'connect')
   const periodRef = useRef<WizardStepHandle | null>(null)
   const openingTbRef = useRef<WizardStepHandle | null>(null)
-  const providerStatus = useAccountingProviderStatus()
-  const pages: readonly WizardPage[] = providerStatus.connected
-    ? PAGES.filter((name) => name !== 'openingTrialBalance')
-    : PAGES
 
-  // Reset to the first page each time the wizard is (re)opened.
+  // Reset to the first page on each open, and when connecting swaps the page set.
+  const firstPage = pages[0] ?? 'connect'
   useEffect(() => {
-    if (open) setPage('welcome')
-  }, [open])
+    if (open) setPage(firstPage)
+  }, [open, firstPage])
 
   const utils = api.useUtils()
-  // Write the stamp into the cache up front, then invalidate. `finish()` is often the last thing
-  // that happens before a navigation away from `/app/accounting` (the done page's "Open the
-  // ledger" link), which unmounts the gate - an invalidation that lands after that only marks the
-  // entry stale, so the stale `wizardCompletedAt: null` is what a remounted gate would read.
+  // Write the stamp into the cache up front, then invalidate: `finish()` often precedes a
+  // navigation that unmounts the gate, and a late invalidation would leave the stale null behind.
   const setWizardCompleted = api.gettingStarted.setWizardCompleted.useMutation({
     onMutate: () => {
       utils.gettingStarted.getStatus.setData({ checklist: 'accounting' }, (prev) =>
         prev ? { ...prev, wizardCompletedAt: new Date().toISOString() } : prev
       )
     },
-    // `onSettled`, not `onSuccess`: a failed write must not leave the optimistic stamp standing.
     onSettled: () => utils.gettingStarted.getStatus.invalidate(),
   })
 
   const index = Math.max(pages.indexOf(page), 0)
 
-  /**
-   * Ask the current page (if it registered a handle) whether it is safe to navigate away.
-   *
-   * 🛑 AWAITED. A page whose save is not optimistic resolves only once the write has landed and
-   * its query has been refetched - see `WizardStepHandle.tryAdvance`. Advancing before that let
-   * the finalize page read the pre-save answer.
-   */
+  /** Awaited: a page's save resolves only once the write has landed and its query refetched. */
   const attemptLeave = (direction: WizardLeaveDirection, onAllowed: () => void) => {
     const handle =
       page === 'period'
@@ -128,9 +95,7 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
     return leaveCurrentPage(handle, direction, onAllowed)
   }
 
-  // One lock for all three exits. `attemptLeave` can now be in flight for as long as a save takes,
-  // and without this a second Continue would run `tryAdvance` against a page that is already
-  // leaving - two saves of the same draft, or a skipped page.
+  // One lock for all three exits, so a second Continue cannot run against a page already leaving.
   const [leaving, setLeaving] = useState(false)
 
   const leaveVia = async (direction: WizardLeaveDirection, onAllowed: () => void) => {
@@ -145,12 +110,14 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
 
   const goNext = () =>
     leaveVia('next', () => setPage(pages[Math.min(index + 1, pages.length - 1)] ?? 'done'))
-  const goBack = () => leaveVia('back', () => setPage(pages[Math.max(index - 1, 0)] ?? 'welcome'))
+  const goBack = () => leaveVia('back', () => setPage(pages[Math.max(index - 1, 0)] ?? firstPage))
   const finish = () =>
     leaveVia('exit', () => {
       setWizardCompleted.mutate({ checklist: 'accounting' })
       onOpenChange(false)
     })
+
+  const linear = page !== 'connectAndGo' && page !== 'done'
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && finish()}>
@@ -158,22 +125,19 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
         <DialogNav
           title='Set up accounting'
           description='A few things to configure before your books can be closed from Auxx.'
-          onBack={page !== 'welcome' && page !== 'done' ? goBack : undefined}
+          onBack={linear && index > 0 ? goBack : undefined}
           crumbs={[{ label: PAGE_TITLES[page] }]}
         />
 
         <DialogNavPages value={page}>
-          <DialogNavPage value='welcome' size='md'>
-            <WizardWelcomePage />
-          </DialogNavPage>
-          <DialogNavPage value='period' size='lg'>
-            <WizardPeriodPage ref={periodRef} />
-          </DialogNavPage>
-          <DialogNavPage value='openingTrialBalance' size='xl'>
-            <WizardOpeningTbPage ref={openingTbRef} />
+          <DialogNavPage value='connectAndGo' size='xl'>
+            <ConnectAndGoPage onFinish={finish} />
           </DialogNavPage>
           <DialogNavPage value='connect' size='lg'>
             <WizardConnectPage />
+          </DialogNavPage>
+          <DialogNavPage value='period' size='lg'>
+            <WizardPeriodPage ref={periodRef} />
           </DialogNavPage>
           <DialogNavPage value='accounts' size='lg'>
             <WizardAccountsPage />
@@ -181,8 +145,8 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           <DialogNavPage value='rails' size='xl'>
             <WizardRailsPage />
           </DialogNavPage>
-          <DialogNavPage value='accountMap' size='xl'>
-            <WizardAccountMapPage />
+          <DialogNavPage value='openingTrialBalance' size='xl'>
+            <WizardOpeningTbPage ref={openingTbRef} />
           </DialogNavPage>
           <DialogNavPage value='done' size='md'>
             <WizardDonePage onFinish={finish} />
@@ -194,9 +158,11 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
             <Button variant='ghost' size='sm' onClick={finish} disabled={leaving}>
               Set up later
             </Button>
-            <Button variant='outline' size='sm' onClick={goNext} loading={leaving}>
-              {page === 'welcome' ? 'Get started' : 'Continue'}
-            </Button>
+            {linear && (
+              <Button variant='outline' size='sm' onClick={goNext} loading={leaving}>
+                Continue
+              </Button>
+            )}
           </DialogFooter>
         )}
       </DialogContent>

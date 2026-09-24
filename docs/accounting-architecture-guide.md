@@ -129,7 +129,9 @@ packages/lib/src/
     mirror/      the raw copy of the provider's ledger, and the translation off it
     providers/   the AccountingProvider seam, book connections, quickbooks/
     rails/       payment rails, rail accounts, rail fee status
-    connect-and-go/  headless setup steps over rails, banking and the book connection (brief 105)
+    connect-and-go/  setup from a connected provider (brief 105): prepareConnectAndGo (posts
+                 nothing; queued when a provider app connects), completeConnectAndGo (the
+                 person's answers → activate, fill, finalize, adjust), previewConnectAndGoBacklog
     money/       MoneyTransaction / MoneyApplication, invoice payments, deposits,
                  payouts, checkout, stripe-connect, and the two evidence
                  reconcilers (customer-money/order-evidence-reconciler.ts,

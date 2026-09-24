@@ -163,6 +163,7 @@ export {
 } from './maintenance/bank-feed-maintenance-job'
 // Money P24 vendor-bill aging daily sweep — `awaiting_receipt` -> `exception`
 export { companyEnrichmentSweepJob } from './maintenance/company-enrichment-sweep-job'
+export { connectAndGoPrepareJob } from './maintenance/connect-and-go-prepare-job'
 // Per-request provider deletion / deauthorize teardown
 // (plans/channels/meta-data-deletion-callback.md §4.4). On-demand: enqueued by the
 // Meta signed_request routes and the Shopify compliance webhook, never scheduled.

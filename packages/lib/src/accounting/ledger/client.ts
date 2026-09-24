@@ -193,6 +193,7 @@ export {
   type ExportAvenue,
   type ExportSettings,
   FINALIZED_SETUP_STATE,
+  isMonthKey,
   isSummaryGrainAvenue,
   isValidTimeZone,
   LEDGER_CURRENCY,
