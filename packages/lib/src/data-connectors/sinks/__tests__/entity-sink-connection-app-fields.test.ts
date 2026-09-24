@@ -42,6 +42,7 @@ vi.mock('../../../cache', () => ({
 const upsertRecordIdentity = vi.fn()
 vi.mock('../../../identity', () => ({
   upsertRecordIdentity: (...a: unknown[]) => upsertRecordIdentity(...a),
+  findRecordByIdentity: vi.fn().mockResolvedValue(null),
 }))
 
 import { entitySink } from '../entity-sink'

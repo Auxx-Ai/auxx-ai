@@ -79,6 +79,8 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   showIcon?: boolean
   /** Render only the icon; the name moves to the accessible label and the hover card. */
   iconOnly?: boolean
+  /** Text to show instead of the record's display name. */
+  label?: string
   /** Prefix the display name with the resource's singular label. */
   showResourceLabel?: boolean
   /** Additional CSS classes */
@@ -141,6 +143,7 @@ export function RecordBadge({
   recordId,
   showIcon = true,
   iconOnly = false,
+  label,
   showResourceLabel = false,
   className,
   variant,
@@ -173,7 +176,7 @@ export function RecordBadge({
   const handleStackOpen = useOpenRecordLinkClick(recordId, openInStack)
 
   // Determine display name
-  const displayName = isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown')
+  const displayName = label ?? (isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown'))
 
   // Show loading state when recordId is undefined or when loading AND no cached data exists
   const isLoading = !recordId || ((isLoadingRecord || isLoadingResource) && !record)

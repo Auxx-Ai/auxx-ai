@@ -23,8 +23,8 @@ import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { NotFoundError, UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
-import { upsertRecordIdentity } from '../../identity'
-import { toRecordId } from '../../resources/resource-id'
+import { findRecordByIdentity, upsertRecordIdentity } from '../../identity'
+import { getInstanceId, toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import {
   type DecodedMapping,
@@ -349,6 +349,42 @@ async function resolveIdentity(
     instanceId,
     matched: { fieldId: match.matchedBy.fieldId, value: match.matchedBy.value, exclusive },
   }
+}
+
+/**
+ * The instance that already owns this record's external id in `RecordIdentity`,
+ * via the mapping's `externalId`-role fields — the same key the mirror writes.
+ */
+async function findInstanceByRecordIdentity(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  record: ProjectedRecord,
+  refToConcrete: Map<string, ResourceFieldId>
+): Promise<string | null> {
+  const identityRefs = mapping.fieldMappings.filter(
+    (fm) => fm.targetFieldRef != null && fm.identityRole?.kind === 'externalId'
+  )
+  if (identityRefs.length === 0) return null
+
+  const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
+  for (const fm of identityRefs) {
+    const concrete = refToConcrete.get(fm.targetFieldRef!)
+    const field = concrete ? fieldMap.get(getFieldId(concrete)) : undefined
+    if (!field?.appSlug) continue
+    const match = await findRecordByIdentity(
+      {
+        organizationId: ctx.orgId,
+        entityDefinitionId: mapping.entityDefinitionId,
+        source: field.appSlug,
+        connectionId: field.connectionId ?? null,
+        appFieldKey: field.appFieldKey ?? null,
+        externalId: record.externalId,
+      },
+      ctx.db
+    )
+    if (match) return getInstanceId(match.recordId)
+  }
+  return null
 }
 
 /**
@@ -985,6 +1021,11 @@ export const entitySink: EntitySink = {
         record.externalId
       )
       instanceId = shared?.entityInstanceId ?? null
+    }
+    // 1b''. An unbound record whose external id is already held in RecordIdentity
+    //       (bindings wiped, record kept) re-binds rather than minting a duplicate.
+    if (!instanceId) {
+      instanceId = await findInstanceByRecordIdentity(ctx, mapping, record, refToConcrete)
     }
     let matched: { fieldId?: FieldId; value: unknown; exclusive?: boolean } | undefined
     if (!instanceId) {

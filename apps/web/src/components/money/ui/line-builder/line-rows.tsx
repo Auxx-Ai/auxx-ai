@@ -556,7 +556,7 @@ function LineNameCellView({
   onOpenPhotos,
 }: {
   name: string
-  /** Part or catalog item the line came from — a drill-in icon beside the read-only name. */
+  /** Part or catalog item the line came from — the read-only name links to it. */
   sourceRecordId?: RecordId | null
   description: string | null
   category: string | null
@@ -749,12 +749,22 @@ function LineNameCellView({
   if (readOnly) {
     return (
       <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
-        <span
-          className={cn('min-w-0 truncate px-1 text-sm', !name && 'text-muted-foreground italic')}>
-          {name || 'Untitled line'}
-        </span>
-        {sourceRecordId && (
-          <RecordBadge recordId={sourceRecordId} iconOnly size='sm' link openInStack />
+        {sourceRecordId ? (
+          <RecordBadge
+            recordId={sourceRecordId}
+            label={name || undefined}
+            className='min-w-0'
+            link
+            openInStack
+          />
+        ) : (
+          <span
+            className={cn(
+              'min-w-0 truncate px-1 text-sm',
+              !name && 'text-muted-foreground italic'
+            )}>
+            {name || 'Untitled line'}
+          </span>
         )}
         {stateBadges}
         {description && <TooltipExplanation text={description} />}
