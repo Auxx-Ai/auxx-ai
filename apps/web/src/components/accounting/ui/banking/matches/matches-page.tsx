@@ -52,7 +52,7 @@ export function MatchesPage() {
         </ListToolbarGroup>
       </ListToolbar>
       <ScrollArea className='min-h-0 flex-1'>
-        <div className='flex flex-col gap-1 p-4'>
+        <div className='flex flex-1 flex-col gap-1 p-4'>
           <ProviderMatchList state={view} canPost={can(PermissionKey.ledgerPost)} />
         </div>
       </ScrollArea>

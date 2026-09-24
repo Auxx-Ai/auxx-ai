@@ -303,7 +303,7 @@ function SettlementsBody() {
         />
 
         <ScrollArea className='min-h-0 flex-1'>
-          <div className='flex flex-col gap-1 p-4 pb-24'>
+          <div className='flex flex-1 flex-col gap-1 p-4 pb-24'>
             {payoutsQuery.isPending ? (
               <div className='flex flex-col gap-2'>
                 <Skeleton className='h-10 w-full' />

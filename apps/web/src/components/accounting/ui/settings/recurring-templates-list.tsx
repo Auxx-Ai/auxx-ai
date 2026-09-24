@@ -74,7 +74,7 @@ export function RecurringTemplatesList({
   )
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
+    <div className='flex min-h-full flex-col gap-3 p-3'>
       {templates.length > 0 && (
         <div className='flex items-center gap-2'>
           <InputSearch
