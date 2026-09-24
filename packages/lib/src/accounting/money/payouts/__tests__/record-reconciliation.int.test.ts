@@ -3,7 +3,7 @@ import { schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PayoutRecordEvidence } from '../../customer-money/record-contracts'
 import { writeFinancialRecords } from '../../customer-money/record-storage'
 import {
@@ -12,6 +12,10 @@ import {
   recoverPayoutReconciliationPage,
 } from '../assess-payouts'
 import { isPayoutHeldReversed, listTransfersAwaitingRepost } from '../repost-reads'
+
+vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: async () => true,
+}))
 
 let organizationId: string
 let actorUserId: string

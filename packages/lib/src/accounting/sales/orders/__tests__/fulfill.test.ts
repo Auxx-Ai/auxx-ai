@@ -32,7 +32,7 @@ const h = vi.hoisted(() => ({
     recordId: 'fulfillment:ful_1',
     lineInstanceIds: ['fl_1'],
   },
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   /** What `buildFulfillmentEntry` was handed, so the per-line tax is assertable. */
   built: [] as Array<{ shippedLines: readonly unknown[] }>,
   /** Every `relieveFulfillmentLines` call this run made (50 §1.4). */
@@ -102,7 +102,7 @@ vi.mock('../../fulfillments/accounting', async () => {
 })
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 
 // Neither mock reaches its real module (no `importActual`): the real
@@ -305,7 +305,7 @@ beforeEach(() => {
   h.previewed = []
   h.prepareError = null
   h.marked = []
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
 })
 
 describe('fulfillOrder', () => {
@@ -497,7 +497,7 @@ describe('fulfillOrder', () => {
     })
 
     it('still runs when accounting is not enabled - on-hand is an inventory fact', async () => {
-      h.isAccountingEnabled.mockResolvedValue(false)
+      h.isAccountingActive.mockResolvedValue(false)
       await fulfillOrder(stubDb(), input)
       expect(h.relieved).toHaveLength(1)
     })
@@ -639,7 +639,7 @@ describe('fulfillOrder', () => {
 
   describe('when accounting is not enabled for the org', () => {
     beforeEach(() => {
-      h.isAccountingEnabled.mockResolvedValue(false)
+      h.isAccountingActive.mockResolvedValue(false)
     })
 
     it('still creates the fulfillment record, using computeShipmentTotals directly, and never posts', async () => {

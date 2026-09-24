@@ -17,8 +17,7 @@ import { periodKeyForDate } from '../../ledger/periods/periods'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
-import { FINALIZED_SETUP_STATE } from '../../ledger/setup/setup-readiness'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import type { BuiltEntry, GlPostingSourceInput, RoleSourceScope } from '../../ledger/types'
 import { readOrderSourceScope } from '../../money/customer-money/reads'
 import {
@@ -104,20 +103,14 @@ export async function parkFulfillment(
   else await deleteWorkItem(db, organizationId, workKey(fulfillmentId))
 }
 
-/** Read the window once per call. Throws until setup is finalized and a zone is set. */
+/** Read the window once per call. Throws until a zone is set. */
 export async function readShipmentPostingWindow(
   organizationId: string
 ): Promise<ShipmentPostingWindow> {
   const settings = await readOrganizationSettings(organizationId, [
-    'accounting.setupState',
     'accounting.bookTimeZone',
     'accounting.cutoffPeriod',
   ] as const)
-  if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
-    throw new UnprocessableEntityError(
-      'Finalize accounting setup before posting shipments',
-      withWorkItemCode('SETUP_INCOMPLETE')
-    )
   const zone = settings['accounting.bookTimeZone']
   if (!zone)
     throw new UnprocessableEntityError(
@@ -276,7 +269,7 @@ export async function postFulfillmentAccounting(
     return { status: 'accepted', glPostingId: live.value.id }
   }
 
-  if (!(await isAccountingEnabled(db, organizationId)))
+  if (!(await isAccountingActive(organizationId)))
     return { status: 'skipped', reason: 'Accounting is not enabled' }
 
   let prepared: PreparedFulfillmentEntry

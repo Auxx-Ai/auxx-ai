@@ -7,7 +7,7 @@ import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
@@ -99,7 +99,7 @@ function lines() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })

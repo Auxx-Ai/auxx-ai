@@ -3,27 +3,27 @@
 import type { Database, Transaction } from '@auxx/database'
 import { FeaturePermissionService } from '../../../permissions/feature-permission-service'
 import { FeatureKey } from '../../../permissions/types'
+import { readOrganizationSettings } from '../../../settings/read'
+import { FINALIZED_SETUP_STATE } from './setup-readiness'
 
 /**
- * Has this organization enabled the accounting module at all?
- *
- * The gate every document-driven posting trigger checks FIRST
- * (plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3). An org that
- * never turned accounting on is a first-class silent case, like `not_connected`
- * under decision P1: nothing is built, nothing is claimed, nothing is logged,
- * and the trigger answers `not_enabled`. It is deliberately distinct from
- * `accounting.setupState`, which means the module is ON and the wizard was not
- * finished; that one keeps its `setup_incomplete` refusal and its warning.
- *
- * Reads `FeatureKey.accounting` through `FeaturePermissionService`, which is the
- * same door the ledger router and the nav use, so a trigger and a screen cannot
- * disagree about whether accounting exists for an org. That service reads the
- * org cache's `features` key (30-day TTL, invalidated on plan events) and
- * answers `true` on a self-hosted install, where every feature is on.
+ * Whether the org's plan has the accounting feature (always true self-hosted). Nav, routers and the
+ * payout record import read this; writers of accounting rows read {@link isAccountingActive}.
  */
 export async function isAccountingEnabled(
   db: Database | Transaction,
   organizationId: string
 ): Promise<boolean> {
   return new FeaturePermissionService(db).hasAccess(organizationId, FeatureKey.accounting)
+}
+
+/** Accounting feature on and the setup wizard finalized; both read from the org cache. */
+export async function isAccountingActive(organizationId: string): Promise<boolean> {
+  const enabled = await new FeaturePermissionService().hasAccess(
+    organizationId,
+    FeatureKey.accounting
+  )
+  if (!enabled) return false
+  const settings = await readOrganizationSettings(organizationId, ['accounting.setupState'])
+  return settings['accounting.setupState'] === FINALIZED_SETUP_STATE
 }

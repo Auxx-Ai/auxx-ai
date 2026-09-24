@@ -4,7 +4,14 @@
 // consumer's own tests can see, because a consumer passes just as well when its
 // reconciler runs 40 times as when it runs once.
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const h = vi.hoisted(() => {
+  const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  return { log }
+})
+vi.mock('@auxx/logger', () => ({ createScopedLogger: () => h.log }))
+
 import { createTxWriteScope } from '../../resources/crud/tx-write-scope'
 import type { WriteSession } from '../../resources/crud/write-origin'
 import { runWithWriteSession } from '../../resources/crud/write-session-als'
@@ -37,6 +44,7 @@ function spyReconciler(key: string) {
 
 beforeEach(() => {
   __resetReconcilersForTest()
+  vi.clearAllMocks()
 })
 
 describe('coalescing', () => {
@@ -221,6 +229,41 @@ describe('the cap', () => {
     })
 
     expect(calls[0]).toHaveLength(MAX_DIRTY_PARENTS_PER_KEY)
+  })
+
+  it('exempts a reconciler registered with batch: every parent, one drain, no truncation', async () => {
+    const calls: string[][] = []
+    registerReconciler(
+      'k',
+      async ({ parentInstanceIds }) => {
+        calls.push(parentInstanceIds)
+      },
+      { batch: true }
+    )
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      for (let i = 0; i < MAX_DIRTY_PARENTS_PER_KEY + 440; i++) markParentDirty('k', `doc-${i}`)
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toHaveLength(MAX_DIRTY_PARENTS_PER_KEY + 440)
+    // `scope.truncated` is only ever set alongside this log line.
+    expect(h.log.error).not.toHaveBeenCalled()
+  })
+
+  it('still caps a key with no registered reconciler', async () => {
+    await runWithDirtyParents(ORG, USER, async () => {
+      for (let i = 0; i < MAX_DIRTY_PARENTS_PER_KEY + 5; i++) markParentDirty('nobody', `doc-${i}`)
+    })
+
+    expect(h.log.error).toHaveBeenCalledWith(
+      'dirty-parent buffer truncated; some derived values will stay stale',
+      expect.objectContaining({ key: 'nobody' })
+    )
+    expect(h.log.error).toHaveBeenCalledWith('no reconciler registered for a dirtied key', {
+      key: 'nobody',
+      count: MAX_DIRTY_PARENTS_PER_KEY,
+    })
   })
 })
 

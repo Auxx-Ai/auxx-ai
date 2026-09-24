@@ -41,7 +41,7 @@ const h = vi.hoisted(() => ({
   readWith: [] as unknown[],
   /** What `readDepositBankAccount` answers. Null stands in for "no such account". */
   bankAccount: null as Record<string, unknown> | null,
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   ineligibleIds: [] as string[],
 }))
 
@@ -50,7 +50,7 @@ vi.mock('../../../../cache', () => ({
   getCachedEntityDefId: async () => 'def_bank_deposit',
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 
 vi.mock('../fields', () => ({
@@ -262,8 +262,8 @@ beforeEach(() => {
   h.calls = []
   h.readWith = []
   h.bankAccount = bankAccount()
-  h.isAccountingEnabled.mockReset()
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockReset()
+  h.isAccountingActive.mockResolvedValue(true)
 })
 
 describe('createBankDeposit refusals', () => {
@@ -478,7 +478,7 @@ describe('createBankDeposit posts one cash line', () => {
   // 🛑 task 17 §3: an org that has never turned accounting on still banks its
   // payments - the deposit is real whether or not the ledger exists.
   it('groups the deposit and answers not_enabled without building or posting an entry', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
     const result = await createBankDeposit(db, input)
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().post).toEqual({ status: 'not_enabled' })

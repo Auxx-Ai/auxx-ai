@@ -11,6 +11,16 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   batch: vi.fn(),
   postResult: { status: 'posted', glPostingId: 'glp_1' } as Record<string, unknown>,
+  floor: [] as unknown[],
+  floorReads: 0,
+}))
+
+vi.mock('../../ledger/setup/cutover-floor', () => ({
+  readCutoverFloor: async () => {
+    h.floorReads++
+    const { ok } = await import('neverthrow')
+    return ok(h.floor)
+  },
 }))
 
 vi.mock('../../../settings/read', () => ({
@@ -53,6 +63,8 @@ beforeEach(() => {
   h.calls = []
   h.batch = vi.fn()
   h.postResult = { status: 'posted', glPostingId: 'glp_1' }
+  h.floor = []
+  h.floorReads = 0
 })
 
 describe('finalizeAccountingSetup', () => {
@@ -120,5 +132,33 @@ describe('finalizeAccountingSetup', () => {
     const result = (await finalizeAccountingSetup(db, input))._unsafeUnwrap()
     expect(result.finalizedNow).toBe(true)
     expect(result.opening?.status).toBe('period_closed')
+  })
+
+  it('refuses when a document after the cutover is unposted, naming kind, count and date', async () => {
+    h.floor = [{ kind: 'vendor_bill', count: 3, earliest: '2027-01-04', latest: '2027-02-11' }]
+
+    const error = (await finalizeAccountingSetup(db, input))._unsafeUnwrapErr() as Error & {
+      details: Record<string, unknown>
+    }
+    expect(error.message).toContain(
+      '3 vendor bills dated after 2026-12 are not posted (earliest 2027-01-04).'
+    )
+    expect(error.message).toContain('Move the cutover to 2027-02 or later')
+    expect(error.details.unmet).toEqual(['cutover-floor'])
+    expect(h.calls).toEqual([])
+  })
+
+  it('proceeds when the floor finds nothing', async () => {
+    h.floor = []
+    const result = (await finalizeAccountingSetup(db, input))._unsafeUnwrap()
+    expect(h.floorReads).toBe(1)
+    expect(result.finalizedNow).toBe(true)
+  })
+
+  it('does not read the floor on an already-finalized org', async () => {
+    h.settings['accounting.setupState'] = 'finalized'
+    h.floor = [{ kind: 'invoice', count: 1, earliest: '2027-01-04', latest: '2027-01-04' }]
+    expect((await finalizeAccountingSetup(db, input)).isOk()).toBe(true)
+    expect(h.floorReads).toBe(0)
   })
 })

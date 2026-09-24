@@ -24,7 +24,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { listLiveApplications } from '../reads'
 import { insertApplication } from '../writes'
@@ -57,7 +57,7 @@ export async function voidInvoicePayment(
   db: Database,
   input: VoidInvoicePaymentInput
 ): Promise<VoidInvoicePaymentResult> {
-  if (!(await isAccountingEnabled(db, input.organizationId)))
+  if (!(await isAccountingActive(input.organizationId)))
     throw new UnprocessableEntityError('Accounting is not enabled for this organization')
 
   const live = await findLiveSubjectPosting(db, {

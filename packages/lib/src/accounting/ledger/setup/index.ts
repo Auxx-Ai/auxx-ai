@@ -1,6 +1,7 @@
 // packages/lib/src/accounting/ledger/setup/index.ts
 
 export { readBookTimeZone, readBookTimeZoneOrUtc, todayInBookTimeZone } from './book-time-zone'
+export { readCutoverFloor } from './cutover-floor'
 // TARGET §3: the export batch's settings.
 export {
   avenueOfPostingType,
@@ -14,6 +15,8 @@ export {
 } from './export-settings'
 export { readExportSettings } from './read-export-settings'
 export {
+  type CutoverFloorFinding,
+  type CutoverFloorKind,
   type OpeningPresence,
   type OpeningTrialBalanceSummary,
   openingTrialBalanceDifference,

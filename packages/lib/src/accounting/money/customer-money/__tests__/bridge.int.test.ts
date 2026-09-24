@@ -10,6 +10,9 @@ import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-ut
 import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: async () => true,
+}))
 vi.mock('../../../../cache', async () => {
   const { getTestDb: tdb } = await import('@auxx/test-utils')
   const { schema: s } = await import('@auxx/database')

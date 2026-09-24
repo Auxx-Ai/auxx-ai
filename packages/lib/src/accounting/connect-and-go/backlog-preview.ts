@@ -8,6 +8,10 @@ import type { ExportSettings, SummaryGrain } from '../ledger/setup/export-settin
 import { readExportSettings } from '../ledger/setup/read-export-settings'
 import { isMonthKey } from '../ledger/setup/setup-readiness'
 import { countMovementAccountingBacklog } from '../money/blocked-movements'
+import {
+  countUnbridgedFinancialRecords,
+  countUnmaterializedCustomerTransactions,
+} from '../money/customer-money/bridge-sweep'
 import { countImportedCustomerMoneyBacklog } from '../money/customer-money/ingest'
 import { countFulfillmentAccountingBacklog } from '../sales/fulfillments/posting-reads'
 import { countWorkItemsAtStage } from '../work-items/sweep'
@@ -43,13 +47,27 @@ export async function previewConnectAndGoBacklog(
         params.bookTimeZone?.trim() || settings['accounting.bookTimeZone']?.trim() || 'UTC'
       const window = { cutoffPeriod, bookTimeZone }
 
-      const [shipments, movements, relief, importedPayments, exportSettings] = await Promise.all([
-        countFulfillmentAccountingBacklog(db, organizationId, window),
-        countMovementAccountingBacklog(db, organizationId, window),
-        countWorkItemsAtStage(db, organizationId, { stage: 'relieve', sourceKind: 'fulfillment' }),
-        countImportedCustomerMoneyBacklog(db, organizationId),
-        readExportSettings(organizationId),
-      ])
+      const [shipments, movementRows, recordMoney, relief, acceptances, unbridged, exportSettings] =
+        await Promise.all([
+          countFulfillmentAccountingBacklog(db, organizationId, window),
+          countMovementAccountingBacklog(db, organizationId, window),
+          // In draft nothing materializes, so the records are the backlog (110 G5).
+          countUnmaterializedCustomerTransactions(db, { organizationId, ...window }),
+          countWorkItemsAtStage(db, organizationId, {
+            stage: 'relieve',
+            sourceKind: 'fulfillment',
+          }),
+          countImportedCustomerMoneyBacklog(db, organizationId),
+          countUnbridgedFinancialRecords(db, { organizationId, kind: 'customer_transaction' }),
+          readExportSettings(organizationId),
+        ])
+      // Disjoint rows; the two day spans overlap, so the larger is a floor on their union.
+      const movements = {
+        count: movementRows.count + recordMoney.count,
+        days: Math.max(movementRows.days, recordMoney.days),
+        months: Math.max(movementRows.months, recordMoney.months),
+      }
+      const importedPayments = acceptances + unbridged
 
       const exportMode = params.exportMode ?? exportSettings.mode
       const estimatedExports =

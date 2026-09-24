@@ -24,7 +24,7 @@ import {
 } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { refusalFromError, refusalFromPost, type WorkItemRefusal } from '../../work-items/refusal'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
@@ -341,7 +341,7 @@ export async function fulfillOrder(
     async () => {
       const shippedAt = input.shippedAt ?? new Date().toISOString().slice(0, 10)
       assertIsoDate(shippedAt, 'Shipped date')
-      const accountingEnabled = await isAccountingEnabled(db, organizationId)
+      const accountingEnabled = await isAccountingActive(organizationId)
       const committed = await db.transaction((tx) =>
         runInTxWrite({ organizationId, actorUserId }, async () => {
           await withAccountingCommitLock(tx, organizationId)

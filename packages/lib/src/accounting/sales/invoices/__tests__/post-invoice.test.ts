@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   bySystemAttributes: vi.fn(),
   buildInvoiceEntry: vi.fn(),
   postEntry: vi.fn(),
@@ -17,7 +17,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
@@ -96,7 +96,7 @@ function wireInvoice(contactInstanceId: string | null = CONTACT) {
 beforeEach(() => {
   vi.clearAllMocks()
   claims = []
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.buildInvoiceEntry.mockReturnValue({
     entry: {
@@ -155,7 +155,7 @@ describe('postInvoiceIssuance', () => {
   })
 
   it('never posts, and never reads, when accounting is off', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     const result = await postInvoiceIssuance(wireInvoice(), {
       organizationId: ORG,

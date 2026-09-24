@@ -5,6 +5,7 @@ import { sweepExportBatches } from '../../accounting/export'
 import { sweepMovementAccounting } from '../../accounting/money/blocked-movements'
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
+import { sweepStoredPayoutEntries } from '../../accounting/money/payouts/sweep-stored-entries'
 import { sweepChannelCreditMemos } from '../../accounting/sales/credit-memos/issue-pass'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
 import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
@@ -25,6 +26,8 @@ const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Shipment relief', sweepFulfillmentRelief],
   // Issues channel memos and links refunds that posted before their memo arrived.
   ['Credit memo issuing', sweepChannelCreditMemos],
+  // Payouts import in draft with no entry, and the nightly sync re-offers only 30 days.
+  ['Stored payout entries', sweepStoredPayoutEntries],
 ]
 
 async function attempt(label: string, organizationId: string, run: () => Promise<unknown>) {

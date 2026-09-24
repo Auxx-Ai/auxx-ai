@@ -25,7 +25,7 @@ import {
 import { resolvePeriodLock } from '../periods/period-lock'
 import { listPostingsForSource } from '../reads/list-postings'
 import { readPostingLineSourceIds } from '../reads/read-posting'
-import { isAccountingEnabled } from '../setup/accounting-enabled'
+import { isAccountingActive } from '../setup/accounting-enabled'
 import type { GlPostingSourceInput, PostResult } from '../types'
 import { insertSourceLinksInTx } from './insert-posting'
 import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
@@ -90,7 +90,7 @@ export async function postInventoryMovementInTx(
   } = input
 
   if (movements.length === 0) return null
-  if (!(await isAccountingEnabled(tx, organizationId))) return null
+  if (!(await isAccountingActive(organizationId))) return null
 
   const built = buildInventoryMovementEntry({
     kind,

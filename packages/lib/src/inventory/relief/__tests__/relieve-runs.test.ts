@@ -115,7 +115,7 @@ vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: async () => {},
 }))
 vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThrough: null }),

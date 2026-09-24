@@ -22,7 +22,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => h.accountingEnabled,
+  isAccountingActive: async () => h.accountingEnabled,
 }))
 vi.mock('../../periods/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThrough: null }),

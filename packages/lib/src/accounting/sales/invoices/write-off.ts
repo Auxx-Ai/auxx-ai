@@ -25,7 +25,7 @@ import { type BuildWriteOffEntryInput, buildWriteOffEntry } from '../../ledger/b
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, previewEntry } from '../../ledger/post/post-entry'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { acceptInvoiceWriteOffAccounting } from './write-off-accounting'
@@ -299,7 +299,7 @@ export async function writeOffInvoice(
   // accounting on. `acceptInvoiceWriteOffAccounting` checks the same gate again
   // - it is the trigger the gate belongs to - and this early exit is what keeps
   // an accounting-off org from paying for a transaction it will not use.
-  const result: PostResult = (await isAccountingEnabled(db, organizationId))
+  const result: PostResult = (await isAccountingActive(organizationId))
     ? await acceptInvoiceWriteOffAccounting(db, {
         organizationId,
         invoiceId,

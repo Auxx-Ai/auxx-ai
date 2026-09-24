@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   readCustomerReceiptAccountingSource: vi.fn(),
   resolveRoles: vi.fn(),
   postEntry: vi.fn(),
@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
@@ -142,7 +142,7 @@ beforeEach(() => {
     paymentGatewayId: null,
     method: null,
   }
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'posting_1' })
@@ -370,7 +370,7 @@ describe('postCustomerReceiptAccounting', () => {
       moneyTransactionId,
     })
 
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
     expect(result.status).toBe('accepted')
     expect(
       (await postCustomerReceiptAccounting(db(), { organizationId, moneyTransactionId })).status

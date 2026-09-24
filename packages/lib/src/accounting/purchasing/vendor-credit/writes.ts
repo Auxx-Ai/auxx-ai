@@ -34,7 +34,7 @@ import {
   previewEntry,
 } from '../../ledger/post/post-entry'
 import { exportInventoryMovement } from '../../ledger/post/post-inventory-movement'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { recomputeTotals } from '../../sales/totals/totals-hooks'
@@ -336,7 +336,7 @@ export async function issueVendorCredit(
     db,
   })
 
-  const accountingEnabled = await isAccountingEnabled(db, organizationId)
+  const accountingEnabled = await isAccountingActive(organizationId)
   const { credit, lines, issuedAt, built } = await resolveIssue(db, input, {
     buildEntry: accountingEnabled,
   })

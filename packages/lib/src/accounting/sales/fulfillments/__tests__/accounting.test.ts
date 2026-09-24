@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   findLiveSubjectPosting: vi.fn(),
   readFulfillmentPostingSubject: vi.fn(),
   readOrderForFulfillment: vi.fn(),
@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../../ledger/post/post-entry', () => ({
@@ -144,7 +144,7 @@ beforeEach(() => {
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
     key === 'accounting.setupState' ? 'finalized' : key === 'accounting.bookTimeZone' ? 'UTC' : null
   )
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.readFulfillmentPostingSubject.mockResolvedValue({ orderId: 'ord_1', subtotalMinor: 10000 })
   h.readOrderForFulfillment.mockResolvedValue(order())
@@ -163,19 +163,17 @@ describe('postFulfillmentAccounting', () => {
   })
 
   it('skips an org with accounting off', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result).toEqual({ status: 'skipped', reason: 'Accounting is not enabled' })
   })
 
-  it('blocks, and parks, an org whose setup is not finalized', async () => {
-    h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
-      key === 'accounting.bookTimeZone' ? 'UTC' : null
-    )
+  it('skips a draft org silently: no posting, no work item (110 G3)', async () => {
+    h.isAccountingActive.mockResolvedValue(false)
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
-    expect(result.status).toBe('blocked')
-    expect((result as { reason: string }).reason).toContain('Finalize accounting setup')
-    expect(h.setValues).toEqual([{ park: { ...KEY, reasonCode: 'SETUP_INCOMPLETE' } }])
+    expect(result).toEqual({ status: 'skipped', reason: 'Accounting is not enabled' })
+    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.setValues).toEqual([])
   })
 
   it('skips a cancelled shipment as a visible skip the sweep never re-offers', async () => {

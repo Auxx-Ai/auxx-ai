@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   getOrganizationSetting: vi.fn(),
   postEntry: vi.fn(),
   posted: null as string | null,
@@ -29,7 +29,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 // The refund's own claim appears once `postEntry` has written it.
@@ -128,7 +128,7 @@ const settlement = { id: 'rs_1', amountMinor: 20_000n, disposition: 'customer_cr
 beforeEach(() => {
   vi.clearAllMocks()
   h.posted = null
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.sumCreditMemoApplications.mockResolvedValue(0)
   h.sumReservedCreditMemoRefunds.mockResolvedValue(20_000)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
@@ -418,7 +418,7 @@ describe('the frame', () => {
   })
 
   it('skips when accounting is off', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     expect((await post()).status).toBe('skipped')
     expect(h.postEntry).not.toHaveBeenCalled()

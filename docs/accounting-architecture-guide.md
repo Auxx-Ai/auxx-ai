@@ -543,6 +543,14 @@ so the close counts it as baseline rather than a movement.
 refuses them), then posts the opening entry unless `accounting.openingFromNothing`. Re-running it
 on a finalized org retries only the post.
 
+**Finalize refuses a cutover that would strand a document** (`ledger/setup/cutover-floor.ts`).
+Nothing posts in draft, and five kinds have no sweep to bring them back: posted vendor bills,
+issued invoices, invoice write-offs, issued or settled vendor credits, and bank deposits.
+`readCutoverFloor` counts, per kind, the live documents dated after the cutover month with no
+subject posting, and the `cutover-floor` readiness row names each kind's count and earliest date
+and the month of the latest as the cutover to move to. It is read only while the org is still in
+draft, so an unposted document never blocks retrying the opening post.
+
 ### 5.5 No drafts in the ledger
 
 🛑 **`GlPosting.status` is `posted | reversed`** (91 D5). A generated entry posts the moment its
@@ -1126,8 +1134,8 @@ refunds.
   ⚠️ A channel refund whose **order** has not arrived still waits (`ORDER_NOT_FOUND`).
 
 `readCreditMemoControlAccount`, the pre-shipment memo branch, the readiness gate (88 D2) and 88 D7's
-mirror split are gone. `sweepChannelCreditMemos` (`sales/credit-memos/issue-pass.ts`) runs as the
-recovery job's third posting sweep beside the movement and shipment sweeps.
+mirror split are gone. `sweepChannelCreditMemos` (`sales/credit-memos/issue-pass.ts`) runs as one of
+the recovery job's posting sweeps (§8.4c).
 
 🛑 **The bank deposit's debit is the bank account the operator picked, by `gl_account` id.**
 Grouping posts nothing; only the bank run does, and it posts ONE line so it matches ONE bank line.
@@ -1203,8 +1211,8 @@ refund may not precede the credit's issue date.
 ### 8.4b One frame, six posters
 
 `money/post-movement.ts`'s `postMovementEntry` holds what every money poster shares: the
-live-posting check, `isAccountingEnabled`, the finalized-setup gate, zone and cutoff, the movement
-load and its three refusals, `resolveCashEndpoint`, the three link rows, the period lock,
+live-posting check, `isAccountingActive` (§14.4; a silent skip, no work item), zone and cutoff,
+the movement load and its three refusals, `resolveCashEndpoint`, the three link rows, the period lock,
 `postEntry` and the `accepted | blocked | skipped` answer — writing the movement's work item on
 `blocked` or `skipped` and deleting it on `accepted` (§8.4c). Each poster is a `prepare` callback
 that returns only its LINES — the A/R credit, the A/R debit, A/P — because that is the accounting
@@ -1256,8 +1264,12 @@ the safety net, not the mechanism.
 until the limit or the time budget; a throw reschedules its own row, so a thousand refusals cannot
 starve a postable source. The recovery job (`jobs/maintenance/accounting-recovery-job.ts`) visits
 up to 25 finalized orgs per run, those with due work first, with no cursor, and runs for each the
-evidence bridge, the imported-money ingest, the movement and shipment sweeps — in any order,
-since no entry reads a sibling — and the export batch sweep.
+evidence bridge, the imported-money ingest, the five posting sweeps (`POSTING_SWEEPS`: movements,
+shipments, shipment relief, channel credit memos, stored payout entries) — in any order, since no
+entry reads a sibling — and the export batch sweep. The stored-payout sweep
+(`money/payouts/sweep-stored-entries.ts`) exists because payout records import in draft with no
+entry and the nightly sync re-offers only its 30-day lookback: it lists paid payouts dated after
+the cutover month with no subject claim, oldest first, and hands each to `repostStoredPayout`.
 
 ### 8.5 Payouts
 
@@ -1307,8 +1319,8 @@ text); the refund carries the dispute fee as `Dr payment_processing_fees` (`feeM
 payout excludes a fee already on the refund (`feeOnRefund`). ⚠️ A payout that posts before its
 chargeback's refund books the fee twice.
 
-**Keeping evidence current is two `defineParentReconciler`s, not a router.** A fired record
-rule *marks*; the drain rebuilds once per parent after commit, however many per-field rules fired.
+**Keeping evidence current is two `defineParentReconciler`s, not a router.** A field-change mark
+hook *marks*; the drain rebuilds once per parent after commit, however many fields moved.
 `customer-money/order-evidence-reconciler.ts` owns order payment evidence and
 `payouts/payout-reconciler.ts` owns the payout assessment (`payouts/assess-payouts.ts`), which is
 the degenerate case of the primitive: a marked `payout` or `processor_balance_entry` **is** the
@@ -1319,9 +1331,13 @@ whole batch.
 `customer_transaction:<id>` — and `resolve` maps all three onto order instance ids. Two keys would
 be the obvious shape, but then an order and its own lines dirtied by one write drain twice.
 
-⚠️ **The sync's bulk path calls the batch entry points directly** rather than marking
-(`customer-money/record-events.ts`'s `reconcileFinancialRecordsAfterBulk`): nothing opens a
-dirty-parent scope at sync finalize, so a mark per record would run one assessment per record.
+**Payout and balance-entry records reach the payout reconciler through mark hooks**
+(`customer-money/record-marks.ts`: `assessOnPayoutChange`, `assessOnProcessorBalanceEntryChange`,
+each watching its `BRIDGE_ATTRIBUTES` set) on all three write lanes. The sync lane replays them
+from the manifest's `touched` keys in `events/handlers/finalize-integrity-passes.ts`, inside one
+`runWithDirtyParents`; archival fires no field change, so archived records are hand-marked there
+(`markArchivedFinancialRecords`). Both money reconcilers are batch, and a batch reconciler is exempt
+from the 500-parent `MAX_DIRTY_PARENTS_PER_KEY` cap, so a large sync drains whole.
 
 ⚠️ The word "reconcile" carries five meanings in this cluster. `totals`, `billing`, `match` and
 `drift` reconcilers are parent rebuilds; these two are an evidence *assessment* wearing the same
@@ -1399,9 +1415,22 @@ retry columns live on `AccountingWorkItem` (§8.4c). The rest of this section is
 rewrite.
 
 `MoneyTransfer` and `ProcessorBalanceEntry` extend an existing canonical `EntityInstance`
-identity, with ordinary `FieldValue`s carrying provider facts and shared domain events doing
+identity, with ordinary `FieldValue`s carrying provider facts and mark hooks doing
 reconciliation (§8.5's two reconcilers). Whether that is the right physical shape is
 [still open](../plans/accounting/decisions.md) — see §15 item 15.
+
+**Order evidence is marked, not ruled.** Five mark hooks in `customer-money/record-marks.ts`
+feed the two reconcilers: `customer_transaction`, `payout` and `processor_balance_entry` watch
+their `BRIDGE_ATTRIBUTES` sets, so the watch set cannot drift from what the bridge reads; `order`
+watches four explicit attributes (`order_payment_source_complete`, `order_total`, `order_contact`,
+`order_currency` — not `BRIDGE_ATTRIBUTES.order`, whose `updated_at` moves on every sync); and
+`line_item` watches `line_item_order`, marking the vacated order too when the lane carries
+`oldValue`. Creates are covered by the field writes that make them. The order-evidence drain
+(`rebuildOrders`) bridges, then reconciles, then calls `wakeArrivedOrders` for every order it
+rebuilt — one UPDATE per batch. No record rule and no `RecordRuleRun` row is involved.
+
+🔑 **Evidence is written only for active orgs** (§14.4). The gate sits in the three writers the
+drains call, not in the marks: a draft org's marks drain into writers that return early.
 
 ---
 
@@ -2065,10 +2094,17 @@ concurrency 1, globally (plain BullMQ has no per-org groups), since one job alre
 `LEDGER_WIDE_SETTING_KEYS` — `cutoffPeriod`, `bookTimeZone`, `lockedThroughMonth` — are the three
 that govern **every** posting type.
 
-`FeatureKey.accounting` gates every posting trigger with a `not_enabled` short-circuit
-(`ledger/setup/accounting-enabled.ts`). Accounting is opt-in, and `not_enabled` is deliberately
-distinct from `setup_incomplete`: the first means the module was never turned on, the second means
-it is on and the wizard was not finished.
+**Accounting is active once it is set up.** `isAccountingActive(orgId)`
+(`ledger/setup/accounting-enabled.ts`) is `FeatureKey.accounting` on **and** `accounting.setupState
+=== 'finalized'`, both read from the org cache, so it takes no `db`. It is the one gate: every
+poster and the three evidence writers (`bridgeFinancialRecords`, `reconcileOrderPaymentEvidence`,
+`assessPayouts`) check it, and a draft org is a silent `not_enabled` skip — no posting, no
+evidence, no work item (a landed-cost clear and an invoice-payment void refuse instead). Finalize
+opens it on commit, and the recovery job (§8.4c) catches up from the records. `setup_incomplete`
+remains only for a finalized org whose required keys are blank, and for the month-end close. The one exception is the payout sync, which keeps the plan-only
+`isAccountingEnabled` so a draft org still imports its `payout` records; only the entry waits
+(`postPayoutEntry`, `repostStoredPayout` and `ingestOne` check active). Otherwise
+`isAccountingEnabled` serves the nav, the routers and `ledger.view`.
 
 🛑 **An org setting can render stale indefinitely.** The settings UI reads a per-user
 `userSettings` blob dehydrated at page load, and the invalidation graph only reaches the user half

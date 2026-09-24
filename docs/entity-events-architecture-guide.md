@@ -287,6 +287,9 @@ The buffered lane is every write inside a `TxWriteScope`: `accounting/money/comm
 `accounting/purchasing/bill-intake/fold.ts`, `accounting/money/payouts/sync.ts`. Their writes are
 suppressed in-transaction and replayed after commit.
 
+Money's evidence triggers are mark hooks on all three lanes, not record rules: the five in
+`accounting/money/customer-money/record-marks.ts` mark the order-evidence and payout reconcilers.
+
 One function serves both post-commit lanes: `dispatchFieldChanges` (`field-hooks/dispatch.ts:108`).
 The flush calls it from the committed scope's buffered changes (`resources/crud/tx-write-flush.ts:91`);
 the sync finalize calls it from the manifest's `touched` keys, with ids-only records passed as

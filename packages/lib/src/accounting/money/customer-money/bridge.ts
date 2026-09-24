@@ -20,6 +20,7 @@ import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields
 import { PAYOUT_SOURCE_FIELDS } from '../../../resources/registry/resources/payout-source-fields'
 import { PROCESSOR_BALANCE_ENTRY_FIELDS } from '../../../resources/registry/resources/processor-balance-entry-fields'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { readUniqueRecordIdentities } from './identity-reads'
 import type { PayoutRecordEvidence, ProcessorRecordEvidence } from './record-contracts'
 import { reconcileOrderPaymentEvidence, stageOrderPaymentEvidenceInTx } from './record-evidence'
@@ -375,6 +376,7 @@ export async function bridgeFinancialRecords(
     byKind.set(record.kind, ids)
   }
   if (!byKind.size) return result
+  if (!(await isAccountingActive(input.organizationId))) return result
 
   // `{ source: 'import' }` keeps the record's own acquisition and lets the writer
   // retain a malformed row as a rejection instead of throwing the batch away.

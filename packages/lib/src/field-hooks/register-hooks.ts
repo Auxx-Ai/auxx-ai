@@ -8,7 +8,15 @@ import {
   wakeAcceptancesOnCreditMemoChange,
   wakeAcceptancesOnOrderChange,
 } from '../accounting/money/customer-money/acceptance-wake'
-import { registerFinancialRecordRules } from '../accounting/money/customer-money/record-events'
+import { registerOrderEvidenceReconciler } from '../accounting/money/customer-money/order-evidence-reconciler'
+import {
+  assessOnPayoutChange,
+  assessOnProcessorBalanceEntryChange,
+  markEvidenceOnCustomerTransactionChange,
+  markEvidenceOnLineItemChange,
+  markEvidenceOnOrderChange,
+} from '../accounting/money/customer-money/record-marks'
+import { registerPayoutReconciler } from '../accounting/money/payouts/payout-reconciler'
 import {
   rematchAfterBillLineDelete,
   rematchOnBillChange,
@@ -210,7 +218,6 @@ export function registerAllHooks(): void {
   // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
   // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
   registerEntitySystemRules()
-  registerFinancialRecordRules()
 
   // The order-triggered build (plans/products/12-order-triggered-build.md, AB2/AB6): two
   // more code-declared system rules on the NATIVE `orders` def — one lifecycle rule that
@@ -253,6 +260,9 @@ export function registerAllHooks(): void {
   // The imported-money acceptance wake's two drains (79 §4.2). The two hooks below only
   // MARK; without this a parked acceptance waits for the sweep's safety-net delay.
   registerMoneyAcceptanceWakeReconcilers()
+  // Money's evidence and payout drains; the `record-marks` hooks below only MARK.
+  registerOrderEvidenceReconciler()
+  registerPayoutReconciler()
   // A channel memo parked on a pending refund retries when the flag is rewritten (101 E9).
   registerCreditMemoInputWakeReconciler()
 
@@ -320,13 +330,18 @@ export function registerAllHooks(): void {
     // Model A+ (plans/products/13): a line's part, quantity or parent order
     // moved, so what the order asks production for may have moved with it.
     stampOrderOnLineChange,
+    markEvidenceOnLineItemChange,
   ])
   registerMarkHooks('quotes', [recomputeOnQuoteBillingChange])
   registerMarkHooks('orders', [
     recomputeOnOrderBillingChange,
     stampOrderOnOrderChange,
     wakeAcceptancesOnOrderChange,
+    markEvidenceOnOrderChange,
   ])
+  registerMarkHooks('customer-transactions', [markEvidenceOnCustomerTransactionChange])
+  registerMarkHooks('payouts', [assessOnPayoutChange])
+  registerMarkHooks('processor-balance-entries', [assessOnProcessorBalanceEntryChange])
   registerMarkHooks('credit-memos', [
     wakeAcceptancesOnCreditMemoChange,
     wakeIssueOnMoneyPendingChange,

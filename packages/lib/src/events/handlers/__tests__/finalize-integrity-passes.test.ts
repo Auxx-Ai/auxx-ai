@@ -1,7 +1,7 @@
 // packages/lib/src/events/handlers/__tests__/finalize-integrity-passes.test.ts
 //
-// plans/events/10 §4.4: the sync finalize projects its manifest onto `dispatchFieldChanges`
-// and runs the two membership-keyed passes after it. What each handler then DOES is covered
+// plans/events/10 §4.4: the sync finalize projects its manifest onto `dispatchFieldChanges`,
+// marks archived records, and runs the fulfillment posting pass after it. What each handler then DOES is covered
 // beside its own core (geocoding, phone-geo, interactions, sales/totals) and in
 // field-hooks/__tests__/dispatch.test.ts. Boundaries are mocked with plain synchronous
 // factories — the lazy imports mean the real modules are never loaded.
@@ -23,21 +23,15 @@ const h = vi.hoisted(() => ({
       _resolveDef: (id: string) => Promise<{ entityType: string | null } | null>
     ) => {}
   ),
-  reconcileFinancialRecordsAfterBulk: vi.fn(
-    async (_db: unknown, _organizationId: string, _manifest: unknown) => {}
-  ),
+  markPayoutForAssessment: vi.fn(async () => {}),
+  resolveParentsByRelation: vi.fn(async (_org: string, _attr: string, ids: string[]) => ids),
+  reconcileOrderPaymentEvidence: vi.fn(async () => ({ examined: 0 })),
+  wakeArrivedOrders: vi.fn(async () => {}),
 }))
 
 vi.mock('../../../cache', () => ({ findCachedResource: h.findCachedResource }))
 vi.mock('../../../field-hooks/dispatch', () => ({
   dispatchFieldChanges: h.dispatchFieldChanges,
-}))
-// Pass-through: the real scope is covered by reconcilers/__tests__/dirty-parents.test.ts, and
-// what matters here is that both markers run inside ONE call.
-vi.mock('../../../reconcilers/dirty-parents', () => ({
-  runWithDirtyParents: vi.fn((_organizationId: string, _userId: string, fn: () => Promise<void>) =>
-    fn()
-  ),
 }))
 vi.mock('../../../inventory/builds/drift-reconciler', () => ({
   markOrStampOrderLine: h.markOrStampOrderLine,
@@ -45,10 +39,38 @@ vi.mock('../../../inventory/builds/drift-reconciler', () => ({
 vi.mock('../passes/fulfillment-log-pass', () => ({
   fulfillmentPostingTriggerPass: h.fulfillmentPostingTriggerPass,
 }))
-vi.mock('../../../accounting/money/customer-money/record-events', () => ({
-  reconcileFinancialRecordsAfterBulk: h.reconcileFinancialRecordsAfterBulk,
+// The money marks run for real into the real dirty-parent scope; only the drains' I/O is mocked.
+vi.mock('../../../accounting/money/customer-money/bridge', () => ({
+  BRIDGE_ATTRIBUTES: {
+    customer_transaction: new Map([['customer_transaction_order', 'RELATIONSHIP']]),
+    payout: new Map(),
+    processor_balance_entry: new Map(),
+    order: new Map(),
+  },
+  bridgeFinancialRecords: vi.fn(async () => {}),
+}))
+vi.mock('../../../accounting/money/customer-money/record-evidence', () => ({
+  reconcileOrderPaymentEvidence: h.reconcileOrderPaymentEvidence,
+}))
+vi.mock('../../../accounting/work-items/wake', () => ({ wakeArrivedOrders: h.wakeArrivedOrders }))
+vi.mock('../../../accounting/money/payouts/payout-reconciler', () => ({
+  markPayoutForAssessment: h.markPayoutForAssessment,
+}))
+vi.mock('../../../reconcilers/parent-reconciler', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../reconcilers/parent-reconciler')>()),
+  resolveParentsByRelation: h.resolveParentsByRelation,
 }))
 
+import {
+  ORDER_PAYMENT_EVIDENCE,
+  registerOrderEvidenceReconciler,
+} from '../../../accounting/money/customer-money/order-evidence-reconciler'
+import {
+  markEvidenceOnCustomerTransactionChange,
+  markEvidenceOnOrderChange,
+} from '../../../accounting/money/customer-money/record-marks'
+import type { FieldChangeRef } from '../../../field-hooks/types'
+import { __resetReconcilersForTest, registerReconciler } from '../../../reconcilers/dirty-parents'
 import { runIntegrityPasses } from '../finalize-integrity-passes'
 
 const ORG = 'org_1'
@@ -58,6 +80,7 @@ const RESOURCES = [
   { entityDefinitionId: 'def_li', entityType: 'line_item', apiSlug: 'line-items' },
   { entityDefinitionId: 'def_contact', entityType: 'contact', apiSlug: 'contacts' },
   { entityDefinitionId: 'def_order', entityType: 'order', apiSlug: 'orders' },
+  { entityDefinitionId: 'def_ct', entityType: 'customer_transaction', apiSlug: 'x' },
 ]
 
 const EMPTY_REPORT: DispatchReport = { lane: 'sync', handlers: {}, changes: 0, degraded: 0 }
@@ -91,6 +114,7 @@ function dispatched(): { changes: DispatchChange[]; degraded: RecordId[]; lane: 
 
 beforeEach(() => {
   vi.clearAllMocks()
+  __resetReconcilersForTest()
   h.findCachedResource.mockImplementation(async (_org: string, key: string) => {
     return (
       RESOURCES.find(
@@ -151,7 +175,6 @@ describe('manifest projection', () => {
 
     expect(h.dispatchFieldChanges).not.toHaveBeenCalled()
     expect(h.fulfillmentPostingTriggerPass).not.toHaveBeenCalled()
-    expect(h.reconcileFinancialRecordsAfterBulk).not.toHaveBeenCalled()
   })
 
   it('still runs for a created-only manifest — the fulfillment pass reads that tier', async () => {
@@ -191,17 +214,13 @@ describe('archived lines', () => {
   })
 })
 
-describe('the two hand-written passes', () => {
-  it('both run, and both AFTER the dispatch (evidence rows before the lanes that read them)', async () => {
+describe('the fulfillment posting pass', () => {
+  it('runs AFTER the dispatch (evidence rows before the lanes that read them)', async () => {
     await run(manifest({ touched: { 'def_li:li1': ['line_item_qty'] } }))
 
     expect(h.fulfillmentPostingTriggerPass).toHaveBeenCalledTimes(1)
-    expect(h.reconcileFinancialRecordsAfterBulk).toHaveBeenCalledWith(DB, ORG, expect.anything())
     expect(h.dispatchFieldChanges.mock.invocationCallOrder[0]!).toBeLessThan(
       h.fulfillmentPostingTriggerPass.mock.invocationCallOrder[0]!
-    )
-    expect(h.fulfillmentPostingTriggerPass.mock.invocationCallOrder[0]!).toBeLessThan(
-      h.reconcileFinancialRecordsAfterBulk.mock.invocationCallOrder[0]!
     )
   })
 
@@ -238,7 +257,7 @@ describe('never throws', () => {
   })
 
   it('a throwing pass does not fail the run', async () => {
-    h.reconcileFinancialRecordsAfterBulk.mockRejectedValueOnce(new Error('boom'))
+    h.fulfillmentPostingTriggerPass.mockRejectedValueOnce(new Error('boom'))
 
     await expect(
       run(manifest({ touched: { 'def_li:li1': ['line_item_qty'] } }))
@@ -252,5 +271,66 @@ describe('never throws', () => {
       run(manifest({ archivedRecordIds: ['mystery:m1' as RecordId] }))
     ).resolves.toBeUndefined()
     expect(h.markOrStampOrderLine).not.toHaveBeenCalled()
+  })
+})
+
+describe('money marks (110 §3 M1/M4)', () => {
+  it('an archived customer transaction marks order evidence with its tagged id', async () => {
+    const drain = vi.fn(async () => {})
+    registerReconciler(ORDER_PAYMENT_EVIDENCE, drain, { batch: true })
+
+    await run(manifest({ archivedRecordIds: ['def_ct:ct1' as RecordId] }))
+
+    expect(drain).toHaveBeenCalledTimes(1)
+    expect(drain).toHaveBeenCalledWith(
+      expect.objectContaining({ parentInstanceIds: ['customer_transaction:ct1'] })
+    )
+  })
+
+  it('600 orders and their transactions drain the order-evidence reconciler once, with all 600', async () => {
+    registerOrderEvidenceReconciler()
+    const MARKS: Record<string, (event: FieldChangeRef) => Promise<void>> = {
+      def_order: markEvidenceOnOrderChange,
+      def_ct: markEvidenceOnCustomerTransactionChange,
+    }
+    // The sync lane's mark dispatch, reduced to the two money handlers under test.
+    h.dispatchFieldChanges.mockImplementation(
+      async ({ changes }: { changes: DispatchChange[] }) => {
+        for (const { recordId, outputKey } of changes) {
+          const defId = recordId.split(':')[0]!
+          await MARKS[defId]?.({
+            recordId,
+            entityDefinitionId: defId,
+            entityType: null,
+            entitySlug: defId,
+            field: { id: outputKey, systemAttribute: outputKey } as FieldChangeRef['field'],
+            organizationId: ORG,
+            userId: 'system',
+          })
+        }
+        return EMPTY_REPORT
+      }
+    )
+    h.resolveParentsByRelation.mockImplementation(async (_org, _attr, ids: string[]) =>
+      ids.map((id) => id.replace('ct', 'o'))
+    )
+
+    const touched: Record<string, string[]> = {}
+    for (let i = 0; i < 600; i++) {
+      touched[`def_order:o${i}`] = ['order_total', 'order_contact']
+      touched[`def_ct:ct${i}`] = ['customer_transaction_order']
+    }
+    await run(manifest({ touched }))
+
+    expect(h.reconcileOrderPaymentEvidence).toHaveBeenCalledTimes(1)
+    const rebuilt = (
+      h.reconcileOrderPaymentEvidence.mock.calls[0] as unknown as [
+        unknown,
+        { orderInstanceIds: string[] },
+      ]
+    )[1].orderInstanceIds
+    expect(new Set(rebuilt).size).toBe(600)
+    expect(rebuilt).toHaveLength(600)
+    expect(h.wakeArrivedOrders).toHaveBeenCalledTimes(1)
   })
 })

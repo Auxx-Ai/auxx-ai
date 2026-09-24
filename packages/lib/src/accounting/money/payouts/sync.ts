@@ -89,7 +89,7 @@ import { payoutAccountUnmappedResult, postPayoutEntry } from '../../ledger/post/
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { resolveRoles } from '../../ledger/roles/resolve-roles'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive, isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { listPaymentGateways } from '../../rails/reads'
 import { stampPaymentGatewayLastSettlement } from '../../rails/writes'
@@ -145,14 +145,7 @@ export async function syncPayouts(
 
   return guard(
     async () => {
-      // 🛑 Checked ONCE per org, before the source lookups, the payout lists and
-      // the payout record writes - none of which this sync has any use for
-      // when the org has never turned accounting on (task 17 section 3): a
-      // payout record exists to reconcile a clearing account this org does not
-      // have. The gate lives here rather than only in `postPayoutEntry` because
-      // the sweep runs this nightly for every org a source can poll, and that
-      // is the loop the brief means by "where it costs least" - skipping here
-      // also skips the provider calls and the `payout` entity write.
+      // Feature only, not active: payout records import in draft and only the entry waits (110 G3).
       if (!(await isAccountingEnabled(db, organizationId))) return emptyResult()
 
       const fieldCtx = await requirePayoutFieldContext(db, organizationId)
@@ -258,7 +251,7 @@ export async function repostStoredPayout(
   const { organizationId, rail } = ctx
   return guard(
     async (): Promise<StoredRepostOutcome> => {
-      if (!(await isAccountingEnabled(db, organizationId)))
+      if (!(await isAccountingActive(organizationId)))
         return { status: 'skipped', reason: 'Accounting is not enabled' }
       const fieldCtx = await requirePayoutFieldContext(db, organizationId)
       const record = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
@@ -459,7 +452,7 @@ async function ingestOne(
   if (!instanceId) throw new Error('Payout record write returned no identity')
   const payoutInstanceId = instanceId
 
-  if (gathered.gatewayStatus !== 'paid') {
+  if (gathered.gatewayStatus !== 'paid' || !(await isAccountingActive(organizationId))) {
     return { created, posted: false, alreadyPosted: false }
   }
 
@@ -548,8 +541,7 @@ async function ingestOne(
   // with no provider connected, or one whose provider switch is off, still has a
   // real, balanced, persisted entry - refusing there left the payout un-`paid`
   // and its `glPostingId` unstamped over a ledger that held the entry.
-  // `not_enabled` is unreachable here: the sync returns early for an org that
-  // never turned accounting on.
+  // `not_enabled` is unreachable here: an org that is not active returned above.
   if (!didLedgerAccept(post)) {
     if (bankMapped.isOk())
       await upsertWorkItem(db, organizationId, {

@@ -36,7 +36,7 @@ beforeEach(() => {
 })
 
 describe('resolveParentsByRelation', () => {
-  it('reads every child in ONE relation query', async () => {
+  it('reads a small batch in ONE relation query', async () => {
     h.readFieldRelations.mockResolvedValue(
       rels([
         ['c-1', 'p-1'],
@@ -85,6 +85,22 @@ describe('resolveParentsByRelation', () => {
       'p-1',
       'p-2',
     ])
+  })
+
+  it('chunks the relation read at 1,000 children and keeps child order across chunks', async () => {
+    const children = Array.from({ length: 2500 }, (_, i) => `c-${i}`)
+    h.readFieldRelations.mockImplementation(
+      async (_db: unknown, _org: string, ids: string[]) =>
+        new Map(ids.map((id) => [id, new Map([['f-rel', id.replace('c-', 'p-')]])]))
+    )
+
+    const parents = await resolveParentsByRelation(ORG, ATTR as never, children)
+
+    expect(h.readFieldRelations).toHaveBeenCalledTimes(3)
+    expect(h.readFieldRelations.mock.calls.map((c) => (c[2] as string[]).length)).toEqual([
+      1000, 1000, 500,
+    ])
+    expect(parents).toEqual(children.map((id) => id.replace('c-', 'p-')))
   })
 
   it('yields nothing, and queries nothing, when the org lacks the field', async () => {

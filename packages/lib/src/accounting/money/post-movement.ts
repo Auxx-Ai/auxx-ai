@@ -6,7 +6,7 @@
  *
  * What differs per poster is the LINES — a recognition split, one A/R credit, a
  * memo control account, A/P — and that is the accounting. Everything around them
- * (the live-posting check, the enabled/finalized/cutoff gates, the movement load
+ * (the live-posting check, the active and cutoff gates, the movement load
  * and its three refusals, the endpoint, the three link rows, the period lock and
  * the ledger's answer) had forked into four copies with two result shapes, which
  * is the whole argument for this file (task 71 §10).
@@ -24,8 +24,7 @@ import { periodKeyForDate } from '../ledger/periods/periods'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry } from '../ledger/post/post-entry'
 import { findLiveSubjectPosting } from '../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
-import { FINALIZED_SETUP_STATE } from '../ledger/setup/setup-readiness'
+import { isAccountingActive } from '../ledger/setup/accounting-enabled'
 import type { GlPostingLineInput, GlPostingSourceInput, RoleSourceScope } from '../ledger/types'
 import {
   refusalFromError,
@@ -172,7 +171,7 @@ export async function postMovementEntry(
     return { status: 'accepted', glPostingId: live.value.id }
   }
 
-  if (!(await isAccountingEnabled(db, input.organizationId)))
+  if (!(await isAccountingActive(input.organizationId)))
     return { status: 'skipped', reason: 'Accounting is not enabled' }
 
   let built: {
@@ -183,15 +182,9 @@ export async function postMovementEntry(
   }
   try {
     const settings = await readOrganizationSettings(input.organizationId, [
-      'accounting.setupState',
       'accounting.bookTimeZone',
       'accounting.cutoffPeriod',
     ] as const)
-    if (settings['accounting.setupState'] !== FINALIZED_SETUP_STATE)
-      throw new UnprocessableEntityError(
-        `Finalize accounting setup before posting ${input.label.toLowerCase()}s`,
-        withWorkItemCode('SETUP_INCOMPLETE')
-      )
     const zone = settings['accounting.bookTimeZone']
     if (!zone)
       throw new UnprocessableEntityError(

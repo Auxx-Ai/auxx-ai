@@ -34,6 +34,8 @@ const logger = createScopedLogger('reconcilers:parent-reconciler')
 
 import { markParentDirty, registerReconciler } from './dirty-parents'
 
+const RESOLVE_CHUNK = 1000
+
 /**
  * Turn the ids a drain was handed into the parents that need rebuilding.
  *
@@ -86,6 +88,7 @@ export interface ParentReconciler {
    * Register the drain. Idempotent per key, so the module-level `let registered`
    * latch every consumer used to carry is no longer needed — `registerReconciler`
    * already ignores a second registration of the same key.
+   * A spec with `rebuildBatch` registers as `batch`, exempt from the dirty-parent cap.
    */
   register: () => void
   /**
@@ -113,10 +116,14 @@ export interface ParentReconciler {
 export function defineParentReconciler<P>(spec: ParentReconcilerSpec<P>): ParentReconciler {
   return {
     register: () => {
-      registerReconciler(spec.key, async ({ organizationId, userId, parentInstanceIds }) => {
-        const parents = await toParents(spec, organizationId, parentInstanceIds)
-        await rebuildAll(spec, organizationId, userId, parents)
-      })
+      registerReconciler(
+        spec.key,
+        async ({ organizationId, userId, parentInstanceIds }) => {
+          const parents = await toParents(spec, organizationId, parentInstanceIds)
+          await rebuildAll(spec, organizationId, userId, parents)
+        },
+        { batch: !!spec.rebuildBatch }
+      )
     },
     mark: async (organizationId, userId, markedInstanceId) => {
       if (markParentDirty(spec.key, markedInstanceId)) return
@@ -202,7 +209,7 @@ async function rebuildAll<P>(
 }
 
 /**
- * The parent of each child, through ONE relationship field, in ONE query.
+ * The parent of each child, through ONE relationship field, one query per chunk of children.
  *
  * Four of the five parent resolutions across the shipped consumers were this
  * function copied verbatim with a different systemAttribute: the vendor bill of a
@@ -226,12 +233,15 @@ export async function resolveParentsByRelation(
   const relField = fields[systemAttribute]
   if (!relField) return []
 
-  const rels = await readFieldRelations(undefined, organizationId, childInstanceIds, [relField.id])
-
   const parents: string[] = []
-  for (const childInstanceId of childInstanceIds) {
-    const parent = rels.get(childInstanceId)?.get(relField.id)
-    if (parent) parents.push(parent)
+  // A batch reconciler is uncapped, so the id list can reach the manifest's size; bound the IN list.
+  for (let i = 0; i < childInstanceIds.length; i += RESOLVE_CHUNK) {
+    const chunk = childInstanceIds.slice(i, i + RESOLVE_CHUNK)
+    const rels = await readFieldRelations(undefined, organizationId, chunk, [relField.id])
+    for (const childInstanceId of chunk) {
+      const parent = rels.get(childInstanceId)?.get(relField.id)
+      if (parent) parents.push(parent)
+    }
   }
   return parents
 }

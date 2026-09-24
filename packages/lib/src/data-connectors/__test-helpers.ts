@@ -57,6 +57,7 @@ export function makeSyncCtx(over: Partial<SyncCtx> = {}): SyncCtx {
     orgId: 'org1',
     connector: { id: 'dc1', credentialId: 'cred1' } as SyncCtx['connector'],
     runId: 'run1',
+    userId: 'user1',
     crud: {} as SyncCtx['crud'],
     ownedCrud: {} as SyncCtx['ownedCrud'],
     relationshipCrud: {} as SyncCtx['relationshipCrud'],

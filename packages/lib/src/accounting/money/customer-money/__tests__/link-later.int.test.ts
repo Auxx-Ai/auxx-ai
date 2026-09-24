@@ -25,7 +25,7 @@ vi.mock('@auxx/redis', async (original) => ({
   },
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 vi.mock('../../../../users/system-user-service', () => ({
   SystemUserService: { getSystemUserForActions: async () => userId },

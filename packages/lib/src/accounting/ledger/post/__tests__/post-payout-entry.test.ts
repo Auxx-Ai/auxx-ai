@@ -6,13 +6,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   buildPayoutEntry: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
 }))
 
-vi.mock('../../setup/accounting-enabled', () => ({ isAccountingEnabled: h.isAccountingEnabled }))
+vi.mock('../../setup/accounting-enabled', () => ({ isAccountingActive: h.isAccountingActive }))
 vi.mock('../../builders/payout', () => ({ buildPayoutEntry: h.buildPayoutEntry }))
 vi.mock('../../periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../post-entry', () => ({ postEntry: h.postEntry }))
@@ -39,7 +39,7 @@ const OPTIONS = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.buildPayoutEntry.mockReturnValue({
     entry: { postingType: 'payout', periodKey: 'PO0007', txnDate: '2026-09-04', lines: [] },
@@ -88,7 +88,7 @@ describe('accounting enabled', () => {
 
 describe('accounting not enabled', () => {
   beforeEach(() => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
   })
 
   it('returns not_enabled without building, locking, or posting', async () => {

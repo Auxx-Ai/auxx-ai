@@ -18,7 +18,7 @@ const h = vi.hoisted(() => ({
   disputes: [] as unknown[],
 }))
 
-vi.mock('../../ledger/setup/accounting-enabled', () => ({ isAccountingEnabled: async () => true }))
+vi.mock('../../ledger/setup/accounting-enabled', () => ({ isAccountingActive: async () => true }))
 vi.mock('../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../ledger/reads/list-postings', async (importOriginal) => ({

@@ -26,7 +26,7 @@ vi.mock('@auxx/redis', async (original) => ({
 }))
 // The plan gate reads billing; every other gate on the route below is real.
 vi.mock('../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 
 const db = () => getTestDb()

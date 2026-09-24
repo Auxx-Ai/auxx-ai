@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { GUEST_CONTACT_SETTING_KEY } from '../../parties'
 import type { WorkItemCode } from '../../work-items/codes'
 import { noWorkItem, runWorkItemSweep } from '../../work-items/sweep'
@@ -127,6 +128,7 @@ export async function materializeImportedMoneyInTx(
   organizationId: string,
   acceptanceId: string
 ): Promise<void> {
+  if (!(await isAccountingActive(organizationId))) return
   await withAccountingCommitLock(tx, organizationId)
   const acceptance = await readAcceptance(tx, organizationId, acceptanceId)
   if (!acceptance) return

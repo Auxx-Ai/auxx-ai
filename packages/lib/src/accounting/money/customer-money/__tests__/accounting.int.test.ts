@@ -27,7 +27,7 @@ vi.mock('@auxx/redis', async (original) => ({
 // The plan gate reads billing, and the chart seed wants a system user; every
 // accounting gate here is real.
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 vi.mock('../../../../users/system-user-service', () => ({
   SystemUserService: { getSystemUserForActions: async () => userId },

@@ -49,18 +49,8 @@ import { createScopedLogger } from '@auxx/logger'
 const logger = createScopedLogger('reconcilers:dirty-parents')
 
 /**
- * Cap on distinct parents buffered per reconciler, per scope.
- *
- * Beyond it the scope is {@link DirtyParentScope.truncated} and further parents
- * are DROPPED — which for a derived value means it stays stale until something
- * recomputes it. That is tolerable only because every consumer has a second
- * door: money's is `money.recomputeTotals` (the documented manual drift escape)
- * plus `events/handlers/finalize-integrity-passes.ts`, which recomputes a
- * synced/imported run's parents off the manifest. A consumer WITHOUT such a door
- * must not rely on this buffer alone.
- *
- * One interactive write touches one document, so this is a guard against a
- * runaway bulk operation, not a working limit.
+ * Cap on distinct parents buffered per key, so an interactive runaway cannot become N synchronous
+ * per-parent recomputes. A reconciler registered with `batch` is one chunked call and is exempt.
  */
 export const MAX_DIRTY_PARENTS_PER_KEY = 500
 
@@ -86,16 +76,21 @@ export interface DirtyParentScope {
 
 const als = new AsyncLocalStorage<DirtyParentScope>()
 
-const reconcilers = new Map<string, ReconcilerDrain>()
+const reconcilers = new Map<string, { drain: ReconcilerDrain; batch: boolean }>()
 
 /**
  * Register the drain for a reconciler key. Called from `registerAllHooks()`.
  * Idempotent per key — a second registration of the same key is ignored, so a
  * double bootstrap cannot install two drains that both write.
+ * `batch` exempts the key from {@link MAX_DIRTY_PARENTS_PER_KEY}.
  */
-export function registerReconciler(key: string, drain: ReconcilerDrain): void {
+export function registerReconciler(
+  key: string,
+  drain: ReconcilerDrain,
+  options?: { batch?: boolean }
+): void {
   if (reconcilers.has(key)) return
-  reconcilers.set(key, drain)
+  reconcilers.set(key, { drain, batch: !!options?.batch })
 }
 
 /** Test seam. Never call from production code. */
@@ -141,7 +136,11 @@ export function markParentDirty(key: string, parentInstanceId: string): boolean 
     ids = new Set()
     scope.dirty.set(key, ids)
   }
-  if (ids.size >= MAX_DIRTY_PARENTS_PER_KEY && !ids.has(parentInstanceId)) {
+  if (
+    ids.size >= MAX_DIRTY_PARENTS_PER_KEY &&
+    !ids.has(parentInstanceId) &&
+    !reconcilers.get(key)?.batch
+  ) {
     if (!scope.truncated) {
       scope.truncated = true
       logger.error('dirty-parent buffer truncated; some derived values will stay stale', {
@@ -242,7 +241,7 @@ export async function drainDirtyParents(scope: DirtyParentScope): Promise<void> 
 
   for (const [key, ids] of scope.dirty) {
     if (ids.size === 0) continue
-    const drain = reconcilers.get(key)
+    const drain = reconcilers.get(key)?.drain
     if (!drain) {
       logger.error('no reconciler registered for a dirtied key', { key, count: ids.size })
       continue

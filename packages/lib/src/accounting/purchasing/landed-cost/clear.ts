@@ -29,7 +29,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { BuiltEntry, PostResult } from '../../ledger/types'
 import { requireVendorBill } from '../expense-bill/reads'
@@ -125,7 +125,7 @@ export async function clearLandedCost(
   const { organizationId, goodsBillInstanceId, actorUserId } = input
   return guard(
     async () => {
-      if (!(await isAccountingEnabled(db, organizationId))) {
+      if (!(await isAccountingActive(organizationId))) {
         throw new UnprocessableEntityError(
           'Accounting is off for this organisation, so there is no accrual to clear.',
           { goodsBillInstanceId }

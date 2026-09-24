@@ -18,6 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
+  isAccountingActive: vi.fn(async () => true),
   payoutsList: vi.fn(async (_params: unknown, _opts: unknown) => ({
     data: [] as unknown[],
     has_more: false,
@@ -67,6 +68,7 @@ vi.mock('@auxx/database', async (original) => ({
 }))
 vi.mock('../../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: async () => {} }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: h.isAccountingActive,
   isAccountingEnabled: async () => true,
 }))
 vi.mock('../fields', () => ({
@@ -253,6 +255,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   __resetPayoutSourcesForTests()
   registerPayoutSources()
+  h.isAccountingActive.mockResolvedValue(true)
   h.gateways = [RAIL]
   h.listLinkedFeedAccounts.mockResolvedValue([LINKED_FEED])
   h.resolveRoles.mockResolvedValue({ isErr: () => false, isOk: () => true, value: new Map() })
@@ -266,7 +269,9 @@ beforeEach(() => {
   h.listPostingsForSource.mockResolvedValue({ isErr: () => false, isOk: () => true, value: [] })
   h.listPayoutMemberEntryIds.mockResolvedValue([])
   h.countPayoutEntryAttempts.mockResolvedValue(0)
+  // Reset first: a test that stops before the second read would leak its queued answer.
   h.findPayoutByGatewayId
+    .mockReset()
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce({ payoutId: 'inst_1', number: 'PAY-0001', glPostingId: null })
 })
@@ -278,6 +283,18 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(result._unsafeUnwrap()).toMatchObject({ seen: 1, created: 1, posted: 1, refused: [] })
     expect(h.create).toHaveBeenCalledTimes(1)
     expect(h.create).toHaveBeenCalledWith('def_payout', EXPECTED_PAYOUT_VALUES)
+  })
+
+  it('in draft writes the payout record but no entry and no work item (110 G3)', async () => {
+    h.isAccountingActive.mockResolvedValue(false)
+
+    const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ seen: 1, created: 1, posted: 0, refused: [] })
+    expect(h.create).toHaveBeenCalledWith('def_payout', EXPECTED_PAYOUT_VALUES)
+    expect(h.resolveRoles).not.toHaveBeenCalled()
+    expect(h.postPayoutEntry).not.toHaveBeenCalled()
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
   })
 
   it('hands postPayoutEntry the input task 58 §5.3 describes - every leg a role line, scoped', async () => {

@@ -5,12 +5,12 @@
  * (`plans/events/08-derived-parent-reconciler-plan.md`; LIB-LAYOUT §3f).
  *
  * Marking means one assessment per order per write, after commit, however many
- * per-field rules fired for it.
+ * of its fields moved.
  *
  * ## One key, three kinds of marked record
  *
- * An order can be marked directly (its own `created` / evidence rules) or through
- * a child (`line_item`, `customer_transaction`). Two keys would be the obvious
+ * An order is marked directly or through a child (`line_item`, `customer_transaction`);
+ * the marks come from `record-marks.ts`. Two keys would be the obvious
  * shape, but then an order and its own lines dirtied by one write drain twice.
  * So the marked id carries its kind — `order:<id>`, `line_item:<id>`,
  * `customer_transaction:<id>` — and `resolve` maps all three onto order instance
@@ -22,6 +22,7 @@ import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
+import { wakeArrivedOrders } from '../../work-items/wake'
 import { bridgeFinancialRecords } from './bridge'
 import { reconcileOrderPaymentEvidence } from './record-evidence'
 
@@ -82,26 +83,13 @@ async function rebuildOrders(
     records: orderInstanceIds.map((id) => ({ id, kind: 'order' as const })),
   })
   await reconcileOrderPaymentEvidence(db, { organizationId, orderInstanceIds })
+  // An arrived order wakes the work parked on its external id (91 §4.6); one UPDATE for the batch.
+  await wakeArrivedOrders(db, organizationId, { orderInstanceIds })
 }
 
 /** Register the drain. Idempotent per key. */
 export function registerOrderEvidenceReconciler(): void {
   reconciler.register()
-}
-
-/**
- * Assess a whole batch NOW, with no dirty-parent buffer in play — the sync-finalize
- * seam (plan 08 §6.6). Takes the tagged ids deliberately: the caller has the whole
- * manifest, and marking them one at a time would assess once per record, since
- * nothing drains at finalize.
- */
-export async function reconcileOrderEvidenceFromSync(
-  db: Database,
-  organizationId: string,
-  markedIds: string[]
-): Promise<void> {
-  const orderInstanceIds = [...new Set(await resolveOrders(organizationId, markedIds))]
-  await rebuildOrders(db, organizationId, orderInstanceIds)
 }
 
 /**

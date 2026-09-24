@@ -32,7 +32,7 @@ import {
 import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { roundCents } from '../totals/totals'
@@ -526,7 +526,7 @@ export async function issueCreditMemo(
   // an entry (task 17 section 3) - a credit memo issues on an org that has
   // never turned accounting on exactly as it would on one that has.
   //
-  const accountingEnabled = await isAccountingEnabled(db, organizationId)
+  const accountingEnabled = await isAccountingActive(organizationId)
   const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: accountingEnabled })
 
   let post: PostResult

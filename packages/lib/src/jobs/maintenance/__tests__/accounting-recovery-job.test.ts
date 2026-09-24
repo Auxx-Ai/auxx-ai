@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   receipt: vi.fn(),
   shipment: vi.fn(),
   delivery: vi.fn(),
+  payouts: vi.fn(),
 }))
 vi.mock('@auxx/database', () => ({ database: {} }))
 vi.mock('../../../accounting/work-items/sweep', () => ({ listOrganizationsForSweep: h.orgs }))
@@ -29,6 +30,9 @@ vi.mock('../../../accounting/sales/fulfillments/accounting-sweep', () => ({
   sweepFulfillmentAccounting: h.shipment,
 }))
 vi.mock('../../../accounting/export', () => ({ sweepExportBatches: h.delivery }))
+vi.mock('../../../accounting/money/payouts/sweep-stored-entries', () => ({
+  sweepStoredPayoutEntries: h.payouts,
+}))
 vi.mock('../../../inventory/relief/relief-sweep', () => ({
   sweepFulfillmentRelief: vi.fn(async () => ({ scanned: 0, accepted: 0, blocked: 0, skipped: 0 })),
 }))
@@ -51,6 +55,7 @@ beforeEach(() => {
   h.receipt.mockImplementation(record('receipt'))
   h.shipment.mockImplementation(record('shipment'))
   h.delivery.mockImplementation(record('delivery'))
+  h.payouts.mockImplementation(record('payouts'))
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -59,7 +64,7 @@ describe('accounting recovery job', () => {
     await accountingRecoveryJob({ jobId: 'fixture' } as JobContext)
     expect(h.orgs).toHaveBeenCalledWith(expect.anything(), { limit: 25 })
     for (const org of ['A', 'B'])
-      for (const lane of ['bridge', 'money', 'receipt', 'shipment', 'delivery'])
+      for (const lane of ['bridge', 'money', 'receipt', 'shipment', 'payouts', 'delivery'])
         expect(h.events).toContain(`${lane}:${org}`)
     expect(h.shipment).toHaveBeenCalledWith(
       expect.anything(),

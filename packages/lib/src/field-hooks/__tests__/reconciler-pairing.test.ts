@@ -26,6 +26,8 @@ import {
   CREDIT_MEMO_ACCEPTANCE_WAKE_RECONCILER,
   ORDER_ACCEPTANCE_WAKE_RECONCILER,
 } from '../../accounting/money/customer-money/acceptance-wake'
+import { ORDER_PAYMENT_EVIDENCE } from '../../accounting/money/customer-money/order-evidence-reconciler'
+import { PAYOUT_ASSESSMENT } from '../../accounting/money/payouts/payout-reconciler'
 import {
   MATCH_VENDOR_BILL,
   MATCH_VENDOR_BILL_LINE,
@@ -78,6 +80,8 @@ const MARKED_KEYS: Record<string, string> = {
   stampTotalsOnFulfillmentLineChange: FULFILLMENT_LINE_ORDER_TOTALS_RECONCILER,
   wakeAcceptancesOnOrderChange: ORDER_ACCEPTANCE_WAKE_RECONCILER,
   wakeAcceptancesOnCreditMemoChange: CREDIT_MEMO_ACCEPTANCE_WAKE_RECONCILER,
+  'markEvidenceOn*Change': ORDER_PAYMENT_EVIDENCE,
+  'assessOn*Change': PAYOUT_ASSESSMENT,
 }
 
 beforeAll(() => {
