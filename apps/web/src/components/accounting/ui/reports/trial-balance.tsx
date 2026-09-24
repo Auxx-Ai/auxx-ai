@@ -2,11 +2,11 @@
 
 'use client'
 
-import { toCsvRows } from '@auxx/lib/accounting/reports/client'
+import { fiscalYearStart, toCsvRows } from '@auxx/lib/accounting/reports/client'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { todayInZone } from '@auxx/utils/calendar-day'
 import { ListChecks } from 'lucide-react'
 import Link from 'next/link'
@@ -16,31 +16,29 @@ import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { useDrillToLedger } from './drill-to-ledger'
+import { AccountDrillView, findAccountRow, useAccountDrill, useDrillAccount } from './account-drill'
+import { useGeneralLedgerExports } from './general-ledger-view'
 import { ReportErrorCard } from './report-error-card'
+import { ReportGrid } from './report-grid'
 import { periodStartDate, toStatementTableRows } from './report-helpers'
+import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { reportAsOfPresets } from './report-range-presets'
-import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
-import { StatementNotices } from './statement-notices'
-import { StatementTable } from './statement-table'
+import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { useReportAsOf } from './use-report-window'
 
 /**
- * `/app/accounting/reports/trial-balance` (`plans/accounting/ui-plan.md`
- * §2.4). As-of only, no compare, and ONE date - `ledgerReports.trialBalance`
- * reads balance-sheet accounts cumulative through `to` and resets revenue and
- * expense at the fiscal year, with the difference in a computed
+ * `/app/accounting/reports/trial-balance` (`plans/accounting/ui-plan.md` §2.4).
+ * As-of only, no compare: balance-sheet accounts cumulative through `to`,
+ * revenue and expense reset at the fiscal year, the difference in a computed
  * retained-earnings row (`docs/accounting-architecture-guide.md` §12.1).
  *
- * 🛑 The computed row is not drillable and must not become so: `canRowDrill`
- * keys on `meta.glAccountId`, which it deliberately has none of. There is no
+ * The computed row has no `glAccountId`, so it is never drillable: there is no
  * ledger behind a figure nobody posted.
  */
 export function TrialBalanceReportPage() {
   const period = useLedgerPeriod()
-  const drillToLedger = useDrillToLedger()
-  // The first day the books cover, and the drill-down's fallback start when no
-  // range has been carried in from another report.
+  const drill = useAccountDrill()
+  // The first day the books cover, and the drill-down's fallback start.
   const cutoff = period.options[0] ? periodStartDate(period.options[0].periodKey) : null
 
   const { asOf, from, setAsOf } = useReportAsOf(
@@ -49,8 +47,7 @@ export function TrialBalanceReportPage() {
     period.fiscalYearStartMonth
   )
   // The carried range start when another report set one, else the books' floor.
-  // Either way the ledger's own "Opening balance" row absorbs what came before,
-  // so the drill-down still ties to the figure that was clicked.
+  // The ledger's opening balance absorbs what came before, so the drill still ties.
   const drillFrom = from ?? cutoff
   const asOfPresets = useMemo(
     () => reportAsOfPresets(todayInZone(period.bookTimeZone), cutoff),
@@ -62,8 +59,30 @@ export function TrialBalanceReportPage() {
     onError: (error) => toastError({ title: 'Error generating PDF', description: error.message }),
   })
 
-  // The handlers are `useCallback`s only because the toolbar registration below
-  // is memoised over them - a fresh identity each render republishes forever.
+  const rows = useMemo(
+    () => (query.data ? toStatementTableRows(query.data.rows) : []),
+    [query.data]
+  )
+
+  // Revenue and expense reset at the fiscal year here, so their drill starts there
+  // too, or the ledger's ending balance could never match the row (57 §10.3).
+  const drillRow = drill.accountId ? findAccountRow(rows, drill.accountId) : undefined
+  const drillType = drillRow?.meta?.accountType
+  const drillStart =
+    drillType === 'revenue' || drillType === 'expense'
+      ? fiscalYearStart(asOf, period.fiscalYearStartMonth)
+      : (drillFrom ?? '')
+  const drilling = !!drill.accountId && !!query.data && !!drillStart
+  const drillAccount = useDrillAccount(drilling ? drill.accountId : null, drillStart, asOf)
+  const drillExports = useGeneralLedgerExports({
+    from: drillStart,
+    to: asOf,
+    glAccountId: drill.accountId ?? undefined,
+    currency: period.currencyCode,
+    fileLabel: drillAccount.label ?? undefined,
+  })
+
+  // `useCallback`s because the toolbar registration below is memoised over them.
   const renderPdfMutate = renderPdf.mutate
   const handleDownloadPdf = useCallback(() => {
     renderPdfMutate(
@@ -87,16 +106,30 @@ export function TrialBalanceReportPage() {
     useMemo(
       () => ({
         left: (
-          <ReportToolbarControls
-            mode='asOf'
-            asOf={asOf}
-            onSelectAsOf={setAsOf}
-            asOfPresets={asOfPresets}
-            cutoff={cutoff}
-            disabled={!asOf}
-          />
+          <>
+            <ReportBreadcrumb
+              reportLabel='Trial balance'
+              current={drilling ? drillAccount.label : undefined}
+              onBack={drill.close}
+            />
+            <ReportToolbarControls
+              mode='asOf'
+              asOf={asOf}
+              onSelectAsOf={setAsOf}
+              asOfPresets={asOfPresets}
+              cutoff={cutoff}
+              disabled={!asOf}
+            />
+          </>
         ),
-        right: (
+        right: drilling ? (
+          <ReportToolbarActions
+            onDownloadPdf={drillExports.downloadPdf}
+            onDownloadCsv={drillExports.downloadCsv}
+            through={asOf}
+            isDownloadingPdf={drillExports.isDownloadingPdf}
+          />
+        ) : (
           <ReportToolbarActions
             onDownloadPdf={handleDownloadPdf}
             onDownloadCsv={handleDownloadCsv}
@@ -106,6 +139,12 @@ export function TrialBalanceReportPage() {
         ),
       }),
       [
+        drilling,
+        drillAccount.label,
+        drill.close,
+        drillExports.downloadPdf,
+        drillExports.downloadCsv,
+        drillExports.isDownloadingPdf,
         asOf,
         setAsOf,
         asOfPresets,
@@ -117,63 +156,57 @@ export function TrialBalanceReportPage() {
     )
   )
 
-  // `rows` always carries the `'total'` row from `toTrialBalanceRows`, even
-  // with zero account activity - so "no postings" is `rows.length <= 1`, not
-  // `=== 0`. The router overwrites the model's own `rows: TrialBalanceRow[]`
-  // with this `StatementRow[]` in the same spread, so there is no second,
-  // un-adapted count to check instead.
-  const hasActivity = (query.data?.rows.length ?? 0) > 1
-  const rows = query.data ? toStatementTableRows(query.data.rows) : []
+  // `rows` always carries the total row, so "no postings" is `length <= 1`.
+  const hasActivity = rows.length > 1
+  const openDrill = drill.open
 
-  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
-  // also owns the topbar this page registers into (`tasks/81` §6): a document
-  // page is one `ScrollArea` over everything.
   return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <StatementNotices through={asOf} />
+    <div className='relative flex min-h-0 min-w-0 flex-1 flex-col'>
+      {/* Kept mounted while drilled in, so Back returns to the same scroll and open sections. */}
+      <div
+        className={cn(
+          'flex min-h-0 min-w-0 flex-1 flex-col',
+          drilling && 'pointer-events-none invisible'
+        )}
+        aria-hidden={drilling}>
+        <ReportPageLayout>
           {period.isLoading ? (
-            <Skeleton className='h-64 w-full' />
-          ) : !asOf ? (
-            // No periods exist for this org at all - setup was never
-            // finalized, so there is no month for a trial balance to be
-            // "as of". Distinct from `!hasActivity` below (periods exist,
-            // nothing posted yet), but the remedy is the same door.
-            <EmptyState
-              icon={ListChecks}
-              title='Nothing has posted yet'
-              description='The trial balance has no activity to show until the ledger is set up and something posts to it.'
-              button={
-                <Button asChild variant='outline' size='sm'>
-                  <Link href='/app/accounting'>Go to the ledger</Link>
-                </Button>
-              }
-            />
+            <ReportMessage>
+              <Skeleton className='h-64 w-full' />
+            </ReportMessage>
+          ) : !asOf || (query.data && !hasActivity) ? (
+            <ReportMessage>
+              <EmptyState
+                icon={ListChecks}
+                title='Nothing has posted yet'
+                description={
+                  asOf
+                    ? 'The trial balance has no activity to show until something posts to the ledger.'
+                    : 'The trial balance has no activity to show until the ledger is set up and something posts to it.'
+                }
+                button={
+                  <Button asChild variant='outline' size='sm'>
+                    <Link href='/app/accounting'>Go to the ledger</Link>
+                  </Button>
+                }
+              />
+            </ReportMessage>
           ) : query.isPending ? (
-            <Skeleton className='h-64 w-full' />
+            <ReportMessage>
+              <Skeleton className='h-64 w-full' />
+            </ReportMessage>
           ) : query.error ? (
-            <ReportErrorCard message={query.error.message} />
-          ) : !hasActivity ? (
-            <EmptyState
-              icon={ListChecks}
-              title='Nothing has posted yet'
-              description='The trial balance has no activity to show until something posts to the ledger.'
-              button={
-                <Button asChild variant='outline' size='sm'>
-                  <Link href='/app/accounting'>Go to the ledger</Link>
-                </Button>
-              }
-            />
+            <ReportMessage>
+              <ReportErrorCard message={query.error.message} />
+            </ReportMessage>
           ) : (
-            <StatementTable
+            <ReportGrid
+              reportKey='trial-balance'
               columns={query.data?.columns ?? []}
               rows={rows}
               currency={period.currencyCode}
               verdict={
-                // The copy STATES the outcome rather than naming the test
-                // ("Debits = Credits" was ambiguous the moment it went red).
-                // The mark is read on hover, so its sentence has to stand alone.
+                // States the outcome rather than naming the test; read on hover.
                 query.data
                   ? query.data.balanced
                     ? { label: 'Balanced.', ok: true, detail: 'Debits equal credits.' }
@@ -184,16 +217,29 @@ export function TrialBalanceReportPage() {
                       }
                   : undefined
               }
-              canRowDrill={(row) => !!row.meta?.glAccountId}
-              onRowClick={(row) =>
-                row.meta?.glAccountId && drillFrom
-                  ? drillToLedger(row.meta.glAccountId, { from: drillFrom, to: asOf })
-                  : undefined
-              }
+              canRowDrill={(row) => !!row.meta?.glAccountId && !!drillFrom}
+              onRowClick={(row) => {
+                if (row.meta?.glAccountId) openDrill(row.meta.glAccountId)
+              }}
             />
           )}
+        </ReportPageLayout>
+      </div>
+
+      {drilling && drill.accountId && (
+        <div className='absolute inset-0 flex flex-col'>
+          <AccountDrillView
+            reportLabel='Trial balance'
+            glAccountId={drill.accountId}
+            from={drillStart}
+            to={asOf}
+            // Debit, credit, then the balance the row is read by.
+            figure={drillRow?.values[2]}
+            figureKind='balance'
+            currency={period.currencyCode}
+          />
         </div>
-      </ScrollArea>
+      )}
     </div>
   )
 }

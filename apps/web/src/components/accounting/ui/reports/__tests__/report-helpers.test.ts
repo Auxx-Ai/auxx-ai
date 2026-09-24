@@ -19,7 +19,7 @@ import {
   shiftPeriodKey,
   toStatementTableRows,
 } from '../report-helpers'
-import { hasAnyDrillKey } from '../statement-table'
+import { hasAnyDrillKey } from '../statement-parts'
 
 describe('periodStartDate / periodEndDate', () => {
   it('returns the first and last calendar day of an ordinary month', () => {

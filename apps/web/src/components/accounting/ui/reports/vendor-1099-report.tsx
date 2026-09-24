@@ -12,7 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
@@ -28,10 +27,10 @@ import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { ReportErrorCard } from './report-error-card'
+import { ReportGrid } from './report-grid'
 import { toStatementTableRows } from './report-helpers'
-import { ReportToolbarActions } from './report-toolbar'
-import { StatementNotices } from './statement-notices'
-import { StatementTable } from './statement-table'
+import { ReportMessage, ReportPageLayout } from './report-page-layout'
+import { ReportBreadcrumb, ReportToolbarActions } from './report-toolbar'
 
 /** The last several tax years, newest first - `readVendor1099Summary` never refuses a year, so this is a UI convenience, not a validity bound. */
 function recentYears(currentYear: number, count = 6): number[] {
@@ -110,22 +109,25 @@ export function Vendor1099ReportPage() {
     useMemo(
       () => ({
         left: (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant='ghost' size='sm' className='min-w-[8rem] justify-between gap-1'>
-                <span className='text-muted-foreground'>Year</span>
-                {year}
-                <ChevronDown />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='start'>
-              {recentYears(currentYear).map((option) => (
-                <DropdownMenuItem key={option} onSelect={() => void setYear(option)}>
-                  <span className={cn(option === year && 'font-medium')}>{option}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <>
+            <ReportBreadcrumb reportLabel='1099 summary' />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='ghost' size='sm' className='min-w-[8rem] justify-between gap-1'>
+                  <span className='text-muted-foreground'>Year</span>
+                  {year}
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='start'>
+                {recentYears(currentYear).map((option) => (
+                  <DropdownMenuItem key={option} onSelect={() => void setYear(option)}>
+                    <span className={cn(option === year && 'font-medium')}>{option}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         ),
         right: (
           <ReportToolbarActions
@@ -143,39 +145,41 @@ export function Vendor1099ReportPage() {
   const rows = query.data ? toStatementTableRows(query.data.rows) : []
   const hasActivity = rows.length > 0
 
-  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
-  // also owns the topbar this page registers into (`tasks/81` §6): a document
-  // page is one `ScrollArea` over everything.
   return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <StatementNotices through={`${year}-12-31`} />
-          {query.isPending ? (
+    <div className='flex min-h-0 min-w-0 flex-1 flex-col'>
+      <ReportPageLayout>
+        {query.isPending ? (
+          <ReportMessage>
             <Skeleton className='h-64 w-full' />
-          ) : query.error ? (
+          </ReportMessage>
+        ) : query.error ? (
+          <ReportMessage>
             <ReportErrorCard message={query.error.message} />
-          ) : !hasActivity ? (
+          </ReportMessage>
+        ) : !hasActivity ? (
+          <ReportMessage>
             <EmptyState
               icon={FileText}
               title='No 1099s to file'
               description={`No eligible vendor reached the $600 filing threshold in ${year}.`}
             />
-          ) : (
-            <StatementTable
-              columns={query.data?.columns ?? []}
-              rows={rows}
-              currency={period.currencyCode}
-              // Only the vendor lines carry one; a box section and its subtotal
-              // do not, so they expand and sit still respectively.
-              canRowDrill={(row) => !!row.meta?.recordId}
-              onRowClick={(row) =>
-                row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
-              }
-            />
-          )}
-        </div>
-      </ScrollArea>
+          </ReportMessage>
+        ) : (
+          <ReportGrid
+            reportKey='vendor-1099'
+            columns={query.data?.columns ?? []}
+            rows={rows}
+            currency={period.currencyCode}
+            // Only the vendor lines carry one; a box section and its subtotal
+            // do not, so they expand and sit still respectively.
+            canRowDrill={(row) => !!row.meta?.recordId}
+            isRowActive={(row) => !!selectedRecordId && row.meta?.recordId === selectedRecordId}
+            onRowClick={(row) =>
+              row.meta?.recordId ? void setRecordIdParam(row.meta.recordId) : undefined
+            }
+          />
+        )}
+      </ReportPageLayout>
       {overlays}
     </div>
   )

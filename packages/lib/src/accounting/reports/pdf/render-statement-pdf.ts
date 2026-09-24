@@ -18,6 +18,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { resolveDocumentSettings } from '../../../documents/resolve-settings'
+import { UnprocessableEntityError } from '../../../errors'
 import { createAssetWithVersion } from '../../../files/assets/asset-mutations'
 import { getAssetContent } from '../../../files/assets/content'
 import { createS3StoragePort } from '../../../files/storage/ports'
@@ -176,13 +177,8 @@ async function buildPayload<K extends StatementKind>(
   if (kind === 'general-ledger') {
     const { from, to, glAccountId, source } =
       params as RenderStatementPdfParamsByKind['general-ledger']
-    // 🛑 The SAME `GENERAL_LEDGER_MAX_LINES` the router hands the screen read.
-    // A PDF that stopped at a different line than the page it was rendered from
-    // is the one thing this file's header promises can never happen - and an
-    // uncapped render here is the path that actually eats the process, since
-    // react-pdf holds the whole document tree in memory. `toGeneralLedgerRows`
-    // prints the INCOMPLETE banner as the first row when it fires, so the
-    // printed copy says so as loudly as the screen does.
+    // Refused rather than cut short above the limit (108-D9): a partial ledger PDF
+    // does not tie, and react-pdf holds the whole document in memory.
     const result = await readGeneralLedger(db, {
       organizationId,
       from,
@@ -194,6 +190,11 @@ async function buildPayload<K extends StatementKind>(
       maxLines: GENERAL_LEDGER_MAX_LINES,
     })
     if (result.isErr()) throw result.error
+    if (result.value.truncated) {
+      throw new UnprocessableEntityError(
+        `This general ledger has more than ${GENERAL_LEDGER_MAX_LINES.toLocaleString('en-US')} lines, too many for a PDF. Narrow the range or download the CSV.`
+      )
+    }
     return {
       rangeLabel: `${from} to ${to}`,
       asOfForKey: to,

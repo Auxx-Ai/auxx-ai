@@ -30,7 +30,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toMinor } from '@auxx/utils/currency'
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { compareAccountsByCodeThenName } from '../ledger/chart/account-label'
@@ -38,7 +38,8 @@ import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../ledger/chart/defau
 import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { listChartAccounts } from '../ledger/roles/role-map'
 import type { ChartAccountRow, PostingDirection } from '../ledger/types'
-import { previousCalendarDay } from './fiscal-year'
+import { fiscalYearStart, previousCalendarDay } from './fiscal-year'
+import { resolveFiscalYearStartMonth } from './fiscal-year-setting'
 import { NATURAL_BALANCE_DIRECTION, signedBalance } from './statement-math'
 
 const logger = createScopedLogger('postings:reports:general-ledger')
@@ -53,15 +54,8 @@ const STATEMENT_ORDER = new Map(GL_ACCOUNT_TYPES.map((type, index) => [type, ind
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * 🛑 The router's size guard, and the number the PDF render uses too, so the
- * page, the CSV and the PDF can never stop at three different places.
- *
- * ~25,000 lines is roughly 6,000 postings at four lines each: a company
- * posting 500 entries a month reads a FULL YEAR under it and never sees the
- * flag, while a busy shop asking for a year gets a ledger that stops - loudly -
- * instead of a request that eats the process. It is a safety valve on the
- * server, deliberately NOT a client input: a cap a caller can raise is not a
- * cap.
+ * The most lines the PDF renders; above it `renderStatementPdf` refuses and points to
+ * the CSV (108-D9). react-pdf holds the whole document in memory.
  */
 export const GENERAL_LEDGER_MAX_LINES = 25_000
 
@@ -204,7 +198,7 @@ export async function readGeneralLedger(
 
     const opening = source
       ? new Map<string, { debitMinor: number; creditMinor: number }>()
-      : await readOpeningBalances(db, organizationId, previousCalendarDay(from), glAccountId)
+      : await readOpeningPositions(db, organizationId, from, chartById, glAccountId)
 
     // 🛑 `limit` is applied in SQL, not after the fact. The guard exists to
     // protect the PROCESS, and a JS `.slice()` over a result set the driver
@@ -378,6 +372,50 @@ function buildAccount(
 }
 
 /**
+ * Where each account stands the day before `from`: life-to-date for balance-sheet
+ * accounts, fiscal-year-to-date for revenue and expense, which reset at the fiscal
+ * year like the trial balance (57 §10.3). Without the reset a revenue drill-down
+ * never ties to the trial balance row it came from.
+ */
+export async function readOpeningPositions(
+  db: Database,
+  organizationId: string,
+  from: string,
+  chartById: ReadonlyMap<string, ChartAccountRow>,
+  glAccountId?: string,
+  fiscalYearStartMonth?: number
+): Promise<Map<string, { debitMinor: number; creditMinor: number }>> {
+  const opening = await readOpeningBalances(
+    db,
+    organizationId,
+    previousCalendarDay(from),
+    glAccountId
+  )
+  const resets = (id: string) => {
+    const type = chartById.get(id)?.accountType
+    return type === 'revenue' || type === 'expense'
+  }
+  if (![...opening.keys()].some(resets)) return opening
+
+  const month = fiscalYearStartMonth ?? (await resolveFiscalYearStartMonth(organizationId, db))
+  const yearStart = fiscalYearStart(from, month)
+  const beforeYear =
+    yearStart === from
+      ? opening
+      : await readOpeningBalances(db, organizationId, previousCalendarDay(yearStart), glAccountId)
+
+  const out = new Map<string, { debitMinor: number; creditMinor: number }>()
+  for (const [id, sums] of opening) {
+    const prior = resets(id) ? beforeYear.get(id) : undefined
+    out.set(id, {
+      debitMinor: sums.debitMinor - (prior?.debitMinor ?? 0),
+      creditMinor: sums.creditMinor - (prior?.creditMinor ?? 0),
+    })
+  }
+  return out
+}
+
+/**
  * Every account's `SUM(debit)`/`SUM(credit)` through `through`, in ONE
  * aggregate.
  *
@@ -386,7 +424,7 @@ function buildAccount(
  * a full chart would turn that into a hundred round trips for a figure a
  * single `GROUP BY` already has.
  */
-async function readOpeningBalances(
+export async function readOpeningBalances(
   db: Database,
   organizationId: string,
   through: string,

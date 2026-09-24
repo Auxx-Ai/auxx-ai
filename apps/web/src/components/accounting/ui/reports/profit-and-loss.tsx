@@ -4,9 +4,9 @@
 
 import { toCsvRows } from '@auxx/lib/accounting/reports/client'
 import { Button } from '@auxx/ui/components/button'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { todayInZone } from '@auxx/utils/calendar-day'
 import { TrendingUp } from 'lucide-react'
 import Link from 'next/link'
@@ -17,8 +17,10 @@ import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period
 import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
-import { useDrillToLedger } from './drill-to-ledger'
+import { AccountDrillView, findAccountRow, useAccountDrill, useDrillAccount } from './account-drill'
+import { useGeneralLedgerExports } from './general-ledger-view'
 import { ReportErrorCard } from './report-error-card'
+import { ReportGrid } from './report-grid'
 import {
   type CompareOption,
   compareRangeFor,
@@ -27,10 +29,9 @@ import {
   profitAndLossColumns,
   toStatementTableRows,
 } from './report-helpers'
+import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { reportRangePresets } from './report-range-presets'
-import { ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
-import { StatementNotices } from './statement-notices'
-import { StatementTable } from './statement-table'
+import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 
 /**
  * `/app/accounting/reports/profit-and-loss` (`plans/accounting/ui-plan.md`
@@ -46,7 +47,7 @@ export function ProfitAndLossReportPage() {
   const [fromParam, setFromParam] = useQueryState('from')
   const [toParam, setToParam] = useQueryState('to')
   const [compareParam, setCompareParam] = useQueryState('compare')
-  const drillToLedger = useDrillToLedger()
+  const drill = useAccountDrill()
 
   const fallbackKey = period.resolvedPeriodKey
   const from = fromParam || (fallbackKey ? periodStartDate(fallbackKey) : '')
@@ -94,6 +95,19 @@ export function ProfitAndLossReportPage() {
     [data, bookTimeZone]
   )
 
+  const rows = useMemo(() => (data ? toStatementTableRows(data.rows) : []), [data])
+  // The P&L's own range; the ledger's fiscal-year opening makes its activity the row's figure.
+  const drillRow = drill.accountId ? findAccountRow(rows, drill.accountId) : undefined
+  const drilling = !!drill.accountId && !!data && !!from && !!to
+  const drillAccount = useDrillAccount(drilling ? drill.accountId : null, from, to)
+  const drillExports = useGeneralLedgerExports({
+    from,
+    to,
+    glAccountId: drill.accountId ?? undefined,
+    currency: period.currencyCode,
+    fileLabel: drillAccount.label ?? undefined,
+  })
+
   const currencyCode = period.currencyCode
   const handleDownloadCsv = useCallback(() => {
     if (!data) return
@@ -104,22 +118,36 @@ export function ProfitAndLossReportPage() {
     useMemo(
       () => ({
         left: (
-          <ReportToolbarControls
-            mode='range'
-            from={from}
-            to={to}
-            onSelectRange={(next) => {
-              void setFromParam(next.from)
-              void setToParam(next.to)
-            }}
-            presets={presets}
-            cutoff={cutoff}
-            compare={compare}
-            onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
-            disabled={!from || !to}
-          />
+          <>
+            <ReportBreadcrumb
+              reportLabel='Profit and loss'
+              current={drilling ? drillAccount.label : undefined}
+              onBack={drill.close}
+            />
+            <ReportToolbarControls
+              mode='range'
+              from={from}
+              to={to}
+              onSelectRange={(next) => {
+                void setFromParam(next.from)
+                void setToParam(next.to)
+              }}
+              presets={presets}
+              cutoff={cutoff}
+              compare={drilling ? undefined : compare}
+              onSelectCompare={(next) => void setCompareParam(next === 'none' ? null : next)}
+              disabled={!from || !to}
+            />
+          </>
         ),
-        right: (
+        right: drilling ? (
+          <ReportToolbarActions
+            onDownloadPdf={drillExports.downloadPdf}
+            onDownloadCsv={drillExports.downloadCsv}
+            through={to}
+            isDownloadingPdf={drillExports.isDownloadingPdf}
+          />
+        ) : (
           <ReportToolbarActions
             onDownloadPdf={handleDownloadPdf}
             onDownloadCsv={handleDownloadCsv}
@@ -129,6 +157,12 @@ export function ProfitAndLossReportPage() {
         ),
       }),
       [
+        drilling,
+        drillAccount.label,
+        drill.close,
+        drillExports.downloadPdf,
+        drillExports.downloadCsv,
+        drillExports.isDownloadingPdf,
         from,
         to,
         setFromParam,
@@ -144,66 +178,81 @@ export function ProfitAndLossReportPage() {
     )
   )
 
-  const rows = query.data ? toStatementTableRows(query.data.rows) : []
+  const openDrill = drill.open
   const isEmpty =
     !!query.data &&
     query.data.revenue.length === 0 &&
     query.data.cogs.length === 0 &&
     query.data.operatingExpenses.length === 0
 
-  // One `MainPageContent` per screen and it is the accounting LAYOUT's, which
-  // also owns the topbar this page registers into (`tasks/81` §6): a document
-  // page is one `ScrollArea` over everything.
   return (
-    <div className='flex h-full min-h-0 w-full flex-1 flex-col'>
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
-          <StatementNotices through={to} />
+    <div className='relative flex min-h-0 min-w-0 flex-1 flex-col'>
+      {/* Kept mounted while drilled in, so Back returns to the same scroll and open sections. */}
+      <div
+        className={cn(
+          'flex min-h-0 min-w-0 flex-1 flex-col',
+          drilling && 'pointer-events-none invisible'
+        )}
+        aria-hidden={drilling}>
+        <ReportPageLayout>
           {period.isLoading ? (
-            <Skeleton className='h-64 w-full' />
-          ) : !from || !to ? (
-            // No periods exist for this org at all - see trial-balance.tsx's
-            // matching branch for why this is distinct from `isEmpty` below.
-            <EmptyState
-              icon={TrendingUp}
-              title='Nothing has posted yet'
-              description='The profit and loss statement has no activity to show until the ledger is set up and something posts to it.'
-              button={
-                <Button asChild variant='outline' size='sm'>
-                  <Link href='/app/accounting'>Go to the ledger</Link>
-                </Button>
-              }
-            />
+            <ReportMessage>
+              <Skeleton className='h-64 w-full' />
+            </ReportMessage>
+          ) : !from || !to || isEmpty ? (
+            <ReportMessage>
+              <EmptyState
+                icon={TrendingUp}
+                title='Nothing has posted yet'
+                description={
+                  from && to
+                    ? 'The profit and loss statement has no activity to show until something posts to the ledger.'
+                    : 'The profit and loss statement has no activity to show until the ledger is set up and something posts to it.'
+                }
+                button={
+                  <Button asChild variant='outline' size='sm'>
+                    <Link href='/app/accounting'>Go to the ledger</Link>
+                  </Button>
+                }
+              />
+            </ReportMessage>
           ) : query.isPending ? (
-            <Skeleton className='h-64 w-full' />
+            <ReportMessage>
+              <Skeleton className='h-64 w-full' />
+            </ReportMessage>
           ) : query.error ? (
-            <ReportErrorCard message={query.error.message} />
-          ) : isEmpty ? (
-            <EmptyState
-              icon={TrendingUp}
-              title='Nothing has posted yet'
-              description='The profit and loss statement has no activity to show until something posts to the ledger.'
-              button={
-                <Button asChild variant='outline' size='sm'>
-                  <Link href='/app/accounting'>Go to the ledger</Link>
-                </Button>
-              }
-            />
+            <ReportMessage>
+              <ReportErrorCard message={query.error.message} />
+            </ReportMessage>
           ) : (
-            <StatementTable
+            <ReportGrid
+              reportKey='profit-and-loss'
               columns={columns}
               rows={rows}
               currency={period.currencyCode}
               canRowDrill={(row) => !!row.meta?.glAccountId}
-              onRowClick={(row) =>
-                row.meta?.glAccountId
-                  ? drillToLedger(row.meta.glAccountId, { from, to })
-                  : undefined
-              }
+              onRowClick={(row) => {
+                if (row.meta?.glAccountId) openDrill(row.meta.glAccountId)
+              }}
             />
           )}
+        </ReportPageLayout>
+      </div>
+
+      {drilling && drill.accountId && (
+        <div className='absolute inset-0 flex flex-col'>
+          <AccountDrillView
+            reportLabel='Profit and loss'
+            glAccountId={drill.accountId}
+            from={from}
+            to={to}
+            // The current period's column; a compare column is another range.
+            figure={drillRow?.values[0]}
+            figureKind='activity'
+            currency={period.currencyCode}
+          />
         </div>
-      </ScrollArea>
+      )}
     </div>
   )
 }

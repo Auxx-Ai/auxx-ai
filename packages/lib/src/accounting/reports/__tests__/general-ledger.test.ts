@@ -19,6 +19,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChartAccountRow } from '../../ledger/types'
 
 vi.mock('../../ledger/roles/role-map', () => ({ listChartAccounts: vi.fn() }))
+vi.mock('../fiscal-year-setting', () => ({ resolveFiscalYearStartMonth: vi.fn(async () => 1) }))
 
 import { listChartAccounts } from '../../ledger/roles/role-map'
 import { toGeneralLedgerRows } from '../adapters'
@@ -219,6 +220,30 @@ describe('readGeneralLedger', () => {
     const ap = result._unsafeUnwrap().accounts[0]
     expect(ap?.openingBalanceMinor).toBe(40_000)
     expect(ap?.lines[0]?.runningBalanceMinor).toBe(25_000)
+  })
+
+  it('opens revenue at the fiscal year, not at the start of the books (57 §10.3)', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({ id: 'id_rev', code: '4000', name: 'Sales', accountType: 'revenue' }),
+        account({ id: 'id_cash', code: '1000', name: 'Cash' }),
+      ])
+    )
+
+    const result = await readGeneralLedger(
+      stubDb([
+        // Through 2026-07-31: every line since the books opened.
+        [opening('id_rev', 0, 50_000), opening('id_cash', 50_000, 0)],
+        // Through 2025-12-31: last fiscal year, which revenue drops.
+        [opening('id_rev', 0, 30_000), opening('id_cash', 30_000, 0)],
+        [],
+      ]),
+      { organizationId: ORG, ...RANGE }
+    )
+
+    const accounts = result._unsafeUnwrap().accounts
+    expect(accounts.find((a) => a.glAccountId === 'id_rev')?.openingBalanceMinor).toBe(20_000)
+    expect(accounts.find((a) => a.glAccountId === 'id_cash')?.openingBalanceMinor).toBe(50_000)
   })
 
   it('keeps an account that has an opening balance but NO lines in the range', async () => {
@@ -602,15 +627,9 @@ describe('toGeneralLedgerRows', () => {
     expect(closing?.values).toEqual([5_000, 2_000, 53_000])
   })
 
-  it('prints an INCOMPLETE banner as the FIRST row when the ledger is truncated', () => {
-    // 🛑 A `truncated: true` field on a JSON response never reaches the person
-    // reading the CSV or the PDF. A row does.
+  it('prints no warning row when truncated - the PDF refuses instead (108-D9)', () => {
     const rows = toGeneralLedgerRows({ ...gl, truncated: true })
-    expect(rows[0]?.id).toBe('truncated')
-    expect(rows[0]?.label).toContain('INCOMPLETE')
-    expect(rows[0]?.label).toContain('2 lines')
-    expect(rows[0]?.label).toContain('does not tie')
-    expect(rows.map((r) => r.id)).toEqual(['truncated', 'id_cash', 'total'])
+    expect(rows.map((r) => r.id)).toEqual(['id_cash', 'total'])
   })
 
   it('labels a deleted account by its id, and flags it', () => {

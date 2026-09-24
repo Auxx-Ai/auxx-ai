@@ -682,11 +682,6 @@ const BALANCE_COLUMN = 2
  * sum of an account's positions is not a number. Both the section header and
  * its own total row therefore carry `endingBalanceMinor` instead.
  *
- * When {@link GeneralLedger.truncated} is set, a `'computed'` row goes FIRST,
- * ahead of every account, saying so in the label - so it survives into the CSV
- * and the PDF, where a `truncated: true` field on a JSON response does not
- * reach the person actually reading the ledger.
- *
  * The general ledger stays flat, like the trial balance (CHART-HIERARCHY.md
  * §5): a sub-account's section label is its `accountPathLabel` (D8), and
  * `meta.accountCode`/`accountName` are left off a nested account for the same
@@ -747,19 +742,5 @@ export function toGeneralLedgerRows(gl: GeneralLedger): StatementRow[] {
     return section
   })
 
-  const rows: StatementRow[] = []
-  if (gl.truncated) {
-    const shown = gl.accounts.reduce((count, account) => count + account.lines.length, 0)
-    rows.push(
-      computedRow(
-        'truncated',
-        `INCOMPLETE - stopped at ${shown.toLocaleString('en-US')} lines. This ledger does not tie to the trial balance; run a shorter date range.`,
-        [null, null, null],
-        'The size guard fired. Everything below is a partial ledger.'
-      )
-    )
-  }
-  rows.push(...sections)
-  rows.push(totalRow('total', 'Total', [gl.totalDebitMinor, gl.totalCreditMinor, null]))
-  return rows
+  return [...sections, totalRow('total', 'Total', [gl.totalDebitMinor, gl.totalCreditMinor, null])]
 }

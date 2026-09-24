@@ -41,6 +41,11 @@ export {
 // come through the adapters block above, like every other statement's.
 export type { AccountLineRow, GeneralLedger, GeneralLedgerAccount } from './general-ledger'
 export type {
+  GeneralLedgerLine,
+  GeneralLedgerSummary,
+  GeneralLedgerSummaryAccount,
+} from './general-ledger-pages'
+export type {
   RenderStatementPdfOptions,
   RenderStatementPdfParamsByKind,
   RenderStatementPdfResult,

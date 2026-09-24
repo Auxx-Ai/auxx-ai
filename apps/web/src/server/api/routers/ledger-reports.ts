@@ -12,18 +12,19 @@
 //
 // Each read composes its lib call with the matching `toXRows` adapter, so the
 // wire response always carries BOTH the typed model and `rows: StatementRow[]`
-// - the shape `StatementTable` (screen) and the PDF both render from.
+// - the shape the report grid (screen) and the PDF both render from. The general
+// ledger is the exception: a summary and paged lines (108 §3.2).
 
 import { readProviderSyncMarker } from '@auxx/lib/accounting/mirror'
 import {
   AGING_COLUMNS,
   balanceSheetColumns,
-  GENERAL_LEDGER_COLUMNS,
-  GENERAL_LEDGER_MAX_LINES,
   readAging,
   readBalanceSheet,
   readCompleteness,
-  readGeneralLedger,
+  readGeneralLedgerCsv,
+  readGeneralLedgerLines,
+  readGeneralLedgerSummary,
   readProfitAndLoss,
   readTrialBalanceStatement,
   readVendor1099Summary,
@@ -31,7 +32,6 @@ import {
   TRIAL_BALANCE_COLUMNS,
   toAgingRows,
   toBalanceSheetRows,
-  toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceStatementRows,
   toVendor1099Rows,
@@ -124,7 +124,7 @@ export const ledgerReportsRouter = createTRPCRouter({
     }),
 
   /**
-   * What every statement view's `CompletenessBanner` renders: unposted
+   * What every statement's toolbar notice (`report-notices.tsx`) lists: unposted
    * periods, disabled posting types, and the two bank-feed placeholders
    * (empty until `plans/bank-connection/` ships).
    */
@@ -141,7 +141,7 @@ export const ledgerReportsRouter = createTRPCRouter({
 
   /**
    * How far the inbound provider sync has genuinely read - what every statement
-   * view's `ProviderSyncMarker` renders (task 20 §7.3).
+   * view's toolbar notice renders (task 20 §7.3).
    *
    * Takes NO input on purpose. The reading is pure
    * (`describeProviderSyncCoverage`) and the statement's own end date lives in
@@ -159,46 +159,70 @@ export const ledgerReportsRouter = createTRPCRouter({
   }),
 
   /**
-   * The general ledger over `[from, to]`: every posted line, grouped by
-   * account, with each account's brought-forward opening balance and a running
-   * natural-sign balance. The report a filing accountant asks for FIRST, and
-   * until now the only one that existed in no form at all.
-   *
-   * 🛑 **`truncated` is load-bearing.** Unlike every other statement on this
-   * router - all of which are bounded by the CHART - this one is bounded by
-   * TRANSACTION VOLUME, so it is read under a server-side line cap. The cap is
-   * deliberately NOT an input: a limit the caller chooses is not a limit. When
-   * it fires, `truncated` comes back `true`, `maxLines` says where it stopped,
-   * and `rows[0]` is an INCOMPLETE banner that survives into the CSV and the
-   * PDF. A truncated ledger does not tie to `trialBalance` for the same range,
-   * and `balanced` must not be read as a tie-out unless `truncated` is false.
+   * The general ledger's accounts over `[from, to]`: opening, debit, credit and
+   * ending per account, and how many lines each holds. The lines load per
+   * account through `generalLedgerLines` (108 §3.2).
    */
-  generalLedger: permissionProcedure(PermissionKey.ledgerView)
+  generalLedgerSummary: permissionProcedure(PermissionKey.ledgerView)
     .input(
       z.object({
         from: dateKey,
         to: dateKey,
         glAccountId: z.string().min(1).optional(),
         source: ledgerSource.optional(),
+        search: z.string().max(200).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const result = await readGeneralLedger(ctx.db, {
+      const result = await readGeneralLedgerSummary(ctx.db, {
         organizationId: ctx.session.organizationId,
-        from: input.from,
-        to: input.to,
-        glAccountId: input.glAccountId,
-        source: input.source,
-        maxLines: GENERAL_LEDGER_MAX_LINES,
+        ...input,
       })
       if (result.isErr()) throw result.error
-      const { chart: _chart, ...ledger } = result.value
-      return {
-        ...ledger,
-        maxLines: GENERAL_LEDGER_MAX_LINES,
-        columns: GENERAL_LEDGER_COLUMNS,
-        rows: toGeneralLedgerRows(result.value),
-      }
+      return result.value
+    }),
+
+  /** One page of one account's lines, each with its running balance. */
+  generalLedgerLines: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        glAccountId: z.string().min(1),
+        from: dateKey,
+        to: dateKey,
+        source: ledgerSource.optional(),
+        search: z.string().max(200).optional(),
+        offset: z.number().int().min(0),
+        limit: z.number().int().min(1).max(500),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await readGeneralLedgerLines(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        ...input,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** The whole general ledger as CSV text, from the full read rather than the loaded rows. */
+  generalLedgerCsv: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        from: dateKey,
+        to: dateKey,
+        glAccountId: z.string().min(1).optional(),
+        source: ledgerSource.optional(),
+        search: z.string().max(200).optional(),
+        currencyCode: z.string().length(3).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await readGeneralLedgerCsv(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        ...input,
+      })
+      if (result.isErr()) throw result.error
+      return { csv: result.value }
     }),
 
   /**
@@ -228,9 +252,7 @@ export const ledgerReportsRouter = createTRPCRouter({
         z.object({ kind: z.literal('ar-aging'), asOf: dateKey }),
         z.object({ kind: z.literal('ap-aging'), asOf: dateKey }),
         z.object({ kind: z.literal('vendor-1099'), year: z.number().int() }),
-        // Task 21 §5: the general ledger, under the same server-side line cap
-        // the `generalLedger` query above applies - so the printed copy and the
-        // page stop in the same place.
+        // Task 21 §5: the general ledger. Refused above `GENERAL_LEDGER_MAX_LINES` (108-D9).
         z.object({
           kind: z.literal('general-ledger'),
           from: dateKey,
@@ -277,7 +299,12 @@ export const ledgerReportsRouter = createTRPCRouter({
           organizationId,
           actorId: userId,
           kind: input.kind,
-          params: { from: input.from, to: input.to, glAccountId: input.glAccountId },
+          params: {
+            from: input.from,
+            to: input.to,
+            glAccountId: input.glAccountId,
+            source: input.source,
+          },
         })
       }
       if (input.kind === 'ar-aging' || input.kind === 'ap-aging') {

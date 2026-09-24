@@ -34,7 +34,7 @@ import {
   startOfMonthDay,
 } from '@auxx/utils/calendar-day'
 import { formatAccountingDate } from '../ledger/format'
-import type { StatementRow } from './statement-table'
+import type { StatementRow } from './statement-parts'
 
 /** `'none'` renders no compare snapshot; the other two shift the primary range back. */
 export type CompareOption = 'none' | 'prior_period' | 'prior_year'
