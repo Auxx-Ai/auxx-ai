@@ -2,7 +2,8 @@
 
 /**
  * The Outbox's Blocked tab: parked accounting work, one row per
- * `(reasonCode, role, railId, glAccountId)`, expandable to its items (91 §4.6).
+ * `(reasonCode, role, railId, glAccountId)`, expandable to its items (91 §4.6); a
+ * `groupsByExternalRef` code adds a reason level above its groups (106 §6.1).
  *
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
@@ -43,6 +44,11 @@ export interface BlockedWorkOptions {
   bookTimeZone?: string
 }
 
+export interface BlockedGroupsOptions extends BlockedWorkOptions {
+  /** A reason row expanded: its per-`externalRef` groups instead of the top level. */
+  reasonCode?: string
+}
+
 /** `null` when the chosen categories can never hold parked work. */
 function toFilters(options: BlockedWorkOptions): WorkItemFilters | null {
   const categories = options.categories?.filter((category): category is WorkItemCategory =>
@@ -58,11 +64,11 @@ function toFilters(options: BlockedWorkOptions): WorkItemFilters | null {
   }
 }
 
-/** One page of groups, newest write first. */
+/** One page of the top level, newest write first, or of one reason's groups, largest first. */
 export async function listBlockedWork(
   db: Database,
   organizationId: string,
-  options: BlockedWorkOptions
+  options: BlockedGroupsOptions
 ): Promise<Result<{ items: WorkItemGroup[]; nextCursor?: number }, Error>> {
   const filters = toFilters(options)
   if (!filters) return ok({ items: [] })
@@ -70,6 +76,7 @@ export async function listBlockedWork(
     ...filters,
     limit: options.limit,
     offset: options.cursor ?? 0,
+    reasonCode: options.reasonCode,
   })
   return page.map(({ items, nextOffset }) => ({
     items,

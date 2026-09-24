@@ -37,6 +37,8 @@ export interface WorkItemSentenceInput {
   glAccountId?: string | null
   periodKey?: string | null
   externalRef?: string | null
+  /** A group's `externalRef` named, e.g. the part's current display name. */
+  refLabel?: string | null
   detail?: Record<string, unknown> | null
 }
 
@@ -245,7 +247,7 @@ export const WORK_ITEM_CODES = {
     status: 'blocked',
     groupsByExternalRef: true,
     sentence: (item) => {
-      const part = detailText(item, 'partName')
+      const part = item.refLabel || detailText(item, 'partName')
       return part
         ? `${part} has no standard cost, so its shipments cannot relieve inventory. Set or roll its standard cost.`
         : 'A part has no standard cost, so its shipments cannot relieve inventory. Set or roll standard costs.'
