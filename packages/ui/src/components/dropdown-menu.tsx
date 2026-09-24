@@ -84,6 +84,10 @@ function DropdownMenuContent({
   )
 }
 
+/** The filled "selected" check shared by rich items and `indicator='check'` radio items. */
+const checkIndicatorStyles =
+  'flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info [&_svg]:size-2.5 [&_svg]:stroke-4 [&_svg]:text-white'
+
 function DropdownMenuItem({
   className,
   inset,
@@ -133,9 +137,9 @@ function DropdownMenuItem({
               <Checkbox checked={selected} className='pointer-events-none' />
             ) : (
               selected && (
-                <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
-                  <Check className='size-2.5! text-white' strokeWidth={4} />
-                </div>
+                <span className={checkIndicatorStyles}>
+                  <Check />
+                </span>
               )
             )}
           </div>
@@ -187,17 +191,17 @@ function DropdownMenuRadioItem({
       className={cn(
         menuVariants({ variant }),
         menuRadioItemStyles,
-        'cursor-pointer justify-between pl-2',
+        'cursor-pointer gap-2 pl-2 [&>svg]:size-4 [&>svg]:shrink-0',
         className
       )}
       {...props}>
-      <span className='truncate'>{children}</span>
-      <span className='pointer-events-none ml-2 flex items-center'>
+      {children}
+      <span className='pointer-events-none ml-auto flex items-center ps-2'>
         {indicator === 'check' ? (
           <span className='flex size-4 items-center justify-center'>
             <DropdownMenuPrimitive.ItemIndicator>
-              <span className='flex size-4 items-center justify-center rounded-full border border-blue-800 bg-info'>
-                <Check className='size-2.5! text-white' strokeWidth={4} />
+              <span className={checkIndicatorStyles}>
+                <Check />
               </span>
             </DropdownMenuPrimitive.ItemIndicator>
           </span>
@@ -205,10 +209,10 @@ function DropdownMenuRadioItem({
           <span
             className={cn(
               radioGroupVariants({ variant: 'outline', size: 'default' }),
-              'flex items-center justify-center'
+              'flex items-center justify-center [&_svg]:size-2'
             )}>
             <DropdownMenuPrimitive.ItemIndicator>
-              <Circle className='size-2!' />
+              <Circle />
             </DropdownMenuPrimitive.ItemIndicator>
           </span>
         )}

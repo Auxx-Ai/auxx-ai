@@ -1,8 +1,8 @@
 // apps/web/src/components/mail/thread-triage-indicators.tsx
 'use client'
 
+import { getOptionColor } from '@auxx/lib/custom-fields/client'
 import { MAIL_CLASSIFY_SPAM_THRESHOLD } from '@auxx/lib/mail-classification/client'
-import { Badge } from '@auxx/ui/components/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +69,10 @@ const TEXT_COLOR: Record<TriageColor, string> = {
   amber: 'text-amber-500',
   gray: 'text-muted-foreground',
 }
+
+/** Same shape as `TagBadge size='sm'` so the header's triage badges and tags line up. */
+const TRIAGE_BADGE_STYLES =
+  'inline-flex h-5.5 min-w-5.5 shrink-0 items-center justify-center rounded-[5px] border px-1 [&_svg]:size-3.5'
 
 /** The thread's triage values as indicators, in display order; `notable` mode drops the rest. */
 export function getTriageIndicators(
@@ -192,7 +196,7 @@ function TriageMenuItems({
         value={toRadioValue(value)}
         onValueChange={(v) => onChange(toTriageUpdate(field, v))}>
         {TRIAGE_EDIT_FIELDS[field].options.map(({ value: v, label, icon: Icon, color }) => (
-          <DropdownMenuRadioItem key={v} value={v}>
+          <DropdownMenuRadioItem key={v} value={v} indicator='check'>
             <Icon className={TEXT_COLOR[color]} />
             {label}
           </DropdownMenuRadioItem>
@@ -282,7 +286,11 @@ export function TriagePicker({
           {children}
         </PopoverTrigger>
       )}
-      <PopoverContent className='w-44 p-1' align={align}>
+      <PopoverContent
+        className='w-44 p-1'
+        align={align}
+        // Opened from the ActionBar overflow: focus returning to the "more" button must not close it.
+        onFocusOutside={(e) => anchorRef && e.preventDefault()}>
         {items.map(({ value, label, icon: Icon, color }) => (
           <button
             key={value ?? 'clear'}
@@ -329,24 +337,26 @@ export function ThreadTriageIndicators({
     return (
       <div className={cn('flex shrink-0 items-center gap-1', className)}>
         {indicators.map(({ key, icon: Icon, color, label }) => {
+          const badgeClassName = cn(TRIAGE_BADGE_STYLES, getOptionColor(color).badgeClasses)
           if (!onChange || key === 'spam') {
             return (
               <Tooltip key={key} content={label} delayDuration={300}>
-                <Badge variant={color} size='xs' className='h-5 px-1' aria-label={label}>
+                <span className={badgeClassName} aria-label={label}>
                   <Icon />
-                </Badge>
+                </span>
               </Tooltip>
             )
           }
           return (
             <DropdownMenu key={key}>
-              <Tooltip content={label} delayDuration={300}>
+              <Tooltip content={label} delayDuration={300} allowInteraction>
                 <DropdownMenuTrigger asChild>
-                  <Badge variant={color} size='xs' className='h-5 px-1 cursor-pointer' asChild>
-                    <button type='button' aria-label={`${label}, change`}>
-                      <Icon />
-                    </button>
-                  </Badge>
+                  <button
+                    type='button'
+                    className={cn(badgeClassName, 'cursor-pointer')}
+                    aria-label={`${label}, change`}>
+                    <Icon />
+                  </button>
                 </DropdownMenuTrigger>
               </Tooltip>
               <DropdownMenuContent align='start'>

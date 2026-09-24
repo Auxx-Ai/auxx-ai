@@ -98,7 +98,7 @@ export function RecordTagChip({ tagId, removeLabel, onRemove, size = 'sm' }: Rec
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <div className='cursor-pointer'>
+          <div className='flex cursor-pointer'>
             <TagBadge
               recordId={tagId}
               size={size}
