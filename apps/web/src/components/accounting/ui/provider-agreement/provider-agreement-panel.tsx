@@ -37,7 +37,7 @@ import {
 import { EntryBlockers } from '../ledger/entry-blockers'
 import { ProviderAgreementTable } from './provider-agreement-table'
 
-/** What `quickbooks-section.tsx` says about a disconnected org, said the same way. */
+/** What `accounting-provider-section.tsx` says about a disconnected org, said the same way. */
 const NOT_CONNECTED_COPY =
   'No accounting system is connected, so there is nothing to compare against. The books are kept ' +
   'here either way and nothing is blocked by this.'

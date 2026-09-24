@@ -2,18 +2,23 @@
 
 import { redirect } from 'next/navigation'
 
+interface AccountingHomeProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
 /**
- * The module root, forwarding to Closeout (81-one-accounting-shell.md §0.2).
- *
- * 🛑 This REVERSES the previous rule that `/app/accounting` "renders, never
- * redirects" for the sake of bookmarkability: a redirect forwards a bookmark
- * rather than breaking it, and `reports/page.tsx` and `settings/page.tsx` both
- * already redirect. Closeout had to become a real segment so every rail row
- * could be a plain link off one `baseUrl`, and a root that renders the month
- * would have made the rail half links and half buttons.
+ * The module root, forwarding to Closeout (81-one-accounting-shell.md §0.2). Keeps the query so
+ * `/app/accounting?setup=wizard` still reaches the wizard gate on the page it lands on.
  */
-function AccountingHome() {
-  redirect('/app/accounting/closeout')
+async function AccountingHome({ searchParams }: AccountingHomeProps) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(await searchParams)) {
+    for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+      query.append(key, item)
+    }
+  }
+  const search = query.toString()
+  redirect(search ? `/app/accounting/closeout?${search}` : '/app/accounting/closeout')
 }
 
 export default AccountingHome

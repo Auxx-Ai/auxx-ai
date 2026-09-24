@@ -20,14 +20,17 @@
 // the adapter on the server, which answers `not_connected`. That is consistent.
 // Do not reconcile the two, and do not build this hook on `resolveConnectedProvider`.
 
+import {
+  ACCOUNTING_PROVIDER_CATALOGUE,
+  type AccountingProviderCatalogueEntry,
+} from '@auxx/lib/accounting/providers/client'
 import type { AppConnection } from '~/components/apps/providers/apps-context'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 
-/** The QuickBooks app's installed-app slug. Same spelling the server's registry uses. */
-const QUICKBOOKS_APP_SLUG = 'quickbooks'
-
-/** Where a person installs or authorizes the app. The OAuth flow lives there, not here. */
-const QUICKBOOKS_APP_DETAIL_PATH = '/app/settings/apps/quickbooks'
+/** Where a person browses a provider's app. The OAuth flow lives in `AppSettingsDialog`. */
+export function accountingProviderAppPath(entry: AccountingProviderCatalogueEntry): string {
+  return `/app/settings/apps/${entry.appSlug}`
+}
 
 /**
  * What to call the provider when none is connected.
@@ -49,10 +52,10 @@ export interface AccountingProviderStatus {
   installed: boolean
   /** The app is installed AND has an authorized connection. */
   connected: boolean
-  /** 'QuickBooks Online' when connected, else null. */
+  /** The connected provider's catalogue label, e.g. 'QuickBooks Online', else null. */
   providerLabel: string | null
-  /** Where the user goes to install or authorize. */
-  appDetailPath: string
+  /** The installed provider's catalogue entry, or null when none is installed. */
+  providerEntry: AccountingProviderCatalogueEntry | null
   /**
    * The installed app's type, required by `AppSettingsDialog`'s settings queries.
    * `null` until the app is installed - which is exactly when there is no dialog
@@ -109,7 +112,16 @@ export interface AccountingProviderStatus {
 export function useAccountingProviderStatus(): AccountingProviderStatus {
   const { appInstallations, appConnections, isLoading, isLoadingConnections } = useAppsContext()
 
-  const installation = appInstallations.find((inst) => inst.app.slug === QUICKBOOKS_APP_SLUG)
+  // The first catalogue provider with an installed app; the ledger exports to one system at a time.
+  let providerEntry: AccountingProviderCatalogueEntry | null = null
+  let installation: (typeof appInstallations)[number] | undefined
+  for (const entry of ACCOUNTING_PROVIDER_CATALOGUE) {
+    installation = appInstallations.find((inst) => inst.app.slug === entry.appSlug)
+    if (installation) {
+      providerEntry = entry
+      break
+    }
+  }
 
   // A connection identifies its app by `appId`, not by slug - `listAppConnections`
   // matches the credential's `appId` against the App table and carries no slug - so
@@ -124,8 +136,8 @@ export function useAccountingProviderStatus(): AccountingProviderStatus {
   return {
     installed: Boolean(installation),
     connected,
-    providerLabel: connected ? 'QuickBooks Online' : null,
-    appDetailPath: QUICKBOOKS_APP_DETAIL_PATH,
+    providerLabel: connected ? (providerEntry?.label ?? null) : null,
+    providerEntry,
     installationType: installation?.installationType ?? null,
     connection,
     connectedTenantId: connection?.providerTenantId ?? null,

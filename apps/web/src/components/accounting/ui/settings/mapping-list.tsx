@@ -71,9 +71,10 @@ const BANK_ROLE = 'bank'
 /** The picker's filter and the create dialog's preset, so a new per-store A/R carries its subtype. */
 const SUBTYPE_PIN = ROLE_ACCOUNT_SUBTYPES
 
-/** QuickBooks invoices and payments name no receivable account, so a per-store A/R is journal-only (91 §4.3). */
-const STORE_RECEIVABLE_NOTE =
-  'QuickBooks invoices and payments use its default A/R; this account reaches it through journals only'
+/** Provider invoices and payments name no receivable account, so a per-store A/R is journal-only (91 §4.3). */
+function storeReceivableNote(providerName: string | undefined): string {
+  return `${providerName ?? 'The accounting system'} invoices and payments use its default A/R; this account reaches it through journals only`
+}
 
 /** One edit, in `ledger.saveMapping`'s own row shape - sent as a one-row batch on every change. */
 interface MappingEdit {
@@ -666,6 +667,7 @@ function StoreScopeRow({
 }) {
   const roleKey = role.role as AccountRole
   const linkTooltip = useLinkTooltip()
+  const providerName = useAccountingProviderStatus().providerEntry?.shortLabel
   const override = role.overrides.find((o) => o.sourceAccountId === source.id)
   const persisted: MappingAccountValue = override ? override.accountId : 'inherit'
   const key = storeKey(role.role, source.id)
@@ -685,7 +687,7 @@ function StoreScopeRow({
       inheritedAccountName={inheritedName}
       filterTypes={[ROLE_ACCOUNT_TYPES[roleKey]]}
       subtypePin={SUBTYPE_PIN[roleKey]}
-      note={roleKey === 'accounts_receivable' ? STORE_RECEIVABLE_NOTE : undefined}
+      note={roleKey === 'accounts_receivable' ? storeReceivableNote(providerName) : undefined}
       linked={override?.linked ?? null}
       linkAccountId={override?.accountId ?? null}
       linkTooltip={linkTooltip}

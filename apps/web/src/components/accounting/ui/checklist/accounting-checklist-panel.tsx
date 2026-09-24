@@ -65,7 +65,7 @@ export function AccountingChecklistPanel({ className }: AccountingChecklistPanel
         <p className='text-muted-foreground text-sm'>
           {allDone
             ? 'Everything is configured. The ledger is ready to close a month.'
-            : 'Auxx values your inventory activity and posts one journal entry a month. These are the things that have to be true before it can.'}
+            : 'Auxx posts an entry for each sale, payment and inventory movement as it happens, and exports it to your accounting system when one is connected. These are the things that have to be true before it can.'}
         </p>
       </div>
 

@@ -2,6 +2,7 @@
 
 'use client'
 
+import { ACCOUNTING_PROVIDER_KEYWORDS } from '@auxx/lib/accounting/providers/client'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import {
   BookOpenCheck,
@@ -65,12 +66,17 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         label: 'Connected system',
         slug: 'provider',
         icon: <Link2 />,
-        // 🔑 The LABEL is agnostic and the KEYWORDS are not, deliberately. The
-        // page must not name a vendor an org may never have installed; the term
-        // people actually type to find it is the vendor's name. Same trick the
-        // row below already plays.
+        // The label stays vendor-agnostic; the keywords carry the vendor names people type.
         description: 'Connect an accounting system, compare balances, and bring in entries',
-        keywords: ['quickbooks', 'xero', 'sync', 'reconcile', 'agreement', 'export', 'provider'],
+        keywords: [
+          'xero',
+          'sync',
+          'reconcile',
+          'agreement',
+          'export',
+          'provider',
+          ...ACCOUNTING_PROVIDER_KEYWORDS,
+        ],
       },
       {
         id: 'accounting-settings-opening',
@@ -78,7 +84,7 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         slug: 'opening',
         icon: <Scale />,
         description: 'The auxx and provider snapshots, and their reconciliation',
-        keywords: ['cutover', 'baseline', 'quickbooks'],
+        keywords: ['cutover', 'baseline', ...ACCOUNTING_PROVIDER_KEYWORDS],
       },
       {
         id: 'accounting-settings-accounts',

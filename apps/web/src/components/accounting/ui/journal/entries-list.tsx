@@ -141,10 +141,10 @@ export function EntriesList({
         <EmptySection
           className={INSET}
           icon={<FileText className='size-5' />}
-          title={periodKey ? 'No other entries this month' : 'No journal entries yet'}
+          title={periodKey ? 'No entries this month' : 'No journal entries yet'}
           description={
             periodKey
-              ? 'Postings and drafts dated in this month land here. The month-end entry is shown above, not in this list.'
+              ? 'Postings and drafts dated in this month land here.'
               : 'Raise one with New journal entry. It posts into whichever month its own date falls in.'
           }
         />

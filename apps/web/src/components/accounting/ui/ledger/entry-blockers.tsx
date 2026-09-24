@@ -142,7 +142,7 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     icon: CircleSlash,
     title: 'Nothing moved this month',
     guidance:
-      'Every inventory balance and activity total is unchanged, so there is no month-end entry to build. This is a skip, not a fault: an organization whose cutoff predates its first movement walks through a run of these.',
+      'Every inventory balance and activity total is unchanged, so there is nothing to close. This is a skip, not a fault: an organization whose cutoff predates its first movement walks through a run of these.',
     action: 'next-period',
     actionLabel: 'Go to the next month',
   },

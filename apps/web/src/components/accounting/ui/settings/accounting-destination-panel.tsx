@@ -11,11 +11,17 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import {
+  UNKNOWN_PROVIDER_LABEL,
+  useAccountingProviderStatus,
+} from '../../hooks/use-accounting-provider-status'
 
 /** Choose the company and first accounting date, or restore an existing company's authorization. */
 export function AccountingDestinationPanel() {
   const { can } = useAccess()
   const canControl = can(PermissionKey.ledgerControl)
+  const providerName =
+    useAccountingProviderStatus().providerEntry?.shortLabel ?? UNKNOWN_PROVIDER_LABEL
   const status = api.ledger.bookConnectionStatus.useQuery(undefined, { enabled: canControl })
   const utils = api.useUtils()
   const [editing, setEditing] = useState(false)
@@ -147,7 +153,7 @@ export function AccountingDestinationPanel() {
                 value={credentialId}
                 onChange={(value) => setCredentialId(String(value ?? ''))}
                 disabled={pending}
-                placeholder='Choose QuickBooks authorization'
+                placeholder={`Choose ${providerName} authorization`}
                 fieldOptions={{
                   options: credentials.map((credential) => ({
                     id: credential.id,
@@ -187,8 +193,8 @@ export function AccountingDestinationPanel() {
           </FieldPanel>
           {credentials.length === 0 && (
             <p className='text-muted-foreground text-sm'>
-              Authorize this QuickBooks company for the organization using Manage, then refresh this
-              section.
+              Authorize this {providerName} company for the organization using Manage, then refresh
+              this section.
             </p>
           )}
           <div className='flex flex-wrap justify-end gap-2'>

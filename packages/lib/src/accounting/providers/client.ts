@@ -6,6 +6,13 @@
 // NOTE: no 'use client' directive - server code imports this file too, and the
 // directive would turn every export into a client-reference proxy there.
 
+export {
+  ACCOUNTING_PROVIDER_CATALOGUE,
+  ACCOUNTING_PROVIDER_KEYWORDS,
+  type AccountingProviderCatalogueEntry,
+  getAccountingProviderByAppSlug,
+  getAccountingProviderEntry,
+} from './catalogue'
 export type { ProviderCompanySettings } from './company-settings'
 // ── plans/accounting/tasks/20 §8: do our books and theirs agree ─────────────
 // PURE. No database, no io, no clock - reaches only `errors`, `account-label`

@@ -3,22 +3,29 @@
 import { createScopedLogger } from '@auxx/logger'
 import { getCachedInstalledApps } from '../../cache'
 import { registerConnectAndGoTrigger } from '../connect-and-go/trigger'
-import { registerAccountingProvider, setConnectedProviderResolver } from './provider'
+import { ACCOUNTING_PROVIDER_CATALOGUE } from './catalogue'
+import {
+  type AccountingProviderFactory,
+  registerAccountingProvider,
+  setConnectedProviderResolver,
+} from './provider'
 
 const logger = createScopedLogger('accounting-providers')
 
 /**
- * The QuickBooks app's installed-app SLUG, which is also the id its
- * `AccountingProvider` adapter registers under
- * (`QUICKBOOKS_PROVIDER_ID` in `./quickbooks/quickbooks-accounting-provider.ts`).
- *
- * Spelled here rather than imported so the adapter stays out of this module's
- * static graph - the factory below is `() => Promise<AccountingProvider>`
- * precisely so an adapter can be lazily imported, and a static import of the
- * constant would pull the whole adapter in at boot and defeat that. The two
- * spellings must match; the adapter's own doc comment says so from its side.
+ * One lazy adapter factory per catalogue id. Lazy so an adapter stays out of this module's static
+ * graph; each id must match the `id` its adapter class declares.
  */
-const QUICKBOOKS = 'quickbooks'
+const ADAPTER_FACTORIES: Record<string, AccountingProviderFactory> = {
+  // The adapter reaches the app-runtime Lambda chain through `invoke-quickbooks-tool.ts`, and an
+  // org that has never connected QuickBooks must not pay for that graph on every boot.
+  quickbooks: async () => {
+    const { createQuickbooksAccountingProvider } = await import(
+      './quickbooks/quickbooks-accounting-provider'
+    )
+    return createQuickbooksAccountingProvider()
+  },
+}
 
 /**
  * Install the accounting-provider registry's two hooks: which adapters exist,
@@ -44,20 +51,15 @@ const QUICKBOOKS = 'quickbooks'
  * twice on a hot reload is harmless.
  */
 export function registerAccountingProviders(): void {
-  // Lazy import: the adapter reaches the app-runtime Lambda chain through
-  // `invoke-quickbooks-tool.ts`, and an org that has never connected QuickBooks
-  // must not pay for that graph on every boot.
-  registerAccountingProvider(QUICKBOOKS, async () => {
-    const { createQuickbooksAccountingProvider } = await import(
-      './quickbooks/quickbooks-accounting-provider'
-    )
-    return createQuickbooksAccountingProvider()
-  })
+  for (const entry of ACCOUNTING_PROVIDER_CATALOGUE) {
+    const factory = ADAPTER_FACTORIES[entry.id]
+    if (factory) registerAccountingProvider(entry.id, factory)
+  }
 
   setConnectedProviderResolver(resolveConnectedProvider)
   registerConnectAndGoTrigger()
 
-  logger.debug('Accounting providers registered', { providers: [QUICKBOOKS] })
+  logger.debug('Accounting providers registered', { providers: Object.keys(ADAPTER_FACTORIES) })
 }
 
 /**
@@ -86,7 +88,12 @@ export function registerAccountingProviders(): void {
 async function resolveConnectedProvider(organizationId: string): Promise<string | null> {
   try {
     const installed = await getCachedInstalledApps(organizationId)
-    return installed.some((app) => app.app.slug === QUICKBOOKS) ? QUICKBOOKS : null
+    const entry = ACCOUNTING_PROVIDER_CATALOGUE.find(
+      (candidate) =>
+        ADAPTER_FACTORIES[candidate.id] &&
+        installed.some((app) => app.app.slug === candidate.appSlug)
+    )
+    return entry?.id ?? null
   } catch (error) {
     logger.warn('Could not resolve the connected accounting provider - postings stay internal', {
       organizationId,

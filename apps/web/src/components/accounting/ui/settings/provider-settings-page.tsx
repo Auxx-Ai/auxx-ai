@@ -16,9 +16,7 @@
 // difference for that period should be zero). A grid would race them.
 //
 // 🛑 NO `FormSaveBar`. Nothing here is draft-backed. Every settings value on the
-// page is an uncontrolled `SettingsFieldRow` that autosaves straight through, and
-// `quickbooks-section.tsx` explains at length why `quickbooks.postJournalEntries`
-// must NOT be wired to a `scope: 'GENERAL'` draft.
+// page is an uncontrolled `SettingsFieldRow` that autosaves straight through.
 //
 // 🛑 This page is not a setup gate, and giving the provider its own page must
 // never be read as promoting it to one. Decision `P1` makes "nothing connected"
@@ -32,8 +30,8 @@ import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { AccountingProviderSection } from './accounting-provider-section'
 import { ProviderAgreementSettingsSection } from './provider-agreement-section'
-import { QuickbooksSettingsSection } from './quickbooks-section'
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -74,7 +72,7 @@ export function AccountingProviderSettingsPage() {
           {/* Install, connect, which company, the export switch - and the
               inbound sync, which moved onto this section's own panel (MK,
               2026-09-17; brief 55 §4.8). */}
-          <QuickbooksSettingsSection />
+          <AccountingProviderSection />
 
           {/* Directly under the provider it asks about: there is nothing to
               compare until something is connected, and the section itself says

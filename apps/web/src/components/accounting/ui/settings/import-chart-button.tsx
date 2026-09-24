@@ -4,9 +4,9 @@
 // One component, two doors onto the same mutation (brief 16 §2.2, §2.3):
 //
 // - `mode='wizard'` is the card the accounts page offers over an EMPTY chart,
-//   right next to the pack picker - "take the org's real QuickBooks chart as
+//   right next to the pack picker - "take the org's real provider chart as
 //   the source" instead of a template. Never asks mid-import (16 DECIDED):
-//   the role-bearing core accounts QuickBooks lacks are created uncoded and
+//   the role-bearing core accounts the provider lacks are created uncoded and
 //   unmapped, not held up for a person to answer a question first.
 // - `mode='chart'` is the Chart tab's toolbar action, only ever offered once a
 //   chart already exists and at least one account is confirmed against the
@@ -21,14 +21,19 @@ import type { ChartImportResult } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { CloudDownload } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
+import {
+  UNKNOWN_PROVIDER_LABEL,
+  useAccountingProviderStatus,
+} from '../../hooks/use-accounting-provider-status'
+import { AccountingProviderOptions } from '../provider-connect/accounting-provider-options'
 
 export interface ImportChartButtonProps {
   /** `'wizard'` renders the accounts-page card; `'chart'` renders the toolbar action. */
   mode: 'wizard' | 'chart'
-  /** `useAccountingProviderStatus().connected`. Neither mode calls the hook itself - the caller
-   *  already reads it for other reasons, and this keeps the component free of that dependency. */
+  /** `useAccountingProviderStatus().connected`, or the caller's own equivalent. */
   connected: boolean
   /**
    * Wizard mode's own `chartIsEmpty` gate, passed through rather than re-derived.
@@ -54,7 +59,7 @@ function summarise(result: ChartImportResult): string {
  * Import (or refresh from) the connected provider's chart of accounts.
  *
  * `refreshOnly` follows `mode` directly: the wizard's first import may create
- * the role-bearing core accounts QuickBooks lacks, the Chart tab's refresh
+ * the role-bearing core accounts the provider lacks, the Chart tab's refresh
  * never does (16 §2.2 step 5).
  */
 export function ImportChartButton({
@@ -64,6 +69,9 @@ export function ImportChartButton({
   onImported,
 }: ImportChartButtonProps) {
   const utils = api.useUtils()
+  const pathname = usePathname()
+  const providerEntry = useAccountingProviderStatus().providerEntry
+  const providerName = providerEntry?.shortLabel ?? UNKNOWN_PROVIDER_LABEL
   const [summary, setSummary] = useState<string | null>(null)
 
   const importChart = api.ledger.importChartFromProvider.useMutation({
@@ -78,7 +86,8 @@ export function ImportChartButton({
     },
     onError: (error) => {
       toastError({
-        title: mode === 'chart' ? 'Error refreshing from QuickBooks' : 'Error importing the chart',
+        title:
+          mode === 'chart' ? `Error refreshing from ${providerName}` : 'Error importing the chart',
         description: error.message,
       })
     },
@@ -97,7 +106,7 @@ export function ImportChartButton({
           loadingText='Refreshing...'
           onClick={() => importChart.mutate({ refreshOnly: true })}>
           <CloudDownload />
-          Refresh from QuickBooks
+          Refresh from {providerName}
         </Button>
         {summary && <span className='text-muted-foreground text-xs'>{summary}</span>}
       </div>
@@ -106,12 +115,14 @@ export function ImportChartButton({
 
   return (
     <div className='flex flex-col gap-2 rounded-xl border p-3'>
-      <p className='font-medium text-sm'>Import from QuickBooks</p>
+      <p className='font-medium text-sm'>
+        {connected ? `Import from ${providerName}` : 'Import from your accounting system'}
+      </p>
       {connected ? (
         <>
           <p className='text-muted-foreground text-xs'>
-            Bring in every account from your connected QuickBooks company. Accounts it lacks for a
-            posting role are added uncoded and unmapped, ready to map or fill in over there.
+            Bring in every account from your connected {providerName} company. Accounts it lacks for
+            a posting role are added uncoded and unmapped, ready to map or fill in over there.
           </p>
           <div>
             <Button
@@ -121,16 +132,19 @@ export function ImportChartButton({
               loadingText='Importing...'
               onClick={() => importChart.mutate({ refreshOnly: false })}>
               <CloudDownload />
-              Import from QuickBooks
+              Import from {providerName}
             </Button>
           </div>
           {summary && <p className='text-muted-foreground text-xs'>{summary}</p>}
         </>
       ) : (
-        <p className='text-muted-foreground text-xs'>
-          Connect QuickBooks on the previous page to import its chart instead of starting from the
-          default one.
-        </p>
+        <>
+          <p className='text-muted-foreground text-xs'>
+            Connect your accounting system to import its chart instead of starting from the default
+            one.
+          </p>
+          <AccountingProviderOptions returnTo={pathname || '/app/accounting'} />
+        </>
       )}
     </div>
   )
