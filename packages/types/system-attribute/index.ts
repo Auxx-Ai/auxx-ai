@@ -237,6 +237,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_sell_price',
   'part_markup',
   'part_taxable',
+  'part_channel_cost', // a sales channel's unit cost; seeds the first standard (106 D5)
 
   // ─── Vendor Part fields ────────────────────────────────────────
   'vendor_part_part',
@@ -972,6 +973,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_standard_cost', // the sum — the value every movement stamps
   'part_standard_cost_effective_at',
   'part_standard_cost_source', // provisional (a typed guess) | confirmed (off a receipt)
+  'part_standard_cost_origin', // which door wrote the standard (106 D9)
   // The two per-part absorption overrides (plans/money/tasks/22). The INPUTS
   // whose output is the frozen block above — NULL falls through to the org
   // rate, a stored 0 means "absorbs nothing", and unlike the frozen fields

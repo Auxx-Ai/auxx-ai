@@ -124,7 +124,9 @@ import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { readTrialBalance } from '@auxx/lib/accounting/reports'
 import { readShipmentDetail } from '@auxx/lib/accounting/sales'
 import {
+  isWorkItemCode,
   requestAccountingRecovery,
+  wakeReasonCode,
   wakeSources,
   wakeWorkItemGroup,
 } from '@auxx/lib/accounting/work-items'
@@ -2071,15 +2073,19 @@ export const ledgerRouter = createTRPCRouter({
 
   /**
    * The Outbox's Blocked tab: parked accounting work grouped by
-   * `(reasonCode, role, railId, glAccountId)`, newest write first (91 §4.6).
+   * `(reasonCode, role, railId, glAccountId)`, newest write first (91 §4.6). With
+   * `reasonCode`, one reason row's per-`externalRef` groups, largest first (106 §6.1).
    */
   listBlocked: permissionProcedure(PermissionKey.ledgerPost)
     .input(
-      outboxPage.extend({ categories: outboxCategories }).refine(validOutboxRange, outboxRangeError)
+      outboxPage
+        .extend({ categories: outboxCategories, reasonCode: z.string().min(1).optional() })
+        .refine(validOutboxRange, outboxRangeError)
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const result = await listBlockedWork(ctx.db, organizationId, {
+        reasonCode: input.reasonCode,
         limit: input.limit ?? OUTBOX_PAGE_SIZE,
         cursor: input.cursor,
         categories: input.categories,
@@ -2166,13 +2172,15 @@ export const ledgerRouter = createTRPCRouter({
     ),
 
   /**
-   * Retry all: make a Blocked group, or one source's rows, due now and return. The
-   * recovery job does the posting, as release does for the outbox (91 §4.6).
+   * Retry all: make a Blocked group, a whole reason (every row of the code, whatever the
+   * filters), or one source's rows due now and return. The recovery job does the
+   * posting, as release does for the outbox (91 §4.6).
    */
   retryBlockedGroup: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       z.union([
         z.object({ group: workItemGroup }),
+        z.object({ reasonCode: z.string().min(1) }),
         z.object({
           source: z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) }),
         }),
@@ -2180,13 +2188,16 @@ export const ledgerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const woken =
-        'group' in input
-          ? await wakeWorkItemGroup(ctx.db, organizationId, input.group)
-          : await wakeSources(ctx.db, organizationId, {
-              sourceKind: input.source.sourceKind,
-              sourceIds: [input.source.sourceId],
-            })
+      let woken: Awaited<ReturnType<typeof wakeSources>>
+      if ('group' in input) woken = await wakeWorkItemGroup(ctx.db, organizationId, input.group)
+      else if ('source' in input)
+        woken = await wakeSources(ctx.db, organizationId, {
+          sourceKind: input.source.sourceKind,
+          sourceIds: [input.source.sourceId],
+        })
+      else if (isWorkItemCode(input.reasonCode))
+        woken = await wakeReasonCode(ctx.db, organizationId, input.reasonCode)
+      else throw new BadRequestError(`Unknown work item code '${input.reasonCode}'`)
       if (woken.isErr()) throw woken.error
       if (woken.value > 0) await requestAccountingRecovery(organizationId)
       return { woken: woken.value }

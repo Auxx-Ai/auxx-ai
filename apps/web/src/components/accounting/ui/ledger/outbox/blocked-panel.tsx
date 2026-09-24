@@ -2,8 +2,8 @@
 
 'use client'
 
-// Accounting > Ledger > Outbox > the BLOCKED tab (91 §4.6): parked accounting work,
-// one row per (reasonCode, role, railId, glAccountId[, externalRef]), expandable to its items.
+// Accounting > Ledger > Outbox > the BLOCKED tab (91 §4.6). A `groupsByExternalRef` code
+// drills reason → ref → items; every other code is group → items (106 §6.1).
 
 import {
   type WorkItemSourceKind,
@@ -17,6 +17,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import {
+  Calculator,
   CircleAlert,
   CircleSlash,
   Clock,
@@ -37,41 +38,38 @@ import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
 import { MOVEMENT_PURPOSE_LABEL, WORK_SOURCE_LABEL } from '../type-labels'
+import {
+  type BlockedGroupKey as GroupKey,
+  groupId,
+  reasonId,
+  reasonTitle,
+  refTitle,
+  toGroupKey,
+} from './blocked-levels'
 import { OutboxRow } from './outbox-row'
 import { type OutboxFilters, outboxCategoryInput } from './outbox-toolbar'
 import { StandardCostDialog } from './standard-cost-dialog'
 
 type BlockedGroup = RouterOutputs['ledger']['listBlocked']['items'][number]
 type BlockedItem = RouterOutputs['ledger']['listBlockedItems']['items'][number]
-type GroupKey = Pick<BlockedGroup, 'reasonCode' | 'role' | 'railId' | 'glAccountId'> & {
-  externalRef?: string | null
+type BlockedQuery = {
+  search?: string
+  from?: string
+  to?: string
+  categories?: ReturnType<typeof outboxCategoryInput>
 }
 
 /** How often a group being retried re-reads while no realtime frame arrives. */
 const RETRYING_REFETCH_MS = 15_000
 
-const groupId = (group: GroupKey) =>
-  [
-    group.reasonCode,
-    group.role ?? '',
-    group.railId ?? '',
-    group.glAccountId ?? '',
-    group.externalRef ?? '',
-  ].join('|')
+/** A top-level row's id: the reason row's, or the group's. */
+const rowId = (group: BlockedGroup) =>
+  group.refCount !== null ? reasonId(group.reasonCode) : groupId(group)
 
-const toGroupKey = ({
-  reasonCode,
-  role,
-  railId,
-  glAccountId,
-  externalRef,
-}: GroupKey): GroupKey => ({
-  reasonCode,
-  role,
-  railId,
-  glAccountId,
-  externalRef: externalRef ?? null,
-})
+const retryingInterval = (data?: { pages: { items: BlockedGroup[] }[] }) =>
+  data?.pages.some((page) => page.items.some((group) => group.dueCount > 0))
+    ? RETRYING_REFETCH_MS
+    : false
 
 function sourceLabel(kind: string): string {
   return WORK_SOURCE_LABEL[kind as WorkItemSourceKind] ?? kind
@@ -112,6 +110,8 @@ interface BlockedPanelProps {
   /** The shipment open in the `?shipment=` drawer. */
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
+  /** The `STANDARD_COST_MISSING` reason row's "Set costs" (106 §6.2); no button without it. */
+  onSetCosts?: () => void
 }
 
 /** Every parked group, newest first, with Map and Retry all per row and over a selection. */
@@ -125,10 +125,11 @@ export function BlockedPanel({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
+  onSetCosts,
 }: BlockedPanelProps) {
   const utils = api.useUtils()
   const router = useRouter()
-  const query = {
+  const query: BlockedQuery = {
     search: filters.search || undefined,
     from: filters.from || undefined,
     to: filters.to || undefined,
@@ -137,16 +138,10 @@ export function BlockedPanel({
   const list = api.ledger.listBlocked.useInfiniteQuery(query, {
     getNextPageParam: (page) => page.nextCursor,
     // The net under a lost frame: re-read while anything is waiting on the sweep.
-    refetchInterval: (q) =>
-      q.state.data?.pages.some((page) => page.items.some((group) => group.dueCount > 0))
-        ? RETRYING_REFETCH_MS
-        : false,
+    refetchInterval: (q) => retryingInterval(q.state.data),
   })
   const groups = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
-  const groupsById = useMemo(
-    () => new Map(groups.map((group) => [groupId(group), group])),
-    [groups]
-  )
+  const groupsById = useMemo(() => new Map(groups.map((group) => [rowId(group), group])), [groups])
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set())
 
   const selectedIds = useSelectionIds()
@@ -154,7 +149,7 @@ export function BlockedPanel({
   const setItemIds = useListSelection((state) => state.setItemIds)
   const exitSelection = useListSelection((state) => state.exit)
   useEffect(() => {
-    setItemIds(groups.map(groupId))
+    setItemIds(groups.map(rowId))
   }, [groups, setItemIds])
 
   const refresh = useCallback(() => {
@@ -186,7 +181,10 @@ export function BlockedPanel({
     try {
       for (const id of ids) {
         const group = groupsById.get(id)
-        if (group) await retry.mutateAsync({ group: toGroupKey(group) })
+        if (!group) continue
+        await retry.mutateAsync(
+          group.refCount !== null ? { reasonCode: group.reasonCode } : { group: toGroupKey(group) }
+        )
       }
     } catch {
       // `onError` already said so.
@@ -203,12 +201,66 @@ export function BlockedPanel({
     })
   }
 
-  function renderGroup(group: BlockedGroup) {
+  // The row whose Retry all is in flight.
+  const busyId =
+    retry.isPending && retry.variables
+      ? 'group' in retry.variables
+        ? groupId(retry.variables.group)
+        : 'reasonCode' in retry.variables
+          ? reasonId(retry.variables.reasonCode)
+          : null
+      : null
+
+  function renderReason(group: BlockedGroup) {
+    const id = reasonId(group.reasonCode)
+    const busy = busyId === id
+    const retrying = group.dueCount > 0
+    const title = reasonTitle(group)
+    const noun =
+      group.sourceKinds.length === 1 ? sourceLabel(group.sourceKinds[0] ?? '') : 'Records'
+    return (
+      <OutboxRow
+        id={id}
+        icon={<SeverityIcon reasonCode={group.reasonCode} />}
+        date={formatAccountingDate(group.latestAt.toISOString(), bookTimeZone)}
+        typeLabel={noun}
+        title={title}
+        amount={retrying ? `Retrying ${group.dueCount}…` : ''}
+        expandable
+        isOpen={open.has(id)}
+        onToggleOpen={() => toggle(id)}
+        actions={
+          <>
+            {onSetCosts && group.reasonCode === 'STANDARD_COST_MISSING' && (
+              <TreeRowButton persistent tooltipText='Set costs' onClick={onSetCosts}>
+                <Calculator />
+              </TreeRowButton>
+            )}
+            <TreeRowButton
+              persistent
+              tooltipText={retrying ? `Retrying ${group.dueCount}…` : 'Retry all'}
+              disabled={busy || retrying}
+              onClick={() => retry.mutate({ reasonCode: group.reasonCode })}>
+              <RefreshCw className={busy || retrying ? 'animate-spin' : undefined} />
+            </TreeRowButton>
+          </>
+        }
+        selectLabel={`Select ${title}`}>
+        {open.has(id) && (
+          <BlockedReasonRefs
+            reasonCode={group.reasonCode}
+            query={query}
+            renderGroup={(ref) => renderGroup(ref, 1)}
+          />
+        )}
+      </OutboxRow>
+    )
+  }
+
+  function renderGroup(group: BlockedGroup, depth = 0) {
+    if (group.refCount !== null) return renderReason(group)
     const id = groupId(group)
-    const busy =
-      retry.isPending && !!retry.variables && 'group' in retry.variables
-        ? groupId(retry.variables.group) === id
-        : false
+    const busy = busyId === id
     const sentence = workItemSentence(group.reasonCode, group)
     const where = [group.railName, group.glAccountName].filter(Boolean).join(', ')
     const noun =
@@ -221,11 +273,18 @@ export function BlockedPanel({
     const retrying = group.dueCount > 0
     return (
       <OutboxRow
+        key={id}
         id={id}
-        icon={<SeverityIcon reasonCode={group.reasonCode} />}
+        depth={depth || undefined}
+        selectable={depth === 0}
+        icon={depth === 0 ? <SeverityIcon reasonCode={group.reasonCode} /> : undefined}
         date={formatAccountingDate(group.latestAt.toISOString(), bookTimeZone)}
         typeLabel={noun}
-        title={`${group.count} waiting${where ? ` (${where})` : ''}: ${sentence}`}
+        title={
+          depth > 0
+            ? refTitle(group)
+            : `${group.count} waiting${where ? ` (${where})` : ''}: ${sentence}`
+        }
         description={sentence}
         amount={retrying ? `Retrying ${group.dueCount}…` : ''}
         expandable
@@ -264,6 +323,7 @@ export function BlockedPanel({
         {open.has(id) && (
           <BlockedGroupItems
             group={toGroupKey(group)}
+            depth={depth + 1}
             query={query}
             bookTimeZone={bookTimeZone}
             activeMovementId={activeMovementId}
@@ -296,8 +356,8 @@ export function BlockedPanel({
             loading={list.isPending}
             skeletonCount={4}
             className='gap-px'
-            getKey={groupId}
-            renderRow={renderGroup}
+            getKey={rowId}
+            renderRow={(group) => renderGroup(group)}
           />
           <InfiniteListTail
             hasNextPage={list.hasNextPage}
@@ -344,14 +404,41 @@ export function BlockedPanel({
   )
 }
 
+interface BlockedReasonRefsProps {
+  reasonCode: string
+  query: BlockedQuery
+  renderGroup: (group: BlockedGroup) => React.ReactNode
+}
+
+/** One reason row expanded: its per-`externalRef` groups, most items first, paged. */
+function BlockedReasonRefs({ reasonCode, query, renderGroup }: BlockedReasonRefsProps) {
+  const list = api.ledger.listBlocked.useInfiniteQuery(
+    { ...query, reasonCode },
+    {
+      getNextPageParam: (page) => page.nextCursor,
+      refetchInterval: (q) => retryingInterval(q.state.data),
+    }
+  )
+  const groups = list.data?.pages.flatMap((page) => page.items) ?? []
+  return (
+    <>
+      {groups.map(renderGroup)}
+      {list.hasNextPage && (
+        <InfiniteListTail
+          hasNextPage={list.hasNextPage}
+          isFetchingNextPage={list.isFetchingNextPage}
+          fetchNextPage={list.fetchNextPage}
+          loadingLabel='Loading more...'
+        />
+      )}
+    </>
+  )
+}
+
 interface BlockedGroupItemsProps {
   group: GroupKey
-  query: {
-    search?: string
-    from?: string
-    to?: string
-    categories?: ReturnType<typeof outboxCategoryInput>
-  }
+  depth: number
+  query: BlockedQuery
   bookTimeZone: string
   activeMovementId: string | null
   onSelectMovement: (moneyTransactionId: string) => void
@@ -363,6 +450,7 @@ interface BlockedGroupItemsProps {
 /** One group's items, paged; a movement or a shipment opens its drawer. */
 function BlockedGroupItems({
   group,
+  depth,
   query,
   bookTimeZone,
   activeMovementId,
@@ -400,7 +488,7 @@ function BlockedGroupItems({
           <OutboxRow
             key={item.id}
             id={item.id}
-            depth={1}
+            depth={depth}
             selectable={false}
             date={formatAccountingDate(item.updatedAt.toISOString(), bookTimeZone)}
             typeLabel={typeLabel}

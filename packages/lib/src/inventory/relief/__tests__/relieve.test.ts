@@ -506,6 +506,60 @@ describe('relieveFulfillmentLines', () => {
     )
   })
 
+  it('103 §5a - a $0 standard relieves at $0, posts nothing and clears the park', async () => {
+    const db = fakeDb({
+      line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_1' }],
+      part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
+    })
+    h.standardCosts.set('part_1', 0)
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+      ok({
+        records: (inputs as Array<{ partInstanceId: string; quantity: number }>).map(
+          (input, index) => ({
+            movementId: `mv_${index}`,
+            recordId: `def_stock_movement:mv_${index}`,
+            partInstanceId: input.partInstanceId,
+            quantity: input.quantity,
+            unitCost: 0,
+            extendedCost: 0,
+            glAccount: 'inventory_finished_goods',
+            occurredAt: OCCURRED_AT,
+          })
+        ),
+        affectedPartIds: ['part_1'],
+      })
+    )
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [
+        {
+          fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
+          lineItemId: 'li_1',
+          quantity: 2,
+          quantityRelieved: null,
+          occurredAt: OCCURRED_AT,
+        },
+      ],
+    })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 0, movementIds: ['mv_0'] })
+    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    expect(inputs).toEqual([expect.objectContaining({ quantity: -2, unitCost: 0 })])
+    // A zero-amount entry is refused by the builder, so the document is never offered to it.
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_1'],
+      stage: 'relieve',
+    })
+  })
+
   it('107-D10 - a service line writes no movement, is counted, and never parks', async () => {
     const db = fakeDb({
       line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_svc' }],

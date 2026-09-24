@@ -69,6 +69,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_cost: { id: 'f_std', type: 'CURRENCY' },
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
   part_standard_cost_source: { id: 'f_std_src', type: 'SINGLE_SELECT' },
+  part_standard_cost_origin: { id: 'f_std_origin', type: 'SINGLE_SELECT' },
 }
 
 const SYSTEM_USER = 'user_system'
@@ -460,5 +461,108 @@ describe('ensureStandardCost: the doors it is called from', () => {
 
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+})
+
+describe('ensureStandardCost: a typed or channel cost (106 §4, §5)', () => {
+  function queueMotor(extra: ReturnType<typeof fv>[] = []) {
+    queueOrg([PARTS[0]!], [fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }), ...extra])
+  }
+
+  it('writes a manual cost as provisional, origin manual', async () => {
+    queueMotor()
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 1234 })
+
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
+    const writes = new Map(writesFor(MOTOR))
+    expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 1234 })
+    expect(writes.get(FIELD.part_standard_cost_source!.id)).toEqual({
+      type: 'option',
+      optionId: 'provisional',
+    })
+    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
+      type: 'option',
+      optionId: 'manual',
+    })
+  })
+
+  it('writes a channel cost as provisional, origin channel', async () => {
+    queueMotor()
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'channel', unitCost: 34696 })
+
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
+    const writes = new Map(writesFor(MOTOR))
+    expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 34696 })
+    expect(writes.get(FIELD.part_standard_cost_source!.id)).toEqual({
+      type: 'option',
+      optionId: 'provisional',
+    })
+    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
+      type: 'option',
+      optionId: 'channel',
+    })
+  })
+
+  it('accepts zero from a person and from a channel', async () => {
+    for (const kind of ['manual', 'channel'] as const) {
+      vi.clearAllMocks()
+      queueMotor()
+
+      const result = await ensureStandardCost(db, ORG, [MOTOR], { kind, unitCost: 0 })
+
+      expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
+      expect(new Map(writesFor(MOTOR)).get(FIELD.part_standard_cost!.id)).toEqual({
+        type: 'number',
+        value: 0,
+      })
+    }
+  })
+
+  it('refuses a negative cost from a person', async () => {
+    queueMotor()
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: -1 })
+
+    expect(result.isErr()).toBe(true)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+
+  it('never overwrites a standard with a channel cost', async () => {
+    queueMotor([fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 })])
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'channel', unitCost: 999 })
+
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+
+  it('freezes a different explicit cost per part from `unitCosts`', async () => {
+    queueOrg(
+      [PARTS[0]!, PARTS[2]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(TUBE, FIELD.part_kind!.id, { option: 'component' }),
+      ]
+    )
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR, TUBE], {
+      kind: 'channel',
+      unitCosts: new Map([
+        [MOTOR, 1000],
+        [TUBE, 250],
+      ]),
+    })
+
+    expect(result._unsafeUnwrap().writtenPartIds.sort()).toEqual([MOTOR, TUBE].sort())
+    expect(new Map(writesFor(MOTOR)).get(FIELD.part_standard_cost!.id)).toEqual({
+      type: 'number',
+      value: 1000,
+    })
+    expect(new Map(writesFor(TUBE)).get(FIELD.part_standard_cost!.id)).toEqual({
+      type: 'number',
+      value: 250,
+    })
   })
 })

@@ -39,6 +39,7 @@ import { formatAccountingDate } from '../format'
 import { BlockedPanel } from './blocked-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
+import { SetCostsDialog } from './set-costs-dialog'
 import { SummaryPanel } from './summary-panel'
 import { TransactionsPanel } from './transactions-panel'
 import { type OutboxRun, useOutboxRealtime } from './use-outbox-realtime'
@@ -128,6 +129,7 @@ function OutboxBody({
   )
 
   const live = useOutboxRealtime()
+  const [setCostsOpen, setSetCostsOpen] = useState(false)
 
   // One SQL read for every badge - no tab's count rides on its rows.
   const countsQuery = api.ledger.outboxCounts.useQuery()
@@ -236,6 +238,7 @@ function OutboxBody({
                 onSelectMovement={onSelectMovement}
                 activeShipmentId={activeShipmentId}
                 onSelectShipment={onSelectShipment}
+                onSetCosts={() => setSetCostsOpen(true)}
               />
             ) : view === 'transaction' ? (
               <TransactionsPanel
@@ -278,6 +281,11 @@ function OutboxBody({
           </div>
         )}
       </ScrollArea>
+      <SetCostsDialog
+        open={setCostsOpen}
+        onOpenChange={setSetCostsOpen}
+        currencyCode={currencyCode}
+      />
     </div>
   )
 }

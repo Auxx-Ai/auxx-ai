@@ -260,6 +260,9 @@ async function persistStandardCosts(
               },
             ]
           : []),
+        ...(fields.origin
+          ? [{ field: fields.origin, value: { type: 'option', optionId: 'roll' } as const }]
+          : []),
       ] satisfies PendingWrite[],
     }))
 

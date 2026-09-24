@@ -69,6 +69,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   part_standard_cost: { id: 'f_std', type: 'CURRENCY' },
   part_standard_cost_effective_at: { id: 'f_std_at', type: 'DATETIME' },
   part_standard_cost_source: { id: 'f_std_src', type: 'SINGLE_SELECT' },
+  part_standard_cost_origin: { id: 'f_std_origin', type: 'SINGLE_SELECT' },
   part_labor_cost_per_unit: { id: 'f_lab_rate', type: 'CURRENCY' },
   part_overhead_cost_per_unit: { id: 'f_ovh_rate', type: 'CURRENCY' },
 }
@@ -385,6 +386,7 @@ describe('rollStandardCost', () => {
       // Nobody has stamped a source and nothing here can invent one: a NULL
       // reads as "predates the field", which no receipt ever replaces.
       [FIELD.part_standard_cost_source!.id, null],
+      [FIELD.part_standard_cost_origin!.id, { type: 'option', optionId: 'roll' }],
     ])
   })
 
@@ -526,6 +528,7 @@ describe('rollStandardCost', () => {
       FIELD.part_standard_cost!.id,
       FIELD.part_standard_cost_effective_at!.id,
       FIELD.part_standard_cost_source!.id,
+      FIELD.part_standard_cost_origin!.id,
     ])
     const touched = h.setValueWithType.mock.calls.map(
       ([, params]) => (params as { fieldId: string }).fieldId
@@ -607,13 +610,8 @@ describe('readStandardCost', () => {
     expect(map.has(LIFT)).toBe(false)
   })
 
-  // 🛑 The invariant is POSITIVE, not non-null. `assertPlanIsPostable` documents
-  // this function as the reason it can exist ("a missing standard is a refusal,
-  // never a zero"), and its error says "Refusing to complete a build at zero
-  // cost" — but while a stored `0` stayed in the map, that check could not fire
-  // for the case it is named after, and `unitCost: 0` froze onto an append-only
-  // movement. A zero only ever arrives from a part that could not be valued.
-  it('omits a part rolled to ZERO, exactly like one never rolled at all', async () => {
+  // A zero with no origin predates 106 D9: a roll of an unpriced part, not a deliberate $0.
+  it('omits an origin-less ZERO, exactly like one never rolled at all', async () => {
     h.valueRows = [
       fv(MOTOR, FIELD.part_standard_cost!.id, { number: 0 }),
       fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 0 }),
@@ -626,6 +624,32 @@ describe('readStandardCost', () => {
     const map = result._unsafeUnwrap()
     expect(map.has(MOTOR)).toBe(false)
     expect(map.get(ASSEMBLY)?.standardCost).toBe(2200)
+  })
+
+  it('keeps a ZERO a door stamped an origin on, as a real $0 standard (103 §5a)', async () => {
+    h.valueRows = [
+      fv(MOTOR, FIELD.part_standard_cost!.id, { number: 0 }),
+      fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 0 }),
+      fv(MOTOR, FIELD.part_standard_cost_origin!.id, { option: 'manual' }),
+    ]
+
+    const result = await readStandardCost(db, ORG, [MOTOR])
+
+    expect(result._unsafeUnwrap().get(MOTOR)).toMatchObject({
+      standardCost: 0,
+      standardMaterialCost: 0,
+    })
+  })
+
+  it('omits a negative standard even with an origin', async () => {
+    h.valueRows = [
+      fv(MOTOR, FIELD.part_standard_cost!.id, { number: -5 }),
+      fv(MOTOR, FIELD.part_standard_cost_origin!.id, { option: 'manual' }),
+    ]
+
+    const result = await readStandardCost(db, ORG, [MOTOR])
+
+    expect(result._unsafeUnwrap().has(MOTOR)).toBe(false)
   })
 
   it('keeps a part standing at one minor unit, so the rule is > 0 and not a threshold', async () => {

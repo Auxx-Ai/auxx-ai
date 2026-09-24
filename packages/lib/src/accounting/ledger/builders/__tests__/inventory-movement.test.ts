@@ -164,6 +164,31 @@ describe('a receipt', () => {
     })
   })
 
+  it('103 §5a - a $0 standard receipt puts the whole price in ppv, with no inventory leg', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'receive',
+      movements: [
+        {
+          ...movement('sm_1', 0),
+          accrual: { grniMinor: 12_000, freightMinor: 1_000, dutiesMinor: 0 },
+        },
+      ],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [ACCOUNT_ROLES.GRNI]: -12_000,
+      [ACCOUNT_ROLES.FREIGHT_ACCRUAL]: -1_000,
+      [ACCOUNT_ROLES.PPV]: 13_000,
+    })
+  })
+
+  it('a $0 sale moves no money, so there is no entry', () => {
+    expect(
+      buildInventoryMovementEntry({ ...BASE, kind: 'sale', movements: [movement('sm_1', 0, FG)] })
+    ).toBeNull()
+  })
+
   it('emits no duties leg for an org with no tariffs', () => {
     const built = buildInventoryMovementEntry({
       ...BASE,
@@ -420,6 +445,19 @@ describe('a return to the vendor', () => {
       [RAW]: -3_200,
       [ACCOUNT_ROLES.GRNI]: 2_400,
       [ACCOUNT_ROLES.PPV]: 800,
+    })
+  })
+
+  it('103 §5a - a $0 standard returns the whole credit through ppv, with no inventory leg', () => {
+    const built = buildInventoryMovementEntry({
+      ...BASE,
+      kind: 'return_to_vendor',
+      movements: [{ ...movement('sm_1', 0), grniReliefMinor: 2_400 }],
+    })!
+
+    expect(legs(built.entry)).toEqual({
+      [ACCOUNT_ROLES.GRNI]: 2_400,
+      [ACCOUNT_ROLES.PPV]: -2_400,
     })
   })
 

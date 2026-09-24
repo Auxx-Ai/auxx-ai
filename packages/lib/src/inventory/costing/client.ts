@@ -64,6 +64,15 @@ export function absorbsConversionCost(partKind: PartKindValue): boolean {
   return BUILT_PART_KINDS.has(partKind)
 }
 
+/** The values `part_standard_cost_origin` can hold (106 D9). Mirrors `PartStandardCostOrigin`. */
+export type StandardCostOriginValue =
+  | 'supplier_price'
+  | 'opening_stock'
+  | 'receipt'
+  | 'manual'
+  | 'channel'
+  | 'roll'
+
 /** The two values `part_standard_cost_source` can hold (73 §6.4). */
 export type StandardCostSourceValue = 'provisional' | 'confirmed'
 
@@ -141,3 +150,12 @@ export {
   resolveTariffRate,
   selectWinningVendor,
 } from './vendor-cost'
+
+/** A stored standard a movement may be valued at: positive, or a zero some door stamped an origin on. */
+export function isUsableStoredStandard(
+  standardCost: number | null | undefined,
+  hasOrigin: boolean
+): standardCost is number {
+  if (standardCost == null || !Number.isFinite(standardCost) || standardCost < 0) return false
+  return standardCost > 0 || hasOrigin
+}

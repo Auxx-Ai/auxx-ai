@@ -276,7 +276,13 @@ export async function receivePurchaseOrder(
             // filtered together, or a dropped row would take its accrual's
             // credit legs with it and leave the entry plugging the gap to `ppv`.
             .map((record, i) => ({ record, accrual: accruals[i]! }))
-            .filter(({ record }) => record.glAccount && record.extendedCost !== 0)
+            // A $0-standard row still credits its accruals; the whole price lands in `ppv`.
+            .filter(
+              ({ record, accrual }) =>
+                record.glAccount &&
+                (record.extendedCost !== 0 ||
+                  accrual.grniMinor + accrual.freightMinor + accrual.dutiesMinor !== 0)
+            )
             .map(({ record, accrual }) => ({
               id: record.movementId,
               extendedCostMinor: record.extendedCost,

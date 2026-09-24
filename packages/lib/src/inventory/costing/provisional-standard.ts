@@ -199,6 +199,9 @@ async function writeConfirmedStandard(
     ...(fields.source
       ? [{ field: fields.source, value: { type: 'option' as const, optionId: 'confirmed' } }]
       : []),
+    ...(fields.origin
+      ? [{ field: fields.origin, value: { type: 'option' as const, optionId: 'receipt' } }]
+      : []),
   ]
 
   for (const write of writes) {

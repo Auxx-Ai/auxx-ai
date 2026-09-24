@@ -72,6 +72,18 @@ describe('the reason-code vocabulary', () => {
     )
   })
 
+  it("names a part by the group's current label over the name stamped on the row", () => {
+    expect(
+      workItemSentence('STANDARD_COST_MISSING', {
+        refLabel: 'The Attic-Lift',
+        detail: { partName: 'Old name' },
+      })
+    ).toMatch(/^The Attic-Lift has no standard cost/)
+    expect(workItemSentence('STANDARD_COST_MISSING', { detail: { partName: 'Old name' } })).toMatch(
+      /^Old name has no standard cost/
+    )
+  })
+
   it('waits on evidence, and blocks on a gateway or an ownership conflict', () => {
     expect(workItemSeverity('EVIDENCE_PENDING')).toBe('info')
     expect(workItemSeverity('GATEWAY_UNMAPPED')).toBe('error')

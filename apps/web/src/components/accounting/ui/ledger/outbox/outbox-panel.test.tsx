@@ -161,9 +161,11 @@ vi.mock('~/components/pickers/multi-select-picker', () => ({
 function Panel({
   filters,
   emptyTitle,
+  onSetCosts,
 }: {
   filters: { categories: string[]; search: string }
   emptyTitle?: string
+  onSetCosts?: () => void
 }) {
   const setItemIds = useListSelection((state) => state.setItemIds)
   const selected = useSelectionIds()
@@ -176,11 +178,20 @@ function Panel({
       <output data-testid='search'>{filters.search}</output>
       <output data-testid='selected'>{selected.length}</output>
       <output data-testid='empty-title'>{emptyTitle}</output>
+      {onSetCosts && (
+        <button type='button' onClick={onSetCosts}>
+          Set costs
+        </button>
+      )}
     </>
   )
 }
 vi.mock('./blocked-panel', () => ({
   BlockedPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
+}))
+vi.mock('./set-costs-dialog', () => ({
+  SetCostsDialog: ({ open }: { open: boolean }) =>
+    open ? <div role='dialog'>Set costs</div> : null,
 }))
 vi.mock('./summary-panel', () => ({
   SummaryPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
@@ -556,6 +567,13 @@ describe('Outbox view dropdown', () => {
   it('is not offered on Blocked', () => {
     render(<OutboxPanel {...props} tab='blocked' />)
     expect(screen.queryByRole('button', { name: /^View:/ })).toBeNull()
+  })
+
+  it('opens the Set costs grid from the Blocked reason row', () => {
+    render(<OutboxPanel {...props} tab='blocked' />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Set costs' }))
+    expect(screen.getByRole('dialog')).toBeDefined()
   })
 
   it('follows the export mode when the URL names no view', () => {

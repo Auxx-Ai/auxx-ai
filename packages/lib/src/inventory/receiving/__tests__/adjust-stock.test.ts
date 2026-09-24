@@ -267,6 +267,14 @@ describe('adjustStock — a part with no standard cost fails CLOSED', () => {
     expect(values.stock_movement_extended_cost).toBe(2) // round(0.4 x 5)
   })
 
+  // The reader has already dropped an origin-less legacy zero, so a 0 here is deliberate (103 §5a).
+  it('adjusts a part standing at a $0 standard at $0', async () => {
+    h.standardCost = 0
+    const values = await adjustAndRead({ partId: 'part_1', quantity: 5 })
+    expect(values.stock_movement_unit_cost).toBe(0)
+    expect(values.stock_movement_extended_cost).toBe(0)
+  })
+
   it('refuses a negative standard cost', async () => {
     h.standardCost = -100
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))

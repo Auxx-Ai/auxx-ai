@@ -37,15 +37,11 @@ export interface SalvageUnitCostInput {
 }
 
 /**
- * Is this a `part_standard_cost` a movement may be valued at?
- *
- * 🛑 Zero is not a standard. Task 26 fixed the roll, but the handoff records 83
- * parts already rolled to `0`, and a zero passes every guard that tests
- * `== null` - which is how a $0 unit cost gets frozen onto an append-only
- * ledger where nothing can restate it.
+ * Is this a `part_standard_cost` a movement may be valued at? Zero is (103 §5a); the legacy
+ * origin-less zero is already dropped by `readStandardCost`, the only source of these values.
  */
 export function isUsableStandardCost(cost: number | null | undefined): cost is number {
-  return typeof cost === 'number' && Number.isFinite(cost) && cost > 0
+  return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0
 }
 
 /** Is this a `salvagePercent` the writer accepts? `0 < pct <= 100`. */
@@ -61,7 +57,7 @@ export function isUsableSalvagePercent(pct: number): boolean {
  * 1. `pct <= 0` refuses. A worthless part is `scrap`, and scrap writes **no
  *    movement at all** (section 6.3) - not a zero-cost one.
  * 2. `pct > 100` refuses. Salvage is never worth more than new.
- * 3. A null, zero or negative standard cost refuses, **naming the part**.
+ * 3. A null or negative standard cost refuses, **naming the part**. A $0 standard salvages at $0.
  *
  * Refusing costs nothing here, which is why this diverges from task 50 section
  * 4.2's relief writer, which warns and never refuses: a refused relief loses a

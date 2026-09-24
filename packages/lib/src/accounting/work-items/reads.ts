@@ -35,7 +35,11 @@ export interface WorkItemFilters {
   bookTimeZone?: string
 }
 
-/** One Blocked-tab row: every item sharing a code and its wake keys (91 §4.6). */
+/**
+ * One Blocked-tab row: every item sharing a code and its wake keys (91 §4.6). For a code that
+ * `groupsByExternalRef`, the top level holds one reason row (`refCount` set, keys null) and the
+ * per-`externalRef` groups sit under it (106 §6.1).
+ */
 export interface WorkItemGroup extends WorkItemGroupKey {
   externalRef: string | null
   count: number
@@ -48,6 +52,10 @@ export interface WorkItemGroup extends WorkItemGroupKey {
   glAccountName: string | null
   /** The newest item's detail, only where the group is one `externalRef` (e.g. the part's name). */
   detail: Record<string, unknown> | null
+  /** Set on a reason row only: how many `externalRef` groups it holds. */
+  refCount: number | null
+  /** The `externalRef` named: the part's display name, or the handle itself. */
+  refLabel: string | null
 }
 
 /** One item inside a group, with enough of its source to render and open it. */
@@ -138,28 +146,62 @@ function groupWhere(group: WorkItemGroupKey): SQL {
   return sql`w."reasonCode" = ${group.reasonCode} AND ${same('role', group.role)} AND ${same('railId', group.railId)} AND ${same('glAccountId', group.glAccountId)}${ref}`
 }
 
-/** The Blocked tab: one row per `(reasonCode, role, railId, glAccountId[, externalRef])`, newest first. */
+/** Codes whose `externalRef` is a record id, so the ref level can join its display name. */
+const RECORD_REF_CODES: readonly WorkItemCode[] = ['STANDARD_COST_MISSING']
+
+function inCodes(codes: readonly string[]): SQL {
+  if (codes.length === 0) return sql`FALSE`
+  return sql`w."reasonCode" IN (${sql.join(
+    codes.map((code) => sql`${code}`),
+    sql`, `
+  )})`
+}
+
+/**
+ * The Blocked tab, paged. The top level is newest first: one row per
+ * `(reasonCode, role, railId, glAccountId)`, and one reason row per `groupsByExternalRef` code.
+ * With `reasonCode`, that reason's `externalRef` groups, most items first.
+ */
 export async function listWorkItemGroups(
   db: Db,
   organizationId: string,
-  options: WorkItemFilters & { limit: number; offset?: number }
+  options: WorkItemFilters & { limit: number; offset?: number; reasonCode?: string }
 ): Promise<Result<{ items: WorkItemGroup[]; nextOffset?: number }, Error>> {
   const offset = options.offset ?? 0
+  const refs = options.reasonCode !== undefined
+  const collapsed = refs ? sql`FALSE` : inCodes(EXTERNAL_REF_GROUPED_CODES)
+  const key = (column: string) =>
+    sql`CASE WHEN ${collapsed} THEN NULL ELSE w.${sql.identifier(column)} END`
+  const externalRef = refs ? groupExternalRef() : sql`NULL::text`
   const result = await db.execute(sql`
-    SELECT w."reasonCode", w."role", w."railId", w."glAccountId",
-      ${groupExternalRef()} AS "externalRef",
+    SELECT w."reasonCode", ${key('role')} AS "role", ${key('railId')} AS "railId",
+      ${key('glAccountId')} AS "glAccountId", ${externalRef} AS "externalRef",
       count(*)::int AS "count", max(w."updatedAt") AS "latestAt",
       (count(*) FILTER (WHERE w."nextAttemptAt" <= now()))::int AS "dueCount",
       array_agg(DISTINCT w."sourceKind") AS "sourceKinds",
-      max(rail."displayName") AS "railName", max(gl."displayName") AS "glAccountName",
+      CASE WHEN ${collapsed} THEN NULL ELSE max(rail."displayName") END AS "railName",
+      CASE WHEN ${collapsed} THEN NULL ELSE max(gl."displayName") END AS "glAccountName",
       (array_agg(w."detail" ORDER BY w."updatedAt" DESC)
-        FILTER (WHERE ${groupExternalRef()} IS NOT NULL))[1] AS "detail"
+        FILTER (WHERE ${externalRef} IS NOT NULL))[1] AS "detail",
+      CASE WHEN ${collapsed} THEN count(DISTINCT coalesce(w."externalRef", ''))::int END AS "refCount",
+      ${refs ? sql`COALESCE(max(ref."displayName"), max(${externalRef}))` : sql`NULL::text`} AS "refLabel"
     FROM ${fromItems()}
     LEFT JOIN "EntityInstance" rail ON rail."organizationId" = w."organizationId" AND rail."id" = w."railId"
     LEFT JOIN "EntityInstance" gl ON gl."organizationId" = w."organizationId" AND gl."id" = w."glAccountId"
-    WHERE ${whereItems(organizationId, options)}
-    GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId", 5
-    ORDER BY max(w."updatedAt") DESC, w."reasonCode" ASC, w."role" ASC NULLS FIRST, 5 ASC NULLS FIRST
+    ${
+      refs
+        ? sql`LEFT JOIN "EntityInstance" ref ON ${inCodes(RECORD_REF_CODES)}
+      AND ref."organizationId" = w."organizationId" AND ref."id" = w."externalRef"`
+        : sql``
+    }
+    WHERE ${whereItems(
+      organizationId,
+      options,
+      refs ? [sql`w."reasonCode" = ${options.reasonCode}`] : []
+    )}
+    GROUP BY w."reasonCode", 2, 3, 4, 5
+    ORDER BY ${refs ? sql`count(*) DESC,` : sql``} max(w."updatedAt") DESC, w."reasonCode" ASC,
+      2 ASC NULLS FIRST, 3 ASC NULLS FIRST, 4 ASC NULLS FIRST, 5 ASC NULLS FIRST
     LIMIT ${options.limit + 1} OFFSET ${offset}
   `)
   const rows = (
@@ -176,6 +218,8 @@ export async function listWorkItemGroups(
       railName: string | null
       glAccountName: string | null
       detail: Record<string, unknown> | null
+      refCount: number | null
+      refLabel: string | null
     }>
   ).map((row) => ({
     ...row,
@@ -185,6 +229,8 @@ export async function listWorkItemGroups(
     sourceKinds: Array.isArray(row.sourceKinds)
       ? row.sourceKinds
       : String(row.sourceKinds).replace(/[{}]/g, '').split(',').filter(Boolean),
+    refCount: row.refCount === null || row.refCount === undefined ? null : Number(row.refCount),
+    refLabel: row.refLabel ?? null,
   }))
   const more = rows.length > options.limit
   return ok({
@@ -279,7 +325,12 @@ export async function listWorkItemsForSource(
   return ok(rows)
 }
 
-/** The Blocked badge: groups a person can act on, skipped ones excluded. */
+/** A top-level group key column: null for a `groupsByExternalRef` code, which folds to one row. */
+function collapsedKey(column: string): SQL {
+  return sql`CASE WHEN ${inCodes(EXTERNAL_REF_GROUPED_CODES)} THEN NULL ELSE w.${sql.identifier(column)} END`
+}
+
+/** The Blocked badge: top-level rows a person can act on, skipped ones excluded. */
 export async function countWorkItemGroups(
   db: Db,
   organizationId: string
@@ -296,7 +347,8 @@ export async function countWorkItemGroups(
               )})`
             : sql``
         }
-      GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId", ${groupExternalRef()}
+      GROUP BY w."reasonCode", ${collapsedKey('role')}, ${collapsedKey('railId')},
+        ${collapsedKey('glAccountId')}
     ) groups
   `)
   return ok(Number((result.rows[0] as { total?: number } | undefined)?.total ?? 0))

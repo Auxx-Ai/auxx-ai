@@ -2,7 +2,8 @@
 //
 // `AccountingWorkItem` in real SQL (91 §4.6): one row per stuck thing, a repeat
 // counts on, success deletes, a fix wakes exactly what it unblocks, and the
-// Blocked tab groups by (reasonCode, role, railId, glAccountId[, externalRef]).
+// Blocked tab groups by (reasonCode, role, railId, glAccountId), with a reason
+// level above the per-`externalRef` groups (106 §6.1).
 
 import { schema } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
@@ -18,6 +19,7 @@ import {
 import { listDueWorkItems } from '../sweep'
 import {
   wakePeriodLocked,
+  wakeReasonCode,
   wakeRoleUnmapped,
   wakeSources,
   wakeTotalsNotStamped,
@@ -27,6 +29,7 @@ import { deleteWorkItem, deleteWorkItemsForSources, upsertWorkItem } from '../wr
 
 const db = () => getTestDb()
 let organizationId: string
+let ownerId: string
 
 async function park(input: Parameters<typeof upsertWorkItem>[2]) {
   expect((await upsertWorkItem(db(), organizationId, input)).isOk()).toBe(true)
@@ -56,7 +59,9 @@ const unmapped = (sourceId: string, railId: string | null = 'pg_1') =>
   })
 
 beforeEach(async () => {
-  organizationId = (await createTestOrganization()).id
+  const org = await createTestOrganization()
+  organizationId = org.id
+  ownerId = org.ownerId
 })
 
 describe('write', () => {
@@ -249,7 +254,7 @@ describe('reads', () => {
     ).toEqual(['mt_1', 'mt_2'])
   })
 
-  it('splits a gateway row per handle, and never an order-keyed code per order', async () => {
+  it('folds a gateway reason into one row, split per handle under it; an order code never splits', async () => {
     const gateway = (sourceId: string, externalRef: string) =>
       park({
         sourceKind: 'money_transaction',
@@ -273,18 +278,31 @@ describe('reads', () => {
         externalRef,
       })
 
-    const groups = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
-    const gateways = groups.items.filter((group) => group.reasonCode === 'GATEWAY_UNMAPPED')
-    expect(gateways.map((group) => [group.externalRef, group.count]).sort()).toEqual([
-      ['Affirm', 1],
-      ['authorize.net', 2],
-    ])
-    const orders = groups.items.filter((group) => group.reasonCode === 'ORDER_NOT_FOUND')
+    const top = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
+    const reasons = top.items.filter((group) => group.reasonCode === 'GATEWAY_UNMAPPED')
+    expect(reasons).toHaveLength(1)
+    expect(reasons[0]).toMatchObject({ count: 3, refCount: 2, externalRef: null, role: null })
+    const orders = top.items.filter((group) => group.reasonCode === 'ORDER_NOT_FOUND')
     expect(orders).toHaveLength(1)
-    expect(orders[0]).toMatchObject({ count: 2, externalRef: null })
-    expect((await countWorkItemGroups(db(), organizationId))._unsafeUnwrap()).toBe(3)
+    expect(orders[0]).toMatchObject({ count: 2, externalRef: null, refCount: null })
+    // The badge counts the top level: one gateway reason row, one order group.
+    expect((await countWorkItemGroups(db(), organizationId))._unsafeUnwrap()).toBe(2)
+    expect(top.items).toHaveLength(2)
 
-    const authorize = gateways.find((group) => group.externalRef === 'authorize.net')!
+    const gateways = (
+      await listWorkItemGroups(db(), organizationId, {
+        limit: 10,
+        reasonCode: 'GATEWAY_UNMAPPED',
+      })
+    )._unsafeUnwrap()
+    // Largest first; the handle is its own label.
+    expect(gateways.items.map((group) => [group.externalRef, group.count, group.refLabel])).toEqual(
+      [
+        ['authorize.net', 2, 'authorize.net'],
+        ['Affirm', 1, 'Affirm'],
+      ]
+    )
+    const authorize = gateways.items[0]!
     expect(workItemSentence(authorize.reasonCode, authorize)).toContain("'authorize.net'")
 
     const items = (
@@ -293,6 +311,78 @@ describe('reads', () => {
     expect(items.items.map((item) => item.sourceId).sort()).toEqual(['mt_1', 'mt_2'])
     // Retry on one handle leaves the other handle's rows on their own schedule.
     expect((await wakeWorkItemGroup(db(), organizationId, authorize))._unsafeUnwrap()).toBe(2)
+    expect((await wakeReasonCode(db(), organizationId, 'GATEWAY_UNMAPPED'))._unsafeUnwrap()).toBe(3)
+  })
+
+  it('names the part under a standard-cost reason, and pages the parts', async () => {
+    const [def] = await db()
+      .insert(schema.EntityDefinition)
+      .values({
+        organizationId,
+        apiSlug: 'parts',
+        entityType: 'part',
+        singular: 'Part',
+        plural: 'Parts',
+        updatedAt: new Date(),
+      })
+      .returning({ id: schema.EntityDefinition.id })
+    const part = async (displayName: string) => {
+      const [row] = await db()
+        .insert(schema.EntityInstance)
+        .values({
+          organizationId,
+          entityDefinitionId: def!.id,
+          displayName,
+          createdById: ownerId,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.EntityInstance.id })
+      return row!.id
+    }
+    const lift = await part('The Attic-Lift')
+    const cable = await part('Cable Extension')
+    const unpriced = (sourceId: string, partId: string) =>
+      park({
+        sourceKind: 'fulfillment',
+        sourceId,
+        stage: 'relieve',
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: partId,
+      })
+    await unpriced('ful_1', lift)
+    await unpriced('ful_2', lift)
+    await unpriced('ful_3', cable)
+
+    const top = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
+    expect(top.items).toHaveLength(1)
+    expect(top.items[0]).toMatchObject({
+      reasonCode: 'STANDARD_COST_MISSING',
+      count: 3,
+      refCount: 2,
+    })
+
+    const first = (
+      await listWorkItemGroups(db(), organizationId, {
+        limit: 1,
+        reasonCode: 'STANDARD_COST_MISSING',
+      })
+    )._unsafeUnwrap()
+    expect(first.items.map((group) => [group.refLabel, group.count])).toEqual([
+      ['The Attic-Lift', 2],
+    ])
+    expect(first.nextOffset).toBe(1)
+    expect(workItemSentence('STANDARD_COST_MISSING', first.items[0])).toMatch(
+      /^The Attic-Lift has no standard cost/
+    )
+    const second = (
+      await listWorkItemGroups(db(), organizationId, {
+        limit: 1,
+        offset: 1,
+        reasonCode: 'STANDARD_COST_MISSING',
+      })
+    )._unsafeUnwrap()
+    expect(second.items.map((group) => group.refLabel)).toEqual(['Cable Extension'])
+    expect(second.nextOffset).toBeUndefined()
   })
 
   it('counts the woken rows of a group as due', async () => {

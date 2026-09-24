@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   invalidated: [] as string[],
   dialog: null as { open: boolean; initialHandle?: string } | null,
   items: [] as Record<string, unknown>[],
+  refs: [] as Record<string, unknown>[],
+  retried: [] as unknown[],
 }))
 
 vi.mock('~/components/money/ui/provider-payment-notice', () => ({
@@ -86,8 +88,12 @@ vi.mock('~/trpc/react', () => {
       }),
       ledger: {
         listBlocked: {
-          useInfiniteQuery: () => ({
-            data: { pages: [{ items: state.groups, nextCursor: undefined }] },
+          useInfiniteQuery: (input: { reasonCode?: string }) => ({
+            data: {
+              pages: [
+                { items: input.reasonCode ? state.refs : state.groups, nextCursor: undefined },
+              ],
+            },
             isPending: false,
             hasNextPage: false,
             isFetchingNextPage: false,
@@ -102,7 +108,11 @@ vi.mock('~/trpc/react', () => {
           }),
         },
         retryBlockedGroup: {
-          useMutation: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+          useMutation: () => ({
+            mutate: (input: unknown) => state.retried.push(input),
+            mutateAsync: vi.fn(),
+            isPending: false,
+          }),
         },
       },
     },
@@ -124,11 +134,13 @@ function group(overrides: Record<string, unknown> = {}) {
     latestAt: new Date('2026-09-22T12:00:00Z'),
     railName: null,
     glAccountName: null,
+    refCount: null,
+    refLabel: null,
     ...overrides,
   }
 }
 
-function renderPanel() {
+function renderPanel(props: { onSetCosts?: () => void } = {}) {
   return render(
     <TooltipProvider>
       <ListSelectionProvider>
@@ -140,6 +152,7 @@ function renderPanel() {
           onSelectMovement={vi.fn()}
           activeShipmentId={null}
           onSelectShipment={vi.fn()}
+          {...props}
         />
       </ListSelectionProvider>
     </TooltipProvider>
@@ -152,20 +165,72 @@ beforeEach(() => {
   state.invalidated = []
   state.dialog = null
   state.items = []
+  state.refs = []
+  state.retried = []
 })
 
+/** A top-level reason row for a `groupsByExternalRef` code. */
+function reason(overrides: Record<string, unknown> = {}) {
+  return group({ externalRef: null, refCount: 2, ...overrides })
+}
+
 describe('BlockedPanel', () => {
-  it('names the handle, and Map opens the add dialog in place seeded with it', () => {
-    state.groups = [group()]
+  it('folds a grouped code into a reason row; its handle row maps in place', () => {
+    state.groups = [reason({ count: 74, refCount: 3 })]
+    state.refs = [group({ refLabel: 'authorize.net' })]
     renderPanel()
-    expect(screen.getByText(/Gateway handle 'authorize.net'/)).toBeTruthy()
+    expect(screen.getByText('Gateway not mapped · 3 handles · 74 payments')).toBeTruthy()
+    expect(screen.queryByLabelText('Map it')).toBeNull()
+    fireEvent.click(screen.getByLabelText('Expand'))
+    expect(screen.getByText('authorize.net · 55 payments')).toBeTruthy()
     expect(state.dialog?.open).toBe(false)
     fireEvent.click(screen.getByLabelText('Map it'))
     expect(state.dialog).toEqual({ open: true, initialHandle: 'authorize.net' })
   })
 
+  it('retries a whole reason, or one part under it', () => {
+    state.groups = [
+      reason({ reasonCode: 'STANDARD_COST_MISSING', sourceKinds: ['fulfillment'], count: 1481 }),
+    ]
+    state.refs = [
+      group({
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: 'part_1',
+        refLabel: 'The Attic-Lift',
+        count: 446,
+        sourceKinds: ['fulfillment'],
+      }),
+    ]
+    renderPanel()
+    fireEvent.click(screen.getAllByLabelText('Retry all')[0]!)
+    expect(state.retried).toEqual([{ reasonCode: 'STANDARD_COST_MISSING' }])
+    fireEvent.click(screen.getByLabelText('Expand'))
+    expect(screen.getByText('The Attic-Lift · 446 shipments')).toBeTruthy()
+    fireEvent.click(screen.getAllByLabelText('Retry all')[1]!)
+    expect(state.retried[1]).toEqual({
+      group: {
+        reasonCode: 'STANDARD_COST_MISSING',
+        role: null,
+        railId: null,
+        glAccountId: null,
+        externalRef: 'part_1',
+      },
+    })
+  })
+
+  it('offers Set costs on the standard-cost reason only when a handler is given', () => {
+    state.groups = [reason({ reasonCode: 'STANDARD_COST_MISSING' })]
+    const { unmount } = renderPanel()
+    expect(screen.queryByLabelText('Set costs')).toBeNull()
+    unmount()
+    const onSetCosts = vi.fn()
+    renderPanel({ onSetCosts })
+    fireEvent.click(screen.getByLabelText('Set costs'))
+    expect(onSetCosts).toHaveBeenCalledOnce()
+  })
+
   it('shows a group being retried in place of Retry all', () => {
-    state.groups = [group({ dueCount: 3 })]
+    state.groups = [group({ reasonCode: 'ROLE_UNMAPPED', role: 'clearing', dueCount: 3 })]
     renderPanel()
     expect(screen.getAllByText('Retrying 3…').length).toBeGreaterThan(0)
     expect(screen.queryByLabelText('Retry all')).toBeNull()
@@ -211,14 +276,14 @@ describe('BlockedPanel', () => {
   })
 
   it('offers no provider link on an item without one', () => {
-    state.groups = [group()]
+    state.groups = [group({ reasonCode: 'ROLE_UNMAPPED', role: 'clearing', externalRef: null })]
     state.items = [
       {
         id: 'wi-2',
         sourceKind: 'money_transaction',
         sourceId: 'mt-1',
-        reasonCode: 'GATEWAY_UNMAPPED',
-        externalRef: 'authorize.net',
+        reasonCode: 'ROLE_UNMAPPED',
+        externalRef: null,
         detail: null,
         label: 'Acme',
         recordDefinitionId: null,

@@ -104,8 +104,9 @@ export async function planVendorCreditStockReturns(
     if (kind.isErr()) throw kind.error
     // A service holds no stock, so there is nothing to send back; the credit still posts (107-D10).
     if (isServicePartKind(kind.value)) continue
-    const standardUnitCost = standards.value.get(partInstanceId)?.standardCost ?? 0
-    if (!standardUnitCost || standardUnitCost <= 0) {
+    // A $0 standard returns at $0: the credited price then lands wholly in `ppv` (103 §5a).
+    const standardUnitCost = standards.value.get(partInstanceId)?.standardCost
+    if (standardUnitCost == null) {
       refusals.push(
         `${label(line, index)} has no standard cost on its part, so the return cannot be valued`
       )
@@ -201,7 +202,11 @@ export async function writeVendorCreditStockReturns(
   // leave the entry plugging the gap to `ppv`.
   const movements: InventoryMovementLine[] = records
     .map((record, index) => ({ record, item: returns[index]! }))
-    .filter(({ record }) => record.glAccount && record.extendedCost !== 0)
+    // A $0-standard row still carries its `grni` debit, so it stays unless both are zero.
+    .filter(
+      ({ record, item }) =>
+        record.glAccount && (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
+    )
     .map(({ record, item }) => ({
       id: record.movementId,
       extendedCostMinor: record.extendedCost,

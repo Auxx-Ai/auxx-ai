@@ -474,15 +474,14 @@ describe('writeSalvageMovements - the refusals', () => {
     expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
-  it('refuses a part whose standard cost is ZERO - a zero passes every `== null` guard', async () => {
+  it('salvages a part whose standard cost is $0 at $0 (103 §5a)', async () => {
     h.standardCosts = new Map([['part_mast', 0]])
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     const result = await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
 
-    expect(result.isErr()).toBe(true)
-    expect((result._unsafeUnwrapErr() as { reason?: string }).reason).toBe('missing_standard_cost')
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(result.isOk()).toBe(true)
+    expect(writtenInputs()[0]?.unitCost).toBe(0)
   })
 
   it('invariant 2 - refuses when sibling rows exceed what the parent can hold', async () => {

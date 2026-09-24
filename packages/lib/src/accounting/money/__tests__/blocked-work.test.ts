@@ -53,6 +53,11 @@ describe('listBlockedWork', () => {
     expect(h.groupCalls[0]).toMatchObject({ categories: ['fulfillment'] })
   })
 
+  it('passes a reason code through, to list the groups under it', async () => {
+    await listBlockedWork(db, 'org', { limit: 20, reasonCode: 'STANDARD_COST_MISSING' })
+    expect(h.groupCalls[0]).toMatchObject({ reasonCode: 'STANDARD_COST_MISSING', offset: 0 })
+  })
+
   it('reads nothing when every chosen category can never park', async () => {
     const page = await listBlockedWork(db, 'org', { limit: 20, categories: ['journal'] })
     expect(page._unsafeUnwrap()).toEqual({ items: [] })

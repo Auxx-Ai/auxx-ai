@@ -10,7 +10,7 @@
  * The traps each get their own case: a `good` node nested under a `good` one,
  * a split that invents a unit, sixteen bolts legitimately under four masts
  * (the reading of invariant 2 that would refuse every real tree), a standard
- * cost of exactly zero, and an uncosted part that is shadowed and therefore
+ * cost of exactly zero (accepted since 103 §5a), and an uncosted part that is shadowed and therefore
  * never salvaged at all.
  */
 
@@ -320,13 +320,9 @@ describe('findMissingStandardCosts', () => {
     expect(missing[0]?.message).toContain('Mast')
   })
 
-  it('refuses a standard cost of exactly zero', () => {
-    // The trap: a zero passes every guard that tests `== null`, and freezes
-    // $0 onto an append-only ledger.
+  it('accepts a $0 standard (103 §5a)', () => {
     const roots = build(DEEP, [row('r1', 'mast', { status: 'good' })])
-    const missing = findMissingStandardCosts({ roots, standardCosts: costs([['mast', 0]]) })
-    expect(missing).toHaveLength(1)
-    expect(missing[0]?.standardCost).toBe(0)
+    expect(findMissingStandardCosts({ roots, standardCosts: costs([['mast', 0]]) })).toEqual([])
   })
 
   it('refuses an explicit null and a negative cost', () => {

@@ -84,6 +84,8 @@ export type {
 export {
   CostSource,
   PartKind,
+  PartStandardCostOrigin,
+  PartStandardCostSource,
   ProductStatus,
   StockMovementType,
   StockStatus,
