@@ -43,6 +43,9 @@ export interface ProviderOpeningFillOutcome {
  *   targeted import. Nothing is saved on a refusal.
  * @throws {ConflictError} once the ledger holds a standing entry.
  */
+/** `details.reason` when the provider has no data at the cutover: its books start after it. */
+export const NO_PROVIDER_BALANCES = 'no_provider_balances'
+
 export async function fillOpeningTrialBalanceFromProvider(
   db: Database,
   organizationId: string,
@@ -70,7 +73,7 @@ export async function fillOpeningTrialBalanceFromProvider(
       if (!sheet.hasData || sheet.rows.length === 0) {
         throw new UnprocessableEntityError(
           'The connected accounting system reports no balances at the cutover.',
-          { organizationId, providerId: provider.id }
+          { organizationId, providerId: provider.id, reason: NO_PROVIDER_BALANCES }
         )
       }
       if (sheet.currency !== view.value.currency) {

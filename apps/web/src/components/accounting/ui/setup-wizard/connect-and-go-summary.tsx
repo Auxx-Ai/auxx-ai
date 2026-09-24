@@ -3,22 +3,23 @@
 
 import type {
   ConnectAndGoCompleteReport,
+  ConnectAndGoCompleteStep,
   ConnectAndGoPrepareReport,
   ProviderAccountToCreate,
 } from '@auxx/lib/accounting/connect-and-go/client'
-import { FISCAL_YEAR_START_MONTH_OPTIONS } from '@auxx/lib/accounting/reports/client'
+import { PhaseList } from '@auxx/ui/components/phase-list'
 import { Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { formatCurrency, pluralize } from '@auxx/utils'
-import { AlertTriangle, Check, ListChecks, ListPlus, Minus, Sparkles } from 'lucide-react'
+import { ListChecks, ListPlus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 function stepLabels(
   providerLabel: string
 ): Record<ConnectAndGoCompleteReport['steps'][number]['step'], string> {
   return {
-    cutover: 'Cutover saved',
+    cutover: 'Book settings saved',
     roles: 'Accounts chosen',
     rail_banks: 'Rail banks chosen',
     bank_accounts: 'Bank accounts added',
@@ -54,42 +55,30 @@ export function ConnectAndGoDoneList({
     if (result.coreCreated.length > 0)
       lines.push(`Added ${result.coreCreated.length} accounts ${providerLabel} has no match for`)
   }
-  if (report.fiscalYearStartMonthWritten)
-    lines.push(
-      `Fiscal year starts in ${FISCAL_YEAR_START_MONTH_OPTIONS[report.fiscalYearStartMonthWritten - 1]?.label}`
-    )
-  if (report.bookTimeZoneWritten && report.bookTimeZone)
-    lines.push(`Books kept in ${report.bookTimeZone}`)
   if (report.rolesMinted.length > 0)
     lines.push(`Added ${report.rolesMinted.map((row) => row.name).join(', ')} for what Auxx posts`)
   const railsCreated = report.rails?.created ?? []
   if (railsCreated.length > 0)
     lines.push(`Set up payment rails: ${railsCreated.map((rail) => rail.name).join(', ')}`)
 
+  const failures = report.failures.map((failure) => failure.message)
+
   return (
     <Section
       title={`Done from ${providerLabel}`}
       icon={<Sparkles className='size-4 text-muted-foreground' />}
       collapsible={false}>
-      <ul className='flex flex-col gap-1'>
-        {lines.length === 0 && (
-          <li className='text-muted-foreground text-sm'>Everything was already in place.</li>
-        )}
-        {lines.map((line) => (
-          <li key={line} className='flex items-start gap-1.5 text-sm'>
-            <Check className='mt-0.5 size-3.5 shrink-0 text-green-600' />
-            <span>{line}</span>
-          </li>
-        ))}
-        {report.failures.map((failure) => (
-          <li
-            key={`${failure.step}:${failure.message}`}
-            className='flex items-start gap-1.5 text-muted-foreground text-sm'>
-            <AlertTriangle className='mt-0.5 size-3.5 shrink-0 text-amber-500' />
-            <span>{failure.message}</span>
-          </li>
-        ))}
-      </ul>
+      {lines.length === 0 && report.failures.length === 0 ? (
+        <p className='text-muted-foreground text-sm'>Everything was already in place.</p>
+      ) : (
+        <PhaseList
+          phases={[...lines, ...failures]}
+          labels={Object.fromEntries([...lines, ...failures].map((line) => [line, line]))}
+          statuses={Object.fromEntries(failures.map((line) => [line, 'failed' as const]))}
+          current={null}
+          done
+        />
+      )}
     </Section>
   )
 }
@@ -112,23 +101,19 @@ export function ConnectAndGoStepList({
       icon={<ListChecks className='size-4 text-muted-foreground' />}
       collapsible={false}>
       <div className='flex flex-col gap-2'>
-        <ul className='flex flex-col gap-1'>
-          {report.steps.map((step) => (
-            <li key={step.step} className='flex items-start gap-1.5 text-sm'>
-              {step.status === 'done' ? (
-                <Check className='mt-0.5 size-3.5 shrink-0 text-green-600' />
-              ) : step.status === 'skipped' ? (
-                <Minus className='mt-0.5 size-3.5 shrink-0 text-muted-foreground' />
-              ) : (
-                <AlertTriangle className='mt-0.5 size-3.5 shrink-0 text-amber-500' />
-              )}
-              <span className={step.status === 'done' ? '' : 'text-muted-foreground'}>
-                {labels[step.step]}
-                {step.detail ? ` — ${step.detail}` : ''}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <PhaseList
+          phases={report.steps.map((step) => step.step)}
+          labels={
+            Object.fromEntries(
+              report.steps.map((step) => [
+                step.step,
+                `${labels[step.step]}${step.detail ? `: ${step.detail}` : ''}`,
+              ])
+            ) as Record<ConnectAndGoCompleteStep, string>
+          }
+          statuses={Object.fromEntries(report.steps.map((step) => [step.step, step.status]))}
+          current={null}
+        />
         {adjustment && adjustment.differenceMinor !== 0 && (
           <p className='text-muted-foreground text-xs'>
             Your parts on hand differ from the inventory {providerLabel} reported at the cutover by{' '}
@@ -161,6 +146,7 @@ export function ConnectAndGoProviderAccounts({
       <TreeRow
         expandable
         isOpen={open}
+        rowClassName='bg-primary-100/50 hover:bg-primary-100'
         onToggleOpen={() => setOpen((value) => !value)}
         icon={<ListPlus className='size-4 text-muted-foreground' />}
         title={<span className='truncate text-sm'>Accounts only Auxx has</span>}
@@ -175,6 +161,7 @@ export function ConnectAndGoProviderAccounts({
           renderRow={(account) => (
             <TreeRow
               depth={1}
+              rowClassName='hover:bg-primary-100'
               title={
                 <span className='truncate text-sm'>
                   {account.code ? `${account.code} · ${account.name}` : account.name}

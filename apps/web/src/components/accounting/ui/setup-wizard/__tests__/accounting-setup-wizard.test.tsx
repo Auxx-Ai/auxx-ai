@@ -5,8 +5,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   status: { connected: false, providerLabel: null as string | null, loading: false },
-  prepare: vi.fn(() => new Promise(() => {})),
+  prepare: vi.fn((): Promise<unknown> => new Promise(() => {})),
 }))
+
+/** A prepare report with nothing left to ask about accounts. */
+const REPORT = {
+  finalized: false,
+  company: null,
+  fiscalYearStartMonth: 4,
+  bookTimeZone: 'America/Chicago',
+  exportMode: 'transaction',
+  proposedCutover: { cutoffPeriod: '2025-12', source: 'last_full_month' },
+  providerAccountsToCreate: [],
+  questions: { roles: [], rails: [], bankAccounts: [] },
+  failures: [],
+}
 
 vi.mock('../../../hooks/use-accounting-provider-status', () => ({
   UNKNOWN_PROVIDER_LABEL: 'the accounting system',
@@ -19,8 +32,8 @@ vi.mock('~/trpc/react', () => {
     api: {
       useUtils: () => ({
         gettingStarted: { getStatus: { setData: vi.fn(), invalidate } },
-        ledgerOpening: { get: { invalidate } },
-        ledger: { roleMap: { invalidate }, chartAccounts: { invalidate } },
+        ledgerOpening: { invalidate, get: { invalidate } },
+        ledger: { invalidate, roleMap: { invalidate }, chartAccounts: { invalidate } },
       }),
       gettingStarted: { setWizardCompleted: { useMutation: () => ({ mutate: vi.fn() }) } },
       ledger: {
@@ -42,6 +55,7 @@ vi.mock('~/trpc/react', () => {
 
 vi.mock('~/providers/dehydrated-state-provider', () => ({
   useDehydratedOrganizationId: () => 'org_1',
+  useDehydratedSettings: () => ({}),
   useDehydratedStateContext: () => ({ patchSettings: vi.fn() }),
 }))
 
@@ -56,6 +70,15 @@ vi.mock('../wizard-opening-tb-page', () => ({
 vi.mock('../wizard-done-page', () => ({ WizardDonePage: () => <div>done page</div> }))
 vi.mock('../connect-and-go-questions', () => ({ ConnectAndGoQuestions: () => null }))
 vi.mock('../connect-and-go-backlog', () => ({ ConnectAndGoBacklog: () => null }))
+vi.mock('../connect-and-go-books-page', () => ({
+  ConnectAndGoBooksPage: () => <div>books page</div>,
+}))
+vi.mock('../connect-and-go-mapping-page', () => ({
+  ConnectAndGoMappingPage: () => <div>mapping page</div>,
+}))
+vi.mock('../connect-and-go-posting-page', () => ({
+  ConnectAndGoPostingPage: () => <div>posting page</div>,
+}))
 vi.mock('../connect-and-go-summary', () => ({
   ConnectAndGoDoneList: () => null,
   ConnectAndGoProviderAccounts: () => null,
@@ -109,7 +132,24 @@ describe('AccountingSetupWizard', () => {
     expect(importCard.getAttribute('aria-checked')).toBe('true')
     expect(h.prepare).not.toHaveBeenCalled()
 
-    await next(/Setting up from Acme Books/)
+    await next(/reads your whole chart from Acme Books/)
+    expect(h.prepare).toHaveBeenCalledOnce()
+  })
+
+  it('walks the import pages, skipping accounts when there is nothing to answer', async () => {
+    h.status = { connected: true, providerLabel: 'Acme Books', loading: false }
+    h.prepare.mockImplementationOnce(() => Promise.resolve(REPORT))
+    renderWizard()
+    await next('How do you want to keep your books?')
+    fireEvent.click(continueButton())
+    await screen.findByText(/Refresh from Acme Books/)
+
+    await next('books page')
+    await next('mapping page')
+    await next('posting page')
+    fireEvent.click(continueButton())
+    await screen.findByRole('button', { name: /Finish setup/ })
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
     expect(h.prepare).toHaveBeenCalledOnce()
   })
 

@@ -31,16 +31,16 @@ import {
   RETURN_INTAKE_PHASE_LABELS,
   RETURN_INTAKE_PHASES,
   RETURN_LABEL_EXTENSIONS,
-  type ReturnIntakeDraftPhase,
 } from '@auxx/lib/returns/intake/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { PhaseList } from '@auxx/ui/components/phase-list'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatBytes } from '@auxx/utils/file'
-import { Check, Image as ImageIcon, Loader2, ScanLine, Trash2, TriangleAlert } from 'lucide-react'
+import { Image as ImageIcon, ScanLine, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -272,19 +272,21 @@ export function ReturnIntakeDialog({ open, onOpenChange }: ReturnIntakeDialogPro
 
             <DialogNavPage value='reading' size='md'>
               <div className='flex flex-col gap-3 p-3'>
-                <ul className='flex flex-col gap-2'>
-                  {RETURN_INTAKE_PHASES.map((phase) => (
-                    <PhaseRow
-                      key={phase}
-                      phase={phase}
-                      current={currentPhase}
-                      done={draftStatus === 'ready'}
-                      failed={failed}
-                      labelsRead={labelsRead}
-                      labelsTotal={labelsTotal}
-                    />
-                  ))}
-                </ul>
+                <PhaseList
+                  phases={RETURN_INTAKE_PHASES}
+                  labels={{
+                    ...RETURN_INTAKE_PHASE_LABELS,
+                    // One model call per label, so the count says where the read is.
+                    ...(currentPhase === 'reading' && labelsTotal > 0
+                      ? {
+                          reading: `Reading label ${Math.min(labelsRead + 1, labelsTotal)} of ${labelsTotal}`,
+                        }
+                      : {}),
+                  }}
+                  current={currentPhase}
+                  done={draftStatus === 'ready'}
+                  failed={failed}
+                />
                 {failed ? (
                   <Alert variant='destructive'>
                     <TriangleAlert className='size-4' />
@@ -405,58 +407,6 @@ function LabelFileCard({
         aria-label={`Remove ${file.name}`}>
         <Trash2 />
       </Button>
-    </li>
-  )
-}
-
-/**
- * One phase of the read.
- *
- * The whole list renders up front and each entry ticks as the job reports it,
- * because a 40-second spinner tells a person nothing is happening and a
- * 40-second checklist tells them where it is.
- *
- * ⚠️ `reading` is n of m, never a spinner alone: it is one model call PER LABEL
- * (§3.1), and ten photos at a dock is ten calls. "Reading label 3 of 7" is the
- * difference between a person waiting and a person wondering.
- */
-function PhaseRow({
-  phase,
-  current,
-  done,
-  failed,
-  labelsRead,
-  labelsTotal,
-}: {
-  phase: ReturnIntakeDraftPhase
-  current: ReturnIntakeDraftPhase | null
-  done: boolean
-  failed: boolean
-  labelsRead: number
-  labelsTotal: number
-}) {
-  const index = RETURN_INTAKE_PHASES.indexOf(phase)
-  const currentIndex = current ? RETURN_INTAKE_PHASES.indexOf(current) : -1
-  const isDone = done || index < currentIndex
-  const isActive = !done && index === currentIndex
-
-  const label =
-    phase === 'reading' && isActive && labelsTotal > 0
-      ? `Reading label ${Math.min(labelsRead + 1, labelsTotal)} of ${labelsTotal}`
-      : RETURN_INTAKE_PHASE_LABELS[phase]
-
-  return (
-    <li className='flex items-center gap-2.5 text-sm'>
-      <span className='flex size-5 items-center justify-center'>
-        {isDone ? (
-          <Check className='size-4 text-green-600' />
-        ) : isActive && !failed ? (
-          <Loader2 className='size-4 animate-spin text-muted-foreground' />
-        ) : (
-          <span className='size-1.5 rounded-full bg-muted-foreground/40' />
-        )}
-      </span>
-      <span className={isDone || isActive ? '' : 'text-muted-foreground'}>{label}</span>
     </li>
   )
 }

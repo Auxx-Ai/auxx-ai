@@ -124,6 +124,20 @@ export async function mintMissingRoleAccounts(
       const pack = packForRole(role)
       const account = pack ? CHART_PACKS[pack].accounts.find((row) => row.role === role) : null
       if (!account) continue
+      // The chart may already hold this default, e.g. one an earlier setup pushed to the
+      // provider and the import brought back; take it rather than mint a twin.
+      const existing = chart.value.find(
+        (row) =>
+          row.isActive &&
+          !row.isArchived &&
+          row.accountType === account.accountType &&
+          (!account.subtype || !row.subtype || row.subtype === account.subtype) &&
+          sameAccountName(row.name, account.name)
+      )
+      if (existing) {
+        await insertRoleAssignment(db, organizationId, role, existing.id, 'seed')
+        continue
+      }
       const created = await createAccount(db, organizationId, actorUserId, {
         code: mintedCode(account, codedAccounts),
         name: account.name,
@@ -140,6 +154,11 @@ export async function mintMissingRoleAccounts(
     logger.error('Failed to mint missing role accounts', { error, organizationId })
     return err(new AuxxError('Internal error'))
   }
+}
+
+function sameAccountName(a: string, b: string): boolean {
+  const normalize = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase()
+  return normalize(a) === normalize(b)
 }
 
 function emptyResult(): ChartImportResult {

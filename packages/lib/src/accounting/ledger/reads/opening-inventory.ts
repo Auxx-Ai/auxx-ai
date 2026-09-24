@@ -29,11 +29,10 @@ export async function readOpeningInventoryLedger(
   }
   if (glAccountIds.length === 0) return result
 
-  const isAdjustment = eq(schema.GlPostingLine.sourceType, OPENING_INVENTORY_ADJUSTMENT_SOURCE)
   const rows = await db
     .select({
       glAccountId: schema.GlPostingLine.glAccountId,
-      adjustment: sql<boolean>`${isAdjustment}`,
+      sourceType: schema.GlPostingLine.sourceType,
       netMinor: sql<string>`coalesce(sum(case when ${schema.GlPostingLine.direction} = 'debit' then ${schema.GlPostingLine.amountMinor} else -${schema.GlPostingLine.amountMinor} end), 0)`,
     })
     .from(schema.GlPostingLine)
@@ -42,13 +41,17 @@ export async function readOpeningInventoryLedger(
       and(
         eq(schema.GlPostingLine.organizationId, organizationId),
         inArray(schema.GlPostingLine.glAccountId, [...glAccountIds]),
-        or(eq(schema.GlPosting.postingType, 'opening_balance'), isAdjustment)
+        or(
+          eq(schema.GlPosting.postingType, 'opening_balance'),
+          eq(schema.GlPostingLine.sourceType, OPENING_INVENTORY_ADJUSTMENT_SOURCE)
+        )
       )
     )
-    .groupBy(schema.GlPostingLine.glAccountId, isAdjustment)
+    .groupBy(schema.GlPostingLine.glAccountId, schema.GlPostingLine.sourceType)
 
   for (const row of rows) {
-    const target = row.adjustment ? result.adjustmentByAccount : result.openingByAccount
+    const isAdjustment = row.sourceType === OPENING_INVENTORY_ADJUSTMENT_SOURCE
+    const target = isAdjustment ? result.adjustmentByAccount : result.openingByAccount
     target.set(row.glAccountId, (target.get(row.glAccountId) ?? 0) + Number(row.netMinor))
   }
   return result

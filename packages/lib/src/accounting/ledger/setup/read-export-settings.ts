@@ -24,6 +24,16 @@ function summaryGrainSettingKey(avenue: SummaryGrainAvenue): SettingKey {
   return `accounting.summaryGrain.${avenue}` as SettingKey
 }
 
+/** The per-avenue keys setup may write: every `autoSend` and `summaryGrain` switch. */
+export const SETUP_EXPORT_SETTING_KEYS: readonly SettingKey[] = [
+  ...EXPORT_AVENUES.map(autoSendSettingKey),
+  ...SUMMARY_GRAIN_AVENUES.map(summaryGrainSettingKey),
+]
+
+export function isSetupExportSettingKey(key: string): key is SettingKey {
+  return (SETUP_EXPORT_SETTING_KEYS as readonly string[]).includes(key)
+}
+
 /**
  * Every export setting for one org, in one call: mode, cutover, and the
  * per-avenue `autoSend` / `summaryGrain` switches.
@@ -36,8 +46,7 @@ export async function readExportSettings(organizationId: string): Promise<Export
   const settings = await readOrganizationSettings(organizationId, [
     'accounting.exportMode',
     'accounting.exportModeCutover',
-    ...EXPORT_AVENUES.map(autoSendSettingKey),
-    ...SUMMARY_GRAIN_AVENUES.map(summaryGrainSettingKey),
+    ...SETUP_EXPORT_SETTING_KEYS,
   ] as const)
 
   const autoSend = Object.fromEntries(

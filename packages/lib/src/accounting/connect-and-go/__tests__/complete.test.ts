@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({
   roleWrites: [] as Record<string, unknown>[],
   frozen: false,
   openingPosted: false,
-  fillResults: [] as Array<'ok' | 'unmatched' | 'fail'>,
+  fillResults: [] as Array<'ok' | 'unmatched' | 'fail' | 'empty'>,
   imported: [] as string[][],
   activationFails: false,
   finalizeStatus: 'posted' as string,
@@ -105,6 +105,7 @@ vi.mock('../../opening/reads', () => ({
   }),
 }))
 vi.mock('../../opening/fill-from-provider', () => ({
+  NO_PROVIDER_BALANCES: 'no_provider_balances',
   fillOpeningTrialBalanceFromProvider: async () => {
     h.calls.push('fill')
     const next = h.fillResults.shift() ?? 'ok'
@@ -115,6 +116,8 @@ vi.mock('../../opening/fill-from-provider', () => ({
         })
       )
     if (next === 'fail') return err(new UnprocessableEntityError('Currency mismatch'))
+    if (next === 'empty')
+      return err(new UnprocessableEntityError('No balances', { reason: 'no_provider_balances' }))
     return ok({ asOf: '2025-12-31', currency: 'USD', filledCount: 12, differenceMinor: 0 })
   },
 }))
@@ -287,6 +290,47 @@ describe('completeConnectAndGo', () => {
     )._unsafeUnwrap()
     expect(answered.completed).toBe(true)
     expect(h.writes[0]).toContainEqual({ key: 'accounting.bookTimeZone', value: 'Europe/Berlin' })
+  })
+
+  it('writes the confirmed book and export settings with the cutover, only where they changed', async () => {
+    h.settings['accounting.exportMode'] = 'transaction'
+    const report = (
+      await completeConnectAndGo(db, {
+        ...base,
+        answers: {
+          bookTimeZone: 'America/Chicago',
+          fiscalYearStartMonth: 4,
+          exportMode: 'transaction',
+          exportSettings: [{ key: 'accounting.autoSend.fulfillment', value: true }],
+        },
+      })
+    )._unsafeUnwrap()
+    expect(report.completed).toBe(true)
+    expect(h.writes[0]).toEqual([
+      { key: 'accounting.cutoffPeriod', value: '2025-12' },
+      { key: 'accounting.fiscalYearStartMonth', value: '4' },
+      { key: 'accounting.autoSend.fulfillment', value: true },
+    ])
+  })
+
+  it('opens at zero when the provider has no data at the cutover', async () => {
+    h.fillResults = ['empty']
+    const report = (await completeConnectAndGo(db, base))._unsafeUnwrap()
+    expect(report.completed).toBe(true)
+    expect(report.steps.find((step) => step.step === 'opening')).toMatchObject({
+      status: 'done',
+      detail: 'No transactions on or before 2025-12-31, so the books open at zero',
+    })
+    expect(h.writes).toContainEqual([{ key: 'accounting.openingFromNothing', value: true }])
+  })
+
+  it('refuses a key outside the export settings before writing anything', async () => {
+    const result = await completeConnectAndGo(db, {
+      ...base,
+      answers: { exportSettings: [{ key: 'accounting.cutoffPeriod', value: '2020-01' }] },
+    })
+    expect(result.isErr()).toBe(true)
+    expect(h.writes).toEqual([])
   })
 
   it('re-runs on a finished org without rewriting or refilling', async () => {

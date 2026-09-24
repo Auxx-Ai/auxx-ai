@@ -185,7 +185,7 @@ describe('prepareConnectAndGo', () => {
     ]
     const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
 
-    expect(h.calls).toEqual(['lock', 'company', 'settings', 'chart', 'rails', 'mint', 'banks'])
+    expect(h.calls).toEqual(['lock', 'company', 'chart', 'rails', 'mint', 'banks'])
     expect(h.pushed).toEqual([])
     expect(report.providerAccountsToCreate).toEqual([
       { glAccountId: 'gl_minted', name: 'WIP', code: '1310' },
@@ -208,29 +208,23 @@ describe('prepareConnectAndGo', () => {
     expect(report.chart).toMatchObject({ mode: 'refresh', suggestionsLinked: 2 })
   })
 
-  it('writes the fiscal year and a missing timezone, and writes nothing once they agree', async () => {
+  it('proposes the fiscal year and timezone without writing them', async () => {
     const first = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
-    expect(h.writes).toEqual([
-      [
-        { key: 'accounting.fiscalYearStartMonth', value: '4' },
-        { key: 'accounting.bookTimeZone', value: 'America/New_York' },
-      ],
-    ])
+    expect(h.writes).toEqual([])
     expect(first).toMatchObject({
-      fiscalYearStartMonthWritten: 4,
+      fiscalYearStartMonth: 4,
       bookTimeZone: 'America/New_York',
-      bookTimeZoneWritten: true,
+      exportMode: 'transaction',
     })
 
-    h.writes = []
     h.settings = {
-      'accounting.fiscalYearStartMonth': '4',
-      'accounting.bookTimeZone': 'America/New_York',
+      'accounting.setupState': 'finalized',
+      'accounting.fiscalYearStartMonth': '7',
+      'accounting.bookTimeZone': 'Europe/Berlin',
     }
-    const second = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
+    const finalized = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
+    expect(finalized).toMatchObject({ fiscalYearStartMonth: 7, bookTimeZone: 'Europe/Berlin' })
     expect(h.writes).toEqual([])
-    expect(second.fiscalYearStartMonthWritten).toBeNull()
-    expect(second.bookTimeZoneWritten).toBe(false)
   })
 
   it('proposes the cutover without writing it', async () => {
@@ -264,7 +258,7 @@ describe('prepareConnectAndGo', () => {
     const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
     expect(report.failures).toEqual([{ step: 'chart', message: 'provider down' }])
     expect(report.chart).toBeNull()
-    expect(h.calls).toEqual(['lock', 'company', 'settings', 'chart', 'rails', 'banks'])
+    expect(h.calls).toEqual(['lock', 'company', 'chart', 'rails', 'banks'])
   })
 })
 

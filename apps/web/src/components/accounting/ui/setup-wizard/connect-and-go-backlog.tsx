@@ -4,6 +4,7 @@
 import { isMonthKey } from '@auxx/lib/accounting/ledger/client'
 import { Section } from '@auxx/ui/components/section'
 import { type StatCardData, StatCards } from '@auxx/ui/components/stat-card'
+import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils'
 import { formatDistanceStrict } from 'date-fns'
 import { Clock, Package, Send, Wallet, Waypoints } from 'lucide-react'
@@ -13,15 +14,17 @@ import { api } from '~/trpc/react'
 export function ConnectAndGoBacklog({
   cutoffPeriod,
   bookTimeZone,
+  exportMode,
   providerLabel,
 }: {
   cutoffPeriod: string
   bookTimeZone: string | null
+  exportMode: 'transaction' | 'summary'
   providerLabel: string
 }) {
   const valid = isMonthKey(cutoffPeriod)
   const preview = api.ledger.connectAndGo.preview.useQuery(
-    { cutoffPeriod, bookTimeZone },
+    { cutoffPeriod, bookTimeZone, exportMode },
     { enabled: valid }
   )
   if (!valid) return null
@@ -60,11 +63,22 @@ export function ConnectAndGoBacklog({
   return (
     <Section
       title='After the cutover'
+      className='[&_[data-slot=section]]:border-b-0'
       description='What posts and exports once you finish.'
       icon={<Waypoints className='size-4 text-muted-foreground' />}
       collapsible={false}>
       <div className='flex flex-col gap-2'>
-        <StatCards cards={cards} loading={preview.isLoading} className='rounded-lg border' />
+        <StatCards
+          // One row of four draws only side borders; in two rows of two the second row needs a
+          // top border and its first card no left one.
+          cards={cards.map((card, index) => ({
+            ...card,
+            className: cn(index === 2 && 'md:border-l-0', index >= 2 && 'md:border-t'),
+          }))}
+          loading={preview.isLoading}
+          columns={{ md: 'md:grid-cols-2' }}
+          className='rounded-lg border md:overflow-hidden'
+        />
         {preview.isError && (
           <p className='text-muted-foreground text-xs'>{preview.error.message}</p>
         )}

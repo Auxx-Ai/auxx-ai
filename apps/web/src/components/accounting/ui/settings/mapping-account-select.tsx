@@ -14,6 +14,7 @@ import {
   CommandItem,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
+import { cn } from '@auxx/ui/lib/utils'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
@@ -39,6 +40,8 @@ export interface MappingAccountSelectProps {
   disabled?: boolean
   /** Offers "Create `<mintLabel>`" above the chart, selecting {@link MINT_ACCOUNT_VALUE}. */
   mintLabel?: string
+  /** Merged over the trigger's default `h-7 w-60`. */
+  triggerClassName?: string
 }
 
 /**
@@ -55,6 +58,7 @@ export function MappingAccountSelect({
   subtypePin,
   disabled = false,
   mintLabel,
+  triggerClassName,
 }: MappingAccountSelectProps) {
   const { accounts: allAccounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
@@ -112,7 +116,7 @@ export function MappingAccountSelect({
           }
           placeholder={value === 'unused' ? 'Unused' : 'Select account…'}
           asCombobox
-          className='h-7 w-60'>
+          className={cn('h-7 w-60', triggerClassName)}>
           {value === 'inherit' ? (
             <span className='truncate text-sm'>{inheritLabel}</span>
           ) : value === MINT_ACCOUNT_VALUE ? (

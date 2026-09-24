@@ -972,13 +972,14 @@ export const SETTINGS_CATALOG = {
     defaultValue: 'transaction',
     options: {
       options: [
-        { value: 'transaction', label: 'Transaction — one object per posting' },
-        { value: 'summary', label: 'Summary — one object per period, store and rail' },
+        { value: 'transaction', label: 'Transaction' },
+        { value: 'summary', label: 'Summary' },
       ],
     },
     description:
-      'How postings leave for the accounting provider. A switch applies to every posting not ' +
-      'yet batched; a batch already built keeps the mode it was built in.',
+      'How postings leave for the accounting provider. Transaction sends one object per ' +
+      'posting; Summary sends one object per period, store and payment rail. A switch applies ' +
+      'to every posting not yet batched; a batch already built keeps the mode it was built in.',
   },
   'accounting.exportModeCutover': {
     scope: 'GENERAL',

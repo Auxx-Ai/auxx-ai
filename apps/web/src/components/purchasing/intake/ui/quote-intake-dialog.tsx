@@ -17,20 +17,17 @@
 // 🛑 The capability check runs ON OPEN, not after the upload. Refusing a person
 // after they picked a file is the bad version of the same refusal.
 
-import {
-  INTAKE_PHASE_LABELS,
-  INTAKE_PHASES,
-  type IntakeDraftPhase,
-} from '@auxx/lib/accounting/purchasing/intake/client'
+import { INTAKE_PHASE_LABELS, INTAKE_PHASES } from '@auxx/lib/accounting/purchasing/intake/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { PhaseList } from '@auxx/ui/components/phase-list'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatBytes } from '@auxx/utils/file'
-import { Check, FileText, Loader2, Trash2, TriangleAlert } from 'lucide-react'
+import { FileText, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -234,17 +231,13 @@ export function QuoteIntakeDialog({ open, onOpenChange }: QuoteIntakeDialogProps
 
             <DialogNavPage value='reading' size='md'>
               <div className='flex flex-col gap-3 p-3'>
-                <ul className='flex flex-col gap-2'>
-                  {INTAKE_PHASES.map((phase) => (
-                    <PhaseRow
-                      key={phase}
-                      phase={phase}
-                      current={currentPhase}
-                      done={draftStatus === 'ready'}
-                      failed={failed}
-                    />
-                  ))}
-                </ul>
+                <PhaseList
+                  phases={INTAKE_PHASES}
+                  labels={INTAKE_PHASE_LABELS}
+                  current={currentPhase}
+                  done={draftStatus === 'ready'}
+                  failed={failed}
+                />
                 {failed ? (
                   <Alert variant='destructive'>
                     <TriangleAlert className='size-4' />
@@ -306,45 +299,4 @@ const PAGE_TITLES: Record<Page, string> = {
   gate: 'Not available',
   upload: 'Upload',
   reading: 'Reading',
-}
-
-/**
- * One phase of the read.
- *
- * The whole list renders up front and each entry ticks as the job reports it,
- * because a 40-second spinner tells a person nothing is happening and a 40-second
- * checklist tells them where it is.
- */
-function PhaseRow({
-  phase,
-  current,
-  done,
-  failed,
-}: {
-  phase: IntakeDraftPhase
-  current: IntakeDraftPhase | null
-  done: boolean
-  failed: boolean
-}) {
-  const index = INTAKE_PHASES.indexOf(phase)
-  const currentIndex = current ? INTAKE_PHASES.indexOf(current) : -1
-  const isDone = done || index < currentIndex
-  const isActive = !done && index === currentIndex
-
-  return (
-    <li className='flex items-center gap-2.5 text-sm'>
-      <span className='flex size-5 items-center justify-center'>
-        {isDone ? (
-          <Check className='size-4 text-green-600' />
-        ) : isActive && !failed ? (
-          <Loader2 className='size-4 animate-spin text-muted-foreground' />
-        ) : (
-          <span className='size-1.5 rounded-full bg-muted-foreground/40' />
-        )}
-      </span>
-      <span className={isDone || isActive ? '' : 'text-muted-foreground'}>
-        {INTAKE_PHASE_LABELS[phase]}
-      </span>
-    </li>
-  )
 }

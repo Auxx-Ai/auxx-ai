@@ -1,42 +1,21 @@
 // apps/web/src/components/accounting/ui/setup-wizard/connect-and-go-questions.tsx
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
 import type {
   BankAccountProposal,
   ConnectAndGoPrepareReport,
 } from '@auxx/lib/accounting/connect-and-go/client'
-import {
-  ACCOUNT_ROLE_LABELS,
-  type AccountRole,
-  accountLabel,
-  ROLE_ACCOUNT_SUBTYPES,
-  ROLE_ACCOUNT_TYPES,
-} from '@auxx/lib/accounting/ledger/client'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { pluralize } from '@auxx/utils'
-import { CalendarClock, CreditCard, Landmark, ListTree, TriangleAlert } from 'lucide-react'
+import { CreditCard, Landmark } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { useChartAccounts } from '../gl-account-picker'
 import { MappingAccountSelect } from '../settings/mapping-account-select'
-
-/** The person's answers, held until Finish. */
-export interface ConnectAndGoDraft {
-  cutoffPeriod: string
-  bookTimeZone: string
-  roles: Record<string, string | null>
-  railBanks: Record<string, string | null>
-  acceptBankAccounts: string[]
-}
-
-type CutoverSource = ConnectAndGoPrepareReport['proposedCutover']['source']
+import type { ConnectAndGoDraft } from './use-connect-and-go'
 
 interface ConnectAndGoQuestionsProps {
   report: ConnectAndGoPrepareReport
@@ -46,7 +25,7 @@ interface ConnectAndGoQuestionsProps {
   disabled?: boolean
 }
 
-/** The cutover and every question prepare could not answer on its own. */
+/** Rail banks and bank accounts prepare could not settle on its own; roles are the Mapping page. */
 export function ConnectAndGoQuestions({
   report,
   draft,
@@ -54,113 +33,10 @@ export function ConnectAndGoQuestions({
   providerLabel,
   disabled,
 }: ConnectAndGoQuestionsProps) {
-  const { accounts } = useChartAccounts()
-  const names = useMemo(
-    () => new Map(accounts.map((account) => [account.id, accountLabel(account)])),
-    [accounts]
-  )
-  const { roles, rails, bankAccounts } = report.questions
+  const { rails, bankAccounts } = report.questions
 
   return (
     <>
-      <Section
-        title='Cutover'
-        icon={<CalendarClock className='size-4 text-muted-foreground' />}
-        collapsible={false}>
-        <div className='flex flex-col gap-3'>
-          <FieldPanel
-            orientation='responsive'
-            breakpoint='md'
-            resizeId='accounting-connect-and-go'
-            defaultLabelWidth={170}
-            className='p-0'>
-            <FieldPanelRow
-              title='Cutover month'
-              type={BaseType.STRING}
-              showIcon
-              isRequired
-              description={cutoverNote(report.proposedCutover.source, providerLabel)}>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={draft.cutoffPeriod}
-                placeholder='2025-12'
-                disabled={disabled || report.finalized}
-                onChange={(value) => onChange({ cutoffPeriod: ((value as string) ?? '').trim() })}
-              />
-            </FieldPanelRow>
-            {!report.bookTimeZone && (
-              <FieldPanelRow
-                title='Book timezone'
-                type={BaseType.STRING}
-                showIcon
-                isRequired
-                description='The IANA timezone your books are kept in. There is no UTC fallback.'>
-                <FieldInputAdapter
-                  fieldType={FieldType.TEXT}
-                  value={draft.bookTimeZone}
-                  placeholder='America/New_York'
-                  disabled={disabled}
-                  onChange={(value) => onChange({ bookTimeZone: ((value as string) ?? '').trim() })}
-                />
-              </FieldPanelRow>
-            )}
-          </FieldPanel>
-          <Alert variant='warning'>
-            <TriangleAlert />
-            <AlertDescription>
-              Everything after the cutover is posted and exported by Auxx. If another app already
-              writes your Shopify sales into {providerLabel} (its native app, Synder, A2X), stop it
-              at the cutover, or those sales are counted twice. Everything on or before the cutover
-              comes in as the opening entry and is never posted order by order.
-            </AlertDescription>
-          </Alert>
-        </div>
-      </Section>
-
-      {roles.length > 0 && (
-        <Section
-          title='Which account?'
-          description={`${providerLabel} has more than one account that could take these.`}
-          icon={<ListTree className='size-4 text-muted-foreground' />}
-          collapsible={false}>
-          <FieldPanel
-            orientation='responsive'
-            breakpoint='md'
-            resizeId='accounting-connect-and-go'
-            defaultLabelWidth={170}
-            className='p-0'>
-            {roles.map((question) => {
-              const role = question.role as AccountRole
-              const suggested = question.candidateAccountIds
-                .map((id) => names.get(id))
-                .filter(Boolean)
-              return (
-                <FieldPanelRow
-                  key={role}
-                  title={ACCOUNT_ROLE_LABELS[role] ?? role}
-                  type={BaseType.ENUM}
-                  showIcon
-                  description={
-                    suggested.length > 0 ? `Likely: ${suggested.join(', ')}` : undefined
-                  }>
-                  <MappingAccountSelect
-                    value={draft.roles[role] ?? null}
-                    filterTypes={[ROLE_ACCOUNT_TYPES[role]]}
-                    subtypePin={ROLE_ACCOUNT_SUBTYPES[role]}
-                    disabled={disabled}
-                    onChange={(value) =>
-                      onChange({
-                        roles: { ...draft.roles, [role]: value === 'inherit' ? null : value },
-                      })
-                    }
-                  />
-                </FieldPanelRow>
-              )
-            })}
-          </FieldPanel>
-        </Section>
-      )}
-
       {rails.length > 0 && (
         <Section
           title='Where each payment rail pays out'
@@ -186,6 +62,7 @@ export function ConnectAndGoQuestions({
                       : undefined
                   }>
                   <MappingAccountSelect
+                    triggerClassName='w-full ps-0 pe-1'
                     value={draft.railBanks[question.gatewayId] ?? null}
                     filterTypes={['asset']}
                     subtypePin='bank'
@@ -261,12 +138,14 @@ function BankAccountProposals({
   return (
     <Section
       title='Bank accounts'
+      className='[&_[data-slot=section]]:border-b-0'
       description='Tick the ones to add. Nothing is created until you finish.'
       icon={<Landmark className='size-4 text-muted-foreground' />}
       collapsible={false}>
       <TreeRow
         expandable
         isOpen={open}
+        rowClassName='bg-primary-100/50 hover:bg-primary-100'
         onToggleOpen={() => setOpen((value) => !value)}
         icon={<Landmark className='size-4 text-muted-foreground' />}
         title={<span className='truncate text-sm'>Bank accounts from {providerLabel}</span>}
@@ -281,6 +160,7 @@ function BankAccountProposals({
           renderRow={(proposal) => (
             <TreeRow
               depth={1}
+              rowClassName='hover:bg-primary-100'
               selectable
               selecting
               selected={accepted.includes(proposal.key)}
@@ -300,12 +180,6 @@ function BankAccountProposals({
       </TreeRow>
     </Section>
   )
-}
-
-function cutoverNote(source: CutoverSource, providerLabel: string): string {
-  if (source === 'current') return 'The cutover already set.'
-  if (source === 'lock_date') return `The month your books are closed through in ${providerLabel}.`
-  return 'The last full month.'
 }
 
 function proposalTitle(proposal: BankAccountProposal): string {
