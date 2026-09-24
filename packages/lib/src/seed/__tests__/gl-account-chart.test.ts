@@ -221,13 +221,13 @@ describe('seedChartPacks', () => {
     expect(result.rolesAssigned).toBe(CORE_PLUS_INVENTORY_ROLES.length)
   })
 
-  it("['purchasing'] alone walks core, then inventory, then purchasing, landing 45 accounts and 28 roles", async () => {
+  it("['purchasing'] alone walks core, then inventory, then purchasing, landing 46 accounts and 29 roles", async () => {
     const result = await seedChartPacks(stubDb([]), 'org-1', DEF_ID, ['purchasing'])
 
     expect(result.packs).toEqual(['core', 'inventory', 'purchasing'])
-    expect(result.created).toBe(45)
+    expect(result.created).toBe(46)
     expect(result.created).toBe(CORE_INVENTORY_PURCHASING_ACCOUNTS.length)
-    expect(result.rolesAssigned).toBe(28)
+    expect(result.rolesAssigned).toBe(29)
     expect(result.rolesAssigned).toBe(CORE_INVENTORY_PURCHASING_ROLES.length)
   })
 
