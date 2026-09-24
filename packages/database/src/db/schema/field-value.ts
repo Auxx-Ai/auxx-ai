@@ -17,6 +17,7 @@ import {
 } from './_shared'
 import { CustomField } from './custom-field'
 import { DataConnector } from './data-connector'
+import { MediaAsset } from './media-asset'
 import { Organization } from './organization'
 import { User } from './user'
 
@@ -81,6 +82,16 @@ export const FieldValue = pgTable(
 
     /** JSON value for FILE, CURRENCY (with code), ADDRESS_STRUCT, and complex types */
     valueJson: jsonb(),
+
+    /**
+     * The `MediaAsset` a FILE value's `asset:` ref names, derived by Postgres so no writer can
+     * miss it. Indexed so "does any record still show this asset" is a lookup, not a JSON scan.
+     */
+    assetId: text()
+      .generatedAlwaysAs(
+        sql`CASE WHEN coalesce("valueJson"->'v'->>'ref', "valueJson"->>'ref') LIKE 'asset:%' THEN substr(coalesce("valueJson"->'v'->>'ref', "valueJson"->>'ref'), 7) END`
+      )
+      .references((): AnyPgColumn => MediaAsset.id),
 
     // ========================================
     // Reference columns
@@ -185,6 +196,11 @@ export const FieldValue = pgTable(
 
     // Actor lookups
     index('FieldValue_actorId_idx').using('btree', table.actorId.asc().nullsLast()),
+
+    // Asset holders: release on record delete, orphan audits
+    index('FieldValue_organizationId_assetId_idx')
+      .using('btree', table.organizationId.asc().nullsLast(), table.assetId.asc().nullsLast())
+      .where(sql`"assetId" IS NOT NULL`),
 
     // Unique per sortKey (allows multi-value with ordering)
     uniqueIndex('FieldValue_entity_field_sortKey_key').using(

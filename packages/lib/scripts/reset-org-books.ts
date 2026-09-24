@@ -21,6 +21,8 @@
 // Parts, subparts, vendor parts, tariff codes and rates, catalog groups, products,
 // contacts, companies, tickets, inboxes, `FinancialSourceAccount` (the store
 // scope, with its gateway link cleared) and the QuickBooks OAuth credential.
+// `--catalog` also deletes parts, subparts, vendor parts, products and catalog
+// groups, for an onboarding retest; the Shopify re-sync only brings back what it binds.
 // Nothing accounting-configuration-shaped survives: the wizard re-creates the
 // chart and the default gateway, and the bank feeds re-create the bank accounts.
 //
@@ -111,6 +113,7 @@ const FORCE = args.includes('--force')
 const KEEP_CONNECTOR_ITEMS = args.includes('--keep-connector-items')
 const KEEP_QUICKBOOKS = args.includes('--keep-quickbooks')
 const KEEP_CONFIG = args.includes('--keep-config')
+const CATALOG = args.includes('--catalog')
 
 if (!ORG_ARG) {
   console.error(
@@ -123,6 +126,8 @@ if (!ORG_ARG) {
       '                            record is counted skipped and never re-created.\n' +
       '    --keep-quickbooks       do not clear the QuickBooks account map or held ids.\n' +
       '    --keep-config           keep the chart, role map, bank accounts, bank rules, gateways.\n' +
+      '    --catalog               also delete parts, subparts, vendor parts, products and\n' +
+      '                            catalog groups. Only connector-bound ones come back on sync.\n' +
       '    --force                 past the providerEntryId guard.\n' +
       '    --confirm               actually write. Without it this is a dry run.\n'
   )
@@ -168,6 +173,8 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
   ['work_order', 'quote', 'service_request'],
   // Last: the order everything above hung from.
   ['order'],
+  // `--catalog` only: after every document that names a part, BOM and vendor rows before it.
+  ...(CATALOG ? [['subpart', 'vendor_part'], ['product', 'catalog_group'], ['part']] : []),
 ]
 
 /** Every type this script removes, flattened — used for counts and numbering. */
@@ -531,12 +538,12 @@ async function main() {
   console.log(`mode         ${CONFIRM ? 'DELETE' : 'dry run (pass --confirm to write)'}`)
   console.log(
     `scope        ledger + documents + orders + builds + movements + purchasing +\n` +
-      `             pipeline + numbering${KEEP_CONNECTOR_ITEMS ? '' : ' + connector bindings'}` +
+      `             pipeline + numbering${CATALOG ? ' + catalog' : ''}${KEEP_CONNECTOR_ITEMS ? '' : ' + connector bindings'}` +
       `${KEEP_QUICKBOOKS ? '' : ' + QuickBooks map'}` +
       `${KEEP_CONFIG ? '' : ' +\n             chart + role map + bank accounts + bank rules + gateways'}`
   )
   console.log(
-    'keeps        parts, products, catalog groups, contacts, companies, tickets, inboxes,'
+    `keeps        ${CATALOG ? '' : 'parts, products, catalog groups, '}contacts, companies, tickets, inboxes,`
   )
   console.log(
     `             FinancialSourceAccount, the QuickBooks credential${KEEP_CONFIG ? ', the configuration' : ''}\n`

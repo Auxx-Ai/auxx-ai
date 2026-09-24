@@ -2,12 +2,19 @@
 
 import { schema } from '@auxx/database'
 import { and, eq, type SQL } from 'drizzle-orm'
-import type { AnyPgColumn, alias } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 /** The record a `FieldValue` hangs off: `EntityInstance` itself, or an alias of it a query already joined. */
 export interface ValueOwner {
   id: AnyPgColumn
   organizationId: AnyPgColumn
+}
+
+/** `FieldValue` or an alias of it; structural because a generated column makes the two types differ. */
+export interface ValueColumns {
+  entityId: AnyPgColumn
+  organizationId: AnyPgColumn
+  fieldId: AnyPgColumn
 }
 
 /**
@@ -19,7 +26,7 @@ export interface ValueOwner {
  * — a build's order, a line's order.
  */
 export function systemValueJoin(
-  table: ReturnType<typeof alias<typeof schema.FieldValue, string>>,
+  table: ValueColumns,
   fieldId: string,
   owner: ValueOwner = schema.EntityInstance
 ): SQL | undefined {

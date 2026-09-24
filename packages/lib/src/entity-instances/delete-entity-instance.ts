@@ -6,6 +6,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { withAccountingCommitLock } from '../accounting/ledger/post/accounting-commit-lock'
 import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
+import { releaseRecordFileAssets } from '../files/assets/release-record-assets'
 import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 
 /** Parameters for deleting an entity instance */
@@ -104,6 +105,7 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
           .select({
             id: schema.EntityInstance.id,
             entityType: schema.EntityDefinition.entityType,
+            definitionId: schema.EntityInstance.entityDefinitionId,
           })
           .from(schema.EntityInstance)
           .innerJoin(
@@ -129,6 +131,14 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
         if (unresolved.length > 0) {
           byType.set(null, [...(byType.get(null) ?? []), ...unresolved])
         }
+
+        // Before the sweep: the FILE values it removes are the only record of which assets were ours.
+        await releaseRecordFileAssets(tx, {
+          organizationId,
+          instanceIds: chunk,
+          definitionIds: [...new Set(targets.map((t) => t.definitionId))],
+          now: new Date(),
+        })
 
         for (const [entityType, groupIds] of byType) {
           await sweepEntityFieldValues(tx, {
