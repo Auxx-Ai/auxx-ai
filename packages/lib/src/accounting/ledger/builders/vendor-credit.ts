@@ -12,8 +12,8 @@
  *
  * One builder, whatever the credit is for. A short shipment on a PO-backed bill
  * is this entry with the org's `grni` account on the line — resolved through
- * `resolveRoles` by the writer and prefilled onto the line, never a per-line
- * role here (71 U7, decision 1).
+ * `resolveRoles` by the writer and prefilled onto the line (71 U7, decision 1).
+ * The one per-line role is `purchased_services`, for an uncoded service line (107 §9).
  *
  * @see plans/accounting/tasks/done/71-one-cash-endpoint.md §5 U7
  */
@@ -37,9 +37,12 @@ export interface VendorCreditLineInput {
   /**
    * The `gl_account` instance id off `vendor_credit_line_gl_account`.
    *
-   * Missing is a REFUSAL naming the line, never a fallback account.
+   * Missing is a REFUSAL naming the line, except on a service line, which falls to
+   * `purchased_services`.
    */
   glAccountId: string | null | undefined
+  /** The line's part is a `service` (107-D10). */
+  service?: boolean
   /** `vendor_credit_line_line_total`, integer minor units. Signed. */
   amount: number | null | undefined
   /** `vendor_credit_line_description`, for the line memo and the refusal. */
@@ -69,8 +72,8 @@ export interface BuiltVendorCreditEntry {
   periodKey: string
   /** The payable relieved. Equals the credit's stored total. */
   totalMinor: number
-  /** One credit leg per coded line that moves money, in line order. */
-  creditLines: Array<{ lineId: string; glAccountId: string; amountMinor: number }>
+  /** One credit leg per line that moves money, in line order. `null`: `purchased_services`. */
+  creditLines: Array<{ lineId: string; glAccountId: string | null; amountMinor: number }>
 }
 
 /**
@@ -113,8 +116,12 @@ export function buildVendorCreditEntry(input: BuildVendorCreditEntryInput): Buil
   // Batched rather than fail-fast, like the expense bill's: four uncoded lines
   // are named in one refusal so they are coded in one pass.
   const uncoded: string[] = []
-  const coded: Array<{ lineId: string; glAccountId: string; amountMinor: number; memo: string }> =
-    []
+  const coded: Array<{
+    lineId: string
+    glAccountId: string | null
+    amountMinor: number
+    memo: string
+  }> = []
   let codedMinor = 0
 
   for (const [index, line] of input.lines.entries()) {
@@ -123,8 +130,8 @@ export function buildVendorCreditEntry(input: BuildVendorCreditEntryInput): Buil
     codedMinor += amountMinor
     if (amountMinor === 0) continue
 
-    const glAccountId = line.glAccountId?.trim()
-    if (!glAccountId) {
+    const glAccountId = line.glAccountId?.trim() || null
+    if (!glAccountId && !line.service) {
       uncoded.push(label)
       continue
     }
@@ -191,7 +198,9 @@ export function buildVendorCreditEntry(input: BuildVendorCreditEntryInput): Buil
   for (const [index, line] of coded.entries()) {
     lines.push({
       ...source,
-      glAccountId: line.glAccountId,
+      ...(line.glAccountId
+        ? { glAccountId: line.glAccountId }
+        : { accountRole: ACCOUNT_ROLES.PURCHASED_SERVICES }),
       direction: line.amountMinor > 0 ? ('credit' as const) : ('debit' as const),
       amount: Math.abs(line.amountMinor),
       memo: line.memo,

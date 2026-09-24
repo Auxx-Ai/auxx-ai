@@ -49,6 +49,7 @@ export const ROLE_IMPORT_MATCH: Readonly<Partial<Record<AccountRole, RoleImportM
     names: ['Shipping Income', 'Shipping Revenue', 'Shipping and Delivery Income'],
   },
   revenue_service: { names: ['Services', 'Service Income', 'Service Revenue'] },
+  purchased_services: { names: ['Cost of Services'] },
   revenue_returns_allowances: {
     names: ['Sales Returns and Allowances', 'Returns and Allowances'],
   },

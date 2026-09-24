@@ -22,8 +22,11 @@ import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../../cache'
 import { UnprocessableEntityError } from '../../../errors'
+import { readPartKinds } from '../../../inventory/builds/build-queries'
+import { isServicePartKind } from '../../../inventory/costing/client'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { systemFieldMap } from '../../../resources/system-records'
+import { ACCOUNT_ROLES, type AccountRole } from '../../ledger/builders/entry'
 import { resolveRoles } from '../../ledger/roles/resolve-roles'
 import { guard } from './guard'
 
@@ -40,18 +43,38 @@ export async function resolveGrniAccountId(
   db: Database,
   organizationId: string
 ): Promise<string | null> {
+  return resolveRoleAccountIdSoft(db, organizationId, ACCOUNT_ROLES.GRNI)
+}
+
+/**
+ * The `gl_account` mapped to `purchased_services`, or `null` — the prefill for a service line
+ * (107 §9). Never throws; an unmapped role leaves the line blank and posting names the role.
+ */
+export async function resolvePurchasedServicesAccountId(
+  db: Database,
+  organizationId: string
+): Promise<string | null> {
+  return resolveRoleAccountIdSoft(db, organizationId, ACCOUNT_ROLES.PURCHASED_SERVICES)
+}
+
+async function resolveRoleAccountIdSoft(
+  db: Database,
+  organizationId: string,
+  role: AccountRole
+): Promise<string | null> {
   try {
-    const resolved = await resolveRoles(db, organizationId, ['grni'])
+    const resolved = await resolveRoles(db, organizationId, [role])
     if (resolved.isErr()) {
-      logger.warn('Could not resolve the grni account role for a bill line link', {
+      logger.warn('Could not resolve an account role for a bill line prefill', {
         organizationId,
+        role,
         error: resolved.error.message,
       })
       return null
     }
-    return resolved.value.get('grni')?.glAccountId ?? null
+    return resolved.value.get(role)?.glAccountId ?? null
   } catch (error) {
-    logger.error('Unexpected failure resolving the grni account role', { organizationId, error })
+    logger.error('Unexpected failure resolving an account role', { organizationId, role, error })
     return null
   }
 }
@@ -212,18 +235,29 @@ export async function linkBillLines(
       const partDefId = orderLinePartField
         ? await getCachedEntityDefId(organizationId, 'part')
         : null
-      const grniAccountId = await resolveGrniAccountId(db, organizationId)
+      const partKinds = await readPartKinds(
+        db,
+        organizationId,
+        [...orderLinePartMap.values()].filter((id): id is string => !!id)
+      )
+      const hasService = [...partKinds.values()].some(isServicePartKind)
+      const [grniAccountId, servicesAccountId] = await Promise.all([
+        resolveGrniAccountId(db, organizationId),
+        hasService ? resolvePurchasedServicesAccountId(db, organizationId) : null,
+      ])
 
       for (const [index, link] of input.links.entries()) {
         const orderLineInstanceId = orderLineInstanceIds[index] ?? ''
         const partInstanceId = orderLinePartMap.get(orderLineInstanceId) ?? null
         const partRecordId =
           partInstanceId && partDefId ? toRecordId(partDefId, partInstanceId) : null
+        // A service was never received, so its line takes `purchased_services`, not GRNI (107 §9).
+        const service = !!partInstanceId && isServicePartKind(partKinds.get(partInstanceId))
 
         const linked = await linkBillLineToOrderLine(db, organizationId, userId, {
           lineRecordId: link.lineRecordId,
           orderLineRecordId: link.orderLineRecordId,
-          grniAccountId,
+          grniAccountId: service ? servicesAccountId : grniAccountId,
           partRecordId,
         })
         if (linked.isErr()) throw linked.error

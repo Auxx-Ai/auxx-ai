@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   rollups: [] as { org: string; lineIds: string[]; spec: string }[],
   rematches: [] as { vendorBillInstanceId: string }[],
   grniAccountId: 'gl_grni' as string | null,
+  servicesAccountId: 'gl_services' as string | null,
   partKinds: new Map<string, string>(),
   orderCurrency: null as string | null,
   orgCurrency: 'USD',
@@ -52,6 +53,7 @@ vi.mock('../../../../inventory/builds/build-queries', () => ({
 
 vi.mock('../link', () => ({
   resolveGrniAccountId: vi.fn(async () => h.grniAccountId),
+  resolvePurchasedServicesAccountId: vi.fn(async () => h.servicesAccountId),
 }))
 
 vi.mock('../run-store', async () => {
@@ -219,6 +221,7 @@ beforeEach(() => {
   h.rollups = []
   h.rematches = []
   h.grniAccountId = 'gl_grni'
+  h.servicesAccountId = 'gl_services'
   h.partKinds = new Map()
   h.orderCurrency = null
   h.orgCurrency = 'USD'
@@ -392,15 +395,23 @@ describe('createBillFromIntake - the lines', () => {
     expect(line?.options).toEqual({ absorbInto: 'def_vendor_bill:inst_1' })
   })
 
-  it('a line linked to a service is left uncoded: nothing was received into GRNI (107-D10)', async () => {
+  it('a line linked to a service takes the purchased_services account, never GRNI (107 §9)', async () => {
     h.partKinds = new Map([['part_1', 'service']])
     await createBillFromIntake(db, 'org_1', 'user_1', run())
 
     const line = h.creates.find((c) => c.def === 'vendor_bill_line')
-    expect(line?.values).toHaveProperty(
-      'vendor_bill_line_purchase_order_line',
-      'def_purchase_order_line:pol_1'
-    )
+    expect(line?.values).toMatchObject({
+      vendor_bill_line_purchase_order_line: 'def_purchase_order_line:pol_1',
+      vendor_bill_line_gl_account: 'gl_services',
+    })
+  })
+
+  it('a line linked to a service is left uncoded when purchased_services is unmapped', async () => {
+    h.partKinds = new Map([['part_1', 'service']])
+    h.servicesAccountId = null
+    await createBillFromIntake(db, 'org_1', 'user_1', run())
+
+    const line = h.creates.find((c) => c.def === 'vendor_bill_line')
     expect(line?.values).not.toHaveProperty('vendor_bill_line_gl_account')
   })
 

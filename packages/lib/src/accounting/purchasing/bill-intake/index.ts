@@ -20,6 +20,7 @@ export {
   linkBillLines,
   linkBillLineToOrderLine,
   resolveGrniAccountId,
+  resolvePurchasedServicesAccountId,
 } from './link'
 export {
   type BillLineFactsLoad,

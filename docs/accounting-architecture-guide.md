@@ -727,7 +727,7 @@ vary by country, industry and taste. Once the chart is editable the number canno
 meaning: a customer renumbering GRNI from `2160` to `2155` would silently break posting, and the
 entry would still balance. So builders emit roles (`G8`).
 
-There are **34 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
+There are **35 roles**, all in `ledger/builders/entry.ts` (`ACCOUNT_ROLES`), with
 `ROLE_ACCOUNT_TYPES`, `ROLE_ACCOUNT_SUBTYPES`, `ACCOUNT_ROLE_LABELS`, `ROLES_WITHOUT_DEFAULT`,
 `SCOPABLE_ROLES` and `roleScopeAxis` beside them. That is the **only** copy of the vocabulary.
 
@@ -756,6 +756,12 @@ store-scoped; the chart import matches it by provider hint or the name *Discount
 (liability, `2360` in the `prepayments` pack, unscoped, and **not** subtype-pinned — the obvious
 subtype, `STORED_BALANCES`, is an asset classification). A new role reaches an existing org
 through the wizard's pack picker or the Roles tab's Add, never a data migration.
+
+`purchased_services` (107 §9: expense, `5050 Cost of Services` in `purchasing`, cost of sales) is
+where a vendor bill or credit line for a `service` part posts when the line names no account; an
+account on the line overrides it. Bill intake, the link card and vendor credit create prefill the
+line from it when mapped. It is on no policy template, so connect-and-go does not mint it; unmapped,
+the post refuses `ROLE_UNMAPPED` like any other role.
 
 `SCOPABLE_ROLES` has exactly eight entries: `revenue_product`, `revenue_shipping`,
 `revenue_returns_allowances`, `discounts_given` and `accounts_receivable` on the **store** axis;

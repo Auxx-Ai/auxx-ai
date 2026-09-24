@@ -41,7 +41,7 @@ import { parseIntakeTotal, resolveIntakeUnitPrice } from '../intake/client'
 import { rematchBill } from '../match-hook'
 import type { BillIntakeWarning } from './client'
 import { guard } from './guard'
-import { resolveGrniAccountId } from './link'
+import { resolveGrniAccountId, resolvePurchasedServicesAccountId } from './link'
 import { markBillIntakeRunCreated, type StoredBillIntakeRun } from './run-store'
 
 const logger = createScopedLogger('purchasing:bill-intake:create')
@@ -186,6 +186,13 @@ export async function createBillFromIntake(
       const partKinds = hasLinkedLine
         ? await readPartKinds(db, organizationId, linkedPartIds)
         : new Map<string, string>()
+      const isServicePart = (partRecordId: RecordId | null) =>
+        !!partRecordId &&
+        isServicePartKind(partKinds.get(parseRecordId(partRecordId).entityInstanceId))
+      // A service line is prefilled from `purchased_services` instead (107 §9); blank when unmapped.
+      const servicesAccountId = [...partKinds.values()].some(isServicePartKind)
+        ? await resolvePurchasedServicesAccountId(db, organizationId)
+        : null
 
       const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
@@ -245,14 +252,11 @@ export async function createBillFromIntake(
           vendor_bill_line_quantity_billed: quantity,
           vendor_bill_line_unit_price: resolveIntakeUnitPrice(printed, quantity ?? 0, currency),
           vendor_bill_line_line_total: parseIntakeTotal(printed.lineTotalText, currency),
-          vendor_bill_line_gl_account:
-            linkedOrderLineRecordId &&
-            !(
-              partRecordId &&
-              isServicePartKind(partKinds.get(parseRecordId(partRecordId).entityInstanceId))
-            )
-              ? grniAccountId
-              : null,
+          vendor_bill_line_gl_account: !linkedOrderLineRecordId
+            ? null
+            : isServicePart(partRecordId)
+              ? servicesAccountId
+              : grniAccountId,
           vendor_bill_line_sort_order: index,
         })
 

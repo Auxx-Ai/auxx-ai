@@ -43,6 +43,7 @@ export {
   readStoredBillIntakeRun,
   resolveGrniAccountId,
   resolveInvoiceVendor,
+  resolvePurchasedServicesAccountId,
   resumeBillIntakeRun,
   type StoredBillIntakeRun,
   type StoredBillLineFacts,
