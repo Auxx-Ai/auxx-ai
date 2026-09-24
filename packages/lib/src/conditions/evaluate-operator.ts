@@ -20,6 +20,7 @@ import {
   isWithinSizeLimit,
   type WorkflowFileData,
 } from '../workflow-engine/types/file-variable'
+import { isInDateRange, parseDateRange } from './date-range'
 import { getOperatorDefinition, type Operator } from './operator-definitions'
 
 /**
@@ -200,7 +201,7 @@ function evaluateExistenceOperator(value: unknown, operator: string): boolean {
 }
 
 /**
- * DATE: before, after, on_date, not_on_date, within_days, older_than_days,
+ * DATE: between, before, after, on_date, not_on_date, within_days, older_than_days,
  * today, yesterday, this_week, this_month
  */
 function evaluateDateOperator(value: unknown, operator: string, compareValue: unknown): boolean {
@@ -208,6 +209,10 @@ function evaluateDateOperator(value: unknown, operator: string, compareValue: un
   if (!date) return false
 
   switch (operator) {
+    case 'between': {
+      const range = parseDateRange(compareValue)
+      return range ? isInDateRange(date, range) : false
+    }
     case 'before': {
       const target = parseDate(compareValue)
       return target ? date.getTime() < target.getTime() : false

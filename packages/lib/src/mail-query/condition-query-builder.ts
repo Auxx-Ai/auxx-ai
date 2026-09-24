@@ -30,6 +30,7 @@ import {
 } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { providersForChannelGroup } from '../channels/capabilities'
+import { parseDateRange } from '../conditions/date-range'
 import type { Operator } from '../conditions/operator-definitions'
 import type { Condition, ConditionGroup } from '../conditions/types'
 import {
@@ -618,6 +619,16 @@ function buildDateQuery(operator: Operator, value: any, field?: string): SQL<unk
       const endOfDay = new Date(isNotDate)
       endOfDay.setHours(23, 59, 59, 999)
       return toClause(or(lt(dateColumn, startOfDay), gt(dateColumn, endOfDay)))
+    }
+    case 'between': {
+      const range = parseDateRange(value)
+      if (!range) return null
+      return toClause(
+        and(
+          range.from ? gte(dateColumn, range.from) : undefined,
+          range.to ? lt(dateColumn, range.to) : undefined
+        )
+      )
     }
     case 'empty':
       return isNull(dateColumn)

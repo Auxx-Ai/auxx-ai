@@ -7,6 +7,7 @@ import { memo, useMemo } from 'react'
 import type { TiptapJSON } from '~/components/workflow/ui/input-editor'
 import VariableTag from '~/components/workflow/ui/variables/variable-tag'
 import { useConditionContext } from '../condition-context'
+import { formatDateRangeValue } from '../inputs/date-range-input'
 import { type Operator, STANDARD_OPERATORS } from '../types'
 
 type ConditionValueProps = {
@@ -44,6 +45,10 @@ const ConditionValue = ({
 
     if (valueSource === 'currentUser') return 'Current user'
 
+    if (operator === 'between') {
+      return formatDateRangeValue(value, fieldDef?.fieldType === 'DATE')
+    }
+
     if (Array.isArray(value)) {
       return value.join(', ')
     }
@@ -61,7 +66,7 @@ const ConditionValue = ({
     }
 
     return String(value)
-  }, [notHasValue, value, valueSource])
+  }, [notHasValue, value, valueSource, operator, fieldDef?.fieldType])
 
   return (
     <div className={`flex h-6 items-center gap-1 rounded-md bg-muted px-1 ${className || ''}`}>

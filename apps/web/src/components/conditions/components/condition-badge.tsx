@@ -124,6 +124,9 @@ export const ConditionBadge = ({
 
       if (!operatorRequiresValue(operator)) {
         newValue = undefined
+      } else if ((oldOperator === 'between') !== (operator === 'between')) {
+        // A `{ from, to }` range and a single date do not convert into each other.
+        newValue = undefined
       } else if (['in', 'not in'].includes(oldOperator) && !['in', 'not in'].includes(operator)) {
         // Keep as array for relationship fields - just limit to first element
         if (Array.isArray(newValue)) {

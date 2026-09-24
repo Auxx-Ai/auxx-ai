@@ -32,7 +32,11 @@ import type { ResourceField } from '../registry/field-types'
 import { type FieldOptionItem, getFieldOptions } from '../registry/option-helpers'
 import { BaseType } from '../types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
-import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
+import {
+  buildBetweenSql,
+  resolveOlderThanCutoff,
+  resolveRelativeDateRange,
+} from './relative-date-range'
 
 const logger = createScopedLogger('system-condition-builder')
 
@@ -394,6 +398,13 @@ export class SystemConditionBuilder extends BaseConditionBuilder<TableId> {
         if (!value) return undefined
         return this.combineColumnPredicates(columns, (col) =>
           operator === 'before' ? lt(col, value) : gt(col, value)
+        )
+      }
+
+      case 'between': {
+        if (normalizedType !== 'date') return undefined
+        return this.combineColumnPredicates(columns, (col) =>
+          buildBetweenSql(sql`${col}`, rawValue)
         )
       }
 

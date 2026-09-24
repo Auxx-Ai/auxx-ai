@@ -10,6 +10,7 @@ import {
 } from '~/components/fields/inputs/field-input-adapter'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import type { Condition, FieldDefinition } from '../types'
+import { DateRangeInput } from './date-range-input'
 
 /**
  * Props for ResourceInput component
@@ -67,6 +68,21 @@ export function ResourceInput({
   // Skip rendering if no input needed (empty, exists operators)
   if (inputConfig.mode === FieldInputMode.NONE) {
     return null
+  }
+
+  if (inputConfig.mode === FieldInputMode.RANGE) {
+    return (
+      <DateRangeInput
+        value={value}
+        onChange={onChange}
+        fieldType={inputConfig.fieldType ?? field.fieldType ?? 'DATETIME'}
+        disabled={disabled}
+        placeholder={placeholder ?? inputConfig.placeholder}
+        triggerProps={triggerProps}
+        open={open}
+        onOpenChange={onOpenChange}
+      />
+    )
   }
 
   return (

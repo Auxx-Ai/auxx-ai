@@ -3,6 +3,10 @@
 // Client-side entry point - re-exports everything
 // This allows tree-shaking and separate bundling if needed
 
+// THE operator evaluator — shared by mail/record-rule filters, the workflow if-else
+// node and the list-filter node.
+export type { DateRangeValue, ParsedDateRange } from './date-range'
+export { isInDateRange, parseDateRange } from './date-range'
 // Condition evaluation (pure TypeScript, safe for client)
 export {
   type ConditionDiagnostic,
@@ -13,8 +17,6 @@ export {
   type FieldResolver,
   normalizeStatusConditions,
 } from './evaluate'
-// THE operator evaluator — shared by mail/record-rule filters, the workflow if-else
-// node and the list-filter node.
 export { evaluateOperator, isEmptyValue, isKnownOperator, looseEquals } from './evaluate-operator'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions

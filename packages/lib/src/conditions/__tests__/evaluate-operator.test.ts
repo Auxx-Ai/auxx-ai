@@ -90,6 +90,12 @@ const OPERATOR_CASES: OperatorCase[] = [
 
   // DATE
   {
+    operator: 'between',
+    matching: '2026-08-01T00:00:00.000Z',
+    notMatching: '2026-09-01T00:00:00.000Z',
+    compareValue: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+  },
+  {
     operator: 'before',
     matching: new Date(2020, 0, 1),
     notMatching: new Date(2030, 0, 1),
@@ -354,5 +360,38 @@ describe('evaluateOperator', () => {
       expect(evaluateOperator(undefined, 'is not', 'anything')).toBe(true)
       expect(evaluateOperator(undefined, 'is', 'anything')).toBe(false)
     })
+  })
+})
+
+describe('between', () => {
+  const AUG = { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' }
+
+  it('includes from and excludes to', () => {
+    expect(evaluateOperator('2026-08-01T00:00:00.000Z', 'between', AUG)).toBe(true)
+    expect(evaluateOperator('2026-08-31T23:59:59.999Z', 'between', AUG)).toBe(true)
+    expect(evaluateOperator('2026-09-01T00:00:00.000Z', 'between', AUG)).toBe(false)
+    expect(evaluateOperator('2026-07-31T23:59:59.999Z', 'between', AUG)).toBe(false)
+  })
+
+  it('accepts an open end', () => {
+    expect(evaluateOperator('2030-01-01', 'between', { from: AUG.from })).toBe(true)
+    expect(evaluateOperator('2020-01-01', 'between', { from: AUG.from })).toBe(false)
+    expect(evaluateOperator('2020-01-01', 'between', { to: AUG.to })).toBe(true)
+    expect(evaluateOperator('2030-01-01', 'between', { to: AUG.to })).toBe(false)
+  })
+
+  it.each([
+    ['no ends', {}],
+    ['an inverted range', { from: AUG.to, to: AUG.from }],
+    ['an empty range', { from: AUG.from, to: AUG.from }],
+    ['a garbage end', { from: 'not-a-date', to: AUG.to }],
+    ['a plain date instead of a range', AUG.from],
+    ['nothing', undefined],
+  ])('is false for %s', (_label, compareValue) => {
+    expect(evaluateOperator('2026-08-15T00:00:00.000Z', 'between', compareValue)).toBe(false)
+  })
+
+  it('is false for a value that is not a date', () => {
+    expect(evaluateOperator('soon', 'between', AUG)).toBe(false)
   })
 })
