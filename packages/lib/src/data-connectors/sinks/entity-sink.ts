@@ -121,6 +121,9 @@ interface PendingImage {
   url: string
 }
 
+/** Multi-file FILE fields already logged as skipped, so a large sync logs each once. */
+const loggedMultiFileFields = new Set<string>()
+
 /** Field types whose value is a LIST, delivered by a connector as a comma string. */
 const LIST_VALUED_TYPES = new Set(['TAGS', 'MULTI_SELECT'])
 
@@ -552,6 +555,19 @@ async function buildWriteSet(
     if (fieldRow?.type === 'FILE' && (typeof sourceValue === 'string' || isBlank(sourceValue))) {
       const url = typeof sourceValue === 'string' ? sourceValue.trim() : ''
       if (!url || !fieldUuid || strategy === 'manual_review') continue
+      // Image ingest is one file per record; a multi-file gallery is left untouched.
+      if (
+        (fieldRow.options as { file?: { allowMultiple?: boolean } } | null)?.file?.allowMultiple
+      ) {
+        if (!loggedMultiFileFields.has(fieldUuid)) {
+          loggedMultiFileFields.add(fieldUuid)
+          logger.debug('URL on a multi-file FILE field — not fetched', {
+            mappingId: mapping.row.id,
+            fieldId: fieldUuid,
+          })
+        }
+        continue
+      }
       const hasImage = !isBlank(current ? rawOf(current.get(fieldUuid)) : undefined)
       if (strategy === 'fill_blank' && hasImage) continue
       if (strategy === 'connector_owned_only') {

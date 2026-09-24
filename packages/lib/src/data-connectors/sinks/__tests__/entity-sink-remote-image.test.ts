@@ -220,6 +220,22 @@ describe('entitySink: image URL on a FILE field', () => {
     expect(enqueueRecordImageFetch).not.toHaveBeenCalled()
   })
 
+  it('a URL on a multi-file FILE field is neither written, cleared nor enqueued', async () => {
+    getCachedFieldMap.mockResolvedValue(
+      new Map([
+        [NAME_UUID, { id: NAME_UUID, type: 'TEXT', options: {} }],
+        [IMAGE_UUID, { id: IMAGE_UUID, type: 'FILE', options: { file: { allowMultiple: true } } }],
+      ])
+    )
+    findItem.mockResolvedValue(boundItem())
+    const ctx = makeCtx()
+
+    await entitySink.upsertRecord(ctx, mapping(), record({ [NAME_REF]: 'Mug', [IMAGE_REF]: URL }))
+
+    expect(update.mock.calls[0]?.[1]).toEqual({ [NAME_KEY]: 'Mug' })
+    expect(enqueueRecordImageFetch).not.toHaveBeenCalled()
+  })
+
   it('fill_blank leaves an existing image alone', async () => {
     findItem.mockResolvedValue(boundItem())
     getFieldValues.mockResolvedValue(
