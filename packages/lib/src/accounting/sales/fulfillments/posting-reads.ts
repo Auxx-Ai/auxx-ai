@@ -47,18 +47,64 @@ export async function listFulfillmentAccountingCandidates(
   limit = 100,
   window?: FulfillmentCandidateWindow
 ): Promise<string[]> {
+  const from = await candidateFrom(db, organizationId, window, { includeParked: false })
+  if (!from) return []
+  const result = await db.execute(sql`
+    SELECT ship."entityId" AS id ${from}
+    ORDER BY ship."valueDate" ASC, ship."entityId" ASC
+    LIMIT ${limit}
+  `)
+  return (result.rows as Array<{ id: string }>).map((row) => row.id)
+}
+
+/** Unposted shipments after the cutoff, and how many book days and months they span. */
+export interface FulfillmentBacklogCount {
+  count: number
+  days: number
+  months: number
+}
+
+/** The candidate filter as a count with parked shipments included: what the sweep would still post. */
+export async function countFulfillmentAccountingBacklog(
+  db: Database,
+  organizationId: string,
+  window: FulfillmentCandidateWindow
+): Promise<FulfillmentBacklogCount> {
+  const from = await candidateFrom(db, organizationId, window, { includeParked: true })
+  if (!from) return { count: 0, days: 0, months: 0 }
+  const zone = window.bookTimeZone
+  const result = await db.execute(sql`
+    SELECT count(*)::int AS count,
+      count(DISTINCT to_char((ship."valueDate" AT TIME ZONE ${zone}), 'YYYY-MM-DD'))::int AS days,
+      count(DISTINCT to_char((ship."valueDate" AT TIME ZONE ${zone}), 'YYYY-MM'))::int AS months
+    ${from}
+  `)
+  const row = result.rows[0] as { count?: number; days?: number; months?: number } | undefined
+  return {
+    count: Number(row?.count ?? 0),
+    days: Number(row?.days ?? 0),
+    months: Number(row?.months ?? 0),
+  }
+}
+
+/** The shared `FROM … WHERE` over `ship`, or null when the org has nothing to read. */
+async function candidateFrom(
+  db: Database,
+  organizationId: string,
+  window: FulfillmentCandidateWindow | undefined,
+  options: { includeParked: boolean }
+) {
   const defId = await getCachedEntityDefId(organizationId, 'fulfillment')
-  if (!defId) return []
+  if (!defId) return null
   const fields = await systemFieldMap<SystemAttribute>(db, organizationId, [...CANDIDATE_ATTRS])
   const shippedAt = fields.fulfillment_shipped_at?.id
   const subtotal = fields.fulfillment_subtotal?.id
   const total = fields.fulfillment_total?.id
   const status = fields.fulfillment_status?.id
-  if (!shippedAt || !subtotal || !total || !status) return []
+  if (!shippedAt || !subtotal || !total || !status) return null
 
   const zone = window?.bookTimeZone ?? 'UTC'
-  const result = await db.execute(sql`
-    SELECT ship."entityId" AS id
+  return sql`
     FROM "FieldValue" ship
     JOIN "FieldValue" tot ON tot."organizationId" = ship."organizationId"
       AND tot."entityId" = ship."entityId" AND tot."fieldId" = ${total}
@@ -80,17 +126,17 @@ export async function listFulfillmentAccountingCandidates(
           ? sql`AND to_char((ship."valueDate" AT TIME ZONE ${zone}), 'YYYY-MM') > ${window.cutoffPeriod}`
           : sql``
       }
-      AND ${noWorkItem(organizationId, { stage: 'post', sourceKind: 'fulfillment', sourceId: sql`ship."entityId"` })}
+      ${
+        options.includeParked
+          ? sql``
+          : sql`AND ${noWorkItem(organizationId, { stage: 'post', sourceKind: 'fulfillment', sourceId: sql`ship."entityId"` })}`
+      }
       AND NOT EXISTS (SELECT 1 FROM "GlPostingSource" link
         WHERE link."organizationId" = ${organizationId}
           AND link."sourceKind" = 'fulfillment'
           AND link."sourceId" = ship."entityId"
           AND link."linkRole" = 'subject'
-          AND link."occurrence" = 'original')
-    ORDER BY ship."valueDate" ASC, ship."entityId" ASC
-    LIMIT ${limit}
-  `)
-  return (result.rows as Array<{ id: string }>).map((row) => row.id)
+          AND link."occurrence" = 'original')`
 }
 
 /** One shipment for the `?shipment=` drawer, parked or posted (88 §4.5). */

@@ -25,7 +25,9 @@ export {
   updateBankDeposit,
 } from './bank-deposits'
 export {
+  countMovementAccountingBacklog,
   listMovementAccountingCandidates,
+  type MovementBacklogCount,
   type MovementCandidateWindow,
   type MovementDetail,
   type MovementLinkedRecord,

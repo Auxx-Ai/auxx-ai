@@ -16,6 +16,7 @@ export {
 } from './bridge'
 export type { OrderMoneyTransaction } from './client'
 export {
+  countImportedCustomerMoneyBacklog,
   materializeImportedMoneyInTx,
   sweepImportedCustomerMoney,
 } from './ingest'

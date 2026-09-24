@@ -44,6 +44,54 @@ export async function listMovementAccountingCandidates(
   limit = 100,
   window?: MovementCandidateWindow
 ): Promise<Array<{ id: string; purpose: MovementPurpose }>> {
+  const rows = await db
+    .select({ id: schema.MoneyTransaction.id, purpose: schema.MoneyTransaction.purpose })
+    .from(schema.MoneyTransaction)
+    .where(movementCandidateWhere(organizationId, window, { includeParked: false }))
+    .orderBy(asc(schema.MoneyTransaction.createdAt), asc(schema.MoneyTransaction.id))
+    .limit(limit)
+  return rows as Array<{ id: string; purpose: MovementPurpose }>
+}
+
+/** Unposted movements after the cutoff, and how many book days and months they span. */
+export interface MovementBacklogCount {
+  count: number
+  days: number
+  months: number
+}
+
+/** The candidate filter as a count with parked movements included: what the sweep would still post. */
+export async function countMovementAccountingBacklog(
+  db: Database,
+  organizationId: string,
+  window: MovementCandidateWindow
+): Promise<MovementBacklogCount> {
+  const day = bookDay(window.bookTimeZone)
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      days: sql<number>`count(DISTINCT ${day})::int`,
+      months: sql<number>`count(DISTINCT to_char(${day}, 'YYYY-MM'))::int`,
+    })
+    .from(schema.MoneyTransaction)
+    .where(movementCandidateWhere(organizationId, window, { includeParked: true }))
+  return {
+    count: Number(row?.count ?? 0),
+    days: Number(row?.days ?? 0),
+    months: Number(row?.months ?? 0),
+  }
+}
+
+/** The book day the poster would compute: a date-precision movement already IS its day. */
+function bookDay(bookTimeZone: string) {
+  return sql`COALESCE(${schema.MoneyTransaction.occurredOn}, (${schema.MoneyTransaction.occurredAt} AT TIME ZONE ${bookTimeZone})::date)`
+}
+
+function movementCandidateWhere(
+  organizationId: string,
+  window: MovementCandidateWindow | undefined,
+  options: { includeParked: boolean }
+) {
   const conditions = [
     eq(schema.MoneyTransaction.organizationId, organizationId),
     // Adopted from the provider's ledger (102 D1): their entry is its posting.
@@ -53,31 +101,25 @@ export async function listMovementAccountingCandidates(
         AND link."sourceKind" = 'money_transaction'
         AND link."sourceId" = ${schema.MoneyTransaction.id}
         AND link."linkRole" = 'subject')`,
-    noWorkItem(organizationId, {
-      stage: 'post',
-      sourceKind: 'money_transaction',
-      sourceId: schema.MoneyTransaction.id,
-    }),
     // Parked upstream on its evidence; the ingest sweep owns it until the acceptance clears.
     sql`NOT EXISTS (SELECT 1 FROM ${schema.FinancialSourceAcceptance} parked
       WHERE parked."organizationId" = ${organizationId}
       AND parked."moneyTransactionId" = ${schema.MoneyTransaction.id}
       AND parked."state" = 'blocked')`,
   ]
-  if (window?.cutoffPeriod)
-    // The book month the poster would compute, in SQL: a date-precision movement
-    // already IS its day; an instant is cut in the book zone.
+  if (!options.includeParked)
     conditions.push(
-      sql`to_char(COALESCE(${schema.MoneyTransaction.occurredOn}, (${schema.MoneyTransaction.occurredAt} AT TIME ZONE ${window.bookTimeZone})::date), 'YYYY-MM') > ${window.cutoffPeriod}`
+      noWorkItem(organizationId, {
+        stage: 'post',
+        sourceKind: 'money_transaction',
+        sourceId: schema.MoneyTransaction.id,
+      })
     )
-
-  const rows = await db
-    .select({ id: schema.MoneyTransaction.id, purpose: schema.MoneyTransaction.purpose })
-    .from(schema.MoneyTransaction)
-    .where(and(...conditions))
-    .orderBy(asc(schema.MoneyTransaction.createdAt), asc(schema.MoneyTransaction.id))
-    .limit(limit)
-  return rows as Array<{ id: string; purpose: MovementPurpose }>
+  if (window?.cutoffPeriod)
+    conditions.push(
+      sql`to_char(${bookDay(window.bookTimeZone)}, 'YYYY-MM') > ${window.cutoffPeriod}`
+    )
+  return and(...conditions)
 }
 
 /**

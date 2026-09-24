@@ -48,6 +48,8 @@ export {
   requireFulfillmentFieldContext,
 } from './fields'
 export {
+  countFulfillmentAccountingBacklog,
+  type FulfillmentBacklogCount,
   type FulfillmentCandidateWindow,
   listFulfillmentAccountingCandidates,
   readShipmentDetail,

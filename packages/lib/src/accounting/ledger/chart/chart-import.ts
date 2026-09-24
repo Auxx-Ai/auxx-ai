@@ -244,7 +244,7 @@ async function runImport(
       alreadyImported: plan.alreadyImported.length,
       skippedInactive: plan.skippedInactive.length,
       rolesAssigned,
-      rolesAmbiguous: plan.ambiguousRoles.map((row) => row.role),
+      rolesAmbiguous: plan.ambiguousRoles,
       coreCreated,
       nestedUnder,
     })

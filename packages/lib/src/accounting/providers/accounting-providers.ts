@@ -2,6 +2,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { getCachedInstalledApps } from '../../cache'
+import { registerConnectAndGoTrigger } from '../connect-and-go/trigger'
 import { registerAccountingProvider, setConnectedProviderResolver } from './provider'
 
 const logger = createScopedLogger('accounting-providers')
@@ -54,6 +55,7 @@ export function registerAccountingProviders(): void {
   })
 
   setConnectedProviderResolver(resolveConnectedProvider)
+  registerConnectAndGoTrigger()
 
   logger.debug('Accounting providers registered', { providers: [QUICKBOOKS] })
 }

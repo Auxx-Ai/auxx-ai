@@ -140,6 +140,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { requestAuditContext } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
+import { ledgerConnectAndGoRouter } from './ledger-connect-and-go'
 
 /** What a posting's links are read in, so two postings of a kind read alike (task 83 §2.1). */
 const SOURCE_ROLE_ORDER = ['parent', 'counterparty', 'subject', 'member']
@@ -463,6 +464,8 @@ const journalEntryLine = z.object({
 })
 
 export const ledgerRouter = createTRPCRouter({
+  connectAndGo: ledgerConnectAndGoRouter,
+
   bookConnectionStatus: permissionProcedure(PermissionKey.ledgerControl).query(({ ctx }) =>
     readAccountingBookConnectionStatus(ctx.db, ctx.session.organizationId)
   ),

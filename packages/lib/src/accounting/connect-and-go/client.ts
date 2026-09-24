@@ -3,11 +3,24 @@
 // Client-safe surface of the Connect-and-go setup steps: report and proposal shapes plus the pure
 // bank-account planner. See plans/accounting/tasks/105-connect-and-go.md §4.
 
+import type { AccountRole } from '../ledger/builders/entry'
+import type { ChartImportResult } from '../ledger/types'
+import type { ProviderCompanySettings } from '../providers/company-settings'
+import type { ProposedCutover } from './cutover'
+
 export {
   type BankAccountPlanInput,
   parseLast4FromName,
   planBankAccounts,
 } from './bank-account-plan'
+export {
+  type CutoverSource,
+  estimateDrainMinutes,
+  isMonthKey,
+  type ProposedCutover,
+  proposeCutover,
+  RECOVERY_PER_LANE,
+} from './cutover'
 
 /** The opening-policy reason recorded when setup activates the book connection itself. */
 export const CONNECT_AND_GO_OPENING_REASON =
@@ -131,4 +144,103 @@ export interface BankAccountApplyReport {
   /** Accepted keys the current state no longer proposes. */
   skipped: { key: string; reason: 'no_longer_applies' }[]
   failed: { key: BankAccountProposalKey; message: string }[]
+}
+
+/** A prepare step that refused. The steps after it still ran. */
+export interface ConnectAndGoFailure {
+  step: 'company_settings' | 'chart' | 'rails' | 'provider_accounts' | 'bank_accounts' | 'roles'
+  message: string
+}
+
+/** An unmapped role several provider accounts fit. */
+export interface ConnectAndGoRoleQuestion {
+  role: AccountRole
+  /** Our accounts linked to those provider accounts; the picker offers these first. */
+  candidateAccountIds: string[]
+}
+
+/** What `prepareConnectAndGo` did, and what only a person can answer. Nothing in it posted. */
+export interface ConnectAndGoPrepareReport {
+  preparedAt: string
+  /** Setup was already finalized; the screen shows the outcome, not the questions. */
+  finalized: boolean
+  company: ProviderCompanySettings | null
+  /** The fiscal year start written from the provider, or null when left alone. */
+  fiscalYearStartMonthWritten: number | null
+  /** The book timezone after this run; null when neither the setting nor the actor had one. */
+  bookTimeZone: string | null
+  bookTimeZoneWritten: boolean
+  proposedCutover: ProposedCutover
+  chart: { mode: 'full' | 'refresh'; suggestionsLinked: number; result: ChartImportResult } | null
+  rails: RailRouteReport | null
+  /** Our accounts created in the provider and linked. */
+  providerAccounts: {
+    created: number
+    failed: { glAccountId: string; message: string } | null
+  } | null
+  bankAccounts: BankAccountPlan | null
+  questions: {
+    roles: ConnectAndGoRoleQuestion[]
+    rails: RailRouteQuestion[]
+    bankAccounts: BankAccountProposal[]
+  }
+  failures: ConnectAndGoFailure[]
+}
+
+/** A person's answers to the prepare report's questions. */
+export interface ConnectAndGoAnswers {
+  roles?: { role: string; glAccountId: string }[]
+  railBanks?: { paymentGatewayId: string; glAccountId: string }[]
+  /** `BankAccountProposalKey`s the person accepted. */
+  acceptBankAccounts?: string[]
+  /** Written only while `accounting.bookTimeZone` is unset. */
+  bookTimeZone?: string | null
+}
+
+export const CONNECT_AND_GO_COMPLETE_STEPS = [
+  'cutover',
+  'roles',
+  'rail_banks',
+  'bank_accounts',
+  'book_connection',
+  'opening',
+  'finalize',
+  'inventory_adjustment',
+] as const
+
+export type ConnectAndGoCompleteStep = (typeof CONNECT_AND_GO_COMPLETE_STEPS)[number]
+
+export interface ConnectAndGoStepReport {
+  step: ConnectAndGoCompleteStep
+  status: 'done' | 'skipped' | 'failed'
+  detail: string | null
+}
+
+/** What `completeConnectAndGo` did, step by step, up to the first refusal. */
+export interface ConnectAndGoCompleteReport {
+  completed: boolean
+  steps: ConnectAndGoStepReport[]
+  failedAt: ConnectAndGoCompleteStep | null
+  message: string | null
+  bankAccounts: BankAccountApplyReport | null
+  bookConnection: BookConnectionSetupResult | null
+  opening: { filledCount: number; differenceMinor: number; importedAccounts: number } | null
+  finalize: { finalizedNow: boolean; openingStatus: string | null } | null
+  inventoryAdjustment: { differenceMinor: number; status: string | null } | null
+}
+
+/** What the recovery sweeps would post after the cutover, and roughly what leaves for the provider. */
+export interface ConnectAndGoBacklogPreview {
+  cutoffPeriod: string
+  bookTimeZone: string
+  shipments: number
+  movements: number
+  /** Shipments parked at relief. */
+  relief: number
+  /** Imported payments still to materialize into movements. */
+  importedPayments: number
+  exportMode: 'transaction' | 'summary'
+  /** About how many provider objects the backlog exports as. */
+  estimatedExports: number
+  drainMinutes: number
 }

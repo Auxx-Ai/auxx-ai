@@ -614,7 +614,10 @@ describe('no duplicate core accounts (brief 105 C2)', () => {
       await importChartFromProvider(db, { organizationId: ORG, actorUserId: USER })
     )._unsafeUnwrap()
 
-    expect(value.rolesAmbiguous).toContain('revenue_product')
+    expect(value.rolesAmbiguous).toContainEqual({
+      role: 'revenue_product',
+      providerAccountIds: ['a', 'b'],
+    })
     expect(value.coreCreated.map((a) => a.role)).not.toContain('revenue_product')
     expect(insertedRows.some((row) => row.role === 'revenue_product')).toBe(false)
   })

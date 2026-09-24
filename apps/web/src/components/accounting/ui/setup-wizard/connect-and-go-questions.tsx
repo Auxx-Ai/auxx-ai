@@ -1,0 +1,282 @@
+// apps/web/src/components/accounting/ui/setup-wizard/connect-and-go-questions.tsx
+'use client'
+
+import { FieldType } from '@auxx/database/enums'
+import type {
+  BankAccountProposal,
+  ConnectAndGoPrepareReport,
+} from '@auxx/lib/accounting/connect-and-go/client'
+import {
+  ACCOUNT_ROLE_LABELS,
+  type AccountRole,
+  accountLabel,
+  ROLE_ACCOUNT_SUBTYPES,
+  ROLE_ACCOUNT_TYPES,
+} from '@auxx/lib/accounting/ledger/client'
+import { Checkbox } from '@auxx/ui/components/checkbox'
+import Link from 'next/link'
+import { useMemo } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { BaseType } from '~/components/workflow/types'
+import { useChartAccounts } from '../gl-account-picker'
+import { MappingAccountSelect } from '../settings/mapping-account-select'
+
+/** The person's answers, held until Finish. */
+export interface ConnectAndGoDraft {
+  cutoffPeriod: string
+  bookTimeZone: string
+  roles: Record<string, string | null>
+  railBanks: Record<string, string | null>
+  acceptBankAccounts: string[]
+}
+
+const CUTOVER_SOURCE_NOTE: Record<ConnectAndGoPrepareReport['proposedCutover']['source'], string> =
+  {
+    current: 'The cutover already set.',
+    lock_date: 'The month your books are closed through in',
+    last_full_month: 'The last full month.',
+  }
+
+interface ConnectAndGoQuestionsProps {
+  report: ConnectAndGoPrepareReport
+  draft: ConnectAndGoDraft
+  onChange: (patch: Partial<ConnectAndGoDraft>) => void
+  providerLabel: string
+  disabled?: boolean
+}
+
+/** The cutover and every question prepare could not answer on its own. */
+export function ConnectAndGoQuestions({
+  report,
+  draft,
+  onChange,
+  providerLabel,
+  disabled,
+}: ConnectAndGoQuestionsProps) {
+  const { accounts } = useChartAccounts()
+  const names = useMemo(
+    () => new Map(accounts.map((account) => [account.id, accountLabel(account)])),
+    [accounts]
+  )
+  const { roles, rails, bankAccounts } = report.questions
+  const source = report.proposedCutover.source
+
+  return (
+    <div className='flex flex-col gap-4'>
+      <FieldPanel
+        orientation='responsive'
+        breakpoint='md'
+        resizeId='accounting-connect-and-go'
+        defaultLabelWidth={170}
+        className='p-0'>
+        <FieldPanelRow
+          title='Cutover month'
+          type={BaseType.STRING}
+          showIcon
+          isRequired
+          description={
+            source === 'lock_date'
+              ? `${CUTOVER_SOURCE_NOTE.lock_date} ${providerLabel}.`
+              : CUTOVER_SOURCE_NOTE[source]
+          }>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={draft.cutoffPeriod}
+            placeholder='2025-12'
+            disabled={disabled || report.finalized}
+            onChange={(value) => onChange({ cutoffPeriod: ((value as string) ?? '').trim() })}
+          />
+        </FieldPanelRow>
+        {!report.bookTimeZone && (
+          <FieldPanelRow
+            title='Book timezone'
+            type={BaseType.STRING}
+            showIcon
+            isRequired
+            description='The IANA timezone your books are kept in. There is no UTC fallback.'>
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
+              value={draft.bookTimeZone}
+              placeholder='America/New_York'
+              disabled={disabled}
+              onChange={(value) => onChange({ bookTimeZone: ((value as string) ?? '').trim() })}
+            />
+          </FieldPanelRow>
+        )}
+      </FieldPanel>
+
+      <p className='rounded-lg border bg-muted/40 p-3 text-muted-foreground text-xs'>
+        Everything after the cutover is posted and exported by Auxx. If another app already writes
+        your Shopify sales into {providerLabel} (its native app, Synder, A2X), stop it at the
+        cutover, or those sales are counted twice. Everything on or before the cutover comes in as
+        the opening entry and is never posted order by order.
+      </p>
+
+      {roles.length > 0 && (
+        <QuestionGroup
+          title='Which account?'
+          description={`${providerLabel} has more than one account that could take these.`}>
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='accounting-connect-and-go'
+            defaultLabelWidth={170}
+            className='p-0'>
+            {roles.map((question) => {
+              const role = question.role as AccountRole
+              const suggested = question.candidateAccountIds
+                .map((id) => names.get(id))
+                .filter(Boolean)
+              return (
+                <FieldPanelRow
+                  key={role}
+                  title={ACCOUNT_ROLE_LABELS[role] ?? role}
+                  type={BaseType.ENUM}
+                  showIcon
+                  description={
+                    suggested.length > 0 ? `Likely: ${suggested.join(', ')}` : undefined
+                  }>
+                  <MappingAccountSelect
+                    value={draft.roles[role] ?? null}
+                    filterTypes={[ROLE_ACCOUNT_TYPES[role]]}
+                    subtypePin={ROLE_ACCOUNT_SUBTYPES[role]}
+                    disabled={disabled}
+                    onChange={(value) =>
+                      onChange({
+                        roles: { ...draft.roles, [role]: value === 'inherit' ? null : value },
+                      })
+                    }
+                  />
+                </FieldPanelRow>
+              )
+            })}
+          </FieldPanel>
+        </QuestionGroup>
+      )}
+
+      {rails.length > 0 && (
+        <QuestionGroup
+          title='Where each payment rail pays out'
+          description='The bank account each processor deposits into.'>
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='accounting-connect-and-go'
+            defaultLabelWidth={170}
+            className='p-0'>
+            {rails.map((question) =>
+              question.kind === 'rail_bank' ? (
+                <FieldPanelRow
+                  key={`bank:${question.gatewayId}`}
+                  title={question.name}
+                  type={BaseType.ENUM}
+                  showIcon
+                  description={
+                    question.candidateAccountIds.length === 0
+                      ? 'Your chart has no bank account yet.'
+                      : undefined
+                  }>
+                  <MappingAccountSelect
+                    value={draft.railBanks[question.gatewayId] ?? null}
+                    filterTypes={['asset']}
+                    subtypePin='bank'
+                    disabled={disabled}
+                    onChange={(value) =>
+                      onChange({
+                        railBanks: {
+                          ...draft.railBanks,
+                          [question.gatewayId]: value === 'inherit' ? null : value,
+                        },
+                      })
+                    }
+                  />
+                </FieldPanelRow>
+              ) : (
+                <FieldPanelRow
+                  key={`split:${question.name}`}
+                  title={question.name}
+                  type={BaseType.STRING}
+                  showIcon>
+                  <p className='py-1.5 text-muted-foreground text-xs'>
+                    Split across {question.gatewayIds.length} gateways
+                    {question.unclaimedHandles.length > 0
+                      ? `; ${question.unclaimedHandles.join(', ')} unrouted`
+                      : ''}
+                    .{' '}
+                    <Link
+                      href='/app/accounting/settings/payment-gateways'
+                      className='underline underline-offset-2'>
+                      Review in rails settings
+                    </Link>
+                  </p>
+                </FieldPanelRow>
+              )
+            )}
+          </FieldPanel>
+        </QuestionGroup>
+      )}
+
+      {bankAccounts.length > 0 && (
+        <QuestionGroup
+          title='Bank accounts'
+          description='Tick the ones to add. Nothing is created until you finish.'>
+          <ul className='flex flex-col divide-y rounded-lg border'>
+            {bankAccounts.map((proposal) => (
+              <li key={proposal.key} className='flex items-start gap-2 px-3 py-2'>
+                <Checkbox
+                  id={proposal.key}
+                  checked={draft.acceptBankAccounts.includes(proposal.key)}
+                  disabled={disabled}
+                  onCheckedChange={(checked) =>
+                    onChange({
+                      acceptBankAccounts: checked
+                        ? [...draft.acceptBankAccounts, proposal.key]
+                        : draft.acceptBankAccounts.filter((key) => key !== proposal.key),
+                    })
+                  }
+                />
+                <label htmlFor={proposal.key} className='flex flex-col text-sm'>
+                  <span>{proposalTitle(proposal)}</span>
+                  <span className='text-muted-foreground text-xs'>{proposalDetail(proposal)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </QuestionGroup>
+      )}
+    </div>
+  )
+}
+
+function QuestionGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <div className='flex flex-col'>
+        <span className='font-medium text-sm'>{title}</span>
+        <span className='text-muted-foreground text-xs'>{description}</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function proposalTitle(proposal: BankAccountProposal): string {
+  return proposal.kind === 'create'
+    ? `Add ${proposal.name}`
+    : `Link ${proposal.bankAccountName ?? 'the connected account'} ····${proposal.last4}`
+}
+
+function proposalDetail(proposal: BankAccountProposal): string {
+  return proposal.kind === 'create'
+    ? `A bank account on ${proposal.glAccountName}${proposal.last4 ? `, ending ${proposal.last4}` : ''}.`
+    : `Its feed posts to ${proposal.glAccountName}.`
+}

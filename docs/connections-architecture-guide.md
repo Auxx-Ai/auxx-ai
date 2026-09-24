@@ -437,6 +437,7 @@ mechanism, branch on `connection.type` (oauth2 vs secret). See
 | OAuth popup hook | `apps/web/src/hooks/use-oauth-popup.ts` |
 | Connect flow (client) | `apps/web/src/components/apps/hooks/use-connect-flow.tsx` |
 | Post-connect hooks | `packages/lib/src/connections/post-connect-hooks.ts` |
+| App connection-added listeners (runs after a new app connection saves; accounting's connect-and-go registers one) | `packages/lib/src/apps/connections/connection-added-hooks.ts` |
 | Parked selection (two-phase connect) | `packages/lib/src/connections/pending-selection.ts` |
 | Connect settle event (client contract) | `packages/lib/src/connections/connect-events.ts` → `@auxx/lib/connections/client` |
 | App connection config UI | `apps/build/src/app/(portal)/[slug]/apps/[app_slug]/connections/page.tsx` |

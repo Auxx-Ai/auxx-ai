@@ -11,6 +11,7 @@ import {
   bankFeedMaintenanceJob,
   cleanupExpiredMediaAssetsJob,
   companyEnrichmentSweepJob,
+  connectAndGoPrepareJob,
   type DemoSeedJobData,
   dataDeletionJob,
   dataMigrationsJob,
@@ -268,6 +269,9 @@ export const jobMappings = {
   // BACKWARD on purpose - a depreciation entry for March may not exist in January.
   recurringJournalsJob,
   accountingRecoveryJob,
+
+  // Queued when an accounting provider connects (plans/accounting/tasks/105 §4).
+  connectAndGoPrepareJob,
 
   // Money P24 vendor-bill aging daily sweep. THE ONLY time-driven trigger in the
   // three-way match: every other one is an edit or a receipt. Without it a prepaid
