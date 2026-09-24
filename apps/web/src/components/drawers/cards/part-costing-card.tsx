@@ -5,13 +5,19 @@ import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { standardCostDrift } from '@auxx/lib/inventory/builds/client'
 import { absorbsConversionCost, resolvePartKind } from '@auxx/lib/inventory/costing/client'
-import { CostSource, parseRecordId } from '@auxx/lib/resources/client'
+import {
+  CostSource,
+  PartStandardCostOrigin,
+  PartStandardCostSource,
+  parseRecordId,
+} from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import Link from 'next/link'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { Tooltip } from '~/components/global/tooltip'
@@ -22,6 +28,7 @@ import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
 import { useAccess } from '~/providers/capabilities-provider'
+import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { isServiceKind } from '../part-kind-gates'
 
@@ -45,6 +52,9 @@ const PART_COSTING_ATTRIBUTES = [
   'part_standard_labor_cost',
   'part_standard_overhead_cost',
   'part_standard_cost_effective_at',
+  'part_standard_cost_source',
+  'part_standard_cost_origin',
+  'part_channel_cost',
   'part_kind',
   // The two EDITABLE ones. Also `showInPanel: false`, and for a sharper reason
   // than the frozen block: on a `component` the roll never reads them, and 82%
@@ -63,6 +73,104 @@ function formatEffectiveDate(value: string | Date): string {
 
 /** `CostSource.values` keyed by option value, for badge label + color. */
 const COST_SOURCE_BY_VALUE = Object.fromEntries(CostSource.values.map((v) => [v.value, v]))
+
+const ORIGIN_BY_VALUE = Object.fromEntries(PartStandardCostOrigin.values.map((v) => [v.value, v]))
+
+/** Some read paths return a SINGLE_SELECT as a one-element array. */
+function optionValue(value: unknown): string | undefined {
+  const first = Array.isArray(value) ? value[0] : value
+  return typeof first === 'string' ? first : undefined
+}
+
+/** A provisional standard's origin, e.g. "Channel", with "provisional" in the tooltip. */
+function StandardOriginBadge({ origin }: { origin: string | undefined }) {
+  const meta = origin ? ORIGIN_BY_VALUE[origin] : undefined
+  return (
+    <Tooltip content='Provisional: the first receipt replaces it with the price paid'>
+      <Badge variant={(meta?.color ?? 'amber') as Variant} size='xs'>
+        {meta?.label ?? 'Provisional'}
+      </Badge>
+    </Tooltip>
+  )
+}
+
+/**
+ * A typed unit cost (106 §5). Shown while the part has no standard, or a provisional one on a
+ * part that has never moved; the server refuses anything else.
+ */
+function StandardUnitCostRow({
+  partId,
+  channelCost,
+  hasStandard,
+}: {
+  partId: string
+  channelCost: number | null | undefined
+  hasStandard: boolean
+}) {
+  const [draft, setDraft] = useState<number | null>(null)
+  const utils = api.useUtils()
+  const setStandardCost = api.builds.setStandardCost.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Failed to set the unit cost', description: error.message }),
+  })
+
+  const save = async (unitCost: number) => {
+    await setStandardCost.mutateAsync({ partId, unitCost })
+    setDraft(null)
+    await utils.builds.canRestateStandardCost.invalidate({ partId })
+  }
+
+  const handleChange = (next: unknown) => {
+    const numeric =
+      typeof next === 'number' ? next : next === '' || next == null ? null : Number(next)
+    setDraft(numeric != null && Number.isFinite(numeric) ? numeric : null)
+  }
+
+  return (
+    <FieldPanelRow
+      title='Unit cost'
+      description={
+        hasStandard
+          ? 'Replaces the provisional standard. Nothing has moved at it yet'
+          : 'Sets the standard every stock movement is stamped with. Zero is allowed'
+      }>
+      <div className='space-y-1'>
+        <div className='flex min-h-8 items-center gap-2'>
+          <div className='w-32'>
+            <FieldInputAdapter
+              fieldType={FieldType.CURRENCY}
+              fieldOptions={{ currencyCode: 'USD', decimals: 2, currencyDisplay: 'symbol' }}
+              value={draft}
+              onChange={handleChange}
+              placeholder='0.00'
+            />
+          </div>
+          <Button
+            variant='outline'
+            size='xs'
+            disabled={draft == null}
+            loading={setStandardCost.isPending}
+            loadingText='Saving...'
+            onClick={() => draft != null && save(draft)}>
+            Save
+          </Button>
+        </div>
+        {!hasStandard && channelCost != null && (
+          <div className='flex items-center gap-2 text-muted-foreground text-xs tabular-nums'>
+            Channel cost {formatCurrency(channelCost)}
+            <Button
+              variant='ghost'
+              size='xs'
+              disabled={setStandardCost.isPending}
+              onClick={() => save(channelCost)}>
+              Use
+            </Button>
+          </div>
+        )}
+      </div>
+    </FieldPanelRow>
+  )
+}
 
 /**
  * The winning number gets this marker: `part_cost` is a copy of whichever of
@@ -156,6 +264,10 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   const standardLaborCost = values.part_standard_labor_cost as number | null | undefined
   const standardOverheadCost = values.part_standard_overhead_cost as number | null | undefined
   const standardEffectiveAt = values.part_standard_cost_effective_at as string | undefined
+  const isProvisional =
+    optionValue(values.part_standard_cost_source) === PartStandardCostSource.PROVISIONAL
+  const standardOrigin = optionValue(values.part_standard_cost_origin)
+  const channelCost = values.part_channel_cost as number | null | undefined
 
   // 🛑 The gate for everything absorption-related on this card. A `component`
   // never absorbs conversion cost (README B11), so on one its rates are
@@ -250,9 +362,18 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   })
   const hasSubparts = subpartRecords.length > 0
 
+  const restatable = api.builds.canRestateStandardCost.useQuery(
+    { partId },
+    { enabled: canEdit && !!partId && standardCost != null && isProvisional }
+  )
+  const showUnitCost =
+    canEdit &&
+    !isServiceKind(values.part_kind) &&
+    (standardCost == null || (isProvisional && restatable.data?.canRestate === true))
+
   // A service carries no cost basis or standard (107 D10); the detail sidebar renders this ungated.
   if (isServiceKind(values.part_kind)) return null
-  if (!hasComparison && !isUncosted && !hasStandardBlock) return null
+  if (!hasComparison && !isUncosted && !hasStandardBlock && !showUnitCost) return null
 
   const noneMeta = COST_SOURCE_BY_VALUE[CostSource.NONE]
 
@@ -316,6 +437,7 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
                 ) : (
                   <>
                     {formatCurrency(standardCost)}
+                    {isProvisional && <StandardOriginBadge origin={standardOrigin} />}
                     {standardEffectiveAt && (
                       <span className='text-muted-foreground text-xs'>
                         set {formatEffectiveDate(standardEffectiveAt)}
@@ -363,6 +485,14 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             </div>
           </FieldPanelRow>
 
+          {showUnitCost && (
+            <StandardUnitCostRow
+              partId={partId}
+              channelCost={channelCost}
+              hasStandard={standardCost != null}
+            />
+          )}
+
           {/* ── The two absorption inputs ────────────────────────────────
               Gated on `absorbs` AND on edit authority: hidden rather than
               disabled, the same call every other editable card row here makes.
@@ -395,6 +525,10 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             </FieldPanelRow>
           )}
         </>
+      )}
+
+      {!hasStandardBlock && showUnitCost && (
+        <StandardUnitCostRow partId={partId} channelCost={channelCost} hasStandard={false} />
       )}
     </FieldPanel>
   )

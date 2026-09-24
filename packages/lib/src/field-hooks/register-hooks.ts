@@ -90,6 +90,7 @@ import {
   enrollJobFollowUpOnCompletion,
   reanchorInvoiceOnDueDateChange,
 } from '../sequences/field-change-hooks'
+import { seedStandardOnChannelCost, seedStandardOnChannelCostBatch } from './post/channel-cost-seed'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import {
@@ -408,6 +409,11 @@ export function registerAllHooks(): void {
   // The cost-change ripple runs from `cost-calculator.ts`, not through this door.
   registerDeriveHooks('parts', [recomputePriceOnMarkupChange, pauseMarkupOnPriceEdit], {
     skipOnCreate: true,
+  })
+  // A channel's unit cost seeds a first standard (106 D5), on create too: a connector's first
+  // sync is the create. The batch core is what makes it fire on the sync lane.
+  registerDeriveHooks('parts', [seedStandardOnChannelCost], {
+    batch: seedStandardOnChannelCostBatch,
   })
 
   // Address field (plans/address-field/01-single-input-address-field.md §5 items 2-3,

@@ -35,8 +35,12 @@ import type {
 import {
   loadPartAbsorptionRates,
   previewStandardCostRoll,
+  readMovedPartIds,
   rollStandardCost,
+  setStandardCost,
+  setStandardCosts,
 } from '@auxx/lib/inventory/costing'
+import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -54,6 +58,25 @@ const rollInput = z.object({
   /** When the new standards take effect. Defaults to now. */
   effectiveAt: z.coerce.date().optional(),
 })
+
+/** A typed per-unit cost: minor units at rate precision, so fractional cents are legal. Zero is a value. */
+const unitCostInput = z.number().finite().nonnegative()
+
+/** One row of the Set costs grid (106 §6.2). */
+const standardCostItem = z.object({
+  partId: z.string().min(1),
+  unitCost: unitCostInput,
+  /** A `PartKind` value, applied first through `bulkSetPartKind` so the 107 kind guard runs. */
+  kind: z.string().min(1).optional(),
+})
+
+/** Per-item answer of `setStandardCosts`. `action` is absent when only the kind was written. */
+interface SetStandardCostItemResult {
+  partId: string
+  ok: boolean
+  error?: string
+  action?: 'set' | 'restated'
+}
 
 /** Money is stored in integer minor units (cents) everywhere in this subsystem. */
 const minorUnits = z.number().int()
@@ -139,7 +162,7 @@ const completionShape = {
  *
  * | procedure                              | gate                                      |
  * | -------------------------------------- | ----------------------------------------- |
- * | `previewRoll`, `roll`                  | edit on `part`                            |
+ * | `previewRoll`, `roll`, `setStandardCost(s)`, `canRestateStandardCost` | edit on `part` |
  * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
  * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `undoBatchRun` | edit on `build` AND edit on `stock_movement` |
@@ -212,6 +235,81 @@ export const buildsRouter = createTRPCRouter({
     if (result.isErr()) throw result.error
     return result.value
   }),
+
+  /**
+   * A typed unit cost for one part (106 §5): a first standard when there is none, a restate of
+   * a provisional standard on a part that has never moved, refused otherwise (roll instead).
+   */
+  setStandardCost: capabilityProcedure
+    .input(z.object({ partId: z.string().min(1), unitCost: unitCostInput }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await setStandardCost(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return { partId: input.partId, ...result.value }
+    }),
+
+  /**
+   * The Set costs grid's save (106 §6.2): an optional kind per row first, then every cost through
+   * `setStandardCost`'s rules. One outcome per distinct part; one bad row fails only itself.
+   */
+  setStandardCosts: capabilityProcedure
+    .input(z.object({ items: z.array(standardCostItem).min(1).max(500) }))
+    .mutation(async ({ ctx, input }): Promise<SetStandardCostItemResult[]> => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+      const failed = new Map<string, string>()
+      const byKind = new Map<string, string[]>()
+      for (const item of input.items) {
+        if (!item.kind) continue
+        byKind.set(item.kind, [...(byKind.get(item.kind) ?? []), item.partId])
+      }
+      for (const [kind, partIds] of byKind) {
+        const written = await bulkSetPartKind(ctx.db, organizationId, userId, partIds, kind)
+        if (written.isErr()) {
+          for (const partId of partIds) failed.set(partId, written.error.message)
+          continue
+        }
+        for (const skip of written.value.failed) failed.set(skip.partId, skip.detail)
+      }
+
+      // A service carries no standard, so its row is done once the kind lands.
+      const costItems = input.items.filter(
+        (item) => !failed.has(item.partId) && item.kind !== 'service'
+      )
+      const costs = await setStandardCosts(ctx.db, organizationId, costItems)
+      if (costs.isErr()) throw costs.error
+      const outcomes = new Map(costs.value.map((outcome) => [outcome.partId, outcome]))
+
+      const seen = new Set<string>()
+      const results: SetStandardCostItemResult[] = []
+      for (const item of input.items) {
+        if (seen.has(item.partId)) continue
+        seen.add(item.partId)
+        const kindError = failed.get(item.partId)
+        const outcome = outcomes.get(item.partId)
+        if (kindError) results.push({ partId: item.partId, ok: false, error: kindError })
+        else if (!outcome) results.push({ partId: item.partId, ok: true })
+        else if (outcome.ok) {
+          results.push({ partId: item.partId, ok: true, action: outcome.action })
+        } else results.push({ partId: item.partId, ok: false, error: outcome.error.message })
+      }
+      return results
+    }),
+
+  /** Whether a provisional standard may still be restated: the part has no stock movement. */
+  canRestateStandardCost: capabilityProcedure
+    .input(z.object({ partId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+      const moved = await readMovedPartIds(ctx.db, organizationId, [input.partId])
+      return { canRestate: !moved.has(input.partId) }
+    }),
 
   // ─── The build event (phase 2) ──────────────────────────────────────
 

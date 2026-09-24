@@ -1,5 +1,6 @@
 // packages/lib/src/inventory/costing/index.ts
 
+export { seedStandardFromChannelCost } from './channel-cost-seed'
 export {
   absorbedRate,
   absorbsConversionCost,
@@ -9,6 +10,7 @@ export {
   resolvePartKind,
   resolveStandardCostSource,
   rolledStandardCostSource,
+  type StandardCostOriginValue,
   type StandardCostSourceValue,
 } from './client'
 export {
@@ -51,6 +53,14 @@ export {
   type WriteRevaluationResult,
   writeRevaluation,
 } from './revalue'
+// A typed unit cost (106 §5): a first standard, or a restate of an unmoved provisional one.
+export {
+  readMovedPartIds,
+  type StandardCostEntry,
+  type StandardCostEntryOutcome,
+  setStandardCost,
+  setStandardCosts,
+} from './set-standard-cost'
 export { rollStandardCost } from './standard-cost'
 export {
   loadPartAbsorptionRates,

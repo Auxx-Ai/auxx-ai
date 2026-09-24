@@ -6,7 +6,13 @@ import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { LINE_ITEM_UNIT_OPTIONS } from '../../../accounting/sales/totals/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { CostSource, PartKind, PartStandardCostSource, StockStatus } from '../enum-values'
+import {
+  CostSource,
+  PartKind,
+  PartStandardCostOrigin,
+  PartStandardCostSource,
+  StockStatus,
+} from '../enum-values'
 import type { ResourceField } from '../field-types'
 import { defineResourceFields } from '../system-attributes'
 
@@ -779,6 +785,36 @@ export const PART_FIELDS = defineResourceFields({
     description: 'Copied onto lines when this item is picked',
   },
 
+  // Hidden from the panel: the Costing card shows it beside the standard it seeds.
+  channelCost: {
+    id: toFieldId('channelCost'),
+    key: 'channelCost',
+    label: 'Channel cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_channel_cost',
+    systemSortOrder: 'a9g',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
+    options: {
+      currencyCode: 'USD',
+      decimals: RATE_DECIMALS,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Unit cost reported by a connected sales channel; seeds the first standard cost',
+  },
+
   // Reverse relationship: purchaseOrderLines (from purchase_order_line.part)
   purchaseOrderLines: {
     id: toFieldId('purchaseOrderLines'),
@@ -1042,6 +1078,31 @@ export const PART_FIELDS = defineResourceFields({
       'Whether the frozen standard is a typed guess (provisional) or came off a receipt ' +
       "(confirmed). A provisional part's first receipt REPLACES the standard with the agreed " +
       'price and posts no purchase price variance',
+  },
+
+  standardCostOrigin: {
+    id: toFieldId('standardCostOrigin'),
+    key: 'standardCostOrigin',
+    label: 'Standard Cost Origin',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_standard_cost_origin',
+    systemSortOrder: 'a5iW',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    options: { options: PartStandardCostOrigin.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description: 'Which door wrote the current standard: a supplier price, a receipt, a roll, …',
   },
 
   // ─── Per-part absorption rates (plans/money/tasks/22) ───────────

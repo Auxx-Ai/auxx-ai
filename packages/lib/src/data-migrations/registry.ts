@@ -45,6 +45,7 @@ import { migration189ThreadTriageFields } from './migrations/189-thread-triage-f
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
 import { migration191PartSellingFields } from './migrations/191-part-selling-fields'
 import { migration192RemoveCatalogItem } from './migrations/192-remove-catalog-item'
+import { migration193PartChannelCost } from './migrations/193-part-channel-cost'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -224,6 +225,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration191PartSellingFields,
   // Deletes the catalog_item def and its relationship sides: the part is the one register (107 D1).
   migration192RemoveCatalogItem,
+  // Two fields on the existing `part` def, no backfill: a channel's unit cost seeds the first
+  // standard, and the standard records which door wrote it (106 D5, D9).
+  migration193PartChannelCost,
 ]
 
 /**

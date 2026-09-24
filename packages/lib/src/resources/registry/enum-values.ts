@@ -386,6 +386,25 @@ export const PartStandardCostSource = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/** Which door wrote a part's current standard (106 D9). Display only; nothing gates on it. */
+export const PartStandardCostOrigin = {
+  SUPPLIER_PRICE: 'supplier_price',
+  OPENING_STOCK: 'opening_stock',
+  RECEIPT: 'receipt',
+  MANUAL: 'manual',
+  CHANNEL: 'channel',
+  ROLL: 'roll',
+
+  values: [
+    { value: 'supplier_price', label: 'Supplier price', color: 'blue' },
+    { value: 'opening_stock', label: 'Opening stock', color: 'gray' },
+    { value: 'receipt', label: 'Receipt', color: 'green' },
+    { value: 'manual', label: 'Manual', color: 'purple' },
+    { value: 'channel', label: 'Channel', color: 'teal' },
+    { value: 'roll', label: 'Roll', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 /**
  * Stock Status Enum
  * Entity-system field options for part_stock_status

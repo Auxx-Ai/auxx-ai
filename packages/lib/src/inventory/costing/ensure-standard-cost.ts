@@ -14,14 +14,15 @@
  * frozen `unitCost` would drift with vendor prices."* Re-valuing is
  * {@link rollStandardCost}'s job and nothing else's.
  *
- * Four callers, one function (§2):
+ * Five callers, one function (§2):
  *
  * | source        | fires when                          | cost from                 |
  * | ------------- | ----------------------------------- | ------------------------- |
  * | `supplier-price` | a `vendor_part` price is written | the refreshed `part_cost` |
  * | `opening-stock`  | a part is created with stock     | `unitCost`, typed         |
  * | `receipt`        | a part's first receipt           | `unitCost`, landed        |
- * | `manual`         | a caller asks explicitly         | the refreshed `part_cost` |
+ * | `manual`         | a person types a unit cost       | `unitCost`, or `part_cost` |
+ * | `channel`        | a connector writes `part_channel_cost` | `unitCost`, the channel's (106 D5) |
  *
  * ✅ **A first standard always finds `QoH = 0`,** because every door that can
  * give a part stock either goes through here first or refuses without a
@@ -29,7 +30,7 @@
  * valuation to post under any posting regime.
  *
  * Every door stamps `part_standard_cost_source` (73 §6.4): `receipt` is
- * `confirmed`, because an invoice is a price somebody paid; the other three are
+ * `confirmed`, because an invoice is a price somebody paid; the others are
  * `provisional`, because they are a number somebody typed before any purchase
  * existed. {@link replaceProvisionalStandard} is what the first receipt of a
  * provisional part then calls.
@@ -54,7 +55,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
-import type { StandardCostSourceValue } from './client'
+import type { StandardCostOriginValue, StandardCostSourceValue } from './client'
 import { guard } from './guard'
 import {
   loadStandardCostWriteContext,
@@ -71,15 +72,18 @@ const WRITE_BATCH_SIZE = 20
 
 /** Which door called, and the cost it can supply. */
 export interface EnsureStandardCostSource {
-  kind: 'supplier-price' | 'opening-stock' | 'receipt' | 'manual'
+  kind: 'supplier-price' | 'opening-stock' | 'receipt' | 'manual' | 'channel'
   /**
    * The cost to freeze, in minor units, at rate precision (five major-unit places).
    *
-   * Supplied by `opening-stock` and `receipt`, which know an exact number.
-   * Omitted by `supplier-price` and `manual`, which fall back to the part's
-   * refreshed `part_cost` through the normal roll.
+   * Supplied by `opening-stock`, `receipt` and `channel`, which know an exact number.
+   * Omitted by `supplier-price` (and optionally `manual`), which fall back to the
+   * part's refreshed `part_cost` through the normal roll. `manual` and `channel`
+   * accept zero (103 §5a); every other door refuses it.
    */
   unitCost?: number
+  /** Per-part explicit costs, for a caller freezing many different numbers in one call. Wins over `unitCost`. */
+  unitCosts?: ReadonlyMap<string, number>
 }
 
 export interface EnsureStandardCostResult {
@@ -91,6 +95,7 @@ export interface EnsureStandardCostResult {
 interface FirstStandard {
   partId: string
   components: StandardCostComponents
+  origin: StandardCostOriginValue
 }
 
 /**
@@ -123,7 +128,7 @@ export async function ensureStandardCost(
       const requested = [...new Set(partIds.filter(Boolean))]
       if (requested.length === 0) return { writtenPartIds: [] }
 
-      const explicitCost = resolveExplicitCost(source.unitCost)
+      const explicitCosts = resolveExplicitCosts(requested, source)
       const effectiveAt = new Date()
 
       // The plan is where the widening happens: up to every ancestor, and (since
@@ -164,6 +169,10 @@ export async function ensureStandardCost(
               standardOverheadCost: line.standardOverheadCost,
               standardCost: line.standardCost,
             },
+            origin:
+              source.kind === 'supplier-price' && requested.includes(line.partId)
+                ? 'supplier_price'
+                : 'roll',
           }))
       } catch (error) {
         // With no cost of our own there is nothing left to do, so the failure is
@@ -171,7 +180,7 @@ export async function ensureStandardCost(
         // unpriced sibling under a shared parent aborts it, and refusing to
         // freeze a cost somebody typed because of an unrelated part is worse
         // than writing exactly what they typed.
-        if (explicitCost == null) throw error
+        if (explicitCosts.size === 0) throw error
         logger.warn('Could not plan the roll around an explicit cost, writing it alone', {
           organizationId,
           source: source.kind,
@@ -180,7 +189,7 @@ export async function ensureStandardCost(
         context = await loadStandardCostWriteContext(db, organizationId)
       }
 
-      const writes = orderWrites(requested, candidates, explicitCost, context)
+      const writes = orderWrites(requested, candidates, explicitCosts, context, source.kind)
       if (writes.length === 0) {
         logger.info('No first standard cost to write', {
           organizationId,
@@ -215,7 +224,7 @@ export async function ensureStandardCost(
         planned: writes.length,
         written: writtenPartIds.length,
         skipped,
-        explicitCost,
+        explicitCosts: explicitCosts.size,
       })
 
       return { writtenPartIds }
@@ -226,19 +235,34 @@ export async function ensureStandardCost(
 }
 
 /**
- * Validate the caller's cost, in minor units at rate precision.
+ * Validate the caller's costs, in minor units at rate precision, keyed by part.
  *
- * A zero or negative standard is refused rather than stored: `completeBuild`,
- * `adjustStock` and `receiveStock` all treat a zero standard as "not rolled",
- * so freezing one would give the part a standard that every consumer reads as
- * an absence.
+ * Zero is a value only from a person or a channel (103 §5a). The other doors
+ * keep refusing it: a zero there only ever means a part nobody could value.
  */
-function resolveExplicitCost(unitCost: number | undefined): number | null {
-  if (unitCost == null) return null
-  if (!Number.isFinite(unitCost) || unitCost <= 0) {
-    throw new BadRequestError('A standard cost must be a positive amount in minor units')
+function resolveExplicitCosts(
+  requested: readonly string[],
+  source: EnsureStandardCostSource
+): Map<string, number> {
+  const allowZero = source.kind === 'manual' || source.kind === 'channel'
+  const costs = new Map<string, number>()
+  const raw: [string, number][] = source.unitCosts
+    ? [...source.unitCosts]
+    : source.unitCost != null
+      ? requested.map((partId) => [partId, source.unitCost as number])
+      : []
+  for (const [partId, unitCost] of raw) {
+    const valid = Number.isFinite(unitCost) && (allowZero ? unitCost >= 0 : unitCost > 0)
+    if (!valid) {
+      throw new BadRequestError(
+        allowZero
+          ? 'A standard cost must be zero or a positive amount in minor units'
+          : 'A standard cost must be a positive amount in minor units'
+      )
+    }
+    costs.set(partId, roundMinorUnits(unitCost))
   }
-  return roundMinorUnits(unitCost)
+  return costs
 }
 
 /**
@@ -256,32 +280,34 @@ function resolveExplicitCost(unitCost: number | undefined): number | null {
 function orderWrites(
   requested: string[],
   candidates: FirstStandard[],
-  explicitCost: number | null,
-  context: StandardCostWriteContext
+  explicitCosts: ReadonlyMap<string, number>,
+  context: StandardCostWriteContext,
+  kind: EnsureStandardCostSource['kind']
 ): FirstStandard[] {
   const ordered: FirstStandard[] = []
   const claimed = new Set<string>()
 
-  if (explicitCost != null) {
-    for (const partId of requested) {
-      // A stale id from a caller must never invent a write target, and a part
-      // that already has a standard is never touched.
-      if (!context.allPartIds.has(partId)) continue
-      if (context.standardCosts.get(partId) != null) continue
-      // A service is never stocked, so it never carries a standard (107-D10).
-      if (context.partKinds.get(partId) === 'service') continue
-      if (claimed.has(partId)) continue
-      claimed.add(partId)
-      ordered.push({
-        partId,
-        components: {
-          standardMaterialCost: explicitCost,
-          standardLaborCost: 0,
-          standardOverheadCost: 0,
-          standardCost: explicitCost,
-        },
-      })
-    }
+  for (const partId of requested) {
+    const explicitCost = explicitCosts.get(partId)
+    if (explicitCost == null) continue
+    // A stale id from a caller must never invent a write target, and a part
+    // that already has a standard is never touched.
+    if (!context.allPartIds.has(partId)) continue
+    if (context.standardCosts.get(partId) != null) continue
+    // A service is never stocked, so it never carries a standard (107-D10).
+    if (context.partKinds.get(partId) === 'service') continue
+    if (claimed.has(partId)) continue
+    claimed.add(partId)
+    ordered.push({
+      partId,
+      components: {
+        standardMaterialCost: explicitCost,
+        standardLaborCost: 0,
+        standardOverheadCost: 0,
+        standardCost: explicitCost,
+      },
+      origin: originOf(kind),
+    })
   }
 
   // `candidates` is already the plan's bottom-up order.
@@ -334,6 +360,9 @@ async function persistFirstStandards(
       // Absent on an org short of migration 173; the roll behaves as before.
       ...(fields.source
         ? [{ field: fields.source, value: { type: 'option' as const, optionId: source } }]
+        : []),
+      ...(fields.origin
+        ? [{ field: fields.origin, value: { type: 'option' as const, optionId: write.origin } }]
         : []),
     ],
   }))
@@ -411,11 +440,23 @@ function numberValue(value: number | null): { type: 'number'; value: number } | 
 /**
  * Which source each door stamps (73 §6.4).
  *
- * A receipt is an invoice - a price somebody paid, so `confirmed`. The other
- * three are a typed supplier price, a typed opening cost and a manual roll, all
- * of them guesses about a purchase that has not happened; a `ppv` against one
- * would say "our guess was wrong", not "the price moved".
+ * A receipt is an invoice - a price somebody paid, so `confirmed`. The others
+ * are a typed supplier price, a typed opening cost, a typed unit cost and a
+ * channel's cost, all of them guesses about a purchase that has not happened; a
+ * `ppv` against one would say "our guess was wrong", not "the price moved".
  */
 function standardCostSourceOf(kind: EnsureStandardCostSource['kind']): StandardCostSourceValue {
   return kind === 'receipt' ? 'confirmed' : 'provisional'
+}
+
+/** The origin an explicit cost from each door stamps (106 D9). */
+function originOf(kind: EnsureStandardCostSource['kind']): StandardCostOriginValue {
+  switch (kind) {
+    case 'supplier-price':
+      return 'supplier_price'
+    case 'opening-stock':
+      return 'opening_stock'
+    default:
+      return kind
+  }
 }

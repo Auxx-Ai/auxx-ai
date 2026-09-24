@@ -54,6 +54,7 @@ const ROLL_ATTRIBUTES = [
   'part_standard_cost',
   'part_standard_cost_effective_at',
   'part_standard_cost_source',
+  'part_standard_cost_origin',
   'part_labor_cost_per_unit',
   'part_overhead_cost_per_unit',
 ] as const
@@ -70,6 +71,8 @@ export interface StandardCostFields {
    * has not run reads every standard as sourceless.
    */
   source: CustomFieldEntity | null
+  /** `part_standard_cost_origin` (106 D9). Absent on an org short of migration 193; never read back. */
+  origin?: CustomFieldEntity | null
   /** Read-only inputs. Absent on an org whose earlier migrations have not run. */
   partKind: CustomFieldEntity | null
   liveCost: CustomFieldEntity | null
@@ -109,6 +112,7 @@ export async function loadStandardCostFields(organizationId: string): Promise<St
     standard,
     effectiveAt,
     source: fields.part_standard_cost_source,
+    origin: fields.part_standard_cost_origin,
     partKind: fields.part_kind,
     liveCost: fields.part_cost,
     quantityOnHand: fields.part_quantity_on_hand,
