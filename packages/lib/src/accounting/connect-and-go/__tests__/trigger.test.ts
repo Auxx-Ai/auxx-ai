@@ -43,7 +43,7 @@ describe('registerConnectAndGoTrigger', () => {
       [
         'connectAndGoPrepareJob',
         { organizationId: 'org_1', actorUserId: 'usr_1' },
-        { jobId: 'connect-and-go:org_1', removeOnComplete: true, removeOnFail: true },
+        { jobId: 'connect-and-go-org_1', removeOnComplete: true, removeOnFail: true },
       ],
     ])
   })

@@ -17,10 +17,11 @@ export async function enqueueConnectAndGoPrepare(
     import('../../jobs/queues'),
     import('../../jobs/queues/types'),
   ])
+  // BullMQ rejects a custom jobId containing ':' ("Custom Id cannot contain :").
   await getQueue(Queues.maintenanceQueue).add(
     'connectAndGoPrepareJob',
     { organizationId, actorUserId },
-    { jobId: `connect-and-go:${organizationId}`, removeOnComplete: true, removeOnFail: true }
+    { jobId: `connect-and-go-${organizationId}`, removeOnComplete: true, removeOnFail: true }
   )
 }
 
