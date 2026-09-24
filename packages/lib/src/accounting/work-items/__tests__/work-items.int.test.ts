@@ -285,7 +285,9 @@ describe('reads', () => {
     const orders = top.items.filter((group) => group.reasonCode === 'ORDER_NOT_FOUND')
     expect(orders).toHaveLength(1)
     expect(orders[0]).toMatchObject({ count: 2, externalRef: null, refCount: null })
-    expect((await countWorkItemGroups(db(), organizationId))._unsafeUnwrap()).toBe(3)
+    // The badge counts the top level: one gateway reason row, one order group.
+    expect((await countWorkItemGroups(db(), organizationId))._unsafeUnwrap()).toBe(2)
+    expect(top.items).toHaveLength(2)
 
     const gateways = (
       await listWorkItemGroups(db(), organizationId, {

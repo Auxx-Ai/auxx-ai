@@ -325,7 +325,12 @@ export async function listWorkItemsForSource(
   return ok(rows)
 }
 
-/** The Blocked badge: groups a person can act on, skipped ones excluded. */
+/** A top-level group key column: null for a `groupsByExternalRef` code, which folds to one row. */
+function collapsedKey(column: string): SQL {
+  return sql`CASE WHEN ${inCodes(EXTERNAL_REF_GROUPED_CODES)} THEN NULL ELSE w.${sql.identifier(column)} END`
+}
+
+/** The Blocked badge: top-level rows a person can act on, skipped ones excluded. */
 export async function countWorkItemGroups(
   db: Db,
   organizationId: string
@@ -342,7 +347,8 @@ export async function countWorkItemGroups(
               )})`
             : sql``
         }
-      GROUP BY w."reasonCode", w."role", w."railId", w."glAccountId", ${groupExternalRef()}
+      GROUP BY w."reasonCode", ${collapsedKey('role')}, ${collapsedKey('railId')},
+        ${collapsedKey('glAccountId')}
     ) groups
   `)
   return ok(Number((result.rows[0] as { total?: number } | undefined)?.total ?? 0))
