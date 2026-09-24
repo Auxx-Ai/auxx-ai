@@ -23,6 +23,7 @@ import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { NotFoundError, UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
+import { enqueueRecordImageFetch } from '../../files/remote-image/enqueue'
 import { findRecordByIdentity, upsertRecordIdentity } from '../../identity'
 import { getInstanceId, toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
@@ -111,6 +112,13 @@ function rejectsFormat(fieldType: string | undefined, value: unknown): boolean {
   const schemaKey = FORMAT_VALIDATED_TYPES[fieldType]
   if (!schemaKey) return false
   return !fieldValueSchemas[schemaKey].safeParse(value).success
+}
+
+/** A connector-sourced image URL, fetched by the remote-image job after the record write. */
+interface PendingImage {
+  /** `CustomField.id` of the FILE field. */
+  fieldId: string
+  url: string
 }
 
 /** Field types whose value is a LIST, delivered by a connector as a comma string. */
@@ -461,6 +469,7 @@ async function buildWriteSet(
   rowWrites: RowLevelWrite[]
   managedFields: string[]
   identityFieldKeys: string[]
+  pendingImages: PendingImage[]
 }> {
   // managedFields stay keyed by the raw `targetFieldRef` — the same key space as
   // `record.fields`, `mergeByKey`, and the prior runs' stored `managedFields`
@@ -493,6 +502,7 @@ async function buildWriteSet(
 
   // Multi-value fields diverted to the row-level path (existing instances only).
   const rowWrites: RowLevelWrite[] = []
+  const pendingImages: PendingImage[] = []
 
   // Field metadata: multi-detection + the fill_blank key-space fix. Write-set
   // keys may be systemAttributes while `getFieldValues` / `FieldValue.fieldId`
@@ -536,6 +546,22 @@ async function buildWriteSet(
       continue
     }
     const fieldRow = fieldUuid ? fieldMap?.get(fieldUuid) : undefined
+
+    // A URL string on a FILE field would normalize to null and clear the image, so it is
+    // diverted to the remote-image job; a blank one is neither written nor cleared.
+    if (fieldRow?.type === 'FILE' && (typeof sourceValue === 'string' || isBlank(sourceValue))) {
+      const url = typeof sourceValue === 'string' ? sourceValue.trim() : ''
+      if (!url || !fieldUuid || strategy === 'manual_review') continue
+      const hasImage = !isBlank(current ? rawOf(current.get(fieldUuid)) : undefined)
+      if (strategy === 'fill_blank' && hasImage) continue
+      if (strategy === 'connector_owned_only') {
+        const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+        if (item && !(item.managedFields ?? []).includes(rawRef)) continue
+      }
+      pendingImages.push({ fieldId: fieldUuid, url })
+      continue
+    }
+
     const isMulti =
       !identityRefs.has(rawRef) &&
       (fieldRow?.options as { multi?: boolean } | null | undefined)?.multi === true
@@ -627,7 +653,7 @@ async function buildWriteSet(
     }
   }
 
-  return { writeSet, rowWrites, managedFields, identityFieldKeys }
+  return { writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages }
 }
 
 /**
@@ -1188,15 +1214,16 @@ export const entitySink: EntitySink = {
 
     // 3. Build the write set with per-field merge strategy. Multi fields on an
     //    existing instance divert to `rowWrites` (row-level own-row upserts).
-    let { writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
-      ctx,
-      mapping,
-      record,
-      instanceId,
-      refToConcrete,
-      bound?.pinnedFields ?? [],
-      matched
-    )
+    let { writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages } =
+      await buildWriteSet(
+        ctx,
+        mapping,
+        record,
+        instanceId,
+        refToConcrete,
+        bound?.pinnedFields ?? [],
+        matched
+      )
 
     // 3b. Plan the row-level writes BEFORE the write: the plan reads the field's
     //     current rows to decide per value between no-op / in-place update /
@@ -1277,15 +1304,16 @@ export const entitySink: EntitySink = {
           if (resolved.instanceId === error.canonicalRecordId) {
             instanceId = resolved.instanceId
             matched = resolved.matched
-            ;({ writeSet, rowWrites, managedFields, identityFieldKeys } = await buildWriteSet(
-              ctx,
-              mapping,
-              record,
-              instanceId,
-              refToConcrete,
-              bound?.pinnedFields ?? [],
-              matched
-            ))
+            ;({ writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages } =
+              await buildWriteSet(
+                ctx,
+                mapping,
+                record,
+                instanceId,
+                refToConcrete,
+                bound?.pinnedFields ?? [],
+                matched
+              ))
             rowPlan = await planRowLevelWrites(
               ctx,
               mapping.entityDefinitionId,
@@ -1360,6 +1388,20 @@ export const entitySink: EntitySink = {
     //     sync with the (already-established) cell value either way.
     if (!ignoredRevision && instanceId) {
       await mirrorIdentityWrites(ctx, mapping, instanceId, record.externalId, identityFieldKeys)
+    }
+
+    // 4d. Image URLs on FILE fields: fetched off the slice, after the record exists.
+    if (!ignoredRevision && instanceId) {
+      for (const image of pendingImages) {
+        await enqueueRecordImageFetch({
+          organizationId: ctx.orgId,
+          entityDefinitionId: mapping.entityDefinitionId,
+          instanceId,
+          fieldId: image.fieldId,
+          url: image.url,
+          connectorId: ctx.connector.id,
+        })
+      }
     }
 
     // 5. Upsert the binding — merge any new managed fields with prior ones

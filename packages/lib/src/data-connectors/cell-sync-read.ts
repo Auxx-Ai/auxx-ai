@@ -51,7 +51,7 @@ export async function readCellSyncState(
       )
       .limit(1),
     db
-      .select({ options: schema.CustomField.options })
+      .select({ type: schema.CustomField.type, options: schema.CustomField.options })
       .from(schema.CustomField)
       .where(
         and(
@@ -64,7 +64,10 @@ export async function readCellSyncState(
 
   return resolveCellSyncState({
     fieldId,
-    field: { options: fieldRows[0]?.options as { multi?: boolean } | null | undefined },
+    field: {
+      type: fieldRows[0]?.type,
+      options: fieldRows[0]?.options as { multi?: boolean } | null | undefined,
+    },
     markerConnectorId: markerRows[0]?.managedByConnectorId ?? null,
     bindings: bindingsByInstance.get(entityInstanceId) ?? [],
   })

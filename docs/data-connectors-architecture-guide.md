@@ -235,6 +235,16 @@ Per projected record, the sink:
 
 Owned vs contributing behavior is enforced here (see §13).
 
+### Image URL fields
+
+A string mapped onto a `FILE` field (a product photo URL) is never written by the record write: the FILE normalizer would turn it into `null` and clear the image. `buildWriteSet` diverts it into `pendingImages` (merge strategy still applies — `fill_blank` skips a record that already has an image, `manual_review` never fetches), and after the write commits (step 4d, guarded `!ignoredRevision && instanceId`) the sink calls `enqueueRecordImageFetch` (`files/remote-image/enqueue.ts`). A blank value is neither written nor cleared; a `{ ref }` value from an app that uploads itself passes through as before.
+
+- **Job:** `fetchRecordImageJob` on its own `remote-image` queue (worker concurrency 4, limiter 60/min), logic in `files/remote-image/fetch-record-image.ts`. It skips when the stored value's `sourceUrl` already equals the URL (or the record is gone/archived), defers itself with a delay when the org is over 500 images/hour, fetches through `fetchAndStoreRemoteImage` (SSRF guard, byte cap, no SVG, storage quota), and writes `[{ ref: 'asset:<id>', sourceUrl }]` under a quiet session. The avatar/thumbnail recompute still runs.
+- **Retries:** an `AuxxError` from the fetch (blocked address, 4xx, not an image, too large, quota) is logged and dropped; anything else (timeout, 5xx, network) throws so BullMQ's 5 attempts apply.
+- **Never name the key `url`.** Both avatar resolvers prefer `json.url` over `ref` and would hotlink the remote image. The key is `sourceUrl`, holding the source URL exactly as the connector sent it so the next sync compares equal.
+- **Not drift-healed.** The job writes without a `managedByConnectorId` marker, so `wouldHealField` excludes `FILE` fields; otherwise every imaged record would read as drifted forever and the content-hash skip would never fire.
+- **Replaced assets are not deleted** — see `plans/remote-image-ingest/03-connector.md` §7.
+
 ---
 
 ## 8. Backend: Sync-Core (the shared orchestration shell)

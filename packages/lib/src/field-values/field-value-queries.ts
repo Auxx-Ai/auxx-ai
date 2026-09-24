@@ -1030,7 +1030,7 @@ async function fetchFieldValueResults(
     // concrete `CustomField.id` the rows carry, which is what a pin stores.
     const sync = resolveCellSyncState({
       fieldId,
-      field: { options: fieldOptions },
+      field: { type: fieldType, options: fieldOptions },
       markerConnectorId: managedByConnectorId,
       bindings: bindingsByInstance.get(entityId) ?? [],
     })
@@ -1068,7 +1068,7 @@ async function fetchFieldValueResults(
       const fieldOptions = fieldOptionsMap.get(fieldId)
       const sync = resolveCellSyncState({
         fieldId,
-        field: { options: fieldOptions },
+        field: { type: fieldType, options: fieldOptions },
         markerConnectorId: null,
         bindings,
       })

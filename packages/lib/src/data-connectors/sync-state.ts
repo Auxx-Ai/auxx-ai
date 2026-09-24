@@ -17,6 +17,7 @@ export interface SyncBinding {
 
 /** The subset of a `CustomField` the state rule reads. */
 export interface SyncFieldShape {
+  type?: string | null
   options?: { multi?: boolean } | null
 }
 
@@ -72,7 +73,7 @@ export function refNamesField(ref: string, fieldId: string): boolean {
  * Whether a binding would re-assert the source value over a hand edit: the
  * strategy is `overwrite` (or unset, which defaults to it), the field is not
  * identity-flagged (the sink forces those to fill-blank), and the field is not
- * multi-value (row-level semantics never re-assert another row). This is the
+ * multi-value (row-level semantics never re-assert another row) or FILE. This is the
  * exact set `computeDriftedInstances` heals, so `edited` on the badge means
  * what it says.
  */
@@ -84,6 +85,8 @@ export function wouldHealField(
   const strategy = binding.mergeStrategy ?? 'overwrite'
   if (strategy !== 'overwrite') return false
   if (field?.options?.multi === true) return false
+  // FILE cells are written later by the remote-image job under a quiet session, without the marker.
+  if (field?.type === 'FILE') return false
   return true
 }
 

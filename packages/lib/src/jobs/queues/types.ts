@@ -105,4 +105,7 @@ export enum Queues {
   // better part of an hour. `maintenanceQueue` is not an alternative — it runs at
   // concurrency 1 shared with ~30 sweep jobs.
   enrichmentQueue = 'enrichment',
+  // Connector image-URL fetches (plans/remote-image-ingest/03-connector.md §3). Its OWN
+  // queue so a large catalogue backfill cannot starve company enrichment.
+  remoteImageQueue = 'remote-image',
 }
