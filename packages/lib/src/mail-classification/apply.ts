@@ -17,7 +17,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { and, eq, sql } from 'drizzle-orm'
 import { MAIL_CLASSIFICATION_METADATA_KEY, type MailClassificationMarker } from './client'
-import type { MailClassificationResult } from './types'
+import type { MailClassificationResult, MailClassificationTriage } from './types'
 
 const logger = createScopedLogger('mail-classification')
 
@@ -41,8 +41,40 @@ export function toClassificationMarker(result: MailClassificationResult): MailCl
     tagId: result.tagId,
     confidence: result.confidence,
     ...(result.model ? { model: result.model } : {}),
-    ...(result.messageSummary ? { messageSummary: result.messageSummary } : {}),
-    ...(result.altTagName ? { altTagName: result.altTagName } : {}),
+    ...(result.confidenceKind ? { confidenceKind: result.confidenceKind } : {}),
+    ...(result.triage ? { triage: result.triage.answers } : {}),
+  }
+}
+
+/**
+ * Write the four triage columns onto the thread (03 §5.2). Plain column writes: the
+ * model records fields, filters decide what to do with them.
+ *
+ * Never throws.
+ */
+export async function writeThreadTriage(params: {
+  db: Database
+  organizationId: string
+  threadId: string
+  triage: MailClassificationTriage
+}): Promise<void> {
+  const { db, organizationId, threadId, triage } = params
+  try {
+    await db
+      .update(schema.Thread)
+      .set({
+        priority: triage.priority,
+        needsReply: triage.needsReply,
+        sentiment: triage.sentiment,
+        spamScore: triage.spamScore,
+      })
+      .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+  } catch (error) {
+    logger.error('Failed to write the classification triage columns', {
+      organizationId,
+      threadId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 

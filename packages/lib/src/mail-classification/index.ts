@@ -3,15 +3,20 @@
 // Explicit named exports only — see CLAUDE.md's "Module Exports" convention.
 
 // Write path (§3.3, C9)
-export { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+export {
+  applyClassificationTag,
+  markMessageClassified,
+  toClassificationMarker,
+  writeThreadTriage,
+} from './apply'
 // The §3.1 exit ladder
 export { guardClassification, type MailClassificationGateInput } from './classification-gate'
 // The one model call (§3.2)
 export {
-  buildClassificationPrompt,
-  buildClassificationSchema,
+  buildClassificationQuestions,
+  buildClassificationState,
   classifyMessage,
-  renderLabels,
+  toTriage,
 } from './classify'
 // Client-safe constants + types (also importable as `@auxx/lib/mail-classification/client`)
 export {
@@ -20,12 +25,12 @@ export {
   MAIL_CLASSIFICATION_INBOX_IDS_SETTING,
   MAIL_CLASSIFICATION_JOB_NAME,
   MAIL_CLASSIFICATION_METADATA_KEY,
-  MAIL_CLASSIFY_ALT_TAG_CHARS,
   MAIL_CLASSIFY_BODY_CHARS,
   MAIL_CLASSIFY_CONFIDENCE_THRESHOLD,
+  MAIL_CLASSIFY_DESCRIPTION_CHARS,
   MAIL_CLASSIFY_FAILURE_REASONS,
+  MAIL_CLASSIFY_NEEDS_REPLY_THRESHOLD,
   MAIL_CLASSIFY_NO_CATEGORY,
-  MAIL_CLASSIFY_SUMMARY_CHARS,
   MAIL_RECLASSIFY_APPLY_JOB_NAME,
   MAIL_RECLASSIFY_BACKLOG_COUNT_CAP,
   MAIL_RECLASSIFY_DAY_PRESETS,
@@ -39,6 +44,7 @@ export {
   type MailClassificationLabel,
   type MailClassificationMarker,
   type MailClassificationSkipReason,
+  type MailClassificationTriageAnswers,
   type MailReclassifyMode,
   type MailReclassifyRange,
   type MailReclassifyRunReport,
@@ -101,4 +107,5 @@ export type {
   MailClassificationGate,
   MailClassificationMessage,
   MailClassificationResult,
+  MailClassificationTriage,
 } from './types'

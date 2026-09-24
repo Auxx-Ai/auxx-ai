@@ -242,7 +242,7 @@ export const threadRouter = createTRPCRouter({
         /** Sort options */
         sort: z
           .object({
-            field: z.enum(['lastMessageAt', 'subject', 'sender']),
+            field: z.enum(['lastMessageAt', 'subject', 'sender', 'priority']),
             direction: z.enum(['asc', 'desc']),
           })
           .optional(),

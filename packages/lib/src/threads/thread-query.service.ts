@@ -143,6 +143,16 @@ export class ThreadQueryService {
     `
   }
 
+  /** Priority as a rank (URGENT 4 … LOW 1, unclassified 0) so NULLs sort below LOW. */
+  private buildPriorityRankExpression(): SQL {
+    return sql`(CASE ${schema.Thread.priority} WHEN 'URGENT' THEN 4 WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END)`
+  }
+
+  /** Recency within one priority; `createdAt` stands in because `lastMessageAt` is nullable. */
+  private buildPriorityRecencyExpression(): SQL {
+    return sql`COALESCE(${schema.Thread.lastMessageAt}, ${schema.Thread.createdAt})`
+  }
+
   /** Chooses the active sort descriptor, preferring user input and then fallback defaults. */
   private resolveSortDescriptor(
     sort?: ThreadSortDescriptor,
@@ -252,6 +262,16 @@ export class ThreadQueryService {
       return [senderOrder, tieBreaker]
     }
 
+    if (sort.field === 'priority') {
+      // Three keys, same direction: must match the row comparison in `buildCursorCondition`.
+      const order = sort.direction === 'asc' ? asc : desc
+      return [
+        order(this.buildPriorityRankExpression()),
+        order(this.buildPriorityRecencyExpression()),
+        tieBreaker,
+      ]
+    }
+
     const lastMessageOrder =
       sort.direction === 'asc'
         ? asc(schema.Thread.lastMessageAt)
@@ -289,6 +309,9 @@ export class ThreadQueryService {
     if (field === 'lastMessageAt') {
       return { field: 'lastMessageAt', direction: normalizedDirection }
     }
+    if (field === 'priority') {
+      return { field: 'priority', direction: normalizedDirection }
+    }
 
     return undefined
   }
@@ -312,6 +335,10 @@ export class ThreadQueryService {
     }
     if (sort.field === 'sender') {
       return this.buildSenderSortExpression()
+    }
+    if (sort.field === 'priority') {
+      // `rank|timestamp`, decoded by `buildCursorCondition`; the timestamp stays SQL text.
+      return sql`${this.buildPriorityRankExpression()}::text || '|' || ${this.buildPriorityRecencyExpression()}::text`
     }
     return schema.Thread.lastMessageAt
   }
@@ -383,6 +410,7 @@ export class ThreadQueryService {
           (data.field === 'lastMessageAt' ||
             data.field === 'subject' ||
             data.field === 'sender' ||
+            data.field === 'priority' ||
             data.field === 'relevance') &&
           (data.direction === 'asc' || data.direction === 'desc')
         ) {
@@ -474,6 +502,13 @@ export class ThreadQueryService {
             : sql`${senderExpr} > ${payload.value}`
         const equality = sql`${senderExpr} = ${payload.value}`
         return or(sortComparison, and(equality, tieCondition))
+      }
+      case 'priority': {
+        const [rank, at] = (payload.value ?? '').split('|')
+        if (!rank || !at || !/^\d$/.test(rank)) return tieCondition
+        const keys = sql`(${this.buildPriorityRankExpression()}, ${this.buildPriorityRecencyExpression()}, ${schema.Thread.id})`
+        const bound = sql`(${Number(rank)}, ${at}::timestamp, ${payload.id})`
+        return sort.direction === 'desc' ? sql`${keys} < ${bound}` : sql`${keys} > ${bound}`
       }
       default:
         return undefined
@@ -684,8 +719,11 @@ export class ThreadQueryService {
     // `sortField` against the three column sorts, so a relevance mixed cursor
     // would decode to `null` and silently re-serve page 1 forever.
     const requestedSort = this.resolveSortDescriptor(sort)
+    // The union orders by date only; priority has no meaning for a standalone draft.
     const resolvedSort: ThreadSortDescriptor =
-      requestedSort.field === 'relevance' ? DEFAULT_SORT : requestedSort
+      requestedSort.field === 'relevance' || requestedSort.field === 'priority'
+        ? DEFAULT_SORT
+        : requestedSort
     const decodedCursor = this.decodeMixedCursor(cursor)
 
     // Build thread WHERE clause (existing logic)

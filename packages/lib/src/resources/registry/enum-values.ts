@@ -165,6 +165,22 @@ export const ThreadStatus = {
 } as const
 
 /**
+ * Thread Sentiment Enum
+ * Database enum: threadSentiment — written by mail classification
+ */
+export const ThreadSentiment = {
+  NEGATIVE: 'NEGATIVE',
+  NEUTRAL: 'NEUTRAL',
+  POSITIVE: 'POSITIVE',
+
+  values: [
+    { value: 'NEGATIVE', label: 'Negative', color: 'red' },
+    { value: 'NEUTRAL', label: 'Neutral', color: 'gray' },
+    { value: 'POSITIVE', label: 'Positive', color: 'green' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
  * Read Status Enum
  * Virtual enum for thread read/unread actions (not a database enum)
  * Used for CRUD thread update operations

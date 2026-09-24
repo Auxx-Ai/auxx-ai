@@ -594,6 +594,7 @@ export const threadStatus = pgEnum('ThreadStatus', [
 export const threadType = pgEnum('ThreadType', ['EMAIL', 'CHAT'])
 export const threadHandoffState = pgEnum('ThreadHandoffState', ['ai', 'human'])
 export const ticketPriority = pgEnum('TicketPriority', ['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
+export const threadSentiment = pgEnum('ThreadSentiment', ['NEGATIVE', 'NEUTRAL', 'POSITIVE'])
 export const ticketStatus = pgEnum('TicketStatus', [
   'OPEN',
   'IN_PROGRESS',
@@ -830,6 +831,7 @@ export {
   pgEnum,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   unique,

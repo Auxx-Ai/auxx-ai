@@ -2,7 +2,13 @@
 // Server-side shapes for the classifier: the guard's verdict, the resolved
 // context it hands to the call, and the call's outcome.
 
-import type { MailClassificationLabel, MailClassificationSkipReason } from './client'
+import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
+import type { ConfidenceKind } from '../ai/decision/client'
+import type {
+  MailClassificationLabel,
+  MailClassificationSkipReason,
+  MailClassificationTriageAnswers,
+} from './client'
 
 /** The message fields the prompt is built from (§3.2 — truncated, no history). */
 export interface MailClassificationMessage {
@@ -10,6 +16,8 @@ export interface MailClassificationMessage {
   /** Sender identifier, taken from the `message:received` payload. */
   from: string | null
   textPlain: string | null
+  /** DMARC/DKIM verdict from ingest; null means not evaluated. The spam question's one header signal. */
+  senderAuthenticated: boolean | null
 }
 
 /** Everything past the guard, resolved once so the call re-reads nothing. */
@@ -63,23 +71,17 @@ export interface MailClassificationResult {
    * usage is only metered against a response that actually came back.
    */
   inferred: boolean
-  /**
-   * One-line summary of the message (08 §3.1). Absent when the model returned
-   * nothing usable, and on every `inferred: false` path — like the tag, it is
-   * only captured where a call completed.
-   *
-   * ⚠️ Of ONE message, not the thread (08 T10). See
-   * {@link import('./client').MailClassificationMarker.messageSummary}.
-   */
-  messageSummary?: string
-  /**
-   * The topic label the model would have used instead of a real category.
-   *
-   * ⚠️ Populated ONLY on abstentions (08 T3) — `'no-category'` and
-   * `'below-threshold'`. A model that fills this in while classifying happily has
-   * its answer dropped: an applied tag means the taxonomy fit, and a candidate
-   * mined from a message that classified fine is noise that would later argue for
-   * a tag the org already has.
-   */
-  altTagName?: string
+  /** How `confidence` was produced; set whenever `inferred`. */
+  confidenceKind?: ConfidenceKind
+  /** The `Thread` column values and the raw answers behind them; set whenever `inferred`. */
+  triage?: MailClassificationTriage
+}
+
+/** The four triage columns as written to `Thread`, plus the raw answers for the marker. */
+export interface MailClassificationTriage {
+  priority: TicketPriority
+  needsReply: boolean
+  sentiment: ThreadSentiment
+  spamScore: number
+  answers: MailClassificationTriageAnswers
 }

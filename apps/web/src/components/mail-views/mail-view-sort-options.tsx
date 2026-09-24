@@ -38,6 +38,7 @@ export function MailViewSortOptions() {
                   <SelectContent>
                     <SelectItem value='lastMessageAt'>Date</SelectItem>
                     <SelectItem value='subject'>Subject</SelectItem>
+                    <SelectItem value='priority'>Priority</SelectItem>
                     <SelectItem value='participantIds'>Participants</SelectItem>
                   </SelectContent>
                 </Select>

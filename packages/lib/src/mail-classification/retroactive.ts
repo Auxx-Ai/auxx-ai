@@ -47,7 +47,12 @@ import { err, ok, type Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { JobContext } from '../jobs/types/job-context'
-import { applyClassificationTag, markMessageClassified, toClassificationMarker } from './apply'
+import {
+  applyClassificationTag,
+  markMessageClassified,
+  toClassificationMarker,
+  writeThreadTriage,
+} from './apply'
 import { guardClassification } from './classification-gate'
 import { classifyMessage } from './classify'
 import {
@@ -235,6 +240,7 @@ function reclassifySource(): SQL {
              m."machineMailTier" AS "tier",
              m."subject" AS "subject",
              m."textPlain" AS "textPlain",
+             m."senderAuthenticated" AS "senderAuthenticated",
              m."fromId" AS "fromId",
              m."metadata" AS "metadata"
       FROM "Message" m
@@ -468,6 +474,7 @@ export interface ReclassifyThreadRow {
   tier: 'hard' | 'soft' | null
   subject: string | null
   textPlain: string | null
+  senderAuthenticated: boolean | null
   /** Sender identifier — the live path gets this from the event payload. */
   from: string | null
   /** Opaque keyset position for the next page. */
@@ -494,6 +501,7 @@ export async function selectReclassifyThreadPage(
            fm."tier" AS "tier",
            fm."subject" AS "subject",
            fm."textPlain" AS "textPlain",
+           fm."senderAuthenticated" AS "senderAuthenticated",
            p."identifier" AS "from"
     FROM ${reclassifySource()}
     WHERE ${where}
@@ -508,6 +516,7 @@ export async function selectReclassifyThreadPage(
     tier: (row.tier as 'hard' | 'soft' | null) ?? null,
     subject: (row.subject as string | null) ?? null,
     textPlain: (row.textPlain as string | null) ?? null,
+    senderAuthenticated: (row.senderAuthenticated as boolean | null) ?? null,
     from: (row.from as string | null) ?? null,
     // `::text` on the way out and `::timestamp` on the way back in: a raw
     // `timestamp` column parsed by node-postgres becomes a Date in the LOCAL
@@ -577,7 +586,12 @@ async function resolveThreadContext(params: {
       threadId: row.threadId,
       inboxId,
       labels,
-      message: { subject: row.subject, from: row.from, textPlain: row.textPlain },
+      message: {
+        subject: row.subject,
+        from: row.from,
+        textPlain: row.textPlain,
+        senderAuthenticated: row.senderAuthenticated,
+      },
     },
   }
 }
@@ -939,6 +953,14 @@ export async function runMailReclassifyApply(
         messageId: row.messageId,
         marker: toClassificationMarker(result),
       })
+      if (result.triage) {
+        await writeThreadTriage({
+          db,
+          organizationId: input.organizationId,
+          threadId: row.threadId,
+          triage: result.triage,
+        })
+      }
 
       input.onProgress?.(selected, total, startedAt.toISOString())
       await sleep(threadDelayMs)

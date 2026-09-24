@@ -8,7 +8,7 @@ import { type ThreadMeta, useThreadStore } from '../store'
 
 /** Sort descriptor for thread lists */
 interface ThreadSortDescriptor {
-  field: 'lastMessageAt' | 'subject' | 'sender'
+  field: 'lastMessageAt' | 'subject' | 'sender' | 'priority'
   direction: 'asc' | 'desc'
 }
 

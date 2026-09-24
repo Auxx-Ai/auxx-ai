@@ -201,7 +201,14 @@ describe('guardClassification — the resolved context', () => {
   it('carries the inbox, the labels and the truncatable message parts', async () => {
     const db = createDb([
       [{ inboxId: 'ibx_1' }],
-      [{ subject: 'Refund please', textPlain: 'body text', metadata: null }],
+      [
+        {
+          subject: 'Refund please',
+          textPlain: 'body text',
+          senderAuthenticated: true,
+          metadata: null,
+        },
+      ],
     ])
 
     const gate = await guardClassification({ ...base, db })
@@ -214,7 +221,12 @@ describe('guardClassification — the resolved context', () => {
         threadId: 'thr_1',
         inboxId: 'ibx_1',
         labels: LABELS,
-        message: { subject: 'Refund please', from: 'a@b.com', textPlain: 'body text' },
+        message: {
+          subject: 'Refund please',
+          from: 'a@b.com',
+          textPlain: 'body text',
+          senderAuthenticated: true,
+        },
       },
     })
   })

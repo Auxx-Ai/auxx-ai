@@ -31,7 +31,7 @@ export type ContextType = (typeof contextTypes)[number]
 
 /** Sort descriptor for thread lists */
 export interface ThreadSort {
-  field: 'lastMessageAt' | 'subject' | 'sender'
+  field: 'lastMessageAt' | 'subject' | 'sender' | 'priority'
   direction: 'asc' | 'desc'
 }
 

@@ -6,6 +6,7 @@ import { CHANNEL_GROUP_OPTIONS } from '../channels/capabilities'
 import { getOperatorsForFieldType, type Operator } from '../conditions/operator-definitions'
 import type { FieldOptions } from '../custom-fields/field-options'
 import { MESSAGE_TYPE_OPTIONS } from '../providers/types'
+import { ThreadSentiment, TicketPriority } from '../resources/registry/enum-values'
 // NOTE: This file is used on both client and server.
 // Only import from client-safe paths.
 import { BaseType } from '../workflow-engine/types'
@@ -228,6 +229,41 @@ export const MAIL_VIEW_FIELD_DEFINITIONS: MailViewFieldDefinition[] = [
       ],
     },
     description: 'Filter by thread status',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TRIAGE FIELDS — written by mail classification; empty until a thread is classified
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: 'priority',
+    label: 'Priority',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    options: { options: TicketPriority.values.map((o) => ({ value: o.value, label: o.label })) },
+    description: 'Filter by the urgency classification assigned',
+  },
+  {
+    id: 'needsReply',
+    label: 'Needs reply',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    description: 'Filter by whether classification judged the sender to expect an answer',
+  },
+  {
+    id: 'sentiment',
+    label: 'Sentiment',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    options: { options: ThreadSentiment.values.map((o) => ({ value: o.value, label: o.label })) },
+    description: "Filter by the sender's mood as classified",
+  },
+  {
+    id: 'spamScore',
+    label: 'Spam score',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    placeholder: '0.8',
+    description: 'Filter by the classified probability (0 to 1) that the mail is spam',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -3,7 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { ReadStatus, ThreadStatus } from '../enum-values'
+import { ReadStatus, ThreadSentiment, ThreadStatus, TicketPriority } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -110,6 +110,93 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     },
     defaultValue: 'OPEN',
     description: 'Change thread status (Open, Archive, Spam, Trash)',
+  },
+
+  // Triage written by mail classification (plans/ai/decision/03 §5); empty until evaluated.
+  priority: {
+    id: toFieldId('priority'),
+    key: 'priority',
+    label: 'Priority',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'thread_priority',
+    systemSortOrder: 'b0',
+    dbColumn: 'priority',
+    nullable: true,
+    options: { options: TicketPriority.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'How urgent the first inbound message is, as classified',
+  },
+
+  needsReply: {
+    id: toFieldId('needsReply'),
+    key: 'needsReply',
+    label: 'Needs Reply',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'thread_needs_reply',
+    systemSortOrder: 'b1',
+    dbColumn: 'needsReply',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Whether the sender expects an answer, as classified',
+  },
+
+  sentiment: {
+    id: toFieldId('sentiment'),
+    key: 'sentiment',
+    label: 'Sentiment',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'thread_sentiment',
+    systemSortOrder: 'b2',
+    dbColumn: 'sentiment',
+    nullable: true,
+    options: { options: ThreadSentiment.values },
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: "The sender's mood in the first inbound message, as classified",
+  },
+
+  spamScore: {
+    id: toFieldId('spamScore'),
+    key: 'spamScore',
+    label: 'Spam Score',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'thread_spam_score',
+    systemSortOrder: 'b3',
+    dbColumn: 'spamScore',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Probability from 0 to 1 that the first inbound message is spam',
   },
 
   // `messageType` stays removed at the THREAD level by design — even now that

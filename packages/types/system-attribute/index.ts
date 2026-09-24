@@ -147,6 +147,11 @@ export const SYSTEM_ATTRIBUTES = [
   'thread_tags',
   'thread_messages',
   'thread_ticket',
+  // Mail classification triage (dbColumn-backed)
+  'thread_priority',
+  'thread_needs_reply',
+  'thread_sentiment',
+  'thread_spam_score',
   // Chat visit facts (FieldValue-backed, keyed by thread.id)
   'visit_ip',
   'visit_user_agent',

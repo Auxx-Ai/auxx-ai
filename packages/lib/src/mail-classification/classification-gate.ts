@@ -95,6 +95,7 @@ export async function guardClassification(
     .select({
       subject: schema.Message.subject,
       textPlain: schema.Message.textPlain,
+      senderAuthenticated: schema.Message.senderAuthenticated,
       metadata: schema.Message.metadata,
     })
     .from(schema.Message)
@@ -134,6 +135,7 @@ export async function guardClassification(
         subject: message.subject ?? null,
         from: input.from ?? null,
         textPlain: message.textPlain ?? null,
+        senderAuthenticated: message.senderAuthenticated ?? null,
       },
     },
   }
