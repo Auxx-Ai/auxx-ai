@@ -8,10 +8,18 @@
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { SliceBudget, SyncCursor, SyncSliceCtx } from '../../../sync-core/contracts'
+import type {
+  RunLedger,
+  SliceBudget,
+  SyncCursor,
+  SyncSliceCtx,
+  SyncSource,
+  SyncState,
+} from '../../../sync-core/contracts'
+import { runSyncSlice } from '../../../sync-core/slice-runner'
 import { runConnectorSlice } from '../../connector-slice-loop'
 import { type AppConnectorContext, appConnectorAdapter } from '../app-connector-adapter'
-import { decodeCursor } from '../app-connector-state'
+import { decodeCursor, encodeCursor } from '../app-connector-state'
 import { type ConnectorRecord, type ConnectorYield, isConnectorCheckpoint } from '../types'
 
 const invokeLambdaExecutor = vi.fn()
@@ -312,5 +320,115 @@ describe('appConnectorAdapter config passthrough', () => {
     invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
     await drain()
     expect(sentConfig()).toEqual({})
+  })
+})
+
+// see plans/apps/shopify/shopify-v3-graphql-plan.md §12.1
+describe('appConnectorAdapter rateLimited', () => {
+  const BUDGET: SliceBudget = { maxPages: 5, maxRecords: 1_000, maxMs: 1_000_000 }
+
+  /** A connector SyncSource over the adapter, driven by the real core slice runner. */
+  function harness(initial: SyncState) {
+    let state = initial
+    const calls: string[] = []
+    const ledger: RunLedger = {
+      recordSlice: async () => {},
+      finalize: async () => {},
+      fail: async () => {
+        calls.push('fail')
+      },
+    }
+    const source: SyncSource = {
+      id: 'app:test',
+      throttleKey: 'app:test',
+      fetchSlice: (sliceCtx) =>
+        runConnectorSlice({
+          fetch: (resume) =>
+            appConnectorAdapter('app:test', ctx()).fetch({
+              streamKey: 'thing',
+              mode: 'snapshot',
+              state: resume as never,
+              credential: null,
+              config: {} as never,
+            }),
+          sink: async () => {},
+          ctx: sliceCtx,
+          now: () => 0,
+        }),
+    }
+    const run = () =>
+      runSyncSlice({
+        source,
+        stateStore: {
+          load: async () => state,
+          save: async (s) => {
+            state = s
+          },
+        },
+        ledger,
+        throttle: { run: (fn) => fn() },
+        budget: BUDGET,
+        signal: new AbortController().signal,
+      })
+    return { run, calls, state: () => state }
+  }
+
+  const throttled = (retryAfterMs?: number) =>
+    ok({
+      execution_result: {
+        records: [],
+        nextState: { cursor: 'c1' },
+        rateLimited: retryAfterMs === undefined ? {} : { retryAfterMs },
+      },
+    })
+
+  it('a throttled page backs off on the held cursor and never counts as a stall', async () => {
+    const cursor = encodeCursor('c1')
+    const h = harness({ phase: 'backfill', cursor })
+    invokeLambdaExecutor.mockResolvedValue(throttled(2000))
+
+    for (let i = 0; i < 5; i++) {
+      expect(await h.run()).toEqual({
+        action: 'reenqueue',
+        reason: 'retry-held-cursor',
+        retryAfterMs: 2000,
+      })
+      expect(h.state().cursor).toEqual(cursor)
+      expect(h.state().noProgressStrikes).toBe(0)
+    }
+    expect(h.calls).not.toContain('fail')
+    for (const [call] of invokeLambdaExecutor.mock.calls) {
+      expect(call.payload.state.cursor).toBe('c1')
+    }
+  })
+
+  it('without the signal, the same empty page fails the run as a stall', async () => {
+    const h = harness({ phase: 'backfill', cursor: encodeCursor('c1') })
+    invokeLambdaExecutor.mockResolvedValue(page([], { cursor: 'c1' }))
+
+    expect((await h.run()).action).toBe('reenqueue')
+    expect((await h.run()).action).toBe('reenqueue')
+    expect((await h.run()).action).toBe('failed')
+    expect(h.calls).toContain('fail')
+  })
+
+  it('a throttle after progress commits the pages already read and still backs off', async () => {
+    const h = harness({ phase: 'backfill' })
+    invokeLambdaExecutor
+      .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1' }))
+      .mockResolvedValueOnce(throttled(1500))
+
+    expect(await h.run()).toEqual({ action: 'reenqueue', reason: 'more-pages', retryAfterMs: 1500 })
+    expect(decodeCursor(h.state().cursor)).toBe('c1')
+    expect(h.state().noProgressStrikes).toBe(0)
+  })
+
+  it('defaults a missing hint and caps an oversized one', async () => {
+    const h = harness({ phase: 'backfill', cursor: encodeCursor('c1') })
+    invokeLambdaExecutor.mockResolvedValueOnce(throttled())
+    expect(await h.run()).toMatchObject({ retryAfterMs: 2_000 })
+
+    invokeLambdaExecutor.mockResolvedValueOnce(throttled(3_600_000))
+    expect(await h.run()).toMatchObject({ retryAfterMs: 60_000 })
   })
 })

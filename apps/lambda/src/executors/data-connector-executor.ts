@@ -7,7 +7,7 @@
  * requested connector by id, and calls
  * `connector.execute({ streamKey, mode, state, connection, config })` for one
  * stream fetch. The app fetches from the provider and yields source-shaped
- * `ConnectorRecord` batches; the executor returns `{ records, nextState }`.
+ * `ConnectorRecord` batches; the executor returns `{ records, nextState, rateLimited? }`.
  *
  * The transport is request/response — one batch + cursor per invocation. The
  * platform re-invokes with the returned `nextState` to page. `execute` may
@@ -34,6 +34,15 @@ import type { DataConnectorExecutionEvent } from '../validator.ts'
 
 /** Hard cap on records materialized from a single fetch (defensive against a runaway iterable). */
 const MAX_RECORDS_PER_FETCH = 5000
+
+/** App-supplied throttle signal, reduced to the SDK shape; a malformed value must not crash the fetch. */
+export function sanitizeRateLimited(value: unknown): { retryAfterMs?: number } | undefined {
+  if (value == null || value === false) return undefined
+  const retryAfterMs = (value as { retryAfterMs?: unknown }).retryAfterMs
+  return typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs) && retryAfterMs >= 0
+    ? { retryAfterMs }
+    : {}
+}
 
 export async function executeDataConnector(
   options: Omit<DataConnectorExecutionEvent, 'context' | 'serverBundleSha'> & {
@@ -116,26 +125,32 @@ export async function executeDataConnector(
         }
       }
 
+      const rateLimited = sanitizeRateLimited(fetchResult?.rateLimited)
       return {
         records,
         nextState: fetchResult?.nextState ?? {},
+        ...(rateLimited ? { rateLimited } : {}),
       }
     })()
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
         () => reject(new Error(`Data connector fetch timed out after ${timeout}ms`)),
         timeout
       )
-    )
+    })
 
-    const fetchOutput = await Promise.race([execPromise, timeoutPromise])
+    const fetchOutput = await Promise.race([execPromise, timeoutPromise]).finally(() =>
+      clearTimeout(timeoutId)
+    )
     const consoleLogs = getCapturedLogs()
 
     console.log('[DataConnectorExecutor] Execution complete:', {
       connectorId,
       streamKey,
       recordCount: fetchOutput.records.length,
+      rateLimited: fetchOutput.rateLimited,
     })
 
     return {
