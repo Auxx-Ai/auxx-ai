@@ -16,6 +16,8 @@
 // vocabulary since decision `G19` retired the `GlAccountRole` registry enum
 // along with the `gl_account.role` field it existed to populate.
 import { ACCOUNT_ROLES, type AccountRole } from '../../accounting/ledger/client'
+import { BadRequestError } from '../../errors'
+import { isServicePartKind } from '../costing/client'
 
 /**
  * How a part's classification decides which inventory account a receipt lands in
@@ -58,6 +60,9 @@ export const DEFAULT_RECEIPT_INVENTORY_ROLE: AccountRole = ACCOUNT_ROLES.INVENTO
 /**
  * The inventory account ROLE a receipt of this part should be stamped with.
  *
+ * A `service` has no inventory role and throws: it is deliberately absent from the
+ * map so it can never fall through to Raw Materials (107-D10).
+ *
  * NULL reads as `component`, which is raw materials - and that is the
  * conservative choice on purpose. `partKind` is human-set and unbackfilled, so
  * most parts in an existing org read NULL; defaulting an unclassified part into
@@ -71,6 +76,11 @@ export const DEFAULT_RECEIPT_INVENTORY_ROLE: AccountRole = ACCOUNT_ROLES.INVENTO
  */
 export function resolveInventoryRoleForPartKind(partKind: string | null | undefined): AccountRole {
   if (!partKind) return DEFAULT_RECEIPT_INVENTORY_ROLE
+  if (isServicePartKind(partKind)) {
+    throw new BadRequestError(
+      'A service is not stocked, so it cannot be received, counted, adjusted or built'
+    )
+  }
   return INVENTORY_ROLE_BY_PART_KIND[partKind] ?? DEFAULT_RECEIPT_INVENTORY_ROLE
 }
 

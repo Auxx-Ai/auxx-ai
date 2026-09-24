@@ -268,6 +268,8 @@ function orderWrites(
       // that already has a standard is never touched.
       if (!context.allPartIds.has(partId)) continue
       if (context.standardCosts.get(partId) != null) continue
+      // A service is never stocked, so it never carries a standard (107-D10).
+      if (context.partKinds.get(partId) === 'service') continue
       if (claimed.has(partId)) continue
       claimed.add(partId)
       ordered.push({

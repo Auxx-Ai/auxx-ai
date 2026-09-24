@@ -186,6 +186,7 @@ async function main() {
   console.log(`  skipped, no part        ${s.skippedNoPart}`)
   console.log(`  skipped, already done   ${s.skippedZeroDelta}`)
   console.log(`  skipped, NO COST        ${s.skippedNoCost}`)
+  console.log(`  skipped, service        ${s.skippedService}`)
   console.log(`  negative QoH            ${s.negativeQoHPartIds.length} part(s)`)
   console.log(`  batches failed          ${s.batchesFailed}`)
 

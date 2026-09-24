@@ -46,8 +46,7 @@ import { generateDraftOnCompletion } from '../accounting/sales/invoices/auto-inv
 import {
   pauseMarkupOnPriceEdit,
   recomputePriceOnMarkupChange,
-  syncCatalogCostOnPartChange,
-} from '../accounting/sales/totals/catalog-pricing'
+} from '../accounting/sales/totals/part-pricing'
 import {
   recomputeCreditMemoAfterLineDelete,
   recomputeLineTotalsBatch,
@@ -159,6 +158,7 @@ import {
   OVER_RETURN_GUARDED_ATTRS,
 } from './pre/return-line-over-return-guard'
 import { guardReturnLifecycleTransition } from './pre/return-status-guard'
+import { guardSubpartServiceCreate } from './pre/subpart-service-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
@@ -411,18 +411,13 @@ export function registerAllHooks(): void {
   registerMarkHooks('invoices', [recomputeOnInvoiceBillingChange, syncBillingOnInvoiceChange])
   registerDeriveHooks('invoices', [enrollInvoiceReminderOnSent, reanchorInvoiceOnDueDateChange])
 
-  // Part cost sync + markup pricing (money plan 17 §3) — the three interactive
-  // triggers: linking/unlinking a part syncs (or clears) `cost`; setting a markup
-  // recomputes `price`; hand-editing `price` clears markup (the pause switch). All
-  // writes go through the hook-free writer in `catalog-pricing.ts`, so these can never
-  // recurse into each other. The bulk-recalc ripple (vendor price / BOM composition
-  // changes) chains in separately at the end of `recalculateAllPartCosts` /
-  // `recalculateAffectedParts` (`bom/cost-calculator.ts`), not through this door.
-  registerDeriveHooks('catalog-items', [
-    syncCatalogCostOnPartChange,
-    recomputePriceOnMarkupChange,
-    pauseMarkupOnPriceEdit,
-  ])
+  // Markup pricing on the part (107 D5): a markup recomputes the price, a hand-typed price
+  // clears the markup. Writes are hook-free, so the two cannot recurse. Skipped on create:
+  // there is no cost yet, and a price typed with a markup would wrongly pause it.
+  // The cost-change ripple runs from `cost-calculator.ts`, not through this door.
+  registerDeriveHooks('parts', [recomputePriceOnMarkupChange, pauseMarkupOnPriceEdit], {
+    skipOnCreate: true,
+  })
 
   // Address field (plans/address-field/01-single-input-address-field.md §5 items 2-3,
   // decision #5/#13): field-type-keyed (NOT entity-scoped) so it runs for every ADDRESS_STRUCT
@@ -675,6 +670,7 @@ export function registerAllHooks(): void {
   // the same value bag the create writes (task 30 §8). Edits to either leg
   // re-stamp it through the field-change door below.
   registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness, stampTariffCodeLabel])
+  registerEntityPreCreateHooks('subparts', [guardSubpartServiceCreate])
   registerDeriveHooks('tariff-codes', [restampTariffCodeLabel], { skipOnCreate: true })
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])

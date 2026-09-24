@@ -35,6 +35,7 @@ import {
   systemFieldMap,
   systemValueJoin,
 } from '../../resources/system-records'
+import { isServicePartKind } from '../costing/client'
 import { guard } from './guard'
 import type { OpeningStockCandidate } from './types'
 
@@ -104,7 +105,9 @@ export async function listOpeningStockCandidates(
         subpartFields.subpart_child_part?.id
       )
 
-      return rows.map((row) => {
+      // A service is never stocked, so it is not a checklist item (107-D10).
+      const stocked = rows.filter((row) => !isServicePartKind(row.option('part_kind')))
+      return stocked.map((row) => {
         const coverage = movements.get(row.id)
         return {
           partId: row.id,

@@ -1,90 +1,58 @@
 // apps/web/src/components/drawers/cards/part-sellable-state.test.ts
-//
-// The Pricing card's derived state (plans/products/01-product-family.md §6.1):
-// "sellable" is checked iff an ACTIVE catalog_item backs the part — never a
-// stored boolean. The finished-good nudge is the ONLY partKind interplay;
-// kinds classify for the GL, sellability is the catalog edge.
 
 import { describe, expect, it } from 'vitest'
-import {
-  deriveSellableCardState,
-  isFinishedGood,
-  type SellableCatalogItem,
-} from './part-sellable-state'
+import { derivePricingCardState, isSoldAsIs } from './part-sellable-state'
 
-function item(overrides: Partial<SellableCatalogItem> = {}): SellableCatalogItem {
-  return { id: 'item-1', name: 'Widget', active: true, priceCents: 1999, ...overrides }
+const base = {
+  partKind: 'finished_good',
+  sellable: true,
+  priceCents: 1999,
+  markup: null,
+  connectorPriced: false,
 }
 
-describe('deriveSellableCardState', () => {
-  it('hides everything until the reads have loaded — no flash of a wrong toggle', () => {
-    expect(
-      deriveSellableCardState({ loaded: false, items: [item()], partKind: 'finished_good' })
-    ).toEqual({ kind: 'hidden' })
-  })
-
-  it('renders nothing for a part with no catalog item and no finished-good kind', () => {
-    for (const partKind of [undefined, null, '', [], 'component', 'subassembly', ['component']]) {
-      expect(deriveSellableCardState({ loaded: true, items: [], partKind })).toEqual({
-        kind: 'hidden',
-      })
+describe('isSoldAsIs', () => {
+  it('is true for finished goods and services, scalar or array', () => {
+    expect(isSoldAsIs('finished_good')).toBe(true)
+    expect(isSoldAsIs(['service'])).toBe(true)
+    for (const kind of [undefined, null, '', [], 'component', 'subassembly']) {
+      expect(isSoldAsIs(kind)).toBe(false)
     }
-  })
-
-  it('offers the create flow prominently for a finished good with no catalog item', () => {
-    expect(deriveSellableCardState({ loaded: true, items: [], partKind: 'finished_good' })).toEqual(
-      { kind: 'offer' }
-    )
-    // SINGLE_SELECT values are arrays on some read paths — same answer.
-    expect(
-      deriveSellableCardState({ loaded: true, items: [], partKind: ['finished_good'] })
-    ).toEqual({ kind: 'offer' })
-  })
-
-  it('one active item → checked toggle, no nudge (sellable is the derived fact)', () => {
-    const state = deriveSellableCardState({
-      loaded: true,
-      items: [item()],
-      partKind: 'finished_good',
-    })
-    expect(state).toEqual({ kind: 'toggle', item: item(), showNudge: false })
-  })
-
-  it('one inactive item → unchecked toggle; nudges only for a finished good', () => {
-    const inactive = item({ active: false })
-    expect(
-      deriveSellableCardState({ loaded: true, items: [inactive], partKind: 'finished_good' })
-    ).toEqual({ kind: 'toggle', item: inactive, showNudge: true })
-    // A component with an inactive item still shows the toggle (the fact
-    // exists and re-checking must be possible) — just without the nudge.
-    expect(
-      deriveSellableCardState({ loaded: true, items: [inactive], partKind: 'component' })
-    ).toEqual({ kind: 'toggle', item: inactive, showNudge: false })
-    expect(deriveSellableCardState({ loaded: true, items: [inactive], partKind: null })).toEqual({
-      kind: 'toggle',
-      item: inactive,
-      showNudge: false,
-    })
-  })
-
-  it('multiple items → the compact list, never a toggle', () => {
-    const items = [item(), item({ id: 'item-2', name: 'Widget (bulk)', priceCents: 1499 })]
-    expect(deriveSellableCardState({ loaded: true, items, partKind: 'finished_good' })).toEqual({
-      kind: 'list',
-      items,
-    })
   })
 })
 
-describe('isFinishedGood', () => {
-  it('matches scalar and array-wrapped select values', () => {
-    expect(isFinishedGood('finished_good')).toBe(true)
-    expect(isFinishedGood(['finished_good'])).toBe(true)
+describe('derivePricingCardState', () => {
+  it('shows an editable price, markup and no badge for a hand-priced sellable part', () => {
+    expect(derivePricingCardState(base)).toEqual({
+      showPricing: true,
+      priceEditable: true,
+      showMarkup: true,
+      autoPriced: false,
+      nudge: null,
+    })
   })
 
-  it('rejects everything else, unset shapes included', () => {
-    for (const value of [undefined, null, '', [], 'component', 'subassembly', ['component']]) {
-      expect(isFinishedGood(value)).toBe(false)
-    }
+  it('marks the price Auto when a markup is set', () => {
+    expect(derivePricingCardState({ ...base, markup: 50 }).autoPriced).toBe(true)
+  })
+
+  it('hides pricing rows when not sellable, nudging only for kinds sold as they are', () => {
+    const off = derivePricingCardState({ ...base, sellable: false })
+    expect(off.showPricing).toBe(false)
+    expect(off.nudge).toBe('not-sellable')
+    expect(derivePricingCardState({ ...base, sellable: false, partKind: 'component' }).nudge).toBe(
+      null
+    )
+  })
+
+  it('nudges a sellable part with no price', () => {
+    expect(derivePricingCardState({ ...base, priceCents: null }).nudge).toBe('no-price')
+  })
+
+  it('locks the price and drops markup for a connector-priced part', () => {
+    const state = derivePricingCardState({ ...base, markup: 50, connectorPriced: true })
+    expect(state.priceEditable).toBe(false)
+    expect(state.showMarkup).toBe(false)
+    expect(state.autoPriced).toBe(false)
   })
 })

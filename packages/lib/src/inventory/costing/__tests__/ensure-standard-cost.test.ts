@@ -334,6 +334,30 @@ describe('ensureStandardCost: writing a first standard', () => {
   })
 })
 
+describe('ensureStandardCost: a service (107-D10)', () => {
+  it('never writes a standard for a service, from a live cost or an explicit one', async () => {
+    for (const source of [
+      { kind: 'supplier-price' as const },
+      { kind: 'opening-stock' as const, unitCost: 1200 },
+    ]) {
+      vi.clearAllMocks()
+      queueOrg(
+        [PARTS[0]!],
+        [
+          fv(MOTOR, FIELD.part_kind!.id, { option: 'service' }),
+          fv(MOTOR, FIELD.part_cost!.id, { number: 5000 }),
+        ]
+      )
+
+      const result = await ensureStandardCost(db, ORG, [MOTOR], source)
+
+      expect(result.isOk()).toBe(true)
+      expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
+      expect(h.setValueWithType).not.toHaveBeenCalled()
+    }
+  })
+})
+
 describe('ensureStandardCost: the doors it is called from', () => {
   it('skips a part that cannot be valued at all, rather than failing', async () => {
     queueOrg(

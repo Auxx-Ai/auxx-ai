@@ -359,8 +359,8 @@ export const ModelTypeMeta: Record<
     hasDetailPage: false,
   },
   part: {
-    label: 'Part',
-    plural: 'Parts',
+    label: 'Item',
+    plural: 'Parts & Services',
     icon: 'package',
     color: 'teal',
     apiSlug: 'parts',

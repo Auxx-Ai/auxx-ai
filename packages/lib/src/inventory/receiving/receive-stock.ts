@@ -84,8 +84,11 @@ export async function receiveStock(
       }
       await assertCostFieldsMaterialized(organizationId)
 
+      // Resolved before any write: a service has no inventory role and refuses here.
+      const glAccount = resolveInventoryRoleForPartKind(
+        await unwrap(readPartKind(db, organizationId, input.partId))
+      )
       const priced = await resolveReceiptPrice(db, organizationId, input)
-      const partKind = await unwrap(readPartKind(db, organizationId, input.partId))
 
       // `priced.unitCost` IS the landed estimate — base plus every adder — which
       // is what §6.4 replaces a provisional guess with, not the base alone.
@@ -134,7 +137,7 @@ export async function receiveStock(
           vendorUnitPrice: priced.vendorUnitPrice,
           tariffRate: priced.terms?.tariffRate ?? undefined,
           accrual,
-          glAccount: resolveInventoryRoleForPartKind(partKind),
+          glAccount,
           occurredAt: input.occurredAt ?? new Date(),
         })
         return {

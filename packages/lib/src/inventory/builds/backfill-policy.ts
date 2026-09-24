@@ -75,7 +75,7 @@ import {
   startOfWeek,
 } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
-import { resolvePartKind } from '../costing/client'
+import { isBuildablePartKind, resolvePartKind } from '../costing/client'
 import type {
   BackfillBucket,
   BackfillCoverage,
@@ -195,7 +195,7 @@ function admissionReason(
   input: BackfillPlanInput,
   partId: string
 ): Extract<BackfillExclusionReason, 'not-a-built-part' | 'no-bill-of-materials'> | null {
-  if (resolvePartKind(input.partKinds.get(partId)) === 'component') return 'not-a-built-part'
+  if (!isBuildablePartKind(resolvePartKind(input.partKinds.get(partId)))) return 'not-a-built-part'
   if (input.hasBom.get(partId) !== true) return 'no-bill-of-materials'
   return null
 }

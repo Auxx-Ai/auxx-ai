@@ -91,6 +91,7 @@ import {
   systemFieldMap,
   systemValueJoin,
 } from '../../resources/system-records'
+import { isServicePartKind } from '../costing/client'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { buildStockMovementValues } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -155,6 +156,13 @@ export async function bulkOpenStockBalance(
       dropWhere(accepted, failed, (partId) => {
         if (parts.has(partId)) return null
         return { reason: 'unknown_part', detail: 'No such part in this organization' }
+      })
+      dropWhere(accepted, failed, (partId) => {
+        if (!isServicePartKind(parts.get(partId)?.kind)) return null
+        return {
+          reason: 'service_part',
+          detail: 'A service is not stocked, so it has no opening stock',
+        }
       })
 
       // Step 2b: 🛑 the load-bearing guard, re-read inside this pass rather than

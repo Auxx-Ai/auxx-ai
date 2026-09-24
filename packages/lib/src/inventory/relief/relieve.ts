@@ -78,6 +78,7 @@ import {
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import { systemFieldMap } from '../../resources/system-records'
 import { readStandardCost } from '../costing'
+import { isServicePartKind } from '../costing/client'
 import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../costing/cost-reads'
 import { batchRecalculateQoH } from '../costing/qoh'
 import type { PartStandardCost } from '../costing/types'
@@ -136,6 +137,8 @@ export interface RelieveFulfillmentLinesResult {
   skippedZeroDelta: number
   /** A line with a real delta that could not be priced at all. Never posted at zero. */
   skippedNoCost: number
+  /** A line whose part is a `service`: no stock, so no movement, no COGS and no park (107-D10). */
+  skippedService: number
   /** §4.2 - parts this run would leave (or already left) at negative QoH. Warn, never refuse. */
   negativeQoHPartIds: string[]
   /** One outcome per fulfillment this run posted an entry for; always this run's own entry. */
@@ -288,6 +291,7 @@ async function relieveLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost: 0,
+          skippedService: 0,
           negativeQoHPartIds: [],
           posts: [],
         }
@@ -340,6 +344,7 @@ async function relieveLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost: 0,
+          skippedService: 0,
           negativeQoHPartIds: [],
           posts: [],
         }
@@ -387,9 +392,15 @@ async function relieveLines(
       const inputStandards: (PartStandardCost | null)[] = []
       const relievedLineIds: string[] = []
       let skippedNoCost = 0
+      let skippedService = 0
       const deltaWrittenByPart = new Map<string, number>()
 
       for (const line of resolved) {
+        // Before pricing: a service has no standard by design and must never park.
+        if (isServicePartKind(partKinds.get(line.partInstanceId))) {
+          skippedService++
+          continue
+        }
         const standard = standardCosts?.get(line.partInstanceId) ?? null
         let unitCostMinor: number | null
         if (line.delta > 0) {
@@ -474,6 +485,7 @@ async function relieveLines(
           skippedNoPart,
           skippedZeroDelta,
           skippedNoCost,
+          skippedService,
           negativeQoHPartIds: [...negativeQoHPartIds],
           posts: [],
         }
@@ -566,6 +578,7 @@ async function relieveLines(
         skippedNoPart,
         skippedZeroDelta,
         skippedNoCost,
+        skippedService,
         negativeQoHPartIds: negativeQoHPartIds.size,
       })
 
@@ -575,6 +588,7 @@ async function relieveLines(
         skippedNoPart,
         skippedZeroDelta,
         skippedNoCost,
+        skippedService,
         negativeQoHPartIds: [...negativeQoHPartIds],
         posts,
       }

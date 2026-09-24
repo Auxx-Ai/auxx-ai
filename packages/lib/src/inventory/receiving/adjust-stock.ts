@@ -214,6 +214,11 @@ async function resolveAdjustmentCost(
     'Adjusting stock is not available until the stock movement cost fields are provisioned'
   )
 
+  // First, so a service refuses as a service rather than as a part missing a standard.
+  const kind = await readPartKind(db, organizationId, partId)
+  if (kind.isErr()) throw kind.error
+  const glAccount = resolveInventoryRoleForPartKind(kind.value)
+
   const standard = await readPartStandardCost(db, organizationId, partId)
   if (standard.isErr()) throw standard.error
 
@@ -235,10 +240,7 @@ async function resolveAdjustmentCost(
     )
   }
 
-  const kind = await readPartKind(db, organizationId, partId)
-  if (kind.isErr()) throw kind.error
-
-  return { unitCost, glAccount: resolveInventoryRoleForPartKind(kind.value) }
+  return { unitCost, glAccount }
 }
 
 interface WriteAdjustMovementArgs {

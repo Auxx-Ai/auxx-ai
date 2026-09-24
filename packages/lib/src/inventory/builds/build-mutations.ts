@@ -109,6 +109,9 @@ export async function createBuild(
 
       const kinds = await readPartKinds(db, organizationId, [input.partId])
       const partKind = resolvePartKind(kinds.get(input.partId))
+      if (partKind === 'service') {
+        throw new BadRequestError('A service is not stocked, so it cannot be built')
+      }
       if (partKind === 'component') {
         throw new UnprocessableEntityError(
           'This part is classified as purchased, so it cannot be built. Change its part kind ' +

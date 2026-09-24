@@ -51,7 +51,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { SystemUserService } from '../../users/system-user-service'
 import { loadDirectSubparts } from '../bom/subpart-graph'
-import { resolvePartKind } from '../costing/client'
+import { isBuildablePartKind, resolvePartKind } from '../costing/client'
 import {
   type AutoBuildLine,
   isWithinEnablementWindow,
@@ -281,7 +281,7 @@ export async function reconcileOrderBuilds(
       // One BOM read per DISTINCT part across the whole batch, not per order.
       const hasBom = new Map<string, boolean>()
       for (const partId of partIds) {
-        if (resolvePartKind(kinds.get(partId)) === 'component') continue
+        if (!isBuildablePartKind(resolvePartKind(kinds.get(partId)))) continue
         const subparts = await loadDirectSubparts(db, organizationId, partId)
         hasBom.set(partId, subparts.length > 0)
       }

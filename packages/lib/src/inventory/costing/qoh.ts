@@ -16,6 +16,8 @@ import {
   publishFieldValueUpdates,
 } from '../../realtime'
 import { systemFieldMap } from '../../resources/system-records'
+import { readPartKinds } from '../builds/build-queries'
+import { isServicePartKind } from './client'
 
 const logger = createScopedLogger('bom:qoh')
 
@@ -117,6 +119,11 @@ export async function batchRecalculateQoH(
     }
   }
 
+  // A service has no stock status (107-D10); its QoH is still the movement sum.
+  const kinds = statusField
+    ? await readPartKinds(database, organizationId, unique)
+    : new Map<string, string>()
+
   // 3. Batch write QoH + stock_status (2 queries: 1 bulk delete + 1 bulk insert)
   const partDefId = await requireCachedEntityDefId(organizationId, 'part')
   const realtimeEntries: FieldValueUpdateEntry[] = []
@@ -127,6 +134,7 @@ export async function batchRecalculateQoH(
     const qoh = qohByPart.get(partId) ?? 0
     const reorderPoint = reorderPoints.get(partId) ?? null
     const status = deriveStockStatus(qoh, reorderPoint)
+    const writeStatus = !!statusField && !isServicePartKind(kinds.get(partId))
     const recordId = toRecordId(partDefId, partId) as RecordId
 
     // QoH field value row (single-value field; positional sortKey).
@@ -143,7 +151,7 @@ export async function batchRecalculateQoH(
     )
 
     // Stock status field value row
-    if (statusField) {
+    if (statusField && writeStatus) {
       insertRows.push(
         buildFieldValueRow({
           organizationId,
@@ -162,7 +170,7 @@ export async function batchRecalculateQoH(
       key: buildFieldValueKey(recordId, qohField.id as FieldId),
       value: { type: 'number', value: qoh },
     })
-    if (statusField) {
+    if (statusField && writeStatus) {
       realtimeEntries.push({
         key: buildFieldValueKey(recordId, statusField.id as FieldId),
         value: { type: 'option', optionId: status },

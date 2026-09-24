@@ -43,8 +43,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     entityType: 'part',
     apiSlug: 'parts',
-    singular: 'Part',
-    plural: 'Parts',
+    singular: 'Item',
+    plural: 'Parts & Services',
     icon: 'package',
     color: 'teal',
   },

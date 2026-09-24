@@ -143,6 +143,18 @@ describe('receiveStock — step 1, the quantity guard', () => {
   })
 })
 
+describe('receiveStock — a service is never stocked (107-D10)', () => {
+  it('refuses it with BadRequest before setting a standard or writing a movement', async () => {
+    h.partKind = 'service'
+    const error = await expectErr(
+      receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 5000 })
+    )
+    expect(error).toBeInstanceOf(BadRequestError)
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('receiveStock — step 2, the zero-cost guard', () => {
   it('refuses when neither a price nor a supplier part is given', async () => {
     const error = await expectErr(receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 10 }))

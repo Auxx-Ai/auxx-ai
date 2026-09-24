@@ -233,6 +233,11 @@ export const SYSTEM_ATTRIBUTES = [
   'part_used_in_assemblies',
   'part_catalog_items', // inverse of catalog_item_part
   'part_product', // belongs_to product; inverse is product_parts
+  // Selling fields (107 D3, D5): the part is the sell-side register.
+  'part_sellable',
+  'part_sell_price',
+  'part_markup',
+  'part_taxable',
 
   // ─── Vendor Part fields ────────────────────────────────────────
   'vendor_part_part',

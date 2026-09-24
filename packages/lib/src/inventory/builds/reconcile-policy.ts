@@ -78,7 +78,7 @@
  * `reconcile-order-builds.ts`, which is the only caller.
  */
 
-import { resolvePartKind } from '../costing/client'
+import { isBuildablePartKind, resolvePartKind } from '../costing/client'
 import { type AutoBuildStockRule, isCoveredByStock } from './auto-build-policy'
 import { canAmendBuild } from './client'
 import type { BuildRecord } from './types'
@@ -418,7 +418,7 @@ function admissionDecision(
   wanted: number,
   admitted: boolean
 ): BuildConvergenceAction {
-  if (resolvePartKind(input.partKinds.get(partId)) === 'component') {
+  if (!isBuildablePartKind(resolvePartKind(input.partKinds.get(partId)))) {
     return skip(partId, null, 'not-a-built-part')
   }
   if (input.hasBom.get(partId) !== true) {

@@ -123,6 +123,8 @@ export interface BackfillFulfillmentReliefSummary {
   skippedZeroDelta: number
   /** A real delta that could not be priced at all. Never written at zero. */
   skippedNoCost: number
+  /** Lines whose part is a `service`: never stock, never parked. */
+  skippedService: number
   negativeQoHPartIds: string[]
   /**
    * Batches whose `relieveFulfillmentLines` call returned an error. The run
@@ -231,6 +233,7 @@ export async function backfillFulfillmentRelief(
         skippedNoPart: 0,
         skippedZeroDelta: 0,
         skippedNoCost: 0,
+        skippedService: 0,
         negativeQoHPartIds: [],
         batchesFailed: 0,
       }
@@ -270,6 +273,7 @@ export async function backfillFulfillmentRelief(
             summary.skippedNoPart += value.skippedNoPart
             summary.skippedZeroDelta += value.skippedZeroDelta
             summary.skippedNoCost += value.skippedNoCost
+            summary.skippedService += value.skippedService
             for (const id of value.affectedPartIds) affectedPartIds.add(id)
             for (const id of value.negativeQoHPartIds) negativeQoHPartIds.add(id)
           }
@@ -294,6 +298,7 @@ export async function backfillFulfillmentRelief(
         movementsWritten: summary.movementsWritten,
         skippedZeroDelta: summary.skippedZeroDelta,
         skippedNoCost: summary.skippedNoCost,
+        skippedService: summary.skippedService,
         batchesFailed: summary.batchesFailed,
       })
 

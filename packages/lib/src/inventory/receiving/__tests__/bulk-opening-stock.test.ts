@@ -475,6 +475,16 @@ describe('bulkOpenStockBalance — the per-entry guards', () => {
     expect(summary.opened).toHaveLength(2)
   })
 
+  it('fails a service per row and still opens the rest (107-D10)', async () => {
+    h.parts.set('part_svc', { displayName: 'Installation', kind: 'service' })
+    const summary = await run([{ partId: 'part_svc', quantity: 1, unitCost: 100 }, ...ENTRIES])
+    expect(summary.failed).toEqual([
+      { partId: 'part_svc', reason: 'service_part', detail: expect.any(String) },
+    ])
+    expect(summary.opened.map((row) => row.partId)).toEqual(['part_1', 'part_2'])
+    expect(h.ensureSpy.mock.calls.flatMap((call) => call[2] as string[])).not.toContain('part_svc')
+  })
+
   it('accounts for every entry exactly once', async () => {
     h.moved = new Set(['part_3'])
     const summary = await run([

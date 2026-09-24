@@ -185,6 +185,7 @@ describe('relieveFulfillmentLines', () => {
       skippedNoPart: 0,
       skippedZeroDelta: 0,
       skippedNoCost: 0,
+      skippedService: 0,
       negativeQoHPartIds: [],
     })
     expect(h.writeStockMovements).not.toHaveBeenCalled()
@@ -501,6 +502,81 @@ describe('relieveFulfillmentLines', () => {
         reasonCode: 'STANDARD_COST_MISSING',
         externalRef: 'part_1',
         detail: { partIds: ['part_1'] },
+      })
+    )
+  })
+
+  it('107-D10 - a service line writes no movement, is counted, and never parks', async () => {
+    const db = fakeDb({
+      line_item_part: [{ entityId: 'li_1', relatedEntityId: 'part_svc' }],
+      part_kind: [{ entityId: 'part_svc', optionId: 'service' }],
+    })
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [
+        {
+          fulfillmentLineId: 'fl_1',
+          fulfillmentId: 'ful_1',
+          orderId: 'ord_1',
+          lineItemId: 'li_1',
+          quantity: 2,
+          quantityRelieved: null,
+          occurredAt: OCCURRED_AT,
+        },
+      ],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toMatchObject({ skippedService: 1, skippedNoCost: 0 })
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_1'],
+      stage: 'relieve',
+    })
+  })
+
+  it('107-D10 - a dispatch mixing a service and an unpriced good parks only on the good', async () => {
+    const db = fakeDb({
+      line_item_part: [
+        { entityId: 'li_1', relatedEntityId: 'part_svc' },
+        { entityId: 'li_2', relatedEntityId: 'part_good' },
+      ],
+      part_kind: [
+        { entityId: 'part_svc', optionId: 'service' },
+        { entityId: 'part_good', optionId: 'finished_good' },
+      ],
+    })
+    const line = (id: string, lineItemId: string) => ({
+      fulfillmentLineId: id,
+      fulfillmentId: 'ful_1',
+      orderId: 'ord_1',
+      lineItemId,
+      quantity: 1,
+      quantityRelieved: null,
+      occurredAt: OCCURRED_AT,
+    })
+
+    const result = await relieveFulfillmentLines(db, {
+      organizationId: ORG,
+      userId: USER,
+      lines: [line('fl_1', 'li_1'), line('fl_2', 'li_2')],
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toMatchObject({ skippedService: 1, skippedNoCost: 1 })
+    expect(h.upsertWorkItem).toHaveBeenCalledTimes(1)
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      db,
+      ORG,
+      expect.objectContaining({
+        sourceId: 'ful_1',
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: 'part_good',
+        detail: { partIds: ['part_good'] },
       })
     )
   })
