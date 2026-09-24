@@ -72,6 +72,8 @@ export interface StatementColumn {
   align?: 'right'
   /** Render with `formatSignedMinor` (a delta) instead of `formatMinor`. */
   signed?: boolean
+  /** Header label when the `offset` layout collapses the columns (`Dr` / `Cr`). */
+  shortLabel?: string
 }
 
 /**
@@ -208,6 +210,12 @@ export interface StatementTableProps {
    * consumer overriding them makes a balance sheet unreadable.
    */
   rowClassName?: string
+  /**
+   * `'offset'` (two columns, read mode only): below the `@lg` container width the
+   * second column collapses onto the first, shifted one tab right - the ledger's
+   * debit/credit indent instead of two full money columns. Default `'columns'`.
+   */
+  amountLayout?: 'columns' | 'offset'
 }
 
 /** Only a `line` row's cells ever accept `CurrencyInput` edits or a click-through. */
@@ -223,6 +231,25 @@ const EDITABLE_KINDS: ReadonlySet<StatementRow['kind']> = new Set(['line'])
  * right-aligned trailing cluster rather than a grid track.
  */
 const VALUE_COL = 'w-32 shrink-0 px-1'
+
+/** The `offset` layout's tracks: `VALUE_COL`'s width twice, then a value track plus one tab. */
+const OFFSET_TRACKS = 'grid grid-cols-[8rem_8rem] @max-lg/statement:grid-cols-[7rem_3rem]'
+
+/**
+ * One cell's placement in {@link OFFSET_TRACKS}. When narrow, the second value spans
+ * both tracks so it ends a tab right of the first; an empty cell hides instead of
+ * drawing an em-dash, and a row carrying both (the totals) stacks the second.
+ */
+function offsetCellClass(index: number, empty: boolean, stacked: boolean): string {
+  return cn(
+    'min-w-0 px-1 row-start-1',
+    index === 0
+      ? 'col-start-1'
+      : 'col-start-2 @max-lg/statement:col-span-2 @max-lg/statement:col-start-1',
+    empty && '@max-lg/statement:hidden',
+    stacked && index === 1 && '@max-lg/statement:row-start-2'
+  )
+}
 
 /** `LeadingIcon`'s box. A row with no icon renders none, so the label would
  *  start at a different x than a section's chevron. Every row gets one. */
@@ -256,7 +283,9 @@ export function StatementTable({
   expandAllByDefault = false,
   className,
   rowClassName,
+  amountLayout = 'columns',
 }: StatementTableProps) {
+  const offset = amountLayout === 'offset' && columns.length === 2 && mode === 'read'
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
@@ -316,7 +345,7 @@ export function StatementTable({
 
   return (
     <div
-      className={cn('flex flex-col gap-3', className)}
+      className={cn('flex flex-col gap-3', offset && '@container/statement', className)}
       style={
         {
           /**
@@ -334,7 +363,13 @@ export function StatementTable({
           '--statement-label-indent': codeWidthCh > 0 ? `calc(${codeWidthCh}ch + 0.375rem)` : '0px',
         } as CSSProperties
       }>
-      <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
+      <div
+        className={cn(
+          'rounded-lg border border-primary-200/50 dark:border-[#1e2227]',
+          // Narrow: drop the leading icon box; `--statement-icon-width` keeps memo indents in step.
+          offset &&
+            '@max-lg/statement:[--statement-icon-width:0px] @max-lg/statement:[&_[data-slot=tree-row-icon]]:hidden'
+        )}>
         {/*
           ⚠️ `top-[var(--statement-sticky-top,0px)]` and NOT `top-0`. The reports
           scroll inside their own `ScrollArea` with the toolbar outside it - the
@@ -348,7 +383,7 @@ export function StatementTable({
           <div className='flex min-w-0 flex-1 items-center'>
             {/* `size-7`, matching `LeadingIcon`'s box, so the heading starts at
                 the same x as every row's label. */}
-            <span className='size-7 shrink-0' />
+            <span data-slot='tree-row-icon' className='size-7 shrink-0' />
             {searchable ? (
               // A header until you engage it: no ring, no fill at rest, both on
               // hover and focus. The magnifier is the only permanent hint, which
@@ -363,12 +398,23 @@ export function StatementTable({
               <span className='px-1'>{labelHeading}</span>
             )}
           </div>
-          <div className='flex items-center'>
-            {columns.map((column) => (
-              <div key={column.key} className={cn(VALUE_COL, 'text-right')}>
-                {column.label}
-              </div>
-            ))}
+          <div className={offset ? OFFSET_TRACKS : 'flex items-center'}>
+            {columns.map((column, index) =>
+              offset ? (
+                <div
+                  key={column.key}
+                  className={cn(offsetCellClass(index, false, false), 'text-right')}>
+                  <span className='@max-lg/statement:hidden'>{column.label}</span>
+                  <span className='hidden @max-lg/statement:inline'>
+                    {column.shortLabel ?? column.label}
+                  </span>
+                </div>
+              ) : (
+                <div key={column.key} className={cn(VALUE_COL, 'text-right')}>
+                  {column.label}
+                </div>
+              )
+            )}
           </div>
         </div>
 
@@ -395,6 +441,7 @@ export function StatementTable({
                 onRowClick={onRowClick}
                 canRowDrill={canRowDrill}
                 rowClassName={rowClassName}
+                offset={offset}
                 verdictMark={
                   verdict && row.id === markedRowId ? (
                     <StatementVerdictMark verdict={verdict} />
@@ -452,6 +499,8 @@ interface StatementTableRowProps {
   canRowDrill: (row: StatementRow) => boolean
   /** Appended after the row's `kind` class. See `StatementTableProps`. */
   rowClassName?: string
+  /** The resolved `amountLayout === 'offset'`. See {@link offsetCellClass}. */
+  offset: boolean
   /** The statement's verdict, on the one row that carries it. See {@link StatementVerdictMark}. */
   verdictMark?: ReactNode
 }
@@ -478,6 +527,7 @@ function StatementTableRow({
   onRowClick,
   canRowDrill,
   rowClassName,
+  offset,
   verdictMark,
 }: StatementTableRowProps) {
   const editable = mode === 'edit' && EDITABLE_KINDS.has(row.kind)
@@ -558,13 +608,17 @@ function StatementTableRow({
       description={row.meta?.note}
       rowClassName={cn(ROW_KIND_CLASS[row.kind], rowClassName)}
       actions={
-        <div className='flex items-center'>
+        <div className={offset ? cn(OFFSET_TRACKS, 'items-center') : 'flex items-center'}>
           {columns.map((column, index) => {
             const minor = row.values[index] ?? null
+            const stacked = row.values.every((value) => value != null)
             return (
               <div
                 key={column.key}
-                className={cn(VALUE_COL, 'text-right font-mono text-sm tabular-nums')}>
+                className={cn(
+                  offset ? offsetCellClass(index, minor === null, stacked) : VALUE_COL,
+                  'text-right font-mono text-sm tabular-nums'
+                )}>
                 {/* 🛑 An open section renders NOTHING here, not `EMPTY_CELL`.
                     An em-dash is an answer - "this row has no figure in this
                     column" - and an open section has one, two rows down on its
@@ -610,6 +664,7 @@ function StatementTableRow({
               onRowClick={onRowClick}
               canRowDrill={canRowDrill}
               rowClassName={rowClassName}
+              offset={offset}
             />
           ))
         : undefined}

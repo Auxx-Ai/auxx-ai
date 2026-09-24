@@ -496,7 +496,7 @@ describe('Summary rows (95 §3.2)', () => {
     state.rows = [summaryRow(null)]
     await renderSummary('ready')
 
-    expect(screen.getByText('Not sent')).toBeDefined()
+    expect(screen.queryByText('Not sent')).toBeNull()
     expect(screen.getByLabelText('Send now to QuickBooks').hasAttribute('disabled')).toBe(false)
   })
 

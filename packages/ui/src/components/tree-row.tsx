@@ -166,7 +166,9 @@ function LeadingIcon({
   const swap = !hasCheckbox && !!chevronOnHover && !!expandable
   if (icon === undefined && !swap && !hasCheckbox) return null
   return (
-    <span className='relative flex size-7 shrink-0 items-center justify-center px-1 text-muted-foreground'>
+    <span
+      data-slot='tree-row-icon'
+      className='relative flex size-7 shrink-0 items-center justify-center px-1 text-muted-foreground'>
       {icon !== undefined && (
         <span
           className={cn(

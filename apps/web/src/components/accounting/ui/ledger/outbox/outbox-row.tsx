@@ -20,6 +20,8 @@ interface OutboxRowProps {
    * and they share the column so one tab's rows scan like the next one's.
    */
   typeLabel?: string
+  /** Shown after a divider inside the type badge - a summary row's posting count. */
+  typeCount?: number
   title: ReactNode
   secondary?: ReactNode
   /** The help-icon tooltip beside the title - the place for a sentence too long for the line. */
@@ -55,6 +57,7 @@ export function OutboxRow({
   icon,
   date,
   typeLabel,
+  typeCount,
   title,
   secondary,
   description,
@@ -110,11 +113,16 @@ export function OutboxRow({
                   'w-fit max-w-full px-1.5'
                 )}>
                 <span className='truncate'>{typeLabel}</span>
+                {typeCount !== undefined && (
+                  <>
+                    <span className='self-stretch border-neutral-300 border-l dark:border-neutral-800' />
+                    <span className='shrink-0 tabular-nums'>{typeCount}</span>
+                  </>
+                )}
               </span>
             )}
           </span>
-          {/* A floor, so the memo never collapses to `C...` while the badges keep every pixel. */}
-          <span className='min-w-40 truncate text-sm'>{title}</span>
+          <span className='truncate text-sm'>{title}</span>
         </span>
       }
       secondary={secondary}
