@@ -612,6 +612,15 @@ const OPERATOR_CASES: Array<{
     compareValue: new Date(2025, 0, 1),
   },
   {
+    operator: 'between',
+    matching: new Date(2025, 5, 1),
+    notMatching: new Date(2030, 0, 1),
+    compareValue: {
+      from: new Date(2025, 0, 1).toISOString(),
+      to: new Date(2026, 0, 1).toISOString(),
+    },
+  },
+  {
     operator: 'on_date',
     matching: new Date(2025, 5, 15, 9),
     notMatching: new Date(2025, 5, 16, 9),

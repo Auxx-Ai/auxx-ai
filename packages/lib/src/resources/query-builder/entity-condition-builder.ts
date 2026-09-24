@@ -14,7 +14,11 @@ import { getFieldOutputKey, type ResourceField } from '../registry/field-types'
 import { type FieldOptionItem, getFieldOptions } from '../registry/option-helpers'
 import { BaseType } from '../types'
 import { BaseConditionBuilder, type GenericCondition } from './base-condition-builder'
-import { resolveOlderThanCutoff, resolveRelativeDateRange } from './relative-date-range'
+import {
+  buildBetweenSql,
+  resolveOlderThanCutoff,
+  resolveRelativeDateRange,
+} from './relative-date-range'
 
 const logger = createScopedLogger('entity-condition-builder')
 
@@ -305,6 +309,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`${column} < ${String(rawValue)}`
         case 'after':
           return sql`${column} > ${String(rawValue)}`
+        case 'between':
+          return buildBetweenSql(sql`${column}`, rawValue)
         case 'is':
           return sql`${column}::date = ${String(rawValue)}::date`
         case 'is not':
@@ -673,6 +679,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return rawValue === null || rawValue === undefined
             ? sql`${dateCol} IS NOT NULL`
             : sql`${dateCol}::date != ${String(rawValue)}::date`
+        case 'between':
+          return buildBetweenSql(dateCol, rawValue)
         case 'today':
         case 'yesterday':
         case 'this_week':
@@ -1037,6 +1045,8 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
           return sql`${dateCol} < ${String(rawValue)}`
         case 'after':
           return sql`${dateCol} > ${String(rawValue)}`
+        case 'between':
+          return buildBetweenSql(dateCol, rawValue)
         case 'today':
         case 'yesterday':
         case 'this_week':

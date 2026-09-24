@@ -1,5 +1,7 @@
 // packages/lib/src/resources/query-builder/relative-date-range.ts
 
+import { type SQL, sql } from 'drizzle-orm'
+import { parseDateRange } from '../../conditions/date-range'
 import type { Operator } from '../../conditions/operator-definitions'
 
 export interface DateRange {
@@ -97,4 +99,14 @@ function startOfMonth(d: Date): Date {
   out.setDate(1)
   out.setHours(0, 0, 0, 0)
   return out
+}
+
+/** SQL for a `between` value on a raw date column: `>= from AND < to`, dropping an absent end. */
+export function buildBetweenSql(column: SQL, rawValue: unknown): SQL | undefined {
+  const range = parseDateRange(rawValue)
+  if (!range) return undefined
+  const parts: SQL[] = []
+  if (range.from) parts.push(sql`${column} >= ${range.from.toISOString()}`)
+  if (range.to) parts.push(sql`${column} < ${range.to.toISOString()}`)
+  return sql.join(parts, sql` AND `)
 }

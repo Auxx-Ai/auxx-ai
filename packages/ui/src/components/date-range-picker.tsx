@@ -81,6 +81,9 @@ interface DateRangePickerProps {
    * without `packages/ui` depending on `apps/web`.
    */
   trigger?: (state: { open: boolean; label: string; hasValue: boolean }) => React.ReactNode
+  /** Controlled popover state. Uncontrolled when omitted. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -227,9 +230,16 @@ export function DateRangePicker({
   placeholder = 'Select dates',
   presets,
   trigger,
+  open: openProp,
+  onOpenChange,
   ...calendarProps
 }: DateRangePickerProps & DateRangePickerCalendarProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = openProp ?? internalOpen
+  const setOpen = (next: boolean) => {
+    if (openProp === undefined) setInternalOpen(next)
+    onOpenChange?.(next)
+  }
   const presetList: readonly DateRangePreset[] =
     presets ??
     timeFrameOptions.map((option) => ({

@@ -200,6 +200,10 @@ const TRUE_FIXTURES: Record<string, Fixture | null> = {
   // date
   before: { value: '2020-01-01T00:00:00Z', target: '2021-01-01T00:00:00Z' },
   after: { value: '2021-01-01T00:00:00Z', target: '2020-01-01T00:00:00Z' },
+  between: {
+    value: '2020-06-01T00:00:00Z',
+    target: { from: '2020-01-01T00:00:00Z', to: '2021-01-01T00:00:00Z' },
+  },
   within_days: { value: daysAgoIso(2), target: 5 },
   older_than_days: { value: daysAgoIso(10), target: 5 },
   today: { value: todayIso() },

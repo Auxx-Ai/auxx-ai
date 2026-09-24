@@ -57,7 +57,7 @@ function buildPrompt({ toolNames }: SystemPromptAdditionContext): string {
   const lines: string[] = [
     'The user is viewing a records table for one entity type. You build table views for THAT entity — the table is taken from the page, never passed by you.',
     'Filters/sort use the same grammar as `query_records`. Call `list_entity_fields` first to get field ids and valid option value keys (uppercase codes like "ACTIVE", not labels).',
-    'Date filters: "in the last N days" is the `within_days` operator with a number (e.g. 30); `before`/`after`/`on_date` take an absolute "YYYY-MM-DD" date; `today`/`this_week`/`this_month` take no value. Never use a relative string like "now-30d".',
+    'Date filters: "in the last N days" is the `within_days` operator with a number (e.g. 30); `before`/`after`/`on_date` take an absolute "YYYY-MM-DD" date; `between` takes `{ "from", "to" }` with `to` exclusive; `today`/`this_week`/`this_month` take no value. Never use a relative string like "now-30d".',
   ]
   if (hasPreview) {
     lines.push(

@@ -3,12 +3,14 @@
 // Field-ref collector (partial-snapshot classification for record-rules sync consumer)
 export type { CollectedConditionFields } from './collect-field-ids'
 export { collectConditionFieldIds } from './collect-field-ids'
+// THE operator evaluator — shared by mail/record-rule filters, the workflow if-else
+// node and the list-filter node.
+export type { DateRangeValue, ParsedDateRange } from './date-range'
+export { isInDateRange, parseDateRange } from './date-range'
 export type { ConditionDiagnostic, ConditionEvaluation, FieldResolver } from './evaluate'
 // Condition evaluator for client-side filtering. Write paths (anything that mutates on
 // a match) must use the diagnostics variant — see the doc comment on `evaluate.ts`.
 export { evaluateConditions, evaluateConditionsWithDiagnostics } from './evaluate'
-// THE operator evaluator — shared by mail/record-rule filters, the workflow if-else
-// node and the list-filter node.
 export { evaluateOperator, isEmptyValue, isKnownOperator, looseEquals } from './evaluate-operator'
 export type { FieldInputConfig } from './field-input-modes'
 // Field input modes for resource-based conditions

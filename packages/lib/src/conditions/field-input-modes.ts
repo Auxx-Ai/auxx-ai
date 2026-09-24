@@ -26,6 +26,9 @@ export enum FieldInputMode {
   /** Plain text input */
   TEXT = 'text',
 
+  /** A from/to date range (for the `between` operator) */
+  RANGE = 'range',
+
   /** No input needed (for empty, exists operators) */
   NONE = 'none',
 }
@@ -255,6 +258,9 @@ export function resolveFieldInputConfig(fieldType: string, operator: Operator): 
   }
 
   // ===== DATE/DATETIME/TIME FIELD HANDLING =====
+  if (operator === 'between') {
+    return { mode: FieldInputMode.RANGE, fieldType, placeholder: 'Select dates' }
+  }
   if ([FieldType.DATE, FieldType.DATETIME, FieldType.TIME].includes(fieldType as any)) {
     return {
       mode: FieldInputMode.SINGLE,

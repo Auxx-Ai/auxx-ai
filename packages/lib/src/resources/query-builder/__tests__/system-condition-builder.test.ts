@@ -164,6 +164,48 @@ describe('SystemConditionBuilder — before / after on date columns', () => {
   })
 })
 
+describe('SystemConditionBuilder — between on date columns', () => {
+  const build = (fieldId: string, value: unknown) =>
+    systemConditionBuilder.buildGroupedQueryWithDiagnostics(
+      group([condition(fieldId, 'between', value)]),
+      'article'
+    )
+
+  it('compiles a closed range to >= from AND < to', () => {
+    const rendered = render(
+      build('article:publishedAt', {
+        from: '2026-08-01T00:00:00.000Z',
+        to: '2026-09-01T00:00:00.000Z',
+      }).sql
+    )
+    expect(rendered?.sql).toBe('"Article"."publishedAt" >= $1 AND "Article"."publishedAt" < $2')
+    expect(rendered?.params).toEqual(['2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'])
+  })
+
+  it('drops the absent end of a one-sided range', () => {
+    expect(render(build('article:publishedAt', { from: '2026-08-01' }).sql)?.sql).toBe(
+      '"Article"."publishedAt" >= $1'
+    )
+    expect(render(build('article:publishedAt', { to: '2026-09-01' }).sql)?.sql).toBe(
+      '"Article"."publishedAt" < $1'
+    )
+  })
+
+  it.each([
+    ['an unparseable range', { from: 'not-a-date' }],
+    ['a plain date', '2026-08-01'],
+    ['an inverted range', { from: '2026-09-01', to: '2026-08-01' }],
+  ])('drops %s instead of compiling an equality', (_label, value) => {
+    const result = build('article:publishedAt', value)
+    expect(result.sql).toBeUndefined()
+    expect(result.allConditionsDropped).toBe(true)
+  })
+
+  it('drops between on a non-date column', () => {
+    expect(build('article:title', { from: '2026-08-01' }).sql).toBeUndefined()
+  })
+})
+
 describe('SystemConditionBuilder — FieldValue-backed relationships', () => {
   it('routes article:tags to a FieldValue EXISTS subquery keyed by systemAttribute', () => {
     const result = systemConditionBuilder.buildGroupedQueryWithDiagnostics(

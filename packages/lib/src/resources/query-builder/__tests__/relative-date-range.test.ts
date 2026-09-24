@@ -1,7 +1,38 @@
 // packages/lib/src/resources/query-builder/__tests__/relative-date-range.test.ts
 
+import { sql } from 'drizzle-orm'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it } from 'vitest'
-import { resolveOlderThanCutoff, resolveRelativeDateRange } from '../relative-date-range'
+import {
+  buildBetweenSql,
+  resolveOlderThanCutoff,
+  resolveRelativeDateRange,
+} from '../relative-date-range'
+
+describe('buildBetweenSql', () => {
+  const column = sql.raw('"FieldValue"."valueDate"')
+  const render = (clause: ReturnType<typeof buildBetweenSql>) =>
+    clause ? new PgDialect().sqlToQuery(clause) : undefined
+
+  it('renders a closed range as >= AND <', () => {
+    const rendered = render(
+      buildBetweenSql(column, { from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' })
+    )
+    expect(rendered?.sql).toBe('"FieldValue"."valueDate" >= $1 AND "FieldValue"."valueDate" < $2')
+    expect(rendered?.params).toEqual(['2026-08-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'])
+  })
+
+  it('renders one side of a one-sided range', () => {
+    expect(render(buildBetweenSql(column, { to: '2026-09-01T00:00:00Z' }))?.sql).toBe(
+      '"FieldValue"."valueDate" < $1'
+    )
+  })
+
+  it('returns undefined for an invalid range', () => {
+    expect(buildBetweenSql(column, { from: 'nope' })).toBeUndefined()
+    expect(buildBetweenSql(column, '2026-08-01')).toBeUndefined()
+  })
+})
 
 // Wednesday 2026-05-13 14:30:00 local time
 const NOW = new Date(2026, 4, 13, 14, 30, 0, 0)

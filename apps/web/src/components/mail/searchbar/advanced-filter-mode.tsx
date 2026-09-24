@@ -126,6 +126,9 @@ export function AdvancedFilterMode({
 
       if (!operatorRequiresValue(newOperator)) {
         newValue = undefined
+      } else if ((oldOperator === 'between') !== (newOperator === 'between')) {
+        // A `{ from, to }` range and a single date do not convert into each other.
+        newValue = undefined
       } else if (oldOperator && isMultiOperator(oldOperator) && !isMultiOperator(newOperator)) {
         if (Array.isArray(newValue)) {
           newValue = newValue[0] ?? undefined

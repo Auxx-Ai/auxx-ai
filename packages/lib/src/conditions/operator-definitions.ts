@@ -32,7 +32,7 @@ export interface OperatorDefinition {
   supportedFieldTypes?: string[]
 
   /** Value input type: single value, multiple values, or none */
-  valueType?: 'single' | 'multiple' | 'none'
+  valueType?: 'single' | 'multiple' | 'range' | 'none'
 
   /** Optional description for tooltips */
   description?: string
@@ -441,6 +441,17 @@ export const OPERATOR_DEFINITIONS = {
     supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
     valueType: 'single',
     category: 'date',
+  },
+  between: {
+    key: 'between',
+    label: 'between',
+    requiresValue: true,
+    // Resource conditions only: a workflow variable input cannot produce a `{ from, to }` range.
+    supportedTypes: [],
+    supportedFieldTypes: [FieldType.DATE, FieldType.DATETIME],
+    valueType: 'range',
+    category: 'date',
+    description: 'From (inclusive) to (exclusive)',
   },
 
   // ===== EXISTENCE OPERATORS =====
