@@ -42,7 +42,11 @@ export type {
 } from './core/types'
 // Remote image fetch → MediaAsset helper (shared by enrichment triggers and extension)
 export type { FetchRemoteImageInput, FetchRemoteImageResult } from './fetch-remote-image'
-export { assertPublicHost, fetchAndStoreRemoteImage } from './fetch-remote-image'
+export {
+  fetchAndStoreRemoteImage,
+  isRetryableFetchError,
+  normalizeImageUrl,
+} from './fetch-remote-image'
 
 // Filesystem Service - Unified bulk loading operations
 
@@ -91,6 +95,7 @@ export type { FileUploadParams, FileUploadResult } from './upload/types'
 // `files/lifecycle/` no longer binds the process-wide pool at module scope; the
 // reapers it holds take a `Database` and a storage seam as parameters.
 export {
+  assertStorageQuota,
   calculateStorageUsage,
   type StorageQuota,
 } from './lifecycle/quota-cleanup'

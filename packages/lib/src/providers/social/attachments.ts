@@ -5,7 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { InboundAttachmentIngestService } from '../../email/inbound/attachment-ingest.service'
 import type { AttachmentIngestInput } from '../../email/inbound/ingest-types'
-import { assertPublicHost } from '../../files/fetch-remote-image'
+import { safeFetch } from '../../net/safe-fetch'
 import type { GraphConversationMessage } from './api'
 import type { MetaWebhookMessage, SocialPlatform } from './types'
 
@@ -256,19 +256,8 @@ export async function fetchSocialAttachment(
   context: { platform: SocialPlatform; messageId: string }
 ): Promise<{ content: Buffer; mimeType: string } | null> {
   try {
-    // Meta's CDN hostnames are fixed, but the URL arrives over the wire and
-    // `fetch` follows redirects, so the same guard the enrichment fetcher uses
-    // applies here.
-    assertPublicHost(ref.url)
-
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let response: Response
-    try {
-      response = await fetch(ref.url, { signal: controller.signal, redirect: 'follow' })
-    } finally {
-      clearTimeout(timer)
-    }
+    // The URL arrives over the wire and redirects are followed, so it goes through the SSRF guard.
+    const response = await safeFetch(ref.url, { timeoutMs: FETCH_TIMEOUT_MS, redirect: 'follow' })
 
     if (!response.ok) {
       logger.warn('Meta attachment download refused', {

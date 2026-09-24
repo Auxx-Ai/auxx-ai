@@ -2054,6 +2054,7 @@
     "stripe": "catalog:",
     "tldts": "^7.0.28",
     "turndown": "catalog:",
+    "undici": "^7.22.0",
     "unified": "^11.0.5",
     "uuid": "catalog:",
     "xlsx": "^0.18.5",

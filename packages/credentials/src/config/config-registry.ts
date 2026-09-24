@@ -97,6 +97,15 @@ export const CONFIG_VARIABLES = {
     isSensitive: false,
     isEnvOnly: true,
   },
+  OUTBOUND_ALLOWED_CIDRS: {
+    key: 'OUTBOUND_ALLOWED_CIDRS',
+    description:
+      'Comma-separated CIDRs that server-side fetches of user-supplied URLs may reach despite being private (self-hosting)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.SERVER,
+    isSensitive: false,
+    isEnvOnly: true,
+  },
 
   // ── DATABASE ────────────────────────────────────────────
   DATABASE_URL: {

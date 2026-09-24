@@ -7,6 +7,13 @@
 // internet with a URL that arrived over the wire.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const safeFetchMock = vi.hoisted(() => vi.fn())
+vi.mock('../../../net/safe-fetch', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../net/safe-fetch')>()),
+  safeFetch: safeFetchMock,
+}))
+
 import {
   attachmentFilename,
   conversationAttachmentRefs,
@@ -22,7 +29,7 @@ function response(body: Buffer, headers: Record<string, string>, status = 200): 
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  safeFetchMock.mockReset()
 })
 
 describe('webhookAttachmentRefs', () => {
@@ -114,8 +121,7 @@ describe('attachmentFilename', () => {
 
 describe('fetchSocialAttachment', () => {
   it('returns the bytes and the header mime type', async () => {
-    vi.stubGlobal(
-      'fetch',
+    safeFetchMock.mockImplementation(
       vi.fn(async () =>
         response(Buffer.from('bytes'), { 'content-type': 'image/jpeg; charset=binary' })
       )
@@ -133,7 +139,7 @@ describe('fetchSocialAttachment', () => {
         'content-length': String(SOCIAL_ATTACHMENT_MAX_BYTES + 1),
       })
     )
-    vi.stubGlobal('fetch', fetchMock)
+    safeFetchMock.mockImplementation(fetchMock)
 
     expect(
       await fetchSocialAttachment({ url: 'https://cdn/1.mp4', type: 'video' }, CONTEXT)
@@ -143,8 +149,7 @@ describe('fetchSocialAttachment', () => {
   it('refuses a document served in place of a file', async () => {
     // An expired CDN link answers 200 with an error page. Storing that as the
     // customer's photo is worse than storing nothing.
-    vi.stubGlobal(
-      'fetch',
+    safeFetchMock.mockImplementation(
       vi.fn(async () => response(Buffer.from('<html>gone</html>'), { 'content-type': 'text/html' }))
     )
 
@@ -156,16 +161,12 @@ describe('fetchSocialAttachment', () => {
   it('returns null rather than throwing on a dead link', async () => {
     // Every caller is past the point of no return — the webhook has answered 200 and
     // the backfill has committed the batch. A throw here would cost the message.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => response(Buffer.from(''), {}, 404))
-    )
+    safeFetchMock.mockImplementation(vi.fn(async () => response(Buffer.from(''), {}, 404)))
     expect(
       await fetchSocialAttachment({ url: 'https://cdn/1.jpg', type: 'image' }, CONTEXT)
     ).toBeNull()
 
-    vi.stubGlobal(
-      'fetch',
+    safeFetchMock.mockImplementation(
       vi.fn(async () => {
         throw new Error('ECONNRESET')
       })
@@ -176,8 +177,9 @@ describe('fetchSocialAttachment', () => {
   })
 
   it('refuses a URL pointing at our own network', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
+    const { safeFetch } =
+      await vi.importActual<typeof import('../../../net/safe-fetch')>('../../../net/safe-fetch')
+    safeFetchMock.mockImplementation(safeFetch)
 
     expect(
       await fetchSocialAttachment(
@@ -185,6 +187,6 @@ describe('fetchSocialAttachment', () => {
         CONTEXT
       )
     ).toBeNull()
-    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(safeFetchMock.mock.results[0]?.value).rejects.toThrow(/private or reserved/)
   })
 })

@@ -657,6 +657,17 @@ creation**, only for browser uploads. Any invariant expressed only in a handler 
 There is a third `StorageLocation` write door: `users/user-avatar-service.ts` inserts the row
 directly, bypassing `createStorageLocation` and its bucket normalisation (§12).
 
+**Fetching remote bytes.** Any server-side fetch of a user-, tenant- or webhook-supplied URL goes
+through `safeFetch` (`net/safe-fetch.ts`), never global `fetch`. Its dispatcher checks the IP
+actually connected to on every redirect hop, so there is no pre-flight hostname check to add.
+`fetchAndStoreRemoteImage` is the image door: `safeFetch`, a streamed byte cap, magic-byte type
+sniffing, no SVG unless the caller passes `allowSvg`, and typed errors (`isRetryableFetchError`).
+
+**Quota.** Server-side ingest must call `assertStorageQuota(ctx, bytes)`
+(`lifecycle/quota-cleanup.ts`) before `uploadContent`; it throws the same 403 `UsageLimitError`
+meaning as the upload route. It is one SUM query, so a batch (an import job) checks once, tracks a
+running total, and passes `skipQuotaCheck: true` per image.
+
 ---
 
 ## 9. The Read Path
