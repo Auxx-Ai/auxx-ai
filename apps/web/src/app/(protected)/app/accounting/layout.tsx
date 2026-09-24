@@ -2,6 +2,7 @@
 
 'use client'
 
+import { ACCOUNTING_PROVIDER_KEYWORDS } from '@auxx/lib/accounting/providers/client'
 import {
   MainPage,
   MainPageBreadcrumb,
@@ -73,7 +74,7 @@ const ACCOUNTING_NAV: SidebarProps[] = [
         slug: 'outbox',
         icon: <Send />,
         description: 'Everything on its way out, every period: drafts, batches, refusals',
-        keywords: ['approve', 'export', 'batch', 'quickbooks', 'send'],
+        keywords: ['approve', 'export', 'batch', 'send', ...ACCOUNTING_PROVIDER_KEYWORDS],
       },
     ],
   },
@@ -115,7 +116,7 @@ const ACCOUNTING_NAV: SidebarProps[] = [
         slug: 'banking/matches',
         icon: <GitCompareArrows />,
         description: 'Payments and deposits in the connected books, matched against ours',
-        keywords: ['quickbooks', 'duplicate', 'provider', 'suggested', 'adopt'],
+        keywords: ['duplicate', 'provider', 'suggested', 'adopt', ...ACCOUNTING_PROVIDER_KEYWORDS],
         permissionKey: 'ledger.post',
       },
       {

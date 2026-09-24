@@ -1,4 +1,4 @@
-// apps/web/src/components/accounting/ui/settings/quickbooks-section.tsx
+// apps/web/src/components/accounting/ui/settings/accounting-provider-section.tsx
 'use client'
 
 // Accounting > Settings > General: install, connect and status for the
@@ -11,27 +11,26 @@
 // `getting-started.ts` records that `connect-quickbooks` is deliberately not a
 // goal, and that decision stands.
 //
-// 🛑 CONNECT AND MANAGE OPEN `AppSettingsDialog`, they do not navigate. Sending
-// somebody to `/app/settings/apps/quickbooks` drops them out of the accounting
-// module in the middle of setting it up, with no way back but the browser button
-// - and the dialog is where the OAuth flow lives anyway (`app-install-card.tsx`
-// opens it exactly this way, on the `connections` tab). The app detail PAGE is
-// still linked from the not-installed row, because that is a browse action
-// rather than a step in a flow.
+// Connect and Manage open `AppSettingsDialog` rather than navigating, so nobody is
+// dropped out of the module mid-setup. The app detail page is linked only from the
+// not-installed rows, where it is a browse action.
 
+import { ACCOUNTING_PROVIDER_CATALOGUE } from '@auxx/lib/accounting/providers/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Landmark } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { type ComponentType, useState } from 'react'
 import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { AppSettingsDialog } from '~/components/apps/ui/app-settings-dialog'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
-import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
-import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import {
+  accountingProviderAppPath,
+  useAccountingProviderStatus,
+} from '../../hooks/use-accounting-provider-status'
 import {
   FREEZE_REASON,
   useAccountingSettingsFreeze,
@@ -40,6 +39,12 @@ import { today } from '../journal/period-helpers'
 import { ProviderSyncNowRow, ProviderSyncRunDetail } from '../provider-sync/provider-sync-panel'
 import { ProviderSyncScheduleRow } from '../provider-sync/provider-sync-schedule-row'
 import { AccountingDestinationPanel } from './accounting-destination-panel'
+import { QuickbooksSettingsRows } from './quickbooks-settings-rows'
+
+/** Settings only one provider has, keyed by catalogue id and rendered under its connection rows. */
+const PROVIDER_SETTINGS_ROWS: Record<string, ComponentType> = {
+  quickbooks: QuickbooksSettingsRows,
+}
 
 /** Same fallback `useLedgerPeriod` uses when the book timezone is unset. */
 const FALLBACK_BOOK_TIME_ZONE = 'UTC'
@@ -62,18 +67,12 @@ function formatDate(value: Date | string | null | undefined): string | null {
  *
  * Three states, off `useAccountingProviderStatus()`:
  *
- * 1. Not installed - an `InlineAppInstallButton` and a link to the app detail page.
- * 2. Installed, not connected - "Connect QuickBooks" opens `AppSettingsDialog` on
+ * 1. Not installed - one row per catalogue provider: its install button and app page link.
+ * 2. Installed, not connected - "Connect <provider>" opens `AppSettingsDialog` on
  *    its `connections` tab, which owns the whole OAuth flow.
  * 3. Connected - which company, who authorized it and when, plus Manage.
  *
- * 🛑 Every settings value here autosaves and stays outside the page's
- * `useDirtyDraft` slices: an uncontrolled `SettingsFieldRow` writes straight
- * through to `updateOrganizationSetting`, so there is no draft for it to join and
- * nothing to add to `DRAFT_KEYS`. Do not "fix" that for the export switch by
- * wiring it to the page's `scope: 'GENERAL'` draft - that key's catalog scope is
- * `DOCUMENTS`, so a scoped read would return nothing and the switch would render
- * permanently off while appearing to save.
+ * Provider-only settings come from {@link PROVIDER_SETTINGS_ROWS}, under the connection rows.
  *
  * 🔑 The INBOUND sync lives here too (MK, 2026-09-17; brief 55 §4.8), as three
  * rows under the connection rather than the separate `Bring in entries` section
@@ -82,12 +81,12 @@ function formatDate(value: Date | string | null | undefined): string | null {
  * 🛑 None of the three states is a warning. See the `P1` note at the top of this
  * file and in `use-accounting-provider-status.ts` before changing a badge colour.
  */
-export function QuickbooksSettingsSection() {
+export function AccountingProviderSection() {
   const {
     installed,
     connected,
     providerLabel,
-    appDetailPath,
+    providerEntry,
     installationType,
     connection,
     loading,
@@ -104,48 +103,51 @@ export function QuickbooksSettingsSection() {
   // same sixteen digits twice. See the note on `AccountingProviderStatus.connection`
   // for why the company NAME is not available.
   const connectedAt = formatDate(connection?.connectedAt)
+  const ProviderRows = providerEntry ? PROVIDER_SETTINGS_ROWS[providerEntry.id] : undefined
 
   return (
     <SettingsSection
       icon={Landmark}
       title='Accounting provider'
       description='Where posted entries are mirrored, and what is brought back from it. Optional - the ledger is kept here either way.'>
-      <FieldPanel className='mt-1 p-0' resizeId='accounting-general-quickbooks'>
-        {!installed && (
-          <FieldPanelRow
-            title='QuickBooks Online'
-            description={
-              loading ? 'Checking installed apps.' : 'Install the app to mirror posted entries.'
-            }>
-            <div className='flex w-full items-center justify-between gap-2'>
-              <Link href={appDetailPath} className='text-sm hover:underline'>
-                QuickBooks
-              </Link>
-              <InlineAppInstallButton appSlug='quickbooks' />
-            </div>
-          </FieldPanelRow>
-        )}
+      <FieldPanel className='mt-1 p-0' resizeId='accounting-provider'>
+        {!installed &&
+          ACCOUNTING_PROVIDER_CATALOGUE.map((entry) => (
+            <FieldPanelRow
+              key={entry.id}
+              title={entry.label}
+              description={
+                loading ? 'Checking installed apps.' : 'Install the app to mirror posted entries.'
+              }>
+              <div className='flex w-full items-center justify-between gap-2'>
+                <Link href={accountingProviderAppPath(entry)} className='text-sm hover:underline'>
+                  {entry.shortLabel}
+                </Link>
+                <InlineAppInstallButton appSlug={entry.appSlug} />
+              </div>
+            </FieldPanelRow>
+          ))}
 
-        {installed && !connected && (
+        {providerEntry && !connected && (
           <FieldPanelRow
-            title='QuickBooks Online'
-            description='Installed. Authorize your QuickBooks company to mirror posted entries.'>
+            title={providerEntry.label}
+            description={`Installed. Authorize your ${providerEntry.shortLabel} company to mirror posted entries.`}>
             <div className='flex w-full items-center justify-between gap-2'>
               <Badge variant='outline' size='xs'>
                 Not connected
               </Badge>
               <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>
-                Connect QuickBooks
+                Connect {providerEntry.shortLabel}
               </Button>
             </div>
           </FieldPanelRow>
         )}
 
-        {installed && connected && (
+        {providerEntry && connected && (
           <>
             <FieldPanelRow
-              title='QuickBooks Online'
-              description='Posted entries are mirrored into QuickBooks Online and carry a deep link back.'>
+              title={providerEntry.label}
+              description={`Posted entries are mirrored into ${providerEntry.label} and carry a deep link back.`}>
               <div className='flex w-full items-center justify-between gap-2'>
                 <span className='flex items-center gap-2 text-sm'>
                   <Badge variant='green' size='xs'>
@@ -161,7 +163,7 @@ export function QuickbooksSettingsSection() {
 
             <FieldPanelRow
               title='Company'
-              description='The QuickBooks company this authorization can access. The accounting company below controls where new fulfillment journals are assigned.'>
+              description={`The ${providerEntry.shortLabel} company this authorization can access. The accounting company below controls where new fulfillment journals are assigned.`}>
               <div className='flex min-h-8 items-center gap-2 text-sm'>
                 <span className='tabular-nums'>{connection?.label ?? '-'}</span>
                 {connection?.global && (
@@ -182,11 +184,7 @@ export function QuickbooksSettingsSection() {
               </div>
             </FieldPanelRow>
 
-            <SettingsFieldRow
-              settingKey='quickbooks.postJournalEntries'
-              title='Export posted entries'
-              description='When on, new fulfillment journals are exported automatically. When off, they wait for manual export. Previously assigned exports keep their saved setting.'
-            />
+            {ProviderRows && <ProviderRows />}
 
             {/*
               The INBOUND half, on the same panel as the outbound switch above
@@ -232,9 +230,9 @@ export function QuickbooksSettingsSection() {
 
       {/* Mounted only once installed: the dialog's settings queries need an
           `installationType`, and until then there is nothing to manage. */}
-      {installed && installationType && (
+      {providerEntry && installationType && (
         <AppSettingsDialog
-          appSlug='quickbooks'
+          appSlug={providerEntry.appSlug}
           installationType={installationType}
           // The safety net for the popup-blocked -> full-page-redirect fallback
           // that cannot be fully prevented: come back to the accounting settings

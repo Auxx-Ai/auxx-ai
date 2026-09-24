@@ -27,6 +27,13 @@ export {
   readPinnedAccountingConnectionInTx,
   repairAccountingBookConnection,
 } from './book-connections'
+export {
+  ACCOUNTING_PROVIDER_CATALOGUE,
+  ACCOUNTING_PROVIDER_KEYWORDS,
+  type AccountingProviderCatalogueEntry,
+  getAccountingProviderByAppSlug,
+  getAccountingProviderEntry,
+} from './catalogue'
 export type { ProviderCompanySettings } from './company-settings'
 export {
   type CreateAndLinkOptions,

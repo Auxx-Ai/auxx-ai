@@ -409,8 +409,6 @@ export function CloseoutPage() {
                 </div>
               )}
 
-              {/* Everything the month-end entry above is NOT: other postings this period,
-                  plus journal entries nobody has posted yet. */}
               <Section
                 className={SECTION_BLEED}
                 title='Entries'
@@ -419,8 +417,8 @@ export function CloseoutPage() {
                   activePeriodKey
                     ? entriesView === 'summary'
                       ? 'Posted entries grouped by avenue, grain, store, rail and currency (TARGET §6) - a batch state shows beside a row that has a live one.'
-                      : 'Every other entry dated in this month, and journal entries not yet posted.'
-                    : 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
+                      : 'Every entry dated in this month, and journal entries not yet posted.'
+                    : 'Journal entries somebody has raised.'
                 }
                 collapsible={false}
                 actions={
