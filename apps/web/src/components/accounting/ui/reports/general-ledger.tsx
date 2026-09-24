@@ -105,6 +105,7 @@ export function GeneralLedgerReportPage() {
           <ReportToolbarActions
             onDownloadPdf={exports.downloadPdf}
             onDownloadCsv={exports.downloadCsv}
+            from={from}
             through={to}
             isDownloadingPdf={exports.isDownloadingPdf}
           />

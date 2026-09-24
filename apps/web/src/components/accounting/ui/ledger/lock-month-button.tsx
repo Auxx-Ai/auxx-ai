@@ -3,21 +3,22 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Lock, LockOpen } from 'lucide-react'
+import { CalendarCheck2, CalendarX2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { formatPeriodLabel } from './format'
 
 interface LockMonthButtonProps {
   periodLabel: string
+  /** The month is at or before Reviewed through. */
   isLocked: boolean
-  /** Why Lock is refused, or `null` when it is offered. */
+  /** Why Mark reviewed is refused, or `null` when it is offered. */
   lockBlockedReason: string | null
-  /** The THROUGH marker: everything up to and including this month is shut. */
+  /** Reviewed through (`ledger.lockedThroughMonth`): this month and every one before it. */
   lockedThrough: string | null
   onToggleLock: () => void
 }
 
-/** Closeout toolbar's Lock / Unlock, beside the month's state pill. Locking is a THROUGH marker. */
+/** Closeout toolbar's Mark reviewed / Unmark reviewed. A suggestion: posting is never refused. */
 export function LockMonthButton({
   periodLabel,
   isLocked,
@@ -25,19 +26,19 @@ export function LockMonthButton({
   lockedThrough,
   onToggleLock,
 }: LockMonthButtonProps) {
-  const closedThrough = lockedThrough
-    ? `The books are closed through ${formatPeriodLabel(lockedThrough)}.`
-    : 'Nothing is closed yet.'
+  const reviewedThrough = lockedThrough
+    ? `Reviewed through ${formatPeriodLabel(lockedThrough)}.`
+    : 'Nothing is reviewed yet.'
 
-  // Unlocking a month is never refused; only locking is.
+  // Unmarking is never refused; only marking is.
   if (lockBlockedReason && !isLocked) {
     return (
       <Tooltip content={lockBlockedReason}>
         {/* A disabled button fires no pointer events, so the span carries the tooltip. */}
         <span className='inline-flex'>
           <Button variant='ghost' size='sm' disabled>
-            <Lock />
-            Lock month
+            <CalendarCheck2 />
+            Mark reviewed
           </Button>
         </span>
       </Tooltip>
@@ -48,12 +49,12 @@ export function LockMonthButton({
     <Tooltip
       content={
         isLocked
-          ? `${closedThrough} Unlocking reopens ${periodLabel} and every month after it.`
-          : `Locks ${periodLabel} and every month before it. ${closedThrough}`
+          ? `${reviewedThrough} Unmarking returns ${periodLabel} and every month after it to not reviewed.`
+          : `Marks ${periodLabel} and every month before it reviewed. Entries can still post into them and are listed under Posted after review. ${reviewedThrough}`
       }>
       <Button variant='ghost' size='sm' onClick={onToggleLock}>
-        {isLocked ? <LockOpen /> : <Lock />}
-        {isLocked ? 'Unlock month' : 'Lock month'}
+        {isLocked ? <CalendarX2 /> : <CalendarCheck2 />}
+        {isLocked ? 'Unmark reviewed' : 'Mark reviewed'}
       </Button>
     </Tooltip>
   )

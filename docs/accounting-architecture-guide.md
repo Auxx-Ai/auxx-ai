@@ -960,6 +960,13 @@ alarm** — no status, no severity, no verdict. ⚠️ **Matched on `txnDate`, n
 because for `manual_journal`, `bank_deposit` and `write_off` the period key is the source record's
 number, not a date.
 
+`read-posted-after-review.ts` is **Posted after review** (the UI's name for the lock is *Reviewed
+through*): postings whose `txnDate` is in a month after the cutoff and at or before the marker, and
+whose `createdAt` is after the latest `setLockedThrough` audit row that moved the marker from before
+that month to on or past it. A month with no such audit row falls back to the setting row's
+`updatedAt` and says so (`reviewedAtApproximate`). No acknowledgement is stored; the list is the
+control, and the statements' "changed since review" mark is the same read over the statement's range.
+
 ---
 
 ## 8. The Money Model

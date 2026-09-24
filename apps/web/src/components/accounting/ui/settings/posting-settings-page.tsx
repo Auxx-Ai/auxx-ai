@@ -185,15 +185,14 @@ export function AccountingPostingSettingsPage() {
       }>
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <p className='text-muted-foreground text-xs'>
-          Every type below respects the cutoff period, the book timezone and the locked months.
-          Those are set under{' '}
+          Every type below respects the cutoff period and the book timezone. Those are set under{' '}
           <Link
             href='/app/accounting/settings/general'
             className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
             General
             <ExternalLink className='size-3' />
           </Link>
-          .
+          . Reviewed through is marked on Closeout and never refuses a posting.
         </p>
 
         <SettingsSection
