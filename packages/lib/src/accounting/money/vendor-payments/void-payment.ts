@@ -15,7 +15,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { listLiveApplications } from '../reads'
 import { insertApplication } from '../writes'
@@ -57,7 +57,7 @@ export async function voidVendorPayment(
   // reverse and the unapply still has to happen.
   let glPostingId = ''
   if (live.value) {
-    if (!(await isAccountingEnabled(db, input.organizationId)))
+    if (!(await isAccountingActive(input.organizationId)))
       throw new UnprocessableEntityError('Accounting is not enabled for this organization')
     const lock = await resolvePeriodLock(input.organizationId)
     const reversal = await reverseEntry(db, {

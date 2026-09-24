@@ -24,7 +24,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { type InvoiceForIssuance, loadInvoiceForIssuance } from './issuance-reads'
@@ -84,7 +84,7 @@ export async function postInvoiceIssuanceBuiltEntry(
   input: PostInvoiceIssuanceBuiltEntryInput
 ): Promise<PostResult | null> {
   const { organizationId, invoiceId, contactInstanceId, entry, actorUserId, memo } = input
-  if (!(await isAccountingEnabled(db, organizationId))) return null
+  if (!(await isAccountingActive(organizationId))) return null
 
   const sources: GlPostingSourceInput[] = [
     { sourceKind: INVOICE_SOURCE_TYPE, sourceId: invoiceId, linkRole: 'subject' },
@@ -125,7 +125,7 @@ export async function postInvoiceIssuanceEntry(
   input: PostInvoiceIssuanceEntryInput
 ): Promise<PostResult> {
   const { organizationId, invoiceId, actorUserId } = input
-  if (!(await isAccountingEnabled(db, organizationId))) return { status: 'not_enabled' }
+  if (!(await isAccountingActive(organizationId))) return { status: 'not_enabled' }
 
   try {
     const invoice = await loadInvoiceForIssuance(db, organizationId, invoiceId)

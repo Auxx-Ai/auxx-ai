@@ -21,7 +21,7 @@ import {
 } from '../ledger/builders/entry'
 import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../ledger/post/post-entry'
-import { isAccountingEnabled } from '../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../ledger/setup/accounting-enabled'
 import type { PostResult } from '../ledger/types'
 import type { VendorBillLineRecord, VendorBillRecord } from './expense-bill/reads'
 import type { LandedAccrualRemaining } from './landed-cost/reads'
@@ -145,7 +145,7 @@ export async function postVendorBillEntry(
 ): Promise<PostResult | null> {
   const { organizationId, actorUserId, vendorBillInstanceId, entry } = input
 
-  if (!(await isAccountingEnabled(db, organizationId))) return null
+  if (!(await isAccountingActive(organizationId))) return null
 
   const lock = await resolvePeriodLock(organizationId)
   const result = await postEntry(db, {

@@ -4,6 +4,11 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
+
+vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: async () => true,
+}))
+
 import { accountingBasisHash } from '../../../ledger/builders/basis-hash'
 import { listMovementAccountingCandidates } from '../../blocked-movements'
 import type { customerMoneyObservationSchema } from '../contracts'

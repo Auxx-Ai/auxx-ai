@@ -53,7 +53,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import type { PostResult } from '../../ledger/types'
 import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen } from './client'
 import { readEligibleDepositPaymentIds } from './eligibility'
@@ -293,7 +293,7 @@ export async function createBankDeposit(
       // grouping payments into a deposit and banking them is real whether or
       // not the org has ever turned accounting on.
       let post: PostResult
-      if (!(await isAccountingEnabled(db, organizationId))) {
+      if (!(await isAccountingActive(organizationId))) {
         post = { status: 'not_enabled' }
       } else {
         // Resolved once, for the memo only - never posted as a label. A miss

@@ -572,11 +572,9 @@ export type PostResultStatus =
   | 'unbalanced'
   | 'nothing_to_close'
   | 'setup_incomplete'
-  // The org has never enabled the accounting module (`FeatureKey.accounting`
-  // is off). A first-class silent case like `not_connected`, never a warning:
-  // nothing is built, nothing is claimed, nothing is logged (task 17 section 3).
-  // Distinct from `setup_incomplete`, which means the module is on and the
-  // wizard was not finished, and from `disabled`, which is a provider switch.
+  // Accounting is not active for the org: the feature is off, or the setup wizard is not
+  // finalized (`isAccountingActive`, 110 G1). A silent skip, never a warning. Distinct from
+  // `setup_incomplete` (finalized, but required keys blank) and `disabled` (a provider switch).
   | 'not_enabled'
   // Wave 1 (HANDOFF slot 1A). A manual or opening entry named one of the three
   // inventory accounts by code; the remedy is the close console, which is the

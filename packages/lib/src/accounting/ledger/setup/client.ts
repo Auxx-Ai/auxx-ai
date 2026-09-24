@@ -19,6 +19,11 @@ export { LEDGER_CURRENCY } from './ledger-currency'
 // Exported here rather than folded into the `setup-readiness` block above so
 // this slot appended, per HANDOFF §9a, instead of editing another slot's lines.
 export {
+  CUTOVER_FLOOR_KINDS,
+  CUTOVER_FLOOR_REQUIREMENT_KEY,
+  type CutoverFloorFinding,
+  type CutoverFloorKind,
+  describeCutoverFloor,
   describeUnscopedSources,
   FINALIZED_SETUP_STATE,
   isMonthKey,

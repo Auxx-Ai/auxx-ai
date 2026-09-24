@@ -119,6 +119,58 @@ export interface SetupReadinessContext {
    * passes it, and that is the gate.
    */
   opening?: OpeningPresence
+  /**
+   * Unposted documents past the cutover, from `readCutoverFloor`. Absent emits no row, so the
+   * getting-started goals and the settings screen are unchanged; finalize passes it.
+   */
+  cutoverFloor?: readonly CutoverFloorFinding[]
+}
+
+/** The unswept document kinds finalize refuses to strand after the cutover (110 G4). */
+export const CUTOVER_FLOOR_KINDS = [
+  'vendor_bill',
+  'invoice',
+  'invoice_write_off',
+  'vendor_credit',
+  'bank_deposit',
+] as const
+export type CutoverFloorKind = (typeof CUTOVER_FLOOR_KINDS)[number]
+
+/** One kind with documents dated after the cutover and no posting. Dates are `YYYY-MM-DD`. */
+export interface CutoverFloorFinding {
+  kind: CutoverFloorKind
+  count: number
+  earliest: string
+  latest: string
+}
+
+const CUTOVER_FLOOR_NOUNS: Record<CutoverFloorKind, [one: string, many: string]> = {
+  vendor_bill: ['vendor bill', 'vendor bills'],
+  invoice: ['issued invoice', 'issued invoices'],
+  invoice_write_off: ['invoice write-off', 'invoice write-offs'],
+  vendor_credit: ['vendor credit', 'vendor credits'],
+  bank_deposit: ['bank deposit', 'bank deposits'],
+}
+
+/** Why the cutover strands unposted documents, or undefined when it strands none. */
+export function describeCutoverFloor(
+  cutoffPeriod: string,
+  findings: readonly CutoverFloorFinding[]
+): string | undefined {
+  const stranded = findings.filter((finding) => finding.count > 0)
+  if (stranded.length === 0) return undefined
+  const sentences = stranded.map((finding) => {
+    const [one, many] = CUTOVER_FLOOR_NOUNS[finding.kind]
+    const noun = finding.count === 1 ? one : many
+    const verb = finding.count === 1 ? 'is' : 'are'
+    return `${finding.count} ${noun} dated after ${cutoffPeriod} ${verb} not posted (earliest ${finding.earliest}).`
+  })
+  // Nothing posts before finalize, so the only remedy that lands is a cutover past the newest one.
+  const newest = stranded.reduce(
+    (max, finding) => (finding.latest > max ? finding.latest : max),
+    ''
+  )
+  return `${sentences.join(' ')} Move the cutover to ${newest.slice(0, 7)} or later so the opening balances carry them.`
 }
 
 /** Σ debits − Σ credits over a trial balance, in integer minor units. */
@@ -190,9 +242,12 @@ function openingReason(
   return undefined
 }
 
+/** The finalize-only readiness row; not a goal, since only finalize passes the floor. */
+export const CUTOVER_FLOOR_REQUIREMENT_KEY = 'cutover-floor' as const
+
 /**
  * Resolve every setup requirement. Every key here is a goal in
- * `ACCOUNTING_GOAL_KEYS`; the two lists must stay in step.
+ * `ACCOUNTING_GOAL_KEYS`, bar {@link CUTOVER_FLOOR_REQUIREMENT_KEY}; the lists must stay in step.
  */
 export function resolveSetupReadiness(
   settings: SettingsRecord,
@@ -218,6 +273,10 @@ export function resolveSetupReadiness(
     { key: 'set-accounting-period', met: !periodReason, reason: periodReason },
     { key: 'set-opening-balances', met: !opening, reason: opening },
   ]
+  if (context.cutoverFloor && cutoff) {
+    const floor = describeCutoverFloor(cutoff, context.cutoverFloor)
+    requirements.push({ key: CUTOVER_FLOOR_REQUIREMENT_KEY, met: !floor, reason: floor })
+  }
 
   return {
     requirements,

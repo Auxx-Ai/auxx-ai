@@ -269,7 +269,12 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
         icon: 'receipt-text',
         recordResource: 'credit_memo',
       },
-      { value: 'payments', label: 'Payments and refunds', icon: 'banknote' },
+      {
+        value: 'payments',
+        label: 'Payments and refunds',
+        icon: 'banknote',
+        permissionKey: 'ledger.view',
+      },
       // Same key as the drawer's `order:ledger` card. HANDOFF slot 2J.
       { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
     ],

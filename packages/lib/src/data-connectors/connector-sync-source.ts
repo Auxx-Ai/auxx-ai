@@ -648,9 +648,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         session,
       }
     )
-    // The relationship pass keeps firing per-write events (deliberate — see
-    // relationship-pass.ts), so it gets an inline-lane `automation` handler.
-    // Phase 4 folds these writes into the sync collector's finalize replay.
+    // Inline `automation` handler for the relationship pass, drained in one dirty-parent scope.
     const relationshipCrud = new UnifiedCrudHandler(
       this.deps.organizationId,
       userId,
@@ -674,6 +672,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       orgId: this.deps.organizationId,
       connector: this.deps.connector,
       runId: this.deps.run.id,
+      userId,
       crud,
       ownedCrud,
       relationshipCrud,

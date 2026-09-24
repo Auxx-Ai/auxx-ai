@@ -48,17 +48,13 @@ export interface SyncCtx {
   orgId: string
   connector: DataConnectorRow
   runId: string
+  /** The user the run's crud handlers act as (`connector.createdById ?? 'system'`). */
+  userId: string
   /** Shared, cache-warmed crud handler (owned-mode + contributing both use it). */
   crud: UnifiedCrudHandler
   /** Owned-mode handler with field-guard bypass (writes read-only connector fields). */
   ownedCrud: UnifiedCrudHandler
-  /**
-   * Inline-lane handler for the relationship pass ONLY (plan 03 §3.4). `crud`/
-   * `ownedCrud` run under the run's silent `sync` session; a genuine edge change
-   * must keep firing `entity:field:updated`, the activity touch, and record
-   * rules, so the pass writes through this `automation`-session handler instead.
-   * Phase 4 folds these writes into the sync collector's finalize replay.
-   */
+  /** Inline `automation` handler the relationship pass writes through in one dirty-parent scope. */
   relationshipCrud: UnifiedCrudHandler
   /** Mutable run counters. */
   counters: RunCounters

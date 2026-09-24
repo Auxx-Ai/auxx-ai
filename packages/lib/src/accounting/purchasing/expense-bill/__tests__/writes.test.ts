@@ -21,7 +21,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   bill: {} as Record<string, unknown>,
   lines: [] as unknown[],
   postEntry: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('@auxx/database', async () => {
   return { schema, ...enums, database: {} }
 })
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
@@ -101,7 +101,7 @@ function lastWrite(): Array<{ fieldId: string; value: unknown }> {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.readEditStamp.mockResolvedValue(null)
   h.bill = {
     id: BILL_ID,
@@ -184,7 +184,7 @@ describe('postVendorBill', () => {
   })
 
   it('still posts the document when the org has never enabled accounting', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     const result = await postVendorBill(db, {
       organizationId: ORG,

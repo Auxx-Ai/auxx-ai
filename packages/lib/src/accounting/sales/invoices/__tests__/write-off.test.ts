@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   setValuesForEntity: vi.fn(),
   fieldValueServiceArgs: [] as unknown[][],
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   captureDocumentWorkInTx: vi.fn(),
   assertDocumentJournalIsOwnedInTx: vi.fn(),
   resolveAccountLines: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   readEditStamp: h.readEditStamp,
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../ledger/periods/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
@@ -190,7 +190,7 @@ beforeEach(() => {
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
     key === 'organization.currency' ? 'USD' : 'UTC'
   )
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.readEditStamp.mockResolvedValue(null)
 })
 
@@ -624,7 +624,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
 describe('writeOffInvoice - accounting not enabled', () => {
   it('returns not_enabled, never reads the period lock or posts, and still writes off the invoice', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     const result = await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -649,7 +649,7 @@ describe('writeOffInvoice - accounting not enabled', () => {
 
   it('writes off part of the balance exactly as it would with accounting on', async () => {
     wireInvoice('partially_paid', { balanceMinor: 50_000 })
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     await writeOffInvoice(stubDb(), {
       organizationId: ORG,

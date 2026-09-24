@@ -2,6 +2,7 @@
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, eq, gt, inArray, or, sql } from 'drizzle-orm'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { exactEvidenceMinor, isOutgoingPayoutEntry } from '../customer-money/evidence-contracts'
 import {
   type PayoutRecordEvidence,
@@ -436,6 +437,7 @@ export async function assessPayouts(
   organizationId: string,
   entityInstanceIds: string[]
 ): Promise<number> {
+  if (!(await isAccountingActive(organizationId))) return 0
   const ids = [...new Set(entityInstanceIds)]
   const owners = new Set<string>()
   for (let offset = 0; offset < ids.length; offset += OWNER_BATCH_SIZE) {

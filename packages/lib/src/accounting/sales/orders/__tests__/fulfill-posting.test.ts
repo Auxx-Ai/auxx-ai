@@ -63,7 +63,7 @@ vi.mock('../../../../cache', () => ({
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 
 const ORDER = {

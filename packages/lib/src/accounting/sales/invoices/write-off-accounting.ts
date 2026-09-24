@@ -19,7 +19,7 @@ import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
-import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { GlPostingSourceInput, PostResult } from '../../ledger/types'
 import { countWriteOffPostings, loadInvoiceForWriteOff } from './write-off-reads'
@@ -58,7 +58,7 @@ export async function acceptInvoiceWriteOffAccounting(
   input: AcceptInvoiceWriteOffInput
 ): Promise<PostResult> {
   const { organizationId, invoiceId, amountMinor, reason, actorUserId, expenseGlAccountId } = input
-  if (!(await isAccountingEnabled(db, organizationId))) return { status: 'not_enabled' }
+  if (!(await isAccountingActive(organizationId))) return { status: 'not_enabled' }
 
   try {
     const invoice = await loadInvoiceForWriteOff(db, organizationId, invoiceId)

@@ -8,13 +8,13 @@
  * it 40 times and rebuilt the same quote 40 times. Now each fire marks, and the
  * drain rebuilds it once.
  *
- * Six keys, not one, because the drain needs to know what it was handed:
+ * Eight keys, not one, because the drain needs to know what it was handed:
  *
  * | key | marked with | drain |
  * | --- | --- | --- |
- * | `money-totals:line_item` | a LINE instance id | batch-resolve parents, then recompute |
+ * | `money-totals:line_item` | a LINE instance id | batch-resolve parents, then recompute each |
  * | `money-totals:purchase_order_line` | a PO LINE instance id | same, single-parent ladder |
- * | `money-totals:quote` / `:invoice` / `:order` / `:purchase_order` | a DOCUMENT instance id | recompute directly |
+ * | `money-totals:<documentType>` | a DOCUMENT instance id | recompute each directly |
  *
  * A write that dirties both a line and its document recomputes twice. That is
  * accepted rather than merged: it is rare (a header field and a line body in one
@@ -27,6 +27,7 @@
  * below stayed here rather than moving into `resolveParentsByRelation`.
  */
 
+import { createScopedLogger } from '@auxx/logger'
 import { readFieldRelations } from '../../../field-values/read-field-scalars'
 import {
   defineParentReconciler,
@@ -34,6 +35,8 @@ import {
 } from '../../../reconcilers/parent-reconciler'
 import { systemFieldMap } from '../../../resources/system-records'
 import type { TotalledDocumentType } from './totals-hooks'
+
+const logger = createScopedLogger('money-totals-reconciler')
 
 /** Key per marked entity. See the table above. */
 export const MONEY_TOTALS_LINE_ITEM = 'money-totals:line_item'
@@ -84,38 +87,61 @@ async function recomputeOne(
   })
 }
 
+/** Batch, not per-parent: both bulk lanes reach these keys and the cap exempts batch (110 M3/M6). */
+async function recomputeAll(
+  organizationId: string,
+  userId: string,
+  parents: ParentDocument[]
+): Promise<void> {
+  for (const parent of parents) {
+    try {
+      await recomputeOne(organizationId, userId, parent)
+    } catch (error) {
+      logger.error('reconciler failed for one parent; continuing with the rest', {
+        organizationId,
+        parent: documentDedupeKey(parent),
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+}
+
 const lineReconciler = defineParentReconciler<ParentDocument>({
   key: MONEY_TOTALS_LINE_ITEM,
   resolve: resolveLineParents,
   dedupeKey: documentDedupeKey,
-  rebuild: recomputeOne,
+  rebuildBatch: recomputeAll,
 })
 
 const purchaseOrderLineReconciler = defineParentReconciler<ParentDocument>({
   key: MONEY_TOTALS_PURCHASE_ORDER_LINE,
   resolve: resolvePurchaseOrderLineParents,
   dedupeKey: documentDedupeKey,
-  rebuild: recomputeOne,
+  rebuildBatch: recomputeAll,
 })
 
 /**
  * One self-reconciler per document type. The marked record IS the parent here, so
  * there is no `resolve` — the document type comes from the closure rather than
- * from a lookup, which is what keeps the four keys distinguishable in the buffer.
+ * from a lookup, which is what keeps the keys distinguishable in the buffer.
  */
 const documentReconcilers = new Map(
   DOCUMENT_TYPES.map((documentType) => [
     documentType,
     defineParentReconciler<string>({
       key: moneyTotalsDocumentKey(documentType),
-      rebuild: (organizationId, userId, documentInstanceId) =>
-        recomputeOne(organizationId, userId, { documentType, documentInstanceId }),
+      rebuildBatch: (organizationId, userId, documentInstanceIds) =>
+        recomputeAll(
+          organizationId,
+          userId,
+          documentInstanceIds.map((documentInstanceId) => ({ documentType, documentInstanceId }))
+        ),
     }),
   ])
 )
 
 /**
- * Register the six drains. Called from `registerAllHooks()`, idempotent per key
+ * Register the eight drains. Called from `registerAllHooks()`, idempotent per key
  * the same way `registerAutoBuildRules()` is.
  */
 export function registerMoneyTotalsReconcilers(): void {

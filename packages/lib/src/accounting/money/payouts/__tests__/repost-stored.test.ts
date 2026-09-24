@@ -32,6 +32,7 @@ vi.mock('@auxx/database', async (original) => ({
 }))
 vi.mock('../../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: async () => {} }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: async () => true,
   isAccountingEnabled: async () => true,
 }))
 vi.mock('../fields', () => ({

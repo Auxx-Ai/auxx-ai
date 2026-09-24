@@ -55,7 +55,7 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
   }),
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: async () => true,
+  isAccountingActive: async () => true,
 }))
 vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: async () => ({}) }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({

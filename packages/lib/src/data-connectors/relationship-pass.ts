@@ -14,14 +14,14 @@
 // each. The fix suppresses the WRITE, not the event: one bulk pre-read of the current
 // targets, and an edge that already points where it should is left alone. A genuine
 // edge change still fires everything it fires today — deliberately NOT silent,
-// which would take record rules and field triggers down with it. Since `ctx.crud`
-// now runs under the run's silent `sync` session (plan 03 §3.4), this pass writes
-// through `ctx.relationshipCrud`, an inline-lane `automation`-session handler, so
-// events keep firing; Phase 4 folds these writes into the sync collector's
-// finalize replay instead.
+// which would take record rules and field triggers down with it. Writes go through
+// `ctx.relationshipCrud`, an inline-lane `automation`-session handler, so events fire.
+// The loop runs in one dirty-parent scope, so the marks its writes raise drain once
+// per reconciler at the end of the pass rather than once per edge.
 
 import { createScopedLogger } from '@auxx/logger'
 import { wakeRecords } from '../accounting/work-items/wake'
+import { runWithDirtyParents } from '../reconcilers/dirty-parents'
 import { toRecordId } from '../resources/resource-id'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
 import {
@@ -62,127 +62,134 @@ export async function resolveRelationships(
   const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
   const completed: string[] = []
 
-  for (const item of items) {
-    if (!item.entityInstanceId) continue
-    const pending = (item.pendingRelations ?? []) as PendingRelation[]
-    const linked = new Set(item.linkedRelations ?? [])
-    const pinned = item.pinnedFields ?? []
-    const stillPending: PendingRelation[] = []
-    const linkedTargets: string[] = []
-    let linkedChanged = false
+  await runWithDirtyParents(ctx.orgId, ctx.userId, async () => {
+    for (const item of items) {
+      if (!item.entityInstanceId) continue
+      const pending = (item.pendingRelations ?? []) as PendingRelation[]
+      const linked = new Set(item.linkedRelations ?? [])
+      const pinned = item.pinnedFields ?? []
+      const stillPending: PendingRelation[] = []
+      const linkedTargets: string[] = []
+      let linkedChanged = false
 
-    const parentRecordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
+      const parentRecordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
 
-    for (const rel of pending) {
-      // PAUSED on this record (plan 40 D4): the user pinned the relationship field
-      // (a product link they re-pointed by hand), so neither a set nor a clear may
-      // touch it. The edge stays pending, untouched, until the field is unpinned;
-      // the next pass then applies it. Not a warning: this is the user's choice.
-      const concreteFieldId = concreteFieldIds.get(`${item.id}::${rel.fieldKey}`)
-      if (concreteFieldId && pinned.includes(concreteFieldId)) {
-        stillPending.push(rel)
-        continue
-      }
+      for (const rel of pending) {
+        // PAUSED on this record (plan 40 D4): the user pinned the relationship field
+        // (a product link they re-pointed by hand), so neither a set nor a clear may
+        // touch it. The edge stays pending, untouched, until the field is unpinned;
+        // the next pass then applies it. Not a warning: this is the user's choice.
+        const concreteFieldId = concreteFieldIds.get(`${item.id}::${rel.fieldKey}`)
+        if (concreteFieldId && pinned.includes(concreteFieldId)) {
+          stillPending.push(rel)
+          continue
+        }
 
-      // CLEAR (FK went empty) — null the relationship field. Terminal: applied
-      // once and never retained (no findItem, no deferral). The sink already
-      // dropped clears whose field had no live edge, so a clear that reaches here
-      // is one we previously set.
-      if (rel.targetExternalId === null) {
+        // CLEAR (FK went empty) — null the relationship field. Terminal: applied
+        // once and never retained (no findItem, no deferral). The sink already
+        // dropped clears whose field had no live edge, so a clear that reaches here
+        // is one we previously set.
+        if (rel.targetExternalId === null) {
+          try {
+            await ctx.relationshipCrud.update(
+              parentRecordId,
+              { [rel.fieldKey]: null },
+              undefined,
+              {}
+            )
+            ctx.touchedDefs.add(item.entityDefinitionId)
+            if (linked.delete(rel.fieldKey)) linkedChanged = true
+          } catch (error) {
+            stillPending.push(rel)
+            ctx.counters.relationshipWarnings += 1
+            logger.warn('relationship clear failed — keeping pending', {
+              itemId: item.id,
+              fieldKey: rel.fieldKey,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+          continue
+        }
+
+        // DEF-KEYED resolution (relationship-linking v3 §9.6 step 3): find the target
+        // by (connector, def, externalId) — whichever mapping wrote it — so build
+        // order stops mattering. The target def rides on the pending edge itself.
+        const target = rel.targetDef
+          ? await findItemByDef(ctx.db, ctx.connector.id, rel.targetDef, rel.targetExternalId)
+          : null
+        if (!target?.entityInstanceId) {
+          // Target not synced yet — defer to a later run.
+          stillPending.push(rel)
+          ctx.counters.relationshipWarnings += 1
+          continue
+        }
+
+        // IDEMPOTENCY GUARD: the edge already points at the resolved target, so writing
+        // it again would DELETE+INSERT an identical row and fire the whole field-change
+        // fan-out for a no-op. Clear the pending entry, keep the `linkedRelations`
+        // bookkeeping, and touch nothing.
+        //
+        // Deliberately does NOT `ctx.touchedDefs.add(...)`: nothing changed on this def
+        // from this pass, so it must not force a `records:invalidated` refetch.
+        //
+        // `currentTargets` is a snapshot taken before any write in this pass. That cannot
+        // hide a write from itself: `mergePending` keys pending edges by `fieldKey`, so
+        // one item carries at most one pending entry per field.
+        const currentTarget = concreteFieldId
+          ? currentTargets.get(`${item.entityInstanceId}::${concreteFieldId}`)
+          : undefined
+        if (currentTarget === target.entityInstanceId) {
+          linkedTargets.push(target.entityInstanceId)
+          if (!linked.has(rel.fieldKey)) {
+            linked.add(rel.fieldKey)
+            linkedChanged = true
+          }
+          continue
+        }
+
+        const targetRecordId = toRecordId(target.entityDefinitionId, target.entityInstanceId)
         try {
-          await ctx.relationshipCrud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {})
+          // Write the RELATIONSHIP value by addressing the parent's relationship
+          // field (by its systemAttribute/key) with the target RecordId. The
+          // FieldValueService converter accepts a RecordId; the inverse syncs.
+          await ctx.relationshipCrud.update(
+            parentRecordId,
+            { [rel.fieldKey]: targetRecordId },
+            undefined,
+            {}
+          )
           ctx.touchedDefs.add(item.entityDefinitionId)
-          if (linked.delete(rel.fieldKey)) linkedChanged = true
+          linkedTargets.push(target.entityInstanceId)
+          if (!linked.has(rel.fieldKey)) {
+            linked.add(rel.fieldKey)
+            linkedChanged = true
+          }
         } catch (error) {
           stillPending.push(rel)
           ctx.counters.relationshipWarnings += 1
-          logger.warn('relationship clear failed — keeping pending', {
+          logger.warn('relationship write failed — keeping pending', {
             itemId: item.id,
             fieldKey: rel.fieldKey,
             error: error instanceof Error ? error.message : String(error),
           })
         }
-        continue
       }
 
-      // DEF-KEYED resolution (relationship-linking v3 §9.6 step 3): find the target
-      // by (connector, def, externalId) — whichever mapping wrote it — so build
-      // order stops mattering. The target def rides on the pending edge itself.
-      const target = rel.targetDef
-        ? await findItemByDef(ctx.db, ctx.connector.id, rel.targetDef, rel.targetExternalId)
-        : null
-      if (!target?.entityInstanceId) {
-        // Target not synced yet — defer to a later run.
-        stillPending.push(rel)
-        ctx.counters.relationshipWarnings += 1
-        continue
+      summary.resolved += pending.length - stillPending.length
+      summary.stillPending += stillPending.length
+      // The record is complete, and so is the parent a child just linked itself to.
+      if (stillPending.length === 0 && pending.length > 0) {
+        completed.push(item.entityInstanceId, ...linkedTargets)
       }
 
-      // IDEMPOTENCY GUARD: the edge already points at the resolved target, so writing
-      // it again would DELETE+INSERT an identical row and fire the whole field-change
-      // fan-out for a no-op. Clear the pending entry, keep the `linkedRelations`
-      // bookkeeping, and touch nothing.
-      //
-      // Deliberately does NOT `ctx.touchedDefs.add(...)`: nothing changed on this def
-      // from this pass, so it must not force a `records:invalidated` refetch.
-      //
-      // `currentTargets` is a snapshot taken before any write in this pass. That cannot
-      // hide a write from itself: `mergePending` keys pending edges by `fieldKey`, so
-      // one item carries at most one pending entry per field.
-      const currentTarget = concreteFieldId
-        ? currentTargets.get(`${item.entityInstanceId}::${concreteFieldId}`)
-        : undefined
-      if (currentTarget === target.entityInstanceId) {
-        linkedTargets.push(target.entityInstanceId)
-        if (!linked.has(rel.fieldKey)) {
-          linked.add(rel.fieldKey)
-          linkedChanged = true
-        }
-        continue
-      }
-
-      const targetRecordId = toRecordId(target.entityDefinitionId, target.entityInstanceId)
-      try {
-        // Write the RELATIONSHIP value by addressing the parent's relationship
-        // field (by its systemAttribute/key) with the target RecordId. The
-        // FieldValueService converter accepts a RecordId; the inverse syncs.
-        await ctx.relationshipCrud.update(
-          parentRecordId,
-          { [rel.fieldKey]: targetRecordId },
-          undefined,
-          {}
-        )
-        ctx.touchedDefs.add(item.entityDefinitionId)
-        linkedTargets.push(target.entityInstanceId)
-        if (!linked.has(rel.fieldKey)) {
-          linked.add(rel.fieldKey)
-          linkedChanged = true
-        }
-      } catch (error) {
-        stillPending.push(rel)
-        ctx.counters.relationshipWarnings += 1
-        logger.warn('relationship write failed — keeping pending', {
-          itemId: item.id,
-          fieldKey: rel.fieldKey,
-          error: error instanceof Error ? error.message : String(error),
+      if (stillPending.length !== pending.length || linkedChanged) {
+        await setItemRelationState(ctx.db, item.id, {
+          pendingRelations: stillPending,
+          linkedRelations: [...linked],
         })
       }
     }
-
-    summary.resolved += pending.length - stillPending.length
-    summary.stillPending += stillPending.length
-    // The record is complete, and so is the parent a child just linked itself to.
-    if (stillPending.length === 0 && pending.length > 0) {
-      completed.push(item.entityInstanceId, ...linkedTargets)
-    }
-
-    if (stillPending.length !== pending.length || linkedChanged) {
-      await setItemRelationState(ctx.db, item.id, {
-        pendingRelations: stillPending,
-        linkedRelations: [...linked],
-      })
-    }
-  }
+  })
 
   // Work parked on a record this pass completed retries now (101 E9); a failed wake
   // leaves the rows on their own schedule.

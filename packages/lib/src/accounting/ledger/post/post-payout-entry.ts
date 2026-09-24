@@ -21,7 +21,7 @@ import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type BuildPayoutEntryInput, buildPayoutEntry } from '../builders/payout'
 import { resolvePeriodLock } from '../periods/period-lock'
-import { isAccountingEnabled } from '../setup/accounting-enabled'
+import { isAccountingActive } from '../setup/accounting-enabled'
 import type { PostResult } from '../types'
 import { postEntry } from './post-entry'
 
@@ -68,13 +68,7 @@ export function payoutAccountUnmappedResult(message: string): PostResult {
  * with the builder's own message, which is what `EntryBlockers` renders.
  * Everything `postEntry` can answer passes through unchanged.
  *
- * Checked FIRST, before the builder: an org that has never turned accounting on
- * gets `{ status: 'not_enabled' }` with no build, no period-lock read and no
- * log line (task 17 section 3) - the same first-class silent case as
- * `not_connected`. `money/payouts/sync.ts` also short-circuits per org before
- * it ever calls this, which is where the real saving is (it skips the Stripe
- * payout list and the record write too); the check is repeated here so this
- * function is correct on its own for any future caller.
+ * Answers `{ status: 'not_enabled' }` silently, before the build, when accounting is not active.
  */
 export async function postPayoutEntry(
   db: Database,
@@ -83,7 +77,7 @@ export async function postPayoutEntry(
   const { organizationId, actorUserId, beforeCommit, payoutInstanceId, memberEntryIds, ...input } =
     options
 
-  if (!(await isAccountingEnabled(db, organizationId))) {
+  if (!(await isAccountingActive(organizationId))) {
     return { status: 'not_enabled' }
   }
 

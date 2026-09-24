@@ -7,6 +7,10 @@ const h = vi.hoisted(() => ({
   windows: [] as unknown[],
   mode: 'transaction' as 'transaction' | 'summary',
   grain: 'day' as 'day' | 'month' | 'payout',
+  movementRows: { count: 420, days: 200, months: 9 },
+  recordMoney: { count: 0, days: 0, months: 0 },
+  acceptances: 30,
+  unbridged: 0,
 }))
 
 vi.mock('../../../settings/read', () => ({
@@ -19,10 +23,14 @@ vi.mock('../../sales/fulfillments/posting-reads', () => ({
   },
 }))
 vi.mock('../../money/blocked-movements', () => ({
-  countMovementAccountingBacklog: async () => ({ count: 420, days: 200, months: 9 }),
+  countMovementAccountingBacklog: async () => h.movementRows,
 }))
 vi.mock('../../money/customer-money/ingest', () => ({
-  countImportedCustomerMoneyBacklog: async () => 30,
+  countImportedCustomerMoneyBacklog: async () => h.acceptances,
+}))
+vi.mock('../../money/customer-money/bridge-sweep', () => ({
+  countUnmaterializedCustomerTransactions: async () => h.recordMoney,
+  countUnbridgedFinancialRecords: async () => h.unbridged,
 }))
 vi.mock('../../work-items/sweep', () => ({
   countWorkItemsAtStage: async () => 7,
@@ -44,6 +52,10 @@ beforeEach(() => {
   h.windows = []
   h.mode = 'transaction'
   h.grain = 'day'
+  h.movementRows = { count: 420, days: 200, months: 9 }
+  h.recordMoney = { count: 0, days: 0, months: 0 }
+  h.acceptances = 30
+  h.unbridged = 0
 })
 
 describe('previewConnectAndGoBacklog', () => {
@@ -76,6 +88,26 @@ describe('previewConnectAndGoBacklog', () => {
       await previewConnectAndGoBacklog(db, { organizationId: 'org_1', cutoffPeriod: '2025-12' })
     )._unsafeUnwrap()
     expect(byMonth.estimatedExports).toBe(18)
+  })
+
+  it('in draft, counts the records: nothing has materialized or accepted yet', async () => {
+    h.movementRows = { count: 0, days: 0, months: 0 }
+    h.acceptances = 0
+    h.recordMoney = { count: 900, days: 120, months: 5 }
+    h.unbridged = 1_200
+
+    const preview = (
+      await previewConnectAndGoBacklog(db, { organizationId: 'org_1', cutoffPeriod: '2025-12' })
+    )._unsafeUnwrap()
+    expect(preview.movements).toBe(900)
+    expect(preview.importedPayments).toBe(1_200)
+    expect(preview.estimatedExports).toBe(15_900)
+
+    h.mode = 'summary'
+    const summary = (
+      await previewConnectAndGoBacklog(db, { organizationId: 'org_1', cutoffPeriod: '2025-12' })
+    )._unsafeUnwrap()
+    expect(summary.estimatedExports).toBe(250 + 120)
   })
 
   it('refuses a malformed month', async () => {

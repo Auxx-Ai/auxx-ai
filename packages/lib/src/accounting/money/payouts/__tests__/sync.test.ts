@@ -35,6 +35,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../gather', () => ({ gatherPayout: h.gatherPayout }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: async () => true,
 }))
 vi.mock('../fields', () => ({
   requirePayoutFieldContext: h.requirePayoutFieldContext,

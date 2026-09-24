@@ -1,9 +1,8 @@
 // packages/lib/src/accounting/ledger/setup/__tests__/accounting-enabled-triggers.test.ts
 //
-// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3, and the exact-set
-// model of `types.test.ts`: every document-driven posting trigger the brief
-// names must import `isAccountingEnabled` and check it before it builds an
-// entry. A source scan rather than a runtime call, so a new trigger copied from
+// plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3 and 110 G2-G3: every
+// document-driven posting trigger and evidence writer must import `isAccountingActive` and
+// check it before it builds an entry. A source scan rather than a runtime call, so a new trigger copied from
 // an old one (the way this codebase grows a fifth `build*Entry` builder) fails
 // loudly here instead of quietly shipping without the gate.
 //
@@ -51,14 +50,34 @@ const TRIGGER_FILES = [
   // `post/post-payout-entry.ts` see a payout for an org that has not enabled
   // accounting (task 17 section 3's payout-path decision).
   'accounting/money/payouts/sync.ts',
+  'accounting/ledger/post/post-inventory-movement.ts',
+  'accounting/sales/fulfillments/accounting.ts',
+  'accounting/purchasing/post-vendor-bill.ts',
+  'accounting/purchasing/vendor-credit/writes.ts',
+  'accounting/purchasing/landed-cost/clear.ts',
+  'accounting/money/invoice-payments/void-payment.ts',
+  'accounting/money/vendor-payments/void-payment.ts',
+  // 110 G2: the evidence writers.
+  'accounting/money/customer-money/bridge.ts',
+  'accounting/money/customer-money/record-evidence.ts',
+  'accounting/money/customer-money/ingest.ts',
+  'accounting/money/payouts/assess-payouts.ts',
 ] as const
 
 const SRC_ROOT = join(__dirname, '..', '..', '..', '..')
 
-describe('every posting trigger imports the accounting-enabled gate', () => {
+describe('every posting trigger imports the accounting-active gate', () => {
   it.each(TRIGGER_FILES)('%s', (relativePath) => {
     const source = readFileSync(join(SRC_ROOT, relativePath), 'utf8')
-    expect(source).toMatch(/isAccountingEnabled/)
+    expect(source).toMatch(/isAccountingActive\(/)
     expect(source).toMatch(/from ['"].*accounting-enabled['"]/)
+  })
+
+  it('only the payout record import keeps the feature-only gate', () => {
+    for (const relativePath of TRIGGER_FILES) {
+      const source = readFileSync(join(SRC_ROOT, relativePath), 'utf8')
+      const featureOnly = /isAccountingEnabled\(/.test(source)
+      expect(featureOnly, relativePath).toBe(relativePath === 'accounting/money/payouts/sync.ts')
+    }
   })
 })

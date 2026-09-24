@@ -2,10 +2,10 @@
 //
 // The sync lane's replay of the registered field-change hook chain (plans/events/10 §4.4):
 // the manifest projects to VALUELESS changes, marks run from those alone and derives run
-// through their `batch` cores. Two hand-written passes survive because they key on
-// membership rather than on a field, and they run after the dispatch so the evidence rows
-// it writes are in place (`record-events.ts:185`). Lazy-import everything but types and the
-// logger — the events ↔ money/geocoding/cache boundaries break `vi.mock` otherwise.
+// through their `batch` cores. Archival fires no field change, so archived lines and money
+// records are marked by hand; the fulfillment posting pass keys on membership and runs after
+// the scope drains, so the evidence rows are in place. Lazy-import everything but types and
+// the logger — the events ↔ money/geocoding/cache boundaries break `vi.mock` otherwise.
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -25,11 +25,11 @@ export interface IntegrityPassesInput {
 }
 
 /**
- * Dispatch the hook chain for everything a sync run changed, then run the two membership-keyed
- * passes.
+ * Dispatch the hook chain for everything a sync run changed, mark archived records, then run
+ * the fulfillment posting pass.
  *
- * NEVER throws: `dispatchFieldChanges` guards every handler, both passes guard themselves, and
- * this wraps the lot (mirrors `runSyncFinalize`'s contract).
+ * NEVER throws: `dispatchFieldChanges` guards every handler, the pass guards itself, and this
+ * wraps the lot (mirrors `runSyncFinalize`'s contract).
  */
 export async function runIntegrityPasses(db: Database, input: IntegrityPassesInput): Promise<void> {
   const { organizationId, manifest } = input
@@ -52,8 +52,8 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
       import('../../reconcilers/dirty-parents'),
     ])
 
-    // One scope around both, so the marks the dispatch makes and the ones the archived lines
-    // make coalesce into a single drain per reconciler.
+    // One scope around all three, so the dispatch's marks and the archived-record marks
+    // coalesce into a single drain per reconciler.
     await runWithDirtyParents(organizationId, SYSTEM_ACTOR, async () => {
       await dispatchFieldChanges({
         organizationId,
@@ -64,6 +64,7 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
         degraded: idsOnly(manifest),
       })
       await markArchivedLines(organizationId, manifest, resolveDef)
+      await markArchivedMoney(organizationId, manifest, resolveDef)
     })
 
     // The one hole the manifest cannot close by itself: past `MAX_TOUCHED_RECORDS` it stops
@@ -74,11 +75,6 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
 
     const { fulfillmentPostingTriggerPass } = await import('./passes/fulfillment-log-pass')
     await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
-
-    const { reconcileFinancialRecordsAfterBulk } = await import(
-      '../../accounting/money/customer-money/record-events'
-    )
-    await reconcileFinancialRecordsAfterBulk(db, organizationId, manifest)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,
@@ -141,6 +137,26 @@ async function markArchivedLines(
     logger.error('archived line marking failed', {
       organizationId,
       lines: lineInstanceIds.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/** Archived money records, marked by hand for the same reason; a throw here must not lose the scope. */
+async function markArchivedMoney(
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver
+): Promise<void> {
+  if (!manifest.archivedRecordIds?.length) return
+  try {
+    const { markArchivedFinancialRecords } = await import(
+      '../../accounting/money/customer-money/record-marks'
+    )
+    await markArchivedFinancialRecords(organizationId, manifest.archivedRecordIds, resolveDef)
+  } catch (error) {
+    logger.error('archived money record marking failed', {
+      organizationId,
       error: error instanceof Error ? error.message : String(error),
     })
   }

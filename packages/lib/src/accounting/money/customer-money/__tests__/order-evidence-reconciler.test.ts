@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   rebuild: vi.fn(),
   relationRows: vi.fn(),
   bridge: vi.fn(),
+  wake: vi.fn(),
   order: [] as string[],
 }))
 
@@ -22,6 +23,7 @@ vi.mock('../../../../cache', () => ({
 }))
 vi.mock('../record-evidence', () => ({ reconcileOrderPaymentEvidence: h.rebuild }))
 vi.mock('../bridge', () => ({ bridgeFinancialRecords: h.bridge }))
+vi.mock('../../../work-items/wake', () => ({ wakeArrivedOrders: h.wake }))
 vi.mock('@auxx/database', async () => {
   const schema = await import('../../../../../../database/src/db/schema/index')
   return {
@@ -30,11 +32,7 @@ vi.mock('@auxx/database', async () => {
   }
 })
 
-import {
-  markOrderEvidence,
-  reconcileOrderEvidenceFromSync,
-  registerOrderEvidenceReconciler,
-} from '../order-evidence-reconciler'
+import { markOrderEvidence, registerOrderEvidenceReconciler } from '../order-evidence-reconciler'
 
 const ORG = 'org_1'
 const USER = 'usr_1'
@@ -71,6 +69,9 @@ beforeEach(() => {
   })
   h.bridge.mockImplementation(async () => {
     h.order.push('bridge')
+  })
+  h.wake.mockImplementation(async () => {
+    h.order.push('wake')
   })
   h.relationRows.mockResolvedValue([])
 })
@@ -146,21 +147,22 @@ describe('order payment evidence rebuilds once per write', () => {
     expect(rebuiltOrders()).toEqual(['order-3'])
   })
 
-  it('takes the whole batch on the sync-finalize seam, in one assessment', async () => {
+  it('bridges, reconciles, then wakes every rebuilt order in one call', async () => {
     h.relationRows.mockResolvedValue([childOnOrder('f-li-order', 'li-1', 'order-1')])
-    const db = {} as never
 
-    await reconcileOrderEvidenceFromSync(db, ORG, ['order:order-1', 'line_item:li-1', 'order:o-2'])
+    await runWithDirtyParents(ORG, USER, async () => {
+      await markOrderEvidence(ORG, USER, 'order', 'order-1')
+      await markOrderEvidence(ORG, USER, 'line_item', 'li-1')
+      await markOrderEvidence(ORG, USER, 'order', 'o-2')
+    })
 
-    expect(h.rebuild).toHaveBeenCalledOnce()
-    expect(h.rebuild.mock.calls[0]![0]).toBe(db)
-    expect(rebuiltOrders()).toEqual(['o-2', 'order-1'])
-  })
-
-  it('bridges the resolved orders before it reconciles their acceptances', async () => {
-    await reconcileOrderEvidenceFromSync({} as never, ORG, ['order:order-1'])
-
-    expect(h.order).toEqual(['bridge', 'rebuild'])
-    expect(h.bridge.mock.calls[0]![1].records).toEqual([{ id: 'order-1', kind: 'order' }])
+    expect(h.order).toEqual(['bridge', 'rebuild', 'wake'])
+    expect(h.bridge.mock.calls[0]![1].records).toEqual([
+      { id: 'order-1', kind: 'order' },
+      { id: 'o-2', kind: 'order' },
+    ])
+    expect(h.wake).toHaveBeenCalledOnce()
+    expect(h.wake.mock.calls[0]![1]).toBe(ORG)
+    expect([...h.wake.mock.calls[0]![2].orderInstanceIds].sort()).toEqual(['o-2', 'order-1'])
   })
 })

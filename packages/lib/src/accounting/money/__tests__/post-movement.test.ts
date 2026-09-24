@@ -7,7 +7,7 @@ import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(),
+  isAccountingActive: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'finalized' }))
 vi.mock('../../ledger/reads/list-postings', () => ({
@@ -113,7 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.updates = []
   h.marks = []
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
@@ -171,19 +171,20 @@ describe('postMovementEntry', () => {
   })
 
   it('skips when accounting is not enabled', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
     await expect(post()).resolves.toEqual({
       status: 'skipped',
       reason: 'Accounting is not enabled',
     })
   })
 
-  it('blocks when setup is not finalized', async () => {
+  it('skips a draft org silently: no posting, no work item (110 G3)', async () => {
+    h.isAccountingActive.mockResolvedValue(false)
     h.settings['accounting.setupState'] = 'draft'
     const result = await post()
-    expect(result.status).toBe('blocked')
-    expect((result as { reason: string }).reason).toMatch(/Finalize accounting setup/)
-    expect(h.marks).toEqual([{ park: { ...KEY, reasonCode: 'SETUP_INCOMPLETE' } }])
+    expect(result).toEqual({ status: 'skipped', reason: 'Accounting is not enabled' })
+    expect(h.postEntry).not.toHaveBeenCalled()
+    expect(h.marks).toEqual([])
   })
 
   it('blocks when the entry falls on or before the opening cutoff', async () => {

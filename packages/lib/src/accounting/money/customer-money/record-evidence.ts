@@ -3,6 +3,7 @@ import { type Database, schema, type Transaction, withAccountingCommitLock } fro
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
+import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { wakeSources } from '../../work-items/wake'
 import { upsertWorkItem } from '../../work-items/write'
 import { customerMoneyObservationSchema, orderPaymentEvidenceSchema } from './contracts'
@@ -274,6 +275,7 @@ export async function reconcileOrderPaymentEvidence(
   db: Database,
   input: { organizationId: string; orderInstanceIds: string[] }
 ) {
+  if (!(await isAccountingActive(input.organizationId))) return { examined: 0 }
   const ids = [...new Set(input.orderInstanceIds)]
   let examined = 0
   for (let start = 0; start < ids.length; start += 100) {

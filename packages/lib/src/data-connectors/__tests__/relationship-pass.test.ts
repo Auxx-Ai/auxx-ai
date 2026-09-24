@@ -10,6 +10,11 @@
 // through to the write.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  __resetReconcilersForTest,
+  markParentDirty,
+  registerReconciler,
+} from '../../reconcilers/dirty-parents'
 import { makeSyncCtx } from '../__test-helpers'
 import type { DataConnectorItemRow, PendingRelation } from '../service'
 import type { SyncCtx } from '../sinks/types'
@@ -401,5 +406,33 @@ describe('resolveRelationships — the wake (101 E9)', () => {
     await resolveRelationships(ctx())
 
     expect(h.wakeRecords.mock.calls[0]![2].recordIds).toEqual([])
+  })
+})
+
+describe('resolveRelationships — one dirty-parent scope (110 M6)', () => {
+  beforeEach(() => __resetReconcilersForTest())
+
+  it('drains the marks of every edge once, at the end of the pass', async () => {
+    const drain = vi.fn(async (_p: { parentInstanceIds: string[] }) => {})
+    registerReconciler('test:key', drain, { batch: true })
+    h.listItems.mockResolvedValue([
+      item([setEdge()]),
+      { ...item([setEdge()]), id: 'item_2', entityInstanceId: 'inst_order_2' },
+    ])
+    const parents = ['parent_a', 'parent_b']
+    let drainedMidPass = false
+    h.update.mockImplementation(async () => {
+      markParentDirty('test:key', parents[h.update.mock.calls.length - 1]!)
+      drainedMidPass ||= drain.mock.calls.length > 0
+      return {}
+    })
+
+    const summary = await resolveRelationships(ctx())
+
+    expect(summary).toEqual({ resolved: 2, stillPending: 0 })
+    expect(drainedMidPass).toBe(false)
+    expect(h.update).toHaveBeenCalledTimes(2)
+    expect(drain).toHaveBeenCalledTimes(1)
+    expect(drain.mock.calls[0]![0].parentInstanceIds).toEqual(['parent_a', 'parent_b'])
   })
 })

@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  isAccountingEnabled: vi.fn(async () => true),
+  isAccountingActive: vi.fn(async () => true),
   memo: {} as Record<string, unknown>,
   lines: [] as unknown[],
   readShipped: vi.fn(async () => new Set<string>(['line_1'])),
@@ -61,7 +61,7 @@ vi.mock('@auxx/database', async () => {
   return { schema, ...enums, database: {} }
 })
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
-  isAccountingEnabled: h.isAccountingEnabled,
+  isAccountingActive: h.isAccountingActive,
 }))
 vi.mock('../../../../cache', () => ({
   getEntityDefIdResolver: async () => (type: string) => type,
@@ -134,7 +134,7 @@ const input = { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.isAccountingEnabled.mockResolvedValue(true)
+  h.isAccountingActive.mockResolvedValue(true)
   h.memo = {
     id: MEMO_ID,
     number: 'CM-0001',
@@ -217,7 +217,7 @@ describe('issueCreditMemo', () => {
 
   // accounting is opt-in (task 17 §3): nothing is built, and nothing is posted.
   it('issues without building or posting when accounting is off', async () => {
-    h.isAccountingEnabled.mockResolvedValue(false)
+    h.isAccountingActive.mockResolvedValue(false)
 
     const result = await issueCreditMemo(db, input)
 
