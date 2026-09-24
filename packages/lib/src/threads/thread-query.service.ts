@@ -1212,6 +1212,10 @@ export class ThreadQueryService {
           mergeData: (t.mergeData as ThreadMergeData | null) ?? null,
           myLens: lens,
           hasShares: sharedThreadIds.has(t.id),
+          priority: t.priority ?? null,
+          needsReply: t.needsReply ?? null,
+          sentiment: t.sentiment ?? null,
+          spamScore: t.spamScore ?? null,
         } satisfies ThreadMeta
 
         return redactThreadMeta(meta, lens)

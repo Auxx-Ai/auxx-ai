@@ -68,6 +68,7 @@ import { useRetrySend } from './hooks'
 import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 import { SendStatusIndicator } from './send-status-indicator'
+import { ThreadTriageIndicators } from './thread-triage-indicators'
 
 /**
  * Processing menu component for triggering manual message processing
@@ -468,6 +469,15 @@ export const MailThreadItem = memo(function MailThreadItem({
                 />
               ))
             )}
+
+            <ThreadTriageIndicators
+              thread={thread}
+              mode='notable'
+              variant='stack'
+              max={3}
+              highlighted={isHighlighted}
+              className='absolute left-1.5 top-12'
+            />
 
             <div className={cn('absolute left-1', isProcessing ? 'top-1' : 'top-3')}>
               {viewMode === 'edit' ? (

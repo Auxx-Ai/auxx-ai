@@ -24,6 +24,9 @@ export const MAIL_CLASSIFY_CONFIDENCE_THRESHOLD: Record<ConfidenceKind, number> 
 /** Probability at or above which `needsReply` is stored as true. */
 export const MAIL_CLASSIFY_NEEDS_REPLY_THRESHOLD = 0.5
 
+/** `spamScore` at or above which the UI flags a thread as likely spam. */
+export const MAIL_CLASSIFY_SPAM_THRESHOLD = 0.7
+
 /**
  * `orgSettings` key holding the ids of the inboxes that opted in (plan §5).
  *
