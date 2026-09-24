@@ -1,6 +1,7 @@
 // apps/web/src/components/threads/store/thread-store.ts
 
 import '~/lib/immer-config' // Enables Map/Set support for immer
+import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
 import type { ThreadClientFilter } from '@auxx/lib/mail-query/client'
 import type { ThreadMergeData } from '@auxx/lib/threads/types'
 import type { ParticipantId } from '@auxx/types'
@@ -119,6 +120,12 @@ export interface ThreadMeta {
 
   /** True when the thread has explicit shares (drives the share indicator). */
   hasShares?: boolean
+
+  /** Classifier triage; null until the thread is classified. */
+  priority?: TicketPriority | null
+  needsReply?: boolean | null
+  sentiment?: ThreadSentiment | null
+  spamScore?: number | null
 }
 
 /** Scheduled message metadata for display in thread conversation view */

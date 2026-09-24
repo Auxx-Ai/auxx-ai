@@ -1,5 +1,6 @@
 // packages/lib/src/threads/types.ts
 
+import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
 import type { ParticipantId } from '@auxx/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { RecordId } from '@auxx/types/resource'
@@ -242,6 +243,12 @@ export interface ThreadMeta {
    * header button's avatar cluster hint.
    */
   hasShares: boolean
+
+  /** Classifier triage (03-mail-classification §5.2); null until the thread is classified. */
+  priority: TicketPriority | null
+  needsReply: boolean | null
+  sentiment: ThreadSentiment | null
+  spamScore: number | null
 }
 
 /**

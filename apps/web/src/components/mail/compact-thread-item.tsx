@@ -43,6 +43,7 @@ import { useMailFilter } from './mail-filter-context'
 import { getIntegrationIcon } from './mail-status-config'
 import { ProcessingMenu } from './mail-thread-item'
 import { SendStatusIndicator } from './send-status-indicator'
+import { ThreadTriageIndicators } from './thread-triage-indicators'
 
 export interface CompactThreadItemProps {
   threadId: string
@@ -340,6 +341,7 @@ export const CompactThreadItem = memo(function CompactThreadItem({
 
             {/* Subject + Snippet */}
             <div className='flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden ms-2'>
+              <ThreadTriageIndicators thread={thread} mode='notable' variant='inline' />
               <span
                 className={cn(
                   'shrink-0 truncate text-xs',

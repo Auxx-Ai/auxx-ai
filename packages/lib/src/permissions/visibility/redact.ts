@@ -42,6 +42,10 @@ export const THREAD_METADATA_FIELDS: readonly (keyof ThreadMeta)[] = [
   'latestCommentId',
   'myLens',
   'hasShares',
+  'priority',
+  'needsReply',
+  'sentiment',
+  'spamScore',
 ]
 
 /** Adds to the metadata set at `identity`+. */

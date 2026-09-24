@@ -68,6 +68,7 @@ import { ThreadMergeBadge } from './thread-merge-badge'
 import { ThreadParticipantButton } from './thread-participant-button'
 import { useThreadContext } from './thread-provider'
 import { ThreadTicketControl } from './thread-ticket-control'
+import { ThreadTriageIndicators } from './thread-triage-indicators'
 
 /**
  * Header component for thread details with thread actions.
@@ -555,6 +556,7 @@ export function ThreadHeader() {
               onSave={handleSubjectChange}
             />
           </div>
+          <ThreadTriageIndicators thread={thread} mode='all' variant='badges' />
           {thread.tagIds && thread.tagIds.length > 0 && (
             <div className='flex flex-row no-wrap gap-2 shrink-0'>
               {thread.tagIds.map((tagId) => (

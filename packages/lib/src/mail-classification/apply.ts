@@ -47,8 +47,8 @@ export function toClassificationMarker(result: MailClassificationResult): MailCl
 }
 
 /**
- * Write the four triage columns onto the thread (03 §5.2). Plain column writes: the
- * model records fields, filters decide what to do with them.
+ * Write the four triage columns onto the thread (03 §5.2) and publish them as a
+ * `thread:updated` patch. The model records fields, filters decide what to do with them.
  *
  * Never throws.
  */
@@ -59,16 +59,27 @@ export async function writeThreadTriage(params: {
   triage: MailClassificationTriage
 }): Promise<void> {
   const { db, organizationId, threadId, triage } = params
+  const patch = {
+    priority: triage.priority,
+    needsReply: triage.needsReply,
+    sentiment: triage.sentiment,
+    spamScore: triage.spamScore,
+  }
   try {
-    await db
+    const [row] = await db
       .update(schema.Thread)
-      .set({
-        priority: triage.priority,
-        needsReply: triage.needsReply,
-        sentiment: triage.sentiment,
-        spamScore: triage.spamScore,
-      })
+      .set(patch)
       .where(and(eq(schema.Thread.id, threadId), eq(schema.Thread.organizationId, organizationId)))
+      .returning({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
+    if (!row) return
+
+    const { getRealtimeService, publishThreadUpdated } = await import('../realtime')
+    await publishThreadUpdated(getRealtimeService(), organizationId, {
+      threadId,
+      inboxId: row.inboxId,
+      assigneeId: row.assigneeId,
+      patch,
+    })
   } catch (error) {
     logger.error('Failed to write the classification triage columns', {
       organizationId,

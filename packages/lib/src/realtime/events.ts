@@ -1,5 +1,6 @@
 // @auxx/lib/realtime/events.ts
 
+import type { ThreadSentiment, TicketPriority } from '@auxx/database/types'
 import type { ActorId } from '@auxx/types/actor'
 import type { FieldValueKey } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
@@ -389,6 +390,11 @@ export interface ThreadMeta {
    * `metadata`). Null clears the entry; object replaces it whole.
    */
   mergeData?: ThreadMergeData | null
+  /** Classifier triage; published by `writeThreadTriage`. */
+  priority?: TicketPriority | null
+  needsReply?: boolean | null
+  sentiment?: ThreadSentiment | null
+  spamScore?: number | null
 }
 
 /**
