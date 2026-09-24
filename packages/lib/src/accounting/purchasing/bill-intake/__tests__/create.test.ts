@@ -452,6 +452,13 @@ describe('createBillFromIntake - the lines', () => {
     expect(line?.values).not.toHaveProperty('vendor_bill_line_gl_account')
   })
 
+  it('does not warn grni_unresolved when every linked line is a service (107 §9)', async () => {
+    h.grniAccountId = null
+    h.partKinds = new Map([['part_1', 'service']])
+    const value = (await createBillFromIntake(db, 'org_1', 'user_1', run()))._unsafeUnwrap()
+    expect(value.warnings.some((w) => w.code === 'grni_unresolved')).toBe(false)
+  })
+
   it('does not resolve grni at all when nothing links', async () => {
     await createBillFromIntake(
       db,

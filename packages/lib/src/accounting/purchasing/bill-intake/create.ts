@@ -39,7 +39,7 @@ import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { systemFieldMap } from '../../../resources/system-records'
 import { parseIntakeTotal, resolveIntakeUnitPrice } from '../intake/client'
 import { rematchBill } from '../match-hook'
-import type { BillIntakeWarning } from './client'
+import type { BillIntakeWarning, LineProposal } from './client'
 import { guard } from './guard'
 import { resolveGrniAccountId, resolvePurchasedServicesAccountId } from './link'
 import { markBillIntakeRunCreated, type StoredBillIntakeRun } from './run-store'
@@ -164,31 +164,37 @@ export async function createBillFromIntake(
         warnings.push({ code: 'no_lines', message: 'The invoice printed no lines' })
       }
 
-      // GRNI is resolved once for the whole run, never per line (§4.5).
-      const hasLinkedLine = run.proposals.some(
-        (proposal) => proposal.linkedOrderLineRecordId !== null
+      // A service is never received, so its linked line has no GRNI to relieve (107-D10).
+      const linkedPartRecordId = (proposal: LineProposal): RecordId | null =>
+        proposal.candidates.find(
+          (candidate) => candidate.orderLineRecordId === proposal.linkedOrderLineRecordId
+        )?.partRecordId ?? null
+      const linked = run.proposals.filter((proposal) => proposal.linkedOrderLineRecordId !== null)
+      const linkedPartIds = linked.flatMap((proposal) => {
+        const partRecordId = linkedPartRecordId(proposal)
+        return partRecordId ? [parseRecordId(partRecordId).entityInstanceId] : []
+      })
+      const partKinds =
+        linked.length > 0
+          ? await readPartKinds(db, organizationId, linkedPartIds)
+          : new Map<string, string>()
+      const isServicePart = (partRecordId: RecordId | null) =>
+        !!partRecordId &&
+        isServicePartKind(partKinds.get(parseRecordId(partRecordId).entityInstanceId))
+
+      // GRNI is resolved once for the whole run, never per line (§4.5), and only for goods lines.
+      const hasLinkedGoodsLine = linked.some(
+        (proposal) => !isServicePart(linkedPartRecordId(proposal))
       )
-      const grniAccountId = hasLinkedLine ? await resolveGrniAccountId(db, organizationId) : null
-      if (hasLinkedLine && grniAccountId === null) {
+      const grniAccountId = hasLinkedGoodsLine
+        ? await resolveGrniAccountId(db, organizationId)
+        : null
+      if (hasLinkedGoodsLine && grniAccountId === null) {
         warnings.push({
           code: 'grni_unresolved',
           message: 'GRNI account not set; linked lines were left uncoded',
         })
       }
-
-      // A service is never received, so its linked line has no GRNI to relieve (107-D10).
-      const linkedPartIds = run.proposals.flatMap((proposal) => {
-        const partRecordId = proposal.candidates.find(
-          (candidate) => candidate.orderLineRecordId === proposal.linkedOrderLineRecordId
-        )?.partRecordId
-        return partRecordId ? [parseRecordId(partRecordId).entityInstanceId] : []
-      })
-      const partKinds = hasLinkedLine
-        ? await readPartKinds(db, organizationId, linkedPartIds)
-        : new Map<string, string>()
-      const isServicePart = (partRecordId: RecordId | null) =>
-        !!partRecordId &&
-        isServicePartKind(partKinds.get(parseRecordId(partRecordId).entityInstanceId))
       // A service line is prefilled from `purchased_services` instead (107 §9); blank when unmapped.
       const servicesAccountId = [...partKinds.values()].some(isServicePartKind)
         ? await resolvePurchasedServicesAccountId(db, organizationId)

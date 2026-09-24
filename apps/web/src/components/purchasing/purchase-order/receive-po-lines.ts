@@ -57,6 +57,11 @@ export interface ReceivePoInput {
   reason?: string
 }
 
+/** The lines receiving applies to: a service is never received (107 D10), so it is left out. */
+export function goodsLines<T extends { service: boolean }>(lines: readonly T[]): T[] {
+  return lines.filter((line) => !line.service)
+}
+
 /**
  * What is still owed on a line — rule 2 above.
  *

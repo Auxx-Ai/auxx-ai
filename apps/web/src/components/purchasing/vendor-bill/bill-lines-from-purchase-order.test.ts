@@ -29,6 +29,7 @@ function poLine(over: Partial<PurchaseOrderLineRow> = {}): PurchaseOrderLineRow 
     received: 10,
     billed: 0,
     expectedUnitPrice: 250,
+    service: false,
     ...over,
   }
 }

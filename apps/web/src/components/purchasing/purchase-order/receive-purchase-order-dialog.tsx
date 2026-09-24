@@ -62,6 +62,7 @@ import { api } from '~/trpc/react'
 import { formatQuantity } from '../purchasing-summary-strip'
 import {
   buildReceivePoInput,
+  goodsLines,
   outstandingQuantity,
   prefillDraft,
   type ReceiptDraftLine,
@@ -102,7 +103,8 @@ export function ReceivePurchaseOrderDialog({
   // rather than as a UI-only field bolted onto the payload type.
   const { lines, partRecordIds } = useMemo(() => {
     const partRecordIds: Record<string, RecordId | undefined> = {}
-    const lines: ReceivablePoLine[] = poLines.map((line) => {
+    // A service is never received (107 D10); the server drops it too.
+    const lines: ReceivablePoLine[] = goodsLines(poLines).map((line) => {
       const purchaseOrderLineId = getInstanceId(line.lineRecordId)
       partRecordIds[purchaseOrderLineId] = line.partRecordId ?? undefined
       return {
@@ -193,7 +195,11 @@ export function ReceivePurchaseOrderDialog({
             <EmptySection
               icon={<Package className='size-5' />}
               title='Nothing to receive'
-              description='This purchase order has no lines.'
+              description={
+                poLines.length === 0
+                  ? 'This purchase order has no lines.'
+                  : 'Services need no receiving.'
+              }
             />
           ) : (
             <div className='max-h-[45vh] overflow-auto rounded-md border'>

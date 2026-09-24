@@ -49,6 +49,7 @@ interface PickableLine {
   ordered: number
   received: number
   expectedUnitPrice: number
+  service: boolean
 }
 
 export interface PurchaseOrderLinePickerProps {
@@ -110,6 +111,7 @@ export function PurchaseOrderLinePicker({
         ordered: line.ordered,
         received: line.received,
         expectedUnitPrice: line.expectedUnitPrice,
+        service: line.service,
       })),
     [orderLines, recordsByKey]
   )
@@ -200,7 +202,7 @@ export function PurchaseOrderLinePicker({
 function LineDetail({ line, currencyCode }: { line: PickableLine; currencyCode: string }) {
   return (
     <span className='shrink-0 text-muted-foreground text-xs tabular-nums'>
-      {formatQuantity(line.received)}/{formatQuantity(line.ordered)}
+      {line.service ? '—' : formatQuantity(line.received)}/{formatQuantity(line.ordered)}
       {' · '}
       {formatCurrency(line.expectedUnitPrice, { currencyCode })}
     </span>
