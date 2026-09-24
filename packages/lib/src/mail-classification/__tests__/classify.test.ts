@@ -11,7 +11,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   evaluate: vi.fn(),
-  getCachedDefaultModel: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -22,12 +21,6 @@ vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ info: h.info, warn: h.warn, error: h.error, debug: h.debug }),
 }))
 vi.mock('../../ai/decision/evaluate', () => ({ evaluate: h.evaluate }))
-vi.mock('../../cache', () => ({ getCachedDefaultModel: h.getCachedDefaultModel }))
-// Partial: `../cache`'s graph reads `FetchFrom` from this module at import time.
-vi.mock('../../ai/providers/types', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../ai/providers/types')>()),
-  ModelType: { LLM: 'LLM', DECISION: 'DECISION' },
-}))
 
 import type { DecisionAnswer, DecisionResult } from '../../ai/decision/client'
 import { QuotaExceededError } from '../../ai/errors/quota-errors'
@@ -35,6 +28,8 @@ import {
   buildClassificationQuestions,
   buildClassificationState,
   classifyMessage,
+  MAIL_CLASSIFICATION_FALLBACK_MODEL,
+  MAIL_CLASSIFICATION_MODEL,
   toTriage,
 } from '../classify'
 import {
@@ -91,9 +86,6 @@ function decided(
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.getCachedDefaultModel.mockImplementation(async (_org: string, type: string) =>
-    type === 'LLM' ? { provider: 'openai', model: 'gpt-x' } : null
-  )
 })
 
 describe('the questions (invariant 12)', () => {
@@ -283,25 +275,20 @@ describe('classifyMessage — usage attribution + never throws', () => {
     })
   })
 
-  it('no decision and no LLM default is a skip — and costs no call', async () => {
-    h.getCachedDefaultModel.mockResolvedValue(null)
-
-    await expect(classifyMessage(db, context)).resolves.toEqual({
-      tagId: null,
-      confidence: 0,
-      reason: 'no-default-model',
-      inferred: false,
-    })
-    expect(h.evaluate).not.toHaveBeenCalled()
-  })
-
-  it('a decision default alone is enough to classify', async () => {
-    h.getCachedDefaultModel.mockImplementation(async (_org: string, type: string) =>
-      type === 'DECISION' ? { provider: 'typesafe', model: 'jev-1.13.0' } : null
-    )
+  it('always runs on the platform models with SYSTEM credentials, never the org defaults', async () => {
     h.evaluate.mockResolvedValue(decided('tag_billing', 0.95, { confidenceKind: 'calibrated' }))
 
     await expect(classifyMessage(db, context)).resolves.toMatchObject({ tagId: 'tag_billing' })
+    expect(h.evaluate.mock.calls[0]?.[1]).toMatchObject({
+      model: { provider: 'typesafe', model: 'jev-1.13.0' },
+      fallbackModel: { provider: 'openai', model: 'gpt-5.4-nano' },
+      forceSystem: true,
+    })
+    expect(MAIL_CLASSIFICATION_MODEL).toEqual({ provider: 'typesafe', model: 'jev-1.13.0' })
+    expect(MAIL_CLASSIFICATION_FALLBACK_MODEL).toEqual({
+      provider: 'openai',
+      model: 'gpt-5.4-nano',
+    })
   })
 })
 

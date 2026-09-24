@@ -92,13 +92,13 @@ export interface MailClassificationLabel {
  * Why a message was not classified.
  *
  * The first six arms are guard exits (§3.1) and are entirely normal. The last
- * four are outcomes of the call itself, and they split on ONE question that
+ * five are outcomes of the call itself, and they split on ONE question that
  * decides whether the message may ever be classified again:
  *
  * - `'below-threshold'` / `'no-category'` — an inference COMPLETED. The answer
  *   was "apply nothing", which is a decision, and it was paid for. The marker
  *   goes down (C9) and the message is done.
- * - `'no-default-model'` / `'quota-exceeded'` / `'unavailable'` / `'error'` —
+ * - `'quota-exceeded'` / `'unavailable'` / `'error'` —
  *   no decision was reached. These must NOT stamp the marker, or one transient
  *   429 disqualifies the message from classification forever.
  *
@@ -122,7 +122,6 @@ export type MailClassificationSkipReason =
   | 'no-eligible-tags'
   | 'already-classified'
   | 'thread-already-categorised'
-  | 'no-default-model'
   | 'below-threshold'
   | 'no-category'
   /** Out of AI credits, or over the completions rate limit. Gated before any call. */
@@ -146,17 +145,16 @@ export type MailClassificationSkipReason =
  * taxonomy matched nothing".
  */
 export const MAIL_CLASSIFY_FAILURE_REASONS = [
-  'no-default-model',
   'quota-exceeded',
   'unavailable',
   'error',
   // `satisfies`, not a type annotation: the annotation would widen this to
   // `MailClassificationSkipReason[]` and a caller keying a Record off it would be
-  // forced to handle all twelve arms. This keeps the literal tuple AND still
+  // forced to handle all eleven arms. This keeps the literal tuple AND still
   // fails to compile if one of these stops being a real skip reason.
 ] as const satisfies readonly MailClassificationSkipReason[]
 
-/** One of the four arms in {@link MAIL_CLASSIFY_FAILURE_REASONS}. */
+/** One of the three arms in {@link MAIL_CLASSIFY_FAILURE_REASONS}. */
 export type MailClassificationFailureReason = (typeof MAIL_CLASSIFY_FAILURE_REASONS)[number]
 
 /** How many of a report's `skipped` counts are failures rather than guard exits. */

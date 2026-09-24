@@ -13,6 +13,7 @@ export interface LlmDecisionContext {
   userId: string | null
   source: UsageSource
   sourceId?: string
+  forceSystem?: boolean
 }
 
 const PREAMBLE = [
@@ -144,6 +145,7 @@ export class LlmDecisionClient extends DecisionClient {
       // Generous base because reasoning models count their thinking against this cap.
       parameters: { temperature: 0, max_tokens: 2048 + 64 * ids.length },
       structuredOutput: { enabled: true, schema: buildDecisionSchema(questions) },
+      ...(this.ctx.forceSystem ? { forceSystem: true } : {}),
       context: {
         source: this.ctx.source,
         ...(this.ctx.sourceId ? { sourceId: this.ctx.sourceId } : {}),

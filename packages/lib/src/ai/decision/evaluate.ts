@@ -8,7 +8,7 @@ import { NotFoundError } from '../../errors'
 import { LLMOrchestrator } from '../orchestrator/llm-orchestrator'
 import type { UsageSource, UsageTrackingRequest } from '../orchestrator/types'
 import { ProviderConfigurationError } from '../providers/base/types'
-import { getCredentials } from '../providers/config'
+import { getCredentials, getSystemCredentials } from '../providers/config'
 import { ProviderRegistry } from '../providers/provider-registry'
 import { type CredentialsResponse, ModelType } from '../providers/types'
 import { enforceAiQuota } from '../quota/enforce-ai-quota'
@@ -27,38 +27,48 @@ export interface EvaluateDecisionInput {
   questions: Record<string, DecisionQuestion>
   source: UsageSource
   sourceId?: string
-  model?: { provider: string; model: string }
+  model?: ModelRef
+  /** Retried on a fallback trigger instead of the org's LLM default. */
+  fallbackModel?: ModelRef
+  /** Platform SYSTEM credentials regardless of the org's provider preference; billed to its credits. */
+  forceSystem?: boolean
 }
 
 type ModelRef = { provider: string; model: string }
 
-/** Answer typed questions on the org's decision model, falling back to its LLM default (D9). */
+/**
+ * Answer typed questions on the org's decision model, falling back to its LLM default (D9).
+ * With `model` + `fallbackModel` the org's defaults are never read.
+ */
 export async function evaluate(
   db: Database,
   input: EvaluateDecisionInput
 ): Promise<Result<DecisionResult, Error>> {
   try {
     const { organizationId } = input
-    const llmDefault = await getCachedDefaultModel(organizationId, ModelType.LLM)
+    const llmDefault = () => getCachedDefaultModel(organizationId, ModelType.LLM)
     const resolved =
-      input.model ?? (await getCachedDefaultModel(organizationId, ModelType.DECISION)) ?? llmDefault
+      input.model ??
+      (await getCachedDefaultModel(organizationId, ModelType.DECISION)) ??
+      (await llmDefault())
     if (!resolved) return err(new NotFoundError('No decision or language model configured'))
 
     try {
       return ok(await attempt(db, input, resolved))
     } catch (error) {
-      const alreadyLlmDefault =
-        llmDefault?.provider === resolved.provider && llmDefault.model === resolved.model
-      if (!llmDefault || alreadyLlmDefault || !isDecisionFallbackTrigger(error)) {
+      const fallback = input.fallbackModel ?? (await llmDefault())
+      const sameModel =
+        fallback?.provider === resolved.provider && fallback.model === resolved.model
+      if (!fallback || sameModel || !isDecisionFallbackTrigger(error)) {
         return err(toError(error))
       }
-      logger.warn('Decision model unavailable, falling back to the LLM default', {
+      logger.warn('Decision model unavailable, falling back', {
         organizationId,
         from: `${resolved.provider}/${resolved.model}`,
-        to: `${llmDefault.provider}/${llmDefault.model}`,
+        to: `${fallback.provider}/${fallback.model}`,
         reason: toError(error).message,
       })
-      return ok(await runAdapter(db, input, llmDefault))
+      return ok(await runAdapter(db, input, fallback))
     }
   } catch (error) {
     return err(toError(error))
@@ -75,9 +85,15 @@ function attempt(db: Database, input: EvaluateDecisionInput, ref: ModelRef) {
 }
 
 function runAdapter(db: Database, input: EvaluateDecisionInput, ref: ModelRef) {
-  const { organizationId, userId, source, sourceId, state, questions } = input
+  const { organizationId, userId, source, sourceId, state, questions, forceSystem } = input
   const orchestrator = new LLMOrchestrator(new UsageTrackingService(db), db)
-  const client = new LlmDecisionClient(orchestrator, { organizationId, userId, source, sourceId })
+  const client = new LlmDecisionClient(orchestrator, {
+    organizationId,
+    userId,
+    source,
+    sourceId,
+    forceSystem,
+  })
   return client.evaluate({ provider: ref.provider, model: ref.model, state, questions })
 }
 
@@ -100,12 +116,10 @@ async function runNative(
   // `userId ?? ''` only for credential lookup and the rate-limit key; the usage insert gets the real value.
   const lookupUserId = userId ?? ''
 
-  const credentials = await getCredentials(
-    { db, organizationId, userId: lookupUserId },
-    provider,
-    model,
-    ModelType.DECISION
-  )
+  const ctx = { db, organizationId, userId: lookupUserId }
+  const credentials = input.forceSystem
+    ? await getSystemCredentials(ctx, provider)
+    : await getCredentials(ctx, provider, model, ModelType.DECISION)
   // resolveCredentials swallows its failures into an empty map, so "no key" is detected here.
   if (Object.keys(credentials.credentials ?? {}).length === 0) {
     throw new ProviderConfigurationError(
@@ -116,7 +130,13 @@ async function runNative(
   }
   const providerType = credentials.providerType ?? 'CUSTOM'
 
-  await enforceAiQuota(db, { provider, organizationId, userId: lookupUserId, providerType })
+  await enforceAiQuota(db, {
+    provider,
+    organizationId,
+    userId: lookupUserId,
+    providerType,
+    forceSystem: input.forceSystem,
+  })
 
   const startTime = Date.now()
   const client = await ProviderRegistry.createClient(provider, organizationId, lookupUserId)
