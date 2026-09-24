@@ -45,6 +45,7 @@ import {
   removeMapping,
   removeStream,
   requestArchiveCapOverride,
+  STRIPE_FC_CONNECTOR_TYPE,
   sampleConnectorFetch,
   setConnectorFieldPin,
   setStreamRequestConfig,
@@ -261,7 +262,20 @@ export const dataConnectorRouter = createTRPCRouter({
   // record-grid `ConnectorLockBadge` resolves connector names from it for
   // connector-owned/contributing fields. Every other read is gated.
   list: protectedProcedure.query(async ({ ctx }) => {
-    return listConnectors(ctx.db, ctx.session.organizationId)
+    const [rows, installedApps] = await Promise.all([
+      listConnectors(ctx.db, ctx.session.organizationId),
+      getCachedInstalledApps(ctx.session.organizationId),
+    ])
+    const logoBySlug = new Map(installedApps.map((a) => [a.app.slug, a.app.avatarUrl]))
+    return rows.map((row) => ({
+      ...row,
+      // Visual ref: the installed app's logo, a brand mark for built-ins, else null → plug.
+      icon: row.type.startsWith('app:')
+        ? (logoBySlug.get(row.type.slice('app:'.length)) ?? null)
+        : row.type === STRIPE_FC_CONNECTOR_TYPE
+          ? 'brand:stripe'
+          : null,
+    }))
   }),
 
   /**

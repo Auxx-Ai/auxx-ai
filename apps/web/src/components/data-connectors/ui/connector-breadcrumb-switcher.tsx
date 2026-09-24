@@ -4,40 +4,17 @@
 import { useRouter } from 'next/navigation'
 import type React from 'react'
 import { useMemo } from 'react'
-import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { EntityBreadcrumbSwitcher, type EntitySwitcherItem } from '~/components/pickers'
 import { api } from '~/trpc/react'
 import { selectIsDirty, useConnectorDraftStore } from '../stores/connector-draft-store'
+import { ConnectorGlyph } from './connector-card'
 import { asConnectorStatus, ConnectorStatusDot } from './connector-status'
-
-/** Default icon id for connectors without a brand (generic-rest, unknown types). */
-const DEFAULT_CONNECTOR_ICON_ID = 'plug'
-
-/** Derive a display icon id from the connector type (`app:<slug>` → brand). */
-function iconIdForType(type: string): string {
-  if (type.startsWith('app:')) return `brand:${type.slice('app:'.length)}`
-  return DEFAULT_CONNECTOR_ICON_ID
-}
-
-/** The brand glyph for a connector type, sized for a breadcrumb / switcher row. */
-function ConnectorGlyph({ type }: { type: string }) {
-  return (
-    <VisualIcon
-      value={iconIdForType(type)}
-      fallbackIconId={DEFAULT_CONNECTOR_ICON_ID}
-      fit='contain'
-      size='xs'
-    />
-  )
-}
 
 interface ConnectorBreadcrumbSwitcherProps {
   /** The connector currently open — highlighted in the list. */
   activeConnectorId: string
   /** Trigger label — the active connector's name. */
   activeLabel: React.ReactNode
-  /** The active connector's `type`, used for the trigger's brand glyph. */
-  activeType: string
 }
 
 /**
@@ -56,7 +33,6 @@ interface ConnectorBreadcrumbSwitcherProps {
 export function ConnectorBreadcrumbSwitcher({
   activeConnectorId,
   activeLabel,
-  activeType,
 }: ConnectorBreadcrumbSwitcherProps) {
   const router = useRouter()
   const { data, isLoading } = api.dataConnector.list.useQuery(undefined, { staleTime: 30_000 })
@@ -75,7 +51,7 @@ export function ConnectorBreadcrumbSwitcher({
         id: connector.id,
         label: connector.name,
         href: `/app/connectors/${connector.id}`,
-        icon: <ConnectorGlyph type={connector.type} />,
+        icon: <ConnectorGlyph icon={connector.icon} size='xs' />,
         secondary: <ConnectorStatusDot status={asConnectorStatus(connector.status)} />,
       })),
     [data]
@@ -84,7 +60,9 @@ export function ConnectorBreadcrumbSwitcher({
   return (
     <EntityBreadcrumbSwitcher
       activeLabel={activeLabel}
-      activeIcon={<ConnectorGlyph type={activeType} />}
+      activeIcon={
+        <ConnectorGlyph icon={data?.find((c) => c.id === activeConnectorId)?.icon} size='xs' />
+      }
       items={items}
       activeId={activeConnectorId}
       isLoading={isLoading}

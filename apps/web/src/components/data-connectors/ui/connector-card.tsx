@@ -38,6 +38,8 @@ export interface ConnectorCardData {
   error: string | null
   /** The app's newer version changed this connector's definition (task 41). */
   updateAvailable?: boolean
+  /** Visual ref from `dataConnector.list` (app logo URL or `brand:<slug>`); null → generic glyph. */
+  icon?: string | null
 }
 
 /** Where the connector came from — drives the origin badge. */
@@ -62,13 +64,26 @@ interface ConnectorCardProps {
   streamCount?: number
 }
 
-/** Default icon for connectors without a brand (generic-rest, unknown types). */
+/** Default icon for connectors without a logo (generic-rest, uninstalled apps). */
 const DEFAULT_CONNECTOR_ICON_ID = 'plug'
 
-/** Derive a display icon id from the connector type (`app:<slug>` → brand). */
-function iconIdForType(type: string): string {
-  if (type.startsWith('app:')) return `brand:${type.slice('app:'.length)}`
-  return DEFAULT_CONNECTOR_ICON_ID
+/** A connector's logo, falling back to the generic plug when missing or broken. */
+export function ConnectorGlyph({
+  icon,
+  size = 'sm',
+}: {
+  icon?: string | null
+  size?: 'xs' | 'sm'
+}) {
+  return (
+    <VisualIcon
+      value={icon}
+      fallbackIconId={DEFAULT_CONNECTOR_ICON_ID}
+      fit='contain'
+      imageFallback
+      size={size}
+    />
+  )
 }
 
 /**
@@ -142,17 +157,7 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
         pending={pending}
         pendingLabel={pendingLabel}
         title={connector.name}
-        icon={
-          // `AppIcon` is just `VisualIcon fit='contain'`, but `AppIconProps` doesn't
-          // declare `fallbackIconId` — same direct-VisualIcon shape as the sibling
-          // `ConnectorGlyph` in connector-breadcrumb-switcher.
-          <VisualIcon
-            value={iconIdForType(connector.type)}
-            fallbackIconId={DEFAULT_CONNECTOR_ICON_ID}
-            fit='contain'
-            size='sm'
-          />
-        }
+        icon={<ConnectorGlyph icon={connector.icon} />}
         status={{ tone: meta.tone, label: connector.error ?? meta.label }}
         subtitle={
           connector.lastSyncedAt ? (

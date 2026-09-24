@@ -98,7 +98,9 @@ export function VisualIcon({
   className,
   ...props
 }: VisualIconProps) {
-  const ref = parseVisualRef(value)
+  const parsed = parseVisualRef(value)
+  // A brand slug with no SVG on disk would render an empty frame — use the fallback instead.
+  const ref = parsed?.type === 'brand' && !Object.hasOwn(BRAND_ICONS, parsed.slug) ? null : parsed
 
   if (!ref || ref.type === 'lucide' || ref.type === 'icon') {
     const iconId =
@@ -133,7 +135,7 @@ export function VisualIcon({
   )
 
   if (ref.type === 'brand') {
-    const hasDark = BRAND_ICONS[ref.slug as BrandSlug]?.hasDark ?? false
+    const hasDark = BRAND_ICONS[ref.slug as BrandSlug].hasDark
     return (
       <div className={frame} style={style} {...props}>
         <img
