@@ -30,7 +30,12 @@ import type { ChartImportResult } from '../types'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import { planChartImport } from './chart-import-plan'
 import { createChartAccount, updateChartAccount } from './chart-write'
-import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
+import {
+  CHART_PACKS,
+  type DefaultChartAccount,
+  type GlAccountTypeValue,
+  packForRole,
+} from './default-chart'
 import { type CodedAccount, nextAccountCode } from './next-account-code'
 
 const logger = createScopedLogger('postings:chart-import')
@@ -88,6 +93,53 @@ export async function importProviderAccounts(
     mintCore: false,
     only: new Set(options.providerAccountIds),
   })
+}
+
+/**
+ * Mint the default account for each of these roles still `unmapped`, the way a full import
+ * mints missing core accounts, and assign it (`source: 'seed'`). Never matches by code, so a
+ * provider account that happens to carry a default code is not handed a role. A role with no
+ * default account (`bank`) is skipped. Idempotent: a mapped role is left alone.
+ */
+export async function mintMissingRoleAccounts(
+  db: Database,
+  options: { organizationId: string; actorUserId: string; roles: readonly AccountRole[] }
+): Promise<Result<{ role: AccountRole; glAccountId: string; name: string }[], Error>> {
+  const { organizationId, actorUserId } = options
+  try {
+    const [chart, roleMap] = await Promise.all([
+      listChartAccounts(db, organizationId),
+      listRoleMap(db, organizationId),
+    ])
+    if (chart.isErr()) return err(chart.error)
+    if (roleMap.isErr()) return err(roleMap.error)
+    const unmapped = new Set(
+      roleMap.value.filter((row) => row.state === 'unmapped').map((row) => row.role)
+    )
+    const codedAccounts: CodedAccount[] = [...chart.value]
+
+    const minted: { role: AccountRole; glAccountId: string; name: string }[] = []
+    for (const role of new Set(options.roles)) {
+      if (!unmapped.has(role)) continue
+      const pack = packForRole(role)
+      const account = pack ? CHART_PACKS[pack].accounts.find((row) => row.role === role) : null
+      if (!account) continue
+      const created = await createAccount(db, organizationId, actorUserId, {
+        code: mintedCode(account, codedAccounts),
+        name: account.name,
+        accountType: account.accountType,
+        subtype: account.subtype ?? null,
+      })
+      codedAccounts.push(created)
+      if (await insertRoleAssignment(db, organizationId, role, created.id, 'seed'))
+        minted.push({ role, glAccountId: created.id, name: account.name })
+    }
+    return ok(minted)
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to mint missing role accounts', { error, organizationId })
+    return err(new AuxxError('Internal error'))
+  }
 }
 
 function emptyResult(): ChartImportResult {

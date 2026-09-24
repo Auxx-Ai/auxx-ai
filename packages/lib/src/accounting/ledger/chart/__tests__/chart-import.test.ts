@@ -50,7 +50,11 @@ import {
   UnprocessableEntityError,
 } from '../../../../errors'
 import type { ChartAccountRow, ProviderAccount, RoleAssignmentRow } from '../../types'
-import { importChartFromProvider, importProviderAccounts } from '../chart-import'
+import {
+  importChartFromProvider,
+  importProviderAccounts,
+  mintMissingRoleAccounts,
+} from '../chart-import'
 
 const ORG = 'org1'
 const USER = 'user1'
@@ -711,5 +715,73 @@ describe('importProviderAccounts - a targeted import (brief 105 C3)', () => {
 
     expect(result._unsafeUnwrap().created).toBe(0)
     expect(resolveAccountingProvider).not.toHaveBeenCalled()
+  })
+})
+
+describe('mintMissingRoleAccounts', () => {
+  function rows(states: Record<string, RoleAssignmentRow['state']>): RoleAssignmentRow[] {
+    return Object.entries(states).map(([role, state]) => ({
+      ...(roleMapRows()[0] as RoleAssignmentRow),
+      role,
+      state,
+      axis: roleScopeAxis(role),
+    }))
+  }
+
+  it('mints the default account for each unmapped role, stepping past a taken code', async () => {
+    listChartAccounts.mockResolvedValue(
+      ok([{ id: 'gl_x', code: '1310', name: 'Parts (provider)' } as ChartAccountRow])
+    )
+    listRoleMap.mockResolvedValue(
+      ok(rows({ inventory_raw_materials: 'unmapped', inventory_wip: 'unmapped' }))
+    )
+    const { db, insertedRows } = stubDb()
+
+    const minted = (
+      await mintMissingRoleAccounts(db, {
+        organizationId: ORG,
+        actorUserId: USER,
+        roles: ['inventory_raw_materials', 'inventory_wip'],
+      })
+    )._unsafeUnwrap()
+
+    expect(callLog).toEqual(['create:Raw Materials / Parts:1311', 'create:Work in Process:1320'])
+    expect(minted.map((row) => row.role)).toEqual(['inventory_raw_materials', 'inventory_wip'])
+    expect(insertedRows.map((row) => [row.role, row.source])).toEqual([
+      ['inventory_raw_materials', 'seed'],
+      ['inventory_wip', 'seed'],
+    ])
+  })
+
+  it('leaves mapped roles and roles with no default account alone', async () => {
+    listRoleMap.mockResolvedValue(ok(rows({ inventory_wip: 'suggested', bank: 'unmapped' })))
+    const { db } = stubDb()
+
+    const minted = (
+      await mintMissingRoleAccounts(db, {
+        organizationId: ORG,
+        actorUserId: USER,
+        roles: ['inventory_wip', 'bank'],
+      })
+    )._unsafeUnwrap()
+
+    expect(minted).toEqual([])
+    expect(createChartAccountMock).not.toHaveBeenCalled()
+  })
+
+  it('creates uncoded accounts in an unnumbered chart', async () => {
+    listChartAccounts.mockResolvedValue(
+      ok([{ id: 'gl_a', code: null, name: 'Checking' } as ChartAccountRow])
+    )
+    listRoleMap.mockResolvedValue(ok(rows({ inventory_wip: 'unmapped' })))
+    const { db } = stubDb()
+
+    await mintMissingRoleAccounts(db, {
+      organizationId: ORG,
+      actorUserId: USER,
+      roles: ['inventory_wip'],
+    })
+
+    expect(callLog).toEqual(['create:Work in Process:null'])
   })
 })

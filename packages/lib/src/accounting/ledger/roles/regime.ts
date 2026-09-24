@@ -109,6 +109,16 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
     POSTING_POLICIES.map((policy) => [policy.type, policy.singleWriterRoles])
   ) as Record<PostingType, readonly AccountRole[]>
 
+/** Every role an enabled posting type's template or single-writer set names, in policy order. */
+export const ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES: readonly AccountRole[] = [
+  ...new Set(
+    POSTING_POLICIES.filter((policy) => policy.enabled).flatMap((policy) => [
+      ...policy.template.flatMap((line) => (line.role === 'by id' ? [] : [line.role])),
+      ...policy.singleWriterRoles,
+    ])
+  ),
+]
+
 /**
  * How each posting type reaches the connected accounting system.
  *

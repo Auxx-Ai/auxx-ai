@@ -27,6 +27,9 @@ const h = vi.hoisted(() => ({
   mappings: new Map<string, string>(),
   identities: [] as Record<string, unknown>[],
   pushed: [] as string[][],
+  mintable: [] as string[],
+  mapped: new Set<string>(),
+  mintAsked: [] as string[][],
 }))
 
 vi.mock('../lock', () => ({
@@ -78,6 +81,23 @@ vi.mock('../../ledger/chart/chart-import', () => ({
     h.importOptions.push(options)
     return h.importFails ? err(new Error('provider down')) : ok(h.importResult)
   },
+  // Stands in for the real minter: mints each unmapped role once, then it is mapped.
+  mintMissingRoleAccounts: async (_db: unknown, options: { roles: string[] }) => {
+    h.calls.push('mint')
+    h.mintAsked.push(options.roles)
+    const minted = options.roles
+      .filter((role) => h.mintable.includes(role) && !h.mapped.has(role))
+      .map((role) => ({ role, glAccountId: `gl_${role}`, name: role }))
+    for (const row of minted) {
+      h.mapped.add(row.role)
+      h.identities.push({
+        account: { id: row.glAccountId },
+        providerAccountId: null,
+        suggestion: null,
+      })
+    }
+    return ok(minted)
+  },
 }))
 vi.mock('../../providers/create-provider-accounts', () => ({
   createProviderAccounts: async (_db: unknown, options: { glAccountIds: string[] }) => {
@@ -111,6 +131,7 @@ vi.mock('../bank-account-reads', () => ({
   },
 }))
 
+import { ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES } from '../../ledger/roles/regime'
 import { prepareConnectAndGo } from '../prepare'
 
 const db = {} as Database
@@ -135,6 +156,9 @@ beforeEach(() => {
   h.mappings = new Map()
   h.identities = []
   h.pushed = []
+  h.mintable = []
+  h.mapped = new Set()
+  h.mintAsked = []
 })
 
 describe('prepareConnectAndGo', () => {
@@ -152,7 +176,16 @@ describe('prepareConnectAndGo', () => {
     ]
     const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
 
-    expect(h.calls).toEqual(['lock', 'company', 'settings', 'chart', 'rails', 'push', 'banks'])
+    expect(h.calls).toEqual([
+      'lock',
+      'company',
+      'settings',
+      'chart',
+      'rails',
+      'mint',
+      'push',
+      'banks',
+    ])
     expect(h.pushed).toEqual([['gl_minted']])
     expect(report.providerAccounts).toEqual({ created: 1, failed: null })
     expect(report.questions.rails).toHaveLength(1)
@@ -230,5 +263,37 @@ describe('prepareConnectAndGo', () => {
     expect(report.failures).toEqual([{ step: 'chart', message: 'provider down' }])
     expect(report.chart).toBeNull()
     expect(h.calls).toEqual(['lock', 'company', 'settings', 'chart', 'rails', 'banks'])
+  })
+})
+
+describe('prepareConnectAndGo: roles nothing in the chart fits', () => {
+  it('mints the unmapped roles the enabled posting types need, and pushes them', async () => {
+    h.mintable = ['inventory_raw_materials', 'inventory_wip']
+    const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
+
+    expect(h.mintAsked[0]).toEqual(ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES)
+    expect(report.rolesMinted.map((row) => row.role)).toEqual([
+      'inventory_raw_materials',
+      'inventory_wip',
+    ])
+    expect(h.pushed).toEqual([['gl_inventory_raw_materials', 'gl_inventory_wip']])
+  })
+
+  it('never mints a role that is a question', async () => {
+    h.importResult.rolesAmbiguous = [
+      { role: 'inventory_raw_materials', providerAccountIds: ['p_a', 'p_b'] },
+    ]
+    h.mintable = ['inventory_raw_materials', 'inventory_wip']
+    const report = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
+
+    expect(h.mintAsked[0]).not.toContain('inventory_raw_materials')
+    expect(report.rolesMinted.map((row) => row.role)).toEqual(['inventory_wip'])
+  })
+
+  it('mints nothing on a second run', async () => {
+    h.mintable = ['inventory_wip']
+    await prepareConnectAndGo(db, base)
+    const second = (await prepareConnectAndGo(db, base))._unsafeUnwrap()
+    expect(second.rolesMinted).toEqual([])
   })
 })

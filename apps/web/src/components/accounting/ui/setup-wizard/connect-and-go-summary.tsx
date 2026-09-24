@@ -62,6 +62,8 @@ export function ConnectAndGoDoneList({
     lines.push(`Fiscal year starts in ${MONTHS[report.fiscalYearStartMonthWritten - 1]}`)
   if (report.bookTimeZoneWritten && report.bookTimeZone)
     lines.push(`Books kept in ${report.bookTimeZone}`)
+  if (report.rolesMinted.length > 0)
+    lines.push(`Added ${report.rolesMinted.map((row) => row.name).join(', ')} for what Auxx posts`)
   const railsCreated = report.rails?.created ?? []
   if (railsCreated.length > 0)
     lines.push(`Set up payment rails: ${railsCreated.map((rail) => rail.name).join(', ')}`)

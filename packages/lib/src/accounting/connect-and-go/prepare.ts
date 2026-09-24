@@ -7,7 +7,8 @@ import { getCachedMembersByUserIds } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { batchUpdateOrganizationSettings } from '../../settings/settings-service'
-import { importChartFromProvider } from '../ledger/chart/chart-import'
+import { importChartFromProvider, mintMissingRoleAccounts } from '../ledger/chart/chart-import'
+import { ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES } from '../ledger/roles/regime'
 import { listChartAccounts, listRoleMap } from '../ledger/roles/role-map'
 import { FINALIZED_SETUP_STATE, isValidTimeZone } from '../ledger/setup/setup-readiness'
 import type { ChartImportResult } from '../ledger/types'
@@ -146,7 +147,21 @@ async function prepareLocked(
   const rails = await autoRouteRails(db, { organizationId, actorUserId, today: params.today })
   if (rails.isErr()) fail('rails', rails.error)
 
-  // 4. Our accounts the provider has no counterpart for.
+  // 4. Roles the enabled posting types need that nothing fits: mint the default account.
+  // Ambiguous roles are a person's question, and minting without a chart would duplicate one.
+  let rolesMinted: ConnectAndGoPrepareReport['rolesMinted'] = []
+  if (chart) {
+    const ambiguous = new Set(chart.result.rolesAmbiguous.map((row) => row.role))
+    const minted = await mintMissingRoleAccounts(db, {
+      organizationId,
+      actorUserId,
+      roles: ROLES_REQUIRED_BY_ENABLED_POSTING_TYPES.filter((role) => !ambiguous.has(role)),
+    })
+    if (minted.isErr()) fail('roles', minted.error)
+    else rolesMinted = minted.value
+  }
+
+  // 5. Our accounts the provider has no counterpart for, the ones just minted included.
   let providerAccounts: ConnectAndGoPrepareReport['providerAccounts'] = null
   if (supportsCreatingProviderAccounts(provider)) {
     const identities = await listAccountIdentities(db, organizationId)
@@ -173,7 +188,7 @@ async function prepareLocked(
     }
   }
 
-  // 5. Bank accounts are proposed, never created here.
+  // 6. Bank accounts are proposed, never created here.
   const bankAccounts = await planBankAccountsFromProvider(db, { organizationId })
   if (bankAccounts.isErr()) fail('bank_accounts', bankAccounts.error)
 
@@ -189,6 +204,7 @@ async function prepareLocked(
     bookTimeZoneWritten,
     proposedCutover,
     chart,
+    rolesMinted,
     rails: rails.isOk() ? rails.value : null,
     providerAccounts,
     bankAccounts: bankAccounts.isOk() ? bankAccounts.value : null,

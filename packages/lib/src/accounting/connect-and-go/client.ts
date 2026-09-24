@@ -172,6 +172,8 @@ export interface ConnectAndGoPrepareReport {
   bookTimeZoneWritten: boolean
   proposedCutover: ProposedCutover
   chart: { mode: 'full' | 'refresh'; suggestionsLinked: number; result: ChartImportResult } | null
+  /** Default accounts minted for roles the enabled posting types need and nothing in the chart fit. */
+  rolesMinted: { role: AccountRole; glAccountId: string; name: string }[]
   rails: RailRouteReport | null
   /** Our accounts created in the provider and linked. */
   providerAccounts: {

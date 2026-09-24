@@ -21,6 +21,7 @@ export {
   type ImportProviderAccountsOptions,
   importChartFromProvider,
   importProviderAccounts,
+  mintMissingRoleAccounts,
 } from './chart-import'
 export {
   planChartImport,
