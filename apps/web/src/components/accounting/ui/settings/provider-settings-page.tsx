@@ -31,7 +31,6 @@ import SettingsPage from '~/components/global/settings-page'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { AccountingProviderSection } from './accounting-provider-section'
-import { ProviderAgreementSettingsSection } from './provider-agreement-section'
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -40,7 +39,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'The accounting system these books are mirrored to, whether it agrees with them, and what to bring across from it.'
+  'The accounting system these books are mirrored to, and what to bring across from it.'
 
 export function AccountingProviderSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -64,20 +63,11 @@ export function AccountingProviderSettingsPage() {
 
   return (
     <SettingsPage title='Connected system' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
-      {/* `max-w-3xl` rather than full bleed: these are three stacked sections of
-          form rows and prose, and at 1920px an unconstrained column puts the
-          switch a screen's width away from the label that names it. */}
+      {/* `max-w-3xl`: at 1920px an unconstrained column puts a switch a screen's
+          width away from the label that names it. */}
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
         <div className='flex max-w-3xl flex-col gap-8'>
-          {/* Install, connect, which company, the export switch - and the
-              inbound sync, which moved onto this section's own panel (MK,
-              2026-09-17; brief 55 §4.8). */}
           <AccountingProviderSection />
-
-          {/* Directly under the provider it asks about: there is nothing to
-              compare until something is connected, and the section itself says
-              so rather than disappearing (brief 20 §8.3). */}
-          <ProviderAgreementSettingsSection />
         </div>
       </div>
     </SettingsPage>

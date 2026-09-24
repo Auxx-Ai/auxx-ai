@@ -7,9 +7,10 @@ import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
+import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { ArrowLeftRight, ClipboardCheck, Clock3, FileText, Lock, Plus } from 'lucide-react'
+import { ClipboardCheck, Clock3, FileText, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -25,11 +26,6 @@ import { useMonthEntries } from '~/components/accounting/hooks/use-month-entries
 import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/accounting-checklist-panel'
 import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
 import { lastDayOfPeriod, today } from '~/components/accounting/ui/journal/period-helpers'
-import {
-  ProviderAgreementAction,
-  ProviderAgreementPanel,
-  useProviderAgreement,
-} from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
 import { KopilotContext } from '~/components/kopilot/context'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
@@ -40,7 +36,6 @@ import {
 } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
-import { CloseMonthPanel } from './close-month-panel'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
@@ -48,6 +43,7 @@ import { LedgerBanners } from './ledger-banners'
 import { LedgerStats } from './ledger-stats'
 import { LedgerSummaryPanel } from './ledger-summary-panel'
 import { LedgerPeriodControls, ProviderPill } from './ledger-toolbar'
+import { LockMonthButton } from './lock-month-button'
 import { outboxHref } from './outbox-route'
 import { useLedgerDrawers } from './use-ledger-drawers'
 
@@ -183,13 +179,6 @@ export function CloseoutPage() {
   // so the header cannot disagree with the list beneath it.
   const monthEntries = useMonthEntries(activePeriodKey || undefined)
 
-  // 🛑 Hoisted, because the button that asks lives in the section's header and
-  // the answer lives in its body. One hook, so the two cannot disagree about
-  // whether anything has been asked.
-  const agreement = useProviderAgreement(
-    activePeriodKey ? lastDayOfPeriod(activePeriodKey) : today(bookTimeZone)
-  )
-
   // Why Lock is refused, or `null` when it is offered. The reasoning, and the
   // trap of giving a `nothing_to_close` month the postable month's remedy, are
   // in `lockRefusalReason`'s own header. It is rendered as VISIBLE copy and not
@@ -237,44 +226,6 @@ export function CloseoutPage() {
     [closeDrawers, selectMonth]
   )
 
-  /**
-   * "Review the lock" from a close refusal — the lock is a section further down
-   * this same column, so the remedy scrolls rather than navigates.
-   */
-  const closeSectionRef = useRef<HTMLDivElement>(null)
-  const revealLock = useCallback(() => {
-    closeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [])
-
-  const toolbar = useMemo(
-    () => ({
-      left: (
-        <LedgerPeriodControls
-          periodKey={activePeriodKey}
-          options={period.options}
-          period={activePeriod}
-          previousPeriodKey={period.previousPeriodKey}
-          nextPeriodKey={period.nextPeriodKey}
-          resolvedPeriodKey={period.resolvedPeriodKey}
-          onSelectPeriod={goToPeriod}
-          disabled={isChecklistState}
-        />
-      ),
-      right: <ProviderPill />,
-    }),
-    [
-      activePeriod,
-      activePeriodKey,
-      goToPeriod,
-      isChecklistState,
-      period.nextPeriodKey,
-      period.options,
-      period.previousPeriodKey,
-      period.resolvedPeriodKey,
-    ]
-  )
-  useRegisterAccountingToolbar(toolbar)
-
   async function handleToggleLock() {
     if (!activePeriodKey) return
 
@@ -319,6 +270,58 @@ export function CloseoutPage() {
       }
     )
   }
+
+  // The toolbar is memoised; the ref keeps its Lock button calling this render's handler.
+  const toggleLockRef = useRef(handleToggleLock)
+  toggleLockRef.current = handleToggleLock
+
+  const toolbar = useMemo(
+    () => ({
+      left: (
+        <>
+          <LedgerPeriodControls
+            periodKey={activePeriodKey}
+            options={period.options}
+            period={activePeriod}
+            previousPeriodKey={period.previousPeriodKey}
+            nextPeriodKey={period.nextPeriodKey}
+            resolvedPeriodKey={period.resolvedPeriodKey}
+            onSelectPeriod={goToPeriod}
+            disabled={isChecklistState}
+          />
+          {!isChecklistState && !!activePeriodKey && canControlLedger && (
+            <>
+              <Separator orientation='vertical' className='h-6' />
+              <LockMonthButton
+                periodLabel={periodLabel}
+                isLocked={isLocked}
+                lockBlockedReason={lockBlockedReason}
+                lockedThrough={lockedThrough}
+                onToggleLock={() => void toggleLockRef.current()}
+              />
+            </>
+          )}
+        </>
+      ),
+      right: <ProviderPill />,
+    }),
+    [
+      activePeriod,
+      activePeriodKey,
+      canControlLedger,
+      goToPeriod,
+      isChecklistState,
+      isLocked,
+      lockBlockedReason,
+      lockedThrough,
+      periodLabel,
+      period.nextPeriodKey,
+      period.options,
+      period.previousPeriodKey,
+      period.resolvedPeriodKey,
+    ]
+  )
+  useRegisterAccountingToolbar(toolbar)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
@@ -376,38 +379,13 @@ export function CloseoutPage() {
                 blockers={activePeriodKey ? entry.blockers : []}
                 isSoftRefusal={false}
                 onFix={onFix}
-                onReviewLock={revealLock}
+                onReviewLock={canControlLedger ? () => void handleToggleLock() : undefined}
                 onNextPeriod={
                   period.nextPeriodKey
                     ? () => goToPeriod(period.nextPeriodKey as string)
                     : undefined
                 }
               />
-
-              {/* Closing the month: the last thing that happens to it, and the
-                  thing the rail item is named after. Directly under the entry,
-                  because the entry is what you read before deciding the month is
-                  done - and because `revealLock` scrolls here. */}
-              {!!activePeriodKey && (
-                <div ref={closeSectionRef}>
-                  <Section
-                    title='Close the month'
-                    icon={<Lock className='size-4' />}
-                    description='Reverse what was posted, and declare the month shut. Locking is a THROUGH marker - it closes this month and every one before it.'
-                    collapsible={false}>
-                    <CloseMonthPanel
-                      periodLabel={periodLabel}
-                      isLocked={isLocked}
-                      lockBlockedReason={lockBlockedReason}
-                      lockedThrough={lockedThrough}
-                      canControlLedger={canControlLedger}
-                      onToggleLock={() => void handleToggleLock()}
-                      canReverse={false}
-                      onReverse={() => undefined}
-                    />
-                  </Section>
-                </div>
-              )}
 
               <Section
                 className={SECTION_BLEED}
@@ -499,28 +477,6 @@ export function CloseoutPage() {
                     currencyCode={currencyCode}
                     bookTimeZone={bookTimeZone}
                   />
-                </Section>
-              )}
-
-              {/* The OTHER sweep (brief 20 §8.3): the balance sweep proves our
-                  own rows balance, this one asks whether the connected system
-                  agrees with them. On the period already on screen, as of its
-                  last day, and only when somebody presses the button - the read
-                  costs a round trip to the provider and the drift it finds is
-                  made at close, not on a Tuesday. */}
-              {!!activePeriodKey && (
-                <Section
-                  title={`Does ${providerLabel} agree?`}
-                  icon={<ArrowLeftRight className='size-4' />}
-                  description='Our balances and theirs as of the last day of this month, account by account. A comparison only - nothing here posts, and no statement reads it.'
-                  collapsible={false}
-                  actions={
-                    <ProviderAgreementAction
-                      agreement={agreement}
-                      asOf={lastDayOfPeriod(activePeriodKey)}
-                    />
-                  }>
-                  <ProviderAgreementPanel agreement={agreement} />
                 </Section>
               )}
             </>

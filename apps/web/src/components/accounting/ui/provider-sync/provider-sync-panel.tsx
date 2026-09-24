@@ -46,6 +46,8 @@ import { describeProviderSyncRun, ProviderSyncReport } from './provider-sync-rep
 export interface ProviderSyncNowRowProps {
   /** Today in the BOOK timezone - the `to` every press sends. */
   todayInBooks: string
+  /** `YYYY-MM` the previous system last closed; the sync reads from the month after. */
+  cutoverPeriod?: string
 }
 
 /**
@@ -55,7 +57,7 @@ export interface ProviderSyncNowRowProps {
  * date is a calendar day in the books' own zone, and defaulting to the viewer's
  * would put a bookkeeper in Auckland a day ahead of their own ledger.
  */
-export function ProviderSyncNowRow({ todayInBooks }: ProviderSyncNowRowProps) {
+export function ProviderSyncNowRow({ todayInBooks, cutoverPeriod }: ProviderSyncNowRowProps) {
   const provider = useAccountingProviderStatus()
   const { can } = useAccess()
   const utils = api.useUtils()
@@ -87,7 +89,7 @@ export function ProviderSyncNowRow({ todayInBooks }: ProviderSyncNowRowProps) {
   return (
     <FieldPanelRow
       title='Sync now'
-      description={`Read ${providerLabel}'s general ledger from the cutover forward and write everything your accountant authored there into these books. Depreciation, accruals, reclasses and payroll - the entries that are never authored here.`}>
+      description={`Read ${providerLabel}'s general ledger from the ${cutoverPeriod ? `${cutoverPeriod} cutover` : 'cutover'} forward and write everything your accountant authored there into these books. Depreciation, accruals, reclasses and payroll - the entries that are never authored here.`}>
       <div className='flex w-full flex-col gap-2'>
         <div className='flex items-center justify-between gap-2'>
           <span className='text-sm'>{reading.headline}</span>

@@ -28,7 +28,7 @@ interface LedgerBannersProps {
   /** Every blocker is an ordinary outcome rather than a fault. */
   isSoftRefusal: boolean
   onFix: (key: FixableBlockerItemKey) => void
-  onReviewLock: () => void
+  onReviewLock?: () => void
   /** Absent on the newest month. */
   onNextPeriod?: () => void
 }
@@ -135,7 +135,7 @@ function CloseBlockersRow({
   blockers: LedgerBlocker[]
   isSoftRefusal: boolean
   onFix: (key: FixableBlockerItemKey) => void
-  onReviewLock: () => void
+  onReviewLock?: () => void
   onNextPeriod?: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
