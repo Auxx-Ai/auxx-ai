@@ -505,7 +505,6 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
           <ConnectorBreadcrumbSwitcher
             activeConnectorId={connector.id}
             activeLabel={connector.name}
-            activeType={connector.type}
           />
           <ConnectorStatusLine
             status={liveStatus}

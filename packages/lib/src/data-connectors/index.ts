@@ -107,6 +107,7 @@ export {
   genericRestConnector,
   isConnectorCheckpoint,
   PermanentSteerError,
+  STRIPE_FC_CONNECTOR_TYPE,
 } from './connectors'
 // Cross-connector record linking (shipstation-status-and-linking-plan §4): the links
 // the connector-scoped two-pass structurally cannot resolve.
