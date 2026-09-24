@@ -238,16 +238,16 @@ describe('the union of every pack', () => {
   // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
   // `clearing_affirm` role: a default chart must not name a vendor.
   // The number itself is not the point; being made to state it is.
-  it('totals sixty-two accounts: twenty-eight core, then three, three, eleven, six, five, three and three', () => {
+  it('totals sixty-three accounts: twenty-eight core, then three, three, eleven, seven, five, three and three', () => {
     expect(codesOf('core')).toHaveLength(28)
     expect(codesOf('card_rail')).toHaveLength(3)
     expect(codesOf('prepayments')).toHaveLength(3)
     expect(codesOf('inventory')).toHaveLength(11)
-    expect(codesOf('purchasing')).toHaveLength(6)
+    expect(codesOf('purchasing')).toHaveLength(7)
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(62)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(63)
   })
 })
 
@@ -393,6 +393,7 @@ describe('the other packs', () => {
         ACCOUNT_ROLES.PPV,
         ACCOUNT_ROLES.PURCHASE_TAX,
         ACCOUNT_ROLES.PURCHASE_DISCOUNTS,
+        ACCOUNT_ROLES.PURCHASED_SERVICES,
       ].sort()
     )
     // And the three packs brief 21 added drive no role at all - they exist so a
@@ -434,6 +435,14 @@ describe('the other packs', () => {
         (account) => account.role === ACCOUNT_ROLES.PURCHASE_DISCOUNTS
       )
     ).toHaveLength(1)
+  })
+
+  // 107 §9: a service bought to fulfil a sale is cost of sales, not operating expense.
+  it('seeds purchased services once, at 5050 in purchasing, as cost of goods sold', () => {
+    expect(byCode.get('5050')?.name).toBe('Cost of Services')
+    expect(byCode.get('5050')?.role).toBe(ACCOUNT_ROLES.PURCHASED_SERVICES)
+    expect(byCode.get('5050')?.subtype).toBe('cost_of_goods_sold')
+    expect(packForRole(ACCOUNT_ROLES.PURCHASED_SERVICES)).toBe('purchasing')
   })
 
   // Inbound freight is CAPITALISED into landed cost and accrues to a liability;

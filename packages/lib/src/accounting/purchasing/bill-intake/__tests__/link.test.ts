@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   results: [] as unknown[][],
   selectCalls: 0,
   grniAccountId: null as string | null,
+  servicesAccountId: null as string | null,
+  partKinds: new Map<string, string>(),
   grniShouldErr: false,
   updateCalls: [] as { recordId: string; values: Record<string, unknown> }[],
 }))
@@ -32,14 +34,19 @@ vi.mock('../../../../cache', () => ({
 }))
 
 vi.mock('../../../ledger/roles/resolve-roles', () => ({
-  resolveRoles: vi.fn(async () => {
+  resolveRoles: vi.fn(async (_db: unknown, _org: string, roles: string[]) => {
     const { ok, err } = await import('neverthrow')
     if (h.grniShouldErr) {
       const { UnprocessableEntityError } = await import('../../../../errors')
       return err(new UnprocessableEntityError('grni not mapped'))
     }
-    return ok(h.grniAccountId ? new Map([['grni', { glAccountId: h.grniAccountId }]]) : new Map())
+    const account = roles[0] === 'purchased_services' ? h.servicesAccountId : h.grniAccountId
+    return ok(account ? new Map([[roles[0], { glAccountId: account }]]) : new Map())
   }),
+}))
+
+vi.mock('../../../../inventory/builds/build-queries', () => ({
+  readPartKinds: vi.fn(async () => h.partKinds),
 }))
 
 vi.mock('../../../../resources/crud/unified-handler', () => ({
@@ -98,6 +105,8 @@ beforeEach(() => {
   h.results = []
   h.selectCalls = 0
   h.grniAccountId = null
+  h.servicesAccountId = null
+  h.partKinds = new Map()
   h.grniShouldErr = false
   h.updateCalls = []
 })
@@ -312,6 +321,46 @@ describe('linkBillLines', () => {
     expect(
       h.updateCalls.every((call) => call.values.vendor_bill_line_gl_account === 'acct_1')
     ).toBe(true)
+  })
+
+  it('stamps purchased_services, not grni, on a line whose part is a service (107 §9)', async () => {
+    h.grniAccountId = 'acct_grni'
+    h.servicesAccountId = 'acct_services'
+    h.partKinds = new Map([['part_svc', 'service']])
+    setupRows({
+      billOrder: [{ entityId: 'bill_1', relatedEntityId: 'po_1' }],
+      lineBill: [
+        { entityId: 'l1', relatedEntityId: 'bill_1' },
+        { entityId: 'l2', relatedEntityId: 'bill_1' },
+      ],
+      orderLineOrder: [
+        { entityId: 'pol1', relatedEntityId: 'po_1' },
+        { entityId: 'pol2', relatedEntityId: 'po_1' },
+      ],
+      orderLinePart: [
+        { entityId: 'pol1', relatedEntityId: 'part_1' },
+        { entityId: 'pol2', relatedEntityId: 'part_svc' },
+      ],
+    })
+
+    await linkBillLines(db, 'org_1', 'user_1', {
+      billRecordId: 'vendor_bill:bill_1' as never,
+      links: [
+        {
+          lineRecordId: 'vendor_bill_line:l1' as never,
+          orderLineRecordId: 'purchase_order_line:pol1' as never,
+        },
+        {
+          lineRecordId: 'vendor_bill_line:l2' as never,
+          orderLineRecordId: 'purchase_order_line:pol2' as never,
+        },
+      ],
+    })
+
+    expect(h.updateCalls.map((call) => call.values.vendor_bill_line_gl_account)).toEqual([
+      'acct_grni',
+      'acct_services',
+    ])
   })
 
   it('refuses when the bill has no purchase order', async () => {

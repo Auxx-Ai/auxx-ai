@@ -810,6 +810,14 @@ const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'purchase_discounts',
     subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
+  {
+    // A service bought to fulfil a sale (an installer) is cost of sales, not overhead (107 §9).
+    code: '5050',
+    name: 'Cost of Services',
+    accountType: GlAccountType.EXPENSE,
+    role: 'purchased_services',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1079,7 +1087,7 @@ export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
     key: 'purchasing',
     label: 'Purchase orders, receiving and vendor bills',
     description:
-      'Goods received not invoiced, inbound freight and duties accruals, and purchase price variance.',
+      'Goods received not invoiced, inbound freight and duties accruals, purchase price variance and purchased services.',
     requires: ['inventory'],
     accounts: PURCHASING_ACCOUNTS,
   },

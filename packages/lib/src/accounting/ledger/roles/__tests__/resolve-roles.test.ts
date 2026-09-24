@@ -50,6 +50,8 @@ vi.mock('../../../../cache', () => ({
   }),
 }))
 
+import { refusalFromError } from '../../../work-items/refusal'
+import { buildVendorBillEntry } from '../../builders/entry'
 import { CHART_PACKS, type ChartPackKey, packForRole } from '../../chart/default-chart'
 import type { GlPostingLineInput } from '../../types'
 import { loadRoleAccountCodes, resolveAccountLines, resolveRoles } from '../resolve-roles'
@@ -359,6 +361,68 @@ describe('resolveRoles - it answers for the whole set at once', () => {
     expect(error.message).toMatch(/is not mapped to any account/i)
     expect(error.message).toMatch(/'ppv' is marked as unused/i)
     expect(error.message).toMatch(/'undeposited_funds' must be mapped to a asset account/i)
+  })
+})
+
+// 107 §9: an uncoded service line posts to `purchased_services` through this same door.
+describe('resolveRoles - a vendor bill service line', () => {
+  const built = buildVendorBillEntry({
+    vendorBillId: 'vb_1',
+    internalNumber: 'BILL-0001',
+    billedAt: '2026-09-02',
+    totalMinor: 5_000,
+    lines: [{ lineId: 'l1', description: 'Install', lineTotalMinor: 5_000, service: true }],
+  })
+  const entryRoles = built.entry.lines.flatMap((line) =>
+    line.accountRole ? [line.accountRole] : []
+  )
+
+  it('resolves the mapped purchased_services role to its cost-of-sales account', async () => {
+    const db = stubDb(
+      [
+        { role: 'purchased_services', glAccountId: 'acct_cos' },
+        { role: 'accounts_payable', glAccountId: 'acct_ap' },
+      ],
+      [
+        {
+          id: 'acct_cos',
+          code: '5050',
+          name: 'Cost of Services',
+          accountType: 'expense',
+          isActive: true,
+        },
+        {
+          id: 'acct_ap',
+          code: '2000',
+          name: 'Accounts Payable',
+          accountType: 'liability',
+          isActive: true,
+        },
+      ]
+    )
+    const resolved = (await resolveRoles(db, ORG, entryRoles))._unsafeUnwrap()
+    expect(resolved.get('purchased_services')?.glAccountId).toBe('acct_cos')
+  })
+
+  it('refuses an unmapped purchased_services role as ROLE_UNMAPPED', async () => {
+    const db = stubDb(
+      [{ role: 'accounts_payable', glAccountId: 'acct_ap' }],
+      [
+        {
+          id: 'acct_ap',
+          code: '2000',
+          name: 'Accounts Payable',
+          accountType: 'liability',
+          isActive: true,
+        },
+      ]
+    )
+    const error = await expectErr(resolveRoles(db, ORG, entryRoles))
+    expect(error.message).toContain('(Purchased Services)')
+    expect(refusalFromError(error)).toMatchObject({
+      reasonCode: 'ROLE_UNMAPPED',
+      role: 'purchased_services',
+    })
   })
 })
 

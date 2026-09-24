@@ -38,7 +38,7 @@ import { isAccountingEnabled } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { recomputeTotals } from '../../sales/totals/totals-hooks'
-import { resolveGrniAccountId } from '../bill-intake/link'
+import { resolveGrniAccountId, resolvePurchasedServicesAccountId } from '../bill-intake/link'
 import { postVendorCreditEntryInTx, reverseVendorCreditEntry } from './accounting'
 import type { VendorCreditLineDraft } from './client'
 import {
@@ -127,8 +127,8 @@ function assertLineInputs(lines: readonly VendorCreditLineDraft[]): void {
  *
  * A credit raised against a PO-backed bill gets every uncoded line prefilled
  * with the org's resolved `grni` account, so the short-shipment entry
- * `Dr A/P / Cr GRNI` falls out of the one builder. The person may recode a line
- * before issue.
+ * `Dr A/P / Cr GRNI` falls out of the one builder; an uncoded service line takes
+ * the `purchased_services` account instead. The person may recode a line before issue.
  */
 export async function createVendorCredit(
   db: Database,
@@ -167,19 +167,24 @@ export async function createVendorCredit(
 
   // The prefill is resolved ONCE, and only when it can be needed. `null` when
   // the org has not mapped the role - a line then arrives uncoded and the
-  // builder refuses the issue naming it, which is the right failure: a guessed
-  // account balances perfectly and is invisible.
-  const needsPrefill =
-    !!input.purchaseOrderInstanceId && lines.some((line) => !line.glAccountInstanceId)
-  const grniAccountId = needsPrefill ? await resolveGrniAccountId(db, organizationId) : null
-  // A service was never received, so it has no GRNI to credit back (107-D10).
-  const partKinds = needsPrefill
-    ? await readPartKinds(
-        db,
-        organizationId,
-        lines.map((line) => line.partInstanceId).filter((id): id is string => !!id)
-      )
-    : new Map<string, string>()
+  // issue refuses naming it, which is the right failure: a guessed account
+  // balances perfectly and is invisible.
+  const uncoded = lines.filter((line) => !line.glAccountInstanceId)
+  const partKinds = await readPartKinds(
+    db,
+    organizationId,
+    uncoded.map((line) => line.partInstanceId).filter((id): id is string => !!id)
+  )
+  // A service was never received, so it has no GRNI to credit back (107-D10); it
+  // takes `purchased_services` instead (107 §9).
+  const isService = (line: VendorCreditLineDraft) =>
+    !!line.partInstanceId && isServicePartKind(partKinds.get(line.partInstanceId))
+  const [grniAccountId, servicesAccountId] = await Promise.all([
+    input.purchaseOrderInstanceId && uncoded.some((line) => !isService(line))
+      ? resolveGrniAccountId(db, organizationId)
+      : null,
+    uncoded.some(isService) ? resolvePurchasedServicesAccountId(db, organizationId) : null,
+  ])
 
   const items = lines.map((line, index) => {
     const values: Record<string, unknown> = {
@@ -190,8 +195,8 @@ export async function createVendorCredit(
       vendor_credit_line_sort_order: index,
     }
     if (line.description) values.vendor_credit_line_description = line.description
-    const isService = !!line.partInstanceId && isServicePartKind(partKinds.get(line.partInstanceId))
-    const glAccountId = line.glAccountInstanceId ?? (isService ? null : grniAccountId)
+    const glAccountId =
+      line.glAccountInstanceId ?? (isService(line) ? servicesAccountId : grniAccountId)
     if (glAccountId) values.vendor_credit_line_gl_account = glAccountId
     if (line.partInstanceId)
       values.vendor_credit_line_part = toRecordId('part', line.partInstanceId)
@@ -265,6 +270,16 @@ async function resolveIssue(
   const issuedAt = input.issuedAt ?? credit.issuedAt ?? (await todayInBookTimeZone(organizationId))
 
   const lines = await loadVendorCreditLines(db, organizationId, credit.lineIds)
+  // An uncoded service line posts to `purchased_services` rather than refusing (107 §9).
+  const partKinds = options.buildEntry
+    ? await readPartKinds(
+        db,
+        organizationId,
+        lines.flatMap((line) =>
+          !line.glAccountId && line.partInstanceId ? [line.partInstanceId] : []
+        )
+      )
+    : new Map<string, string>()
 
   const built = options.buildEntry
     ? buildVendorCreditEntry({
@@ -280,6 +295,7 @@ async function resolveIssue(
             glAccountId: line.glAccountId,
             amount: line.lineTotalMinor,
             description: line.description,
+            service: !!line.partInstanceId && isServicePartKind(partKinds.get(line.partInstanceId)),
           })
         ),
       })

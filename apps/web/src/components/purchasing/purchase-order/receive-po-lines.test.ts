@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   activeLines,
   buildReceivePoInput,
+  goodsLines,
   outstandingQuantity,
   prefillDraft,
   type ReceivablePoLine,
@@ -21,6 +22,17 @@ function line(overrides: Partial<ReceivablePoLine> = {}): ReceivablePoLine {
 }
 
 const META = { occurredAt: '2026-08-26T00:00:00.000Z', reference: '', reason: '' }
+
+describe('goodsLines', () => {
+  it('leaves service lines out of receiving (107 D10)', () => {
+    const lines = [
+      { id: 'a', service: false },
+      { id: 'b', service: true },
+    ]
+    expect(goodsLines(lines).map((line) => line.id)).toEqual(['a'])
+    expect(goodsLines([{ id: 'b', service: true }])).toEqual([])
+  })
+})
 
 describe('outstandingQuantity', () => {
   it('is ordered less received', () => {

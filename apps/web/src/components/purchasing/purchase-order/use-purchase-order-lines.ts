@@ -39,6 +39,7 @@
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { useEffect, useMemo } from 'react'
+import { isServiceKind } from '~/components/drawers/part-kind-gates'
 import {
   documentLineFilters,
   LINE_PAGE_SIZE,
@@ -72,6 +73,8 @@ const LINE_ATTRS = [
   'purchase_order_line_vendor_part',
   'purchase_order_line_weight',
 ] as const
+
+const PART_ATTRS = ['part_kind'] as const
 
 /** One purchase order line, as all three callers read it. */
 export interface PurchaseOrderLineRow {
@@ -110,6 +113,8 @@ export interface PurchaseOrderLineRow {
    * before it gets there needs the distinction this read preserves (§5.3).
    */
   weight: number | null
+  /** The line's part is a `service` (107 D10): never received, so it sits out receiving. */
+  service: boolean
 }
 
 /**
@@ -168,14 +173,31 @@ export function usePurchaseOrderLines(purchaseOrderRecordId: RecordId | null): {
     { autoFetch: true, enabled: lineRecordIds.length > 0 }
   )
 
+  const partRecordIds = useMemo(
+    () => [
+      ...new Set(
+        lineRecordIds.flatMap((lineRecordId) =>
+          extractRelationshipRecordIds(valuesById[lineRecordId]?.purchase_order_line_part)
+        )
+      ),
+    ],
+    [lineRecordIds, valuesById]
+  )
+  const { valuesById: partValuesById } = useSystemValuesForRecords(partRecordIds, PART_ATTRS, {
+    autoFetch: true,
+    enabled: partRecordIds.length > 0,
+  })
+
   const lines = useMemo<PurchaseOrderLineRow[]>(
     () =>
       lineRecordIds.map((lineRecordId) => {
         const v = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
         const description = unwrapValue(v.purchase_order_line_description)
+        const partRecordId = extractRelationshipRecordIds(v.purchase_order_line_part)[0] ?? null
         return {
           lineRecordId,
-          partRecordId: extractRelationshipRecordIds(v.purchase_order_line_part)[0] ?? null,
+          partRecordId,
+          service: !!partRecordId && isServiceKind(partValuesById[partRecordId]?.part_kind),
           description: typeof description === 'string' && description ? description : null,
           ordered: numberValue(v.purchase_order_line_quantity_ordered),
           received: numberValue(v.purchase_order_line_quantity_received),
@@ -190,7 +212,7 @@ export function usePurchaseOrderLines(purchaseOrderRecordId: RecordId | null): {
           weight: numberOrNull(v.purchase_order_line_weight),
         }
       }),
-    [lineRecordIds, valuesById]
+    [lineRecordIds, valuesById, partValuesById]
   )
 
   return { lines, isLoading: isLoading || (lineRecordIds.length > 0 && valuesLoading) }

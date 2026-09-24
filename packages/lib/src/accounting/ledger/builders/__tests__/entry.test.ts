@@ -274,10 +274,33 @@ describe('buildVendorBillEntry - the one bill entry (73 D2, D3, D5)', () => {
     })
   })
 
-  it('refuses an uncoded service matched to an order line, naming it', () => {
-    expect(() => buildVendorBillEntry({ ...BILL, lines: [{ ...LINKED, service: true }] })).toThrow(
-      /service line with no GL account: Motors/
-    )
+  it('an uncoded service, linked or not, debits the purchased_services role (107 §9)', () => {
+    const built = buildVendorBillEntry({
+      ...BILL,
+      totalMinor: 56_000,
+      lines: [
+        { ...LINKED, service: true },
+        { lineId: 'l2', description: 'Install', lineTotalMinor: 6_000, service: true },
+      ],
+    })
+    expect(roles(built)).not.toContain(ACCOUNT_ROLES.GRNI)
+    expect(
+      built.entry.lines.filter((line) => line.accountRole === ACCOUNT_ROLES.PURCHASED_SERVICES)
+    ).toMatchObject([
+      { direction: 'debit', amount: 50_000 },
+      { direction: 'debit', amount: 6_000 },
+    ])
+    expect(built.entry.lines.some((line) => line.glAccountId)).toBe(false)
+  })
+
+  it('still refuses an uncoded line that is not a service', () => {
+    expect(() =>
+      buildVendorBillEntry({
+        ...BILL,
+        totalMinor: 6_000,
+        lines: [{ lineId: 'l2', description: 'Pallets', lineTotalMinor: 6_000 }],
+      })
+    ).toThrow(/no GL account: Pallets/)
   })
 
   it('debits PPV when the vendor billed HIGH and credits it when LOW', () => {

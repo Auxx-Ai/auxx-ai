@@ -92,6 +92,28 @@ describe('buildVendorCreditEntry', () => {
     ).toThrow(/Unallocated/)
   })
 
+  it('credits purchased_services for an uncoded service line, and keeps an explicit account (107 §9)', () => {
+    const built = buildVendorCreditEntry({
+      ...BASE,
+      total: 3_000,
+      lines: [
+        { lineId: 'l1', glAccountId: null, amount: 2_000, description: 'Install', service: true },
+        {
+          lineId: 'l2',
+          glAccountId: 'ei_own',
+          amount: 1_000,
+          description: 'Labour',
+          service: true,
+        },
+      ],
+    })
+    expect(built.entry.lines.slice(1)).toMatchObject([
+      { accountRole: ACCOUNT_ROLES.PURCHASED_SERVICES, direction: 'credit', amount: 2_000 },
+      { glAccountId: 'ei_own', direction: 'credit', amount: 1_000 },
+    ])
+    expect(built.creditLines[0]?.glAccountId).toBeNull()
+  })
+
   it('refuses when the coded lines do not sum to the stored total', () => {
     expect(() =>
       buildVendorCreditEntry({

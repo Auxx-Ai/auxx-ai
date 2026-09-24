@@ -951,7 +951,12 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         role: ACCOUNT_ROLES.PPV,
         what: 'Price variance against the order; the side follows the sign',
       },
-      { side: 'debit', role: 'by id', what: 'Each unmatched line, the account it was coded to' },
+      // `purchased_services` stays off the template so connect-and-go does not mint it (107 §9).
+      {
+        side: 'debit',
+        role: 'by id',
+        what: 'Each unmatched line, the account it was coded to; an uncoded service line, purchased services',
+      },
       {
         side: 'debit',
         role: ACCOUNT_ROLES.FREIGHT_ACCRUAL,

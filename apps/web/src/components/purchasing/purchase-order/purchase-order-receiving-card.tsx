@@ -40,6 +40,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useRecord } from '~/components/resources'
 import { formatQuantity, PurchasingSummaryStrip } from '../purchasing-summary-strip'
+import { goodsLines } from './receive-po-lines'
 import { ReceivePurchaseOrderDialog } from './receive-purchase-order-dialog'
 import { type PurchaseOrderLineRow, usePurchaseOrderLines } from './use-purchase-order-lines'
 
@@ -49,18 +50,21 @@ const LINE_PREVIEW_LIMIT = 6
 export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const { lines, isLoading: loading } = usePurchaseOrderLines(recordId)
+  // The figures count goods only: a service is never received (107 D10).
+  const goods = goodsLines(lines)
 
-  const ordered = lines.reduce((sum, line) => sum + line.ordered, 0)
-  const received = lines.reduce((sum, line) => sum + line.received, 0)
+  const ordered = goods.reduce((sum, line) => sum + line.ordered, 0)
+  const received = goods.reduce((sum, line) => sum + line.received, 0)
   // Per line rather than on the totals: an over-receipt on one line must not
   // cancel an under-receipt on another and report the order complete.
-  const outstanding = lines.reduce(
+  const outstanding = goods.reduce(
     (sum, line) => sum + Math.max(0, line.ordered - line.received),
     0
   )
 
   if (loading) return <RowSkeleton />
   if (lines.length === 0) return <EmptyRow label='No lines yet' />
+  if (goods.length === 0) return <EmptyRow label='Services need no receiving' />
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
@@ -106,7 +110,9 @@ function ReceivingLineRow({ line }: { line: PurchaseOrderLineRow }) {
   // The part IS a buy-side line's identity (03-line-builder-reuse.md), so it leads;
   // `description` is the fallback for a line whose part has not resolved yet.
   const title = record?.displayName ?? line.description ?? 'Untitled line'
-  const progress = receivingProgress(line)
+  const progress = line.service
+    ? { label: '—', variant: 'secondary' as Variant }
+    : receivingProgress(line)
 
   return (
     <TreeRow

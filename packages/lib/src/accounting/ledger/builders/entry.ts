@@ -273,6 +273,11 @@ export const ACCOUNT_ROLES = {
    * same reading `revenue_returns_allowances` gets in the other direction.
    */
   PURCHASE_DISCOUNTS: 'purchase_discounts',
+  /**
+   * Purchased services (default `5050`). A vendor bill or credit line for a `service` part with
+   * no account of its own; cost of sales, since a bought-in service fulfils a customer sale.
+   */
+  PURCHASED_SERVICES: 'purchased_services',
 
   // ── Added 2026-09-04 by plans/accounting/HANDOFF.md wave 0 (slot 0A) ──────
   // The roles the revenue, payment, deposit, opening-balance and statement work
@@ -450,6 +455,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   inventory_revaluation: 'expense',
   purchase_tax: 'expense',
   purchase_discounts: 'expense',
+  purchased_services: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing: 'asset',
@@ -516,6 +522,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   inventory_revaluation: 'Inventory Revaluation',
   purchase_tax: 'Purchase Tax',
   purchase_discounts: 'Purchase Discounts',
+  purchased_services: 'Purchased Services',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing: 'Clearing',
@@ -832,7 +839,7 @@ export interface VendorBillLineInput {
   purchaseOrderLineId?: string | null
   /**
    * The line's part is a `service` (107-D10). A service is never received, so a linked one has
-   * no GRNI to relieve and posts to its coded account like an unlinked line.
+   * no GRNI to relieve: it posts to its coded account, else to `purchased_services`.
    */
   service?: boolean
   /** `vendor_bill_line_quantity_billed`. Read on a LINKED line only. */
@@ -844,8 +851,8 @@ export interface VendorBillLineInput {
    */
   unitPriceExpectedMinor?: number | null
   /**
-   * `vendor_bill_line_gl_account`. Required on an UNLINKED line; missing is a
-   * refusal naming the line, never a fallback account.
+   * `vendor_bill_line_gl_account`. Required on an UNLINKED line other than a
+   * service; missing is a refusal naming the line, never a fallback account.
    */
   glAccountId?: string | null
   /** Shipping weight, for a `weight` allocation basis. */
@@ -945,7 +952,7 @@ export interface BuiltVendorBillEntry {
  * linked line     Dr grni                billed qty x expected price
  *                 Dr/Cr ppv              line total - billed x expected, less its discount share
  * unlinked line   Dr <its coded account> line total, less its discount share (signed)
- *   or a service  (linked or not: nothing was received, so there is no GRNI)
+ * service line    Dr <its coded account, else purchased_services>  (never GRNI: nothing was received)
  * landed line     Dr <the accrual>       up to what that shipment still has accrued
  *                 Dr ppv                 the excess over it       (74 D4)
  * shipping        Dr freight_accrual     the header, one leg      (the receipt accrued it)
@@ -1020,7 +1027,6 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
   // Batched rather than fail-fast: a bill with four uncoded lines names all
   // four, so the bookkeeper fixes them in one pass instead of four.
   const uncoded: string[] = []
-  const uncodedServices: string[] = []
   const untyped: string[] = []
   const read: Array<{
     line: VendorBillLineInput
@@ -1029,6 +1035,8 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
     /** Set on a linked line that is fully typed. */
     grniMinor: number | null
     glAccountId: string | null
+    /** An uncoded service line, posted to the `purchased_services` role. */
+    purchasedService: boolean
   }> = []
   let lineSumMinor = 0
 
@@ -1043,18 +1051,25 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
         continue
       }
       const grniMinor = Math.round(line.quantityBilled * line.unitPriceExpectedMinor)
-      read.push({ line, label, amountMinor, grniMinor, glAccountId: null })
+      read.push({ line, label, amountMinor, grniMinor, glAccountId: null, purchasedService: false })
       continue
     }
 
-    const glAccountId = line.glAccountId?.trim()
+    const glAccountId = line.glAccountId?.trim() || null
     // A zero line needs no account: `buildEntry` refuses a leg that moves
     // nothing, so it is dropped rather than refused. Checked after the drop.
-    if (!glAccountId && amountMinor !== 0) {
-      ;(line.purchaseOrderLineId ? uncodedServices : uncoded).push(label)
+    if (!glAccountId && amountMinor !== 0 && !line.service) {
+      uncoded.push(label)
       continue
     }
-    read.push({ line, label, amountMinor, grniMinor: null, glAccountId: glAccountId ?? null })
+    read.push({
+      line,
+      label,
+      amountMinor,
+      grniMinor: null,
+      glAccountId,
+      purchasedService: !glAccountId && !!line.service,
+    })
   }
 
   if (untyped.length > 0) {
@@ -1064,15 +1079,6 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
         `${untyped.join(', ')}. Type the quantity billed, or unlink the line and code it to an ` +
         'account.',
       { vendorBillId, number, lines: untyped.join(', ') }
-    )
-  }
-
-  if (uncodedServices.length > 0) {
-    throw new UnprocessableEntityError(
-      `Bill ${number} has ${uncodedServices.length === 1 ? 'a service line' : `${uncodedServices.length} service lines`} ` +
-        `with no GL account: ${uncodedServices.join(', ')}. A service is never received, so it ` +
-        'has no goods-received accrual to relieve - code it to the expense account it belongs in.',
-      { vendorBillId, number, lines: uncodedServices.join(', ') }
     )
   }
 
@@ -1144,7 +1150,17 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltVendorBi
       })
       return
     }
-    if (netMinor === 0 || !row.glAccountId) return
+    if (netMinor === 0) return
+    if (row.purchasedService) {
+      drafts.push({
+        accountRole: ACCOUNT_ROLES.PURCHASED_SERVICES,
+        direction: netMinor > 0 ? 'debit' : 'credit',
+        amount: Math.abs(netMinor),
+        memo: row.label,
+      })
+      return
+    }
+    if (!row.glAccountId) return
 
     // 74 D4: a landed line relieves its accrual only as far as the shipment
     // still has one, and the excess is a price variance like any other.
