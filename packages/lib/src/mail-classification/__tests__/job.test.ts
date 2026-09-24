@@ -200,19 +200,6 @@ describe('mailClassificationJob — nothing applied', () => {
     expect(h.rerun).toHaveBeenCalledTimes(1)
   })
 
-  it('no default model: NO marker, so the message stays classifiable once one is set', async () => {
-    h.classify.mockResolvedValue({
-      tagId: null,
-      confidence: 0,
-      reason: 'no-default-model',
-      inferred: false,
-    })
-
-    await mailClassificationJob(ctx())
-
-    expect(h.mark).not.toHaveBeenCalled()
-  })
-
   // ⚠️ THE REGRESSION. A failed call spends nothing and decides nothing, so the
   // C9 marker must not go down — stamping it disqualified the message from ever
   // being classified, permanently, for a condition that usually clears by

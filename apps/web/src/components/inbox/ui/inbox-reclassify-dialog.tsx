@@ -442,7 +442,6 @@ function SampleProgress({ processed, total }: { processed: number; total: number
  */
 /** Plain-language cause for each failure arm, for the results line. */
 const FAILURE_LABELS: Record<MailClassificationFailureReason, string> = {
-  'no-default-model': 'no default model configured',
   'quota-exceeded': 'out of AI credits',
   unavailable: 'the provider was unavailable',
   error: 'an unexpected error',

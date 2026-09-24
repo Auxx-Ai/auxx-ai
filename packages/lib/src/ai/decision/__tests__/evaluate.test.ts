@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   getCachedDefaultModel: vi.fn(),
   getCredentials: vi.fn(),
+  getSystemCredentials: vi.fn(),
   getModelCapabilities: vi.fn(),
   createClient: vi.fn(),
   getDecisionClient: vi.fn(),
@@ -19,7 +20,10 @@ vi.mock('@auxx/logger', () => ({
   createScopedLogger: () => ({ info: vi.fn(), warn: h.warn, error: vi.fn(), debug: vi.fn() }),
 }))
 vi.mock('../../../cache', () => ({ getCachedDefaultModel: h.getCachedDefaultModel }))
-vi.mock('../../providers/config', () => ({ getCredentials: h.getCredentials }))
+vi.mock('../../providers/config', () => ({
+  getCredentials: h.getCredentials,
+  getSystemCredentials: h.getSystemCredentials,
+}))
 vi.mock('../../providers/provider-registry', () => ({
   ProviderRegistry: {
     getModelCapabilities: h.getModelCapabilities,
@@ -83,6 +87,11 @@ beforeEach(() => {
   )
   h.getCredentials.mockResolvedValue({
     credentials: { apiKey: 'k' },
+    providerType: 'SYSTEM',
+    credentialSource: 'SYSTEM',
+  })
+  h.getSystemCredentials.mockResolvedValue({
+    credentials: { apiKey: 'platform' },
     providerType: 'SYSTEM',
     credentialSource: 'SYSTEM',
   })
@@ -280,5 +289,38 @@ describe('evaluate — fallback (D9)', () => {
     h.invoke.mockRejectedValue(new Error('second failure'))
     const result = await evaluate(db, input)
     expect(result._unsafeUnwrapErr().message).toBe('second failure')
+  })
+})
+
+describe('evaluate — forceSystem with a pinned model and fallback', () => {
+  const pinned = { ...input, model: NATIVE, fallbackModel: NANO, forceSystem: true }
+
+  it('uses SYSTEM credentials on the native path and never reads the org defaults', async () => {
+    const result = await evaluate(db, pinned)
+
+    expect(result.isOk()).toBe(true)
+    expect(h.getSystemCredentials).toHaveBeenCalledWith(expect.anything(), NATIVE.provider)
+    expect(h.getCredentials).not.toHaveBeenCalled()
+    expect(h.getCachedDefaultModel).not.toHaveBeenCalled()
+    expect(h.enforceAiQuota.mock.calls[0]![1]).toMatchObject({ forceSystem: true })
+  })
+
+  it('falls back to the given model, not the org LLM default, with forceSystem kept', async () => {
+    defaults({ llm: LLM })
+    h.createClient.mockRejectedValue(
+      new ProviderError('blocked', 'typesafe', 'LIMITED_USE_BLOCKED')
+    )
+
+    const result = await evaluate(db, pinned)
+
+    expect(result._unsafeUnwrap().model).toBe(NANO.model)
+    expect(h.invoke.mock.calls[0]![0]).toMatchObject({ ...NANO, forceSystem: true })
+    expect(h.getCachedDefaultModel).not.toHaveBeenCalled()
+  })
+
+  it('does not force SYSTEM credentials unless asked', async () => {
+    defaults({ llm: LLM })
+    await evaluate(db, input)
+    expect(h.invoke.mock.calls[0]![0]).not.toHaveProperty('forceSystem')
   })
 })

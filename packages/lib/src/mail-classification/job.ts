@@ -99,9 +99,8 @@ export async function mailClassificationJob(
   //
   // ⚠️ Gated on `inferred`, never on the reason. A failed call — no credits, a
   // provider 429, a network blip — spent nothing and decided nothing, so it must
-  // leave the message classifiable exactly as `'no-default-model'` does. Marking
-  // those disqualified the message forever, silently, for a condition that
-  // typically resolves on its own.
+  // leave the message classifiable. Marking those disqualified the message
+  // forever, silently, for a condition that typically resolves on its own.
   if (!result.inferred) {
     return { classified: false, confidence: result.confidence, skipped: result.reason }
   }

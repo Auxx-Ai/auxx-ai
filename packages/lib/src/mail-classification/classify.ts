@@ -11,8 +11,6 @@ import { createScopedLogger } from '@auxx/logger'
 import type { DecisionAnswer, DecisionQuestion, DecisionState } from '../ai/decision/client'
 import { evaluate } from '../ai/decision/evaluate'
 import { QuotaExceededError } from '../ai/errors/quota-errors'
-import { ModelType } from '../ai/providers/types'
-import { getCachedDefaultModel } from '../cache'
 import { UnprocessableEntityError, UsageLimitError } from '../errors'
 import {
   MAIL_CLASSIFY_BODY_CHARS,
@@ -30,6 +28,29 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('mail-classification')
+
+/**
+ * Platform models for mail classification, always on SYSTEM credentials and billed to the
+ * org's AI credits — never the org's own decision or LLM default. The fallback is Limited-Use
+ * safe, so Gmail orgs (where TypeSafe is blocked) land on it.
+ */
+export const MAIL_CLASSIFICATION_MODEL = parseModelOverride(
+  process.env.MAIL_CLASSIFICATION_MODEL_OVERRIDE,
+  { provider: 'typesafe', model: 'jev-1.13.0' }
+)
+export const MAIL_CLASSIFICATION_FALLBACK_MODEL = parseModelOverride(
+  process.env.MAIL_CLASSIFICATION_FALLBACK_MODEL_OVERRIDE,
+  { provider: 'openai', model: 'gpt-5.4-nano' }
+)
+
+function parseModelOverride(
+  raw: string | undefined,
+  fallback: { provider: string; model: string }
+): { provider: string; model: string } {
+  const [provider, ...modelParts] = raw?.split(':') ?? []
+  const model = modelParts.join(':')
+  return provider && model ? { provider, model } : fallback
+}
 
 const CATEGORY_INSTRUCTIONS = [
   'Categorise this inbound customer email for a help desk.',
@@ -195,34 +216,15 @@ export async function classifyMessage(
 ): Promise<MailClassificationResult> {
   const { organizationId, messageId, threadId } = context
 
-  // `evaluate` falls back from the decision default to the LLM default; only neither is a skip.
-  const configured = await Promise.all([
-    getCachedDefaultModel(organizationId, ModelType.DECISION),
-    getCachedDefaultModel(organizationId, ModelType.LLM),
-  ])
-    .then(([decision, llm]) => decision ?? llm)
-    .catch((error) => {
-      logger.warn('Mail classification could not resolve the org default models', {
-        organizationId,
-        messageId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-      return null
-    })
-  if (!configured) {
-    logger.info('Mail classification skipped — no decision or language model configured', {
-      organizationId,
-      messageId,
-    })
-    return { tagId: null, confidence: 0, reason: 'no-default-model', inferred: false }
-  }
-
   const outcome = await evaluate(db, {
     organizationId,
     // NULL, never `''`: `AiUsage.userId` is a FK and nobody asked for this call.
     userId: null,
     source: 'mail_classification',
     sourceId: messageId,
+    model: MAIL_CLASSIFICATION_MODEL,
+    fallbackModel: MAIL_CLASSIFICATION_FALLBACK_MODEL,
+    forceSystem: true,
     state: buildClassificationState(context),
     questions: buildClassificationQuestions(context.labels),
   })
@@ -261,7 +263,7 @@ export async function classifyMessage(
       organizationId,
       messageId,
       threadId,
-      model: configured.model,
+      model: MAIL_CLASSIFICATION_MODEL.model,
       reason,
       error: failure instanceof Error ? failure.message : String(failure),
     }
@@ -269,7 +271,13 @@ export async function classifyMessage(
     if (reason === 'error') logger.error(message, fields)
     else logger.warn(message, fields)
 
-    return { tagId: null, confidence: 0, reason, model: configured.model, inferred: false }
+    return {
+      tagId: null,
+      confidence: 0,
+      reason,
+      model: MAIL_CLASSIFICATION_MODEL.model,
+      inferred: false,
+    }
   }
 
   const { model, confidenceKind } = outcome.value
