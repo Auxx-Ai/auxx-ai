@@ -48,6 +48,11 @@ interface AppExecuteResult {
 
 const logger = createScopedLogger('app-connector-adapter')
 
+/** A missing hint would re-enqueue with no delay (and a throttled retry never counts as a stall). */
+const APP_THROTTLE_DEFAULT_MS = 2_000
+/** Keeps the delayed slice well inside the 5-min stale-run sweep (`STALE_RUN_MS`). */
+const APP_THROTTLE_MAX_MS = 60_000
+
 /**
  * Keys of `DataConnectorConfig` the PLATFORM owns. Everything else on a connector's
  * `config` belongs to the app's own declared `config` schema — see
@@ -333,7 +338,7 @@ export function appConnectorAdapter(
             if (rateLimited) {
               throw new ConnectorRateLimitError(
                 `App connector '${slug}' rate-limited by upstream`,
-                rateLimited.retryAfterMs
+                Math.min(rateLimited.retryAfterMs ?? APP_THROTTLE_DEFAULT_MS, APP_THROTTLE_MAX_MS)
               )
             }
 
