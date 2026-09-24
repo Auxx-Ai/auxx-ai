@@ -78,16 +78,21 @@ const TWO_LINE_ROW = [
   '[&>div:first-child>[data-slot=tree-row-title]]:pb-0',
   // The label cluster is a nowrap flex row by default; let it break.
   '[&>div:first-child]:flex-wrap',
+  // A zero basis keeps the title beside the icon and truncating, rather than
+  // wrapping under it once the account name outgrows the line.
+  '[&>div:first-child>[data-slot=tree-row-title]]:min-w-0',
+  '[&>div:first-child>[data-slot=tree-row-title]]:grow',
+  '[&>div:first-child>[data-slot=tree-row-title]]:basis-0',
   // A whole line of its own, aligned under the title.
   '[&>div:first-child>[data-slot=tree-row-secondary]]:basis-full',
   '[&>div:first-child>[data-slot=tree-row-secondary]]:ms-0',
-  '[&>div:first-child>[data-slot=tree-row-secondary]]:ps-[calc(2rem+var(--statement-label-indent,0px))]',
+  '[&>div:first-child>[data-slot=tree-row-secondary]]:ps-[calc(var(--statement-icon-width,1.75rem)+0.25rem+var(--statement-label-indent,0px))]',
   '[&>div:first-child>[data-slot=tree-row-secondary]]:pb-1',
 ].join(' ')
 
 const COLUMNS: StatementColumn[] = [
-  { key: 'debit', label: 'Debit', align: 'right' },
-  { key: 'credit', label: 'Credit', align: 'right' },
+  { key: 'debit', label: 'Debit', shortLabel: 'Dr', align: 'right' },
+  { key: 'credit', label: 'Credit', shortLabel: 'Cr', align: 'right' },
 ]
 
 export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalProps) {
@@ -186,6 +191,7 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
       rows={rows}
       currency={currencyCode}
       rowClassName={TWO_LINE_ROW}
+      amountLayout='offset'
       verdict={{
         label: balanced
           ? 'Balanced. Debits equal credits.'
