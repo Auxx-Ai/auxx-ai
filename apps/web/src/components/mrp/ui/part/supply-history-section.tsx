@@ -57,7 +57,7 @@ export function SupplyHistorySection({ partId }: { partId: string }) {
             return (
               <TreeRow
                 icon={<FileText className='size-4' />}
-                rowClassName={cn(excluded && 'opacity-50')}
+                rowClassName={cn('hover:bg-primary-100', excluded && 'opacity-50')}
                 title={
                   <RecordLink
                     recordId={

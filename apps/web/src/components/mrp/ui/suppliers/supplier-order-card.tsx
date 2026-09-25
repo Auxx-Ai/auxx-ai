@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Input } from '@auxx/ui/components/input'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { CalendarClock, FilePlus2, Package, PanelRight, ShoppingCart } from 'lucide-react'
@@ -66,7 +67,12 @@ export function SupplierOrderCard(props: SupplierOrderCardProps) {
 
   if (!card) {
     if (!props.card && fetched.isPending) return <TreeRowSkeleton />
-    return null
+    return variant === 'block' ? (
+      <EmptySection
+        orientation='horizontal'
+        title='Nothing to order from this supplier in the latest run'
+      />
+    ) : null
   }
 
   const body =

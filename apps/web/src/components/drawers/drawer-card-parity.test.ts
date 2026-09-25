@@ -315,11 +315,12 @@ describe('registry layout blocks', () => {
         .map((d) => d.block.label)
 
     expect(sectionLabels('company', 'purchasing')).toEqual([
+      'Next order',
+      'Supply performance',
       'Purchase orders',
       'Vendor bills',
       'Work orders',
-      'Ordering',
-      'Supply performance',
+      'Ordering settings',
     ])
     expect(sectionLabels('contact', 'billing')).toEqual([
       'Quotes',
