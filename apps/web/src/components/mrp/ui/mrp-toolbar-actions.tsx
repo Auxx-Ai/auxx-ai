@@ -5,7 +5,8 @@
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
+import { formatInTimeZone } from 'date-fns-tz'
 import { Play, X } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { ToolbarTitle } from '~/components/global/module-toolbar'
@@ -17,9 +18,22 @@ import { type MrpRun, useMrpRun } from '../hooks/use-mrp-run'
 
 const POLL_MS = 3000
 
-/** "as of Sep 24, 06:00" for a toolbar hint; undefined while there is no run. */
+/** A run's as-of day, "Sep 24". `asOf` is a day anchor stored at noon UTC; never format it with a time. */
+export function formatMrpAsOf(run: { asOfDay: string }): string {
+  return format(parseISO(run.asOfDay), 'MMM d')
+}
+
+/** When a run started on the org's wall clock, "Sep 24, 08:16": what tells two runs apart. */
+export function formatMrpRunStarted(
+  run: { startedAt: Date; zone: string },
+  pattern = 'MMM d, HH:mm'
+): string {
+  return formatInTimeZone(run.startedAt, run.zone, pattern)
+}
+
+/** "as of Sep 24" for a toolbar hint; undefined while there is no run. */
 export function mrpAsOfHint(run: MrpRun | null | undefined): string | undefined {
-  return run ? `as of ${format(run.asOf, 'MMM d, HH:mm')}` : undefined
+  return run ? `as of ${formatMrpAsOf(run)}` : undefined
 }
 
 /**
@@ -102,7 +116,7 @@ export function MrpToolbarActions() {
       {isPinned && (
         <Tooltip content='Back to the latest run'>
           <Button variant='ghost' size='sm' className='h-7 text-muted-foreground' onClick={clear}>
-            {run ? `Run of ${format(run.asOf, 'MMM d, HH:mm')}` : 'Pinned run'}
+            {run ? `Run of ${formatMrpRunStarted(run)}` : 'Pinned run'}
             <X />
           </Button>
         </Tooltip>

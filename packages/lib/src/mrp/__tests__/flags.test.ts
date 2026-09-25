@@ -112,9 +112,8 @@ describe('the remaining flags', () => {
     expect(computeFlags({ ...CLEAN, poLines: [line({})] })).toEqual([])
   })
 
-  it('unclassified with no lead time', () => {
+  it('unclassified with no lead time raises unclassified alone', () => {
     expect(computeFlags({ ...CLEAN, supplyType: 'unclassified', leadTimeSource: 'none' })).toEqual([
-      'no_lead_time',
       'unclassified',
     ])
   })

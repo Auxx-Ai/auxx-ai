@@ -14,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
-import { format } from 'date-fns'
 import {
   ArrowDownWideNarrow,
   ArrowUpDown,
@@ -24,11 +23,12 @@ import {
   ChevronDown,
   CircleAlert,
   Loader,
+  Package,
   TriangleAlert,
 } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { ReportGrid } from '~/components/global/report-grid/report-grid'
+import { ReportGrid, type RowIconRenderer } from '~/components/global/report-grid/report-grid'
 import type { ReportGridRow } from '~/components/global/report-grid/report-grid-layout'
 import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -37,7 +37,13 @@ import { useMrpDrawer } from '../../hooks/use-mrp-drawer'
 import { type MrpFilters, mrpListInput, useMrpFilters } from '../../hooks/use-mrp-filters'
 import { type MrpRun, type MrpRunAttempt, useMrpRun } from '../../hooks/use-mrp-run'
 import { MrpDrawerHost } from '../mrp-drawer-host'
-import { MrpRunNowButton, mrpAsOfHint, useMrpToolbar } from '../mrp-toolbar-actions'
+import {
+  formatMrpAsOf,
+  formatMrpRunStarted,
+  MrpRunNowButton,
+  mrpAsOfHint,
+  useMrpToolbar,
+} from '../mrp-toolbar-actions'
 import {
   ALL_PARTS_COLUMNS,
   flatAllParts,
@@ -47,6 +53,10 @@ import {
 
 /** The router's cap; the grid virtualises, so every page is fetched. */
 const PAGE_SIZE = 2000
+
+/** A part row gets the part glyph; a group heading gets none. */
+const partRowIcon: RowIconRenderer = (_row, hasChildren) =>
+  hasChildren ? null : <Package className='size-4 text-muted-foreground' />
 
 const SORT_LABEL: Record<MrpListSort, string> = {
   priority: 'Urgency',
@@ -156,6 +166,7 @@ export function AllPartsPage() {
         currency=''
         labelHeading='Part'
         defaultLabelWidth={260}
+        rowIcon={partRowIcon}
         search={search}
         openAll={!!term}
         defaultOpenIds={sectionIds}
@@ -168,7 +179,7 @@ export function AllPartsPage() {
               {loading
                 ? 'Loading'
                 : `${term ? `${matches.length} of ` : ''}${items.length} ${items.length === 1 ? 'part' : 'parts'}${hasNextPage ? ', loading more' : ''}`}
-              {listRun && ` · as of ${format(listRun.asOf, 'MMM d, HH:mm')}`}
+              {listRun && ` · as of ${formatMrpAsOf(listRun)}`}
             </span>
             <div className='flex items-center gap-1'>
               <Button
@@ -277,7 +288,7 @@ function NoPlanMessage({
             {failedRun.error ?? 'The run stopped without a reason.'}
             <br />
             {run
-              ? `The previous plan is from ${format(run.asOf, 'MMM d, HH:mm')}.`
+              ? `The previous plan is from ${formatMrpRunStarted(run)}.`
               : 'There is no earlier plan to fall back on.'}
           </>
         }

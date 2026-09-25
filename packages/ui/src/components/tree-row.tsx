@@ -354,7 +354,8 @@ export function TreeRow({
     <div style={{ paddingLeft: `${paddingLeftRem}rem` }}>
       <div
         className={cn(
-          'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
+          // The gap keeps a crowded `secondary` off the first `actions` cell.
+          'group/tree-row flex items-center justify-between gap-2 rounded-md text-sm px-1',
           'text-muted-foreground hover:bg-background',
           // A row is chrome, not prose. Without this the label falls back to
           // `cursor: auto`, which every browser resolves to an I-beam over text,

@@ -16,7 +16,7 @@ export const FLAG_EXPLANATIONS: Record<MrpFlag, string> = {
   relief_gaps: 'Some sales never relieved stock in the ledger, so usage reads low.',
   unbuilt_sales: 'More was sold than was built plus opening stock, so usage or on hand is off.',
   mirror_drift: 'The movement history disagrees with on hand.',
-  no_lead_time: 'No lead time on the vendor part or the build, so order-by dates are guesses.',
+  no_lead_time: 'No supplier lead time or build lead time is set, so no order-by date.',
   lead_time_drift: 'Receipts arrive on a different lead time from the stated one.',
   overdue_receipt: 'An issued purchase order is past its expected date.',
   wont_make_next_arrival: 'Stock runs out before the next scheduled order can arrive.',

@@ -277,7 +277,7 @@ describe('runMrpPlan: a normal night (04 §1)', () => {
       suggestionKind: null,
       flags: ['no_lead_time'],
     })
-    expect(items.get('widget')?.flags).toEqual(['no_lead_time', 'mirror_drift', 'unclassified'])
+    expect(items.get('widget')?.flags).toEqual(['mirror_drift', 'unclassified'])
   })
 })
 

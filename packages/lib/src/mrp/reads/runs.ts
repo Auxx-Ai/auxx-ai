@@ -39,6 +39,8 @@ export interface MrpRunListRow {
   flaggedCount: number
   /** The completed run every other read defaults to. */
   isLatest: boolean
+  /** The book time zone, so `startedAt` renders as the org's wall clock. */
+  zone: string
 }
 
 const DEFAULT_RUN_LIMIT = 50
@@ -125,6 +127,7 @@ export async function listRuns(
         .groupBy(I.mrpPlanRunId)
       const byRun = new Map(counts.map((c) => [c.runId, c]))
       const latest = await loadRun(db, organizationId)
+      const zone = await readBookTimeZoneOrUtc(organizationId)
 
       return runs.map((run) => {
         const c = byRun.get(run.id)
@@ -141,6 +144,7 @@ export async function listRuns(
           overdueCount: c?.overdue ?? 0,
           flaggedCount: c?.flagged ?? 0,
           isLatest: run.id === latest?.id,
+          zone,
         }
       })
     },

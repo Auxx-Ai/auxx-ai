@@ -46,7 +46,7 @@ import type { DetailViewProps } from './types'
  */
 export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: DetailViewProps) {
   const { resource, isLoading: resourceLoading } = useResource(apiSlug)
-  const { can, hasDefPresence } = useAccess()
+  const { can, hasDefPresence, isLoading: accessLoading } = useAccess()
   const canViewRecordResource = useCanViewRecordResource()
 
   // Get resource properties including id (entityDefinitionId) and entityType
@@ -180,9 +180,12 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
     [entityType, can]
   )
 
+  // Before the resource and capabilities load, the tabs are the generic entity's, so a deep
+  // link's `?tab=` would be rewritten to Timeline.
+  const tabsSettled = !!resource && !accessLoading
   useEffect(() => {
-    if (mainTab !== activeMainTab) void setMainTab(activeMainTab)
-  }, [activeMainTab, mainTab, setMainTab])
+    if (tabsSettled && mainTab !== activeMainTab) void setMainTab(activeMainTab)
+  }, [tabsSettled, activeMainTab, mainTab, setMainTab])
 
   // Loading state — on first load the recordId is built with the apiSlug
   // fallback until `resource.list` hydrates, so "no record yet" (no fetch
