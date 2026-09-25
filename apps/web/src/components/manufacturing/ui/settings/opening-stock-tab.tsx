@@ -112,8 +112,6 @@ function OpeningStockTabInner() {
             // Gate on the QUERY, never on an empty array: "No parts" is a claim about the org.
             isLoading={opening.isLoading}
             currencyCode={opening.currencyCode}
-            bulkMode={opening.bulkMode}
-            onBulkModeChange={opening.setBulkMode}
             canSetKind={opening.canSetKind}
             isSettingKind={opening.isSettingKind}
             onSetKind={opening.setKind}

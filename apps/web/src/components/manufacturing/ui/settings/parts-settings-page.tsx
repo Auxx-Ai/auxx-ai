@@ -16,7 +16,7 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { Factory, History } from 'lucide-react'
+import { Factory, History, SlidersHorizontal } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -25,7 +25,7 @@ import { ToolbarTitle } from '~/components/global/module-toolbar'
 import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
-import { useRequireCapability } from '~/providers/capabilities-provider'
+import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import {
   applyBuildSwitchExclusivity,
   BUILD_SWITCH_EXCLUSIVITY_SENTENCE,
@@ -61,6 +61,10 @@ const DRAFT_KEYS = [
   PARTS_SETTINGS_KEYS.autoBuildFromOrders,
   PARTS_SETTINGS_KEYS.autoBuildStockRule,
   PARTS_SETTINGS_KEYS.backflush,
+  'mrp.aduWindowDays',
+  'mrp.defaultLeadTimeFactor',
+  'mrp.defaultVariabilityFactor',
+  'mrp.runRetentionDays',
 ] as const
 
 export function PartsGeneralSettingsPage() {
@@ -71,6 +75,7 @@ export function PartsGeneralSettingsPage() {
   // parts list itself is ungated, so a feature gate here would make Settings
   // vanish from a module that is otherwise fully available.
   useRequireCapability(PermissionKey.settingsManage)
+  const showMrp = useAccess().can(PermissionKey.mrpManage)
 
   useRegisterModuleToolbar(
     useMemo(() => ({ left: <ToolbarTitle hint={PAGE_DESCRIPTION}>General</ToolbarTitle> }), [])
@@ -174,6 +179,39 @@ export function PartsGeneralSettingsPage() {
             <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
           </div>
         </Section>
+
+        {showMrp && (
+          <Section
+            title='MRP'
+            icon={<SlidersHorizontal className='size-4' />}
+            description='What the plan uses for a part that does not set its own.'
+            collapsible={false}>
+            <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
+              <SettingsFieldRow
+                settingKey='mrp.aduWindowDays'
+                title='Usage window (days)'
+                {...controlled('mrp.aduWindowDays')}
+              />
+              <SettingsFieldRow
+                settingKey='mrp.defaultLeadTimeFactor'
+                title='Lead-time factor'
+                placeholder='class default'
+                {...controlled('mrp.defaultLeadTimeFactor')}
+              />
+              <SettingsFieldRow
+                settingKey='mrp.defaultVariabilityFactor'
+                title='Variability factor'
+                placeholder='from usage'
+                {...controlled('mrp.defaultVariabilityFactor')}
+              />
+              <SettingsFieldRow
+                settingKey='mrp.runRetentionDays'
+                title='Keep runs for (days)'
+                {...controlled('mrp.runRetentionDays')}
+              />
+            </FieldPanel>
+          </Section>
+        )}
       </ScrollArea>
 
       {/*

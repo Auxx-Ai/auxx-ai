@@ -96,22 +96,20 @@ export const MAIL_MENU: SidebarProps[] = []
 
 export const SIDEBAR_MENU: SidebarProps[] = [
   {
-    id: 'dashboards',
-    label: 'Dashboards',
-    slug: 'dashboards',
-    icon: <LayoutDashboard />,
-    featureKey: 'dashboards',
-    permissionKey: 'dashboards.view',
-  },
-  {
-    id: 'chats',
-    label: 'Chats',
-    slug: 'kopilot/new',
-    icon: <MessagesSquare />,
-    featureKey: 'kopilot',
-    // Kopilot chat is agents.view territory — Read on agents means "see the agent
-    // and USE it, chat in Kopilot" (registry note).
-    permissionKey: 'agents.view',
+    // The accounting module (plans/money/tasks/13-accounting-ui.md §1) — the
+    // general ledger, the month-end close and the accounting setup wizard.
+    //
+    // No sub-items, deliberately. Orders, Purchase Orders, Vendor Bills, Parts,
+    // Products and Builds stay at their existing top-level routes; the Dispatch
+    // entry below shows how they COULD be grouped later (`skipParentSlug` + child
+    // items pointing at top-level routes), but grouping operational records under
+    // "Accounting" would force the group's gate to the loosest of its children.
+    id: 'accounting',
+    label: 'Accounting',
+    slug: 'accounting',
+    icon: <Landmark />,
+    featureKey: 'accounting',
+    permissionKey: 'ledger.view',
   },
   {
     id: 'agents',
@@ -135,30 +133,22 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     permissionKey: 'calls.view',
   },
   {
-    id: 'workflows',
-    label: 'Workflows',
-    slug: 'workflows',
-    icon: <Zap />,
-    featureKey: 'workflows',
-    // View, not Manage: workflows gained Read/Edit rungs in plan 30, so gating the
-    // nav entry on Manage hid it from every legitimate Read/Edit holder.
-    permissionKey: 'workflows.view',
+    id: 'chats',
+    label: 'Chats',
+    slug: 'kopilot/new',
+    icon: <MessagesSquare />,
+    featureKey: 'kopilot',
+    // Kopilot chat is agents.view territory — Read on agents means "see the agent
+    // and USE it, chat in Kopilot" (registry note).
+    permissionKey: 'agents.view',
   },
   {
-    id: 'tasks',
-    label: 'Tasks',
-    slug: 'tasks',
-    icon: <CheckSquare />,
-    // Tasks gained their own area (task 12 §10) — gate on Read.
-    permissionKey: 'tasks.view',
-  },
-  {
-    id: 'schedule',
-    label: 'Schedule',
-    slug: 'schedule',
-    icon: <CalendarClock />,
-    featureKey: 'dispatch',
-    permissionKey: 'dispatch.mySchedule',
+    id: 'dashboards',
+    label: 'Dashboards',
+    slug: 'dashboards',
+    icon: <LayoutDashboard />,
+    featureKey: 'dashboards',
+    permissionKey: 'dashboards.view',
   },
   {
     id: 'dispatch',
@@ -207,87 +197,12 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     ],
   },
   {
-    // The accounting module (plans/money/tasks/13-accounting-ui.md §1) — the
-    // general ledger, the month-end close and the accounting setup wizard.
-    //
-    // No sub-items, deliberately. Orders, Purchase Orders, Vendor Bills, Parts,
-    // Products and Builds stay at their existing top-level routes; the Dispatch
-    // entry below shows how they COULD be grouped later (`skipParentSlug` + child
-    // items pointing at top-level routes), but grouping operational records under
-    // "Accounting" would force the group's gate to the loosest of its children.
-    id: 'accounting',
-    label: 'Accounting',
-    slug: 'accounting',
-    icon: <Landmark />,
-    featureKey: 'accounting',
-    permissionKey: 'ledger.view',
-  },
-  {
-    // Pricing: catalog groups and tax rates (107 D9). Gates match the page's own
-    // (`useRequireCapability(settingsManage)` + `FeatureKey.dispatch` in catalog-page.tsx).
-    id: 'catalog',
-    label: 'Pricing',
-    slug: 'catalog',
-    icon: <Tags />,
-    featureKey: 'dispatch',
-    permissionKey: 'settings.manage',
-  },
-
-  {
-    id: 'resources',
-    label: 'Resources',
-    slug: 'resources',
-    icon: <Layers />,
-    skipParentSlug: true,
-    preventNavigation: true,
-    items: [
-      {
-        id: 'datasets',
-        label: 'Datasets',
-        slug: 'datasets',
-        icon: <Database />,
-        featureKey: 'datasets',
-        permissionKey: 'datasets.view',
-      },
-      {
-        id: 'kb',
-        label: 'Knowledge Base',
-        slug: 'kb',
-        icon: <BookOpen />,
-        featureKey: 'knowledgeBase',
-        permissionKey: 'knowledgeBase.view',
-      },
-      {
-        id: 'connectors',
-        label: 'Connectors',
-        slug: 'connectors',
-        icon: <Cable />,
-        featureKey: 'dataConnectors',
-        permissionKey: 'connectors.manage',
-      },
-      {
-        id: 'files',
-        label: 'Files',
-        slug: 'files',
-        icon: <Folder />,
-        featureKey: 'files',
-        permissionKey: 'files.view',
-      },
-    ],
-  },
-  {
     id: 'examples',
     label: 'Examples',
     slug: 'examples',
     icon: <ComponentIcon />,
     featureKey: 'devTools',
     items: [
-      {
-        id: 'examples-file-upload',
-        label: 'File Upload',
-        slug: 'file-upload',
-        icon: <FileUp />,
-      },
       {
         id: 'examples-apps',
         label: 'Apps',
@@ -300,7 +215,91 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         slug: 'designs',
         icon: <Palette />,
       },
+      {
+        id: 'examples-file-upload',
+        label: 'File Upload',
+        slug: 'file-upload',
+        icon: <FileUp />,
+      },
     ],
+  },
+  {
+    // Pricing: catalog groups and tax rates (107 D9). Gates match the page's own
+    // (`useRequireCapability(settingsManage)` + `FeatureKey.dispatch` in catalog-page.tsx).
+    id: 'catalog',
+    label: 'Pricing',
+    slug: 'catalog',
+    icon: <Tags />,
+    featureKey: 'dispatch',
+    permissionKey: 'settings.manage',
+  },
+  {
+    id: 'resources',
+    label: 'Resources',
+    slug: 'resources',
+    icon: <Layers />,
+    skipParentSlug: true,
+    preventNavigation: true,
+    items: [
+      {
+        id: 'connectors',
+        label: 'Connectors',
+        slug: 'connectors',
+        icon: <Cable />,
+        featureKey: 'dataConnectors',
+        permissionKey: 'connectors.manage',
+      },
+      {
+        id: 'datasets',
+        label: 'Datasets',
+        slug: 'datasets',
+        icon: <Database />,
+        featureKey: 'datasets',
+        permissionKey: 'datasets.view',
+      },
+      {
+        id: 'files',
+        label: 'Files',
+        slug: 'files',
+        icon: <Folder />,
+        featureKey: 'files',
+        permissionKey: 'files.view',
+      },
+      {
+        id: 'kb',
+        label: 'Knowledge Base',
+        slug: 'kb',
+        icon: <BookOpen />,
+        featureKey: 'knowledgeBase',
+        permissionKey: 'knowledgeBase.view',
+      },
+    ],
+  },
+  {
+    id: 'schedule',
+    label: 'Schedule',
+    slug: 'schedule',
+    icon: <CalendarClock />,
+    featureKey: 'dispatch',
+    permissionKey: 'dispatch.mySchedule',
+  },
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    slug: 'tasks',
+    icon: <CheckSquare />,
+    // Tasks gained their own area (task 12 §10) — gate on Read.
+    permissionKey: 'tasks.view',
+  },
+  {
+    id: 'workflows',
+    label: 'Workflows',
+    slug: 'workflows',
+    icon: <Zap />,
+    featureKey: 'workflows',
+    // View, not Manage: workflows gained Read/Edit rungs in plan 30, so gating the
+    // nav entry on Manage hid it from every legitimate Read/Edit holder.
+    permissionKey: 'workflows.view',
   },
   // { id: 'settings', label: 'Settings', slug: 'settings', icon: <Settings /> },
 ]

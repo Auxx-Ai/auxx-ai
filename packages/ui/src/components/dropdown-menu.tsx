@@ -179,11 +179,11 @@ function DropdownMenuRadioItem({
   className,
   children,
   variant,
-  indicator = 'radio',
+  indicator = 'check',
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
   variant?: VariantProps<typeof menuVariants>['variant']
-  /** Visual indicator on the right — outlined radio circle or filled check. Mirrors CommandRadioItem. */
+  /** Visual indicator on the right — filled check (default) or outlined radio circle. Mirrors CommandRadioItem. */
   indicator?: 'radio' | 'check'
 }) {
   return (

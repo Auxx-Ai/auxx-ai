@@ -74,7 +74,7 @@ export function mrpListInput(
     supplierIds: filters.supplierIds.length ? filters.supplierIds : undefined,
     buffered: filters.buffered ?? undefined,
     sort: filters.sort,
-    direction: filters.direction,
+    order: filters.direction,
     limit: options.limit,
   }
 }

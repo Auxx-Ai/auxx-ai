@@ -11,8 +11,6 @@ import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { InputSearch } from '@auxx/ui/components/input-search'
-import { ListBulkToggle } from '@auxx/ui/components/list-bulk-toggle'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { GridTreeRow } from '@auxx/ui/components/tree-row'
@@ -41,6 +39,7 @@ import {
   rowOutcome,
   toOpeningStockKind,
 } from '../../hooks/use-opening-stock'
+import { OpeningStockToolbar } from './opening-stock-toolbar'
 
 /**
  * One `grid-template-columns` for the header and every row, so the list reads as a table.
@@ -55,8 +54,6 @@ interface OpeningStockListProps {
   kindCounts: Map<string, number>
   isLoading: boolean
   currencyCode: string
-  bulkMode: boolean
-  onBulkModeChange: (active: boolean) => void
   canSetKind: boolean
   isSettingKind: boolean
   onSetKind: (partIds: string[], kind: OpeningStockKind) => Promise<void>
@@ -73,8 +70,6 @@ export function OpeningStockList({
   kindCounts,
   isLoading,
   currencyCode,
-  bulkMode,
-  onBulkModeChange,
   canSetKind,
   isSettingKind,
   onSetKind,
@@ -134,119 +129,82 @@ export function OpeningStockList({
   )
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
-      <div className='flex items-center gap-2'>
-        <div className='flex-1'>
-          <InputSearch
-            value={search}
-            onChange={(e) => changeSearch(e.target.value)}
-            placeholder='Search by part or SKU...'
+    <>
+      <OpeningStockToolbar
+        search={search}
+        onSearchChange={changeSearch}
+        filter={filter}
+        onFilterChange={changeFilter}
+        counts={counts}
+        kindCounts={kindCounts}
+        canSetKind={canSetKind}
+      />
+      <div className='flex flex-col gap-3 p-3'>
+        {isLoading ? (
+          <EmptySection loading />
+        ) : filtered.length === 0 ? (
+          <EmptySection
+            icon={<Package className='size-5' />}
+            title={
+              rows.length === 0
+                ? 'No parts'
+                : filter === 'not-counted'
+                  ? 'Every part has been counted'
+                  : 'No matches'
+            }
+            description={
+              rows.length === 0 ? 'Create a part and it appears here to be counted.' : undefined
+            }
           />
-        </div>
-        {canSetKind && (
-          <ListBulkToggle
-            active={bulkMode}
-            onActiveChange={onBulkModeChange}
-            className='shrink-0'
-          />
+        ) : (
+          <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
+            <div
+              className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
+              style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
+              <div className='flex items-center gap-1 pl-2'>Part</div>
+              <div className='px-2'>Kind</div>
+              <div>Account</div>
+              <Tooltip content='Net of every movement on the ledger to now.'>
+                <div className='cursor-default px-2 text-right'>On hand</div>
+              </Tooltip>
+              <div className='px-2 text-right'>Count</div>
+              <div className='px-2'>As of</div>
+              <div className='px-2 text-right'>Unit cost</div>
+              <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
+                <div className='cursor-default px-2 text-right'>Writes</div>
+              </Tooltip>
+            </div>
+
+            <div className='flex flex-col gap-0.5 py-1'>
+              {visible.map((row) => (
+                <OpeningStockRowLine
+                  key={row.partId}
+                  row={row}
+                  currencyCode={currencyCode}
+                  canSetKind={canSetKind}
+                  isSettingKind={isSettingKind}
+                  onWriteKind={writeKind}
+                  onQuantityChange={onQuantityChange}
+                  onUnitCostChange={onUnitCostChange}
+                  onDateChange={onDateChange}
+                  onBackflush={onBackflush}
+                />
+              ))}
+              {filtered.length > limit && (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='mt-1 self-center'
+                  onClick={() => setLimit((current) => current + OPENING_STOCK_PAGE_SIZE)}>
+                  Show {Math.min(OPENING_STOCK_PAGE_SIZE, filtered.length - limit)} more of{' '}
+                  {filtered.length}
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </div>
-
-      <div className='flex flex-wrap items-center gap-1.5'>
-        <FilterChip active={filter === 'all'} onClick={() => changeFilter('all')}>
-          All ({counts.all})
-        </FilterChip>
-        <FilterChip active={filter === 'not-counted'} onClick={() => changeFilter('not-counted')}>
-          Not counted ({counts.notCounted})
-        </FilterChip>
-        <FilterChip active={filter === 'counted'} onClick={() => changeFilter('counted')}>
-          Counted ({counts.counted})
-        </FilterChip>
-        <FilterChip active={filter === 'uncounted'} onClick={() => changeFilter('uncounted')}>
-          Sold, never counted ({counts.uncounted})
-        </FilterChip>
-        <FilterChip active={filter === 'unclassified'} onClick={() => changeFilter('unclassified')}>
-          Unclassified ({counts.unclassified})
-        </FilterChip>
-        <FilterChip active={filter === 'uncosted'} onClick={() => changeFilter('uncosted')}>
-          No standard cost ({counts.uncosted})
-        </FilterChip>
-        {[...kindCounts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .map(([kind, count]) => (
-            <FilterChip
-              key={kind}
-              active={filter === `kind:${kind}`}
-              onClick={() => changeFilter(`kind:${kind}`)}>
-              {partKindLabel(kind)} ({count})
-            </FilterChip>
-          ))}
-      </div>
-
-      {isLoading ? (
-        <EmptySection loading />
-      ) : filtered.length === 0 ? (
-        <EmptySection
-          icon={<Package className='size-5' />}
-          title={
-            rows.length === 0
-              ? 'No parts'
-              : filter === 'not-counted'
-                ? 'Every part has been counted'
-                : 'No matches'
-          }
-          description={
-            rows.length === 0 ? 'Create a part and it appears here to be counted.' : undefined
-          }
-        />
-      ) : (
-        <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
-          <div
-            className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
-            style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
-            <div className='flex items-center gap-1 pl-2'>Part</div>
-            <div className='px-2'>Kind</div>
-            <div>Account</div>
-            <Tooltip content='Net of every movement on the ledger to now.'>
-              <div className='cursor-default px-2 text-right'>On hand</div>
-            </Tooltip>
-            <div className='px-2 text-right'>Count</div>
-            <div className='px-2'>As of</div>
-            <div className='px-2 text-right'>Unit cost</div>
-            <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
-              <div className='cursor-default px-2 text-right'>Writes</div>
-            </Tooltip>
-          </div>
-
-          <div className='flex flex-col gap-0.5 py-1'>
-            {visible.map((row) => (
-              <OpeningStockRowLine
-                key={row.partId}
-                row={row}
-                currencyCode={currencyCode}
-                canSetKind={canSetKind}
-                isSettingKind={isSettingKind}
-                onWriteKind={writeKind}
-                onQuantityChange={onQuantityChange}
-                onUnitCostChange={onUnitCostChange}
-                onDateChange={onDateChange}
-                onBackflush={onBackflush}
-              />
-            ))}
-            {filtered.length > limit && (
-              <Button
-                variant='ghost'
-                size='sm'
-                className='mt-1 self-center'
-                onClick={() => setLimit((current) => current + OPENING_STOCK_PAGE_SIZE)}>
-                Show {Math.min(OPENING_STOCK_PAGE_SIZE, filtered.length - limit)} more of{' '}
-                {filtered.length}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   )
 }
 
@@ -532,21 +490,5 @@ function EditableCell({ className, children }: { className?: string; children: R
       )}>
       {children}
     </div>
-  )
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <Button variant={active ? 'default' : 'outline'} size='xs' onClick={onClick}>
-      {children}
-    </Button>
   )
 }
