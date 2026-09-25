@@ -3,7 +3,7 @@
 // 🛑 DEV-ONLY. Returns one organization's TRANSACTIONAL state to zero so the
 // whole money + inventory flow can be driven again from scratch: the ledger,
 // every accounting document, the money model and its source evidence, orders,
-// builds, movements, purchasing, the sales pipeline, record numbering, connector
+// builds, movements, purchasing, MRP plan runs, the sales pipeline, record numbering, connector
 // bindings, the QuickBooks map plus every QuickBooks id held on kept records, and
 // the accounting configuration: the chart, its role map, bank accounts, bank rules
 // and payment gateways (`--keep-config` keeps those).
@@ -159,6 +159,7 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
     'return_part_line',
     'vendor_credit_line',
     'vendor_credit_application',
+    'vendor_payment_allocation',
   ],
   // The shipment and return families, children first; all hang off the order.
   ['fulfillment', 'shipment', 'return_line'],
@@ -168,7 +169,15 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
   // Purchasing: lines before documents.
   ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill', 'vendor_credit'],
   // The accounting documents.
-  ['payment', 'invoice', 'bank_deposit', 'bank_transaction', 'payout', 'journal_entry'],
+  [
+    'payment',
+    'vendor_payment',
+    'invoice',
+    'bank_deposit',
+    'bank_transaction',
+    'payout',
+    'journal_entry',
+  ],
   // The sales pipeline.
   ['work_order', 'quote', 'service_request'],
   // Last: the order everything above hung from.
@@ -232,6 +241,8 @@ const SIDE_TABLES = [
   { name: 'WorkOrderVisit', table: schema.WorkOrderVisit },
   // The stock_movement mirror; the instance delete would sweep it too, listed so the dry run counts it.
   { name: 'InventoryMovementFact', table: schema.InventoryMovementFact },
+  // Planned from the movements and documents above; `MrpPlanRunItem` cascades.
+  { name: 'MrpPlanRun', table: schema.MrpPlanRun },
 ] as const
 
 /**
@@ -305,6 +316,9 @@ const SETTING_RESETS = [
   { key: 'inventory.autoBuildFromOrders' as const, value: false },
   { key: 'inventory.autoBuildEnabledAt' as const, value: null },
   { key: 'inventory.autoBuildStockRule' as const, value: 'out_of_stock_only' },
+  { key: 'inventory.backflush' as const, value: false },
+  // The difference screen's answer about the opening; the opening is gone.
+  { key: 'accounting.openingInventoryInBooks' as const, value: null },
 ]
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
@@ -539,7 +553,7 @@ async function main() {
   console.log(`\norganization ${org.name} (${org.id})`)
   console.log(`mode         ${CONFIRM ? 'DELETE' : 'dry run (pass --confirm to write)'}`)
   console.log(
-    `scope        ledger + documents + orders + builds + movements + purchasing +\n` +
+    `scope        ledger + documents + orders + builds + movements + purchasing + MRP runs +\n` +
       `             pipeline + numbering${CATALOG ? ' + catalog' : ''}${KEEP_CONNECTOR_ITEMS ? '' : ' + connector bindings'}` +
       `${KEEP_QUICKBOOKS ? '' : ' + QuickBooks map'}` +
       `${KEEP_CONFIG ? '' : ' +\n             chart + role map + bank accounts + bank rules + gateways'}`
