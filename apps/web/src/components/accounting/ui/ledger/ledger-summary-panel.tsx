@@ -18,10 +18,11 @@ import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ChartBar, PanelRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { api } from '~/trpc/react'
 import { firstDayOfPeriod, lastDayOfPeriod } from '../journal/period-helpers'
 import { exportAvenueLabel } from './export-avenue-labels'
-import { EMPTY_CELL, formatAccountingDate, formatMinor } from './format'
+import { formatAccountingDate, formatMinor } from './format'
 import { ExportBatchStateBadge } from './outbox/export-batch-badge'
 import { useLedgerSources } from './use-ledger-sources'
 

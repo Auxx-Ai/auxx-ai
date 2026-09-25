@@ -12,15 +12,16 @@ import { Scale } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { ReportGrid } from '~/components/global/report-grid/report-grid'
+import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { AccountDrillView, findAccountRow, useAccountDrill, useDrillAccount } from './account-drill'
 import { useGeneralLedgerExports } from './general-ledger-view'
 import { ReportErrorCard } from './report-error-card'
-import { ReportGrid } from './report-grid'
 import {
   balanceSheetColumns,
   type CompareOption,
@@ -28,7 +29,6 @@ import {
   periodStartDate,
   toStatementTableRows,
 } from './report-helpers'
-import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { reportAsOfPresets } from './report-range-presets'
 import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { useReportAsOf } from './use-report-window'
@@ -110,7 +110,7 @@ export function BalanceSheetReportPage() {
     downloadCsv(toCsvRows(data.rows, columns, currencyCode), `balance-sheet-${asOf}.csv`)
   }, [data, columns, currencyCode, asOf])
 
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: (

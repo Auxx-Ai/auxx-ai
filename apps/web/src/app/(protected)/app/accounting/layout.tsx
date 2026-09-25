@@ -31,14 +31,15 @@ import {
   Users,
 } from 'lucide-react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { AccountingToolbarOutletProvider } from '~/components/accounting/accounting-toolbar-outlet'
-import { AccountingToolbar } from '~/components/accounting/ui/accounting-toolbar'
+import { PostingGuideDialog } from '~/components/accounting/ui/settings/posting-guide-dialog'
 import { AccountingSetupWizardGate } from '~/components/accounting/ui/setup-wizard/setup-wizard-gate'
 import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import {
   DockedPanelsOutletProvider,
   useDockedPanelsOutlet,
 } from '~/components/global/docked-panels-outlet'
+import { ModuleToolbar, type ModuleToolbarHelpProps } from '~/components/global/module-toolbar'
+import { ModuleToolbarOutletProvider } from '~/components/global/module-toolbar-outlet'
 import { SecondarySidebarProvider } from '~/components/global/secondary-sidebar-provider'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -253,6 +254,11 @@ function AccountingLayoutHeader() {
   )
 }
 
+/** The posting guide's overview (brief 28 §4): what posts, when, and what changes it. */
+function renderPostingGuide(props: ModuleToolbarHelpProps) {
+  return <PostingGuideDialog {...props} initialPage='overview' />
+}
+
 /**
  * The module's one `MainPageContent`, one rail and one topbar (81 §6). The
  * content column hands `{children}` a DEFINITE height, which is what lets a page
@@ -280,7 +286,7 @@ function AccountingShell({ children }: { children: React.ReactNode }) {
           linkQuery={linkQuery}
         />
         <div className='flex h-full min-w-0 flex-1 flex-col overflow-hidden'>
-          <AccountingToolbar />
+          <ModuleToolbar helpLabel='How your books post' helpDialog={renderPostingGuide} />
           <div className='relative flex min-h-0 flex-1 flex-col overflow-hidden'>{children}</div>
         </div>
       </SecondarySidebarProvider>
@@ -314,11 +320,11 @@ export default function AccountingLayout({ children }: { children: React.ReactNo
         {isSettings ? (
           children
         ) : (
-          <AccountingToolbarOutletProvider>
+          <ModuleToolbarOutletProvider>
             <DockedPanelsOutletProvider>
               <AccountingShell>{children}</AccountingShell>
             </DockedPanelsOutletProvider>
-          </AccountingToolbarOutletProvider>
+          </ModuleToolbarOutletProvider>
         )}
         <AccountingSetupWizardGate />
       </MainPage>

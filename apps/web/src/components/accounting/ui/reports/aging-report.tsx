@@ -11,19 +11,19 @@ import { todayInZone } from '@auxx/utils/calendar-day'
 import { Building2, Users } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { ReportGrid } from '~/components/global/report-grid/report-grid'
+import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../ledger/format'
 import { ReportErrorCard } from './report-error-card'
-import { ReportGrid } from './report-grid'
 import { periodStartDate, toStatementTableRows } from './report-helpers'
-import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { reportAsOfPresets } from './report-range-presets'
 import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 import { useReportAsOf } from './use-report-window'
@@ -141,7 +141,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
     downloadCsv(toCsvRows(data.rows, data.columns, currencyCode), `${kind}-${asOf}.csv`)
   }, [data, currencyCode, kind, asOf])
 
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: (

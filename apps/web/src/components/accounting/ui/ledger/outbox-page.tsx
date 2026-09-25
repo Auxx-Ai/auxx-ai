@@ -15,14 +15,14 @@ import {
 } from '@auxx/lib/accounting/export/client'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import {
   UNKNOWN_PROVIDER_LABEL,
   useAccountingProviderStatus,
 } from '~/components/accounting/hooks/use-accounting-provider-status'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { today } from '~/components/accounting/ui/journal/period-helpers'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 import { ProviderPill } from './ledger-toolbar'
@@ -99,7 +99,7 @@ export function OutboxPage() {
     }),
     [outstandingCount]
   )
-  useRegisterAccountingToolbar(toolbar)
+  useRegisterModuleToolbar(toolbar)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>

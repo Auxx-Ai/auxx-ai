@@ -9,7 +9,7 @@ import { DrawerHeader } from '@auxx/ui/components/drawer'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
@@ -546,7 +546,7 @@ export function ConnectorRunsPanel({
         <Section
           title='History'
           icon={<History className='size-4' />}
-          className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+          className={SECTION_BLEED}
           initialOpen
           collapsible={false}>
           {rows.length === 0 ? (

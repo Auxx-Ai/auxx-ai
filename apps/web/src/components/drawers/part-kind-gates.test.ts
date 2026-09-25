@@ -18,7 +18,7 @@ describe('isServiceKind', () => {
 
 describe('isHiddenForPartKind', () => {
   it('hides the stock surfaces for a service', () => {
-    for (const id of ['inventory', 'costing', 'subparts', 'vendors']) {
+    for (const id of ['inventory', 'costing', 'subparts', 'vendors', 'mrp']) {
       expect(isHiddenForPartKind(id, 'service')).toBe(true)
     }
   })

@@ -51,11 +51,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Inbox, Landmark, ListChecks, PanelRight } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
+import { EMPTY_CELL, ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import {
   ListSelectionProvider,
   SelectAllCheckbox,
@@ -70,7 +70,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { AccountLabel } from '../account-label'
 import { BankAccountBadge } from '../bank-account-badge'
-import { EMPTY_CELL, formatMinor } from '../ledger/format'
+import { formatMinor } from '../ledger/format'
 import { ReviewBulkBar } from './review/review-bulk-bar'
 import { ReviewDrawer } from './review/review-drawer'
 import { ReviewStats } from './review/review-stats'
@@ -352,7 +352,7 @@ function ReviewQueueBody() {
     }),
     [canApplyRules, applyRules.isPending, handleApplyRules, lastRun]
   )
-  useRegisterAccountingToolbar(toolbar)
+  useRegisterModuleToolbar(toolbar)
 
   /**
    * ⚠️ Built ONCE and memoised. The panel array below is published to the

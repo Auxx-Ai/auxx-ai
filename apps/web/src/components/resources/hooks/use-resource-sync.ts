@@ -231,7 +231,7 @@ export function useResourceSync() {
       // subscribing in the same coalesce window put six `getByIds` calls in one
       // tRPC batch, ~25KB of ids on the query string, and the dev server
       // answered 431 Request Header Fields Too Large for the whole batch
-      // (driven 2026-09-01, /app/parts/settings/tariffs). Chunking the union is
+      // (driven 2026-09-01, /app/parts/manage/tariffs). Chunking the union is
       // ceil(total / cap) requests — never more than the fan-out, usually far
       // fewer.
       const catchUpIds: RecordId[] = []

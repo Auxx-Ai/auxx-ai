@@ -37,11 +37,12 @@ import { useMemo, useState } from 'react'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { RecordChipLink } from './banking/payouts/record-chip-link'
 import { EntryJournal, journalLinesFromDetail } from './ledger/entry-journal'
-import { EMPTY_CELL, formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
+import { formatAccountingDate, formatMinor, humanizePostingType } from './ledger/format'
 import { ExportBatchStateBadge } from './ledger/outbox/export-batch-badge'
 
 /** One row of `ledger.listPostingsForSource`'s expected result. */

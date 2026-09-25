@@ -112,13 +112,14 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
-  // A service part hides Components, Suppliers, Inventory and Costing (107 D10):
+  // A service part hides Components, Suppliers, Inventory, Planning and Costing (107 D10):
   // `apps/web/src/components/drawers/part-kind-gates.ts`.
   part: {
     entityType: 'part',
     additionalTabs: [
       { value: 'subparts', label: 'Components', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Suppliers', icon: 'truck', recordResource: 'vendor_part' },
+      { value: 'mrp', label: 'Planning', icon: 'calendar-clock', permissionKey: 'mrp.view' },
     ],
     tabCards: {
       overview: [

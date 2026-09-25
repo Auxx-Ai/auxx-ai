@@ -39,6 +39,7 @@ function made(partId: string, over: Partial<ActionItem> = {}): ActionItem {
   return {
     partId,
     suggestionKind: 'build',
+    supplyType: 'made',
     suggestedQty: 20,
     suggestedVendorPartId: null,
     suggestedSupplierId: null,

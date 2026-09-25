@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-tab.tsx
 'use client'
 
-// Parts > Settings > Costing, `?s=opening` (money 52-parts-costing-page.md
+// Parts > Manage > Costing, `?s=opening` (money 52-parts-costing-page.md
 // §2.3): the opening-stock checklist on the left and THE RUN on the right.
 //
 // The split is `tariffs-settings-page.tsx`'s, with one deliberate departure:
@@ -93,6 +93,7 @@ function OpeningStockTabInner() {
     <>
       <MasterDetailSplit
         id='parts-opening-stock'
+        scroll='columns'
         pane={run}
         paneTitle='The run'
         paneOpen={runOpen}

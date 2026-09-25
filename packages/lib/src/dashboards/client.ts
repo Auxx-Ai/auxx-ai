@@ -210,6 +210,8 @@ export type BaseChartConfig = {
    * Number/Currency formatting editors in the config panel.
    */
   valueFormat?: FieldOptions
+  /** In-app path (`/app/...`) the widget title links to. Display-only. */
+  link?: string
 }
 
 export type BarChartConfig = BaseChartConfig & {
@@ -301,6 +303,8 @@ export type RecordListConfig = {
   sort?: { fieldRef: WidgetFieldRef; desc: boolean }
   /** Default {@link DEFAULT_RECORD_LIST_PAGE_SIZE}, cap {@link MAX_RECORD_LIST_PAGE_SIZE}. */
   pageSize?: number
+  /** In-app path (`/app/...`) the widget title links to. */
+  link?: string
 }
 
 /** TipTap JSON doc. */

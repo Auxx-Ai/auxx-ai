@@ -2,61 +2,11 @@
 
 'use client'
 
-import { TreeRow } from '@auxx/ui/components/tree-row'
-import { cn } from '@auxx/ui/lib/utils'
-import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
-import { EMPTY_CELL, formatAccountingDate, formatMinor, formatShortPeriodLabel } from '../format'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
+import { formatAccountingDate, formatMinor, formatShortPeriodLabel } from '../format'
 
-interface GroupRowProps {
-  icon: React.ReactNode
-  label: string
-  count: string
-  total: string
-  /** The selection ids under this header; its checkbox selects or clears them all. */
-  itemIds: string[]
-  open: boolean
-  onToggle: () => void
-  children: React.ReactNode
-}
-
-/** A group header over nested rows, the deposits list's shape: its hover checkbox takes the whole group. */
-export function GroupRow({
-  icon,
-  label,
-  count,
-  total,
-  itemIds,
-  open,
-  onToggle,
-  children,
-}: GroupRowProps) {
-  const selecting = useBulkMode()
-  const selectedIds = useSelectionIds()
-  const toggleMany = useListSelection((state) => state.toggleMany)
-  const picked = itemIds.filter((id) => selectedIds.includes(id)).length
-  const all = itemIds.length > 0 && picked === itemIds.length
-  return (
-    <TreeRow
-      icon={icon}
-      expandable
-      isOpen={open}
-      onToggleOpen={onToggle}
-      selectable
-      selecting={selecting}
-      selected={all ? true : picked > 0 ? 'indeterminate' : false}
-      onSelectChange={(next) => toggleMany(itemIds, next)}
-      selectLabel={`Select every row of ${label}`}
-      title={<span className='truncate font-medium text-sm'>{label}</span>}
-      secondary={<span className='text-muted-foreground text-xs'>{count}</span>}
-      actions={<span className='font-mono text-xs tabular-nums'>{total}</span>}
-      rowClassName={cn(
-        'bg-primary-100/50 hover:bg-primary-100',
-        all && 'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25'
-      )}>
-      {children}
-    </TreeRow>
-  )
-}
+// The header row moved beside the MRP rows, its second consumer.
+export { GroupRow } from '~/components/mrp/ui/rows/group-row'
 
 /** A `YYYY-MM` key reads as its period, a `YYYY-MM-DD` key as its date. */
 export function dayKeyLabel(dayKey: string | null | undefined, bookTimeZone: string): string {

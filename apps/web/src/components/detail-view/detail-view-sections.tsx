@@ -5,7 +5,7 @@ import type { TabVisibilityContext } from '@auxx/lib/record-layout/client'
 import { visibleLayoutTabs, visibleTabBlocks } from '@auxx/lib/record-layout/client'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import { Circle } from 'lucide-react'
 import * as React from 'react'
@@ -302,9 +302,7 @@ function ChromedSection({
         actions={<span ref={setActionsSlot} className='flex items-center gap-1.5 empty:hidden' />}
         collapsible={false}
         initialOpen
-        className={
-          fullBleed ? '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3' : undefined
-        }>
+        className={fullBleed ? SECTION_BLEED : undefined}>
         {children}
       </Section>
     </SectionChromeContext.Provider>

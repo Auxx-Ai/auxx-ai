@@ -100,11 +100,14 @@ export async function draftPurchaseOrders(
           refuse(pick.partId, 'Not planned in this MRP run')
           continue
         }
-        if (item.suggestionKind !== 'purchase') {
+        const vendorPartId = pick.vendorPartId ?? item.suggestedVendorPartId
+        // An explicit quantity (a scheduled card's live line, a bridge) needs only a buyable part.
+        const explicit = positiveQuantity(pick.quantity) !== null
+        const buyable = item.supplyType === 'bought' || !!vendorPartId
+        if (item.suggestionKind !== 'purchase' && !(explicit && buyable)) {
           refuse(pick.partId, 'The run does not suggest a purchase')
           continue
         }
-        const vendorPartId = pick.vendorPartId ?? item.suggestedVendorPartId
         if (!vendorPartId) {
           refuse(pick.partId, 'No vendor part to order from')
           continue

@@ -348,12 +348,15 @@ async function readPlannedPurchaseOrders(
   return out
 }
 
+/** An open build with the status the part page shows; the run ignores `status`. */
+export type OpenBuildRow = OpenBuildInput & { status: 'planned' | 'in_progress' }
+
 /** `planned` and `in_progress` builds: on order for their produced part. */
-async function readOpenBuilds(
+export async function readOpenBuilds(
   db: Database,
   organizationId: string,
   planned: ReadonlySet<string>
-): Promise<OpenBuildInput[]> {
+): Promise<OpenBuildRow[]> {
   const ctx = await systemFields(db, organizationId, 'build', BUILD_PICK, {
     required: ['build_part', 'build_status', 'build_quantity_planned'],
   })
@@ -370,7 +373,9 @@ async function readOpenBuilds(
     const open =
       (row.number('build_quantity_planned') ?? 0) - (row.number('build_quantity_produced') ?? 0)
     if (!partId || !planned.has(partId) || open <= 0) return []
-    return [{ id: row.id, partId, quantityOpen: open, dueDay: null }]
+    const status =
+      row.option('build_status') === BuildStatus.IN_PROGRESS ? 'in_progress' : 'planned'
+    return [{ id: row.id, partId, status, quantityOpen: open, dueDay: null }]
   })
 }
 

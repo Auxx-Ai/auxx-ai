@@ -3,7 +3,7 @@
 
 import type { CatalogNode } from '@auxx/lib/agents/client'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock, Plus, Wrench } from 'lucide-react'
@@ -211,7 +211,7 @@ export function ToolsSection({ agent, onAutosaveChange, onNavigate }: ToolsSecti
       <Section
         title='Tools'
         icon={<Wrench className='size-4' />}
-        className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+        className={SECTION_BLEED}
         initialOpen
         collapsible={false}
         actions={

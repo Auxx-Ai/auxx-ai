@@ -278,6 +278,16 @@ export const RESOURCE_DISPLAY_CONFIG: Partial<Record<TableId, ResourceDisplayCon
     orgScopingStrategy: 'direct',
   },
 
+  // No `id` column and no record lane: only the aggregate engine reads this table.
+  mrp_plan_item: {
+    identifierField: 'partId',
+    primaryDisplayFieldId: 'partId',
+    searchFields: [],
+    defaultSortField: 'priority',
+    defaultSortDirection: 'asc',
+    orgScopingStrategy: 'direct',
+  },
+
   kb: {
     identifierField: 'id',
     primaryDisplayFieldId: 'name',

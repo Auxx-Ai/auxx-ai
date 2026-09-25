@@ -6,12 +6,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, TriangleAlert } from 'lucide-react'
 import { parseAsString, useQueryState } from 'nuqs'
 import { useCallback } from 'react'
+import type { ReportGridRow } from '~/components/global/report-grid/report-grid-layout'
+import { ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../account-label'
 import { formatMinor } from '../ledger/format'
 import { GeneralLedgerView } from './general-ledger-view'
-import type { ReportGridRow } from './report-grid-layout'
-import { ReportPageLayout } from './report-page-layout'
 
 /**
  * A statement row drilled into its account, on `?account=`, rendered on the

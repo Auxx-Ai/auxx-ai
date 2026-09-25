@@ -33,7 +33,7 @@ interface OfferTariffReadoutProps {
   unavailable?: boolean
 }
 
-const TARIFFS_HREF = '/app/parts/settings/tariffs'
+const TARIFFS_HREF = '/app/parts/manage/tariffs'
 
 /** One line, plus the per-authority components when the schedule produced the number. */
 export function OfferTariffReadout({
@@ -86,7 +86,7 @@ export function OfferTariffReadout({
         <Link
           href={TARIFFS_HREF}
           className='text-muted-foreground text-xs underline underline-offset-2 hover:text-foreground'>
-          Add the rates in Parts &rsaquo; Settings &rsaquo; Tariffs
+          Add the rates in Parts &rsaquo; Manage &rsaquo; Tariffs
         </Link>
       </div>
     )

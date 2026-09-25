@@ -4,7 +4,7 @@ import { type Database, schema } from '@auxx/database'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { NotFoundError } from '../../errors'
-import type { MrpSuggestionKind } from '../client'
+import type { MrpSuggestionKind, MrpSupplyType } from '../client'
 
 /** The run an action drafts from. */
 export interface ActionRun {
@@ -16,6 +16,7 @@ export interface ActionRun {
 export interface ActionItem {
   partId: string
   suggestionKind: MrpSuggestionKind | null
+  supplyType: MrpSupplyType
   suggestedQty: number | null
   suggestedVendorPartId: string | null
   suggestedSupplierId: string | null
@@ -68,6 +69,7 @@ export async function readActionItems(
     .select({
       partId: schema.MrpPlanRunItem.partId,
       suggestionKind: schema.MrpPlanRunItem.suggestionKind,
+      supplyType: schema.MrpPlanRunItem.supplyType,
       suggestedQty: schema.MrpPlanRunItem.suggestedQty,
       suggestedVendorPartId: schema.MrpPlanRunItem.suggestedVendorPartId,
       suggestedSupplierId: schema.MrpPlanRunItem.suggestedSupplierId,

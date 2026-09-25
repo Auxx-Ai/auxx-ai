@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { addDaysToDayKey } from '@auxx/utils/calendar-day'
-import { and, eq, type SQL, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, type SQL, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import {
   MRP_FLAGS,
@@ -15,6 +15,7 @@ import {
   type MrpSupplyType,
 } from '../client'
 import { guard } from './guard'
+import { readRecordNames } from './labels'
 import { loadRun, type MrpRunRef } from './runs'
 
 const I = schema.MrpPlanRunItem
@@ -38,9 +39,21 @@ export interface MrpSummaryCounts {
   byFlag: Record<MrpFlag, number>
 }
 
+export interface MrpSupplierFacet {
+  supplierId: string
+  name: string | null
+  count: number
+}
+
+export interface MrpSummaryFacets {
+  /** Every `suggestedSupplierId` in the run, most items first. */
+  bySupplier: MrpSupplierFacet[]
+}
+
 export interface MrpSummary {
   run: MrpRunRef | null
   counts: MrpSummaryCounts | null
+  facets: MrpSummaryFacets | null
 }
 
 /** The "This week" / "Later" boundaries, inclusive, relative to the run's day. */
@@ -100,6 +113,20 @@ export function shapeSummary(row: Record<string, unknown>): MrpSummaryCounts {
   }
 }
 
+/** Supplier counts labelled, most items first, then by name. */
+export function shapeSupplierFacet(
+  counts: ReadonlyArray<{ supplierId: string; count: number }>,
+  names: ReadonlyMap<string, string | null>
+): MrpSupplierFacet[] {
+  return counts
+    .map((c) => ({
+      supplierId: c.supplierId,
+      name: names.get(c.supplierId) ?? null,
+      count: c.count,
+    }))
+    .sort((a, b) => b.count - a.count || (a.name ?? '').localeCompare(b.name ?? ''))
+}
+
 /** Tab and filter counts for the action list header (07 §4.1), one aggregate over the run's items. */
 export async function readSummary(
   db: Database,
@@ -109,12 +136,30 @@ export async function readSummary(
   return guard(
     async () => {
       const run = await loadRun(db, organizationId, input.runId)
-      if (!run) return { run: null, counts: null }
-      const [row] = await db
-        .select(summaryColumns(run.asOfDay))
-        .from(I)
-        .where(and(eq(I.organizationId, organizationId), eq(I.mrpPlanRunId, run.id)))
-      return { run, counts: shapeSummary(row ?? {}) }
+      if (!run) return { run: null, counts: null, facets: null }
+      const scope = and(eq(I.organizationId, organizationId), eq(I.mrpPlanRunId, run.id))
+      const [[row], supplierRows] = await Promise.all([
+        db.select(summaryColumns(run.asOfDay)).from(I).where(scope),
+        db
+          .select({ supplierId: I.suggestedSupplierId, count: sql<number>`count(*)::int` })
+          .from(I)
+          .where(and(scope, isNotNull(I.suggestedSupplierId)))
+          .groupBy(I.suggestedSupplierId),
+      ])
+      const counts = supplierRows.flatMap((r) =>
+        r.supplierId ? [{ supplierId: r.supplierId, count: Number(r.count) }] : []
+      )
+      const names = await readRecordNames(
+        db,
+        organizationId,
+        'company',
+        counts.map((c) => c.supplierId)
+      )
+      return {
+        run,
+        counts: shapeSummary(row ?? {}),
+        facets: { bySupplier: shapeSupplierFacet(counts, names) },
+      }
     },
     'Failed to read the plan summary',
     { organizationId, runId: input.runId }

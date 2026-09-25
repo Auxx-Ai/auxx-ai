@@ -3,7 +3,7 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { createCredentialLockProvider } from '@auxx/redis'
-import { isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import pLimit from 'p-limit'
 import { compareFactsToLedger } from '../../inventory/movements/fact/drift-check'
 import { readFactTotalsByPart } from '../../inventory/movements/fact/reads'
@@ -11,6 +11,7 @@ import { rebuildMovementFacts } from '../../inventory/movements/fact/rebuild'
 import { jobId } from '../../jobs/job-id'
 import { getQueue, Queues } from '../../jobs/queues'
 import type { JobContext } from '../../jobs/types/job-context'
+import { ensureMrpDashboardWidgets } from '../../seed/entity-seeder/mrp-dashboard-widgets'
 import { readOrganizationSettings } from '../../settings/read'
 import { isMrpEnabled } from '../guard'
 import { runMrpPlan } from './run'
@@ -78,6 +79,7 @@ export async function runMrpForOrganization(
       log.error('MRP run failed', { error: run.error.message })
       return 'failed'
     }
+    await seedDashboardOnFirstRun(db, organizationId)
 
     const settings = await readOrganizationSettings(organizationId, ['mrp.runRetentionDays'])
     const retention = settings['mrp.runRetentionDays']
@@ -90,6 +92,30 @@ export async function runMrpForOrganization(
     return 'completed'
   } finally {
     if (locked) await lock.release(lockKey(organizationId)).catch(() => undefined)
+  }
+}
+
+/** The planner's first completed run puts the planning widgets on the Parts dashboard (07 §5.4); never fails the run. */
+async function seedDashboardOnFirstRun(db: Database, organizationId: string): Promise<void> {
+  try {
+    const completed = await db
+      .select({ id: schema.MrpPlanRun.id })
+      .from(schema.MrpPlanRun)
+      .where(
+        and(
+          eq(schema.MrpPlanRun.organizationId, organizationId),
+          eq(schema.MrpPlanRun.status, 'completed')
+        )
+      )
+      .limit(2)
+    if (completed.length !== 1) return
+    const seeded = await ensureMrpDashboardWidgets(db, organizationId)
+    if (seeded.isErr()) throw seeded.error
+  } catch (error) {
+    logger.warn('Could not seed the MRP dashboard widgets', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 

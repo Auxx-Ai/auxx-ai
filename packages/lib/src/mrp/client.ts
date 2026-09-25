@@ -52,6 +52,13 @@ export const MRP_SUGGESTION_KIND_LABELS: Record<MrpSuggestionKind, string> = {
   purchase: 'Purchase',
 }
 
+/** The action list's status tabs (07 §4.1); `all` is the all-parts grid. */
+export const MRP_PLAN_TABS = ['all', 'overdue', 'this_week', 'later', 'flagged', 'fine'] as const
+export type MrpPlanTab = (typeof MRP_PLAN_TABS)[number]
+
+export const MRP_LIST_SORTS = ['priority', 'orderByDate', 'stockoutDate', 'partName'] as const
+export type MrpListSort = (typeof MRP_LIST_SORTS)[number]
+
 export const MRP_LEAD_TIME_SOURCES = ['vendor', 'build', 'none'] as const
 export type MrpLeadTimeSource = (typeof MRP_LEAD_TIME_SOURCES)[number]
 

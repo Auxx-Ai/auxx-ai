@@ -131,6 +131,9 @@ export const INDENT_REM = 1.5
  *  px-1 (0.25rem) + half of the size-7 icon box (0.875rem). */
 export const ICON_CENTER_REM = 1.125
 
+/** Deepest indent a `GridTreeRow` steps to; deeper rows and their connector line stay at this level. */
+export const MAX_INDENT_DEPTH = 6
+
 const stopPropagation = (e: React.MouseEvent) => e.stopPropagation()
 
 /**
@@ -621,7 +624,7 @@ export interface GridTreeRowProps {
   /** Draw subtle full-height dividers between cells (condition-badge look). */
   divided?: boolean
 
-  /** 0-based indent — applied inside the first cell, not to the whole row. */
+  /** 0-based indent — applied inside the first cell, capped at {@link MAX_INDENT_DEPTH}. */
   depth?: number
   expandable?: boolean
   /** Swap the leading icon for the expand chevron on row hover (see TreeRow). */
@@ -660,7 +663,8 @@ export function GridTreeRow({
   className,
   rowClassName,
 }: GridTreeRowProps) {
-  const indentRem = depth * INDENT_REM
+  const shownDepth = Math.min(depth, MAX_INDENT_DEPTH)
+  const indentRem = shownDepth * INDENT_REM
   // A toggle (expand children) wins the row click; the drill chevron owns `onDrill`.
   const rowClick = onToggleOpen ?? onDrill
   const rowClickable = rowClick !== undefined
@@ -755,7 +759,7 @@ export function GridTreeRow({
 
   return (
     <BaseTreeRow
-      depth={depth}
+      depth={shownDepth}
       expandable={expandable}
       isOpen={isOpen}
       className={className}

@@ -1,9 +1,10 @@
 // packages/lib/src/mrp/reads/part-item.ts
 
 import { type Database, schema } from '@auxx/database'
-import { daysBetween } from '@auxx/utils/calendar-day'
+import { type DayKey, daysBetween, todayInZone } from '@auxx/utils/calendar-day'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { getOrgCache } from '../../cache'
 import { chunkArray } from '../../import/utils/chunk-array'
 import {
@@ -15,8 +16,10 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { readSystemRecords, systemFields } from '../../resources/system-records'
 import type { MrpBufferMode } from '../client'
+import { readOpenBuilds } from '../run/load-inputs'
 import { guard } from './guard'
 import { readPartLabels, readRecordNames, readVendorParts, type VendorPartRow } from './labels'
+import { readOpenIssuedPoLines } from './purchase-orders'
 import { loadRun, type MrpPlanItemRow, type MrpRunRef } from './runs'
 
 const I = schema.MrpPlanRunItem
@@ -80,6 +83,29 @@ export interface BomNode {
   > | null
 }
 
+/** An open line on an issued PO for the part (drafts never count, D17). */
+export interface PartOpenPoLine {
+  purchaseOrderId: string
+  purchaseOrderNumber: string | null
+  lineId: string
+  quantityOpen: number
+  expectedAt: DayKey | null
+  orderedAt: DayKey | null
+  supplierId: string | null
+  supplierName: string | null
+  /** Days past `expectedAt` as of today in the book zone; null when undated or not late. */
+  lateDays: number | null
+}
+
+/** A planned or in-progress build producing the part. */
+export interface PartOpenBuild {
+  buildId: string
+  number: string | null
+  status: 'planned' | 'in_progress'
+  quantityOpen: number
+  dueDay: DayKey | null
+}
+
 export interface MrpPartItem {
   run: MrpRunRef | null
   item: (MrpPlanItemRow & { daysOfCover: number | null }) | null
@@ -87,6 +113,9 @@ export interface MrpPartItem {
   vendorPart: VendorPartRow | null
   supplier: { id: string; name: string | null } | null
   bom: BomNode[]
+  /** Live supply documents, read now rather than from the run. */
+  openPoLines: PartOpenPoLine[]
+  openBuilds: PartOpenBuild[]
 }
 
 /** The part's subtree below `rootId`, depth-first, cycle-safe. */
@@ -128,9 +157,10 @@ export async function readPartItem(
   return guard(
     async () => {
       const run = await loadRun(db, organizationId, input.runId)
-      const [part, edges] = await Promise.all([
+      const [part, edges, supply] = await Promise.all([
         readPartPlanningFields(db, organizationId, input.partId),
         getOrgCache().get(organizationId, 'subpartEdges'),
+        readPartSupply(db, organizationId, input.partId),
       ])
       const tree = walkBom(input.partId, edges ?? [])
       const treeIds = [...new Set(tree.map((n) => n.partId))]
@@ -186,11 +216,75 @@ export async function readPartItem(
               : null,
           }
         }),
+        ...supply,
       }
     },
     'Failed to read the plan item for a part',
     { organizationId, partId: input.partId, runId: input.runId }
   )
+}
+
+/** Days `expectedAt` is behind `today`; null when undated or not yet due. */
+export function lateDays(expectedAt: DayKey | null, today: DayKey): number | null {
+  if (!expectedAt) return null
+  const days = daysBetween(expectedAt, today)
+  return days !== null && days > 0 ? days : null
+}
+
+/** The part's open issued PO lines and open builds, labelled, through the run's own readers. */
+async function readPartSupply(
+  db: Database,
+  organizationId: string,
+  partId: string
+): Promise<Pick<MrpPartItem, 'openPoLines' | 'openBuilds'>> {
+  const [lines, builds, zone] = await Promise.all([
+    readOpenIssuedPoLines(db, organizationId, [partId]),
+    readOpenBuilds(db, organizationId, new Set([partId])),
+    readBookTimeZoneOrUtc(organizationId),
+  ])
+  const [orderNames, supplierNames, buildNames] = await Promise.all([
+    readRecordNames(
+      db,
+      organizationId,
+      'purchase_order',
+      lines.map((l) => l.purchaseOrderId)
+    ),
+    readRecordNames(
+      db,
+      organizationId,
+      'company',
+      lines.flatMap((l) => (l.supplierId ? [l.supplierId] : []))
+    ),
+    readRecordNames(
+      db,
+      organizationId,
+      'build',
+      builds.map((b) => b.id)
+    ),
+  ])
+  const today = todayInZone(zone)
+  return {
+    openPoLines: lines
+      .map((l) => ({
+        purchaseOrderId: l.purchaseOrderId,
+        purchaseOrderNumber: orderNames.get(l.purchaseOrderId) ?? null,
+        lineId: l.id,
+        quantityOpen: l.quantityOpen,
+        expectedAt: l.expectedAt,
+        orderedAt: l.orderedAt,
+        supplierId: l.supplierId,
+        supplierName: l.supplierId ? (supplierNames.get(l.supplierId) ?? null) : null,
+        lateDays: lateDays(l.expectedAt, today),
+      }))
+      .sort((a, b) => (a.expectedAt ?? '9999').localeCompare(b.expectedAt ?? '9999')),
+    openBuilds: builds.map((b) => ({
+      buildId: b.id,
+      number: buildNames.get(b.id) ?? null,
+      status: b.status,
+      quantityOpen: b.quantityOpen,
+      dueDay: b.dueDay,
+    })),
+  }
 }
 
 /** A run's items for these parts, keyed by part id. */

@@ -6,9 +6,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { CheckCircle2, Landmark, TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
-import { EMPTY_CELL, formatMinor, formatSignedMinor } from '../ledger/format'
+import { formatMinor, formatSignedMinor } from '../ledger/format'
 import { accountTypeIcon } from '../settings/accounts-types'
 
 // The row model, row styling, cells and verdict shared by `StatementTable` and

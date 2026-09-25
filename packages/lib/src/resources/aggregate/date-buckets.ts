@@ -58,6 +58,15 @@ export function bucketExpr(col: SQL, granularity: DateGranularity, timezone: str
   return sql`to_char(date_trunc(${unit}, ${col} AT TIME ZONE ${timezone}), 'YYYY-MM-DD')`
 }
 
+/** {@link bucketExpr} for a zone-less `date` column: same keys, no timezone shift. */
+export function calendarDateBucketExpr(col: SQL, granularity: DateGranularity): SQL {
+  const ts = sql`(${col})::timestamp`
+  if (granularity === 'dayOfWeek') return sql`EXTRACT(ISODOW FROM ${ts})::int::text`
+  if (granularity === 'monthOfYear') return sql`EXTRACT(MONTH FROM ${ts})::int::text`
+  const unit = CALENDAR_TRUNC[granularity] ?? 'day'
+  return sql`to_char(date_trunc(${unit}, ${ts}), 'YYYY-MM-DD')`
+}
+
 /** Truncate a zone-local (naive) date to its bucket start. */
 function truncateLocal(local: Date, granularity: DateGranularity): Date {
   switch (granularity) {

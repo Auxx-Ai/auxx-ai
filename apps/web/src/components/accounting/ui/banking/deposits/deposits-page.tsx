@@ -50,12 +50,12 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Banknote, FileDown, Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { RecordsView } from '~/components/records/records-view'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -287,7 +287,7 @@ export function DepositsPage() {
   // 🛑 The view switch is the whole of row 1, and lifting it is safe only
   // because this page has no `SelectAllCheckbox` whose offsets the bar's height
   // would move (81 §3, §4).
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: (

@@ -18,18 +18,18 @@ import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, FileText } from 'lucide-react'
 import { parseAsInteger, parseAsString, useQueryState } from 'nuqs'
 import { useCallback, useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { ReportGrid } from '~/components/global/report-grid/report-grid'
+import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { ReportErrorCard } from './report-error-card'
-import { ReportGrid } from './report-grid'
 import { toStatementTableRows } from './report-helpers'
-import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { ReportBreadcrumb, ReportToolbarActions } from './report-toolbar'
 
 /** The last several tax years, newest first - `readVendor1099Summary` never refuses a year, so this is a UI convenience, not a validity bound. */
@@ -105,7 +105,7 @@ export function Vendor1099ReportPage() {
 
   // Its own left half rather than `ReportToolbarControls`' `asOf`/`range` modes:
   // the 1099 summary is a CALENDAR-YEAR report with no ledger period behind it.
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: (

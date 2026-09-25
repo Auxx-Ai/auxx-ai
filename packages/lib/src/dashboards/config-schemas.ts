@@ -93,6 +93,12 @@ const widgetSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('system'), tableId: z.string().min(1) }),
 ])
 
+/** Relative in-app paths only, so a stored link can never be `javascript:` or off-site. */
+const widgetLinkSchema = z
+  .string()
+  .regex(/^\/app\/[^\s]*$/, { message: 'Link must be an in-app path starting with /app/' })
+  .optional()
+
 const baseChartSchema = {
   source: widgetSourceSchema,
   filters: conditionGroupsSchema.optional(),
@@ -100,6 +106,7 @@ const baseChartSchema = {
   description: z.string().optional(),
   /** Per-widget display-format override, layered over the metric field's own options. */
   valueFormat: fieldOptionsOverrideSchema.optional(),
+  link: widgetLinkSchema,
 }
 
 /**
@@ -205,6 +212,7 @@ const recordListConfigSchema = z.object({
   columns: z.array(widgetFieldRefSchema),
   sort: z.object({ fieldRef: widgetFieldRefSchema, desc: z.boolean() }).optional(),
   pageSize: z.number().int().positive().max(50).optional(),
+  link: widgetLinkSchema,
 })
 
 const richTextConfigSchema = z.object({

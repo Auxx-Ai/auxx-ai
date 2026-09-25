@@ -17,6 +17,7 @@ import {
   MRP_SUPPLY_TYPES,
   readPartItem,
   readPartSeries,
+  readSellThrough,
   readSummary,
   readSupplierNextOrders,
   readSupplierPerformance,
@@ -85,9 +86,24 @@ export const mrpRouter = createTRPCRouter({
     }),
 
   partSeries: permissionProcedure(PermissionKey.mrpView)
-    .input(z.object({ partId: id, from: z.iso.date(), to: z.iso.date(), runId }))
+    .input(
+      z.object({
+        partId: id,
+        window: z.enum(['3m', '6m', '12m']),
+        grain: z.enum(['day', 'week', 'month']),
+        runId,
+      })
+    )
     .query(async ({ ctx, input }) => {
       const result = await readPartSeries(ctx.db, ctx.session.organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  sellThrough: permissionProcedure(PermissionKey.mrpView)
+    .input(z.object({ partId: id, runId }))
+    .query(async ({ ctx, input }) => {
+      const result = await readSellThrough(ctx.db, ctx.session.organizationId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

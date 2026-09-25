@@ -80,6 +80,7 @@ vi.mock('../../../cache', () => ({
     }),
   }),
   requireCachedEntityDefId: async (_orgId: string, entityType: string) => `${entityType}_def`,
+  getCachedEntityDefId: async (_orgId: string, entityType: string) => `${entityType}_def`,
 }))
 
 vi.mock('../../../field-values/field-value-helpers', () => ({

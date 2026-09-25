@@ -27,9 +27,10 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { FileUp, Landmark } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { AccountLabel } from '../../account-label'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatMinor } from '../../ledger/format'
 
 type RailStripRow = RouterOutputs['money']['payout']['rails'][number]
 

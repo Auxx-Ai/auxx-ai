@@ -3,7 +3,7 @@
 
 import type { ToolBindingMap, VarSource } from '@auxx/lib/agents/bindings/client'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { pluralize } from '@auxx/utils/strings'
 import { Plus, ShieldCheck } from 'lucide-react'
@@ -98,7 +98,7 @@ export function BindingsSection({ agent }: BindingsSectionProps) {
     <Section
       title='Bindings'
       icon={<ShieldCheck className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      className={SECTION_BLEED}
       initialOpen
       description='Tools are scoped by their built-in defaults. Override an input to pin a value or rebind it.'
       collapsible={false}

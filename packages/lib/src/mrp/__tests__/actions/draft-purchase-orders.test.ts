@@ -82,6 +82,7 @@ function purchase(partId: string, over: Partial<ActionItem> = {}): ActionItem {
   return {
     partId,
     suggestionKind: 'purchase',
+    supplyType: 'bought',
     suggestedQty: 10,
     suggestedVendorPartId: `vp_${partId}`,
     suggestedSupplierId: 'acme',
@@ -226,6 +227,43 @@ describe('draftPurchaseOrders', () => {
       { partId: 'gone', reason: 'The vendor part no longer exists' },
       { partId: 'wrong', reason: 'The vendor part belongs to a different part' },
       { partId: 'orphan', reason: 'The vendor part has no supplier' },
+    ])
+  })
+
+  it('an explicit quantity drafts a bought part the run did not suggest', async () => {
+    seed(purchase('p1', { suggestionKind: null, suggestedQty: null }))
+
+    const result = (await draft([{ partId: 'p1', quantity: 40 }]))._unsafeUnwrap()
+
+    expect(result.refused).toEqual([])
+    expect(result.created.map((c) => c.partIds)).toEqual([['p1']])
+    expect(po(0).lines.at(0)).toMatchObject({ purchase_order_line_quantity_ordered: 40 })
+  })
+
+  it('an explicit quantity with a vendor part drafts a part that is not classified bought', async () => {
+    seed(purchase('p1', { suggestionKind: null, supplyType: 'unclassified' }))
+    h.vendorParts.set('vp_other', { part: 'p1', contact: 'bolt', leadTime: null, price: null })
+
+    const result = (
+      await draft([{ partId: 'p1', quantity: 129, vendorPartId: 'vp_other' }])
+    )._unsafeUnwrap()
+
+    expect(result.refused).toEqual([])
+    expect(result.created).toEqual([
+      { supplierId: 'bolt', purchaseOrderId: 'po_1', number: 'PO-1', partIds: ['p1'] },
+    ])
+  })
+
+  it('an explicit quantity still needs a bought part or a vendor part', async () => {
+    seed(
+      purchase('p1', { suggestionKind: 'build', supplyType: 'made', suggestedVendorPartId: null })
+    )
+
+    const result = (await draft([{ partId: 'p1', quantity: 5 }]))._unsafeUnwrap()
+
+    expect(result.created).toEqual([])
+    expect(result.refused).toEqual([
+      { partId: 'p1', reason: 'The run does not suggest a purchase' },
     ])
   })
 

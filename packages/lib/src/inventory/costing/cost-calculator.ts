@@ -9,7 +9,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
-import { requireCachedEntityDefId } from '../../cache'
+import { getCachedEntityDefId, requireCachedEntityDefId } from '../../cache'
 import { toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
@@ -287,7 +287,9 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
 
 /** Every live subpart edge of an org in one query; edges missing a side or with quantity <= 0 are dropped. */
 async function loadOrgSubpartEdges(db: Database, orgId: string): Promise<SubpartRow[]> {
-  const subpartDefId = await requireCachedEntityDefId(orgId, 'subpart')
+  // An org without the subpart def has no BOM; the cache provider and the plan reads must not throw.
+  const subpartDefId = await getCachedEntityDefId(orgId, 'subpart')
+  if (!subpartDefId) return []
   const cfFields = await systemFieldMap(db, orgId, [
     'subpart_parent_part',
     'subpart_child_part',

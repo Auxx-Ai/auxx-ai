@@ -9,14 +9,14 @@ import { BookOpen } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { EmptyState } from '~/components/global/empty-state'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid/report-page-layout'
 import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../account-label'
 import { GeneralLedgerView, useGeneralLedgerExports } from './general-ledger-view'
 import { periodEndDate, periodStartDate } from './report-helpers'
-import { ReportMessage, ReportPageLayout } from './report-page-layout'
 import { generalLedgerRangePresets } from './report-range-presets'
 import { ReportBreadcrumb, ReportToolbarActions, ReportToolbarControls } from './report-toolbar'
 
@@ -68,7 +68,7 @@ export function GeneralLedgerReportPage() {
     fileLabel: accountLabel ?? undefined,
   })
 
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: (

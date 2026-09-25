@@ -27,14 +27,14 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import {
-  type AccountingToolbarContent,
-  useRegisterAccountingToolbar,
-} from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { BankAccountPicker, useBankAccounts } from '~/components/accounting/ui/bank-account-picker'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import {
+  type ModuleToolbarContent,
+  useRegisterModuleToolbar,
+} from '~/components/global/module-toolbar-outlet'
 import { BaseType } from '~/components/workflow/types'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
@@ -45,13 +45,13 @@ import { BankImportUploader } from './bank-import-uploader'
 const DISPLAY_CURRENCY = 'USD'
 
 /** Module-level, so the outlet's memoisation rule is satisfied without a `useMemo`. */
-const TOOLBAR: AccountingToolbarContent = {
+const TOOLBAR: ModuleToolbarContent = {
   left: <ToolbarTitle>Import statements</ToolbarTitle>,
 }
 
 export function BankImportPage() {
   useRequireCapability(PermissionKey.ledgerView)
-  useRegisterAccountingToolbar(TOOLBAR)
+  useRegisterModuleToolbar(TOOLBAR)
 
   // The chosen account rides the URL so it survives the hop into the wizard and
   // back, and so a coverage gap on the settings page can deep-link to it.

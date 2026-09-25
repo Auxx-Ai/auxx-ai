@@ -59,6 +59,7 @@ export const DRAWER_TAB_COMPONENTS: Record<
     import('./tabs/part-subparts-tab').then((m) => ({ default: m.PartSubpartsTab })),
   'part:vendors': () =>
     import('./tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
+  'part:mrp': () => import('../mrp/ui/part/part-mrp-tab').then((m) => ({ default: m.PartMrpTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // PRODUCT TABS
@@ -94,6 +95,15 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   'company:interactions': () =>
     import('./cards/record-interaction-card').then((m) => ({
       default: m.RecordInteractionCard,
+    })),
+  // The Purchasing tab's MRP blocks (07 D28), placed as `card` blocks in `COMPANY_PURCHASING_BLOCKS`.
+  'company:mrp-ordering': () =>
+    import('../mrp/ui/company/company-ordering-block').then((m) => ({
+      default: m.CompanyOrderingBlock,
+    })),
+  'company:mrp-supply': () =>
+    import('../mrp/ui/company/company-supply-block').then((m) => ({
+      default: m.CompanySupplyBlock,
     })),
   'contact:billing': () =>
     import('./cards/contact-billing-overview-card').then((m) => ({

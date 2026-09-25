@@ -3,9 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SubpartRow } from '../../../inventory/costing/cost-calculator'
 import { walkBom } from '../../reads/part-item'
-import { overlayFromItem } from '../../reads/part-series'
 import { shapeParents, topLevelAncestors } from '../../reads/where-used'
-import { item } from '../support/plan-item'
 
 const edge = (parentPartId: string, childPartId: string, quantity = 1): SubpartRow => ({
   parentPartId,
@@ -82,31 +80,5 @@ describe('where used', () => {
         share: 0,
       },
     ])
-  })
-})
-
-describe('overlayFromItem', () => {
-  it('overlays zones for a buffered item and marks its stored dates in order', () => {
-    const overlay = overlayFromItem(
-      item({
-        partId: 'p1',
-        buffered: true,
-        topOfRed: 45,
-        topOfYellow: 165,
-        topOfGreen: 225,
-        orderByDate: '2026-10-11',
-        stockoutDate: '2026-12-31',
-        nextArrivalDate: '2026-12-10',
-      })
-    )
-    expect(overlay.zones).toEqual({ topOfRed: 45, topOfYellow: 165, topOfGreen: 225 })
-    expect(overlay.events.map((e) => e.kind)).toEqual(['order_by', 'next_arrival', 'stockout'])
-  })
-
-  it('has no zones for an unbuffered item and nothing without one', () => {
-    expect(
-      overlayFromItem(item({ partId: 'p1', topOfRed: 1, topOfYellow: 2, topOfGreen: 3 })).zones
-    ).toBeNull()
-    expect(overlayFromItem(undefined)).toEqual({ zones: null, events: [], projectionBasis: null })
   })
 })

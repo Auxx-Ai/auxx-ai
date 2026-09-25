@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
@@ -35,7 +35,6 @@ import { EvalSuggestionsSection } from './eval-suggestions-section'
  * Bleeds the `Section`'s `data-slot=section-content` past the section's `p-3`
  * padding so the tree rows span full width; an inner `ps-2 pe-4` div re-pads.
  */
-const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
 
 interface EvalSuitePanelProps {
   agentId: string

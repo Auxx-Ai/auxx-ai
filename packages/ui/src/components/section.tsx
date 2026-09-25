@@ -12,6 +12,9 @@ import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import React, { useEffect, useRef, useState } from 'react'
 
+/** Pass as a `Section`'s `className` to cancel its content's `p-3` sides so a chart or list runs edge to edge. */
+export const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+
 /**
  * Props for Section component
  */

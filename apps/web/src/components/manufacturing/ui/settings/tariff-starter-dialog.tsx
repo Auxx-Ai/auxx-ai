@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/tariff-starter-dialog.tsx
 'use client'
 
-// "Add from catalogue" on Parts > Settings > Tariffs (money 32 §3): pick an
+// "Add from catalogue" on Parts > Manage > Tariffs (money 32 §3): pick an
 // origin, search the generated HTS general-rate schedule, and adopt the picked
 // codes as `tariff_code` + `tariff_rate` rows in one write through
 // `purchasing.adoptTariffStarters`.

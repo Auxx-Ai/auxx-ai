@@ -179,6 +179,8 @@ export const ModelTypeValues = [
   // writes structure, the carrier apps write status.
   'shipment',
   'parcel',
+  // MRP plan output rows, a dashboard aggregate source only (plans/mrp/07-ui-plan.md §5.4).
+  'mrp_plan_item',
 ] as const
 
 /**
@@ -237,6 +239,7 @@ export const ModelTypes = {
   PAYMENT_GATEWAY: 'payment_gateway',
   SHIPMENT: 'shipment',
   PARCEL: 'parcel',
+  MRP_PLAN_ITEM: 'mrp_plan_item',
 } as const
 
 /**
@@ -701,6 +704,15 @@ export const ModelTypeMeta: Record<
     dbTable: 'EntityInstance',
     // Same as `shipment`: there is no `/app/parcels/[id]` route, and claiming
     // one here puts a fullscreen button on the drawer that 404s.
+    hasDetailPage: false,
+  },
+  mrp_plan_item: {
+    label: 'Plan item',
+    plural: 'Plan items',
+    icon: 'calendar-clock',
+    color: 'teal',
+    apiSlug: 'mrp-plan-items',
+    dbTable: 'MrpPlanRunItem',
     hasDetailPage: false,
   },
 }

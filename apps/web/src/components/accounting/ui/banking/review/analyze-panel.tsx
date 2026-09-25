@@ -20,11 +20,12 @@ import { SearchX, Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 import { formatAccountLabel } from '../../account-label'
 import { useChartAccounts } from '../../gl-account-picker'
-import { EMPTY_CELL, formatSignedMinor } from '../../ledger/format'
+import { formatSignedMinor } from '../../ledger/format'
 import { BankRuleDialog } from '../rules/bank-rule-dialog'
 import {
   firstValue,

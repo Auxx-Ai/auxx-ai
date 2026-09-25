@@ -8,7 +8,7 @@ import type { AgentEvalAssertion, AgentEvalTarget, SimulationConfig } from '@aux
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
@@ -388,10 +388,7 @@ function EvalCaseForm({
         )}
 
         {/* Customer */}
-        <Section
-          title='Customer'
-          icon={<User className='size-4' />}
-          className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'>
+        <Section title='Customer' icon={<User className='size-4' />} className={SECTION_BLEED}>
           <div className='flex flex-col ps-2 pe-4'>
             <FieldPanel className='p-0'>
               <FieldPanelRow title='Opening message' isRequired>

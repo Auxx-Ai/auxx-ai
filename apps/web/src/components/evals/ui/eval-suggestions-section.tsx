@@ -4,7 +4,7 @@
 import type { AgentEvalTarget } from '@auxx/types/evals'
 import { AnimatedGradientText } from '@auxx/ui/components/animated-gradient-text'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
@@ -18,8 +18,6 @@ import {
 
 /** One proposed simulation from `eval.suggest`. */
 type Suggestion = RouterOutputs['eval']['suggest']['suggestions'][number]
-
-const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
 
 interface EvalSuggestionsSectionProps {
   agentId: string

@@ -144,7 +144,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
-  // A service part hides Inventory, Components, Vendors and Costing (107 D10).
+  // A service part hides Inventory, Components, Vendors, Planning and Costing (107 D10).
   part: {
     entityType: 'part',
     mainTabs: [
@@ -154,6 +154,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'inventory', label: 'Inventory', icon: 'package' },
       { value: 'subparts', label: 'Components', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Vendors', icon: 'store', recordResource: 'vendor_part' },
+      // The MRP projection beside Inventory's ledger (plans/mrp/07-ui-plan.md D27).
+      { value: 'mrp', label: 'Planning', icon: 'calendar-clock', permissionKey: 'mrp.view' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

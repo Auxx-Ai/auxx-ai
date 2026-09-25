@@ -5,21 +5,31 @@ import { type DayKey, daysBetween } from '@auxx/utils/calendar-day'
 import { and, arrayOverlaps, eq, ilike, inArray, or, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
+import { getOrgCache } from '../../cache'
+import { buildParentGraph, type ParentGraph } from '../../inventory/costing/cost-calculator'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { optionalFieldId, systemFieldMap, systemValueJoin } from '../../resources/system-records'
-import type { MrpFlag, MrpOrderMode, MrpSuggestionKind, MrpSupplyType } from '../client'
+import type {
+  MrpFlag,
+  MrpListSort,
+  MrpOrderMode,
+  MrpPlanTab,
+  MrpSuggestionKind,
+  MrpSupplyType,
+} from '../client'
 import { guard } from './guard'
-import { PART_LABEL_PICK } from './labels'
+import { readPartLabels } from './labels'
 import { loadRun, type MrpPlanItemRow, type MrpRunRef } from './runs'
 import { orderByHorizons } from './summary'
 
 const I = schema.MrpPlanRunItem
 
-/** The action list's status tabs (07 §4.1); `all` is the all-parts grid. */
-export const MRP_PLAN_TABS = ['all', 'overdue', 'this_week', 'later', 'flagged', 'fine'] as const
-export type MrpPlanTab = (typeof MRP_PLAN_TABS)[number]
-
-export const MRP_LIST_SORTS = ['priority', 'orderByDate', 'stockoutDate', 'partName'] as const
-export type MrpListSort = (typeof MRP_LIST_SORTS)[number]
+const LIST_PART_PICK = pickSystemAttributes(PART_FIELDS, [
+  'part_sku',
+  'part_stock_status',
+  'part_kind',
+] as const)
 
 export interface MrpListInput {
   runId?: string | null
@@ -48,6 +58,10 @@ export interface MrpListItem extends MrpPlanItemRow {
   supplierName: string | null
   /** Stockout date − the run's day; null without a stockout. */
   daysOfCover: number | null
+  /** Top-level products above the part in the current BOM; a sold finished good lists itself. */
+  productIds: string[]
+  /** Names parallel to `productIds`; an unnamed part reads "Unnamed part". */
+  productNames: string[]
 }
 
 export interface MrpList {
@@ -109,11 +123,12 @@ export async function listPlanItems(
       const run = await loadRun(db, organizationId, input.runId)
       if (!run) return { run: null, items: [], nextCursor: null }
 
-      const fields = await systemFieldMap(db, organizationId, PART_LABEL_PICK)
+      const fields = await systemFieldMap(db, organizationId, LIST_PART_PICK)
       const part = alias(schema.EntityInstance, 'mrp_part')
       const supplier = alias(schema.EntityInstance, 'mrp_supplier')
       const sku = alias(schema.FieldValue, 'mrp_part_sku_v')
       const status = alias(schema.FieldValue, 'mrp_part_status_v')
+      const kind = alias(schema.FieldValue, 'mrp_part_kind_v')
 
       const search = input.search?.trim()
       const where = and(
@@ -142,12 +157,14 @@ export async function listPlanItems(
           partName: part.displayName,
           partSku: sku.valueText,
           stockStatus: status.optionId,
+          partKind: kind.optionId,
           supplierName: supplier.displayName,
         })
         .from(I)
         .leftJoin(part, and(eq(part.id, I.partId), eq(part.organizationId, I.organizationId)))
         .leftJoin(sku, systemValueJoin(sku, optionalFieldId(fields.part_sku), part))
         .leftJoin(status, systemValueJoin(status, optionalFieldId(fields.part_stock_status), part))
+        .leftJoin(kind, systemValueJoin(kind, optionalFieldId(fields.part_kind), part))
         .leftJoin(
           supplier,
           and(eq(supplier.id, I.suggestedSupplierId), eq(supplier.organizationId, I.organizationId))
@@ -160,15 +177,59 @@ export async function listPlanItems(
         .offset(offset)
 
       const page = rows.slice(0, limit)
+      const parents = buildParentGraph(
+        (await getOrgCache().get(organizationId, 'subpartEdges')) ?? []
+      )
+      const products = new Map(
+        page.map((row) => [
+          row.item.partId,
+          productsAbove(row.item.partId, parents, isSoldFinishedGood(row.partKind, row.item.adu)),
+        ])
+      )
+      const productLabels = await readPartLabels(db, organizationId, [
+        ...new Set([...products.values()].flat()),
+      ])
       return {
         run,
-        items: page.map((row) => toListItem(row, run.asOfDay)),
+        items: page.map((row) => {
+          const productIds = products.get(row.item.partId) ?? []
+          return toListItem(row, run.asOfDay, {
+            productIds,
+            productNames: productIds.map((id) => productLabels.get(id)?.name ?? 'Unnamed part'),
+          })
+        }),
         nextCursor: rows.length > limit ? offset + limit : null,
       }
     },
     'Failed to list plan items',
     { organizationId, runId: input.runId }
   )
+}
+
+/** A finished good with usage in the window; with no parents its usage is its sales. */
+export function isSoldFinishedGood(kind: string | null, adu: number | null): boolean {
+  return kind === 'finished_good' && (adu ?? 0) > 0
+}
+
+/** Roots above `partId` in the parent graph, sorted; a root part lists itself only when `selfIsProduct`. */
+export function productsAbove(
+  partId: string,
+  parents: ParentGraph,
+  selfIsProduct: boolean
+): string[] {
+  if (!parents.get(partId)?.length) return selfIsProduct ? [partId] : []
+  const roots = new Set<string>()
+  const seen = new Set<string>([partId])
+  const stack = [...(parents.get(partId) ?? [])]
+  while (stack.length > 0) {
+    const id = stack.pop() as string
+    if (seen.has(id)) continue
+    seen.add(id)
+    const up = parents.get(id) ?? []
+    if (up.length === 0) roots.add(id)
+    else stack.push(...up)
+  }
+  return [...roots].sort()
 }
 
 /** A joined row as the list returns it. */
@@ -180,7 +241,8 @@ export function toListItem(
     stockStatus: string | null
     supplierName: string | null
   },
-  asOfDay: DayKey
+  asOfDay: DayKey,
+  products: Pick<MrpListItem, 'productIds' | 'productNames'> = { productIds: [], productNames: [] }
 ): MrpListItem {
   return {
     ...row.item,
@@ -189,5 +251,6 @@ export function toListItem(
     stockStatus: row.stockStatus,
     supplierName: row.supplierName,
     daysOfCover: row.item.stockoutDate ? daysBetween(asOfDay, row.item.stockoutDate) : null,
+    ...products,
   }
 }

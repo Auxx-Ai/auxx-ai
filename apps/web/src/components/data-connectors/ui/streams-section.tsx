@@ -2,7 +2,7 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Switch } from '@auxx/ui/components/switch'
 import { toastError } from '@auxx/ui/components/toast'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -129,7 +129,7 @@ export function StreamsSection({ connector, onSelect }: StreamsSectionProps) {
     <Section
       title='Streams'
       icon={<Layers className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      className={SECTION_BLEED}
       initialOpen
       collapsible={false}
       description='Each stream is one fetch that maps to one or more entity definitions.'
