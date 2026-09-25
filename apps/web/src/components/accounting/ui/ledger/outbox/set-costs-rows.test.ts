@@ -13,19 +13,27 @@ const row = (partId: string, over: Partial<SetCostsRow> = {}): SetCostsRow => ({
   partId,
   name: partId,
   waiting: 1,
+  waitingLabel: '1 shipment',
   channelCost: null,
   kind: null,
   ...over,
 })
 
 describe('set costs rows', () => {
-  it('builds one row per part from the groups and the fields', () => {
+  it('builds one row per part from the groups and the fields, counting what waits by kind', () => {
     const rows = buildSetCostsRows(
       [
-        { externalRef: 'p1', refLabel: 'Bolt', count: 4 },
-        { externalRef: 'p2', refLabel: null, count: 1 },
-        { externalRef: null, refLabel: null, count: 2 },
-        { externalRef: 'p1', refLabel: 'Bolt', count: 4 },
+        {
+          externalRef: 'p1',
+          refLabel: 'Bolt',
+          count: 4,
+          sourceKinds: ['build', 'fulfillment'],
+          sourceKindCounts: { fulfillment: 3, build: 1 },
+        },
+        { externalRef: 'p2', refLabel: null, count: 1, sourceKinds: ['stock_movement'] },
+        { externalRef: null, refLabel: null, count: 2, sourceKinds: ['fulfillment'] },
+        { externalRef: 'p1', refLabel: 'Bolt', count: 4, sourceKinds: ['fulfillment'] },
+        { externalRef: 'p3', refLabel: 'Nut', count: 5, sourceKinds: ['fulfillment', 'build'] },
       ],
       {
         p1: { part_channel_cost: 1250, part_kind: ['subassembly'] },
@@ -33,8 +41,31 @@ describe('set costs rows', () => {
       }
     )
     expect(rows).toEqual([
-      { partId: 'p1', name: 'Bolt', waiting: 4, channelCost: 1250, kind: 'subassembly' },
-      { partId: 'p2', name: 'p2', waiting: 1, channelCost: null, kind: null },
+      {
+        partId: 'p1',
+        name: 'Bolt',
+        waiting: 4,
+        waitingLabel: '3 shipments · 1 build',
+        channelCost: 1250,
+        kind: 'subassembly',
+      },
+      {
+        partId: 'p2',
+        name: 'p2',
+        waiting: 1,
+        waitingLabel: '1 count',
+        channelCost: null,
+        kind: null,
+      },
+      // Mixed kinds with no per-kind split from the read: one figure.
+      {
+        partId: 'p3',
+        name: 'Nut',
+        waiting: 5,
+        waitingLabel: '5 items',
+        channelCost: null,
+        kind: null,
+      },
     ])
   })
 

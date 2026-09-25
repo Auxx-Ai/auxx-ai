@@ -83,7 +83,7 @@ import {
   requireBuildContext,
   requireBuildMovementContext,
 } from './build-queries'
-import { canCompleteBuild, summarizeBuildCompletion } from './client'
+import { absorbedRunCost, canCompleteBuild, summarizeBuildCompletion, unitsStarted } from './client'
 import { guard } from './guard'
 import type {
   BuildComponentPlan,
@@ -114,7 +114,8 @@ const logger = createScopedLogger('builds:complete')
  * 4. One `build_consume` per component, at `-consumed`.
  * 5. One `build_produce` at `+quantityProduced`.
  * 6. Stamp the five cost fields and `status: 'completed'`; a pending build
- *    stamps the status alone and the pricer stamps the costs on the last leg.
+ *    stamps status, labour and overhead, and `price-build.ts` stamps the rest
+ *    once the last leg is priced.
  *
  * Then, and only after the transaction has committed, one batched
  * quantity-on-hand recalculation.
@@ -378,17 +379,21 @@ async function writeCompletion(
     ...produceWritten.value.records.map((record) => record.movementId),
   ]
 
-  // Step 6. The five cost fields wait for the pricer on a pending build.
+  // Step 6. On a pending build only labour and overhead are stamped - they depend on the run,
+  // not on a standard - so the pricer (`price-build.ts`) can summarise with what was absorbed here.
+  const started = unitsStarted(quantityProduced, quantityScrapped)
+  const laborCost = absorbedRunCost(input.laborCost, rates.laborCostPerUnit, started)
+  const overheadCost = absorbedRunCost(input.overheadCost, rates.overheadCostPerUnit, started)
   const buildValues: Record<string, unknown> = {
     build_status: BuildStatus.COMPLETED,
     build_quantity_produced: quantityProduced,
     build_quantity_scrapped: quantityScrapped,
     build_completed_at: completedAt.toISOString(),
+    build_labor_cost: laborCost,
+    build_overhead_cost: overheadCost,
   }
   if (summary) {
     buildValues.build_material_cost = summary.materialCost
-    buildValues.build_labor_cost = summary.laborCost
-    buildValues.build_overhead_cost = summary.overheadCost
     buildValues.build_produced_value = summary.producedValue
     buildValues.build_variance_amount = summary.varianceAmount
   }
@@ -439,8 +444,8 @@ async function writeCompletion(
       quantityProduced,
       quantityScrapped,
       materialCost: summary?.materialCost ?? null,
-      laborCost: summary?.laborCost ?? null,
-      overheadCost: summary?.overheadCost ?? null,
+      laborCost,
+      overheadCost,
       producedValue: summary?.producedValue ?? null,
       varianceAmount: summary?.varianceAmount ?? null,
       pendingPartIds,
@@ -536,7 +541,7 @@ function assertQuantities(quantityProduced: number, quantityScrapped: number): v
  * would keep rendering `planned` with empty costs until a reload. Fire and
  * forget, after the commit, exactly as the standard-cost roll publishes.
  */
-function publishBuildUpdate(
+export function publishBuildUpdate(
   organizationId: string,
   ctx: BuildContext,
   result: CompleteBuildResult,

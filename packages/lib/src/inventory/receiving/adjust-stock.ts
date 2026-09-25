@@ -29,10 +29,8 @@
 import type { Database } from '@auxx/database'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import {
-  exportInventoryMovement,
-  postInventoryMovementInTx,
-} from '../../accounting/ledger/post/post-inventory-movement'
+import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inventory-document'
+import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
@@ -132,27 +130,26 @@ export async function adjustStock(
         })
         return {
           written: record,
-          // The adjustment movement IS the document. Its counter-leg is
-          // `inventory_count_variance`, kept apart from purchase price variance
-          // for the reason `G12` gives: the shelf disagreeing with the ledger
-          // and the vendor billing differently are different questions.
+          // The adjustment movement IS the document (`G12`: its counter-leg is count variance,
+          // never purchase price variance). A pending row posts nothing; the pricer posts it.
           post:
-            record.extendedCost != null && record.glAccount != null
-              ? await postInventoryMovementInTx(tx, {
+            record.extendedCost != null
+              ? await postInventoryDocumentInTx(
+                  tx,
                   organizationId,
-                  kind: 'adjust',
-                  subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
-                  occurredAt: record.occurredAt,
-                  movements: [
+                  [
                     {
-                      id: record.movementId,
-                      extendedCostMinor: record.extendedCost,
-                      glAccountRole: record.glAccount,
+                      movementId: record.movementId,
+                      partInstanceId: record.partInstanceId,
+                      type: StockMovementType.ADJUST,
+                      quantity: record.quantity,
+                      extendedCost: record.extendedCost,
+                      glAccount: record.glAccount,
+                      occurredAt: record.occurredAt,
                     },
                   ],
-                  actorUserId: userId,
-                  memo: input.reason,
-                })
+                  { actorUserId: userId, memo: input.reason }
+                )
               : null,
         }
       })

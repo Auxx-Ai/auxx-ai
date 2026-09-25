@@ -63,6 +63,7 @@ import type {
 } from '../../accounting/ledger/builders/inventory-movement'
 import { withAccountingCommitLock } from '../../accounting/ledger/post/accounting-commit-lock'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
+import { saleDocumentParents } from '../../accounting/ledger/post/post-inventory-document'
 import {
   exportInventoryMovement,
   postInventoryMovementInTx,
@@ -85,7 +86,7 @@ import type { PartStandardCost } from '../costing/types'
 import type { WrittenStockMovement } from '../movements'
 import { type StockMovementInput, type StockMovementsCtx, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { splitReliefCost } from './cogs-split'
+import { type ReliefSplitLine, sumReliefCogsSplit } from './cogs-split'
 import { guard } from './guard'
 import { announceQuietReliefWrites, reliefWriteSession } from './write-lane'
 
@@ -534,10 +535,7 @@ async function relieveLines(
                 kind: 'sale',
                 cogsSplit: document.cogsSplit,
                 subject: { sourceKind: 'stock_movement', sourceId: document.movements[0]!.id },
-                parents: [
-                  { sourceKind: 'fulfillment', sourceId: document.fulfillmentId },
-                  { sourceKind: 'order', sourceId: document.orderId },
-                ],
+                parents: saleDocumentParents(document.fulfillmentId, document.orderId),
                 occurredAt: document.occurredAt,
                 movements: document.movements,
                 actorUserId: userId,
@@ -656,6 +654,8 @@ interface ReliefDocument {
   movements: InventoryMovementLine[]
   /** 73 §6.2 rule 3. Summed across the dispatch's lines; `cogs_product_cost` takes the rest. */
   cogsSplit: ReliefCogsSplit
+  /** The rows behind `cogsSplit`, kept until the group is complete. */
+  splitLines: ReliefSplitLine[]
 }
 
 /**
@@ -682,23 +682,23 @@ function groupByFulfillment(
       occurredAt: line.occurredAt,
       movements: [],
       cogsSplit: { laborMinor: 0, overheadMinor: 0 },
+      splitLines: [],
     }
     document.movements.push({
       id: record.movementId,
       extendedCostMinor: record.extendedCost,
       glAccountRole: record.glAccount,
     })
-    const standard = inputStandards[index]
-    if (standard) {
-      // The movement's cost is signed as it leaves the shelf; the COGS debit is
-      // its negation, and the split follows that sign.
-      const split = splitReliefCost(standard, -record.extendedCost, line.delta)
-      document.cogsSplit.laborMinor += split.laborMinor
-      document.cogsSplit.overheadMinor += split.overheadMinor
-    }
+    document.splitLines.push({
+      extendedCost: record.extendedCost,
+      quantity: record.quantity,
+      standard: inputStandards[index] ?? null,
+    })
     documents.set(line.fulfillmentId, document)
   }
-  return [...documents.values()].filter((document) => document.movements.length > 0)
+  return [...documents.values()]
+    .filter((document) => document.movements.length > 0)
+    .map((document) => ({ ...document, cogsSplit: sumReliefCogsSplit(document.splitLines) }))
 }
 
 /**

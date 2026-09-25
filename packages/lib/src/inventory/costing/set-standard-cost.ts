@@ -21,6 +21,7 @@ import {
 } from '../../realtime'
 import { ensureStandardCost } from './ensure-standard-cost'
 import { guard } from './guard'
+import { pricePendingMovementsQuietly } from './price-pending-movements'
 import {
   loadStandardCostWriteContext,
   type StandardCostWriteContext,
@@ -123,7 +124,10 @@ export async function setStandardCosts(
               : { partId, ok: false, error: new Error('The standard cost could not be written') }
           )
         }
-        if (restated.size > 0) await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+        if (restated.size > 0) {
+          await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+          await pricePendingMovementsQuietly(db, organizationId, [...restated])
+        }
       }
 
       if ([...outcomes.values()].some((outcome) => outcome.ok)) {

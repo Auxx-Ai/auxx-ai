@@ -47,6 +47,7 @@ import { resolveInventoryRoleForPartKind } from '../movements/client'
 import type { PartKindValue } from './client'
 import { recalculateAllPartCosts } from './cost-calculator'
 import { guard } from './guard'
+import { pricePendingMovementsQuietly } from './price-pending-movements'
 import { type RevaluationLine, writeRevaluation } from './revalue'
 import { planStandardCostRoll, type StandardCostFields } from './standard-cost-queries'
 import type { RollStandardCostInput, StandardCostRollLine, StandardCostRollResult } from './types'
@@ -134,9 +135,12 @@ export async function rollStandardCost(
         effectiveAt: plan.effectiveAt,
       })
 
-      // A shipment skipped for want of a standard can relieve now.
-      if (writtenPartIds.length > 0)
+      // The rows written pending for want of a standard are valued now (111 Q22); the wake
+      // keeps the recovery lane as the backstop.
+      if (writtenPartIds.length > 0) {
         await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+        await pricePendingMovementsQuietly(db, organizationId, writtenPartIds)
+      }
 
       logger.info('Rolled standard cost', {
         organizationId,
@@ -169,9 +173,10 @@ export async function rollStandardCost(
  * account away from `qty x standard` rather than toward it.
  *
  * 🛑 **`isInitial` lines never post.** A part that had no standard is being
- * valued for the first time, not revalued: its stock came in through a receipt
- * or an opening run that already booked what it was worth. The plan keeps the
- * two apart in `initialValue` for exactly this reason.
+ * valued for the first time, not revalued: what it holds was either booked by
+ * its receipt or opening run, or sits in `pending` rows that the pricer - not
+ * this roll - values at the new standard (111 Q18); revaluing it here would book
+ * those units twice. The plan keeps the two apart in `initialValue` for this.
  */
 async function postRollRevaluation(
   db: Database,

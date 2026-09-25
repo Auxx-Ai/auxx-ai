@@ -2,6 +2,7 @@
 import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { sweepExportBatches } from '../../accounting/export'
+import { sweepUnpostedInventory } from '../../accounting/ledger/post/sweep-unposted-inventory'
 import { sweepMovementAccounting } from '../../accounting/money/blocked-movements'
 import { sweepFinancialRecordBridge } from '../../accounting/money/customer-money/bridge-sweep'
 import { sweepImportedCustomerMoney } from '../../accounting/money/customer-money/ingest'
@@ -9,7 +10,7 @@ import { sweepStoredPayoutEntries } from '../../accounting/money/payouts/sweep-s
 import { sweepChannelCreditMemos } from '../../accounting/sales/credit-memos/issue-pass'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
 import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
-import { sweepFulfillmentRelief } from '../../inventory/relief/relief-sweep'
+import { sweepPendingPricing } from '../../inventory/relief/relief-sweep'
 import type { JobContext } from '../types/job-context'
 
 const logger = createScopedLogger('accounting-recovery-job')
@@ -23,8 +24,10 @@ type PostingSweep = (
 const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Payment accounting', sweepMovementAccounting],
   ['Shipment accounting', sweepFulfillmentAccounting],
-  // Stage `price` (111 Q21). TODO(111 X3): replace with the pricer; relief re-run writes no pending rows.
-  ['Pricing', sweepFulfillmentRelief],
+  // Stage `price` (111 Q21): the backstop under the inline pricer.
+  ['Pricing', sweepPendingPricing],
+  // Valued post-cutover movements in no posted entry - written in draft, or a post that threw (111 Q22b).
+  ['Unposted inventory', sweepUnpostedInventory],
   // Issues channel memos and links refunds that posted before their memo arrived.
   ['Credit memo issuing', sweepChannelCreditMemos],
   // Payouts import in draft with no entry, and the nightly sync re-offers only 30 days.

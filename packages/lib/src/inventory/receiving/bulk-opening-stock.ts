@@ -68,10 +68,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import {
-  exportInventoryMovement,
-  postInventoryMovementInTx,
-} from '../../accounting/ledger/post/post-inventory-movement'
+import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inventory-document'
+import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
@@ -216,24 +214,21 @@ export async function bulkOpenStockBalance(
         })
         // A pending row has no cost yet and is posted by the pricer, not here.
         const booked = rows
-          .filter((row) => row.extendedCost != null && row.extendedCost !== 0)
+          .filter((row) => row.extendedCost != null)
           .map((row) => ({
-            id: row.movementId,
-            extendedCostMinor: row.extendedCost as number,
-            glAccountRole: row.glAccount,
+            movementId: row.movementId,
+            partInstanceId: row.partId,
+            type: StockMovementType.INITIAL,
+            quantity: row.quantity,
+            extendedCost: row.extendedCost as number,
+            glAccount: row.glAccount,
+            occurredAt,
           }))
         return {
           opened: rows,
-          post: booked[0]
-            ? await postInventoryMovementInTx(tx, {
-                organizationId,
-                kind: 'opening',
-                subject: { sourceKind: 'stock_movement', sourceId: booked[0].id },
-                occurredAt,
-                movements: booked,
-                actorUserId: userId,
-              })
-            : null,
+          post: await postInventoryDocumentInTx(tx, organizationId, booked, {
+            actorUserId: userId,
+          }),
         }
       })
       await exportInventoryMovement(db, post)

@@ -24,10 +24,9 @@
  * | `manual`         | a person types a unit cost       | `unitCost`, or `part_cost` |
  * | `channel`        | a connector writes `part_channel_cost` | `unitCost`, the channel's (106 D5) |
  *
- * ✅ **A first standard always finds `QoH = 0`,** because every door that can
- * give a part stock either goes through here first or refuses without a
- * standard. So this can never revalue anything and there is no initial
- * valuation to post under any posting regime.
+ * A first standard revalues nothing: the roll's `isInitial` skip stands, and
+ * the movements written while the part had none are `pending` rows (111 Q18)
+ * that `pricePendingMovements` values and posts right after the write below.
  *
  * Every door stamps `part_standard_cost_source` (73 §6.4): `receipt` is
  * `confirmed`, because an invoice is a price somebody paid; the others are
@@ -57,6 +56,7 @@ import {
 } from '../../realtime'
 import type { StandardCostOriginValue, StandardCostSourceValue } from './client'
 import { guard } from './guard'
+import { pricePendingMovementsQuietly } from './price-pending-movements'
 import {
   loadStandardCostWriteContext,
   planStandardCostRoll,
@@ -213,9 +213,12 @@ export async function ensureStandardCost(
         source: standardCostSourceOf(source.kind),
       })
 
-      // A shipment skipped for want of a standard can relieve now.
-      if (writtenPartIds.length > 0)
+      // The rows written pending for want of a standard are valued now (111 Q22); the wake
+      // keeps the recovery lane as the backstop.
+      if (writtenPartIds.length > 0) {
         await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+        await pricePendingMovementsQuietly(db, organizationId, writtenPartIds)
+      }
 
       logger.info('Ensured first standard cost', {
         organizationId,

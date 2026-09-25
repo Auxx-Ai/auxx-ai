@@ -23,6 +23,13 @@ const h = vi.hoisted(() => ({
     isErr: () => false,
     value: { movementIds: ['mv_1'], postedMinor: 0 },
   })),
+  pricePending: vi.fn(
+    async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+      isErr: () => false,
+      isOk: () => true,
+      value: {},
+    })
+  ),
 }))
 
 function nextRows(): unknown[] {
@@ -99,6 +106,8 @@ vi.mock('../../../realtime', () => ({
 // The ledger side. Exercised on its own in the builder tests; here what matters
 // is WHAT gets handed to it, and when nothing is.
 vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
+// 111 §1.2: pending rows are priced at the guess BEFORE the delta restates the shelf.
+vi.mock('../price-pending-movements', () => ({ pricePendingMovements: h.pricePending }))
 
 import { replaceProvisionalStandard } from '../provisional-standard'
 
@@ -152,9 +161,44 @@ beforeEach(() => {
     value: { movementIds: ['mv_1'], postedMinor: 1000 },
   }))
   h.queryQueue = []
+  h.pricePending.mockImplementation(async () => ({
+    isErr: () => false,
+    isOk: () => true,
+    value: {},
+  }))
 })
 
 describe('the first receipt of a provisional part', () => {
+  it('prices the pending rows at the guess before the standard moves or the shelf is revalued', async () => {
+    queueOrg(motorAt(1000, 5, 'provisional'))
+
+    await replaceProvisionalStandard(db, ORG, USER, MOTOR, 1200, { occurredAt: AT })
+
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
+    const priced = h.pricePending.mock.invocationCallOrder[0]!
+    expect(priced).toBeLessThan(h.setValueWithType.mock.invocationCallOrder[0]!)
+    expect(priced).toBeLessThan(h.writeRevaluation.mock.invocationCallOrder[0]!)
+    // The delta still covers the whole shelf: the priced units were valued at the guess.
+    expect(h.writeRevaluation.mock.calls[0]![3]).toMatchObject({
+      lines: [expect.objectContaining({ extendedDeltaMinor: 1000 })],
+    })
+  })
+
+  it('does not move the standard when pricing failed, so no unit is revalued unvalued', async () => {
+    queueOrg(motorAt(1000, 5, 'provisional'))
+    h.pricePending.mockImplementation(async () => ({
+      isErr: () => true,
+      isOk: () => false,
+      error: new Error('pricing down'),
+    }))
+
+    const result = await replaceProvisionalStandard(db, ORG, USER, MOTOR, 1200, { occurredAt: AT })
+
+    expect(result.isErr()).toBe(true)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(h.writeRevaluation).not.toHaveBeenCalled()
+  })
+
   it('replaces the standard with the agreed price and confirms it', async () => {
     queueOrg(motorAt(1000, 5, 'provisional'))
 

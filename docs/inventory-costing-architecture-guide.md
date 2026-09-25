@@ -336,6 +336,7 @@ other sends them to the invoice.
 | `completeBuild` | `build_consume` (−) **and** `build_produce` (+) | quiet, one transaction |
 | `reverseMovement` / `reverseBuild` | the negating row | quiet |
 | `fillPendingCost` | no row — fills the cost onto a `pending` row, once (§7.4) | quiet |
+| `pricePendingMovements` | no row — calls `fillPendingCost` for a part's pending rows and posts their documents (§7.2, §9.3) | quiet |
 
 **A correction is a reversal, never an edit.** `reverseMovement` exists for exactly this. The
 double-reversal guard is a read-then-write with no DB constraint available on a `FieldValue`,
@@ -569,6 +570,17 @@ is a valid standard that would pass `completeBuild`'s "never post a zero cost" g
 
 **A standard-cost change touches no existing movement. Ever.** It is a one-time revaluation of
 *on-hand* inventory to 5090, not a restatement.
+
+**Pricing is not the roll (111 Q18/Q22).** A part's *first* standard finds `pending` rows (§7.4),
+not an unvalued shelf: the roll's `isInitial` skip stays right only because
+`inventory/costing/price-pending-movements.ts` — not the roll — values those rows, at the new
+standard, and posts their documents. Revaluing them in the roll as well would book the same units
+twice. Every door that writes a standard (`ensureStandardCost`, `rollStandardCost`,
+`setStandardCosts`, `seedStandardFromChannelCost`) calls the pricer inline for the parts it wrote,
+right after the `STANDARD_COST_MISSING` wake; a pricing failure is logged, never the door's error,
+and the recovery job's `Pricing` lane (stage `price`, `relief/relief-sweep.ts`) is the backstop.
+`replaceProvisionalStandard` prices first and revalues `QoH × Δ` second, so the delta never
+restates a unit that was never valued.
 
 ### 7.3 Why not FIFO
 
@@ -969,6 +981,27 @@ sale can carry a hundred movements and one entry.
 
   The subject link is the document; `occurrence` distinguishes passes over one source. The parent
   links are the order or the purchase order where there is one.
+
+  `accounting/ledger/post/post-inventory-document.ts` posts a document from its **valued rows
+  alone** — for the two callers that no longer have the writer on the stack: the pricer (a row
+  valued after its document was written) and the catch-up sweep below. Kind, subject and parents
+  come from the rows' links: a `fulfillmentLineId` is a `sale` (parents fulfillment + order,
+  `cogsSplit` by each part's standard as it stands at pricing time — 61 I8 read again, as for a
+  late-standard second run; the split arithmetic is `relief/cogs-split.ts`'s `sumReliefCogsSplit`,
+  shared with the relief run), a `buildId` is a `build` (subject the build id, `absorbed` the
+  labour and overhead stamped on the build, refused while any leg is pending), an `adjust` is
+  `adjust`, an `initial` is `opening`, a `scrap` is `scrap`, a salvage `return_in` is `return`, a
+  `receive` re-derives its accrual from the row's vendor price and accrued adders, and a
+  `return_out` is refused (its `grni` figure is the vendor credit's). **A pricing pass is one more
+  relief run**: its subject is the first row valued in that pass, so a dispatch priced over several
+  passes posts several entries under the same fulfillment and order parents, each dated the ship
+  date.
+
+  🛑 **The catch-up sweep** (`post/sweep-unposted-inventory.ts`, the recovery job's `Unposted
+  inventory` lane, 111 Q22b) posts valued movements dated after the cutover that sit in no posted
+  `inventory_movement` entry — the close's `inventory_unposted` predicate, oldest first, 100 rows a
+  run, grouped by document. It is what posts a row written while the org was in draft, or whose
+  post threw; without it nothing ever would.
 
   🛑 **A document dated in or before `accounting.cutoffPeriod` posts nothing** (111-X1). The
   poster returns `null`, the movements stay, and no work item is raised: the opening baseline
@@ -1382,13 +1415,13 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | --- | --- |
 | `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
 | `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
-| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
+| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `price-pending-movements.ts` (the pricer: `pending` rows valued and their documents posted), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
-| `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
-| `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `backfill.ts`, `write-lane.ts` |
+| `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `price-build.ts` (a pending build's last leg priced: stamp and post), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
+| `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `relief-sweep.ts` (the stage-`price` handler), `backfill.ts`, `write-lane.ts` |
 | `packages/lib/src/inventory/bom/` | `subpart-graph.ts` (`loadSubpartGraph`, `MAX_BOM_DEPTH`) |
 | `packages/lib/src/inventory/tariffs/` | `tariff-schedule.ts`, `tariff-starters.ts`, `tariff-hts-general.ts`, `tariff-301-memberships.ts`, `adopt-tariff-starters.ts`, `resync-tariff-starters.ts`, `apply-tariff-schedule.ts`, `client.ts` |
-| `packages/lib/src/accounting/ledger/` | `builders/entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `builders/inventory-movement.ts`, `builders/doc-number.ts`, `post/post-entry.ts`, `post/post-inventory-movement.ts` (the one door for an inventory document), `roles/resolve-roles.ts` (role → account, fails closed), `roles/regime.ts`, `chart/default-chart.ts`, `periods/`, `setup/book-time-zone.ts` |
+| `packages/lib/src/accounting/ledger/` | `builders/entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `builders/inventory-movement.ts`, `builders/doc-number.ts`, `post/post-entry.ts`, `post/post-inventory-movement.ts` (the one door for an inventory document), `post/post-inventory-document.ts` (a document from its valued rows), `post/sweep-unposted-inventory.ts` (the catch-up), `roles/resolve-roles.ts` (role → account, fails closed), `roles/regime.ts`, `chart/default-chart.ts`, `periods/`, `setup/book-time-zone.ts` |
 
 **Field hooks** — three inventory triggers live outside `inventory/` because they are hooks, not
 module exports: `recalculatePartQoH` and `recalculateQoHForPart`

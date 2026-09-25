@@ -3,7 +3,8 @@
 'use client'
 
 // Accounting > Ledger > Outbox > the BLOCKED tab (91 §4.6). A `groupsByExternalRef` code
-// drills reason → ref → items; every other code is group → items (106 §6.1).
+// drills reason → ref → items; every other code is group → items (106 §6.1). Under a part the
+// items are shipments, builds and counts, each opening its own document (111 Q18).
 
 import {
   type WorkItemSourceKind,
@@ -11,7 +12,7 @@ import {
   workItemSeverity,
   workItemStatus,
 } from '@auxx/lib/accounting/work-items/client'
-import { toRecordId } from '@auxx/lib/resources/client'
+import { type RecordId, StockMovementType, toRecordId } from '@auxx/lib/resources/client'
 import { ActionBar } from '@auxx/ui/components/action-bar'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -33,6 +34,8 @@ import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
 import { useProviderName } from '~/components/money/ui/provider-payment-notice'
+import { useRecord, useResourceProperty } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -110,6 +113,9 @@ interface BlockedPanelProps {
   /** The shipment open in the `?shipment=` drawer. */
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
+  /** The build or stock movement open in the `?record=` drawer; without a handler the badge links out. */
+  activeRecordId?: string | null
+  onSelectRecord?: (recordId: RecordId) => void
   /** The `STANDARD_COST_MISSING` reason row's "Set costs" (106 §6.2); no button without it. */
   onSetCosts?: () => void
 }
@@ -125,6 +131,8 @@ export function BlockedPanel({
   onSelectMovement,
   activeShipmentId,
   onSelectShipment,
+  activeRecordId = null,
+  onSelectRecord,
   onSetCosts,
 }: BlockedPanelProps) {
   const utils = api.useUtils()
@@ -330,6 +338,8 @@ export function BlockedPanel({
             onSelectMovement={onSelectMovement}
             activeShipmentId={activeShipmentId}
             onSelectShipment={onSelectShipment}
+            activeRecordId={activeRecordId}
+            onSelectRecord={onSelectRecord}
             onRetry={(item) =>
               retry.mutate({ source: { sourceKind: item.sourceKind, sourceId: item.sourceId } })
             }
@@ -435,31 +445,25 @@ function BlockedReasonRefs({ reasonCode, query, renderGroup }: BlockedReasonRefs
   )
 }
 
-interface BlockedGroupItemsProps {
-  group: GroupKey
-  depth: number
-  query: BlockedQuery
+interface BlockedItemTargets {
   bookTimeZone: string
   activeMovementId: string | null
   onSelectMovement: (moneyTransactionId: string) => void
   activeShipmentId: string | null
   onSelectShipment: (fulfillmentId: string) => void
+  activeRecordId: string | null
+  onSelectRecord?: (recordId: RecordId) => void
   onRetry: (item: BlockedItem) => void
 }
 
-/** One group's items, paged; a movement or a shipment opens its drawer. */
-function BlockedGroupItems({
-  group,
-  depth,
-  query,
-  bookTimeZone,
-  activeMovementId,
-  onSelectMovement,
-  activeShipmentId,
-  onSelectShipment,
-  onRetry,
-}: BlockedGroupItemsProps) {
-  const providerName = useProviderName()
+interface BlockedGroupItemsProps extends BlockedItemTargets {
+  group: GroupKey
+  depth: number
+  query: BlockedQuery
+}
+
+/** One group's items, paged; each opens the document it names. */
+function BlockedGroupItems({ group, depth, query, ...targets }: BlockedGroupItemsProps) {
   const list = api.ledger.listBlockedItems.useInfiniteQuery(
     { ...query, group },
     { getNextPageParam: (page) => page.nextCursor }
@@ -468,67 +472,9 @@ function BlockedGroupItems({
 
   return (
     <>
-      {items.map((item) => {
-        const movementId = item.moneyTransactionId
-        const onOpen =
-          item.sourceKind === 'fulfillment'
-            ? () => onSelectShipment(item.sourceId)
-            : movementId
-              ? () => onSelectMovement(movementId)
-              : undefined
-        const active =
-          item.sourceKind === 'fulfillment'
-            ? activeShipmentId === item.sourceId
-            : !!movementId && activeMovementId === movementId
-        const typeLabel = item.purpose
-          ? (MOVEMENT_PURPOSE_LABEL[item.purpose as keyof typeof MOVEMENT_PURPOSE_LABEL] ??
-            sourceLabel(item.sourceKind))
-          : sourceLabel(item.sourceKind)
-        return (
-          <OutboxRow
-            key={item.id}
-            id={item.id}
-            depth={depth}
-            selectable={false}
-            date={formatAccountingDate(item.updatedAt.toISOString(), bookTimeZone)}
-            typeLabel={typeLabel}
-            title={item.label ?? item.externalRef ?? item.sourceId}
-            description={workItemSentence(item.reasonCode, item)}
-            secondary={
-              item.recordDefinitionId ? (
-                <RecordBadge
-                  recordId={toRecordId(item.recordDefinitionId, item.sourceId)}
-                  size='sm'
-                />
-              ) : undefined
-            }
-            amount={
-              item.amountMinor !== null && item.currency
-                ? formatMinor(item.amountMinor, item.currency)
-                : ''
-            }
-            actions={
-              <>
-                {item.providerObjectUrl && (
-                  <TreeRowButton
-                    persistent
-                    tooltipText={`Open in ${providerName}`}
-                    aria-label={`Open in ${providerName}`}
-                    onClick={() => window.open(item.providerObjectUrl ?? '', '_blank', 'noopener')}>
-                    <ExternalLink />
-                  </TreeRowButton>
-                )}
-                <TreeRowButton persistent tooltipText='Retry' onClick={() => onRetry(item)}>
-                  <RefreshCw />
-                </TreeRowButton>
-              </>
-            }
-            onOpen={onOpen}
-            active={active}
-            selectLabel={item.label ?? item.sourceId}
-          />
-        )
-      })}
+      {items.map((item) => (
+        <BlockedItemRow key={item.id} item={item} depth={depth} {...targets} />
+      ))}
       {list.hasNextPage && (
         <InfiniteListTail
           hasNextPage={list.hasNextPage}
@@ -538,5 +484,136 @@ function BlockedGroupItems({
         />
       )}
     </>
+  )
+}
+
+/** What a count row shows: the item read names no `stock_movement`, so its fields are read here. */
+const MOVEMENT_ATTRIBUTES = [
+  'stock_movement_type',
+  'stock_movement_quantity',
+  'stock_movement_reason',
+  'stock_movement_reference',
+  'stock_movement_occurred_at',
+] as const
+
+const MOVEMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  StockMovementType.values.map((type) => [type.value, type.label])
+)
+
+interface BlockedItemRowProps extends BlockedItemTargets {
+  item: BlockedItem
+  depth: number
+}
+
+/** One item: a shipment opens its frame, a build or a count its record, money its movement. */
+function BlockedItemRow({
+  item,
+  depth,
+  bookTimeZone,
+  activeMovementId,
+  onSelectMovement,
+  activeShipmentId,
+  onSelectShipment,
+  activeRecordId,
+  onSelectRecord,
+  onRetry,
+}: BlockedItemRowProps) {
+  const providerName = useProviderName()
+  const buildDefId = useResourceProperty('build', 'id')
+  const movementDefId = useResourceProperty('stock_movement', 'id')
+  const buildRecordId =
+    item.sourceKind === 'build' && buildDefId ? toRecordId(buildDefId, item.sourceId) : null
+  const movementRecordId =
+    item.sourceKind === 'stock_movement' && movementDefId
+      ? toRecordId(movementDefId, item.sourceId)
+      : null
+  const { record: build } = useRecord({ recordId: buildRecordId, enabled: !!buildRecordId })
+  const { values: movement } = useSystemValues(movementRecordId, MOVEMENT_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: !!movementRecordId,
+  })
+
+  const documentRecordId = buildRecordId ?? movementRecordId
+  const recordId =
+    documentRecordId ??
+    (item.recordDefinitionId ? toRecordId(item.recordDefinitionId, item.sourceId) : null)
+  const moneyId = item.moneyTransactionId
+
+  let onOpen: (() => void) | undefined
+  let active = false
+  if (item.sourceKind === 'fulfillment') {
+    onOpen = () => onSelectShipment(item.sourceId)
+    active = activeShipmentId === item.sourceId
+  } else if (documentRecordId) {
+    onOpen = onSelectRecord ? () => onSelectRecord(documentRecordId) : undefined
+    active = activeRecordId === documentRecordId
+  } else if (moneyId) {
+    onOpen = () => onSelectMovement(moneyId)
+    active = activeMovementId === moneyId
+  }
+
+  const quantity = movement.stock_movement_quantity as number | null | undefined
+  const movementType = movement.stock_movement_type as string | undefined
+  const occurredAt = movement.stock_movement_occurred_at
+  const note = (movement.stock_movement_reason || movement.stock_movement_reference) as
+    | string
+    | undefined
+
+  const typeLabel = movementRecordId
+    ? (movementType && MOVEMENT_TYPE_LABEL[movementType]) || sourceLabel(item.sourceKind)
+    : item.purpose
+      ? (MOVEMENT_PURPOSE_LABEL[item.purpose as keyof typeof MOVEMENT_PURPOSE_LABEL] ??
+        sourceLabel(item.sourceKind))
+      : sourceLabel(item.sourceKind)
+  const title = buildRecordId
+    ? (build?.displayName ?? item.label ?? sourceLabel(item.sourceKind))
+    : movementRecordId
+      ? quantity != null
+        ? `${quantity > 0 ? '+' : ''}${quantity}${note ? ` · ${note}` : ''}`
+        : (item.label ?? sourceLabel(item.sourceKind))
+      : (item.label ?? item.externalRef ?? item.sourceId)
+  // A count is dated when it happened; the others carry no document date on the item read.
+  const dateIso =
+    movementRecordId && typeof occurredAt === 'string' ? occurredAt : item.updatedAt.toISOString()
+
+  return (
+    <OutboxRow
+      id={item.id}
+      depth={depth}
+      selectable={false}
+      date={formatAccountingDate(dateIso, bookTimeZone)}
+      typeLabel={typeLabel}
+      title={title}
+      description={workItemSentence(item.reasonCode, item)}
+      secondary={
+        recordId ? (
+          <RecordBadge recordId={recordId} size='sm' link={!!documentRecordId && !onOpen} />
+        ) : undefined
+      }
+      amount={
+        item.amountMinor !== null && item.currency
+          ? formatMinor(item.amountMinor, item.currency)
+          : ''
+      }
+      actions={
+        <>
+          {item.providerObjectUrl && (
+            <TreeRowButton
+              persistent
+              tooltipText={`Open in ${providerName}`}
+              aria-label={`Open in ${providerName}`}
+              onClick={() => window.open(item.providerObjectUrl ?? '', '_blank', 'noopener')}>
+              <ExternalLink />
+            </TreeRowButton>
+          )}
+          <TreeRowButton persistent tooltipText='Retry' onClick={() => onRetry(item)}>
+            <RefreshCw />
+          </TreeRowButton>
+        </>
+      }
+      onOpen={onOpen}
+      active={active}
+      selectLabel={typeof title === 'string' ? title : item.sourceId}
+    />
   )
 }
