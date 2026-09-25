@@ -436,8 +436,11 @@ class FieldValueFetchQueue {
       }> = []
       // Contributing data-connector sync states to rehydrate (mirrors aiEntries).
       const syncByKey = new Map<FieldValueKey, CellSyncInfo>()
-      for (const result of results) {
+      // Records whose chunk came back. A failed chunk says nothing about its values.
+      const answeredRecordIds = new Set<RecordId>()
+      results.forEach((result, i) => {
         if (result.status === 'fulfilled') {
+          for (const recordId of chunks[i]!) answeredRecordIds.add(recordId)
           for (const v of result.value.values) {
             const key = buildFieldValueKey(v.recordId as RecordId, v.fieldRef)
             entriesMap.set(key, v.value)
@@ -451,14 +454,18 @@ class FieldValueFetchQueue {
         } else {
           console.warn('[FieldValueFetchQueue] Chunk fetch failed:', result.reason)
         }
-      }
+      })
 
       // Compute all requested combinations (server evaluates the cross
       // product, so null-backfill must cover it too)
       const allRequestedCombinations = new Set<FieldValueKey>()
+      const answeredCombinations = new Set<FieldValueKey>()
       for (const recordId of recordIds) {
+        const answered = answeredRecordIds.has(recordId)
         for (const fieldRef of fieldRefs) {
-          allRequestedCombinations.add(buildFieldValueKey(recordId, fieldRef))
+          const key = buildFieldValueKey(recordId, fieldRef)
+          allRequestedCombinations.add(key)
+          if (answered) answeredCombinations.add(key)
         }
       }
 
@@ -469,10 +476,13 @@ class FieldValueFetchQueue {
         const apiValue = entriesMap.get(key)
         if (apiValue !== undefined) {
           entries.push({ key, value: apiValue })
-        } else if (silent || !(key in currentValues) || currentValues[key] === undefined) {
-          // Silent (catch-up) mode nulls a key the server no longer has a value
-          // for — that IS the missed clear. The normal path skips keys that
-          // already hold a value.
+        } else if (
+          silent
+            ? answeredCombinations.has(key)
+            : !(key in currentValues) || currentValues[key] === undefined
+        ) {
+          // Silent (catch-up) mode nulls a key the server answered for with no
+          // value — the missed clear — and keeps a key whose chunk failed.
           entries.push({ key, value: null })
         }
       }
@@ -491,7 +501,7 @@ class FieldValueFetchQueue {
       // row — so a combination it stayed silent on clears its badge rather than
       // keeping a state the last sync run has since ended.
       const setManagedState = useFieldValueStore.getState().setManagedState
-      for (const key of allRequestedCombinations) {
+      for (const key of answeredCombinations) {
         setManagedState(key, syncByKey.get(key) ?? null)
       }
     } catch (error) {
