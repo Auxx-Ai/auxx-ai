@@ -17,8 +17,8 @@
 // The fulfillment posting mode and the "Where payments land" routes used to
 // be here. Brief 28 §3 moved them to Settings > Posting (decision 1: replace,
 // not duplicate), which renders every posting-type setting off `POSTING_POLICY`.
-// This page keeps what its nav description claims: period, setup status and
-// standard cost.
+// This page keeps what its nav description claims: period, export and setup
+// status. Standard cost lives on Parts > Manage > General.
 
 import { FieldType } from '@auxx/database/enums'
 import {
@@ -30,7 +30,7 @@ import {
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { toastError } from '@auxx/ui/components/toast'
-import { CalendarRange, ExternalLink, Lock, Scale, Send } from 'lucide-react'
+import { CalendarRange, ExternalLink, Lock, Send } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -61,7 +61,6 @@ import {
   EXPORT_DRAFT_KEYS,
   PERIOD_DRAFT_KEYS,
   readText,
-  STANDARD_COST_DRAFT_KEYS,
 } from './accounting-settings-keys'
 import { FrozenLock } from './frozen-lock'
 import { SetupStatusSection } from './setup-status-section'
@@ -81,7 +80,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'The period the books are kept in, how setup is finalized, and what a build absorbs.'
+  'The period the books are kept in, how postings export, and how setup is finalized.'
 
 export function AccountingGeneralSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -166,16 +165,8 @@ export function AccountingGeneralSettingsPage() {
     return confirmed === true
   }
 
-  // ── Section 3: standard cost ─────────────────────────────────────────────
-  const standardCost = useAccountingSetupDraft(STANDARD_COST_DRAFT_KEYS)
-  const { draft: standardCostDraft, patch: patchStandardCost } = standardCost
-
-  const dirty = period.dirty || exportSettings.dirty || standardCost.dirty
-  const isSaving =
-    period.isSaving ||
-    exportSettings.isSaving ||
-    standardCost.isSaving ||
-    isBatchUpdatingOrgSettings
+  const dirty = period.dirty || exportSettings.dirty
+  const isSaving = period.isSaving || exportSettings.isSaving || isBatchUpdatingOrgSettings
   const saveDisabled = (period.dirty && !periodValid) || (exportSettings.dirty && !exportValid)
 
   async function handleSave() {
@@ -184,7 +175,6 @@ export function AccountingGeneralSettingsPage() {
     // its Save appears, does nothing, and leaves the bar up.
     if (period.dirty) period.save()
     if (exportSettings.dirty) exportSettings.save()
-    if (standardCost.dirty) standardCost.save()
   }
 
   const finalizeSetup = api.ledger.finalizeSetup.useMutation()
@@ -230,39 +220,8 @@ export function AccountingGeneralSettingsPage() {
   return (
     <SettingsPage title='General' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
-        {/*
-          TWO INDEPENDENT COLUMNS, not a grid of rows.
-
-          Each column is its own flex stack, so a tall section on one side does
-          not push the next section down on the other. The original shape was
-          three stacked `lg:grid-cols-2` rows, which forces every row to wait for
-          its tallest cell: `Setup status` was a tall action panel and
-          `Accounting period` is two fields, so the left side grew a large hole
-          under it before the next section could start.
-
-          🛑 THE SPLIT IS NOW WHAT THE SAVE BAR COVERS. The height rule it used
-          to be is gone, and so is the "left is what you fill in, right is what
-          the page does or reports" one before it - that one worked while the
-          right column held the three provider sections, and brief 27 moved all
-          three to Settings > Connected system. Left is the two draft-backed
-          sections that feed the one save bar below, in the order you fill them;
-          right is `Setup status`, the only section that is not draft-backed.
-
-          ⚠️ This costs the height balance on purpose. `Standard cost` is the
-          tallest section and `Setup status` is the shortest, so the right
-          column ends well above the left and the page bottoms out one-sided.
-          The columns are independent flex stacks, so that is trailing space,
-          not a hole between sections - but do not "fix" it by sending a
-          draft-backed section back across. Brief 28 moved the payment routes
-          off the left column to Settings > Posting.
-
-          ⚠️ Nothing may be placed AFTER both columns. Observed 2026-08-28 on
-          `abgwpa1l81reht2zmwrcihfu` with the provider section there: it sat alone
-          off the bottom of the page and read as missing.
-
-          ⚠️ On mobile the columns stack, so the reading order is
-          period -> standard cost -> setup. That is the trade for column-major flow.
-        */}
+        {/* Two independent flex columns: left is the draft-backed sections the save bar covers,
+            right is Setup status. */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
             <SettingsSection
@@ -373,44 +332,6 @@ export function AccountingGeneralSettingsPage() {
                 .
               </p>
             </SettingsSection>
-
-            <SettingsSection
-              icon={Scale}
-              title='Standard cost'
-              description='How a part first gets a standard. Labor and overhead rates are set per part, on the part itself.'>
-              <FieldPanel
-                className='mt-1 p-0'
-                resizeId='accounting-general-standard-cost'
-                defaultLabelWidth={220}>
-                <SettingsFieldRow
-                  settingKey={ACCOUNTING_KEYS.autoRollFirstStandard}
-                  title='Set a first standard automatically'
-                  description='When a part first gets a price, opening stock or a receipt, freeze that as its standard cost.'
-                  value={standardCostDraft[ACCOUNTING_KEYS.autoRollFirstStandard] ?? true}
-                  onChange={(value) =>
-                    patchStandardCost({
-                      [ACCOUNTING_KEYS.autoRollFirstStandard]: value as SettingValue,
-                    })
-                  }
-                />
-              </FieldPanel>
-
-              <p className='text-muted-foreground text-xs'>
-                A part absorbs labor and overhead only when it is a subassembly or a finished good
-                and carries its own rate; there is no org-wide default. Setting a first standard
-                never overwrites one that already exists, so a supplier raising a price moves the
-                part&apos;s cost and leaves its standard where it is. Re-valuing is what the roll is
-                for, and the roll lives with the parts:{' '}
-                {/* The roll asserts edit on the `part` def, so it lives on a page gated the same way. */}
-                <Link
-                  href='/app/parts/manage/costing'
-                  className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
-                  Parts, Manage, Costing
-                  <ExternalLink className='size-3' />
-                </Link>
-                .
-              </p>
-            </SettingsSection>
           </div>
 
           <div className='flex flex-col gap-8'>
@@ -440,7 +361,6 @@ export function AccountingGeneralSettingsPage() {
           onDiscard={() => {
             if (period.dirty) period.discard()
             if (exportSettings.dirty) exportSettings.discard()
-            if (standardCost.dirty) standardCost.discard()
           }}
           saveDisabled={saveDisabled}
         />

@@ -4,8 +4,8 @@
 // Parts > Manage > General (25-parts-settings-tab.md §4; shape: plans/mrp/07-ui-plan.md §4.8).
 //
 // A document page under the Manage shell: the toolbar title, then one
-// `ScrollArea` of `Section`s holding `FieldPanel` rows over one `useDirtyDraft`
-// slice and one `FormSaveBar`.
+// `ScrollArea` of two `SettingsSection` columns holding `FieldPanel` rows over one
+// `useDirtyDraft` slice and one `FormSaveBar`.
 //
 // 🛑 Draft keys are scoped explicitly. `useSettings({ scope: 'GENERAL' })`
 // returns EVERY `GENERAL`-scope setting in the whole app and both keys here are
@@ -15,7 +15,6 @@
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
 import { Factory, History, SlidersHorizontal } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
@@ -23,6 +22,7 @@ import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
 import { ToolbarTitle } from '~/components/global/module-toolbar'
 import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { SettingsSection } from '~/components/global/settings-page'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
@@ -30,6 +30,7 @@ import {
   applyBuildSwitchExclusivity,
   BUILD_SWITCH_EXCLUSIVITY_SENTENCE,
 } from './build-switch-exclusivity'
+import { StandardCostSection } from './standard-cost-section'
 
 const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts'
 
@@ -65,6 +66,7 @@ const DRAFT_KEYS = [
   'mrp.defaultLeadTimeFactor',
   'mrp.defaultVariabilityFactor',
   'mrp.runRetentionDays',
+  'manufacturing.autoRollFirstStandard',
 ] as const
 
 export function PartsGeneralSettingsPage() {
@@ -115,103 +117,126 @@ export function PartsGeneralSettingsPage() {
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <Section
-          title='Automatic builds'
-          icon={<Factory className='size-4' />}
-          description='When an order asks for a part that is made rather than bought, raise the production run for it.'
-          collapsible={false}>
-          <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
-            <SettingsFieldRow
-              settingKey={PARTS_SETTINGS_KEYS.autoBuildFromOrders}
-              title='Raise builds from orders'
-              {...controlled(PARTS_SETTINGS_KEYS.autoBuildFromOrders)}
-            />
-            <SettingsFieldRow
-              settingKey={PARTS_SETTINGS_KEYS.autoBuildStockRule}
-              title='When to raise one'
-              {...controlled(PARTS_SETTINGS_KEYS.autoBuildStockRule)}
-            />
-          </FieldPanel>
+        {/* Two independent flex columns, like Accounting > Settings > General: builds and planning on the
+            left, the tall standard-cost section alone on the right. */}
+        <div className='grid grid-cols-1 items-start gap-8 p-3 sm:p-6 lg:grid-cols-2'>
+          <div className='flex flex-col gap-8'>
+            <SettingsSection
+              title='Automatic builds'
+              icon={Factory}
+              description='When an order asks for a part that is made rather than bought, raise the production run for it.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='parts-general-auto-build'
+                defaultLabelWidth={220}>
+                <SettingsFieldRow
+                  settingKey={PARTS_SETTINGS_KEYS.autoBuildFromOrders}
+                  title='Raise builds from orders'
+                  {...controlled(PARTS_SETTINGS_KEYS.autoBuildFromOrders)}
+                />
+                <SettingsFieldRow
+                  settingKey={PARTS_SETTINGS_KEYS.autoBuildStockRule}
+                  title='When to raise one'
+                  {...controlled(PARTS_SETTINGS_KEYS.autoBuildStockRule)}
+                />
+              </FieldPanel>
 
-          {/*
-            Three things that are true, non-obvious, and will otherwise be
-            discovered as bugs. They live here rather than in the catalog's own
-            `description` strings, which are also the connector and API surface.
-          */}
-          <div className='mt-3 space-y-2 text-muted-foreground text-xs'>
-            <p>
-              Only orders placed <strong>after</strong> this is switched on are built. Turning it
-              off and on again restarts the window, so a switch left off for three months does not
-              reopen those three months when it comes back.
-            </p>
-            <p>
-              A build is raised only for a part that is made rather than purchased{' '}
-              <strong>and</strong> has a bill of materials. An order line for a purchased component,
-              or for a part whose bill of materials is empty, raises nothing.
-            </p>
-            <p>
-              What gets raised is a <strong>planned</strong> build. It moves no stock and records no
-              cost until somebody completes it, which is what makes this safe to turn on before a
-              part has a standard cost.
-            </p>
-            <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
+              {/*
+                Three things that are true, non-obvious, and will otherwise be
+                discovered as bugs. They live here rather than in the catalog's own
+                `description` strings, which are also the connector and API surface.
+              */}
+              <div className='space-y-2 text-muted-foreground text-xs'>
+                <p>
+                  Only orders placed <strong>after</strong> this is switched on are built. Turning
+                  it off and on again restarts the window, so a switch left off for three months
+                  does not reopen those three months when it comes back.
+                </p>
+                <p>
+                  A build is raised only for a part that is made rather than purchased{' '}
+                  <strong>and</strong> has a bill of materials. An order line for a purchased
+                  component, or for a part whose bill of materials is empty, raises nothing.
+                </p>
+                <p>
+                  What gets raised is a <strong>planned</strong> build. It moves no stock and
+                  records no cost until somebody completes it, which is what makes this safe to turn
+                  on before a part has a standard cost.
+                </p>
+                <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
+              </div>
+            </SettingsSection>
+
+            <SettingsSection
+              title='Backflush'
+              icon={History}
+              description='Every night, one completed build per made part for whatever yesterday’s sales drove below zero.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='parts-general-auto-build'
+                defaultLabelWidth={220}>
+                <SettingsFieldRow
+                  settingKey={PARTS_SETTINGS_KEYS.backflush}
+                  title='Backflush sales'
+                  {...controlled(PARTS_SETTINGS_KEYS.backflush)}
+                />
+              </FieldPanel>
+              <div className='space-y-2 text-muted-foreground text-xs'>
+                <p>
+                  A build is written <strong>completed</strong>, dated the end of the day it covers,
+                  so components are consumed on the day the finished part shipped. A part with an
+                  uncosted component is valued when that component gets a cost.
+                </p>
+                <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
+              </div>
+            </SettingsSection>
+
+            {showMrp && (
+              <SettingsSection
+                title='MRP'
+                icon={SlidersHorizontal}
+                description='What the plan uses for a part that does not set its own.'>
+                <FieldPanel
+                  className='mt-1 p-0'
+                  resizeId='parts-general-auto-build'
+                  defaultLabelWidth={220}>
+                  <SettingsFieldRow
+                    settingKey='mrp.aduWindowDays'
+                    title='Usage window (days)'
+                    {...controlled('mrp.aduWindowDays')}
+                  />
+                  <SettingsFieldRow
+                    settingKey='mrp.defaultLeadTimeFactor'
+                    title='Lead-time factor'
+                    placeholder='class default'
+                    {...controlled('mrp.defaultLeadTimeFactor')}
+                  />
+                  <SettingsFieldRow
+                    settingKey='mrp.defaultVariabilityFactor'
+                    title='Variability factor'
+                    placeholder='from usage'
+                    {...controlled('mrp.defaultVariabilityFactor')}
+                  />
+                  <SettingsFieldRow
+                    settingKey='mrp.runRetentionDays'
+                    title='Keep runs for (days)'
+                    {...controlled('mrp.runRetentionDays')}
+                  />
+                </FieldPanel>
+              </SettingsSection>
+            )}
           </div>
-        </Section>
-
-        <Section
-          title='Backflush'
-          icon={<History className='size-4' />}
-          description='Every night, one completed build per made part for whatever yesterday’s sales drove below zero.'
-          collapsible={false}>
-          <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
-            <SettingsFieldRow
-              settingKey={PARTS_SETTINGS_KEYS.backflush}
-              title='Backflush sales'
-              {...controlled(PARTS_SETTINGS_KEYS.backflush)}
-            />
-          </FieldPanel>
-          <div className='mt-3 space-y-2 text-muted-foreground text-xs'>
-            <p>
-              A build is written <strong>completed</strong>, dated the end of the day it covers, so
-              components are consumed on the day the finished part shipped. A part with an uncosted
-              component is valued when that component gets a cost.
-            </p>
-            <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
+          <div className='flex flex-col gap-8'>
+            <StandardCostSection>
+              <SettingsFieldRow
+                settingKey='manufacturing.autoRollFirstStandard'
+                title='Set a first standard automatically'
+                description='When a part first gets a price, opening stock or a receipt, freeze that as its standard cost.'
+                {...controlled('manufacturing.autoRollFirstStandard')}
+                value={draft['manufacturing.autoRollFirstStandard'] ?? true}
+              />
+            </StandardCostSection>
           </div>
-        </Section>
-
-        {showMrp && (
-          <Section
-            title='MRP'
-            icon={<SlidersHorizontal className='size-4' />}
-            description='What the plan uses for a part that does not set its own.'
-            collapsible={false}>
-            <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
-              <SettingsFieldRow
-                settingKey='mrp.aduWindowDays'
-                title='Usage window (days)'
-                {...controlled('mrp.aduWindowDays')}
-              />
-              <SettingsFieldRow
-                settingKey='mrp.defaultLeadTimeFactor'
-                title='Lead-time factor'
-                placeholder='class default'
-                {...controlled('mrp.defaultLeadTimeFactor')}
-              />
-              <SettingsFieldRow
-                settingKey='mrp.defaultVariabilityFactor'
-                title='Variability factor'
-                placeholder='from usage'
-                {...controlled('mrp.defaultVariabilityFactor')}
-              />
-              <SettingsFieldRow
-                settingKey='mrp.runRetentionDays'
-                title='Keep runs for (days)'
-                {...controlled('mrp.runRetentionDays')}
-              />
-            </FieldPanel>
-          </Section>
-        )}
+        </div>
       </ScrollArea>
 
       {/*

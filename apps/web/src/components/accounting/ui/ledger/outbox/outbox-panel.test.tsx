@@ -127,36 +127,42 @@ vi.mock('~/trpc/react', () => {
     },
   }
 })
-vi.mock('~/components/pickers/multi-select-picker', () => ({
-  MultiSelectPicker: ({
-    options,
-    value,
-    onChange,
-  }: {
-    options: { value: string; label: string }[]
-    value: string[]
-    onChange: (value: string[]) => void
-  }) => (
-    <div>
-      {options.map((option) => (
-        <label key={option.value}>
-          <input
-            type='checkbox'
-            checked={value.includes(option.value)}
-            onChange={() =>
-              onChange(
-                value.includes(option.value)
-                  ? value.filter((v) => v !== option.value)
-                  : [...value, option.value]
-              )
-            }
-          />
-          {option.label}
-        </label>
-      ))}
-    </div>
-  ),
-}))
+vi.mock('~/components/pickers/multi-select-picker', async () => {
+  const { Command } = await import('@auxx/ui/components/command')
+  return {
+    MultiSelectPicker: ({
+      options,
+      value,
+      onChange,
+      footer,
+    }: {
+      options: { value: string; label: string }[]
+      value: string[]
+      onChange: (value: string[]) => void
+      footer?: ReactNode
+    }) => (
+      <div>
+        {options.map((option) => (
+          <label key={option.value}>
+            <input
+              type='checkbox'
+              checked={value.includes(option.value)}
+              onChange={() =>
+                onChange(
+                  value.includes(option.value)
+                    ? value.filter((v) => v !== option.value)
+                    : [...value, option.value]
+                )
+              }
+            />
+            {option.label}
+          </label>
+        ))}
+        <Command>{footer}</Command>
+      </div>
+    ),
+  }
+})
 
 function Panel({
   filters,
@@ -245,7 +251,7 @@ describe('Outbox category filters', () => {
     // The picker is still open: the toolbar is not remounted per tab any more.
     expect(screen.getByLabelText('Vendor payment')).toBeDefined()
     expect(screen.getByLabelText('Fulfillment')).toBeDefined()
-    fireEvent.click(screen.getByRole('button', { name: 'All categories' }))
+    fireEvent.click(screen.getByRole('option', { name: 'All categories' }))
     expect(screen.getByTestId('categories').textContent).toBe('')
   })
 

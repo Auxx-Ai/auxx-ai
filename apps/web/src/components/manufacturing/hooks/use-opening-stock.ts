@@ -37,15 +37,15 @@ export const OPENING_STOCK_PAGE_SIZE = 50
 /** `setCountPreflight` takes at most this many parts per call. */
 const PREFLIGHT_CHUNK = 500
 
-/** Where the Set counts tab lives; `parts` and `job` prefilter it. */
-export const SET_COUNTS_HREF = '/app/parts/manage/costing?s=opening'
+/** Where Set counts lives; `parts` and `job` prefilter it. */
+export const SET_COUNTS_HREF = '/app/parts/manage/costing'
 
 export function setCountsHrefForParts(partIds: readonly string[]): string {
-  return `${SET_COUNTS_HREF}&parts=${encodeURIComponent(partIds.join(','))}`
+  return `${SET_COUNTS_HREF}?parts=${encodeURIComponent(partIds.join(','))}`
 }
 
 export function setCountsHrefForJob(jobId: string): string {
-  return `${SET_COUNTS_HREF}&job=${encodeURIComponent(jobId)}`
+  return `${SET_COUNTS_HREF}?job=${encodeURIComponent(jobId)}`
 }
 
 export type OpeningStockCandidate =

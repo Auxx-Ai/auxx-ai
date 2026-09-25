@@ -124,6 +124,9 @@ export interface MultiSelectPickerProps {
    */
   browseIcon?: React.ComponentType<{ className?: string }>
 
+  /** Extra rows pinned in the footer after Browse, e.g. a `<CommandItem>` that clears a filter. */
+  footer?: React.ReactNode
+
   /** Render a per-row secondary action (e.g., a "favorite" star). Rendered before the selection indicator. */
   renderItemAction?: (opt: SelectOption) => React.ReactNode
 
@@ -184,6 +187,7 @@ export function MultiSelectPicker({
   onBrowse,
   browseLabel = 'Browse all',
   browseIcon: BrowseIcon = LayoutGrid,
+  footer,
   renderItemAction,
   groupBy,
   groups,
@@ -812,7 +816,7 @@ export function MultiSelectPicker({
           list scrolls under them instead of pushing them past `max-h-[300px]`.
           The `Create "«search»"` row above stays INSIDE the list on purpose: it
           is search-driven and belongs beside the results it filters. */}
-        {!isLoading && (canManage || onCreate || onBrowse) && (
+        {!isLoading && (canManage || onCreate || onBrowse || footer) && (
           <CommandGroup className='border-t'>
             {canManage && (
               <CommandItem
@@ -844,6 +848,7 @@ export function MultiSelectPicker({
                 <span>{browseLabel}</span>
               </CommandItem>
             )}
+            {footer}
           </CommandGroup>
         )}
       </Command>

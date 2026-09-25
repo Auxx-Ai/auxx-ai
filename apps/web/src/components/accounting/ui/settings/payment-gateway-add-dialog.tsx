@@ -23,6 +23,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { PlugZap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -31,10 +32,10 @@ import { api } from '~/trpc/react'
 import { type MappingAccountValue, MINT_ACCOUNT_VALUE } from './mapping-account-select'
 import {
   accountText,
-  FeedSelect,
   RailAccountRows,
   type RailRole,
   railReadinessLine,
+  useFeedOptions,
   useHandleOptions,
 } from './payment-gateway-rail-rows'
 
@@ -163,6 +164,7 @@ export function PaymentGatewayAddDialog({
   const gateways = api.paymentGateway.list.useQuery(undefined, { enabled: open })
   const roleMap = api.ledger.roleMap.useQuery(undefined, { enabled: open })
   const handleOptions = useHandleOptions(draft.handles, open)
+  const feeds = useFeedOptions(open)
 
   const firstHandle = draft.handles[0] ?? ''
   const sibling = useMemo(
@@ -254,121 +256,137 @@ export function PaymentGatewayAddDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {sibling && (
-          <Alert>
-            <AlertDescription className='flex flex-wrap items-center justify-between gap-2'>
-              <span>
-                {sibling.name} already routes {sibling.handles.join(', ')}. Is {firstHandle} the
-                same rail?
-              </span>
-              <Button
-                variant='outline'
-                size='sm'
-                loading={extend.isPending}
-                loadingText='Adding...'
+        <div className='flex flex-col gap-4'>
+          {sibling && (
+            <Alert>
+              <AlertDescription className='flex flex-wrap items-center justify-between gap-2'>
+                <span>
+                  {sibling.name} already routes {sibling.handles.join(', ')}. Is {firstHandle} the
+                  same rail?
+                </span>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  loading={extend.isPending}
+                  loadingText='Adding...'
+                  disabled={pending}
+                  onClick={() =>
+                    extend.mutate({ id: sibling.id, handles: [...sibling.handles, firstHandle] })
+                  }>
+                  Add {firstHandle} to {sibling.name}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='accounting-payment-gateway-add'
+            defaultLabelWidth={140}
+            className='p-0'>
+            <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={draft.name}
+                placeholder='Authorize.Net'
                 disabled={pending}
-                onClick={() =>
-                  extend.mutate({ id: sibling.id, handles: [...sibling.handles, firstHandle] })
-                }>
-                Add {firstHandle} to {sibling.name}
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+                onChange={(value) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    name: (value as string) ?? '',
+                    touched: { ...prev.touched, name: true },
+                  }))
+                }
+              />
+            </FieldPanelRow>
+            <FieldPanelRow
+              title='Gateway handles'
+              type={BaseType.STRING}
+              showIcon
+              isRequired
+              description='Every stored value this rail is seen under, exactly as it appears on the order.'>
+              <FieldInputAdapter
+                fieldType={FieldType.TAGS}
+                fieldOptions={{ options: handleOptions }}
+                useValueAsLabel
+                value={draft.handles}
+                triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                placeholder='Add a handle'
+                disabled={pending}
+                onChange={(value) => setHandles(Array.isArray(value) ? (value as string[]) : [])}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow
+              title='Fee treatment'
+              type={BaseType.ENUM}
+              showIcon
+              description='Netted: the processor keeps its cut from the deposit. Billed: the deposit is gross and fees arrive on a statement.'>
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
+                fieldOptions={{ options: FEE_TREATMENT_OPTIONS }}
+                value={draft.feeTreatment}
+                triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                disabled={pending}
+                onChange={(value) => {
+                  const next = Array.isArray(value) ? value[0] : value
+                  if (next === 'netted' || next === 'billed') setFeeTreatment(next)
+                }}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow
+              title='Feed'
+              icon={<PlugZap className='size-4 text-muted-foreground' />}
+              showIcon
+              description='The processor account that reports this rail’s payouts.'>
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
+                fieldOptions={{ options: feeds.options }}
+                value={draft.feedId}
+                triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                placeholder={
+                  feeds.isPending
+                    ? 'Loading…'
+                    : feeds.options.length === 0
+                      ? 'No unclaimed feed'
+                      : 'Select a feed'
+                }
+                disabled={pending || feeds.options.length === 0}
+                onChange={(value) => {
+                  const next = Array.isArray(value) ? value[0] : value
+                  setDraft((prev) => ({ ...prev, feedId: (next as string | undefined) ?? null }))
+                }}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
 
-        <FieldPanel
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='accounting-payment-gateway-add'
-          defaultLabelWidth={140}
-          className='p-0'>
-          <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={draft.name}
-              placeholder='Authorize.Net'
-              disabled={pending}
-              onChange={(value) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  name: (value as string) ?? '',
-                  touched: { ...prev.touched, name: true },
-                }))
-              }
-            />
-          </FieldPanelRow>
-          <FieldPanelRow
-            title='Gateway handles'
-            type={BaseType.STRING}
-            showIcon
-            isRequired
-            description='Every stored value this rail is seen under, exactly as it appears on the order.'>
-            <FieldInputAdapter
-              fieldType={FieldType.TAGS}
-              fieldOptions={{ options: handleOptions }}
-              useValueAsLabel
-              value={draft.handles}
-              triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              placeholder='Add a handle'
-              disabled={pending}
-              onChange={(value) => setHandles(Array.isArray(value) ? (value as string[]) : [])}
-            />
-          </FieldPanelRow>
-          <FieldPanelRow
-            title='Fee treatment'
-            type={BaseType.ENUM}
-            showIcon
-            description='Netted: the processor keeps its cut from the deposit. Billed: the deposit is gross and fees arrive on a statement.'>
-            <FieldInputAdapter
-              fieldType={FieldType.SINGLE_SELECT}
-              fieldOptions={{ options: FEE_TREATMENT_OPTIONS }}
-              value={draft.feeTreatment}
-              triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              disabled={pending}
-              onChange={(value) => {
-                const next = Array.isArray(value) ? value[0] : value
-                if (next === 'netted' || next === 'billed') setFeeTreatment(next)
+          <div className='flex flex-col gap-1'>
+            <span className='font-medium text-sm'>Accounts</span>
+            <RailAccountRows
+              values={draft.accounts}
+              onChange={setAccount}
+              inheritedNames={{
+                clearing: null,
+                payment_processing_fees: feeAccount ? accountText(feeAccount) : null,
+                bank: null,
               }}
+              mintLabels={{
+                clearing: `${name || 'Gateway'} Clearing`,
+                payment_processing_fees: `${name || 'Gateway'} Fees`,
+              }}
+              disabled={pending}
             />
-          </FieldPanelRow>
-        </FieldPanel>
+          </div>
 
-        <div className='flex flex-col gap-1'>
-          <span className='font-medium text-sm'>Accounts</span>
-          <RailAccountRows
-            values={draft.accounts}
-            onChange={setAccount}
-            inheritedNames={{
-              clearing: null,
-              payment_processing_fees: feeAccount ? accountText(feeAccount) : null,
-              bank: null,
-            }}
-            mintLabels={{
-              clearing: `${name || 'Gateway'} Clearing`,
-              payment_processing_fees: `${name || 'Gateway'} Fees`,
-            }}
-            disabled={pending}
-          />
+          <p
+            className={
+              readiness.ready
+                ? 'text-muted-foreground text-xs'
+                : 'text-amber-700 text-xs dark:text-amber-400'
+            }>
+            {readiness.text}
+          </p>
         </div>
-
-        <div className='flex flex-col gap-1'>
-          <span className='font-medium text-sm'>Feed</span>
-          <FeedSelect
-            value={draft.feedId}
-            onChange={(feedId) => setDraft((prev) => ({ ...prev, feedId }))}
-            enabled={open}
-            disabled={pending}
-          />
-        </div>
-
-        <p
-          className={
-            readiness.ready
-              ? 'text-muted-foreground text-xs'
-              : 'text-amber-700 text-xs dark:text-amber-400'
-          }>
-          {readiness.text}
-        </p>
 
         <DialogFooter>
           <Button
