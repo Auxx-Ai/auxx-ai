@@ -324,6 +324,8 @@ export interface CatalogConnectorStream {
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
   /** The stream's `recordFilter` clauses as one AND group with stable ids. */
   recordFilter?: CatalogRecordFilterGroup[]
+  /** Source path of the date the backfill floor and the accounting cutover apply to. */
+  periodField?: string
 }
 
 /**
@@ -1069,6 +1071,15 @@ export async function compileAndExtractCatalog(): Promise<
           })
         }
       }
+      if (
+        stream.periodField !== undefined &&
+        (typeof stream.periodField !== 'string' || !stream.periodField.trim())
+      ) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Connector "${connector.id}" stream "${stream.key}": periodField must be a non-empty source path`,
+        })
+      }
 
       streams.push({
         key: stream.key,
@@ -1076,6 +1087,7 @@ export async function compileAndExtractCatalog(): Promise<
         mappings,
         exampleRecord: stream.exampleRecord,
         webhookTrigger: stream.webhookTrigger,
+        ...(stream.periodField ? { periodField: stream.periodField } : {}),
         // Ids are minted from the stream key so a redeploy compares equal to the seeded row.
         ...(recordFilter.length > 0
           ? {
@@ -1425,6 +1437,7 @@ interface RawConnectorStream {
   exampleRecord?: Record<string, unknown>
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
   recordFilter?: Array<{ fieldId: string; operator: string; value?: unknown }>
+  periodField?: string
 }
 
 interface RawDataConnector {

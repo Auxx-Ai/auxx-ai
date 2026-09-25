@@ -26,6 +26,7 @@ import { getEditModeForFieldType } from '~/components/fields/utils/edit-mode'
 import { AvatarUploadIcon } from '~/components/resources/ui/avatar-upload-icon'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useRecordDisplayFields } from '../hooks/use-record-display-fields'
+import { RecordRefreshButton } from './record-refresh-button'
 
 /**
  * Field types the header refuses to edit even when the capability allows it.
@@ -172,6 +173,8 @@ export function RecordIdentityHeader({
     [secondaryField]
   )
 
+  const sources = (record as { sources?: RecordSourceChip[] } | undefined)?.sources
+
   const createdAtText = useMemo(() => {
     const createdAt = record?.createdAt as string | Date | undefined
     if (!createdAt) return null
@@ -224,11 +227,12 @@ export function RecordIdentityHeader({
           {/* Rendered here, not passed in by the host, so a peeked frame and the
               contact drawer get the same "Open in <app>" badge as the base frame. */}
           <ConnectorSourceBadge
-            sources={(record as { sources?: RecordSourceChip[] } | undefined)?.sources}
+            sources={sources}
             recordId={recordId}
             variant='chip'
             className='shrink-0'
           />
+          <RecordRefreshButton recordId={recordId} sources={sources} className='shrink' />
         </div>
 
         <HeaderValue

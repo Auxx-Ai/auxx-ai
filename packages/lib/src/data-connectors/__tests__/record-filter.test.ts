@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest'
 import type { ConditionGroup } from '../../conditions/types'
 import type { ConnectorRecord } from '../connectors/types'
 import { getByPath, mapRecord } from '../map-record'
-import { assertRecordFilterCompiles, recordMatchesFilter } from '../record-filter'
+import {
+  assertRecordFilterCompiles,
+  EXTERNAL_ID_FIELD,
+  pushableClauses,
+  recordMatchesFilter,
+} from '../record-filter'
 import type { DecodedMapping } from '../service'
 
 function record(fields: Record<string, unknown>, over: Partial<ConnectorRecord> = {}) {
@@ -277,5 +282,62 @@ describe('assertRecordFilterCompiles — fan-out paths', () => {
         },
       ] as ConditionGroup[])
     ).toThrow(/repeated field/)
+  })
+})
+
+describe('pushableClauses (v13 N3)', () => {
+  const A = { fieldId: 'orders_count', operator: '>', value: 0 }
+  const B = { fieldId: 'state', operator: 'is', value: 'enabled' }
+  const C = { fieldId: 'tags', operator: 'contains', value: 'vip' }
+
+  it('A ∧ (B ∨ C) sends A', () => {
+    const groups = [...group([A]), { ...group([B, C], 'OR')[0]!, id: 'g2' }]
+    expect(pushableClauses(groups)).toEqual([A])
+  })
+
+  it('an OR over the whole filter sends nothing', () => {
+    expect(pushableClauses(group([A, B], 'OR'))).toEqual([])
+  })
+
+  it('never sends a relative date operator', () => {
+    const groups = group([
+      A,
+      { fieldId: 'created_at', operator: 'within_days', value: 30 },
+      { fieldId: 'created_at', operator: 'this_month' },
+    ])
+    expect(pushableClauses(groups)).toEqual([A])
+  })
+
+  it('normalises between bounds to absolute UTC ISO and drops an unparseable range', () => {
+    const groups = group([
+      { fieldId: 'createdAt', operator: 'between', value: { from: '2026-08-01T00:00:00-07:00' } },
+      { fieldId: 'updatedAt', operator: 'between', value: { from: 'nope' } },
+    ])
+    expect(pushableClauses(groups)).toEqual([
+      { fieldId: 'createdAt', operator: 'between', value: { from: '2026-08-01T07:00:00.000Z' } },
+    ])
+  })
+
+  it('sends nothing for a filter that does not compile (the post-fetch check fails open)', () => {
+    expect(pushableClauses(group([A, { fieldId: 'x', operator: 'nonsense', value: 1 }]))).toEqual(
+      []
+    )
+  })
+})
+
+describe(`the reserved ${EXTERNAL_ID_FIELD} field`, () => {
+  const idIn = group([{ fieldId: EXTERNAL_ID_FIELD, operator: 'in', value: ['5512'] }])
+
+  it('resolves from the record external id, not a payload path', () => {
+    expect(recordMatchesFilter(record({ id: '9999' }, { externalId: '5512' }), idIn).matched).toBe(
+      true
+    )
+    expect(recordMatchesFilter(record({ id: '5512' }, { externalId: '9999' }), idIn).matched).toBe(
+      false
+    )
+  })
+
+  it('is refused in a stored stream filter', () => {
+    expect(() => assertRecordFilterCompiles(idIn)).toThrow(/names single records/)
   })
 })

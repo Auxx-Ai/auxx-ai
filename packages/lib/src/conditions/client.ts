@@ -38,6 +38,7 @@ export {
   getOperatorsForBaseType,
   getOperatorsForFieldType,
   isOperatorValidForFieldType,
+  isRelativeOperator,
   mapFieldTypeToBaseType,
   OPERATOR_DEFINITIONS,
   operatorRequiresValue,

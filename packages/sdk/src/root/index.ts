@@ -38,6 +38,7 @@ export type {
   ConnectorMapping,
   ConnectorOwnedMappingField,
   ConnectorRecord,
+  ConnectorRecordFilterCondition,
   ConnectorStreamDecl,
   ConnectorStreamState,
   ContributingConnectorMapping,
@@ -46,7 +47,11 @@ export type {
   OwnedConnectorMapping,
 } from './data-connectors/index.js'
 // Data Connectors surface — `import { defineDataConnector } from '@auxx/sdk/data-connectors'`
-export { defineDataConnector } from './data-connectors/index.js'
+export {
+  defineDataConnector,
+  EXTERNAL_ID_FIELD,
+  UnpushableFilterError,
+} from './data-connectors/index.js'
 // Entities surface — `import { defineEntity } from '@auxx/sdk/entities'`
 export { defineEntity, type EntityDecl } from './entities/index.js'
 // Fields surface — `import { defineField, defineFields } from '@auxx/sdk/fields'`

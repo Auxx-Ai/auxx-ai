@@ -92,6 +92,12 @@ export function createJobHandler<T extends Record<string, JobHandler>>(jobMappin
         throw error // Let BullMQ handle it (won't retry due to UnrecoverableError)
       }
 
+      // An expected retry (e.g. a connector still claimed) is only an error on the last attempt.
+      if (isPendingRetry(error, job, job.attemptsMade + 1)) {
+        logger.info(`Job ${jobName} will retry`, { jobId: job.id, reason: String(error) })
+        throw error
+      }
+
       logger.error(`Error processing job ${jobName}:`, {
         error: error instanceof Error ? error.message : error,
         cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
@@ -100,4 +106,14 @@ export function createJobHandler<T extends Record<string, JobHandler>>(jobMappin
       throw error
     }
   }
+}
+
+/** Whether `error` asked to be retried quietly and the job still has attempts after `attemptsMade`. */
+export function isPendingRetry(
+  error: unknown,
+  job: Job | undefined,
+  attemptsMade: number
+): boolean {
+  const expected = (error as { expectedRetry?: unknown } | null)?.expectedRetry === true
+  return expected && !!job && attemptsMade < (job.opts.attempts ?? 1)
 }

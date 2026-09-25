@@ -396,6 +396,16 @@ export type ConnectorStreamDecl = CatalogConnectorStream
 /** Decrypted credential handed to a connector's fetch. Shape is provider-defined. */
 export type DecryptedCredential = Record<string, unknown>
 
+/** One AND'd narrowing clause sent to a connector fetch; mirrors the SDK type of the same name. */
+export interface ConnectorRecordFilterCondition {
+  /** A source path into the raw record. */
+  fieldId: string
+  operator: string
+  value?: unknown
+  /** The connector must narrow on this clause exactly, or fail the fetch. */
+  exact?: boolean
+}
+
 /** Arguments passed to a connector fetch. */
 export interface ConnectorFetchArgs {
   streamKey: string
@@ -419,6 +429,8 @@ export interface ConnectorFetchArgs {
    * points the fetch at exactly the changed resource.
    */
   triggerContext?: Record<string, string>
+  /** AND'd clauses to narrow the upstream query; the engine re-applies the full filter post-fetch. */
+  recordFilter?: readonly ConnectorRecordFilterCondition[]
   /**
    * Per-call override merged onto the endpoint's `rateLimit` policy. The sliced
    * `SyncSource` sets `{ maxRetries: 0 }` so a throttle returns immediately (the

@@ -12,6 +12,7 @@ import { NotFoundError } from '../errors'
 import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-shape'
+import type { ConnectorRecordFilterCondition } from './connectors/types'
 import { maxLevel } from './edit-impact'
 import { completeRunStream, isRunPauseRequested } from './run-control'
 import type {
@@ -170,16 +171,46 @@ export async function claimForSync(
   const [claimed] = await db
     .update(schema.DataConnector)
     .set({ status: 'syncing', updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.DataConnector.id, dataConnectorId),
-        ne(schema.DataConnector.status, 'syncing'),
-        allowPaused ? undefined : ne(schema.DataConnector.status, 'paused'),
-        sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running')`
-      )
-    )
+    .where(claimable(dataConnectorId, allowPaused))
     .returning({ id: schema.DataConnector.id })
   return !!claimed
+}
+
+/** Whether a run holds the connector now: what {@link claimForSync} refuses on, pause aside. */
+export async function isConnectorClaimed(db: Database, dataConnectorId: string): Promise<boolean> {
+  const [free] = await db
+    .select({ id: schema.DataConnector.id })
+    .from(schema.DataConnector)
+    .where(claimable(dataConnectorId, true))
+    .limit(1)
+  return !free
+}
+
+function claimable(dataConnectorId: string, allowPaused: boolean) {
+  return and(
+    eq(schema.DataConnector.id, dataConnectorId),
+    ne(schema.DataConnector.status, 'syncing'),
+    allowPaused ? undefined : ne(schema.DataConnector.status, 'paused'),
+    sql`not exists (select 1 from ${schema.DataConnectorRun} where ${schema.DataConnectorRun.dataConnectorId} = ${dataConnectorId} and ${schema.DataConnectorRun.status} = 'running')`
+  )
+}
+
+/** Whether `runId` is the connector's newest run, webhook runs and re-imports aside. */
+export async function isNewestSyncRun(
+  db: Database,
+  dataConnectorId: string,
+  runId: string
+): Promise<boolean> {
+  const T = schema.DataConnectorRun
+  const [newest] = await db
+    .select({ id: T.id })
+    .from(T)
+    .where(
+      and(eq(T.dataConnectorId, dataConnectorId), ne(T.trigger, 'webhook'), ne(T.mode, 'reimport'))
+    )
+    .orderBy(desc(T.startedAt))
+    .limit(1)
+  return newest?.id === runId
 }
 
 // ── Backfill completion latch (B1 — multi-stream coordination) ────────────────
@@ -348,7 +379,7 @@ export async function openRun(
     dataConnectorId: string
     organizationId: string
     trigger: 'manual' | 'scheduled' | 'webhook' | 'backfill' | 'sweep'
-    mode: 'snapshot' | 'incremental'
+    mode: 'snapshot' | 'incremental' | 'reimport'
     cursorBefore?: unknown
     /** Engine lifecycle phase (sliced runs); omitted for legacy single-shot runs. */
     phase?: 'backfill' | 'steady'
@@ -356,6 +387,11 @@ export async function openRun(
     chainSnapshot?: Record<string, unknown>
     /** Per-stream sample cap (trial-sync §4.1) — set ⇒ a SAMPLE run that parks for review. */
     sampleLimit?: number | null
+    /** A re-import's run filter as sent (v13 N5). */
+    recordFilter?: ConnectorRecordFilterCondition[] | null
+    initiatedBy?: string | null
+    /** Seed `progress`, e.g. a re-import continuation's page cursors. */
+    progress?: Record<string, unknown> | null
   }
 ): Promise<DataConnectorRunRow> {
   const [run] = await db
@@ -370,6 +406,9 @@ export async function openRun(
       chainSnapshot: input.chainSnapshot ?? null,
       cursorBefore: input.cursorBefore ?? null,
       sampleLimit: input.sampleLimit ?? null,
+      recordFilter: input.recordFilter ?? null,
+      initiatedBy: input.initiatedBy ?? null,
+      progress: input.progress ?? null,
     })
     .returning()
   if (!run) throw new Error('Failed to open DataConnectorRun')

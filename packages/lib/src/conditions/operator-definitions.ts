@@ -37,6 +37,9 @@ export interface OperatorDefinition {
   /** Optional description for tooltips */
   description?: string
 
+  /** Reads the server clock, so its meaning shifts with the day it runs. */
+  relative?: boolean
+
   /** Optional category for grouping in UI */
   category?:
     | 'equality'
@@ -370,6 +373,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   within_days: {
     key: 'within_days',
+    relative: true,
     label: 'within days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -380,6 +384,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   older_than_days: {
     key: 'older_than_days',
+    relative: true,
     label: 'older than days',
     requiresValue: true,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -390,6 +395,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   today: {
     key: 'today',
+    relative: true,
     label: 'today',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -399,6 +405,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   yesterday: {
     key: 'yesterday',
+    relative: true,
     label: 'yesterday',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -408,6 +415,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   this_week: {
     key: 'this_week',
+    relative: true,
     label: 'this week',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -417,6 +425,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   this_month: {
     key: 'this_month',
+    relative: true,
     label: 'this month',
     requiresValue: false,
     supportedTypes: [BaseType.DATE, BaseType.DATETIME],
@@ -575,6 +584,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   uploaded_today: {
     key: 'uploaded_today',
+    relative: true,
     label: 'uploaded today',
     requiresValue: false,
     supportedTypes: [BaseType.FILE],
@@ -585,6 +595,7 @@ export const OPERATOR_DEFINITIONS = {
   },
   uploaded_within_days: {
     key: 'uploaded_within_days',
+    relative: true,
     label: 'uploaded within days',
     requiresValue: true,
     supportedTypes: [BaseType.FILE],
@@ -840,6 +851,11 @@ export function getOperatorDefinition(operator: Operator): OperatorDefinition | 
     return OPERATOR_DEFINITIONS[operator]
   }
   return undefined
+}
+
+/** Whether `operator` reads the server clock (`today`, `within_days`, …). */
+export function isRelativeOperator(operator: string): boolean {
+  return getOperatorDefinition(operator as Operator)?.relative === true
 }
 
 /**

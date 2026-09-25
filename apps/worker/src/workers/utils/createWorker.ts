@@ -5,7 +5,7 @@ import type { Queues } from '@auxx/lib/jobs/queues'
 import { createScopedLogger } from '@auxx/logger'
 import { getConnectionOptions } from '@auxx/redis'
 import { Job, Worker, type WorkerOptions } from 'bullmq'
-import { createJobHandler } from './createJobHandler'
+import { createJobHandler, isPendingRetry } from './createJobHandler'
 
 const logger = createScopedLogger('worker')
 
@@ -78,6 +78,7 @@ export function createWorker<T extends Record<string, JobHandler>>(
 
   // Failure logging
   worker.on('failed', (job, error) => {
+    if (isPendingRetry(error, job, job?.attemptsMade ?? 0)) return
     logger.error('Job failed', {
       jobId: job?.id,
       jobName: job?.name,

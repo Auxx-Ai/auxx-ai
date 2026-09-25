@@ -7,6 +7,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, index, integer, jsonb, pgTable, text, timestamp } from './_shared'
 import { DataConnector } from './data-connector'
 import { Organization } from './organization'
+import { User } from './user'
 
 export const DataConnectorRun = pgTable(
   'DataConnectorRun',
@@ -25,7 +26,17 @@ export const DataConnectorRun = pgTable(
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     trigger: text().notNull(), // 'manual' | 'scheduled' | 'webhook' | 'backfill'
-    mode: text().notNull(), // 'snapshot' | 'incremental'
+    mode: text().notNull(), // 'snapshot' | 'incremental' | 'reimport'
+    // A re-import's run filter as sent (flat AND list of `exact` clauses); null otherwise.
+    // see plans/data-connectors/v13/narrowed-fetch-plan.md N5
+    recordFilter:
+      jsonb().$type<
+        Array<{ fieldId: string; operator: string; value?: unknown; exact?: boolean }>
+      >(),
+    initiatedBy: text().references((): AnyPgColumn => User.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
     status: text().notNull(), // 'running' | 'completed' | 'failed' | 'partial'
     // Engine-managed lifecycle phase of the run (sync-core). Null for legacy
     // single-shot full-sync runs that predate the backfill/steady split.

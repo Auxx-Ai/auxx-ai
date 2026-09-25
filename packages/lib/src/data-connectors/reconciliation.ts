@@ -71,6 +71,21 @@ type ReconcilableStream = {
   stream?: { streamKey: string }
 }
 
+/** Reference mappings write nothing, and an upsert mapping has to ask (v12 D2). */
+export function mappingReconcilesByAbsence(
+  mapping: Pick<DecodedMapping, 'linkMode' | 'orphanBehavior'>
+): boolean {
+  return mapping.linkMode === 'upsert' && mapping.orphanBehavior !== 'ignore'
+}
+
+/** Whether {@link reconcileOrphans} could archive or flag anything on this stream. */
+export function streamReconcilesByAbsence(stream: {
+  syncMode: SyncMode
+  mappings: Pick<DecodedMapping, 'linkMode' | 'orphanBehavior'>[]
+}): boolean {
+  return stream.syncMode === 'snapshot' && stream.mappings.some(mappingReconcilesByAbsence)
+}
+
 /**
  * The run ids a snapshot stream's orphan diff must treat as "seen": every run of the
  * connector started at or after the stream's `backfillStartedAt`. A snapshot crawl
@@ -256,8 +271,7 @@ export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream
       plans: [],
     }
     for (const mapping of stream.mappings) {
-      if (mapping.linkMode !== 'upsert') continue // reference mappings write nothing
-      if (mapping.orphanBehavior === 'ignore') continue // the mapping has to ask (v12 D2)
+      if (!mappingReconcilesByAbsence(mapping)) continue
 
       const items = await entitySink.listExistingItems(ctx, mapping)
       // Bindings that are still live and could actually be acted on. An item already

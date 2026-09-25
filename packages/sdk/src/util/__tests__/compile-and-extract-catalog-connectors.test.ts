@@ -563,6 +563,63 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
     )
   })
 
+  it('carries a stream periodField into the catalog', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [
+            {
+              key: 'order',
+              periodField: 'created_at',
+              mappings: [{ rootPath: '', target: { entityKind: 'contact' },
+                fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
+            },
+            {
+              key: 'customer',
+              mappings: [{ rootPath: '', target: { entityKind: 'contact' },
+                fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
+            },
+          ],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    if (!isComplete(result) || !result.value) throw new Error('expected a catalog')
+    const streams = result.value.dataConnectors?.[0]?.streams ?? []
+    expect(streams[0]).toMatchObject({ key: 'order', periodField: 'created_at' })
+    expect(streams[1]).not.toHaveProperty('periodField')
+  })
+
+  it('rejects an empty periodField', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'order',
+            periodField: '  ',
+            mappings: [{ rootPath: '', target: { entityKind: 'contact' },
+              fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    if (!isErrored(result)) throw new Error('expected error')
+    expect((result.error as { message: string }).message).toMatch(
+      /stream "order": periodField must be a non-empty source path/
+    )
+  })
+
   it('rejects an entity relationship targeting an unknown entityKey', async () => {
     const result = await runApp(`
       import { defineEntity } from '@auxx/sdk/entities'

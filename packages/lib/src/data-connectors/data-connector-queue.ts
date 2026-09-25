@@ -5,6 +5,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { getQueue, Queues } from '../jobs/queues'
+import type { ReimportRunOptions } from './reimport-filter'
 
 const logger = createScopedLogger('data-connector-queue')
 
@@ -16,7 +17,16 @@ export interface DataConnectorSyncJobData {
   trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
   /** Trial-sync §4.1 per-stream sample cap — set ⇒ a SAMPLE run that parks for review. */
   sampleLimit?: number
+  /** Set ⇒ a re-import run (v13 N5) instead of a sync. */
+  reimport?: ReimportRunOptions
+  /** The parked run this job continues. */
+  continueRunId?: string
+  /** Set ⇒ a claimed connector fails the job, and BullMQ retries it (v13 N5). */
+  retryClaim?: true
 }
+
+/** A claim-retrying job waits ~10 minutes in all for the connector to free. */
+const CLAIM_RETRY = { attempts: 40, backoff: { type: 'fixed', delay: 15_000 } } as const
 
 /** BullMQ job name for one backfill slice (the continuation-chain unit). */
 export const BACKFILL_SLICE_JOB = 'data-connector-backfill-slice'
@@ -123,6 +133,9 @@ export async function enqueueConnectorSync(
     trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
     /** Trial-sync §4.1 — a SAMPLE run caps each stream's backfill, then parks for review. */
     sampleLimit?: number
+    reimport?: ReimportRunOptions
+    continueRunId?: string
+    retryClaim?: true
   },
   opts: { delayMs?: number; jobKey?: string } = {}
 ): Promise<void> {
@@ -136,10 +149,14 @@ export async function enqueueConnectorSync(
         organizationId: data.organizationId,
         trigger: data.trigger ?? 'manual',
         sampleLimit: data.sampleLimit,
-      },
+        ...(data.reimport ? { reimport: data.reimport } : {}),
+        ...(data.continueRunId ? { continueRunId: data.continueRunId } : {}),
+        ...(data.retryClaim ? { retryClaim: true } : {}),
+      } satisfies DataConnectorSyncJobData,
       {
         jobId: `data-connector-sync-${opts.jobKey ?? 'manual'}-${data.connectorId}`,
         delay: opts.delayMs && opts.delayMs > 0 ? opts.delayMs : undefined,
+        ...(data.retryClaim ? CLAIM_RETRY : {}),
       }
     )
   } catch (error) {

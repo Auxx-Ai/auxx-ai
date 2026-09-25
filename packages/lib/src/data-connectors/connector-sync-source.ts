@@ -25,13 +25,27 @@ import type { ConditionGroup } from '../conditions/types'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import type { WriteSession } from '../resources/crud/write-origin'
-import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../sync-core/contracts'
+import type {
+  SliceResult,
+  SyncPhase,
+  SyncRunCounters,
+  SyncSliceCtx,
+  SyncSource,
+} from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
+import type { ConnectorRecordFilterCondition } from './connectors/types'
 import { resolveCrossConnectorLinks } from './cross-connector-links'
-import { listBackfillRunIds, reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
+import {
+  listBackfillRunIds,
+  reconcileManagedMarkers,
+  reconcileOrphans,
+  streamReconcilesByAbsence,
+} from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
+import { pushableClauses } from './record-filter'
+import { runFilterGroup } from './reimport-filter'
 import { resolveRelationships } from './relationship-pass'
 import { isRunPauseRequested } from './run-control'
 import {
@@ -81,6 +95,10 @@ export interface SyncSourceStream {
    * next chain re-reads it anyway.
    */
   recordFilter?: ConditionGroup[]
+  /** The app catalog stream's `periodField` (v13 N2); absent on non-app streams. */
+  periodField?: string
+  /** ISO backfill floor pinned for this backfill, mirrored from `state.backfillFloor`. */
+  backfillFloor?: string
   mappings: DecodedMapping[]
 }
 
@@ -129,7 +147,15 @@ export interface ConnectorSyncSourceDeps {
    * run phase now decides only whether the pending re-sync marker may be cleared (see
    * `finalizeSteady`). Absent/null on a legacy single-shot run.
    */
-  run: { id: string; startedAt: Date; phase?: 'backfill' | 'steady' | null }
+  run: {
+    id: string
+    startedAt: Date
+    phase?: 'backfill' | 'steady' | null
+    /** `'reimport'` sends no delta, skips reconciliation and keeps `resyncPending` (v13 N5). */
+    mode?: string | null
+    /** A re-import's run filter: sent `exact`, and ANDed onto the stream filter post-fetch. */
+    recordFilter?: ConnectorRecordFilterCondition[] | null
+  }
   /** The pinned stream this source drives (its own continuation chain). */
   stream: SyncSourceStream
   /**
@@ -212,6 +238,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   private readonly warmedDefs = new Set<string>()
   /** Bound connection's plaintext metadata (`connectionAppFields` source), loaded once. */
   private connectionMeta?: Record<string, unknown> | null
+  private readonly reimport: boolean
+  /** Stream filter AND, on a re-import, the run filter (N5). */
+  private readonly postFetchFilter?: ConditionGroup[]
 
   constructor(private readonly deps: ConnectorSyncSourceDeps) {
     this.id = `${deps.connector.id}:${deps.stream.streamId}`
@@ -220,6 +249,11 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     this.throttleKey = `${deps.connector.credentialId ?? deps.connector.id}:data-connector-sync`
     this.now = deps.now ?? (() => Date.now())
     this.updatedAtPath = deps.stream.requestConfig?.incremental?.watermarkField
+    this.reimport = deps.run.mode === 'reimport'
+    this.postFetchFilter =
+      this.reimport && deps.run.recordFilter?.length
+        ? [...(deps.stream.recordFilter ?? []), runFilterGroup(deps.run.recordFilter)]
+        : deps.stream.recordFilter
   }
 
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
@@ -232,8 +266,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // Async bulk export (Step 7): a large BACKFILL runs the initiate→poll→download
     // lifecycle instead of synchronous paging. Steady deltas still page/webhook, so
     // only the backfill phase branches here.
-    if (this.deps.definition.asyncExport && ctx.phase === 'backfill') {
-      const driver = this.deps.definition.asyncExport.createDriver({
+    const asyncExport = this.asyncExportFor(ctx.phase)
+    if (asyncExport) {
+      const driver = asyncExport.createDriver({
         streamKey,
         credential: this.deps.credential,
         config: this.deps.config,
@@ -248,7 +283,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
             this.deps.stream.mappings,
             record,
             this.updatedAtPath,
-            this.deps.stream.recordFilter
+            this.postFetchFilter
           ),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
@@ -268,11 +303,15 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // no sweep flag; the sweep signal lives on this source's own deps (see `buildCtx`,
     // which threads the same `this.deps.sweep` onto `SyncCtx.sweep` for `reconcileOrphans`).
     const sweepIncremental = this.deps.sweep === true && this.deps.stream.syncMode === 'incremental'
+    // A re-import never runs a delta: no `updatedSince`, whatever the run store's phase.
     const mode: 'snapshot' | 'incremental' =
-      (ctx.phase === 'steady' || sweepIncremental) && this.deps.stream.syncMode === 'incremental'
+      !this.reimport &&
+      (ctx.phase === 'steady' || sweepIncremental) &&
+      this.deps.stream.syncMode === 'incremental'
         ? 'incremental'
         : 'snapshot'
 
+    const recordFilter = this.sentClauses(this.deps.stream, ctx.phase)
     const result = await runConnectorSlice({
       ctx,
       now: this.now,
@@ -285,6 +324,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           credential: this.deps.credential,
           config: this.deps.config,
           requestConfig: this.deps.stream.requestConfig ?? undefined,
+          ...(recordFilter.length > 0 ? { recordFilter } : {}),
           // H1 — never sleep on a throttle inside a slice.
           rateLimitOverride: { maxRetries: 0 },
           signal: ctx.signal,
@@ -295,13 +335,43 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           this.deps.stream.mappings,
           record,
           this.updatedAtPath,
-          this.deps.stream.recordFilter
+          this.postFetchFilter
         ),
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
     await this.persistManifest(syncCtx)
     return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
+  }
+
+  /** The bulk export a plain backfill runs instead of paging; never for a re-import. */
+  private asyncExportFor(phase: SyncPhase) {
+    return phase === 'backfill' && !this.reimport ? this.deps.definition.asyncExport : undefined
+  }
+
+  /**
+   * The AND'd clauses the paged fetch of `stream` sends (v13 N1–N5); app connectors only. A
+   * stream that could delete by absence never gets its stored filter (N4). Non-empty means
+   * narrowed, which keeps the stream out of orphan reconciliation.
+   */
+  private sentClauses(
+    stream: SyncSourceStream,
+    phase: SyncPhase
+  ): ConnectorRecordFilterCondition[] {
+    if (this.deps.connector.definitionKind !== 'app' || this.asyncExportFor(phase)) return []
+    const clauses = streamReconcilesByAbsence(stream) ? [] : pushableClauses(stream.recordFilter)
+    const runClauses = this.reimport ? (this.deps.run.recordFilter ?? []) : []
+    if (runClauses.length > 0) return [...clauses, ...runClauses]
+    if (phase === 'backfill' && stream.periodField && stream.backfillFloor) {
+      const from = stream.backfillFloor
+      clauses.push({
+        fieldId: stream.periodField,
+        operator: 'between',
+        value: { from },
+        exact: true,
+      })
+    }
+    return clauses
   }
 
   /**
@@ -506,27 +576,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
     await resolveRelationships(syncCtx)
     await this.resolveCrossConnectorLinks(syncCtx)
-    // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady. A
-    // snapshot stream's crawl may have spanned several runs (parked at the ingest
-    // ceiling, resumed from its cursor on the next trigger), so "seen this backfill"
-    // is the set of runs since the stream's backfill began, not just this run.
-    const reconcilable = await Promise.all(
-      this.deps.allStreams.map(async (s) =>
-        s.syncMode === 'snapshot'
-          ? {
-              ...s,
-              seenRunIds: await listBackfillRunIds(this.deps.db, {
-                dataConnectorId: this.deps.connector.id,
-                streamId: s.streamId,
-              }),
-            }
-          : s
-      )
-    )
-    await reconcileOrphans(syncCtx, reconcilable)
-    // Clear contributing markers for fields the connector no longer maps (the FK
-    // set-null only covers connector deletion, not a reconfigured mapping).
-    await reconcileManagedMarkers(syncCtx, this.deps.allStreams)
+    // A re-import's fetch is narrowed (N4), and its snapshot holds only the named streams, so
+    // the marker cleanup would strip what an unnamed stream contributes.
+    if (!this.reimport) await this.reconcile(syncCtx)
     // Final sweep: emit the coarse refresh so the grid
     // also reflects finalize-only writes (relationship resolution, orphan
     // archival) that the per-slice emits never saw.
@@ -554,7 +606,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // marker is satisfied, so clear the banner. A steady run touches only deltas, so it
     // must NOT clear a pending rebackfill/rebind — hence a flag separate from
     // `closeRun`, which a steady run's last stream DOES own.
-    if (opts.clearResync) {
+    if (opts.clearResync && !this.reimport) {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
 
@@ -609,6 +661,35 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         error: err instanceof Error ? err.message : String(err),
       })
     }
+  }
+
+  /** Orphan reconciliation plus the managed-marker cleanup, across every pinned stream. */
+  private async reconcile(syncCtx: SyncCtx): Promise<void> {
+    // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady. A
+    // snapshot stream's crawl may have spanned several runs (parked at the ingest
+    // ceiling, resumed from its cursor on the next trigger), so "seen this backfill"
+    // is the set of runs since the stream's backfill began, not just this run. A stream
+    // whose fetch was narrowed never deletes by absence (v13 N4); snapshot streams only
+    // ever fetch in the backfill phase.
+    const reconcilable = await Promise.all(
+      this.deps.allStreams
+        .filter((s) => this.sentClauses(s, 'backfill').length === 0)
+        .map(async (s) =>
+          s.syncMode === 'snapshot'
+            ? {
+                ...s,
+                seenRunIds: await listBackfillRunIds(this.deps.db, {
+                  dataConnectorId: this.deps.connector.id,
+                  streamId: s.streamId,
+                }),
+              }
+            : s
+        )
+    )
+    await reconcileOrphans(syncCtx, reconcilable)
+    // Clear contributing markers for fields the connector no longer maps (the FK
+    // set-null only covers connector deletion, not a reconfigured mapping).
+    await reconcileManagedMarkers(syncCtx, this.deps.allStreams)
   }
 
   /** Build a sink context with the given counters; reuses cache-warmed crud handlers. */

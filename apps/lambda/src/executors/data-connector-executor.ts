@@ -58,6 +58,7 @@ export async function executeDataConnector(
     state,
     config,
     triggerContext,
+    recordFilter,
     context,
     timeout,
   } = options
@@ -105,6 +106,7 @@ export async function executeDataConnector(
         connection,
         config,
         triggerContext,
+        recordFilter,
       })
 
       // Materialize records (array or async iterable) into a bounded array.
@@ -130,6 +132,7 @@ export async function executeDataConnector(
         records,
         nextState: fetchResult?.nextState ?? {},
         ...(rateLimited ? { rateLimited } : {}),
+        ...(fetchResult?.narrowed === true ? { narrowed: true as const } : {}),
       }
     })()
 

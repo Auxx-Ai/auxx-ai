@@ -115,6 +115,10 @@ vi.mock('~/components/fields/inputs/use-org-business-country', () => ({
   useOrgBusinessCountry: () => 'US',
 }))
 
+// The source chip and refresh button read app/tRPC/capability providers; not this file's subject.
+vi.mock('~/components/fields/connector-source-badge', () => ({ ConnectorSourceBadge: () => null }))
+vi.mock('./record-refresh-button', () => ({ RecordRefreshButton: () => null }))
+
 const { RecordIdentityHeader } = await import('./record-identity-header')
 const { toPanelField } = await import('~/components/fields/rows/to-panel-field')
 const { getEditModeForFieldType } = await import('~/components/fields/utils/edit-mode')

@@ -5,6 +5,7 @@
 
 export type { ConnectorReadiness, ReadinessProblem, ReadinessStream } from './readiness'
 export { getConnectorReadiness, READINESS_REASON } from './readiness'
+export type { RecordRefreshOutcome } from './refresh-outcome'
 export type {
   CellSyncInfo,
   CellSyncState,
