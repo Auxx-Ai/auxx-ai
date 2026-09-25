@@ -48,7 +48,7 @@
     "@aws-sdk/s3-presigned-post": "catalog:",
     "@aws-sdk/s3-request-presigner": "catalog:",
     "@base-ui-components/react": "1.0.0-rc.0",
-    "@better-auth/passkey": "^1.4.19",
+    "@better-auth/passkey": "1.5.6",
     "@dnd-kit/core": "catalog:",
     "@dnd-kit/modifiers": "catalog:",
     "@dnd-kit/sortable": "catalog:",

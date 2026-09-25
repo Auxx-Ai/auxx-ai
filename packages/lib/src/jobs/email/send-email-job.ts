@@ -6,6 +6,7 @@ import {
   sendBillingEmail,
   sendDeveloperInviteEmail,
   sendEmailChangeVerificationEmail,
+  sendExistingAccountEmail,
   sendGettingStartedEmail,
   sendInviteEmail,
   sendJoinOrganizationEmail,
@@ -86,6 +87,13 @@ const handlers: {
     sendPasswordResetNotifyEmail({
       email: p.recipient.email,
       name: p.recipient.name,
+    }),
+  'existing-account': (p) =>
+    sendExistingAccountEmail({
+      email: p.recipient.email,
+      name: p.recipient.name,
+      loginLink: p.loginLink,
+      resetPasswordLink: p.resetPasswordLink,
     }),
   'two-factor-otp': (p) =>
     sendTwoFactorOtpEmail({

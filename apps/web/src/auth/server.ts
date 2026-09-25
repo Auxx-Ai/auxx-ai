@@ -55,7 +55,7 @@ const LOGIN_THROTTLE_WINDOW_SECONDS = 3600
  * endpoint it generates is declared `Returns | null` and its handler does a bare
  * `ctx.json(fnResult)` — so `null` IS the supported "this session is no longer
  * valid" signal, and `getSession()` already models a null session on both sides.
- * Verified against better-auth 1.4.19, `dist/plugins/custom-session/index.mjs`.
+ * Verified against better-auth 1.5.6, `dist/plugins/custom-session/index.mjs`.
  *
  * Typed `never` so it contributes nothing to the inferred `Returns` union and
  * leaves `$Infer.Session` — the shape every session consumer reads — intact.
@@ -111,7 +111,7 @@ const AGENT_BLOCKED_AUTH_PATHS = new Set([
   '/sign-in/social',
   '/sign-up',
   '/sign-up/email',
-  '/forget-password',
+  '/request-password-reset',
   '/reset-password',
   '/change-password',
   '/change-email',
@@ -401,6 +401,18 @@ export const auth = betterAuth({
     requireEmailVerification: true,
     // disableSignUp: false,
     minPasswordLength: 8,
+    // With requireEmailVerification, sign-up returns a fake success for a registered email
+    // (anti-enumeration), so this email is the only signal the owner gets.
+    onExistingUserSignUp: async ({ user }) => {
+      if ((user as { userType?: string }).userType === 'AGENT') return
+      logger.info('Sign-up attempted for existing account', { userId: user.id })
+      await enqueueEmailJob('existing-account', {
+        recipient: { email: user.email, name: user.name || undefined },
+        loginLink: `${WEBAPP_URL}/login`,
+        resetPasswordLink: `${WEBAPP_URL}/forgot-password`,
+        source: 'auth.server',
+      })
+    },
     sendResetPassword: async ({ user, url, token }, request) => {
       if ((user as { userType?: string }).userType === 'AGENT') {
         logger.warn('Refusing password reset for AGENT user', { userId: user.id })
@@ -511,7 +523,7 @@ export const auth = betterAuth({
         source: 'auth.server',
       })
     },
-    onEmailVerification: async (user, request) => {
+    afterEmailVerification: async (user, request) => {
       await recordAudit({
         organizationId:
           (user as { defaultOrganizationId?: string | null }).defaultOrganizationId ?? null,
@@ -542,10 +554,6 @@ export const auth = betterAuth({
         window: 60,
         max: 5,
       },
-      '/forget-password': {
-        window: 60,
-        max: 3,
-      },
       '/send-verification-email': {
         window: 60,
         max: 3,
@@ -558,7 +566,7 @@ export const auth = betterAuth({
     modelName: 'User',
     changeEmail: {
       enabled: true,
-      sendChangeEmailVerification: async ({ user, newEmail, url, token }, request) => {
+      sendChangeEmailConfirmation: async ({ user, newEmail, url, token }, request) => {
         if ((user as { userType?: string }).userType === 'AGENT') {
           logger.warn('Refusing email change for AGENT user', { userId: user.id })
           throw new APIError('FORBIDDEN', {

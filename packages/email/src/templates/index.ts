@@ -4,6 +4,7 @@ export {
   EmailChangeVerificationEmail,
   EmailChangeVerificationText,
 } from './auth/email-change-verification-email'
+export { ExistingAccountEmail, ExistingAccountText } from './auth/existing-account-email'
 export {
   PasswordResetNotifyEmail,
   PasswordResetNotifyText,

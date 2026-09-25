@@ -47,7 +47,9 @@ export function ListPasskeys() {
     const res = await client.passkey.addPasskey({ name: passkeyName })
     setIsLoading(false)
     if (res?.error) {
-      toastError({ description: res?.error.message })
+      // @better-auth/passkey 1.5 puts a `{ code, message }` object in `message` for cancel/duplicate.
+      const { message } = res.error
+      toastError({ description: typeof message === 'string' ? message : message?.message })
     } else {
       toastSuccess({ description: 'Passkey added successfully. You can now use it to login.' })
       setPasskeyName('')
