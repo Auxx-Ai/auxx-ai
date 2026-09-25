@@ -53,9 +53,13 @@ describe('resolveCurrencyMajor — cents and whole numbers', () => {
     expect(minor('4.35')).toBe(435)
   })
 
-  it('accepts excess decimals only when they are lossless zeros', () => {
+  it('rounds excess decimals half away from zero', () => {
     expect(minor('12.3400')).toBe(1234)
-    expect(minor('12.3456')).toMatch(/more decimals than this field supports \(2\)/)
+    expect(minor('12.3456')).toBe(1235)
+    expect(minor('12.3449')).toBe(1234)
+    expect(minor('12.345', { currencyCode: 'USD', numberDecimalSeparator: '.' })).toBe(1235)
+    expect(minor('-12.345', { currencyCode: 'USD', numberDecimalSeparator: '.' })).toBe(-1235)
+    expect(minor('9.9999')).toBe(1000)
   })
 })
 
@@ -89,9 +93,7 @@ describe('resolveCurrencyMajor — thousands separators, both conventions', () =
   })
 
   it('honours an explicit column decimal separator over the convention', () => {
-    expect(minor('1,234', { currencyCode: 'USD', numberDecimalSeparator: ',' })).toMatch(
-      /more decimals than this field supports \(2\)/
-    )
+    expect(minor('1,234', { currencyCode: 'USD', numberDecimalSeparator: ',' })).toBe(123)
     expect(minor('1,23', { currencyCode: 'USD', numberDecimalSeparator: ',' })).toBe(123)
   })
 
@@ -109,8 +111,9 @@ describe('resolveCurrencyMajor — zero-decimal and three-decimal currencies', (
     expect(minor('¥1,234,567', jpy)).toBe(1234567)
   })
 
-  it('rejects a JPY amount that claims sub-yen precision', () => {
-    expect(minor('1000.50', jpy)).toMatch(/more decimals than this field supports \(0\)/)
+  it('rounds a JPY amount that claims sub-yen precision to whole yen', () => {
+    expect(minor('1000.50', jpy)).toBe(1001)
+    expect(minor('1000.49', jpy)).toBe(1000)
   })
 
   it('scales KWD by 1000, not 100', () => {
@@ -189,9 +192,9 @@ describe('parseCurrencyMajorToMinor — defaults', () => {
   })
 
   it('reports why, not just that, a cell failed', () => {
-    const result = parseCurrencyMajorToMinor('12.3456', { currencyCode: 'USD' })
+    const result = parseCurrencyMajorToMinor('12.34 EUR', { currencyCode: 'USD' })
     expect(result.ok).toBe(false)
-    expect(result.ok === false && result.reason).toContain('12.3456')
+    expect(result.ok === false && result.reason).toContain('12.34 EUR')
   })
 })
 
@@ -210,16 +213,17 @@ describe('resolveCurrencyMajor: rate fields (decimals: RATE_DECIMALS), the per-t
     expect(minor('12', rate)).toBe(1200)
   })
 
-  it('still refuses a sixth place beyond the field precision', () => {
-    expect(minor('0.015941', rate)).toMatch(/more decimals than this field supports \(5\)/)
+  it('rounds a sixth place beyond the field precision', () => {
+    expect(minor('0.015941', rate)).toBe(1.594)
+    expect(minor('0.015945', rate)).toBe(1.595)
   })
 
   it('excess zeros beyond five places are still lossless', () => {
     expect(minor('0.0159400', rate)).toBe(1.594)
   })
 
-  it('a plain (unset decimals) USD field is unaffected: still capped at 2', () => {
-    expect(minor('0.01594')).toMatch(/more decimals than this field supports \(2\)/)
+  it('a plain (unset decimals) USD field is unaffected: still rounded to 2', () => {
+    expect(minor('0.01594')).toBe(2)
   })
 
   it('decimals below the exponent is a floor, not a ceiling: still capped at the exponent', () => {

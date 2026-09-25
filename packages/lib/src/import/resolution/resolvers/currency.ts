@@ -83,20 +83,19 @@ function hasValidGrouping(intPart: string, groupSep: string): boolean {
  *
  * ### Accepted
  * `12.34`, `12`, `$12.34`, `12.34 USD`, `USD 12.34`, `1,234.56`, `1.234,56`,
- * `1 234,56`, `1'234.56`, `-12.34`, `12.34-`, `(12.34)`, `.50`, `12.3400`
- * (excess zeros are lossless), leading/trailing whitespace.
+ * `1 234,56`, `1'234.56`, `-12.34`, `12.34-`, `(12.34)`, `.50`, `12.3400`,
+ * leading/trailing whitespace.
+ *
+ * ### Rounded
+ * More decimals than the FIELD supports round half away from zero
+ * (`12.3456` → `12.35` on a USD field). The cap is `max(field decimals,
+ * currency exponent)`: a rate field (`decimals: RATE_DECIMALS`) keeps five
+ * major places, e.g. `0.01594`, and the digits past the exponent become a
+ * fractional MINOR unit (`1.594`).
  *
  * ### Rejected (as a row error, never a guess)
  * - A currency code in the cell that disagrees with the field's
  *   (`12.34 EUR` into a USD field) — importing euros as dollars is silent.
- * - More non-zero decimals than the FIELD supports (`12.3456` into a
- *   whole-cent USD field). The cap is `max(field decimals, currency
- *   exponent)`: a rate field (`decimals: RATE_DECIMALS`) admits five major
- *   places, e.g. `0.01594`, and the excess digits become a fractional MINOR
- *   unit (`1.594`), built by the same string-concatenation approach, never a
- *   float multiply. An amount field with no declared `decimals` is capped at
- *   the currency's exponent exactly as before. Rounding either away loses
- *   money that no downstream sum can recover.
  * - `1.234` — a lone DOT with three digits behind it. `.` is the en-US decimal
  *   point, so that is plausibly a three-decimal unit cost, and it is equally
  *   plausibly `1,234`. The readings differ by 1000×, so it refuses. Same for
@@ -257,18 +256,15 @@ export function parseCurrencyMajorToMinor(
     return fail(`Invalid currency amount: "${rawValue}"`)
   }
 
-  let fraction = fracPart
-  if (fraction.length > maxMajorPlaces) {
-    const dropped = fraction.slice(maxMajorPlaces)
-    if (/[^0]/.test(dropped)) {
-      return fail(
-        `"${rawValue}" has more decimals than this field supports (${maxMajorPlaces}). ` +
-          'Rounding it here would silently lose money — round it in the file instead.'
-      )
-    }
-    fraction = fraction.slice(0, maxMajorPlaces)
-  }
-  fraction = fraction.padEnd(maxMajorPlaces, '0')
+  // Excess decimals round half away from zero (on the magnitude; the sign is
+  // applied last), in BigInt so a carry like `9.999` → `10.00` stays exact.
+  let scaled = BigInt(
+    `${intDigits || '0'}${fracPart.slice(0, maxMajorPlaces).padEnd(maxMajorPlaces, '0')}`
+  )
+  if (Number(fracPart[maxMajorPlaces] ?? '0') >= 5) scaled += 1n
+  const scaledDigits = scaled.toString().padStart(maxMajorPlaces + 1, '0')
+  const roundedInt = scaledDigits.slice(0, scaledDigits.length - maxMajorPlaces)
+  const fraction = scaledDigits.slice(scaledDigits.length - maxMajorPlaces)
 
   // String concatenation, not `major * 10 ** exponent`: 1.005 * 100 is
   // 100.49999999999999 in binary floating point, and `Math.round` of that is a
@@ -281,7 +277,7 @@ export function parseCurrencyMajorToMinor(
   // a float divide.
   const minorFractionDigits = fraction.slice(0, exponent)
   const subMinorDigits = fraction.slice(exponent)
-  const wholeDigits = `${intDigits || '0'}${minorFractionDigits}`
+  const wholeDigits = `${roundedInt}${minorFractionDigits}`
   const minorUnitsWhole = Number(wholeDigits)
   if (!Number.isSafeInteger(minorUnitsWhole)) {
     return fail(`Invalid currency amount: "${rawValue}" is too large to store exactly`)
