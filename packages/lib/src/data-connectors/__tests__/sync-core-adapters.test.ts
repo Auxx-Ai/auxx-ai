@@ -30,7 +30,7 @@ describe('syncStateFromStream', () => {
       backfillStartedAt: '2026-06-21T00:00:00Z',
       // legacy/extra keys are ignored by the projection
       cursor: 'legacy',
-      backfillComplete: true,
+      retiredKey: true,
     }
     expect(syncStateFromStream(state)).toEqual({
       phase: 'steady',
@@ -46,7 +46,7 @@ describe('applySyncStateToStream', () => {
   it('overwrites only the core-owned fields and preserves legacy/extra keys', () => {
     const prev: ConnectorStreamState = {
       cursor: 'legacy-incremental',
-      backfillComplete: true,
+      retiredKey: true,
       customConnectorKey: 'keep-me',
     }
     const sync: SyncState = {
@@ -58,7 +58,7 @@ describe('applySyncStateToStream', () => {
     }
     expect(applySyncStateToStream(prev, sync)).toEqual({
       cursor: 'legacy-incremental',
-      backfillComplete: true,
+      retiredKey: true,
       customConnectorKey: 'keep-me',
       phase: 'backfill',
       backfillCursor: { kind: 'pageNumber', value: '3' },

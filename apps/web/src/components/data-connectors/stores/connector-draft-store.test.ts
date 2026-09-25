@@ -102,15 +102,23 @@ describe('isDirty derivation', () => {
 })
 
 describe('connector-level setters', () => {
-  it('setBackfillWindowSpan merges into config without dropping endpoint', () => {
+  it('setHistoryStartDate merges into config without dropping endpoint', () => {
     seed()
-    getConnectorDraftState().setBackfillWindowSpan('last_90_days')
+    getConnectorDraftState().setHistoryStartDate('2025-01-01')
     const config = getConnectorDraftState().draft.config as {
       endpoint?: unknown
-      backfillWindowSpan?: string
+      historyStartDate?: string
     }
-    expect(config.backfillWindowSpan).toBe('last_90_days')
+    expect(config.historyStartDate).toBe('2025-01-01')
     expect(config.endpoint).toEqual({ baseUrl: 'https://api.test/v1' })
+  })
+
+  it('clearing the history date drops the key, so the draft reads clean again', () => {
+    seed()
+    getConnectorDraftState().setHistoryStartDate('2025-01-01')
+    getConnectorDraftState().setHistoryStartDate(undefined)
+    expect('historyStartDate' in getConnectorDraftState().draft.config).toBe(false)
+    expect(selectIsDirty(getConnectorDraftState())).toBe(false)
   })
 
   it('setScheduleConfig + setSyncBehavior dirty the draft', () => {

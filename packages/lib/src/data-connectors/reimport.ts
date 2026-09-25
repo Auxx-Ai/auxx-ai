@@ -1,26 +1,28 @@
 // packages/lib/src/data-connectors/reimport.ts
-// see plans/data-connectors/v13/narrowed-fetch-plan.md §2 N5
+// see plans/data-connectors/v14/implementation-brief.md §3 (re-import API)
 
 import { randomUUID } from 'node:crypto'
 import { type Database, schema } from '@auxx/database'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
-import type { ConnectorRecordFilterCondition } from './connectors/types'
+import { loadAppCatalogConnector } from './connectors/app-connector-adapter'
 import { enqueueConnectorSync } from './data-connector-queue'
 import {
   type ReimportKind,
+  type ReimportQuery,
   type ReimportRunOptions,
-  validateReimportFilter,
+  validateReimportQuery,
 } from './reimport-filter'
 import { isConnectorClaimed, loadConnector, type StreamWithMappings } from './service'
-import type { ConnectorStreamState } from './types'
+import { missingQueryCapability } from './stream-query'
+import type { ConnectorQuery, ConnectorStreamState } from './types'
 
 export interface RequestReimportInput {
   organizationId: string
   connectorId: string
   streamIds: string[]
-  recordFilter: ConnectorRecordFilterCondition[]
+  query: ReimportQuery
   initiatedBy?: string | null
 }
 
@@ -28,23 +30,24 @@ export interface RequestReimportResult {
   /** `queued`: an `id` run waits for the running sync and starts when the claim frees. */
   status: 'started' | 'queued'
   kind: ReimportKind
-  /** The run filter as it will be sent. */
-  recordFilter: ConnectorRecordFilterCondition[]
+  /** The query as it will be sent. */
+  query: ConnectorQuery
   /** Lands on the run row as `progress.requestId` once the job opens it. */
   requestId: string
 }
 
 /**
- * Validate a re-import against N5's refusals and resolve its run options. Refuses a
- * non-app connector and a period run on a stream that never finished a backfill.
+ * Validate a re-import and resolve its run options. Refuses a non-app connector, a
+ * stream whose app does not declare the capability the query needs, and a period run
+ * on a stream that never finished a backfill.
  */
 async function planReimport(
   db: Database,
   input: RequestReimportInput
 ): Promise<Result<{ reimport: ReimportRunOptions; kind: ReimportKind }, Error>> {
-  const validated = validateReimportFilter(input.recordFilter)
+  const validated = validateReimportQuery(input.query)
   if (validated.isErr()) return err(validated.error)
-  const { kind } = validated.value
+  const { kind, query } = validated.value
 
   const loaded = await loadConnector(db, input.organizationId, input.connectorId)
   if (!loaded) return err(new NotFoundError(`DataConnector not found: ${input.connectorId}`))
@@ -52,7 +55,7 @@ async function planReimport(
   if (connector.definitionKind !== 'app') {
     return err(
       new BadRequestError(
-        'Re-import needs an app connector. A generic REST connector can’t narrow its fetch.'
+        'Re-import needs an app connector. A generic REST connector can’t be queried by id or period.'
       )
     )
   }
@@ -65,6 +68,20 @@ async function planReimport(
       return err(new NotFoundError(`Stream ${id} is not a mapped stream of this connector.`))
     }
     streams.push(stream)
+  }
+
+  const catalog = await loadAppCatalogConnector(input.organizationId, connector)
+  for (const s of streams) {
+    const decl = catalog?.streams.find((c) => c.key === s.stream.streamKey)?.query
+    const missing = missingQueryCapability(decl, query)
+    if (missing) {
+      return err(
+        new BadRequestError(
+          `Stream “${streamLabel(s)}” can’t be re-imported by ${missing === 'ids' ? 'record' : 'period'}: ` +
+            `its app doesn’t declare query.${missing}.`
+        )
+      )
+    }
   }
 
   if (kind === 'period') {
@@ -83,7 +100,7 @@ async function planReimport(
   return ok({
     reimport: {
       streamIds,
-      recordFilter: validated.value.clauses,
+      query,
       initiatedBy: input.initiatedBy ?? null,
     },
     kind,
@@ -126,7 +143,7 @@ export async function requestReimport(
   return ok({
     status: claimed ? 'queued' : 'started',
     kind,
-    recordFilter: reimport.recordFilter,
+    query: reimport.query,
     requestId,
   })
 }

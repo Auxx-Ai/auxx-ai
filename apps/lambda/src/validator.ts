@@ -224,33 +224,27 @@ const ToolExecutionSchema = AppEventSchema.extend({
  * Invokes one stream fetch on an app-declared data connector
  * (`defineDataConnector`). The executor
  * (`apps/lambda/src/executors/data-connector-executor.ts`) loads the connector
- * from `__AUXX_DATA_CONNECTORS__`, runs `execute({ streamKey, mode, state,
- * connection, config })`, and returns `{ records, nextState }`. The platform
- * validates the source-shaped records, then maps + sinks them — the app never
- * sees target defs or gets entity write access. See
- * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * from `__AUXX_DATA_CONNECTORS__`, runs `execute({ streamKey, query, cursor,
+ * connection, config })`, and returns `{ records, cursor?, since?, rateLimited?,
+ * deltaExpired? }`. The platform validates the source-shaped records, then maps +
+ * sinks them — the app never sees target defs or gets entity write access. See
+ * plans/data-connectors/v14/implementation-brief.md §2.
  */
 const DataConnectorExecutionSchema = AppEventSchema.extend({
   type: z.literal('data-connector'),
   /** Connector id (e.g. 'shopify.core') — dotted lowercase segments. */
   connectorId: z.string().regex(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/),
   streamKey: z.string().min(1),
-  mode: z.enum(['snapshot', 'incremental']),
-  state: z.record(z.string(), z.unknown()),
+  /** SDK `ConnectorQuery`; `since` is the app's own opaque marker. */
+  query: z.object({
+    ids: z.array(z.string().min(1)).optional(),
+    idKind: z.string().min(1).optional(),
+    period: z.object({ from: z.string().optional(), to: z.string().optional() }).optional(),
+    since: z.unknown().optional(),
+  }),
+  /** Paging within this query; the value the app returned from the previous page. */
+  cursor: z.unknown().optional(),
   config: z.record(z.string(), z.unknown()),
-  /** Webhook steer tokens (present only on a webhook-steered partial fetch). */
-  triggerContext: z.record(z.string(), z.string()).optional(),
-  /** AND'd narrowing clauses (SDK `ConnectorRecordFilterCondition`); `exact` is set by the engine. */
-  recordFilter: z
-    .array(
-      z.object({
-        fieldId: z.string().min(1),
-        operator: z.string().min(1),
-        value: z.unknown().optional(),
-        exact: z.boolean().optional(),
-      })
-    )
-    .optional(),
 })
 
 // ============================================================================

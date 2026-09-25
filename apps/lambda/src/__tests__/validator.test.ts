@@ -15,39 +15,40 @@ const EVENT = {
   },
   connectorId: 'shopify.core',
   streamKey: 'order',
-  mode: 'snapshot',
-  state: {},
+  query: {},
   config: {},
 }
 
-Deno.test('accepts a data-connector event without recordFilter', () => {
+Deno.test('accepts a data-connector event with an empty query', () => {
   assertEquals(validateLambdaEvent(EVENT).success, true)
 })
 
-Deno.test('accepts and keeps a well-formed recordFilter', () => {
-  const recordFilter = [
-    { fieldId: 'created_at', operator: 'between', value: { from: '2026-08-01' }, exact: true },
-    { fieldId: 'orders_count', operator: '>', value: 0 },
-    { fieldId: 'email', operator: 'is_not_empty' },
-  ]
-  const result = validateLambdaEvent({ ...EVENT, recordFilter })
+Deno.test('accepts and keeps a full query and cursor', () => {
+  const query = {
+    ids: ['1', '2'],
+    idKind: 'inventoryItem',
+    period: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+    since: { historyId: '84422' },
+  }
+  const result = validateLambdaEvent({ ...EVENT, query, cursor: { after: 'x' } })
   if (!result.success || !('data' in result)) throw new Error('expected a valid event')
-  assertEquals((result.data as { recordFilter?: unknown }).recordFilter, recordFilter)
+  const data = result.data as { query?: unknown; cursor?: unknown }
+  assertEquals(data.query, query)
+  assertEquals(data.cursor, { after: 'x' })
 })
 
-Deno.test('rejects a malformed recordFilter clause', () => {
+Deno.test('rejects a missing or malformed query', () => {
+  const { query: _omit, ...withoutQuery } = EVENT
+  assertEquals(validateLambdaEvent(withoutQuery).success, false)
   const bad: unknown[] = [
     'created_at',
-    [{ operator: '>' }],
-    [{ fieldId: '', operator: '>' }],
-    [{ fieldId: 'x', operator: 1 }],
-    [{ fieldId: 'x', operator: '>', exact: 'yes' }],
+    { ids: 'a' },
+    { ids: [''] },
+    { idKind: '' },
+    { period: '2026-08-01' },
+    { period: { from: 1 } },
   ]
-  for (const recordFilter of bad) {
-    assertEquals(
-      validateLambdaEvent({ ...EVENT, recordFilter }).success,
-      false,
-      JSON.stringify(recordFilter)
-    )
+  for (const query of bad) {
+    assertEquals(validateLambdaEvent({ ...EVENT, query }).success, false, JSON.stringify(query))
   }
 })

@@ -88,6 +88,7 @@ function fakeClient(
 function args(over: Partial<ConnectorFetchArgs> = {}): ConnectorFetchArgs {
   return {
     streamKey: FC_TRANSACTIONS_STREAM,
+    query: {},
     mode: 'snapshot',
     state: {},
     credential: {

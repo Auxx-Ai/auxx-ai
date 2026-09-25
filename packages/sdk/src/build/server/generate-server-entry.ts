@@ -374,7 +374,7 @@ export async function generateServerEntry({
 
         // Build __AUXX_DATA_CONNECTORS__ — the connector registry read by the
         // lambda data-connector-executor. Mirrors __AUXX_TOOLS__: the executor
-        // reads execute({ streamKey, mode, state, connection, config }) off this
+        // reads execute({ streamKey, query, cursor, connection, config }) off this
         // global. See docs/app-fields-and-entities-guide.md.
         const __AUXX_DATA_CONNECTORS__ = {};
 

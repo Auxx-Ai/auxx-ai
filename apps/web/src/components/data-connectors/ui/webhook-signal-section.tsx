@@ -90,7 +90,7 @@ export function WebhookSignalSection({ connector }: { connector: Connector }) {
         : null
 
   // Write the signal (or clear it) into the DRAFT config.webhookTrigger, merged so the
-  // rest of the connector config (endpoint/filters/backfillWindowSpan) survives. The save
+  // rest of the connector config (endpoint/filters/historyStartDate) survives. The save
   // bar commits it — nothing persists on pick.
   const persist = (next: BoundSource | null) => {
     setSource(next)

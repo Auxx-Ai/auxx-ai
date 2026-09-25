@@ -84,6 +84,40 @@ describe('dispatchAppTriggerToConnectors', () => {
     expect(queueAdd.mock.calls[0]?.[2]).toBeUndefined()
   })
 
+  it('steers an app stream by idPath, debouncing on the resolved id', async () => {
+    findManyConnectors.mockResolvedValue([
+      { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+    ])
+    findManyStreams.mockResolvedValue([
+      {
+        dataConnectorId: 'dc1',
+        streamKey: 'product',
+        requestConfig: {
+          webhookTrigger: { idPath: 'resourceId', idKind: 'inventoryItem', debounceMs: 5_000 },
+        },
+      },
+    ])
+    const result = await dispatchAppTriggerToConnectors(job(base))
+    expect(result).toEqual({ steerJobs: 1, connectorsFullSynced: 0 })
+    expect(queueAdd.mock.calls[0]?.[2]).toMatchObject({ delay: 5_000 })
+    expect(String(queueAdd.mock.calls[0]?.[2]?.jobId)).toContain(encodeURIComponent('ids=1'))
+  })
+
+  it('full-syncs an app stream whose idPath does not resolve', async () => {
+    findManyConnectors.mockResolvedValue([
+      { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },
+    ])
+    findManyStreams.mockResolvedValue([
+      {
+        dataConnectorId: 'dc1',
+        streamKey: 'product',
+        requestConfig: { webhookTrigger: { idPath: 'missing' } },
+      },
+    ])
+    const result = await dispatchAppTriggerToConnectors(job(base))
+    expect(result).toEqual({ steerJobs: 0, connectorsFullSynced: 1 })
+  })
+
   it('full-syncs a non-steerable cursor stream (no paths)', async () => {
     findManyConnectors.mockResolvedValue([
       { id: 'dc1', config: { webhookTrigger: { triggerId: 'shopify.shopify-trigger' } } },

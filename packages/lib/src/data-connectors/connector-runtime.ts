@@ -173,6 +173,7 @@ export async function sampleConnectorFetch(
   let firstHeaders: Record<string, string> | undefined
   const { records } = await definition.fetch({
     streamKey: input.streamKey ?? '',
+    query: {},
     mode: 'snapshot',
     state: {},
     credential,
@@ -339,6 +340,7 @@ export async function sweepConnectorFetch(
     // Always a full crawl, never the incremental delta — the sweep must see
     // every variant regardless of what the connector's steady-state cursor
     // remembers (design §5: "read the whole catalog, not a sample").
+    query: {},
     mode: 'snapshot',
     state: {},
     credential,

@@ -74,7 +74,7 @@ export interface ConnectorDraft {
   name: string
   syncBehavior: SyncBehavior
   scheduleConfig: Record<string, unknown> | null
-  /** The connector-level config blob (endpoint, backfillWindowSpan, webhookTrigger…). */
+  /** The connector-level config blob (endpoint, historyStartDate, webhookTrigger…). */
   config: Record<string, unknown>
   streams: DraftStream[]
 }
@@ -168,7 +168,8 @@ interface ConnectorDraftState {
   setConfig: (config: Record<string, unknown>) => void
   setSyncBehavior: (behavior: SyncBehavior) => void
   setScheduleConfig: (config: Record<string, unknown> | null) => void
-  setBackfillWindowSpan: (span: string) => void
+  /** `YYYY-MM-DD`, or undefined to import everything (drops the key). */
+  setHistoryStartDate: (date: string | undefined) => void
 
   // ── stream setters (draft-only) ──
   renameStream: (streamId: string, streamKey: string) => void
@@ -326,10 +327,13 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
     setConfig: (config) => set((s) => ({ draft: { ...s.draft, config } })),
     setSyncBehavior: (syncBehavior) => set((s) => ({ draft: { ...s.draft, syncBehavior } })),
     setScheduleConfig: (scheduleConfig) => set((s) => ({ draft: { ...s.draft, scheduleConfig } })),
-    setBackfillWindowSpan: (span) =>
-      set((s) => ({
-        draft: { ...s.draft, config: { ...s.draft.config, backfillWindowSpan: span } },
-      })),
+    setHistoryStartDate: (date) =>
+      set((s) => {
+        // Spread in place when setting so the key keeps its position (no false dirty).
+        const { historyStartDate: _prev, ...rest } = s.draft.config
+        const config = date ? { ...s.draft.config, historyStartDate: date } : rest
+        return { draft: { ...s.draft, config } }
+      }),
 
     renameStream: (streamId, streamKey) =>
       set((s) => ({ draft: patchStream(s.draft, streamId, (st) => ({ ...st, streamKey })) })),

@@ -35,7 +35,7 @@ import type {
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
-import type { ConnectorRecordFilterCondition } from './connectors/types'
+import { decodeSince } from './connectors/app-connector-state'
 import { resolveCrossConnectorLinks } from './cross-connector-links'
 import {
   listBackfillRunIds,
@@ -44,8 +44,7 @@ import {
   streamReconcilesByAbsence,
 } from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
-import { pushableClauses } from './record-filter'
-import { runFilterGroup } from './reimport-filter'
+import { periodFilterGroup } from './reimport-filter'
 import { resolveRelationships } from './relationship-pass'
 import { isRunPauseRequested } from './run-control'
 import {
@@ -66,8 +65,11 @@ import {
 } from './service'
 import { sinkSourceRecord } from './sink-source-record'
 import type { SyncCtx } from './sinks/types'
+import { syncQuery } from './stream-query'
 import { createConnectorRunLedger } from './sync-core-adapters'
 import type {
+  ConnectorQuery,
+  ConnectorStreamQueryDecl,
   DataConnectorConfig,
   DataConnectorDefinition,
   StreamRequestConfig,
@@ -95,10 +97,8 @@ export interface SyncSourceStream {
    * next chain re-reads it anyway.
    */
   recordFilter?: ConditionGroup[]
-  /** The app catalog stream's `periodField` (v13 N2); absent on non-app streams. */
-  periodField?: string
-  /** ISO backfill floor pinned for this backfill, mirrored from `state.backfillFloor`. */
-  backfillFloor?: string
+  /** The app catalog stream's `query` declaration; absent on non-app streams. */
+  query?: ConnectorStreamQueryDecl
   mappings: DecodedMapping[]
 }
 
@@ -153,9 +153,11 @@ export interface ConnectorSyncSourceDeps {
     phase?: 'backfill' | 'steady' | null
     /** `'reimport'` sends no delta, skips reconciliation and keeps `resyncPending` (v13 N5). */
     mode?: string | null
-    /** A re-import's run filter: sent `exact`, and ANDed onto the stream filter post-fetch. */
-    recordFilter?: ConnectorRecordFilterCondition[] | null
+    /** A re-import's query, sent verbatim in place of the sync query. */
+    query?: ConnectorQuery | null
   }
+  /** The chain's history floor (UTC ISO), computed once per run; absent ⇒ no floor. */
+  floor?: string
   /** The pinned stream this source drives (its own continuation chain). */
   stream: SyncSourceStream
   /**
@@ -238,7 +240,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   /** Bound connection's plaintext metadata (`connectionAppFields` source), loaded once. */
   private connectionMeta?: Record<string, unknown> | null
   private readonly reimport: boolean
-  /** Stream filter AND, on a re-import, the run filter (N5). */
+  /** The stream filter AND, on a period re-import, the period re-checked on the declared path. */
   private readonly postFetchFilter?: ConditionGroup[]
 
   constructor(private readonly deps: ConnectorSyncSourceDeps) {
@@ -249,9 +251,11 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     this.now = deps.now ?? (() => Date.now())
     this.updatedAtPath = deps.stream.requestConfig?.incremental?.watermarkField
     this.reimport = deps.run.mode === 'reimport'
+    const period = this.reimport ? deps.run.query?.period : undefined
+    const periodPath = deps.stream.query?.period
     this.postFetchFilter =
-      this.reimport && deps.run.recordFilter?.length
-        ? [...(deps.stream.recordFilter ?? []), runFilterGroup(deps.run.recordFilter)]
+      period && periodPath
+        ? [...(deps.stream.recordFilter ?? []), periodFilterGroup(periodPath, period)]
         : deps.stream.recordFilter
   }
 
@@ -290,19 +294,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
     }
 
-    // Backfill paginates from the top/cursor (snapshot); steady incremental injects
-    // the watermark delta floor (Step 5). The connector reads `state.backfillCursor`
-    // to resume regardless, so backfill always passes 'snapshot'.
-    //
-    // A sweep self-heals missed webhooks. Incremental streams (honest updated_at) only
-    // need a watermark catch-up — forcing a full re-crawl on them is what made sweeps
-    // unaffordable on big stores (v9 §3). Snapshot streams still full-crawl (their
-    // sources can't report deltas), which is also what keeps their orphan reconciliation
-    // valid. `this.deps.sweep`, not `ctx.sweep` — `ctx: SyncSliceCtx` (sync-core) carries
-    // no sweep flag; the sweep signal lives on this source's own deps (see `buildCtx`,
-    // which threads the same `this.deps.sweep` onto `SyncCtx.sweep` for `reconcileOrphans`).
+    // Generic REST's own delta mode; app connectors read only the query. A sweep runs an
+    // incremental stream's catch-up, not a re-crawl (v9 §3); a re-import never deltas.
     const sweepIncremental = this.deps.sweep === true && this.deps.stream.syncMode === 'incremental'
-    // A re-import never runs a delta: no `updatedSince`, whatever the run store's phase.
     const mode: 'snapshot' | 'incremental' =
       !this.reimport &&
       (ctx.phase === 'steady' || sweepIncremental) &&
@@ -310,7 +304,6 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         ? 'incremental'
         : 'snapshot'
 
-    const recordFilter = this.sentClauses(this.deps.stream, ctx.phase)
     const result = await runConnectorSlice({
       ctx,
       now: this.now,
@@ -318,12 +311,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       fetch: ({ backfillCursor, watermark }) =>
         this.deps.definition.fetch({
           streamKey,
+          query: this.queryFor(this.deps.stream, ctx.phase, watermark),
           mode,
           state: { backfillCursor, watermark },
           credential: this.deps.credential,
           config: this.deps.config,
           requestConfig: this.deps.stream.requestConfig ?? undefined,
-          ...(recordFilter.length > 0 ? { recordFilter } : {}),
           // H1 — never sleep on a throttle inside a slice.
           rateLimitOverride: { maxRetries: 0 },
           signal: ctx.signal,
@@ -349,28 +342,15 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   }
 
   /**
-   * The AND'd clauses the paged fetch of `stream` sends (v13 N1–N5); app connectors only. A
-   * stream that could delete by absence never gets its stored filter (N4). Non-empty means
-   * narrowed, which keeps the stream out of orphan reconciliation.
+   * The query `stream`'s fetch sends: a re-import's own query verbatim, else the sync query.
+   * `since` rides only a steady phase; a backfill clears the watermark it would come from.
    */
-  private sentClauses(
-    stream: SyncSourceStream,
-    phase: SyncPhase
-  ): ConnectorRecordFilterCondition[] {
-    if (this.deps.connector.definitionKind !== 'app' || this.asyncExportFor(phase)) return []
-    const clauses = streamReconcilesByAbsence(stream) ? [] : pushableClauses(stream.recordFilter)
-    const runClauses = this.reimport ? (this.deps.run.recordFilter ?? []) : []
-    if (runClauses.length > 0) return [...clauses, ...runClauses]
-    if (phase === 'backfill' && stream.periodField && stream.backfillFloor) {
-      const from = stream.backfillFloor
-      clauses.push({
-        fieldId: stream.periodField,
-        operator: 'between',
-        value: { from },
-        exact: true,
-      })
-    }
-    return clauses
+  private queryFor(stream: SyncSourceStream, phase: SyncPhase, watermark?: string): ConnectorQuery {
+    if (this.reimport) return this.deps.run.query ?? {}
+    return syncQuery(stream, {
+      floor: this.deps.floor,
+      since: phase === 'steady' ? decodeSince(watermark) : undefined,
+    })
   }
 
   /**
@@ -447,7 +427,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       })
       return
     }
-    await this.finalizeConnectorLevel({ closeRun: true, clearResync: true, phase: 'backfill' })
+    // A steady run's stream reaches here only after a delta-expiry restart; it never re-crawled the rest.
+    await this.finalizeConnectorLevel({
+      closeRun: true,
+      clearResync: this.deps.run.phase !== 'steady',
+      phase: 'backfill',
+    })
   }
 
   async finalizeAtPark(): Promise<void> {
@@ -575,7 +560,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
     await resolveRelationships(syncCtx)
     await this.resolveCrossConnectorLinks(syncCtx)
-    // A re-import's fetch is narrowed (N4), and its snapshot holds only the named streams, so
+    // A re-import's fetch is bounded, and its snapshot holds only the named streams, so
     // the marker cleanup would strip what an unnamed stream contributes.
     if (!this.reimport) await this.reconcile(syncCtx)
     // Final sweep: emit the coarse refresh so the grid
@@ -664,26 +649,20 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
   /** Orphan reconciliation plus the managed-marker cleanup, across every pinned stream. */
   private async reconcile(syncCtx: SyncCtx): Promise<void> {
-    // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady. A
-    // snapshot stream's crawl may have spanned several runs (parked at the ingest
-    // ceiling, resumed from its cursor on the next trigger), so "seen this backfill"
-    // is the set of runs since the stream's backfill began, not just this run. A stream
-    // whose fetch was narrowed never deletes by absence (v13 N4); snapshot streams only
-    // ever fetch in the backfill phase.
+    // Only a snapshot stream fetched with `{}` deletes by absence; a floored crawl did not
+    // ask for what it did not see. Its crawl may have spanned several runs (parked at the
+    // ingest ceiling, resumed from its cursor), so "seen this backfill" is every run since
+    // the stream's backfill began, not just this run.
     const reconcilable = await Promise.all(
       this.deps.allStreams
-        .filter((s) => this.sentClauses(s, 'backfill').length === 0)
-        .map(async (s) =>
-          s.syncMode === 'snapshot'
-            ? {
-                ...s,
-                seenRunIds: await listBackfillRunIds(this.deps.db, {
-                  dataConnectorId: this.deps.connector.id,
-                  streamId: s.streamId,
-                }),
-              }
-            : s
-        )
+        .filter((s) => streamReconcilesByAbsence(s, this.queryFor(s, 'backfill')))
+        .map(async (s) => ({
+          ...s,
+          seenRunIds: await listBackfillRunIds(this.deps.db, {
+            dataConnectorId: this.deps.connector.id,
+            streamId: s.streamId,
+          }),
+        }))
     )
     await reconcileOrphans(syncCtx, reconcilable)
     // Clear contributing markers for fields the connector no longer maps (the FK

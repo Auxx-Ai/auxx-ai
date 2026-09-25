@@ -1,11 +1,10 @@
 // packages/lib/src/data-connectors/refresh-record.ts
-// see plans/data-connectors/v13/narrowed-fetch-plan.md §4
+// see plans/data-connectors/v14/implementation-brief.md §3 (re-import API)
 
 import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
-import { EXTERNAL_ID_FIELD } from './record-filter'
 import { type RequestReimportResult, requestReimport } from './reimport'
 
 export interface RecordRefreshItem {
@@ -113,7 +112,7 @@ export async function requestRecordRefresh(
     organizationId: input.organizationId,
     connectorId: input.connectorId,
     streamIds: [streamId],
-    recordFilter: [{ fieldId: EXTERNAL_ID_FIELD, operator: 'in', value: [externalId] }],
+    query: { ids: [externalId] },
     initiatedBy: input.initiatedBy ?? null,
   })
   if (started.isErr()) return err(started.error)

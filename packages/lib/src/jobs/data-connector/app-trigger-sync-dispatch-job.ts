@@ -4,8 +4,8 @@
 // verified app-webhook delivery → a sync of every webhook-sync DataConnector bound to this
 // `(connection, triggerId)` with ≥1 stream whose `filter` matches the payload. THIN by
 // design — it dedups + matches + routes by mode (webhook-steered-partial-run-plan):
-//   • steerable stream (`webhookTrigger.paths` set) → a targeted PARTIAL run via the steer
-//     job (fetches only the changed record via `{path}`, marks the run `partial`).
+//   • steerable stream (app `webhookTrigger.idPath`, generic-REST `paths`) → a targeted
+//     PARTIAL run via the steer job (fetches only the changed record, marks the run `partial`).
 //   • non-steerable cursor stream → the full run-based sync (`enqueueConnectorSync`).
 // Either way the delivery yields a `DataConnectorRun` history row + refreshed `lastSyncedAt`.
 
@@ -16,7 +16,11 @@ import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { SUSPENDED_CONNECTOR_STATUSES } from '../../data-connectors/data-connector-scheduler'
 import { markWebhookEventReceived } from '../../data-connectors/service'
-import { isSteerableDelivery, resolveWebhookSteer } from '../../data-connectors/webhook-steer'
+import {
+  isSteerableDelivery,
+  resolveWebhookSteer,
+  steerTokenKey,
+} from '../../data-connectors/webhook-steer'
 import { createScopedLogger } from '../../logger'
 import { getQueue, Queues } from '../queues'
 import type { JobContext } from '../types'
@@ -130,14 +134,7 @@ export async function dispatchAppTriggerToConnectors(
     // Resolve the steer once — `isSteerableDelivery` already re-derives it internally,
     // but the resolve is cheap/pure and we need the token VALUES here to key the
     // debounce jobId (§8), not just the steerable/not-steerable verdict.
-    const steer = resolveWebhookSteer(wt, triggerData)
-    const tokenKey =
-      steer.kind === 'fetch'
-        ? Object.entries(steer.triggerContext)
-            .sort()
-            .map(([k, v]) => `${k}=${v}`)
-            .join('&')
-        : ''
+    const tokenKey = steerTokenKey(resolveWebhookSteer(wt, triggerData))
     matched.push({
       connectorId: stream.dataConnectorId,
       // An unnamed stream routes by its stable streamId (the functional key) — same

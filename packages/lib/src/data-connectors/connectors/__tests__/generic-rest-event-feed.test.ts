@@ -30,6 +30,7 @@ function json(body: unknown) {
 function eventFeedArgs(): ConnectorFetchArgs {
   return {
     streamKey: 'customer',
+    query: {},
     mode: 'incremental',
     state: { watermark: '100' },
     credential: null,

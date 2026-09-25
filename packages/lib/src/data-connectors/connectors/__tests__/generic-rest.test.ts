@@ -38,6 +38,7 @@ function args(
   const { auth = 'credential', authApply = null, value = 'tok', fields } = over
   return {
     streamKey: 's1',
+    query: {},
     mode: 'snapshot',
     state: {},
     credential: { id: 'c1', type: 'secret', value, fields, authApply },

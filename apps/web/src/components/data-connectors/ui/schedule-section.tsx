@@ -1,6 +1,7 @@
 // apps/web/src/components/data-connectors/ui/schedule-section.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -9,9 +10,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Label } from '@auxx/ui/components/label'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { RadioGroup, RadioGroupItem } from '@auxx/ui/components/radio-group'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import {
   Select,
@@ -20,9 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@auxx/ui/components/select'
+import { format, subDays, subMonths } from 'date-fns'
 import { ChevronDown, Clock, Webhook } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import {
   type ScheduledState,
   ScheduleEditor,
@@ -46,16 +47,15 @@ import { WebhookSteeringSection } from './webhook-steering-section'
 type Connector = NonNullable<RouterOutputs['dataConnector']['getById']>
 
 type SyncBehavior = 'manual' | 'scheduled' | 'webhook'
-type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'
 
 // Mirrors MIN_CONNECTOR_INTERVAL_MINUTES in the data-connectors tRPC router.
 // Hardcoded here to keep this client component free of the server-only barrel.
 const MIN_CONNECTOR_INTERVAL_MINUTES = 15
 
-const WINDOW_OPTIONS: Array<{ value: BackfillWindowSpan; label: string }> = [
-  { value: 'all', label: 'Import all history' },
-  { value: 'last_12_months', label: 'Last 12 months' },
-  { value: 'last_90_days', label: 'Last 90 days' },
+// Shortcuts fill the date once from today; the stored value is the fixed day, not the span.
+const HISTORY_SHORTCUTS: Array<{ label: string; from: (today: Date) => Date }> = [
+  { label: 'Last 90 days', from: (today) => subDays(today, 90) },
+  { label: 'Last 12 months', from: (today) => subMonths(today, 12) },
 ]
 
 interface ScheduleSectionProps {
@@ -195,6 +195,54 @@ function SweepCadenceSection({ connector }: { connector: Connector }) {
 }
 
 /**
+ * The connector's one history floor (`config.historyStartDate`), applied to every stream
+ * that can be bounded by a date. Absent = import everything.
+ */
+function HistoryStartSection({ streamKeys }: { streamKeys: string[] }) {
+  const setHistoryStartDate = useConnectorDraftStore((s) => s.setHistoryStartDate)
+  const historyStartDate = useConnectorDraftStore(
+    (s) => (s.draft.config as { historyStartDate?: string }).historyStartDate
+  )
+
+  return (
+    <div className='flex flex-col gap-2 border-t pt-4'>
+      <div className='text-sm font-medium'>Import history from</div>
+      <p className='text-xs text-muted-foreground'>
+        Applies to {streamKeys.join(', ')}. Takes effect on the next import.
+      </p>
+      <div className='flex flex-wrap items-center gap-2 pt-1'>
+        <div className='w-48'>
+          <FieldInputAdapter
+            fieldType={FieldType.DATE}
+            value={historyStartDate}
+            onChange={(v) =>
+              setHistoryStartDate(typeof v === 'string' ? v.slice(0, 10) : undefined)
+            }
+            placeholder='Everything'
+          />
+        </div>
+        {HISTORY_SHORTCUTS.map((shortcut) => (
+          <Button
+            key={shortcut.label}
+            variant='outline'
+            size='xs'
+            onClick={() => setHistoryStartDate(format(shortcut.from(new Date()), 'yyyy-MM-dd'))}>
+            {shortcut.label}
+          </Button>
+        ))}
+        <Button
+          variant='outline'
+          size='xs'
+          disabled={!historyStartDate}
+          onClick={() => setHistoryStartDate(undefined)}>
+          Everything
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Schedule section — a header dropdown over the connector's single
  * `syncBehavior` (Manual · Scheduled · Webhook), NOT a list of triggers (05 §5).
  * Scheduled reveals the shared `ScheduleEditor` round-tripping `scheduleConfig`;
@@ -237,36 +285,30 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
       hasWebhookEndpoints
     : Boolean(installation?.dataConnectors?.[0]?.webhookTrigger)
 
-  // The window radio only makes sense when a stream declares which param carries the
-  // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
-  // can't filter a param we don't know, so hide the choice otherwise. An app stream
-  // qualifies when its catalog declares a `periodField` the engine floors on (v13 N2).
+  // The history date only bounds a stream that can be queried by date: an app stream
+  // declaring `query.period`, or a generic-REST stream with a `backfillWindow` param.
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
   const periodStreamKeys = new Set(
     isGenericRest
       ? []
       : (installation?.dataConnectors?.[0]?.streams ?? [])
-          .filter((s) => s.periodField)
+          .filter((s) => s.query?.period)
           .map((s) => s.key)
   )
-  const supportsWindow = (streams.data ?? []).some(
-    (s) =>
-      (s.requestConfig as { backfillWindow?: { sinceParam?: string } } | null)?.backfillWindow ||
-      periodStreamKeys.has(s.streamKey ?? '')
-  )
+  const historyStreamKeys = (streams.data ?? [])
+    .filter(
+      (s) =>
+        (s.requestConfig as { backfillWindow?: unknown } | null)?.backfillWindow ||
+        periodStreamKeys.has(s.streamKey ?? '')
+    )
+    .flatMap((s) => (s.streamKey ? [s.streamKey] : []))
 
-  // Behavior + schedule + backfill window all edit the one connector draft (the unified
+  // Behavior + schedule + history date all edit the one connector draft (the unified
   // saving model, plans/data-connectors/v4) — committed together by the floating save bar.
   const setSyncBehavior = useConnectorDraftStore((s) => s.setSyncBehavior)
   const setScheduleConfig = useConnectorDraftStore((s) => s.setScheduleConfig)
-  const setBackfillWindowSpan = useConnectorDraftStore((s) => s.setBackfillWindowSpan)
   const setStreamValidity = useConnectorDraftStore((s) => s.setStreamValidity)
   const behavior = useConnectorDraftStore((s) => s.draft.syncBehavior) as SyncBehavior
-  const windowSpan = useConnectorDraftStore(
-    (s) =>
-      ((s.draft.config as { backfillWindowSpan?: BackfillWindowSpan }).backfillWindowSpan ??
-        'all') as BackfillWindowSpan
-  )
 
   // The cadence editor holds local `ScheduledState` so an invalid intermediate edit stays
   // visible (the draft only ever holds a VALID config). Seeded from persisted config;
@@ -419,27 +461,7 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               app connector), the self-heal for missed webhook deliveries (v9 Phase 6). */}
           {behavior === 'webhook' && <SweepCadenceSection connector={connector} />}
 
-          {supportsWindow && (
-            <div className='flex flex-col gap-2 border-t pt-4'>
-              <div className='text-sm font-medium'>How much history to import</div>
-              <p className='text-xs text-muted-foreground'>
-                Applies to the first full import. Changing this takes effect on the next import.
-              </p>
-              <RadioGroup
-                value={windowSpan}
-                onValueChange={(v) => setBackfillWindowSpan(v as BackfillWindowSpan)}
-                className='gap-2 pt-1'>
-                {WINDOW_OPTIONS.map((opt) => (
-                  <div key={opt.value} className='flex items-center gap-2'>
-                    <RadioGroupItem value={opt.value} id={`window-${opt.value}`} />
-                    <Label htmlFor={`window-${opt.value}`} className='cursor-pointer font-normal'>
-                      {opt.label}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
-          )}
+          {historyStreamKeys.length > 0 && <HistoryStartSection streamKeys={historyStreamKeys} />}
         </div>
       </Section>
 

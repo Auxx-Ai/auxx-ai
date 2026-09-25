@@ -2,7 +2,7 @@
 // Pure cursor-translation helpers for the app-connector adapter — the boundary
 // between the engine's structured `SyncCursor` (opaque token the core persists +
 // forwards but never interprets) and the FLAT, JSON-serializable cursor an app
-// author deals in (`ConnectorStreamState.cursor`). Kept separate from the adapter
+// author deals in (`args.cursor`), plus the `since` marker stored in the watermark. Kept separate from the adapter
 // so they unit-test without the adapter's lazy cluster imports.
 
 import type { SyncCursor } from '../../sync-core/contracts'
@@ -30,4 +30,19 @@ export function decodeCursor(cursor?: SyncCursor): unknown {
  */
 export function encodeCursor(value: unknown): SyncCursor {
   return { kind: 'token', value: JSON.stringify(value) }
+}
+
+/** Encode an app's opaque `since` into the stream's string watermark (`undefined` stays absent). */
+export function encodeSince(since: unknown): string | undefined {
+  return since === undefined ? undefined : JSON.stringify(since)
+}
+
+/** Reverse {@link encodeSince}; a malformed value is dropped, which re-reads everything once. */
+export function decodeSince(watermark?: string): unknown {
+  if (watermark === undefined) return undefined
+  try {
+    return JSON.parse(watermark)
+  } catch {
+    return undefined
+  }
 }

@@ -55,7 +55,7 @@ const catalogWithBinding: CatalogDataConnector = {
     {
       key: 'variant',
       mappings: [],
-      webhookTrigger: { filter: { topic: 'inventory_levels/update' }, paths: ['resourceId'] },
+      webhookTrigger: { filter: { topic: 'inventory_levels/update' }, idPath: 'resourceId' },
     },
     { key: 'orders', mappings: [] },
   ],
@@ -82,7 +82,7 @@ describe('restampConnectorWebhookBindings', () => {
     expect(streamUpdates).toHaveLength(2)
     expect(streamUpdates[0]?.requestConfig).toEqual({
       someOtherKey: 'x',
-      webhookTrigger: { filter: { topic: 'inventory_levels/update' }, paths: ['resourceId'] },
+      webhookTrigger: { filter: { topic: 'inventory_levels/update' }, idPath: 'resourceId' },
     })
     // The 'orders' catalog stream declares no webhookTrigger — its row is still updated
     // (with an unchanged, empty requestConfig), not skipped: every catalog stream with a
@@ -119,7 +119,7 @@ describe('restampConnectorWebhookBindings', () => {
           streamKey: 'variant',
           requestConfig: {
             someOtherKey: 'x',
-            webhookTrigger: { filter: { topic: 'inventory_levels/update' }, paths: ['resourceId'] },
+            webhookTrigger: { filter: { topic: 'inventory_levels/update' }, idPath: 'resourceId' },
           },
         },
       ]

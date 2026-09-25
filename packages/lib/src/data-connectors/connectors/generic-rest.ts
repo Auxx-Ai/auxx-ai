@@ -439,14 +439,14 @@ async function* fetchRecords(args: ConnectorFetchArgs): AsyncIterable<ConnectorY
     if (incremental && args.mode === 'incremental' && args.state.watermark) {
       params[incremental.sinceParam] = args.state.watermark
     }
-    // Backfill-window floor (Step 9 §1.2) — inject the pinned floor on EVERY page of a
-    // snapshot run. `params` is rebuilt per page, and page/offset/cursor pagination
-    // re-sends filters every request, so this must not be first-page-only. For
-    // next-url/link-header the url-selection below GETs the server URL verbatim and
-    // ignores `params`, so the floor (baked into that URL) is applied page 1 only —
-    // exactly right. The pinned floor is stable across the whole chain (no drift).
-    if (request.backfillWindow && args.mode === 'snapshot' && args.state.backfillFloor) {
-      params[request.backfillWindow.sinceParam] = args.state.backfillFloor
+    // History floor on EVERY page of a snapshot run: `params` is rebuilt per page. For
+    // next-url/link-header the server URL already carries it, so page 1 only is right.
+    const floor = args.query.period?.from
+    if (request.backfillWindow && args.mode === 'snapshot' && floor) {
+      params[request.backfillWindow.sinceParam] =
+        request.backfillWindow.format === 'unix'
+          ? String(Math.floor(Date.parse(floor) / 1000))
+          : floor
     }
 
     // link-header hands back an absolute next URL (GET as-is); next-url hands back
@@ -561,17 +561,7 @@ export const genericRestConnector: DataConnectorDefinition = {
 
   async fetch(args: ConnectorFetchArgs): Promise<FetchResult> {
     logger.debug('generic-rest fetch', { streamKey: args.streamKey, mode: args.mode })
-    // The records iterable is lazy and emits resume checkpoints between pages. The
-    // sliced `SyncSource` persists those checkpoints via the `SyncStateStore`; the
-    // legacy single-shot path drains to exhaustion and persists `nextState` once at
-    // the end (no mid-stream cursor).
-    //
-    // 🛑 This used to stamp `backfillComplete: true`. Nothing ever read it back off the
-    // persisted stream state — `phase` is the completion signal — so it only served to
-    // make the state row look authoritative about something it did not track (task 43 §4).
-    return {
-      records: fetchRecords(args),
-      nextState: { ...args.state },
-    }
+    // Lazy, with resume checkpoints between pages that the sliced `SyncSource` persists.
+    return { records: fetchRecords(args) }
   },
 }

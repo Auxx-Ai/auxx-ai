@@ -386,26 +386,38 @@ export interface CatalogConnectorMapping {
 }
 
 /** One stream (fetch) projected from a data connector. */
+/** What a catalog stream can be queried by. Mirror of the SDK `ConnectorStreamQueryDecl`. */
+export interface CatalogConnectorStreamQuery {
+  ids?: true
+  /** Source path of the date that says when a record happened. */
+  period?: string
+  since?: true
+}
+
+/** Mirror of the SDK stream `webhookTrigger`: a matched delivery fetches `{ ids: [value at idPath], idKind }`. */
+export interface CatalogConnectorStreamWebhookTrigger {
+  filter?: Record<string, unknown>
+  idPath: string
+  idKind?: string
+  debounceMs?: number
+}
+
 export interface CatalogConnectorStream {
   key: string
-  /** Stream scheduling — `incremental` backfills once then runs deltas. */
-  syncMode?: 'snapshot' | 'incremental'
   mappings: CatalogConnectorMapping[]
   exampleRecord?: Record<string, unknown>
+  /** Absent `since` ⇒ the stream syncs as a snapshot; the platform derives `syncMode` from it. */
+  query?: CatalogConnectorStreamQuery
   /**
-   * Per-stream webhook STEERING. `filter` matches against the delivery's triggerData;
-   * `paths` name triggerData fields exposed to the app's execute as `triggerContext`;
-   * `debounceMs` coalesces same-record bursts. See {@link CatalogDataConnector.webhookTrigger}
+   * Per-stream webhook STEERING. See {@link CatalogDataConnector.webhookTrigger}
    * for the connector-level SIGNAL this steering pairs with.
    */
-  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  webhookTrigger?: CatalogConnectorStreamWebhookTrigger
   /**
    * Per-record filter over the raw payload, seeded onto `DataConnectorStream.recordFilter`
    * at install and updated on redeploy; a record that fails it is skipped before mapping.
    */
   recordFilter?: RecordFilterConditionGroup[]
-  /** Source path of the date the backfill floor and the accounting cutover apply to. */
-  periodField?: string
 }
 
 /**

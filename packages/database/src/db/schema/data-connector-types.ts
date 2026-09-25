@@ -93,8 +93,8 @@ export interface DataConnectorConfig {
    * `WebhookEndpoint`). Set when `syncBehavior === 'webhook'`.
    */
   webhookTrigger?: { triggerId?: string; webhookEndpointId?: string }
-  /** Backfill crawl span (Step 9 §1.2). Mirror of lib `DataConnectorConfig.backfillWindowSpan`. */
-  backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
+  /** `YYYY-MM-DD` the history floor starts at; absent ⇒ everything. Mirror of lib `DataConnectorConfig.historyStartDate`. */
+  historyStartDate?: string
 }
 
 /**
@@ -160,16 +160,11 @@ export interface ConnectorStreamState {
   backfillStartedAt?: string
   /** Running total for the progress UI (counts, never a percent). */
   recordsSeen?: number
-  /** Steady-phase delta floor; the source returns a monotonic max each slice. */
+  /** Steady-phase delta marker: an ISO/epoch max (generic REST) or an app's JSON-encoded `since`. */
   watermark?: string
-  /** Backfill-window floor (Step 9 §1.2), pinned once at fresh-backfill reset.
-   *  Mirror of lib `ConnectorStreamState.backfillFloor`. */
-  backfillFloor?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
-  // 🛑 No `backfillComplete` — write-only dead state, removed in task 43 §4. It sat at
-  // `false` forever on every app connector; `phase` is the real completion signal.
-  // Mirror of lib `ConnectorStreamState`, which carries the full rationale.
+  // `phase` is the only completion signal; older rows carry dead keys the index signature tolerates.
   /** Consecutive no-progress slices (pagination stall guard). Mirror of lib
    *  `ConnectorStreamState.noProgressStrikes`. */
   noProgressStrikes?: number
@@ -216,7 +211,12 @@ export interface StreamRequestConfig {
    */
   webhookTrigger?: {
     filter?: Record<string, unknown>
-    paths: string[]
+    /** Generic REST: payload paths exposed as `{path}` placeholders. */
+    paths?: string[]
+    /** App streams: the payload path of the id the steered fetch queries by. */
+    idPath?: string
+    /** App streams: the foreign id kind `idPath` holds, forwarded as `query.idKind`. */
+    idKind?: string
     deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
     deleteExternalIdPath?: string
     resultShape?: 'single' | 'collection'

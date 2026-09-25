@@ -114,14 +114,16 @@ export async function runWebhookSteeredRun(
         connector,
         connector.createdById ?? 'system'
       )
+      // An app stream steers by id; a generic-REST stream by `{path}` tokens. Never `since`.
       const { records } = await definition.fetch({
         streamKey,
+        query: steer.kind === 'ids' ? steer.query : {},
         mode: 'snapshot',
         state: {},
         credential,
         config: connector.config,
         requestConfig: stream.stream.requestConfig ?? undefined,
-        triggerContext: steer.triggerContext,
+        ...(steer.kind === 'fetch' ? { triggerContext: steer.triggerContext } : {}),
         // H1 — never sleep on a throttle; surface it for the caller to re-enqueue.
         rateLimitOverride: { maxRetries: 0 },
       })

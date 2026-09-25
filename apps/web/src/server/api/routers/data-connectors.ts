@@ -141,8 +141,11 @@ const connectorConfigSchema = z
       })
       .optional(),
     filters: z.record(z.string(), z.unknown()).optional(),
-    // How far back a backfill crawls (Step 9 §1.2) — plain-language window radio.
-    backfillWindowSpan: z.enum(['all', 'last_90_days', 'last_12_months']).optional(),
+    // The history floor for every period stream; absent = everything.
+    historyStartDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     // Webhook-sync SIGNAL — which trigger/endpoint drives this connector (v7). One per
     // connector; per-stream topic/token steering lives on the stream's webhookTrigger.
     webhookTrigger: z
@@ -782,21 +785,23 @@ export const dataConnectorRouter = createTRPCRouter({
     }),
 
   /**
-   * Re-import a period, or refresh records by `$externalId in` (v13 N5). A period run is
-   * refused while a sync holds the connector; an `id` run queues behind it (`queued`).
+   * Re-import a period, or refresh named records. A period run is refused while a sync
+   * holds the connector; an `ids` run queues behind it (`queued`).
    */
   reimport: permissionProcedure(PermissionKey.connectorsManage)
     .input(
       z.object({
         connectorId: z.string(),
         streamIds: z.array(z.string()).min(1).max(10),
-        // `exact` is the engine's to set, so the input shape leaves it out.
-        recordFilter: z
-          .array(
-            z.object({ fieldId: z.string(), operator: z.string(), value: z.unknown().optional() })
-          )
-          .min(1)
-          .max(20),
+        // Bounds and ids are validated in lib (`validateReimportQuery`).
+        query: z.union([
+          z.object({ ids: z.array(z.string()).min(1).max(50) }).strict(),
+          z
+            .object({
+              period: z.object({ from: z.string().optional(), to: z.string().optional() }),
+            })
+            .strict(),
+        ]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -809,7 +814,7 @@ export const dataConnectorRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         connectorId: input.connectorId,
         streamIds: input.streamIds,
-        recordFilter: input.recordFilter,
+        query: input.query,
         initiatedBy: ctx.session.userId,
       })
       if (started.isErr()) throw started.error

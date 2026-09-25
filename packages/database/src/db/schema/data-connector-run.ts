@@ -27,12 +27,13 @@ export const DataConnectorRun = pgTable(
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),
     trigger: text().notNull(), // 'manual' | 'scheduled' | 'webhook' | 'backfill'
     mode: text().notNull(), // 'snapshot' | 'incremental' | 'reimport'
-    // A re-import's run filter as sent (flat AND list of `exact` clauses); null otherwise.
-    // see plans/data-connectors/v13/narrowed-fetch-plan.md N5
-    recordFilter:
-      jsonb().$type<
-        Array<{ fieldId: string; operator: string; value?: unknown; exact?: boolean }>
-      >(),
+    // A re-import's query as sent (mirror of the SDK `ConnectorQuery`); null otherwise.
+    query: jsonb().$type<{
+      ids?: string[]
+      idKind?: string
+      period?: { from?: string; to?: string }
+      since?: unknown
+    }>(),
     initiatedBy: text().references((): AnyPgColumn => User.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',

@@ -1,19 +1,21 @@
 // packages/lib/src/data-connectors/webhook-steer.ts
 // Pure resolution of a webhook delivery → fetch-steering directive (sync bridge §4).
 // Given a stream's `webhookTrigger` config + the delivery's `triggerData`, decide
-// whether this event is a DELETE (skip the fetch, archive by externalId) or a
-// FETCH (extract `{path}` values to steer the regular connector fetch at, then
-// sink the FETCH result). Kept free of DB/connector deps so it unit-tests on plain
-// payload fixtures. `resolveWebhookSteer` drives the steered partial run
-// (runWebhookSteeredRun); `isSteerableDelivery` drives the dispatch-time decision
-// of whether a delivery steers a partial run or falls through to a full sync.
+// whether this event is a DELETE (skip the fetch, archive by externalId), an app
+// stream's ID fetch (`{ ids: [value at idPath], idKind }`), or a generic-REST FETCH
+// (extract `{path}` values to steer the regular connector fetch at). Kept free of
+// DB/connector deps so it unit-tests on plain payload fixtures. `resolveWebhookSteer`
+// drives the steered partial run (runWebhookSteeredRun); `isSteerableDelivery` drives
+// the dispatch-time decision of whether a delivery steers a partial run or falls
+// through to a full sync.
 
 import { unresolvedPlaceholders } from '@auxx/utils'
-import type { StreamRequestConfig, StreamWebhookTrigger } from './connectors/types'
+import type { ConnectorQuery, StreamRequestConfig, StreamWebhookTrigger } from './connectors/types'
 
 /** A resolved steering directive for one webhook delivery. */
 export type WebhookSteer =
   | { kind: 'fetch'; triggerContext: Record<string, string> }
+  | { kind: 'ids'; query: ConnectorQuery }
   | { kind: 'delete'; externalId: string | null }
 
 /** Walk a dotted JSON path (`a.b.c`) into a value; '' / undefined → the root. */
@@ -68,6 +70,11 @@ export function resolveWebhookSteer(
       : null
     return { kind: 'delete', externalId }
   }
+  if (trigger.idPath) {
+    const value = getByPath(triggerData, trigger.idPath)
+    const ids = value === undefined || value === null || value === '' ? [] : [scalar(value)]
+    return { kind: 'ids', query: { ids, ...(trigger.idKind ? { idKind: trigger.idKind } : {}) } }
+  }
   const triggerContext: Record<string, string> = {}
   for (const path of trigger.paths ?? []) {
     const value = getByPath(triggerData, path)
@@ -107,6 +114,7 @@ export function requiredSteerTokens(
  * declares steering (`{path}` paths, or a delete predicate) AND the delivery resolves
  * everything the request needs:
  *   • delete → the externalId path resolved (else there's nothing to archive);
+ *   • ids    → the app stream's `idPath` resolved to an id;
  *   • fetch  → every `{token}` in the request template resolved from the payload.
  * A stream with no steering, or a delivery missing a required token, is NOT steerable — the
  * caller routes it to a full run-based sync instead of opening a doomed partial run (which
@@ -120,10 +128,19 @@ export function isSteerableDelivery(
   if (!wt) return false
   const steer = resolveWebhookSteer(wt, triggerData)
   if (steer.kind === 'delete') return steer.externalId != null
+  if (steer.kind === 'ids') return (steer.query.ids?.length ?? 0) > 0
   if ((wt.paths?.length ?? 0) === 0) return false
   const required = requiredSteerTokens(requestConfig)
   if (required.length > 0) return required.every((t) => t in steer.triggerContext)
-  // Fixed-model (app) streams carry no {token} request template — the declared paths ARE
-  // the contract, so all of them must resolve or the delivery falls back to a full sync.
   return (wt.paths ?? []).every((p) => p in steer.triggerContext)
+}
+
+/** The debounce key of a steer: the same record resolves to the same key. */
+export function steerTokenKey(steer: WebhookSteer): string {
+  if (steer.kind === 'ids') return `ids=${steer.query.ids?.join(',') ?? ''}`
+  if (steer.kind === 'delete') return ''
+  return Object.entries(steer.triggerContext)
+    .sort()
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&')
 }
