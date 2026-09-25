@@ -34,7 +34,6 @@
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
@@ -289,7 +288,7 @@ export async function postVendorBill(
   // Stamp the accounting date the entry actually used, so the document and the
   // ledger cannot disagree about which period this bill belongs to.
   if (bill.billedAt !== billedAt) {
-    writes.push({ fieldId: 'vendor_bill_billed_at', value: calendarDayToInstant(billedAt) })
+    writes.push({ fieldId: 'vendor_bill_billed_at', value: billedAt })
   }
   const writer = await billWriter(db, organizationId, userId)
   await writer.write(vendorBillInstanceId, writes)

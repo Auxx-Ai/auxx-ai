@@ -31,6 +31,10 @@ function makeChain() {
   return chain
 }
 
+vi.mock('../../ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => new Date().toISOString().slice(0, 10),
+}))
 vi.mock('@auxx/database', () => ({
   database: { select: () => makeChain() },
   schema: {

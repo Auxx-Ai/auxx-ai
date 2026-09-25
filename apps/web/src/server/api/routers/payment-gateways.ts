@@ -32,10 +32,11 @@ import {
 import { requestAccountingRecovery } from '@auxx/lib/accounting/work-items'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** `YYYY-MM-DD`. Shape only; the lib decides what is a sensible date. */
-const dateKey = z.iso.date()
+const dateKey = calendarDaySchema
 
 /**
  * The fields a person may set on a payment gateway. Deliberately thin -

@@ -8,6 +8,7 @@
 // in an account, not in a drawer.
 
 import { FieldType } from '@auxx/database/enums'
+import { toCalendarDayIso } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -45,8 +46,9 @@ interface RefundVendorCreditDialogProps {
   onRefunded?: () => void
 }
 
+/** Today as the DATE input's own value: the viewer's day at UTC midnight, never the UTC day. */
 function todayIso(): string {
-  return new Date().toISOString()
+  return toCalendarDayIso(new Date())
 }
 
 export function RefundVendorCreditDialog({

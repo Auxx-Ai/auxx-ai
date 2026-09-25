@@ -5,6 +5,7 @@ import type { RecordId } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { addDaysToDayKey } from '@auxx/utils/calendar-day'
 import { and, eq, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError } from '../../errors'
@@ -12,6 +13,7 @@ import { firstTyped } from '../../field-values/client'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { systemFieldMap } from '../../resources/system-records'
+import { todayInBookTimeZone } from '../ledger/setup/book-time-zone'
 import type { MoneyMutationInput } from '../sales/types'
 
 /**
@@ -190,10 +192,9 @@ export async function markPurchaseOrderSent(input: PurchaseOrderLifecycleInput):
   if (expectedAt === undefined || expectedAt === null || expectedAt === '') {
     const leadTimeDays = await readMaxLineLeadTimeDays(organizationId, purchaseOrderInstanceId)
     if (leadTimeDays !== null) {
-      const expected = new Date(Date.now() + leadTimeDays * 24 * 60 * 60 * 1000)
       writes.push({
         fieldId: 'purchase_order_expected_at',
-        value: expected.toISOString().split('T')[0],
+        value: addDaysToDayKey(await todayInBookTimeZone(organizationId), leadTimeDays),
       })
     }
   }

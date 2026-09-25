@@ -177,8 +177,8 @@ function liftBom() {
 }
 
 const range = {
-  from: new Date('2026-09-23T12:00:00.000Z'),
-  to: new Date('2026-09-23T12:00:00.000Z'),
+  from: '2026-09-23',
+  to: '2026-09-23',
 }
 
 beforeEach(() => {
@@ -200,7 +200,7 @@ beforeEach(() => {
   liftBom()
 })
 
-async function run(over: Partial<{ from: Date; to: Date }> = {}) {
+async function run(over: Partial<{ from: string; to: string }> = {}) {
   const result = await backflushBuilds(db, ORG, { ...range, ...over, actorUserId: USER, now: NOW })
   if (result.isErr()) throw result.error
   return result.value
@@ -286,7 +286,7 @@ describe('the roll before the first build (Q20)', () => {
     ])
     sale(LIFT, 2, '2026-09-23')
     sale(LIFT, 3, '2026-09-24')
-    const summary = await run({ to: new Date('2026-09-24T12:00:00.000Z') })
+    const summary = await run({ to: '2026-09-24' })
 
     expect(summary.written).toHaveLength(4)
     expect(summary.rolled).toEqual([LIFT, MOTOR])
@@ -337,15 +337,15 @@ describe('never throws', () => {
     const { readPartNetThrough } = await import('../../costing/dated-reads')
     vi.mocked(readPartNetThrough).mockRejectedValueOnce(new Error('ledger unavailable'))
     sale(LIFT, 1, '2026-09-24')
-    const summary = await run({ to: new Date('2026-09-24T12:00:00.000Z') })
+    const summary = await run({ to: '2026-09-24' })
     expect(summary.failedDays).toEqual([{ day: '2026-09-23', reason: 'ledger unavailable' }])
     expect(summary.written.map((b) => b.day)).toEqual(['2026-09-24', '2026-09-24'])
   })
 
   it('refuses a range that ends before it starts, writing nothing', async () => {
     const result = await backflushBuilds(db, ORG, {
-      from: new Date('2026-09-24T12:00:00.000Z'),
-      to: new Date('2026-09-23T12:00:00.000Z'),
+      from: '2026-09-24',
+      to: '2026-09-23',
       now: NOW,
     })
     expect(result.isErr()).toBe(true)
@@ -354,7 +354,7 @@ describe('never throws', () => {
 
   it('never walks a day whose end is still in the future', async () => {
     sale(LIFT, 1, '2026-09-23')
-    const summary = await run({ to: new Date('2026-09-30T12:00:00.000Z') })
+    const summary = await run({ to: '2026-09-30' })
     expect(summary.days).toEqual(['2026-09-23', '2026-09-24', '2026-09-25'])
   })
 
@@ -371,7 +371,7 @@ describe('the preview (D24)', () => {
   it('lists exactly the builds the run then writes, across days, without writing', async () => {
     sale(LIFT, 2, '2026-09-23')
     sale(LIFT, 3, '2026-09-24')
-    const to = new Date('2026-09-24T12:00:00.000Z')
+    const to = '2026-09-24'
 
     const preview = await previewBackflush(db, ORG, { ...range, to, now: NOW })
     if (preview.isErr()) throw preview.error
@@ -416,7 +416,7 @@ describe('the planner, pure', () => {
 
   it('lists inclusive local days in the book zone, dropping days whose end is after now', () => {
     const days = listBackflushDays(
-      { from: new Date('2026-09-23T12:00:00.000Z'), to: new Date('2026-09-26T12:00:00.000Z') },
+      { from: '2026-09-23', to: '2026-09-26' },
       TZ,
       new Date('2026-09-26T03:00:00.000Z')
     )

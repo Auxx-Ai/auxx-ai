@@ -98,6 +98,31 @@ export async function upsertWorkItem(
   })
 }
 
+/**
+ * Re-point a `price` item at the parts still holding it, keeping its attempts and schedule.
+ * `partName` is dropped: it named the first part, which may be the one just priced.
+ */
+export async function refreshPendingParts(
+  db: Db,
+  organizationId: string,
+  input: { sourceKind: string; sourceId: string; partIds: string[]; pendingMovementIds: string[] }
+): Promise<Result<void, Error>> {
+  const { partIds, pendingMovementIds, ...key } = input
+  if (partIds.length === 0) return ok(undefined)
+  const t = schema.AccountingWorkItem
+  const patch = JSON.stringify({ partIds, pendingMovementIds })
+  return guarded('Could not refresh a pending work item', { organizationId, ...key }, async () => {
+    await db
+      .update(t)
+      .set({
+        externalRef: partIds[0],
+        detail: sql`(coalesce(${t.detail}, '{}'::jsonb) - 'partName') || ${patch}::jsonb`,
+        updatedAt: new Date(),
+      })
+      .where(keyWhere(organizationId, { ...key, stage: 'price' }))
+  })
+}
+
 /** Success deletes the row. */
 export async function deleteWorkItem(
   db: Db,

@@ -59,7 +59,7 @@ import type { BulkOpeningStockSummary, OpeningStockEntry } from '../types'
 
 const ORG = 'org_1'
 const USER = 'user_1'
-const OCCURRED_AT = new Date('2026-01-01T00:00:00.000Z')
+const RUN_DAY = '2026-01-01'
 
 /** The reader's two statements: `select(columns)` from `EntityInstance` is the instance read, `select()` the value read. */
 const db = {
@@ -138,12 +138,12 @@ beforeEach(async () => {
   h.anchored = new Set()
   const { ok } = await import('neverthrow')
   h.setCount.mockImplementation(
-    async (_db: unknown, _org: string, input: { partId: string; quantity: number; date: Date }) =>
+    async (_db: unknown, _org: string, input: { partId: string; quantity: number; day: string }) =>
       ok({
         outcome: h.anchored.has(input.partId) ? 'adjust' : 'initial',
         partId: input.partId,
         countQuantity: input.quantity,
-        countDate: input.date.toISOString().slice(0, 10),
+        countDate: input.day,
         net: 0,
         delta: input.quantity,
         pending: false,
@@ -156,7 +156,7 @@ beforeEach(async () => {
           extendedCost: 100 * input.quantity,
           glAccount:
             input.partId === 'part_2' ? 'inventory_finished_goods' : 'inventory_raw_materials',
-          occurredAt: input.date,
+          occurredAt: new Date(`${input.day}T00:00:00.000Z`),
           vendorUnitPrice: null,
           vendorPartId: null,
           purchaseOrderLineId: null,
@@ -175,7 +175,7 @@ async function run(
   extra: { adjustAnchored?: boolean } = {}
 ): Promise<BulkOpeningStockSummary> {
   const result = await bulkOpenStockBalance(db, ORG, USER, {
-    occurredAt: OCCURRED_AT,
+    day: RUN_DAY,
     entries,
     ...extra,
   })
@@ -183,7 +183,12 @@ async function run(
   return result._unsafeUnwrap()
 }
 
-function countInputs(): Array<{ partId: string; quantity: number; unitCost?: number; date: Date }> {
+function countInputs(): Array<{
+  partId: string
+  quantity: number
+  unitCost?: number
+  day?: string
+}> {
   return h.setCount.mock.calls.map((call) => call[2] as never)
 }
 
@@ -191,8 +196,8 @@ describe('bulkOpenStockBalance is setCount per part', () => {
   it('calls setCount once per accepted part, as the actor, with the typed cost', async () => {
     const summary = await run()
     expect(countInputs()).toEqual([
-      { partId: 'part_1', quantity: 10, unitCost: 1200, date: OCCURRED_AT, actorUserId: USER },
-      { partId: 'part_2', quantity: 4, unitCost: 550, date: OCCURRED_AT, actorUserId: USER },
+      { partId: 'part_1', quantity: 10, unitCost: 1200, day: RUN_DAY, actorUserId: USER },
+      { partId: 'part_2', quantity: 4, unitCost: 550, day: RUN_DAY, actorUserId: USER },
     ])
     expect(summary.opened.map((row) => [row.partId, row.outcome, row.movementId])).toEqual([
       ['part_1', 'initial', 'mv_part_1'],
@@ -201,14 +206,14 @@ describe('bulkOpenStockBalance is setCount per part', () => {
   })
 
   it('dates each part on its own count day, falling back to the run date', async () => {
-    const own = new Date('2026-02-14T00:00:00.000Z')
+    const own = '2026-02-14'
     const summary = await run([
-      { partId: 'part_1', quantity: 1, date: own },
+      { partId: 'part_1', quantity: 1, day: own },
       { partId: 'part_2', quantity: 1 },
     ])
-    expect(countInputs().map((input) => input.date)).toEqual([own, OCCURRED_AT])
+    expect(countInputs().map((input) => input.day)).toEqual([own, RUN_DAY])
     expect(summary.opened.map((row) => row.countDate)).toEqual(['2026-02-14', '2026-01-01'])
-    expect(summary.occurredAt).toEqual(OCCURRED_AT)
+    expect(summary.day).toBe(RUN_DAY)
   })
 
   it('totals the run by inventory account from the rows written', async () => {

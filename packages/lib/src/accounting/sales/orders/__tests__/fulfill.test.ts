@@ -53,6 +53,10 @@ const h = vi.hoisted(() => ({
   builderCalls: 0,
 }))
 
+vi.mock('../../../ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => new Date().toISOString().slice(0, 10),
+}))
 vi.mock('../../fulfillments/accounting', async () => {
   const { UnprocessableEntityError } = await import('../../../../errors')
   class NothingToRecogniseError extends UnprocessableEntityError {}
@@ -485,7 +489,7 @@ describe('fulfillOrder', () => {
               lineItemId: 'li_1',
               quantity: 3,
               quantityRelieved: null,
-              occurredAt: new Date('2026-09-03T12:00:00.000Z'),
+              occurredAt: new Date('2026-09-03T00:00:00.000Z'),
             },
           ],
         },
@@ -607,7 +611,7 @@ describe('fulfillOrder', () => {
       expect(h.previewed[0]).toMatchObject({
         id: 'preview',
         sequence: 1,
-        shippedAt: '2026-09-03T12:00:00.000Z',
+        shippedAt: '2026-09-03T00:00:00.000Z',
         subtotalMinor: 30_00,
         totalMinor: 30_00,
         includeShipping: true,

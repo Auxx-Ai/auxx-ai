@@ -2,6 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
+import { instantForBookDay } from '@auxx/lib/accounting/ledger'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import {
@@ -44,8 +45,10 @@ import {
 import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
 import { enqueueBackflushRun } from '@auxx/lib/jobs'
 import { getOrganizationSetting } from '@auxx/lib/settings'
+import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
 /**
@@ -57,8 +60,8 @@ import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
  */
 const rollInput = z.object({
   partIds: z.array(z.string().min(1)).max(500).optional(),
-  /** When the new standards take effect. Defaults to now. */
-  effectiveAt: z.coerce.date().optional(),
+  /** The day the new standards take effect, in the book zone. Defaults to now. */
+  day: calendarDaySchema.optional(),
 })
 
 /** A typed per-unit cost: minor units at rate precision, so fractional cents are legal. Zero is a value. */
@@ -126,10 +129,10 @@ const BACKFILL_GROUPING_VALUES = [
 const BACKFILL_STATUS_VALUES = ['planned', 'completed'] as const satisfies readonly BackfillStatus[]
 
 const backfillShape = {
-  /** Inclusive lower bound on `order_placed_at`. */
-  from: z.coerce.date(),
-  /** Exclusive upper bound. Bounded above by the build cutoff (section 7.0). */
-  to: z.coerce.date(),
+  /** Inclusive first day on `order_placed_at`, `YYYY-MM-DD` in the book time zone. */
+  from: calendarDaySchema,
+  /** Exclusive last day, `YYYY-MM-DD`. Bounded above by the build cutoff (section 7.0). */
+  to: calendarDaySchema,
   grouping: z.enum(BACKFILL_GROUPING_VALUES),
   /**
    * What the run would land in. Section 7.3.
@@ -143,8 +146,8 @@ const backfillShape = {
 
 /** A backflush range: inclusive local days in the book time zone (111 D24). */
 const backflushShape = {
-  from: z.coerce.date(),
-  to: z.coerce.date(),
+  from: calendarDaySchema,
+  to: calendarDaySchema,
 }
 
 /** The two quantities and the overrides — everything that prices a run. */
@@ -217,7 +220,7 @@ export const buildsRouter = createTRPCRouter({
 
     const result = await previewStandardCostRoll(ctx.db, organizationId, {
       partIds: input.partIds,
-      effectiveAt: input.effectiveAt ?? new Date(),
+      effectiveAt: input.day ? await instantForBookDay(organizationId, input.day) : new Date(),
     })
     if (result.isErr()) throw result.error
     return result.value
@@ -238,7 +241,7 @@ export const buildsRouter = createTRPCRouter({
 
     const result = await rollStandardCost(ctx.db, organizationId, userId, {
       partIds: input.partIds,
-      effectiveAt: input.effectiveAt ?? new Date(),
+      effectiveAt: input.day ? await instantForBookDay(organizationId, input.day) : new Date(),
     })
     if (result.isErr()) throw result.error
     return result.value
@@ -556,8 +559,8 @@ export const buildsRouter = createTRPCRouter({
         laborCost: minorUnits.nonnegative().optional(),
         /** Applied overhead for the whole run, minor units. */
         overheadCost: minorUnits.nonnegative().optional(),
-        /** THE accounting date, stamped on the build and every movement. Defaults to now. */
-        completedAt: z.coerce.date().optional(),
+        /** THE accounting day, stamped on the build and every movement. Defaults to now. */
+        day: calendarDaySchema.optional(),
         notes: z.string().max(2000).optional(),
       })
     )
@@ -565,7 +568,9 @@ export const buildsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
-      const result = await completeBuild(ctx.db, organizationId, userId, input)
+      const { day, ...rest } = input
+      const completedAt = day ? await instantForBookDay(organizationId, day) : undefined
+      const result = await completeBuild(ctx.db, organizationId, userId, { ...rest, completedAt })
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -643,10 +648,15 @@ export const buildsRouter = createTRPCRouter({
         loadAutoBuildSettings(organizationId),
         readBookTimeZone(organizationId),
       ])
-      const refusal = refuseBackfillRange(input, cutoff, timeZone)
-      if (refusal) return { cutoff, refusal, plan: null, partNames: {}, preflight: null }
+      const range = resolveBackfillRange(input, timeZone)
+      // The cutoff as a book-zone day, so the dialog can offer it as the exclusive `to`.
+      const cutoffDay = cutoff ? dayKeyInZone(cutoff, timeZone ?? 'UTC') : null
+      const refusal = refuseBackfillRange(range, cutoff, timeZone)
+      if (refusal) {
+        return { cutoff, cutoffDay, refusal, plan: null, partNames: {}, preflight: null }
+      }
 
-      const plan = await buildBackfillPlan(ctx.db, organizationId, input, timeZone)
+      const plan = await buildBackfillPlan(ctx.db, organizationId, range, timeZone)
 
       // The contract carries part IDS; a screen somebody has to judge carries
       // part NAMES. Resolved here rather than in the plan because the plan is
@@ -670,7 +680,7 @@ export const buildsRouter = createTRPCRouter({
         preflight = preflightResult.value
       }
 
-      return { cutoff, refusal: null, plan, partNames, preflight }
+      return { cutoff, cutoffDay, refusal: null, plan, partNames, preflight }
     }),
 
   /**
@@ -698,18 +708,19 @@ export const buildsRouter = createTRPCRouter({
       // The write door throws where the preview merely explains. Both run the
       // same predicate, so the button the dialog disables and the call the
       // server refuses can never disagree.
-      const refusal = refuseBackfillRange(input, cutoff, timeZone)
+      const range = resolveBackfillRange(input, timeZone)
+      const refusal = refuseBackfillRange(range, cutoff, timeZone)
       if (refusal) throw new BadRequestError(refusal)
 
       // 🛑 Re-planned server-side rather than taken from the browser. The plan
       // is what `executeBackfill` writes, and a client-supplied one would let a
       // stale preview (or a crafted payload) name quantities and periods that no
       // read ever produced.
-      const plan = await buildBackfillPlan(ctx.db, organizationId, input, timeZone)
+      const plan = await buildBackfillPlan(ctx.db, organizationId, range, timeZone)
 
       const result = await executeBackfill(ctx.db, organizationId, userId, plan, {
-        from: input.from,
-        to: input.to,
+        from: range.from,
+        to: range.to,
         grouping: input.grouping,
         status: input.status,
       })
@@ -855,6 +866,30 @@ async function readBookTimeZone(organizationId: string): Promise<string | null> 
   return typeof value === 'string' && value.trim() ? value : null
 }
 
+interface ResolvedBackfillRange {
+  fromDay: string
+  toDay: string
+  from: Date
+  to: Date
+  grouping: BackfillGrouping
+  status: BackfillStatus
+}
+
+/** The picked days as instants at the start of each day in the book zone (UTC when unset). */
+function resolveBackfillRange(
+  input: { from: string; to: string; grouping: BackfillGrouping; status: BackfillStatus },
+  timeZone: string | null
+): ResolvedBackfillRange {
+  const zone = timeZone ?? 'UTC'
+  return {
+    ...input,
+    fromDay: input.from,
+    toDay: input.to,
+    from: startOfDayInstant(input.from, zone),
+    to: startOfDayInstant(input.to, zone),
+  }
+}
+
 /**
  * Why this range cannot be backfilled, or `null` when it can.
  *
@@ -862,11 +897,11 @@ async function readBookTimeZone(organizationId: string): Promise<string | null> 
  * prints is literally the reason the server would give.
  */
 function refuseBackfillRange(
-  input: { from: Date; to: Date; grouping: BackfillGrouping; status: BackfillStatus },
+  input: ResolvedBackfillRange,
   cutoff: Date | null,
   timeZone: string | null
 ): string | null {
-  if (!(input.from.getTime() < input.to.getTime())) {
+  if (!(input.fromDay < input.toDay)) {
     return 'The from date has to be before the to date.'
   }
 
@@ -874,7 +909,7 @@ function refuseBackfillRange(
   // is live and a batch build does not suppress a raise, so any order up there
   // that later moves would get a per-order build stacked on the batch one.
   if (cutoff && input.to.getTime() > cutoff.getTime()) {
-    return `This range ends after the build cutoff of ${cutoff.toISOString().slice(0, 10)}. Above the cutoff builds are raised per order, so a batch build there would end up stacked on top of a live one. Move the to date back to the cutoff or earlier.`
+    return `This range ends after the build cutoff of ${dayKeyInZone(cutoff, timeZone ?? 'UTC')}. Above the cutoff builds are raised per order, so a batch build there would end up stacked on top of a live one. Move the to date back to the cutoff or earlier.`
   }
 
   if (input.status === 'completed') {
@@ -894,12 +929,7 @@ function refuseBackfillRange(
     // §7.3 / the contract on `BackfillGrouping`. `build_completed_at` decides
     // which month-end entry reflects a build, so one build for a range spanning
     // several months misstates every month it spans.
-    //
-    // ⚠️ Compared in UTC, while the writer buckets in the org's book timezone.
-    // The two can disagree for a range that ends within hours of a month
-    // boundary; this is a guard rail on an obviously multi-month range, not the
-    // authority on where a period ends.
-    if (input.grouping === 'range' && spansSeveralMonths(input.from, input.to)) {
+    if (input.grouping === 'range' && spansSeveralMonths(input.fromDay, input.toDay)) {
       return 'One build for the whole range would date every unit to a single month, and this range spans more than one. Group by month or finer, or create the builds as planned.'
     }
   }
@@ -907,12 +937,9 @@ function refuseBackfillRange(
   return null
 }
 
-/** Does `[from, to)` cross a calendar month boundary? `to` is exclusive. */
-function spansSeveralMonths(from: Date, to: Date): boolean {
-  const last = new Date(to.getTime() - 1)
-  return (
-    from.getUTCFullYear() !== last.getUTCFullYear() || from.getUTCMonth() !== last.getUTCMonth()
-  )
+/** Does `[from, to)` cross a calendar month boundary? Day keys; `to` is exclusive. */
+function spansSeveralMonths(from: string, to: string): boolean {
+  return from.slice(0, 7) !== previousDayKey(to).slice(0, 7)
 }
 
 /**

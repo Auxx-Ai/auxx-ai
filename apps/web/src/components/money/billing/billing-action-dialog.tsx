@@ -11,6 +11,7 @@ import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/di
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { RadioGroup, RadioGroupItemCard } from '@auxx/ui/components/radio-group'
 import { toastError } from '@auxx/ui/components/toast'
+import { dayKeyOfLocalDate } from '@auxx/utils/calendar-day'
 import { addMonths, endOfMonth, format, startOfMonth } from 'date-fns'
 import { CalendarClock, CircleDollarSign, Percent, ReceiptText } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -93,12 +94,17 @@ export function BillingActionDialog({ open, onOpenChange, scope }: BillingAction
   const [batchRange, setBatchRange] = useState<DateRange>(
     scope.kind === 'batch' && scope.initialRange ? scope.initialRange : defaultBatchRange()
   )
+  // The picker's local days; the server resolves them in the book zone.
+  const batchDays = useMemo(
+    () => ({ from: dayKeyOfLocalDate(batchRange.from), to: dayKeyOfLocalDate(batchRange.to) }),
+    [batchRange]
+  )
   const [batchFilters, setBatchFilters] = useState<ConditionGroup[]>([])
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<RecordId>>(new Set())
   const { resource: invoiceResource } = useResource('invoices')
 
   const previewBatch = api.money.previewInvoiceBatch.useQuery(
-    { range: batchRange, filters: batchFilters },
+    { range: batchDays, filters: batchFilters },
     { enabled: isBatch && page === 'preview' }
   )
 
@@ -132,7 +138,7 @@ export function BillingActionDialog({ open, onOpenChange, scope }: BillingAction
 
   const submitBatch = () => {
     setPage('generate')
-    runBatch.mutate({ range: batchRange, workOrderRecordIds: [...batchSelectedIds] })
+    runBatch.mutate({ range: batchDays, workOrderRecordIds: [...batchSelectedIds] })
   }
 
   const batchInitialRange = scope.kind === 'batch' ? scope.initialRange : undefined

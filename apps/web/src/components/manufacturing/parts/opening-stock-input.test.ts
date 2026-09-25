@@ -16,7 +16,7 @@ describe('buildOpeningStockInput', () => {
         unitCost: null,
         occurredAt: '2026-09-25T00:00:00.000Z',
       })
-    ).toEqual({ partId: 'p1', quantity: 0, occurredAt: new Date('2026-09-25T00:00:00.000Z') })
+    ).toEqual({ partId: 'p1', quantity: 0, day: '2026-09-25' })
   })
 
   it('rounds a typed cost to whole minor units', () => {

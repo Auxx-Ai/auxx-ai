@@ -140,6 +140,7 @@ export {
   hashedPeriodKey,
   type IncompleteRevenueCounts,
   incompleteRevenueLead,
+  inventoryCheckLead,
   isPeriodLocked,
   MAX_COMPACT_PERIOD_KEY,
   monthBounds,

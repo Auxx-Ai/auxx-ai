@@ -16,6 +16,7 @@ import { firstTyped } from '../../../field-values/client'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
+import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { listWorkOrderDepositReceipts } from '../../money/checkout/reads'
 import { applyMoneyToInvoice } from '../../money/invoice-payments/apply-money'
 
@@ -128,7 +129,7 @@ export async function applyHeldDepositsToInvoice(params: {
     params.workOrderInstanceId
   )
   let remaining = params.invoiceTotal
-  const effectiveDate = new Date().toISOString().slice(0, 10)
+  const effectiveDate = await todayInBookTimeZone(params.organizationId)
   for (const receipt of receipts) {
     if (remaining <= 0) break
     const held = receipt.amountMinor - receipt.appliedMinor

@@ -354,7 +354,7 @@ export const moneyRouter = createTRPCRouter({
   previewInvoiceBatch: moneyViewProcedure
     .input(
       z.object({
-        range: z.object({ from: z.date(), to: z.date() }),
+        range: z.object({ from: z.iso.date(), to: z.iso.date() }),
         filters: conditionGroupsSchema,
       })
     )
@@ -370,7 +370,7 @@ export const moneyRouter = createTRPCRouter({
   runInvoiceBatch: moneyProcedure
     .input(
       z.object({
-        range: z.object({ from: z.date(), to: z.date() }),
+        range: z.object({ from: z.iso.date(), to: z.iso.date() }),
         workOrderRecordIds: z.array(recordIdSchema).min(1),
       })
     )
@@ -468,7 +468,6 @@ export const moneyRouter = createTRPCRouter({
       z.object({
         workOrderRecordId: recordIdSchema,
         pattern: recurrencePatternSchema,
-        timezone: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -478,7 +477,6 @@ export const moneyRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         workOrderInstanceId,
         pattern: input.pattern,
-        timezone: input.timezone,
       })
     }),
 

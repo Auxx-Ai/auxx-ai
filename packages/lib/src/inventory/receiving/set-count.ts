@@ -21,8 +21,10 @@ import type { Database } from '@auxx/database'
 import {
   addDaysToDayKey,
   dayKeyInZone,
+  isDayKeyShape,
   previousDayKey,
   startOfDayInstant,
+  todayInZone,
 } from '@auxx/utils/calendar-day'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
@@ -69,6 +71,9 @@ export async function setCount(
   return guard(
     async () => {
       assertCountQuantity(input.quantity)
+      if (input.day != null && !isDayKeyShape(input.day)) {
+        throw new BadRequestError('A count day must be YYYY-MM-DD', { day: input.day })
+      }
       if (input.unitCost != null) assertCountUnitCost(input.unitCost)
 
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
@@ -91,7 +96,7 @@ export async function setCount(
       const glAccount = resolveInventoryRoleForPartKind(kind.value)
 
       const zone = await readBookTimeZoneOrUtc(organizationId)
-      const countDate = dayKeyInZone(input.date ?? new Date(), zone)
+      const countDate = input.day ?? todayInZone(zone)
       const [nets, earliests, initials] = await Promise.all([
         readPartNetThrough(organizationId, [input.partId], endOfDayInstant(countDate, zone)),
         readEarliestMovementAt(organizationId, [input.partId]),
@@ -122,7 +127,7 @@ export async function setCount(
       const standard = await resolveCountCost(db, organizationId, input)
       const userId = input.actorUserId ?? (await getOrgCache().get(organizationId, 'systemUser'))
       const row = initial
-        ? { type: StockMovementType.ADJUST, occurredAt: input.date ?? new Date() }
+        ? { type: StockMovementType.ADJUST, occurredAt: startOfDayInstant(countDate, zone) }
         : {
             type: StockMovementType.INITIAL,
             occurredAt: startOfDayInstant(anchorDayFor(countDate, earliest, zone), zone),

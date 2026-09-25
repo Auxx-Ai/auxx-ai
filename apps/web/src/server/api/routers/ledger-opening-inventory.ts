@@ -58,13 +58,11 @@ export const ledgerOpeningInventoryRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const date = new Date()
       const results: { partId: string; ok: boolean; error?: string }[] = []
       for (const { partId, quantity } of input.counts) {
         const result = await setCount(ctx.db, ctx.session.organizationId, {
           partId,
           quantity,
-          date,
           actorUserId: ctx.session.userId,
         })
         results.push(

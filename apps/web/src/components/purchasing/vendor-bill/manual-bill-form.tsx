@@ -282,7 +282,7 @@ export function ManualBillForm({
           </FieldPanelRow>
           <FieldPanelRow title='Bill date' type={BaseType.DATE} showIcon>
             <FieldInputAdapter
-              fieldType={FieldType.DATETIME}
+              fieldType={FieldType.DATE}
               value={draft.billedAt}
               onChange={(value) => change('billedAt', (value as string) ?? null)}
               disabled={pending}
@@ -291,7 +291,7 @@ export function ManualBillForm({
           </FieldPanelRow>
           <FieldPanelRow title='Due date' type={BaseType.DATE} showIcon>
             <FieldInputAdapter
-              fieldType={FieldType.DATETIME}
+              fieldType={FieldType.DATE}
               value={draft.dueAt}
               onChange={(value) => change('dueAt', (value as string) ?? null)}
               disabled={pending}

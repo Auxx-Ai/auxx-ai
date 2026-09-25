@@ -132,23 +132,43 @@ function whereItems(organizationId: string, filters: WorkItemFilters, extra: SQL
   return sql.join(conditions, sql` AND `)
 }
 
-/** The `externalRef` half of the group key: the value for codes that group by it, else null. */
+/** The `externalRef` half of the group key: one fanned-out ref for codes that group by it, else null. */
 function groupExternalRef(): SQL {
   if (EXTERNAL_REF_GROUPED_CODES.length === 0) return sql`NULL::text`
   return sql`CASE WHEN w."reasonCode" IN (${sql.join(
     EXTERNAL_REF_GROUPED_CODES.map((code) => sql`${code}`),
     sql`, `
-  )}) THEN w."externalRef" END`
+  )}) THEN r."ref" END`
 }
+
+/**
+ * An item's refs as a jsonb array. A `STANDARD_COST_MISSING` item names every part still holding
+ * it (`detail.partIds`), so a build waiting on a component is listed under the component too.
+ */
+export function workItemRefs(columns: { reasonCode: SQL; externalRef: SQL; detail: SQL }): SQL {
+  const partIds = sql`(${columns.detail}->'partIds')`
+  return sql`(CASE WHEN ${columns.reasonCode} = 'STANDARD_COST_MISSING'
+    AND jsonb_typeof(${partIds}) = 'array' AND jsonb_array_length(${partIds}) > 0
+    THEN ${partIds} ELSE jsonb_build_array(${columns.externalRef}) END)`
+}
+
+const ITEM_REFS = workItemRefs({
+  reasonCode: sql`w."reasonCode"`,
+  externalRef: sql`w."externalRef"`,
+  detail: sql`w."detail"`,
+})
 
 function groupWhere(group: WorkItemGroupKey): SQL {
   const same = (column: string, value: string | null) =>
     value === null
       ? sql`w.${sql.identifier(column)} IS NULL`
       : sql`w.${sql.identifier(column)} = ${value}`
-  const ref = groupsByExternalRef(group.reasonCode)
-    ? sql` AND ${same('externalRef', group.externalRef ?? null)}`
-    : sql``
+  const externalRef = group.externalRef ?? null
+  const ref = !groupsByExternalRef(group.reasonCode)
+    ? sql``
+    : externalRef === null
+      ? sql` AND w."externalRef" IS NULL`
+      : sql` AND ${ITEM_REFS} @> jsonb_build_array(${externalRef}::text)`
   return sql`w."reasonCode" = ${group.reasonCode} AND ${same('role', group.role)} AND ${same('railId', group.railId)} AND ${same('glAccountId', group.glAccountId)}${ref}`
 }
 
@@ -209,15 +229,17 @@ export async function listWorkItemGroups(
       CASE WHEN ${collapsed} THEN NULL ELSE max(gl."displayName") END AS "glAccountName",
       (array_agg(w."detail" ORDER BY w."updatedAt" DESC)
         FILTER (WHERE ${externalRef} IS NOT NULL))[1] AS "detail",
-      CASE WHEN ${collapsed} THEN count(DISTINCT coalesce(w."externalRef", ''))::int END AS "refCount",
+      CASE WHEN ${collapsed} THEN (SELECT count(DISTINCT v)::int
+        FROM jsonb_path_query(jsonb_agg(${ITEM_REFS}), '$[*][*]') AS v) END AS "refCount",
       ${refs ? sql`COALESCE(max(ref."displayName"), max(${externalRef}))` : sql`NULL::text`} AS "refLabel"
     FROM ${fromItems()}
     LEFT JOIN "EntityInstance" rail ON rail."organizationId" = w."organizationId" AND rail."id" = w."railId"
     LEFT JOIN "EntityInstance" gl ON gl."organizationId" = w."organizationId" AND gl."id" = w."glAccountId"
     ${
       refs
-        ? sql`LEFT JOIN "EntityInstance" ref ON ${inCodes(RECORD_REF_CODES)}
-      AND ref."organizationId" = w."organizationId" AND ref."id" = w."externalRef"`
+        ? sql`CROSS JOIN LATERAL jsonb_array_elements_text(${ITEM_REFS}) AS r("ref")
+      LEFT JOIN "EntityInstance" ref ON ${inCodes(RECORD_REF_CODES)}
+      AND ref."organizationId" = w."organizationId" AND ref."id" = r."ref"`
         : sql``
     }
     WHERE ${whereItems(

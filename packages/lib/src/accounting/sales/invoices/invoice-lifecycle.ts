@@ -12,6 +12,7 @@ import { firstTyped } from '../../../field-values/client'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { systemFieldMap } from '../../../resources/system-records'
+import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { listInvoiceMoneyPayments } from '../../money/invoice-payments/payment-reads'
 import {
   listInvoiceAllocations,
@@ -111,7 +112,10 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
     const issuedTyped = firstTyped(values.get(cf.invoice_issued_at.id))
     const issuedAt = issuedTyped ? extractValue(issuedTyped) : undefined
     if (!issuedAt) {
-      writes.push({ fieldId: 'invoice_issued_at', value: new Date().toISOString().split('T')[0] })
+      writes.push({
+        fieldId: 'invoice_issued_at',
+        value: await todayInBookTimeZone(organizationId),
+      })
     }
   }
 

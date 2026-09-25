@@ -317,7 +317,6 @@ export interface SetInvoiceScheduleInput {
   /** EntityInstance id of the work order (not the RecordId). */
   workOrderInstanceId: string
   pattern: RecurrencePattern
-  timezone: string
 }
 
 /** Input shared by `clearInvoiceSchedule` / `getInvoiceSchedule` (§F.1/§J). */

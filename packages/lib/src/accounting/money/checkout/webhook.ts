@@ -20,9 +20,11 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { dayKeyInZone } from '@auxx/utils/calendar-day'
 import { eq } from 'drizzle-orm'
 import type Stripe from 'stripe'
 import { getOrgCache } from '../../../cache'
+import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
 import { insertMovement } from '../commands/insert-movement'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { syncInvoicePaymentState } from '../invoice-payments/payment-state'
@@ -146,6 +148,8 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
     ? (target as { balanceMinor: number }).balanceMinor
     : 0
   const appliesToInvoice = !!payment.invoiceInstanceId && outstandingMinor >= payment.amountMinor
+  // The application is dated the same book-zone day the receipt itself posts on.
+  const zone = await readBookTimeZoneOrUtc(organizationId)
 
   const result = await runMoneyCommand(
     db,
@@ -186,7 +190,7 @@ async function recordCheckoutReceipt(db: Database, payment: ConfirmedPayment): P
           amountMinor: payment.amountMinor,
           invoiceInstanceId: payment.invoiceInstanceId!,
           appliedAt: payment.occurredAt,
-          effectiveDate: payment.occurredAt.toISOString().slice(0, 10),
+          effectiveDate: dayKeyInZone(payment.occurredAt, zone),
           commandItemKey: 'checkout_payment',
         })
         await syncInvoicePaymentState({

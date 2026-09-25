@@ -55,6 +55,7 @@ export type LedgerBlockerStatus =
   | 'sync_refused'
   | 'export_refused'
   | 'export_blocked'
+  | 'inventory_incomplete'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -158,6 +159,14 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
       'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and issue or void the draft credit memos first: once the month is closed, the entries they owe cannot be written into it.',
     href: '/app/orders',
     actionLabel: 'Open orders',
+  },
+  // The close checklist's inventory family; each item carries its own remedy.
+  inventory_incomplete: {
+    tone: 'failure',
+    icon: Scale,
+    title: 'Inventory does not tie to the books yet',
+    guidance:
+      'The inventory accounts, the movement ledger and the parts list have to agree before the month closes. Each row below names one difference and where it is fixed.',
   },
   error: {
     tone: 'failure',

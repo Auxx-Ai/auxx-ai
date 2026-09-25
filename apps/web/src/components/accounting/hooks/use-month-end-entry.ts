@@ -2,7 +2,11 @@
 
 'use client'
 
-import type { CloseBlockerItem } from '@auxx/lib/accounting/ledger/client'
+import {
+  type CloseBlockerItem,
+  incompleteRevenueLead,
+  inventoryCheckLead,
+} from '@auxx/lib/accounting/ledger/client'
 import type { LedgerBlocker } from '~/components/accounting/ui/ledger/entry-blockers'
 import { api } from '~/trpc/react'
 
@@ -15,7 +19,7 @@ interface UseMonthEndChecklistOptions {
 export interface MonthEndChecklist {
   /** One item per piece of outstanding work. Empty means the month is ready to lock. */
   items: CloseBlockerItem[]
-  /** The same items as the one card `EntryBlockers` renders, or nothing. */
+  /** The same items as `EntryBlockers` cards, one per family (revenue, inventory). */
   blockers: LedgerBlocker[]
   isLoading: boolean
   /** Nothing outstanding: the month ties and every movement is in an entry. */
@@ -45,20 +49,32 @@ export function useMonthEndEntry({
 
   return {
     items,
-    // One card, its rows the items - the same shape every other refusal on this
-    // page takes, so the console has one treatment for all of them.
-    blockers: items.length
-      ? [
-          {
-            status: 'revenue_incomplete',
-            error: `${activePeriodKey} is not ready to mark reviewed.`,
-            items,
-          },
-        ]
-      : [],
+    blockers: checklistBlockers(activePeriodKey, items),
     // 🛑 `isFetching`, not `isPending`: a DISABLED query sits at `isPending`
     // forever and would pin the checklist to a skeleton that never resolves.
     isLoading: query.isFetching,
     isReady: !query.isFetching && items.length === 0,
   }
+}
+
+/** One card per family, so an inventory check is never filed under the revenue card's remedy. */
+function checklistBlockers(periodKey: string, items: CloseBlockerItem[]): LedgerBlocker[] {
+  const inventory = items.filter((item) => item.key.startsWith('inventory_'))
+  const revenue = items.filter((item) => !item.key.startsWith('inventory_'))
+  const blockers: LedgerBlocker[] = []
+  if (revenue.length) {
+    blockers.push({
+      status: 'revenue_incomplete',
+      error: incompleteRevenueLead(periodKey),
+      items: revenue,
+    })
+  }
+  if (inventory.length) {
+    blockers.push({
+      status: 'inventory_incomplete',
+      error: inventoryCheckLead(periodKey),
+      items: inventory,
+    })
+  }
+  return blockers
 }

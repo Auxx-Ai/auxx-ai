@@ -39,10 +39,11 @@ import {
 } from '@auxx/lib/accounting/reports'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** `YYYY-MM-DD`. Every date bound on this router is this shape - the lib reads own the range validity. */
-const dateKey = z.iso.date({ error: 'Expected YYYY-MM-DD' })
+const dateKey = calendarDaySchema
 /** One record's postings on `GlPostingSource`: the drawer's "Open in ledger" filter. */
 const ledgerSource = z.object({ sourceKind: z.string().min(1), sourceId: z.string().min(1) })
 

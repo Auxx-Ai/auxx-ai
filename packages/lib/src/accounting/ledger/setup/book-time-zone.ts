@@ -20,6 +20,7 @@
  * are not posting an entry use instead — see its own doc comment.
  */
 
+import { startOfDayInstant, todayInZone } from '@auxx/utils/calendar-day'
 import { UnprocessableEntityError } from '../../../errors'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { periodKeyForDate } from '../periods/periods'
@@ -94,4 +95,14 @@ export async function readBookTimeZoneOrUtc(organizationId: string): Promise<str
     key: OPENING_BASELINE_SETTING_KEYS.bookTimeZone,
   })
   return typeof value === 'string' && value.trim() ? value.trim() : 'UTC'
+}
+
+/**
+ * A picked accounting day as an instant: now when it is today in the book zone (same-day rows keep
+ * their order and nothing lands in the future), else the start of that day there.
+ */
+export async function instantForBookDay(organizationId: string, day: string): Promise<Date> {
+  const zone = await readBookTimeZoneOrUtc(organizationId)
+  const now = new Date()
+  return day === todayInZone(zone, now) ? now : startOfDayInstant(day, zone)
 }

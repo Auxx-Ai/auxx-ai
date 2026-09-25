@@ -62,7 +62,7 @@ describe('yesterdayInZone', () => {
 })
 
 describe('the nightly shape', () => {
-  it('walks yesterday, as the end of that local day, per org with the switch on', async () => {
+  it("walks yesterday in each org's book zone, per org with the switch on", async () => {
     vi.useFakeTimers({ now: new Date('2026-09-24T05:00:00.000Z') })
     h.organizations = ['org_hnl', 'org_utc']
     h.timeZones = { org_hnl: 'Pacific/Honolulu' }
@@ -70,13 +70,12 @@ describe('the nightly shape', () => {
     await backflushJob(ctx(undefined))
 
     expect(h.runs.map((r) => r.organizationId)).toEqual(['org_hnl', 'org_utc'])
-    // 2026-09-22 23:59:59.999 in Honolulu (UTC-10).
+    // 2026-09-23 19:00 in Honolulu (UTC-10), so its yesterday is the 22nd.
     const hnl = h.runs[0]?.input
-    expect(hnl?.from).toEqual(new Date('2026-09-23T09:59:59.999Z'))
-    expect(hnl?.to).toEqual(hnl?.from)
+    expect(hnl?.from).toBe('2026-09-22')
+    expect(hnl?.to).toBe('2026-09-22')
     expect(hnl?.actorUserId).toBeUndefined()
-    const utc = h.runs[1]?.input
-    expect(utc?.from).toEqual(new Date('2026-09-23T23:59:59.999Z'))
+    expect(h.runs[1]?.input.from).toBe('2026-09-23')
   })
 
   it('keeps going past an org whose run fails', async () => {
@@ -92,8 +91,8 @@ describe('the on-demand shape', () => {
     await backflushJob(
       ctx({
         organizationId: 'org_1',
-        from: '2026-01-01T12:00:00.000Z',
-        to: '2026-03-31T12:00:00.000Z',
+        from: '2026-01-01',
+        to: '2026-03-31',
         actorUserId: 'user_1',
       })
     )
@@ -101,8 +100,8 @@ describe('the on-demand shape', () => {
       {
         organizationId: 'org_1',
         input: {
-          from: new Date('2026-01-01T12:00:00.000Z'),
-          to: new Date('2026-03-31T12:00:00.000Z'),
+          from: '2026-01-01',
+          to: '2026-03-31',
           actorUserId: 'user_1',
         },
       },

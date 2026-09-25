@@ -117,8 +117,8 @@ describe('buildReceiptInput', () => {
     )
   })
 
-  it('sends the accounting date the form was given, not today', () => {
-    const input = buildReceiptInput(formState({ occurredAt: '2026-01-04T09:30:00.000Z' }))
-    expect(input?.occurredAt.toISOString()).toBe('2026-01-04T09:30:00.000Z')
+  it('sends the picked accounting day, never an instant', () => {
+    const input = buildReceiptInput(formState({ occurredAt: '2026-01-04T00:00:00.000Z' }))
+    expect(input?.day).toBe('2026-01-04')
   })
 })

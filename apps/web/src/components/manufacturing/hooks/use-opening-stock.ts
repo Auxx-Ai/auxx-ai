@@ -7,7 +7,7 @@
 // function the write path uses; a kind that is only a suggestion holds its row out of the
 // run, because the movement freezes the account it resolves (§6.3).
 
-import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -355,7 +355,7 @@ export function useOpeningStock() {
         ...(row.standardCost == null && row.unitCost != null
           ? { unitCost: roundMinorUnits(row.unitCost) }
           : {}),
-        date: new Date(normalizeCalendarDayIso(row.date) ?? row.date),
+        day: calendarDayKey(row.date) ?? undefined,
       })),
     [ready]
   )
@@ -436,7 +436,7 @@ export function useOpeningStock() {
   /** One call, per-part isolation on the server. `adjustAnchored`: this page shows the delta. */
   const run = useCallback(async (): Promise<OpeningStockRunSummary> => {
     const result = await runSetCounts.mutateAsync({
-      occurredAt: new Date(normalizeCalendarDayIso(occurredAt) ?? occurredAt),
+      day: calendarDayKey(occurredAt) ?? undefined,
       adjustAnchored: true,
       entries,
     })

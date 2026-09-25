@@ -20,6 +20,10 @@ const h = vi.hoisted(() => ({
   runArgs: [] as (string | undefined)[],
 }))
 
+vi.mock('../../../accounting/ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => new Date().toISOString().slice(0, 10),
+}))
 vi.mock('../../actions/shared', async (importActual) => ({
   ...(await importActual<typeof import('../../actions/shared')>()),
   resolveActionRun: vi.fn(async (_db: unknown, _org: string, runId?: string) => {
