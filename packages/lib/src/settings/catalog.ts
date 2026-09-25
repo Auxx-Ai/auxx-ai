@@ -1466,6 +1466,41 @@ export const SETTINGS_CATALOG = {
       'Whether an auto-build is raised for a part whose quantity on hand already covers the ' +
       'ordered quantity.',
   },
+
+  // ── MRP planning (plans/mrp/08-implementation-plan.md §6) ─────────────────────────────
+  // GENERAL for the same reason as `inventory.*` above: `SettingScope` has no INVENTORY value.
+  'mrp.aduWindowDays': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 90,
+    description: 'How many days of consumption history the plan averages to get daily usage.',
+  },
+  'mrp.defaultLeadTimeFactor': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: null,
+    description:
+      'Lead-time factor for parts without their own. Unset = automatic — derived from each ' +
+      "part's lead-time class.",
+  },
+  'mrp.defaultVariabilityFactor': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: null,
+    description:
+      'Variability factor for parts without their own. Unset = automatic — derived from how ' +
+      "much each part's consumption varies.",
+  },
+  'mrp.runRetentionDays': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'NUMBER',
+    defaultValue: 90,
+    description: 'How many days of past plan runs are kept before they are deleted.',
+  },
 } satisfies Record<string, SettingConfig>
 
 /**

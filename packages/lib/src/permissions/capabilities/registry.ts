@@ -113,6 +113,10 @@ export enum PermissionKey {
   ledgerView = 'ledger.view',
   ledgerPost = 'ledger.post',
   ledgerControl = 'ledger.control',
+
+  // MRP planning (plans/mrp/08-implementation-plan.md D41)
+  mrpView = 'mrp.view',
+  mrpManage = 'mrp.manage',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -543,6 +547,22 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Accounting',
     featureKey: FeatureKey.accounting,
   },
+
+  // ── Manufacturing ──
+  {
+    key: PermissionKey.mrpView,
+    label: 'View MRP',
+    description: 'See the MRP plan: buffers, suggested orders, and past plan runs.',
+    group: 'Manufacturing',
+    featureKey: FeatureKey.mrp,
+  },
+  {
+    key: PermissionKey.mrpManage,
+    label: 'Manage MRP',
+    description: 'Run the plan, change MRP settings, and draft purchase orders and builds from it.',
+    group: 'Manufacturing',
+    featureKey: FeatureKey.mrp,
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -634,6 +654,7 @@ export enum Area {
   // (which walks AREA_ORDER, i.e. this declaration order) renders the new
   // Accounting heading after every existing group rather than splitting one.
   ledger = 'ledger',
+  mrp = 'mrp',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -1314,6 +1335,18 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     //
     // No `featureKey`: the ledger is ours whether or not an accounting provider
     // is connected (decision P1), so it is not gated on a plan feature.
+  },
+  [Area.mrp]: {
+    area: Area.mrp,
+    label: 'MRP',
+    description: 'The material requirements plan and the draft orders it suggests.',
+    group: 'Manufacturing',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.mrpView] },
+      { level: Level.Full, keys: [PermissionKey.mrpManage] },
+    ],
+    // Ships closed like `ledger`: not in `MEMBER_BASELINE_LEVELS`, so members need a grant.
+    featureKey: FeatureKey.mrp,
   },
 }
 

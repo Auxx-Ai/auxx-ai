@@ -46,6 +46,8 @@ import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { isRecordId, type RecordId, toRecordId } from '../../resources/resource-id'
 import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from '../costing/client'
+import { movementFactFromInput, readOriginalClasses } from './fact/live'
+import { insertMovementFacts } from './fact/writes'
 import { guard } from './guard'
 import type {
   StockMovementInput,
@@ -205,6 +207,10 @@ export async function writeStockMovements(
       const crud = buildHandler(ctx)
       const records: WrittenStockMovement[] = []
       const affectedPartIds = new Set<string>()
+      const reversed = inputs.flatMap((input) => input.links?.reversesMovementId ?? [])
+      const originalClasses = reversed.length
+        ? await readOriginalClasses(ctx.db, ctx.organizationId, reversed)
+        : new Map()
 
       for (const input of inputs) {
         const links = await resolveLinks(ctx, input.links)
@@ -229,6 +235,15 @@ export async function writeStockMovements(
         })
 
         const created = await crud.create(ctx.movementDefId, values)
+        // The planning mirror (plans/mrp/02-data-structures.md §3.2), on the caller's transaction.
+        await insertMovementFacts(ctx.db, ctx.organizationId, [
+          movementFactFromInput(
+            created.instance.id,
+            created.instance.createdAt,
+            input,
+            originalClasses
+          ),
+        ])
 
         records.push({
           movementId: created.instance.id,

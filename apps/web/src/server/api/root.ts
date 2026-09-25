@@ -74,6 +74,7 @@ import { mediaAssetRouter } from './routers/mediaAsset'
 import { memberRouter } from './routers/member'
 import { messageRouter } from './routers/message'
 import { moneyRouter } from './routers/money'
+import { mrpRouter } from './routers/mrp'
 import { notificationRouter } from './routers/notification'
 import { organizationRouter } from './routers/organization'
 import { participantRouter } from './routers/participant'
@@ -190,6 +191,7 @@ export const appRouter = createTRPCRouter({
   member: memberRouter,
   message: messageRouter,
   money: moneyRouter,
+  mrp: mrpRouter,
   notification: notificationRouter,
   organization: organizationRouter,
   participant: participantRouter,

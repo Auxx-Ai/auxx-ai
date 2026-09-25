@@ -2815,6 +2815,13 @@
       "when": 1790299023812,
       "tag": "0401_data_connector_run_reimport",
       "breakpoints": true
+    },
+    {
+      "idx": 402,
+      "version": "7",
+      "when": 1790316337551,
+      "tag": "0402_mrp_tables",
+      "breakpoints": true
     }
   ]
 }

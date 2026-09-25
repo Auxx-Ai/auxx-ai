@@ -4,6 +4,7 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
+import { CompanyOrderMode } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -875,6 +876,81 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Select 1099 box',
     defaultValue: 'none',
     description: "Which 1099 box this vendor's payments are reported under by default.",
+  },
+
+  // ─── Supplier ordering rhythm (plans/mrp/02-data-structures.md §4.2) ───
+  // Hidden from the panel: the Purchasing tab's Ordering block renders them.
+  orderMode: {
+    id: toFieldId('orderMode'),
+    key: 'orderMode',
+    label: 'Order Mode',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'company_order_mode',
+    systemSortOrder: 'c8',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    options: { options: CompanyOrderMode.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select order mode',
+    defaultValue: CompanyOrderMode.WHEN_NEEDED,
+    description: 'How MRP orders from this supplier: when a part needs it, or on a fixed cycle.',
+  },
+
+  orderCycleDays: {
+    id: toFieldId('orderCycleDays'),
+    key: 'orderCycleDays',
+    label: 'Order Cycle (days)',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'company_order_cycle_days',
+    systemSortOrder: 'c9',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter days',
+    description: 'Scheduled suppliers only: how often an order goes out, in days.',
+  },
+
+  nextOrderDate: {
+    id: toFieldId('nextOrderDate'),
+    key: 'nextOrderDate',
+    label: 'Next Order Date',
+    type: BaseType.DATE,
+    fieldType: FieldType.DATE,
+    isSystem: true,
+    systemAttribute: 'company_next_order_date',
+    systemSortOrder: 'c9a',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select date',
+    description:
+      'Scheduled suppliers only. Empty means the last purchase order plus the cycle; set it ' +
+      'to move one order.',
   },
 
   createdBy: CREATED_BY_FIELD,

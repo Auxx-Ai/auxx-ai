@@ -32,6 +32,7 @@ import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers
 import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
+import type { SubpartRow } from '../inventory/costing/cost-calculator'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { CachedMailFilter } from '../mail-filters/types'
 import type { Overage } from '../permissions/overage-detection-service'
@@ -700,6 +701,7 @@ export interface OrgCacheDataMap {
   kbCatalog: KbCatalogEntry[] // published AI-enabled article ToC per KB (agent prompt injection)
   knowledgeBases: CachedKnowledgeBase[] // id + kind for EVERY KB — the article-visibility allow-list (plan v3/06 §5.3)
   chartAccounts: ChartAccountRow[] // every gl_account row, archived stamped isArchived, in chart-tree order
+  subpartEdges: SubpartRow[] // every live BOM edge of the org; UI reads only, the MRP run reads fresh
   providerChart: CachedProviderChart | null // the active book's live provider chart, inactive rows kept; null = no active book
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
@@ -989,6 +991,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
 
   // Default localTtlMs on purpose: readers post money (see the note on this config).
   chartAccounts: { prefix: 'org:chart-accounts', ttlSeconds: ONE_DAY },
+  subpartEdges: { prefix: 'org:subpart-edges', ttlSeconds: ONE_DAY },
   // 900 s: the rows change at the provider, outside our writes (plans/accounting/tasks/84 §7.1).
   providerChart: { prefix: 'org:provider-chart', ttlSeconds: 900 },
 

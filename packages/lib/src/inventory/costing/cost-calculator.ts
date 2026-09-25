@@ -1,6 +1,6 @@
 // packages/lib/src/inventory/costing/cost-calculator.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
@@ -19,6 +19,7 @@ import {
 import { systemFieldMap } from '../../resources/system-records'
 import { loadTariffSchedule } from '../tariffs/tariff-schedule'
 import { type CostWrite, writeCostValues } from './cost-writer'
+import type { SubpartEdge } from './standard-cost-roll'
 import {
   computeLandedCost,
   resolveOfferTariff,
@@ -45,11 +46,18 @@ interface VendorCostMaps {
   landedCostMap: Map<string, number>
 }
 
+/** One bill-of-materials edge: `quantity` of `childPartId` per one `parentPartId`. */
 interface SubpartRow {
   parentPartId: string
   childPartId: string
   quantity: number
 }
+
+/** Parent → its direct children with per-unit quantity. */
+type SubpartGraph = Map<string, SubpartEdge[]>
+
+/** Child → its direct parents. */
+type ParentGraph = Map<string, string[]>
 
 interface OrgPricingData {
   vendorPrices: VendorPriceRow[]
@@ -132,11 +140,9 @@ const UNCOSTED: PartCostResult = {
  * Two queries: one for vendor parts, one for subparts.
  */
 async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
-  // Resolve entity definition IDs for vendor_part and subpart
   const vendorPartDefId = await requireCachedEntityDefId(orgId, 'vendor_part')
-  const subpartDefId = await requireCachedEntityDefId(orgId, 'subpart')
 
-  logger.info('Loading org pricing data', { orgId, vendorPartDefId, subpartDefId })
+  logger.info('Loading org pricing data', { orgId, vendorPartDefId })
 
   // Resolve custom field IDs by systemAttribute (single pass)
   const cfFields = await systemFieldMap(undefined, orgId, [
@@ -147,9 +153,6 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     'vendor_part_tariff_rate',
     'vendor_part_tariff_code',
     'vendor_part_other_cost',
-    'subpart_parent_part',
-    'subpart_child_part',
-    'subpart_quantity',
   ] as const)
 
   const vpPartField = cfFields.vendor_part_part
@@ -159,9 +162,6 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   const vpTariffField = cfFields.vendor_part_tariff_rate
   const vpTariffCodeField = cfFields.vendor_part_tariff_code
   const vpOtherField = cfFields.vendor_part_other_cost
-  const spParentField = cfFields.subpart_parent_part
-  const spChildField = cfFields.subpart_child_part
-  const spQtyField = cfFields.subpart_quantity
 
   logger.info('Resolved custom field IDs', {
     vpPartField: vpPartField?.id ?? null,
@@ -170,9 +170,6 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     vpShippingField: vpShippingField?.id ?? null,
     vpTariffField: vpTariffField?.id ?? null,
     vpOtherField: vpOtherField?.id ?? null,
-    spParentField: spParentField?.id ?? null,
-    spChildField: spChildField?.id ?? null,
-    spQtyField: spQtyField?.id ?? null,
   })
 
   // ── Query 1: All vendor part field values (single JOIN) ──
@@ -283,11 +280,27 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     }
   }
 
-  // ── Query 2: All subpart field values (single JOIN) ──
+  const subparts = await loadOrgSubpartEdges(database, orgId)
+
+  return { vendorPrices, subparts }
+}
+
+/** Every live subpart edge of an org in one query; edges missing a side or with quantity <= 0 are dropped. */
+async function loadOrgSubpartEdges(db: Database, orgId: string): Promise<SubpartRow[]> {
+  const subpartDefId = await requireCachedEntityDefId(orgId, 'subpart')
+  const cfFields = await systemFieldMap(db, orgId, [
+    'subpart_parent_part',
+    'subpart_child_part',
+    'subpart_quantity',
+  ] as const)
+  const spParentField = cfFields.subpart_parent_part
+  const spChildField = cfFields.subpart_child_part
+  const spQtyField = cfFields.subpart_quantity
+
   const subparts: SubpartRow[] = []
 
   if (spParentField && spChildField && spQtyField) {
-    const rows = await database
+    const rows = await db
       .select({
         instanceId: schema.EntityInstance.id,
         fieldId: schema.FieldValue.fieldId,
@@ -341,7 +354,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
     }
   }
 
-  return { vendorPrices, subparts }
+  return subparts
 }
 
 /**
@@ -403,10 +416,8 @@ function buildVendorCostMaps(vendorPrices: VendorPriceRow[]): VendorCostMaps {
 }
 
 /** Adjacency list: parent → [{ childId, qty }] */
-function buildSubpartGraph(
-  subparts: SubpartRow[]
-): Map<string, { childId: string; qty: number }[]> {
-  const map = new Map<string, { childId: string; qty: number }[]>()
+function buildSubpartGraph(subparts: readonly SubpartRow[]): SubpartGraph {
+  const map: SubpartGraph = new Map()
   for (const sp of subparts) {
     const children = map.get(sp.parentPartId) ?? []
     children.push({ childId: sp.childPartId, qty: sp.quantity })
@@ -416,8 +427,8 @@ function buildSubpartGraph(
 }
 
 /** Reverse adjacency: child → [parentId] (for propagation) */
-function buildParentGraph(subparts: SubpartRow[]): Map<string, string[]> {
-  const map = new Map<string, string[]>()
+function buildParentGraph(subparts: readonly SubpartRow[]): ParentGraph {
+  const map: ParentGraph = new Map()
   for (const sp of subparts) {
     const parents = map.get(sp.childPartId) ?? []
     parents.push(sp.parentPartId)
@@ -941,6 +952,7 @@ async function syncPartPricingSafely(orgId: string, changedPartIds: string[]): P
 
 export {
   loadOrgPricingData,
+  loadOrgSubpartEdges,
   buildVendorCostMaps,
   buildSubpartGraph,
   buildParentGraph,
@@ -950,6 +962,8 @@ export type {
   VendorPriceRow,
   VendorCostMaps,
   SubpartRow,
+  SubpartGraph,
+  ParentGraph,
   OrgPricingData,
   PartCostResult,
   CostSourceValue,

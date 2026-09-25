@@ -550,6 +550,22 @@ export async function setupSchedules() {
     }
   )
 
+  // MRP nightly plan (plans/mrp/08-implementation-plan.md §5): one sweep over every
+  // org with the feature, each org under its own lock and try. 02:30 UTC keeps it clear of
+  // the 03:00–04:45 per-org sweeps (payout sync and reconcile at 04:30).
+  await maintenanceQueue.upsertJobScheduler(
+    'mrpNightlyJob',
+    { pattern: '30 2 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 1,
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Stripe payout sync — every day at 04:30 UTC, between the vendor-bill sweep and
   // the enrichment one so the three large per-org passes never overlap.
   //

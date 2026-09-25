@@ -316,6 +316,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
       configurable: false,
     },
     placeholder: 'Enter minimum order quantity',
+    description: 'Minimum order quantity, per each (not in purchase units)',
   },
 
   // B-lite entry conversion (plans/money/tasks/31-sub-cent-rates.md §2.9): the

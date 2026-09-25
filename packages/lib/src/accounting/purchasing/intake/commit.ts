@@ -1,21 +1,8 @@
 // packages/lib/src/accounting/purchasing/intake/commit.ts
 
 /**
- * Step 4 (plans/money/tasks/38 §6.3): the draft becomes records.
- *
- * 🛑 **Through the generic create path, never a bespoke insert.** Nothing in the
- * purchasing router creates a purchase order today; POs are created through the
- * entity dialog, and `purchase_order_number` is `creatable: false`, minted by the
- * RecordSequence hook. `UnifiedCrudHandler.create` is where that hook fires, so
- * an insert of our own would produce an order with no number.
- *
- * 🛑 **`create` in a loop for the lines, never `bulkCreate`.** `bulkCreate` drops
- * `absorbInto`, and without it every line announces itself as its own `created`
- * event beside the parent that already announced them.
- *
- * 🛑 **A relationship value is a `RecordId` string**, never a bare instance id: a
- * bare id is silently swallowed on create, so the line would come back missing
- * the part it was created with.
+ * Step 4 (plans/money/tasks/38 §6.3): the draft becomes records, through the shared
+ * `createPurchaseOrder` writer (the generic create path, so the order gets its number).
  */
 
 import type { Database } from '@auxx/database'
@@ -26,6 +13,11 @@ import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { convertTempAssetToPermanent } from '../../../files/assets/asset-mutations'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
+import {
+  createPurchaseOrder,
+  type PurchaseOrderHeaderValues,
+  type PurchaseOrderLineValues,
+} from '../create-purchase-order'
 import { findVendorPartForLine } from '../vendor-part-lookup'
 import type { IntakeCommitInput, IntakeDraftPayload, IntakeLine, IntakeWriteBack } from './client'
 import { orderableLines, unresolvedLines } from './client'
@@ -65,13 +57,6 @@ export interface WriteBackTally {
 /** Which branch {@link applyWriteBack} took. */
 type WriteBackOutcome = 'created' | 'updated'
 
-/** Drop the keys the create path should never see as an explicit `null`. */
-function defined(values: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(values).filter(([, value]) => value !== null && value !== undefined)
-  )
-}
-
 /**
  * Header values for the purchase order.
  *
@@ -82,9 +67,13 @@ function defined(values: Record<string, unknown>): Record<string, unknown> {
  * and minting a `part` called "Freight" would put a fiction in the catalogue
  * where it then values movements and re-SUMs into QoH forever.
  */
-function headerValues(payload: IntakeDraftPayload, assetRef: string): Record<string, unknown> {
-  return defined({
-    purchase_order_vendor: payload.vendorRecordId,
+function headerValues(
+  payload: IntakeDraftPayload,
+  vendorRecordId: RecordId,
+  assetRef: string
+): PurchaseOrderHeaderValues {
+  return {
+    purchase_order_vendor: vendorRecordId,
     purchase_order_currency: payload.currency,
     purchase_order_reference: payload.quoteNumber,
     purchase_order_expected_at: payload.expectedDeliveryDate,
@@ -94,23 +83,17 @@ function headerValues(payload: IntakeDraftPayload, assetRef: string): Record<str
     // it is explicitly chosen, which is what we want — the vendor's own quote
     // must not go back to that vendor stapled to our order.
     purchase_order_attachments: [{ ref: assetRef }],
-  })
+  }
 }
 
-function lineValues(
-  line: IntakeLine,
-  purchaseOrderRecordId: RecordId,
-  index: number
-): Record<string, unknown> {
-  return defined({
-    purchase_order_line_purchase_order: purchaseOrderRecordId,
-    purchase_order_line_part: line.partRecordId,
+function lineValues(line: IntakeLine, partRecordId: RecordId): PurchaseOrderLineValues {
+  return {
+    purchase_order_line_part: partRecordId,
     purchase_order_line_vendor_part: line.vendorPartRecordId,
     purchase_order_line_description: line.description,
     purchase_order_line_quantity_ordered: line.quantity,
     purchase_order_line_expected_unit_price: line.unitPriceCents,
-    purchase_order_line_sort_order: index,
-  })
+  }
 }
 
 /**
@@ -203,21 +186,22 @@ export async function commitIntakeDraft(
         )
       }
 
-      const lines = orderableLines(payload.lines)
+      // The gate above guarantees every orderable line has a part.
+      const lines = orderableLines(payload.lines).flatMap((line) =>
+        line.partRecordId ? [lineValues(line, line.partRecordId)] : []
+      )
       const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
-      const order = await handler.create('purchase_order', headerValues(payload, draft.assetRef))
-      const purchaseOrderRecordId = order.recordId
-
-      // `absorbInto` on every line: the parent's own `record:created` announces
-      // them, so no separate create door opens per line.
-      for (const [index, line] of lines.entries()) {
-        await handler.create(
-          'purchase_order_line',
-          lineValues(line, purchaseOrderRecordId, index),
-          { absorbInto: purchaseOrderRecordId }
-        )
-      }
+      const created = await createPurchaseOrder(
+        db,
+        organizationId,
+        userId,
+        { header: headerValues(payload, payload.vendorRecordId, draft.assetRef), lines },
+        { handler }
+      )
+      if (created.isErr()) throw created.error
+      const order = created.value
+      const purchaseOrderRecordId = order.purchaseOrderRecordId
 
       // ⚠️ THE ORDERING HERE IS THE OPPOSITE OF THE OBVIOUS ONE. Do not "tidy"
       // it. The draft is marked committed AFTER the order and its lines exist
@@ -234,7 +218,7 @@ export async function commitIntakeDraft(
       // 🛑 The key is never deleted here. The 24-hour TTL reaps it, which is the
       // whole reason the draft lives in Redis; a delete that failed would put us
       // straight back in the second case above.
-      const marked = await markIntakeDraftCommitted(organizationId, draft.id, order.instance.id)
+      const marked = await markIntakeDraftCommitted(organizationId, draft.id, order.purchaseOrderId)
       if (marked.isErr()) throw marked.error
 
       // ⚠️ EVERYTHING FROM HERE DOWN IS BEST-EFFORT, AND THE CATCHES BELOW MUST
@@ -272,7 +256,7 @@ export async function commitIntakeDraft(
             organizationId,
             draftId: draft.id,
             assetId,
-            purchaseOrderInstanceId: order.instance.id,
+            purchaseOrderInstanceId: order.purchaseOrderId,
           })
         }
       }
@@ -300,7 +284,7 @@ export async function commitIntakeDraft(
             logger.info('Created a vendor catalogue entry from a quote write-back', {
               organizationId,
               draftId: draft.id,
-              purchaseOrderInstanceId: order.instance.id,
+              purchaseOrderInstanceId: order.purchaseOrderId,
               vendorRecordId: payload.vendorRecordId,
               partRecordId: writeBack.partRecordId,
               vendorSku: writeBack.vendorSku,
@@ -312,13 +296,12 @@ export async function commitIntakeDraft(
             error,
             organizationId,
             draftId: draft.id,
-            purchaseOrderInstanceId: order.instance.id,
+            purchaseOrderInstanceId: order.purchaseOrderId,
             partRecordId: writeBack.partRecordId,
           })
         }
       }
 
-      const number = order.values?.purchase_order_number
       logger.info('Committed a quote into a purchase order', {
         organizationId,
         draftId: draft.id,
@@ -330,9 +313,9 @@ export async function commitIntakeDraft(
       })
 
       return {
-        purchaseOrderInstanceId: order.instance.id,
+        purchaseOrderInstanceId: order.purchaseOrderId,
         recordId: purchaseOrderRecordId,
-        number: typeof number === 'string' ? number : null,
+        number: order.number,
         writeBacks,
       }
     },

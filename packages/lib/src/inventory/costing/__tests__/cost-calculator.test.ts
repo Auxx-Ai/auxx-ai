@@ -114,6 +114,7 @@ vi.mock('../../../accounting/ledger/setup/book-time-zone', () => ({
 import {
   calculateAllCosts,
   loadOrgPricingData,
+  loadOrgSubpartEdges,
   recalculateAffectedParts,
   recalculateAllPartCosts,
 } from '../cost-calculator'
@@ -602,6 +603,24 @@ describe('persistCosts - RATE fields round to five places at the write seam', ()
     await recalculateAffectedParts(ORG, [MOTOR])
 
     expect(allWrites()).toEqual([])
+  })
+})
+
+describe('loadOrgSubpartEdges (plans/mrp/08 D42)', () => {
+  it('reads through the db it is given and drops incomplete or non-positive edges', async () => {
+    const rows = [
+      ...subpartRows('sp_ok', ASSEMBLY, MOTOR, 2),
+      ...subpartRows('sp_zero', ASSEMBLY, WIDGET, 0),
+      { instanceId: 'sp_orphan', fieldId: FIELD.subpart_quantity!.id, valueNumber: 1 },
+    ]
+    const db = {
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: async () => rows }) }) }),
+    }
+
+    const edges = await loadOrgSubpartEdges(db as never, ORG)
+
+    expect(edges).toEqual([{ parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 2 }])
+    expect(h.queryQueue).toEqual([])
   })
 })
 

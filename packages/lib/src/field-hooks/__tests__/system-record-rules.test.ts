@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   clearOtherPreferred: vi.fn(async () => {}),
   recalculateStockStatus: vi.fn(async () => {}),
   enqueueCompanyEnrichmentForRecords: vi.fn(async () => {}),
+  onCacheEvent: vi.fn(async () => {}),
 }))
 
 vi.mock('../post/bom-cost-triggers', () => ({ recalculatePartCost: h.recalculatePartCost }))
@@ -20,6 +21,7 @@ vi.mock('../post/inventory-triggers', () => ({ recalculateStockStatus: h.recalcu
 vi.mock('../post/company-triggers', () => ({
   enqueueCompanyEnrichmentForRecords: h.enqueueCompanyEnrichmentForRecords,
 }))
+vi.mock('../../cache/invalidate', () => ({ onCacheEvent: h.onCacheEvent }))
 
 import { __clearNativeRuleHandlers, getNativeRuleHandler } from '../../record-rules/actions'
 import { __clearSystemRules, getSystemRuleDeclarations } from '../../record-rules/system-rules'
@@ -195,6 +197,16 @@ describe('registerFieldSystemRules — native handlers wrap the trigger fns', ()
     expect(h.recalculatePartCost).toHaveBeenCalledWith(
       expect.objectContaining({ systemAttribute: 'subpart_quantity' })
     )
+  })
+
+  it('a subpart quantity change recalcs cost, then busts the subpartEdges cache', async () => {
+    const rule = getSystemRuleDeclarations().find((d) => d.key === 'mfg-subpart-quantity')!
+    expect(rule.actions.map((a) => (a as { handler?: string }).handler)).toEqual([
+      'recalculatePartCostFromSubpart',
+      'invalidateSubpartEdges',
+    ])
+    await getNativeRuleHandler('invalidateSubpartEdges')!(batchEvent)
+    expect(h.onCacheEvent).toHaveBeenCalledWith('subpart.changed', { orgId: 'org_1' })
   })
 
   it('clearOtherPreferred + recalculateStockStatus wrap their functions', async () => {

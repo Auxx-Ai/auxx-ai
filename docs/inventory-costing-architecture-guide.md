@@ -495,6 +495,19 @@ supersedes to `reversed`, so a reversed entry stops matching on its own.
 balance or a `build_consume` would pass a receipts-only check and delete clean out of a posted
 month.
 
+### 6.5 The planning mirror: `InventoryMovementFact`
+
+A derived, rebuildable copy of every `stock_movement` (id, part, type, signed quantity,
+`COALESCE(occurredAt, createdAt)`, links, and a consumption class), owned by
+`inventory/movements/fact/` (plans/mrp/02-data-structures.md §3). It is written in the caller's
+transaction by `writeStockMovements` and by the raw BOM explosion
+(`field-hooks/post/bom-movement-triggers.ts`), removed by its `id` foreign key's `ON DELETE CASCADE`
+from `EntityInstance` on any delete path, and replayed by
+`rebuildMovementFacts`; `compareFactsToLedger` is its drift check. **Nothing in QoH, costing,
+relief or the GL reads it** — it carries no cost, and a bug in it can make a chart wrong, never the
+books. The two opening-stock writers (`open-stock-balance.ts`, `bulk-opening-stock.ts`) do not
+write it yet; a rebuild picks their rows up.
+
 ---
 
 ## 7. Costing — where a number comes from and when it freezes

@@ -43,6 +43,8 @@ const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
  */
 const ENRICH_COMPANY_FROM_DOMAIN = 'enrichCompanyFromDomain'
 const ENRICH_COMPANY_FROM_WEBSITE = 'enrichCompanyFromWebsite'
+/** Field twin of the lifecycle handler in `system-entity-rules.ts`; same key on purpose. */
+const INVALIDATE_SUBPART_EDGES = 'invalidateSubpartEdges'
 
 /** Adapt a native batch event to the legacy `FieldTriggerEvent` shape. */
 function asFieldTriggerEvent(
@@ -76,6 +78,10 @@ export function registerFieldSystemRules(): void {
   registerNativeRuleHandler(RECALC_PART_COST_SUBPART, async (event) => {
     const { recalculatePartCost } = await import('./post/bom-cost-triggers')
     await recalculatePartCost(asFieldTriggerEvent(event, 'subpart_quantity'))
+  })
+  registerNativeRuleHandler(INVALIDATE_SUBPART_EDGES, async (event) => {
+    const { onCacheEvent } = await import('../cache/invalidate')
+    await onCacheEvent('subpart.changed', { orgId: event.organizationId })
   })
   registerNativeRuleHandler(CLEAR_OTHER_PREFERRED, async (event) => {
     const { clearOtherPreferred } = await import('./post/vendor-part-triggers')
@@ -201,7 +207,10 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     fieldRef: { systemAttribute: 'subpart_quantity' },
     on: 'changed',
     skipOnCreate: true,
-    actions: [{ type: 'native', handler: RECALC_PART_COST_SUBPART }],
+    actions: [
+      { type: 'native', handler: RECALC_PART_COST_SUBPART },
+      { type: 'native', handler: INVALIDATE_SUBPART_EDGES },
+    ],
   },
   {
     // `skipOnCreate` is deliberately ABSENT: a line raised with its price

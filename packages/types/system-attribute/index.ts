@@ -276,6 +276,12 @@ export const SYSTEM_ATTRIBUTES = [
   'part_stock_status',
   'part_reorder_point',
   'part_reorder_qty',
+  // MRP planning overrides; null means the planner's proposal (plans/mrp/02 §4)
+  'part_mrp_buffer_mode',
+  'part_build_lead_time_days',
+  'part_build_cycle_days',
+  'part_mrp_lead_time_factor',
+  'part_mrp_variability_factor',
   'part_line_items', // inverse of line_item_part
   'part_stock_movements',
 
@@ -899,6 +905,11 @@ export const SYSTEM_ATTRIBUTES = [
   'company_w9_on_file',
   'company_is_1099_eligible',
   'company_default_1099_box',
+
+  // ─── Supplier ordering rhythm (plans/mrp/02 §4.2) ───────────────
+  'company_order_mode',
+  'company_order_cycle_days',
+  'company_next_order_date',
 
   // ─── GL account (the chart) ─────────────────────────────────────
   // P1/P2: the ledger is ours and the accounting system is an EXPORTER. A

@@ -45,6 +45,7 @@ import { migration189ThreadTriageFields } from './migrations/189-thread-triage-f
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
 import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
 import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
+import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -223,6 +224,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration190PartsAndServices,
   // Appends one option to an existing system SINGLE_SELECT: Shopify's `UNLISTED` product status (D10).
   migration191ProductStatusUnlisted,
+  // MRP planning overrides on `part` and the supplier ordering rhythm on `company`, no backfill.
+  migration197MrpPlanningFields,
 ]
 
 /**
