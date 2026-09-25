@@ -24,6 +24,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseFileRef } from '@auxx/types/file-ref'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { dayKeyOfLocalDate } from '@auxx/utils/calendar-day'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
@@ -66,11 +67,14 @@ function isReadableQuantity(value: number | null): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
-/** ISO, only when the printed string actually parses as a date. */
+/** The printed day as `YYYY-MM-DD`, only when the string actually parses as a date. */
 function parseIntakeDate(text: string | null): string | null {
   if (!text) return null
-  const parsed = Date.parse(text)
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null
+  const iso = /^(\d{4}-\d{2}-\d{2})/.exec(text.trim())
+  if (iso) return iso[1]!
+  // A non-ISO string ("Sep 10, 2026") parses as local midnight, so the local getters read the printed day.
+  const parsed = new Date(text)
+  return Number.isFinite(parsed.getTime()) ? dayKeyOfLocalDate(parsed) : null
 }
 
 /**

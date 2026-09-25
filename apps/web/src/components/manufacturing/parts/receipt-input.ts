@@ -17,6 +17,7 @@
 // before committing. It is a preview of a server-computed number, not the number
 // being submitted.
 
+import { calendarDayKey } from '@auxx/lib/field-values/client'
 import type { ReceiptCostInputs, ReceiptCostParts } from '@auxx/lib/inventory/receiving/client'
 import { computeReceiptLandedBreakdown } from '@auxx/lib/inventory/receiving/client'
 
@@ -27,7 +28,8 @@ export interface ReceiptInput {
   vendorPartId?: string
   /** The BASE price per unit, minor units — never the landed cost. */
   vendorUnitPrice: number
-  occurredAt: Date
+  /** The accounting day, `YYYY-MM-DD`; the server resolves it in the book zone. */
+  day?: string
   reference?: string
   reason?: string
 }
@@ -45,7 +47,7 @@ export interface ReceiptFormState {
   > | null
   /** The base price as it stands in the input — prefilled, possibly edited. */
   unitPrice: number | null
-  /** ISO string from the date input. */
+  /** The DATE input's value (the picked day at UTC midnight). */
   occurredAt: string
   reference: string
   reason: string
@@ -96,7 +98,7 @@ export function buildReceiptInput(state: ReceiptFormState): ReceiptInput | null 
     // The base only. The server reads the supplier row for the adders and
     // resolves the landed cost itself — see the note at the top of this file.
     vendorUnitPrice: breakdown.base,
-    occurredAt: new Date(state.occurredAt),
+    ...(calendarDayKey(state.occurredAt) ? { day: calendarDayKey(state.occurredAt)! } : {}),
     ...(reference ? { reference } : {}),
     ...(reason ? { reason } : {}),
   }

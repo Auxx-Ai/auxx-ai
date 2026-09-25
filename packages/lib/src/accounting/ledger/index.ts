@@ -285,6 +285,7 @@ export {
   EXPORT_AVENUES,
   type ExportAvenue,
   type ExportSettings,
+  instantForBookDay,
   isSummaryGrainAvenue,
   type OpeningPresence,
   type OpeningTrialBalanceSummary,

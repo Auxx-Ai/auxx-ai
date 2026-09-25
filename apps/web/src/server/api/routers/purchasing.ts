@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
 import { type Database, schema } from '@auxx/database'
+import { instantForBookDay } from '@auxx/lib/accounting/ledger'
 import {
   allocateLandedCost,
   checkIntakeModelCapability,
@@ -64,6 +65,7 @@ import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 import { vendorCreditRouter } from './vendor-credit'
 
@@ -101,7 +103,6 @@ async function requireBillIntakeRecord(
 }
 
 /** A calendar day, the shape every accounting date crosses the wire in. */
-const calendarDaySchema = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 /**
  * A RATE - money per one of something (`unitCost`, `vendorUnitPrice`, a line's
@@ -508,8 +509,8 @@ export const purchasingRouter = createTRPCRouter({
          * invoiced is the number the landed cost is built on.
          */
         vendorUnitPrice: rateMinorUnits.optional(),
-        /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
-        occurredAt: z.coerce.date().optional(),
+        /** The ACCOUNTING day, which is not `createdAt`. Defaults to today in the book zone. */
+        day: calendarDaySchema.optional(),
         reference: z.string().max(255).optional(),
         reason: z.string().max(2000).optional(),
         purchaseOrderLineId: z.string().min(1).optional(),
@@ -520,7 +521,9 @@ export const purchasingRouter = createTRPCRouter({
       const movementDefId = await requireDefId(organizationId, 'stock_movement')
       ctx.capabilities.assertEditEntity(movementDefId)
 
-      const result = await receiveStock(ctx.db, organizationId, userId, input)
+      const { day, ...rest } = input
+      const occurredAt = day ? await instantForBookDay(organizationId, day) : undefined
+      const result = await receiveStock(ctx.db, organizationId, userId, { ...rest, occurredAt })
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -548,7 +551,8 @@ export const purchasingRouter = createTRPCRouter({
     .input(
       z.object({
         lines: z.array(purchaseOrderLine).min(1).max(200),
-        occurredAt: z.coerce.date().optional(),
+        /** The ACCOUNTING day. Defaults to today in the book zone. */
+        day: calendarDaySchema.optional(),
         reference: z.string().max(255).optional(),
         reason: z.string().max(2000).optional(),
       })
@@ -558,7 +562,12 @@ export const purchasingRouter = createTRPCRouter({
       const movementDefId = await requireDefId(organizationId, 'stock_movement')
       ctx.capabilities.assertEditEntity(movementDefId)
 
-      const result = await receivePurchaseOrder(ctx.db, organizationId, userId, input)
+      const { day, ...rest } = input
+      const occurredAt = day ? await instantForBookDay(organizationId, day) : undefined
+      const result = await receivePurchaseOrder(ctx.db, organizationId, userId, {
+        ...rest,
+        occurredAt,
+      })
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -620,8 +629,8 @@ export const purchasingRouter = createTRPCRouter({
         quantity: z.number().finite().nonnegative(),
         /** What a unit cost. A RATE - at most RATE_DECIMALS places, zero allowed. */
         unitCost: intakeRateMinorUnits.optional(),
-        /** The count day. Defaults to now. */
-        occurredAt: z.coerce.date().optional(),
+        /** The count day, `YYYY-MM-DD` in the book time zone. Defaults to today there. */
+        day: calendarDaySchema.optional(),
         notes: z.string().max(2000).optional(),
       })
     )
@@ -687,8 +696,8 @@ export const purchasingRouter = createTRPCRouter({
   runSetCounts: capabilityProcedure
     .input(
       z.object({
-        /** The count day for every entry that names none of its own. Defaults to now. */
-        occurredAt: z.coerce.date().optional(),
+        /** `YYYY-MM-DD`, for every entry that names none of its own. Defaults to today. */
+        day: calendarDaySchema.optional(),
         adjustAnchored: z.boolean().optional(),
         entries: z
           .array(
@@ -698,7 +707,7 @@ export const purchasingRouter = createTRPCRouter({
               quantity: z.number().finite().nonnegative(),
               /** What a unit cost. A RATE - at most RATE_DECIMALS places, zero allowed. */
               unitCost: intakeRateMinorUnits.optional(),
-              date: z.coerce.date().optional(),
+              day: calendarDaySchema.optional(),
             })
           )
           .min(1),

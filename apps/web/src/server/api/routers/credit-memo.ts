@@ -32,9 +32,8 @@ import {
 import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { createTRPCRouter, permissionProcedure } from '../trpc'
-
-const calendarDaySchema = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 export const creditMemoRouter = createTRPCRouter({
   /**

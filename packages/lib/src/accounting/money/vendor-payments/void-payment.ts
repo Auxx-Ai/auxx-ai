@@ -15,6 +15,7 @@ import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
+import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { runMoneyCommand } from '../commands/run-money-command'
 import { listLiveApplications } from '../reads'
 import { insertApplication } from '../writes'
@@ -82,7 +83,7 @@ export async function voidVendorPayment(
       payload: { moneyTransactionId: input.moneyTransactionId, reason: input.reason ?? null },
     },
     async (tx, commandId) => {
-      const effectiveDate = new Date().toISOString().split('T')[0]!
+      const effectiveDate = await todayInBookTimeZone(input.organizationId)
       // Live rows only, so an application already taken back is not reversed
       // twice (LIB-READS §0.1 bug 1).
       const applications = await listLiveApplications(

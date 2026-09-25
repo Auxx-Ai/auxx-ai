@@ -143,11 +143,11 @@ describe('buildReceivePoInput', () => {
     expect(input).not.toHaveProperty('reason')
   })
 
-  it('sends the accounting date it was given', () => {
+  it('sends the picked accounting day, never an instant', () => {
     const input = buildReceivePoInput([line()], prefillDraft([line()]), {
       ...META,
-      occurredAt: '2026-01-04T09:30:00.000Z',
+      occurredAt: '2026-01-04T00:00:00.000Z',
     })
-    expect(input?.occurredAt.toISOString()).toBe('2026-01-04T09:30:00.000Z')
+    expect(input?.day).toBe('2026-01-04')
   })
 })

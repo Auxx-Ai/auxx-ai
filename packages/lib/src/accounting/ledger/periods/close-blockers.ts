@@ -25,6 +25,9 @@
 // the console renders it, and a count-to-sentence function that ran only on the
 // server would have to be duplicated in the browser to render a badge.
 
+import { formatCurrency } from '@auxx/utils/currency'
+import { LEDGER_CURRENCY } from '../setup/ledger-currency'
+
 /** Which piece of work an item is, so a screen picks the remedy without parsing prose. */
 export type CloseBlockerItemKey =
   | 'unposted_shipments'
@@ -258,7 +261,7 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
   if (cutoverDelta !== 0) {
     items.push({
       key: 'inventory_cutover_value_changed',
-      label: `The value of your parts at the cutover changed by ${cutoverDelta} since the last difference entry`,
+      label: `The value of your parts at the cutover changed by ${formatMinor(cutoverDelta)} since the last difference entry`,
       remedy:
         'Review the opening inventory difference under Accounting settings and post the change; ' +
         'the entry is dated the day after the cutover and carries only the delta.',
@@ -292,10 +295,10 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
   if (difference !== 0) {
     items.push({
       key: 'inventory_balance',
-      label: `Inventory is out by ${difference} against the movement ledger`,
+      label: `Inventory is out by ${formatMinor(difference)} against the movement ledger`,
       remedy:
-        `The three inventory accounts hold ${ledgerMinor} through the end of ${month} and the ` +
-        `opening baseline plus the movements since the cutover sum to ${subledgerMinor}. ` +
+        `The three inventory accounts hold ${formatMinor(ledgerMinor)} through the end of ${month} and the ` +
+        `opening baseline plus the movements since the cutover sum to ${formatMinor(subledgerMinor)}. ` +
         'Reconcile them before closing.',
       ref: periodKey,
     })
@@ -305,10 +308,10 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
   if (standardValueMinor != null && standardValueMinor !== ledgerMinor) {
     items.push({
       key: 'inventory_standard_value',
-      label: `Inventory is out by ${standardValueMinor - ledgerMinor} against the parts list`,
+      label: `Inventory is out by ${formatMinor(standardValueMinor - ledgerMinor)} against the parts list`,
       remedy:
-        `The parts list values what is on hand at ${standardValueMinor} and the three inventory ` +
-        `accounts hold ${ledgerMinor} through the end of ${month}. ` +
+        `The parts list values what is on hand at ${formatMinor(standardValueMinor)} and the three inventory ` +
+        `accounts hold ${formatMinor(ledgerMinor)} through the end of ${month}. ` +
         (pendingCostMovements > 0
           ? `${pendingCostMovements} ${pendingCostMovements === 1 ? 'movement is' : 'movements are'} ` +
             'still waiting for a standard cost, so the two cannot agree until those are valued; ' +
@@ -336,6 +339,10 @@ export function firstOpenMonthAfter(cutoff: string, lockedThrough: string | null
   const nextYear = month === 12 ? year + 1 : year
   const nextMonth = month === 12 ? 1 : month + 1
   return `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}`
+}
+
+function formatMinor(minor: number): string {
+  return formatCurrency(minor, { currencyCode: LEDGER_CURRENCY })
 }
 
 /** The lead sentence the inventory checks open with, before their items. */

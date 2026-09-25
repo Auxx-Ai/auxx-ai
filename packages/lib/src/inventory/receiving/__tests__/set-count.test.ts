@@ -93,7 +93,7 @@ import { anchorDayFor, endOfDayInstant, setCount } from '../set-count'
 
 const ORG = 'org_1'
 const db = { transaction: async (fn: (tx: unknown) => unknown) => fn(db) } as never
-const D = new Date('2026-03-10T15:00:00.000Z')
+const D = '2026-03-10'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -125,7 +125,7 @@ function written(): Record<string, unknown> {
 }
 
 async function count(input: Partial<Parameters<typeof setCount>[2]> = {}) {
-  const result = await setCount(db, ORG, { partId: 'part_1', quantity: 42, date: D, ...input })
+  const result = await setCount(db, ORG, { partId: 'part_1', quantity: 42, day: D, ...input })
   if (result.isErr()) throw result.error
   return result.value
 }
@@ -203,7 +203,7 @@ describe('a first count on a part with no history', () => {
   })
 
   it('refuses a bare zero: there is nothing to anchor', async () => {
-    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 0, date: D })
+    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 0, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     expect(h.createSpy).not.toHaveBeenCalled()
   })
@@ -230,18 +230,17 @@ describe('a further count on an anchored part', () => {
     const values = written()
     expect(values.stock_movement_type).toBe('adjust')
     expect(values.stock_movement_quantity).toBe(-5)
-    expect(values.stock_movement_occurred_at).toBe(D.toISOString())
+    expect(values.stock_movement_occurred_at).toBe('2026-03-10T00:00:00.000Z')
     expect(values).not.toHaveProperty('stock_movement_count_quantity')
   })
 
   // Q15: the adjust is dated D for N − net(D); what happened after D is not re-read here.
   it('allows a count dated before the latest movement and leaves later movements standing', async () => {
     h.net = 40
-    const backdated = new Date('2026-02-01T00:00:00.000Z')
-    const result = await count({ date: backdated })
+    const result = await count({ day: '2026-02-01' })
     expect(result.outcome).toBe('adjust')
     expect(result.delta).toBe(2)
-    expect(written().stock_movement_occurred_at).toBe(backdated.toISOString())
+    expect(written().stock_movement_occurred_at).toBe('2026-02-01T00:00:00.000Z')
   })
 
   it('writes nothing for a zero delta and says so', async () => {
@@ -253,29 +252,81 @@ describe('a further count on an anchored part', () => {
   })
 })
 
+// plans/mrp/09 §10.1: a day key is resolved in the book zone, never read back from UTC midnight.
+describe('the count day west of UTC', () => {
+  beforeEach(() => {
+    h.zone = 'America/Los_Angeles'
+    h.standardCost = 500
+  })
+
+  it('anchors a first count on the day given, at its start in the book zone', async () => {
+    const result = await count({ quantity: 10, day: '2026-09-22' })
+    expect(result.countDate).toBe('2026-09-22')
+    expect(written()).toMatchObject({
+      stock_movement_occurred_at: '2026-09-22T07:00:00.000Z',
+      stock_movement_count_date: '2026-09-22T00:00:00.000Z',
+    })
+  })
+
+  it('dates an adjust at the same resolved instant', async () => {
+    h.initial = {
+      movementId: 'mv_initial',
+      quantity: 50,
+      occurredAt: new Date('2026-09-10T07:00:00.000Z'),
+      countQuantity: 50,
+      countDate: '2026-09-10',
+    }
+    h.net = 4
+    await count({ quantity: 3, day: '2026-09-22' })
+    expect(written().stock_movement_occurred_at).toBe('2026-09-22T07:00:00.000Z')
+    expect(h.postSpy.mock.calls[0]![2]).toEqual([
+      expect.objectContaining({ occurredAt: new Date('2026-09-22T07:00:00.000Z') }),
+    ])
+  })
+
+  it('defaults to today in the book zone', async () => {
+    vi.useFakeTimers({ now: new Date('2026-09-23T03:00:00.000Z'), toFake: ['Date'] })
+    try {
+      const result = await count({ quantity: 10, day: undefined })
+      expect(result.countDate).toBe('2026-09-22')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('what it refuses', () => {
+  it('a count day that is not YYYY-MM-DD', async () => {
+    const result = await setCount(db, ORG, {
+      partId: 'part_1',
+      quantity: 1,
+      day: '2026-09-22T00:00:00.000Z',
+    })
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+  })
+
   it('a service', async () => {
     h.partKind = 'service'
-    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, date: D })
+    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     expect(h.createSpy).not.toHaveBeenCalled()
   })
 
   it('a negative count', async () => {
-    const result = await setCount(db, ORG, { partId: 'part_1', quantity: -1, date: D })
+    const result = await setCount(db, ORG, { partId: 'part_1', quantity: -1, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
   })
 
   it('a unit cost finer than a rate, or negative', async () => {
     for (const unitCost of [12.5001, -1]) {
-      const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, date: D, unitCost })
+      const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, day: D, unitCost })
       expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     }
   })
 
   it('a part holding a negative standard', async () => {
     h.standardCost = -5
-    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, date: D })
+    const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(UnprocessableEntityError)
   })
 })
@@ -350,7 +401,7 @@ describe('posting and QoH', () => {
         quantity: 2,
         extendedCost: 1000,
         glAccount: 'inventory_raw_materials',
-        occurredAt: D,
+        occurredAt: new Date('2026-03-10T00:00:00.000Z'),
       }),
     ])
     expect(options).toMatchObject({ actorUserId: 'user_system' })

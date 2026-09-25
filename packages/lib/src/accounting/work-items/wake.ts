@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, type Column, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { groupsByExternalRef, type WorkItemCode, type WorkItemStage } from './codes'
+import { workItemRefs } from './reads'
 
 const logger = createScopedLogger('accounting-work-items:wake')
 
@@ -170,7 +171,9 @@ export async function wakeWorkItemGroup(
       same(t.railId, group.railId),
       same(t.glAccountId, group.glAccountId),
       groupsByExternalRef(group.reasonCode)
-        ? same(t.externalRef, group.externalRef ?? null)
+        ? group.externalRef
+          ? sql`${workItemRefs({ reasonCode: sql`${t.reasonCode}`, externalRef: sql`${t.externalRef}`, detail: sql`${t.detail}` })} @> jsonb_build_array(${group.externalRef}::text)`
+          : isNull(t.externalRef)
         : undefined
     )
   )

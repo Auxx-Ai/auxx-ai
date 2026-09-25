@@ -14,6 +14,7 @@ export {
   describeUnmappedRoles,
   type IncompleteRevenueCounts,
   incompleteRevenueLead,
+  inventoryCheckLead,
   monthLabel,
 } from './close-blockers'
 export {

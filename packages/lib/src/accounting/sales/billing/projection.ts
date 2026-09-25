@@ -5,6 +5,7 @@ import { type Database, database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { dayKeyInZone } from '@auxx/utils/calendar-day'
 import { fromZonedTime } from 'date-fns-tz'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
@@ -20,6 +21,7 @@ import {
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { systemFieldMap } from '../../../resources/system-records'
 import { getOrganizationSetting } from '../../../settings'
+import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
 import {
   INVOICE_DRAFT_SUBJECT_TYPE,
   type InvoiceBillingKind,
@@ -49,10 +51,12 @@ function localDateStartUtc(dateIso: string, timezone: string): Date {
   return fromZonedTime(new Date(year, month - 1, day), timezone)
 }
 
-/** `WorkOrderVisit.occurrenceDate` else the local date part of `startTime` — the same
- * fallback used throughout money/gather.ts and billing-state.ts. */
-function visitDateKey(visit: WorkOrderVisitDateRow): string | undefined {
-  return visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0]
+/** `WorkOrderVisit.occurrenceDate`, else the book-zone day `startTime` falls on. */
+export function visitDay(
+  visit: { occurrenceDate: string | null; startTime: Date | null },
+  zone: string
+): string | undefined {
+  return visit.occurrenceDate ?? (visit.startTime ? dayKeyInZone(visit.startTime, zone) : undefined)
 }
 
 const WORK_ORDER_PROJECTION_ATTRS = [
@@ -213,6 +217,7 @@ export async function computeWorkOrderBillingProjection(input: {
 }): Promise<WorkOrderBillingProjection> {
   const db = input.db ?? database
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId, db)
+  const zone = await readBookTimeZoneOrUtc(input.organizationId)
   const workOrderValues = await readSystemValues(
     handler,
     input.organizationId,
@@ -405,7 +410,7 @@ export async function computeWorkOrderBillingProjection(input: {
     const cutoff = cutoffOccurrenceDate
     return visits.some((visit) => {
       if (allocatedVisitIds.has(visit.id)) return false
-      const dateKey = visitDateKey(visit)
+      const dateKey = visitDay(visit, zone)
       return dateKey !== undefined && dateKey <= cutoff
     })
   })()
@@ -580,14 +585,13 @@ export async function syncInvoiceBillingProjection(input: {
     kind = 'extra_work'
   else if (lines.some((row) => row.kind === 'contract')) kind = 'full_contract'
 
+  const zone = await readBookTimeZoneOrUtc(input.organizationId)
   const visitDates = await readVisits(
     db,
     input.organizationId,
     visits.map((visit) => visit.visitId)
   )
-  const dates = visitDates
-    .map((visit) => visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0])
-    .filter(Boolean) as string[]
+  const dates = visitDates.map((visit) => visitDay(visit, zone)).filter(Boolean) as string[]
   if (schedule) dates.push(schedule.occurrenceDate)
   dates.sort()
 

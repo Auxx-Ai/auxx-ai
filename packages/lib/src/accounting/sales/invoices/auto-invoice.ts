@@ -40,6 +40,7 @@ import {
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { systemFieldMap } from '../../../resources/system-records'
 import { getOrganizationSetting } from '../../../settings/settings-service'
+import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
 import {
   listInstallments,
   listVisitAllocationsForVisits,
@@ -50,7 +51,7 @@ import {
   createRecurringCharge,
   createVisitInvoice,
 } from '../billing/commands'
-import { syncWorkOrderBillingProjection } from '../billing/projection'
+import { syncWorkOrderBillingProjection, visitDay } from '../billing/projection'
 import {
   type GenerateInvoiceDraftInput,
   type GenerateInvoiceDraftResult,
@@ -113,6 +114,7 @@ export async function generateInvoiceDraft(
   input: GenerateInvoiceDraftInput
 ): Promise<GenerateInvoiceDraftResult> {
   const { organizationId, workOrderInstanceId, trigger, visitId, occurrenceDate } = input
+  const zone = await readBookTimeZoneOrUtc(organizationId)
 
   // ─── Step 1a: master switch (FIRST check) ───────────────────────────────────
   const autoEnabled = await getOrganizationSetting({
@@ -211,8 +213,7 @@ export async function generateInvoiceDraft(
       const claimed = new Set(allocated.map((row) => row.visitId))
       visitIds = visits
         .filter((visit) => {
-          const date =
-            visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? '9999-12-31'
+          const date = visitDay(visit, zone) ?? '9999-12-31'
           return date <= cutoff && !claimed.has(visit.id)
         })
         .map((visit) => visit.id)
@@ -294,9 +295,7 @@ export async function maybeGenerateVisitInvoiceDraft(visit: WorkOrderVisitRow): 
     const timing = typed ? (extractValue(typed) as string) : undefined
     if (timing !== 'per_visit_completed') return
 
-    const visitDate =
-      visit.occurrenceDate ??
-      (visit.startTime ? visit.startTime.toISOString().split('T')[0] : undefined)
+    const visitDate = visitDay(visit, await readBookTimeZoneOrUtc(visit.organizationId))
 
     await generateInvoiceDraft({
       organizationId: visit.organizationId,
@@ -373,7 +372,7 @@ export const generateDraftOnCompletion: EntityFieldChangeHandler = async (event)
 export async function setInvoiceSchedule(
   input: SetInvoiceScheduleInput
 ): Promise<RecurrenceRuleRow> {
-  const { organizationId, userId, workOrderInstanceId, pattern, timezone } = input
+  const { organizationId, userId, workOrderInstanceId, pattern } = input
 
   const parsed = recurrencePatternSchema.safeParse(pattern)
   if (!parsed.success) {
@@ -394,6 +393,8 @@ export async function setInvoiceSchedule(
     }
   }
 
+  // Occurrences become invoice dates, so they are expanded in the book zone, never the browser's.
+  const timezone = await readBookTimeZoneOrUtc(organizationId)
   const todayIso = todayLocalDate(timezone)
 
   const { rule } = await upsertRecurrenceRule(database, organizationId, {

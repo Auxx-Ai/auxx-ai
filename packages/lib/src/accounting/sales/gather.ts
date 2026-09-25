@@ -6,6 +6,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { addDaysToDayKey } from '@auxx/utils/calendar-day'
 import { BadRequestError } from '../../errors'
 import { firstTyped } from '../../field-values/client'
 import type { FileValue } from '../../field-values/converters'
@@ -15,6 +16,7 @@ import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
 import { systemFieldMap } from '../../resources/system-records'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { todayInBookTimeZone } from '../ledger/setup/book-time-zone'
 import {
   allocateInvoiceLine,
   getActiveAllocatedAmounts,
@@ -281,14 +283,13 @@ export async function createInvoiceShell(input: {
 
   // ─── Step 3: create the invoice ─────────────────────────────────────────────
   const dueDays = await getOrganizationSetting({ organizationId, key: 'documents.invoice.dueDays' })
-  const today = new Date()
-  const dueDate = new Date(today.getTime() + Number(dueDays ?? 30) * 24 * 60 * 60 * 1000)
+  const today = await todayInBookTimeZone(organizationId)
 
   const invoiceValues: Record<string, unknown> = {
     invoice_contact: contactRecordId,
     invoice_work_order: workOrderRecordId,
-    invoice_issued_at: issuedAt ?? today.toISOString().split('T')[0],
-    invoice_due_date: dueDate.toISOString().split('T')[0],
+    invoice_issued_at: issuedAt ?? today,
+    invoice_due_date: addDaysToDayKey(today, Number(dueDays ?? 30)),
     ...extraValues,
   }
   if (discountType) invoiceValues.invoice_discount_type = discountType

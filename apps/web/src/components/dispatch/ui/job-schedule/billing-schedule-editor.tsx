@@ -1,7 +1,6 @@
 // apps/web/src/components/dispatch/ui/job-schedule/billing-schedule-editor.tsx
 'use client'
 
-import { detectTimezone } from '@auxx/config/client'
 import { weekStartToIndex } from '@auxx/lib/availability/client'
 import { type RecurrencePattern, recurrencePatternSchema } from '@auxx/lib/recurrence/client'
 import { Button } from '@auxx/ui/components/button'
@@ -28,8 +27,8 @@ export interface BillingScheduleEditorProps {
  * Billing schedule editor (money MI2 build spec §K.2) — reuses M2c's `RecurrencePatternFields`
  * (pattern + end condition only, no time/duration/assignee — those stay null for
  * `invoice_drafts` rules) inside a popover from the job view's Billing row. Save writes
- * `money.setInvoiceSchedule` (whole-rule edit, §F.1 — timezone is re-detected from the browser
- * on every save, the `schedule-popover.tsx` convention); Remove clears the rule (existing
+ * `money.setInvoiceSchedule` (whole-rule edit, §F.1; the server expands it in the book time
+ * zone); Remove clears the rule (existing
  * drafts are kept) behind `useConfirm`.
  */
 export function BillingScheduleEditor({
@@ -78,7 +77,7 @@ export function BillingScheduleEditor({
 
   const handleSave = () => {
     if (!patternValid) return
-    setSchedule.mutate({ workOrderRecordId, pattern, timezone: detectTimezone() })
+    setSchedule.mutate({ workOrderRecordId, pattern })
   }
 
   const handleRemove = async () => {

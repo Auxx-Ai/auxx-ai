@@ -1,47 +1,29 @@
 // apps/web/src/components/manufacturing/ui/settings/standard-cost-section.tsx
 'use client'
 
-// The org-wide standard-cost roll, the `?s=standard` tab of Parts > Manage >
-// Costing (money 52-parts-costing-page.md §2.2).
+// The standard-cost section of Parts > Manage > General (money 52-parts-costing-page.md §2.2):
+// the caller's setting rows, then the org-wide roll.
 //
-// 🛑 A roll restates the balance sheet, so this is never a button that just
-// fires. THE PREVIEW IS THE COMPONENT: `builds.previewRoll` runs the same plan
-// the mutation will run and reports the revaluation delta per part and summed,
-// plus every part that cannot be valued and why, in plain words. Confirm sits
-// BELOW the numbers, not beside a trigger.
+// 🛑 A roll restates the balance sheet, so the preview (`builds.previewRoll`, the same plan the
+// mutation runs) is shown first and Confirm sits below the numbers.
 //
-// ⚠️ `builds.previewRoll` and `builds.roll` take `partIds` as OPTIONAL, so
-// omitting it is already the org-wide roll this page wants. No new procedure.
-//
-// ── Why it lives here, and what that removed ─────────────────────────────────
-//
-// It used to be a section of Accounting > General, and it carried a bespoke
-// read-only fallback because of it: both procedures are `capabilityProcedure` +
-// `assertEditEntity(part def)` rather than a `ledger.*` key, so a bookkeeper
-// with full ledger access and no part rights still had to reach the period and
-// Finalize rows on that page, and had to be told why this one section was shut.
-//
-// 🛑 That fallback is GONE, and moving the section is what deleted it. On this
-// page the section's gate and the page's gate are the same call - `Costing`
-// itself gates on edit of the `part` def (`costing-settings-page.tsx`), which is
-// exactly what these two procedures assert - so an actor who cannot roll never
-// reaches this component at all. A read-only branch here would be unreachable
-// by construction, and an unreachable branch that explains a permission is worse
-// than none: it rots without anybody noticing it stopped being true.
+// The page gates on `settingsManage`; the roll asserts edit on the `part` def, so it only renders
+// for an actor who can edit parts.
 
 import { FieldType } from '@auxx/database/enums'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { skipReasonLabel } from '@auxx/lib/inventory/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import { keepPreviousData } from '@tanstack/react-query'
 import { Calculator } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { SettingsSection } from '~/components/global/settings-page'
 import { useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -50,16 +32,12 @@ import { api } from '~/trpc/react'
 /** How many skipped parts to name before summarising the rest. */
 const SKIPPED_VISIBLE = 8
 
-export function StandardCostSection() {
-  // The roll's authority is edit on the `part` definition, so the query resolves
-  // the same def id the server asserts against. The PAGE redirects on this same
-  // answer; this is only what keeps the preview from firing a request the server
-  // would refuse while access is still hydrating.
+export function StandardCostSection({ children }: { children?: ReactNode }) {
   const partDefId = useResourceProperty('part', 'id')
   const { canEditEntity } = useAccess()
   const canRoll = partDefId ? canEditEntity(partDefId) : false
 
-  const [effectiveAt, setEffectiveAt] = useState<string>(() => new Date().toISOString())
+  const [effectiveAt, setEffectiveAt] = useState<string>(() => toCalendarDayIso(new Date()))
 
   // A fresh effective date whenever the section regains the ability to roll, a
   // stale one left over from a tab somebody abandoned yesterday would silently
@@ -72,7 +50,7 @@ export function StandardCostSection() {
   // without it every change to it blanks the whole preview (15 §4a), and this
   // one is org-wide, so the list that unmounts mid-keystroke is every part.
   const preview = api.builds.previewRoll.useQuery(
-    { effectiveAt: new Date(effectiveAt) },
+    { day: calendarDayKey(effectiveAt) ?? undefined },
     {
       enabled: canRoll,
       retry: false,
@@ -92,7 +70,7 @@ export function StandardCostSection() {
 
   async function handleRoll() {
     try {
-      await roll.mutateAsync({ effectiveAt: new Date(effectiveAt) })
+      await roll.mutateAsync({ day: calendarDayKey(effectiveAt) ?? undefined })
       await utils.builds.previewRoll.invalidate()
     } catch {
       // onError above already surfaced the toast.
@@ -100,28 +78,39 @@ export function StandardCostSection() {
   }
 
   return (
-    <Section
-      icon={<Calculator className='size-4' />}
+    <SettingsSection
+      icon={Calculator}
       title='Standard cost'
-      description="Freeze today's cost as the value every stock movement is stamped with, across every part. Roll the standard first: a revaluation is the change in standard times the quantity on hand, so it costs nothing until stock exists, and it is never free again afterwards."
-      collapsible={false}>
+      description="Freeze today's cost as the value every stock movement is stamped with, across every part. Roll the standard first: a revaluation is the change in standard times the quantity on hand, so it costs nothing until stock exists, and it is never free again afterwards.">
       <div className='space-y-4'>
-        <FieldPanel className='p-0' resizeId='parts-costing-standard-cost' defaultLabelWidth={220}>
-          <FieldPanelRow
-            title='Effective'
-            type={BaseType.DATE}
-            showIcon
-            description='When the new standards take effect.'>
-            <FieldInputAdapter
-              fieldType={FieldType.DATETIME}
-              value={effectiveAt}
-              onChange={(val) => setEffectiveAt((val as string) ?? new Date().toISOString())}
-              disabled={roll.isPending}
-            />
-          </FieldPanelRow>
+        <FieldPanel
+          className='mt-1 p-0'
+          resizeId='parts-general-auto-build'
+          defaultLabelWidth={220}>
+          {children}
+          {canRoll && (
+            <FieldPanelRow
+              title='Effective'
+              type={BaseType.DATE}
+              showIcon
+              description='When the new standards take effect.'>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                value={effectiveAt}
+                onChange={(val) => setEffectiveAt((val as string) ?? new Date().toISOString())}
+                disabled={roll.isPending}
+              />
+            </FieldPanelRow>
+          )}
         </FieldPanel>
 
-        {preview.isPending ? (
+        <p className='text-muted-foreground text-xs'>
+          Labor and overhead rates are set per part and absorbed only by a subassembly or finished
+          good. A first standard never overwrites an existing one, so a supplier's price change
+          moves the part's cost and leaves its standard; re-valuing is what the roll is for.
+        </p>
+
+        {!canRoll ? null : preview.isPending ? (
           <div className='space-y-2'>
             <Skeleton className='h-5 w-full' />
             <Skeleton className='h-5 w-full' />
@@ -238,7 +227,7 @@ export function StandardCostSection() {
           </div>
         ) : null}
       </div>
-    </Section>
+    </SettingsSection>
   )
 }
 

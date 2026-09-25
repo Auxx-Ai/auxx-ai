@@ -206,7 +206,7 @@ describe('postVendorBill', () => {
 
     expect(lastWrite()).toContainEqual({
       fieldId: 'vendor_bill_billed_at',
-      value: '2026-08-31T12:00:00.000Z',
+      value: '2026-08-31',
     })
   })
 

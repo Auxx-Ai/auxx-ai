@@ -49,6 +49,7 @@
 // set, which is the failure mode 25 §5.2 names by hand.
 
 import { FieldType } from '@auxx/database/enums'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import {
   BACKFILL_GROUPINGS,
   type BackfillGrouping,
@@ -58,6 +59,7 @@ import {
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { toastError } from '@auxx/ui/components/toast'
+import { previousDayKey } from '@auxx/utils/calendar-day'
 import { keepPreviousData } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -103,8 +105,8 @@ interface BackfillDialogProps {
 
 export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDialogProps) {
   const [page, setPage] = useState<'plan' | 'result'>('plan')
-  const [from, setFrom] = useState<string>(() => startOfYear().toISOString())
-  const [to, setTo] = useState<string>(() => new Date().toISOString())
+  const [from, setFrom] = useState<string>(() => startOfYear())
+  const [to, setTo] = useState<string>(() => toCalendarDayIso(new Date()))
   const [grouping, setGrouping] = useState<BackfillGrouping>('month')
   const [status, setStatus] = useState<BackfillStatus>('planned')
   const [periodFilter, setPeriodFilter] = useState<string | null>(null)
@@ -120,8 +122,8 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
   useEffect(() => {
     if (!open) return
     setPage('plan')
-    setFrom(startOfYear().toISOString())
-    setTo(new Date().toISOString())
+    setFrom(startOfYear())
+    setTo(toCalendarDayIso(new Date()))
     setGrouping('month')
     setStatus('planned')
     setPeriodFilter(null)
@@ -129,14 +131,15 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
     setResult(null)
   }, [open])
 
-  const fromDate = useMemo(() => new Date(from), [from])
-  const toDate = useMemo(() => new Date(to), [to])
+  // Days, not instants: the server resolves them in the book zone.
+  const fromDay = calendarDayKey(from) ?? ''
+  const toDay = calendarDayKey(to) ?? ''
 
   // §7.3 / the `BackfillGrouping` contract: `build_completed_at` decides which
   // month-end entry reflects a build, so one build for a multi-month range
   // misstates every month it spans. Not selectable rather than disabled — a
   // control that cannot be operated is worse than one that is not offered.
-  const rangeGroupingBarred = status === 'completed' && spansSeveralMonths(fromDate, toDate)
+  const rangeGroupingBarred = status === 'completed' && spansSeveralMonths(fromDay, toDay)
   const groupingOptions = useMemo(
     () =>
       BACKFILL_GROUPINGS.filter((value) => value !== 'range' || !rangeGroupingBarred).map(
@@ -150,7 +153,7 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
   }, [rangeGroupingBarred, grouping])
 
   const preview = api.builds.previewBackfill.useQuery(
-    { from: fromDate, to: toDate, grouping, status },
+    { from: fromDay, to: toDay, grouping, status },
     {
       enabled: open && page === 'plan',
       retry: false,
@@ -172,6 +175,7 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
   const preflight = data?.preflight ?? null
   const refusal = data?.refusal ?? null
   const cutoff = data?.cutoff ?? null
+  const cutoffDay = data?.cutoffDay ?? null
 
   const runBackfill = api.builds.runBackfill.useMutation({
     onError: (error) => toastError({ title: 'Backfill failed', description: error.message }),
@@ -181,8 +185,8 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
     if (!plan || plan.buildCount === 0) return
     try {
       const summary = await runBackfill.mutateAsync({
-        from: fromDate,
-        to: toDate,
+        from: fromDay,
+        to: toDay,
         grouping,
         status,
       })
@@ -288,12 +292,12 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
 
           {refusal && <BatchDialogNote tone='warning'>{refusal}</BatchDialogNote>}
 
-          {refusal && cutoff && toDate.getTime() > cutoff.getTime() && (
+          {refusal && cutoffDay && toDay > cutoffDay && (
             <div>
               <Button
                 variant='outline'
                 size='sm'
-                onClick={() => setTo(new Date(cutoff).toISOString())}>
+                onClick={() => setTo(`${cutoffDay}T00:00:00.000Z`)}>
                 Use the cutoff date
               </Button>
             </div>
@@ -535,18 +539,15 @@ function BackfillResult({
 
 // ─── Small pieces ────────────────────────────────────────────────────────
 
-/** January 1 of the current year — the range the cutover actually asks for. */
-function startOfYear(): Date {
-  return new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1))
+/** January 1 of the viewer's current year, as the DATE input's value. */
+function startOfYear(): string {
+  return `${new Date().getFullYear()}-01-01T00:00:00.000Z`
 }
 
 /** Does `[from, to)` cross a calendar month boundary? Mirrors the server's predicate. */
-function spansSeveralMonths(from: Date, to: Date): boolean {
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return false
-  const last = new Date(to.getTime() - 1)
-  return (
-    from.getUTCFullYear() !== last.getUTCFullYear() || from.getUTCMonth() !== last.getUTCMonth()
-  )
+function spansSeveralMonths(from: string, to: string): boolean {
+  if (!from || !to) return false
+  return from.slice(0, 7) !== previousDayKey(to).slice(0, 7)
 }
 
 function formatDate(value: Date | string): string {

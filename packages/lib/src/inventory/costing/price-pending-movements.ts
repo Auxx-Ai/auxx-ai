@@ -17,7 +17,7 @@ import {
   type StoredInventoryDocumentRow,
   valuedDocumentRow,
 } from '../../accounting/ledger/post/post-inventory-document'
-import { deleteWorkItemsAtStage } from '../../accounting/work-items/write'
+import { deleteWorkItemsAtStage, refreshPendingParts } from '../../accounting/work-items/write'
 import { getOrgCache } from '../../cache'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
 import { findSystemRecordIdsByValue } from '../../resources/system-records'
@@ -99,6 +99,7 @@ export async function pricePendingMovements(
       const posted = await postDocuments(db, organizationId, rows, userId)
       await resolveWorkItems(db, organizationId, {
         pricedMovementIds,
+        buildIds: [...new Set(rows.flatMap((row) => (row.buildId ? [row.buildId] : [])))],
         finishedBuildIds: posted.finishedBuildIds,
       })
 
@@ -224,13 +225,18 @@ async function postDocuments(
 
 /**
  * Clear the `price` work items this pass discharged: a movement's own row, a finished build's
- * row, and a dispatch's row once none of its `pendingMovementIds` is pending any more. A dispatch
- * row with no ids (re-staged from `relieve`, migration 193) is the sweep handler's to re-derive.
+ * row, and a dispatch's row once none of its `pendingMovementIds` is pending any more. A build or
+ * dispatch still waiting is re-pointed at the parts that still hold it. A dispatch row with no
+ * ids (re-staged from `relieve`, migration 193) is the sweep handler's to re-derive.
  */
 async function resolveWorkItems(
   db: Database,
   organizationId: string,
-  input: { pricedMovementIds: readonly string[]; finishedBuildIds: readonly string[] }
+  input: {
+    pricedMovementIds: readonly string[]
+    buildIds: readonly string[]
+    finishedBuildIds: readonly string[]
+  }
 ): Promise<void> {
   await deleteWorkItemsAtStage(db, organizationId, {
     sourceKind: 'stock_movement',
@@ -242,6 +248,16 @@ async function resolveWorkItems(
     sourceIds: input.finishedBuildIds,
     stage: 'price',
   })
+  const finished = new Set(input.finishedBuildIds)
+  for (const buildId of input.buildIds) {
+    if (finished.has(buildId)) continue
+    const waiting = await readBuildPendingParts(db, organizationId, buildId)
+    await refreshPendingParts(db, organizationId, {
+      sourceKind: 'build',
+      sourceId: buildId,
+      ...waiting,
+    })
+  }
 
   const t = schema.AccountingWorkItem
   const items = await db
@@ -274,6 +290,16 @@ async function resolveWorkItems(
       .map((item) => item.sourceId),
     stage: 'price',
   })
+  for (const item of candidates) {
+    const remaining = item.ids.filter((id) => stillPending.has(id))
+    if (remaining.length === 0) continue
+    const waiting = await readMovementPartIds(db, organizationId, remaining)
+    await refreshPendingParts(db, organizationId, {
+      sourceKind: 'fulfillment',
+      sourceId: item.sourceId,
+      ...waiting,
+    })
+  }
 }
 
 function pendingMovementIdsOf(detail: Record<string, unknown> | null): string[] {

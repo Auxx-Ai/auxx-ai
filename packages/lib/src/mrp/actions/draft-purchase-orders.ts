@@ -2,8 +2,9 @@
 
 import type { Database } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
-import { addDaysToDayKey, toDateKey } from '@auxx/utils/calendar-day'
+import { addDaysToDayKey } from '@auxx/utils/calendar-day'
 import type { Result } from 'neverthrow'
+import { todayInBookTimeZone } from '../../accounting/ledger/setup/book-time-zone'
 import {
   createPurchaseOrder,
   type PurchaseOrderLineValues,
@@ -173,7 +174,7 @@ export async function draftPurchaseOrders(
         throw new UnprocessableEntityError('Parts or companies are not provisioned')
       }
 
-      const today = toDateKey(new Date())
+      const today = await todayInBookTimeZone(organizationId)
       for (const [supplierId, lines] of bySupplier) {
         const partIds = lines.map((line) => line.partId)
         const leadTimes = lines

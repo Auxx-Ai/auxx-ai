@@ -43,6 +43,7 @@ const h = vi.hoisted(() => ({
   ),
   fillPendingCost: vi.fn(),
   deleteWorkItemsAtStage: vi.fn(async () => ({ isOk: () => true })),
+  refreshPendingParts: vi.fn(async () => ({ isOk: () => true })),
   finishPricedBuild: vi.fn(),
 }))
 
@@ -62,6 +63,7 @@ vi.mock('../../../cache', () => ({
 }))
 vi.mock('../../../accounting/work-items/write', () => ({
   deleteWorkItemsAtStage: h.deleteWorkItemsAtStage,
+  refreshPendingParts: h.refreshPendingParts,
 }))
 vi.mock('../../../accounting/sales/fulfillments/fields', () => ({
   loadFulfillmentFieldContext: async () => ({
@@ -375,6 +377,13 @@ describe('a first standard values every pending row of the part', () => {
       sourceIds: [],
       stage: 'price',
     })
+    // plans/mrp/09 §10.3: the waiting build is re-pointed at the part still holding it.
+    expect(h.refreshPendingParts).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'build',
+      sourceId: 'build_1',
+      partIds: ['part_b'],
+      pendingMovementIds: ['mv_p'],
+    })
 
     const complete = await pricePendingMovements(db, ORG, ['part_b'])
     expect(complete._unsafeUnwrap().finishedBuildIds).toEqual(['build_1'])
@@ -486,6 +495,13 @@ describe('the work items it resolves', () => {
       sourceKind: 'fulfillment',
       sourceIds: ['ful_1'],
       stage: 'price',
+    })
+    expect(h.refreshPendingParts).toHaveBeenCalledTimes(1)
+    expect(h.refreshPendingParts).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'fulfillment',
+      sourceId: 'ful_9',
+      partIds: ['part_x'],
+      pendingMovementIds: ['mv_2'],
     })
   })
 })

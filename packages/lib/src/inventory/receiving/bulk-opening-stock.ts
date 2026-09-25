@@ -64,7 +64,6 @@ export async function bulkOpenStockBalance(
         'Set count is not available until the stock movement cost fields are provisioned'
       )
 
-      const occurredAt = input.occurredAt ?? new Date()
       const excluded: OpeningStockSkip[] = []
       const failed: OpeningStockSkip[] = []
       const requested = input.entries.length
@@ -99,7 +98,7 @@ export async function bulkOpenStockBalance(
         const result = await setCount(db, organizationId, {
           partId: entry.partId,
           quantity: entry.quantity,
-          date: entry.date ?? occurredAt,
+          day: entry.day ?? input.day,
           unitCost: entry.unitCost,
           actorUserId: userId,
         })
@@ -143,7 +142,7 @@ export async function bulkOpenStockBalance(
       })
 
       return {
-        occurredAt,
+        day: input.day ?? null,
         requested,
         opened,
         excluded,

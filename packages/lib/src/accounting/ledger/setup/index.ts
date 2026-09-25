@@ -1,6 +1,11 @@
 // packages/lib/src/accounting/ledger/setup/index.ts
 
-export { readBookTimeZone, readBookTimeZoneOrUtc, todayInBookTimeZone } from './book-time-zone'
+export {
+  instantForBookDay,
+  readBookTimeZone,
+  readBookTimeZoneOrUtc,
+  todayInBookTimeZone,
+} from './book-time-zone'
 export { readCutoverFloor } from './cutover-floor'
 // TARGET §3: the export batch's settings.
 export {

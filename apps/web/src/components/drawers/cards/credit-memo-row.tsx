@@ -6,6 +6,7 @@
 // order drawer's Credit memos card (plans/accounting/tasks/done/10-credit-memos.md §6.1), so
 // the two lists read the same memo the same way.
 
+import { fromCalendarDayIso } from '@auxx/lib/field-values/client'
 import { getDefinitionId, getInstanceId, type RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -54,7 +55,8 @@ export function CreditMemoRow({
 
   const number = (values.credit_memo_number as string | null | undefined) ?? 'Credit memo'
   const status = unwrap(values.credit_memo_status) as string | undefined
-  const issuedAt = values.credit_memo_issued_at as string | null | undefined
+  // A DATE value: the stored UTC day as a local date, so no zone shows the day before.
+  const issuedDay = fromCalendarDayIso(values.credit_memo_issued_at)
   const total = values.credit_memo_total as number | null | undefined
   const balance = values.credit_memo_balance as number | null | undefined
   const statusOption = statusField?.options?.options?.find((o) => o.value === status)
@@ -75,9 +77,9 @@ export function CreditMemoRow({
               {statusOption?.label ?? status}
             </Badge>
           ) : null}
-          {showIssuedAt && issuedAt ? (
+          {showIssuedAt && issuedDay ? (
             <span className='text-xs text-muted-foreground'>
-              {format(new Date(issuedAt), 'MMM d, yyyy')}
+              {format(issuedDay, 'MMM d, yyyy')}
             </span>
           ) : null}
           <span className='text-sm tabular-nums'>{formatCurrency(total ?? 0, currencyCode)}</span>

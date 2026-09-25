@@ -17,6 +17,7 @@
 // this popover was opened from.
 
 import { FieldType } from '@auxx/database/enums'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { skipReasonLabel } from '@auxx/lib/inventory/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -44,7 +45,7 @@ export function RollStandardCostPopover({
   children,
 }: RollStandardCostPopoverProps) {
   const [open, setOpen] = useState(false)
-  const [effectiveAt, setEffectiveAt] = useState<string>(() => new Date().toISOString())
+  const [effectiveAt, setEffectiveAt] = useState<string>(() => toCalendarDayIso(new Date()))
 
   // A fresh effective date every time it opens — a stale one left over from a
   // popover somebody abandoned yesterday would silently backdate the roll.
@@ -58,7 +59,7 @@ export function RollStandardCostPopover({
   // button disables, mid-keystroke, on a surface whose entire job is showing
   // numbers before a write.
   const preview = api.builds.previewRoll.useQuery(
-    { partIds: [partId], effectiveAt: new Date(effectiveAt) },
+    { partIds: [partId], day: calendarDayKey(effectiveAt) ?? undefined },
     {
       enabled: open,
       retry: false,
@@ -75,7 +76,7 @@ export function RollStandardCostPopover({
 
   const handleRoll = async () => {
     try {
-      await roll.mutateAsync({ partIds: [partId], effectiveAt: new Date(effectiveAt) })
+      await roll.mutateAsync({ partIds: [partId], day: calendarDayKey(effectiveAt) ?? undefined })
       await utils.builds.previewRoll.invalidate()
       onSuccess?.()
       setOpen(false)
@@ -110,7 +111,7 @@ export function RollStandardCostPopover({
               showIcon
               description='When the new standard takes effect'>
               <FieldInputAdapter
-                fieldType={FieldType.DATETIME}
+                fieldType={FieldType.DATE}
                 value={effectiveAt}
                 onChange={(val) => setEffectiveAt((val as string) ?? new Date().toISOString())}
                 disabled={roll.isPending}

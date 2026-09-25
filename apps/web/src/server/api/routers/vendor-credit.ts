@@ -27,9 +27,8 @@ import {
 import { PermissionKey } from '@auxx/lib/permissions'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
+import { calendarDaySchema } from '~/server/api/calendar-day-schema'
 import { createTRPCRouter, permissionProcedure } from '../trpc'
-
-const calendarDaySchema = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 const lineSchema = z.object({
   description: z.string().max(500).optional(),

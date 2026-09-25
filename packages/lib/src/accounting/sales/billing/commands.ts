@@ -13,6 +13,7 @@ import { UnifiedCrudHandler } from '../../../resources/crud'
 import { flushTxWriteScope } from '../../../resources/crud/tx-write-flush'
 import { runInTxWrite, type TxWriteScope } from '../../../resources/crud/tx-write-scope'
 import { systemFieldMap } from '../../../resources/system-records'
+import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { copyLineOntoInvoice, createInvoiceShell, LINE_COPY_ATTRS } from '../gather'
 import { applyHeldDepositsToInvoice } from '../quotes/quote-deposit'
 import { recomputeTotals } from '../totals/totals-hooks'
@@ -460,7 +461,7 @@ export async function createRecurringCharge(
       subjectId: input.workOrderInstanceId,
     })
     if (!rule) throw new BadRequestError('Configure an invoice schedule before generating a charge')
-    const occurrenceDate = input.occurrenceDate ?? new Date().toISOString().split('T')[0]!
+    const occurrenceDate = input.occurrenceDate ?? (await todayInBookTimeZone(input.organizationId))
     const source = await getSourceLines({ ...input, db })
     const templates = source.lines.filter((line) => !line.visitId && line.amount > 0)
     if (templates.length === 0)

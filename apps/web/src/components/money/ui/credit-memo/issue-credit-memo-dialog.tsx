@@ -8,7 +8,7 @@
 // dialog uses, from `creditMemo.previewIssue`, which persists nothing.
 
 import { FieldType } from '@auxx/database/enums'
-import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -45,23 +45,11 @@ interface IssueCreditMemoDialogProps {
 }
 
 /**
- * A bare `YYYY-MM-DD`, which is what `creditMemo.previewIssue` and
- * `creditMemo.issue` accept (`z.iso.date()`).
- *
- * 🛑 **Through `normalizeCalendarDayIso` rather than by hand**, the same door
- * `use-opening-stock.ts` uses: it rounds to the NEAREST UTC midnight, so a
- * stored instant from either side of UTC lands on the day that was meant.
- * Truncating is off by one for every writer east of UTC.
- *
- * This exists because the dialog used to pass the raw value straight through -
- * a channel memo's stored `2018-01-13 08:03:34+00`, or `todayIso()`'s full
- * `2026-09-11T04:57:33.123Z`. Neither is a calendar day, so the router refused
- * both, `previewQuery` never resolved, and the Issue button stayed disabled
- * with nothing on screen to say why. No credit memo had ever been issued
- * through this dialog.
+ * The stored `credit_memo_issued_at` as the day the server reads it: sliced, as `reads.ts` does.
+ * Rounding to the nearest UTC midnight would move a noon-UTC anchor to the next day.
  */
-function toCalendarDay(value: unknown): string | null {
-  return normalizeCalendarDayIso(value)?.slice(0, 10) ?? null
+function storedDay(value: string | null): string | null {
+  return value && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null
 }
 
 /** Today as a bare calendar day, in the VIEWER's zone - the day they see. */
@@ -77,13 +65,13 @@ export function IssueCreditMemoDialog({
   currencyCode,
   onIssued,
 }: IssueCreditMemoDialogProps) {
-  const [date, setDate] = useState<string>(toCalendarDay(issuedAt) ?? todayCalendarDay())
+  const [date, setDate] = useState<string>(storedDay(issuedAt) ?? todayCalendarDay())
 
   // Reset the date to a fresh prefill every time the dialog opens.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens.
   useEffect(() => {
     if (!open) return
-    setDate(toCalendarDay(issuedAt) ?? todayCalendarDay())
+    setDate(storedDay(issuedAt) ?? todayCalendarDay())
   }, [open])
 
   // A plain `useQuery`, not debounced: the date is picked once and reviewed,
@@ -139,7 +127,7 @@ export function IssueCreditMemoDialog({
               // The adapter hands back a full ISO instant; the router wants a
               // day. Normalised here rather than at the call so `date` is
               // always exactly what gets sent.
-              onChange={(val) => setDate(toCalendarDay(val) ?? date)}
+              onChange={(val) => setDate(calendarDayKey(val) ?? date)}
               disabled={issue.isPending}
             />
           </FieldPanelRow>

@@ -7,7 +7,7 @@
  */
 
 import type { Database } from '@auxx/database'
-import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
+import { isDayKeyShape } from '@auxx/utils/calendar-day'
 import { UnprocessableEntityError } from '../../errors'
 import { isBuildablePartKind } from '../costing/client'
 import { buildSubpartGraph, loadOrgPricingData } from '../costing/cost-calculator'
@@ -93,16 +93,18 @@ export function orderParentsFirst(
 }
 
 /**
- * Every local day from `from` to `to` inclusive, in `timeZone`, whose end is at or before `now`
- * — a build dated in the future would complete demand that has not happened yet.
+ * Every day from `from` to `to` inclusive (`YYYY-MM-DD`, book-zone days) whose end in `timeZone`
+ * is at or before `now` — a build dated in the future would complete demand that has not happened yet.
  */
 export function listBackflushDays(
-  range: { from: Date; to: Date },
+  range: { from: string; to: string },
   timeZone: string,
   now: Date
 ): BackflushDay[] {
-  const first = periodKeyForDate(range.from, 'day', timeZone)
-  const last = periodKeyForDate(range.to, 'day', timeZone)
+  const { from: first, to: last } = range
+  if (!isDayKeyShape(first) || !isDayKeyShape(last)) {
+    throw new UnprocessableEntityError('A backflush range is two YYYY-MM-DD days')
+  }
   if (first > last) {
     throw new UnprocessableEntityError('The backflush range must not end before it starts')
   }

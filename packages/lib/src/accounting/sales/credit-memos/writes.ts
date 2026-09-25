@@ -13,7 +13,6 @@
 
 import { type Database, database, schema } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
-import { calendarDayToInstant } from '@auxx/utils/calendar-day'
 import { and, count, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver } from '../../../cache'
 import { readEditStamp } from '../../../entity-instances/edit-snapshot'
@@ -165,7 +164,7 @@ export async function createCreditMemo(
     header.credit_memo_invoice = toRecordId('invoice', input.invoiceInstanceId)
   }
   if (input.orderInstanceId) header.credit_memo_order = toRecordId('order', input.orderInstanceId)
-  if (input.issuedAt) header.credit_memo_issued_at = calendarDayToInstant(input.issuedAt)
+  if (input.issuedAt) header.credit_memo_issued_at = input.issuedAt
 
   const created = await handler.create('credit_memo', header)
   const creditMemoInstanceId = created.instance.id
@@ -561,7 +560,7 @@ export async function issueCreditMemo(
     { fieldId: 'credit_memo_status', value: 'issued' },
   ]
   if (memo.issuedAt !== issuedAt) {
-    writes.push({ fieldId: 'credit_memo_issued_at', value: calendarDayToInstant(issuedAt) })
+    writes.push({ fieldId: 'credit_memo_issued_at', value: issuedAt })
   }
   const writer = await statusWriter(db, organizationId, userId)
   await writer.write(creditMemoInstanceId, writes)

@@ -67,6 +67,11 @@ export function normalizeCalendarDayIso(value: unknown): string | null {
   return roundToUtcMidnight(new Date(trimmed).getTime())
 }
 
+/** A DATE value as the `YYYY-MM-DD` a server resolves in the book zone, or `null`. */
+export function calendarDayKey(value: unknown): string | null {
+  return normalizeCalendarDayIso(value)?.slice(0, 10) ?? null
+}
+
 /** The nearest UTC midnight to an epoch instant, or `null` when it is not a number. */
 function roundToUtcMidnight(epochMs: number): string | null {
   if (Number.isNaN(epochMs)) return null

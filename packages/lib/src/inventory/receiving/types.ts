@@ -10,6 +10,7 @@
  * reaches any field on these types.
  */
 
+import type { DayKey } from '@auxx/utils/calendar-day'
 import type { MovementRecord } from '../movements/types'
 
 /** A single-line receipt: this many of this part arrived, at this price. */
@@ -128,8 +129,8 @@ export interface SetCountInput {
   partId: string
   /** Units on the shelf as of `date`. Zero or more; negative is refused. */
   quantity: number
-  /** The count day (an instant; the book time zone picks the day). Defaults to now. */
-  date?: Date
+  /** The count day, `YYYY-MM-DD` in the book time zone. Defaults to today there. */
+  day?: DayKey
   /**
    * What a unit cost, minor units at `RATE_DECIMALS`; zero is a real cost (103 §5a).
    * Becomes the part's FIRST `part_standard_cost` when it has none; the row is valued at
@@ -181,13 +182,10 @@ export interface OpenStockBalanceInput {
    */
   unitCost?: number
   /**
-   * The count day. Defaults to now.
-   *
-   * 🛑 Load-bearing for the close: an `initial` movement dated at or before
-   * `accounting.cutoffPeriod` posts nothing (the opening baseline covers it);
-   * one dated after it posts as a count variance (111 Q19).
+   * The count day, `YYYY-MM-DD` in the book time zone. Defaults to today there.
+   * At or before the cutover it posts nothing; after it, a count variance (111 Q19).
    */
-  occurredAt?: Date
+  day?: DayKey
   /** Free text: 'Opening count 2026-01-01'. */
   notes?: string
 }
@@ -334,14 +332,14 @@ export interface OpeningStockEntry {
    * `bulk-opening-stock.ts`.
    */
   unitCost?: number
-  /** This part's count day. Falls back to the run's `occurredAt`, then now. */
-  date?: Date
+  /** This part's count day, `YYYY-MM-DD`. Falls back to the run's `day`, then today. */
+  day?: DayKey
 }
 
 /** A whole org's counts, as one run of `setCount` per part (103 O1, 111 D21). */
 export interface BulkOpeningStockInput {
-  /** The count day for every entry that names none of its own. */
-  occurredAt?: Date
+  /** The count day, `YYYY-MM-DD`, for every entry that names none of its own. */
+  day?: DayKey
   entries: OpeningStockEntry[]
   /**
    * A part that already has an `initial` is excluded by default (a stale re-run must not
@@ -432,8 +430,8 @@ export interface OpenedOpeningStockRow {
  * the caller sent is accounted for by exactly one row.
  */
 export interface BulkOpeningStockSummary {
-  /** The count day used for every entry that named none of its own. */
-  occurredAt: Date
+  /** The count day used for every entry that named none of its own; absent means today. */
+  day: DayKey | null
   /** How many entries the caller sent, duplicates included. */
   requested: number
   opened: OpenedOpeningStockRow[]

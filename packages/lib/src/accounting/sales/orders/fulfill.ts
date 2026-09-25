@@ -4,7 +4,7 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { calendarDayToInstant, isDayKeyShape } from '@auxx/utils/calendar-day'
+import { isDayKeyShape, startOfDayInstant } from '@auxx/utils/calendar-day'
 import type { Result } from 'neverthrow'
 import { AuxxError, BadRequestError, UnprocessableEntityError } from '../../../errors'
 import { type FulfillmentLineToRelieve, relieveFulfillmentLines } from '../../../inventory/relief'
@@ -24,6 +24,7 @@ import {
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
+import { readBookTimeZoneOrUtc, todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { refusalFromError, refusalFromPost, type WorkItemRefusal } from '../../work-items/refusal'
 import { createFulfillment, defaultFulfillmentName, type Fulfillment } from '../fulfillments'
@@ -155,7 +156,8 @@ function resolveShippedLines(
 function shapeRequestedShipment(
   order: OrderForFulfillment,
   requested: FulfillOrderLine[],
-  shippedAt: string
+  shippedAt: string,
+  zone: string
 ): ShipmentToRecognise {
   const lines = resolveShippedLines(order, requested)
   const priorSubtotalMinor = shippedSubtotalMinor(order.fulfillments)
@@ -174,7 +176,8 @@ function shapeRequestedShipment(
     // Not written yet; the preview entry still needs a source id.
     id: 'preview',
     sequence: order.nextSequence,
-    shippedAt: calendarDayToInstant(shippedAt),
+    // The start of the day in the book zone, so every zone read lands on the day picked.
+    shippedAt: startOfDayInstant(shippedAt, zone).toISOString(),
     lines,
     priorSubtotalMinor,
     includeShipping,
@@ -212,13 +215,18 @@ export async function previewFulfillment(
 
   return guard(
     async () => {
-      const shippedAt = params.shippedAt ?? new Date().toISOString().slice(0, 10)
+      const shippedAt = params.shippedAt ?? (await todayInBookTimeZone(organizationId))
       assertIsoDate(shippedAt, 'Shipped date')
 
       const read = await readOrderForFulfillment(db, { organizationId, orderId })
       if (read.isErr()) throw read.error
       const order = read.value
-      const shipment = shapeRequestedShipment(order, shippedLines, shippedAt)
+      const shipment = shapeRequestedShipment(
+        order,
+        shippedLines,
+        shippedAt,
+        await readBookTimeZoneOrUtc(organizationId)
+      )
 
       let prepared: PreparedFulfillmentEntry
       try {
@@ -333,7 +341,7 @@ export async function fulfillOrder(
   const { organizationId, actorUserId, orderId, shippedLines, memo } = input
   return guard(
     async () => {
-      const shippedAt = input.shippedAt ?? new Date().toISOString().slice(0, 10)
+      const shippedAt = input.shippedAt ?? (await todayInBookTimeZone(organizationId))
       assertIsoDate(shippedAt, 'Shipped date')
       const accountingEnabled = await isAccountingActive(organizationId)
       const committed = await db.transaction((tx) =>
@@ -343,7 +351,12 @@ export async function fulfillOrder(
           const read = await readOrderForFulfillment(tx, { organizationId, orderId })
           if (read.isErr()) throw read.error
           const order = read.value
-          const shipment = shapeRequestedShipment(order, shippedLines, shippedAt)
+          const shipment = shapeRequestedShipment(
+            order,
+            shippedLines,
+            shippedAt,
+            await readBookTimeZoneOrUtc(organizationId)
+          )
           const shipped = shipment.lines
           const { sequence } = shipment
           const recordedAt = new Date().toISOString()

@@ -16,6 +16,10 @@ const h = vi.hoisted(() => ({
   totals: new Map<string, number>(),
 }))
 
+vi.mock('../../../ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => new Date().toISOString().slice(0, 10),
+}))
 vi.mock('drizzle-orm', () => ({
   and: (...parts: unknown[]) => ({ op: 'and', parts: parts.filter(Boolean) }),
   or: (...parts: unknown[]) => ({ op: 'or', parts: parts.filter(Boolean) }),

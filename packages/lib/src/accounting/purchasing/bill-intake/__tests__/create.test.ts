@@ -294,8 +294,8 @@ describe('createBillFromIntake - the header', () => {
     expect(header?.values).toMatchObject({
       vendor_bill_vendor: 'def_company:company_1',
       vendor_bill_number: 'INV-88213',
-      vendor_bill_billed_at: '2026-09-01T00:00:00.000Z',
-      vendor_bill_due_at: '2026-10-01T00:00:00.000Z',
+      vendor_bill_billed_at: '2026-09-01',
+      vendor_bill_due_at: '2026-10-01',
       vendor_bill_currency: 'USD',
       vendor_bill_subtotal: 21000,
       vendor_bill_total: 21000,

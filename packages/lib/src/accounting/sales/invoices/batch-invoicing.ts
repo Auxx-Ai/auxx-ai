@@ -4,6 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { addDaysToDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, gte, inArray, lte, ne } from 'drizzle-orm'
 import type { ConditionGroup } from '../../../conditions'
 import { FieldValueService } from '../../../field-values/field-value-service'
@@ -15,6 +16,7 @@ import {
 } from '../../../recurrence'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { readSystemRecords } from '../../../resources/system-records'
+import { readBookTimeZoneOrUtc } from '../../ledger/setup/book-time-zone'
 import { listVisitAllocationsForVisits } from '../billing/allocations'
 import { createRecurringCharge, createVisitInvoice } from '../billing/commands'
 import { batchReadSystemValues, computeWorkOrderBillingProjection } from '../billing/projection'
@@ -23,11 +25,28 @@ import { INVOICE_DRAFT_SUBJECT_TYPE, type WorkOrderBillingBasis } from '../types
 
 const logger = createScopedLogger('money:batch-invoicing')
 
-/** Wall-clock instant window a batch operates over — the caller's concern to compute (e.g. an
- * org-timezone month preset); this module takes `from`/`to` verbatim. */
+/** The instant window a batch operates over, resolved from {@link InvoiceBatchDays}. */
 export interface InvoiceBatchRange {
   from: Date
   to: Date
+}
+
+/** Inclusive `YYYY-MM-DD` days in the book time zone, as a caller names a batch period. */
+export interface InvoiceBatchDays {
+  from: string
+  to: string
+}
+
+/** From the start of `from` to the last instant of `to`, both in the book zone. */
+async function resolveBatchRange(
+  organizationId: string,
+  days: InvoiceBatchDays
+): Promise<InvoiceBatchRange> {
+  const zone = await readBookTimeZoneOrUtc(organizationId)
+  return {
+    from: startOfDayInstant(days.from, zone),
+    to: new Date(startOfDayInstant(addDaysToDayKey(days.to, 1), zone).getTime() - 1),
+  }
 }
 
 /** One work order's outcome in a batch preview — billable (`amount`/`visitCount` or
@@ -45,7 +64,7 @@ export interface InvoiceBatchRow {
 export interface PreviewInvoiceBatchInput {
   organizationId: string
   userId: string
-  range: InvoiceBatchRange
+  range: InvoiceBatchDays
   filters: ConditionGroup[]
 }
 
@@ -58,7 +77,7 @@ export interface PreviewInvoiceBatchResult {
 export interface RunInvoiceBatchInput {
   organizationId: string
   userId: string
-  range: InvoiceBatchRange
+  range: InvoiceBatchDays
   workOrderRecordIds: RecordId[]
 }
 
@@ -373,7 +392,8 @@ export async function previewInvoiceBatch(
   input: PreviewInvoiceBatchInput
 ): Promise<PreviewInvoiceBatchResult> {
   const workOrderInstanceIds = await resolveWorkOrderInstanceIds(input)
-  const gathered = await gatherInvoiceBatchWorkOrders({ ...input, workOrderInstanceIds })
+  const range = await resolveBatchRange(input.organizationId, input.range)
+  const gathered = await gatherInvoiceBatchWorkOrders({ ...input, range, workOrderInstanceIds })
   const rows = gathered.map(toPublicRow)
   const billableRows = rows.filter((row) => !row.excludedReason)
   return {
@@ -413,7 +433,7 @@ export async function runInvoiceBatch(input: RunInvoiceBatchInput): Promise<RunI
   const gathered = await gatherInvoiceBatchWorkOrders({
     organizationId: input.organizationId,
     userId: input.userId,
-    range: input.range,
+    range: await resolveBatchRange(input.organizationId, input.range),
     workOrderInstanceIds,
   })
   const gatheredByWorkOrder = new Map(gathered.map((item) => [item.workOrderInstanceId, item]))

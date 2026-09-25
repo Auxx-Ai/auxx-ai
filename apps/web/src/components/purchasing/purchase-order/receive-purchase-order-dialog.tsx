@@ -35,6 +35,7 @@
 // and B-9/D-11 in `plans/events/`.
 
 import { FieldType } from '@auxx/database/enums'
+import { toCalendarDayIso } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/types/resource'
 import { getInstanceId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
@@ -124,7 +125,7 @@ export function ReceivePurchaseOrderDialog({
   }, [poLines])
 
   const [draft, setDraft] = useState<Record<string, ReceiptDraftLine>>({})
-  const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString())
+  const [occurredAt, setOccurredAt] = useState(() => toCalendarDayIso(new Date()))
   const [reference, setReference] = useState('')
   const [reason, setReason] = useState('')
   // The prefill must re-run when the lines finish loading, but must NOT clobber a
@@ -247,7 +248,7 @@ export function ReceivePurchaseOrderDialog({
               isRequired
               description='The accounting date, which is not when it was keyed'>
               <FieldInputAdapter
-                fieldType={FieldType.DATETIME}
+                fieldType={FieldType.DATE}
                 value={occurredAt}
                 onChange={(val) => setOccurredAt(val as string)}
                 disabled={receive.isPending}

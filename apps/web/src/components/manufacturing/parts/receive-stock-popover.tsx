@@ -27,6 +27,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { fromCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import {
   formatLandedCostSummary,
   type ReceiptCostInputs,
@@ -90,7 +91,7 @@ export function ReceiveStockForm({ partId, onSuccess, onDone }: ReceiveStockForm
   // Without this, re-running the prefill effect would quietly overwrite a typed
   // price — the one value on this form that must never be overwritten.
   const [priceEdited, setPriceEdited] = useState(false)
-  const [occurredAt, setOccurredAt] = useState<string>(() => new Date().toISOString())
+  const [occurredAt, setOccurredAt] = useState<string>(() => toCalendarDayIso(new Date()))
   const [reference, setReference] = useState('')
   const [reason, setReason] = useState('')
 
@@ -222,7 +223,7 @@ export function ReceiveStockForm({ partId, onSuccess, onDone }: ReceiveStockForm
           isRequired
           description='The accounting date, which is not when it was keyed'>
           <FieldInputAdapter
-            fieldType={FieldType.DATETIME}
+            fieldType={FieldType.DATE}
             value={occurredAt}
             onChange={(val) => setOccurredAt(val as string)}
             disabled={isPending}
@@ -368,7 +369,7 @@ function usePartSuppliers(partId: string, occurredAt: string): SupplierOption[] 
       }),
     [records, recordIds, valuesById]
   )
-  const { byId: tariffById } = useOfferTariffs(offers, occurredAt)
+  const { byId: tariffById } = useOfferTariffs(offers, fromCalendarDayIso(occurredAt) ?? null)
 
   return useMemo(
     () =>

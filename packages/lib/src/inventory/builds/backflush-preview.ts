@@ -16,7 +16,7 @@ import { guard } from './guard'
 export async function previewBackflush(
   db: Database,
   organizationId: string,
-  input: { from: Date; to: Date; now?: Date }
+  input: { from: string; to: string; now?: Date }
 ): Promise<Result<BackflushPlan, Error>> {
   return guard(
     async () => {

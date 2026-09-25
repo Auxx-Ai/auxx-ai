@@ -8,7 +8,7 @@
 import { type Database, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
-import { calendarDayToInstant } from '@auxx/utils/calendar-day'
+import { startOfDayInstant } from '@auxx/utils/calendar-day'
 import { getEntityDefIdResolver } from '../../../cache'
 import { BadRequestError } from '../../../errors'
 import {
@@ -34,7 +34,7 @@ import {
 } from '../../ledger/post/post-entry'
 import { exportInventoryMovement } from '../../ledger/post/post-inventory-movement'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
-import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
+import { readBookTimeZoneOrUtc, todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
 import { recomputeTotals } from '../../sales/totals/totals-hooks'
 import { resolveGrniAccountId, resolvePurchasedServicesAccountId } from '../bill-intake/link'
@@ -158,7 +158,7 @@ export async function createVendorCredit(
       'purchase_order',
       input.purchaseOrderInstanceId
     )
-  if (input.issuedAt) header.vendor_credit_issued_at = calendarDayToInstant(input.issuedAt)
+  if (input.issuedAt) header.vendor_credit_issued_at = input.issuedAt
 
   const created = await handler.create('vendor_credit', header)
   const vendorCreditInstanceId = created.instance.id
@@ -343,7 +343,7 @@ export async function issueVendorCredit(
   // part, no quantity or no standard refuses the issue by name with the credit
   // still a draft — the same contract the multi-line receipt keeps.
   const returns = await planVendorCreditStockReturns(db, organizationId, lines)
-  const occurredAt = new Date(calendarDayToInstant(issuedAt))
+  const occurredAt = startOfDayInstant(issuedAt, await readBookTimeZoneOrUtc(organizationId))
 
   // One transaction for the whole supplier return: the money entry, the goods
   // leaving, and the inventory entry that values them. Half of it committed is a
@@ -399,7 +399,7 @@ export async function issueVendorCredit(
     { fieldId: 'vendor_credit_status', value: 'issued' },
   ]
   if (credit.issuedAt !== issuedAt)
-    writes.push({ fieldId: 'vendor_credit_issued_at', value: calendarDayToInstant(issuedAt) })
+    writes.push({ fieldId: 'vendor_credit_issued_at', value: issuedAt })
   const writer = await statusWriter(db, organizationId, userId)
   await writer.write(vendorCreditInstanceId, writes)
 

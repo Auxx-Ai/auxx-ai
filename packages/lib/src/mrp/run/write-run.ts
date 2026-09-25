@@ -1,9 +1,10 @@
 // packages/lib/src/mrp/run/write-run.ts
 
 import { type Database, type MrpPlanRunItemInsert, schema } from '@auxx/database'
-import { calendarDayToInstant, type DayKey } from '@auxx/utils/calendar-day'
+import { type DayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, desc, eq, inArray, lt, ne } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { chunkArray } from '../../import/utils/chunk-array'
 import type { PlanItem } from '../types'
 
@@ -33,7 +34,7 @@ export async function startRun(
       .values({
         organizationId,
         status: 'running',
-        asOf: new Date(calendarDayToInstant(input.asOf)),
+        asOf: startOfDayInstant(input.asOf, await readBookTimeZoneOrUtc(organizationId)),
         params: { ...input.params, trigger: input.trigger },
       })
       .returning({ id: R.id })

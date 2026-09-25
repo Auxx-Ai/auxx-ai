@@ -15,6 +15,10 @@ import { schema } from '@auxx/database'
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../ledger/setup/book-time-zone', () => ({
+  readBookTimeZoneOrUtc: async () => 'UTC',
+  todayInBookTimeZone: async () => new Date().toISOString().slice(0, 10),
+}))
 vi.mock('../../../ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: vi.fn(),
 }))

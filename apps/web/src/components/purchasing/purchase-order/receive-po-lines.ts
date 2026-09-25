@@ -1,5 +1,7 @@
 // apps/web/src/components/purchasing/purchase-order/receive-po-lines.ts
 
+import { calendarDayKey } from '@auxx/lib/field-values/client'
+
 // The receive-against-a-PO dialog's payload, as a pure function of what is on
 // screen (plans/purchasing/01-build-plan.md §3.1 / §4.3).
 //
@@ -52,7 +54,8 @@ export interface ReceivePoInput {
     quantity: number
     vendorPartId?: string
   }[]
-  occurredAt: Date
+  /** The accounting day, `YYYY-MM-DD`; the server resolves it in the book zone. */
+  day?: string
   reference?: string
   reason?: string
 }
@@ -113,7 +116,7 @@ export function buildReceivePoInput(
       quantity: row.quantity,
       ...(line.vendorPartId ? { vendorPartId: line.vendorPartId } : {}),
     })),
-    occurredAt: new Date(meta.occurredAt),
+    ...(calendarDayKey(meta.occurredAt) ? { day: calendarDayKey(meta.occurredAt)! } : {}),
     ...(reference ? { reference } : {}),
     ...(reason ? { reason } : {}),
   }

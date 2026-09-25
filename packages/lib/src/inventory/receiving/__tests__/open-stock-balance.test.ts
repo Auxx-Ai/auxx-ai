@@ -1,6 +1,6 @@
 // packages/lib/src/inventory/receiving/__tests__/open-stock-balance.test.ts
 //
-// The create form's opening balance is `setCount` dated `occurredAt` (103 O1, 111 D21): this
+// The create form's opening balance is `setCount` dated `day` (103 O1, 111 D21): this
 // pins the delegation. `setCount` itself is tested in `set-count.test.ts`; `G12`'s guard on
 // `adjustStock` stays pinned here because the typed count cost one file over is what it
 // must not be read as permission for.
@@ -76,31 +76,28 @@ beforeEach(async () => {
 })
 
 describe('openStockBalance is setCount', () => {
-  it('hands the part, quantity, cost, notes and actor through, dated occurredAt', async () => {
-    const occurredAt = new Date('2026-01-01T00:00:00.000Z')
+  it('hands the part, quantity, cost, notes, actor and day through', async () => {
     const result = await openStockBalance(db, ORG, USER, {
       partId: 'part_1',
       quantity: 10,
       unitCost: 1200,
-      occurredAt,
+      day: '2026-01-01',
       notes: 'Opening count',
     })
     expect(result.isOk()).toBe(true)
     expect(h.setCount).toHaveBeenCalledWith(db, ORG, {
       partId: 'part_1',
       quantity: 10,
-      date: occurredAt,
+      day: '2026-01-01',
       unitCost: 1200,
       actorUserId: USER,
       notes: 'Opening count',
     })
   })
 
-  it('dates the count today when no occurredAt is given', async () => {
-    const before = Date.now()
+  it('leaves the day to setCount when none is given, which reads today in the book zone', async () => {
     await openStockBalance(db, ORG, USER, { partId: 'part_1', quantity: 10, unitCost: 1200 })
-    const { date } = h.setCount.mock.calls[0]![2] as { date: Date }
-    expect(date.getTime()).toBeGreaterThanOrEqual(before)
+    expect((h.setCount.mock.calls[0]![2] as { day?: string }).day).toBeUndefined()
   })
 
   it('returns exactly what setCount answered', async () => {

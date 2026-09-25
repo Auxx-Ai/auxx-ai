@@ -82,9 +82,8 @@ describe('BackflushDialog', () => {
 
     fireEvent.click(screen.getByText('Backflush'))
     await waitFor(() => expect(h.run).toHaveBeenCalledTimes(1))
-    const call = h.run.mock.calls[0] as unknown as [{ from: Date; to: Date }]
-    expect(call[0].from.toISOString().slice(0, 10)).toBe('2026-09-20')
-    expect(call[0].to.toISOString().slice(0, 10)).toBe('2026-09-22')
+    // Days, never instants: an instant at UTC midnight reads as the day before west of UTC.
+    expect(h.run.mock.calls[0]).toEqual([{ from: '2026-09-20', to: '2026-09-22' }])
     expect(await screen.findByText(/Queued/)).toBeTruthy()
   })
 

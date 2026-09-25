@@ -2,7 +2,7 @@
 
 /**
  * `openStockBalance` — the create form's opening balance, which is `setCount` dated
- * `occurredAt` (103 O1, 111 D21). One door, so the dialog and the bulk page cannot disagree
+ * `day` (103 O1, 111 D21). One door, so the dialog and the bulk page cannot disagree
  * about what an opening is.
  *
  * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
@@ -24,7 +24,7 @@ export async function openStockBalance(
   return setCount(db, organizationId, {
     partId: input.partId,
     quantity: input.quantity,
-    date: input.occurredAt ?? new Date(),
+    day: input.day,
     unitCost: input.unitCost,
     actorUserId: userId,
     notes: input.notes,

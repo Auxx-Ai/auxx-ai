@@ -6,10 +6,11 @@ import { listVisitsForWorkOrder } from '../../../dispatch/board'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import { readSystemRecords, systemFields } from '../../../resources/system-records'
+import { readBookTimeZoneOrUtc, todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import { sumUnappliedCustomerMoney, sumWorkOrderDeposits } from '../../money/checkout/reads'
 import { listUninvoicedLines } from '../gather'
 import { listInstallments, listWorkOrderVisitAllocations } from './allocations'
-import { batchReadSystemValues, computeWorkOrderBillingProjection } from './projection'
+import { batchReadSystemValues, computeWorkOrderBillingProjection, visitDay } from './projection'
 
 const INVOICE_ROW_ATTRS = [
   'invoice_status',
@@ -74,6 +75,7 @@ export async function getWorkOrderBillingState(input: {
 }) {
   const projection = await computeWorkOrderBillingProjection(input)
   const handler = new UnifiedCrudHandler(input.organizationId, input.userId)
+  const zone = await readBookTimeZoneOrUtc(input.organizationId)
   const [visits, activeVisits, installments, linkedInvoices, uninvoicedLines] = await Promise.all([
     // All statuses — done visits feed eligibleVisits, the rest feed extra-work enrichment
     // (plan money/19 §B: the client needs visit status/date to split done vs upcoming extras).
@@ -142,7 +144,7 @@ export async function getWorkOrderBillingState(input: {
     .map((visit, index) => ({
       id: visit.id,
       label: `Visit ${index + 1}`,
-      serviceDate: visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? null,
+      serviceDate: visitDay(visit, zone) ?? null,
       // `createVisitInvoice` copies the job template PLUS this visit's unallocated extras —
       // the picker/preview must quote what the invoice will actually total (plan money/19 D5).
       amount: projection.billingAmount + (extrasTotalByVisit.get(visit.id) ?? 0),
@@ -170,7 +172,7 @@ export async function getWorkOrderBillingState(input: {
         sourceLineId: line.instanceId,
         visitId: line.visitId!,
         visitStatus: visit.status,
-        serviceDate: visit.occurrenceDate ?? visit.startTime?.toISOString().split('T')[0] ?? null,
+        serviceDate: visitDay(visit, zone) ?? null,
         name: line.name,
         amount: line.lineTotal ?? 0,
       }
@@ -251,7 +253,7 @@ export async function getContactBillingOverview(input: {
   )
   const activeRows = rows.filter((row) => row.status !== 'void')
   const draftRows = activeRows.filter((row) => row.status === 'draft')
-  const now = new Date().toISOString().split('T')[0]!
+  const now = await todayInBookTimeZone(input.organizationId)
   const overdueRows = activeRows.filter(
     (row) => row.status !== 'draft' && row.balance > 0 && row.dueDate && row.dueDate < now
   )

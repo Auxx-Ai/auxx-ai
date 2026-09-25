@@ -5,7 +5,7 @@
 // description of the form state, because the movement it writes is append-only.
 
 import { cutoverDateFor, DEFAULT_CHART_OF_ACCOUNTS } from '@auxx/lib/accounting/ledger/client'
-import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 
 /** Everything the Set count section holds. */
@@ -35,15 +35,16 @@ export function isOpeningStockEmpty(values: OpeningStockFormValues): boolean {
 export function buildOpeningStockInput(
   partId: string,
   values: OpeningStockFormValues
-): { partId: string; quantity: number; unitCost?: number; occurredAt: Date } | null {
+): { partId: string; quantity: number; unitCost?: number; day?: string } | null {
   const { quantity, unitCost } = values
   if (quantity == null || !Number.isFinite(quantity) || quantity < 0) return null
   if (unitCost != null && (!Number.isFinite(unitCost) || unitCost < 0)) return null
+  const day = calendarDayKey(values.occurredAt)
   return {
     partId,
     quantity,
     ...(unitCost != null ? { unitCost: Math.round(unitCost) } : {}),
-    occurredAt: new Date(values.occurredAt),
+    ...(day ? { day } : {}),
   }
 }
 
@@ -96,7 +97,7 @@ export function describeSetCountPosting(input: {
   accountingActive: boolean
 }): SetCountPosting {
   if (!input.accountingActive) return { kind: 'off' }
-  const day = normalizeCalendarDayIso(input.occurredAt)?.slice(0, 10)
+  const day = calendarDayKey(input.occurredAt)
   if (input.cutoffPeriod && day) {
     try {
       const cutoverDate = cutoverDateFor(input.cutoffPeriod)

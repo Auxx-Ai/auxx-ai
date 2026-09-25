@@ -5,7 +5,7 @@
 // press that queues the run on the worker.
 
 import { FieldType } from '@auxx/database/enums'
-import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
+import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -63,12 +63,6 @@ function daysBefore(date: Date, days: number): Date {
   return out
 }
 
-/** A calendar-day ISO string to the instant `previewBackflush` takes. */
-function toInstant(day: string): Date | null {
-  const normalized = normalizeCalendarDayIso(day)
-  return normalized ? new Date(normalized) : null
-}
-
 export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogProps) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -83,12 +77,13 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
     setQueued(false)
   }, [open, range?.from, range?.to])
 
-  const fromDate = toInstant(from)
-  const toDate = toInstant(to)
-  const valid = !!fromDate && !!toDate && fromDate.getTime() <= toDate.getTime()
+  // Days, not instants: the server walks them in the book zone.
+  const fromDay = calendarDayKey(from)
+  const toDay = calendarDayKey(to)
+  const valid = !!fromDay && !!toDay && fromDay <= toDay
 
   const preview = api.builds.previewBackflush.useQuery(
-    { from: fromDate ?? new Date(0), to: toDate ?? new Date(0) },
+    { from: fromDay ?? '', to: toDay ?? '' },
     { enabled: open && valid && !queued }
   )
   const runBackflush = api.builds.runBackflush.useMutation({
@@ -115,9 +110,9 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
   const canConfirm = valid && !preview.isPending && buildCount > 0 && !queued
 
   const handleConfirm = async () => {
-    if (!fromDate || !toDate) return
+    if (!fromDay || !toDay) return
     try {
-      await runBackflush.mutateAsync({ from: fromDate, to: toDate })
+      await runBackflush.mutateAsync({ from: fromDay, to: toDay })
       setQueued(true)
     } catch {
       // Surfaced by the mutation's onError.

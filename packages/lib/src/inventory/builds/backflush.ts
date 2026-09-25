@@ -31,9 +31,9 @@ import { guard } from './guard'
 const logger = createScopedLogger('builds:backflush')
 
 export interface BackflushInput {
-  /** Inclusive, as local days in the book time zone. */
-  from: Date
-  to: Date
+  /** Inclusive `YYYY-MM-DD` days in the book time zone. */
+  from: string
+  to: string
   /** Who the builds and the roll are attributed to; the org's system user when a job runs it. */
   actorUserId?: string
   /** Injected by tests; days whose end is after it are not walked. */

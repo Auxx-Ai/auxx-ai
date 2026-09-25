@@ -38,6 +38,7 @@
 // implementation of the variance to drift.
 
 import { FieldType } from '@auxx/database/enums'
+import { calendarDayKey, fromCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { absorbedRunCost, summarizeBuildCompletion } from '@auxx/lib/inventory/builds/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
@@ -122,7 +123,7 @@ export function CompleteBuildDialog({
   // `null` means "take the part's rate"; a number is what this run actually absorbed.
   const [laborCost, setLaborCost] = useState<number | null>(null)
   const [overheadCost, setOverheadCost] = useState<number | null>(null)
-  const [completedAt, setCompletedAt] = useState<string>(() => new Date().toISOString())
+  const [completedAt, setCompletedAt] = useState<string>(() => toCalendarDayIso(new Date()))
   const [notes, setNotes] = useState('')
 
   const partDefId = useResourceProperty('part', 'id')
@@ -265,7 +266,7 @@ export function CompleteBuildDialog({
         componentOverrides,
         laborCost: laborCost ?? undefined,
         overheadCost: overheadCost ?? undefined,
-        completedAt: new Date(completedAt),
+        ...(calendarDayKey(completedAt) ? { day: calendarDayKey(completedAt)! } : {}),
         notes: notes || undefined,
       })
       // The BUILD row only. `completeBuild` publishes its own field-value frame
@@ -372,7 +373,7 @@ export function CompleteBuildDialog({
                 isRequired
                 description='The accounting date, which is not when it was keyed'>
                 <FieldInputAdapter
-                  fieldType={FieldType.DATETIME}
+                  fieldType={FieldType.DATE}
                   value={completedAt}
                   onChange={(val) => setCompletedAt((val as string) ?? new Date().toISOString())}
                   disabled={completeBuild.isPending}
@@ -492,8 +493,8 @@ export function CompleteBuildDialog({
         {canSubmit && (
           <p className='text-muted-foreground text-xs'>
             Writes {writtenRows} consume {writtenRows === 1 ? 'movement' : 'movements'} and 1
-            produce movement, dated {new Date(completedAt).toLocaleDateString()}. This build cannot
-            be completed a second time.
+            produce movement, dated {fromCalendarDayIso(completedAt)?.toLocaleDateString()}. This
+            build cannot be completed a second time.
           </p>
         )}
 

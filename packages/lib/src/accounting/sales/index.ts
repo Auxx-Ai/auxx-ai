@@ -134,6 +134,7 @@ export {
   sweepInvoiceDrafts,
 } from './invoices/auto-invoice'
 export {
+  type InvoiceBatchDays,
   type InvoiceBatchItemResult,
   type InvoiceBatchRange,
   type InvoiceBatchRow,

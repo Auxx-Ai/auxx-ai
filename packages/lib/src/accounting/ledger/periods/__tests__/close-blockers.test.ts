@@ -197,7 +197,7 @@ describe('describeInventoryBlockers', () => {
     })
     expect(short).toHaveLength(1)
     expect(short[0]?.key).toBe('inventory_balance')
-    expect(short[0]?.label).toContain('-10000')
+    expect(short[0]?.label).toContain('out by -$100.00')
 
     const over = describeInventoryBlockers({
       periodKey: MONTH,
@@ -205,7 +205,7 @@ describe('describeInventoryBlockers', () => {
       subledgerMinor: 100_000,
       ledgerMinor: 90_000,
     })
-    expect(over[0]?.label).toContain('10000')
+    expect(over[0]?.label).toContain('out by $100.00')
   })
 
   // 73 §6.2 rule 4. The movement sum and the ledger are the same money added
@@ -223,7 +223,7 @@ describe('describeInventoryBlockers', () => {
     })
 
     expect(items.map((item) => item.key)).toEqual(['inventory_standard_value'])
-    expect(items[0]?.label).toContain('-2200')
+    expect(items[0]?.label).toContain('out by -$22.00')
     expect(items[0]?.remedy).toContain('July 2026')
   })
 
@@ -326,7 +326,7 @@ describe('inventory_cutover_value_changed (111 Q23)', () => {
       'inventory_pending_cost',
     ])
     expect(items[0]?.label).toBe(
-      'The value of your parts at the cutover changed by 5000 since the last difference entry'
+      'The value of your parts at the cutover changed by $50.00 since the last difference entry'
     )
     expect(items[0]?.remedy).toContain('opening inventory difference')
     expect(items[0]?.ref).toBe(MONTH)
