@@ -161,9 +161,7 @@ export function ProcessorActivity({
       {query.error && (
         <Alert variant='destructive'>
           <AlertTitle>Could not load processor activity</AlertTitle>
-          <AlertDescription>
-            {query.error.message} Use Refresh evidence to try again.
-          </AlertDescription>
+          <AlertDescription>{query.error.message} Reload the page to try again.</AlertDescription>
         </Alert>
       )}
       {!query.isPending && !query.error && entries.length === 0 ? (

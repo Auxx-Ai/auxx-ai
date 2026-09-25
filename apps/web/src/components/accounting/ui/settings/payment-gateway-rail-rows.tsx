@@ -2,13 +2,6 @@
 'use client'
 
 import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { sourceAccountLabel } from '../source-account-label'
@@ -82,46 +75,6 @@ export function RailAccountRows({
         />
       ))}
     </div>
-  )
-}
-
-/** The org's live processor feeds no rail has claimed yet, as a select of `processorAccountId`s. */
-export function FeedSelect({
-  value,
-  onChange,
-  enabled = true,
-  disabled = false,
-}: {
-  value: string | null
-  onChange: (sourceAccountId: string) => void
-  /** Hold the read until the picker is actually shown. */
-  enabled?: boolean
-  disabled?: boolean
-}) {
-  const unlinked = api.paymentGateway.listUnlinkedFeeds.useQuery(undefined, { enabled })
-  return (
-    <Select value={value ?? undefined} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger size='sm' className='w-full'>
-        <SelectValue placeholder={unlinked.isPending ? 'Loading…' : 'Select a feed…'} />
-      </SelectTrigger>
-      <SelectContent>
-        {(unlinked.data ?? []).length === 0 && !unlinked.isPending ? (
-          <div className='p-2 text-muted-foreground text-xs'>
-            No live feed is reporting activity with nothing claiming it yet.
-          </div>
-        ) : (
-          (unlinked.data ?? []).map((feed) => (
-            <SelectItem key={feed.processorAccountId} value={feed.processorAccountId}>
-              {sourceAccountLabel({
-                providerKey: feed.providerKey,
-                externalAccountId: feed.externalAccountId,
-                name: feed.name,
-              })}
-            </SelectItem>
-          ))
-        )}
-      </SelectContent>
-    </Select>
   )
 }
 

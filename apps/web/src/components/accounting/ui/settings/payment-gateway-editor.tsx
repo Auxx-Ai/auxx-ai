@@ -4,9 +4,9 @@
 // The right pane of Accounting > Settings > Payment gateways (task 13 §5.3,
 // rebuilt for task 58/59: a gateway no longer carries its own clearing/fee
 // account fields - those are `GlRoleAssignment` rows scoped to this rail,
-// read and written exactly like the Mapping tab's own rows (D1). Three
-// sections: the record's own fields, Accounts (the shared `MappingScopeRow`,
-// transposed), Feeds (which `FinancialSourceAccount`s read this rail).
+// read and written exactly like the Mapping tab's own rows (D1). Two
+// sections: the record's own fields plus its linked feeds, and Accounts (the
+// shared `MappingScopeRow`, transposed).
 //
 // 🛑 The top FieldPanel still commits on change, no Save button - `name`,
 // `handles`, `feeTreatment` and `lastSettlementAt` are `payment_gateway`
@@ -39,7 +39,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
-import { ArrowUpRight, CreditCard, Landmark, PlugZap, Plus, TriangleAlert, X } from 'lucide-react'
+import { ArrowUpRight, CreditCard, Landmark, PlugZap, TriangleAlert, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -54,11 +54,11 @@ import type { MappingAccountValue } from './mapping-account-select'
 import { MappingScopeRow } from './mapping-scope-row'
 import {
   accountText,
-  FeedSelect,
   RAIL_ROLES,
   RailAccountRows,
   type RailRole,
   railReadinessLine,
+  useFeedOptions,
   useHandleOptions,
 } from './payment-gateway-rail-rows'
 
@@ -223,11 +223,13 @@ function PaymentGatewayForm({
                 }}
               />
             </FieldPanelRow>
+
+            <FeedsRow gatewayId={gateway.id} canControl={canControl} />
           </FieldPanel>
+          <RailReadiness gatewayId={gateway.id} />
         </Section>
 
         <AccountsSection gatewayId={gateway.id} canControl={canControl} />
-        <FeedsSection gatewayId={gateway.id} canControl={canControl} />
 
         {!isClosed && (
           <Section
@@ -263,8 +265,8 @@ function PaymentGatewayForm({
 
 function AccountsSection({ gatewayId, canControl }: { gatewayId: string; canControl: boolean }) {
   const roleMap = api.ledger.roleMap.useQuery()
-  // Only for the Bank row's mismatch line (58 §5.4 rule 2) - the Feeds section
-  // below reads the same query for its own list.
+  // Only for the Bank row's mismatch line (58 §5.4 rule 2) - the Feeds row reads
+  // the same query for its own list.
   const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
   const bankMismatch = readiness.data?.mismatches[0]?.message
   const utils = api.useUtils()
@@ -563,11 +565,11 @@ function CurrencyDraft({
 // Feeds - the `FinancialSourceAccount`s reading this rail (59 §3)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl: boolean }) {
+/** A multi-select over this rail's linked feeds plus the unclaimed ones; each pick links or unlinks. */
+function FeedsRow({ gatewayId, canControl }: { gatewayId: string; canControl: boolean }) {
   const utils = api.useUtils()
   const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
-  const [linking, setLinking] = useState(false)
-  const [pickedFeed, setPickedFeed] = useState<string | null>(null)
+  const unlinked = useFeedOptions(canControl)
   const [confirm, ConfirmDialog] = useConfirm()
 
   const invalidate = () =>
@@ -577,133 +579,96 @@ function FeedsSection({ gatewayId, canControl }: { gatewayId: string; canControl
     ])
 
   const linkFeed = api.paymentGateway.linkFeed.useMutation({
-    onSuccess: async () => {
-      setLinking(false)
-      setPickedFeed(null)
-      await invalidate()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error linking the feed', description: error.message })
-    },
+    onSuccess: () => invalidate(),
+    onError: (error) => toastError({ title: 'Error linking the feed', description: error.message }),
   })
 
   const unlinkFeed = api.paymentGateway.unlinkFeed.useMutation({
     onSuccess: () => invalidate(),
-    onError: (error) => {
-      toastError({ title: 'Error unlinking the feed', description: error.message })
-    },
+    onError: (error) =>
+      toastError({ title: 'Error unlinking the feed', description: error.message }),
   })
 
-  async function handleUnlink(sourceAccountId: string, name: string) {
-    const confirmed = await confirm({
-      title: `Unlink ${name}?`,
-      description:
-        'The feed and its history are untouched - only which rail reads it for new payouts changes.',
-      confirmText: 'Unlink',
-      cancelText: 'Cancel',
-    })
-    if (confirmed) unlinkFeed.mutate({ sourceAccountId })
-  }
+  const linked = readiness.data?.linkedFeeds ?? []
+  const linkedIds = linked.map((feed) => feed.sourceAccountId)
+  const options = [
+    ...linked.map((feed) => ({ value: feed.sourceAccountId, label: sourceAccountLabel(feed) })),
+    ...unlinked.options,
+  ]
 
-  const readinessLine = readiness.data
-    ? railReadinessLine({
-        clearingMapped: readiness.data.clearingMapped,
-        bankMapped: readiness.data.bankMapped,
-        feedLinked: readiness.data.linkedFeeds.length > 0,
-      }).text
-    : null
+  async function handleChange(next: string[]) {
+    for (const id of next.filter((id) => !linkedIds.includes(id))) {
+      linkFeed.mutate({ gatewayId, sourceAccountId: id })
+    }
+    for (const feed of linked.filter((feed) => !next.includes(feed.sourceAccountId))) {
+      const name = sourceAccountLabel(feed)
+      const confirmed = await confirm({
+        title: `Unlink ${name}?`,
+        description:
+          'The feed and its history are untouched - only which rail reads it for new payouts changes.',
+        confirmText: 'Unlink',
+        cancelText: 'Cancel',
+      })
+      if (confirmed) unlinkFeed.mutate({ sourceAccountId: feed.sourceAccountId })
+    }
+  }
 
   return (
     <>
-      <Section title='Feeds' icon={<PlugZap className='size-4 text-muted-foreground' />}>
-        <div className='flex flex-col gap-2 p-1'>
-          {readiness.isPending ? (
-            <EmptySection loading />
-          ) : readiness.data?.linkedFeeds.length === 0 ? (
-            <p className='text-muted-foreground text-xs'>
-              No feed linked. Shipments still route here by handle; a payout for this rail cannot
-              post until a feed is linked and mapped to a bank account.
-            </p>
-          ) : (
-            readiness.data?.linkedFeeds.map((feed) => (
-              <div key={feed.sourceAccountId} className='flex items-center gap-2 text-sm'>
-                <span className='min-w-0 flex-1 truncate'>{sourceAccountLabel(feed)}</span>
-                {canControl && (
-                  <Button
-                    variant='ghost'
-                    size='xs'
-                    onClick={() =>
-                      void handleUnlink(feed.sourceAccountId, sourceAccountLabel(feed))
-                    }>
-                    Unlink
-                  </Button>
-                )}
-              </div>
-            ))
-          )}
-
-          {readiness.data && readiness.data.mismatches.length > 0 && (
-            <div className='flex flex-col gap-1'>
-              {readiness.data.mismatches.map((m) => (
-                <span
-                  key={m.payoutId}
-                  className='flex items-start gap-1.5 text-amber-700 text-xs dark:text-amber-400'>
-                  <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
-                  {m.message}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {canControl && !linking && (
-            <Button
-              variant='outline'
-              size='sm'
-              className='self-start'
-              onClick={() => setLinking(true)}>
-              <Plus />
-              Link a feed
-            </Button>
-          )}
-
-          {linking && (
-            <div className='flex items-center gap-2'>
-              <FeedSelect value={pickedFeed} onChange={setPickedFeed} enabled={linking} />
-              <Button
-                variant='outline'
-                size='sm'
-                loading={linkFeed.isPending}
-                disabled={!pickedFeed}
-                onClick={() =>
-                  pickedFeed && linkFeed.mutate({ gatewayId, sourceAccountId: pickedFeed })
-                }>
-                Link
-              </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => {
-                  setLinking(false)
-                  setPickedFeed(null)
-                }}>
-                Cancel
-              </Button>
-            </div>
-          )}
-
-          {readinessLine && (
-            <p
-              className={
-                readiness.data?.ready
-                  ? 'text-muted-foreground text-xs'
-                  : 'text-amber-700 text-xs dark:text-amber-400'
-              }>
-              {readinessLine}
-            </p>
-          )}
-        </div>
-      </Section>
+      <FieldPanelRow
+        title='Feeds'
+        icon={<PlugZap className='size-4 text-muted-foreground' />}
+        showIcon
+        description='The processor accounts that report this rail’s payouts.'>
+        <FieldInputAdapter
+          fieldType={FieldType.MULTI_SELECT}
+          fieldOptions={{ options }}
+          value={linkedIds}
+          triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
+          placeholder={
+            readiness.isPending
+              ? 'Loading…'
+              : options.length === 0
+                ? 'No unclaimed feed'
+                : 'Link a feed'
+          }
+          disabled={!canControl || linkFeed.isPending || unlinkFeed.isPending}
+          onChange={(value) => void handleChange(Array.isArray(value) ? (value as string[]) : [])}
+        />
+      </FieldPanelRow>
       <ConfirmDialog />
     </>
+  )
+}
+
+/** The rail's readiness sentence and any open destination mismatches, under the field panel. */
+function RailReadiness({ gatewayId }: { gatewayId: string }) {
+  const readiness = api.paymentGateway.readiness.useQuery({ gatewayId })
+  if (!readiness.data) return null
+  const { text } = railReadinessLine({
+    clearingMapped: readiness.data.clearingMapped,
+    bankMapped: readiness.data.bankMapped,
+    feedLinked: readiness.data.linkedFeeds.length > 0,
+  })
+
+  return (
+    <div className='flex flex-col gap-1 pt-2'>
+      {readiness.data.mismatches.map((m) => (
+        <span
+          key={m.payoutId}
+          className='flex items-start gap-1.5 text-amber-700 text-xs dark:text-amber-400'>
+          <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
+          {m.message}
+        </span>
+      ))}
+      <p
+        className={
+          readiness.data.ready
+            ? 'text-muted-foreground text-xs'
+            : 'text-amber-700 text-xs dark:text-amber-400'
+        }>
+        {text}
+      </p>
+    </div>
   )
 }
