@@ -130,13 +130,31 @@ function ledgerBlock(input: {
 }
 
 /**
- * The company's Purchasing tab: what we buy from this company, what it billed
- * us, and the jobs raised against it.
+ * The company's Purchasing tab: its next order and supply performance, what we
+ * buy from this company, what it billed us, the jobs raised against it, and the
+ * MRP ordering settings.
  *
  * Ordered by ledger flow (order, then bill), with work orders last because a
  * company is a supplier here, and jobs are the one non-payable list.
  */
 export const COMPANY_PURCHASING_BLOCKS: LayoutBlock[] = [
+  // The supplier's MRP blocks (plans/mrp/07-ui-plan.md D28): what to act on first, settings last.
+  {
+    id: 'card:mrp-next-order',
+    kind: 'card',
+    cardValue: 'mrp-next-order',
+    label: 'Next order',
+    icon: 'shopping-cart',
+    permissionKey: 'mrp.view',
+  },
+  {
+    id: 'card:mrp-supply',
+    kind: 'card',
+    cardValue: 'mrp-supply',
+    label: 'Supply performance',
+    icon: 'truck',
+    permissionKey: 'mrp.view',
+  },
   ledgerBlock({
     id: 'company:purchase-orders',
     label: 'Purchase orders',
@@ -165,21 +183,12 @@ export const COMPANY_PURCHASING_BLOCKS: LayoutBlock[] = [
     statusAttr: 'work_order_status',
     emptyLabel: 'No work orders',
   }),
-  // The supplier's MRP blocks (plans/mrp/07-ui-plan.md D28); both render nothing without vendor parts.
   {
     id: 'card:mrp-ordering',
     kind: 'card',
     cardValue: 'mrp-ordering',
-    label: 'Ordering',
+    label: 'Ordering settings',
     icon: 'calendar-clock',
-    permissionKey: 'mrp.view',
-  },
-  {
-    id: 'card:mrp-supply',
-    kind: 'card',
-    cardValue: 'mrp-supply',
-    label: 'Supply performance',
-    icon: 'truck',
     permissionKey: 'mrp.view',
   },
 ]

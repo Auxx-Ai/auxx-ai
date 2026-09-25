@@ -58,6 +58,7 @@ export function SupplySection({ partId }: { partId: string }) {
             doc.kind === 'po' ? (
               <TreeRow
                 icon={<FileText className='size-4' />}
+                rowClassName='hover:bg-primary-100'
                 title={
                   <RecordLink
                     recordId={
@@ -83,6 +84,7 @@ export function SupplySection({ partId }: { partId: string }) {
             ) : (
               <TreeRow
                 icon={<Hammer className='size-4' />}
+                rowClassName='hover:bg-primary-100'
                 title={
                   <RecordLink
                     recordId={buildDefId ? toRecordId(buildDefId, doc.build.buildId) : null}

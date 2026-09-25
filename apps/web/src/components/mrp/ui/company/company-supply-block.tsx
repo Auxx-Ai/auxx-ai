@@ -4,8 +4,9 @@
 
 import { MRP_MIN_RECEIPTS } from '@auxx/lib/mrp/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { EmptySection } from '@auxx/ui/components/section'
 import { SimpleTooltip } from '@auxx/ui/components/tooltip'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Package } from 'lucide-react'
@@ -20,11 +21,13 @@ function percent(value: number | null): string {
   return value === null ? EMPTY_CELL : `${Math.round(value * 100)} %`
 }
 
-/** One row per vendor part: stated vs observed supply (07 §4.7, 02 §6.2); nothing without vendor parts. */
+/** One row per vendor part: stated vs observed supply (07 §4.7, 02 §6.2). */
 export function CompanySupplyBlock({ entityInstanceId: supplierId }: DrawerTabProps) {
   const performance = api.mrp.supplierPerformance.useQuery({ supplierId })
+  if (performance.isPending) return <TreeRowSkeleton />
   const vendorParts = performance.data?.vendorParts ?? []
-  if (vendorParts.length === 0) return null
+  if (vendorParts.length === 0)
+    return <EmptySection orientation='horizontal' title='No vendor parts from this supplier yet' />
 
   return (
     <TreeRowList
@@ -42,6 +45,7 @@ function SupplyRow({ vp }: { vp: VendorPartSupply }) {
   return (
     <TreeRow
       icon={<Package className='size-4 text-muted-foreground' />}
+      rowClassName='hover:bg-primary-100'
       title={<span className='truncate text-sm'>{vp.partName ?? 'Unnamed part'}</span>}
       description={vp.partSku ?? undefined}
       secondary={

@@ -41,11 +41,12 @@ function StreamRow({
     <TreeRow
       icon={<Table2 className='size-4' />}
       title={stream.streamKey ?? 'Untitled stream'}
+      secondaryFill
       secondary={
         defLabels.length > 0 ? (
-          <span className='flex items-center gap-1'>
+          <span className='flex min-w-0 items-center gap-1'>
             <ArrowRight className='size-3 shrink-0' />
-            {defLabels.join(' · ')}
+            <span className='truncate'>{defLabels.join(' · ')}</span>
           </span>
         ) : (
           'no targets yet'

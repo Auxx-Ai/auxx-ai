@@ -8,6 +8,7 @@
 
 import { getDefinitionId, type RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -103,9 +104,9 @@ export function RelatedRecordRow({
   )
 }
 
-/** Empty-state row — muted single line, no actions. */
+/** Empty-state row: a horizontal `EmptySection`, row height, so filling up causes no layout shift. */
 export function EmptyRow({ label }: { label: string }) {
-  return <div className='px-1 py-1.5 text-sm text-muted-foreground'>{label}</div>
+  return <EmptySection orientation='horizontal' title={label} />
 }
 
 export function RowSkeleton() {

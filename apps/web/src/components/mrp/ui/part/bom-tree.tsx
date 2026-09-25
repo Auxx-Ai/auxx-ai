@@ -130,7 +130,7 @@ function BomTreeRow({
   return (
     <GridTreeRow
       columns={MRP_BOM_COLS}
-      rowClassName='gap-x-2'
+      rowClassName='gap-x-2 hover:bg-primary-100'
       depth={node.depth - 1}
       expandable={expandable}
       chevronOnHover
