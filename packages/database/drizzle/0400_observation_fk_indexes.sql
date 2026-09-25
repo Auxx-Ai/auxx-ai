@@ -1,0 +1,3 @@
+CREATE INDEX "FinancialSourceAcceptance_observation_idx" ON "FinancialSourceAcceptance" USING btree ("organizationId","observationId");--> statement-breakpoint
+CREATE INDEX "MoneyTransfer_current_observation_idx" ON "MoneyTransfer" USING btree ("organizationId","currentObservationId");--> statement-breakpoint
+CREATE INDEX "ProcessorBalanceEntry_current_observation_idx" ON "ProcessorBalanceEntry" USING btree ("organizationId","currentObservationId");

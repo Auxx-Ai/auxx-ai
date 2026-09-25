@@ -24,6 +24,7 @@ import { wakeRecords } from '../accounting/work-items/wake'
 import { runWithDirtyParents } from '../reconcilers/dirty-parents'
 import { toRecordId } from '../resources/resource-id'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
+import { startRunHeartbeat } from './run-control'
 import {
   findItemByDef,
   listItemsWithPendingRelations,
@@ -62,6 +63,8 @@ export async function resolveRelationships(
   const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
   const completed: string[] = []
 
+  // The drains at the end of this scope can outlive the 5-minute stale-run sweep (110 §9a).
+  const stopHeartbeat = startRunHeartbeat(ctx.db, ctx.runId)
   await runWithDirtyParents(ctx.orgId, ctx.userId, async () => {
     for (const item of items) {
       if (!item.entityInstanceId) continue
@@ -189,7 +192,7 @@ export async function resolveRelationships(
         })
       }
     }
-  })
+  }).finally(stopHeartbeat)
 
   // Work parked on a record this pass completed retries now (101 E9); a failed wake
   // leaves the rows on their own schedule.

@@ -9,6 +9,7 @@ import {
   handleFieldTriggerJob,
   handleRecordRules,
   handleSignalRecordRules,
+  handleSyncDuplicateScan,
   handleSyncRecordRules,
   ingestBounceMessage,
   projectSignalToTimeline,
@@ -50,6 +51,8 @@ const eventHandlersJobMappings = {
   handleFieldTriggerJob,
   handleRecordRules,
   handleSyncRecordRules,
+  // Fanned out from `sync:records:changed` beside the rules door; unmapped it failed every finalize.
+  handleSyncDuplicateScan,
   publishThreadEventToRealtime,
   // Message-signal + bounce + signal-projection handlers, fanned out from
   // publishEventJob (message:received, ticket:status:changed, signal:recorded).

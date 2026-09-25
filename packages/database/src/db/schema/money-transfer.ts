@@ -6,6 +6,7 @@ import {
   check,
   date,
   foreignKey,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -81,6 +82,8 @@ export const MoneyTransfer = pgTable(
       foreignColumns: [EntityInstance.organizationId, EntityInstance.id],
     }).onDelete('no action'),
     unique('MoneyTransfer_source_key').on(t.organizationId, t.sourceObjectId),
+    // Backs the FK check on an observation delete; without it a bulk delete rescans the org.
+    index('MoneyTransfer_current_observation_idx').on(t.organizationId, t.currentObservationId),
     check(
       'MoneyTransfer_currency_check',
       sql`${t.sourceCurrency} ~ '^[A-Z]{3}$' AND ${t.destinationCurrency} ~ '^[A-Z]{3}$' AND ${t.sourceCurrencyExponent} BETWEEN 0 AND 4 AND ${t.destinationCurrencyExponent} BETWEEN 0 AND 4`

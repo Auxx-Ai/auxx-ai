@@ -10,6 +10,7 @@ export { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-m
 export { flipDocumentStatusOnSend } from './flip-document-status-on-send'
 export { handleRecordRules } from './handle-record-rules'
 export { handleSignalRecordRules } from './handle-signal-record-rules'
+export { handleSyncDuplicateScan } from './handle-sync-duplicate-scan'
 export { handleSyncRecordRules } from './handle-sync-record-rules'
 export { ingestBounceMessage } from './ingest-bounce-message'
 export { projectSignalToTimeline } from './project-signal-to-timeline'
