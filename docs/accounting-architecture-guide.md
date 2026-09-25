@@ -531,11 +531,22 @@ hands to `exportPostedEntry` **after** commit.
 checked at all: an opening entry carries the inventory accounts at the cutover (from the
 provider's balance sheet when one is connected, 103 §5a), and it is the close's inventory
 baseline (`ledger/reads/opening-inventory.ts`), not a second writer. The gap between it and the
-parts' opening value (`initial` movements on or before the cutover) is posted once, the day
-after the cutover, by `postOpeningInventoryAdjustment` (`inventory/receiving/`): an
-`inventory_movement` against `inventory_revaluation`, claimed on `(opening_balance, <org>,
-inventory_adjustment:<cutover>)`, its lines stamped `sourceType: opening_inventory_adjustment`
-so the close counts it as baseline rather than a movement.
+parts' value at the cutover is the **opening inventory difference** (111 Q19/Q23), explicit and
+repeatable: `readOpeningInventoryDifference` (`inventory/receiving/`) sums **every** movement
+dated on or before the cutover at its frozen `extended_cost` over parts that carry an `initial`
+(`readPartsValueAtCutover`); a part with movements and no `initial` is listed as uncounted with
+its throughput and excluded, and an unvalued row is counted and excluded. Nothing posts it
+automatically — `completeConnectAndGo` stops at finalize and the finish page shows the screen.
+Each press of `postOpeningInventoryAdjustment` posts only the delta since the last entry,
+`parts − (opening + Σ posted differences)`, dated the day after the cutover: an
+`inventory_movement` claimed on `(opening_balance, <org>, inventory_adjustment:<cutover>:<n>)`
+with `n` = posted entries + 1, lines stamped `sourceType: opening_inventory_adjustment` so the
+close counts every occurrence as baseline. The credit side is chosen once by
+`accounting.openingInventoryInBooks` — `revaluation` → `inventory_revaluation`, `opening_equity`
+→ `equity_opening_balance`; unset, the read reports `needsAnswer` and the post refuses. That key
+is the one `accounting.opening*` setting the setup freeze exempts (`FROZEN_SETUP_SETTING_KEYS.except`).
+A non-zero delta raises `inventory_cutover_value_changed` on the first open month after the
+cutover (§7.3). Router: `ledger.openingInventory.{read, post, setInBooks, adoptChannelCounts}`.
 
 **Finalize is one server door.** `finalizeAccountingSetup` (`opening/finalize-setup.ts`, router
 `ledger.finalizeSetup`) re-checks `resolveSetupReadiness` against the real opening entry, writes
@@ -948,8 +959,11 @@ own (inventory guide §9.3).
 never a parallel implementation.** The moment a screen hand-writes its own version of one of these
 labels, the refusal an operator reads and the refusal the books recorded can disagree. The item
 keys are `unposted_shipments`, `draft_channel_memos` (a memo *document* still in `draft`),
-`unmapped_role`, `unmapped_account`, `invalid_mapping`, `inventory_unposted`, `inventory_balance`,
-`inventory_standard_value`.
+`unmapped_role`, `unmapped_account`, `invalid_mapping`, `inventory_pending_cost`,
+`inventory_cutover_value_changed` (the parts' value at the cutover moved since the last opening
+inventory difference entry — raised on the first open month after the later of the cutoff and
+the reviewed-through marker only, `firstOpenMonthAfter`; §5.4), `inventory_unposted`,
+`inventory_balance`, `inventory_standard_value`.
 
 `settled-periods.ts` answers "is this date in a month the books are already closed to", and it is
 **three predicates, each catching a case the others miss**: the period lock, *or* a posted entry

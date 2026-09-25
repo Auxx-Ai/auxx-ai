@@ -381,7 +381,7 @@ export function PartFormDialog({
    * somebody can open the drawer on and set stock for, while the reverse order
    * would leave a movement pointing at nothing.
    */
-  const openStockBalance = api.purchasing.openStockBalance.useMutation({
+  const openStockBalance = api.purchasing.setCount.useMutation({
     onError: (error) => {
       toastError({ title: 'Part created, opening stock failed', description: error.message })
     },

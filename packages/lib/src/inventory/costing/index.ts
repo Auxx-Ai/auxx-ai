@@ -36,6 +36,8 @@ export {
   readPartLedgerAverages,
 } from './cost-reads'
 export { type CostWrite, writeCostValues } from './cost-writer'
+// Dated ledger reads (111 D23 / Q26): the replay behind backflush and the count re-anchor.
+export { readEarliestMovementAt, readPartNetThrough } from './dated-reads'
 // The ONLY writer of a FIRST standard cost (plans/money/tasks/15 §1). It never
 // overwrites, which is what makes it safe to call from a post-commit hook.
 export {
@@ -57,6 +59,14 @@ export {
   replaceProvisionalStandard,
 } from './provisional-standard'
 export { batchRecalculateQoH } from './qoh'
+// The count anchor (111 Q26): the one movement allowed to move, in front of the QoH SUM.
+export {
+  anchorSeam,
+  onInitialReanchored,
+  REANCHOR_INITIAL_REASON,
+  type ReanchoredInitial,
+  reanchorInitials,
+} from './reanchor-initials'
 // The cost-only movement: quantity 0, a signed extended cost, one entry of kind
 // `revalue` (73 §6.2 rule 2). The roll and the provisional replace both post
 // through here; §7's landed-cost voucher is next.

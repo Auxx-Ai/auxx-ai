@@ -216,7 +216,6 @@ export const CONNECT_AND_GO_COMPLETE_STEPS = [
   'book_connection',
   'opening',
   'finalize',
-  'inventory_adjustment',
 ] as const
 
 export type ConnectAndGoCompleteStep = (typeof CONNECT_AND_GO_COMPLETE_STEPS)[number]
@@ -239,7 +238,6 @@ export interface ConnectAndGoCompleteReport {
   bookConnection: BookConnectionSetupResult | null
   opening: { filledCount: number; differenceMinor: number; importedAccounts: number } | null
   finalize: { finalizedNow: boolean; openingStatus: string | null } | null
-  inventoryAdjustment: { differenceMinor: number; status: string | null } | null
   /** Every setting this run can write, read back after it, so a client can refresh its copy. */
   settings: Record<string, unknown>
 }

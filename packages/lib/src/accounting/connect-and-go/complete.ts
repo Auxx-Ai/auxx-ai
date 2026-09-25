@@ -4,7 +4,6 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError } from '../../errors'
-import { postOpeningInventoryAdjustment } from '../../inventory/receiving/opening-inventory-adjustment'
 import type { SettingKey } from '../../settings/catalog'
 import { readOrganizationSettings } from '../../settings/read'
 import { batchUpdateOrganizationSettings } from '../../settings/settings-service'
@@ -64,9 +63,10 @@ class StepFailure extends Error {}
 
 /**
  * The person has confirmed the cutover, book settings and questions: write them, create our
- * unlinked accounts in the provider, activate exports, fill the opening from the provider, finalize and post it, then the inventory
- * adjustment. Stops at the first refusal and keeps what landed; every step is idempotent, so
- * calling again resumes. Refuses outright only on a malformed cutover or timezone.
+ * unlinked accounts in the provider, activate exports, fill the opening from the provider, finalize
+ * and post it. The opening inventory difference is never posted here (111 Q19): the finish page
+ * shows it and a person posts it. Stops at the first refusal and keeps what landed; every step is
+ * idempotent, so calling again resumes. Refuses outright only on a malformed cutover or timezone.
  * No permission checks - the router asserts.
  */
 export async function completeConnectAndGo(
@@ -130,7 +130,6 @@ async function completeLocked(
     bookConnection: null,
     opening: null,
     finalize: null,
-    inventoryAdjustment: null,
     settings: {},
   }
 
@@ -316,22 +315,6 @@ async function completeLocked(
         if (opening && !didLedgerAccept(opening))
           throw new StepFailure(opening.error ?? `The opening entry came back ${opening.status}.`)
         return done.value.finalizedNow ? 'Finalized' : { skipped: 'Already finalized' }
-      },
-    ],
-    [
-      'inventory_adjustment',
-      async () => {
-        const adjusted = await postOpeningInventoryAdjustment(db, { organizationId, actorUserId })
-        if (adjusted.isErr()) throw adjusted.error
-        const post = adjusted.value.post
-        report.inventoryAdjustment = {
-          differenceMinor: adjusted.value.difference.differenceMinor,
-          status: post?.status ?? null,
-        }
-        if (!post) return { skipped: 'Inventory already agrees' }
-        if (!didLedgerAccept(post))
-          throw new StepFailure(post.error ?? `The adjustment came back ${post.status}.`)
-        return 'Posted'
       },
     ],
   ]

@@ -350,6 +350,13 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
     actionLabel: 'Set costs',
     href: () => outboxHref('blocked'),
   },
+  // The difference screen (111 Q23) is mounted under accounting Settings > Opening; X4-web owns
+  // the final route.
+  inventory_cutover_value_changed: {
+    icon: Scale,
+    actionLabel: 'Review the difference',
+    href: () => '/app/accounting/settings/opening?s=inventory',
+  },
   // The three checks a close is, now that it posts nothing (MIGRATION step 5):
   // a document whose entry never landed, the ledger disagreeing with the rows
   // themselves, and the ledger disagreeing with the parts list (73 §6.2 rule 4).

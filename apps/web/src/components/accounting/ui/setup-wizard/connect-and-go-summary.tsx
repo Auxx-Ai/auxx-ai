@@ -11,7 +11,7 @@ import { PhaseList } from '@auxx/ui/components/phase-list'
 import { Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { formatCurrency, pluralize } from '@auxx/utils'
+import { pluralize } from '@auxx/utils'
 import { ListChecks, ListPlus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
@@ -27,7 +27,6 @@ function stepLabels(
     book_connection: 'Exports switched on',
     opening: 'Opening filled',
     finalize: 'Setup finalized, opening posted',
-    inventory_adjustment: 'Inventory adjusted',
   }
 }
 
@@ -87,13 +86,10 @@ export function ConnectAndGoDoneList({
 export function ConnectAndGoStepList({
   report,
   providerLabel,
-  currencyCode,
 }: {
   report: ConnectAndGoCompleteReport
   providerLabel: string
-  currencyCode: string
 }) {
-  const adjustment = report.inventoryAdjustment
   const labels = stepLabels(providerLabel)
   return (
     <Section
@@ -114,15 +110,6 @@ export function ConnectAndGoStepList({
           statuses={Object.fromEntries(report.steps.map((step) => [step.step, step.status]))}
           current={null}
         />
-        {adjustment && adjustment.differenceMinor !== 0 && (
-          <p className='text-muted-foreground text-xs'>
-            Your parts on hand differ from the inventory {providerLabel} reported at the cutover by{' '}
-            {formatCurrency(Math.abs(adjustment.differenceMinor), { currencyCode })}.{' '}
-            {adjustment.status
-              ? 'One adjustment dated the day after the cutover brings both books to the shelf.'
-              : 'The adjustment has not posted yet.'}
-          </p>
-        )}
       </div>
     </Section>
   )

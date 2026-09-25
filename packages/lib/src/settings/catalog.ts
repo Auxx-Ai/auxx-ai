@@ -1263,6 +1263,24 @@ export const SETTINGS_CATALOG = {
       'opening trial balance was seeded from one (YYYY-MM-DD, the cutover date). Starts with ' +
       'accounting.opening, so it freezes by prefix the same way accounting.openingSource does.',
   },
+  // Answered once on the opening inventory difference screen, after finalize (111 Q19), so it
+  // is the one `accounting.opening*` key the setup freeze exempts (`FROZEN_SETUP_SETTING_KEYS`).
+  'accounting.openingInventoryInBooks': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: null,
+    options: {
+      options: [
+        { value: 'revaluation', label: 'It was on the old books, at a different value' },
+        { value: 'opening_equity', label: 'It was never on the old books' },
+      ],
+    },
+    description:
+      'Where the inventory your parts describe stood on the old books at the cutover. ' +
+      'Revaluation posts each opening inventory difference against Inventory Revaluation; ' +
+      'Opening Balance Equity posts it against Opening Balance Equity. Unset refuses to post.',
+  },
   // Who finalized the baseline and when. Written by the wizard's finalize step,
   // not by a form field.
   'accounting.setupFinalizedAt': {
@@ -1466,7 +1484,19 @@ export const SETTINGS_CATALOG = {
       'Whether an auto-build is raised for a part whose quantity on hand already covers the ' +
       'ordered quantity.',
   },
-
+  // 111 D23/Q14. The settings write path keeps this and `inventory.autoBuildFromOrders`
+  // mutually exclusive: turning one on turns the other off, and a batch asking for both is refused.
+  'inventory.backflush': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: false,
+    description:
+      'When on, a nightly job writes one completed build per made part per day for whatever ' +
+      'sales drove below zero. Cannot be on together with order-raised auto-builds: turning ' +
+      'this on turns that off, and the reverse.',
+  },
   // ── MRP planning (plans/mrp/08-implementation-plan.md §6) ─────────────────────────────
   // GENERAL for the same reason as `inventory.*` above: `SettingScope` has no INVENTORY value.
   'mrp.aduWindowDays': {

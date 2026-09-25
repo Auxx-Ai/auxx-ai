@@ -134,10 +134,13 @@ export function describeSettledPeriods(settled: Map<string, number>, noun: strin
 export const FROZEN_SETUP_SETTING_KEYS = {
   prefix: 'accounting.opening',
   exact: ['accounting.bookTimeZone', 'accounting.cutoffPeriod'],
+  // Answered after finalize, on the difference screen (111 Q19); it changes no posted entry.
+  except: ['accounting.openingInventoryInBooks'],
 } as const
 
 /** Whether one setting key is frozen by a standing ledger entry. */
 export function isFrozenSetupSettingKey(key: string): boolean {
+  if ((FROZEN_SETUP_SETTING_KEYS.except as readonly string[]).includes(key)) return false
   return (
     key.startsWith(FROZEN_SETUP_SETTING_KEYS.prefix) ||
     (FROZEN_SETUP_SETTING_KEYS.exact as readonly string[]).includes(key)

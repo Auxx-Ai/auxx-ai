@@ -1,83 +1,62 @@
 // packages/lib/src/inventory/receiving/__tests__/open-stock-balance.test.ts
 //
-// The opening balance — the FOURTH movement writer, and the only one whose unit
-// cost a caller is entitled to state (plans/money/tasks/15-costing-usability.md
-// §2.2). The org cache, the CRUD handler, the two part reads and
-// `ensureStandardCost` are mocked, so nothing here needs a database.
-//
-// What is pinned:
-//
-//   - one `initial` movement, at the TYPED cost, `cost_basis: standard`, with
-//     the inventory role resolved from the part kind
-//   - the standard cost is set BEFORE the movement is written, from the same
-//     number, so the opening balance carries no variance
-//   - 🛑 a part that already has ANY movement is refused. That guard is what
-//     stops the create form becoming a back door into hand-valuing an
-//     adjustment, since `initial` is the one type that takes a caller's cost
-//   - zero and negative quantities and costs are refused, and nothing is written
-//   - 🛑 `adjustStock` still has no unit-cost input. `G12` stands, and the
-//     existence of a typed cost one file over must not be read as permission.
+// The create form's opening balance is `setCount` dated `occurredAt` (103 O1, 111 D21): this
+// pins the delegation. `setCount` itself is tested in `set-count.test.ts`; `G12`'s guard on
+// `adjustStock` stays pinned here because the typed count cost one file over is what it
+// must not be read as permission for.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
+import { BadRequestError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
+  setCount: vi.fn(),
   createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
     instance: { id: 'mv_1' },
   })),
-  ensureSpy: vi.fn(),
-  /** systemAttributes the org has materialised. */
-  materialised: new Set<string>(),
-  /** entityType -> def id; a missing key models a def the org does not have. */
-  defs: new Map<string, string>(),
   partKind: null as string | null,
-  /** What `readPartStandardCost` answers AFTER `ensureStandardCost` has run. */
   standardCost: null as number | null,
-  displayName: 'Widget 9000' as string | null,
-  /** Rows `assertPartHasNoMovements`' probe finds. Non-empty = already opened. */
-  existingMovements: [] as { id: string }[],
-  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
 }))
 
-vi.mock('../../../accounting/work-items/write', () => ({
-  upsertWorkItem: h.upsertWorkItem,
-}))
-
+vi.mock('../set-count', () => ({ setCount: h.setCount }))
+vi.mock('../../../accounting/work-items/write', () => ({ upsertWorkItem: vi.fn() }))
 vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
-  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
-    const id = h.defs.get(entityType)
-    if (!id) throw new Error(`EntityDefinition not found for entityType: ${entityType}`)
-    return id
-  }),
+  getCachedEntityDefId: vi.fn(async () => undefined),
+  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => `def_${entityType}`),
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
-        ),
+        Object.fromEntries(attrs.map((a) => [a, { id: `fld_${a}` }])),
     }),
   }),
 }))
-
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     create = h.createSpy
   },
 }))
-
+vi.mock('../../../resources/system-records', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  systemDefId: async () => 'def_stock_movement',
+}))
+vi.mock('../../builds/build-queries', () => ({
+  readPartKinds: async (_db: unknown, _org: string, ids: string[]) =>
+    new Map(h.partKind ? ids.map((id) => [id, h.partKind as string]) : []),
+}))
 vi.mock('../receipt-queries', async () => {
   const { ok } = await import('neverthrow')
   return {
     readPartKind: vi.fn(async () => ok(h.partKind)),
     readPartStandardCost: vi.fn(async () =>
-      ok({ standardCost: h.standardCost, displayName: h.displayName })
+      ok({ standardCost: h.standardCost, displayName: 'Widget 9000' })
     ),
   }
 })
-
-vi.mock('../../costing/ensure-standard-cost', () => ({
-  ensureStandardCost: h.ensureSpy,
+vi.mock('../../costing/qoh', () => ({ batchRecalculateQoH: vi.fn() }))
+vi.mock('../../../accounting/ledger/post/post-inventory-document', () => ({
+  postInventoryDocumentInTx: async () => null,
+}))
+vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
+  exportInventoryMovement: async () => null,
 }))
 
 import { adjustStock } from '../adjust-stock'
@@ -86,364 +65,54 @@ import type { AdjustStockInput } from '../types'
 
 const ORG = 'org_1'
 const USER = 'user_1'
+const db = { transaction: async (fn: (tx: unknown) => unknown) => fn(db) } as never
 
-/**
- * A drizzle chain that ends in whatever `assertPartHasNoMovements`' probe is
- * told to find. Every link returns itself, so the shape of the query is free to
- * change without the double having to know about it.
- */
-const db = {
-  select: () => {
-    const chain: Record<string, unknown> = {}
-    chain.from = () => chain
-    chain.innerJoin = () => chain
-    chain.where = () => chain
-    chain.limit = async () => h.existingMovements
-    return chain
-  },
-  // The write and its posting share one transaction.
-  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
-} as never
-
-/** Every systemAttribute a fully migrated org has for this write path. */
-const ALL_MOVEMENT_ATTRS = [
-  'stock_movement_part',
-  'stock_movement_unit_cost',
-  'stock_movement_cost_basis',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-]
-
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
-  h.materialised = new Set(ALL_MOVEMENT_ATTRS)
-  h.defs = new Map([
-    ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
-  ])
   h.partKind = null
-  h.displayName = 'Widget 9000'
   h.standardCost = null
-  h.existingMovements = []
-  h.createSpy.mockResolvedValue({ instance: { id: 'mv_1' } })
-  // The real thing writes only where `part_standard_cost IS NULL`, and this door
-  // always supplies a cost, so the part comes out holding the typed number.
-  h.ensureSpy.mockImplementation(
-    async (
-      _db: unknown,
-      _org: string,
-      partIds: string[],
-      source: { kind: string; unitCost?: number }
-    ) => {
-      const { ok } = await import('neverthrow')
-      if (h.standardCost == null && source.unitCost != null) h.standardCost = source.unitCost
-      return ok({ writtenPartIds: partIds })
-    }
-  )
+  const { ok } = await import('neverthrow')
+  h.setCount.mockResolvedValue(ok({ outcome: 'initial', partId: 'part_1' }))
 })
 
-/** The value bag handed to `UnifiedCrudHandler.create` on the single write. */
-function writtenValues(): Record<string, unknown> {
-  expect(h.createSpy).toHaveBeenCalledTimes(1)
-  return h.createSpy.mock.calls[0]![1]
-}
-
-async function expectErr(promise: ReturnType<typeof openStockBalance>) {
-  const result = await promise
-  expect(result.isErr()).toBe(true)
-  return result._unsafeUnwrapErr()
-}
-
-async function openAndRead(
-  input: Parameters<typeof openStockBalance>[3]
-): Promise<Record<string, unknown>> {
-  const result = await openStockBalance(db, ORG, USER, input)
-  expect(result.isOk()).toBe(true)
-  return writtenValues()
-}
-
-const OPENING = { partId: 'part_1', quantity: 10, unitCost: 1200 }
-
-describe('openStockBalance — the one movement it writes', () => {
-  it('writes exactly one movement, of type initial', async () => {
-    const values = await openAndRead(OPENING)
-    expect(values.stock_movement_type).toBe('initial')
-    expect(values.stock_movement_quantity).toBe(10)
-  })
-
-  // 🛑 The typed number, not a server read. This is the one movement type where
-  // that is correct: an opening balance IS what was paid for the stock on hand,
-  // and there is no supplier row or packing slip to read it from.
-  it('freezes the TYPED unit cost, and an extended cost signed like the quantity', async () => {
-    const values = await openAndRead(OPENING)
-    expect(values.stock_movement_unit_cost).toBe(1200)
-    expect(values.stock_movement_extended_cost).toBe(12000)
-  })
-
-  // `standard`, never `actual`: there is no vendor, no order and no invoice, and
-  // the standard was just made to agree with this number.
-  it('stamps cost_basis STANDARD', async () => {
-    expect((await openAndRead(OPENING)).stock_movement_cost_basis).toBe('standard')
-  })
-
-  it('stamps the inventory ROLE resolved from the part kind, never an account code', async () => {
-    expect((await openAndRead(OPENING)).stock_movement_gl_account).toBe('inventory_raw_materials')
-  })
-
-  it('follows the part kind to the finished-goods account', async () => {
-    h.partKind = 'finished_good'
-    expect((await openAndRead(OPENING)).stock_movement_gl_account).toBe('inventory_finished_goods')
-  })
-
-  // 🛑 `explodeBomMovement` inherits the parent movement's type AND its sign, so
-  // a true flag here would open a balance for every component in the BOM as
-  // well: ten assemblies on the shelf claiming ten of every screw inside them.
-  it('never explodes into the bill of materials', async () => {
-    expect((await openAndRead(OPENING)).stock_movement_adjust_subparts).toBe(false)
-  })
-
-  it('stamps the accounting date the caller gave, not the moment of the keystroke', async () => {
+describe('openStockBalance is setCount', () => {
+  it('hands the part, quantity, cost, notes and actor through, dated occurredAt', async () => {
     const occurredAt = new Date('2026-01-01T00:00:00.000Z')
-    const values = await openAndRead({ ...OPENING, occurredAt })
-    expect(values.stock_movement_occurred_at).toBe('2026-01-01T00:00:00.000Z')
-  })
-
-  it('records the note as the movement reason', async () => {
-    const values = await openAndRead({ ...OPENING, notes: 'Opening count 2026-01-01' })
-    expect(values.stock_movement_reason).toBe('Opening count 2026-01-01')
-  })
-
-  it('returns the row it wrote, with no vendor and no purchase order', async () => {
-    const result = await openStockBalance(db, ORG, USER, OPENING)
-    expect(result.isOk()).toBe(true)
-    const record = result._unsafeUnwrap()
-    expect(record).toMatchObject({
-      movementId: 'mv_1',
-      recordId: 'def_mv:mv_1',
-      partInstanceId: 'part_1',
+    const result = await openStockBalance(db, ORG, USER, {
+      partId: 'part_1',
       quantity: 10,
       unitCost: 1200,
-      extendedCost: 12000,
-      vendorPartId: null,
-      vendorUnitPrice: null,
-      purchaseOrderLineId: null,
-      glAccount: 'inventory_raw_materials',
+      occurredAt,
+      notes: 'Opening count',
     })
-  })
-})
-
-describe('openStockBalance — it sets the first standard cost', () => {
-  it('calls ensureStandardCost with the opening-stock source and the typed cost', async () => {
-    await openAndRead(OPENING)
-    expect(h.ensureSpy).toHaveBeenCalledTimes(1)
-    expect(h.ensureSpy).toHaveBeenCalledWith(db, ORG, ['part_1'], {
-      kind: 'opening-stock',
+    expect(result.isOk()).toBe(true)
+    expect(h.setCount).toHaveBeenCalledWith(db, ORG, {
+      partId: 'part_1',
+      quantity: 10,
+      date: occurredAt,
       unitCost: 1200,
+      actorUserId: USER,
+      notes: 'Opening count',
     })
   })
 
-  // The order is the contract: a movement written first, with the standard write
-  // failing after it, is a part holding stock that nothing can value.
-  it('sets the standard BEFORE the movement is written', async () => {
-    const order: string[] = []
-    h.ensureSpy.mockImplementation(async () => {
-      order.push('ensure')
-      const { ok } = await import('neverthrow')
-      h.standardCost = 1200
-      return ok({ writtenPartIds: ['part_1'] })
-    })
-    h.createSpy.mockImplementation(async () => {
-      order.push('create')
-      return { instance: { id: 'mv_1' } }
-    })
-    await openStockBalance(db, ORG, USER, OPENING)
-    expect(order).toEqual(['ensure', 'create'])
+  it('dates the count today when no occurredAt is given', async () => {
+    const before = Date.now()
+    await openStockBalance(db, ORG, USER, { partId: 'part_1', quantity: 10, unitCost: 1200 })
+    const { date } = h.setCount.mock.calls[0]![2] as { date: Date }
+    expect(date.getTime()).toBeGreaterThanOrEqual(before)
   })
 
-  it('writes nothing when the standard cost could not be set', async () => {
-    h.ensureSpy.mockImplementation(async () => {
-      const { err } = await import('neverthrow')
-      return err(new Error('boom'))
-    })
-    await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  // 111 Q18: the post-condition is read, not enforced. A part still holding no
-  // standard gets a PENDING opening row - quantity now, cost when the standard lands.
-  it('writes a PENDING initial and parks it when the part still has no standard afterwards', async () => {
-    h.ensureSpy.mockImplementation(async () => {
-      const { ok } = await import('neverthrow')
-      return ok({ writtenPartIds: [] })
-    })
-    const values = await openAndRead(OPENING)
-    expect(values.stock_movement_type).toBe('initial')
-    expect(values.stock_movement_quantity).toBe(10)
-    expect(values.stock_movement_cost_basis).toBe('pending')
-    expect(values).not.toHaveProperty('stock_movement_unit_cost')
-    expect(values).not.toHaveProperty('stock_movement_extended_cost')
-    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
-      sourceKind: 'stock_movement',
-      sourceId: 'mv_1',
-      stage: 'price',
-      reasonCode: 'STANDARD_COST_MISSING',
-      externalRef: 'part_1',
-      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_1'], partName: 'Widget 9000' },
-    })
-  })
-
-  it('does not park a priced opening', async () => {
-    await openAndRead(OPENING)
-    expect(h.upsertWorkItem).not.toHaveBeenCalled()
-  })
-
-  // 103 §5a: a stored $0 is a real standard. The typed cost is still this door's number.
-  it('treats a stored $0 standard as real and writes the typed cost at basis standard', async () => {
-    h.standardCost = 0
-    const values = await openAndRead(OPENING)
-    expect(values.stock_movement_cost_basis).toBe('standard')
-    expect(values.stock_movement_unit_cost).toBe(1200)
-    expect(h.upsertWorkItem).not.toHaveBeenCalled()
-  })
-
-  it('refuses a part holding a negative standard, and writes nothing', async () => {
-    h.standardCost = -5
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(error.message).toContain('Widget 9000')
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  // A part somebody already rolled keeps its standard: `ensureStandardCost`
-  // never overwrites, and this door does not ask it to.
-  it('leaves an existing standard cost alone', async () => {
-    h.standardCost = 9999
-    await openAndRead(OPENING)
-    expect(h.standardCost).toBe(9999)
-  })
-})
-
-describe('openStockBalance — opening is ONCE', () => {
-  // 🛑 The load-bearing guard. `initial` is the only movement type that accepts
-  // a caller's cost, so a second one against a part that already has a ledger
-  // would let anybody state any value for any quantity, on an append-only row.
-  it('refuses a part that already has a stock movement, and writes nothing', async () => {
-    h.existingMovements = [{ id: 'mv_earlier' }]
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(error.message).toMatch(/already has stock movements/i)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('does not set a standard cost on the refused second attempt', async () => {
-    h.existingMovements = [{ id: 'mv_earlier' }]
-    await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(h.ensureSpy).not.toHaveBeenCalled()
-  })
-
-  // The refusal has to point somewhere. An adjustment is the door for a count
-  // that disagrees with the system after the part has a history.
-  it('names the adjustment as the way to correct a count instead', async () => {
-    h.existingMovements = [{ id: 'mv_earlier' }]
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error.message).toMatch(/adjustment/i)
-  })
-})
-
-describe('a service is never stocked (107-D10)', () => {
-  it('openStockBalance refuses it with BadRequest and writes nothing', async () => {
-    h.partKind = 'service'
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.ensureSpy).not.toHaveBeenCalled()
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('adjustStock refuses it as a service, not as a part missing a standard', async () => {
-    h.partKind = 'service'
-    const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
+  it('returns exactly what setCount answered', async () => {
+    const { err } = await import('neverthrow')
+    h.setCount.mockResolvedValue(err(new BadRequestError('refused')))
+    const result = await openStockBalance(db, ORG, USER, { partId: 'part_1', quantity: 10 })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
   })
 })
 
-describe('openStockBalance — the quantity and cost guards', () => {
-  it.each([0, -5])('refuses a quantity of %s and writes nothing', async (quantity) => {
-    const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, quantity }))
-    expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-  ])('refuses a non-finite quantity (%s)', async (quantity) => {
-    // Infinity survives Math.round into the doublePrecision column and poisons
-    // every later SUM; NaN passes `<= 0` as false.
-    const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, quantity }))
-    expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it.each([0, -1200])('refuses a unit cost of %s and writes nothing', async (unitCost) => {
-    // The same hard refusal `receiveStock` gives at zero: a zero frozen onto an
-    // append-only row sums into inventory as nothing and cannot be told apart
-    // from a genuinely free part.
-    const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, unitCost }))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    12.5001,
-  ])('refuses a unit cost finer than RATE_DECIMALS can hold (%s)', async (unitCost) => {
-    // Not rounded into a legal value: a fraction beyond five major-unit places
-    // arriving here means the caller is working in the wrong units, and
-    // rounding would freeze that forever. `12.5` (three fractional-cent places)
-    // is now legal - a RATE, not an amount - so the boundary case needs a
-    // fourth place to still be refused.
-    const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, unitCost }))
-    expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('accepts a unit cost at RATE_DECIMALS precision - a fraction of a cent is real money', async () => {
-    const values = await openAndRead({ ...OPENING, unitCost: 1.594 })
-    expect(values.stock_movement_unit_cost).toBe(1.594)
-  })
-
-  it('runs the input guards before anything else', async () => {
-    // No defs at all: if the quantity check ran second this would surface as a
-    // NotFound and the caller would fix the wrong problem.
-    h.defs = new Map()
-    const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, quantity: 0 }))
-    expect(error).toBeInstanceOf(BadRequestError)
-  })
-
-  it('fails with NotFound when the org has no stock_movement definition', async () => {
-    h.defs.delete('stock_movement')
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error).toBeInstanceOf(NotFoundError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('refuses before the cost fields of entity migration 108 are materialised', async () => {
-    h.materialised.delete('stock_movement_unit_cost')
-    const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-})
-
-// 🛑 The regression guard `plans/money/tasks/15-costing-usability.md` §5 asks
-// for by name: "`adjustStock` regaining a unit-cost input. Refused in §2.2.
-// `G12` stands." An opening balance takes a typed cost because it HAS one; an
-// adjustment has no supplier row, no purchase order and no packing slip, so a
-// number typed there would make the ledger's valuation depend on who counted.
+// 🛑 The regression guard `plans/money/tasks/15-costing-usability.md` §5 asks for by name:
+// "`adjustStock` regaining a unit-cost input. Refused in §2.2. `G12` stands."
 describe('adjustStock still has no unit-cost input', () => {
   it('does not accept one at the type level', () => {
     // @ts-expect-error — `unitCost` is not on AdjustStockInput and must not be.
@@ -460,17 +129,13 @@ describe('adjustStock still has no unit-cost input', () => {
       unitCost: 999_999,
     })
     expect(result.isOk()).toBe(true)
-    expect(writtenValues().stock_movement_unit_cost).toBe(4400)
+    expect(h.createSpy.mock.calls[0]![1].stock_movement_unit_cost).toBe(4400)
+  })
+
+  it('refuses a service as a service, not as a part missing a standard (107-D10)', async () => {
+    h.partKind = 'service'
+    const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 })
-
-// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
-// this file is about the movements. `vi.mock` is hoisted, so placement is free.
-vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: async () => null,
-  exportInventoryMovement: async () => null,
-  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
-  reverseInventoryMovementPosting: async () => null,
-  reversePostingForMovement: async () => null,
-  linkMovementsToPosting: async () => undefined,
-}))

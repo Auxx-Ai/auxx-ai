@@ -6,6 +6,7 @@ import {
   describeIncompleteRevenue,
   describeInventoryBlockers,
   describeUnmappedRoles,
+  firstOpenMonthAfter,
   incompleteRevenueLead,
   monthLabel,
 } from '../close-blockers'
@@ -305,5 +306,54 @@ describe('describeInventoryBlockers', () => {
     ])
     expect(items[1]?.remedy).toContain('3 movements are still waiting for a standard cost')
     expect(items[1]?.remedy).not.toContain('roll, count or revalue')
+  })
+})
+
+describe('inventory_cutover_value_changed (111 Q23)', () => {
+  const MONTH = '2027-01'
+
+  it('is raised, first, when the value at the cutover moved since the last difference entry', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      cutoverValueChangedMinor: 5_000,
+      pendingCostMovements: 1,
+      unpostedMovements: 0,
+      subledgerMinor: 100_000,
+      ledgerMinor: 100_000,
+    })
+    expect(items.map((item) => item.key)).toEqual([
+      'inventory_cutover_value_changed',
+      'inventory_pending_cost',
+    ])
+    expect(items[0]?.label).toBe(
+      'The value of your parts at the cutover changed by 5000 since the last difference entry'
+    )
+    expect(items[0]?.remedy).toContain('opening inventory difference')
+    expect(items[0]?.ref).toBe(MONTH)
+  })
+
+  it('is cleared once the difference is posted, and absent when the month is not the first open one', () => {
+    const base = { periodKey: MONTH, unpostedMovements: 0, subledgerMinor: 0, ledgerMinor: 0 }
+    expect(describeInventoryBlockers({ ...base, cutoverValueChangedMinor: 0 })).toEqual([])
+    expect(describeInventoryBlockers({ ...base, cutoverValueChangedMinor: null })).toEqual([])
+    expect(describeInventoryBlockers(base)).toEqual([])
+  })
+})
+
+describe('firstOpenMonthAfter', () => {
+  it('is the month after the cutoff while nothing is reviewed', () => {
+    expect(firstOpenMonthAfter('2026-12', null)).toBe('2027-01')
+    expect(firstOpenMonthAfter('2026-06', '')).toBe('2026-07')
+  })
+
+  it('moves past the reviewed-through marker once it is beyond the cutoff', () => {
+    expect(firstOpenMonthAfter('2026-12', '2027-03')).toBe('2027-04')
+    // A marker at or before the cutoff changes nothing.
+    expect(firstOpenMonthAfter('2026-12', '2026-11')).toBe('2027-01')
+  })
+
+  it('refuses a cutoff that is not a month', () => {
+    expect(firstOpenMonthAfter('2026-12-31', null)).toBeNull()
+    expect(firstOpenMonthAfter('2026-13', null)).toBeNull()
   })
 })

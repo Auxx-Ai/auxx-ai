@@ -333,6 +333,8 @@ other sends them to the invoice.
 | --- | --- | --- |
 | `receiveStock` / `receivePurchaseOrder` | `receive` (+) | interactive |
 | `adjustStock` | `adjust` (±) | interactive |
+| `setCount` | `initial` (±, once per part, at the ledger start, carrying the count fact) or `adjust` (±) dated the count day — the one count door; `openStockBalance` and `bulkOpenStockBalance` call it (111 D21) | interactive |
+| `reanchorInitials` | no row — re-dates and re-quantifies a part's `initial` when older history arrives (§6.2) | quiet |
 | `completeBuild` | `build_consume` (−) **and** `build_produce` (+) | quiet, one transaction |
 | `reverseMovement` / `reverseBuild` | the negating row | quiet |
 | `fillPendingCost` | no row — fills the cost onto a `pending` row, once (§7.4) | quiet |
@@ -344,15 +346,29 @@ so it is best-effort.
 
 ### 6.2 QoH is derived
 
-`recalculatePartQoH` re-SUMs the whole ledger for a part. This is what makes the ledger the
-truth and it is **why a connector or sink may never write `part_quantity_on_hand`** — the next
-movement would overwrite it. A Shopify `inventory_quantity` therefore has to land in its own
+`batchRecalculateQoH` (`inventory/costing/qoh.ts`) re-SUMs the whole ledger for a part and is
+the **one owner** of `part_quantity_on_hand`; the per-movement hook `recalculatePartQoH`
+delegates to it. This is what makes the ledger the truth and it is **why a connector or sink
+may never write `part_quantity_on_hand`** — the next movement would overwrite it. A Shopify `inventory_quantity` therefore has to land in its own
 column regardless of any mapping decision; the drift check is a column-vs-column comparison on
 one row.
 
 Being a full re-SUM makes QoH **order-independent**, which is exactly why it is compatible with
 standard cost and moving average, and *not* with FIFO layer allocation (which must be
 incremental and therefore locked). See §7.3.
+
+**The anchor, and the re-anchor (111 D21, Q26).** A count is "N as of D". `setCount` writes
+the part's one `initial` at the ledger start — the day before its earliest movement, never
+after D — with quantity `N − net(D)` and the count fact on `stock_movement_count_quantity` /
+`stock_movement_count_date`, so the replay reads N on D and the right number on every day
+before it; a part that already has an `initial` gets an `adjust` dated D instead, and movements
+after D stand (Q15). The `initial` is therefore a **derived anchor, not an event**, and it is the
+one row on the append-only ledger allowed to move: `reanchorInitials` runs in front of the SUM
+in `batchRecalculateQoH`, and when a movement older than the initial has arrived or the replay
+no longer reads N on D it re-dates and re-quantifies the row on the quiet lane
+(`REANCHOR_INITIAL_REASON`), idempotently. `onInitialReanchored` is the seam where the MRP
+mirror's `updateMovementFactAnchor` goes. Migration 193 (c) stamps every pre-existing `initial`
+with its own (quantity, day) so old openings re-anchor too.
 
 ### 6.3 `occurredAt`
 
@@ -640,8 +656,8 @@ posts over its opening stock (§11).
 
 #### A movement may exist without a cost — `pending`, filled once (111 Q18)
 
-Quantity never waits on cost. A part with no standard still moves: relief, `adjustStock`, the
-opening doors and `completeBuild` write the row **now** with `cost_basis = pending` and **no**
+Quantity never waits on cost. A part with no standard still moves: relief, `adjustStock`,
+`setCount` and `completeBuild` write the row **now** with `cost_basis = pending` and **no**
 `unit_cost` / `extended_cost` key — absent, never `0` (`buildStockMovementValues` refuses a null
 cost on any other basis). `fillPendingCost` (`inventory/movements/fill-pending-cost.ts`) is the
 **one** lane that later writes `unit_cost`, `extended_cost = round(unitCost × quantity)` and
@@ -820,6 +836,22 @@ It was once the inventory bridge's flag, and the bridge is deleted. **The field 
 still must not be deleted**: `explodeBomMovement` guards on it as its third statement, before any
 query, so a `false` reaches that guard on every write lane. It is now the belt that keeps a
 build's movements from exploding their own BOM. Update the reasoning, not the conclusion.
+
+### 8.3 Backflush — the replay that builds what sales drove negative
+
+`backflush.ts` (111 D23/D24). With `inventory.backflush` on, the nightly `backflushJob` writes
+**one completed build per made part per local day** whose on hand ended that day below zero:
+quantity = the shortfall, `completedAt` = 23:59:59.999 of the day in `accounting.bookTimeZone`,
+`source: 'backflush'`, notes `Backflush for YYYY-MM-DD`, one `build_batch_run` per run so
+`undoBatchRun` undoes it. On demand over a range from `builds.runBackflush`, previewed by
+`previewBackflush` (same walk, nothing written). The order is parents first (reverse DFS
+post-order over the subpart graph, `backflush-planner.ts`), so a parent's consume legs land
+before its subassembly is checked; a bought component driven negative stays negative. Before a
+part's first build in a run the standard-cost roll runs unless its standard is `confirmed`
+(Q20), so a provisional channel standard is replaced and on hand revalued once; an uncosted
+part still builds, its legs pending (§7.4). Re-running a day finds `qoh(day) >= 0` and writes
+nothing. `inventory.backflush` and `inventory.autoBuildFromOrders` are mutually exclusive
+(Q14): the settings write turns the other off and refuses a batch asking for both.
 
 ---
 
@@ -1003,7 +1035,9 @@ sale can carry a hundred movements and one entry.
   late-standard second run; the split arithmetic is `relief/cogs-split.ts`'s `sumReliefCogsSplit`,
   shared with the relief run), a `buildId` is a `build` (subject the build id, `absorbed` the
   labour and overhead stamped on the build, refused while any leg is pending), an `adjust` is
-  `adjust`, an `initial` is `opening`, a `scrap` is `scrap`, a salvage `return_in` is `return`, a
+  `adjust`, an `initial` is `opening` (which `postInventoryMovementInTx` posts as `adjust` on any
+  org with a cutover — stock counted after the books opened is a count variance, 111 Q19; only an
+  org that never set a cutover posts `opening`), a `scrap` is `scrap`, a salvage `return_in` is `return`, a
   `receive` re-derives its accrual from the row's vendor price and accrued adders, and a
   `return_out` is refused (its `grni` figure is the vendor credit's). **A pricing pass is one more
   relief run**: its subject is the first row valued in that pass, so a dispatch priced over several
@@ -1427,9 +1461,9 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Path | Owns |
 | --- | --- |
 | `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
-| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
-| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `price-pending-movements.ts` (the pricer: `pending` rows valued and their documents posted), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
-| `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
+| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `initial-queries.ts` (`readPartInitials`), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
+| `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `price-pending-movements.ts` (the pricer: `pending` rows valued and their documents posted), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`, the one QoH owner), `reanchor-initials.ts` (the count anchor re-derived), `dated-reads.ts` (`readPartNetThrough`, `readEarliestMovementAt`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
+| `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `set-count.ts` (the one count door), `set-count-preflight.ts`, `open-stock-balance.ts` and `bulk-opening-stock.ts` (its two callers), `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
 | `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `price-build.ts` (a pending build's last leg priced: stamp and post), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |
 | `packages/lib/src/inventory/relief/` | `relieve.ts` (`relieveFulfillmentLines`, the `sale` movement), `cogs-split.ts` (the three-way COGS debit), `relief-sweep.ts` (the stage-`price` handler), `backfill.ts`, `write-lane.ts` |
 | `packages/lib/src/inventory/bom/` | `subpart-graph.ts` (`loadSubpartGraph`, `MAX_BOM_DEPTH`) |

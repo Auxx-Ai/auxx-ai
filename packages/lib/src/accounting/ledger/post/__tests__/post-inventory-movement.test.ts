@@ -180,6 +180,44 @@ describe('what it declines to post', () => {
   })
 })
 
+describe('the kind an opening posts as (111 Q19)', () => {
+  const OPENING = {
+    ...SALE,
+    kind: 'opening' as const,
+    parents: [],
+    movements: [{ id: 'sm_1', extendedCostMinor: 5_000, glAccountRole: 'inventory_raw_materials' }],
+  }
+  function lastEntryRoles(): string[] {
+    const call = h.postEntryInTx.mock.calls.at(-1) as unknown as [
+      unknown,
+      { entry: { lines: Array<{ accountRole: string }> } },
+    ]
+    return call[1].entry.lines.map((line) => line.accountRole)
+  }
+
+  it('posts an initial dated after the cutover to Count Variance, never Opening Balance Equity', async () => {
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': '2026-07' }
+    h.postEntryInTx.mockClear()
+    expect(await postInventoryMovementInTx(TX, OPENING)).not.toBeNull()
+    expect(lastEntryRoles()).toContain('inventory_count_variance')
+    expect(lastEntryRoles()).not.toContain('equity_opening_balance')
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': null }
+  })
+
+  it('posts nothing for an initial at or before the cutover - the floor holds it', async () => {
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': '2026-08' }
+    h.postEntryInTx.mockClear()
+    expect(await postInventoryMovementInTx(TX, OPENING)).toBeNull()
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': null }
+  })
+
+  it('posts opening equity only on an org that never set a cutover', async () => {
+    h.postEntryInTx.mockClear()
+    expect(await postInventoryMovementInTx(TX, OPENING)).not.toBeNull()
+    expect(lastEntryRoles()).toContain('equity_opening_balance')
+  })
+})
+
 describe('the book day', () => {
   // 23:59 on August 18 in Los Angeles is 06:59 UTC on August 19. A UTC slice
   // dated the entry a day late and, at a month edge, a month late - against the

@@ -240,14 +240,17 @@ export async function ensureStandardCost(
 /**
  * Validate the caller's costs, in minor units at rate precision, keyed by part.
  *
- * Zero is a value only from a person or a channel (103 §5a). The other doors
- * keep refusing it: a zero there only ever means a part nobody could value.
+ * Zero is a value only from a person (a typed count cost included) or a channel
+ * (103 §5a). The other doors keep refusing it: a zero there only ever means a
+ * part nobody could value.
  */
 function resolveExplicitCosts(
   requested: readonly string[],
   source: EnsureStandardCostSource
 ): Map<string, number> {
-  const allowZero = source.kind === 'manual' || source.kind === 'channel'
+  // A typed count cost may be $0 too (103 §5a, 111 X4).
+  const allowZero =
+    source.kind === 'manual' || source.kind === 'channel' || source.kind === 'opening-stock'
   const costs = new Map<string, number>()
   const raw: [string, number][] = source.unitCosts
     ? [...source.unitCosts]

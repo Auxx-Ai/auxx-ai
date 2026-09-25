@@ -17,6 +17,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { readPartsValueAtCutover } from '../../../inventory/receiving/opening-stock-subledger'
 import { systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import { readTrialBalance } from '../../reports/trial-balance'
@@ -30,7 +31,9 @@ import {
   type CloseBlockerItem,
   describeIncompleteRevenue,
   describeInventoryBlockers,
+  firstOpenMonthAfter,
 } from './close-blockers'
+import { PERIOD_LOCK_SETTING_KEY } from './period-lock'
 
 const logger = createScopedLogger('postings:close-blockers')
 
@@ -381,13 +384,14 @@ async function readPartsListStandardValue(
 async function readCutover(
   db: Database,
   organizationId: string
-): Promise<{ cutoverDate: string | null; openingMinor: number }> {
+): Promise<{ cutoverDate: string | null; openingMinor: number; firstOpenMonth: string | null }> {
   const K = OPENING_BASELINE_SETTING_KEYS
   const [settings, assignments] = await Promise.all([
-    readOrganizationSettings(organizationId, [K.cutoffPeriod] as const),
+    readOrganizationSettings(organizationId, [K.cutoffPeriod, PERIOD_LOCK_SETTING_KEY] as const),
     readRoleAssignments(db, organizationId),
   ])
   const cutoff = settings[K.cutoffPeriod]?.trim() || null
+  const lockedThrough = settings[PERIOD_LOCK_SETTING_KEY]?.trim() || null
   const inventoryAccountIds = [
     ...new Set(
       assignments
@@ -399,7 +403,29 @@ async function readCutover(
   let openingMinor = 0
   for (const minor of ledger.openingByAccount.values()) openingMinor += minor
   for (const minor of ledger.adjustmentByAccount.values()) openingMinor += minor
-  return { cutoverDate: cutoff ? cutoverDateFor(cutoff) : null, openingMinor }
+  return {
+    cutoverDate: cutoff ? cutoverDateFor(cutoff) : null,
+    openingMinor,
+    firstOpenMonth: cutoff ? firstOpenMonthAfter(cutoff, lockedThrough) : null,
+  }
+}
+
+/**
+ * `parts at cutover − (opening + posted differences)` (111 Q23), read only for the first open
+ * month: the baseline is one number and its blocker belongs on one month, not every month.
+ */
+async function readCutoverValueChange(
+  db: Database,
+  organizationId: string,
+  cutover: { cutoverDate: string | null; openingMinor: number; firstOpenMonth: string | null },
+  periodKey: string
+): Promise<number | null> {
+  if (!cutover.cutoverDate || cutover.firstOpenMonth !== periodKey) return null
+  const parts = await readPartsValueAtCutover(db, organizationId, {
+    onOrBefore: cutover.cutoverDate,
+  })
+  if (parts.isErr()) throw parts.error
+  return parts.value.totalMinor - cutover.openingMinor
 }
 
 export interface CloseBlockersResult {
@@ -440,15 +466,18 @@ export async function readCloseBlockers(
 
   try {
     const cutover = await readCutover(db, organizationId)
-    const [movements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
-      countUnpostedMovements(db, organizationId, bounds),
-      readSubledgerValue(db, organizationId, { ...cutover, lastDay: bounds.last }),
-      readInventoryLedgerValue(db, organizationId, bounds.last),
-      readPartsListStandardValue(db, organizationId),
-    ])
+    const [movements, subledgerMinor, ledgerMinor, standardValueMinor, cutoverValueChangedMinor] =
+      await Promise.all([
+        countUnpostedMovements(db, organizationId, bounds),
+        readSubledgerValue(db, organizationId, { ...cutover, lastDay: bounds.last }),
+        readInventoryLedgerValue(db, organizationId, bounds.last),
+        readPartsListStandardValue(db, organizationId),
+        readCutoverValueChange(db, organizationId, cutover, periodKey),
+      ])
     items.push(
       ...describeInventoryBlockers({
         periodKey,
+        cutoverValueChangedMinor,
         pendingCostMovements: movements.pending,
         unpostedMovements: movements.unposted,
         subledgerMinor,

@@ -231,6 +231,7 @@ export async function writeStockMovements(
           qtyPerUnit: input.qtyPerUnit,
           vendorUnitPrice: input.vendorUnitPrice,
           accrued: input.accrued,
+          count: input.count,
           links,
         })
 

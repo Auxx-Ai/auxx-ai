@@ -31,10 +31,12 @@ export {
 } from './fact'
 export type { FilledStockMovement, PendingCostFill } from './fill-pending-cost'
 export { FILL_PENDING_COST_REASON, fillPendingCost } from './fill-pending-cost'
+export { type PartInitial, readPartInitials } from './initial-queries'
 export type { ReverseMovementInput } from './reverse-movement'
 export { reverseMovement } from './reverse-movement'
 export type {
   MovementRecord,
+  StockMovementCountFact,
   StockMovementInput,
   StockMovementLinks,
   StockMovementsCtx,
