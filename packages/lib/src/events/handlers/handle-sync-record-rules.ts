@@ -112,6 +112,14 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
         source: data.source,
         ref: manifestRef(data),
       })
+      // Rules stay at-most-once, but the integrity passes are idempotent: finish them if the
+      // claimant died mid-pass (the door no-ops when they completed or are still running).
+      const { integrityDoor } = await import('./sync-finalize')
+      const { database } = await import('@auxx/database')
+      await integrityDoor(database, organizationId, manifest, {
+        source: data.source,
+        ref: manifestRef(data) as string,
+      })
       return
     }
 

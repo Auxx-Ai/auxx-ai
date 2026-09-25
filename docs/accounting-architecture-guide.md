@@ -1290,9 +1290,11 @@ the safety net, not the mechanism.
 until the limit or the time budget; a throw reschedules its own row, so a thousand refusals cannot
 starve a postable source. The recovery job (`jobs/maintenance/accounting-recovery-job.ts`) visits
 up to 25 finalized orgs per run, those with due work first, with no cursor, and runs for each the
-evidence bridge, the imported-money ingest, the five posting sweeps (`POSTING_SWEEPS`: movements,
-shipments, shipment relief, channel credit memos, stored payout entries) — in any order, since no
-entry reads a sibling — and the export batch sweep. The stored-payout sweep
+evidence bridge, the imported-money ingest, the six posting sweeps (`POSTING_SWEEPS`: movements,
+shipments, pricing, unposted inventory, channel credit memos, stored payout entries) — in any
+order, since no entry reads a sibling — and the export batch sweep. None of them writes relief:
+`pricing` only prices rows relief already wrote, so a synced fulfillment is relieved by the
+finalize integrity pass or not at all (`inventory/relief/backfill.ts` is the manual repair). The stored-payout sweep
 (`money/payouts/sweep-stored-entries.ts`) exists because payout records import in draft with no
 entry and the nightly sync re-offers only its 30-day lookback: it lists paid payouts dated after
 the cutover month with no subject claim, oldest first, and hands each to `repostStoredPayout`.

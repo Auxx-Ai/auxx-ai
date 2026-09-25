@@ -55,6 +55,7 @@ import {
   storageCleanupJob,
   storageQuotaCheckJob,
   stripeSubscriptionSyncJob,
+  syncIntegrityRecoveryJob,
   taskDeadlineScannerJob,
   thumbnailCleanupJob,
   vendorBillAgingJob,
@@ -272,6 +273,8 @@ export const jobMappings = {
   // BACKWARD on purpose - a depreciation entry for March may not exist in January.
   recurringJournalsJob,
   accountingRecoveryJob,
+  // Re-runs finalize integrity passes (relief, shipment posting) a killed worker left pending.
+  syncIntegrityRecoveryJob,
 
   // Backflush (111 D23/D24): nightly for yesterday per org with the switch on, or one org's
   // range enqueued from `builds.runBackflush`.

@@ -667,6 +667,19 @@ export async function setupSchedules() {
   )
 
   await maintenanceQueue.upsertJobScheduler(
+    'syncIntegrityRecoveryJob',
+    { every: 5 * 60_000 },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 30_000 },
+        removeOnComplete: { count: 10 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
+  await maintenanceQueue.upsertJobScheduler(
     'accountingRecoveryJob',
     { every: 60_000 },
     {

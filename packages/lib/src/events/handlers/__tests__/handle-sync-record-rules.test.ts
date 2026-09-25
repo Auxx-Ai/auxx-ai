@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   runSyncFinalize: vi.fn<(db: unknown, input: Record<string, unknown>) => Promise<void>>(
     async () => {}
   ),
+  integrityDoor: vi.fn(async () => {}),
 }))
 
 vi.mock('@auxx/database', () => ({ database: {} }))
@@ -49,7 +50,10 @@ vi.mock('../../../record-rules/engine', () => ({ fireRecordRulesBatch: h.fireRec
 vi.mock('../../../record-rules/snapshot-fetcher', () => ({
   fetchResourceSnapshots: h.fetchResourceSnapshots,
 }))
-vi.mock('../sync-finalize', () => ({ runSyncFinalize: h.runSyncFinalize }))
+vi.mock('../sync-finalize', () => ({
+  runSyncFinalize: h.runSyncFinalize,
+  integrityDoor: h.integrityDoor,
+}))
 
 import { handleSyncRecordRules } from '../handle-sync-record-rules'
 
@@ -265,6 +269,19 @@ describe('handleSyncRecordRules', () => {
     h.claimRunManifestConsumed.mockResolvedValue(false)
     await handleSyncRecordRules(connectorEvent() as never)
     expect(h.fireRecordRulesBatch).not.toHaveBeenCalled()
+    expect(h.runSyncFinalize).not.toHaveBeenCalled()
+  })
+
+  // A claimant killed mid-finalize leaves relief and shipment posting undone; the
+  // redelivery hands them to the idempotent integrity door.
+  it('offers a lost claim to the integrity door', async () => {
+    h.getRunManifest.mockResolvedValue(manifest(fromDeltas({ 'def_1:i1': { f: { n: 1 } } })))
+    h.claimRunManifestConsumed.mockResolvedValue(false)
+    await handleSyncRecordRules(connectorEvent() as never)
+    expect(h.integrityDoor).toHaveBeenCalledWith({}, expect.any(String), expect.anything(), {
+      source: 'connector',
+      ref: 'run_1',
+    })
   })
 
   it('claims before firing on the happy path', async () => {
