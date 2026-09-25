@@ -19,10 +19,17 @@ const h = vi.hoisted(() => ({
   reverseEntry: vi.fn(async () => ({ status: 'posted' as const, glPostingId: 'gp_2' })),
   sourcePostings: [] as Array<Record<string, unknown>>,
   lineSourceIds: [] as string[],
+  settings: {
+    'accounting.bookTimeZone': 'UTC',
+    'accounting.cutoffPeriod': null,
+  } as Record<string, string | null>,
 }))
 
 vi.mock('../../setup/accounting-enabled', () => ({
   isAccountingActive: async () => h.accountingEnabled,
+}))
+vi.mock('../../../../settings/read', () => ({
+  readOrganizationSettings: async () => h.settings,
 }))
 vi.mock('../post-entry', () => ({
   postEntryInTx: h.postEntryInTx,
@@ -68,11 +75,19 @@ const SALE = {
     { sourceKind: 'fulfillment', sourceId: 'ful_1' },
     { sourceKind: 'order', sourceId: 'ord_1' },
   ],
-  txnDate: '2026-08-18',
+  occurredAt: new Date('2026-08-18T12:00:00Z'),
   movements: [
     { id: 'sm_1', extendedCostMinor: -1_000, glAccountRole: 'inventory_finished_goods' },
     { id: 'sm_2', extendedCostMinor: -2_000, glAccountRole: 'inventory_finished_goods' },
   ],
+}
+
+function lastTxnDate(): string {
+  const call = h.postEntryInTx.mock.calls.at(-1) as unknown as [
+    unknown,
+    { entry: { txnDate: string } },
+  ]
+  return call[1].entry.txnDate
 }
 
 describe('the source set one document posts with', () => {
@@ -124,6 +139,34 @@ describe('what it declines to post', () => {
     h.accountingEnabled = true
   })
 
+  it('posts nothing for a document dated in the cutoff month - the opening baseline holds it', async () => {
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': '2026-08' }
+    h.postEntryInTx.mockClear()
+
+    expect(await postInventoryMovementInTx(TX, SALE)).toBeNull()
+    expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
+
+  it('posts nothing for a document dated before the cutoff month', async () => {
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': '2026-08' }
+    h.postEntryInTx.mockClear()
+
+    expect(
+      await postInventoryMovementInTx(TX, { ...SALE, occurredAt: new Date('2025-12-31T23:00:00Z') })
+    ).toBeNull()
+    expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
+
+  it('posts a document dated the month after the cutoff, on its own day', async () => {
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': '2026-07' }
+    h.postEntryInTx.mockClear()
+
+    expect(await postInventoryMovementInTx(TX, SALE)).not.toBeNull()
+    expect(h.postEntryInTx).toHaveBeenCalledTimes(1)
+    expect(lastTxnDate()).toBe('2026-08-18')
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': null }
+  })
+
   it('posts nothing for a document that moved no money', async () => {
     h.postEntryInTx.mockClear()
 
@@ -134,6 +177,51 @@ describe('what it declines to post', () => {
       })
     ).toBeNull()
     expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
+})
+
+describe('the book day', () => {
+  // 23:59 on August 18 in Los Angeles is 06:59 UTC on August 19. A UTC slice
+  // dated the entry a day late and, at a month edge, a month late - against the
+  // close, which files the movement under the local day.
+  const endOfDayLocal = new Date('2026-08-19T06:59:00Z')
+
+  it('dates the entry on the LOCAL calendar day, not the UTC one', async () => {
+    h.settings = {
+      'accounting.bookTimeZone': 'America/Los_Angeles',
+      'accounting.cutoffPeriod': null,
+    }
+    h.postEntryInTx.mockClear()
+
+    await postInventoryMovementInTx(TX, { ...SALE, occurredAt: endOfDayLocal })
+
+    expect(lastTxnDate()).toBe('2026-08-18')
+  })
+
+  it('applies the cutoff floor to the local month, the way the close keys it', async () => {
+    // 20:00 on August 31 local is already September 1 UTC. The local month is
+    // the cutoff month, so the entry does not post.
+    h.settings = {
+      'accounting.bookTimeZone': 'America/Los_Angeles',
+      'accounting.cutoffPeriod': '2026-08',
+    }
+    h.postEntryInTx.mockClear()
+
+    expect(
+      await postInventoryMovementInTx(TX, { ...SALE, occurredAt: new Date('2026-09-01T03:00:00Z') })
+    ).toBeNull()
+    expect(h.postEntryInTx).not.toHaveBeenCalled()
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': null }
+  })
+
+  it('falls back to UTC for an org with no book time zone', async () => {
+    h.settings = { 'accounting.bookTimeZone': null, 'accounting.cutoffPeriod': null }
+    h.postEntryInTx.mockClear()
+
+    await postInventoryMovementInTx(TX, { ...SALE, occurredAt: endOfDayLocal })
+
+    expect(lastTxnDate()).toBe('2026-08-19')
+    h.settings = { 'accounting.bookTimeZone': 'UTC', 'accounting.cutoffPeriod': null }
   })
 })
 

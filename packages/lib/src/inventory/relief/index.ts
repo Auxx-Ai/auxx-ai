@@ -26,7 +26,7 @@ export {
   backfillFulfillmentRelief,
 } from './backfill'
 export { type ReliefCostSplit, splitReliefCost } from './cogs-split'
-export { sweepFulfillmentRelief } from './relief-sweep'
+export { priceOne, sweepPendingPricing } from './relief-sweep'
 export {
   type FulfillmentLineToRelieve,
   type RelieveFulfillmentLinesInput,

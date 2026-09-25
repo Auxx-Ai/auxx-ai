@@ -35,7 +35,7 @@ import {
   NotFoundError,
   UnprocessableEntityError,
 } from '../../errors'
-import { StockMovementType } from '../../resources/registry/enum-values'
+import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
 import type { MovementRecord } from './types'
@@ -71,6 +71,9 @@ const REVERSAL_ATTRIBUTES = [
   'stock_movement_vendor_part',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement',
+  'stock_movement_build',
+  'stock_movement_fulfillment_line',
+  'stock_movement_parent_movement',
 ] as const
 
 type ReversalAttribute = (typeof REVERSAL_ATTRIBUTES)[number]
@@ -114,13 +117,17 @@ interface OriginalMovement {
   type: string
   quantity: number
   costBasis: string | null
-  unitCost: number
+  /** `null` only on a `pending` row (111 Q18). */
+  unitCost: number | null
   glAccount: string
   vendorUnitPrice: number | null
   vendorPartId: string | null
   purchaseOrderLineId: string | null
   /** Set when the original is ITSELF a reversal. */
   reversesMovementId: string | null
+  buildId: string | null
+  fulfillmentLineId: string | null
+  parentMovementId: string | null
 }
 
 /**
@@ -139,8 +146,8 @@ interface OriginalMovement {
  *    over-correction is a fresh receipt or adjustment, not a chain of undos -
  *    a chain makes "is this movement live?" a graph walk instead of a lookup.
  * 4. Write ONE new movement: the negated quantity, the ORIGINAL's frozen unit
- *    cost verbatim, and the original's `purchaseOrderLine`, `glAccount`,
- *    `vendorUnitPrice` and `vendorPart`.
+ *    cost verbatim, its `glAccount` and `vendorUnitPrice`, and every link it
+ *    carried (`StockMovementLinks`).
  *
  * 🛑 **The reversal is never re-priced.** It carries the unit cost the original
  * froze, whatever today's supplier terms say. A reversal valued at the current
@@ -150,12 +157,13 @@ interface OriginalMovement {
  * negated quantity - so it stays signed like the quantity and the subledger
  * still sums to the inventory balance.
  *
- * ⚠️ **Only a COSTED movement can be reversed here.** A movement with no frozen
- * `unitCost` (a pre-migration row, or a hand-keyed stock adjustment - see
- * section 1.5 of the plan) has no cost to preserve, and writing its negation at
- * zero would be the thing `receive-stock.ts` refuses: a row that looks like data
- * and values inventory at nothing. Those are corrected with a second adjustment;
- * they carry no `purchaseOrderLine` either, so no roll-up is left wrong by that.
+ * ⚠️ **A COSTED or a PENDING movement can be reversed here; a pre-regime null
+ * row cannot.** A `pending` row (111 Q18) reverses into a pending row - negated
+ * quantity, same part, no cost, basis `pending` - and the pricer fills both when
+ * the standard lands. A row with no cost and no `pending` basis (a pre-migration
+ * row, a BOM-explode child) has no cost to preserve and no lane that will ever
+ * price it, and writing its negation at zero would be the thing
+ * `receive-stock.ts` refuses. Those are corrected with a second adjustment.
  *
  * ⚠️ Step 2 is a read-then-write check, not a database constraint - there is no
  * unique index available on a `FieldValue` relationship - so two reversals
@@ -314,13 +322,23 @@ async function readOriginalMovement(
   if (quantity == null || !Number.isFinite(quantity) || quantity === 0) {
     throw new UnprocessableEntityError(`Stock movement ${movementId} has no quantity to reverse`)
   }
-  if (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0 || !glAccount) {
+  const costBasis = read('stock_movement_cost_basis')?.optionId ?? null
+  const pending = costBasis === StockMovementCostBasis.PENDING
+  if (pending && unitCost != null) {
+    throw new UnprocessableEntityError(
+      `Stock movement ${movementId} is pending a price but already carries a cost, and cannot be reversed`
+    )
+  }
+  if (
+    !glAccount ||
+    (!pending && (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0))
+  ) {
     // See the JSDoc on `reverseMovement`: an uncosted movement has no frozen
     // cost to carry, and the alternative - a reversal valued at zero - is worse
-    // than no row at all. `receiveStock` is the only writer of `unitCost` and it
-    // stamps `glAccount` in the same breath, so the two travel together.
+    // than no row at all. Every sanctioned writer stamps `glAccount` beside the
+    // cost, so the two travel together.
     throw new UnprocessableEntityError(
-      `Stock movement ${movementId} carries no frozen unit cost and cannot be reversed. Adjust the stock instead.`
+      `Stock movement ${movementId} carries no frozen unit cost and is not pending a price, so it cannot be reversed. Adjust the stock instead.`
     )
   }
 
@@ -328,13 +346,16 @@ async function readOriginalMovement(
     partId,
     type,
     quantity,
-    costBasis: read('stock_movement_cost_basis')?.optionId ?? null,
+    costBasis,
     unitCost,
     glAccount,
     vendorUnitPrice: read('stock_movement_vendor_unit_price')?.valueNumber ?? null,
     vendorPartId: read('stock_movement_vendor_part')?.relatedEntityId ?? null,
     purchaseOrderLineId: read('stock_movement_purchase_order_line')?.relatedEntityId ?? null,
     reversesMovementId: read('stock_movement_reverses_movement')?.relatedEntityId ?? null,
+    buildId: read('stock_movement_build')?.relatedEntityId ?? null,
+    fulfillmentLineId: read('stock_movement_fulfillment_line')?.relatedEntityId ?? null,
+    parentMovementId: read('stock_movement_parent_movement')?.relatedEntityId ?? null,
   }
 }
 
@@ -427,22 +448,28 @@ async function writeReversal(
         quantity,
         unitCost,
         // The basis follows the cost. A row carrying the original's frozen
-        // `actual` cost is still an `actual`, and re-deciding it here would
-        // let a reversal disagree with the movement it is a copy of. Omitted
-        // entirely (not defaulted) when the original never carried one.
+        // `actual` cost is still an `actual`, a `pending` original makes a
+        // pending reversal, and re-deciding it here would let a reversal
+        // disagree with the movement it is a copy of. Omitted entirely (not
+        // defaulted) when the original never carried one.
         costBasis: original.costBasis ?? undefined,
         glAccount: original.glAccount,
         occurredAt,
         vendorUnitPrice: original.vendorUnitPrice ?? undefined,
         reason,
+        // Every link the original carried, so the reversal is found wherever
+        // the original is (`write-movements.ts` header). The purchase-order
+        // line is what rolls `purchase_order_line_quantity_received` back for
+        // free: the roll-up re-SUMs every movement pointing at the line.
         links: {
           reversesMovementId: originalMovementId,
           vendorPartId: original.vendorPartId ?? undefined,
-          // The copy that makes `purchase_order_line_quantity_received` roll
-          // back for free: the roll-up re-SUMs every movement pointing at the
-          // line, so the negative quantity decrements it with no change to
-          // the roll-up itself.
           purchaseOrderLineId: original.purchaseOrderLineId ?? undefined,
+          buildId: original.buildId ?? undefined,
+          fulfillmentLineId: original.fulfillmentLineId ?? undefined,
+          // Safe to copy: `explodeBomMovement` exits on `adjustSubparts`
+          // (never set here) before it ever reads the parent.
+          parentMovementId: original.parentMovementId ?? undefined,
         },
       },
     ]

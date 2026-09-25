@@ -28,9 +28,11 @@
 // ── Run it AFTER the builds backfill ────────────────────────────────────────
 //
 // 🛑 Relief prices at the part's frozen `part_standard_cost` and nothing else.
-// A line whose part has none is skipped (`skippedNoCost`) and its dispatch is
-// parked in Blocked as `STANDARD_COST_MISSING`; set or roll the standards, and
-// run the builds backfill for assembled parts, before this.
+// A line whose part has none is still written, as a `pending` row with no cost
+// (`skippedNoCost` counts them, 111 Q18), and its dispatch is parked in Blocked
+// at stage `price` as `STANDARD_COST_MISSING`; the pricer fills and posts the
+// rows when the standard lands. Set or roll the standards, and run the builds
+// backfill for assembled parts, before this so fewer rows wait.
 
 import { database as db, schema } from '@auxx/database'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
@@ -185,16 +187,16 @@ async function main() {
   console.log(`  parts recalculated      ${s.affectedPartIds.length}`)
   console.log(`  skipped, no part        ${s.skippedNoPart}`)
   console.log(`  skipped, already done   ${s.skippedZeroDelta}`)
-  console.log(`  skipped, NO COST        ${s.skippedNoCost}`)
+  console.log(`  written PENDING (no cost) ${s.skippedNoCost}`)
   console.log(`  skipped, service        ${s.skippedService}`)
   console.log(`  negative QoH            ${s.negativeQoHPartIds.length} part(s)`)
   console.log(`  batches failed          ${s.batchesFailed}`)
 
   if (s.skippedNoCost > 0) {
     console.log(
-      '\n⚠️  Some lines could not be priced: their part has no standard cost. If the\n' +
-        '   builds backfill has not run yet, that is why - run it and re-run this;\n' +
-        '   the lines that were skipped are still owed and will be picked up.'
+      '\n⚠️  Some lines were written pending: their part has no standard cost. Quantity\n' +
+        '   on hand moved; the cost lands on the same rows once the standard is set or\n' +
+        '   rolled, and the dispatch shows in Blocked at stage price until then.'
     )
   }
   if (s.batchesFailed > 0) {

@@ -51,8 +51,9 @@ function monthBounds(periodKey: string): { first: string; next: string; last: st
 }
 
 /**
- * Movements dated inside the month that no POSTED `inventory_movement` entry
- * links as a member.
+ * Movements dated inside the month, split into those still waiting for a standard
+ * cost (`cost_basis = pending`, 111 Q18) and those valued but linked as a member
+ * by no POSTED `inventory_movement` entry.
  *
  * The link, never a stamp field on the movement: `GlPostingSource` is the one
  * place a posting says what it booked (TARGET §1), and a movement whose entry
@@ -63,14 +64,31 @@ async function countUnpostedMovements(
   db: Database,
   organizationId: string,
   bounds: { first: string; next: string }
-): Promise<number> {
+): Promise<{ pending: number; unposted: number }> {
   const fields = await systemFieldMap(db, organizationId, [
     'stock_movement_occurred_at',
     'stock_movement_extended_cost',
+    'stock_movement_cost_basis',
   ] as const)
   const occurredAt = fields.stock_movement_occurred_at
   const extendedCost = fields.stock_movement_extended_cost
-  if (!occurredAt || !extendedCost) return 0
+  const costBasis = fields.stock_movement_cost_basis
+  if (!occurredAt || !extendedCost) return { pending: 0, unposted: 0 }
+
+  // An org without the field predates pending rows: nothing is pending.
+  const pending = costBasis
+    ? db
+        .select({ entityId: schema.FieldValue.entityId })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, costBasis.id),
+            eq(schema.FieldValue.optionId, 'pending')
+          )
+        )
+    : null
+  const isPending = pending ? sql`${schema.FieldValue.entityId} IN ${pending}` : sql`FALSE`
 
   const posted = db
     .select({ sourceId: schema.GlPostingSource.sourceId })
@@ -86,7 +104,10 @@ async function countUnpostedMovements(
     )
 
   const [row] = await db
-    .select({ count: sql<string>`count(*)` })
+    .select({
+      pending: sql<string>`count(*) FILTER (WHERE ${isPending})`,
+      unposted: sql<string>`count(*) FILTER (WHERE NOT ${isPending} AND ${schema.FieldValue.entityId} NOT IN ${posted})`,
+    })
     .from(schema.FieldValue)
     .innerJoin(
       schema.EntityInstance,
@@ -101,12 +122,11 @@ async function countUnpostedMovements(
         eq(schema.FieldValue.fieldId, occurredAt.id),
         isNotNull(schema.FieldValue.valueDate),
         gte(sql`${schema.FieldValue.valueDate}::date`, bounds.first),
-        lt(sql`${schema.FieldValue.valueDate}::date`, bounds.next),
-        sql`${schema.FieldValue.entityId} NOT IN ${posted}`
+        lt(sql`${schema.FieldValue.valueDate}::date`, bounds.next)
       )
     )
 
-  return Number(row?.count ?? 0)
+  return { pending: Number(row?.pending ?? 0), unposted: Number(row?.unposted ?? 0) }
 }
 
 /**
@@ -420,7 +440,7 @@ export async function readCloseBlockers(
 
   try {
     const cutover = await readCutover(db, organizationId)
-    const [unpostedMovements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
+    const [movements, subledgerMinor, ledgerMinor, standardValueMinor] = await Promise.all([
       countUnpostedMovements(db, organizationId, bounds),
       readSubledgerValue(db, organizationId, { ...cutover, lastDay: bounds.last }),
       readInventoryLedgerValue(db, organizationId, bounds.last),
@@ -429,7 +449,8 @@ export async function readCloseBlockers(
     items.push(
       ...describeInventoryBlockers({
         periodKey,
-        unpostedMovements,
+        pendingCostMovements: movements.pending,
+        unpostedMovements: movements.unposted,
         subledgerMinor,
         ledgerMinor,
         standardValueMinor,

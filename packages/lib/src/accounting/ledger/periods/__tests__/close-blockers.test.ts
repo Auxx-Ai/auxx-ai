@@ -254,10 +254,56 @@ describe('describeInventoryBlockers', () => {
   it('carries the month on every item so a remedy knows what to act on', () => {
     const items = describeInventoryBlockers({
       periodKey: MONTH,
+      pendingCostMovements: 1,
       unpostedMovements: 1,
       subledgerMinor: 1,
       ledgerMinor: 0,
     })
     expect(items.every((item) => item.ref === MONTH)).toBe(true)
+  })
+
+  // 111 Q18: a movement written before its part had a standard is not unposted
+  // work - there is nothing to post yet - so it is its own item, ahead of the rest.
+  it('names the movements waiting for a standard cost as their own item, first', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      pendingCostMovements: 4,
+      unpostedMovements: 2,
+      subledgerMinor: 100_000,
+      ledgerMinor: 100_000,
+    })
+
+    expect(items.map((item) => item.key)).toEqual(['inventory_pending_cost', 'inventory_unposted'])
+    expect(items[0]?.count).toBe(4)
+    expect(items[0]?.label).toBe('4 stock movements are waiting for a standard cost')
+    expect(items[0]?.remedy).toContain('Set costs')
+    expect(items[1]?.count).toBe(2)
+
+    const one = describeInventoryBlockers({
+      periodKey: MONTH,
+      pendingCostMovements: 1,
+      unpostedMovements: 0,
+      subledgerMinor: 0,
+      ledgerMinor: 0,
+    })
+    expect(one[0]?.label).toBe('1 stock movement is waiting for a standard cost')
+  })
+
+  it('keeps the parts-list check while rows are pending, but says why it cannot tie yet', () => {
+    const items = describeInventoryBlockers({
+      periodKey: MONTH,
+      pendingCostMovements: 3,
+      unpostedMovements: 0,
+      subledgerMinor: 100_000,
+      ledgerMinor: 100_000,
+      standardValueMinor: 97_800,
+    })
+
+    expect(items.map((item) => item.key)).toEqual([
+      'inventory_pending_cost',
+      'inventory_standard_value',
+    ])
+    expect(items[1]?.remedy).toContain('3 movements are still waiting for a standard cost')
+    expect(items[1]?.remedy).not.toContain('roll, count or revalue')
   })
 })

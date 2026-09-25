@@ -49,10 +49,10 @@
  * ## Order matters against the builds backfill
  *
  * Relief prices at the part's frozen `part_standard_cost` (73 §6.2 rule 3) and
- * skips a line whose part has none, counting it as `skippedNoCost`. Run this
- * BEFORE the builds backfill has given assembled parts a standard and every
- * sale line of one is skipped and parked as `STANDARD_COST_MISSING` in Blocked.
- * Builds first, then relief.
+ * writes a line whose part has none as a `pending` row (111 Q18), counted in
+ * `skippedNoCost`. Run this BEFORE the builds backfill has given assembled parts
+ * a standard and every sale line of one waits pending, parked at stage `price`
+ * as `STANDARD_COST_MISSING` in Blocked. Builds first, then relief.
  *
  * No permission checks. A router that exposes this asserts first
  * (`docs/lib-module-guide.md` §6).
@@ -121,7 +121,7 @@ export interface BackfillFulfillmentReliefSummary {
   skippedNoPart: number
   /** Already relieved - the idempotent case, and the expected one on a re-run. */
   skippedZeroDelta: number
-  /** A real delta that could not be priced at all. Never written at zero. */
+  /** Lines written as `pending` rows with no cost yet (111 Q18). Never written at zero. */
   skippedNoCost: number
   /** Lines whose part is a `service`: never stock, never parked. */
   skippedService: number

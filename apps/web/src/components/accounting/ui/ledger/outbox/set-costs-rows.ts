@@ -1,13 +1,16 @@
 // apps/web/src/components/accounting/ui/ledger/outbox/set-costs-rows.ts
 
 import { minorToMajorString, parseMajorToMinor, RATE_DECIMALS } from '@auxx/utils/currency'
+import { type CountedGroup, sourceBreakdown } from './blocked-levels'
 
 /** One part in the Set costs grid (106 §6.2). */
 export interface SetCostsRow {
   partId: string
   name: string
-  /** Shipments waiting on this part's standard. */
+  /** Documents waiting on this part's standard: shipments, builds and counts (111 Q18). */
   waiting: number
+  /** `waiting` per kind, "446 shipments · 12 builds · 1 count"; one figure when the read has no split. */
+  waitingLabel: string
   /** `part_channel_cost`, minor units per unit; null when the channel reports none. */
   channelCost: number | null
   /** The part's stored `part_kind`; null when unset. */
@@ -36,7 +39,7 @@ function optionValue(value: unknown): string | null {
 
 /** Rows from the reason's per-part groups and the parts' field values (keyed by part id). */
 export function buildSetCostsRows(
-  groups: readonly { externalRef: string | null; refLabel: string | null; count: number }[],
+  groups: readonly (CountedGroup & { externalRef: string | null; refLabel: string | null })[],
   valuesByPartId: Readonly<Record<string, Record<string, unknown> | undefined>>
 ): SetCostsRow[] {
   const rows: SetCostsRow[] = []
@@ -51,6 +54,7 @@ export function buildSetCostsRows(
       partId,
       name: group.refLabel ?? partId,
       waiting: group.count,
+      waitingLabel: sourceBreakdown(group),
       channelCost: typeof channel === 'number' && Number.isFinite(channel) ? channel : null,
       kind: optionValue(values?.part_kind),
     })

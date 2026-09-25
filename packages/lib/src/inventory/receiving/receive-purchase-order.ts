@@ -39,7 +39,6 @@ import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { requireCachedEntityDefId } from '../../cache'
@@ -270,7 +269,7 @@ export async function receivePurchaseOrder(
           ...(purchaseOrderId
             ? { parents: [{ sourceKind: 'purchase_order', sourceId: purchaseOrderId }] }
             : {}),
-          txnDate: inventoryTxnDate(occurredAt),
+          occurredAt,
           movements: records
             // `records` is in `lines` order, so the accrual pairs by index —
             // filtered together, or a dropped row would take its accrual's
@@ -280,12 +279,13 @@ export async function receivePurchaseOrder(
             .filter(
               ({ record, accrual }) =>
                 record.glAccount &&
+                record.extendedCost != null &&
                 (record.extendedCost !== 0 ||
                   accrual.grniMinor + accrual.freightMinor + accrual.dutiesMinor !== 0)
             )
             .map(({ record, accrual }) => ({
               id: record.movementId,
-              extendedCostMinor: record.extendedCost,
+              extendedCostMinor: record.extendedCost as number,
               glAccountRole: record.glAccount as string,
               accrual,
             })),

@@ -15,6 +15,7 @@ import { Button } from '@auxx/ui/components/button'
 import { GridTreeRow, INDENT_REM } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import {
+  CircleDollarSign,
   CircleSlash,
   CircleX,
   CloudOff,
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { type ComponentType, useState } from 'react'
+import { outboxHref } from './outbox-route'
 
 /**
  * Every status this card can render a remedy for.
@@ -340,6 +342,13 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
     icon: Unlink,
     actionLabel: 'Re-map account',
     href: (item) => chartAccountHref(item.ref),
+  },
+  // A movement written before its part had a standard (111 Q18): valued and posted
+  // once the cost is set, which the Blocked tab's Set costs grid does.
+  inventory_pending_cost: {
+    icon: CircleDollarSign,
+    actionLabel: 'Set costs',
+    href: () => outboxHref('blocked'),
   },
   // The three checks a close is, now that it posts nothing (MIGRATION step 5):
   // a document whose entry never landed, the ledger disagreeing with the rows

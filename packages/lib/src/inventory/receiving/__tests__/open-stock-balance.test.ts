@@ -36,6 +36,11 @@ const h = vi.hoisted(() => ({
   displayName: 'Widget 9000' as string | null,
   /** Rows `assertPartHasNoMovements`' probe finds. Non-empty = already opened. */
   existingMovements: [] as { id: string }[],
+  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
+}))
+
+vi.mock('../../../accounting/work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -265,14 +270,45 @@ describe('openStockBalance — it sets the first standard cost', () => {
     expect(h.createSpy).not.toHaveBeenCalled()
   })
 
-  // 🛑 The post-condition, not the return value. A part that comes out of this
-  // holding stock and no standard refuses every later adjustment, build and
-  // close, so it is checked while a refusal is still possible.
-  it('refuses, naming the part, when the part still has no standard afterwards', async () => {
+  // 111 Q18: the post-condition is read, not enforced. A part still holding no
+  // standard gets a PENDING opening row - quantity now, cost when the standard lands.
+  it('writes a PENDING initial and parks it when the part still has no standard afterwards', async () => {
     h.ensureSpy.mockImplementation(async () => {
       const { ok } = await import('neverthrow')
       return ok({ writtenPartIds: [] })
     })
+    const values = await openAndRead(OPENING)
+    expect(values.stock_movement_type).toBe('initial')
+    expect(values.stock_movement_quantity).toBe(10)
+    expect(values.stock_movement_cost_basis).toBe('pending')
+    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'stock_movement',
+      sourceId: 'mv_1',
+      stage: 'price',
+      reasonCode: 'STANDARD_COST_MISSING',
+      externalRef: 'part_1',
+      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_1'], partName: 'Widget 9000' },
+    })
+  })
+
+  it('does not park a priced opening', async () => {
+    await openAndRead(OPENING)
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+  })
+
+  // 103 §5a: a stored $0 is a real standard. The typed cost is still this door's number.
+  it('treats a stored $0 standard as real and writes the typed cost at basis standard', async () => {
+    h.standardCost = 0
+    const values = await openAndRead(OPENING)
+    expect(values.stock_movement_cost_basis).toBe('standard')
+    expect(values.stock_movement_unit_cost).toBe(1200)
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('refuses a part holding a negative standard, and writes nothing', async () => {
+    h.standardCost = -5
     const error = await expectErr(openStockBalance(db, ORG, USER, OPENING))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(error.message).toContain('Widget 9000')

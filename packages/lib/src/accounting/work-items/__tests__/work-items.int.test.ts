@@ -197,6 +197,7 @@ describe('reads', () => {
     expect(byRail.get('ROLE_UNMAPPED:pg_1')).toMatchObject({
       count: 2,
       sourceKinds: ['money_transaction'],
+      sourceKindCounts: { money_transaction: 2 },
     })
     expect(byRail.get('ROLE_UNMAPPED:pg_2')?.count).toBe(1)
     // The skip is visible, but not something the badge asks a person to do.
@@ -355,6 +356,145 @@ describe('reads', () => {
     )._unsafeUnwrap()
     expect(second.items.map((group) => group.refLabel)).toEqual(['Cable Extension'])
     expect(second.nextOffset).toBeUndefined()
+  })
+
+  it('counts each kind under a part, at the reason and at the part', async () => {
+    const unpriced = (sourceKind: string, sourceId: string, partId: string) =>
+      park({
+        sourceKind,
+        sourceId,
+        stage: 'price',
+        reasonCode: 'STANDARD_COST_MISSING',
+        externalRef: partId,
+      })
+    await unpriced('fulfillment', 'ful_1', 'part_lift')
+    await unpriced('fulfillment', 'ful_2', 'part_lift')
+    await unpriced('build', 'bld_1', 'part_lift')
+    await unpriced('stock_movement', 'mov_1', 'part_cable')
+
+    const top = (await listWorkItemGroups(db(), organizationId, { limit: 10 }))._unsafeUnwrap()
+    expect(top.items[0]).toMatchObject({
+      count: 4,
+      refCount: 2,
+      sourceKindCounts: { fulfillment: 2, build: 1, stock_movement: 1 },
+    })
+    expect(top.items[0]!.sourceKinds.sort()).toEqual(['build', 'fulfillment', 'stock_movement'])
+
+    const parts = (
+      await listWorkItemGroups(db(), organizationId, {
+        limit: 10,
+        reasonCode: 'STANDARD_COST_MISSING',
+      })
+    )._unsafeUnwrap()
+    expect(parts.items.map((group) => [group.externalRef, group.sourceKindCounts])).toEqual([
+      ['part_lift', { fulfillment: 2, build: 1 }],
+      ['part_cable', { stock_movement: 1 }],
+    ])
+  })
+
+  it('names a build and a count on the item read, dated by their own fields', async () => {
+    const def = async (entityType: string) => {
+      const [row] = await db()
+        .insert(schema.EntityDefinition)
+        .values({
+          organizationId,
+          apiSlug: `${entityType}s`,
+          entityType,
+          singular: entityType,
+          plural: `${entityType}s`,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.EntityDefinition.id })
+      return row!.id
+    }
+    const buildDef = await def('build')
+    const movementDef = await def('stock_movement')
+    const field = async (
+      entityDefinitionId: string,
+      systemAttribute: string,
+      type: 'SINGLE_SELECT' | 'NUMBER' | 'DATETIME'
+    ) => {
+      const [row] = await db()
+        .insert(schema.CustomField)
+        .values({
+          organizationId,
+          entityDefinitionId,
+          systemAttribute,
+          name: systemAttribute,
+          type,
+          isCustom: false,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.CustomField.id })
+      return row!.id
+    }
+    const fields = {
+      type: await field(movementDef, 'stock_movement_type', 'SINGLE_SELECT'),
+      quantity: await field(movementDef, 'stock_movement_quantity', 'NUMBER'),
+      occurredAt: await field(movementDef, 'stock_movement_occurred_at', 'DATETIME'),
+      completedAt: await field(buildDef, 'build_completed_at', 'DATETIME'),
+    }
+    const record = async (entityDefinitionId: string, displayName: string | null) => {
+      const [row] = await db()
+        .insert(schema.EntityInstance)
+        .values({
+          organizationId,
+          entityDefinitionId,
+          displayName,
+          createdById: ownerId,
+          updatedAt: new Date(),
+        })
+        .returning({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+      return row!
+    }
+    const value = (
+      entityDefinitionId: string,
+      entityId: string,
+      fieldId: string,
+      data: Partial<typeof schema.FieldValue.$inferInsert>
+    ) =>
+      db()
+        .insert(schema.FieldValue)
+        .values({ organizationId, entityDefinitionId, entityId, fieldId, ...data })
+
+    const build = await record(buildDef, 'B-0007')
+    await value(buildDef, build.id, fields.completedAt, { valueDate: '2026-03-20T09:00:00.000Z' })
+    const nameless = await record(movementDef, null)
+    await value(movementDef, nameless.id, fields.type, { optionId: 'adjust' })
+    await value(movementDef, nameless.id, fields.quantity, { valueNumber: -3 })
+    await value(movementDef, nameless.id, fields.occurredAt, {
+      valueDate: '2026-03-15T12:00:00.000Z',
+    })
+    const named = await record(movementDef, 'Receive · 5')
+
+    const refused = (sourceKind: string, sourceId: string) =>
+      park({ sourceKind, sourceId, stage: 'price', reasonCode: 'REFUSED' })
+    await refused('build', build.id)
+    await refused('stock_movement', nameless.id)
+    await refused('stock_movement', named.id)
+    await refused('fulfillment', 'ful_1')
+
+    const group = { reasonCode: 'REFUSED', role: null, railId: null, glAccountId: null }
+    const items = (
+      await listWorkItemsInGroup(db(), organizationId, group, { limit: 10 })
+    )._unsafeUnwrap()
+    const byId = new Map(items.items.map((item) => [item.sourceId, item]))
+    expect(byId.get(build.id)).toMatchObject({
+      label: 'B-0007',
+      recordDefinitionId: buildDef,
+      documentDate: new Date('2026-03-20T09:00:00.000Z'),
+    })
+    expect(byId.get(nameless.id)).toMatchObject({
+      label: 'Adjustment · -3',
+      recordDefinitionId: movementDef,
+      documentDate: new Date('2026-03-15T12:00:00.000Z'),
+    })
+    // A named count keeps its display name and, with no occurred-at, falls back to its creation.
+    expect(byId.get(named.id)).toMatchObject({
+      label: 'Receive · 5',
+      documentDate: named.createdAt,
+    })
+    expect(byId.get('ful_1')).toMatchObject({ label: null, documentDate: null })
   })
 
   it('counts the woken rows of a group as due', async () => {

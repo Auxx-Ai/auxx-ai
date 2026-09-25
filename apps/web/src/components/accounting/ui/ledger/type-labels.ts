@@ -64,4 +64,6 @@ export const WORK_SOURCE_LABEL: Record<WorkItemSourceKind, string> = {
   payout: 'Payout',
   financial_source_acceptance: 'Channel payment',
   provider_ledger_entry: 'Connected books',
+  build: 'Build',
+  stock_movement: 'Stock movement',
 }

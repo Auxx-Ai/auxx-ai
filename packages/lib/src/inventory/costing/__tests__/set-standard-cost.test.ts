@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   setValueWithType: vi.fn(async () => []),
   wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
   requestAccountingRecovery: vi.fn(async () => {}),
+  pricePending: vi.fn(async () => {}),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -28,6 +29,7 @@ vi.mock('../standard-cost-queries', () => ({
 }))
 vi.mock('../ensure-standard-cost', () => ({ ensureStandardCost: h.ensureStandardCost }))
 vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../../../accounting/work-items/recovery', () => ({
   requestAccountingRecovery: h.requestAccountingRecovery,
 }))
@@ -123,6 +125,12 @@ describe('setStandardCost', () => {
     expect(writes.get('f_mat')).toEqual({ type: 'number', value: 4200 })
     expect(writes.get('f_origin')).toEqual({ type: 'option', optionId: 'manual' })
     expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    // 111 Q22: priced inline after the wake (a no-op by construction here - an unmoved part
+    // has no rows - but the door prices like the other three).
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, ['p1'])
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      h.wakeReasonCode.mock.invocationCallOrder[0]!
+    )
     expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)
   })
 

@@ -45,6 +45,7 @@ import {
 } from '../../realtime'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { guard } from './guard'
+import { pricePendingMovements } from './price-pending-movements'
 import { writeRevaluation } from './revalue'
 import {
   loadStandardCostWriteContext,
@@ -88,10 +89,12 @@ const UNCHANGED: ReplaceProvisionalStandardResult = {
  * 1. The part carries a stored `provisional` standard, or this is a no-op.
  * 2. The agreed price rounds to something positive and different, or a no-op —
  *    a receipt at the guess confirms the standard and revalues nothing.
- * 3. Write the four components, the effective date and `confirmed`.
- * 4. Post one `revalue` movement for `qty on hand x (agreed - guess)`.
+ * 3. Price the part's `pending` rows at the GUESS (111 §1.2): they are in the
+ *    quantity on hand step 5 restates, and a unit never valued has no delta.
+ * 4. Write the four components, the effective date and `confirmed`.
+ * 5. Post one `revalue` movement for `qty on hand x (agreed - guess)`.
  *
- * 🛑 **Step 3 before step 4.** The entry values the shelf at the new standard,
+ * 🛑 **Step 4 before step 5.** The entry values the shelf at the new standard,
  * so the record has to carry it before the entry lands, or the close's
  * `qty x standard` check reads the two against each other and disagrees.
  */
@@ -116,6 +119,10 @@ export async function replaceProvisionalStandard(
       if (!Number.isFinite(agreedUnitCost) || agreedUnitCost <= 0) return UNCHANGED
       const newStandard = roundMinorUnits(agreedUnitCost)
       if (newStandard <= 0) return UNCHANGED
+
+      // Not quiet: a replace over units never valued is the double count §1.2 names.
+      const priced = await pricePendingMovements(db, organizationId, [partId])
+      if (priced.isErr()) throw priced.error
 
       const effectiveAt = options?.occurredAt ?? new Date()
       await writeConfirmedStandard(db, organizationId, context, {

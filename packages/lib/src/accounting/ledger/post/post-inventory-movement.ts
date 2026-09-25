@@ -16,15 +16,18 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { readOrganizationSettings } from '../../../settings/read'
 import {
   buildInventoryMovementEntry,
   type InventoryDocumentKind,
   type InventoryMovementLine,
   type ReliefCogsSplit,
 } from '../builders/inventory-movement'
+import { periodKeyForDate } from '../periods/periods'
 import { listPostingsForSource } from '../reads/list-postings'
 import { readPostingLineSourceIds } from '../reads/read-posting'
 import { isAccountingActive } from '../setup/accounting-enabled'
+import { OPENING_BASELINE_SETTING_KEYS } from '../setup/setup-readiness'
 import type { GlPostingSourceInput, PostResult } from '../types'
 import { insertSourceLinksInTx } from './insert-posting'
 import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
@@ -46,8 +49,8 @@ export interface PostInventoryMovementInput {
   subject: InventoryDocumentSubject
   /** The records the document belongs to - an order, a purchase order, a relief's fulfillment. */
   parents?: readonly { sourceKind: string; sourceId: string }[]
-  /** `YYYY-MM-DD`. The document's own accounting date. */
-  txnDate: string
+  /** The movements' `occurredAt`; the entry is dated its calendar day in the book time zone. */
+  occurredAt: Date
   movements: readonly InventoryMovementLine[]
   /** A build's absorbed labour and overhead. See the builder. */
   absorbed?: { laborMinor: number; overheadMinor: number }
@@ -57,17 +60,19 @@ export interface PostInventoryMovementInput {
   memo?: string
 }
 
-/** `YYYY-MM-DD` from a movement's `occurredAt`, which is the document's book date. */
-export function inventoryTxnDate(occurredAt: Date): string {
-  return occurredAt.toISOString().slice(0, 10)
+/** `YYYY-MM-DD` of a movement's `occurredAt` in the book time zone — the same day the close files it under. */
+export function inventoryTxnDate(occurredAt: Date, zone: string): string {
+  return periodKeyForDate(occurredAt, 'day', zone)
 }
 
 /**
  * Post one document's inventory entry on the caller's transaction.
  *
- * `null` when there is nothing to post - accounting is off for the org, or the
- * document moved no money (the builder's own answer). Neither is a refusal and
- * neither is logged as one.
+ * `null` when there is nothing to post - accounting is off for the org, the
+ * document is dated in or before `accounting.cutoffPeriod` (the opening baseline
+ * stands for that history, and the close excludes the same rows), or the
+ * document moved no money (the builder's own answer). None is a refusal and
+ * none is logged as one; the caller keeps its movements.
  *
  * **Throws** what `postEntryInTx` throws, so the caller's transaction rolls back
  * with it. A business REFUSAL - a locked period, an unmapped role - comes back
@@ -82,7 +87,7 @@ export async function postInventoryMovementInTx(
     kind,
     subject,
     parents = [],
-    txnDate,
+    occurredAt,
     movements,
     actorUserId,
     memo,
@@ -90,6 +95,15 @@ export async function postInventoryMovementInTx(
 
   if (movements.length === 0) return null
   if (!(await isAccountingActive(organizationId))) return null
+
+  const K = OPENING_BASELINE_SETTING_KEYS
+  const settings = await readOrganizationSettings(organizationId, [
+    K.bookTimeZone,
+    K.cutoffPeriod,
+  ] as const)
+  const txnDate = inventoryTxnDate(occurredAt, settings[K.bookTimeZone]?.trim() || 'UTC')
+  const cutoff = settings[K.cutoffPeriod]?.trim()
+  if (cutoff && txnDate.slice(0, 7) <= cutoff) return null
 
   const built = buildInventoryMovementEntry({
     kind,

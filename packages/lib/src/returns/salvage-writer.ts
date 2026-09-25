@@ -90,7 +90,6 @@ import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../accounting/ledger/post/post-inventory-movement'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
@@ -437,10 +436,10 @@ export async function writeSalvageMovements(
         // can be salvaged in more than one run, so each run claims its first
         // movement (its own doc number) and the return and line are parents.
         const booked = written.value.records
-          .filter((record) => record.glAccount && record.extendedCost !== 0)
+          .filter((record) => record.glAccount && record.extendedCost)
           .map((record) => ({
             id: record.movementId,
-            extendedCostMinor: record.extendedCost,
+            extendedCostMinor: record.extendedCost as number,
             glAccountRole: record.glAccount as string,
           }))
         post = booked[0]
@@ -452,7 +451,7 @@ export async function writeSalvageMovements(
                 ...(line.returnId ? [{ sourceKind: 'return', sourceId: line.returnId }] : []),
                 { sourceKind: 'return_line', sourceId: line.returnLineId },
               ],
-              txnDate: inventoryTxnDate(occurredAt),
+              occurredAt,
               movements: booked,
               actorUserId: userId,
               memo: reason,

@@ -54,7 +54,7 @@ export async function previewConnectAndGoBacklog(
           // In draft nothing materializes, so the records are the backlog (110 G5).
           countUnmaterializedCustomerTransactions(db, { organizationId, ...window }),
           countWorkItemsAtStage(db, organizationId, {
-            stage: 'relieve',
+            stage: 'price',
             sourceKind: 'fulfillment',
           }),
           countImportedCustomerMoneyBacklog(db, organizationId),

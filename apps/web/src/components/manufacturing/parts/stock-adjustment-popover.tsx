@@ -8,6 +8,8 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { toRecordId, useResourceProperty } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 
@@ -35,56 +37,15 @@ interface StockAdjustmentFormProps {
 }
 
 /**
- * The form for creating manual stock movements — `type: 'adjust'` only.
+ * The form for a manual `adjust` movement, through `purchasing.adjustStock` only (never the
+ * generic record write). It resets by unmounting; see `ReceiveStockForm` for why callers
+ * guarantee that.
  *
- * 🛑 It resets by UNMOUNTING rather than by watching an `open` flag; see
- * `ReceiveStockForm` for why both callers guarantee that.
- *
- * 🛑 There is deliberately no "Adjust subparts" control and no BOM cascade.
- * The toggle that used to live here exploded the bill of materials WITHOUT
- * negating, so "Add 10" of a finished good increased every component's stock
- * as well — the assembly and the parts it consumed both went up, which is the
- * opposite of what building one does
- * (plans/products/11-costing-and-stock-improvements.md §5.3).
- *
- * An adjustment is a count correction and must never cascade: explosion belongs
- * to a movement that knows its own direction.
- *
- * ⚠️ The `stock_movement_adjust_subparts` FIELD and the BOM explosion behind it
- * are deliberately untouched — only this control is gone. A movement that knows
- * its own direction may legitimately set the flag: consuming a finished good
- * does consume its components, and a negative movement makes the explosion
- * negate. It was only ever the arbitrary direction of an `adjust` that made the
- * cascade wrong. Do not remove the field.
- *
- * (The v9 inventory bridge used to be the in-tree example of that correct use.
- * It was deleted on 2026-08-27 —
- * plans/data-connectors/v9/inventory-bridge-disposition.md. The build path is
- * the surviving consumer: plans/products/build/01-build-plan.md.)
- *
- * 🛑 **This form calls `purchasing.adjustStock`, never the generic
- * `record.create`.** It used to write a `stock_movement` directly, which made it
- * a third movement writer that bypassed the zero-cost guard entirely: no
- * `unit_cost`, no `extended_cost`, no `gl_account`, no `cost_basis`. A positive
- * adjustment therefore added stock valued at nothing, which understates COGS and
- * drags the part's average cost toward zero
- * (plans/purchasing/05-receiving-cost-and-corrections.md §1.5).
- *
- * 🛑 **There is no Unit cost input, and there must not be one.** There used to
- * be, shown only when the adjustment ADDED stock, on the argument that adding
- * creates inventory value and somebody has to say what it is worth. Decision
- * `G12` settles that differently and in both directions: an adjustment is valued
- * at the part's own frozen `part_standard_cost`, read by the SERVER. A typed
- * number made the ledger's valuation depend on who happened to be counting, and
- * a removal that carried no cost at all was invisible to every period total that
- * sums the ledger — so the L1 month-end assertion absorbed shrinkage into the
- * COGS plug, which is exactly the separation `G12` exists to get.
- *
- * A part with NO standard cost is refused by `adjustStock`, naming the part and
- * saying to roll standard cost first. That refusal surfaces here as the error
- * toast; it is deliberately not duplicated as a disabled button, because this
- * form does not know the part's standard cost and a guess would be worse than
- * the server's sentence.
+ * No "Adjust subparts" control and no BOM cascade: a count correction has no direction of its
+ * own to explode along (plans/products/11-costing-and-stock-improvements.md §5.3). No unit cost
+ * input either: `G12` values the movement at the part's own standard, server-side, in both
+ * directions. A part with no standard is not refused — the movement is written pending and
+ * valued when the part gets a cost (111 Q18), which the note under the form says.
  */
 export function StockAdjustmentForm({
   partId,
@@ -97,6 +58,16 @@ export function StockAdjustmentForm({
   const [quantity, setQuantity] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
+
+  // Whether the movement will be valued now or once the part has a cost (111 Q18).
+  const partDefId = useResourceProperty('part', 'id')
+  const partRecordId = partDefId ? toRecordId(partDefId, partId) : null
+  const standard = useSystemValues(partRecordId, ['part_standard_cost'], {
+    autoFetch: true,
+    enabled: !!partRecordId,
+  })
+  const pendingCost =
+    !!partRecordId && !standard.isLoading && standard.values.part_standard_cost == null
 
   /**
    * The signed delta this form will send — one number, derived once, so the
@@ -117,17 +88,7 @@ export function StockAdjustmentForm({
 
   const isPending = adjustStock.isPending
 
-  /**
-   * The friendly duplicate of the ONE server guard this form can honestly
-   * duplicate, not the guard itself.
-   *
-   * `adjustStock` refuses a zero delta, and it refuses a part with no standard
-   * cost. Only the first is knowable here — the browser does not read
-   * `part_standard_cost` — so the second arrives as an error toast naming the
-   * part, which is a better answer than a button disabled for a reason the form
-   * would have to guess at. `receipt-input.ts` states the same rule about a
-   * client check never being the only one.
-   */
+  // The one server guard duplicated here; `receipt-input.ts` says why a client check is never the only one.
   const canSubmit = delta !== 0
 
   const handleSubmit = useCallback(async () => {
@@ -207,10 +168,6 @@ export function StockAdjustmentForm({
           )}
         </FieldPanelRow>
 
-        {/* No cost input. See the note on this component: `G12` values an
-                adjustment at the part's own frozen standard cost, server-side,
-                in both directions. */}
-
         {/* Reason */}
         <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
           <FieldInputAdapter
@@ -233,6 +190,10 @@ export function StockAdjustmentForm({
           />
         </FieldPanelRow>
       </FieldPanel>
+
+      {pendingCost && (
+        <p className='text-muted-foreground text-xs'>Valued when this part gets a cost.</p>
+      )}
 
       {/* Actions */}
       <div className='flex justify-end gap-2'>

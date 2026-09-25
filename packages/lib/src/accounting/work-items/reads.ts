@@ -3,10 +3,12 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { ok, type Result } from 'neverthrow'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import {
   EXTERNAL_REF_GROUPED_CODES,
   groupsByExternalRef,
   WORK_ITEM_CODES,
+  WORK_ITEM_SOURCE_KINDS,
   type WorkItemCode,
   type WorkItemStage,
   workItemStatus,
@@ -46,6 +48,8 @@ export interface WorkItemGroup extends WorkItemGroupKey {
   /** Items whose `nextAttemptAt` has come: woken, waiting for the sweep. */
   dueCount: number
   sourceKinds: string[]
+  /** Items per `sourceKind`, kinds with none omitted: "446 shipments · 12 builds · 1 count" (111 §1.2). */
+  sourceKindCounts: Record<string, number>
   /** The newest write in the group. */
   latestAt: Date
   railName: string | null
@@ -60,10 +64,12 @@ export interface WorkItemGroup extends WorkItemGroupKey {
 
 /** One item inside a group, with enough of its source to render and open it. */
 export interface WorkItemListRow extends WorkItemRow {
-  /** The record's display name, or the movement's party. */
+  /** The record's display name, or the movement's party; a nameless count reads "Adjustment · -3". */
   label: string | null
   /** The record's definition, for entity-backed sources. */
   recordDefinitionId: string | null
+  /** When a count happened or a build completed (else the record's creation); null for other kinds. */
+  documentDate: Date | null
   /** The movement behind a `money_transaction` or an acceptance row. */
   moneyTransactionId: string | null
   purpose: string | null
@@ -83,7 +89,7 @@ function fromItems() {
     LEFT JOIN "MoneyTransaction" mt ON mt."organizationId" = w."organizationId"
       AND mt."id" = CASE WHEN w."sourceKind" = 'money_transaction' THEN w."sourceId"
         ELSE acc."moneyTransactionId" END
-    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout')
+    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','stock_movement')
       AND rec."organizationId" = w."organizationId" AND rec."id" = w."sourceId"
     LEFT JOIN "EntityInstance" party ON party."organizationId" = w."organizationId"
       AND party."id" = mt."partyInstanceId"`
@@ -157,6 +163,25 @@ function inCodes(codes: readonly string[]): SQL {
   )})`
 }
 
+/** `{kind: n}` over the closed vocabulary, one filtered count per kind; zeros drop in `toKindCounts`. */
+function sourceKindCounts(): SQL {
+  return sql`jsonb_build_object(${sql.join(
+    WORK_ITEM_SOURCE_KINDS.map(
+      (kind) => sql`${kind}::text, (count(*) FILTER (WHERE w."sourceKind" = ${kind}))::int`
+    ),
+    sql`, `
+  )})`
+}
+
+function toKindCounts(value: unknown): Record<string, number> {
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value
+  const counts: Record<string, number> = {}
+  for (const [kind, n] of Object.entries((parsed ?? {}) as Record<string, unknown>)) {
+    if (Number(n) > 0) counts[kind] = Number(n)
+  }
+  return counts
+}
+
 /**
  * The Blocked tab, paged. The top level is newest first: one row per
  * `(reasonCode, role, railId, glAccountId)`, and one reason row per `groupsByExternalRef` code.
@@ -179,6 +204,7 @@ export async function listWorkItemGroups(
       count(*)::int AS "count", max(w."updatedAt") AS "latestAt",
       (count(*) FILTER (WHERE w."nextAttemptAt" <= now()))::int AS "dueCount",
       array_agg(DISTINCT w."sourceKind") AS "sourceKinds",
+      ${sourceKindCounts()} AS "sourceKindCounts",
       CASE WHEN ${collapsed} THEN NULL ELSE max(rail."displayName") END AS "railName",
       CASE WHEN ${collapsed} THEN NULL ELSE max(gl."displayName") END AS "glAccountName",
       (array_agg(w."detail" ORDER BY w."updatedAt" DESC)
@@ -215,6 +241,7 @@ export async function listWorkItemGroups(
       dueCount: number
       latestAt: string | Date
       sourceKinds: string[] | string
+      sourceKindCounts: Record<string, number> | string
       railName: string | null
       glAccountName: string | null
       detail: Record<string, unknown> | null
@@ -229,6 +256,7 @@ export async function listWorkItemGroups(
     sourceKinds: Array.isArray(row.sourceKinds)
       ? row.sourceKinds
       : String(row.sourceKinds).replace(/[{}]/g, '').split(',').filter(Boolean),
+    sourceKindCounts: toKindCounts(row.sourceKindCounts),
     refCount: row.refCount === null || row.refCount === undefined ? null : Number(row.refCount),
     refLabel: row.refLabel ?? null,
   }))
@@ -237,6 +265,34 @@ export async function listWorkItemGroups(
     items: rows.slice(0, options.limit),
     ...(more ? { nextOffset: offset + options.limit } : {}),
   })
+}
+
+/**
+ * A build's or count's own fields, one indexed lookup per such row (the `sourceKind` test is a
+ * one-time filter for every other kind): the movement's type and quantity, and the document date.
+ */
+function documentFields(): SQL {
+  return sql`LEFT JOIN LATERAL (
+      SELECT max(fv."optionId") FILTER (WHERE cf."systemAttribute" = 'stock_movement_type') AS "movementType",
+        max(fv."valueNumber") FILTER (WHERE cf."systemAttribute" = 'stock_movement_quantity') AS "movementQuantity",
+        max(fv."valueDate") FILTER (WHERE cf."systemAttribute" IN ('stock_movement_occurred_at','build_completed_at')) AS "documentDate"
+      FROM "FieldValue" fv JOIN "CustomField" cf ON cf."id" = fv."fieldId"
+      WHERE w."sourceKind" IN ('build','stock_movement')
+        AND fv."organizationId" = w."organizationId" AND fv."entityId" = w."sourceId"
+        AND cf."systemAttribute" IN ('stock_movement_type','stock_movement_quantity','stock_movement_occurred_at','build_completed_at')
+    ) doc ON TRUE`
+}
+
+const MOVEMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  StockMovementType.values.map((type) => [type.value, type.label])
+)
+
+/** "Adjustment · -3" for a count with no display name; null without a type. */
+function movementLabel(type: unknown, quantity: unknown): string | null {
+  if (typeof type !== 'string' || !type) return null
+  const label = MOVEMENT_TYPE_LABEL[type] ?? type
+  const n = quantity === null || quantity === undefined ? null : Number(quantity)
+  return n === null || Number.isNaN(n) ? label : `${label} · ${n > 0 ? '+' : ''}${n}`
 }
 
 /** One group expanded: its items, newest first, paged. */
@@ -250,8 +306,12 @@ export async function listWorkItemsInGroup(
   const result = await db.execute(sql`
     SELECT w.*, COALESCE(rec."displayName", party."displayName", acc."orderExternalId") AS "label",
       rec."entityDefinitionId" AS "recordDefinitionId", mt."id" AS "moneyTransactionId",
-      mt."purpose" AS "purpose", mt."amountMinor" AS "amountMinor", mt."currency" AS "currency"
+      mt."purpose" AS "purpose", mt."amountMinor" AS "amountMinor", mt."currency" AS "currency",
+      doc."movementType", doc."movementQuantity",
+      CASE WHEN w."sourceKind" IN ('build','stock_movement')
+        THEN COALESCE(doc."documentDate", rec."createdAt") END AS "documentDate"
     FROM ${fromItems()}
+    ${documentFields()}
     WHERE ${whereItems(organizationId, options, [groupWhere(group)])}
     ORDER BY w."updatedAt" DESC, w."id" ASC
     LIMIT ${options.limit + 1} OFFSET ${offset}
@@ -287,8 +347,9 @@ function toListRow(row: Record<string, unknown>): WorkItemListRow {
     nextAttemptAt: toDate(row.nextAttemptAt),
     createdAt: toDate(row.createdAt) ?? new Date(0),
     updatedAt: toDate(row.updatedAt) ?? new Date(0),
-    label: (row.label as string | null) ?? null,
+    label: (row.label as string | null) ?? movementLabel(row.movementType, row.movementQuantity),
     recordDefinitionId: (row.recordDefinitionId as string | null) ?? null,
+    documentDate: toDate(row.documentDate),
     moneyTransactionId: (row.moneyTransactionId as string | null) ?? null,
     purpose: (row.purpose as string | null) ?? null,
     amountMinor:

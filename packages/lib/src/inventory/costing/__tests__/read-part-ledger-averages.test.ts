@@ -37,11 +37,11 @@ const FIELDS: Record<string, { id: string; type: string } | null> = {
   stock_movement_adjust_subparts: { id: FIELD_IDS.adjustSubparts, type: 'CHECKBOX' },
 }
 
-/** One committed `stock_movement` row in the fixture ledger. */
+/** One committed `stock_movement` row in the fixture ledger. `extendedCost: null` is a pending row. */
 interface FixtureMovement {
   partId: string
   quantity: number
-  extendedCost: number
+  extendedCost: number | null
   adjustSubparts?: boolean
 }
 
@@ -82,21 +82,25 @@ function boundStrings(node: unknown, out: string[] = []): string[] {
  * movement count, exactly as it would against a real database.
  */
 function routeSum(
-  params: string[]
+  params: string[],
+  leftJoined: string[]
 ): Array<{ partId: string; quantity: string; valueMinor: string }> {
   // Typed explicitly: TS 5.5+ infers an automatic type predicate for this
   // filter (narrowing to the literal union of PART_A/PART_B), which would
   // make `.has(m.partId)` below reject the wider `string` type.
   const requestedIds = new Set<string>(params.filter((p) => p === PART_A || p === PART_B))
   const flagJoined = params.includes(FIELD_IDS.adjustSubparts)
+  // An INNER JOIN on the cost row drops a movement that has none; a LEFT JOIN keeps it.
+  const costLeftJoined = leftJoined.includes(FIELD_IDS.extendedCost)
 
   const groups = new Map<string, { quantity: number; valueMinor: number }>()
   for (const m of h.movements) {
     if (!requestedIds.has(m.partId)) continue
     if (flagJoined && m.adjustSubparts === true) continue
+    if (m.extendedCost == null && !costLeftJoined) continue
     const g = groups.get(m.partId) ?? { quantity: 0, valueMinor: 0 }
     g.quantity += m.quantity
-    g.valueMinor += m.extendedCost
+    g.valueMinor += m.extendedCost ?? 0
     groups.set(m.partId, g)
   }
 
@@ -107,18 +111,23 @@ function routeSum(
   }))
 }
 
-/** Chainable Drizzle stub whose join conditions are inspected, not ignored. */
-function chain(route: (params: string[]) => unknown[]) {
+/** Chainable Drizzle stub whose join conditions - and join KINDS - are inspected, not ignored. */
+function chain(route: (params: string[], leftJoined: string[]) => unknown[]) {
   const params: string[] = []
+  const leftJoined: string[] = []
   const node: Record<string, unknown> = {}
   for (const key of ['select', 'from', 'where', 'groupBy']) node[key] = () => node
-  for (const key of ['innerJoin', 'leftJoin']) {
-    node[key] = (_alias: unknown, condition: unknown) => {
-      boundStrings(condition, params)
-      return node
-    }
+  node.innerJoin = (_alias: unknown, condition: unknown) => {
+    boundStrings(condition, params)
+    return node
   }
-  node.then = (resolve: (v: unknown) => unknown) => Promise.resolve(route(params)).then(resolve)
+  node.leftJoin = (_alias: unknown, condition: unknown) => {
+    boundStrings(condition, params)
+    boundStrings(condition, leftJoined)
+    return node
+  }
+  node.then = (resolve: (v: unknown) => unknown) =>
+    Promise.resolve(route(params, leftJoined)).then(resolve)
   return node
 }
 
@@ -219,6 +228,21 @@ describe('readPartLedgerAverages', () => {
       quantity: 6,
       unitCostMinor: 4_000,
     })
+  })
+
+  // 111 Q18: a pending row has no cost yet but its units are on (or off) the
+  // shelf, and the negative-QoH prediction relieve.ts makes from `quantity`
+  // must count them. The cost join is therefore a LEFT JOIN.
+  it('counts a PENDING row in the quantity, with no value', async () => {
+    h.movements = [
+      { partId: PART_A, quantity: 10, extendedCost: 40_000 },
+      { partId: PART_A, quantity: -4, extendedCost: null },
+    ]
+    const result = await readPartLedgerAverages(fakeDb, {
+      organizationId: ORG,
+      partInstanceIds: [PART_A],
+    })
+    expect(result._unsafeUnwrap().get(PART_A)).toMatchObject({ quantity: 6, valueMinor: 40_000 })
   })
 
   it('a part with no movements at all is ABSENT from the Map, not a zero row', async () => {
