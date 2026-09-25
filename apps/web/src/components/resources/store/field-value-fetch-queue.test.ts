@@ -311,6 +311,47 @@ describe('refetch (realtime catch-up)', () => {
     expect(useFieldValueStore.getState().values[key]).toBeNull()
   })
 
+  it('keeps a cell whose chunk failed — a failed request is not a missed clear', async () => {
+    getResourceStoreState().setResources([workOrderResource])
+    fieldValueFetchQueue.setFetchFn(async () => {
+      throw new Error('503')
+    })
+    const key = `${WORK_ORDER_DEF}:r1:${WORK_ORDER_DEF}:f1` as FieldValueKey
+    useFieldValueStore.getState().setValues([{ key, value: 'kept' }])
+
+    await fieldValueFetchQueue.refetch([
+      { recordId: `${WORK_ORDER_DEF}:r1`, fieldRef: `${WORK_ORDER_DEF}:f1` as FieldReference },
+    ])
+
+    expect(useFieldValueStore.getState().values[key]).toBe('kept')
+  })
+
+  it('clears only the chunks that answered when another chunk failed', async () => {
+    getResourceStoreState().setResources([workOrderResource])
+    let call = 0
+    fieldValueFetchQueue.setFetchFn(async () => {
+      call++
+      if (call === 1) throw new Error('503')
+      return { values: [] }
+    })
+    // 101 records → two chunks of the 100-record batch size.
+    const keyOf = (i: number) => `${WORK_ORDER_DEF}:r${i}:${WORK_ORDER_DEF}:f1` as FieldValueKey
+    const ids = Array.from({ length: 101 }, (_, i) => i)
+    useFieldValueStore.getState().setValues(ids.map((i) => ({ key: keyOf(i), value: 'stale' })))
+
+    await fieldValueFetchQueue.refetch(
+      ids.map((i) => ({
+        recordId: `${WORK_ORDER_DEF}:r${i}`,
+        fieldRef: `${WORK_ORDER_DEF}:f1` as FieldReference,
+      }))
+    )
+
+    const values = useFieldValueStore.getState().values
+    expect(values[keyOf(0)]).toBe('stale')
+    expect(values[keyOf(99)]).toBe('stale')
+    expect(values[keyOf(100)]).toBeNull()
+  })
+
   it('skips ids whose prefix is not resolvable yet', async () => {
     const calls: FetchCall[] = []
     fieldValueFetchQueue.setFetchFn(makeFetchFn(calls))
