@@ -391,6 +391,11 @@ that re-derives from absolute state on every sync — never rely on the event al
 plan (`plans/data-connectors/v9/inventory-record-rule-plan.md`) and
 `data-connectors-architecture-guide.md`.
 
+The finalize **integrity passes** (totals, relief, shipment posting) are the exception: idempotent,
+so at-least-once. The claim sets `integrityPendingSince`, `integrityDoor` clears it under a per-run
+advisory lock, a delivery that loses the claim goes through the same door, and
+`syncIntegrityRecoveryJob` replays any claim pending over 10 min from the stored manifest.
+
 ---
 
 ## 9. System Rules (the trigger unification)
