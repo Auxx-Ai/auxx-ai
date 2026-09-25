@@ -7,14 +7,14 @@
 // `tariffs-settings-page.tsx`:
 //
 //   ?s=standard  the org-wide standard-cost roll (§2.2)
-//   ?s=opening   the opening-stock checklist and its run (§2.3)
+//   ?s=opening   the Set counts checklist and its run (§2.3; 111 D21)
 //
 // 🛑 THE ORDER IS THE DESIGN, which is why the two live on one page and why
 // `standard` is the default tab. Revaluation is `(new standard - old) x qty on
-// hand`, so on an org with no opening balances every roll delta is zero no
-// matter how large the price move (§1.4). The moment opening stock exists,
-// every later roll revalues on-hand inventory to 5090. Rolling BEFORE opening
-// stock is the last free correction anybody gets, and putting the roll behind
+// hand`, so on an org with nothing counted every roll delta is zero no
+// matter how large the price move (§1.4). The moment stock is counted,
+// every later roll revalues on-hand inventory to 5090. Rolling BEFORE counting
+// is the last free correction anybody gets, and putting the roll behind
 // the second tab would invite the opposite order.
 //
 // 🛑 THE GATE IS THE RECORD CAPABILITY, not `settingsManage` - the same call
@@ -43,11 +43,11 @@ import { useRequireEntityEdit } from '~/providers/capabilities-provider'
 import { OpeningStockTab } from './opening-stock-tab'
 import { StandardCostSection } from './standard-cost-section'
 
-const PAGE_DESCRIPTION = 'What a part is valued at, and what was on the shelf on day one'
+const PAGE_DESCRIPTION = 'What a part is valued at, and what is on the shelf'
 
 const TABS = [
   { value: 'standard', label: 'Standard cost', icon: Calculator },
-  { value: 'opening', label: 'Opening stock', icon: Boxes },
+  { value: 'opening', label: 'Set counts', icon: Boxes },
 ]
 
 type CostingTab = 'standard' | 'opening'

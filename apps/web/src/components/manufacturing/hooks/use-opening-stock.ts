@@ -1,41 +1,18 @@
 // apps/web/src/components/manufacturing/hooks/use-opening-stock.ts
 
-// The Opening stock tab's whole read + draft model (money
-// 52-parts-costing-page.md §2.3, §4): one row per part, the five row states the
-// filter chips count, the per-account totals that ARE the opening journal
-// entry, and the excluded block.
+// The Set counts tab's read + draft model (money 52 §2.3; 111 D21): one row per part, a
+// count and a date per row, the delta each row would write, and the Q25 signal.
 //
-// 🛑 THE ACCOUNT COMES FROM `openingStockAccountLabel`, never from a second
-// kind-to-account table. That function resolves through
-// `resolveInventoryRoleForPartKind`, which is what the write path uses, so the
-// only way a row can be wrong about the account is if the write is wrong about
-// it too (§2.3). It matters more here than on the create form: 495 rows are
-// stamped at once onto `updatable: false` movements, and a wrong `gl_account`
-// is corrected only by reversing (§6.3).
-//
-// 🛑 THE UNIT COST DEFAULTS FROM `standardCost`, NEVER from `part_cost`.
-// HANDOFF rule 2: `part_cost` is live replacement cost and is stamped onto a
-// movement never; `part_standard_cost` is stamped onto every one. Defaulting
-// from the wrong one would seed an append-only movement's frozen value from the
-// single field that must not value a movement (§3, §6.1).
-//
-// 🛑 THE KIND IS A SUGGESTION WITH A CONFIRM, never an auto-write.
-// `shouldSuggestFinishedGood` only ever OFFERS the value (Gap C §3.2), so a row
-// whose displayed kind is the suggestion and whose STORED kind is still
-// something else is held out of the run - see `kindIsUnconfirmed` and the
-// `kind-unconfirmed` exclusion. Without that the row would name 1330 while the
-// write resolved 1310 off the stored `component`, which is exactly the
-// disagreement the paragraph above forbids.
+// The account comes from `openingStockAccountLabel`, which resolves through the same
+// function the write path uses; a kind that is only a suggestion holds its row out of the
+// run, because the movement freezes the account it resolves (§6.3).
 
-import { cutoverDateFor } from '@auxx/lib/accounting/ledger/client'
 import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
-import {
-  computeExtendedCost,
-  resolveInventoryRoleForPartKind,
-} from '@auxx/lib/inventory/movements/client'
+import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { roundMinorUnits } from '@auxx/utils/currency'
+import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import {
   isPartKindUnclassified,
@@ -54,136 +31,100 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterInputs, type RouterOutputs } from '~/trpc/react'
 import { openingStockAccountCode, openingStockAccountLabel } from '../parts/opening-stock-input'
 
-/**
- * 🛑 Fifty, and NOT for scroll performance. Every row mounts a `RecordBadge`,
- * which asks the relationship store to hydrate its record, and the store
- * batches those into ONE `record.getByIds` GET - 202 rows put 400 ids on the
- * query string and the dev server answered **431 Request Header Fields Too
- * Large** for every batch (`tariff-classification-list.tsx:52`, driven
- * 2026-09-01). There are 495 parts here, so the same page size applies for the
- * same reason.
- */
+/** Fifty: every row mounts a `RecordBadge`, and 202 rows put 400 ids on one GET (431). */
 export const OPENING_STOCK_PAGE_SIZE = 50
 
-/** One part as the candidates read returns it. */
+/** `setCountPreflight` takes at most this many parts per call. */
+const PREFLIGHT_CHUNK = 500
+
+/** Where the Set counts tab lives; `parts` and `job` prefilter it. */
+export const SET_COUNTS_HREF = '/app/parts/manage/costing?s=opening'
+
+export function setCountsHrefForParts(partIds: readonly string[]): string {
+  return `${SET_COUNTS_HREF}&parts=${encodeURIComponent(partIds.join(','))}`
+}
+
+export function setCountsHrefForJob(jobId: string): string {
+  return `${SET_COUNTS_HREF}&job=${encodeURIComponent(jobId)}`
+}
+
 export type OpeningStockCandidate =
   RouterOutputs['purchasing']['listOpeningStockCandidates'][number]
-
-/**
- * The three `part_kind` values `bulkSetPartKind` accepts, taken from the
- * procedure's own `z.enum` rather than restated - a fourth kind added to the
- * registry then reaches this page as a type error rather than as a silent gap.
- */
+export type SetCountPreflightRow = RouterOutputs['purchasing']['setCountPreflight'][number]
 export type OpeningStockKind = RouterInputs['purchasing']['bulkSetPartKind']['kind']
-
-/** What a run did, and what it did not do. */
 export type OpeningStockRunSummary = RouterOutputs['purchasing']['runSetCounts']
 
 /**
- * §4's three MOVEMENT states. `unclassified` and `cost override` are not states
- * of the same axis - a not-opened row can be both - so they are booleans on the
- * row and chips of their own, never members of this union.
+ * `new`: no movement yet, a count writes an `initial` on the count day. `uncounted`: moved
+ * but never counted, a count reconstructs the `initial` at the ledger start. `counted`:
+ * anchored, a count writes an `adjust` for the difference.
  */
-export type OpeningStockRowState = 'not-opened' | 'opened' | 'blocked'
+export type OpeningStockRowState = 'new' | 'uncounted' | 'counted'
 
-/** The filter chips: §4's five, plus one per kind once kinds are set. */
 export type OpeningStockFilter =
   | 'all'
-  | 'not-opened'
-  | 'opened'
-  | 'blocked'
+  | 'not-counted'
+  | 'counted'
+  | 'uncounted'
   | 'unclassified'
-  | 'cost-override'
+  | 'uncosted'
   | `kind:${string}`
 
-/** What the person typed into one row. An absent entry means "untouched". */
 interface OpeningStockDraft {
-  quantity: number | null
-  /** `undefined` means the row still shows the standard cost. */
+  quantity?: number | null
   unitCost?: number | null
+  /** Calendar-day ISO. Absent: the row follows the run-wide date. */
+  date?: string
 }
 
 export interface OpeningStockRow {
   partId: string
-  /** For the `RecordBadge`. `null` until the part def id resolves. */
   recordId: RecordId | null
   title: string
   sku: string | null
-  /** `part_kind` as STORED, unwrapped. What the write path will resolve against. */
   storedKind: string | null
-  /** What the row DISPLAYS: the stored kind, or the finished-good suggestion. */
   kind: OpeningStockKind | ''
-  /** The displayed kind is a suggestion the part does not store yet. */
   kindIsUnconfirmed: boolean
-  /** Resolved through `openingStockAccountLabel`, never a second mapping. */
   accountLabel: string
-  /**
-   * The same account as {@link OpeningStockRow.accountLabel}, as just its
-   * number - what the row's narrow account column shows, with the full label as
-   * its tooltip. Both come off the one resolver in `opening-stock-input.ts`.
-   */
   accountCode: string
-  /**
-   * The inventory ROLE both renderings above came from, off the SAME resolver
-   * the write path uses. What the reconciliation groups and keys settings on.
-   */
   accountRole: string
-  /** `isPartKindUnclassified` on the STORED value - a stored `component` counts. */
   isUnclassified: boolean
-  /** `part_standard_cost`, minor units. The ONLY source of the cost default. */
+  /** `part_standard_cost`, minor units; `null` means the row is valued when a cost is set. */
   standardCost: number | null
   quantity: number | null
+  /** Typed only for an uncosted part; it becomes the part's first standard. */
   unitCost: number | null
-  /** `round(unitCost x quantity)`, minor units. */
-  extended: number
-  /** A typed cost the part's standard disagrees with (§6.1). */
-  isCostOverride: boolean
+  /** Calendar-day ISO: the row's own date, or the run-wide one. */
+  date: string
+  hasOwnDate: boolean
   state: OpeningStockRowState
+  /** Net of every movement to now; `null` until the preflight lands. */
+  netToday: number | null
+  hasBom: boolean
+  /** BOM parts only: the negative replay a backflush would cover (111 Q25). */
+  unbuiltSales: number
+  earliest: Date | null
+  /** `quantity − netToday`, the row the run would write today; `null` when either is unknown. */
+  delta: number | null
 }
 
-/** Why a row is not in the run. */
-export type OpeningStockExclusionReason =
-  | 'opened'
-  | 'blocked'
-  | 'kind-unconfirmed'
-  | 'no-quantity'
-  | 'no-cost'
+export type OpeningStockExclusionReason = 'kind-unconfirmed' | 'no-quantity'
 
 export interface OpeningStockExclusion {
   partId: string
   recordId: RecordId | null
   title: string
   reason: OpeningStockExclusionReason
-  /** ⚠️ The value that PROVES the reason. A reason without evidence is an assertion. */
   detail: string
 }
 
-/** One line of the opening journal entry: an inventory account and its total. */
-export interface OpeningStockAccountTotal {
-  account: string
-  /**
-   * The inventory ROLE the account was resolved from, `inventory_raw_materials`.
-   *
-   * 🛑 Carried so the reconciliation can find the baseline SETTING that owns
-   * this row. The role is what `accounting.opening*` is keyed on and what a
-   * movement's `stock_movement_gl_account` freezes; the code and the name come
-   * from a chart the org may renumber, so neither is a key.
-   */
-  role: string
-  parts: number
-  units: number
-  /** Minor units. */
-  extended: number
-}
-
-/** The counts the chips carry. The counts ARE the checklist (§4). */
 export interface OpeningStockCounts {
   all: number
-  notOpened: number
-  opened: number
-  blocked: number
+  notCounted: number
+  counted: number
+  uncounted: number
   unclassified: number
-  costOverride: number
+  uncosted: number
 }
 
 /** SINGLE_SELECT reads come back as arrays on some paths and scalars on others. */
@@ -192,64 +133,74 @@ function unwrapKind(value: unknown): string | null {
   return typeof first === 'string' && first !== '' ? first : null
 }
 
-/**
- * Narrow anything a picker or the server hands back to a kind the write path
- * accepts, or `null`.
- *
- * An unrecognised value reads as unset rather than throwing, which is the same
- * call `resolveInventoryRoleForPartKind` makes: a checklist is not the place to
- * discover that somebody added a fourth part kind.
- */
 export function toOpeningStockKind(value: unknown): OpeningStockKind | null {
   const first = Array.isArray(value) ? value[0] : value
   if (first === 'component' || first === 'subassembly' || first === 'finished_good') return first
   return null
 }
 
-/** `finished_good` -> `Finished Good`, from the field's own option list. */
 export function partKindLabel(kind: string | null | undefined): string {
   if (!kind) return 'Unclassified'
   return PartKind.values.find((option) => option.value === kind)?.label ?? kind
 }
 
-/**
- * The bulk confirm's title: `Set 34 parts to Finished Good?`
- *
- * A named function rather than a template at the call site so the plural and
- * the kind's own LABEL - never a raw `finished_good` - are covered by a test.
- * The count is in the title because the ActionBar's selection is the only thing
- * that says how far this write reaches.
- */
 export function setKindConfirmTitle(count: number, kind: OpeningStockKind): string {
   return `Set ${count} ${count === 1 ? 'part' : 'parts'} to ${partKindLabel(kind)}?`
 }
 
-/**
- * The one reason this row is out of the run, most disqualifying first.
- *
- * Ordered rather than collected: a row that already has an opening movement is
- * refused by `assertPartHasNoMovements` whatever else is true of it, and
- * listing "no quantity" beside that would suggest typing one would help.
- */
+/** What a count would write: `count − net`, or `null` while either side is unknown. */
+export function previewDelta(quantity: number | null, netToday: number | null): number | null {
+  if (quantity == null || !Number.isFinite(quantity) || netToday == null) return null
+  return quantity - netToday
+}
+
+/** `first`: a backdated `initial` anchors the part; `adjust`: the part is counted already. */
+export function rowOutcome(state: OpeningStockRowState): 'first' | 'adjust' {
+  return state === 'counted' ? 'adjust' : 'first'
+}
+
+/** 111 Q25: a BOM part with a negative replay should be backflushed before it is counted. */
+export function needsBackflushFirst(
+  row: Pick<OpeningStockRow, 'hasBom' | 'unbuiltSales'>
+): boolean {
+  return row.hasBom && row.unbuiltSales > 0
+}
+
+/** The one reason this row is out of the run, most disqualifying first. */
 export function excludeReason(row: OpeningStockRow): OpeningStockExclusionReason | null {
-  if (row.state === 'opened') return 'opened'
-  if (row.state === 'blocked') return 'blocked'
   if (row.kindIsUnconfirmed) return 'kind-unconfirmed'
-  if (row.quantity == null || !Number.isFinite(row.quantity) || row.quantity <= 0) {
+  if (row.quantity == null || !Number.isFinite(row.quantity) || row.quantity < 0) {
     return 'no-quantity'
   }
-  if (row.unitCost == null || !Number.isFinite(row.unitCost) || row.unitCost <= 0) return 'no-cost'
   return null
+}
+
+export function exclusionDetail(row: OpeningStockRow, reason: OpeningStockExclusionReason): string {
+  switch (reason) {
+    case 'kind-unconfirmed':
+      return `Suggested ${partKindLabel(row.kind)}, which lands in ${row.accountLabel}. Stored as ${partKindLabel(row.storedKind)}.`
+    case 'no-quantity':
+      return row.quantity == null ? 'No count typed.' : `Count is ${row.quantity}.`
+  }
+}
+
+function rowState(candidate: OpeningStockCandidate): OpeningStockRowState {
+  if (candidate.hasInitialMovement) return 'counted'
+  return candidate.hasMovements ? 'uncounted' : 'new'
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out
 }
 
 export function useOpeningStock() {
   const candidates = api.purchasing.listOpeningStockCandidates.useQuery()
+  const utils = api.useUtils()
 
   const partDefId = useResourceProperty('part', 'id')
-  // 🛑 Asked SEPARATELY from the page's `part` gate. The two definitions carry
-  // their own per-def grants, so somebody who may edit parts is not thereby
-  // allowed to write `stock_movement` rows - and an affordance the mutation
-  // refuses on click is worse than one that is absent.
+  // Asked separately from the page's `part` gate: `stock_movement` carries its own grant.
   const movementDefId = useResourceProperty('stock_movement', 'id')
   const { canEditEntity } = useAccess()
   const canSetKind = partDefId ? canEditEntity(partDefId) : false
@@ -259,53 +210,48 @@ export function useOpeningStock() {
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
   const cutoffPeriod = (getSetting('accounting.cutoffPeriod') as string | null) ?? null
 
-  /**
-   * The opening date the cutoff implies: the last day of the last month the
-   * PREVIOUS system owned, which is the day before the first month auxx.ai
-   * values. `null` when the cutoff is unset or is not a `YYYY-MM` month -
-   * `cutoverDateFor` throws on a day key, and the page says so rather than
-   * silently dating the run today (§3).
-   */
-  const cutoffDate = useMemo(() => {
-    if (!cutoffPeriod) return null
-    try {
-      return cutoverDateFor(cutoffPeriod)
-    } catch {
-      return null
-    }
-  }, [cutoffPeriod])
+  // ── Prefilter (111 Q24): `?parts=a,b` or `?job=<import job>` ────────────────
+  const [partsParam, setPartsParam] = useQueryState('parts')
+  const [jobParam, setJobParam] = useQueryState('job')
+  const jobRecordIds = api.dataImport.listJobResultRecordIds.useQuery(
+    { jobId: jobParam ?? '' },
+    { enabled: !!jobParam }
+  )
+  const prefilterIds = useMemo<Set<string> | null>(() => {
+    if (partsParam) return new Set(partsParam.split(',').filter(Boolean))
+    if (jobParam) return jobRecordIds.data ? new Set(jobRecordIds.data) : new Set()
+    return null
+  }, [partsParam, jobParam, jobRecordIds.data])
+  const clearPrefilter = useCallback(() => {
+    void setPartsParam(null)
+    void setJobParam(null)
+  }, [setPartsParam, setJobParam])
 
-  // ONE date for the whole run, not one per row (§2.3). `openStockBalance`
-  // takes `occurredAt` per part, but an opening balance is one event on one
-  // date and exposing it per row invites 495 dates for it.
-  //
-  // ⚠️ A CALENDAR DAY, in the canonical `YYYY-MM-DDT00:00:00.000Z` shape the
-  // DATE input reads and writes. Built with `field-values`' own two helpers
-  // rather than by hand: `normalizeCalendarDayIso` rounds to the NEAREST UTC
-  // midnight because truncating is off by one for every writer east of UTC, and
-  // an opening balance landing a day either side of the cutoff is the
-  // difference between the frozen baseline covering it and month-end summing
-  // it.
-  const [occurredAtOverride, setOccurredAt] = useState<string | null>(null)
-  const defaultOccurredAt = cutoffDate
-    ? (normalizeCalendarDayIso(cutoffDate) ?? toCalendarDayIso(new Date()))
-    : toCalendarDayIso(new Date())
-  const occurredAt = occurredAtOverride ?? defaultOccurredAt
+  // ── Preflight: the anchor state and the backflush signal, in chunks of 500 ──
+  const candidateIds = useMemo(
+    () => (candidates.data ?? []).map((candidate) => candidate.partId),
+    [candidates.data]
+  )
+  const preflightResults = api.useQueries((t) =>
+    chunk(candidateIds, PREFLIGHT_CHUNK).map((partIds) =>
+      t.purchasing.setCountPreflight({ partIds })
+    )
+  )
+  const preflightKey = preflightResults.map((result) => result.dataUpdatedAt).join('|')
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `preflightKey` stands in for the results array, which is rebuilt every render
+  const preflight = useMemo(() => {
+    const map = new Map<string, SetCountPreflightRow>()
+    for (const result of preflightResults)
+      for (const row of result.data ?? []) map.set(row.partId, row)
+    return map
+  }, [preflightKey])
 
+  // The run-wide date, a calendar day; every row without a date of its own follows it.
+  const [occurredAt, setOccurredAt] = useState<string>(() => toCalendarDayIso(new Date()))
   const [drafts, setDrafts] = useState<Record<string, OpeningStockDraft>>({})
   /** Kinds this session has WRITTEN, so a row reads right before the refetch lands. */
   const [writtenKinds, setWrittenKinds] = useState<Record<string, string>>({})
 
-  // ── Selection ───────────────────────────────────────────────────────────
-  //
-  // The shared `ListSelectionProvider` store owns it, so there is no second
-  // selection set on this page and the ActionBar is the only bulk control.
-  //
-  // ⚠️ `itemIds` is fed by the LIST, not from here. The store resolves Cmd+A and
-  // shift-ranges against `itemIds` as "what is on screen, in display order", and
-  // only the list knows that - it holds the search, the filter chip and the
-  // 50-row page. Feeding all 495 rows from here would let Cmd+A select rows the
-  // filter is hiding and count them in the bar.
   const bulkMode = useBulkMode()
   const setBulkMode = useListSelection((s) => s.setBulkMode)
   const clearSelection = useListSelection((s) => s.clear)
@@ -315,12 +261,9 @@ export function useOpeningStock() {
 
   const rows = useMemo<OpeningStockRow[]>(() => {
     const list = candidates.data ?? []
-    return list.map((candidate) => {
+    const scoped = prefilterIds ? list.filter((c) => prefilterIds.has(c.partId)) : list
+    return scoped.map((candidate) => {
       const storedKind = writtenKinds[candidate.partId] ?? unwrapKind(candidate.partKind)
-
-      // ⚠️ `subpartCheckLoaded` is true because the candidates read resolves
-      // `isSubpartOfAssembly` in the same query as the rest of the row - there
-      // is no second, later answer for the suggestion to flash on ahead of.
       const suggested = shouldSuggestFinishedGood({
         hasProduct: candidate.hasProduct,
         partKind: storedKind,
@@ -333,13 +276,9 @@ export function useOpeningStock() {
 
       const draft = drafts[candidate.partId]
       const quantity = draft?.quantity ?? null
-      const unitCost = draft?.unitCost !== undefined ? draft.unitCost : candidate.standardCost
-
-      const state: OpeningStockRowState = candidate.hasInitialMovement
-        ? 'opened'
-        : candidate.hasMovements
-          ? 'blocked'
-          : 'not-opened'
+      const unitCost = candidate.standardCost == null ? (draft?.unitCost ?? null) : null
+      const flight = preflight.get(candidate.partId)
+      const netToday = flight?.netToday ?? null
 
       return {
         partId: candidate.partId,
@@ -356,28 +295,30 @@ export function useOpeningStock() {
         standardCost: candidate.standardCost,
         quantity,
         unitCost,
-        extended:
-          quantity != null && unitCost != null ? computeExtendedCost(unitCost, quantity) : 0,
-        isCostOverride:
-          unitCost != null && candidate.standardCost != null && unitCost !== candidate.standardCost,
-        state,
+        date: draft?.date ?? occurredAt,
+        hasOwnDate: draft?.date != null,
+        state: flight ? (flight.hasInitial ? 'counted' : rowState(candidate)) : rowState(candidate),
+        netToday,
+        hasBom: flight?.hasBom ?? false,
+        unbuiltSales: flight?.unbuiltSales ?? 0,
+        earliest: flight?.earliest ?? null,
+        delta: previewDelta(quantity, netToday),
       }
     })
-  }, [candidates.data, drafts, writtenKinds, partDefId])
+  }, [candidates.data, prefilterIds, drafts, writtenKinds, partDefId, preflight, occurredAt])
 
   const counts = useMemo<OpeningStockCounts>(
     () => ({
       all: rows.length,
-      notOpened: rows.filter((row) => row.state === 'not-opened').length,
-      opened: rows.filter((row) => row.state === 'opened').length,
-      blocked: rows.filter((row) => row.state === 'blocked').length,
+      notCounted: rows.filter((row) => row.state !== 'counted').length,
+      counted: rows.filter((row) => row.state === 'counted').length,
+      uncounted: rows.filter((row) => row.state === 'uncounted').length,
       unclassified: rows.filter((row) => row.isUnclassified).length,
-      costOverride: rows.filter((row) => row.isCostOverride).length,
+      uncosted: rows.filter((row) => row.standardCost == null).length,
     }),
     [rows]
   )
 
-  /** kind -> row count, for the per-kind chips that appear once kinds are set. */
   const kindCounts = useMemo(() => {
     const map = new Map<string, number>()
     for (const row of rows) {
@@ -403,83 +344,54 @@ export function useOpeningStock() {
     return out
   }, [rows])
 
-  /** Exactly the rows the run will write, in the mutation's own shape. */
+  /** Exactly the rows the run will write. */
+  const ready = useMemo(() => rows.filter((row) => excludeReason(row) === null), [rows])
+
+  /** The mutation's own shape. The unit cost is a RATE, rounded to `RATE_DECIMALS`, never a cent. */
   const entries = useMemo(
     () =>
-      rows
-        .filter((row) => excludeReason(row) === null)
-        .map((row) => ({
-          partId: row.partId,
-          quantity: row.quantity as number,
-          // 🛑 Rounded to `RATE_DECIMALS`, NEVER to a whole minor unit. The unit
-          // cost is a RATE, and the standard it defaults from may legitimately
-          // hold a fractional cent (a fastener at $15.94 per thousand is 1.594
-          // minor units). `Math.round` here would rewrite that as 2 and freeze
-          // the wrong number onto an append-only movement. `roundMinorUnits` is
-          // the same function the write path uses, and it is what the
-          // procedure's own precision refinement is checking against.
-          unitCost: roundMinorUnits(row.unitCost as number),
-        })),
-    [rows]
+      ready.map((row) => ({
+        partId: row.partId,
+        quantity: row.quantity as number,
+        ...(row.standardCost == null && row.unitCost != null
+          ? { unitCost: roundMinorUnits(row.unitCost) }
+          : {}),
+        date: new Date(normalizeCalendarDayIso(row.date) ?? row.date),
+      })),
+    [ready]
   )
 
-  /**
-   * The opening journal entry, per inventory account.
-   *
-   * ⚠️ Grouped by the label `openingStockAccountLabel` produces rather than by a
-   * hardcoded 1310/1320/1330 triple, so an account only appears when a row
-   * actually lands in it - `subassembly` resolves to Raw Materials, so Work in
-   * Process is correctly never a line here.
-   */
-  const accountTotals = useMemo<OpeningStockAccountTotal[]>(() => {
-    const map = new Map<string, OpeningStockAccountTotal>()
-    for (const row of rows) {
-      if (excludeReason(row) !== null) continue
-      const current = map.get(row.accountRole) ?? {
-        account: row.accountLabel,
-        role: row.accountRole,
-        parts: 0,
-        units: 0,
-        extended: 0,
-      }
-      current.parts += 1
-      current.units += row.quantity ?? 0
-      current.extended += row.extended
-      map.set(row.accountRole, current)
-    }
-    return [...map.values()].sort((a, b) => a.account.localeCompare(b.account))
-  }, [rows])
-
-  const totalExtended = accountTotals.reduce((sum, total) => sum + total.extended, 0)
+  const summary = useMemo(
+    () => ({
+      firstCounts: ready.filter((row) => rowOutcome(row.state) === 'first').length,
+      adjustments: ready.filter((row) => rowOutcome(row.state) === 'adjust').length,
+      pending: ready.filter((row) => row.standardCost == null && row.unitCost == null).length,
+      backflushFirst: ready.filter(needsBackflushFirst).length,
+    }),
+    [ready]
+  )
 
   // ── Drafts ──────────────────────────────────────────────────────────────
-
   const setQuantity = useCallback((partId: string, quantity: number | null) => {
     setDrafts((prev) => ({ ...prev, [partId]: { ...prev[partId], quantity } }))
   }, [])
-
   const setUnitCost = useCallback((partId: string, unitCost: number | null) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [partId]: { quantity: prev[partId]?.quantity ?? null, unitCost },
-    }))
+    setDrafts((prev) => ({ ...prev, [partId]: { ...prev[partId], unitCost } }))
+  }, [])
+  const setDate = useCallback((partId: string, date: string | null) => {
+    setDrafts((prev) => {
+      const next = { ...prev[partId] }
+      if (date) next.date = date
+      else delete next.date
+      return { ...prev, [partId]: next }
+    })
   }, [])
 
   // ── Writes ──────────────────────────────────────────────────────────────
-
   const bulkSetPartKind = api.purchasing.bulkSetPartKind.useMutation()
-  const runOpeningStock = api.purchasing.runSetCounts.useMutation()
+  const runSetCounts = api.purchasing.runSetCounts.useMutation()
   const { ConfirmDialog: KindConfirmDialog, runBatch } = useBulkRunner()
 
-  /**
-   * Write `part_kind` for one row or a whole selection.
-   *
-   * The inline select and the ActionBar's bulk control are the SAME write: a
-   * second door into `part_kind` would be a second place for the account the row
-   * names to diverge from the account the run resolves. The kind must be stored
-   * before the run because the run freezes the account it resolves onto an
-   * `updatable: false` movement (§6.3).
-   */
   const setKind = useCallback(
     async (partIds: string[], kind: OpeningStockKind) => {
       if (partIds.length === 0) return
@@ -504,15 +416,6 @@ export function useOpeningStock() {
     [bulkSetPartKind, candidates]
   )
 
-  /**
-   * The ActionBar's bulk kind write: `setKind` over the selection, behind one
-   * confirm that names the count and the kind.
-   *
-   * Through `useBulkRunner`'s `runBatch` rather than calling `setKind` straight,
-   * so the selected rows carry the pending overlay for the round trip and a
-   * rejection reports itself once as a toast - the same choreography as every
-   * other bulk list action. One mutation for the whole set, never a loop.
-   */
   const setSelectedKind = useCallback(
     (kind: OpeningStockKind) => {
       const partIds = selectedIds
@@ -521,36 +424,29 @@ export function useOpeningStock() {
         description:
           'The kind decides which inventory account the movement is stamped with, and that stamp cannot be edited afterwards.',
         confirmText: 'Set kind',
-        // Not a delete. `part_kind` is an ordinary editable field; it is the
-        // MOVEMENT's copy of the account that is append-only, which is what the
-        // description is warning about.
         destructive: false,
         pendingLabel: 'Setting the kind…',
-        // The rows stay on screen, so each overlay clears when the write
-        // settles rather than waiting for a refetch that will never prune them.
         removesItem: false,
         failureTitle: 'Error setting the part kind',
-        // Cleared, not exited: kinds get set in batches (all the motors, then
-        // all the fasteners), so bulk mode stays on for the next one.
         onDone: clearSelection,
       })
     },
     [selectedIds, runBatch, setKind, clearSelection]
   )
 
-  /**
-   * The run. Never a loop over rows - one call, one pass, per-part isolation on
-   * the server (§5). The candidates read is refetched afterwards rather than
-   * patched: a partial run leaves work behind, and the new row states are what
-   * says which.
-   */
+  /** One call, per-part isolation on the server. `adjustAnchored`: this page shows the delta. */
   const run = useCallback(async (): Promise<OpeningStockRunSummary> => {
-    const result = await runOpeningStock.mutateAsync({ occurredAt: new Date(occurredAt), entries })
+    const result = await runSetCounts.mutateAsync({
+      occurredAt: new Date(normalizeCalendarDayIso(occurredAt) ?? occurredAt),
+      adjustAnchored: true,
+      entries,
+    })
     setDrafts({})
     clearSelection()
     void candidates.refetch()
+    void utils.purchasing.setCountPreflight.invalidate()
     return result
-  }, [runOpeningStock, occurredAt, entries, candidates, clearSelection])
+  }, [runSetCounts, occurredAt, entries, candidates, clearSelection, utils])
 
   return {
     rows,
@@ -558,16 +454,18 @@ export function useOpeningStock() {
     kindCounts,
     exclusions,
     entries,
-    accountTotals,
-    totalExtended,
-    isLoading: candidates.isLoading,
+    summary,
+    isLoading: candidates.isLoading || (!!jobParam && jobRecordIds.isLoading),
+    isPreflightLoading: preflightResults.some((result) => result.isLoading),
     currencyCode,
     cutoffPeriod,
-    cutoffDate,
     occurredAt,
     setOccurredAt,
     setQuantity,
     setUnitCost,
+    setDate,
+    prefilter: prefilterIds ? { count: rows.length, fromJob: !!jobParam } : null,
+    clearPrefilter,
     bulkMode,
     setBulkMode,
     selectedCount,
@@ -576,40 +474,9 @@ export function useOpeningStock() {
     canOpenStock,
     setKind,
     setSelectedKind,
-    /** The `runBatch` confirm. Render it beside the ActionBar. */
     KindConfirmDialog,
     isSettingKind: bulkSetPartKind.isPending,
     run,
-    isRunning: runOpeningStock.isPending,
-  }
-}
-
-/**
- * The evidence beside a reason.
- *
- * ⚠️ Every exclusion carries the value that PROVES it - 44 §7.2b's rule, which
- * `fulfillment-exclusions.tsx` and `backfill-exclusions.tsx` both already
- * follow. "Already opened" explains nothing without saying what is already
- * there, and "no cost" explains nothing without the standard it would have
- * defaulted from.
- *
- * ⚠️ The two movement reasons name the boolean the read actually returned.
- * `listOpeningStockCandidates` carries `hasMovements` / `hasInitialMovement`
- * and not a movement COUNT, so a count here would be invented.
- */
-export function exclusionDetail(row: OpeningStockRow, reason: OpeningStockExclusionReason): string {
-  switch (reason) {
-    case 'opened':
-      return 'An opening movement is already on the ledger, and a movement is append-only.'
-    case 'blocked':
-      return 'Stock movements exist and none of them is an opening balance.'
-    case 'kind-unconfirmed':
-      return `Suggested ${partKindLabel(row.kind)}, which lands in ${row.accountLabel}. Stored as ${partKindLabel(row.storedKind)}.`
-    case 'no-quantity':
-      return row.quantity == null ? 'No quantity typed.' : `Quantity is ${row.quantity}.`
-    case 'no-cost':
-      return row.standardCost == null
-        ? 'No unit cost typed, and the part has no standard cost to default from.'
-        : 'No unit cost typed.'
+    isRunning: runSetCounts.isPending,
   }
 }

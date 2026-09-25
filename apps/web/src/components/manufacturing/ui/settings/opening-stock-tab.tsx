@@ -1,42 +1,30 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-tab.tsx
 'use client'
 
-// Parts > Manage > Costing, `?s=opening` (money 52-parts-costing-page.md
-// §2.3): the opening-stock checklist on the left and THE RUN on the right.
-//
-// The split is `tariffs-settings-page.tsx`'s, with one deliberate departure:
-// the right column is not a per-part editor. 495 parts selected one at a time
-// into a right-hand form is the part create dialog with extra steps, and that
-// dialog is exactly the door that is shut for every part that already exists.
-//
-// ⚠️ There is no selection driving the pane, so below `lg` - where the pane is
-// a drawer rather than a column - it needs a trigger of its own. That is the
-// button at the top of the list, and it is the only reason this file knows
-// about the viewport at all.
-//
-// The bulk "set kind" is an ActionBar over the list's selection, not a control
-// in the pane: the parts being classified are the rows somebody is looking at,
-// and a button 480px away from them was a second place to hold a selection.
+// Parts > Manage > Costing, `?s=opening` (money 52 §2.3; 111 D21): the Set counts checklist
+// on the left and THE RUN on the right. `?parts=` / `?job=` prefilter the list (111 Q24).
+// Below `lg` the pane is a drawer, so the list carries its own trigger for it.
 
 import { PartKind } from '@auxx/lib/resources/client'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
 import { Button } from '@auxx/ui/components/button'
-import { Boxes } from 'lucide-react'
+import { Boxes, X } from 'lucide-react'
 import { useState } from 'react'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import { ListSelectionProvider } from '~/components/list-selection'
 import { useMedia } from '~/hooks/use-media'
-import { toOpeningStockKind, useOpeningStock } from '../../hooks/use-opening-stock'
+import { BackflushDialog, type BackflushDialogRange } from '../../builds/backflush-dialog'
+import {
+  type OpeningStockRow,
+  toOpeningStockKind,
+  useOpeningStock,
+} from '../../hooks/use-opening-stock'
 import { OpeningStockList } from './opening-stock-list'
 import { OpeningStockRun } from './opening-stock-run'
 
 /** Matches `MasterDetailSplit`'s own desktop breakpoint. */
 const DESKTOP_QUERY = '(min-width: 1024px)'
 
-/**
- * The provider wraps BOTH columns, so the run pane and the list read one
- * selection store even though only the list renders checkboxes today.
- */
 export function OpeningStockTab() {
   return (
     <ListSelectionProvider>
@@ -49,16 +37,10 @@ function OpeningStockTabInner() {
   const opening = useOpeningStock()
   const isDesktop = useMedia(DESKTOP_QUERY)
   const [runOpen, setRunOpen] = useState(false)
+  const [backflush, setBackflush] = useState<BackflushDialogRange | null>(null)
   const { KindConfirmDialog } = opening
 
-  /**
-   * One action per part kind.
-   *
-   * Narrowed against the procedure's own enum rather than trusted: a kind added
-   * to the registry that the write path does not take yet must not render as a
-   * button that is refused on click. `flatMap` over `PartKind.values` so the
-   * three names are never restated here.
-   */
+  // One action per kind the write path takes; a fourth registry kind never renders a button.
   const kindActions: ActionBarAction[] = PartKind.values.flatMap((option) => {
     const kind = toOpeningStockKind(option.value)
     if (!kind) return []
@@ -72,15 +54,17 @@ function OpeningStockTabInner() {
     ]
   })
 
+  /** Q25: from the part's earliest movement to today, so every negative day is covered. */
+  const openBackflush = (row: OpeningStockRow) => {
+    setBackflush({ from: row.earliest ?? new Date(), to: new Date(), partName: row.title })
+  }
+
   const run = (
     <OpeningStockRun
-      accountTotals={opening.accountTotals}
-      totalExtended={opening.totalExtended}
       entryCount={opening.entries.length}
+      summary={opening.summary}
       exclusions={opening.exclusions}
-      currencyCode={opening.currencyCode}
       cutoffPeriod={opening.cutoffPeriod}
-      cutoffDate={opening.cutoffDate}
       occurredAt={opening.occurredAt}
       onOccurredAtChange={opening.setOccurredAt}
       canOpenStock={opening.canOpenStock}
@@ -100,20 +84,32 @@ function OpeningStockTabInner() {
         onPaneClose={() => setRunOpen(false)}
         defaultWidth={480}>
         <div className='flex flex-col'>
-          {!isDesktop && (
-            <div className='px-3 pt-3'>
-              <Button variant='outline' size='sm' onClick={() => setRunOpen(true)}>
-                <Boxes />
-                Review the run ({opening.entries.length})
-              </Button>
+          {(!isDesktop || opening.prefilter) && (
+            <div className='flex flex-wrap items-center gap-2 px-3 pt-3'>
+              {!isDesktop && (
+                <Button variant='outline' size='sm' onClick={() => setRunOpen(true)}>
+                  <Boxes />
+                  Review the run ({opening.entries.length})
+                </Button>
+              )}
+              {opening.prefilter && (
+                <span className='flex items-center gap-1 text-muted-foreground text-xs'>
+                  Showing {opening.prefilter.count}{' '}
+                  {opening.prefilter.count === 1 ? 'part' : 'parts'}{' '}
+                  {opening.prefilter.fromJob ? 'from the import' : 'you picked'}
+                  <Button variant='ghost' size='xs' onClick={opening.clearPrefilter}>
+                    <X />
+                    Show all
+                  </Button>
+                </span>
+              )}
             </div>
           )}
           <OpeningStockList
             rows={opening.rows}
             counts={opening.counts}
             kindCounts={opening.kindCounts}
-            // 🛑 Gate on the QUERY, never on an empty array. "No parts" is a claim
-            // about the org, and rendering it mid-load makes it a false one.
+            // Gate on the QUERY, never on an empty array: "No parts" is a claim about the org.
             isLoading={opening.isLoading}
             currencyCode={opening.currencyCode}
             bulkMode={opening.bulkMode}
@@ -123,13 +119,12 @@ function OpeningStockTabInner() {
             onSetKind={opening.setKind}
             onQuantityChange={opening.setQuantity}
             onUnitCostChange={opening.setUnitCost}
+            onDateChange={opening.setDate}
+            onBackflush={openBackflush}
           />
         </div>
       </MasterDetailSplit>
 
-      {/* Open while bulk mode is on OR anything is selected, so a checkbox
-          clicked without the toggle still gets the bar (the store's implicit
-          bulk mode). Closing it exits selection entirely. */}
       <ActionBar
         open={opening.canSetKind && (opening.bulkMode || opening.selectedCount > 0)}
         onOpenChange={(open) => {
@@ -141,6 +136,13 @@ function OpeningStockTabInner() {
         showClose
       />
       <KindConfirmDialog />
+      <BackflushDialog
+        open={backflush !== null}
+        onOpenChange={(open) => {
+          if (!open) setBackflush(null)
+        }}
+        range={backflush ?? undefined}
+      />
     </>
   )
 }

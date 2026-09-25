@@ -40,7 +40,7 @@ import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import type { CapabilitySet } from '@auxx/lib/permissions'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, isAuxxError } from '../trpc'
 
@@ -722,6 +722,38 @@ export const dataImportRouter = createTRPCRouter({
   /**
    * Get plan warnings (rows that imported with non-fatal issues).
    */
+  /**
+   * The record ids a finished job wrote (created or updated), for a page that continues
+   * from the import — the Set counts tab's `?job=` prefilter (111 Q24).
+   */
+  listJobResultRecordIds: capabilityProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      const plan = await ctx.db.query.ImportPlan.findFirst({
+        where: eq(schema.ImportPlan.importJobId, input.jobId),
+        orderBy: desc(schema.ImportPlan.createdAt),
+      })
+      if (!plan) return []
+
+      const rows = await ctx.db
+        .select({ recordId: schema.ImportPlanRow.resultRecordId })
+        .from(schema.ImportPlanRow)
+        .innerJoin(
+          schema.ImportPlanStrategy,
+          eq(schema.ImportPlanStrategy.id, schema.ImportPlanRow.importPlanStrategyId)
+        )
+        .where(
+          and(
+            eq(schema.ImportPlanStrategy.importPlanId, plan.id),
+            isNotNull(schema.ImportPlanRow.resultRecordId)
+          )
+        )
+      return [...new Set(rows.flatMap((row) => (row.recordId ? [row.recordId] : [])))]
+    }),
+
   getPlanWarnings: capabilityProcedure
     .input(z.object({ planId: z.string(), limit: z.number().optional().default(10) }))
     .query(async ({ ctx, input }) => {
