@@ -7,19 +7,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { type BoundRecordFixture, seedBoundRecord, testDb } from '../__int-test-helpers'
 
 const seams = vi.hoisted(() => ({
-  catalogStreams: [] as { key: string; periodField?: string }[],
-  accountingActive: false,
-  cutoverStart: null as Date | null,
   enqueueConnectorSync: vi.fn(async () => {}),
 }))
 
-vi.mock('../connectors/app-connector-adapter', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../connectors/app-connector-adapter')>()),
-  loadAppCatalogConnector: async () => ({ streams: seams.catalogStreams }),
-}))
-vi.mock('../../accounting/ledger/setup/cutover-start', () => ({
-  readActiveCutoverStart: async () => (seams.accountingActive ? seams.cutoverStart : null),
-}))
 vi.mock('../data-connector-queue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../data-connector-queue')>()),
   enqueueConnectorSync: seams.enqueueConnectorSync,
@@ -30,7 +20,6 @@ import { isNewestSyncRun, openRun } from '../service'
 import { createRunSyncStateStore } from '../sync-core-adapters'
 
 let f: BoundRecordFixture
-const CUTOVER = new Date('2026-07-01T07:00:00.000Z')
 const STREAM_STATE = { phase: 'backfill' as const, recordsSeen: 3 }
 
 async function makeApp() {
@@ -77,9 +66,6 @@ beforeEach(async () => {
     .update(schema.DataConnectorStream)
     .set({ state: STREAM_STATE })
     .where(eq(schema.DataConnectorStream.id, f.streamId))
-  seams.catalogStreams = [{ key: 'product', periodField: 'createdAt' }]
-  seams.accountingActive = false
-  seams.cutoverStart = null
   seams.enqueueConnectorSync.mockClear()
 })
 
@@ -177,40 +163,10 @@ describe('requestReimport refusals (N5)', () => {
     expect(calls[0]?.[1].jobKey).not.toBe(calls[1]?.[1].jobKey)
   })
 
-  describe('an accounting-active org with a cutover', () => {
-    beforeEach(async () => {
-      await makeApp()
-      await completeBackfill()
-      seams.accountingActive = true
-      seams.cutoverStart = CUTOVER
-    })
-
-    it('refuses a period run with no between on the periodField, or one starting before the cutover', async () => {
-      const none = await reimport([{ fieldId: 'status', operator: 'is', value: 'paid' }])
-      expect(none._unsafeUnwrapErr().name).toBe('UnprocessableEntityError')
-      const early = await reimport([august('2026-06-01T00:00:00Z')])
-      expect(early._unsafeUnwrapErr().message).toContain('createdAt between')
-      expect((await reimport([august()])).isOk()).toBe(true)
-    })
-
-    it('ANDs the cutover into an id run as an exact clause', async () => {
-      const result = (await reimport([refresh]))._unsafeUnwrap()
-      expect(result.recordFilter).toEqual([
-        { ...refresh, exact: true },
-        {
-          fieldId: 'createdAt',
-          operator: 'between',
-          value: { from: CUTOVER.toISOString() },
-          exact: true,
-        },
-      ])
-    })
-
-    it('leaves a stream without a periodField alone', async () => {
-      seams.catalogStreams = [{ key: 'product' }]
-      const result = (await reimport([refresh]))._unsafeUnwrap()
-      expect(result.recordFilter).toEqual([{ ...refresh, exact: true }])
-    })
+  it('sends an id run filter as given, with no accounting clause', async () => {
+    await makeApp()
+    const result = (await reimport([refresh]))._unsafeUnwrap()
+    expect(result.recordFilter).toEqual([{ ...refresh, exact: true }])
   })
 
   it('refuses a period run while a sync holds the connector, and queues an id run', async () => {

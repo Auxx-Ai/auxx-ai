@@ -178,7 +178,7 @@ export async function appBackfillFloor(
 }
 
 /** `periodField` per stream key from an app connector's catalog; empty for any other connector. */
-export async function readAppPeriodFields(
+async function readAppPeriodFields(
   organizationId: string,
   connector: { type: string; definitionKind: string; appInstallationId: string | null }
 ): Promise<Map<string, string>> {

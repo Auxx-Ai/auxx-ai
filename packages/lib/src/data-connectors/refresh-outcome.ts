@@ -7,7 +7,6 @@ export interface RefreshRunSummary {
   created: number
   updated: number
   skipped: number
-  recordFilter: Array<{ fieldId: string; operator: string }> | null
   errorSample: Array<{ externalId: string; error: string }> | null
 }
 
@@ -32,14 +31,6 @@ export function describeRecordRefresh(
   }
   if (run.updated + run.created > 0) return { state: 'done', tone: 'success', message: 'Updated' }
   if (run.skipped > 0) return { state: 'done', tone: 'neutral', message: 'Unchanged' }
-  // An id run's only non-id clause is the accounting cutover guard (reimport.ts).
-  if (run.recordFilter?.some((c) => c.fieldId !== '$externalId' && c.operator === 'between')) {
-    return {
-      state: 'done',
-      tone: 'neutral',
-      message: 'This record is from before your books started in auxx',
-    }
-  }
   return { state: 'done', tone: 'neutral', message: `Not found in ${sourceName}` }
 }
 
