@@ -45,6 +45,9 @@ const h = vi.hoisted(() => ({
   runIntegrityPasses: vi.fn<(db: unknown, input: Record<string, unknown>) => Promise<void>>(
     async () => {}
   ),
+  lockHeld: false,
+  integrityPendingSince: new Date() as Date | null,
+  updateSet: vi.fn<(values: Record<string, unknown>) => void>(),
 }))
 
 vi.mock('../../../entity-instances/activity', () => ({
@@ -63,6 +66,10 @@ vi.mock('../sync-dispatch-guard', () => ({
 vi.mock('../finalize-integrity-passes', () => ({
   runIntegrityPasses: h.runIntegrityPasses,
 }))
+vi.mock('../../../data-migrations/advisory-lock', () => ({
+  withAdvisoryLock: async (_db: unknown, _key: bigint, fn: () => Promise<unknown>) =>
+    h.lockHeld ? 'lock-held' : fn(),
+}))
 vi.mock('../../../realtime', () => ({
   getRealtimeService: h.getRealtimeService,
   publishRecordsChanged: h.publishRecordsChanged,
@@ -74,7 +81,7 @@ vi.mock('drizzle-orm', async (importOriginal) => ({
   eq: vi.fn(() => ({})),
 }))
 
-import { manifestDefCounts, runSyncFinalize, selectSyncLane } from '../sync-finalize'
+import { integrityDoor, manifestDefCounts, runSyncFinalize, selectSyncLane } from '../sync-finalize'
 
 const ORG = 'org_1'
 
@@ -121,6 +128,15 @@ function fakeDb(
       },
     },
     insert: vi.fn(() => ({ values: h.insertValues })),
+    select: vi.fn(() => ({
+      from: () => ({ where: async () => [{ pendingSince: h.integrityPendingSince }] }),
+    })),
+    update: vi.fn(() => ({
+      set: (values: Record<string, unknown>) => {
+        h.updateSet(values)
+        return { where: async () => {} }
+      },
+    })),
   } as never
 }
 
@@ -141,6 +157,8 @@ function insertedRows(): Array<Record<string, unknown>> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.lockHeld = false
+  h.integrityPendingSince = new Date()
 })
 
 describe('selectSyncLane', () => {
@@ -484,6 +502,37 @@ describe('runSyncFinalize — integrity passes door (B-1)', () => {
     )
     expect(h.triggerResourceDispatch).toHaveBeenCalledTimes(1)
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears integrityPendingSince after the passes run', async () => {
+    await integrityDoor(fakeDb(), ORG, manifest({ createdRecordIds: ['def_1:c1' as RecordId] }), {
+      source: 'connector',
+      ref: 'run_1',
+    })
+    expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
+    expect(h.updateSet).toHaveBeenCalledWith({ integrityPendingSince: null })
+    expect(h.updateSet.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      h.runIntegrityPasses.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('skips a run whose passes already completed', async () => {
+    h.integrityPendingSince = null
+    await integrityDoor(fakeDb(), ORG, manifest({ createdRecordIds: ['def_1:c1' as RecordId] }), {
+      source: 'import',
+      ref: 'job_1',
+    })
+    expect(h.runIntegrityPasses).not.toHaveBeenCalled()
+    expect(h.updateSet).not.toHaveBeenCalled()
+  })
+
+  it('skips while another worker holds the run lock', async () => {
+    h.lockHeld = true
+    await integrityDoor(fakeDb(), ORG, manifest({ createdRecordIds: ['def_1:c1' as RecordId] }), {
+      source: 'connector',
+      ref: 'run_1',
+    })
+    expect(h.runIntegrityPasses).not.toHaveBeenCalled()
   })
 })
 

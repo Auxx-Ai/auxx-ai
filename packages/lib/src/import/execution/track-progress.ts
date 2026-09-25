@@ -127,9 +127,10 @@ export async function getImportManifest(
  * redelivered pointer events get false and must no-op.
  */
 export async function claimImportManifestConsumed(db: Database, jobId: string): Promise<boolean> {
+  const now = new Date()
   const rows = await db
     .update(schema.ImportJob)
-    .set({ manifestConsumedAt: new Date() })
+    .set({ manifestConsumedAt: now, integrityPendingSince: now })
     .where(and(eq(schema.ImportJob.id, jobId), isNull(schema.ImportJob.manifestConsumedAt)))
     .returning({ id: schema.ImportJob.id })
   return rows.length > 0

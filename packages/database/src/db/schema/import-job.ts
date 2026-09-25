@@ -98,6 +98,8 @@ export const ImportJob = pgTable(
     // `… WHERE manifestConsumedAt IS NULL RETURNING` in the event consumer), so a
     // redelivered event can never double-fire rule actions.
     manifestConsumedAt: timestamp({ precision: 3 }),
+    // Set with the manifest claim, cleared once the integrity passes finish; see DataConnectorRun.
+    integrityPendingSince: timestamp({ precision: 3 }),
     // Phase 6 (plan events/03 §9, D-3/D-13/D-19) — the guarded workflow dispatch
     // tally, written once at finalize on the LARGE lane (same shape and rules as
     // DataConnectorRun.heldDispatches). Structural mirror of `HeldDispatchEntry`

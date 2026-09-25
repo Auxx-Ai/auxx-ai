@@ -269,6 +269,7 @@ export {
   type StorageCleanupJobData,
   storageCleanupJob,
 } from './maintenance/storage-cleanup-job'
+export { syncIntegrityRecoveryJob } from './maintenance/sync-integrity-recovery-job'
 export { getThumbnailCleanupStats, thumbnailCleanupJob } from './maintenance/thumbnail-cleanup-job'
 export {
   sendTrialConversionEmailsJob,

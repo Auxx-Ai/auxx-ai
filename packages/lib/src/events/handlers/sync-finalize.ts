@@ -28,6 +28,7 @@
 // everything else (the events ↔ data-connectors ↔ cache boundaries break
 // vi.mock otherwise — same rule as the two manifest consumers next door).
 
+import { createHash } from 'node:crypto'
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
@@ -274,16 +275,45 @@ async function buildDefCanonicalizer(
   }
 }
 
-/** B-1: the integrity batch passes — the module guards each pass internally. */
-async function integrityDoor(
+/** Per-run advisory-lock key, below 2^60 so it fits Postgres `bigint`. */
+function integrityLockKey(ref: string): bigint {
+  const hex = createHash('sha1').update(`sync-integrity:${ref}`).digest('hex')
+  return BigInt(`0x${hex.slice(0, 15)}`)
+}
+
+/**
+ * B-1: the integrity batch passes, at most one live runner per run, run while the claim's
+ * `integrityPendingSince` is set. Unlike rule actions they are idempotent, so a redelivery and
+ * the recovery sweep call this too: the session lock dies with a killed worker.
+ */
+export async function integrityDoor(
   db: Database,
   organizationId: string,
   manifest: SyncChangeManifest,
-  ctx: { source: string; ref: string }
+  ctx: { source: SyncFinalizeInput['source']; ref: string }
 ): Promise<void> {
   try {
-    const { runIntegrityPasses } = await import('./finalize-integrity-passes')
-    await runIntegrityPasses(db, { organizationId, manifest })
+    const { schema } = await import('@auxx/database')
+    const { eq } = await import('drizzle-orm')
+    const { withAdvisoryLock } = await import('../../data-migrations/advisory-lock')
+    const table = ctx.source === 'connector' ? schema.DataConnectorRun : schema.ImportJob
+
+    const outcome = await withAdvisoryLock(db, integrityLockKey(ctx.ref), async () => {
+      const [row] = await db
+        .select({ pendingSince: table.integrityPendingSince })
+        .from(table)
+        .where(eq(table.id, ctx.ref))
+      if (!row?.pendingSince) return
+      const { runIntegrityPasses } = await import('./finalize-integrity-passes')
+      await runIntegrityPasses(db, { organizationId, manifest })
+      await db.update(table).set({ integrityPendingSince: null }).where(eq(table.id, ctx.ref))
+    })
+    if (outcome === 'lock-held') {
+      logger.info('sync finalize: integrity passes already running for this run', {
+        organizationId,
+        ...ctx,
+      })
+    }
   } catch (error) {
     logger.error('sync finalize: integrity passes failed', {
       organizationId,

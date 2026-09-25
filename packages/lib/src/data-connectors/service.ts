@@ -508,9 +508,10 @@ export async function getRunManifest(
  * idempotency of their own.
  */
 export async function claimRunManifestConsumed(db: Database, runId: string): Promise<boolean> {
+  const now = new Date()
   const rows = await db
     .update(schema.DataConnectorRun)
-    .set({ manifestConsumedAt: new Date() })
+    .set({ manifestConsumedAt: now, integrityPendingSince: now })
     .where(
       and(eq(schema.DataConnectorRun.id, runId), isNull(schema.DataConnectorRun.manifestConsumedAt))
     )
