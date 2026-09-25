@@ -51,7 +51,7 @@ export function useMonthEndEntry({
       ? [
           {
             status: 'revenue_incomplete',
-            error: `${activePeriodKey} cannot be closed yet.`,
+            error: `${activePeriodKey} is not ready to mark reviewed.`,
             items,
           },
         ]

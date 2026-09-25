@@ -101,10 +101,10 @@ export function LedgerBanners({
       {hasPeriod && !hasOpenPeriod && (
         <Alert variant='neutral'>
           <CalendarCheck2 />
-          <AlertTitle>Nothing to close</AlertTitle>
+          <AlertTitle>Nothing to review</AlertTitle>
           <AlertDescription>
-            Every month from the cutoff forward has been posted. {periodLabel} is the most recent,
-            and it is shown below.
+            Every month from the cutoff forward is reviewed. {periodLabel} is the most recent, and
+            it is shown below.
           </AlertDescription>
         </Alert>
       )}
@@ -154,7 +154,7 @@ function CloseBlockersRow({
         <span className={cn('truncate', isSoftRefusal ? 'text-foreground' : 'text-destructive')}>
           {isSoftRefusal
             ? `There is nothing to post for ${periodLabel}`
-            : `${periodLabel} cannot be closed yet`}
+            : `${periodLabel} is not ready to mark reviewed`}
         </span>
       }
       secondary={<span className='text-muted-foreground text-xs'>{blockers.length}</span>}>

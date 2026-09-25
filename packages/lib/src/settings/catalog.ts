@@ -862,8 +862,8 @@ export const SETTINGS_CATALOG = {
     // default that locked anything would refuse the first entry ever posted.
     defaultValue: null,
     description:
-      'The last accounting month closed to new general-ledger postings, YYYY-MM. ' +
-      'Postings into that month or earlier are refused. Unset = nothing is closed.',
+      'Reviewed through: the last accounting month marked reviewed, YYYY-MM. ' +
+      'Later postings into it are listed on Closeout. Unset = nothing is reviewed.',
   },
 
   // ── Accounting setup / opening baseline (plans/money/tasks/12-accounting-setup.md §2) ───

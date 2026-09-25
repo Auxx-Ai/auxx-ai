@@ -108,7 +108,7 @@ export const NEVER_POLICIES: readonly PostingPolicy[] = POSTING_POLICIES.filter(
 export const EXTERNAL_SETTING_HOMES: Readonly<Record<string, { label: string; href: string }>> = {
   'accounting.cutoffPeriod': { label: 'General', href: '/app/accounting/settings/general' },
   'accounting.bookTimeZone': { label: 'General', href: '/app/accounting/settings/general' },
-  'ledger.lockedThroughMonth': { label: 'the ledger', href: '/app/accounting' },
+  'ledger.lockedThroughMonth': { label: 'Closeout', href: '/app/accounting/closeout' },
 }
 
 /**
@@ -120,6 +120,8 @@ export const EXTERNAL_SETTING_HOMES: Readonly<Record<string, { label: string; hr
 export function settingRowTitle(key: string, policy?: PostingPolicy): string {
   const copy = policy?.settingCopy?.[key]
   if (copy) return copy.title
+  // The key predates the rename; the product calls it Reviewed through (104 P1c).
+  if (key === 'ledger.lockedThroughMonth') return 'Reviewed through'
   const last = key.split('.').at(-1) ?? key
   const spaced = last.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)

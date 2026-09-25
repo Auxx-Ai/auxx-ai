@@ -207,6 +207,8 @@ export function ReportToolbarControls({
 export interface ReportToolbarActionsProps {
   onDownloadPdf: () => void
   onDownloadCsv: () => void
+  /** The first date a range statement covers; omit for an as-of statement. */
+  from?: string
   /** The last date the statement covers, for the "Synced through" status. */
   through?: string
   isDownloadingPdf?: boolean
@@ -251,12 +253,13 @@ export function ReportBreadcrumb({
 export function ReportToolbarActions({
   onDownloadPdf,
   onDownloadCsv,
+  from,
   through,
   isDownloadingPdf = false,
 }: ReportToolbarActionsProps) {
   return (
     <>
-      {through && <ReportNotices through={through} />}
+      {through && <ReportNotices from={from} through={through} />}
       {through && <ProviderSyncStatus through={through} />}
 
       <Separator orientation='vertical' className='h-6' />

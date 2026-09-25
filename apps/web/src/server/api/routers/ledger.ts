@@ -72,6 +72,7 @@ import {
   readExportSettings,
   readLatestPostingsByType,
   readLedgerSummary,
+  readPostedAfterReview,
   removeChartAccount,
   restoreChartAccount,
   reverseEntries,
@@ -662,6 +663,19 @@ export const ledgerRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
       })
+    }),
+
+  /** Entries dated in a reviewed month but created after its review (104 P1c); optionally one range. */
+  postedAfterReview: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const result = await readPostedAfterReview(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        from: input?.from,
+        to: input?.to,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**

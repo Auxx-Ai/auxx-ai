@@ -12,7 +12,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plug, PlugZap } from 'lucide-react'
+import { CalendarCheck2, ChevronDown, ChevronLeft, ChevronRight, Plug, PlugZap } from 'lucide-react'
 import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
 import { Tooltip } from '~/components/global/tooltip'
@@ -22,10 +22,10 @@ type PeriodState = ClosePeriod['state']
 
 const STATE_LABEL: Record<PeriodState, string> = {
   open: 'Open',
-  locked: 'Locked',
+  locked: 'Reviewed',
 }
 
-/** The pill's dot. Locked reads as "shut". */
+/** The pill's dot. */
 const STATE_DOT: Record<PeriodState, string> = {
   open: 'bg-amber-500',
   locked: 'bg-primary-400',
@@ -170,7 +170,7 @@ export function MonthDropdown({
               {option.label}
             </span>
             <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-              {option.period.state === 'locked' && <Lock className='size-3' />}
+              {option.period.state === 'locked' && <CalendarCheck2 className='size-3' />}
               {STATE_LABEL[option.period.state]}
             </span>
           </DropdownMenuItem>

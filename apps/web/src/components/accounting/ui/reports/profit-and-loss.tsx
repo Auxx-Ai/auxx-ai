@@ -144,6 +144,7 @@ export function ProfitAndLossReportPage() {
           <ReportToolbarActions
             onDownloadPdf={drillExports.downloadPdf}
             onDownloadCsv={drillExports.downloadCsv}
+            from={from}
             through={to}
             isDownloadingPdf={drillExports.isDownloadingPdf}
           />
@@ -151,6 +152,7 @@ export function ProfitAndLossReportPage() {
           <ReportToolbarActions
             onDownloadPdf={handleDownloadPdf}
             onDownloadCsv={handleDownloadCsv}
+            from={from}
             through={to}
             isDownloadingPdf={renderPdf.isPending}
           />
