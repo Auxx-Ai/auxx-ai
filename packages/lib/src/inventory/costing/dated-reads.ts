@@ -9,7 +9,7 @@
  */
 
 import { database, schema } from '@auxx/database'
-import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { systemFieldMap } from '../../resources/system-records'
 
@@ -40,18 +40,24 @@ export async function readPartNetThrough(
   return result
 }
 
-/** The earliest movement date per part, or `null` for a part with no movements. */
+/**
+ * The earliest movement date per part, or `null` for a part with no movements.
+ * `excludeMovementIds` leaves rows out, so a re-anchor never measures an `initial` against itself.
+ */
 export async function readEarliestMovementAt(
   organizationId: string,
-  partIds: readonly string[]
+  partIds: readonly string[],
+  options: { excludeMovementIds?: readonly string[] } = {}
 ): Promise<Map<string, Date | null>> {
   const unique = [...new Set(partIds)]
   const result = new Map<string, Date | null>(unique.map((id) => [id, null]))
   if (unique.length === 0) return result
 
+  const excluded = [...new Set(options.excludeMovementIds ?? [])]
   const rows = await aggregatePerPart(organizationId, unique, {
     aggregate: (_q, movedAt) => sql<string | Date | null>`MIN(${movedAt})`,
-    where: () => sql`TRUE`,
+    where: (_movedAt, qty) =>
+      excluded.length > 0 ? notInArray(qty.entityId, excluded) : sql`TRUE`,
   })
   for (const row of rows) {
     if (!row.partId || row.value == null) continue
@@ -69,7 +75,7 @@ async function aggregatePerPart<T>(
   partIds: string[],
   shape: {
     aggregate: (qty: QuantityValue, movedAt: SQL) => SQL<T>
-    where: (movedAt: SQL) => SQL
+    where: (movedAt: SQL, qty: QuantityValue) => SQL
   }
 ): Promise<Array<{ partId: string | null; value: T }>> {
   const fields = await systemFieldMap(undefined, organizationId, LEDGER_PICK)
@@ -123,7 +129,7 @@ async function aggregatePerPart<T>(
         eq(qty.fieldId, qtyField.id),
         eq(qty.organizationId, organizationId),
         sql`(${flag.valueBoolean} IS NULL OR ${flag.valueBoolean} = false)`,
-        shape.where(movedAt)
+        shape.where(movedAt, qty)
       )
     )
     .groupBy(part.relatedEntityId)

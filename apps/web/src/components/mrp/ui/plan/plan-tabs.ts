@@ -1,14 +1,14 @@
 // apps/web/src/components/mrp/ui/plan/plan-tabs.ts
 
 import type { MrpPlanTab } from '@auxx/lib/mrp/client'
-import { CalendarDays, CheckCircle2, CircleAlert, Flag, Timer } from 'lucide-react'
+import { CalendarDays, CheckCircle2, CircleAlert, Flag, List, Timer } from 'lucide-react'
 import type { RouterOutputs } from '~/trpc/react'
 import { formatQty } from '../rows/format'
 
 type SummaryCounts = NonNullable<RouterOutputs['mrp']['summary']['counts']>
 
-/** The action list's strip, in order; `all` belongs to the All parts page. */
-export const ACTION_LIST_TABS = ['overdue', 'this_week', 'later', 'flagged', 'fine'] as const
+/** The action list's strip, in order; `all` is where a filtered link lands, e.g. every purchase. */
+export const ACTION_LIST_TABS = ['overdue', 'this_week', 'later', 'flagged', 'fine', 'all'] as const
 export type ActionListTab = (typeof ACTION_LIST_TABS)[number]
 
 export const PLAN_TAB_LABEL: Record<ActionListTab, string> = {
@@ -17,6 +17,7 @@ export const PLAN_TAB_LABEL: Record<ActionListTab, string> = {
   later: 'Later',
   flagged: 'Flagged',
   fine: 'Fine',
+  all: 'All',
 }
 
 export const PLAN_TAB_ICON: Record<ActionListTab, typeof CircleAlert> = {
@@ -25,12 +26,13 @@ export const PLAN_TAB_ICON: Record<ActionListTab, typeof CircleAlert> = {
   later: CalendarDays,
   flagged: Flag,
   fine: CheckCircle2,
+  all: List,
 }
 
 /** Every MRP list's padding, which `SelectAllCheckbox` aligns its box against. */
 export const MRP_LIST_PADDING = 12
 
-/** A `?tab=` the strip does not show (a pasted `all`) reads as Overdue. */
+/** A `?tab=` the strip does not show reads as Overdue. */
 export function toActionListTab(tab: MrpPlanTab): ActionListTab {
   return (ACTION_LIST_TABS as readonly string[]).includes(tab) ? (tab as ActionListTab) : 'overdue'
 }
@@ -49,6 +51,8 @@ export function planTabCount(tab: ActionListTab, counts: SummaryCounts | null | 
       return counts.flagged
     case 'fine':
       return counts.fine
+    case 'all':
+      return counts.total
   }
 }
 
@@ -79,6 +83,11 @@ export function planTabEmpty(tab: ActionListTab): { title: string; description: 
       return {
         title: 'No part is fine yet',
         description: 'Every planned part has a suggestion or a flag.',
+      }
+    case 'all':
+      return {
+        title: 'No planned parts',
+        description: 'The run planned no part that matches.',
       }
   }
 }

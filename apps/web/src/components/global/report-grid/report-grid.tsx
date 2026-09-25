@@ -86,7 +86,15 @@ export interface ReportGridProps {
   onVisibleRowsChange?: (rows: ReportGridRow[]) => void
   /** Below the frame: a search count, a note. */
   footer?: ReactNode
+  /** The row's leading glyph; defaults to the statement's account icon. `null` drops the slot. */
+  rowIcon?: RowIconRenderer | null
 }
+
+export type RowIconRenderer = (row: ReportGridRow, hasChildren: boolean) => ReactNode
+
+const statementRowIcon: RowIconRenderer = (row, hasChildren) => (
+  <StatementRowIcon row={row} hasChildren={hasChildren} />
+)
 
 /** `max-w-5xl` less the page's `p-4`: the width every report had before 108. */
 const NARROW_MAX_WIDTH = 992
@@ -122,6 +130,7 @@ export function ReportGrid({
   defaultLabelWidth = 320,
   onVisibleRowsChange,
   footer,
+  rowIcon = statementRowIcon,
 }: ReportGridProps) {
   const [labelWidth, setLabelWidth] = useReportLabelWidth(reportKey, defaultLabelWidth)
   const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set(defaultOpenIds))
@@ -366,6 +375,7 @@ export function ReportGrid({
                       onRowClick={handleRowClick}
                       onToggleOpen={toggleOpen}
                       verdict={item.row.id === markedRowId ? verdict : undefined}
+                      rowIcon={rowIcon}
                     />
                   ))}
                 </AnimatePresence>
@@ -418,6 +428,7 @@ interface ReportGridRowViewProps {
   onRowClick?: (row: ReportGridRow) => void
   onToggleOpen: (rowId: string) => void
   verdict?: StatementVerdict
+  rowIcon: RowIconRenderer | null
 }
 
 /**
@@ -438,6 +449,7 @@ const ReportGridRowView = memo(function ReportGridRowView({
   onRowClick,
   onToggleOpen,
   verdict,
+  rowIcon,
 }: ReportGridRowViewProps) {
   const { row, depth, hasChildren, isOpen, offset, height, top, lineHeight } = item
   // The review queue's open-row look (`review-queue-page.tsx`), on both halves.
@@ -508,9 +520,11 @@ const ReportGridRowView = memo(function ReportGridRowView({
           ))}
           <div className='relative flex min-w-0 flex-1' style={{ paddingLeft: `${indentRem}rem` }}>
             <div className={cn('flex min-w-0 flex-1 items-center rounded-l-md pl-1', kindClass)}>
-              <span className='relative flex size-7 shrink-0 items-center justify-center px-1 text-muted-foreground'>
-                <StatementRowIcon row={row} hasChildren={hasChildren} />
-              </span>
+              {rowIcon && (
+                <span className='relative flex size-7 shrink-0 items-center justify-center px-1 text-muted-foreground'>
+                  {rowIcon(row, hasChildren)}
+                </span>
+              )}
               {row.loading ? (
                 <Skeleton className='mx-1 h-4 w-40 max-w-full' />
               ) : (

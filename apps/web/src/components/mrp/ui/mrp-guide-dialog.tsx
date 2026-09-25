@@ -19,6 +19,7 @@ import {
   ShoppingCart,
   Timer,
 } from 'lucide-react'
+import { FLAG_EXPLANATIONS } from './flags/flag-groups'
 
 interface MrpGuideDialogProps {
   open: boolean
@@ -98,7 +99,7 @@ export function MrpGuideDialog({ open, onOpenChange }: MrpGuideDialogProps) {
 const FLAG_HELP: Record<(typeof MRP_FLAGS)[number], string> = {
   relief_gaps: 'Sales reached the channel but never took stock out, so usage reads low.',
   unbuilt_sales: 'More units were sold than were built, so component usage reads low.',
-  no_lead_time: 'No supplier lead time or build lead time is set, so no order-by date.',
+  no_lead_time: FLAG_EXPLANATIONS.no_lead_time,
   lead_time_drift: 'Received orders took noticeably longer or shorter than the stated lead time.',
   overdue_receipt: 'A purchase order is past its expected date and still not received.',
   mirror_drift: 'The movement history the planner reads disagrees with the stock ledger.',

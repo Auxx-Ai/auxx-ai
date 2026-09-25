@@ -94,7 +94,8 @@ export function MrpRow({
         </span>
       }
       secondary={
-        <span className='flex flex-wrap items-center gap-1.5'>
+        // Fixed height and hidden overflow: a badge that does not fit wraps out of sight whole.
+        <span className='box-content flex h-4 min-w-0 flex-wrap items-center gap-1.5 overflow-hidden p-px'>
           {item.supplierName && (
             <Badge variant='outline' size='xs'>
               {item.supplierName}

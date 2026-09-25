@@ -24,8 +24,8 @@ const base: MrpFilters = {
 }
 
 describe('plan tabs', () => {
-  it('reads a pasted all tab as overdue', () => {
-    expect(toActionListTab('all')).toBe('overdue')
+  it('keeps every strip tab, all included', () => {
+    expect(toActionListTab('all')).toBe('all')
     expect(toActionListTab('fine')).toBe('fine')
   })
 

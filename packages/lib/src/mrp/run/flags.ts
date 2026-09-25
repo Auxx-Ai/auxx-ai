@@ -73,7 +73,10 @@ export function computeFlags(input: FlagInput): MrpFlag[] {
   const raised = new Set<MrpFlag>()
   if (input.reliefGapLines > 0) raised.add('relief_gaps')
   if (input.unbuiltSales) raised.add('unbuilt_sales')
-  if (input.leadTimeSource === 'none') raised.add('no_lead_time')
+  // `unclassified` already names what is missing; there is no vendor part or build to time.
+  if (input.leadTimeSource === 'none' && input.supplyType !== 'unclassified') {
+    raised.add('no_lead_time')
+  }
   if (input.leadTimeDrift) raised.add('lead_time_drift')
   const open = input.poLines.filter((l) => l.quantityOpen > 0)
   if (

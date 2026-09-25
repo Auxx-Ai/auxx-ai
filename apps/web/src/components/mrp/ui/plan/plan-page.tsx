@@ -8,7 +8,6 @@ import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { format } from 'date-fns'
 import { Building2, CalendarClock, CircleAlert, Loader, Package } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -21,7 +20,12 @@ import { useMrpDrawer } from '../../hooks/use-mrp-drawer'
 import { mrpListInput, useMrpFilters } from '../../hooks/use-mrp-filters'
 import { type MrpRun, type MrpRunAttempt, useMrpRun } from '../../hooks/use-mrp-run'
 import { MrpDrawerHost } from '../mrp-drawer-host'
-import { MrpRunNowButton, mrpAsOfHint, useMrpToolbar } from '../mrp-toolbar-actions'
+import {
+  formatMrpRunStarted,
+  MrpRunNowButton,
+  mrpAsOfHint,
+  useMrpToolbar,
+} from '../mrp-toolbar-actions'
 import { GroupRow } from '../rows/group-row'
 import { MrpBulkBar } from '../rows/mrp-bulk-bar'
 import { type MrpListRow, MrpRow } from '../rows/mrp-row'
@@ -259,7 +263,7 @@ function NoPlanState({
               {failedRun.error ?? 'The run stopped without a reason.'}
               <br />
               {run
-                ? `The previous plan is from ${format(run.asOf, 'MMM d, HH:mm')}.`
+                ? `The previous plan is from ${formatMrpRunStarted(run)}.`
                 : 'There is no earlier plan to fall back on.'}
             </>
           }

@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   constructions: [] as (Record<string, unknown> | undefined)[],
   initials: new Map<string, PartInitial>(),
   earliest: new Map<string, Date | null>(),
+  earliestExcludes: [] as (readonly string[] | undefined)[],
   /** `partId -> net through that part's count day`. */
   nets: new Map<string, number>(),
   seam: vi.fn(async () => {}),
@@ -48,8 +49,14 @@ vi.mock('../../movements/fact/writes', () => ({
   updateMovementFactAnchor: vi.fn(async () => {}),
 }))
 vi.mock('../dated-reads', () => ({
-  readEarliestMovementAt: async (_org: string, ids: string[]) =>
-    new Map(ids.map((id) => [id, h.earliest.get(id) ?? null])),
+  readEarliestMovementAt: async (
+    _org: string,
+    ids: string[],
+    options?: { excludeMovementIds?: readonly string[] }
+  ) => {
+    h.earliestExcludes.push(options?.excludeMovementIds)
+    return new Map(ids.map((id) => [id, h.earliest.get(id) ?? null]))
+  },
   readPartNetThrough: async (_org: string, ids: string[]) =>
     new Map(ids.map((id) => [id, h.nets.get(id) ?? 0])),
 }))
@@ -81,6 +88,7 @@ beforeEach(() => {
   h.constructions = []
   h.initials = new Map()
   h.earliest = new Map()
+  h.earliestExcludes = []
   h.nets = new Map()
 })
 
@@ -180,6 +188,24 @@ describe('reanchorInitials', () => {
     h.nets.set('part_1', 42)
 
     expect(await reanchorInitials(ORG, ['part_1'])).toEqual([])
+    expect(h.updateSpy).not.toHaveBeenCalled()
+  })
+
+  it('measures the earliest movement without the initial itself, so a lone count stays on its day', async () => {
+    // Counted 50 on Sep 9 with no history: the initial is the part's only movement.
+    h.initials.set(
+      'part_1',
+      anchored({
+        occurredAt: new Date('2026-09-09T00:00:00.000Z'),
+        quantity: 50,
+        countQuantity: 50,
+        countDate: '2026-09-09',
+      })
+    )
+    h.nets.set('part_1', 50)
+
+    expect(await reanchorInitials(ORG, ['part_1'])).toEqual([])
+    expect(h.earliestExcludes).toEqual([['mv_initial']])
     expect(h.updateSpy).not.toHaveBeenCalled()
   })
 

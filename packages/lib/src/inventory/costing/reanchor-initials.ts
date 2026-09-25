@@ -114,7 +114,8 @@ async function reanchor(organizationId: string, partIds: string[]): Promise<Rean
   const zone = await readBookTimeZoneOrUtc(organizationId)
   const earliests = await readEarliestMovementAt(
     organizationId,
-    anchored.map((initial) => initial.partInstanceId)
+    anchored.map((initial) => initial.partInstanceId),
+    { excludeMovementIds: anchored.map((initial) => initial.movementId) }
   )
   // One replay per distinct count day: `readPartNetThrough` takes a single `through`.
   const byDay = new Map<string, string[]>()

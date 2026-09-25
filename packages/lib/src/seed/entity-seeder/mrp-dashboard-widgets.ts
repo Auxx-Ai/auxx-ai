@@ -87,7 +87,7 @@ export function buildMrpPlanningTab(): LayoutTab {
           groupBy: { fieldRef: field('orderByDate'), dateGranularity: 'week', limit: 13 },
           globalDateFieldRef: null,
           filters: where(latest, cond('isOverdue', 'is', false), ...within('orderByDate')),
-          link: PLAN_PATH,
+          link: `${PLAN_PATH}?tab=all`,
         }
       ),
       widget(
@@ -118,7 +118,7 @@ export function buildMrpPlanningTab(): LayoutTab {
           globalDateFieldRef: null,
           filters: where(latest, ...within('stockoutDate')),
           color: 'red',
-          link: PLAN_PATH,
+          link: `${PLAN_PATH}?tab=all`,
         }
       ),
       widget(
@@ -133,7 +133,7 @@ export function buildMrpPlanningTab(): LayoutTab {
           globalDateFieldRef: null,
           filters: where(latest, cond('suggestionKind', 'is', 'purchase')),
           layout: 'horizontal',
-          link: `${PLAN_PATH}?suggestionKind=purchase`,
+          link: `${PLAN_PATH}?tab=all&suggestionKind=purchase`,
         }
       ),
       widget(

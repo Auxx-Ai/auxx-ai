@@ -6,7 +6,6 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
-import { format } from 'date-fns'
 import { CircleAlert, History } from 'lucide-react'
 import { useMemo } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -17,7 +16,12 @@ import { ReportMessage, ReportPageLayout } from '~/components/global/report-grid
 import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { useMrpRun } from '../../hooks/use-mrp-run'
-import { MrpRunNowButton, mrpAsOfHint, useMrpToolbar } from '../mrp-toolbar-actions'
+import {
+  formatMrpRunStarted,
+  MrpRunNowButton,
+  mrpAsOfHint,
+  useMrpToolbar,
+} from '../mrp-toolbar-actions'
 import { formatQty } from '../rows/format'
 
 type RunRow = RouterOutputs['mrp']['runs'][number]
@@ -62,7 +66,7 @@ function toGridRow(run: RunRow): ReportGridRow {
   const completed = run.status === 'completed'
   return {
     id: run.id,
-    label: format(run.asOf, 'MMM d, yyyy HH:mm'),
+    label: formatMrpRunStarted(run, 'MMM d, yyyy HH:mm'),
     depth: 0,
     kind: 'line',
     values: [],
@@ -152,6 +156,7 @@ export function RunsPage() {
         currency='USD'
         labelHeading='As of'
         defaultLabelWidth={220}
+        rowIcon={null}
         // Only a completed run has a plan to read.
         canRowDrill={(row) => byId.get(row.id)?.status === 'completed'}
         // The run every other page reads: the pinned one, else the latest.
