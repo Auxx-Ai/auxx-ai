@@ -156,3 +156,21 @@ export function useHandleOptions(current: readonly string[], enabled = true) {
     return options
   }, [observed.data, current])
 }
+
+/** The unclaimed live feeds as select options, keyed by `processorAccountId`. */
+export function useFeedOptions(enabled = true) {
+  const unlinked = api.paymentGateway.listUnlinkedFeeds.useQuery(undefined, { enabled })
+  const options = useMemo(
+    () =>
+      (unlinked.data ?? []).map((feed) => ({
+        value: feed.processorAccountId,
+        label: sourceAccountLabel({
+          providerKey: feed.providerKey,
+          externalAccountId: feed.externalAccountId,
+          name: feed.name,
+        }),
+      })),
+    [unlinked.data]
+  )
+  return { options, isPending: unlinked.isPending }
+}

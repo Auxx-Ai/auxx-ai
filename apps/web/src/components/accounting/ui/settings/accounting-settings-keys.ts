@@ -28,7 +28,6 @@ export const ACCOUNTING_KEYS = {
   exportModeCutover: 'accounting.exportModeCutover',
   setupFinalizedAt: 'accounting.setupFinalizedAt',
   setupFinalizedByUserId: 'accounting.setupFinalizedByUserId',
-  autoRollFirstStandard: 'manufacturing.autoRollFirstStandard',
 } as const
 
 /**
@@ -48,8 +47,6 @@ export const EXPORT_DRAFT_KEYS = [
   ACCOUNTING_KEYS.exportMode,
   ACCOUNTING_KEYS.exportModeCutover,
 ] as const
-
-export const STANDARD_COST_DRAFT_KEYS = [ACCOUNTING_KEYS.autoRollFirstStandard] as const
 
 /**
  * Where each readiness requirement is fixed.

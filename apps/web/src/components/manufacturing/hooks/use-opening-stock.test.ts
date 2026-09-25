@@ -130,10 +130,8 @@ describe('needsBackflushFirst (111 Q25)', () => {
 
 describe('set counts links', () => {
   it('prefilters by part ids or by an import job', () => {
-    expect(setCountsHrefForParts(['a', 'b'])).toBe(
-      '/app/parts/manage/costing?s=opening&parts=a%2Cb'
-    )
-    expect(setCountsHrefForJob('job_1')).toBe('/app/parts/manage/costing?s=opening&job=job_1')
+    expect(setCountsHrefForParts(['a', 'b'])).toBe('/app/parts/manage/costing?parts=a%2Cb')
+    expect(setCountsHrefForJob('job_1')).toBe('/app/parts/manage/costing?job=job_1')
   })
 })
 

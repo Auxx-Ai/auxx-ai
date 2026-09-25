@@ -143,9 +143,11 @@ export function PaymentGatewaysList({
                 actions={
                   <TreeRowButton
                     persistent
+                    className='gap-1 px-1.5 text-xs'
                     tooltipText='Set up a gateway for this handle'
                     onClick={() => onAdd(row.handle)}>
                     <Plus />
+                    Add
                   </TreeRowButton>
                 }
                 secondaryFill

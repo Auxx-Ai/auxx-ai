@@ -84,7 +84,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
           value={
             <span className='font-mono tabular-nums'>{sourceAmount(payout.sourceAmountMinor)}</span>
           }
-          description='The amount independently reported by the provider'
+          description='Per the provider'
         />
         <MetricCell
           label='Constituent net'
@@ -96,7 +96,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
                 : sourceAmount(payout.constituentNetMinor)}
             </span>
           }
-          description='Processor activity, excluding the outgoing payout'
+          description='Activity, less payout'
         />
         <MetricCell
           label='Difference'
@@ -108,7 +108,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
                 : sourceAmount(payout.differenceMinor)}
             </span>
           }
-          description='Reported payout less constituent net; incomplete evidence cannot establish agreement'
+          description='Reported less net'
         />
         <MetricCell
           label='Reported destination'
@@ -118,19 +118,19 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
               {formatMinor(Number(payout.destinationAmountMinor), payout.destinationCurrency)}
             </span>
           }
-          description='What the provider says landed, in the destination currency'
+          description='In deposit currency'
         />
         <MetricCell
           label='Provider date'
           icon={<CalendarClock className='size-4 text-muted-foreground' />}
           value={formatEvidenceDate(payout.occurredOn ?? payout.occurredAt)}
-          description='When the provider filed the payout'
+          description='Filed by provider'
         />
         <MetricCell
           label='Last imported'
           icon={<Clock className='size-4 text-muted-foreground' />}
           value={formatAuditTimestamp(payout.updatedAt, bookTimeZone)}
-          description='When this evidence was last read from the source'
+          description='From the source'
         />
       </MetricGrid>
 

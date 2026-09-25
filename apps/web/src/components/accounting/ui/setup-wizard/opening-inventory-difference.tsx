@@ -46,7 +46,7 @@ type InBooks = NonNullable<Difference['inBooks']>
 type Uncounted = Difference['uncounted'][number]
 
 /** Where a count is set by hand; `parts` prefilters it (111 Q24). */
-const SET_COUNTS_HREF = '/app/parts/manage/costing?s=opening'
+const SET_COUNTS_HREF = '/app/parts/manage/costing'
 
 /** 103 D2's two answers, and the account each one credits (111 Q19). */
 const IN_BOOKS_OPTIONS: { value: InBooks; label: string; description: string; role: string }[] = [

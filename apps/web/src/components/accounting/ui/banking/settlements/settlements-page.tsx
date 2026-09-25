@@ -53,7 +53,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { CircleHelp, Landmark, PanelRight, RefreshCw } from 'lucide-react'
+import { CircleHelp, Landmark, Link2Off, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
@@ -62,6 +62,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { EMPTY_CELL, ToolbarTitle } from '~/components/global/module-toolbar'
 import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
+import { Tooltip } from '~/components/global/tooltip'
 import {
   ListSelectionProvider,
   SelectAllCheckbox,
@@ -75,6 +76,7 @@ import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { formatMinor } from '../../ledger/format'
+import { SourceAccountBadge } from '../../source-account-badge'
 import { PayoutEvidenceDrawer } from '../payouts/payout-evidence-drawer'
 import { RailStrip } from './rail-strip'
 import { settlementDay, settlementDisplay } from './settlement-display'
@@ -344,10 +346,7 @@ function SettlementsBody() {
                     ? gatewayById.get(payout.paymentGatewayId)
                     : undefined
                   const source = payout.sourceSummary
-                  const railName = source
-                    ? (source.gatewayName ??
-                      `${source.provider === 'shopify_payments' ? 'Shopify Payments' : (source.provider ?? 'Unknown provider')} · Setup required`)
-                    : (rail?.name ?? 'Unrouted')
+                  const railName = rail?.name ?? 'Unrouted'
                   return (
                     <div className='flex flex-col gap-1.5'>
                       <TreeRow
@@ -375,18 +374,44 @@ function SettlementsBody() {
                         }
                         secondary={
                           <span className='flex flex-wrap items-center gap-1.5'>
-                            <Badge variant='outline' size='xs'>
-                              {railName}
-                            </Badge>
+                            {source?.provider && source.externalAccountId ? (
+                              <SourceAccountBadge
+                                providerKey={source.provider}
+                                externalAccountId={source.externalAccountId}
+                                environment={source.environment}
+                                name={source.gatewayName}
+                                size='sm'
+                              />
+                            ) : (
+                              <Badge variant='outline' size='xs'>
+                                {railName}
+                              </Badge>
+                            )}
+                            {source?.routingIssue && (
+                              <Tooltip content={source.routingIssue}>
+                                <Link
+                                  href='/app/accounting/settings/payment-gateways'
+                                  onClick={(event) => event.stopPropagation()}>
+                                  <Badge variant='amber' size='xs'>
+                                    <Link2Off />
+                                    Gateway needs matching
+                                  </Badge>
+                                </Link>
+                              </Tooltip>
+                            )}
                             {/* Brief 49 §7.2: an `imported` payout has no itemisation,
                             so its structural zero in `unrecognisedNetMinor` means
                             "nothing to split", never "everything recognised" -
                             27-a §4 rule 2's own wording. */}
-                            {source && !payout.glPostingId && (
-                              <Badge variant='outline' size='xs'>
-                                Pending accounting
-                              </Badge>
-                            )}
+                            {source &&
+                              !payout.glPostingId &&
+                              !source.routingIssue &&
+                              !source.amountIssue &&
+                              !payout.blockedReason && (
+                                <Badge variant='outline' size='xs'>
+                                  Pending accounting
+                                </Badge>
+                              )}
                             {!source && payout.source === 'imported' && (
                               <Badge variant='outline' size='xs'>
                                 No itemisation
@@ -474,16 +499,6 @@ function SettlementsBody() {
                     own unmapped-account refusal uses (`deposits-page.tsx`). */}
                       {source?.amountIssue && (
                         <p className='text-sm text-bad-500'>{source.amountIssue}</p>
-                      )}
-                      {source?.routingIssue && (
-                        <p className='text-sm text-muted-foreground'>
-                          {source.routingIssue}{' '}
-                          <Link
-                            className='underline'
-                            href='/app/accounting/settings/payment-gateways'>
-                            Review payment gateways
-                          </Link>
-                        </p>
                       )}
                       {payout.blockedReason && (
                         <EntryBlockers

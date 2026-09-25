@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
     status: 'paid',
     issuedOn: '2026-09-15',
     provider: 'shopify_payments',
+    externalAccountId: 'gid://shopify/ShopifyPaymentsAccount/999000223183024',
+    environment: 'live',
     gatewayName: null as string | null,
     routingIssue:
       'Select this merchant account and currency in Payment gateway settlement settings.' as
@@ -145,8 +147,11 @@ describe('settlement rows', () => {
     renderPage()
     expect(screen.getByText('$1,423.01')).toBeInTheDocument()
     expect(screen.getByText('paid')).toBeInTheDocument()
-    expect(screen.getByText('Pending accounting')).toBeInTheDocument()
-    expect(screen.getByText(/Shopify Payments · Setup required/)).toBeInTheDocument()
+    // The gateway badge is the reason; the consequence is not repeated beside it.
+    expect(screen.queryByText('Pending accounting')).not.toBeInTheDocument()
+    expect(screen.getByText('Shopify Payments ···3024')).toBeInTheDocument()
+    expect(screen.getByText('Gateway needs matching')).toBeInTheDocument()
+    expect(screen.queryByText(/Link this merchant account/)).not.toBeInTheDocument()
     expect(screen.queryByText('Unrouted')).not.toBeInTheDocument()
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
@@ -157,7 +162,8 @@ describe('settlement rows', () => {
     // The rail is its own badge now and the date leads the row's title.
     expect(screen.getByText('Shopify merchant')).toBeInTheDocument()
     expect(screen.getByText('2026-09-15')).toBeInTheDocument()
-    expect(screen.queryByText(/Setup required/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Gateway needs matching')).not.toBeInTheDocument()
+    expect(screen.getByText('Pending accounting')).toBeInTheDocument()
   })
   it('renders missing amounts honestly', () => {
     state.source.amountMinor = null

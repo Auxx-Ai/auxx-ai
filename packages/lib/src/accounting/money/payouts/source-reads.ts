@@ -16,6 +16,7 @@ export interface PayoutSourceSummary {
   issuedOn: string | null
   provider: string | null
   externalAccountId: string | null
+  environment: string | null
   gatewayId: string | null
   gatewayName: string | null
   routingIssue: string | null
@@ -92,6 +93,7 @@ export async function loadPayoutSourceSummaries(
       issuedOn: text('payout_source_issued_on') ?? text('payout_source_issued_at'),
       provider,
       externalAccountId,
+      environment,
       gatewayId: gateway?.id ?? null,
       gatewayName: gateway?.name ?? null,
       routingIssue: gateway

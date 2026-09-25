@@ -9,6 +9,7 @@ import {
 } from '@auxx/lib/accounting/export/client'
 import { EXPORT_AVENUES, type ExportAvenue } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
+import { CommandItem } from '@auxx/ui/components/command'
 import { DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import {
   DropdownMenu,
@@ -119,15 +120,16 @@ export function OutboxToolbar({
               onChange={(categories) =>
                 onChange({ ...filters, categories: [...categories].sort() })
               }
+              footer={
+                <CommandItem
+                  onSelect={() => onChange({ ...filters, categories: [] })}
+                  disabled={!filters.categories.length}
+                  className='h-7.5 cursor-pointer data-[disabled=true]:cursor-default data-[disabled=true]:opacity-50'>
+                  <CircleX className='text-muted-foreground' />
+                  <span>All categories</span>
+                </CommandItem>
+              }
             />
-            <Button
-              variant='ghost'
-              size='sm'
-              className='w-full'
-              disabled={!filters.categories.length}
-              onClick={() => onChange({ ...filters, categories: [] })}>
-              All categories
-            </Button>
           </PopoverContent>
         </Popover>
         <DateRangePicker

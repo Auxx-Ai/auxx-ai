@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-tab.tsx
 'use client'
 
-// Parts > Manage > Costing, `?s=opening` (money 52 §2.3; 111 D21): the Set counts checklist
+// Parts > Manage > Set counts (money 52 §2.3; 111 D21): the Set counts checklist
 // on the left and THE RUN on the right. `?parts=` / `?job=` prefilter the list (111 Q24).
 // Below `lg` the pane is a drawer, so the list carries its own trigger for it.
 

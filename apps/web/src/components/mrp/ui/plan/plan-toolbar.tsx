@@ -9,6 +9,7 @@ import {
   MRP_SUPPLY_TYPES,
 } from '@auxx/lib/mrp/client'
 import { Button } from '@auxx/ui/components/button'
+import { CommandItem } from '@auxx/ui/components/command'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -214,9 +215,10 @@ function FilterPicker({
           className='justify-start'
           aria-label={value.length ? `${label}, ${value.length} selected` : `${label}, any`}>
           <Icon />
-          <span className='text-left tabular-nums'>
-            {label}
-            {value.length > 0 ? ` (${value.length})` : ''}
+          <span className='text-left'>{label}</span>
+          {/* Space for the count is always reserved, so picking one does not shift the toolbar. */}
+          <span className='min-w-[3ch] text-left tabular-nums'>
+            {value.length > 0 ? `(${value.length})` : ''}
           </span>
           <ChevronDown />
         </Button>
@@ -230,15 +232,16 @@ function FilterPicker({
           canManage={false}
           placeholder={`Search ${label.toLowerCase()}…`}
           onChange={onChange}
+          footer={
+            <CommandItem
+              onSelect={() => onChange([])}
+              disabled={!value.length}
+              className='h-7.5 cursor-pointer data-[disabled=true]:cursor-default data-[disabled=true]:opacity-50'>
+              <CircleX className='text-muted-foreground' />
+              <span>Any {label.toLowerCase()}</span>
+            </CommandItem>
+          }
         />
-        <Button
-          variant='ghost'
-          size='sm'
-          className='w-full'
-          disabled={!value.length}
-          onClick={() => onChange([])}>
-          Any {label.toLowerCase()}
-        </Button>
       </PopoverContent>
     </Popover>
   )

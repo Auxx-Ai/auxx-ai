@@ -2,7 +2,7 @@
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import {
-  Calculator,
+  Boxes,
   Flag,
   Globe,
   History,
@@ -44,6 +44,9 @@ export const MANAGE_NAV: SidebarProps[] = [
           'lead-time factor',
           'variability',
           'retention',
+          'standard cost',
+          'roll',
+          'revaluation',
         ],
         // What the old Settings tab was hidden behind, so an MRP-only viewer never sees this group.
         permissionKey: PermissionKey.settingsManage,
@@ -59,18 +62,11 @@ export const MANAGE_NAV: SidebarProps[] = [
       },
       {
         id: 'manage-parts-costing',
-        label: 'Costing',
+        label: 'Set counts',
         slug: 'costing',
-        icon: <Calculator />,
-        description: 'What a part is valued at, and what was on the shelf on day one',
-        keywords: [
-          'standard cost',
-          'roll',
-          'opening stock',
-          'opening balance',
-          'revaluation',
-          'part kind',
-        ],
+        icon: <Boxes />,
+        description: 'What is on the shelf, counted per part',
+        keywords: ['set counts', 'opening stock', 'opening balance', 'part kind'],
         permissionKey: PermissionKey.settingsManage,
       },
     ],
