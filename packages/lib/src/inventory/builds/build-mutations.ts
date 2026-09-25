@@ -42,6 +42,9 @@ import type { BuildRecord, CancelBuildInput, CreateBuildInput, StartBuildInput }
 
 const logger = createScopedLogger('builds:mutations')
 
+/** The sources whose builds carry `build_batch_run`: one run number, one undo. */
+const RUN_NUMBERED_SOURCES: ReadonlySet<string> = new Set(['batch', 'backflush'])
+
 /**
  * The exemption every sanctioned writer of `build_status` carries.
  *
@@ -173,7 +176,8 @@ export async function createBuild(
       // 🛑 The provisioning guard is what keeps an org short of entity
       // migration 141 from a 500. It gets un-numbered builds instead, which
       // costs it undo and costs the netting read nothing.
-      if (input.batchRun !== undefined && (input.source ?? 'manual') === 'batch') {
+      // `backflush` too: its run number is what `undoBatchRun` keys on (111 D24).
+      if (input.batchRun !== undefined && RUN_NUMBERED_SOURCES.has(input.source ?? 'manual')) {
         if (ctx.fields.build_batch_run) {
           values.build_batch_run = input.batchRun
         }

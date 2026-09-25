@@ -37,8 +37,18 @@ export {
   readPartQuantitiesOnHand,
 } from './auto-build-queries'
 export { CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED, registerAutoBuildRules } from './auto-build-rule'
-export { type AutoBuildSettings, loadAutoBuildSettings } from './auto-build-settings'
-export { executeBackfill, resolveBackfillCompletedAt } from './backfill-builds'
+export {
+  type AutoBuildSettings,
+  type BackflushSettings,
+  loadAutoBuildSettings,
+  loadBackflushSettings,
+} from './auto-build-settings'
+export {
+  endOfLocalDay,
+  executeBackfill,
+  raiseAndCompleteBuild,
+  resolveBackfillCompletedAt,
+} from './backfill-builds'
 export { planBackfill } from './backfill-policy'
 // §7.3's gates 2, 3 and 4. Moved out of `routers/builds.ts` (44 §11.3): a router
 // asserts and calls, it does not compose the arithmetic.
@@ -61,6 +71,10 @@ export {
   type BackfillRunSummary,
   type BackfillStatus,
 } from './backfill-types'
+// Backflush (111 D23/D24): the replay that builds what sales drove negative, and its preview.
+export { type BackflushInput, backflushBuilds } from './backflush'
+export { previewBackflush } from './backflush-preview'
+export type { BackflushBuild, BackflushPlan, BackflushRunSummary } from './backflush-types'
 // The batch run reads (plans/money/tasks/45 §10.4). `readBatchRun` is what the
 // drawer card and the undo preview render; `readBatchRunBuilds` is the per-build
 // set `undoBatchRun` acts on, exported rather than private because reads and
@@ -147,6 +161,7 @@ export type {
   BuildComponentPlan,
   BuildMovementRow,
   BuildRecord,
+  BuildSourceValue,
   CancelBuildInput,
   CompleteBuildInput,
   CompleteBuildResult,

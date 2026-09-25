@@ -16,6 +16,7 @@ import {
   listBuilds,
   loadAutoBuildSettings,
   planBackfill,
+  previewBackflush,
   readBackfillPlanReads,
   readBatchRun,
   readBuildDrift,
@@ -41,6 +42,7 @@ import {
   setStandardCosts,
 } from '@auxx/lib/inventory/costing'
 import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
+import { enqueueBackflushRun } from '@auxx/lib/jobs'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -137,6 +139,12 @@ const backfillShape = {
    * a completion would freeze — which is why it also raises the gate.
    */
   status: z.enum(BACKFILL_STATUS_VALUES),
+}
+
+/** A backflush range: inclusive local days in the book time zone (111 D24). */
+const backflushShape = {
+  from: z.coerce.date(),
+  to: z.coerce.date(),
 }
 
 /** The two quantities and the overrides — everything that prices a run. */
@@ -707,6 +715,38 @@ export const buildsRouter = createTRPCRouter({
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  // ─── Backflush (111 D23/D24) ────────────────────────────────────────
+
+  /**
+   * The builds a backflush over a range would write, per part and day — the D24 confirm.
+   * Ledger gate, as `previewCompletion`: the preview exists only to be the first half of a
+   * write that appends consume and produce rows.
+   */
+  previewBackflush: capabilityProcedure
+    .input(z.object(backflushShape))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const result = await previewBackflush(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Queue a backflush over a range on the worker; returns at enqueue. The same walk the preview
+   * showed, re-planned server-side against the ledger at run time.
+   */
+  runBackflush: capabilityProcedure
+    .input(z.object(backflushShape))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      await enqueueBackflushRun(organizationId, input, userId)
+      return { queued: true as const }
     }),
 
   // ─── The batch run (plans/money/tasks/45 §4, §11) ───────────────────
