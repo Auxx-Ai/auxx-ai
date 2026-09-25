@@ -13,9 +13,10 @@ import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { ExternalLink, Lock, Scale } from 'lucide-react'
+import { Boxes, ExternalLink, Lock, Scale } from 'lucide-react'
 import Link from 'next/link'
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import { useQueryState } from 'nuqs'
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { useSettings } from '~/hooks/use-settings'
@@ -23,6 +24,7 @@ import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingSettingsFreeze } from '../../hooks/use-accounting-settings-freeze'
+import { OpeningInventoryDifference } from '../setup-wizard/opening-inventory-difference'
 import { OpeningFillButton } from './opening-fill-button'
 import {
   applyOpeningCellChange,
@@ -60,6 +62,13 @@ export function AccountingOpeningSettingsPage() {
     onError: (error) =>
       toastError({ title: 'The opening balances were not saved', description: error.message }),
   })
+
+  // `?s=inventory` is what the close blocker and the Set counts result link to.
+  const [section] = useQueryState('s')
+  const inventoryRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (section === 'inventory') inventoryRef.current?.scrollIntoView({ block: 'start' })
+  }, [section])
 
   // `edited` holds only what somebody typed; a fresh server answer supersedes it.
   const [edited, setEdited] = useState<OpeningTrialBalanceRow[] | null>(null)
@@ -213,6 +222,15 @@ export function AccountingOpeningSettingsPage() {
             )}
           </div>
         </SettingsSection>
+
+        <div ref={inventoryRef} className='scroll-mt-[var(--settings-sticky-top,0px)]'>
+          <SettingsSection
+            icon={Boxes}
+            title='Opening inventory'
+            description='The books against your counted parts at the cutover. Never posted on its own: each press posts the difference since the last one.'>
+            <OpeningInventoryDifference />
+          </SettingsSection>
+        </div>
       </div>
     </SettingsPage>
   )

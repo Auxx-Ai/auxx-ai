@@ -22,8 +22,9 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { formatRelativeTime } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Package, PackagePlus, Undo2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { Factory, Package, PackagePlus, Undo2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { BackflushDialog } from '~/components/manufacturing/builds/backflush-dialog'
 import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
@@ -68,7 +69,7 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   out_of_stock: 'Out of Stock',
 }
 
-const PART_ATTRIBUTES = ['part_quantity_on_hand', 'part_stock_status'] as const
+const PART_ATTRIBUTES = ['part_title', 'part_quantity_on_hand', 'part_stock_status'] as const
 
 const MOVEMENT_ATTRIBUTES = [
   'stock_movement_type',
@@ -107,6 +108,14 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
     (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
+
+  // A made part offers *Backflush past sales* (111 D24); the preflight says whether it has a BOM.
+  const preflight = api.purchasing.setCountPreflight.useQuery(
+    { partIds: [partId] },
+    { enabled: !!partId && canAdjustStock }
+  )
+  const flight = preflight.data?.[0]
+  const [backflushOpen, setBackflushOpen] = useState(false)
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -211,9 +220,25 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                   Adjust Stock
                 </Button>
               </StockAdjustmentPopover>
+              {flight?.hasBom && (
+                <Button variant='ghost' size='xs' onClick={() => setBackflushOpen(true)}>
+                  <Factory />
+                  Backflush past sales
+                </Button>
+              )}
             </div>
           ) : undefined
         }>
+        {flight?.hasBom && (
+          <BackflushDialog
+            open={backflushOpen}
+            onOpenChange={(open) => {
+              setBackflushOpen(open)
+              if (!open) handleAdjustSuccess()
+            }}
+            range={{ from: flight.earliest, partName: values.part_title as string | undefined }}
+          />
+        )}
         {recordIds.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Package className='mb-2 h-6 w-6 text-muted-foreground' />

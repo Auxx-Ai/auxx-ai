@@ -2,6 +2,8 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { FINALIZED_SETUP_STATE } from '@auxx/lib/accounting/ledger/client'
+import { FeatureKey } from '@auxx/lib/permissions/client'
 import { getInstanceId, PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -27,13 +29,16 @@ import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-v
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
+import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import {
   buildOpeningStockInput,
   defaultOpeningStockValues,
+  describeSetCountPosting,
   isOpeningStockEmpty,
   type OpeningStockFormValues,
   openingStockAccountLabel,
+  setCountPostingSentence,
   validateOpeningStock,
 } from './opening-stock-input'
 import { displayedSellable, partFormSections } from './part-form-sections'
@@ -171,6 +176,12 @@ export function PartFormDialog({
 
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+  // What a count posts is decided by its date (111 Q19), so the sentence needs the cutoff.
+  const cutoffPeriod = (getSetting('accounting.cutoffPeriod') as string | null) ?? null
+  const { hasAccess } = useFeatureFlags()
+  const accountingActive =
+    hasAccess(FeatureKey.accounting) &&
+    getSetting('accounting.setupState') === FINALIZED_SETUP_STATE
 
   // Load initial values for edit mode
   const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
@@ -374,16 +385,13 @@ export function PartFormDialog({
   })
 
   /**
-   * The part's opening balance: one `initial` movement, its first standard cost.
-   *
-   * A separate procedure and a separate call on purpose — it is chained AFTER
-   * the part exists (see `handleSubmit`), because a failure here leaves a part
-   * somebody can open the drawer on and set stock for, while the reverse order
-   * would leave a movement pointing at nothing.
+   * The part's first count (111 D21). Chained AFTER the part exists (see `handleSubmit`):
+   * a failure here leaves a part somebody can count from the drawer, while the reverse
+   * order would leave a movement pointing at nothing.
    */
   const openStockBalance = api.purchasing.setCount.useMutation({
     onError: (error) => {
-      toastError({ title: 'Part created, opening stock failed', description: error.message })
+      toastError({ title: 'Part created, the count failed', description: error.message })
     },
   })
 
@@ -777,14 +785,9 @@ export function PartFormDialog({
           </div>
         )}
 
-        {/* Opening stock — the same collapsible-optional pattern as Supplier,
-            chained into a second mutation after the part is created.
-
-            Gated on Kind only for a service (107 D10), which has no stock. Otherwise
-            never gated (task 15 §2.2, "DECIDED: no gate"). A disabled
-            section teaches nobody anything; naming the account the movement will
-            be stamped with does, and somebody creating a lift who reads "Raw
-            Materials" under it notices. */}
+        {/* Set count — the same collapsible-optional pattern as Supplier, chained into a
+            second mutation after the part is created. Gated on Kind only for a service
+            (107 D10), which has no stock; the sentence under it names what is posted. */}
         {!isEditMode && sections.openingStock && (
           <div className='border-t pt-4 mt-4'>
             <button
@@ -796,7 +799,7 @@ export function PartFormDialog({
               ) : (
                 <ChevronRight className='h-4 w-4' />
               )}
-              Add Opening Stock (Optional)
+              Set count (Optional)
             </button>
 
             {showOpeningStock && (
@@ -808,8 +811,8 @@ export function PartFormDialog({
                   resizeId='part-form'
                   defaultLabelWidth={200}>
                   <FieldPanelRow
-                    title='Quantity'
-                    description='Units on hand at the opening date'
+                    title='Count'
+                    description='Units on the shelf on the count day'
                     type={BaseType.NUMBER}
                     showIcon
                     validationError={openingStockErrors.quantity}
@@ -825,8 +828,8 @@ export function PartFormDialog({
                   </FieldPanelRow>
 
                   <FieldPanelRow
-                    title='Unit Cost'
-                    description='What a unit cost when it was bought'
+                    title='Unit cost'
+                    description='Optional. Becomes the first standard cost; blank is valued when a cost is set'
                     type={BaseType.CURRENCY}
                     showIcon
                     validationError={openingStockErrors.unitCost}
@@ -844,29 +847,30 @@ export function PartFormDialog({
 
                   <FieldPanelRow
                     title='As of'
-                    description='The accounting date, which is not when it was keyed'
+                    description='The count day, which is not when it was keyed'
                     type={BaseType.DATE}
                     showIcon>
                     <FieldInputAdapter
-                      fieldType={FieldType.DATETIME}
+                      fieldType={FieldType.DATE}
                       triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                       value={openingStockValues.occurredAt}
-                      onChange={(val) =>
-                        handleOpeningStockChange(
-                          'occurredAt',
-                          (val as string) ?? new Date().toISOString()
-                        )
-                      }
+                      onChange={(val) => {
+                        if (typeof val === 'string' && val)
+                          handleOpeningStockChange('occurredAt', val)
+                      }}
                       disabled={isPending}
                     />
                   </FieldPanelRow>
                 </FieldPanel>
 
-                <OpeningStockConsequence
+                <SetCountConsequence
                   quantity={openingStockValues.quantity}
                   unitCost={openingStockValues.unitCost}
+                  occurredAt={openingStockValues.occurredAt}
                   kind={values.kind}
                   currencyCode={currencyCode}
+                  cutoffPeriod={cutoffPeriod}
+                  accountingActive={accountingActive}
                 />
               </>
             )}
@@ -899,40 +903,46 @@ export function PartFormDialog({
 }
 
 /**
- * What the opening balance will actually do, in one sentence, live.
- *
- * 🛑 The account name is recomputed from the Kind select on every change, and it
- * is resolved through the SAME `resolveInventoryRoleForPartKind` the write uses
- * (via `openingStockAccountLabel`). This is the house pattern the complete-build
- * dialog uses for scrap: state the consequence at the input rather than block
- * the input. It matters more here because `stock_movement_gl_account` is frozen
- * at write time on an `updatable: false` row, so a finished good stamped raw
- * materials stays that way — the sentence is the only chance to catch it.
+ * What the count will do, in two sentences, live. The account is resolved through the same
+ * function the write uses, and the posting follows the date (111 Q19) — the stamp on the
+ * movement is frozen, so the sentence is the only chance to catch a wrong kind.
  */
-function OpeningStockConsequence({
+function SetCountConsequence({
   quantity,
   unitCost,
+  occurredAt,
   kind,
   currencyCode,
+  cutoffPeriod,
+  accountingActive,
 }: {
   quantity: number | null
   unitCost: number | null
+  occurredAt: string
   kind: string
   currencyCode: string
+  cutoffPeriod: string | null
+  accountingActive: boolean
 }) {
   const account = openingStockAccountLabel(kind || null)
-  const units = quantity != null && quantity > 0 ? formatQuantity(quantity) : 'N'
-  const each = unitCost != null && unitCost > 0 ? formatCurrency(unitCost, { currencyCode }) : '$X'
+  const units = quantity != null && quantity >= 0 ? formatQuantity(quantity) : 'N'
+  const posting = describeSetCountPosting({
+    occurredAt,
+    partKind: kind || null,
+    cutoffPeriod,
+    accountingActive,
+  })
 
   return (
     <div className='mt-3 space-y-1 text-muted-foreground text-xs'>
       <p>
-        Records {units} units at {each} into <span className='font-medium'>{account}</span>.
+        Records {units} units on the shelf into <span className='font-medium'>{account}</span>
+        {unitCost != null && unitCost >= 0
+          ? `, at ${formatCurrency(unitCost, { currencyCode })} each as the first standard cost`
+          : ', valued when the part gets a standard cost'}
+        . A later count adjusts by the difference.
       </p>
-      <p>
-        This is the part&apos;s opening balance and its first standard cost, and it can only be set
-        once.
-      </p>
+      <p>{setCountPostingSentence(posting)}</p>
     </div>
   )
 }

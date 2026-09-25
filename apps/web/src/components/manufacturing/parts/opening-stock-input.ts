@@ -1,66 +1,48 @@
 // apps/web/src/components/manufacturing/parts/opening-stock-input.ts
 
-// The opening-stock section's pure half: what the create form sends, and the
-// inventory account it says it will land in.
-//
-// Split out of `part-form-dialog.tsx` for the same reason `receipt-input.ts` is
-// split out of the receive popover — the sentence under the inputs and the
-// payload the mutation sends have to be derived from ONE description of the
-// form's state. Here that matters more than usual: the sentence names a GL
-// account, and `openStockBalance` writes an `updatable: false` movement stamped
-// with that account. A line that said one thing while the write did another
-// would be uncorrectable.
-//
-// plans/money/tasks/15-costing-usability.md §2.2.
+// The Set count section's pure half: what the create form sends, and the account
+// the row lands in. The sentence under the inputs and the payload derive from ONE
+// description of the form state, because the movement it writes is append-only.
 
-import { DEFAULT_CHART_OF_ACCOUNTS } from '@auxx/lib/accounting/ledger/client'
+import { cutoverDateFor, DEFAULT_CHART_OF_ACCOUNTS } from '@auxx/lib/accounting/ledger/client'
+import { normalizeCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 
-/** Everything the opening-stock section holds. */
+/** Everything the Set count section holds. */
 export interface OpeningStockFormValues {
-  /** Units on hand at the opening date. */
+  /** Units on the shelf on the count day. */
   quantity: number | null
-  /** What a unit cost, in whole minor units — the CURRENCY input's own shape. */
+  /** Optional: what a unit cost, whole minor units. Becomes the part's first standard. */
   unitCost: number | null
-  /** ISO string from the date input. The ACCOUNTING date, not `createdAt`. */
+  /** Calendar-day ISO from the date input. */
   occurredAt: string
 }
 
 /** A blank section: no quantity, no cost, dated today. */
 export function defaultOpeningStockValues(): OpeningStockFormValues {
-  return { quantity: null, unitCost: null, occurredAt: new Date().toISOString() }
+  return { quantity: null, unitCost: null, occurredAt: toCalendarDayIso(new Date()) }
 }
 
-/** Nothing was typed, so there is no opening balance to record. */
+/** Nothing was typed, so there is no count to record. */
 export function isOpeningStockEmpty(values: OpeningStockFormValues): boolean {
   return values.quantity == null && values.unitCost == null
 }
 
 /**
- * The `purchasing.openStockBalance` payload, or `null` when the section is not
- * answered completely enough to send.
- *
- * 🛑 Both halves are required together. `openStockBalance` refuses a
- * non-positive quantity or unit cost outright, because an opening balance IS a
- * valuation — it becomes the part's first `part_standard_cost` — and a quantity
- * with no cost would be a hand-valued adjustment wearing an opening balance's
- * name, which is exactly what `G12` refuses for `adjustStock`.
- *
- * The unit cost is rounded here rather than trusted: `CURRENCY` is minor units
- * in a `doublePrecision` column, and the procedure's schema takes an integer.
+ * The `purchasing.setCount` payload, or `null` when the section is not answered.
+ * A count of zero is real; a cost is optional (the row is valued when the part gets one).
  */
 export function buildOpeningStockInput(
   partId: string,
   values: OpeningStockFormValues
-): { partId: string; quantity: number; unitCost: number; occurredAt: Date } | null {
-  const quantity = values.quantity
-  const unitCost = values.unitCost
-  if (quantity == null || !Number.isFinite(quantity) || quantity <= 0) return null
-  if (unitCost == null || !Number.isFinite(unitCost) || unitCost <= 0) return null
+): { partId: string; quantity: number; unitCost?: number; occurredAt: Date } | null {
+  const { quantity, unitCost } = values
+  if (quantity == null || !Number.isFinite(quantity) || quantity < 0) return null
+  if (unitCost != null && (!Number.isFinite(unitCost) || unitCost < 0)) return null
   return {
     partId,
     quantity,
-    unitCost: Math.round(unitCost),
+    ...(unitCost != null ? { unitCost: Math.round(unitCost) } : {}),
     occurredAt: new Date(values.occurredAt),
   }
 }
@@ -68,51 +50,18 @@ export function buildOpeningStockInput(
 /** The validation errors the section contributes, keyed by field. */
 export function validateOpeningStock(values: OpeningStockFormValues): Record<string, string> {
   const errors: Record<string, string> = {}
-  if (values.quantity == null || values.quantity <= 0) {
-    errors.quantity = 'Quantity must be greater than zero'
+  if (values.quantity == null || values.quantity < 0) {
+    errors.quantity = 'Quantity must be zero or more'
   }
-  if (values.unitCost == null || values.unitCost <= 0) {
-    errors.unitCost = 'Unit cost must be greater than zero'
+  if (values.unitCost != null && values.unitCost < 0) {
+    errors.unitCost = 'Unit cost cannot be negative'
   }
   return errors
 }
 
 /**
- * The ONE resolution of a part kind to an inventory account, shared by
- * {@link openingStockAccountLabel} and {@link openingStockAccountCode}.
- *
- * 🛑 **Through `resolveInventoryRoleForPartKind`, never a second mapping.**
- * That function is what the write path uses, so the only way either rendering
- * can be wrong about the account is if the write is wrong about it too. A
- * kind-to-account table maintained here would drift silently, and the movement
- * it disagreed with is append-only. One resolution, two renderings: a caller
- * that wants the number and a caller that wants the name must never be able to
- * disagree about which account they are naming.
- *
- * The code and name come from `DEFAULT_CHART_OF_ACCOUNTS`, which is the chart
- * every org is seeded with. An org that has RENUMBERED its raw materials
- * account will see the seeded number here rather than its own — the role is
- * still right, and reading the org's chart would need `ledgerView`, which
- * somebody creating a part is not required to hold. When no chart entry carries
- * the role, both renderings fall back to the role string itself.
- */
-function resolveOpeningStockAccount(partKind: string | null | undefined): {
-  role: string
-  account: (typeof DEFAULT_CHART_OF_ACCOUNTS)[number] | undefined
-} {
-  const role = resolveInventoryRoleForPartKind(partKind)
-  return { role, account: DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role) }
-}
-
-/**
- * One inventory ROLE, spelled out as `1310 Raw Materials / Parts`.
- *
- * The entry point for callers that already hold a role rather than a part kind —
- * the reconciliation panel, which groups by role because that is what
- * `accounting.opening*` is keyed on and what a movement freezes. Falls back to
- * the role string when no chart entry carries it, exactly like
- * {@link openingStockAccountLabel}, which delegates here so the two renderings
- * cannot drift.
+ * One inventory ROLE, spelled out as `1310 Raw Materials / Parts`, from the chart every org
+ * is seeded with. Falls back to the role string when no chart entry carries it.
  */
 export function inventoryAccountLabelForRole(role: string): string {
   const account = DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role)
@@ -121,23 +70,56 @@ export function inventoryAccountLabelForRole(role: string): string {
 }
 
 /**
- * The inventory account an opening balance for this part kind will be stamped
- * with, spelled out — `1310 Raw Materials / Parts`.
- *
- * See {@link resolveOpeningStockAccount} for why this is the only mapping.
+ * The inventory account a count for this part kind is stamped with, resolved through
+ * `resolveInventoryRoleForPartKind` — the same function the write path uses.
  */
 export function openingStockAccountLabel(partKind: string | null | undefined): string {
-  return inventoryAccountLabelForRole(resolveOpeningStockAccount(partKind).role)
+  return inventoryAccountLabelForRole(resolveInventoryRoleForPartKind(partKind))
 }
 
-/**
- * The same account as {@link openingStockAccountLabel}, as just its number —
- * `1310`. For a column narrow enough that the name would repeat on every row;
- * pair it with the full label in a tooltip.
- *
- * See {@link resolveOpeningStockAccount} for why this is the only mapping.
- */
+/** The same account as {@link openingStockAccountLabel}, as just its number — `1310`. */
 export function openingStockAccountCode(partKind: string | null | undefined): string {
-  const { role, account } = resolveOpeningStockAccount(partKind)
-  return account?.code ?? role
+  const role = resolveInventoryRoleForPartKind(partKind)
+  return DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role)?.code ?? role
+}
+
+/** What a count dated `occurredAt` posts (111 Q19): decided by the date, never asked. */
+export type SetCountPosting =
+  | { kind: 'off' }
+  | { kind: 'covered'; cutoverDate: string }
+  | { kind: 'variance'; inventoryAccount: string; varianceAccount: string }
+
+export function describeSetCountPosting(input: {
+  occurredAt: string
+  partKind: string | null | undefined
+  cutoffPeriod: string | null
+  accountingActive: boolean
+}): SetCountPosting {
+  if (!input.accountingActive) return { kind: 'off' }
+  const day = normalizeCalendarDayIso(input.occurredAt)?.slice(0, 10)
+  if (input.cutoffPeriod && day) {
+    try {
+      const cutoverDate = cutoverDateFor(input.cutoffPeriod)
+      if (day <= cutoverDate) return { kind: 'covered', cutoverDate }
+    } catch {
+      // A malformed cutoff month: nothing is covered, so the count posts as a variance.
+    }
+  }
+  return {
+    kind: 'variance',
+    inventoryAccount: openingStockAccountLabel(input.partKind),
+    varianceAccount: inventoryAccountLabelForRole('inventory_count_variance'),
+  }
+}
+
+/** The one sentence under the inputs. */
+export function setCountPostingSentence(posting: SetCountPosting): string {
+  switch (posting.kind) {
+    case 'off':
+      return 'Moves stock only; nothing is posted until accounting is set up.'
+    case 'covered':
+      return `Dated on or before the cutover (${posting.cutoverDate}), so nothing is posted; the opening balance covers it.`
+    case 'variance':
+      return `Posts the difference to ${posting.inventoryAccount} against ${posting.varianceAccount}.`
+  }
 }

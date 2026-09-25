@@ -16,7 +16,7 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { Factory } from 'lucide-react'
+import { Factory, History } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -26,11 +26,15 @@ import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-out
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
+import {
+  applyBuildSwitchExclusivity,
+  BUILD_SWITCH_EXCLUSIVITY_SENTENCE,
+} from './build-switch-exclusivity'
 
 const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts'
 
 /**
- * The two catalog keys this page owns.
+ * The three catalog keys this page owns.
  *
  * 🛑 The other two `inventory.autoBuild*` keys are deliberately absent, and
  * neither omission is an oversight:
@@ -50,11 +54,13 @@ const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts'
 const PARTS_SETTINGS_KEYS = {
   autoBuildFromOrders: 'inventory.autoBuildFromOrders',
   autoBuildStockRule: 'inventory.autoBuildStockRule',
+  backflush: 'inventory.backflush',
 } as const
 
 const DRAFT_KEYS = [
   PARTS_SETTINGS_KEYS.autoBuildFromOrders,
   PARTS_SETTINGS_KEYS.autoBuildStockRule,
+  PARTS_SETTINGS_KEYS.backflush,
 ] as const
 
 export function PartsGeneralSettingsPage() {
@@ -95,8 +101,10 @@ export function PartsGeneralSettingsPage() {
     value: draft[key],
     // SELECT inputs report a clear as `undefined`, not `null` — normalize, since
     // `SettingValue` and the server normalizer only accept `null` for "unset".
+    // The two build switches are exclusive (111 Q14): the draft shows the partner
+    // turning off the moment one is turned on, the same thing the write does.
     onChange: (value: unknown) =>
-      patch({ [key]: (value === undefined ? null : value) as SettingValue }),
+      patch(applyBuildSwitchExclusivity(key, (value === undefined ? null : value) as SettingValue)),
   })
 
   return (
@@ -141,6 +149,29 @@ export function PartsGeneralSettingsPage() {
               cost until somebody completes it, which is what makes this safe to turn on before a
               part has a standard cost.
             </p>
+            <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
+          </div>
+        </Section>
+
+        <Section
+          title='Backflush'
+          icon={<History className='size-4' />}
+          description='Every night, one completed build per made part for whatever yesterday’s sales drove below zero.'
+          collapsible={false}>
+          <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
+            <SettingsFieldRow
+              settingKey={PARTS_SETTINGS_KEYS.backflush}
+              title='Backflush sales'
+              {...controlled(PARTS_SETTINGS_KEYS.backflush)}
+            />
+          </FieldPanel>
+          <div className='mt-3 space-y-2 text-muted-foreground text-xs'>
+            <p>
+              A build is written <strong>completed</strong>, dated the end of the day it covers, so
+              components are consumed on the day the finished part shipped. A part with an uncosted
+              component is valued when that component gets a cost.
+            </p>
+            <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
           </div>
         </Section>
       </ScrollArea>
