@@ -23,6 +23,7 @@ import { buildFieldValueRow, setValueWithType } from '../../field-values/field-v
 import { type StoredFieldType, toFieldType } from '../../field-values/stored-field-type'
 import { getDeductionTargets, loadSubpartGraph } from '../../inventory/bom/subpart-graph'
 import { batchRecalculateQoH } from '../../inventory/costing/qoh'
+import { insertMovementFacts } from '../../inventory/movements/fact/writes'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityTriggerHandler } from '../types'
 
@@ -125,7 +126,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
         updatedAt: new Date(),
       }))
     )
-    .returning({ id: schema.EntityInstance.id })
+    .returning({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
 
   // ── Batch INSERT: FieldValue rows (1 query) ──
   const fieldValueRows: Array<typeof schema.FieldValue.$inferInsert> = []
@@ -197,6 +198,22 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
   }
 
   await database.insert(schema.FieldValue).values(fieldValueRows)
+
+  // The planning mirror: children of an exploded adjustment classify as `adjustment`.
+  await insertMovementFacts(
+    database,
+    organizationId,
+    targets.map((target, i) => ({
+      id: insertedInstances[i]!.id,
+      partId: target.partInstanceId,
+      type: type as string,
+      quantity: target.quantity,
+      occurredAt: null,
+      createdAt: insertedInstances[i]!.createdAt,
+      consumptionClass: 'adjustment',
+      parentMovementId: entityInstanceId,
+    }))
+  )
 
   // Now that descendant movements are in place, clear the flag on the parent
   // movement so it counts toward the root part's QoH directly.

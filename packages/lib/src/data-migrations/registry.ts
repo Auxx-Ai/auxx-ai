@@ -46,6 +46,7 @@ import { migration190PartsAndServices } from './migrations/190-parts-and-service
 import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
 import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
 import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-ledger-under-mrp'
+import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -227,6 +228,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Brief 111, one file with a step per unit: the `pending` cost basis option (Q18) and
   // `relieve` work items re-staged to `price` (Q21); X4/X5 add their steps to it.
   migration193InventoryLedgerUnderMrp,
+  // MRP planning overrides on `part` and the supplier ordering rhythm on `company`, no backfill.
+  migration197MrpPlanningFields,
 ]
 
 /**

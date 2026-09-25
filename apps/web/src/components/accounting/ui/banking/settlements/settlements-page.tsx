@@ -57,11 +57,11 @@ import { CircleHelp, Landmark, PanelRight, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
+import { EMPTY_CELL, ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import {
   ListSelectionProvider,
   SelectAllCheckbox,
@@ -74,7 +74,7 @@ import { useAccess, useRequireCapability } from '~/providers/capabilities-provid
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatMinor } from '../../ledger/format'
 import { PayoutEvidenceDrawer } from '../payouts/payout-evidence-drawer'
 import { RailStrip } from './rail-strip'
 import { settlementDay, settlementDisplay } from './settlement-display'
@@ -256,7 +256,7 @@ function SettlementsBody() {
     })
   }
 
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: <ToolbarTitle>Settlements</ToolbarTitle>,

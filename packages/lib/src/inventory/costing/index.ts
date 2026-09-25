@@ -15,11 +15,16 @@ export {
   type StandardCostSourceValue,
 } from './client'
 export {
+  buildParentGraph,
+  buildSubpartGraph,
   type CostSourceValue,
+  loadOrgSubpartEdges,
   type OrgPricingData,
+  type ParentGraph,
   type PartCostResult,
   recalculateAffectedParts,
   recalculateAllPartCosts,
+  type SubpartGraph,
   type SubpartRow,
   type VendorCostMaps,
   type VendorPriceRow,

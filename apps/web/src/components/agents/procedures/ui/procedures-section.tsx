@@ -3,7 +3,7 @@
 
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { ListChecks, Plus } from 'lucide-react'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -73,7 +73,7 @@ export function ProceduresSection({ agent, onSelect }: ProceduresSectionProps) {
     <Section
       title='Procedures'
       icon={<ListChecks className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      className={SECTION_BLEED}
       initialOpen
       description='Step-by-step playbooks the agent follows for specific situations.'
       collapsible={false}

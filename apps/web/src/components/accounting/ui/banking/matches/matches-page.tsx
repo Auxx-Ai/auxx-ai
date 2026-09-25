@@ -9,8 +9,8 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useMemo } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { MATCH_VIEWS, type MatchView, PROVIDER_MATCH_STATE_LABEL } from './provider-match-copy'
@@ -26,7 +26,7 @@ export function MatchesPage() {
   )
   const counts = api.providerMatch.counts.useQuery()
 
-  useRegisterAccountingToolbar(useMemo(() => ({ left: <ToolbarTitle>Matches</ToolbarTitle> }), []))
+  useRegisterModuleToolbar(useMemo(() => ({ left: <ToolbarTitle>Matches</ToolbarTitle> }), []))
 
   const countOf = (state: MatchView) => (state === 'matched' ? 0 : (counts.data?.[state] ?? 0))
 

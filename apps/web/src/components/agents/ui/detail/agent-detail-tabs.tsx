@@ -11,7 +11,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
 import {
   BookOpen,
@@ -274,7 +274,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                   <Section
                     title='Knowledge sources'
                     icon={<BookOpen className='size-4' />}
-                    className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                    className={SECTION_BLEED}
                     initialOpen
                     description='Narrows what this agent searches. Leave empty to search all org knowledge. Access is controlled in Permissions.'
                     collapsible={false}>
@@ -287,7 +287,7 @@ export function AgentDetailTabs({ agent, onAutosaveChange }: AgentDetailTabsProp
                     <Section
                       title='Triggers'
                       icon={<Zap className='size-4' />}
-                      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+                      className={SECTION_BLEED}
                       initialOpen
                       description='Autonomous triggers fire this agent on a schedule, on a record event, or on an app event.'
                       collapsible={false}

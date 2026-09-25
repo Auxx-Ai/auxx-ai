@@ -5,7 +5,7 @@
 import type { BooksBalanceReport, ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { StatCards } from '@auxx/ui/components/stat-card'
 import { BookOpenCheck, CalendarCheck2, FileText, Scale } from 'lucide-react'
-import { EMPTY_CELL } from './format'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 
 type PeriodState = ClosePeriod['state']
 

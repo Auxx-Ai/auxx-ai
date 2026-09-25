@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/costing-settings-page.tsx
 'use client'
 
-// Parts > Settings > Costing (money 52-parts-costing-page.md §2.1).
+// Parts > Manage > Costing (money 52-parts-costing-page.md §2.1; shape: plans/mrp/07-ui-plan.md §4.8).
 //
 // Two tabs, the active one in `useQueryState('s')`, modelled on the sibling
 // `tariffs-settings-page.tsx`:
@@ -31,22 +31,19 @@
 // absent.
 
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Separator } from '@auxx/ui/components/separator'
 import { Boxes, Calculator } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import SettingsPage from '~/components/global/settings-page'
+import { useMemo } from 'react'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { useResourceProperty } from '~/components/resources'
 import { useRequireEntityEdit } from '~/providers/capabilities-provider'
 import { OpeningStockTab } from './opening-stock-tab'
 import { StandardCostSection } from './standard-cost-section'
 
-const BREADCRUMBS = [
-  { title: 'Parts & Services', href: '/app/parts' },
-  { title: 'Settings' },
-  { title: 'Costing' },
-]
-
-const PAGE_DESCRIPTION =
-  'What a part is valued at, and what was on the shelf on day one. Roll the standard first: a revaluation is the change in standard times the quantity on hand, so it costs nothing until stock exists, and it is never free again afterwards.'
+const PAGE_DESCRIPTION = 'What a part is valued at, and what was on the shelf on day one'
 
 const TABS = [
   { value: 'standard', label: 'Standard cost', icon: Calculator },
@@ -66,26 +63,36 @@ export function CostingSettingsPage() {
   const partDefId = useResourceProperty('part', 'id')
   useRequireEntityEdit(partDefId)
 
+  // No `SelectAllCheckbox` shares this bar, so the tab strip may sit in row 1 (ui guide §12.1).
+  useRegisterModuleToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <>
+            <ToolbarTitle hint={PAGE_DESCRIPTION}>Costing</ToolbarTitle>
+            <Separator orientation='vertical' className='h-6' />
+            <ResponsiveTabs
+              value={activeTab}
+              onValueChange={(next) => void setTab(next)}
+              size='sm'
+              items={TABS}
+            />
+          </>
+        ),
+      }),
+      [activeTab, setTab]
+    )
+  )
+
   return (
-    <SettingsPage
-      title='Costing'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      subHeader={
-        <ResponsiveTabs
-          value={activeTab}
-          onValueChange={(next) => void setTab(next)}
-          size='sm'
-          items={TABS}
-        />
-      }>
+    <div className='flex min-h-0 flex-1 flex-col'>
       {activeTab === 'standard' ? (
-        <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
+        <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
           <StandardCostSection />
-        </div>
+        </ScrollArea>
       ) : (
         <OpeningStockTab />
       )}
-    </SettingsPage>
+    </div>
   )
 }

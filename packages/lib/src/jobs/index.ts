@@ -14,6 +14,7 @@ export {
   type SendScheduledMessageJobData,
   sendScheduledMessageJob,
 } from '../mail-schedule'
+export { type MrpRunOrgJobData, mrpNightlyJob, mrpRunOrgJob } from '../mrp/run/run-job'
 // Usage
 export { flushUsageEventsJob, type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 export {

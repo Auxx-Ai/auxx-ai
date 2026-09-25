@@ -403,9 +403,9 @@ export function AccountingGeneralSettingsPage() {
                 for, and the roll lives with the parts:{' '}
                 {/* The roll asserts edit on the `part` def, so it lives on a page gated the same way. */}
                 <Link
-                  href='/app/parts/settings/costing'
+                  href='/app/parts/manage/costing'
                   className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
-                  Parts, Settings, Costing
+                  Parts, Manage, Costing
                   <ExternalLink className='size-3' />
                 </Link>
                 .

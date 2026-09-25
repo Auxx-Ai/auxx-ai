@@ -82,8 +82,10 @@ export type {
 } from './registry/drawer-config-types'
 // Enum values (for badge labels, select options, etc.)
 export {
+  CompanyOrderMode,
   CostSource,
   PartKind,
+  PartMrpBufferMode,
   PartStandardCostOrigin,
   PartStandardCostSource,
   ProductStatus,

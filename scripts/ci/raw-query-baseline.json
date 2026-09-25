@@ -106,6 +106,7 @@
     "packages/lib/src/jobs/data-connector/webhook-endpoint-sync-dispatch-job.ts": 1,
     "packages/lib/src/resources/crud/financial-record-binding.ts": 1
   },
+  "movementFactRaw": {},
   "fieldValueRaw": {
     "packages/lib/src/accounting/banking/feed/coverage.ts": 1,
     "packages/lib/src/accounting/banking/import/batches.ts": 1,

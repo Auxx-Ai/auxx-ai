@@ -123,6 +123,17 @@ vi.mock('pusher', () => ({
   },
 }))
 
+// The planning mirror writes beside every movement; unit doubles model the ledger only, and fact/__tests__/*.int.test.ts covers its SQL.
+vi.mock('../inventory/movements/fact/writes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../inventory/movements/fact/writes')>()),
+  insertMovementFacts: vi.fn(async () => 0),
+  deleteMovementFacts: vi.fn(async () => {}),
+}))
+vi.mock('../inventory/movements/fact/live', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../inventory/movements/fact/live')>()),
+  readOriginalClasses: vi.fn(async () => new Map()),
+}))
+
 // Global test setup
 beforeAll(() => {
   // Add any global setup here

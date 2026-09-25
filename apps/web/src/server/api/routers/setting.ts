@@ -3,7 +3,7 @@
 import { assertAccountingSetupUnfrozen } from '@auxx/lib/accounting/ledger'
 import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError } from '@auxx/lib/errors'
-import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
+import { requirePermission } from '@auxx/lib/permissions'
 import {
   batchUpdateOrganizationSettings,
   isSettingKey,
@@ -17,6 +17,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import { settingWritePermission } from './setting-write-permission'
 
 const logger = createScopedLogger('api-settings')
 
@@ -177,8 +178,8 @@ export const settingsRouter = createTRPCRouter({
       }
       assertNotRouterOwned(key)
       // Capability gate, not role (plan 21 §4.2): settingsManage is what a
-      // profile turns off.
-      await requirePermission(userId, organizationId, PermissionKey.settingsManage)
+      // profile turns off; `mrp.*` keys take `mrp.manage` instead.
+      await requirePermission(userId, organizationId, settingWritePermission([key]))
       // The accounting baseline freezes once an entry stands in the books
       // (409). The browser hides the fields; this is the half that holds.
       await assertAccountingSetupUnfrozen(organizationId, [key])
@@ -255,8 +256,12 @@ export const settingsRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const { settings } = input
-      // Capability gate, not role (plan 21 §4.2).
-      await requirePermission(userId, organizationId, PermissionKey.settingsManage)
+      // Capability gate, not role (plan 21 §4.2); an all-`mrp.*` batch takes `mrp.manage`.
+      await requirePermission(
+        userId,
+        organizationId,
+        settingWritePermission(settings.map((s) => s.key))
+      )
 
       const unknownKey = settings.find((s) => !isSettingKey(s.key))
       if (unknownKey) {

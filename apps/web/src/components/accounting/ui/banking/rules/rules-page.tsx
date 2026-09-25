@@ -45,9 +45,9 @@ import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/comp
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ListChecks, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { EmptyState } from '~/components/global/empty-state'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
@@ -125,7 +125,7 @@ export function BankingRulesPage() {
     }),
     [openCreate]
   )
-  useRegisterAccountingToolbar(toolbar)
+  useRegisterModuleToolbar(toolbar)
 
   const openEdit = (rule: BankRuleRecord) => {
     setEditing(rule)

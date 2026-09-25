@@ -5,10 +5,10 @@ import { generateId } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
-import type { DashboardLayoutDoc } from './client'
+import { type DashboardLayoutDoc, type LayoutTab, MAX_TABS } from './client'
 import { hashLayoutDoc } from './config-hash'
 import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
-import { getDashboard, parseDraftLayoutDoc } from './dashboard-queries'
+import { getDashboard, parseDraftLayoutDoc, parseLayoutDoc } from './dashboard-queries'
 import type { PublishResult } from './types'
 
 /**
@@ -341,4 +341,89 @@ export async function renameVersion(
 
   if (updated.length === 0) return err(new NotFoundError('Dashboard version not found'))
   return ok({ versionNumber: updated[0]!.versionNumber, label: updated[0]!.label })
+}
+
+/**
+ * Append `tab` to a dashboard as a system edit: a new published version carrying it, and the
+ * same tab added to the draft so a member's unpublished edits survive unpublished. Skips (ok
+ * `false`) when `shouldAppend` rejects the current docs; checked under the row lock.
+ */
+export async function appendPublishedTab(
+  db: Database,
+  orgId: string,
+  dashboardId: string,
+  params: {
+    tab: LayoutTab
+    editorId: string | null
+    label?: string
+    shouldAppend: (docs: DashboardLayoutDoc[]) => boolean
+  }
+): Promise<Result<boolean, Error>> {
+  return db.transaction(async (tx): Promise<Result<boolean, Error>> => {
+    const [row] = await tx
+      .select()
+      .from(schema.Dashboard)
+      .where(and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)))
+      .for('update')
+    if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+
+    const activeRow = row.activeVersionId
+      ? await tx.query.DashboardVersion.findFirst({
+          where: eq(schema.DashboardVersion.id, row.activeVersionId),
+        })
+      : undefined
+    const active = activeRow ? parseLayoutDoc(activeRow.layout) : ok(undefined)
+    if (active.isErr()) return err(active.error)
+    const draft = parseDraftLayoutDoc(row.draftLayout)
+    if (draft.isErr()) return err(draft.error)
+
+    const current = active.value ?? { tabs: [] }
+    const currentDraft = draft.value ?? current
+    if (!params.shouldAppend([current, currentDraft])) return ok(false)
+    if (current.tabs.length >= MAX_TABS || currentDraft.tabs.length >= MAX_TABS) {
+      return err(new UnprocessableEntityError('Dashboard already has the maximum number of tabs'))
+    }
+
+    const published = dashboardLayoutDocSchema.safeParse({
+      ...current,
+      tabs: [...current.tabs, params.tab],
+    })
+    if (!published.success) {
+      return err(new UnprocessableEntityError(`Invalid tab: ${published.error.message}`))
+    }
+    const nextActive = published.data as DashboardLayoutDoc
+    const nextDraft: DashboardLayoutDoc = {
+      ...currentDraft,
+      tabs: [...currentDraft.tabs, params.tab],
+    }
+    const configHash = hashLayoutDoc(nextActive)
+
+    const [{ next } = { next: 1 }] = await tx
+      .select({
+        next: sql<number>`COALESCE(MAX(${schema.DashboardVersion.versionNumber}), 0) + 1`,
+      })
+      .from(schema.DashboardVersion)
+      .where(eq(schema.DashboardVersion.dashboardId, dashboardId))
+
+    const versionId = generateId()
+    await tx.insert(schema.DashboardVersion).values({
+      id: versionId,
+      organizationId: orgId,
+      dashboardId,
+      versionNumber: Number(next),
+      label: params.label ?? null,
+      layout: nextActive as unknown as Record<string, unknown>,
+      configHash,
+      editorId: params.editorId,
+    })
+    await tx
+      .update(schema.Dashboard)
+      .set({
+        activeVersionId: versionId,
+        draftLayout: nextDraft as unknown as Record<string, unknown>,
+        hasUnpublishedChanges: hashLayoutDoc(nextDraft) !== configHash,
+      })
+      .where(eq(schema.Dashboard.id, dashboardId))
+    return ok(true)
+  })
 }

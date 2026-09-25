@@ -29,6 +29,7 @@ import { KB_FIELDS } from './resources/kb-fields'
 import { LINE_ITEM_FIELDS } from './resources/line-item-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
+import { MRP_PLAN_ITEM_FIELDS } from './resources/mrp-plan-item-fields'
 import { ORDER_FIELDS } from './resources/order-fields'
 import { PARCEL_FIELDS } from './resources/parcel-fields'
 import { PART_FIELDS } from './resources/part-fields'
@@ -205,6 +206,9 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   return: RETURN_FIELDS,
   return_line: RETURN_LINE_FIELDS,
   return_part_line: RETURN_PART_LINE_FIELDS,
+
+  // MRP plan output rows, an aggregate-only source for the Parts dashboard (plans/mrp/07-ui-plan.md §5.4).
+  mrp_plan_item: MRP_PLAN_ITEM_FIELDS,
 }
 
 /**

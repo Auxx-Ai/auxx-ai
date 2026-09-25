@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/tariff-resync-dialog.tsx
 'use client'
 
-// "Catalogue updates" on Parts > Settings > Tariffs (money 35 §7).
+// "Catalogue updates" on Parts > Manage > Tariffs (money 35 §7).
 //
 // `adoptTariffStarters` writes a code's rates once, at adoption, and never looks
 // at the catalogue again - so a correction to the catalogue never reaches an org

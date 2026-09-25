@@ -18,7 +18,7 @@
 import type { LayoutBlock } from '@auxx/lib/resources/client'
 import type { RecordId } from '@auxx/types/resource'
 import Loader from '@auxx/ui/components/loader'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
 import { Box } from 'lucide-react'
 import { type ComponentType, createElement, useEffect, useState } from 'react'
@@ -131,8 +131,10 @@ export function LayoutBlockSection({
         actions={<span ref={setActionsEl} className='contents' />}
         className={cn(
           HIDE_WHEN_BLOCK_RENDERS_NOTHING,
-          block.fullBleed &&
-            '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
+          block.fullBleed && [
+            SECTION_BLEED,
+            '[&>[data-slot=section]>[data-slot=section-content]]:-mb-4',
+          ]
         )}>
         <DrawerCardActionsProvider value={actionsEl}>
           <LayoutBlockContent

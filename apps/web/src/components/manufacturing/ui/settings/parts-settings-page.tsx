@@ -1,12 +1,11 @@
 // apps/web/src/components/manufacturing/ui/settings/parts-settings-page.tsx
 'use client'
 
-// Parts > Settings > General (25-parts-settings-tab.md §4).
+// Parts > Manage > General (25-parts-settings-tab.md §4; shape: plans/mrp/07-ui-plan.md §4.8).
 //
-// Shape A, the sectioned form page: `SettingsPage` + `SettingsSection` +
-// `FieldPanel` + `SettingsFieldRow`, over one `useDirtyDraft` slice and one
-// `FormSaveBar`. One section, one column — there is not enough here for the
-// two-column flow `accounting/ui/settings/general-settings-page.tsx` uses.
+// A document page under the Manage shell: the toolbar title, then one
+// `ScrollArea` of `Section`s holding `FieldPanel` rows over one `useDirtyDraft`
+// slice and one `FormSaveBar`.
 //
 // 🛑 Draft keys are scoped explicitly. `useSettings({ scope: 'GENERAL' })`
 // returns EVERY `GENERAL`-scope setting in the whole app and both keys here are
@@ -15,22 +14,20 @@
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { Section } from '@auxx/ui/components/section'
 import { Factory } from 'lucide-react'
+import { useMemo } from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
 import { useDirtyDraft } from '~/components/global/forms/use-dirty-draft'
-import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 
-const BREADCRUMBS = [
-  { title: 'Parts & Services', href: '/app/parts' },
-  { title: 'Settings' },
-  { title: 'General' },
-]
-
-const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts.'
+const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts'
 
 /**
  * The two catalog keys this page owns.
@@ -69,6 +66,10 @@ export function PartsGeneralSettingsPage() {
   // vanish from a module that is otherwise fully available.
   useRequireCapability(PermissionKey.settingsManage)
 
+  useRegisterModuleToolbar(
+    useMemo(() => ({ left: <ToolbarTitle hint={PAGE_DESCRIPTION}>General</ToolbarTitle> }), [])
+  )
+
   const { getSetting, batchUpdateOrganizationSettings, isBatchUpdatingOrgSettings } = useSettings({
     scope: 'GENERAL',
   })
@@ -99,16 +100,14 @@ export function PartsGeneralSettingsPage() {
   })
 
   return (
-    <SettingsPage title='General' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
-      <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
-        <SettingsSection
-          icon={Factory}
+    <div className='flex min-h-0 flex-1 flex-col'>
+      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
+        <Section
           title='Automatic builds'
-          description='When an order asks for a part that is made rather than bought, raise the production run for it.'>
-          <FieldPanel
-            className='mt-1 p-0'
-            resizeId='parts-general-auto-build'
-            defaultLabelWidth={220}>
+          icon={<Factory className='size-4' />}
+          description='When an order asks for a part that is made rather than bought, raise the production run for it.'
+          collapsible={false}>
+          <FieldPanel className='p-0' resizeId='parts-general-auto-build' defaultLabelWidth={220}>
             <SettingsFieldRow
               settingKey={PARTS_SETTINGS_KEYS.autoBuildFromOrders}
               title='Raise builds from orders'
@@ -126,7 +125,7 @@ export function PartsGeneralSettingsPage() {
             discovered as bugs. They live here rather than in the catalog's own
             `description` strings, which are also the connector and API surface.
           */}
-          <div className='space-y-2 text-muted-foreground text-xs'>
+          <div className='mt-3 space-y-2 text-muted-foreground text-xs'>
             <p>
               Only orders placed <strong>after</strong> this is switched on are built. Turning it
               off and on again restarts the window, so a switch left off for three months does not
@@ -143,17 +142,21 @@ export function PartsGeneralSettingsPage() {
               part has a standard cost.
             </p>
           </div>
-        </SettingsSection>
+        </Section>
+      </ScrollArea>
 
-        {/*
-          One draft, one bar. Both keys save in a single
-          `batchUpdateOrganizationSettings` call, which the settings service runs
-          in one transaction — that is the reason this page does not use
-          `SettingsFieldRow`'s default autosave. The stock rule only means
-          anything while the switch is on, so an autosaved switch would leave the
-          reconciler live under whichever rule was stored while the person is
-          still reaching for the second row.
-        */}
+      {/*
+        One draft, one bar. Both keys save in a single
+        `batchUpdateOrganizationSettings` call, which the settings service runs
+        in one transaction — that is the reason this page does not use
+        `SettingsFieldRow`'s default autosave. The stock rule only means
+        anything while the switch is on, so an autosaved switch would leave the
+        reconciler live under whichever rule was stored while the person is
+        still reaching for the second row.
+
+        The wrapper's padding is what `FormSaveBar`'s negative margins cancel.
+      */}
+      <div className='shrink-0 px-3 pb-3 sm:px-6 sm:pb-6'>
         <FormSaveBar
           dirty={dirty}
           isSaving={isBatchUpdatingOrgSettings}
@@ -161,6 +164,6 @@ export function PartsGeneralSettingsPage() {
           onDiscard={discard}
         />
       </div>
-    </SettingsPage>
+    </div>
   )
 }

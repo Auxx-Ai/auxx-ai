@@ -7,7 +7,7 @@ import { Button } from '@auxx/ui/components/button'
 import { useNavStack } from '@auxx/ui/components/nav-stack'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCopy } from '@auxx/ui/hooks/use-copy'
@@ -44,7 +44,6 @@ const TERMINAL: ReadonlySet<EvalRunStatus> = new Set<EvalRunStatus>([
  * Bleeds a `Section`'s content past its `p-3` padding so tree rows span full
  * width; the inner `ps-2 pe-4` div re-pads. Mirrors the suite panel.
  */
-const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
 
 type AlertVariant = 'good' | 'destructive' | 'warning' | 'blue' | 'default'
 

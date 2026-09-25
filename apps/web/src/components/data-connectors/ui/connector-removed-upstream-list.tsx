@@ -2,7 +2,7 @@
 'use client'
 
 import { LastUpdated } from '@auxx/ui/components/last-updated'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import TreeRow, { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { Archive, Check, Unplug } from 'lucide-react'
@@ -89,7 +89,7 @@ export function ConnectorRemovedUpstreamSection({
     <Section
       title='Gone upstream'
       icon={<Unplug className='size-4' />}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      className={SECTION_BLEED}
       initialOpen
       collapsible={false}
       description='Records the last sync could not find at the source. Archive each one, or keep it as a record of its own.'>

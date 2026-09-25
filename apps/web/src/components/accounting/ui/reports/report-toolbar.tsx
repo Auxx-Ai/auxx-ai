@@ -71,9 +71,9 @@ export interface ReportToolbarControlsProps {
  * A report's LEFT half of the accounting topbar (`tasks/81` §4): the period
  * control, the filter chip, the compare dropdown.
  *
- * 🛑 No bar of its own. The layout owns the one `AccountingToolbar` and its
+ * 🛑 No bar of its own. The layout owns the one `ModuleToolbar` and its
  * `gap-1 p-1` scale; a page publishes these controls into it with
- * `useRegisterAccountingToolbar`, memoised.
+ * `useRegisterModuleToolbar`, memoised.
  */
 export function ReportToolbarControls({
   mode,

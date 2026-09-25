@@ -318,6 +318,8 @@ describe('registry layout blocks', () => {
       'Purchase orders',
       'Vendor bills',
       'Work orders',
+      'Ordering',
+      'Supply performance',
     ])
     expect(sectionLabels('contact', 'billing')).toEqual([
       'Quotes',

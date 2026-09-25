@@ -15,8 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { AccountLabel } from '../account-label'
-import { EMPTY_CELL, formatMinor, formatSignedMinor } from './format'
+import { formatMinor, formatSignedMinor } from './format'
 
 /** The three balances a `month_end_inventory` snapshot asserts, in statement order. */
 const BALANCE_ROLES = [

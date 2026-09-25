@@ -19,7 +19,7 @@ import type { SystemTableId, WidgetSource } from '@auxx/lib/dashboards/client'
  * lines as its labels. `prepareAggregate` now throws `ForbiddenError` for both.
  * Keeping them here offered a source that could only ever 403.
  */
-export const SYSTEM_AGGREGATE_SOURCE_IDS = ['article'] as const
+export const SYSTEM_AGGREGATE_SOURCE_IDS = ['article', 'mrp_plan_item'] as const
 
 export function isSystemAggregateSourceId(id: string): boolean {
   return (SYSTEM_AGGREGATE_SOURCE_IDS as readonly string[]).includes(id)

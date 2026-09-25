@@ -124,6 +124,8 @@ export * from './inbox-integration'
 export * from './insight-template'
 export * from './integration'
 export * from './integration-tag-label'
+// The stock_movement mirror for planning — plans/mrp/02-data-structures.md §3
+export * from './inventory-movement-fact'
 // Inventory table dropped — inventory now tracked via entity system (stock_movement + field triggers)
 export * from './invoice'
 export * from './key-value-pair'
@@ -151,6 +153,8 @@ export { MoneyRefundSettlement } from './money-refund-settlement'
 export { MoneySourceLink } from './money-source-link'
 export { MoneyTransaction } from './money-transaction'
 export { MoneyTransfer } from './money-transfer'
+// MRP plan outputs — plans/mrp/02-data-structures.md §5
+export * from './mrp-plan-run'
 export * from './notification'
 export * from './oauth-access-token'
 export * from './oauth-application'

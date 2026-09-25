@@ -165,6 +165,23 @@ export const COMPANY_PURCHASING_BLOCKS: LayoutBlock[] = [
     statusAttr: 'work_order_status',
     emptyLabel: 'No work orders',
   }),
+  // The supplier's MRP blocks (plans/mrp/07-ui-plan.md D28); both render nothing without vendor parts.
+  {
+    id: 'card:mrp-ordering',
+    kind: 'card',
+    cardValue: 'mrp-ordering',
+    label: 'Ordering',
+    icon: 'calendar-clock',
+    permissionKey: 'mrp.view',
+  },
+  {
+    id: 'card:mrp-supply',
+    kind: 'card',
+    cardValue: 'mrp-supply',
+    label: 'Supply performance',
+    icon: 'truck',
+    permissionKey: 'mrp.view',
+  },
 ]
 
 /**

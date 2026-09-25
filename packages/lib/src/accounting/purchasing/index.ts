@@ -55,6 +55,14 @@ export {
   updateBillIntakeRun,
 } from './bill-intake'
 export {
+  type CreatedPurchaseOrder,
+  type CreatePurchaseOrderInput,
+  type CreatePurchaseOrderOptions,
+  createPurchaseOrder,
+  type PurchaseOrderHeaderValues,
+  type PurchaseOrderLineValues,
+} from './create-purchase-order'
+export {
   listVendorBillPostings,
   loadVendorBill,
   loadVendorBillLines,

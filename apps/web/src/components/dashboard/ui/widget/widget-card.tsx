@@ -12,11 +12,14 @@ import type { WidgetKind } from '@auxx/lib/dashboards/client'
 import { Button } from '@auxx/ui/components/button'
 import { Card } from '@auxx/ui/components/card'
 import { cn } from '@auxx/ui/lib/utils'
-import { Copy, GripVertical, Pencil, Trash2 } from 'lucide-react'
+import { ArrowUpRight, Copy, GripVertical, Pencil, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 type WidgetCardProps = {
   title: string
+  /** In-app path the title links to in view mode. */
+  link?: string
   kind: WidgetKind
   isEditMode: boolean
   isSelected?: boolean
@@ -36,6 +39,7 @@ type WidgetCardProps = {
 
 export function WidgetCard({
   title,
+  link,
   kind,
   isEditMode,
   isSelected,
@@ -67,7 +71,17 @@ export function WidgetCard({
               aria-label='Drag widget'
             />
           )}
-          {showTitle && <span className='truncate font-medium text-sm'>{title}</span>}
+          {showTitle &&
+            (link && !isEditMode ? (
+              <Link
+                href={link}
+                className='group/link flex min-w-0 items-center gap-1 font-medium text-sm hover:underline'>
+                <span className='truncate'>{title}</span>
+                <ArrowUpRight className='size-3.5 shrink-0 text-muted-foreground' />
+              </Link>
+            ) : (
+              <span className='truncate font-medium text-sm'>{title}</span>
+            ))}
           {isEditMode && (
             <div className='ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover/widget:opacity-100'>
               {hasConfigPanel && (

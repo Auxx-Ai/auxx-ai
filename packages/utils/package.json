@@ -172,6 +172,18 @@
       "import": "./dist/calendar-day.js",
       "default": "./src/calendar-day.ts"
     },
+    "./stats": {
+      "types": "./src/stats.ts",
+      "source": "./src/stats.ts",
+      "import": "./dist/stats.js",
+      "default": "./src/stats.ts"
+    },
+    "./rounding": {
+      "types": "./src/rounding.ts",
+      "source": "./src/rounding.ts",
+      "import": "./dist/rounding.js",
+      "default": "./src/rounding.ts"
+    },
     "./calc-expression": {
       "types": "./src/calc-expression.ts",
       "source": "./src/calc-expression.ts",

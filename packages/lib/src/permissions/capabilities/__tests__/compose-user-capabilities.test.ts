@@ -1063,6 +1063,8 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       // omitted from `MEMBER_BASELINE_LEVELS` on purpose: a member has no
       // business posting to the books without an explicit grant.
       [Area.ledger]: Level.None,
+      // plans/mrp/08 §6: a NEW area that ships closed, like `ledger`.
+      [Area.mrp]: Level.None,
     }
     const caps = composeUserCapabilities({
       role: 'USER',

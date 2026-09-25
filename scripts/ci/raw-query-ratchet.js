@@ -115,6 +115,12 @@ const RULES = [
     exempt: ['data-connectors/'],
   },
   {
+    name: 'movementFactRaw',
+    label: 'raw InventoryMovementFact access outside inventory/movements/fact reads/writes',
+    pattern: tableAccess('InventoryMovementFact'),
+    exempt: ['inventory/movements/fact/reads.ts', 'inventory/movements/fact/writes.ts'],
+  },
+  {
     name: 'fieldValueRaw',
     label:
       'raw FieldValue select in accounting/ and inventory/ (resources/system-records is the reader)',

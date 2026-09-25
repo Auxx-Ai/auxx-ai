@@ -34,6 +34,7 @@ import {
   viewableKnowledgeBaseIds,
 } from '../../permissions/capabilities/article-visibility-scope'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
+import { PermissionKey } from '../../permissions/capabilities/registry'
 import { BaseType } from '../../workflow-engine/core/types'
 import {
   extractRequiredRelatedEntities,
@@ -636,6 +637,19 @@ function refuseMailLensSource(query: AggregateQuery): ForbiddenError | undefined
 }
 
 /**
+ * `mrp_plan_item`'s row policy is one permission, the same answer for every row, so it is a
+ * refusal ahead of the cache rather than a WHERE and a key fork. `undefined` ⇒ headless.
+ */
+function refuseWithoutSourcePermission(
+  query: AggregateQuery,
+  capabilities: CapabilityView | undefined
+): ForbiddenError | undefined {
+  if (!capabilities || sourceIdOf(query) !== 'mrp_plan_item') return undefined
+  if (capabilities.has(PermissionKey.mrpView)) return undefined
+  return new ForbiddenError('You do not have permission to view plan data')
+}
+
+/**
  * The viewer's viewable-KB allow-list for this run — `'all'` (no narrowing) for
  * every source but `article`, and for a headless caller.
  *
@@ -679,7 +693,8 @@ export async function runAggregate(
   query: AggregateQuery,
   opts?: AggregateRunOptions
 ): Promise<Result<AggregateResult, Error>> {
-  const refusal = refuseMailLensSource(query)
+  const refusal =
+    refuseMailLensSource(query) ?? refuseWithoutSourcePermission(query, opts?.capabilities)
   if (refusal) return err(refusal)
 
   try {
@@ -863,7 +878,9 @@ export async function runKpi(
   params: { base: AggregateQuery; trend?: TrendSpec },
   opts?: AggregateRunOptions
 ): Promise<Result<KpiResult, Error>> {
-  const refusal = refuseMailLensSource(params.base)
+  const refusal =
+    refuseMailLensSource(params.base) ??
+    refuseWithoutSourcePermission(params.base, opts?.capabilities)
   if (refusal) return err(refusal)
 
   try {

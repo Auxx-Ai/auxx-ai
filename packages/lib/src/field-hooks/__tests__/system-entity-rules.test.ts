@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   recalculatePartCostForEntityBatch: vi.fn(async () => {}),
   derivePartKindForSubpartBatch: vi.fn(async () => {}),
   enqueueCompanyEnrichmentForRecords: vi.fn(async () => {}),
+  onCacheEvent: vi.fn(async () => {}),
 }))
 
 vi.mock('../post/bom-movement-triggers', () => ({ explodeBomMovement: h.explodeBomMovement }))
@@ -28,6 +29,7 @@ vi.mock('../post/bom-cost-triggers', () => ({
 vi.mock('../post/part-kind-derivation', () => ({
   derivePartKindForSubpartBatch: h.derivePartKindForSubpartBatch,
 }))
+vi.mock('../../cache/invalidate', () => ({ onCacheEvent: h.onCacheEvent }))
 
 import { __clearNativeRuleHandlers, getNativeRuleHandler } from '../../record-rules/actions'
 import { __clearSystemRules, getSystemRuleDeclarations } from '../../record-rules/system-rules'
@@ -100,7 +102,11 @@ describe('registerEntitySystemRules — declarations', () => {
       (d) => d.defSlug === 'subparts' && d.on === 'created'
     )!
     const handlers = created.actions.map((a) => (a as { handler?: string }).handler)
-    expect(handlers).toEqual(['derivePartKind', 'entityCostRecalcSubpart'])
+    expect(handlers).toEqual([
+      'derivePartKind',
+      'entityCostRecalcSubpart',
+      'invalidateSubpartEdges',
+    ])
   })
 
   // 🛑 Decision 2 (§4.3): a subassembly whose last subpart was removed is a data
@@ -111,7 +117,7 @@ describe('registerEntitySystemRules — declarations', () => {
       (d) => d.defSlug === 'subparts' && d.on === 'deleted'
     )!
     const handlers = deleted.actions.map((a) => (a as { handler?: string }).handler)
-    expect(handlers).toEqual(['entityCostRecalcSubpart'])
+    expect(handlers).toEqual(['entityCostRecalcSubpart', 'invalidateSubpartEdges'])
     expect(handlers).not.toContain('derivePartKind')
   })
 
@@ -215,6 +221,15 @@ describe('native handlers — fan-out + batch adaptation', () => {
         { entityInstanceId: 's2', values: undefined },
       ],
     })
+  })
+
+  it('busts the subpartEdges org cache for the firing org', async () => {
+    await getNativeRuleHandler('invalidateSubpartEdges')!({
+      recordIds: [RID('spDef:s1')],
+      organizationId: 'org_1',
+      action: 'created',
+    })
+    expect(h.onCacheEvent).toHaveBeenCalledWith('subpart.changed', { orgId: 'org_1' })
   })
 
   it('subpart cost recalc uses the subpart relationship attr', async () => {

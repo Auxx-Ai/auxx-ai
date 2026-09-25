@@ -462,6 +462,30 @@ export const PartKind = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/** `part_mrp_buffer_mode`: whether MRP buffers a part; `auto` follows the planner's proposal (MRP D8). */
+export const PartMrpBufferMode = {
+  AUTO: 'auto',
+  BUFFERED: 'buffered',
+  NOT_BUFFERED: 'not_buffered',
+
+  values: [
+    { value: 'auto', label: 'Auto', color: 'gray' },
+    { value: 'buffered', label: 'Buffered', color: 'green' },
+    { value: 'not_buffered', label: 'Not buffered', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/** `company_order_mode`: how a supplier is ordered from (MRP D16). */
+export const CompanyOrderMode = {
+  WHEN_NEEDED: 'when_needed',
+  SCHEDULED: 'scheduled',
+
+  values: [
+    { value: 'when_needed', label: 'When needed', color: 'gray' },
+    { value: 'scheduled', label: 'Scheduled', color: 'blue' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 /**
  * Product Status Enum
  * Entity-system field options for `product_status` — the lifecycle of a

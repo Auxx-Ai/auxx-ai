@@ -24,9 +24,10 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { FileClock, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatMinor } from '../../ledger/format'
 
 interface BankImportBatchesProps {
   bankAccountId: string | null

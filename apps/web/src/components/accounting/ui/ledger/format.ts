@@ -1,6 +1,7 @@
 // apps/web/src/components/accounting/ui/ledger/format.ts
 
 import { formatCurrency } from '@auxx/utils/currency'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 
 /**
  * Display helpers for the ledger screens.
@@ -13,9 +14,6 @@ import { formatCurrency } from '@auxx/utils/currency'
  * goes. `~/components/money/ui/settings/format-money.ts` is the same idea for
  * catalog CURRENCY fields.
  */
-
-/** Placeholder for a cell that has no value, as opposed to a zero. */
-export const EMPTY_CELL = '—'
 
 /** Format minor units for a ledger column. Never signed: see {@link formatSignedMinor}. */
 export function formatMinor(minorUnits: number | null | undefined, currencyCode: string): string {

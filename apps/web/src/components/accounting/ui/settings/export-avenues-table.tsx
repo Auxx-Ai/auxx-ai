@@ -24,8 +24,8 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Send } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { EXPORT_AVENUE_LABEL } from '../ledger/export-avenue-labels'
-import { EMPTY_CELL } from '../ledger/format'
 import {
   autoSendKeyForAvenue,
   postingLabelsForAvenue,

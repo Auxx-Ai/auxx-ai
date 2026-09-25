@@ -230,6 +230,8 @@ const SIDE_TABLES = [
   { name: 'InvoiceVisitAllocation', table: schema.InvoiceVisitAllocation },
   { name: 'WorkOrderBillingInstallment', table: schema.WorkOrderBillingInstallment },
   { name: 'WorkOrderVisit', table: schema.WorkOrderVisit },
+  // The stock_movement mirror; the instance delete would sweep it too, listed so the dry run counts it.
+  { name: 'InventoryMovementFact', table: schema.InventoryMovementFact },
 ] as const
 
 /**

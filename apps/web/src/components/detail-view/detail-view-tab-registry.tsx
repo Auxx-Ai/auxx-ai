@@ -55,6 +55,7 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../drawers/tabs/part-vendors-tab').then((m) => ({ default: m.PartVendorsTab })),
   'part:inventory': () =>
     import('../drawers/tabs/part-inventory-tab').then((m) => ({ default: m.PartInventoryTab })),
+  'part:mrp': () => import('../mrp/ui/part/part-mrp-tab').then((m) => ({ default: m.PartMrpTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // PRODUCT TABS

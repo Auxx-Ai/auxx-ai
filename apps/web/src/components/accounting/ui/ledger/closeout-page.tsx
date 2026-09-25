@@ -6,7 +6,7 @@ import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
 import { Button } from '@auxx/ui/components/button'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
@@ -14,7 +14,6 @@ import { CalendarCheck2, ClipboardCheck, Clock3, FileText, Plus } from 'lucide-r
 import { useRouter } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import {
   UNKNOWN_PROVIDER_LABEL,
@@ -26,6 +25,7 @@ import { useMonthEntries } from '~/components/accounting/hooks/use-month-entries
 import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/accounting-checklist-panel'
 import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
 import { lastDayOfPeriod, today } from '~/components/accounting/ui/journal/period-helpers'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { KopilotContext } from '~/components/kopilot/context'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
@@ -74,7 +74,6 @@ const LEDGER_KOPILOT_PAGE = 'accounting.ledger'
  * by 12px on each side it read as a floating card rather than the list's own
  * header - with the section's border-b running past it on both sides.
  */
-const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
 
 /**
  * Closeout, at `/app/accounting/closeout` — the month: its stats, its refusals,
@@ -318,7 +317,7 @@ export function CloseoutPage() {
       period.resolvedPeriodKey,
     ]
   )
-  useRegisterAccountingToolbar(toolbar)
+  useRegisterModuleToolbar(toolbar)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>

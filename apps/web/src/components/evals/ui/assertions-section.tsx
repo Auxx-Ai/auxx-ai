@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { generateId } from '@auxx/utils'
 import { Ban, Flag, ListChecks, MessageSquareText, Plus, Wrench } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -60,7 +60,7 @@ export function AssertionsSection({ agentId, assertions, onChange }: AssertionsS
     <Section
       title='Assertions'
       collapsible={false}
-      className='[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
+      className={SECTION_BLEED}
       actions={
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

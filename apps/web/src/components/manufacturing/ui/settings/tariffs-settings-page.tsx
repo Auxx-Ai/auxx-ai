@@ -1,11 +1,11 @@
 // apps/web/src/components/manufacturing/ui/settings/tariffs-settings-page.tsx
 'use client'
 
-// Parts > Settings > Tariffs (money 29-tariff-schedule.md §6.1).
+// Parts > Manage > Tariffs (money 29-tariff-schedule.md §6.1; shape: plans/mrp/07-ui-plan.md §4.8).
 //
-// Shape B, master-detail: `SettingsPage` over a `MasterDetailSplit`, whose right
-// column is a PERSISTENT editor pane, docked at `lg` and a floating drawer below
-// it.
+// Master-detail under the Manage shell: a `MasterDetailSplit` whose columns
+// scroll on their own, and whose right column is a PERSISTENT editor pane,
+// docked at `lg` and a floating drawer below it.
 //
 // Two tabs, the active one in `useQueryState('s')`: Codes (the registry) and
 // Classification (every priced supplier offer, classified or not - task 30 §6).
@@ -29,14 +29,16 @@ import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
+import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { BookOpenCheck, Globe, Package, RefreshCw } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
-import SettingsPage from '~/components/global/settings-page'
+import { ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import {
@@ -73,14 +75,7 @@ import type { TariffRateValues } from './tariff-rate-history'
 import { TariffResyncDialog } from './tariff-resync-dialog'
 import { TariffStarterDialog } from './tariff-starter-dialog'
 
-const BREADCRUMBS = [
-  { title: 'Parts & Services', href: '/app/parts' },
-  { title: 'Settings' },
-  { title: 'Tariffs' },
-]
-
-const PAGE_DESCRIPTION =
-  'Harmonized codes by country of origin, and the rates behind them. A rate is a function of what the thing is, where it was made, and when - so a code is a classification for an origin, and its rates are dated rows that are never edited in place.'
+const PAGE_DESCRIPTION = 'Harmonized codes by country of origin, and the rates behind them'
 
 const TABS = [
   { value: 'codes', label: 'Codes', icon: Globe },
@@ -598,22 +593,107 @@ export function TariffsSettingsPage() {
     />
   )
 
+  // The result stays beside the button rather than in a toast: it is a number the
+  // person will read against the list below it, and "Already current" is as
+  // much of an answer as "25 parts repriced" - it says the schedule was applied.
+  // 🛑 The badge IS the notification (§10): there is no page banner, and nothing
+  // runs in the background. A code deploy must not rewrite org data, so every
+  // write here is a person pressing this button and then an action's Apply.
+  const resyncCount = resyncPlan.data?.actions.length ?? 0
   // 🛑 "The definitions are not in this org" is NOT "no codes yet". The two
   // render the same empty list and mean opposite things - one is a schedule
   // waiting to be filled in, the other is a page with nothing behind it, and
   // telling somebody to add a code that cannot be created is the worse of the
   // two mistakes. `entityDefIds` resolve from `record.listAll`, so this is only
   // reachable before entity migration 119 has run for the org.
-  if (!isLoading && !codeDefId) {
+  const unavailable = !isLoading && !codeDefId
+  // The toolbar is memoised; the ref keeps its button calling this render's handler.
+  const applyRatesRef = useRef(handleApplyRates)
+  applyRatesRef.current = handleApplyRates
+  const isApplying = applyRates.isPending
+  const noCodes = isLoading || codes.length === 0
+
+  useRegisterModuleToolbar(
+    useMemo(
+      () => ({
+        left: (
+          <>
+            <ToolbarTitle hint={PAGE_DESCRIPTION}>Tariffs</ToolbarTitle>
+            {!unavailable && (
+              <>
+                <Separator orientation='vertical' className='h-6' />
+                <ResponsiveTabs
+                  value={activeTab}
+                  onValueChange={(next) => void setTab(next)}
+                  size='sm'
+                  items={TABS}
+                />
+              </>
+            )}
+          </>
+        ),
+        right: unavailable ? undefined : (
+          <>
+            {canResync && (
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => openResync(null)}
+                disabled={noCodes}
+                title='What the auxx catalogue would add to the codes you already hold. Rows are only ever appended.'>
+                <BookOpenCheck />
+                Catalogue updates
+                {resyncCount > 0 && (
+                  <Badge variant='amber' size='xs'>
+                    {resyncCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
+            {canApplyRates && lastApply && !isApplying && (
+              <span className='px-1 text-muted-foreground text-xs'>{describeApply(lastApply)}</span>
+            )}
+            {canApplyRates && (
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => void applyRatesRef.current()}
+                disabled={noCodes}
+                loading={isApplying}
+                loadingText='Applying...'
+                title='Reprice every part with a classified supplier offer at the rates in force today. Standard costs and movements are not touched.'>
+                <RefreshCw />
+                Apply rate changes
+              </Button>
+            )}
+          </>
+        ),
+      }),
+      [
+        activeTab,
+        canApplyRates,
+        canResync,
+        isApplying,
+        lastApply,
+        noCodes,
+        openResync,
+        resyncCount,
+        setTab,
+        unavailable,
+      ]
+    )
+  )
+
+  if (unavailable) {
     return (
-      <SettingsPage title='Tariffs' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
+      <div className='flex min-h-0 flex-1 flex-col'>
         <EmptyState
           icon={Globe}
           title='Tariffs Not Available'
           description='The tariff registry has not been provisioned for this organization yet.'
           button={<div className='h-12' />}
         />
-      </SettingsPage>
+      </div>
     )
   }
 
@@ -629,69 +709,12 @@ export function TariffsSettingsPage() {
     />
   )
 
-  // The result stays on the page rather than in a toast: it is a number the
-  // person will read against the list below it, and "Already current" is as
-  // much of an answer as "25 parts repriced" - it says the schedule was applied.
-  // 🛑 The badge IS the notification (§10): there is no page banner, and nothing
-  // runs in the background. A code deploy must not rewrite org data, so every
-  // write here is a person pressing this button and then an action's Apply.
-  const resyncCount = resyncPlan.data?.actions.length ?? 0
-  const headerButtons = (
-    <div className='flex flex-wrap items-center gap-3'>
-      {canResync && (
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={() => openResync(null)}
-          disabled={isLoading || codes.length === 0}
-          title='What the auxx catalogue would add to the codes you already hold. Rows are only ever appended.'>
-          <BookOpenCheck />
-          Catalogue updates
-          {resyncCount > 0 && (
-            <Badge variant='amber' size='xs'>
-              {resyncCount}
-            </Badge>
-          )}
-        </Button>
-      )}
-      {canApplyRates && (
-        <div className='flex items-center gap-3'>
-          {lastApply && !applyRates.isPending && (
-            <span className='text-xs text-muted-foreground'>{describeApply(lastApply)}</span>
-          )}
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => void handleApplyRates()}
-            disabled={isLoading || codes.length === 0}
-            loading={applyRates.isPending}
-            loadingText='Applying...'
-            title='Reprice every part with a classified supplier offer at the rates in force today. Standard costs and movements are not touched.'>
-            <RefreshCw />
-            Apply rate changes
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-
   return (
-    <SettingsPage
-      title='Tariffs'
-      description={PAGE_DESCRIPTION}
-      breadcrumbs={BREADCRUMBS}
-      button={canResync || canApplyRates ? headerButtons : undefined}
-      subHeader={
-        <ResponsiveTabs
-          value={activeTab}
-          onValueChange={(next) => void setTab(next)}
-          size='sm'
-          items={TABS}
-        />
-      }>
+    <div className='flex min-h-0 flex-1 flex-col'>
       {activeTab === 'codes' ? (
         <MasterDetailSplit
           id='tariff-codes'
+          scroll='columns'
           pane={editorContent}
           paneTitle='Tariff code'
           paneOpen={!!selectedId}
@@ -720,6 +743,7 @@ export function TariffsSettingsPage() {
       ) : (
         <MasterDetailSplit
           id='tariff-classification'
+          scroll='columns'
           pane={classificationEditor}
           paneTitle='Supplier offer'
           paneOpen={!!selectedOfferId}
@@ -755,6 +779,6 @@ export function TariffsSettingsPage() {
         focusCodeInstanceId={resyncFocusId}
         onApplied={handleResynced}
       />
-    </SettingsPage>
+    </div>
   )
 }

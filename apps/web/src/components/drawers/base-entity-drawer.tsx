@@ -19,7 +19,7 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import Loader from '@auxx/ui/components/loader'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Section } from '@auxx/ui/components/section'
+import { SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
 import { Circle, ExternalLink } from 'lucide-react'
@@ -904,8 +904,10 @@ export function TabCardSection({
       actions={<span ref={setActionsEl} className='contents' />}
       className={cn(
         HIDE_WHEN_CARD_RENDERS_NOTHING,
-        card.fullBleed &&
-          '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3 [&>[data-slot=section]>[data-slot=section-content]]:-mb-4'
+        card.fullBleed && [
+          SECTION_BLEED,
+          '[&>[data-slot=section]>[data-slot=section-content]]:-mb-4',
+        ]
       )}>
       <DrawerCardActionsProvider value={actionsEl}>
         <LazyTabCard

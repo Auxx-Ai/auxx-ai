@@ -45,7 +45,7 @@ interface LedgerPeriodControlsProps {
 
 /**
  * CLOSEOUT's half of the module topbar, published through
- * `useRegisterAccountingToolbar` (81-one-accounting-shell.md §4).
+ * `useRegisterModuleToolbar` (81-one-accounting-shell.md §4).
  *
  * ```
  * [ Current ] [ ‹ ] [ March 2027 ▾ ] [ › ]  │  ● Open

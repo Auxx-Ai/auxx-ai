@@ -31,7 +31,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { Tooltip } from '~/components/global/tooltip'
 import {
   canSplitNode,
-  MAX_INDENT_DEPTH,
   MIN_SPLITTABLE_QUANTITY,
   type SalvageTreeState,
 } from '../hooks/use-salvage-tree'
@@ -132,9 +131,7 @@ export function SalvageTreeRow({
       // other — flush borders read as one merged control, and padding inside a
       // bordered box cannot fix that. The header row carries the same gap.
       rowClassName={cn('gap-x-2 rounded-md hover:bg-primary-100/60', impliedGood && 'opacity-60')}
-      // Capped: see MAX_INDENT_DEPTH. The connector line reads the same value,
-      // so the line and the indent cannot disagree.
-      depth={Math.min(node.depth, MAX_INDENT_DEPTH)}
+      depth={node.depth}
       expandable={expandable}
       chevronOnHover
       isOpen={expanded && loaded}

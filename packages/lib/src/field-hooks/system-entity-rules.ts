@@ -35,6 +35,8 @@ const RECALC_PO_LINE_BILLED_FROM_CREDIT = 'recalculatePurchaseOrderLineBilledFro
 const RECALC_FULFILLMENT_LINE_RELIEVED = 'recalculateFulfillmentLineRelieved'
 /** Lifecycle twin of the field handler in `system-record-rules.ts`; same key on purpose. */
 const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
+/** Busts the `subpartEdges` org cache (plans/mrp/08 D42); the field twin in `system-record-rules.ts` shares the key. */
+const INVALIDATE_SUBPART_EDGES = 'invalidateSubpartEdges'
 
 /**
  * Fan a batch native event out to a single-record `EntityTriggerHandler`, reconstructing the
@@ -100,6 +102,11 @@ export function registerEntitySystemRules(): void {
         values: event.eventDataByRecordId?.[rid],
       })),
     })
+  })
+
+  registerNativeRuleHandler(INVALIDATE_SUBPART_EDGES, async (event) => {
+    const { onCacheEvent } = await import('../cache/invalidate')
+    await onCacheEvent('subpart.changed', { orgId: event.organizationId })
   })
 
   // `part_kind` from the bill of materials (plans/money/tasks/23 §4) — BATCH, and declared
@@ -237,6 +244,7 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     actions: [
       { type: 'native', handler: DERIVE_PART_KIND },
       { type: 'native', handler: ENTITY_COST_RECALC_SUBPART },
+      { type: 'native', handler: INVALIDATE_SUBPART_EDGES },
     ],
   },
   {
@@ -247,7 +255,10 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     // 🛑 No `DERIVE_PART_KIND` here, deliberately (23 §4.3 decision 2). A subassembly whose
     // last subpart was removed is a data question, and auto-demoting would silently restate
     // its standard cost; the kind stays and a human changes it.
-    actions: [{ type: 'native', handler: ENTITY_COST_RECALC_SUBPART }],
+    actions: [
+      { type: 'native', handler: ENTITY_COST_RECALC_SUBPART },
+      { type: 'native', handler: INVALIDATE_SUBPART_EDGES },
+    ],
   },
   {
     key: 'mfg-stock-movements-created',

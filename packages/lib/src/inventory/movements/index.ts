@@ -7,6 +7,28 @@ export {
   resolveInventoryRoleForPartKind,
 } from './client'
 export { assertCostFieldsMaterialized } from './cost-fields'
+export type {
+  ConsumptionClass,
+  DailySeriesRow,
+  FactDayRange,
+  MovementFactDrift,
+  MovementFactInput,
+  PoLineReceiptRow,
+  UsageBucketRow,
+  WhereUsedShareRow,
+} from './fact'
+export {
+  classifyMovement,
+  compareFactsToLedger,
+  deleteMovementFacts,
+  insertMovementFacts,
+  readDailySeries,
+  readReceiptsForPoLines,
+  readUsageBuckets,
+  readWhereUsedShares,
+  rebuildMovementFacts,
+  updateMovementFactAnchor,
+} from './fact'
 export type { FilledStockMovement, PendingCostFill } from './fill-pending-cost'
 export { FILL_PENDING_COST_REASON, fillPendingCost } from './fill-pending-cost'
 export type { ReverseMovementInput } from './reverse-movement'

@@ -8,6 +8,7 @@ const STOCK_ONLY_PART_SURFACES: ReadonlySet<string> = new Set([
   'costing',
   'subparts',
   'vendors',
+  'mrp',
 ])
 
 /** Whether a stored `part_kind` is `service`; some read paths return a SINGLE_SELECT as an array. */

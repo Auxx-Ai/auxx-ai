@@ -31,12 +31,12 @@ import {
 import Link from 'next/link'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRegisterAccountingToolbar } from '~/components/accounting/accounting-toolbar-outlet'
-import { ToolbarTitle } from '~/components/accounting/ui/accounting-toolbar'
 import { SourceAccountBadge } from '~/components/accounting/ui/source-account-badge'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
+import { EMPTY_CELL, ToolbarTitle } from '~/components/global/module-toolbar'
+import { useRegisterModuleToolbar } from '~/components/global/module-toolbar-outlet'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   ListSelectionProvider,
@@ -49,7 +49,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { formatMinor } from '../../ledger/format'
 import { PayoutEvidenceDrawer } from './payout-evidence-drawer'
 import {
   EMPTY_PAYOUT_FILTERS,
@@ -192,7 +192,7 @@ function PayoutsBody() {
   }, [isDesktop, payoutId, drawer, issuesOpen, issuesDrawer, dockedWidth, setDockedWidth])
   useRegisterDockedPanels(dockedPanels)
 
-  useRegisterAccountingToolbar(
+  useRegisterModuleToolbar(
     useMemo(
       () => ({
         left: <ToolbarTitle>Payouts</ToolbarTitle>,

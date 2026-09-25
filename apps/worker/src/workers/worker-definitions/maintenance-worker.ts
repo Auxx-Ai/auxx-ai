@@ -28,6 +28,8 @@ import {
   mailSuggestionsJob,
   mailUnsubscribeSweepJob,
   mcpToolsResyncJob,
+  mrpNightlyJob,
+  mrpRunOrgJob,
   nextActionStaleScannerJob,
   type OrgSeedJobData,
   oauth2TokenRefreshScannerJob,
@@ -280,6 +282,11 @@ export const jobMappings = {
   // shipped. Re-uses `rematchBill`, so it decides which bills to re-ask about and
   // never what a bill's status is.
   vendorBillAgingJob,
+
+  // MRP plan: the nightly sweep over every org with the feature, and one org on
+  // demand ("Run now", jobId-deduped per org). plans/mrp/08-implementation-plan.md §5.
+  mrpNightlyJob,
+  mrpRunOrgJob,
 
   // Daily Stripe payout sync (HANDOFF §11.5 item 1). `postPayoutEntry` shipped with
   // no caller at all, so `1200 Card Clearing` was debited gross at every card sale

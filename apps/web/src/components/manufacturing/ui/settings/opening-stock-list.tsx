@@ -252,17 +252,9 @@ export function OpeningStockList({
             this is a count of what is physically on the shelf, and `Value`
             rather than `Total` because it is one part's opening inventory value,
             which is what the per-account totals sum.
-
-            ⚠️ `top-[var(--settings-sticky-top,0px)]` and NOT `top-0`.
-            `SettingsPage` pins its own title + tab strip at the viewport top
-            with `z-20` and publishes that block's measured height as
-            `--settings-sticky-top` (settings-page.tsx:138, re-measured on resize
-            because the description wraps a line at narrow widths). A plain
-            `top-0` pins this header underneath that block, where it is invisible
-            for the whole scroll.
           */}
           <div
-            className='sticky top-[var(--settings-sticky-top,0px)] z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
+            className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
             style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
             <div className='flex items-center gap-1 pl-2'>Part</div>
             <div className='px-2'>Kind</div>

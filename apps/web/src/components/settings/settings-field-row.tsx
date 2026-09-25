@@ -36,6 +36,8 @@ interface SettingsFieldRowProps {
    */
   value?: unknown
   onChange?: (value: unknown) => void
+  /** Overrides the admin check on an org row, for a page whose keys a capability gates instead. */
+  canEdit?: boolean
   /**
    * Custom input replacing `FieldInputAdapter`, keeping the row chrome. The child owns its own
    * saving. Must be a single control element — an org-access row hands it to `AdminGate`, which
@@ -62,6 +64,7 @@ export function SettingsFieldRow({
   className,
   value: controlledValue,
   onChange: controlledOnChange,
+  canEdit,
   children,
 }: SettingsFieldRowProps): JSX.Element | null {
   const catalog = useSettingsCatalog() as Record<string, SettingConfig>
@@ -138,7 +141,9 @@ export function SettingsFieldRow({
       showIcon
       className={className}>
       {isOrgAccess ? (
-        <AdminGate action={`edit ${rowTitle.toLowerCase()}`}>{input}</AdminGate>
+        <AdminGate action={`edit ${rowTitle.toLowerCase()}`} allow={canEdit}>
+          {input}
+        </AdminGate>
       ) : (
         input
       )}

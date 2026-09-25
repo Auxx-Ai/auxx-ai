@@ -49,6 +49,7 @@ export enum FeatureKey {
   dashboards = 'dashboards',
   dispatch = 'dispatch',
   accounting = 'accounting',
+  mrp = 'mrp',
   sequences = 'sequences',
   granularPermissions = 'granularPermissions',
   /**
@@ -228,6 +229,13 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     description:
       'The general ledger, the month-end close console, and the accounting setup wizard.',
     group: 'Accounting',
+  },
+  {
+    key: FeatureKey.mrp,
+    type: 'boolean',
+    label: 'MRP',
+    description: 'Material requirements planning: buffers, reorder suggestions and draft orders.',
+    group: 'Manufacturing',
   },
   {
     key: FeatureKey.sequences,

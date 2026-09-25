@@ -1,6 +1,6 @@
 // apps/web/src/components/manufacturing/tariff-types.ts
 
-// Shared shapes for Parts > Settings > Tariffs (money 29-tariff-schedule.md).
+// Shared shapes for Parts > Manage > Tariffs (money 29-tariff-schedule.md).
 //
 // 🛑 The resolution rule lives in `@auxx/lib/inventory/costing/client`, never here. §6 of the
 // brief is explicit: `vendor-cost.ts` exists because the landed formula once

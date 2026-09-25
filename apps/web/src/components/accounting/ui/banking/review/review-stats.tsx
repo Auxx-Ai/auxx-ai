@@ -5,7 +5,8 @@
 import type { ReviewQueueStats } from '@auxx/lib/accounting/banking/review/client'
 import { StatCards } from '@auxx/ui/components/stat-card'
 import { CalendarClock, Inbox, TrendingDown, TrendingUp } from 'lucide-react'
-import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { EMPTY_CELL } from '~/components/global/module-toolbar'
+import { formatMinor } from '../../ledger/format'
 
 interface ReviewStatsProps {
   stats: ReviewQueueStats | undefined

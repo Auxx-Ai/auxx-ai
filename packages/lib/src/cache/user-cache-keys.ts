@@ -671,5 +671,9 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // Deploy-time flush is mandatory and is NOT a substitute for the bump
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
   // rolling-deploy reason recorded above.
-  userCapabilities: { prefix: 'user:capabilities:v20', ttlSeconds: ONE_DAY },
+  //
+  // v21 (plans/mrp/08-implementation-plan.md §6): a new area, `Area.mrp` (`mrp.view`,
+  // `mrp.manage`). A `keys` CONTENT bump like v18; a stale blob holds neither key, so it
+  // fails closed, and the victim is the admin whose `ALL_FULL` was frozen without them.
+  userCapabilities: { prefix: 'user:capabilities:v21', ttlSeconds: ONE_DAY },
 }

@@ -1252,6 +1252,18 @@
       "import": "./dist/messages/index.mjs",
       "default": "./src/messages/index.ts"
     },
+    "./mrp": {
+      "types": "./src/mrp/index.ts",
+      "source": "./src/mrp/index.ts",
+      "import": "./dist/mrp/index.mjs",
+      "default": "./src/mrp/index.ts"
+    },
+    "./mrp/client": {
+      "types": "./src/mrp/client.ts",
+      "source": "./src/mrp/client.ts",
+      "import": "./dist/mrp/client.mjs",
+      "default": "./src/mrp/client.ts"
+    },
     "./net": {
       "types": "./src/net/index.ts",
       "source": "./src/net/index.ts",

@@ -47,10 +47,13 @@ export function DashboardWidget({
   // richText is edited inline in its body — no config drawer, so hide the pencil
   // and let card clicks reach the editor instead of opening a (nonexistent) panel.
   const hasConfigPanel = widget.type !== 'richText'
+  const config = widget.configuration
+  const link = 'link' in config ? config.link : undefined
 
   return (
     <WidgetCard
       title={widget.title}
+      link={link}
       kind={widget.type}
       isEditMode={isEditMode}
       isSelected={isSelected}

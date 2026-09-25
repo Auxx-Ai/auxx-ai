@@ -78,9 +78,9 @@ vi.mock('~/trpc/react', () => ({
 }))
 
 import {
-  AccountingToolbarOutletProvider,
-  useAccountingToolbarOutlet,
-} from '~/components/accounting/accounting-toolbar-outlet'
+  ModuleToolbarOutletProvider,
+  useModuleToolbarOutlet,
+} from '~/components/global/module-toolbar-outlet'
 import { PayoutsPage } from './payouts-page'
 
 /**
@@ -135,7 +135,7 @@ const PAYOUT = {
 
 /** The real outlet, so the topbar the page publishes into is assertable. */
 function Toolbar() {
-  const { left, right } = useAccountingToolbarOutlet()
+  const { left, right } = useModuleToolbarOutlet()
   return (
     <div>
       {left}
@@ -147,10 +147,10 @@ function Toolbar() {
 const renderPage = () =>
   render(
     <TooltipProvider>
-      <AccountingToolbarOutletProvider>
+      <ModuleToolbarOutletProvider>
         <Toolbar />
         <PayoutsPage />
-      </AccountingToolbarOutletProvider>
+      </ModuleToolbarOutletProvider>
     </TooltipProvider>
   )
 

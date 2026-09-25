@@ -11,7 +11,7 @@ import { type SQL, sql } from 'drizzle-orm'
 import { ForbiddenError } from '../../errors'
 import { articleVisibilitySql } from '../../permissions/capabilities/article-visibility-scope'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
-import { bucketExpr } from './date-buckets'
+import { bucketExpr, calendarDateBucketExpr } from './date-buckets'
 import { type FieldSqlPlan, metricExprSql, valueColExpr } from './expressions'
 import type { ResolvedDateWindow, ResolvedFieldRef, ResolvedGroupBy, ResolvedMetric } from './types'
 
@@ -67,10 +67,15 @@ import type { ResolvedDateWindow, ResolvedFieldRef, ResolvedGroupBy, ResolvedMet
  *   numbers to the whole org, in both directions.
  * - KB dashboard widgets are shipped product; refusing them costs a widget type.
  *
+ * **`mrp_plan_item`** (`MrpPlanRunItem`, plans/mrp/07-ui-plan.md §5.4): scoped by
+ * its direct `organizationId`; the per-row policy is `mrp.view` alone, a yes/no per
+ * viewer refused in `run-aggregate.ts` before the cache (so no key fork); labels
+ * come from the `partId` / `suggestedSupplierId` relationships (EntityInstance ids).
+ *
  * Adding a further system source means answering the same three questions for
  * it, not inheriting this answer.
  */
-export const SYSTEM_AGGREGATE_TABLE_IDS = ['article'] as const
+export const SYSTEM_AGGREGATE_TABLE_IDS = ['article', 'mrp_plan_item'] as const
 
 export type SystemAggregateTableId = (typeof SYSTEM_AGGREGATE_TABLE_IDS)[number]
 
@@ -82,6 +87,13 @@ export function isSystemAggregateTable(tableId: string): tableId is SystemAggreg
 // biome-ignore lint/suspicious/noExplicitAny: heterogeneous drizzle tables accessed by column name (same idiom as system-table-resolver)
 const SYSTEM_AGGREGATE_TABLES: Record<SystemAggregateTableId, any> = {
   article: schema.Article,
+  mrp_plan_item: schema.MrpPlanRunItem,
+}
+
+/** The distinct-row expression `count` needs; `MrpPlanRunItem` has a composite key and no `id`. */
+function rowIdSql(tableId: SystemAggregateTableId, table: any): SQL {
+  if (tableId === 'mrp_plan_item') return sql`(${table.mrpPlanRunId}, ${table.partId})`
+  return sql`${table.id}`
 }
 
 export function getSystemAggregateTable(tableId: SystemAggregateTableId) {
@@ -152,16 +164,30 @@ export function buildSystemAggregateSql(params: SystemAggregateParams): SQL {
     return { kind: 'direct', column: sql`${column}` }
   }
 
-  function groupPieces(g: ResolvedGroupBy): { expr: SQL; rawCol: SQL } {
-    const rawCol = valueColExpr(planField(g.field), g.field)
-    const expr = g.dateGranularity ? bucketExpr(rawCol, g.dateGranularity, timezone) : rawCol
+  // An array column groups by its elements: one lateral unnest per grouped array, LEFT so an
+  // empty array still lands in the '(empty)' bucket.
+  const lateralJoins: SQL[] = []
+  function groupPieces(g: ResolvedGroupBy, alias: string): { expr: SQL; rawCol: SQL } {
+    let rawCol = valueColExpr(planField(g.field), g.field)
+    if (g.field.fieldType === 'MULTI_SELECT') {
+      lateralJoins.push(
+        sql`LEFT JOIN LATERAL unnest(${rawCol}) AS ${sql.raw(`"${alias}"("v")`)} ON true`
+      )
+      rawCol = sql.raw(`"${alias}"."v"`)
+    }
+    if (!g.dateGranularity) return { expr: rawCol, rawCol }
+    // A calendar `date` column has no zone; shifting it into the viewer's would move the day.
+    const expr =
+      g.field.fieldType === 'DATE'
+        ? calendarDateBucketExpr(rawCol, g.dateGranularity)
+        : bucketExpr(rawCol, g.dateGranularity, timezone)
     return { expr, rawCol }
   }
 
-  const primary = groupBy ? groupPieces(groupBy) : undefined
-  const secondary = secondaryGroupBy ? groupPieces(secondaryGroupBy) : undefined
+  const primary = groupBy ? groupPieces(groupBy, 'agg_g') : undefined
+  const secondary = secondaryGroupBy ? groupPieces(secondaryGroupBy, 'agg_g2') : undefined
 
-  const idCol = sql`${table.id}`
+  const idCol = rowIdSql(tableId, table)
   const metricPlan = metric.field ? planField(metric.field) : undefined
   const metricSql = metricExprSql(metric, metricPlan, idCol)
 
@@ -199,6 +225,7 @@ export function buildSystemAggregateSql(params: SystemAggregateParams): SQL {
   selectCols.push(sql`(${metricSql})::float8 AS value`)
 
   let query = sql`SELECT ${sql.join(selectCols, sql`, `)} FROM ${table}`
+  if (lateralJoins.length) query = sql`${query} ${sql.join(lateralJoins, sql` `)}`
   query = sql`${query} WHERE ${sql.join(whereParts, sql` AND `)}`
 
   if (primary) {
