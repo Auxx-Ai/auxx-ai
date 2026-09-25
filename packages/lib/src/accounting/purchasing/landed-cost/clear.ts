@@ -25,7 +25,6 @@ import { UnprocessableEntityError } from '../../../errors'
 import { createGuard } from '../../../utils/guard'
 import { ACCOUNT_ROLES, buildEntry, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
 import { hashedPeriodKey } from '../../ledger/periods/period-key'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -156,12 +155,10 @@ export async function clearLandedCost(
         label: `Bill ${bill.number || bill.internalNumber}`,
       })
 
-      const lock = await resolvePeriodLock(organizationId)
       const post = await postEntry(db, {
         organizationId,
         entry,
         actorUserId,
-        lock,
         memo: 'Landed cost cleared',
         sources: [
           {
@@ -211,12 +208,10 @@ export async function reverseLandedCostClear(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   return reverseEntry(db, {
     organizationId,
     glPostingId: live.value.id,
     actorUserId,
-    lock,
     memo: `Reversal of ${live.value.docNumber} - landed cost clear backed out`,
   })
 }

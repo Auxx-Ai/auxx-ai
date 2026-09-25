@@ -7,8 +7,8 @@
  * What differs per poster is the LINES — a recognition split, one A/R credit, a
  * memo control account, A/P — and that is the accounting. Everything around them
  * (the live-posting check, the active and cutoff gates, the movement load
- * and its three refusals, the endpoint, the three link rows, the period lock and
- * the ledger's answer) had forked into four copies with two result shapes, which
+ * and its three refusals, the endpoint, the three link rows and the ledger's
+ * answer) had forked into four copies with two result shapes, which
  * is the whole argument for this file (task 71 §10).
  */
 
@@ -19,7 +19,6 @@ import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { readOrganizationSettings } from '../../settings/read'
 import { buildEntry } from '../ledger/builders/entry'
 import { type MovementPostingType, movementPeriodKey } from '../ledger/builders/movement-key'
-import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { periodKeyForDate } from '../ledger/periods/periods'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry } from '../ledger/post/post-entry'
@@ -299,12 +298,10 @@ export async function postMovementEntry(
   if (built.storeId) scope.store = built.storeId
   if (built.railId) scope.rail = built.railId
 
-  const lock = await resolvePeriodLock(input.organizationId)
   const post = await postEntry(db, {
     organizationId: input.organizationId,
     entry: built.entry,
     actorUserId: input.actorUserId,
-    lock,
     // The movement id is already the `subject` row; this memo is the Outbox's title.
     memo: input.label,
     sources: built.sources,
@@ -318,10 +315,7 @@ export async function postMovementEntry(
       db,
       input.organizationId,
       input.moneyTransactionId,
-      refusalFromPost(post, {
-        railId: built.railId,
-        periodKey: built.entry.txnDate.slice(0, 7),
-      })
+      refusalFromPost(post, { railId: built.railId })
     )
     return { status: 'blocked', reason }
   }

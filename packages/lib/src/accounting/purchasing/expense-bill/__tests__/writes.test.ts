@@ -55,9 +55,6 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
 vi.mock('../../landed-cost/reads', () => ({
   readLandedAccrualRemaining: async () => new Map(),
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../../ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntry: h.postEntry,
@@ -173,13 +170,13 @@ describe('postVendorBill', () => {
 
   it('refuses the transition when the ledger refuses the entry, leaving the bill alone', async () => {
     h.postEntry.mockResolvedValue({
-      status: 'period_closed',
-      error: 'August is locked',
+      status: 'unbalanced',
+      error: 'The entry does not balance',
     })
 
     await expect(
       postVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })
-    ).rejects.toThrow(/August is locked/)
+    ).rejects.toThrow(/The entry does not balance/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
@@ -371,7 +368,7 @@ describe('voidVendorBill', () => {
   })
 
   it('refuses the void when the reversal is refused, leaving the bill posted', async () => {
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
+    h.reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
 
     await expect(
       voidVendorBill(db, { organizationId: ORG, userId: USER, vendorBillInstanceId: BILL_ID })

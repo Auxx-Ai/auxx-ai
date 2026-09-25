@@ -124,7 +124,6 @@ vi.mock('@auxx/lib/accounting/ledger', async (importOriginal) => ({
   previewMonthEnd: vi.fn(),
   releaseExportsForSync: vi.fn(),
   removeChartAccount: vi.fn(),
-  resolvePeriodLock: vi.fn(),
   retryExport: vi.fn(),
   reverseEntry: vi.fn(),
   reverseJournalEntry: vi.fn(),

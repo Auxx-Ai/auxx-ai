@@ -83,7 +83,6 @@ import { toRecordId } from '../../../resources/resource-id'
 import { systemValueJoin } from '../../../resources/system-records'
 import { SystemUserService } from '../../../users/system-user-service'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { payoutAccountUnmappedResult, postPayoutEntry } from '../../ledger/post/post-payout-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -772,12 +771,10 @@ export async function reverseFailedPayout(
         return { reversed: false }
       }
 
-      const lock = await resolvePeriodLock(organizationId)
       const reversal = await reverseEntry(db, {
         organizationId,
         glPostingId: live.id,
         actorUserId: actor,
-        lock,
         memo: `Payout ${record.number ?? gatewayPayoutId} failed - reversing the settlement`,
       })
 

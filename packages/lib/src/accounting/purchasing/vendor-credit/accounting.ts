@@ -20,7 +20,6 @@ import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, asc, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../errors'
 import { VENDOR_CREDIT_SOURCE_TYPE } from '../../ledger/builders/vendor-credit'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { type InTxPostResult, postEntry, postEntryInTx } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -54,10 +53,8 @@ export async function postVendorCreditEntry(
   db: Database,
   input: PostVendorCreditEntryInput
 ): Promise<PostResult> {
-  const lock = await resolvePeriodLock(input.organizationId)
   return postEntry(db, {
     ...(await vendorCreditPostOptions(input)),
-    lock,
   })
 }
 
@@ -74,8 +71,7 @@ export async function postVendorCreditEntryInTx(
   tx: Transaction,
   input: PostVendorCreditEntryInput
 ): Promise<InTxPostResult> {
-  const lock = await resolvePeriodLock(input.organizationId, tx)
-  return postEntryInTx(tx, { ...(await vendorCreditPostOptions(input)), lock })
+  return postEntryInTx(tx, { ...(await vendorCreditPostOptions(input)) })
 }
 
 /** The claim links both doors share. */
@@ -139,12 +135,10 @@ export async function reverseVendorCreditEntry(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   return reverseEntry(db, {
     organizationId,
     glPostingId: live.value.id,
     actorUserId,
-    lock,
     memo: memo ?? `Reversal of ${live.value.docNumber} - vendor credit voided`,
   })
 }

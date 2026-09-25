@@ -34,9 +34,6 @@ vi.mock('@auxx/database', async () => {
     withAccountingCommitLock: vi.fn(async () => {}),
   }
 })
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',

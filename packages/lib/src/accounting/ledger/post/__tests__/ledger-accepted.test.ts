@@ -17,7 +17,6 @@ import { didLedgerAccept } from '../ledger-accepted'
 const ACCEPTED: readonly PostResultStatus[] = ['posted', 'already_posted']
 
 const REFUSED: readonly PostResultStatus[] = [
-  'period_closed',
   'account_unmapped',
   'unbalanced',
   'nothing_to_close',
@@ -53,7 +52,7 @@ describe('didLedgerAccept', () => {
    * for one test run. `default: return exhaustive` hands back the arriving
    * string, and every non-empty string is truthy - so an unrecognised status
    * read as "the ledger took it". Caught by `banking/review`'s own test, which
-   * stubs `period_locked` (a near-miss for the real `period_closed`).
+   * stubbed a near-miss status.
    *
    * Typecheck cannot reach this: the cast is what a stale bundle, a JSON wire
    * hop, or a test double does at runtime.
@@ -69,6 +68,6 @@ describe('didLedgerAccept', () => {
     expect(new Set(all).size).toBe(all.length)
     // Mirrors the union in `types.ts`. If this number moves, a status was added
     // and both this file and `didLedgerAccept`'s switch need the new member.
-    expect(all).toHaveLength(13)
+    expect(all).toHaveLength(12)
   })
 })

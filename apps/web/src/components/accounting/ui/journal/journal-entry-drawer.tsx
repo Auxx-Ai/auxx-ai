@@ -24,13 +24,12 @@ import { useResourceFields } from '~/components/resources/hooks/use-resource-fie
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
-import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryBlockers } from '../ledger/entry-blockers'
 import { formatPeriodLabel } from '../ledger/format'
 import { JournalEntryAttachment } from './journal-entry-attachment'
 import { JournalLines, JournalLinesTotals } from './journal-lines'
-import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
+import { periodKeyForEntryDate } from './period-helpers'
 
 interface JournalEntryDrawerProps {
   /** The record id, or `null` while `isNew` and the first Save has not created it. */
@@ -89,7 +88,6 @@ export function JournalEntryDrawer({
 
   const isTemplate = kind === 'recurring_template'
 
-  const periodsQuery = api.ledger.periods.useQuery()
   const { can } = useAccess()
 
   // `journal_entry` is a HIDDEN def (`isVisible: false`), which is fine here:
@@ -125,17 +123,6 @@ export function JournalEntryDrawer({
       error: draft.postResult.error ?? 'The ledger refused it.',
       ...(draft.postResult.items?.length ? { items: draft.postResult.items } : {}),
     })
-  }
-
-  const hasPeriodClosedBlocker = blockers.some((b) => b.status === 'period_closed')
-  const nextOpen =
-    hasPeriodClosedBlocker && entryPeriodKey
-      ? nextOpenPeriodAfter(periodsQuery.data ?? [], entryPeriodKey)
-      : null
-
-  function postToNextOpenPeriod() {
-    if (!nextOpen) return
-    draft.setDate(firstDayOfPeriod(nextOpen.periodKey))
   }
 
   const canPost = isDraft && !!draft.preview && !draft.previewIsStale && !draft.preview.blockedBy
@@ -363,7 +350,7 @@ export function JournalEntryDrawer({
 
               {blockers.length > 0 && (
                 <div className='p-3'>
-                  <EntryBlockers blockers={blockers} onPostToNextPeriod={postToNextOpenPeriod} />
+                  <EntryBlockers blockers={blockers} />
                 </div>
               )}
             </div>

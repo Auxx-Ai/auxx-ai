@@ -4,14 +4,14 @@
 
 import type { BooksBalanceReport, ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { StatCards } from '@auxx/ui/components/stat-card'
-import { BookOpenCheck, FileText, Lock, Scale } from 'lucide-react'
+import { BookOpenCheck, CalendarCheck2, FileText, Scale } from 'lucide-react'
 import { EMPTY_CELL } from './format'
 
 type PeriodState = ClosePeriod['state']
 
 const STATE_LABEL: Record<PeriodState, string> = {
   open: 'Open',
-  locked: 'Locked',
+  locked: 'Reviewed',
 }
 
 /** The title's tint per state, on the same scale the banking stats use. */
@@ -69,15 +69,23 @@ export function LedgerStats({
       cards={[
         {
           title: periodLabel || 'No month',
-          icon: state === 'locked' ? <Lock className='size-4' /> : <Scale className='size-4' />,
+          icon:
+            state === 'locked' ? (
+              <CalendarCheck2 className='size-4' />
+            ) : (
+              <Scale className='size-4' />
+            ),
           color: state ? STATE_COLOR[state] : undefined,
           body: <span className='text-2xl'>{state ? STATE_LABEL[state] : EMPTY_CELL}</span>,
-          description: state === 'locked' ? 'Nothing can post into it' : 'Still accepting entries',
+          description:
+            state === 'locked'
+              ? 'Later entries show under Posted after review'
+              : 'Not reviewed yet',
         },
         {
           // 🛑 The close POSTS nothing (MIGRATION step 5). What it owes is a
           // list of work, so this card counts that rather than an entry total.
-          title: 'Ready to close',
+          title: 'Ready for review',
           icon: <BookOpenCheck className='size-4' />,
           color: blockerCount > 0 ? 'text-bad-500' : undefined,
           body: <span className={mono}>{entryPending ? EMPTY_CELL : blockerCount}</span>,
@@ -85,7 +93,7 @@ export function LedgerStats({
             ? 'Checking the month'
             : blockerCount === 0
               ? 'Every movement is in an entry and inventory ties'
-              : `${blockerCount === 1 ? 'thing' : 'things'} to do before locking`,
+              : `${blockerCount === 1 ? 'thing' : 'things'} to do before marking it reviewed`,
         },
         {
           title: 'Entries this month',

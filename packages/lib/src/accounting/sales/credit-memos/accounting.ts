@@ -31,7 +31,6 @@ import {
   computeCreditMemoAmounts,
 } from '../../ledger/builders/credit-memo'
 import { toAmountMinor } from '../../ledger/builders/fulfillment'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting, listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -227,12 +226,10 @@ export async function postCreditMemoEntry(
       ? [{ sourceKind: 'contact', sourceId: contactInstanceId, linkRole: 'counterparty' as const }]
       : []),
   ]
-  const lock = await resolvePeriodLock(organizationId)
   return postEntry(db, {
     organizationId,
     entry,
     actorUserId,
-    lock,
     memo: input.memo,
     scope,
     sources,
@@ -282,12 +279,10 @@ export async function reverseCreditMemoEntry(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   return reverseEntry(db, {
     organizationId,
     glPostingId: live.value.id,
     actorUserId,
-    lock,
     memo: memo ?? `Reversal of ${live.value.docNumber} - credit memo voided`,
   })
 }

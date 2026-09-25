@@ -1,20 +1,18 @@
 // packages/lib/src/accounting/ledger/post/__tests__/post-payout-entry.test.ts
 //
 // plans/accounting/tasks/done/17-accounting-is-opt-in.md section 3: the accounting-off
-// case is checked FIRST, before the builder, the period-lock read and the post.
+// case is checked FIRST, before the builder and the post.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   isAccountingActive: vi.fn(async () => true),
   buildPayoutEntry: vi.fn(),
-  resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
 }))
 
 vi.mock('../../setup/accounting-enabled', () => ({ isAccountingActive: h.isAccountingActive }))
 vi.mock('../../builders/payout', () => ({ buildPayoutEntry: h.buildPayoutEntry }))
-vi.mock('../../periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../post-entry', () => ({ postEntry: h.postEntry }))
 
 import type { Database } from '@auxx/database'
@@ -40,7 +38,6 @@ const OPTIONS = {
 beforeEach(() => {
   vi.clearAllMocks()
   h.isAccountingActive.mockResolvedValue(true)
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.buildPayoutEntry.mockReturnValue({
     entry: { postingType: 'payout', periodKey: 'PO0007', txnDate: '2026-09-04', lines: [] },
     periodKey: 'PO0007',
@@ -54,11 +51,10 @@ beforeEach(() => {
 })
 
 describe('accounting enabled', () => {
-  it('builds, resolves the period lock, and posts', async () => {
+  it('builds and posts', async () => {
     const result = await postPayoutEntry(db, OPTIONS)
 
     expect(h.buildPayoutEntry).toHaveBeenCalledTimes(1)
-    expect(h.resolvePeriodLock).toHaveBeenCalledTimes(1)
     expect(h.postEntry).toHaveBeenCalledTimes(1)
     expect(result).toEqual({ status: 'posted', glPostingId: 'gl_1', docNumber: 'PO-0007' })
   })
@@ -91,12 +87,11 @@ describe('accounting not enabled', () => {
     h.isAccountingActive.mockResolvedValue(false)
   })
 
-  it('returns not_enabled without building, locking, or posting', async () => {
+  it('returns not_enabled without building or posting', async () => {
     const result = await postPayoutEntry(db, OPTIONS)
 
     expect(result).toEqual({ status: 'not_enabled' })
     expect(h.buildPayoutEntry).not.toHaveBeenCalled()
-    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
     expect(h.postEntry).not.toHaveBeenCalled()
   })
 })

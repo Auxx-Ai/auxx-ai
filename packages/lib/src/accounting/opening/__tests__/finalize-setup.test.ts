@@ -128,10 +128,10 @@ describe('finalizeAccountingSetup', () => {
   })
 
   it('returns a refused post as a status, with setup finalized', async () => {
-    h.postResult = { status: 'period_closed', glPostingId: null, error: 'closed' }
+    h.postResult = { status: 'unbalanced', glPostingId: null, error: 'unbalanced' }
     const result = (await finalizeAccountingSetup(db, input))._unsafeUnwrap()
     expect(result.finalizedNow).toBe(true)
-    expect(result.opening?.status).toBe('period_closed')
+    expect(result.opening?.status).toBe('unbalanced')
   })
 
   it('refuses when a document after the cutover is unposted, naming kind, count and date', async () => {

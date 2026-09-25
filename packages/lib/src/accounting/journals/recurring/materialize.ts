@@ -21,14 +21,12 @@
  *    `auto-invoice.ts:513-522` advances `materializedUntil` to `now` WITHOUT
  *    generating when its pause gate trips - correct there, because advancing
  *    while paused IS its no-backfill mechanic. Here it would be the worst kind
- *    of bug: a locked month is an entry still OWED, not one skipped, and
- *    moving the cursor past it loses the occurrence permanently with no error
- *    anywhere. The books end up short a month of depreciation and every report
- *    ties. So the cursor lands on the held occurrence's own instant, and the
- *    sweep REPORTS the month; a person with `ledgerControl` decides whether to
- *    reopen it.
+ *    of bug: an occurrence that failed to post is an entry still OWED, not one
+ *    skipped, and moving the cursor past it loses the occurrence permanently
+ *    with no error anywhere. So the cursor lands on the failed occurrence's own
+ *    instant and the next sweep tries it again.
  *
- * The window and the hold are computed by `planRecurringOccurrences`, which is
+ * The window is computed by `planRecurringOccurrences`, which is
  * pure and lives in `client.ts` so the templates screen renders the same
  * answer this job will act on.
  *
@@ -40,7 +38,6 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../../cache'
 import { advanceRecurrenceCursor, type RecurrenceRuleRow } from '../../../recurrence'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { requireJournalEntry } from '../entries/reads'
 import { createJournalEntry, postJournalEntry } from '../entries/writes'
@@ -61,11 +58,6 @@ export interface MaterializeRecurringJournalsResult {
   posted: string[]
   /** Occurrences a previous pass had already raised and posted. */
   alreadyPresent: number
-  /**
-   * The closed month that stopped the pass, if any. Everything from this
-   * occurrence on is still owed.
-   */
-  held: { occurrenceDate: string; month: string } | null
   /** Where the cursor was left. */
   cursor: Date
 }
@@ -101,8 +93,7 @@ export async function materializeRecurringJournals(
       const { organizationId, subjectId: templateId } = rule
       const now = options.now ?? new Date()
 
-      const lock = await resolvePeriodLock(organizationId)
-      const plan = planForRule(rule, lock, now)
+      const plan = planForRule(rule, now)
 
       const outcome: MaterializeRecurringJournalsResult = {
         ruleId: rule.id,
@@ -111,7 +102,6 @@ export async function materializeRecurringJournals(
         generated: [],
         posted: [],
         alreadyPresent: 0,
-        held: plan.held,
         cursor: plan.cursor,
       }
 
@@ -185,7 +175,6 @@ export async function materializeRecurringJournals(
           // sweep starts here and tries again.
           cursor = occurrence.start
           outcome.cursor = cursor
-          outcome.held = null
           logger.error('Failed to post a recurring journal entry; holding the cursor', {
             organizationId,
             ruleId: rule.id,
@@ -200,7 +189,7 @@ export async function materializeRecurringJournals(
 
       await advanceRecurrenceCursor(db, organizationId, rule.id, cursor)
 
-      if (outcome.posted.length > 0 || outcome.held) {
+      if (outcome.posted.length > 0) {
         logger.info('Materialized recurring journal entries', {
           organizationId,
           ruleId: rule.id,
@@ -208,7 +197,6 @@ export async function materializeRecurringJournals(
           generated: outcome.generated.length,
           posted: outcome.posted.length,
           alreadyPresent: outcome.alreadyPresent,
-          heldMonth: outcome.held?.month ?? null,
         })
       }
 

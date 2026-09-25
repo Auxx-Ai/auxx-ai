@@ -567,7 +567,6 @@ export class ProviderPostError extends Error {
 export type PostResultStatus =
   | 'posted'
   | 'already_posted'
-  | 'period_closed'
   | 'account_unmapped'
   | 'unbalanced'
   | 'nothing_to_close'
@@ -629,13 +628,13 @@ export const NON_FAILURE_REFUSALS = ['nothing_to_close', 'setup_incomplete'] as 
 /**
  * What `postEntry` returns. It NEVER throws.
  *
- * Disabled, not-connected, a closed period, an unmapped role and every mid-chain
+ * Disabled, not-connected, an unmapped role and every mid-chain
  * failure all resolve to a status here, so a BullMQ job or a tRPC mutation can
  * persist the outcome without its own try/catch.
  *
  * `glPostingId` is set whenever the claim succeeded or found an existing row -
  * so it is present on `already_posted`, and absent on the pre-claim refusals
- * (`period_closed`, `account_unmapped`, `unbalanced`), which is exactly the
+ * (`account_unmapped`, `unbalanced`), which is exactly the
  * distinction a caller needs to know whether anything was written.
  */
 export interface PostResult {

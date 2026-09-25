@@ -12,15 +12,14 @@
 // off, and the drawer defers its create to the first edit.
 
 import { describeRecurrence, type RecurrencePattern } from '@auxx/lib/recurrence/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
-import { CalendarClock, Pencil, Repeat, TriangleAlert } from 'lucide-react'
+import { CalendarClock, Pencil, Repeat } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { RecurrencePatternFields } from '~/components/global/recurrence/recurrence-pattern-fields'
 import { defaultCustomPattern } from '~/components/global/recurrence/recurrence-utils'
-import { formatPeriodLabel } from '../ledger/format'
 import type { RecurringTemplateRow } from './recurring-templates-list'
 
 /**
@@ -91,7 +90,6 @@ export function RecurringTemplateScheduleEditor({
     )
   }
 
-  const held = row.plan?.held ?? null
   const due = row.plan?.due.length ?? 0
   const dirty = JSON.stringify(pattern) !== JSON.stringify(row.rule?.pattern ?? null)
 
@@ -169,23 +167,7 @@ export function RecurringTemplateScheduleEditor({
         </div>
       </Section>
 
-      {/* 🛑 The held month is the one thing on this pane a person has to act
-          on, and only somebody with `ledger.control` can: a locked month is an
-          entry still OWED, not one skipped. The sweep is holding its cursor on
-          that occurrence, so nothing is lost while they decide. */}
-      {held && (
-        <Alert variant='warning' className='mt-3'>
-          <TriangleAlert />
-          <AlertTitle>Waiting on {formatPeriodLabel(held.month)}, which is closed</AlertTitle>
-          <AlertDescription>
-            The entry for {held.occurrenceDate} and everything after it is still owed. Reopen the
-            period in Accounting settings and the next sweep generates them; nothing is lost in the
-            meantime.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {!held && due > 0 && (
+      {due > 0 && (
         <Alert variant='neutral' className='mt-3'>
           <AlertDescription>
             {due} {due === 1 ? 'entry is' : 'entries are'} due and will be generated on the next

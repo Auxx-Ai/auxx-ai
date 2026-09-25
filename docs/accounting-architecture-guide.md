@@ -497,17 +497,17 @@ sub-module, `rails/settlement-discovery`, `providers/book-connections`,
 
 Resolve → balance → claim → persist → delegate → record.
 
-**This function never throws.** Every refusal — a closed period, an unmapped role, an imbalance, a
+**This function never throws.** Every refusal — an unmapped role, an imbalance, a
 provider fault — resolves to a typed `PostResult`, so a tRPC mutation or a BullMQ job can persist
 the outcome without a try/catch of its own. `postEntryInTx` is the on-a-caller's-transaction
 variant and *does* throw, so the caller rolls back; a refusal is still a `PostResult`.
 
 `prepareEntry` runs four stages and is **best-effort, not fail-fast** — a preview that refuses on
-a closed period should still show the bookkeeper the lines it would have posted, so each stage
+one stage should still show the bookkeeper the lines it would have posted, so each stage
 records its refusal and the caller reads the first one in the poster's own order:
 
-1. **The period.** A malformed key is `error`, not `period_closed` — reporting the second sends a
-   bookkeeper to reopen a month that was never the problem.
+1. **The date.** A malformed key or book date is `error`. The reviewed-through marker (§7.2) is
+   not read: an entry posts on its real date whatever month it falls in.
 2. **Every role, in one batch, BEFORE the claim.** Lines are sorted first, so the row numbers in a
    refusal message match the rows a bookkeeper is looking at. Then `findInventoryAccountRefusal`
    for the five `CODE_ENTRY_TYPES`, keyed on `glAccountId` and never on the code.
@@ -892,8 +892,8 @@ once; empty is the healthy answer.
 
 ### 7.1 Period keys
 
-`ledger/periods/periods.ts` is **pure**: `isPeriodLocked` and `assertPeriodOpen` take the lock as
-an argument so the module stays exhaustively testable with no database.
+`ledger/periods/periods.ts` is **pure**: `isPeriodLocked` takes the lock as an argument so the
+module stays exhaustively testable with no database.
 
 🛑 **Period boundaries are instants derived from wall-clock midnights in
 `accounting.bookTimeZone`, never UTC.** A `periodKey` / `txnDate` is derived **once**, at the
@@ -906,7 +906,7 @@ format *is* `YYYY-MM-DD` and hand-rolled offset arithmetic gets DST wrong roughl
 `ledger/setup/book-time-zone.ts` is the one reader of that setting. `readBookTimeZone` **refuses**
 rather than defaulting to UTC; `readBookTimeZoneOrUtc` is the lenient counterpart for display
 paths. An assumed zone posts a month's edge activity into the wrong period, invisibly, and
-uncorrectably once the period is locked.
+uncorrectably once the period is reviewed.
 
 `ledger/periods/period-key.ts` mints a key from a row id when the entry is not date-keyed.
 🛑 **A hash of the id, never a counted sequence.** `PMT-0001` counted off the existing postings is
@@ -915,14 +915,16 @@ key, and the claim converges the loser to `already_posted` — **a success statu
 silently become one entry and the loser's money never appears. It is collision-*unlikely*, not
 collision-proof: six base-36 digits is 2.2e9.
 
-### 7.2 The lock
+### 7.2 The lock is a review marker
 
-`ledger.lockedThroughMonth` is one value covering both ledger and subledger mode, because the
-question is the same in both: *is this month still accepting entries*. What differs is who
-**writes** it, and that difference belongs to the writer, not to every reader. The lock is
-**soft**: it marks a month closed and refuses a post against it; reopening is a normal,
-permissioned, audited act (`set-locked-through.ts`, under the commit lock, with the pre-write
-value read in-transaction for the audit row).
+`ledger.lockedThroughMonth` marks the months a person has **reviewed**. It refuses nothing: the
+poster does not read it, so every door — relief, manual journals, recurring journals, money,
+documents — posts on the entry's real date, into a reviewed month or not (plan 104 P1b). Moving it
+is a permissioned, audited act (`set-locked-through.ts`, under the commit lock, with the pre-write
+value read in-transaction for the audit row). Its remaining readers are the close strip, the
+delete guards (`settled-periods.ts`) and the provider walk (§12), which still starts after the
+marker and defers a provider entry dated inside it. The one hard stop on a date is meant to be the
+provider's own closing date, at export (104 P2, not built).
 
 ### 7.3 The close is a check, not a post
 
@@ -959,6 +961,13 @@ courtesy; this is the guard.
 alarm** — no status, no severity, no verdict. ⚠️ **Matched on `txnDate`, never on `periodKey`**,
 because for `manual_journal`, `bank_deposit` and `write_off` the period key is the source record's
 number, not a date.
+
+`read-posted-after-review.ts` is **Posted after review** (the UI's name for the lock is *Reviewed
+through*): postings whose `txnDate` is in a month after the cutoff and at or before the marker, and
+whose `createdAt` is after the latest `setLockedThrough` audit row that moved the marker from before
+that month to on or past it. A month with no such audit row falls back to the setting row's
+`updatedAt` and says so (`reviewedAtApproximate`). No acknowledgement is stored; the list is the
+control, and the statements' "changed since review" mark is the same read over the statement's range.
 
 ---
 
@@ -1065,7 +1074,7 @@ what aging attributes the credit to and never touches the ledger.
 
 A refusal is a work item with a code, never prose on the movement (§8.4c) — `GATEWAY_UNMAPPED`,
 `ROLE_UNMAPPED`, `ENDPOINT_UNRESOLVED`, `CUSTOMER_UNRESOLVED`, `MISSING_AMOUNT`, `MISSING_DATE`,
-`PERIOD_LOCKED`, `SETUP_INCOMPLETE`, `NO_DOCUMENT`, `OWNERSHIP_CONFLICT`, `EVIDENCE_PENDING` —
+`SETUP_INCOMPLETE`, `NO_DOCUMENT`, `OWNERSHIP_CONFLICT`, `EVIDENCE_PENDING` —
 and `BEFORE_CUTOFF` is a skip, not a refusal.
 
 ### 8.4 The cash endpoint
@@ -1255,7 +1264,7 @@ the sweep excludes in SQL.
 
 **A fix wakes exactly what it unblocks** (`wake.ts`: `nextAttemptAt = now()`): `setRoleAssignment`
 → `ROLE_UNMAPPED` for that role and rail; the totals stamp → `TOTALS_NOT_STAMPED` for those
-fulfillments; `setLockedThrough` → `PERIOD_LOCKED` rows whose month is open again; an order's
+fulfillments; an order's
 `created` event → `ORDER_NOT_FOUND` rows carrying its external id; a gateway mapped or a feed
 linked → `GATEWAY_UNMAPPED`; the guest contact minted → `CUSTOMER_UNRESOLVED`. The schedule is
 the safety net, not the mechanism.
@@ -2079,7 +2088,7 @@ concurrency 1, globally (plain BullMQ has no per-org groups), since one job alre
 | `accounting.bookTimeZone` | 🔑 Every period boundary. Frozen after the first posting |
 | `accounting.cutoffPeriod` | The first month auxx keeps. Frozen after the first posting |
 | `accounting.fiscalYearStartMonth` | 🔑 Where every read splits prior years from this year (§13.1). Defaults to January; **not** frozen |
-| `ledger.lockedThroughMonth` | The period lock |
+| `ledger.lockedThroughMonth` | The reviewed-through month. A marker; the poster does not read it |
 | `accounting.exportMode`, `.exportModeCutover` | Transaction or summary, and from when |
 | `accounting.autoSend.<avenue>` | Gate 2 — hold or send. There is no gate 1 (§5.5) |
 | `accounting.summaryGrain.<avenue>` | The summary bucket, `day`, `month` or `payout` |
@@ -2114,8 +2123,8 @@ a checkbox showing the catalog default forever.
 
 **Reading settings:** use `readOrganizationSettings(orgId, keys, db?)` from `settings/read.ts`, and
 pass `db` only for a write-after-read consistency guarantee (see `lib-module-guide.md` §8). The
-period-lock read in `post-entry.ts` and the audit `previousState` read in `set-locked-through.ts`
-are the two places in this subsystem that legitimately do.
+audit `previousState` read in `set-locked-through.ts` is the place in this subsystem that
+legitimately does.
 
 ---
 

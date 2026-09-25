@@ -46,9 +46,6 @@ vi.mock('@auxx/database', async () => {
     withAccountingCommitLock: vi.fn(async () => {}),
   }
 })
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
@@ -329,9 +326,9 @@ describe('saveDocumentEdit', () => {
 
   it('leaves everything alone when the reversal is refused', async () => {
     raiseTheBill()
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
+    h.reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
 
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/The entry does not balance/)
     expect(h.postVendorBillEntry).not.toHaveBeenCalled()
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
@@ -404,9 +401,9 @@ describe('the post-Save re-projection', () => {
 
   it('re-projects nothing when a refusal left the edit open', async () => {
     raiseTheBill()
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'September is locked' })
+    h.reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
 
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/The entry does not balance/)
     expect(h.syncVendorBillPaymentState).not.toHaveBeenCalled()
   })
 
@@ -515,11 +512,11 @@ describe('saving with no live entry', () => {
   it('leaves the row standing when the re-post is refused', async () => {
     h.postings = []
     h.postVendorBillEntry.mockResolvedValue({
-      status: 'period_closed',
-      error: 'September is locked',
+      status: 'unbalanced',
+      error: 'The entry does not balance',
     })
 
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/The entry does not balance/)
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 })

@@ -62,9 +62,6 @@ vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEn
 vi.mock('../../../ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ mode: 'ledger', lockedThroughMonth: null }),
-}))
 vi.mock('../../../money/bank-deposits', () => ({ clearBankDeposit: h.clearBankDeposit }))
 vi.mock('../../../money/vendor-payments/record-payment', () => ({
   recordVendorPayment: h.recordVendorPayment,
@@ -449,7 +446,7 @@ describe('codeTransaction', () => {
 
   it('🛑 does NOT stamp the line when the ledger refuses the post', async () => {
     row()
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'August is locked.' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance.' })
     const result = await codeTransaction(db, {
       organizationId: ORG,
       actorUserId: ACTOR,
@@ -457,7 +454,7 @@ describe('codeTransaction', () => {
       glAccountId: '6100',
     })
     expect(result.isOk()).toBe(true)
-    if (result.isOk()) expect(result.value.post?.status).toBe('period_closed')
+    if (result.isOk()) expect(result.value.post?.status).toBe('unbalanced')
     // A line reading `coded` with no posting behind it is the state that makes a
     // locked month look reconciled.
     expect(h.crudUpdate).not.toHaveBeenCalled()
@@ -771,7 +768,7 @@ describe('undoReview', () => {
 
   it('🛑 unlinks NOTHING when the reversal is refused', async () => {
     row({ reviewStatus: 'coded', glPostingId: 'post_1' })
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'August is locked.' })
+    h.reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance.' })
     const result = await undoReview(db, {
       organizationId: ORG,
       actorUserId: ACTOR,
@@ -990,11 +987,7 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
 
   it('is NOT stamped when the ledger refused the post', async () => {
     row()
-    // `period_closed` is the real status; this stub said `period_locked` for a
-    // long time, which is not a member of `PostResultStatus` at all. It passed
-    // either way against a `Set<string>`, and it is what caught `didLedgerAccept`
-    // failing OPEN on an unknown status - see `postings/__tests__/ledger-accepted.test.ts`.
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
     await codeTransaction(db, {
       organizationId: ORG,
       actorUserId: ACTOR,

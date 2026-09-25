@@ -71,7 +71,6 @@ vi.mock('../../../ledger/builders/credit-memo', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../ledger/builders/credit-memo')>()),
   buildCreditMemoEntry: h.buildCreditMemoEntry,
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
 vi.mock('../../../ledger/post/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   previewEntry: vi.fn(),
@@ -209,7 +208,10 @@ describe('issueCreditMemo', () => {
   })
 
   it('refuses the issue when the ledger refuses the entry', async () => {
-    h.postCreditMemoEntry.mockResolvedValueOnce({ status: 'period_closed', error: 'August closed' })
+    h.postCreditMemoEntry.mockResolvedValueOnce({
+      status: 'unbalanced',
+      error: 'The entry does not balance',
+    })
 
     await expect(issueCreditMemo(db, input)).rejects.toThrow('could not be posted')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
@@ -387,7 +389,10 @@ describe('voidCreditMemo', () => {
   })
 
   it('refuses the void when the reversal is refused', async () => {
-    h.reverseCreditMemoEntry.mockResolvedValue({ status: 'period_closed', error: 'August closed' })
+    h.reverseCreditMemoEntry.mockResolvedValue({
+      status: 'unbalanced',
+      error: 'The entry does not balance',
+    })
 
     await expect(voidCreditMemo(db, input)).rejects.toThrow('could not be reversed')
     expect(h.setValuesForEntity).not.toHaveBeenCalled()

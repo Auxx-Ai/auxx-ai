@@ -20,7 +20,6 @@ import {
   buildInvoiceEntry,
   INVOICE_SOURCE_TYPE,
 } from '../../ledger/builders/invoice'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -92,12 +91,10 @@ export async function postInvoiceIssuanceBuiltEntry(
       ? [{ sourceKind: 'contact', sourceId: contactInstanceId, linkRole: 'counterparty' as const }]
       : []),
   ]
-  const lock = await resolvePeriodLock(organizationId)
   return postEntry(db, {
     organizationId,
     entry: entry.entry,
     actorUserId,
-    lock,
     memo,
     sources,
   })
@@ -194,12 +191,10 @@ export async function reverseInvoiceIssuanceEntry(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   return reverseEntry(db, {
     organizationId,
     glPostingId: live.value.id,
     actorUserId,
-    lock,
     memo: memo ?? `Reversal of ${live.value.docNumber} - invoice issuance backed out`,
   })
 }

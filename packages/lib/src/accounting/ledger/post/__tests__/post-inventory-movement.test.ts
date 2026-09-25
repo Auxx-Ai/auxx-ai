@@ -24,9 +24,6 @@ const h = vi.hoisted(() => ({
 vi.mock('../../setup/accounting-enabled', () => ({
   isAccountingActive: async () => h.accountingEnabled,
 }))
-vi.mock('../../periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThrough: null }),
-}))
 vi.mock('../post-entry', () => ({
   postEntryInTx: h.postEntryInTx,
   exportPostedEntry: async () => ({ status: 'posted' as const }),

@@ -119,10 +119,10 @@ export function refusalFromError(
   return { reasonCode: 'REFUSED', ...keys, detail: { message } }
 }
 
-/** `postEntry`'s refusal as a code; the entry's own month and rail are the wake keys. */
+/** `postEntry`'s refusal as a code; the entry's rail is the wake key. */
 export function refusalFromPost(
   post: Pick<PostResult, 'status' | 'error' | 'items'>,
-  keys: { railId?: string | null; periodKey?: string | null } = {}
+  keys: { railId?: string | null } = {}
 ): WorkItemRefusal {
   switch (post.status) {
     case 'account_unmapped': {
@@ -138,8 +138,6 @@ export function refusalFromPost(
     }
     case 'account_invalid':
       return { reasonCode: 'ACCOUNT_INVALID', detail: { message: post.error } }
-    case 'period_closed':
-      return { reasonCode: 'PERIOD_LOCKED', periodKey: keys.periodKey ?? null }
     case 'unbalanced':
       return { reasonCode: 'UNBALANCED' }
     case 'setup_incomplete':

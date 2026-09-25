@@ -135,13 +135,7 @@ export function formatAuditTimestamp(iso: string, timeZone: string): string {
   }).format(date)
 }
 
-/**
- * Why Lock is refused, or `null` when it is offered.
- *
- * 🛑 The close POSTS nothing (MIGRATION step 5), so the refusal is no longer
- * "there is no entry yet" - it is the outstanding work `readCloseBlockers`
- * found. A month with nothing outstanding may be locked.
- */
+/** Why Mark reviewed is refused, or `null` when it is offered: the work `readCloseBlockers` found. */
 export function lockRefusalReason(params: {
   periodLabel: string
   /** True while the checklist is still being read: neither offer nor refuse yet. */
@@ -154,6 +148,6 @@ export function lockRefusalReason(params: {
   if (blockerCount === 0) return null
   return (
     `${periodLabel} has ${blockerCount === 1 ? 'one thing' : `${blockerCount} things`} still ` +
-    'outstanding. Clear the list above, then lock the month.'
+    'outstanding. Clear the list above, then mark it reviewed.'
   )
 }

@@ -6,9 +6,8 @@
  *
  * Both halves are here rather than beside the database code because both are
  * things a screen has to be able to answer without a round trip - the
- * templates list renders "next due 1 Mar" and "held: February is closed" from
- * {@link planRecurringOccurrences}, and the drawer renders the document number
- * an occurrence WOULD claim from {@link recurringJournalPeriodKey}. A second
+ * templates list renders "next due 1 Mar" from {@link planRecurringOccurrences},
+ * and the drawer renders the document number an occurrence WOULD claim from {@link recurringJournalPeriodKey}. A second
  * copy of either on the client is a second keyspace, and a drifted keyspace is
  * undetectable (`period-key.ts` makes this argument at length).
  *
@@ -29,7 +28,6 @@ import {
   type RecurrencePattern,
 } from '../../../recurrence'
 import { hashedPeriodKey } from '../../ledger/periods/period-key'
-import { isPeriodLocked, type PeriodLock, periodMonth } from '../../ledger/periods/periods'
 
 /**
  * The `RecurrenceRule.subjectType` a journal template's schedule is stored
@@ -129,48 +127,22 @@ export interface RecurringJournalWindow {
   materializedUntil: Date | null
   /** The instant the window closes at. "Today", never "today plus a horizon". */
   now: Date
-  lock: PeriodLock
 }
 
-/** What a template owes, and what is stopping the rest of it. */
+/** What a template owes. */
 export interface RecurringJournalPlan {
-  /**
-   * The occurrences to generate, oldest first, up to but not including
-   * {@link RecurringJournalPlan.held}.
-   */
+  /** The occurrences to generate, oldest first. */
   due: RecurrenceOccurrence[]
-  /**
-   * The first occurrence the closed-period rule refused, or `null`.
-   *
-   * Everything after it is refused too, so a plan reports one held month and
-   * not a list: reopening it is what lets the next sweep see the rest.
-   */
-  held: { occurrenceDate: string; month: string } | null
-  /**
-   * What `materializedUntil` becomes once every occurrence in `due` has landed.
-   *
-   * 🛑 **The held occurrence's own instant, not `now`.** `auto-invoice.ts`
-   * advances its cursor to `now` WITHOUT generating when its pause gate trips,
-   * and copying that here is the one mistake in this module that nothing
-   * downstream could ever detect: a locked month is an entry still OWED, not
-   * one skipped, and moving the cursor past it loses the occurrence
-   * permanently with no error anywhere - the books are short one month's
-   * depreciation and every report ties.
-   *
-   * Holding it here means the moment somebody with `ledgerControl` reopens the
-   * month, the next sweep generates exactly the entries that were owed.
-   */
+  /** What `materializedUntil` becomes once every occurrence in `due` has landed. */
   cursor: Date
 }
 
 /**
- * What a template owes right now: the backward window, minus anything a closed
- * period refuses.
+ * What a template owes right now: the backward window. A reviewed month holds nothing back.
  *
- * PURE. No database, no clock of its own, no settings - `now` and `lock` are
- * arguments for the reason `periods.ts` takes the lock as one, so the whole
- * window rule is exhaustively testable and so the templates screen can render
- * the same answer the sweep will act on.
+ * PURE. No database, no clock of its own, no settings - `now` is an argument so
+ * the whole window rule is exhaustively testable and so the templates screen can
+ * render the same answer the sweep will act on.
  *
  * `countConsumed` is derived from the cursor rather than from a counter column
  * (the recurring engine's §4.4 principle): occurrences strictly before the
@@ -178,7 +150,7 @@ export interface RecurringJournalPlan {
  * exhausts exactly once even though nothing counts the rows.
  */
 export function planRecurringOccurrences(window: RecurringJournalWindow): RecurringJournalPlan {
-  const { pattern, anchor, timezone, materializedUntil, now, lock } = window
+  const { pattern, anchor, timezone, materializedUntil, now } = window
 
   const anchorStart = localDateStartUtc(anchor, timezone)
   const boundary = materializedUntil ?? anchorStart
@@ -202,20 +174,5 @@ export function planRecurringOccurrences(window: RecurringJournalWindow): Recurr
     countConsumed,
   })
 
-  const due: RecurrenceOccurrence[] = []
-  for (const occurrence of occurrences) {
-    if (isPeriodLocked(occurrence.occurrenceDate, lock)) {
-      return {
-        due,
-        held: {
-          occurrenceDate: occurrence.occurrenceDate,
-          month: periodMonth(occurrence.occurrenceDate),
-        },
-        cursor: occurrence.start,
-      }
-    }
-    due.push(occurrence)
-  }
-
-  return { due, held: null, cursor: now }
+  return { due: occurrences, cursor: now }
 }

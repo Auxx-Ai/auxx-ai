@@ -22,7 +22,6 @@ import { readEditStamp } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError, NotFoundError } from '../../../errors'
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { type BuildWriteOffEntryInput, buildWriteOffEntry } from '../../ledger/builders/write-off'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
@@ -205,8 +204,7 @@ export async function previewWriteOffInvoice(
     contactInstanceId: invoice.contactInstanceId,
   } satisfies BuildWriteOffEntryInput)
 
-  const lock = await resolvePeriodLock(organizationId)
-  return previewEntry(db, { organizationId, entry, lock })
+  return previewEntry(db, { organizationId, entry })
 }
 
 export interface WriteOffInvoiceInput {

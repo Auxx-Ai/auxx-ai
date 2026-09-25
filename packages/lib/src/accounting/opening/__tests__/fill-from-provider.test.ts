@@ -110,10 +110,6 @@ vi.mock('../../ledger/reads/read-posting', () => ({
   }),
 }))
 
-vi.mock('../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 vi.mock('../../ledger/periods/settled-periods', () => ({
   hasStandingEntry: async () => h.standingPostings > 0,
   assertAccountingSetupUnfrozen: async (_org: string, keys: readonly string[]) => {

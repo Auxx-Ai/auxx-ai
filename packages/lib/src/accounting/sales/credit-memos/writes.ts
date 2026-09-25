@@ -29,7 +29,6 @@ import {
   type BuiltCreditMemoEntry,
   CREDIT_MEMO_POSTING_TYPE,
 } from '../../ledger/builders/credit-memo'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
@@ -482,8 +481,7 @@ export async function previewIssueCreditMemo(
       lines: [],
       totalMinor: 0,
     }
-  const lock = await resolvePeriodLock(organizationId)
-  return previewEntry(db, { organizationId, entry: built.entry, lock })
+  return previewEntry(db, { organizationId, entry: built.entry })
 }
 
 /**

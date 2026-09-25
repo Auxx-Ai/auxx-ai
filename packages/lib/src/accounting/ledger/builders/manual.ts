@@ -40,9 +40,6 @@
  * unchanged here: it resolves by id too, so naming the inventory account by id
  * rather than by code closes no door.
  *
- * **Anything about periods being open.** `resolvePeriodLock` and
- * `assertPeriodOpen` own that, and the poster surfaces it as `period_closed`.
- *
  * @see plans/accounting/tasks/done/02-manual-journal-entry.md
  */
 

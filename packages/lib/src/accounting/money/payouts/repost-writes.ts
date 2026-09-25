@@ -11,7 +11,6 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { listPaymentGateways } from '../../rails/reads'
@@ -33,10 +32,8 @@ export interface StaleReversal {
 /**
  * Back out one stale payout posting.
  *
- * **Never throws.** A closed period is the expected refusal - a match that
- * arrives after the books are closed cannot rewrite them - and it comes back as
- * a sentence the caller puts on the `MoneyTransfer` result. The stale posting
- * stays live, the blocker stays, and re-opening the period is what clears both.
+ * **Never throws.** A refusal comes back as a sentence the caller puts on the
+ * `MoneyTransfer` result; the stale posting stays live and the blocker stays.
  *
  * 🛑 Call this OUTSIDE the assessment transaction. `reverseEntry` takes the
  * accounting commit lock and posts its own entry; running it inside the
@@ -48,12 +45,10 @@ export async function reverseStalePayoutPosting(
   params: { organizationId: string; glPostingId: string; transferId: string; actorUserId?: string }
 ): Promise<StaleReversal> {
   const { organizationId, glPostingId, transferId, actorUserId } = params
-  const lock = await resolvePeriodLock(organizationId)
   const reversal = await reverseEntry(db, {
     organizationId,
     glPostingId,
     actorUserId,
-    lock,
     memo: 'Reversing a payout settled against items that have since been matched',
     links: [{ ...STALE_REVERSAL_LINK, sourceId: transferId }],
   })
@@ -65,11 +60,8 @@ export async function reverseStalePayoutPosting(
     return { glPostingId, reversed: true, refusal: null }
   }
   const refusal =
-    reversal.status === 'period_closed'
-      ? 'An item in this payout was matched after it posted, but its period is closed, so the ' +
-        'entry cannot be reversed and re-posted. Re-open the period to correct it.'
-      : `An item in this payout was matched after it posted, but its entry could not be ` +
-        `reversed: ${reversal.error ?? reversal.status}`
+    `An item in this payout was matched after it posted, but its entry could not be ` +
+    `reversed: ${reversal.error ?? reversal.status}`
   logger.warn('Could not reverse a stale payout posting', {
     organizationId,
     glPostingId,

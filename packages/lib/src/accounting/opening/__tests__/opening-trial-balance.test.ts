@@ -93,10 +93,6 @@ vi.mock('../../ledger/reads/read-posting', () => ({
   }),
 }))
 
-vi.mock('../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 // ⚠️ `assertAccountingSetupUnfrozen` reaches the module-level `database` pool
 // rather than the `db` this module threads through, so it cannot be driven by
 // the `db` double below. It is slot 0D's function with its own tests; what is
@@ -430,9 +426,9 @@ describe('postOpeningTrialBalance', () => {
   it('leaves the record a draft when the post was refused', async () => {
     // "Fix it and press Finalize again" needs the draft still to be a draft.
     h.entries = [draft(balanced)]
-    h.postResult = { status: 'period_closed', glPostingId: null, error: 'locked' }
+    h.postResult = { status: 'unbalanced', glPostingId: null, error: 'unbalanced' }
     const result = await postOpeningTrialBalance(db, ORG, USER)
-    expect(result._unsafeUnwrap()).toMatchObject({ status: 'period_closed' })
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'unbalanced' })
     expect(h.crudUpdate).not.toHaveBeenCalled()
   })
 

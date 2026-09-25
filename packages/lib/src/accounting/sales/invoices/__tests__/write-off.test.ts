@@ -15,7 +15,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   selectRows: [] as unknown[],
-  resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
   previewEntry: vi.fn(),
   getOrganizationSetting: vi.fn(),
@@ -39,9 +38,6 @@ vi.mock('../../../../entity-instances/edit-snapshot', () => ({
 }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingActive: h.isAccountingActive,
-}))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: h.resolvePeriodLock,
 }))
 // `postEntry` is the one seam. `buildWriteOffEntry` stays real, which is what
 // keeps the period-key and occurrence assertions below meaningful.
@@ -186,7 +182,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.fieldValueServiceArgs.length = 0
   writeOffPostings = []
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) =>
     key === 'organization.currency' ? 'USD' : 'UTC'
   )
@@ -433,7 +428,7 @@ describe('writeOffInvoice - the happy path', () => {
 
   it('does NOT flip the status when the post is refused', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'That month is locked.' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance.' })
 
     const result = await writeOffInvoice(stubDb(), {
       organizationId: ORG,
@@ -442,8 +437,8 @@ describe('writeOffInvoice - the happy path', () => {
       reason: 'Customer bankrupt',
     })
 
-    expect(result.status).toBe('period_closed')
-    expect(result.error).toMatch(/locked/)
+    expect(result.status).toBe('unbalanced')
+    expect(result.error).toMatch(/does not balance/)
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
@@ -622,7 +617,7 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
 // task 17 section 3: accounting is opt-in, and a write-off must land on the
 // invoice's balance whether or not the org has ever turned it on.
 describe('writeOffInvoice - accounting not enabled', () => {
-  it('returns not_enabled, never reads the period lock or posts, and still writes off the invoice', async () => {
+  it('returns not_enabled, never posts, and still writes off the invoice', async () => {
     wireInvoice('sent', { balanceMinor: 50_000 })
     h.isAccountingActive.mockResolvedValue(false)
 
@@ -634,7 +629,6 @@ describe('writeOffInvoice - accounting not enabled', () => {
     })
 
     expect(result).toEqual({ status: 'not_enabled' })
-    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
     expect(h.postEntry).not.toHaveBeenCalled()
 
     expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)

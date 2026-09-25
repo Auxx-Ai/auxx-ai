@@ -91,14 +91,13 @@ async function fulfillment(
 /** A refusal parked on the shipment, as the poster writes it. */
 async function park(
   fulfillmentInstanceId: string,
-  reasonCode: 'TOTALS_NOT_STAMPED' | 'PERIOD_LOCKED'
+  reasonCode: 'TOTALS_NOT_STAMPED' | 'UNBALANCED'
 ) {
   const written = await upsertWorkItem(db(), organizationId, {
     sourceKind: 'fulfillment',
     sourceId: fulfillmentInstanceId,
     stage: 'post',
     reasonCode,
-    ...(reasonCode === 'PERIOD_LOCKED' ? { periodKey: '2026-03' } : {}),
   })
   expect(written.isOk()).toBe(true)
 }
@@ -192,7 +191,7 @@ describe('listFulfillmentAccountingCandidates', () => {
 describe('readShipmentDetail', () => {
   it('reads a shipment with its order facts and its work items, parked or not', async () => {
     const parked = await fulfillment()
-    await park(parked, 'PERIOD_LOCKED')
+    await park(parked, 'UNBALANCED')
     const clean = await fulfillment()
 
     const detail = await readShipmentDetail(db(), organizationId, parked)
@@ -202,9 +201,7 @@ describe('readShipmentDetail', () => {
       amountMinor: 10800,
       shippedAt: '2026-03-15T12:00:00.000Z',
     })
-    expect(detail?.workItems.map((item) => [item.reasonCode, item.periodKey])).toEqual([
-      ['PERIOD_LOCKED', '2026-03'],
-    ])
+    expect(detail?.workItems.map((item) => item.reasonCode)).toEqual(['UNBALANCED'])
     expect((await readShipmentDetail(db(), organizationId, clean))?.workItems).toEqual([])
     expect(await readShipmentDetail(db(), organizationId, 'missing')).toBeNull()
   })

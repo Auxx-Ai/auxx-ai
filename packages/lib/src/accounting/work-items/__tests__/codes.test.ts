@@ -51,9 +51,8 @@ describe('the reason-code vocabulary', () => {
     expect(nextAttemptDelayMs('TRANSIENT_ERROR', 40)).toBe(6 * 60 * 60 * 1000)
   })
 
-  it('names the role, the period and the order it waits on', () => {
+  it('names the role and the order it waits on', () => {
     expect(workItemSentence('ROLE_UNMAPPED', { role: 'clearing' })).toContain("'clearing'")
-    expect(workItemSentence('PERIOD_LOCKED', { periodKey: '2026-08' })).toContain('2026-08')
     expect(workItemSentence('ORDER_NOT_FOUND', { externalRef: '#1001' })).toContain('#1001')
     expect(workItemSentence('GATEWAY_UNMAPPED', { externalRef: 'paypal' })).toContain("'paypal'")
     expect(workItemSentence('GATEWAY_UNMAPPED')).toContain('store feed')

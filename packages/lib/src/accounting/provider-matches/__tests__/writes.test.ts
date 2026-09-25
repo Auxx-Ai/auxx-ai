@@ -14,7 +14,6 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../adopt', () => ({ adoptVendorPayment: state.adopt }))
 vi.mock('../../work-items/write', () => ({ upsertWorkItem: state.workItem }))
-vi.mock('../../ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
 vi.mock('../../ledger/post/ledger-accepted', () => ({ didLedgerAccept: vi.fn() }))
 vi.mock('../../ledger/post/reverse-entry', () => ({ reverseEntry: vi.fn() }))
 vi.mock('../../ledger/reads/list-postings', () => ({ findLiveSubjectPosting: vi.fn() }))

@@ -114,10 +114,6 @@ vi.mock('../../../ledger/post/post-entry', async () => {
   }
 })
 
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 vi.mock('../../../ledger/reads/list-postings', () => ({
   listPostingsForSource: async () => {
     const glPostingId = (h.deposit as { glPostingId?: string } | null)?.glPostingId
@@ -490,10 +486,10 @@ describe('createBankDeposit posts one cash line', () => {
   })
 
   it('rolls the deposit back when the ledger refuses the entry', async () => {
-    h.postResult = { status: 'period_closed', error: 'That month is closed' }
+    h.postResult = { status: 'unbalanced', error: 'The entry does not balance' }
     const result = await createBankDeposit(db, input)
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap().post.status).toBe('period_closed')
+    expect(result._unsafeUnwrap().post.status).toBe('unbalanced')
     // Nothing was posted, so there is nothing to reverse - and leaving the
     // payments consumed by a deposit that moved no money would make them
     // ungroupable forever.

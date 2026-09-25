@@ -37,7 +37,6 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
 
     // Every one of these wrote NOTHING. A caller that treats them as accepted
     // records a ledger fact that does not exist.
-    case 'period_closed':
     case 'account_unmapped':
     case 'unbalanced':
     case 'nothing_to_close':
@@ -60,8 +59,7 @@ export function didLedgerAccept(result: { status: PostResultStatus }): boolean {
     // ledger took it", which is the one direction this predicate may never fail
     // in. A runtime value outside the union is reachable in ways typecheck does
     // not cover: a stale bundle, a status crossing a wire as JSON, a test double
-    // returning a near-miss (`period_locked` for `period_closed` - a real one,
-    // in `banking/review/__tests__/writes.test.ts`, which is what caught this).
+    // returning a near-miss status.
     default: {
       const exhaustive: never = result.status
       void exhaustive

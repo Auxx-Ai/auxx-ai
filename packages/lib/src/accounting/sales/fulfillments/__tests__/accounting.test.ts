@@ -13,7 +13,6 @@ const h = vi.hoisted(() => ({
   readOrderForFulfillment: vi.fn(),
   readOrderSourceScope: vi.fn(async () => ({ store: 'store_1' })),
   postEntry: vi.fn(),
-  resolvePeriodLock: vi.fn(async () => ({})),
   /** Every work-item write, park or clear (91 §4.6). */
   setValues: [] as Array<Record<string, unknown>>,
 }))
@@ -29,7 +28,6 @@ vi.mock('../../../ledger/post/post-entry', () => ({
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../../../settings/read', () => ({
   readOrganizationSettings: async (organizationId: string, keys: readonly string[]) =>
     Object.fromEntries(

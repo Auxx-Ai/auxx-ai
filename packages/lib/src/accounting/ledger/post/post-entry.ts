@@ -28,7 +28,7 @@
 // plans/money/tasks/10-the-poster.md section 1.
 //
 // ── This function never throws ──────────────────────────────────────────────
-// Every refusal - a closed period, an unmapped role, an imbalance, a provider
+// Every refusal - a bad book date, an unmapped role, an imbalance, a provider
 // fault - resolves to a typed `PostResult`, so a tRPC mutation or a BullMQ job
 // can persist the outcome without a try/catch of its own.
 //
@@ -48,13 +48,7 @@ import { sendExportBatch } from '../../export/send'
 import { buildDocNumber, DOC_NUMBER_MAX_LENGTH } from '../builders/doc-number'
 import { accountLabel } from '../chart/account-label'
 import { type CloseBlockerItem, describeUnmappedRoles } from '../periods/close-blockers'
-import { resolvePeriodLock } from '../periods/period-lock'
-import {
-  assertPeriodOpen,
-  type PeriodLock,
-  parsePeriodKey,
-  postingLockKey,
-} from '../periods/periods'
+import { parsePeriodKey, postingLockKey } from '../periods/periods'
 import { INVENTORY_ROLES } from '../roles/regime'
 import {
   loadRoleAccountCodes,
@@ -125,11 +119,6 @@ export interface PostEntryOptions {
   actorUserId?: string
   memo?: string
   /**
-   * Preview context only. The commit re-reads the authoritative period setting through
-   * its transaction; neither a stale open nor a stale closed value controls acceptance.
-   */
-  lock: PeriodLock
-  /**
    * Set only by {@link reverseEntry}. Presence makes this a reversal: the
    * `GlPosting_reversal_check` constraint requires it to be in the INSERT, and
    * the original flips to `reversed` in the same transaction that marks this
@@ -188,20 +177,7 @@ export interface PostEntryOptions {
 export interface PreviewEntryOptions {
   organizationId: string
   entry: BuiltEntry
-  lock: PeriodLock
-  /**
-   * Which SOURCE this entry's money came from, for the roles that read one
-   * (task 47 §5).
-   *
-   * Absent on every caller that cannot know - a month-end plug, a hand-keyed
-   * journal, a vendor bill - and absent means "the org default", which is what
-   * every role resolved to before this brief. Supplied by the revenue and
-   * settlement paths, which do know: a shipment carries its store, a payout
-   * carries the merchant account it settled through.
-   *
-   * 🛑 A miss falls back rather than failing. Connecting a second store must
-   * never stop the books (decision D6).
-   */
+  /** See {@link PostEntryOptions.scope}. Absent means the org default. */
   scope?: RoleSourceScope
 }
 
@@ -360,17 +336,16 @@ function assertDocNumberLength(docNumber: string): string {
  * Everything that happens BEFORE anything is written, for both `postEntry` and
  * `previewEntry`.
  *
- * Deliberately best-effort rather than fail-fast: a preview that refuses on a
- * closed period should still show the bookkeeper the lines it would have
- * posted. So each stage records its refusal and the caller reads the first one,
- * in the order the poster refuses: period, roles, balance, document number.
+ * Deliberately best-effort rather than fail-fast: a preview that refuses on
+ * one stage should still show the bookkeeper the lines it would have posted.
+ * So each stage records its refusal and the caller reads the first one, in the
+ * order the poster refuses: date, roles, balance, document number.
  */
 export async function prepareEntry(
   db: Database | Transaction,
   options: {
     organizationId: string
     entry: BuiltEntry
-    lock: PeriodLock
     revision: number
     /** See {@link PostEntryOptions.scope}. Absent means the org default. */
     scope?: RoleSourceScope
@@ -378,33 +353,22 @@ export async function prepareEntry(
     docNumber?: string
   }
 ): Promise<PreparedEntry> {
-  const { organizationId, entry, lock, revision, scope } = options
+  const { organizationId, entry, revision, scope } = options
   let refusal: Refusal | undefined
 
-  // ── 1. The period ────────────────────────────────────────────────────────
-  // `assertPeriodOpen` THROWS and this function must not, so it is caught and
-  // mapped - and it throws TWO different things, which must not collapse into
-  // one result. `UnprocessableEntityError` is the period being closed;
-  // `BadRequestError`, out of `parsePeriodKey`, is a key that is not a date at
-  // all. Reporting the second as `period_closed` sends a bookkeeper to reopen a
-  // month that was never the problem.
+  // ── 1. The date ──────────────────────────────────────────────────────────
+  // A reviewed month (`ledger.lockedThroughMonth`) does not refuse: entries post on their real date.
   try {
     postingLockKey(entry)
     if (parsePeriodKey(entry.txnDate).granularity !== 'day')
       throw new BadRequestError('A journal requires a valid calendar book date')
-    assertPeriodOpen(entry.txnDate, lock)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    refusal =
-      error instanceof UnprocessableEntityError
-        ? { status: 'period_closed', failureClass: 'configuration', error: message }
-        : {
-            status: 'error',
-            failureClass: 'configuration',
-            error:
-              `Cannot tell whether the accounting period for this posting is open: ${message} ` +
-              'Refusing rather than posting blind.',
-          }
+    refusal = {
+      status: 'error',
+      failureClass: 'configuration',
+      error: `This posting has no valid book date: ${message} Refusing rather than posting blind.`,
+    }
   }
 
   // ── 2. Every role, in one batch, BEFORE the claim ────────────────────────
@@ -606,10 +570,10 @@ export async function previewEntry(
   db: Database,
   options: PreviewEntryOptions
 ): Promise<EntryPreview> {
-  const { organizationId, entry, lock, scope } = options
+  const { organizationId, entry, scope } = options
   // A preview is always of an original. A reversal is previewed by reading the
   // posting it reverses, which is `reverseEntry`'s job.
-  const prepared = await prepareEntry(db, { organizationId, entry, lock, revision: 0, scope })
+  const prepared = await prepareEntry(db, { organizationId, entry, revision: 0, scope })
 
   return {
     postingType: entry.postingType,
@@ -771,11 +735,9 @@ export async function postEntryInTx(
   }
 
   await options.beforeCommit?.(tx)
-  const authoritativeLock = await resolvePeriodLock(organizationId, tx)
   const prepared = await prepareEntry(tx, {
     organizationId,
     entry,
-    lock: authoritativeLock,
     revision,
     scope: options.scope,
     docNumber: options.docNumber,

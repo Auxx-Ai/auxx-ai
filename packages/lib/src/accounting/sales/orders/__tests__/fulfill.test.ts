@@ -202,10 +202,6 @@ vi.mock('../../../../resources/crud/tx-write-flush', () => ({
   },
 }))
 
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 vi.mock('../../../../inventory/relief', async () => {
   const { ok } = await import('neverthrow')
   return {
@@ -503,7 +499,7 @@ describe('fulfillOrder', () => {
     })
 
     it('relieves the actual shipment when bookkeeping refuses', async () => {
-      h.postResult = { status: 'period_closed', error: 'Period locked' }
+      h.postResult = { status: 'unbalanced', error: 'The entry does not balance' }
       await fulfillOrder(stubDb(), input)
       expect(h.relieved).toHaveLength(1)
     })
@@ -520,7 +516,7 @@ describe('fulfillOrder', () => {
 
   describe('when the ledger refuses the post', () => {
     beforeEach(() => {
-      h.postResult = { status: 'period_closed', error: 'Period locked' }
+      h.postResult = { status: 'unbalanced', error: 'The entry does not balance' }
     })
 
     it('retains the fulfillment - a refusal never rolls back the shipment', async () => {
@@ -544,7 +540,7 @@ describe('fulfillOrder', () => {
     it('returns ok with the refusal on `post`, not an Err', async () => {
       const result = await fulfillOrder(stubDb(), input)
       expect(result.isOk()).toBe(true)
-      expect(result._unsafeUnwrap().post.status).toBe('period_closed')
+      expect(result._unsafeUnwrap().post.status).toBe('unbalanced')
     })
 
     it('parks a coded work item after commit, so the sweep and the Blocked tab see it (91 §4.6)', async () => {
@@ -552,7 +548,7 @@ describe('fulfillOrder', () => {
       expect(h.marked).toEqual([
         {
           fulfillmentId: 'ful_1',
-          refusal: { reasonCode: 'PERIOD_LOCKED', periodKey: '2026-09' },
+          refusal: { reasonCode: 'UNBALANCED' },
         },
       ])
     })

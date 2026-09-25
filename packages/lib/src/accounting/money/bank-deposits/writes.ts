@@ -49,7 +49,6 @@ import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { ACCOUNT_ROLES, buildEntry } from '../../ledger/builders/entry'
 import { loadChartAccountsById } from '../../ledger/chart/chart-accounts'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
 import { listPostingsForSource } from '../../ledger/reads/list-postings'
@@ -340,12 +339,10 @@ export async function createBankDeposit(
           ],
         })
 
-        const lock = await resolvePeriodLock(organizationId)
         post = await postEntry(db, {
           organizationId,
           entry,
           actorUserId,
-          lock,
           memo: reference ? `Deposit slip ${reference}` : undefined,
           sources: [
             { sourceKind: BANK_DEPOSIT_SOURCE_TYPE, sourceId: depositId, linkRole: 'subject' },
@@ -514,7 +511,7 @@ async function stampBankAccountHasPosted(
 /**
  * Undo a deposit whose entry the LEDGER refused.
  *
- * 🛑 Only a pre-claim refusal reaches here - a closed period, an unbalanced
+ * 🛑 Only a pre-claim refusal reaches here - an unbalanced
  * entry, an unassigned role, an inventory code. Those write no `GlPosting` row,
  * so there is nothing on the ledger side to undo and releasing the payments is
  * the whole job.

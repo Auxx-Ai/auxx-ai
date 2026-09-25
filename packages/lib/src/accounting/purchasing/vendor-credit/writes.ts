@@ -24,7 +24,6 @@ import {
   type VendorCreditLineInput as BuilderLineInput,
   buildVendorCreditEntry,
 } from '../../ledger/builders/vendor-credit'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { withAccountingCommitLock } from '../../ledger/post/accounting-commit-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import {
@@ -310,8 +309,7 @@ export async function previewIssueVendorCredit(
   input: IssueVendorCreditInput
 ): Promise<EntryPreview> {
   const { built } = await resolveIssue(db, input, { buildEntry: true })
-  const lock = await resolvePeriodLock(input.organizationId)
-  return previewEntry(db, { organizationId: input.organizationId, entry: built!.entry, lock })
+  return previewEntry(db, { organizationId: input.organizationId, entry: built!.entry })
 }
 
 /**

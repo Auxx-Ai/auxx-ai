@@ -18,7 +18,6 @@ import {
 } from '../reads'
 import { listDueWorkItems } from '../sweep'
 import {
-  wakePeriodLocked,
   wakeReasonCode,
   wakeRoleUnmapped,
   wakeSources,
@@ -74,13 +73,11 @@ describe('write', () => {
       sourceKind: 'money_transaction',
       sourceId: 'mt_1',
       stage: 'post',
-      reasonCode: 'PERIOD_LOCKED',
-      periodKey: '2026-09',
+      reasonCode: 'UNBALANCED',
     })
     expect(await row('mt_1')).toMatchObject({
-      reasonCode: 'PERIOD_LOCKED',
+      reasonCode: 'UNBALANCED',
       role: null,
-      periodKey: '2026-09',
       attempts: 1,
     })
   })
@@ -118,7 +115,7 @@ describe('write', () => {
       sourceKind: 'credit_memo',
       sourceId: 'cm_1',
       stage: 'post',
-      reasonCode: 'PERIOD_LOCKED',
+      reasonCode: 'UNBALANCED',
     })
     const swept = await deleteWorkItemsForSources(db(), organizationId, {
       sourceKind: 'credit_memo',
@@ -149,31 +146,6 @@ describe('wake', () => {
     expect(
       (await wakeRoleUnmapped(db(), organizationId, { role: 'clearing' }))._unsafeUnwrap()
     ).toBe(2)
-  })
-
-  it('reopening a period wakes only the rows whose month is now open', async () => {
-    for (const [id, periodKey] of [
-      ['mt_aug', '2026-08'],
-      ['mt_sep', '2026-09'],
-    ] as const)
-      await park({
-        sourceKind: 'money_transaction',
-        sourceId: id,
-        stage: 'post',
-        reasonCode: 'PERIOD_LOCKED',
-        periodKey,
-      })
-
-    expect(
-      (await wakePeriodLocked(db(), organizationId, { lockedThrough: '2026-08' }))._unsafeUnwrap()
-    ).toBe(1)
-    expect(
-      await listDueWorkItems(db(), organizationId, {
-        stage: 'post',
-        sourceKind: 'money_transaction',
-        limit: 10,
-      })
-    ).toEqual(['mt_sep'])
   })
 
   it('the totals stamp wakes its shipments, and a source wake names its rows', async () => {
@@ -404,13 +376,13 @@ describe('reads', () => {
       sourceKind: 'fulfillment',
       sourceId: 'ful_1',
       stage: 'post',
-      reasonCode: 'PERIOD_LOCKED',
+      reasonCode: 'UNBALANCED',
     })
 
     const shipments = (
       await listWorkItemGroups(db(), organizationId, { limit: 10, categories: ['fulfillment'] })
     )._unsafeUnwrap()
-    expect(shipments.items.map((group) => group.reasonCode)).toEqual(['PERIOD_LOCKED'])
+    expect(shipments.items.map((group) => group.reasonCode)).toEqual(['UNBALANCED'])
 
     const first = (await listWorkItemGroups(db(), organizationId, { limit: 1 }))._unsafeUnwrap()
     expect(first.items).toHaveLength(1)

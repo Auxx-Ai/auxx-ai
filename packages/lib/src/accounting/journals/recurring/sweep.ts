@@ -7,8 +7,7 @@
  * NOT from `dispatch/recurring/materialize.ts:271-290`.** The visit sweep has
  * no per-rule isolation at all - it loads every rule across every org into one
  * serial loop - and its sibling's comment says why that is tolerable there:
- * it never generates money. One org with an unreadable period lock or a
- * template somebody archived must not stop every other org's close.
+ * it never generates money. One org with a template somebody archived must not stop every other org's close.
  *
  * `materializeRecurringJournals` already returns a `Result` rather than
  * throwing, so the `catch` here is for the failures BELOW it - a connection
@@ -29,21 +28,6 @@ export interface RecurringJournalSweepSummary {
   entriesGenerated: number
   /** Entries the ledger accepted - generated this pass, or left unposted by an earlier one. */
   entriesPosted: number
-  /**
-   * Every template whose next entry is owed to a CLOSED month.
-   *
-   * This is the report task 21 §1.5 asks for: the sweep does not decide, it
-   * says what it wants. Somebody with `ledgerControl` reopens the month or
-   * accepts that the entry is late; either way the cursor is holding the
-   * occurrence, so nothing is lost while they think about it.
-   */
-  held: Array<{
-    organizationId: string
-    ruleId: string
-    templateId: string
-    occurrenceDate: string
-    month: string
-  }>
   failed: number
 }
 
@@ -61,7 +45,6 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
     rulesEvaluated: 0,
     entriesGenerated: 0,
     entriesPosted: 0,
-    held: [],
     failed: 0,
   }
 
@@ -87,15 +70,6 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
       }
       summary.entriesGenerated += result.value.generated.length
       summary.entriesPosted += result.value.posted.length
-      if (result.value.held) {
-        summary.held.push({
-          organizationId: rule.organizationId,
-          ruleId: rule.id,
-          templateId: rule.subjectId,
-          occurrenceDate: result.value.held.occurrenceDate,
-          month: result.value.held.month,
-        })
-      }
     } catch (error) {
       summary.failed++
       logger.error('Recurring journal rule threw below the materializer', {
@@ -104,15 +78,6 @@ export async function sweepRecurringJournals(db: Database): Promise<RecurringJou
         error: error instanceof Error ? error.message : String(error),
       })
     }
-  }
-
-  if (summary.held.length > 0) {
-    // WARN, not info: an entry the books are owed and cannot have is exactly
-    // the thing somebody should see in a log search without going looking.
-    logger.warn('Recurring journal entries are owed to closed periods', {
-      count: summary.held.length,
-      months: [...new Set(summary.held.map((h) => h.month))].join(', '),
-    })
   }
 
   return summary

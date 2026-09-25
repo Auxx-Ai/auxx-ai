@@ -311,7 +311,7 @@ export async function listPostingsForSource(
 }
 
 /** The header columns a {@link PostingSummary} is made of. Declared once. */
-const POSTING_COLUMNS = {
+export const POSTING_COLUMNS = {
   id: schema.GlPosting.id,
   postingType: schema.GlPosting.postingType,
   periodKey: schema.GlPosting.periodKey,
@@ -339,7 +339,7 @@ type PostingRow = {
   postedAt: Date | string | null
 }
 
-function toSummary(row: PostingRow): PostingSummary {
+export function toSummary(row: PostingRow): PostingSummary {
   return {
     id: row.id,
     postingType: row.postingType as PostingType,

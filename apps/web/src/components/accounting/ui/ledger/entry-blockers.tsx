@@ -19,7 +19,6 @@ import {
   CircleX,
   CloudOff,
   Landmark,
-  Lock,
   Map as MapIcon,
   PackagePlus,
   PackageX,
@@ -83,7 +82,7 @@ interface BlockerRemedy {
   href?: string
   actionLabel?: string
   /** For the remedies that are a control on this page rather than another page. */
-  action?: 'unlock' | 'next-period'
+  action?: 'next-period'
   /**
    * 🛑 `neutral` is not a softer `failure`. Two refusals here are the most
    * ORDINARY things an organization meets - a month in which nothing moved, and
@@ -111,15 +110,6 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
       'A builder emits a role and the org chart maps it to an account code. The resolver fails closed on zero matches and on more than one, so the entry cannot be built until the named role points at exactly one account.',
     href: '/app/accounting/settings/accounts',
     actionLabel: 'Map the role',
-  },
-  period_closed: {
-    tone: 'failure',
-    icon: Lock,
-    title: 'The period is locked',
-    guidance:
-      'Nothing may post into a month that has been declared shut. Unlocking permits posting into a month the accountant may already have seen, so it is a deliberate, named action rather than a toggle.',
-    action: 'unlock',
-    actionLabel: 'Review the lock',
   },
   unbalanced: {
     tone: 'failure',
@@ -386,20 +376,8 @@ interface EntryBlockersProps {
    * fulfillment preview because a refusal happened to mention one.
    */
   onFix?: (item: CloseBlockerItem) => void
-  /** Invoked by the `period_closed` remedy's "Review the lock" button. */
-  onReviewLock?: () => void
   /** Invoked by the `nothing_to_close` remedy. Absent on the newest month. */
   onNextPeriod?: () => void
-  /**
-   * `period_closed`'s SECOND remedy - "post to the next open period instead",
-   * per HANDOFF slot 1B. Deliberately a distinct prop from {@link onNextPeriod}
-   * rather than reusing it: the ledger page's `onNextPeriod` NAVIGATES to
-   * another month (`nothing_to_close`'s remedy, where "this month" has no entry
-   * at all), while this one RE-DATES the entry on screen - the JE drawer is the
-   * only caller that supplies it, and passing both would be wrong on the
-   * month-end console's own `period_closed` card, which has no entry to re-date.
-   */
-  onPostToNextPeriod?: () => void
   /**
    * `bare` drops the framed card and starts each row CLOSED, for a host that has
    * already named the refusal on a row of its own and nests these under it (the
@@ -432,7 +410,7 @@ const COLUMNS = 'minmax(0,1fr) auto'
  * the remedy for THAT row next to it.
  *
  * A refusal that is genuinely one indivisible thing (`unbalanced`,
- * `period_closed`, every banking refusal) carries no items and renders as it
+ * every banking refusal) carries no items and renders as it
  * always did: one row, the server's sentence verbatim, one button.
  */
 /** The work-item fields a blocker card needs; the row never stores prose (91 §4.6). */
@@ -443,7 +421,6 @@ export interface WorkItemForBlocker extends WorkItemSentenceInput {
 const WORK_ITEM_STATUS: Partial<Record<string, LedgerBlockerStatus>> = {
   ROLE_UNMAPPED: 'account_unmapped',
   ACCOUNT_INVALID: 'account_invalid',
-  PERIOD_LOCKED: 'period_closed',
   UNBALANCED: 'unbalanced',
   SETUP_INCOMPLETE: 'setup_incomplete',
   NOTHING_TO_RECOGNISE: 'nothing_to_recognise',
@@ -472,9 +449,7 @@ export function workItemBlocker(item: WorkItemForBlocker): LedgerBlocker {
 export function EntryBlockers({
   blockers,
   onFix,
-  onReviewLock,
   onNextPeriod,
-  onPostToNextPeriod,
   variant = 'card',
   depth = 0,
 }: EntryBlockersProps) {
@@ -496,9 +471,7 @@ export function EntryBlockers({
       depth={depth}
       defaultOpen={variant === 'card'}
       onFix={onFix}
-      onReviewLock={onReviewLock}
       onNextPeriod={onNextPeriod}
-      onPostToNextPeriod={onPostToNextPeriod}
     />
   ))
 
@@ -532,17 +505,13 @@ function BlockerRows({
   depth = 0,
   defaultOpen = true,
   onFix,
-  onReviewLock,
   onNextPeriod,
-  onPostToNextPeriod,
 }: {
   blocker: LedgerBlocker
   depth?: number
   defaultOpen?: boolean
   onFix?: (item: CloseBlockerItem) => void
-  onReviewLock?: () => void
   onNextPeriod?: () => void
-  onPostToNextPeriod?: () => void
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const remedy = REMEDIES[blocker.status] ?? FALLBACK
@@ -558,16 +527,6 @@ function BlockerRows({
         {remedy.href && remedy.actionLabel && (
           <Button asChild variant='outline' size='sm'>
             <Link href={remedy.href}>{remedy.actionLabel}</Link>
-          </Button>
-        )}
-        {remedy.action === 'unlock' && onReviewLock && (
-          <Button variant='outline' size='sm' onClick={onReviewLock}>
-            {remedy.actionLabel}
-          </Button>
-        )}
-        {blocker.status === 'period_closed' && onPostToNextPeriod && (
-          <Button variant='outline' size='sm' onClick={onPostToNextPeriod}>
-            Post to the next open period
           </Button>
         )}
         {remedy.action === 'next-period' && onNextPeriod && (

@@ -13,7 +13,6 @@ import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
 import { computeShipmentTotals } from '../../ledger/builders/fulfillment'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { withAccountingCommitLock } from '../../ledger/post/accounting-commit-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import {
@@ -239,11 +238,9 @@ export async function previewFulfillment(
           order,
         }
       }
-      const lock = await resolvePeriodLock(organizationId)
       const preview = await previewEntry(db, {
         organizationId,
         entry: prepared.entry,
-        lock,
         scope: prepared.scope,
       })
       return { ...preview, order }
@@ -274,11 +271,9 @@ async function postFulfillmentEntryInTx(
   }
 ): Promise<InTxPostResult> {
   const { organizationId, prepared, actorUserId, memo } = input
-  const lock = await resolvePeriodLock(organizationId, tx)
   return postEntryInTx(tx, {
     organizationId,
     entry: prepared.entry,
-    lock,
     scope: prepared.scope,
     sources: prepared.sources,
     storeId: prepared.storeId,
@@ -322,8 +317,7 @@ export async function reverseFulfillmentPosting(
       posting.status !== 'reversed'
   )
   if (!live) return null
-  const lock = await resolvePeriodLock(organizationId)
-  return reverseEntry(db, { organizationId, glPostingId: live.id, actorUserId, lock, memo })
+  return reverseEntry(db, { organizationId, glPostingId: live.id, actorUserId, memo })
 }
 
 /**
@@ -401,10 +395,7 @@ export async function fulfillOrder(
                 actorUserId,
                 memo,
               })
-              if (!didLedgerAccept(post))
-                blocked = refusalFromPost(post, {
-                  periodKey: prepared.entry.txnDate.slice(0, 7),
-                })
+              if (!didLedgerAccept(post)) blocked = refusalFromPost(post)
             } catch (error) {
               if (!(error instanceof AuxxError)) throw error
               post = refusalOf(error)

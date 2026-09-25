@@ -114,10 +114,6 @@ vi.mock('../../../ledger/post/reverse-entry', () => ({
   },
 }))
 
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => ok([]),
 }))
@@ -439,9 +435,9 @@ describe('a journal with lines posts at Post and reverses at Void', () => {
 
   it('leaves the record unposted on a ledger refusal', async () => {
     seedEntry()
-    h.postResult = { status: 'period_closed', error: 'August is locked' }
+    h.postResult = { status: 'unbalanced', error: 'The entry does not balance' }
     const result = await postJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
-    expect(result._unsafeUnwrap().status).toBe('period_closed')
+    expect(result._unsafeUnwrap().status).toBe('unbalanced')
     expect(h.updates).toHaveLength(0)
   })
 

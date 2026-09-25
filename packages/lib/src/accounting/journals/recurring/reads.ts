@@ -21,8 +21,6 @@ import {
   type RecurrenceRuleRow,
 } from '../../../recurrence'
 import { systemValueJoin } from '../../../resources/system-records'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
-import type { PeriodLock } from '../../ledger/periods/periods'
 import type { JournalEntryRecord } from '../entries/client'
 import { loadRecurrenceIdentityContext } from '../entries/fields'
 import { listJournalEntries } from '../entries/reads'
@@ -41,8 +39,7 @@ export interface RecurringJournalTemplate {
   rule: RecurrenceRuleRow | null
   /**
    * What the next sweep would do, computed against the SAME pure planner the
-   * sweep runs - so the screen cannot disagree with the job about which month
-   * is held. `null` when there is no rule.
+   * sweep runs. `null` when there is no rule.
    */
   plan: RecurringJournalPlan | null
 }
@@ -50,7 +47,7 @@ export interface RecurringJournalTemplate {
 /**
  * Every template in the org, with its schedule and what it owes.
  *
- * One query for the templates, one for their rules, one lock read - never a
+ * One query for the templates and one for their rules - never a
  * rule query per template. The plan is computed in memory from the pure
  * planner, so this costs no more than the list itself.
  */
@@ -74,16 +71,11 @@ export async function listRecurringJournalTemplates(
         subjectIds: templates.map((entry) => entry.id),
       })
 
-      // One lock read for the whole list. It fails CLOSED on a malformed
-      // setting (`period-lock.ts`), which is right here too: a screen that
-      // silently reported "nothing held" over an unreadable lock would be
-      // telling a bookkeeper the opposite of the truth.
-      const lock = await resolvePeriodLock(organizationId)
       const now = options.now ?? new Date()
 
       return templates.map((template) => {
         const rule = ruleBySubject.get(template.id) ?? null
-        return { template, rule, plan: rule ? planForRule(rule, lock, now) : null }
+        return { template, rule, plan: rule ? planForRule(rule, now) : null }
       })
     },
     'Failed to list recurring journal templates',
@@ -99,18 +91,13 @@ export async function listRecurringJournalTemplates(
  * (the `database` package sits below `lib` and may not import the real type),
  * so the cast lives here rather than at four call sites.
  */
-export function planForRule(
-  rule: RecurrenceRuleRow,
-  lock: PeriodLock,
-  now: Date
-): RecurringJournalPlan {
+export function planForRule(rule: RecurrenceRuleRow, now: Date): RecurringJournalPlan {
   return planRecurringOccurrences({
     pattern: rule.pattern as unknown as RecurrencePattern,
     anchor: rule.anchor,
     timezone: rule.timezone,
     materializedUntil: rule.materializedUntil,
     now,
-    lock,
   })
 }
 

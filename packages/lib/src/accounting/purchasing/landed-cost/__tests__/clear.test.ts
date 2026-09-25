@@ -19,13 +19,11 @@ vi.mock('../cleared', async (importOriginal) => ({
 vi.mock('../../expense-bill/reads', () => ({ requireVendorBill: vi.fn() }))
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({ isAccountingActive: vi.fn() }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({ todayInBookTimeZone: vi.fn() }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: vi.fn() }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: vi.fn() }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: vi.fn() }))
 vi.mock('../../../ledger/reads/list-postings', () => ({ findLiveSubjectPosting: vi.fn() }))
 
 import { ok } from 'neverthrow'
-import { resolvePeriodLock } from '../../../ledger/periods/period-lock'
 import { postEntry } from '../../../ledger/post/post-entry'
 import { reverseEntry } from '../../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../../ledger/reads/list-postings'
@@ -59,7 +57,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(isAccountingActive).mockResolvedValue(true)
   vi.mocked(todayInBookTimeZone).mockResolvedValue('2026-09-20')
-  vi.mocked(resolvePeriodLock).mockResolvedValue({ mode: 'open' } as never)
   vi.mocked(countClearPostings).mockResolvedValue(0)
   vi.mocked(requireVendorBill).mockResolvedValue({
     id: 'vb_goods',

@@ -121,7 +121,6 @@ export async function translateMirrorRange(
         organizationId,
         glPostingId: entry.livePostingId,
         actorUserId: input.actorUserId,
-        lock: input.lock,
         memo: `Reversal of ${entry.liveDocNumber ?? entry.providerTxnId} - the transaction no longer appears in the provider's ledger`,
       })
       if (!didLedgerAccept(reversed)) {
@@ -199,7 +198,6 @@ export async function translateMirrorRange(
       memo:
         `Synced from ${input.providerId}: ${entry.providerTxnType}` +
         `${entry.docNumber ? ` ${entry.docNumber}` : ''} (transaction ${entry.providerTxnId})`,
-      lock: input.lock,
       sources: [
         { sourceKind: PROVIDER_LEDGER_SOURCE_KIND, sourceId: entry.id, linkRole: 'subject' },
         ...entryCounterparty(lines.value),

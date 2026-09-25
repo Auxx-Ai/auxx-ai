@@ -10,7 +10,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { ClipboardCheck, Clock3, FileText, Plus } from 'lucide-react'
+import { CalendarCheck2, ClipboardCheck, Clock3, FileText, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -45,9 +45,10 @@ import { LedgerSummaryPanel } from './ledger-summary-panel'
 import { LedgerPeriodControls, ProviderPill } from './ledger-toolbar'
 import { LockMonthButton } from './lock-month-button'
 import { outboxHref } from './outbox-route'
+import { PostedAfterReviewSection } from './posted-after-review-section'
 import { useLedgerDrawers } from './use-ledger-drawers'
 
-/** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
+/** Reviewed through: the months at or before it are marked reviewed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
 
 /**
@@ -77,8 +78,8 @@ const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3
 
 /**
  * Closeout, at `/app/accounting/closeout` — the month: its stats, its refusals,
- * the lock, its other entries. `?month=YYYY-MM` is what makes a month shareable
- * (`useAccountingMonth`); the Outbox is its own route because every tab there
+ * Reviewed through, its other entries, and what posted after review. `?month=YYYY-MM` is
+ * what makes a month shareable (`useAccountingMonth`); the Outbox is its own route because every tab there
  * reads with no month bound (81-one-accounting-shell.md §0).
  *
  * Three states:
@@ -179,7 +180,7 @@ export function CloseoutPage() {
   // so the header cannot disagree with the list beneath it.
   const monthEntries = useMonthEntries(activePeriodKey || undefined)
 
-  // Why Lock is refused, or `null` when it is offered. The reasoning, and the
+  // Why Mark reviewed is refused, or `null` when it is offered. The reasoning, and the
   // trap of giving a `nothing_to_close` month the postable month's remedy, are
   // in `lockRefusalReason`'s own header. It is rendered as VISIBLE copy and not
   // only in the button's tooltip: a refusal an operator has to hover to
@@ -230,23 +231,18 @@ export function CloseoutPage() {
     if (!activePeriodKey) return
 
     if (isLocked) {
-      // ⚠️ Unlocking is mechanically just a setting write, so it is made loud.
-      // It permits posting into a month the accountant may already have seen,
-      // and because the setting is a THROUGH marker it reopens every month
-      // after this one as well.
+      // Unmarking clears the Posted after review list for every month it winds back over.
       const confirmed = await confirm({
-        title: `Unlock ${periodLabel}?`,
-        description: `Unlocking permits new postings into ${periodLabel} and every month after it - months that have already been closed and may already have been reported on. Anything posted after this changes figures somebody has seen.`,
-        confirmText: 'Unlock the month',
-        cancelText: 'Keep it locked',
-        destructive: true,
+        title: `Unmark ${periodLabel} reviewed?`,
+        description: `${periodLabel} and every month after it go back to not reviewed, and their Posted after review lists clear. Marking them reviewed again starts those lists over.`,
+        confirmText: 'Unmark reviewed',
+        cancelText: 'Keep reviewed',
       })
       if (!confirmed) return
     }
 
-    // A THROUGH marker, not a per-month flag: locking March declares everything
-    // up to and including March shut, and unlocking it winds the marker back to
-    // February. `null` means nothing is closed.
+    // A THROUGH marker: marking March reviews everything up to and including March, and
+    // unmarking it winds the marker back to February. `null` means nothing is reviewed.
     const previousLockedThrough = lockedThrough
     const nextLockedThrough = isLocked ? period.previousPeriodKey : activePeriodKey
 
@@ -261,17 +257,18 @@ export function CloseoutPage() {
           if (organizationId) {
             patchSettings(organizationId, { [LOCKED_THROUGH_KEY]: previousLockedThrough })
           }
-          toastError({ title: 'Error updating the period lock', description: error.message })
+          toastError({ title: 'Error updating Reviewed through', description: error.message })
         },
         onSettled: () => {
           void utils.ledger.periods.invalidate()
+          void utils.ledger.postedAfterReview.invalidate()
           void utils.setting.getOrganizationSettingsWithMetadata.invalidate()
         },
       }
     )
   }
 
-  // The toolbar is memoised; the ref keeps its Lock button calling this render's handler.
+  // The toolbar is memoised; the ref keeps its review button calling this render's handler.
   const toggleLockRef = useRef(handleToggleLock)
   toggleLockRef.current = handleToggleLock
 
@@ -379,7 +376,6 @@ export function CloseoutPage() {
                 blockers={activePeriodKey ? entry.blockers : []}
                 isSoftRefusal={false}
                 onFix={onFix}
-                onReviewLock={canControlLedger ? () => void handleToggleLock() : undefined}
                 onNextPeriod={
                   period.nextPeriodKey
                     ? () => goToPeriod(period.nextPeriodKey as string)
@@ -447,6 +443,20 @@ export function CloseoutPage() {
                   />
                 )}
               </Section>
+
+              {!!lockedThrough && (
+                <Section
+                  title='Posted after review'
+                  icon={<CalendarCheck2 className='size-4' />}
+                  description={`Entries dated in a reviewed month (through ${formatPeriodLabel(lockedThrough)}) that posted after the month was marked reviewed.`}
+                  collapsible={false}>
+                  <PostedAfterReviewSection
+                    currencyCode={currencyCode}
+                    bookTimeZone={bookTimeZone}
+                    onSelectPosting={openPosting}
+                  />
+                </Section>
+              )}
 
               {/* Every section below this point is ABOUT a month, so each is
                   gated on one having resolved. */}

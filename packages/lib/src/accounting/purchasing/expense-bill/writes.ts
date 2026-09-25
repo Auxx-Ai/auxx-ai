@@ -43,7 +43,6 @@ import { FieldValueService } from '../../../field-values/field-value-service'
 import { readDocumentLedgerState } from '../../documents/document-ledger-state'
 import type { BuiltVendorBillEntry } from '../../ledger/builders/entry'
 import { VENDOR_BILL_POSTING_TYPE, VENDOR_BILL_SOURCE_TYPE } from '../../ledger/builders/entry'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { previewEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -214,8 +213,7 @@ export async function previewVendorBill(
   input: VendorBillPostInput
 ): Promise<EntryPreview> {
   const { built } = await resolveVendorBill(db, input)
-  const lock = await resolvePeriodLock(input.organizationId)
-  return previewEntry(db, { organizationId: input.organizationId, entry: built.entry, lock })
+  return previewEntry(db, { organizationId: input.organizationId, entry: built.entry })
 }
 
 export interface PostVendorBillResult {
@@ -393,13 +391,11 @@ export async function voidVendorBill(db: Database, input: VoidVendorBillInput): 
     (posting) => posting.postingType === VENDOR_BILL_POSTING_TYPE && posting.status !== 'reversed'
   )
   if (live.length > 0) {
-    const lock = await resolvePeriodLock(organizationId)
     for (const posting of live) {
       const result = await reverseEntry(db, {
         organizationId,
         glPostingId: posting.glPostingId,
         actorUserId: userId,
-        lock,
         memo:
           memo ??
           `Reversal of ${posting.docNumber} - bill ${bill.number || bill.internalNumber} voided`,
