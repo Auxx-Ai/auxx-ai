@@ -90,7 +90,6 @@ import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../accounting/ledger/post/post-inventory-movement'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
@@ -452,7 +451,7 @@ export async function writeSalvageMovements(
                 ...(line.returnId ? [{ sourceKind: 'return', sourceId: line.returnId }] : []),
                 { sourceKind: 'return_line', sourceId: line.returnLineId },
               ],
-              txnDate: inventoryTxnDate(occurredAt),
+              occurredAt,
               movements: booked,
               actorUserId: userId,
               memo: reason,

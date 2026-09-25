@@ -71,6 +71,9 @@ const REVERSAL_ATTRIBUTES = [
   'stock_movement_vendor_part',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement',
+  'stock_movement_build',
+  'stock_movement_fulfillment_line',
+  'stock_movement_parent_movement',
 ] as const
 
 type ReversalAttribute = (typeof REVERSAL_ATTRIBUTES)[number]
@@ -121,6 +124,9 @@ interface OriginalMovement {
   purchaseOrderLineId: string | null
   /** Set when the original is ITSELF a reversal. */
   reversesMovementId: string | null
+  buildId: string | null
+  fulfillmentLineId: string | null
+  parentMovementId: string | null
 }
 
 /**
@@ -139,8 +145,8 @@ interface OriginalMovement {
  *    over-correction is a fresh receipt or adjustment, not a chain of undos -
  *    a chain makes "is this movement live?" a graph walk instead of a lookup.
  * 4. Write ONE new movement: the negated quantity, the ORIGINAL's frozen unit
- *    cost verbatim, and the original's `purchaseOrderLine`, `glAccount`,
- *    `vendorUnitPrice` and `vendorPart`.
+ *    cost verbatim, its `glAccount` and `vendorUnitPrice`, and every link it
+ *    carried (`StockMovementLinks`).
  *
  * 🛑 **The reversal is never re-priced.** It carries the unit cost the original
  * froze, whatever today's supplier terms say. A reversal valued at the current
@@ -335,6 +341,9 @@ async function readOriginalMovement(
     vendorPartId: read('stock_movement_vendor_part')?.relatedEntityId ?? null,
     purchaseOrderLineId: read('stock_movement_purchase_order_line')?.relatedEntityId ?? null,
     reversesMovementId: read('stock_movement_reverses_movement')?.relatedEntityId ?? null,
+    buildId: read('stock_movement_build')?.relatedEntityId ?? null,
+    fulfillmentLineId: read('stock_movement_fulfillment_line')?.relatedEntityId ?? null,
+    parentMovementId: read('stock_movement_parent_movement')?.relatedEntityId ?? null,
   }
 }
 
@@ -435,14 +444,19 @@ async function writeReversal(
         occurredAt,
         vendorUnitPrice: original.vendorUnitPrice ?? undefined,
         reason,
+        // Every link the original carried, so the reversal is found wherever
+        // the original is (`write-movements.ts` header). The purchase-order
+        // line is what rolls `purchase_order_line_quantity_received` back for
+        // free: the roll-up re-SUMs every movement pointing at the line.
         links: {
           reversesMovementId: originalMovementId,
           vendorPartId: original.vendorPartId ?? undefined,
-          // The copy that makes `purchase_order_line_quantity_received` roll
-          // back for free: the roll-up re-SUMs every movement pointing at the
-          // line, so the negative quantity decrements it with no change to
-          // the roll-up itself.
           purchaseOrderLineId: original.purchaseOrderLineId ?? undefined,
+          buildId: original.buildId ?? undefined,
+          fulfillmentLineId: original.fulfillmentLineId ?? undefined,
+          // Safe to copy: `explodeBomMovement` exits on `adjustSubparts`
+          // (never set here) before it ever reads the parent.
+          parentMovementId: original.parentMovementId ?? undefined,
         },
       },
     ]

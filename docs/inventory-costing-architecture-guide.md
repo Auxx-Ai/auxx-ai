@@ -358,6 +358,11 @@ incremental and therefore locked). See §7.3.
 a date correction under standard or average costing — and a full recomputation under FIFO. That
 asymmetry is one of the reasons FIFO is not on the table.
 
+A document's entry is dated `occurredAt`'s calendar day in `accounting.bookTimeZone`
+(`inventoryTxnDate`, derived once inside `postInventoryMovementInTx`), never its UTC date — the
+same day the close files the row under (§9.5). A document whose local month is at or before
+`accounting.cutoffPeriod` writes its movements and posts nothing (§9.3).
+
 ### 6.4 The generic delete door, and why `updatable: false` does not close it
 
 **Every entity in this subsystem is `EntityInstance`-backed and adds no Drizzle table (§3). The
@@ -945,6 +950,12 @@ sale can carry a hundred movements and one entry.
 
   The subject link is the document; `occurrence` distinguishes passes over one source. The parent
   links are the order or the purchase order where there is one.
+
+  🛑 **A document dated in or before `accounting.cutoffPeriod` posts nothing** (111-X1). The
+  poster returns `null`, the movements stay, and no work item is raised: the opening baseline
+  stands for that history, and `readSubledgerValue` (§9.5) excludes the same rows, so subledger
+  and ledger tie. The month is the `occurredAt` day in `accounting.bookTimeZone` — the poster
+  derives `txnDate` itself from `occurredAt`, so no writer can hand it a UTC date.
 
   🛑 **A relief run is the document, not the fulfillment.** Relief can run more than once per
   dispatch (a line skipped for a missing standard is relieved when the standard appears), so each

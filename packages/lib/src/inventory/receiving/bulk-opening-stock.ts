@@ -65,12 +65,10 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { requireCachedEntityDefId } from '../../cache'
@@ -223,7 +221,7 @@ export async function bulkOpenStockBalance(
                 organizationId,
                 kind: 'opening',
                 subject: { sourceKind: 'stock_movement', sourceId: booked[0].id },
-                txnDate: inventoryTxnDate(occurredAt),
+                occurredAt,
                 movements: booked,
                 actorUserId: userId,
               })

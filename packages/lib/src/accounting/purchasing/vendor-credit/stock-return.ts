@@ -26,10 +26,7 @@ import { StockMovementType } from '../../../resources/registry/enum-values'
 import { systemDefId } from '../../../resources/system-records'
 import type { InventoryMovementLine } from '../../ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../ledger/post/post-entry'
-import {
-  inventoryTxnDate,
-  postInventoryMovementInTx,
-} from '../../ledger/post/post-inventory-movement'
+import { postInventoryMovementInTx } from '../../ledger/post/post-inventory-movement'
 import type { VendorCreditLineRecord } from './reads'
 
 /** One flagged credit line, resolved to everything the movement and the entry need. */
@@ -221,7 +218,7 @@ export async function writeVendorCreditStockReturns(
     // — itself included — is linked as a member by the poster.
     subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
     parents: [{ sourceKind: 'vendor_credit', sourceId: vendorCreditInstanceId }],
-    txnDate: inventoryTxnDate(occurredAt),
+    occurredAt,
     movements,
     actorUserId: userId,
     memo: `Returned to vendor on ${number}`,

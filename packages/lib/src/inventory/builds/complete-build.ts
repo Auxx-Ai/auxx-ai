@@ -51,7 +51,6 @@ import type { InventoryMovementLine } from '../../accounting/ledger/builders/inv
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
@@ -407,7 +406,7 @@ async function writeCompletion(
     kind: 'build',
     subject: { sourceKind: 'build', sourceId: build.buildId },
     ...(build.orderId ? { parents: [{ sourceKind: 'order', sourceId: build.orderId }] } : {}),
-    txnDate: inventoryTxnDate(completedAt),
+    occurredAt: completedAt,
     movements: movementLines,
     absorbed: { laborMinor: laborCost, overheadMinor: overheadCost },
     actorUserId: userId,

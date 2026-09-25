@@ -30,6 +30,12 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) =>
     key === 'ledger.lockedThroughMonth' ? h.lockedThroughMonth : null,
 }))
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async () => ({
+    'accounting.bookTimeZone': 'UTC',
+    'accounting.cutoffPeriod': null,
+  }),
+}))
 
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({

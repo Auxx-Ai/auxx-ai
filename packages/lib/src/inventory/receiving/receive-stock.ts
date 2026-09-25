@@ -21,7 +21,6 @@ import type { ReceiveAccrualInput } from '../../accounting/ledger/builders/inven
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
@@ -505,7 +504,7 @@ async function postReceipt(
     ...(record.purchaseOrderLineId
       ? { parents: [{ sourceKind: 'purchase_order_line', sourceId: record.purchaseOrderLineId }] }
       : {}),
-    txnDate: inventoryTxnDate(record.occurredAt),
+    occurredAt: record.occurredAt,
     movements: [
       {
         id: record.movementId,

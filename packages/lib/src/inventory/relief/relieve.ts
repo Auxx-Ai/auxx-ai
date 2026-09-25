@@ -64,7 +64,6 @@ import { withAccountingCommitLock } from '../../accounting/ledger/post/accountin
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import type { PostResult } from '../../accounting/ledger/types'
@@ -539,7 +538,7 @@ async function relieveLines(
                   { sourceKind: 'fulfillment', sourceId: document.fulfillmentId },
                   { sourceKind: 'order', sourceId: document.orderId },
                 ],
-                txnDate: inventoryTxnDate(document.occurredAt),
+                occurredAt: document.occurredAt,
                 movements: document.movements,
                 actorUserId: userId,
               })

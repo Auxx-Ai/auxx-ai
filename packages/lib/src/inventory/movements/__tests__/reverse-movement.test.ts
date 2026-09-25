@@ -89,6 +89,9 @@ const ALL_MOVEMENT_ATTRS = [
   'stock_movement_vendor_part',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement',
+  'stock_movement_build',
+  'stock_movement_fulfillment_line',
+  'stock_movement_parent_movement',
 ]
 
 /**
@@ -174,6 +177,8 @@ beforeEach(() => {
     ['stock_movement', 'def_mv'],
     ['vendor_part', 'def_vp'],
     ['purchase_order_line', 'def_pol'],
+    ['build', 'def_build'],
+    ['fulfillment_line', 'def_fl'],
   ])
   h.instanceRows = [{ id: MOVEMENT }]
   h.valueRows = originalReceipt()
@@ -267,6 +272,27 @@ describe('reverseMovement — the row it writes', () => {
     expect(stamped).toBeLessThanOrEqual(Date.now())
   })
 
+  it('copies EVERY link the original carried - build, fulfillment line, parent movement', async () => {
+    // A build consume, a shipment line or an exploded child is found through
+    // its link; a reversal missing it is invisible wherever the original shows.
+    h.valueRows = originalReceipt({
+      stock_movement_build: value('stock_movement_build', { relatedEntityId: 'build_1' }),
+      stock_movement_fulfillment_line: value('stock_movement_fulfillment_line', {
+        relatedEntityId: 'fl_1',
+      }),
+      stock_movement_parent_movement: value('stock_movement_parent_movement', {
+        relatedEntityId: 'mv_parent',
+      }),
+    })
+    const values = await reverseAndRead()
+    expect(values.stock_movement_build).toBe('def_build:build_1')
+    expect(values.stock_movement_fulfillment_line).toBe('def_fl:fl_1')
+    expect(values.stock_movement_parent_movement).toBe('def_mv:mv_parent')
+    expect(values.stock_movement_purchase_order_line).toBe('def_pol:pol_1')
+    expect(values.stock_movement_vendor_part).toBe('def_vp:vp_1')
+    expect(values.stock_movement_reverses_movement).toBe('def_mv:mv_1')
+  })
+
   it('omits the relations the original did not carry', async () => {
     h.valueRows = originalReceipt({}, [
       'stock_movement_vendor_part',
@@ -277,6 +303,9 @@ describe('reverseMovement — the row it writes', () => {
     expect(values).not.toHaveProperty('stock_movement_vendor_part')
     expect(values).not.toHaveProperty('stock_movement_purchase_order_line')
     expect(values).not.toHaveProperty('stock_movement_vendor_unit_price')
+    expect(values).not.toHaveProperty('stock_movement_build')
+    expect(values).not.toHaveProperty('stock_movement_fulfillment_line')
+    expect(values).not.toHaveProperty('stock_movement_parent_movement')
   })
 
   it('returns exactly what it stored', async () => {

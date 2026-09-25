@@ -31,7 +31,6 @@ import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { requireCachedEntityDefId } from '../../cache'
@@ -140,7 +139,7 @@ export async function adjustStock(
                   organizationId,
                   kind: 'adjust',
                   subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
-                  txnDate: inventoryTxnDate(record.occurredAt),
+                  occurredAt: record.occurredAt,
                   movements: [
                     {
                       id: record.movementId,
