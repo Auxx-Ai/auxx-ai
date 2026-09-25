@@ -48,14 +48,14 @@ catalog:
   '@vitejs/plugin-react': ^4.5.0
   '@vitest/ui': ^4.0.18
   ai: ^4.2.8
-  better-auth: 1.5.6
+  better-auth: 1.6.33
   bson: ^7.2.0
   bullmq: ^5.41.5
   date-fns: 4.1.0
   date-fns-tz: ^3.2.0
   dotenv: ^16.4.7
   drizzle-kit: ^0.31.4
-  drizzle-orm: 0.44.5
+  drizzle-orm: 0.45.2
   drizzle-seed: 0.3.1
   googleapis: 144.0.0
   handlebars: ^4.7.8

@@ -2829,6 +2829,13 @@
       "when": 1790319801319,
       "tag": "0403_mrp_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 404,
+      "version": "7",
+      "when": 1790368372876,
+      "tag": "0404_two_factor_lockout_columns",
+      "breakpoints": true
     }
   ]
 }
