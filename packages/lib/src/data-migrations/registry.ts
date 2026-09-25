@@ -45,6 +45,7 @@ import { migration189ThreadTriageFields } from './migrations/189-thread-triage-f
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
 import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
 import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
+import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-ledger-under-mrp'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -223,6 +224,9 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration190PartsAndServices,
   // Appends one option to an existing system SINGLE_SELECT: Shopify's `UNLISTED` product status (D10).
   migration191ProductStatusUnlisted,
+  // Brief 111, one file with a step per unit: the `pending` cost basis option (Q18) and
+  // `relieve` work items re-staged to `price` (Q21); X4/X5 add their steps to it.
+  migration193InventoryLedgerUnderMrp,
 ]
 
 /**

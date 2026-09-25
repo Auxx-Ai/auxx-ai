@@ -406,6 +406,42 @@ describe('reverseMovement — the refusals', () => {
     expect(h.createSpy).not.toHaveBeenCalled()
   })
 
+  it('refuses a pre-regime row with no cost and no basis - nothing will ever price it', async () => {
+    h.valueRows = originalReceipt({}, ['stock_movement_unit_cost', 'stock_movement_cost_basis'])
+    const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toMatch(/not pending a price/)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  // 111 Q18: a pending row has no cost to carry, and its negation waits for the
+  // same price. Both are filled together when the standard lands.
+  it('reverses a PENDING row into a pending row - negated quantity, same part, no cost', async () => {
+    h.valueRows = originalReceipt(
+      { stock_movement_cost_basis: value('stock_movement_cost_basis', { optionId: 'pending' }) },
+      ['stock_movement_unit_cost']
+    )
+    const values = await reverseAndRead()
+    expect(values).toMatchObject({
+      stock_movement_part: 'def_part:part_1',
+      stock_movement_quantity: -10,
+      stock_movement_cost_basis: 'pending',
+      stock_movement_gl_account: 'inventory_raw_materials',
+      stock_movement_reverses_movement: 'def_mv:mv_1',
+    })
+    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+  })
+
+  it('refuses a row marked pending that somehow carries a cost', async () => {
+    h.valueRows = originalReceipt({
+      stock_movement_cost_basis: value('stock_movement_cost_basis', { optionId: 'pending' }),
+    })
+    const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
   it('refuses a movement carrying a cost but no GL account', async () => {
     h.valueRows = originalReceipt({}, ['stock_movement_gl_account'])
     const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))

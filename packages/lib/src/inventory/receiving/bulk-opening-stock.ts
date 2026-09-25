@@ -56,8 +56,9 @@
  * then carry a cost the standard disagrees with. The sequence (roll first,
  * default the cost column to the standard) is the fix; what this file adds is
  * the post-condition the single-part door already has - the part's standard is
- * RE-READ after step 3, and a part left holding `null`, `0` or a negative is
- * dropped to `failed` rather than given a movement nothing downstream can value.
+ * RE-READ after step 3. A part left holding `null` gets a `pending` row with no
+ * cost, parked at stage `price` (111 Q18); a stored `0` is a real standard
+ * (103 §5a); a negative one is dropped to `failed`.
  *
  * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
  */
@@ -71,6 +72,7 @@ import {
   exportInventoryMovement,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
+import { upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
@@ -182,17 +184,21 @@ export async function bulkOpenStockBalance(
       // Step 3: one call per DISTINCT unit cost. See the file header.
       await setFirstStandardCosts(db, organizationId, accepted, failed)
 
-      // Step 3b: the post-condition, verified rather than assumed (§6.1).
+      // Step 3b: the post-condition, verified rather than assumed (§6.1). A part
+      // still at `null` is written pending (111 Q18); only a corrupt standard fails.
       const standards = await readPartStandardCosts(db, organizationId, [...accepted.keys()])
       dropWhere(accepted, failed, (partId) => {
         const standard = standards.get(partId) ?? null
-        if (standard != null && Number.isFinite(standard) && standard > 0) return null
+        if (standard == null || (Number.isFinite(standard) && standard >= 0)) return null
         const label = parts.get(partId)?.displayName
         return {
           reason: 'no_standard_cost',
-          detail: `Could not set a standard cost for ${label ? `"${label}"` : `part ${partId}`}, so its opening stock was not recorded. Stock that carries no standard cost cannot be adjusted, built or closed.`,
+          detail: `${label ? `"${label}"` : `part ${partId}`} holds a standard cost nothing can value stock at, so its opening stock was not recorded. Roll its standard cost first.`,
         }
       })
+      const pendingPartIds = new Set(
+        [...accepted.keys()].filter((partId) => standards.get(partId) == null)
+      )
 
       // Step 4: the movements and the one entry that raises them, together.
       // Each run is its own document: it claims its first movement, so a second
@@ -205,13 +211,15 @@ export async function bulkOpenStockBalance(
           occurredAt,
           entries: [...accepted.values()],
           kindByPartId: new Map([...parts].map(([id, part]) => [id, part.kind])),
+          pendingPartIds,
           failed,
         })
+        // A pending row has no cost yet and is posted by the pricer, not here.
         const booked = rows
-          .filter((row) => row.extendedCost !== 0)
+          .filter((row) => row.extendedCost != null && row.extendedCost !== 0)
           .map((row) => ({
             id: row.movementId,
-            extendedCostMinor: row.extendedCost,
+            extendedCostMinor: row.extendedCost as number,
             glAccountRole: row.glAccount,
           }))
         return {
@@ -229,6 +237,12 @@ export async function bulkOpenStockBalance(
         }
       })
       await exportInventoryMovement(db, post)
+      await parkPendingRows(
+        db,
+        organizationId,
+        opened.filter((row) => row.pending),
+        parts
+      )
 
       logger.info('Opened stock balances in bulk', {
         organizationId,
@@ -627,7 +641,33 @@ interface WriteInitialMovementsArgs {
   occurredAt: Date
   entries: readonly OpeningStockEntry[]
   kindByPartId: ReadonlyMap<string, string | null>
+  /** Parts still holding no standard after step 3: written `pending`, no cost keys (111 Q18). */
+  pendingPartIds: ReadonlySet<string>
   failed: OpeningStockSkip[]
+}
+
+/** One `price` work item per pending opening row, grouped by its part. Runs after commit. */
+async function parkPendingRows(
+  db: Database,
+  organizationId: string,
+  rows: readonly OpenedOpeningStockRow[],
+  parts: ReadonlyMap<string, PartRow>
+): Promise<void> {
+  for (const row of rows) {
+    const partName = parts.get(row.partId)?.displayName
+    await upsertWorkItem(db, organizationId, {
+      sourceKind: 'stock_movement',
+      sourceId: row.movementId,
+      stage: 'price',
+      reasonCode: 'STANDARD_COST_MISSING',
+      externalRef: row.partId,
+      detail: {
+        partIds: [row.partId],
+        pendingMovementIds: [row.movementId],
+        ...(partName ? { partName } : {}),
+      },
+    })
+  }
 }
 
 /**
@@ -670,26 +710,34 @@ async function writeInitialMovements(
   userId: string,
   args: WriteInitialMovementsArgs
 ): Promise<OpenedOpeningStockRow[]> {
-  const { movementDefId, partDefId, occurredAt, entries, kindByPartId, failed } = args
+  const { movementDefId, partDefId, occurredAt, entries, kindByPartId, pendingPartIds, failed } =
+    args
   if (entries.length === 0) return []
 
   const planned = entries.map((entry) => {
     const glAccount = resolveInventoryRoleForPartKind(kindByPartId.get(entry.partId))
+    const pending = pendingPartIds.has(entry.partId)
     const values = buildStockMovementValues({
       partRecordId: toRecordId(partDefId, entry.partId),
       type: StockMovementType.INITIAL,
       quantity: entry.quantity,
-      unitCost: entry.unitCost,
+      unitCost: pending ? null : entry.unitCost,
       // `standard`, not `actual`. There is no vendor row, no purchase order and
       // no packing slip behind an opening balance, and step 3 has just made
       // this cost BE the part's standard, so `standard` is the honest
-      // description of it.
-      costBasis: StockMovementCostBasis.STANDARD,
+      // description of it. A part that took no standard goes `pending`.
+      costBasis: pending ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
       glAccount,
       // One date for the whole run: an opening balance is one event, on one date.
       occurredAt,
     })
-    return { entry, glAccount, extendedCost: values.stock_movement_extended_cost as number, values }
+    return {
+      entry,
+      glAccount,
+      pending,
+      extendedCost: (values.stock_movement_extended_cost as number | undefined) ?? null,
+      values,
+    }
   })
 
   const items: Record<string, unknown>[] = planned.map(({ values }) => values)
@@ -702,7 +750,7 @@ async function writeInitialMovements(
   let cursor = 0
 
   for (let index = 0; index < planned.length; index++) {
-    const { entry, glAccount, extendedCost } = planned[index]!
+    const { entry, glAccount, extendedCost, pending } = planned[index]!
     const failure = errorByIndex.get(index)
     if (failure !== undefined) {
       failed.push({ partId: entry.partId, reason: 'write_failed', detail: failure })
@@ -725,9 +773,10 @@ async function writeInitialMovements(
       movementId: instance.id,
       recordId: toRecordId(movementDefId, instance.id),
       quantity: entry.quantity,
-      unitCost: entry.unitCost,
+      unitCost: pending ? null : entry.unitCost,
       extendedCost,
       glAccount,
+      pending,
     })
   }
 
@@ -739,14 +788,15 @@ async function writeInitialMovements(
  *
  * The sum of every opening balance IS the opening inventory on the balance
  * sheet, and the per-account split is literally the entry the run produces
- * (§2.3). Derived from the rows that were actually written, never from the ones
- * that were planned.
+ * (§2.3). Derived from the rows that were actually written and priced, never
+ * from the ones that were planned; a pending row has no value yet.
  */
 function totalByGlAccount(
   opened: readonly OpenedOpeningStockRow[]
 ): BulkOpeningStockSummary['totalsByGlAccount'] {
   const totals = new Map<string, { glAccount: string; partCount: number; extendedCost: number }>()
   for (const row of opened) {
+    if (row.extendedCost == null) continue
     const total = totals.get(row.glAccount) ?? {
       glAccount: row.glAccount,
       partCount: 0,

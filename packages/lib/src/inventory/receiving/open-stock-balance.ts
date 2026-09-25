@@ -28,7 +28,9 @@
  *    hand-valuing an adjustment.
  * 3. `ensureStandardCost` with `kind: 'opening-stock'` and this `unitCost`.
  * 4. Write the movement at that standard, `cost_basis: standard`, with
- *    `gl_account` from `resolveInventoryRoleForPartKind`.
+ *    `gl_account` from `resolveInventoryRoleForPartKind`. A part still holding
+ *    no standard after step 3 gets a `pending` row with no cost, parked at
+ *    stage `price` (111 Q18); a stored $0 standard is a real one (103 §5a).
  * 5. `recalculatePartQoH`.
  *
  * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
@@ -38,6 +40,7 @@ import { type Database, schema } from '@auxx/database'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
@@ -89,15 +92,31 @@ export async function openStockBalance(
       if (kind.isErr()) throw kind.error
       const glAccount = resolveInventoryRoleForPartKind(kind.value)
 
-      await setFirstStandardCost(db, organizationId, input)
+      const standard = await setFirstStandardCost(db, organizationId, input)
 
-      return writeInitialMovement(db, organizationId, userId, {
+      const record = await writeInitialMovement(db, organizationId, userId, {
         movementDefId,
         partDefId,
         input,
         glAccount,
         occurredAt: input.occurredAt ?? new Date(),
+        pending: standard.standardCost == null,
       })
+      if (record.unitCost == null) {
+        await upsertWorkItem(db, organizationId, {
+          sourceKind: 'stock_movement',
+          sourceId: record.movementId,
+          stage: 'price',
+          reasonCode: 'STANDARD_COST_MISSING',
+          externalRef: input.partId,
+          detail: {
+            partIds: [input.partId],
+            pendingMovementIds: [record.movementId],
+            ...(standard.displayName ? { partName: standard.displayName } : {}),
+          },
+        })
+      }
+      return record
     },
     'Failed to set opening stock balance',
     { organizationId, partId: input.partId, quantity: input.quantity }
@@ -220,28 +239,25 @@ async function assertPartHasNoMovements(
 }
 
 /**
- * Step 3: the part must come out of this holding a standard cost.
+ * Step 3: give the part its first standard, and read back what it holds.
  *
  * `ensureStandardCost` writes only where `part_standard_cost IS NULL`, so a part
  * somebody already rolled keeps the standard it has and this is a no-op.
  *
  * 🛑 **An error here fails the whole write.** `ensureStandardCost` is documented
  * as never throwing on an unvaluable part, because its other callers are
- * post-commit hooks; a genuine failure returned here is different. Writing the
- * movement anyway would produce the one state the whole subsystem is built to
- * exclude: a part holding stock with no standard to value it at, which then
- * refuses every later adjustment and build.
+ * post-commit hooks; a genuine failure returned here is different.
  *
- * The post-condition is verified rather than assumed, for the same reason: the
- * caller supplied a cost, so "no standard afterwards" can only mean something
- * upstream declined to write, and finding that out before the ledger row exists
- * is the difference between a refusal and a mess.
+ * The post-condition is read rather than assumed: a part still holding `null`
+ * afterwards gets a `pending` opening row (111 Q18) rather than a refusal, and
+ * a stored `0` is a real standard (103 §5a). Only a negative or non-numeric
+ * standard refuses - nothing downstream can value against one.
  */
 async function setFirstStandardCost(
   db: Database,
   organizationId: string,
   input: OpenStockBalanceInput
-): Promise<void> {
+): Promise<{ standardCost: number | null; displayName: string | null }> {
   const ensured = await ensureStandardCost(db, organizationId, [input.partId], {
     kind: 'opening-stock',
     unitCost: input.unitCost,
@@ -252,20 +268,14 @@ async function setFirstStandardCost(
   if (standard.isErr()) throw standard.error
 
   const { standardCost, displayName } = standard.value
-  // `<= 0` is part of the post-condition, not a separate case. `ensureStandardCost`
-  // writes only where the standard IS NULL, so a part already sitting at a stored
-  // `0` comes back from it unchanged — and a null-only test would then pass on
-  // that zero and leave the part holding a standard its own opening movement
-  // disagrees with. The movement itself is safe either way (`unit_cost` is the
-  // caller's number, and `assertOpeningUnitCost` already refused `<= 0`); this is
-  // about the part not being left in a state nothing downstream can value.
-  if (standardCost == null || !Number.isFinite(standardCost) || standardCost <= 0) {
+  if (standardCost != null && (!Number.isFinite(standardCost) || standardCost < 0)) {
     const partLabel = displayName ? `"${displayName}"` : `part ${input.partId}`
     throw new UnprocessableEntityError(
-      `Could not set a standard cost for ${partLabel}, so its opening stock was not recorded. Stock that carries no standard cost cannot be adjusted, built or closed.`,
+      `${partLabel} holds a standard cost nothing can value stock at, so its opening stock was not recorded. Roll its standard cost first.`,
       { partId: input.partId }
     )
   }
+  return { standardCost, displayName }
 }
 
 interface WriteInitialMovementArgs {
@@ -275,6 +285,8 @@ interface WriteInitialMovementArgs {
   /** The inventory account ROLE, resolved from `partKind` at write time. */
   glAccount: string
   occurredAt: Date
+  /** The part has no standard: write no cost keys and `cost_basis: pending` (111 Q18). */
+  pending: boolean
 }
 
 /**
@@ -294,7 +306,8 @@ interface WriteInitialMovementArgs {
  * (`G12`), and `receiveStock`'s `unitCost` seam is internal to lib and rejected
  * by the router's input schema. Here the number IS the fact being recorded, and
  * step 3 has just made the part's standard agree with it, so the opening balance
- * carries no variance by construction.
+ * carries no variance by construction. A `pending` row is the exception: the
+ * part took no standard, so the row takes no cost and the pricer fills it.
  *
  * 🛑 **`adjustSubparts: false` is load-bearing, not a default.**
  * `explodeBomMovement` inherits the parent movement's type AND its sign, so an
@@ -310,9 +323,10 @@ async function writeInitialMovement(
   userId: string,
   args: WriteInitialMovementArgs
 ): Promise<MovementRecord> {
-  const { movementDefId, partDefId, input, glAccount, occurredAt } = args
-  const { quantity, unitCost } = input
-  const extendedCost = computeExtendedCost(unitCost, quantity)
+  const { movementDefId, partDefId, input, glAccount, occurredAt, pending } = args
+  const { quantity } = input
+  const unitCost = pending ? null : input.unitCost
+  const extendedCost = unitCost == null ? null : computeExtendedCost(unitCost, quantity)
 
   const values: Record<string, unknown> = {
     stock_movement_part: toRecordId(partDefId, input.partId),
@@ -324,10 +338,14 @@ async function writeInitialMovement(
     // `standard`, not `actual`. There is no vendor row, no purchase order and no
     // packing slip behind an opening balance, and step 3 has just made this cost
     // BE the part's standard, so `standard` is the honest description of it.
-    stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
-    stock_movement_unit_cost: unitCost,
-    stock_movement_extended_cost: extendedCost,
+    stock_movement_cost_basis: pending
+      ? StockMovementCostBasis.PENDING
+      : StockMovementCostBasis.STANDARD,
     stock_movement_gl_account: glAccount,
+  }
+  if (unitCost != null) {
+    values.stock_movement_unit_cost = unitCost
+    values.stock_movement_extended_cost = extendedCost
   }
 
   // `stock_movement` has no notes attribute; `reason` is the free-text field on

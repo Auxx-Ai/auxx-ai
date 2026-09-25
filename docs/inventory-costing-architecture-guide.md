@@ -335,6 +335,7 @@ other sends them to the invoice.
 | `adjustStock` | `adjust` (±) | interactive |
 | `completeBuild` | `build_consume` (−) **and** `build_produce` (+) | quiet, one transaction |
 | `reverseMovement` / `reverseBuild` | the negating row | quiet |
+| `fillPendingCost` | no row — fills the cost onto a `pending` row, once (§7.4) | quiet |
 
 **A correction is a reversal, never an edit.** `reverseMovement` exists for exactly this. The
 double-reversal guard is a read-then-write with no DB constraint available on a `FieldValue`,
@@ -591,7 +592,7 @@ one until a year of margins is wrong.
 | --- | --- |
 | `unitCost` | Standard cost per unit, frozen at write time, a RATE: five major-unit places (`RATE_DECIMALS`), so it may hold a fractional minor unit. |
 | `extendedCost` | `round(unitCost × quantity)`, **signed like `quantity`**, so a period rollup is a plain `SUM`. |
-| `costBasis` | `standard` \| `actual`. Every writer now writes `standard` — `receiveStock` and `receivePurchaseOrder` included, since a receipt freezes the standard and sends the gap to `ppv`. `actual` remains only on rows written before that. |
+| `costBasis` | `standard` \| `actual` \| `pending`. Every writer now writes `standard` — `receiveStock` and `receivePurchaseOrder` included, since a receipt freezes the standard and sends the gap to `ppv`. `actual` remains only on rows written before that. `pending` marks a row whose part had no standard when it was written (below). |
 | `glAccount` | An inventory **ROLE** (`inventory_raw_materials` / `inventory_finished_goods`), resolved from `partKind` **at write time**. Never a code — see §9.1. |
 | `qtyPerUnit` | The as-built BOM snapshot on a `build_consume` row. NULL means the component was **off-BOM** — a floor substitution. |
 
@@ -612,10 +613,24 @@ untouched while the account moves. It is what a standard-cost roll posts (§7.2 
 `revaluationDelta`, no longer merely computed) and what a provisional part's first receipt
 posts over its opening stock (§11).
 
-**Historical movements have NULL costs and stay NULL.** They predate the regime and are not
-postable, so any reader of unposted movements has to filter `unitCost IS NOT NULL` (no such
-reader exists today — the close's check counts movements that are not in an entry, which is a
-different question).
+#### A movement may exist without a cost — `pending`, filled once (111 Q18)
+
+Quantity never waits on cost. A part with no standard still moves: relief, `adjustStock`, the
+opening doors and `completeBuild` write the row **now** with `cost_basis = pending` and **no**
+`unit_cost` / `extended_cost` key — absent, never `0` (`buildStockMovementValues` refuses a null
+cost on any other basis). `fillPendingCost` (`inventory/movements/fill-pending-cost.ts`) is the
+**one** lane that later writes `unit_cost`, `extended_cost = round(unitCost × quantity)` and
+`cost_basis = standard` onto the **same row**, once; it refuses any row not currently `pending`
+and posts nothing — the pricer that calls it posts the document. The invariant is therefore
+"cost fields are written once — at write time or at pricing — never changed". `revalue` keeps
+its one meaning. A pending row reverses into a pending row; a pending build undoes into pending
+legs. The document parks at work-item stage `price` (`fulfillment` · `build` · `stock_movement`)
+until it is priced. Services are refused ahead of the pending path, as before.
+
+**Historical movements have NULL costs and stay NULL.** They predate the regime (BOM-explode
+children too) and are not postable. Null now also means pending, so the discriminator is
+`cost_basis = 'pending'`, never `IS NULL`: a pre-regime row has a null basis and no lane will
+ever price it.
 
 #### An `adjust` is valued at standard cost, in BOTH directions (`G12`)
 
@@ -629,9 +644,9 @@ into the COGS plug — precisely the separation `G12` exists to get (`5095 Inven
 is a sibling of `5090 PPV`, not a merge with it).
 
 Both directions now carry the part's frozen `part_standard_cost`, read by the **server**, with
-`cost_basis: standard` and the inventory role stamped. A part with **no** standard cost fails
-**closed, naming the part**: it must not fall back to `part_cost` (live replacement cost — §7.1
-rule 2) and must not write zero. The popover's Unit cost input is gone.
+`cost_basis: standard` and the inventory role stamped. A part with **no** standard cost writes a
+`pending` row and parks (111 Q18): it must not fall back to `part_cost` (live replacement cost —
+§7.1 rule 2) and must not write zero. The popover's Unit cost input is gone.
 
 ⚠️ Rows written before this carry the old costing and **cannot be back-filled** — every field is
 `updatable: false`. A period spanning the change holds both shapes.
@@ -943,10 +958,14 @@ sale can carry a hundred movements and one entry.
   the opening run. Each writes its `stock_movement` rows inside its own transaction and posts one
   entry against them **on that same transaction**.
 
-  🛑 **The entry commits WITH the movements.** A document whose rows landed and whose entry did
-  not is what the close's `inventory_unposted` blocker exists to catch, and it should be
-  unreachable rather than merely detectable. The provider push is the one thing that stays
-  outside the transaction.
+  🛑 **The entry commits WITH the movements** — with one designed exception. A document whose
+  rows landed and whose entry did not is what the close's `inventory_unposted` blocker exists to
+  catch, and outside the exception it should be unreachable. The exception is a **pending**
+  document (§7.4): a row with no cost yet cannot be booked, so the writer posts nothing, parks
+  the document at stage `price`, and the pricer posts it once every row is filled — a relief run
+  posts its priced rows and leaves the pending ones; a build with any pending leg posts nothing,
+  because its subject is the build id and can be claimed once. The provider push is the one
+  thing that stays outside the transaction.
 
   The subject link is the document; `occurrence` distinguishes passes over one source. The parent
   links are the order or the purchase order where there is one.
@@ -1085,11 +1104,13 @@ month-edge activity in the wrong month: invisible except at a close, uncorrectab
 period is locked. `accounting/ledger/setup/book-time-zone.ts` is the one reader of that setting.
 
 🛑 **A movement with no cost is not postable, and is not silently skipped.** A row missing
-`occurred_at`, `unit_cost`, `extended_cost` or its inventory role cannot be booked, and every
-sanctioned writer refuses to write one — so such a row came through some other door. *Filtering
-it produces a balanced entry that understates inventory with no signal*, which is the failure
-this rule exists to prevent. Movements that predate the costing regime carry NULL costs and stay
-NULL (§7.4); they sit below the cutoff, where the opening baseline replaces that history.
+`occurred_at`, `unit_cost`, `extended_cost` or its inventory role cannot be booked. A
+`cost_basis = pending` row (§7.4) is the designed state between a movement and its standard: the
+writer filters it out of the document it posts and parks the document at stage `price`, so the
+signal is Blocked plus the close's pending count, not a balanced entry that understates
+inventory. A null-cost row with any *other* basis came through some other door. Movements that
+predate the costing regime carry NULL costs and stay NULL (§7.4); they sit below the cutoff,
+where the opening baseline replaces that history.
 
 ⚠️ **`stock_movement_adjust_subparts = true` rows are excluded from every cost read**, here and
 in `inventory/costing/cost-reads.ts` and `inventory/costing/qoh.ts`. They are the PARENT of a
@@ -1324,6 +1345,13 @@ reads the two against each other and disagrees.
 value is literally `provisional`, so a part that predates the field keeps posting `ppv` as it
 always did rather than having its standard silently rewritten by the next receipt.
 
+🛑 **A null cost is not a zero, and `IS NULL` is not "pending".** `values.ts` used to compute
+`Math.round(null × q)` and store `0` for a null unit cost — harmless while every writer refused
+null, a valuation lie the day one passed it. A pending row (§7.4) omits both cost keys and is
+found by `cost_basis = 'pending'`; a reader that filters `extended_cost IS NOT NULL` or tests
+`=== 0` lets a null through to the builder, which throws and rolls the whole document back.
+Filter `== null` before the builder, every time.
+
 **Integration tests do not run in the default suite.** `packages/lib/vitest.config.ts` excludes
 `src/**/*.int.test.*` — that config mocks `@auxx/database`. They need
 `pnpm -F @auxx/lib test:integration` and a live Postgres. **A green package suite is not evidence
@@ -1353,7 +1381,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Path | Owns |
 | --- | --- |
 | `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
-| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
+| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
 | `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `open-stock-balance.ts`, `bulk-opening-stock.ts`, `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
 | `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |

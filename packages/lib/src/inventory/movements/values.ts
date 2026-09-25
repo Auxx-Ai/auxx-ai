@@ -13,7 +13,7 @@
  */
 
 import { UnprocessableEntityError } from '../../errors'
-import { StockMovementType } from '../../resources/registry/enum-values'
+import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import type { RecordId } from '../../resources/resource-id'
 import { computeExtendedCost } from './client'
 
@@ -32,7 +32,8 @@ export interface StockMovementValueFields {
   partRecordId: RecordId
   type: string
   quantity: number
-  unitCost: number
+  /** `null` only with `costBasis: 'pending'` - see `StockMovementInput.unitCost`. */
+  unitCost: number | null
   /** Omit to omit `stock_movement_cost_basis` entirely - see `types.ts`'s header. */
   costBasis?: string
   /** Omit to omit `stock_movement_gl_account` entirely - see `types.ts`'s header. */
@@ -73,11 +74,24 @@ export interface StockMovementValueFields {
  * shelf are worth and must not move the count. Every other type at quantity 0
  * is a row in an append-only ledger that corrects nothing, and one that carries
  * an `extendedCost` override would silently move an account against no stock.
+ *
+ * 🛑 **A `pending` row carries NO cost keys** (111 Q18): both are absent, never
+ * `0`, and `fillPendingCost` writes them later. A null cost on any other basis
+ * is refused here rather than multiplied into a `0` that reads as a valuation.
  */
 export function buildStockMovementValues(
   fields: StockMovementValueFields
 ): Record<string, unknown> {
   assertMovableQuantity(fields.type, fields.quantity)
+  const pending = fields.costBasis === StockMovementCostBasis.PENDING
+  if (pending ? fields.unitCost != null || fields.extendedCost != null : fields.unitCost == null) {
+    throw new UnprocessableEntityError(
+      pending
+        ? 'A pending stock movement carries no cost until it is priced'
+        : 'A stock movement with no unit cost must be written with a pending cost basis',
+      { type: fields.type }
+    )
+  }
   const {
     partRecordId,
     type,
@@ -101,9 +115,11 @@ export function buildStockMovementValues(
     stock_movement_type: type,
     stock_movement_quantity: quantity,
     stock_movement_adjust_subparts: adjustSubparts === true,
-    stock_movement_unit_cost: unitCost,
-    stock_movement_extended_cost: extendedCost ?? computeExtendedCost(unitCost, quantity),
     stock_movement_occurred_at: occurredAt.toISOString(),
+  }
+  if (unitCost != null) {
+    values.stock_movement_unit_cost = unitCost
+    values.stock_movement_extended_cost = extendedCost ?? computeExtendedCost(unitCost, quantity)
   }
 
   if (costBasis !== undefined) values.stock_movement_cost_basis = costBasis

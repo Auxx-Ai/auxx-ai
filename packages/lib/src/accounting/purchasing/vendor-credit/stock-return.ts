@@ -202,11 +202,13 @@ export async function writeVendorCreditStockReturns(
     // A $0-standard row still carries its `grni` debit, so it stays unless both are zero.
     .filter(
       ({ record, item }) =>
-        record.glAccount && (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
+        record.glAccount &&
+        record.extendedCost != null &&
+        (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
     )
     .map(({ record, item }) => ({
       id: record.movementId,
-      extendedCostMinor: record.extendedCost,
+      extendedCostMinor: record.extendedCost as number,
       glAccountRole: record.glAccount as string,
       grniReliefMinor: item.grniReliefMinor,
     }))

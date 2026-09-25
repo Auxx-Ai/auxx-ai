@@ -119,6 +119,12 @@ const h = vi.hoisted(() => ({
   getDeductionTargets: vi.fn(),
   loadSubpartGraph: vi.fn(),
   nextId: 0,
+  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
+  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
+}))
+
+vi.mock('../../../accounting/work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -782,24 +788,89 @@ describe('completeBuild', () => {
     expect(produces[0]?.stock_movement_quantity).toBe(10)
   })
 
-  it('aborts when a component has no standard cost — never posts a zero', async () => {
-    h.standards.delete(PART_ASM)
-    const error = await expectErr(
-      completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
-    )
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(error.message).toContain('without a standard cost')
-    expect(h.created).toEqual([])
-    expect(h.updated).toEqual([])
+  it('posts the build entry once, inside the completion', async () => {
+    await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    expect(h.postSpy).toHaveBeenCalledTimes(1)
+    expect(h.trace.indexOf('commit')).toBeGreaterThan(h.trace.indexOf('create:build_produce'))
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
   })
 
-  it('aborts when the PRODUCED part has no standard cost', async () => {
+  // 111 Q18: quantity never waits on cost. The uncosted leg is written with no
+  // cost keys; the whole entry waits, because the build id can be claimed once.
+  it('writes an uncosted component leg PENDING, stamps no cost, posts nothing and parks the build', async () => {
+    h.standards.delete(PART_ASM)
+    const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    const value = result._unsafeUnwrap()
+
+    const [consume, produce] = movementWrites()
+    expect(consume).toMatchObject({
+      stock_movement_type: 'build_consume',
+      stock_movement_quantity: -20,
+      stock_movement_cost_basis: 'pending',
+      stock_movement_gl_account: 'inventory_raw_materials',
+    })
+    expect(consume).not.toHaveProperty('stock_movement_unit_cost')
+    expect(consume).not.toHaveProperty('stock_movement_extended_cost')
+    // The priced leg is still priced: only the entry waits.
+    expect(produce).toMatchObject({
+      stock_movement_type: 'build_produce',
+      stock_movement_unit_cost: 8022,
+      stock_movement_cost_basis: 'standard',
+    })
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(h.updated[0]?.values).toMatchObject({ build_status: 'completed' })
+    expect(h.updated[0]?.values).not.toHaveProperty('build_material_cost')
+    expect(h.updated[0]?.values).not.toHaveProperty('build_variance_amount')
+    expect(value).toMatchObject({
+      materialCost: null,
+      producedValue: null,
+      varianceAmount: null,
+      pendingPartIds: [PART_ASM],
+    })
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'build',
+      sourceId: BUILD,
+      stage: 'price',
+      reasonCode: 'STANDARD_COST_MISSING',
+      externalRef: PART_ASM,
+      detail: {
+        partIds: [PART_ASM],
+        pendingMovementIds: [movementIdsWritten()[0]],
+        partName: '400Lbs motor Assembly',
+      },
+    })
+    // The commit still happened, and QoH still moved for every part.
+    expect(h.trace).toContain('commit')
+    expect([...h.recalcCalls[0]!].sort()).toEqual([PART_ASM, PART_LIFT].sort())
+  })
+
+  it('writes the PRODUCE leg pending when the produced part has no standard, and posts nothing', async () => {
     h.standards.delete(PART_LIFT)
-    const error = await expectErr(
-      completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    expect(result._unsafeUnwrap().pendingPartIds).toEqual([PART_LIFT])
+
+    const [consume, produce] = movementWrites()
+    expect(consume).toMatchObject({
+      stock_movement_unit_cost: 3661,
+      stock_movement_cost_basis: 'standard',
+    })
+    expect(produce).toMatchObject({
+      stock_movement_quantity: 10,
+      stock_movement_cost_basis: 'pending',
+    })
+    expect(produce).not.toHaveProperty('stock_movement_unit_cost')
+    expect(produce).not.toHaveProperty('stock_movement_extended_cost')
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      db,
+      ORG,
+      expect.objectContaining({
+        sourceKind: 'build',
+        sourceId: BUILD,
+        stage: 'price',
+        externalRef: PART_LIFT,
+      })
     )
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.created).toEqual([])
   })
 
   it('refuses a SECOND completion — one completion per build (B8)', async () => {
@@ -1061,6 +1132,53 @@ describe('reverseBuild', () => {
     expect(h.trace.indexOf('recalc')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
+  // 111 Q18: a pending leg has no cost to carry and is undone as a pending leg;
+  // the pricer fills the pair together when the standard lands.
+  it('undoes a PENDING build into pending legs, with no cost keys', async () => {
+    const costKeys = [
+      'fld_stock_movement_unit_cost',
+      'fld_stock_movement_extended_cost',
+      'fld_stock_movement_cost_basis',
+    ]
+    h.valueRows = [
+      ...completedBuildRows(),
+      ...completedMovementRows().filter(
+        (row) => !(row.entityId === 'mv_1' && costKeys.includes(row.fieldId))
+      ),
+      value('mv_1', 'stock_movement_cost_basis', { optionId: 'pending' }),
+      ...partKindRows(),
+    ]
+    const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
+    expect(result.isOk()).toBe(true)
+
+    const [consume, produce] = movementWrites()
+    expect(consume).toMatchObject({
+      stock_movement_type: 'build_consume',
+      stock_movement_quantity: 24,
+      stock_movement_cost_basis: 'pending',
+      stock_movement_reverses_movement: 'def_mv:mv_1',
+    })
+    expect(consume).not.toHaveProperty('stock_movement_unit_cost')
+    expect(consume).not.toHaveProperty('stock_movement_extended_cost')
+    expect(produce).toMatchObject({
+      stock_movement_unit_cost: 8022,
+      stock_movement_extended_cost: -80220,
+    })
+  })
+
+  it('still refuses to undo a build whose leg has no cost and is not pending', async () => {
+    h.valueRows = [
+      ...completedBuildRows(),
+      ...completedMovementRows().filter(
+        (row) => !(row.entityId === 'mv_1' && row.fieldId === 'fld_stock_movement_unit_cost')
+      ),
+      ...partKindRows(),
+    ]
+    const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(movementWrites()).toEqual([])
+  })
+
   it('announces BOTH defs — the reversing movements and the new build row', async () => {
     // A reversal writes on two defs and both are silent. The movements feed the
     // reversing build's own ledger; the `build` row is a CREATE that no open
@@ -1206,7 +1324,7 @@ describe('every sanctioned build_status writer carries its bypass', () => {
 // The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about the movements. `vi.mock` is hoisted, so placement is free.
 vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: async () => null,
+  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
   exportInventoryMovement: async () => null,
   inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
   reverseInventoryMovementPosting: async () => null,

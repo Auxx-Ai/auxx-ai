@@ -39,12 +39,13 @@
  *    brief agrees it is "mechanical and probably right"). Filtering happens
  *    in the CALLERS (they already hold `Fulfillment.status`), not here - this
  *    function only ever sees lines a caller decided are live.
- * 3. **A line whose cost cannot be priced at all** (no standard cost, or no
- *    relieved average for a down-delta) is
- *    skipped, counted (`skippedNoCost`) and parked for Blocked (task 100),
- *    never written at zero. "Never
- *    post a zero cost" is the same rule `complete-build.ts` enforces from the
- *    build side.
+ * 3. **A line whose cost cannot be priced yet** (no standard on an up-delta, no
+ *    relieved average on a down-delta) is still WRITTEN, as a `pending` row
+ *    with no cost (111 Q18): the quantity never waits on the cost. It is
+ *    counted (`skippedNoCost`), never posted here, and its dispatch is parked
+ *    at stage `price` until the pricer fills the row and posts it. "Never post
+ *    a zero cost" is the same rule `complete-build.ts` enforces from the build
+ *    side; a pending row is not a zero, it is an absence with a marker.
  * 4. **The unit cost is rounded to `RATE_DECIMALS`** via `roundMinorUnits`
  *    before it is handed to `writeStockMovements`, defensively - `V / Q` and
  *    `Σcost / Σqty` are both arbitrary-precision divisions and this module
@@ -75,7 +76,7 @@ import {
   recalculateFulfillmentLineQuantityRelievedBatch,
 } from '../../field-hooks/post/fulfillment-line-rollups'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { systemFieldMap } from '../../resources/system-records'
+import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import { readStandardCost } from '../costing'
 import { isServicePartKind } from '../costing/client'
 import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../costing/cost-reads'
@@ -134,7 +135,7 @@ export interface RelieveFulfillmentLinesResult {
   skippedNoPart: number
   /** §1.5 - a delta of zero writes no row. */
   skippedZeroDelta: number
-  /** A line with a real delta that could not be priced at all. Never posted at zero. */
+  /** Lines written as `pending` rows with no cost (111 Q18); the name predates the pending state. */
   skippedNoCost: number
   /** A line whose part is a `service`: no stock, so no movement, no COGS and no park (107-D10). */
   skippedService: number
@@ -401,30 +402,29 @@ async function relieveLines(
           continue
         }
         const standard = standardCosts?.get(line.partInstanceId) ?? null
-        let unitCostMinor: number | null
-        if (line.delta > 0) {
-          unitCostMinor = standard?.standardCost ?? null
-        } else {
-          // §3.5: priced at what THIS line was already relieved at, never at
-          // today's average - the down-delta un-relieves a specific prior
-          // valuation, not a fresh purchase.
-          unitCostMinor = relievedAverages.get(line.fulfillmentLineId)?.unitCostMinor ?? null
-        }
+        // §3.5: a down-delta is priced at what THIS line was already relieved
+        // at, never at today's average - it un-relieves a specific prior
+        // valuation, not a fresh purchase.
+        const unitCostMinor =
+          line.delta > 0
+            ? (standard?.standardCost ?? null)
+            : (relievedAverages.get(line.fulfillmentLineId)?.unitCostMinor ?? null)
 
-        if (unitCostMinor == null) {
+        // 111 Q18: no price yet is a `pending` row, not a skipped line. A
+        // down-delta of a line relieved while pending has no relieved average
+        // and goes pending too; the pricer fills both when the standard lands.
+        const pending = unitCostMinor == null
+        if (pending) {
           skippedNoCost++
-          if (line.delta > 0) {
-            const parts = tracker.unpricedParts.get(line.fulfillmentId) ?? []
-            if (!parts.includes(line.partInstanceId)) parts.push(line.partInstanceId)
-            tracker.unpricedParts.set(line.fulfillmentId, parts)
-          }
-          logger.error('Relief skipped a line - no cost could be determined', {
+          const parts = tracker.unpricedParts.get(line.fulfillmentId) ?? []
+          if (!parts.includes(line.partInstanceId)) parts.push(line.partInstanceId)
+          tracker.unpricedParts.set(line.fulfillmentId, parts)
+          logger.warn('Relief wrote a pending row - no cost could be determined yet', {
             organizationId,
             fulfillmentLineId: line.fulfillmentLineId,
             partInstanceId: line.partInstanceId,
             delta: line.delta,
           })
-          continue
         }
 
         const glAccount = resolveInventoryRoleForPartKind(
@@ -442,8 +442,8 @@ async function relieveLines(
           // correcting) writes a POSITIVE movement, per §1.5's own text: "The
           // down-delta is a `sale` row at a positive quantity."
           quantity: -line.delta,
-          unitCost: roundMinorUnits(unitCostMinor),
-          costBasis: StockMovementCostBasis.STANDARD,
+          unitCost: unitCostMinor == null ? null : roundMinorUnits(unitCostMinor),
+          costBasis: pending ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
           glAccount,
           occurredAt: line.occurredAt,
           // adjustSubparts omitted - defaults to false (§1.5, always).
@@ -453,7 +453,7 @@ async function relieveLines(
         // The composition this line's COGS is split by, or `null` for an
         // un-relief - it is priced at what the line was relieved at, which is
         // not today's standard and carries no composition of its own.
-        inputStandards.push(line.delta > 0 ? standard : null)
+        inputStandards.push(line.delta > 0 && !pending ? standard : null)
         relievedLineIds.push(line.fulfillmentLineId)
 
         deltaWrittenByPart.set(
@@ -662,8 +662,9 @@ interface ReliefDocument {
  * The written rows, regrouped by the dispatch that caused them.
  *
  * `records` comes back in `inputs`' order, and `inputLines` is kept in that same
- * order, so the two zip by index. A row with no frozen account is dropped: the
- * builder would refuse the whole document over it.
+ * order, so the two zip by index. A row with no frozen account, no cost yet (a
+ * `pending` row) or a zero cost is dropped: the builder throws on a null and
+ * refuses a zero line, and a pending row is posted by the pricer, not here.
  */
 function groupByFulfillment(
   inputLines: readonly ResolvedReliefLine[],
@@ -674,7 +675,7 @@ function groupByFulfillment(
   for (const [index, line] of inputLines.entries()) {
     const record = records[index]
     if (!record) continue
-    if (!record.glAccount || record.extendedCost === 0) continue
+    if (!record.glAccount || record.extendedCost == null || record.extendedCost === 0) continue
     const document = documents.get(line.fulfillmentId) ?? {
       fulfillmentId: line.fulfillmentId,
       orderId: line.orderId,
@@ -701,9 +702,14 @@ function groupByFulfillment(
 }
 
 /**
- * One `relieve` work item per offered dispatch that has a part with no standard
- * (plans/accounting/tasks/100 §1.3); every other offered dispatch is cleared.
- * Runs after commit.
+ * One `price` work item per offered dispatch that still has a `pending` row
+ * (plans/accounting/tasks/100 §1.3, 111 Q21); every other offered dispatch is
+ * cleared. Runs after commit.
+ *
+ * Read from the ledger, not from this run alone: a re-run whose lines are all
+ * at delta zero writes nothing, and must not clear a dispatch whose rows from
+ * an earlier run are still waiting on a price. The pricer clears the item once
+ * it has filled them.
  */
 async function syncReliefWorkItems(
   db: Database,
@@ -712,28 +718,74 @@ async function syncReliefWorkItems(
   unpricedParts: ReadonlyMap<string, string[]>
 ): Promise<void> {
   const offered = [...new Set(lines.map((line) => line.fulfillmentId))]
+  const pendingByFulfillment = await readPendingMovements(db, organizationId, lines)
   await deleteWorkItemsAtStage(db, organizationId, {
     sourceKind: 'fulfillment',
-    sourceIds: offered.filter((id) => !unpricedParts.has(id)),
-    stage: 'relieve',
+    sourceIds: offered.filter((id) => !pendingByFulfillment.has(id)),
+    stage: 'price',
   })
-  if (unpricedParts.size === 0) return
+  if (pendingByFulfillment.size === 0) return
 
   const partNames = await readPartNames(db, organizationId, [
-    ...new Set([...unpricedParts.values()].flat()),
+    ...new Set([...pendingByFulfillment.values()].flatMap((pending) => pending.partIds)),
   ])
-  for (const [fulfillmentId, partIds] of unpricedParts) {
+  for (const [fulfillmentId, pending] of pendingByFulfillment) {
+    // This run's line order first, so the group key is the part a person saw fail.
+    const partIds = [...new Set([...(unpricedParts.get(fulfillmentId) ?? []), ...pending.partIds])]
     const partId = partIds[0]!
     await upsertWorkItem(db, organizationId, {
       sourceKind: 'fulfillment',
       sourceId: fulfillmentId,
-      stage: 'relieve',
+      stage: 'price',
       reasonCode: 'STANDARD_COST_MISSING',
       // The group key: one Blocked row per part, the part a person has to price.
       externalRef: partId,
-      detail: { partIds, ...(partNames.get(partId) ? { partName: partNames.get(partId) } : {}) },
+      detail: {
+        partIds,
+        pendingMovementIds: pending.movementIds,
+        ...(partNames.get(partId) ? { partName: partNames.get(partId) } : {}),
+      },
     })
   }
+}
+
+/** Every `pending` movement on the offered lines, grouped by dispatch, in ledger order. */
+async function readPendingMovements(
+  db: Database,
+  organizationId: string,
+  lines: readonly FulfillmentLineToRelieve[]
+): Promise<Map<string, { movementIds: string[]; partIds: string[] }>> {
+  const result = new Map<string, { movementIds: string[]; partIds: string[] }>()
+  if (lines.length === 0) return result
+  const fulfillmentByLine = new Map(
+    lines.map((line) => [line.fulfillmentLineId, line.fulfillmentId])
+  )
+  const defId = await requireCachedEntityDefId(organizationId, 'stock_movement')
+  const fields = await systemFieldMap(db, organizationId, [
+    'stock_movement_fulfillment_line',
+    'stock_movement_cost_basis',
+    'stock_movement_part',
+  ] as const)
+  if (!fields.stock_movement_fulfillment_line || !fields.stock_movement_cost_basis) return result
+
+  const records = await readSystemRecords(
+    db,
+    organizationId,
+    { defId, fields },
+    { by: { attribute: 'stock_movement_fulfillment_line', in: [...fulfillmentByLine.keys()] } }
+  )
+  for (const record of records) {
+    if (record.option('stock_movement_cost_basis') !== StockMovementCostBasis.PENDING) continue
+    const lineId = record.related('stock_movement_fulfillment_line')
+    const fulfillmentId = lineId ? fulfillmentByLine.get(lineId) : undefined
+    if (!fulfillmentId) continue
+    const pending = result.get(fulfillmentId) ?? { movementIds: [], partIds: [] }
+    pending.movementIds.push(record.id)
+    const partId = record.related('stock_movement_part')
+    if (partId && !pending.partIds.includes(partId)) pending.partIds.push(partId)
+    result.set(fulfillmentId, pending)
+  }
+  return result
 }
 
 async function readPartNames(

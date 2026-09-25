@@ -30,6 +30,7 @@ const FIELD_IDS = {
   type: 'fld-type',
   quantity: 'fld-qty',
   extendedCost: 'fld-cost',
+  costBasis: 'fld-basis',
 }
 
 const FIELDS: Record<string, { id: string; type: string } | null> = {
@@ -37,6 +38,7 @@ const FIELDS: Record<string, { id: string; type: string } | null> = {
   stock_movement_type: { id: FIELD_IDS.type, type: 'SINGLE_SELECT' },
   stock_movement_quantity: { id: FIELD_IDS.quantity, type: 'NUMBER' },
   stock_movement_extended_cost: { id: FIELD_IDS.extendedCost, type: 'CURRENCY' },
+  stock_movement_cost_basis: { id: FIELD_IDS.costBasis, type: 'SINGLE_SELECT' },
 }
 
 /** One committed `stock_movement` row in the fixture ledger. */
@@ -45,6 +47,7 @@ interface FixtureMovement {
   type: string
   quantity: number
   extendedCost: number
+  costBasis?: string
 }
 
 const h = vi.hoisted(() => ({
@@ -85,11 +88,14 @@ function routeSum(
   // make `.has(m.lineId)` below reject the wider `string` type.
   const requestedIds = new Set<string>(params.filter((p) => p === LINE_A || p === LINE_B))
   const typeScoped = params.includes(saleLiteral)
+  // The basis join is what carries the `<> 'pending'` predicate; without it every basis counts.
+  const basisJoined = params.includes(FIELD_IDS.costBasis)
 
   const groups = new Map<string, { quantity: number; valueMinor: number }>()
   for (const m of h.movements) {
     if (!requestedIds.has(m.lineId)) continue
     if (typeScoped && m.type !== saleLiteral) continue
+    if (basisJoined && m.costBasis === 'pending') continue
     const g = groups.get(m.lineId) ?? { quantity: 0, valueMinor: 0 }
     g.quantity += m.quantity
     g.valueMinor += m.extendedCost
@@ -270,6 +276,24 @@ describe('readFulfillmentLineRelievedAverages', () => {
       relievedValueMinor: 16_000,
       unitCostMinor: 4_000,
     })
+  })
+
+  // 111 Q18: a line relieved while its part had no standard has a pending row.
+  // It carries no cost to average, and its units must not dilute the priced
+  // rows' figure - so the read excludes it on its BASIS, not on a null test.
+  it('ignores a PENDING row, so a line relieved while pending has no relieved average', async () => {
+    h.movements = [
+      { lineId: LINE_A, type: 'sale', quantity: -5, extendedCost: -20_000, costBasis: 'standard' },
+      { lineId: LINE_A, type: 'sale', quantity: -3, extendedCost: 0, costBasis: 'pending' },
+      { lineId: LINE_B, type: 'sale', quantity: -2, extendedCost: 0, costBasis: 'pending' },
+    ]
+    const result = await readFulfillmentLineRelievedAverages(fakeDb, {
+      organizationId: ORG,
+      fulfillmentLineIds: [LINE_A, LINE_B],
+    })
+    const map = result._unsafeUnwrap()
+    expect(map.get(LINE_A)).toMatchObject({ relievedQuantity: 5, unitCostMinor: 4_000 })
+    expect(map.has(LINE_B)).toBe(false)
   })
 
   it('a line with no sale movements at all is ABSENT from the Map, not a zero row', async () => {

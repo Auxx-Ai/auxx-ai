@@ -15,8 +15,9 @@
 //     month-end assertion absorbed it into the COGS plug — precisely the
 //     separation `G12` exists to get.
 //
-// And the refusal that replaces the old zero-cost one: a part with no standard
-// cost fails CLOSED, naming the part, and never falls back to `part_cost`.
+// And what replaces the old zero-cost refusal: a part with no standard cost
+// writes a PENDING row with no cost keys and parks at stage `price` (111 Q18);
+// it never falls back to `part_cost` and never writes a zero.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
@@ -33,6 +34,11 @@ const h = vi.hoisted(() => ({
   /** What `readPartStandardCost` answers. `null` = the part was never rolled. */
   standardCost: 4400 as number | null,
   displayName: 'Widget 9000' as string | null,
+  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
+}))
+
+vi.mock('../../../accounting/work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -217,36 +223,56 @@ describe('adjustStock — every adjustment carries the part standard cost', () =
   })
 })
 
-describe('adjustStock — a part with no standard cost fails CLOSED', () => {
-  it.each([5, -3])('refuses (quantity %s) and writes nothing', async (quantity) => {
+describe('adjustStock — a part with no standard cost writes PENDING (111 Q18)', () => {
+  it.each([
+    5, -3,
+  ])('writes the row with no cost keys and basis pending (quantity %s)', async (quantity) => {
     h.standardCost = null
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity }))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    const values = await adjustAndRead({ partId: 'part_1', quantity })
+    expect(values.stock_movement_quantity).toBe(quantity)
+    expect(values.stock_movement_cost_basis).toBe('pending')
+    // Absent, never 0: a zero would read as a valuation.
+    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+    // The account is known now, whatever the cost turns out to be.
+    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
   })
 
-  // 🛑 An error naming a cuid is unactionable when the form is showing a name.
-  it('names the part in the refusal', async () => {
+  it('parks the movement at stage price, grouped by the part it needs a cost for', async () => {
     h.standardCost = null
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
-    expect(error.message).toContain('Widget 9000')
-    expect(error.message).toMatch(/standard cost/i)
+    await adjustAndRead({ partId: 'part_1', quantity: 5 })
+    expect(h.upsertWorkItem).toHaveBeenCalledTimes(1)
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'stock_movement',
+      sourceId: 'mv_1',
+      stage: 'price',
+      reasonCode: 'STANDARD_COST_MISSING',
+      externalRef: 'part_1',
+      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_1'], partName: 'Widget 9000' },
+    })
   })
 
-  it('falls back to the part id when the part has no display name', async () => {
+  it('omits the part name from the park when the part has none', async () => {
     h.standardCost = null
     h.displayName = null
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
-    expect(error.message).toContain('part_1')
+    await adjustAndRead({ partId: 'part_1', quantity: 5 })
+    const [, , item] = h.upsertWorkItem.mock.calls[0]! as unknown as [
+      unknown,
+      unknown,
+      { detail: object },
+    ]
+    expect(item.detail).not.toHaveProperty('partName')
   })
 
-  // 🛑 HANDOFF rule 2: `part_cost` is LIVE REPLACEMENT cost, rewritten on every
-  // vendor-price change, and must never value a movement. The refusal says so,
-  // because "no standard cost" invites exactly that fix.
-  it('says why the live part cost is not an acceptable substitute', async () => {
+  it('returns the pending row with null costs, never zero', async () => {
     h.standardCost = null
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
-    expect(error.message).toMatch(/replacement price/i)
+    const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
+    expect(result._unsafeUnwrap()).toMatchObject({ unitCost: null, extendedCost: null })
+  })
+
+  it('does not park a priced adjustment', async () => {
+    await adjustAndRead({ partId: 'part_1', quantity: 5 })
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
   })
 
   it('refuses a standard cost that STILL rounds to zero at five places, rather than storing the zero', async () => {

@@ -54,8 +54,11 @@ export interface StockMovementInput {
   type: string
   /** SIGNED. The sign convention lives here and nowhere else. */
   quantity: number
-  /** Minor units, at `RATE_DECIMALS`. */
-  unitCost: number
+  /**
+   * Minor units, at `RATE_DECIMALS`. `null` only with `costBasis: 'pending'` (111 Q18):
+   * the part has no standard yet and `fillPendingCost` writes the cost later, once.
+   */
+  unitCost: number | null
   /** A `StockMovementCostBasis` value. Omit only to omit the key entirely (see above). */
   costBasis?: string
   /** An inventory ROLE (`resolveInventoryRoleForPartKind`), never a code. Omit only to omit the key (see above). */
@@ -105,8 +108,9 @@ export interface WrittenStockMovement {
   recordId: string
   partInstanceId: string
   quantity: number
-  unitCost: number
-  extendedCost: number
+  /** `null` on a pending row; the builder must never see one (filter `== null` first). */
+  unitCost: number | null
+  extendedCost: number | null
   glAccount: string | null
   occurredAt: Date
 }
@@ -205,10 +209,8 @@ export interface MovementRecord {
   /**
    * Landed cost per unit, whole minor units.
    *
-   * Nullable in the TYPE only because pre-migration rows exist; every writer in
-   * this module now refuses to produce a row without a cost, INCLUDING a
-   * negative stock adjustment — decision `G12` values a removal at the part's
-   * frozen `part_standard_cost` exactly as it values an addition.
+   * `null` on a pre-migration row and on a `pending` row (111 Q18); the
+   * `costBasis` on the stored movement is what tells the two apart.
    */
   unitCost: number | null
   /** `round(unitCost x quantity)`, signed like `quantity`; `null` with the cost. */

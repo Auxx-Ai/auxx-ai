@@ -23,6 +23,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { batchGetRelatedDisplayNames } from '../../field-values/field-value-helpers'
+import { StockMovementCostBasis } from '../../resources/registry/enum-values'
 import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
@@ -492,10 +493,14 @@ export async function readBuildMovements(
     const type = record.option('stock_movement_type')
     const quantity = record.number('stock_movement_quantity')
     const unitCost = record.number('stock_movement_unit_cost')
+    const costBasis = record.option('stock_movement_cost_basis')
+    // A pending leg (111 Q18) has no cost yet and reverses into a pending leg.
+    const pending = costBasis === StockMovementCostBasis.PENDING
 
-    if (!partId || !type || quantity == null || quantity === 0 || unitCost == null) {
-      // Every row a build writes carries all four. One that does not was not
-      // written by `completeBuild`, and negating it would invent a cost.
+    if (!partId || !type || quantity == null || quantity === 0 || (unitCost == null && !pending)) {
+      // Every row a build writes carries all four, or is marked pending. One
+      // that does neither was not written by `completeBuild`, and negating it
+      // would invent a cost.
       throw new UnprocessableEntityError(
         `Stock movement ${record.id} on this build has no part, type, quantity or frozen cost and cannot be reversed`
       )
@@ -506,11 +511,11 @@ export async function readBuildMovements(
       partId,
       type,
       quantity,
-      unitCost,
-      extendedCost: record.number('stock_movement_extended_cost'),
+      unitCost: pending ? null : unitCost,
+      extendedCost: pending ? null : record.number('stock_movement_extended_cost'),
       glAccount: record.text('stock_movement_gl_account'),
       qtyPerUnit: record.number('stock_movement_qty_per_unit'),
-      costBasis: record.option('stock_movement_cost_basis'),
+      costBasis,
     })
   }
 

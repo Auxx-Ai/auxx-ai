@@ -231,6 +231,11 @@ export interface BuildCompletionInputs {
  *
  * Every input is already rounded to whole minor units by the reads that produced
  * it, and the two derived terms round again on the way out.
+ *
+ * A plan with any `missingStandardPartIds` has no summary: `completeBuild` writes
+ * those legs `pending`, stamps no cost and posts nothing, and the pricer summarises
+ * on the last leg (111 Q18). A null component cost reads as 0 here for the PREVIEW
+ * only, beside the form's own list of uncosted parts.
  */
 export function summarizeBuildCompletion(inputs: BuildCompletionInputs): BuildCompletionSummary {
   const started = unitsStarted(inputs.quantityProduced, inputs.quantityScrapped)

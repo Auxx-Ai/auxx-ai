@@ -288,8 +288,8 @@ export interface BuildComponentPlan {
   components: BuildComponentLine[]
   /**
    * Components with no `part_standard_cost`, and the produced part when IT has
-   * none. **A completion with any entry here is refused** — never posted at
-   * zero.
+   * none. A completion with any entry here writes those legs `pending`, stamps
+   * no costs and posts nothing until the pricer fills them (111 Q18) — never a zero.
    */
   missingStandardPartIds: string[]
 }
@@ -300,14 +300,16 @@ export interface CompleteBuildResult {
   recordId: string
   quantityProduced: number
   quantityScrapped: number
-  /** Sum of the consumed lines' extended standard cost, positive. */
-  materialCost: number
-  laborCost: number
-  overheadCost: number
-  /** `round(quantityProduced x the produced part's standard cost)`. */
-  producedValue: number
-  /** `(material + labour + overhead) - producedValue` -> account 5090. */
-  varianceAmount: number
+  /** Sum of the consumed lines' extended standard cost, positive. `null` on a pending build. */
+  materialCost: number | null
+  laborCost: number | null
+  overheadCost: number | null
+  /** `round(quantityProduced x the produced part's standard cost)`. `null` on a pending build. */
+  producedValue: number | null
+  /** `(material + labour + overhead) - producedValue` -> account 5090. `null` on a pending build. */
+  varianceAmount: number | null
+  /** Parts with no standard whose legs were written `pending`; empty on a priced build (111 Q18). */
+  pendingPartIds: string[]
   /** Every `stock_movement` written, consumes first then the single produce. */
   movementIds: string[]
   /** The parts whose quantity on hand was recalculated AFTER the commit. */
@@ -354,8 +356,8 @@ export interface BuildMovementRow {
   /** `build_consume` or `build_produce`. Carried verbatim onto the negation. */
   type: string
   quantity: number
-  /** The ORIGINAL's frozen unit cost. Never re-priced (B6). */
-  unitCost: number
+  /** The ORIGINAL's frozen unit cost, or `null` on a `pending` leg. Never re-priced (B6). */
+  unitCost: number | null
   extendedCost: number | null
   glAccount: string | null
   /** The as-built snapshot; `null` on an off-BOM row and on the produce row. */

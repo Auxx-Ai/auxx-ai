@@ -23,7 +23,8 @@ type PostingSweep = (
 const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Payment accounting', sweepMovementAccounting],
   ['Shipment accounting', sweepFulfillmentAccounting],
-  ['Shipment relief', sweepFulfillmentRelief],
+  // Stage `price` (111 Q21). TODO(111 X3): replace with the pricer; relief re-run writes no pending rows.
+  ['Pricing', sweepFulfillmentRelief],
   // Issues channel memos and links refunds that posted before their memo arrived.
   ['Credit memo issuing', sweepChannelCreditMemos],
   // Payouts import in draft with no entry, and the nightly sync re-offers only 30 days.

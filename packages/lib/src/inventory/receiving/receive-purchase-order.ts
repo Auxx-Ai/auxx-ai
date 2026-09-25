@@ -279,12 +279,13 @@ export async function receivePurchaseOrder(
             .filter(
               ({ record, accrual }) =>
                 record.glAccount &&
+                record.extendedCost != null &&
                 (record.extendedCost !== 0 ||
                   accrual.grniMinor + accrual.freightMinor + accrual.dutiesMinor !== 0)
             )
             .map(({ record, accrual }) => ({
               id: record.movementId,
-              extendedCostMinor: record.extendedCost,
+              extendedCostMinor: record.extendedCost as number,
               glAccountRole: record.glAccount as string,
               accrual,
             })),
