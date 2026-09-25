@@ -5,16 +5,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
-import {
-  type FieldValueUpdateEntry,
-  getRealtimeService,
-  publishFieldValueUpdates,
-} from '../../realtime'
+import { getRealtimeService, publishFieldValueUpdates } from '../../realtime'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
@@ -22,12 +18,7 @@ const logger = createScopedLogger('field-hooks:inventory')
 
 /**
  * Recalculate part_quantity_on_hand and part_stock_status when a stock movement
- * is created or deleted.
- *
- * 1. Resolve which part was affected from the stock_movement_part relationship
- * 2. SUM all movement quantities for that part via a single self-join SQL query,
- *    which also carries the part's reorder point back as a scalar subquery
- * 3. Write part_quantity_on_hand and derive part_stock_status
+ * is created or deleted: resolve the part, then hand it to `batchRecalculateQoH`.
  */
 export const recalculatePartQoH: EntityTriggerHandler = async (event) => {
   const { organizationId, entityInstanceId, action, values } = event
@@ -167,138 +158,14 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
 // ─── Shared Helpers ──────────────────────────────────────────────────
 
 /**
- * Recalculate QoH for a specific part by summing all its stock movement quantities
- * in a single self-join query, then write QoH + stock status in parallel.
- *
- * ⚡ ONE read. The reorder point used to be a second statement run alongside the
- * SUM; it is a scalar subquery in the same statement now, because this function
- * runs once per stock movement and a ten-line receipt paid for ten of them.
+ * QoH has one owner (111 Q26): `batchRecalculateQoH` re-derives the count anchor, re-SUMs
+ * the ledger and writes `part_quantity_on_hand` and the stock status. Imported lazily, as
+ * `readKinds` is, to keep hook loading light.
  */
 async function recalculateQoHForPart(organizationId: string, partInstanceId: string) {
-  const cache = getOrgCache()
-  const fields = await cache
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([
-      'stock_movement_quantity',
-      'stock_movement_part',
-      'stock_movement_adjust_subparts',
-      'part_quantity_on_hand',
-      'part_reorder_point',
-      'part_stock_status',
-    ] as const)
-
-  const qtyField = fields.stock_movement_quantity
-  const partRelField = fields.stock_movement_part
-  const flagField = fields.stock_movement_adjust_subparts
-  const qohField = fields.part_quantity_on_hand
-  const reorderPointField = fields.part_reorder_point
-  const statusField = fields.part_stock_status
-
-  if (!qtyField || !partRelField || !qohField) {
-    logger.warn('Missing custom fields for QoH calculation', {
-      qtyField: !!qtyField,
-      partRelField: !!partRelField,
-      qohField: !!qohField,
-    })
-    return
-  }
-
-  // Single self-join: SUM movement quantities where the movement's part = partInstanceId
-  // Excludes movements where adjust_subparts=true (parent BOM explosion movements)
-  const [sumRow] = await database
-    .select({
-      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-      // The part's reorder point rides along as an uncorrelated scalar
-      // subquery rather than a second round trip. It is one index lookup
-      // inside a statement that was already being issued, and it references
-      // no column of the FROM list, so it is a constant to the aggregate.
-      reorderPoint: sql<number | null>`(SELECT fv_rp."valueNumber" FROM "FieldValue" fv_rp
-        WHERE fv_rp."entityId" = ${partInstanceId}
-          AND fv_rp."fieldId" = ${reorderPointField?.id ?? ''}
-          AND fv_rp."organizationId" = ${organizationId}
-        LIMIT 1)`,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(
-      sql`"FieldValue" fv_part`,
-      sql`${schema.FieldValue.entityId} = fv_part."entityId"
-        AND fv_part."fieldId" = ${partRelField.id}
-        AND fv_part."relatedEntityId" = ${partInstanceId}
-        AND fv_part."organizationId" = ${organizationId}`
-    )
-    .leftJoin(
-      sql`"FieldValue" fv_flag`,
-      sql`${schema.FieldValue.entityId} = fv_flag."entityId"
-        AND fv_flag."fieldId" = ${flagField?.id ?? ''}
-        AND fv_flag."organizationId" = ${organizationId}`
-    )
-    .where(
-      and(
-        eq(schema.FieldValue.fieldId, qtyField.id),
-        eq(schema.FieldValue.organizationId, organizationId),
-        sql`(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
-      )
-    )
-
-  const qoh = Number(sumRow?.total ?? 0)
-  const reorderPoint = sumRow?.reorderPoint != null ? Number(sumRow.reorderPoint) : null
-
-  const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-
-  const recordId = toRecordId(partDefId, partInstanceId) as RecordId
-  const ctx = createFieldValueContext(organizationId)
-  const status = deriveStockStatus(qoh, reorderPoint)
-  const writeStatus =
-    !!statusField &&
-    (await readKinds(organizationId, [partInstanceId])).get(partInstanceId) !== 'service'
-
-  // Write QoH + stock status in parallel
-  const writes: Promise<unknown>[] = [
-    setValueWithType(ctx, {
-      recordId,
-      fieldId: qohField.id,
-      fieldType: toFieldType(qohField.type),
-      value: { type: 'number', value: qoh },
-    }),
-  ]
-
-  if (statusField && writeStatus) {
-    writes.push(
-      setValueWithType(ctx, {
-        recordId,
-        fieldId: statusField.id,
-        fieldType: toFieldType(statusField.type),
-        value: { type: 'option', optionId: status },
-      })
-    )
-  }
-
-  await Promise.all(writes)
-
-  // Publish all updates in one batched call
-  const realtimeService = getRealtimeService()
-  const entries: FieldValueUpdateEntry[] = [
-    {
-      key: buildFieldValueKey(recordId, qohField.id as FieldId),
-      value: { type: 'number', value: qoh },
-    },
-  ]
-
-  if (statusField && writeStatus) {
-    entries.push({
-      key: buildFieldValueKey(recordId, statusField.id as FieldId),
-      value: { type: 'option', optionId: status },
-    })
-  }
-
-  publishFieldValueUpdates(realtimeService, organizationId, entries).catch((err) => {
-    logger.error('Failed to publish QoH realtime update', {
-      partInstanceId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  })
-
-  logger.info('QoH recalculated', { partInstanceId, qoh, status })
+  const { batchRecalculateQoH } = await import('../../inventory/costing/qoh')
+  await batchRecalculateQoH(organizationId, [partInstanceId])
+  logger.info('QoH recalculated', { partInstanceId })
 }
 
 /** `part_kind` per part. Imported lazily, as `part-kind-derivation.ts` does, to keep hook loading light. */

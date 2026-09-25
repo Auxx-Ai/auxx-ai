@@ -734,5 +734,53 @@ export const STOCK_MOVEMENT_FIELDS = defineResourceFields({
     },
   },
 
+  // The count fact an `initial` row is derived from (111 Q26): "N as of D". The row's own
+  // date and quantity are re-derived from these when older history arrives; every other
+  // type leaves both unset.
+  countQuantity: {
+    id: toFieldId('countQuantity'),
+    key: 'countQuantity',
+    label: 'Counted Quantity',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'stock_movement_count_quantity',
+    systemSortOrder: 'c3',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The counted quantity behind a reconstructed opening; set on `initial` rows only.',
+  },
+
+  countDate: {
+    id: toFieldId('countDate'),
+    key: 'countDate',
+    label: 'Counted On',
+    type: BaseType.DATE,
+    fieldType: FieldType.DATE,
+    isSystem: true,
+    systemAttribute: 'stock_movement_count_date',
+    systemSortOrder: 'c4',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'The date the count behind a reconstructed opening was taken; set on `initial` rows only.',
+  },
+
   createdBy: CREATED_BY_FIELD,
 })

@@ -156,6 +156,12 @@ export {
   type AppStorageSweepStats,
   appStorageSweepJob,
 } from './maintenance/app-storage-sweep-job'
+// Backflush (111 D23/D24): nightly over orgs with `inventory.backflush` on, or one org's range on demand.
+export {
+  type BackflushJobData,
+  backflushJob,
+  enqueueBackflushRun,
+} from './maintenance/backflush-job'
 // The bank feed's nightly sweep (HANDOFF slot 3A): the Stripe billing reaper plus
 // the stored coverage floor. Both fail silently if nobody runs them.
 export {

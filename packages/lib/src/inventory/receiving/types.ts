@@ -10,6 +10,8 @@
  * reaches any field on these types.
  */
 
+import type { MovementRecord } from '../movements/types'
+
 /** A single-line receipt: this many of this part arrived, at this price. */
 export interface ReceiveStockInput {
   /** `EntityInstance.id` of the `part` being received. */
@@ -115,8 +117,52 @@ export interface AdjustStockInput {
 }
 
 /**
+ * "I have N as of D" — the one count door (111 D21, Q15, Q26).
+ *
+ * No `initial` on the part yet: one `initial` is written at the ledger start so the replay
+ * reads N on D, carrying the count fact. An `initial` exists: one `adjust` dated D for the
+ * difference. `setCount` is what both opening doors call.
+ */
+export interface SetCountInput {
+  /** `EntityInstance.id` of the `part`. */
+  partId: string
+  /** Units on the shelf as of `date`. Zero or more; negative is refused. */
+  quantity: number
+  /** The count day (an instant; the book time zone picks the day). Defaults to now. */
+  date?: Date
+  /**
+   * What a unit cost, minor units at `RATE_DECIMALS`; zero is a real cost (103 §5a).
+   * Becomes the part's FIRST `part_standard_cost` when it has none; the row is valued at
+   * the standard the part holds after that, or written `pending` when it holds none.
+   */
+  unitCost?: number
+  /** Who counted. Defaults to the org's system user. */
+  actorUserId?: string
+  /** Free text: 'Cycle count, aisle 4'. */
+  notes?: string
+}
+
+export type SetCountOutcome = 'initial' | 'adjust' | 'unchanged'
+
+export interface SetCountResult {
+  outcome: SetCountOutcome
+  partId: string
+  countQuantity: number
+  /** `YYYY-MM-DD` in the book time zone. */
+  countDate: string
+  /** Net quantity of the ledger through the end of the count day, before this write. */
+  net: number
+  /** `countQuantity − net`: the row written, or 0 for `unchanged`. */
+  delta: number
+  movement: MovementRecord | null
+  /** The row took no cost (111 Q18) and is parked at stage `price`. */
+  pending: boolean
+}
+
+/**
  * A part's opening balance: the quantity and unit cost it starts life holding
- * (plans/money/tasks/15-costing-usability.md section 2.2).
+ * (plans/money/tasks/15-costing-usability.md section 2.2). Since 111 D21 this is
+ * `setCount` with the count dated `occurredAt`.
  *
  * 🛑 **Not an adjustment and not a receipt.** It is written once, by the create
  * form, as `StockMovementType.INITIAL`. See `open-stock-balance.ts` for why this
@@ -125,23 +171,21 @@ export interface AdjustStockInput {
 export interface OpenStockBalanceInput {
   /** `EntityInstance.id` of the `part`. */
   partId: string
-  /** Units on hand at the opening date. Strictly positive. */
+  /** Units on hand on the count day. Zero or more. */
   quantity: number
   /**
-   * What a unit cost, in whole minor units. Strictly positive.
+   * What a unit cost, minor units at `RATE_DECIMALS`; zero allowed (103 §5a).
    *
-   * Becomes the part's first `part_standard_cost` as well as this movement's
-   * frozen `unit_cost`, so the two agree by construction and the opening
-   * balance carries no variance.
+   * Becomes the part's first `part_standard_cost` when it has none, so the
+   * opening balance carries no variance by construction.
    */
-  unitCost: number
+  unitCost?: number
   /**
-   * The ACCOUNTING date. Defaults to now.
+   * The count day. Defaults to now.
    *
    * 🛑 Load-bearing for the close: an `initial` movement dated at or before
-   * `accounting.cutoffPeriod` falls outside the month-end window and is covered
-   * by the frozen `accounting.opening*` baseline; one dated after it is summed
-   * into inventory. Both are correct and the date is what chooses.
+   * `accounting.cutoffPeriod` posts nothing (the opening baseline covers it);
+   * one dated after it posts as a count variance (111 Q19).
    */
   occurredAt?: Date
   /** Free text: 'Opening count 2026-01-01'. */
@@ -277,39 +321,33 @@ export interface OpeningStockCandidate {
   isSubpartOfAssembly: boolean
 }
 
-/** One line of a bulk opening balance: this many of this part, at this cost. */
+/** One line of a bulk count: this many of this part, on this day, at this cost. */
 export interface OpeningStockEntry {
   /** `EntityInstance.id` of the `part`. */
   partId: string
-  /** Units on hand at the opening date. Strictly positive. */
+  /** Units on hand on the count day. Zero or more. */
   quantity: number
   /**
-   * What a unit cost, minor units at `RATE_DECIMALS`. Strictly positive.
+   * What a unit cost, minor units at `RATE_DECIMALS`; zero allowed (103 §5a).
    *
    * 🛑 NOT rounded into a legal value if it is finer than that. See
    * `bulk-opening-stock.ts`.
    */
-  unitCost: number
+  unitCost?: number
+  /** This part's count day. Falls back to the run's `occurredAt`, then now. */
+  date?: Date
 }
 
-/**
- * A whole org's opening balance, as one run.
- *
- * 🛑 **One date for the whole run, not one per row.** `openStockBalance` takes
- * `occurredAt` per part because it opens one part, but an opening balance is one
- * event on one date, and exposing it per row invites 495 dates for it.
- */
+/** A whole org's counts, as one run of `setCount` per part (103 O1, 111 D21). */
 export interface BulkOpeningStockInput {
-  /**
-   * The ACCOUNTING date stamped on every movement in the run.
-   *
-   * 🛑 Load-bearing for the close: an `initial` movement dated at or before
-   * `accounting.cutoffPeriod` falls outside the month-end window and is covered
-   * by the frozen `accounting.opening*` baseline; one dated after it is summed
-   * into inventory. Both are correct and the date is what chooses.
-   */
+  /** The count day for every entry that names none of its own. */
   occurredAt?: Date
   entries: OpeningStockEntry[]
+  /**
+   * A part that already has an `initial` is excluded by default (a stale re-run must not
+   * write adjustments). The Set counts page, which shows the delta per part, passes `true`.
+   */
+  adjustAnchored?: boolean
 }
 
 /**
@@ -320,17 +358,19 @@ export interface BulkOpeningStockInput {
  *
  * | reason | bucket | meaning |
  * | --- | --- | --- |
- * | `already_has_movements` | excluded | opening is once; this part's ledger already started |
+ * | `already_has_initial` | excluded | this part is already anchored; a further count writes an adjust, which the run only does with `adjustAnchored` |
+ * | `unchanged` | excluded | the ledger already reads the counted quantity on the count day; nothing to write |
  * | `duplicate_entry` | excluded | named twice in one run; the first entry was used |
- * | `invalid_quantity` | failed | not finite, or not above zero |
- * | `invalid_unit_cost` | failed | not finite, not above zero, or finer than `RATE_DECIMALS` |
+ * | `invalid_quantity` | failed | not finite, or negative |
+ * | `invalid_unit_cost` | failed | not finite, negative, or finer than `RATE_DECIMALS` |
  * | `unknown_part` | failed | no such part in this org, or it is archived |
  * | `service_part` | failed | a service is never stocked (107-D10) |
  * | `no_standard_cost` | failed | the part holds a negative or non-numeric standard; a part with NONE is opened `pending` (111 Q18) |
  * | `write_failed` | failed | the movement itself was refused |
  */
 export type OpeningStockSkipReason =
-  | 'already_has_movements'
+  | 'already_has_initial'
+  | 'unchanged'
   | 'duplicate_entry'
   | 'invalid_quantity'
   | 'invalid_unit_cost'
@@ -359,14 +399,19 @@ export interface OpeningStockSkip {
   detail: string
 }
 
-/** One part that WAS opened, and the ledger row it produced. */
+/** One part that WAS counted, and the ledger row it produced. */
 export interface OpenedOpeningStockRow {
   partId: string
+  /** `initial` for a first count, `adjust` for a further one (111 D21). */
+  outcome: Exclude<SetCountOutcome, 'unchanged'>
   /** `EntityInstance.id` of the created `stock_movement`. */
   movementId: string
   /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
   recordId: string
+  /** The row's SIGNED quantity: the counted quantity less what the ledger already read on the count day. */
   quantity: number
+  /** This part's count day, `YYYY-MM-DD` in the book time zone. */
+  countDate: string
   /** The TYPED cost, minor units, exactly as stored; `null` on a pending row. */
   unitCost: number | null
   /** `round(unitCost x quantity)`, exactly as stored; `null` on a pending row. */
@@ -387,7 +432,7 @@ export interface OpenedOpeningStockRow {
  * the caller sent is accounted for by exactly one row.
  */
 export interface BulkOpeningStockSummary {
-  /** The single date every movement in the run was stamped with. */
+  /** The count day used for every entry that named none of its own. */
   occurredAt: Date
   /** How many entries the caller sent, duplicates included. */
   requested: number

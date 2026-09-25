@@ -35,6 +35,7 @@ export type CloseBlockerItemKey =
   | 'unmapped_account'
   | 'invalid_mapping'
   | 'inventory_pending_cost'
+  | 'inventory_cutover_value_changed'
   | 'inventory_unposted'
   | 'inventory_balance'
   | 'inventory_standard_value'
@@ -204,6 +205,11 @@ export interface InventoryCloseCounts {
   periodKey: string
   /** Movements dated in the month with `cost_basis = pending`: written before their part had a standard (111 Q18). */
   pendingCostMovements?: number
+  /**
+   * `parts at cutover − (opening + posted differences)`, minor units, only on the first open
+   * month after the cutover (111 Q23). Absent or zero produces no item.
+   */
+  cutoverValueChangedMinor?: number | null
   /** Valued movements dated in the month with no member link to a posted inventory entry. */
   unpostedMovements: number
   /** Σ frozen `stock_movement_extended_cost` through the last day of the month. */
@@ -245,6 +251,20 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
   const pendingCostMovements = counts.pendingCostMovements ?? 0
   const month = monthLabel(periodKey)
   const items: CloseBlockerItem[] = []
+
+  // The baseline itself moved: a count landed on or before the cutover since the last difference
+  // entry. First, because every later check ties against it.
+  const cutoverDelta = counts.cutoverValueChangedMinor ?? 0
+  if (cutoverDelta !== 0) {
+    items.push({
+      key: 'inventory_cutover_value_changed',
+      label: `The value of your parts at the cutover changed by ${cutoverDelta} since the last difference entry`,
+      remedy:
+        'Review the opening inventory difference under Accounting settings and post the change; ' +
+        'the entry is dated the day after the cutover and carries only the delta.',
+      ref: periodKey,
+    })
+  }
 
   if (pendingCostMovements > 0) {
     items.push({
@@ -300,6 +320,22 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
   }
 
   return items
+}
+
+/**
+ * The month after the later of the cutoff and the reviewed-through marker: where a change to
+ * the value at the cutover is raised (111 Q23). Null when the cutoff is not a month.
+ */
+export function firstOpenMonthAfter(cutoff: string, lockedThrough: string | null): string | null {
+  const floor = lockedThrough && lockedThrough > cutoff ? lockedThrough : cutoff
+  const match = /^(\d{4})-(\d{2})$/.exec(floor)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return null
+  const nextYear = month === 12 ? year + 1 : year
+  const nextMonth = month === 12 ? 1 : month + 1
+  return `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}`
 }
 
 /** The lead sentence the inventory checks open with, before their items. */

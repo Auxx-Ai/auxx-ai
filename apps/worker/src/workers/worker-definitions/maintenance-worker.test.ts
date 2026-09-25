@@ -54,6 +54,9 @@ describe('maintenance worker registrations', () => {
     // credited - and nothing on screen says so until somebody reads a balance
     // sheet months later.
     ['payout sync', 'payoutSyncJob'],
+    // Nightly and on-demand (`builds.runBackflush`) share this one name; unregistered, the
+    // switch would be on and nothing would ever be built (111 D23).
+    ['backflush', 'backflushJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })

@@ -74,6 +74,10 @@ export function inventoryTxnDate(occurredAt: Date, zone: string): string {
  * document moved no money (the builder's own answer). None is a refusal and
  * none is logged as one; the caller keeps its movements.
  *
+ * An `opening` on an org with a cutover therefore only ever posts AFTER it, and
+ * posts as `adjust` (Count Variance); `opening` itself posts only on an org that
+ * never set a cutover (111 Q19).
+ *
  * **Throws** what `postEntryInTx` throws, so the caller's transaction rolls back
  * with it. A business REFUSAL - a locked period, an unmapped role - comes back
  * as a `PostResult` status instead, and the caller keeps its movements.
@@ -82,16 +86,7 @@ export async function postInventoryMovementInTx(
   tx: Transaction,
   input: PostInventoryMovementInput
 ): Promise<InTxPostResult | null> {
-  const {
-    organizationId,
-    kind,
-    subject,
-    parents = [],
-    occurredAt,
-    movements,
-    actorUserId,
-    memo,
-  } = input
+  const { organizationId, subject, parents = [], occurredAt, movements, actorUserId, memo } = input
 
   if (movements.length === 0) return null
   if (!(await isAccountingActive(organizationId))) return null
@@ -104,6 +99,8 @@ export async function postInventoryMovementInTx(
   const txnDate = inventoryTxnDate(occurredAt, settings[K.bookTimeZone]?.trim() || 'UTC')
   const cutoff = settings[K.cutoffPeriod]?.trim()
   if (cutoff && txnDate.slice(0, 7) <= cutoff) return null
+  // 111 Q19: stock counted after the books opened is a count variance, never opening equity.
+  const kind: InventoryDocumentKind = input.kind === 'opening' && cutoff ? 'adjust' : input.kind
 
   const built = buildInventoryMovementEntry({
     kind,

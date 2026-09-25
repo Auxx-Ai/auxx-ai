@@ -18,13 +18,7 @@ export function ConnectAndGoFinishPage({
 
   return (
     <div className='flex flex-col'>
-      {outcome && (
-        <ConnectAndGoStepList
-          report={outcome}
-          providerLabel={providerLabel}
-          currencyCode={report.company?.homeCurrency ?? 'USD'}
-        />
-      )}
+      {outcome && <ConnectAndGoStepList report={outcome} providerLabel={providerLabel} />}
 
       {flow.done ? (
         <p className='px-4 py-3 text-muted-foreground text-sm'>

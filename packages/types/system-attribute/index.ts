@@ -769,6 +769,9 @@ export const SYSTEM_ATTRIBUTES = [
   // Nullable, updatable: false, filterable: true - all of task 50's netting
   // (plans/money/tasks/55). Mirrors stock_movement_purchase_order_line.
   'stock_movement_fulfillment_line',
+  // The count fact behind a reconstructed opening (111 Q26): set on `initial` rows only.
+  'stock_movement_count_quantity',
+  'stock_movement_count_date',
   'vendor_part_stock_movements', // inverse of stock_movement_vendor_part
 
   // ─── Purchase order ─────────────────────────────────────────────

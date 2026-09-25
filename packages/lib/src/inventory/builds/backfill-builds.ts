@@ -265,10 +265,66 @@ export function resolveBackfillCompletedAt(bucket: BackfillBucket, timeZone: str
   const lastMs = Number.isFinite(endMs) && endMs > startMs ? endMs - 1 : startMs
 
   const localDay = periodKeyForDate(new Date(lastMs), 'day', timeZone)
-  const endOfLocalDay = fromZonedTime(`${localDay}T23:59:59.999`, timeZone)
-  const candidate = Number.isNaN(endOfLocalDay.getTime()) ? lastMs : endOfLocalDay.getTime()
+  const dayEnd = endOfLocalDay(localDay, timeZone)
+  const candidate = Number.isNaN(dayEnd.getTime()) ? lastMs : dayEnd.getTime()
 
   return new Date(Math.min(Math.max(candidate, startMs), lastMs))
+}
+
+/** 23:59:59.999 of a `YYYY-MM-DD` day in `timeZone`; invalid input yields an invalid Date. */
+export function endOfLocalDay(localDay: string, timeZone: string): Date {
+  return fromZonedTime(`${localDay}T23:59:59.999`, timeZone)
+}
+
+/** What {@link raiseAndCompleteBuild} is handed: one build, dated by its caller. */
+export interface RaiseAndCompleteInput {
+  partId: string
+  quantity: number
+  source: 'batch' | 'backflush'
+  /** The run's number, allocated once by the caller and shared by every build it raises. */
+  batchRun: number
+  /** Omitted leaves the build `planned`. */
+  completedAt?: Date
+  period?: { start: Date; end: Date }
+  notes?: string
+}
+
+/**
+ * create → start → complete, for one build. Throws only when the raise itself was refused
+ * (nothing written); a refused start or completion comes back as `leftInProgress`, the reason
+ * verbatim, with the build that now exists.
+ */
+export async function raiseAndCompleteBuild(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  input: RaiseAndCompleteInput
+): Promise<{ buildId: string; leftInProgress: string | null }> {
+  const created = await createBuild(db, organizationId, userId, {
+    partId: input.partId,
+    quantityPlanned: input.quantity,
+    source: input.source,
+    period: input.period,
+    batchRun: input.batchRun,
+    notes: input.notes,
+  })
+  if (created.isErr()) throw created.error
+  const buildId = created.value.buildId
+  if (!input.completedAt) return { buildId, leftInProgress: null }
+
+  const started = await startBuild(db, organizationId, userId, { buildId })
+  if (started.isErr()) {
+    return {
+      buildId,
+      leftInProgress: `The build was raised but could not be started: ${started.error.message}`,
+    }
+  }
+  const completed = await completeBuild(db, organizationId, userId, {
+    buildId,
+    quantityProduced: input.quantity,
+    completedAt: input.completedAt,
+  })
+  return { buildId, leftInProgress: completed.isErr() ? completed.error.message : null }
 }
 
 /**
@@ -353,49 +409,28 @@ async function executeBucket(
   //
   // `run.batchRun` and never a fresh allocation: every bucket in this run passes
   // the SAME number, which is what makes "the builds run 2 made" a plain filter.
-  const created = await createBuild(db, organizationId, userId, {
-    partId: bucket.partId,
-    quantityPlanned: bucket.quantityToBuild,
-    source: 'batch',
-    period: { start: bucket.periodStart, end: bucket.periodEnd },
-    batchRun: run.batchRun,
-  })
   // A refused raise wrote nothing at all, so it is a `failed` bucket rather than
   // a build somebody has to go and finish. Thrown, not returned, so the bucket
   // layer records it and the run steps over it.
-  if (created.isErr()) throw created.error
-  const build = created.value
+  const { buildId, leftInProgress } = await raiseAndCompleteBuild(db, organizationId, userId, {
+    partId: bucket.partId,
+    quantity: bucket.quantityToBuild,
+    source: 'batch',
+    period: { start: bucket.periodStart, end: bucket.periodEnd },
+    batchRun: run.batchRun,
+    completedAt: request.status === 'completed' ? completedAt : undefined,
+  })
 
   summary.created.push({
     partId: bucket.partId,
-    buildId: build.buildId,
+    buildId,
     quantity: bucket.quantityToBuild,
     periodKey: bucket.periodKey,
   })
 
-  if (request.status === 'planned' || !completedAt) return
-
-  const started = await startBuild(db, organizationId, userId, { buildId: build.buildId })
-  if (started.isErr()) {
-    recordLeftInProgress(
-      summary,
-      bucket,
-      build.buildId,
-      `The build was raised but could not be started: ${started.error.message}`
-    )
-    return
-  }
-
-  const completed = await completeBuild(db, organizationId, userId, {
-    buildId: build.buildId,
-    quantityProduced: bucket.quantityToBuild,
-    completedAt,
-  })
-  if (completed.isErr()) {
-    // The refusal verbatim — an unpriced component, almost always — because it
-    // is what the person has to go and fix.
-    recordLeftInProgress(summary, bucket, build.buildId, completed.error.message)
-  }
+  // The refusal verbatim — an unpriced component, almost always — because it
+  // is what the person has to go and fix.
+  if (leftInProgress) recordLeftInProgress(summary, bucket, buildId, leftInProgress)
 }
 
 /**

@@ -22,6 +22,13 @@ describe('isFrozenSetupSettingKey', () => {
     expect(isFrozenSetupSettingKey('accounting.openingTrialBalance')).toBe(true)
   })
 
+  it('exempts the in-books answer, which is given after finalize (111 Q19)', () => {
+    expect(isFrozenSetupSettingKey('accounting.openingInventoryInBooks')).toBe(false)
+    expect(
+      FROZEN_SETUP_SETTING_KEYS.except.every((key) => key.startsWith('accounting.opening'))
+    ).toBe(true)
+  })
+
   it('freezes the two keys that define the period keyspace', () => {
     expect(isFrozenSetupSettingKey('accounting.bookTimeZone')).toBe(true)
     expect(isFrozenSetupSettingKey('accounting.cutoffPeriod')).toBe(true)

@@ -77,7 +77,7 @@ export type OpeningStockCandidate =
 export type OpeningStockKind = RouterInputs['purchasing']['bulkSetPartKind']['kind']
 
 /** What a run did, and what it did not do. */
-export type OpeningStockRunSummary = RouterOutputs['purchasing']['runOpeningStock']
+export type OpeningStockRunSummary = RouterOutputs['purchasing']['runSetCounts']
 
 /**
  * §4's three MOVEMENT states. `unclassified` and `cost override` are not states
@@ -468,7 +468,7 @@ export function useOpeningStock() {
   // ── Writes ──────────────────────────────────────────────────────────────
 
   const bulkSetPartKind = api.purchasing.bulkSetPartKind.useMutation()
-  const runOpeningStock = api.purchasing.runOpeningStock.useMutation()
+  const runOpeningStock = api.purchasing.runSetCounts.useMutation()
   const { ConfirmDialog: KindConfirmDialog, runBatch } = useBulkRunner()
 
   /**

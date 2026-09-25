@@ -16,6 +16,7 @@ import { UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import type { RecordId } from '../../resources/resource-id'
 import { computeExtendedCost } from './client'
+import type { StockMovementCountFact } from './types'
 
 /** Already-resolved link targets, keyed the way the movement stores them. */
 export interface ResolvedStockMovementLinks {
@@ -48,6 +49,8 @@ export interface StockMovementValueFields {
   vendorUnitPrice?: number
   /** See {@link StockMovementInput.accrued}. Receipts only; omitted keys stay absent. */
   accrued?: { freightMinor?: number; dutiesMinor?: number; tariffRate?: number }
+  /** See {@link StockMovementInput.count}. `initial` rows only. */
+  count?: StockMovementCountFact
   links?: ResolvedStockMovementLinks
 }
 
@@ -107,8 +110,13 @@ export function buildStockMovementValues(
     qtyPerUnit,
     vendorUnitPrice,
     accrued,
+    count,
     links,
   } = fields
+
+  if (count && type !== StockMovementType.INITIAL) {
+    throw new UnprocessableEntityError('Only an initial movement carries a count fact', { type })
+  }
 
   const values: Record<string, unknown> = {
     stock_movement_part: partRecordId,
@@ -135,6 +143,10 @@ export function buildStockMovementValues(
   if (accrued?.tariffRate) values.stock_movement_tariff_rate = accrued.tariffRate
   // NULL is the off-BOM marker and is written as an absence, not a zero.
   if (qtyPerUnit != null) values.stock_movement_qty_per_unit = qtyPerUnit
+  if (count) {
+    values.stock_movement_count_quantity = count.quantity
+    values.stock_movement_count_date = `${count.date}T00:00:00.000Z`
+  }
 
   if (links?.vendorPart) values.stock_movement_vendor_part = links.vendorPart
   if (links?.purchaseOrderLine) values.stock_movement_purchase_order_line = links.purchaseOrderLine

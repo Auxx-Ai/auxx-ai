@@ -66,7 +66,7 @@ const MOVEMENT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
  * The five row states of §4 are all derivable from what comes back:
  * *Not opened* is `!hasMovements`, *Opened* is `hasInitialMovement`, *Blocked*
  * is `hasMovements && !hasInitialMovement` (the state
- * `assertPartHasNoMovements` refuses), *Unclassified* is
+ * `setCount` anchors with a reconstructed `initial`), *Unclassified* is
  * `isPartKindUnclassified(partKind)`, and *Cost override* is a typed cost that
  * differs from {@link OpeningStockCandidate.standardCost}.
  *

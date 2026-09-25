@@ -16,7 +16,6 @@ const h = vi.hoisted(() => ({
   imported: [] as string[][],
   activationFails: false,
   finalizeStatus: 'posted' as string,
-  adjustment: null as { status: string } | null,
   recoveryRequested: 0,
   identities: [] as {
     account: { id: string; name: string }
@@ -140,12 +139,6 @@ vi.mock('../../opening/finalize-setup', () => ({
     })
   },
 }))
-vi.mock('../../../inventory/receiving/opening-inventory-adjustment', () => ({
-  postOpeningInventoryAdjustment: async () => {
-    h.calls.push('adjust')
-    return ok({ difference: { differenceMinor: 500 }, post: h.adjustment })
-  },
-}))
 vi.mock('../../work-items/recovery', () => ({
   requestAccountingRecovery: async () => {
     h.recoveryRequested++
@@ -168,7 +161,6 @@ beforeEach(() => {
   h.imported = []
   h.activationFails = false
   h.finalizeStatus = 'posted'
-  h.adjustment = { status: 'posted' }
   h.recoveryRequested = 0
   h.identities = []
   h.pushed = []
@@ -181,7 +173,7 @@ describe('completeConnectAndGo', () => {
     expect(h.calls).toEqual([])
   })
 
-  it('writes the answers, creates provider accounts, then activates, fills, finalizes and adjusts', async () => {
+  it('writes the answers, creates provider accounts, then activates, fills and finalizes; the inventory difference is never posted here', async () => {
     h.identities = [
       { account: { id: 'gl_wip', name: 'WIP' }, providerAccountId: null, suggestion: null },
       { account: { id: 'gl_cash', name: 'Cash' }, providerAccountId: 'p_cash', suggestion: null },
@@ -207,7 +199,6 @@ describe('completeConnectAndGo', () => {
       'activate',
       'fill',
       'finalize',
-      'adjust',
     ])
     expect(h.pushed).toEqual([['gl_wip']])
     expect(report.providerAccounts).toEqual({ created: 1 })
@@ -219,17 +210,8 @@ describe('completeConnectAndGo', () => {
     })
     expect(report.completed).toBe(true)
     expect(report.failedAt).toBeNull()
-    expect(report.steps.map((step) => step.status)).toEqual([
-      'done',
-      'done',
-      'done',
-      'done',
-      'done',
-      'done',
-      'done',
-      'done',
-      'done',
-    ])
+    expect(report.steps.map((step) => step.status)).toEqual(Array(8).fill('done'))
+    expect(report.steps.map((step) => step.step)).not.toContain('inventory_adjustment')
     expect(h.recoveryRequested).toBe(1)
   })
 
@@ -267,7 +249,7 @@ describe('completeConnectAndGo', () => {
     const report = (await completeConnectAndGo(db, base))._unsafeUnwrap()
     expect(report.failedAt).toBe('finalize')
     expect(report.message).toBe('Period closed')
-    expect(h.calls).not.toContain('adjust')
+    expect(h.calls.at(-1)).toBe('finalize')
   })
 
   it('refuses to move a frozen cutover', async () => {
@@ -339,10 +321,9 @@ describe('completeConnectAndGo', () => {
       'accounting.cutoffPeriod': '2025-12',
       'accounting.bookTimeZone': 'America/Chicago',
     }
-    h.adjustment = null
     const report = (await completeConnectAndGo(db, base))._unsafeUnwrap()
 
-    expect(h.calls).toEqual(['lock', 'activate', 'finalize', 'adjust'])
+    expect(h.calls).toEqual(['lock', 'activate', 'finalize'])
     expect(report.steps.find((step) => step.step === 'cutover')?.status).toBe('skipped')
     expect(report.steps.find((step) => step.step === 'opening')?.status).toBe('skipped')
     expect(report.completed).toBe(true)

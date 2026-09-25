@@ -18,13 +18,19 @@ import {
 import { systemFieldMap } from '../../resources/system-records'
 import { readPartKinds } from '../builds/build-queries'
 import { isServicePartKind } from './client'
+import { reanchorInitials } from './reanchor-initials'
 
 const logger = createScopedLogger('bom:qoh')
+
+/** `org:part` keys whose anchor is being re-derived right now. */
+const reanchoring = new Set<string>()
 
 // ─── Batch QoH Recalculation ────────────────────────────────────
 
 /**
- * Recalculate QoH for multiple parts in one pass.
+ * Recalculate QoH for multiple parts in one pass — the ONE owner of
+ * `part_quantity_on_hand`; the per-movement hook delegates here.
+ * - the count anchor re-derived (`reanchorInitials`)
  * - 1 grouped SUM query for all parts
  * - 1 batch reorder point read
  * - Parallel writes for QoH + stock_status
@@ -37,6 +43,16 @@ export async function batchRecalculateQoH(
   if (partInstanceIds.length === 0) return
 
   const unique = [...new Set(partInstanceIds)]
+
+  // The count anchor is re-derived before it is summed (111 Q26). The lane's own rewrite
+  // fires no rule, but a re-entrant call for a part mid-reanchor sums what is stored.
+  const fresh = unique.filter((id) => !reanchoring.has(`${organizationId}:${id}`))
+  for (const id of fresh) reanchoring.add(`${organizationId}:${id}`)
+  try {
+    if (fresh.length > 0) await reanchorInitials(organizationId, fresh)
+  } finally {
+    for (const id of fresh) reanchoring.delete(`${organizationId}:${id}`)
+  }
 
   const fields = await systemFieldMap(undefined, organizationId, [
     'stock_movement_quantity',

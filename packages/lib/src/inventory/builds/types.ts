@@ -63,6 +63,9 @@ export interface BuildRecord {
   createdAt: Date
 }
 
+/** `build_source` values `createBuild` accepts; mirrors `BuildSource` in `enum-values.ts`. */
+export type BuildSourceValue = 'manual' | 'order' | 'batch' | 'backflush'
+
 /** Raise a run. Always lands `planned`, and writes no movements (B2). */
 export interface CreateBuildInput {
   /** `EntityInstance.id` of the `part` to produce. */
@@ -73,8 +76,9 @@ export interface CreateBuildInput {
   /** `EntityInstance.id` of the `order` that caused this run, if any. */
   orderId?: string
   /**
-   * `manual` (a person raised it), `order` (the auto-build trigger did) or
-   * `batch` (the backfill raised it for a whole demand period).
+   * `manual` (a person raised it), `order` (the auto-build trigger did),
+   * `batch` (the backfill raised it for a whole demand period) or `backflush`
+   * (the replay built what a day's sales drove negative, 111 D23).
    * Defaults to `manual` — an auto-build must be distinguishable from one a
    * person raised against the same order deliberately (products/12 AB7).
    *
@@ -84,7 +88,7 @@ export interface CreateBuildInput {
    * coverage to the reconciler either. That is why a batch build is only safe
    * below the auto-build cutoff (plans/money/tasks/44 §6.1).
    */
-  source?: 'manual' | 'order' | 'batch'
+  source?: BuildSourceValue
   /**
    * The order's demand fingerprint to stamp on the new build, when the caller
    * already has it.
@@ -343,7 +347,7 @@ export interface ListBuildsFilters {
   partId?: string
   /** Only runs raised against this `order` instance. */
   orderId?: string
-  source?: 'manual' | 'order' | 'batch'
+  source?: BuildSourceValue
   /** Defaults to 50. */
   limit?: number
   offset?: number

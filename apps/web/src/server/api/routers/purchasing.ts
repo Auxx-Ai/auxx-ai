@@ -43,6 +43,7 @@ import {
   listOpeningStockCandidates,
   listReceipts,
   openStockBalance,
+  readSetCountPreflight,
   receivePurchaseOrder,
   receiveStock,
 } from '@auxx/lib/inventory/receiving'
@@ -602,33 +603,24 @@ export const purchasingRouter = createTRPCRouter({
     }),
 
   /**
-   * A part's opening balance: quantity and cost, once.
+   * "I have N as of D" - the one count door (111 D21). A first count anchors an `initial`
+   * at the ledger start; a further count writes an `adjust` for the difference. A typed unit
+   * cost becomes the part's FIRST `part_standard_cost` (a typed $0 is real, 103 §5a).
    *
-   * plans/money/tasks/15-costing-usability.md §2.2. Writes one `initial`
-   * movement and sets the part's FIRST `part_standard_cost` from the typed
-   * `unitCost`, so the two agree by construction and the opening balance
-   * carries no variance.
+   * 🛑 A typed unit cost here does NOT reopen `G12`: `adjustStock` still takes no cost.
    *
-   * 🛑 A typed unit cost here does NOT reopen `G12`. That decision removed
-   * `adjustStock`'s cost input because an adjustment has no supplier row, no
-   * purchase order and no packing slip, so there is no *actual* to record. An
-   * opening balance is the one case where there is one, which is why `initial`
-   * is its own movement type. `adjustStock` still takes no cost.
-   *
-   * Gated on edit for `stock_movement` — the same door `receiveStock`,
-   * `adjustStock` and `reverseMovement` go through, because this writes the
-   * ledger. It also writes `part_standard_cost`, but a person who may move
-   * stock may set the opening cost of stock they are moving.
+   * Gated on edit for `stock_movement`, the same door `receiveStock`, `adjustStock` and
+   * `reverseMovement` go through, because this writes the ledger.
    */
-  openStockBalance: capabilityProcedure
+  setCount: capabilityProcedure
     .input(
       z.object({
         partId: z.string().min(1),
-        /** Units on hand at the opening date. Strictly positive. */
-        quantity: z.number().finite().positive(),
-        /** What a unit cost. A RATE - at most RATE_DECIMALS places, strictly positive. */
-        unitCost: rateMinorUnits,
-        /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
+        /** Units on the shelf on the count day. Zero or more. */
+        quantity: z.number().finite().nonnegative(),
+        /** What a unit cost. A RATE - at most RATE_DECIMALS places, zero allowed. */
+        unitCost: intakeRateMinorUnits.optional(),
+        /** The count day. Defaults to now. */
         occurredAt: z.coerce.date().optional(),
         notes: z.string().max(2000).optional(),
       })
@@ -639,6 +631,19 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(movementDefId)
 
       const result = await openStockBalance(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** What the Set count dialog shows before it writes: the anchor state and the backflush signal (111 Q25). */
+  setCountPreflight: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).min(1).max(500) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const movementDefId = await requireDefId(organizationId, 'stock_movement')
+      ctx.capabilities.assertViewEntity(movementDefId)
+
+      const result = await readSetCountPreflight(ctx.db, organizationId, input.partIds)
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -671,39 +676,29 @@ export const purchasingRouter = createTRPCRouter({
   }),
 
   /**
-   * Open a balance for many parts at once, on ONE date.
+   * `setCount` for many parts at once, each on its own count day (103 O1, 111 D21).
    *
-   * plans/money/tasks/52-parts-costing-page.md §5. Not a loop over
-   * `openStockBalance` — one pass, with the five ordered steps of the
-   * single-part contract each asked of the whole set.
+   * 🛑 **It never throws for a part.** An anchored part is EXCLUDED unless `adjustAnchored`
+   * (the Set counts page, which shows the delta), an invalid entry FAILS, and the run returns
+   * a summary naming both with the reason per part.
    *
-   * 🛑 **It never throws for a part.** A part that already has a movement is
-   * EXCLUDED (opening is once), an invalid entry FAILS, and the run returns a
-   * summary naming both with the reason per part. One refused part must not lose
-   * the other 494.
-   *
-   * 🛑 **One `occurredAt` for the whole run.** An opening balance is one event on
-   * one date; a date per row invites 495 dates for it. The date is load-bearing
-   * for the close — an `initial` movement at or before `accounting.cutoffPeriod`
-   * is covered by the frozen opening baseline, one after it is summed into
-   * inventory.
-   *
-   * Gated on edit for `stock_movement`, the same door `openStockBalance` goes
-   * through, because this writes the ledger.
+   * Gated on edit for `stock_movement`, the same door `setCount` goes through.
    */
-  runOpeningStock: capabilityProcedure
+  runSetCounts: capabilityProcedure
     .input(
       z.object({
-        /** The ACCOUNTING date stamped on every movement in the run. */
-        occurredAt: z.coerce.date(),
+        /** The count day for every entry that names none of its own. Defaults to now. */
+        occurredAt: z.coerce.date().optional(),
+        adjustAnchored: z.boolean().optional(),
         entries: z
           .array(
             z.object({
               partId: z.string().min(1),
-              /** Units on hand at the opening date. Strictly positive. */
-              quantity: receiptQuantity,
-              /** What a unit cost. A RATE - at most RATE_DECIMALS places, strictly positive. */
-              unitCost: rateMinorUnits,
+              /** Units on the shelf on the count day. Zero or more. */
+              quantity: z.number().finite().nonnegative(),
+              /** What a unit cost. A RATE - at most RATE_DECIMALS places, zero allowed. */
+              unitCost: intakeRateMinorUnits.optional(),
+              date: z.coerce.date().optional(),
             })
           )
           .min(1),

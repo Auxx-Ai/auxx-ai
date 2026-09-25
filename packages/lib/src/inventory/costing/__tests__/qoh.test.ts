@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
   table: [] as Row[],
   selectResults: [] as unknown[][],
   deletes: 0,
+  reanchorInitials: vi.fn(async (..._args: unknown[]) => []),
 }))
 
 /** A thenable that answers every chained builder call with itself. */
@@ -152,6 +153,8 @@ vi.mock('../../../realtime', () => ({
   publishFieldValueUpdates: async () => {},
 }))
 
+vi.mock('../reanchor-initials', () => ({ reanchorInitials: h.reanchorInitials }))
+
 import { batchRecalculateQoH } from '../qoh'
 
 const ORG = 'abgwpa1l81reht2zmwrcihfu'
@@ -171,6 +174,35 @@ beforeEach(() => {
   h.table = []
   h.selectResults = []
   h.deletes = 0
+  h.reanchorInitials.mockClear()
+})
+
+describe('the count anchor is re-derived before the SUM (111 Q26)', () => {
+  it('runs reanchorInitials over the parts, once, ahead of the read', async () => {
+    let anchoredBeforeRead = false
+    h.reanchorInitials.mockImplementation(async () => {
+      anchoredBeforeRead = h.selectResults.length === 2
+      return []
+    })
+    stubReads([{ partId: MOTOR, total: '100' }])
+    await batchRecalculateQoH(ORG, [MOTOR, MOTOR])
+
+    expect(h.reanchorInitials).toHaveBeenCalledTimes(1)
+    expect(h.reanchorInitials).toHaveBeenCalledWith(ORG, [MOTOR])
+    expect(anchoredBeforeRead).toBe(true)
+  })
+
+  it('does not re-enter the re-anchor for a part whose anchor is being moved right now', async () => {
+    h.reanchorInitials.mockImplementationOnce(async () => {
+      // The lane's own write re-summing the same part must sum, not re-anchor.
+      h.selectResults.unshift([{ partId: MOTOR, total: '50' }], [])
+      await batchRecalculateQoH(ORG, [MOTOR])
+      return []
+    })
+    stubReads([{ partId: MOTOR, total: '100' }])
+    await batchRecalculateQoH(ORG, [MOTOR])
+    expect(h.reanchorInitials).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the batch QoH write', () => {

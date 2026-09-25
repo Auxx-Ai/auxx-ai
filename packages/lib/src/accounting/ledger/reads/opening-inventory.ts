@@ -3,20 +3,22 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, or, sql } from 'drizzle-orm'
 
-/** The line `sourceType` the opening inventory adjustment stamps, so it reads as baseline. */
+/** The line `sourceType` every opening inventory difference entry stamps, so it reads as baseline. */
 export const OPENING_INVENTORY_ADJUSTMENT_SOURCE = 'opening_inventory_adjustment' as const
 
 /** What the ledger holds on the given accounts from the opening, net debit-positive per account. */
 export interface OpeningInventoryLedger {
   /** The `opening_balance` entry's lines. */
   openingByAccount: Map<string, number>
-  /** The opening inventory adjustment's lines (plans/accounting/tasks/103 §5a). */
+  /** Every opening inventory difference entry's lines, all occurrences summed (111 Q23). */
   adjustmentByAccount: Map<string, number>
+  /** How many difference entries stand posted, for the next one's number. */
+  differenceEntries: number
 }
 
 /**
- * The opening entry and the opening inventory adjustment on these accounts. Every status is
- * summed, so a reversed entry and its reversal net to zero and a re-post counts once.
+ * The opening entry and every opening inventory difference entry on these accounts. Every
+ * status is summed, so a reversed entry and its reversal net to zero and a re-post counts once.
  */
 export async function readOpeningInventoryLedger(
   db: Database,
@@ -26,7 +28,23 @@ export async function readOpeningInventoryLedger(
   const result: OpeningInventoryLedger = {
     openingByAccount: new Map(),
     adjustmentByAccount: new Map(),
+    differenceEntries: 0,
   }
+
+  const [counted] = await db
+    .select({
+      entries: sql<string>`count(distinct ${schema.GlPostingLine.glPostingId})`,
+    })
+    .from(schema.GlPostingLine)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPostingLine.organizationId, organizationId),
+        eq(schema.GlPostingLine.sourceType, OPENING_INVENTORY_ADJUSTMENT_SOURCE),
+        eq(schema.GlPosting.status, 'posted')
+      )
+    )
+  result.differenceEntries = Number(counted?.entries ?? 0)
   if (glAccountIds.length === 0) return result
 
   const rows = await db

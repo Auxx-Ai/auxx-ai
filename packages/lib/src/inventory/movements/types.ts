@@ -99,6 +99,15 @@ export interface StockMovementInput {
     /** A PERCENTAGE - `25` means 25%. */
     tariffRate?: number
   }
+  /** The count fact an `initial` anchor is derived from (111 Q26): `setCount` is the only writer. */
+  count?: StockMovementCountFact
+}
+
+/** "N as of D": what was counted, and the book-zone calendar day it was counted on. */
+export interface StockMovementCountFact {
+  quantity: number
+  /** `YYYY-MM-DD` in the book time zone. */
+  date: string
 }
 
 /** One `stock_movement` this call wrote, back to the caller. */

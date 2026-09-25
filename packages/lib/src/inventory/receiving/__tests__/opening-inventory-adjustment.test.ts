@@ -1,22 +1,31 @@
 // packages/lib/src/inventory/receiving/__tests__/opening-inventory-adjustment.test.ts
 //
-// The opening inventory difference (the ledger's opening inventory against the parts'
-// opening value) and the one adjustment that closes it (plans/accounting/tasks/103 §5a).
+// The opening inventory difference — the books' opening inventory against the parts' value at
+// the cutover — and the repeatable, delta-only entry that closes it (111 Q19/Q23).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  cutoff: '2026-12' as string | null,
+  settings: {} as Record<string, unknown>,
   roleAccounts: new Map<string, { glAccountId: string; code: string | null; name: string }>(),
-  parts: { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 },
+  parts: {
+    byRole: { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 },
+    totalMinor: 0,
+    byPart: [] as unknown[],
+    uncounted: [] as unknown[],
+    pendingRows: 0,
+  },
   partsOptions: [] as unknown[],
   opening: new Map<string, number>(),
   adjustment: new Map<string, number>(),
+  differenceEntries: 0,
   postEntry: vi.fn(),
+  postStatus: 'posted' as string,
 }))
 
 vi.mock('../../../settings/read', () => ({
-  readOrganizationSettings: async () => ({ 'accounting.cutoffPeriod': h.cutoff }),
+  readOrganizationSettings: async (_org: string, keys: readonly string[]) =>
+    Object.fromEntries(keys.map((key) => [key, h.settings[key] ?? null])),
 }))
 
 vi.mock('../../../accounting/ledger/roles/resolve-roles', () => ({
@@ -24,7 +33,7 @@ vi.mock('../../../accounting/ledger/roles/resolve-roles', () => ({
 }))
 
 vi.mock('../opening-stock-subledger', () => ({
-  readOpeningStockSubledgerTotals: async (_db: unknown, _org: string, options: unknown) => {
+  readPartsValueAtCutover: async (_db: unknown, _org: string, options: unknown) => {
     h.partsOptions.push(options)
     const { ok } = await import('neverthrow')
     return ok(h.parts)
@@ -36,13 +45,16 @@ vi.mock('../../../accounting/ledger/reads/opening-inventory', () => ({
   readOpeningInventoryLedger: async () => ({
     openingByAccount: h.opening,
     adjustmentByAccount: h.adjustment,
+    differenceEntries: h.differenceEntries,
   }),
 }))
 
 vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   postEntry: async (_db: unknown, options: unknown) => {
     h.postEntry(options)
-    return { status: 'posted', glPostingId: 'glp_adj' }
+    return h.postStatus === 'posted'
+      ? { status: 'posted', glPostingId: 'glp_adj' }
+      : { status: h.postStatus, error: 'Period closed' }
   },
 }))
 
@@ -63,26 +75,43 @@ interface PostedLine {
   sourceType: string
 }
 
-function posted() {
-  return h.postEntry.mock.calls[0]![0] as {
+function posted(call = 0) {
+  return h.postEntry.mock.calls[call]![0] as {
+    memo: string
     entry: { postingType: string; txnDate: string; lines: PostedLine[] }
     sources: { sourceKind: string; sourceId: string; occurrence: string; linkRole: string }[]
   }
 }
 
+function legs(call = 0) {
+  return posted(call).entry.lines.map((line) => [line.accountRole, line.direction, line.amount])
+}
+
 beforeEach(() => {
-  h.cutoff = '2026-12'
+  h.settings = {
+    'accounting.cutoffPeriod': '2026-12',
+    'accounting.openingInventoryInBooks': 'revaluation',
+    'organization.currency': 'USD',
+  }
   // A provider-imported chart: all three inventory roles on one Inventory Asset.
   h.roleAccounts = new Map([
     ['inventory_raw_materials', account('inv')],
     ['inventory_wip', account('inv')],
     ['inventory_finished_goods', account('inv')],
   ])
-  h.parts = { inventory_raw_materials: 300_00, inventory_wip: 0, inventory_finished_goods: 700_00 }
+  h.parts = {
+    byRole: { inventory_raw_materials: 300_00, inventory_wip: 0, inventory_finished_goods: 700_00 },
+    totalMinor: 1_000_00,
+    byPart: [{ partId: 'p1', name: 'Bolt', qtyAtCutover: 10, valueMinor: 1_000_00 }],
+    uncounted: [{ partId: 'p2', name: 'Nut', throughputAtCutover: 40 }],
+    pendingRows: 2,
+  }
   h.partsOptions = []
   h.opening = new Map([['inv', 1_200_00]])
   h.adjustment = new Map()
+  h.differenceEntries = 0
   h.postEntry = vi.fn()
+  h.postStatus = 'posted'
 })
 
 describe('readOpeningInventoryDifference', () => {
@@ -102,8 +131,18 @@ describe('readOpeningInventoryDifference', () => {
         differenceMinor: -200_00,
       },
     ])
-    expect(difference.differenceMinor).toBe(-200_00)
-    expect(difference.adjustedMinor).toBe(0)
+    expect(difference).toMatchObject({
+      providerOpeningMinor: 1_200_00,
+      postedDifferencesMinor: 0,
+      postedDifferenceCount: 0,
+      partsValueAtCutoverMinor: 1_000_00,
+      deltaMinor: -200_00,
+      inBooks: 'revaluation',
+      needsAnswer: false,
+      pendingRows: 2,
+    })
+    expect(difference.byPart).toEqual(h.parts.byPart)
+    expect(difference.uncounted).toEqual(h.parts.uncounted)
   })
 
   it('reports one row per account when the roles have their own accounts', async () => {
@@ -124,16 +163,18 @@ describe('readOpeningInventoryDifference', () => {
       ['wip', 0],
       ['fg', 0],
     ])
-    expect(difference.differenceMinor).toBe(50_00)
+    expect(difference.deltaMinor).toBe(50_00)
   })
 
-  it('counts an adjustment already posted as ledger, so the difference goes to zero', async () => {
+  it('takes the difference entries already posted as books: delta = parts − (provider + posted)', async () => {
     h.adjustment = new Map([['inv', -200_00]])
+    h.differenceEntries = 1
     const difference = (
       await readOpeningInventoryDifference(db, { organizationId: ORG })
     )._unsafeUnwrap()
-    expect(difference.differenceMinor).toBe(0)
-    expect(difference.adjustedMinor).toBe(-200_00)
+    expect(difference.deltaMinor).toBe(0)
+    expect(difference.postedDifferencesMinor).toBe(-200_00)
+    expect(difference.postedDifferenceCount).toBe(1)
   })
 
   it('keeps an unmapped role that holds parts, and drops one that holds none', async () => {
@@ -150,23 +191,32 @@ describe('readOpeningInventoryDifference', () => {
     )
   })
 
+  it('reports needsAnswer while the in-books setting is unset', async () => {
+    h.settings['accounting.openingInventoryInBooks'] = null
+    const difference = (
+      await readOpeningInventoryDifference(db, { organizationId: ORG })
+    )._unsafeUnwrap()
+    expect(difference.needsAnswer).toBe(true)
+    expect(difference.inBooks).toBeNull()
+  })
+
   it('refuses without a cutoff month', async () => {
-    h.cutoff = null
+    h.settings['accounting.cutoffPeriod'] = null
     expect((await readOpeningInventoryDifference(db, { organizationId: ORG })).isErr()).toBe(true)
   })
 })
 
 describe('postOpeningInventoryAdjustment', () => {
-  it('posts one inventory entry the day after cutover, against inventory_revaluation', async () => {
+  it('posts the delta the day after cutover against inventory_revaluation, numbered per press', async () => {
     const outcome = (
       await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
     )._unsafeUnwrap()
 
-    expect(outcome.post).toMatchObject({ status: 'posted', glPostingId: 'glp_adj' })
-    const { entry, sources } = posted()
+    expect(outcome).toMatchObject({ outcome: 'posted', glPostingId: 'glp_adj' })
+    const { entry, sources, memo } = posted()
     expect(entry.postingType).toBe('inventory_movement')
     expect(entry.txnDate).toBe('2027-01-01')
-    expect(entry.lines.map((line) => [line.accountRole, line.direction, line.amount])).toEqual([
+    expect(legs()).toEqual([
       ['inventory_raw_materials', 'credit', 200_00],
       ['inventory_revaluation', 'debit', 200_00],
     ])
@@ -177,45 +227,70 @@ describe('postOpeningInventoryAdjustment', () => {
       {
         sourceKind: 'opening_balance',
         sourceId: ORG,
-        occurrence: 'inventory_adjustment:2026-12-31',
+        occurrence: 'inventory_adjustment:2026-12-31:1',
         linkRole: 'subject',
       },
     ])
+    expect(memo).toBe(
+      'Opening inventory difference #1: parts at cutover 1000.00 USD vs books 1200.00 USD'
+    )
   })
 
-  it('debits inventory when the parts are worth more than the ledger holds', async () => {
+  it('credits Opening Balance Equity when the inventory was never on the old books', async () => {
+    h.settings['accounting.openingInventoryInBooks'] = 'opening_equity'
     h.opening = new Map([['inv', 900_00]])
     await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
-    expect(
-      posted().entry.lines.map((line) => [line.accountRole, line.direction, line.amount])
-    ).toEqual([
+    expect(legs()).toEqual([
       ['inventory_raw_materials', 'debit', 100_00],
-      ['inventory_revaluation', 'credit', 100_00],
+      ['equity_opening_balance', 'credit', 100_00],
     ])
   })
 
-  it('posts nothing at a zero difference', async () => {
+  it('refuses until the in-books question is answered', async () => {
+    h.settings['accounting.openingInventoryInBooks'] = null
+    const result = await postOpeningInventoryAdjustment(db, {
+      organizationId: ORG,
+      actorUserId: 'usr_1',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('accounting.openingInventoryInBooks')
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('has nothing to post at a zero delta', async () => {
     h.opening = new Map([['inv', 1_000_00]])
     const outcome = (
       await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
     )._unsafeUnwrap()
-    expect(outcome.post).toBeNull()
+    expect(outcome.outcome).toBe('nothing_to_post')
     expect(h.postEntry).not.toHaveBeenCalled()
   })
 
-  it('is idempotent: once the adjustment is in the ledger a re-run posts nothing', async () => {
+  it('a second press after a count posts only the new delta, under the next occurrence', async () => {
     await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    expect(posted(0).sources[0]!.occurrence).toBe('inventory_adjustment:2026-12-31:1')
 
+    // The first entry landed; a Set count then raised the parts at the cutover by 50.
     h.adjustment = new Map([['inv', -200_00]])
+    h.differenceEntries = 1
+    h.parts = {
+      ...h.parts,
+      byRole: { ...h.parts.byRole, inventory_raw_materials: 350_00 },
+      totalMinor: 1_050_00,
+    }
     const again = (
       await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
     )._unsafeUnwrap()
-    expect(again.post).toBeNull()
-    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    expect(again.outcome).toBe('posted')
+    expect(legs(1)).toEqual([
+      ['inventory_raw_materials', 'debit', 50_00],
+      ['inventory_revaluation', 'credit', 50_00],
+    ])
+    expect(posted(1).sources[0]!.occurrence).toBe('inventory_adjustment:2026-12-31:2')
+    expect(posted(1).memo).toContain('#2: parts at cutover 1050.00 USD vs books 1000.00 USD')
   })
 
-  it('moves value between separate accounts without a revaluation leg when they net to zero', async () => {
+  it('moves value between separate accounts without a credit leg when they net to zero', async () => {
     h.roleAccounts = new Map([
       ['inventory_raw_materials', account('raw')],
       ['inventory_finished_goods', account('fg')],
@@ -225,11 +300,19 @@ describe('postOpeningInventoryAdjustment', () => {
       ['fg', 600_00],
     ])
     await postOpeningInventoryAdjustment(db, { organizationId: ORG, actorUserId: 'usr_1' })
-    expect(
-      posted().entry.lines.map((line) => [line.accountRole, line.direction, line.amount])
-    ).toEqual([
+    expect(legs()).toEqual([
       ['inventory_raw_materials', 'credit', 100_00],
       ['inventory_finished_goods', 'debit', 100_00],
     ])
+  })
+
+  it('surfaces a ledger refusal as an error rather than a posted outcome', async () => {
+    h.postStatus = 'period_closed'
+    const result = await postOpeningInventoryAdjustment(db, {
+      organizationId: ORG,
+      actorUserId: 'usr_1',
+    })
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toBe('Period closed')
   })
 })

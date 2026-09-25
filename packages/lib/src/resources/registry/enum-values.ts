@@ -924,11 +924,14 @@ export const BuildSource = {
   MANUAL: 'manual',
   ORDER: 'order',
   BATCH: 'batch',
+  /** Written by the nightly / on-demand replay that builds what sales drove negative (111 D23). */
+  BACKFLUSH: 'backflush',
 
   values: [
     { value: 'manual', label: 'Manual', color: 'gray' },
     { value: 'order', label: 'Order', color: 'blue' },
     { value: 'batch', label: 'Batch', color: 'purple' },
+    { value: 'backflush', label: 'Backflush', color: 'teal' },
   ] satisfies FieldOptionItem[],
 } as const
 

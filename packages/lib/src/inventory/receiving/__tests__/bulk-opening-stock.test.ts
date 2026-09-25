@@ -1,61 +1,30 @@
 // packages/lib/src/inventory/receiving/__tests__/bulk-opening-stock.test.ts
 //
-// The BULK opening balance — the same five ordered steps as the single-part
-// door, asked of a whole org at once (plans/money/tasks/52-parts-costing-page.md
-// §5). The org cache, the CRUD handler and `ensureStandardCost` are mocked, so
-// nothing here needs a database.
-//
-// What is pinned:
-//
-//   - one `initial` movement per part, at the TYPED cost, `cost_basis: standard`,
-//     `adjustSubparts: false`, and ONE `occurredAt` for the whole run
-//   - the gl account is the ROLE resolved from each part's OWN kind, never a
-//     hardcoded number and never the first part's answer applied to all of them
-//   - 🛑 a part that already has ANY movement is EXCLUDED, not an error, and the
-//     other parts still open. Opening is once
-//   - 🛑 `ensureStandardCost` takes ONE cost for a whole array, so entries are
-//     grouped by DISTINCT unit cost — a single call over mixed costs would
-//     freeze the first group's number onto every part in the run
-//   - a part left with NO standard after step 3 gets a PENDING movement with no
-//     cost keys and parks at stage `price` (111 Q18); a stored $0 is a real
-//     standard (103 §5a); only a corrupt (negative) standard fails the part
-//   - it never throws: every entry is accounted for by exactly one of
-//     `opened` / `excluded` / `failed`
-//   - 🛑 QoH is the CREATE TRIGGER's job. This writes on the ordinary lane, so
-//     HANDOFF rule 5 does not apply and `batchRecalculateQoH` must NOT be called
+// The bulk door is `setCount` per part with a per-part count day (103 O1, 111 D21). What is
+// pinned: the per-entry guards, the exclusion of an anchored part unless the caller opted into
+// the adjust leg, the per-part date, and that every entry lands in exactly one of
+// `opened` / `excluded` / `failed`. `bulkSetPartKind` is pinned beside it.
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { inventoryPeriodKey } from '../../../accounting/ledger/builders/inventory-movement'
 import { BadRequestError, NotFoundError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
-  bulkCreateSpy: vi.fn(),
+  setCount: vi.fn(),
   bulkSetFieldValueSpy: vi.fn(async () => ({ count: 0 })),
-  ensureSpy: vi.fn(),
-  batchQohSpy: vi.fn(),
-  /** systemAttributes the org has materialised. */
   materialised: new Set<string>(),
-  /** entityType -> def id; a missing key models a def the org does not have. */
   defs: new Map<string, string>(),
-  /** partId -> display name + stored kind. A missing key models a stale id. */
   parts: new Map<string, { displayName: string | null; kind: string | null }>(),
-  /** Parts the ledger has already touched. */
-  moved: new Set<string>(),
-  /** partId -> stored `part_standard_cost`, as the post-condition read sees it. */
-  standards: new Map<string, number | null>(),
-  /** Index -> message, to model `bulkCreate`'s per-item failures. */
-  createErrors: new Map<number, string>(),
-  /** partId -> why it cannot become a service. */
+  /** Parts that already carry an `initial`. */
+  anchored: new Set<string>(),
   serviceBlockers: new Map<string, string>(),
-  postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
-  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
 }))
 
-vi.mock('../../../accounting/work-items/write', () => ({
-  upsertWorkItem: h.upsertWorkItem,
+vi.mock('../set-count', () => ({ setCount: h.setCount }))
+vi.mock('../../movements/initial-queries', () => ({
+  readPartInitials: async (_db: unknown, _org: string, ids: string[]) =>
+    new Map(ids.filter((id) => h.anchored.has(id)).map((id) => [id, { movementId: `mv_${id}` }])),
 }))
-
 vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
@@ -75,26 +44,14 @@ vi.mock('../../../cache', () => ({
     }),
   }),
 }))
-
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
-    bulkCreate = h.bulkCreateSpy
     bulkSetFieldValue = h.bulkSetFieldValueSpy
   },
 }))
-
-vi.mock('../../costing/ensure-standard-cost', () => ({
-  ensureStandardCost: h.ensureSpy,
-}))
-
 vi.mock('../../costing/service-kind-blockers', () => ({
   readServiceKindBlockers: vi.fn(async () => h.serviceBlockers),
   serviceKindRefusal: (reason: string) => `refused: ${reason}`,
-}))
-
-// 🛑 Not because it is called — because it must NOT be. See the header.
-vi.mock('../../costing/qoh', () => ({
-  batchRecalculateQoH: h.batchQohSpy,
 }))
 
 import { bulkOpenStockBalance, bulkSetPartKind } from '../bulk-opening-stock'
@@ -104,53 +61,29 @@ const ORG = 'org_1'
 const USER = 'user_1'
 const OCCURRED_AT = new Date('2026-01-01T00:00:00.000Z')
 
-/**
- * A drizzle chain that answers whichever of this module's three reads is being
- * built, told apart by the shape of the query rather than by call order — the
- * order changes the moment an earlier step empties the working set.
- *
- * - `selectDistinct` + `innerJoin` is the "has any movement?" probe
- * - `select(columns)` on `EntityInstance` is the reader's instance read, and
- *   `select()` with no projection is the reader's value read behind it
- * - anything else is the `part_standard_cost` read
- */
+/** The reader's two statements: `select(columns)` from `EntityInstance` is the instance read, `select()` the value read. */
 const db = {
-  select: (columns?: unknown) => chain(false, columns),
-  selectDistinct: () => chain(true, {}),
-  // The run and its opening entry share one transaction.
-  transaction: async (fn: (tx: unknown) => unknown) => fn(db),
+  select: (columns?: unknown) => chain(columns === undefined),
 } as never
 
-function chain(distinct: boolean, columns: unknown) {
-  const state = { distinct, joined: false, instances: false, values: columns === undefined }
+function chain(values: boolean) {
+  let instances = false
   const link: Record<string, unknown> = {}
   link.from = (table: unknown) => {
-    state.instances = table === schema.EntityInstance && !state.values
+    instances = table === schema.EntityInstance && !values
     return link
   }
-  link.leftJoin = () => {
-    state.joined = true
-    return link
+  for (const step of ['leftJoin', 'innerJoin', 'where', 'groupBy', 'limit', 'orderBy']) {
+    link[step] = () => link
   }
-  link.innerJoin = () => link
-  link.where = () => link
-  link.groupBy = () => link
-  link.limit = () => link
-  link.orderBy = () => link
   // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
   link.then = (resolve: (rows: unknown[]) => unknown, reject: (error: unknown) => unknown) =>
-    Promise.resolve(rowsFor(state)).then(resolve, reject)
+    Promise.resolve(rowsFor(instances, values)).then(resolve, reject)
   return link
 }
 
-function rowsFor(state: {
-  distinct: boolean
-  joined: boolean
-  instances: boolean
-  values: boolean
-}): unknown[] {
-  if (state.distinct) return [...h.moved].map((partId) => ({ partId }))
-  if (state.instances) {
+function rowsFor(instances: boolean, values: boolean): unknown[] {
+  if (instances) {
     return [...h.parts].map(([partId, part]) => ({
       id: partId,
       organizationId: ORG,
@@ -161,7 +94,7 @@ function rowsFor(state: {
       displayName: part.displayName,
     }))
   }
-  if (state.values) {
+  if (values) {
     return [...h.parts].flatMap(([partId, part]) =>
       part.kind === null
         ? []
@@ -176,15 +109,11 @@ function rowsFor(state: {
           ]
     )
   }
-  return [...h.standards]
-    .filter(([, standardCost]) => standardCost != null)
-    .map(([partId, standardCost]) => ({ partId, standardCost }))
+  return []
 }
 
-/** Every systemAttribute a fully migrated org has for this write path. */
 const ALL_ATTRS = [
   'part_kind',
-  'part_standard_cost',
   'stock_movement_part',
   'stock_movement_unit_cost',
   'stock_movement_cost_basis',
@@ -193,7 +122,7 @@ const ALL_ATTRS = [
   'stock_movement_occurred_at',
 ]
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
   h.serviceBlockers = new Map()
   h.materialised = new Set(ALL_ATTRS)
@@ -206,37 +135,34 @@ beforeEach(() => {
     ['part_2', { displayName: 'Bracket', kind: 'finished_good' }],
     ['part_3', { displayName: 'Rivet', kind: 'subassembly' }],
   ])
-  h.moved = new Set()
-  h.standards = new Map()
-  h.createErrors = new Map()
-
-  // The real thing writes only where `part_standard_cost IS NULL`, and this door
-  // always supplies a cost, so a part with no standard comes out holding the
-  // typed number and one that already has a standard keeps it.
-  h.ensureSpy.mockImplementation(
-    async (
-      _db: unknown,
-      _org: string,
-      partIds: string[],
-      source: { kind: string; unitCost?: number }
-    ) => {
-      const { ok } = await import('neverthrow')
-      for (const partId of partIds) {
-        if (h.standards.get(partId) == null && source.unitCost != null) {
-          h.standards.set(partId, source.unitCost)
-        }
-      }
-      return ok({ writtenPartIds: partIds })
-    }
+  h.anchored = new Set()
+  const { ok } = await import('neverthrow')
+  h.setCount.mockImplementation(
+    async (_db: unknown, _org: string, input: { partId: string; quantity: number; date: Date }) =>
+      ok({
+        outcome: h.anchored.has(input.partId) ? 'adjust' : 'initial',
+        partId: input.partId,
+        countQuantity: input.quantity,
+        countDate: input.date.toISOString().slice(0, 10),
+        net: 0,
+        delta: input.quantity,
+        pending: false,
+        movement: {
+          movementId: `mv_${input.partId}`,
+          recordId: `def_mv:mv_${input.partId}`,
+          partInstanceId: input.partId,
+          quantity: input.quantity,
+          unitCost: 100,
+          extendedCost: 100 * input.quantity,
+          glAccount:
+            input.partId === 'part_2' ? 'inventory_finished_goods' : 'inventory_raw_materials',
+          occurredAt: input.date,
+          vendorUnitPrice: null,
+          vendorPartId: null,
+          purchaseOrderLineId: null,
+        },
+      })
   )
-
-  h.bulkCreateSpy.mockImplementation(async (_defId: string, items: Record<string, unknown>[]) => ({
-    created: items
-      .map((_item, index) => index)
-      .filter((index) => !h.createErrors.has(index))
-      .map((index) => ({ id: `mv_${index}` })),
-    errors: [...h.createErrors].map(([index, error]) => ({ index, error })),
-  }))
 })
 
 const ENTRIES: OpeningStockEntry[] = [
@@ -244,216 +170,113 @@ const ENTRIES: OpeningStockEntry[] = [
   { partId: 'part_2', quantity: 4, unitCost: 550 },
 ]
 
-async function run(entries: OpeningStockEntry[] = ENTRIES): Promise<BulkOpeningStockSummary> {
-  const result = await bulkOpenStockBalance(db, ORG, USER, { occurredAt: OCCURRED_AT, entries })
+async function run(
+  entries: OpeningStockEntry[] = ENTRIES,
+  extra: { adjustAnchored?: boolean } = {}
+): Promise<BulkOpeningStockSummary> {
+  const result = await bulkOpenStockBalance(db, ORG, USER, {
+    occurredAt: OCCURRED_AT,
+    entries,
+    ...extra,
+  })
   expect(result.isOk()).toBe(true)
   return result._unsafeUnwrap()
 }
 
-/** The value bags handed to `bulkCreate`, keyed by the part they name. */
-function writtenByPart(): Map<string, Record<string, unknown>> {
-  expect(h.bulkCreateSpy).toHaveBeenCalledTimes(1)
-  const items = h.bulkCreateSpy.mock.calls[0]![1] as Record<string, unknown>[]
-  return new Map(items.map((item) => [String(item.stock_movement_part).split(':')[1] ?? '', item]))
+function countInputs(): Array<{ partId: string; quantity: number; unitCost?: number; date: Date }> {
+  return h.setCount.mock.calls.map((call) => call[2] as never)
 }
 
-describe('bulkOpenStockBalance — the movements it writes', () => {
-  it('writes one initial movement per part, in ONE bulk call', async () => {
+describe('bulkOpenStockBalance is setCount per part', () => {
+  it('calls setCount once per accepted part, as the actor, with the typed cost', async () => {
     const summary = await run()
-    expect(h.bulkCreateSpy).toHaveBeenCalledTimes(1)
-    expect(summary.opened).toHaveLength(2)
-    for (const values of writtenByPart().values()) {
-      expect(values.stock_movement_type).toBe('initial')
-    }
-  })
-
-  it('freezes the TYPED unit cost and an extended cost signed like the quantity', async () => {
-    await run()
-    const written = writtenByPart()
-    expect(written.get('part_1')?.stock_movement_unit_cost).toBe(1200)
-    expect(written.get('part_1')?.stock_movement_extended_cost).toBe(12000)
-    expect(written.get('part_2')?.stock_movement_unit_cost).toBe(550)
-    expect(written.get('part_2')?.stock_movement_extended_cost).toBe(2200)
-  })
-
-  it('stamps cost_basis STANDARD, never actual', async () => {
-    await run()
-    for (const values of writtenByPart().values()) {
-      expect(values.stock_movement_cost_basis).toBe('standard')
-    }
-  })
-
-  // 🛑 `explodeBomMovement` inherits the parent movement's type AND its sign, so
-  // a true flag would open a balance for every component in the BOM as well.
-  it('never explodes into the bill of materials', async () => {
-    await run()
-    for (const values of writtenByPart().values()) {
-      expect(values.stock_movement_adjust_subparts).toBe(false)
-    }
-  })
-
-  // 🛑 Per part, from that part's OWN kind. One role resolved once and reused
-  // would post finished goods to Raw Materials on an `updatable: false` row.
-  it('resolves the inventory ROLE from each part kind separately', async () => {
-    await run([
-      { partId: 'part_1', quantity: 1, unitCost: 100 },
-      { partId: 'part_2', quantity: 1, unitCost: 100 },
-      { partId: 'part_3', quantity: 1, unitCost: 100 },
+    expect(countInputs()).toEqual([
+      { partId: 'part_1', quantity: 10, unitCost: 1200, date: OCCURRED_AT, actorUserId: USER },
+      { partId: 'part_2', quantity: 4, unitCost: 550, date: OCCURRED_AT, actorUserId: USER },
     ])
-    const written = writtenByPart()
-    // null reads as `component`, and a `subassembly` sits in raw materials too:
-    // work in process is where a part sits DURING a build.
-    expect(written.get('part_1')?.stock_movement_gl_account).toBe('inventory_raw_materials')
-    expect(written.get('part_2')?.stock_movement_gl_account).toBe('inventory_finished_goods')
-    expect(written.get('part_3')?.stock_movement_gl_account).toBe('inventory_raw_materials')
+    expect(summary.opened.map((row) => [row.partId, row.outcome, row.movementId])).toEqual([
+      ['part_1', 'initial', 'mv_part_1'],
+      ['part_2', 'initial', 'mv_part_2'],
+    ])
   })
 
-  // One event, one date. A date per row invites 495 dates for one opening.
-  it('stamps the run’s single accounting date on every movement', async () => {
-    const summary = await run()
-    for (const values of writtenByPart().values()) {
-      expect(values.stock_movement_occurred_at).toBe('2026-01-01T00:00:00.000Z')
-    }
+  it('dates each part on its own count day, falling back to the run date', async () => {
+    const own = new Date('2026-02-14T00:00:00.000Z')
+    const summary = await run([
+      { partId: 'part_1', quantity: 1, date: own },
+      { partId: 'part_2', quantity: 1 },
+    ])
+    expect(countInputs().map((input) => input.date)).toEqual([own, OCCURRED_AT])
+    expect(summary.opened.map((row) => row.countDate)).toEqual(['2026-02-14', '2026-01-01'])
     expect(summary.occurredAt).toEqual(OCCURRED_AT)
   })
 
-  it('returns the rows it wrote, with the role and the extended cost it stored', async () => {
-    const summary = await run()
-    expect(summary.opened).toEqual([
-      {
-        partId: 'part_1',
-        movementId: 'mv_0',
-        recordId: 'def_mv:mv_0',
-        quantity: 10,
-        unitCost: 1200,
-        extendedCost: 12000,
-        glAccount: 'inventory_raw_materials',
-        pending: false,
-      },
-      {
-        partId: 'part_2',
-        movementId: 'mv_1',
-        recordId: 'def_mv:mv_1',
-        quantity: 4,
-        unitCost: 550,
-        extendedCost: 2200,
-        glAccount: 'inventory_finished_goods',
-        pending: false,
-      },
-    ])
-  })
-
-  it('totals the opening journal entry by inventory account', async () => {
+  it('totals the run by inventory account from the rows written', async () => {
     const summary = await run()
     expect(summary.totalsByGlAccount).toEqual([
-      { glAccount: 'inventory_finished_goods', partCount: 1, extendedCost: 2200 },
-      { glAccount: 'inventory_raw_materials', partCount: 1, extendedCost: 12000 },
+      { glAccount: 'inventory_finished_goods', partCount: 1, extendedCost: 400 },
+      { glAccount: 'inventory_raw_materials', partCount: 1, extendedCost: 1000 },
     ])
   })
 })
 
-describe('bulkOpenStockBalance — the entry each run posts', () => {
-  it('gives two runs on two dates two entries with distinct document numbers', async () => {
-    let minted = 0
-    h.bulkCreateSpy.mockImplementation(async (_defId: string, items: unknown[]) => ({
-      created: items.map(() => ({ id: `mv_${minted++}` })),
-      errors: [],
-    }))
-
-    for (const [partId, day] of [
-      ['part_1', '2026-01-01'],
-      ['part_2', '2026-02-01'],
-    ] as const) {
-      const result = await bulkOpenStockBalance(db, ORG, USER, {
-        occurredAt: new Date(`${day}T00:00:00.000Z`),
-        entries: [{ partId, quantity: 2, unitCost: 100 }],
-      })
-      expect(result.isOk()).toBe(true)
-      h.moved.add(partId)
-    }
-
-    const subjects = h.postSpy.mock.calls.map(
-      (call) => (call[1] as { subject: { sourceKind: string; sourceId: string } }).subject
-    )
-    expect(subjects).toEqual([
-      { sourceKind: 'stock_movement', sourceId: 'mv_0' },
-      { sourceKind: 'stock_movement', sourceId: 'mv_1' },
-    ])
-    const numbers = subjects.map((subject) => inventoryPeriodKey(subject.sourceId))
-    expect(new Set(numbers).size).toBe(2)
-  })
-})
-
-describe('bulkOpeningStock — quantity on hand has exactly one owner', () => {
-  // ✅ The ordinary lane, so `mfg-stock-movements-created` fires and
-  // `recalculatePartQoH` is what writes `part_quantity_on_hand`. HANDOFF rule 5
-  // applies to a QUIET lane; a second writer here would give the number two.
-  it('writes on the ordinary lane and never recalculates QoH itself', async () => {
-    await run()
-    expect(h.batchQohSpy).not.toHaveBeenCalled()
-    // No `skipEvents`, no session: the create trigger has to be able to fire.
-    expect(h.bulkCreateSpy.mock.calls[0]![2]).toBeUndefined()
-  })
-})
-
-describe('bulkOpenStockBalance — opening is ONCE', () => {
-  // 🛑 An exclusion, not an error. `initial` is the only movement type that
-  // accepts a caller's cost, so a second one would let anybody state any value
-  // for any quantity on an append-only row — but refusing the whole run for it
-  // would lose the 494 parts that were fine.
-  it('excludes a part that already has a movement, and still opens the others', async () => {
-    h.moved = new Set(['part_1'])
+describe('an anchored part', () => {
+  it('is excluded by default, with the adjust leg named, and the others still run', async () => {
+    h.anchored = new Set(['part_1'])
     const summary = await run()
     expect(summary.excluded).toEqual([
       {
         partId: 'part_1',
-        reason: 'already_has_movements',
-        detail: expect.stringMatching(/already has stock movements/i),
+        reason: 'already_has_initial',
+        detail: expect.stringMatching(/already anchored/i),
+      },
+    ])
+    expect(summary.excluded[0]?.detail).toMatch(/adjustment/i)
+    expect(countInputs().map((input) => input.partId)).toEqual(['part_2'])
+  })
+
+  it('takes the adjust leg when the caller opted in', async () => {
+    h.anchored = new Set(['part_1'])
+    const summary = await run(ENTRIES, { adjustAnchored: true })
+    expect(summary.excluded).toEqual([])
+    expect(summary.opened.map((row) => [row.partId, row.outcome])).toEqual([
+      ['part_1', 'adjust'],
+      ['part_2', 'initial'],
+    ])
+  })
+
+  it('reports a count that changed nothing as unchanged, not as a row', async () => {
+    const { ok } = await import('neverthrow')
+    h.setCount.mockResolvedValueOnce(
+      ok({
+        outcome: 'unchanged',
+        partId: 'part_1',
+        countQuantity: 10,
+        countDate: '2026-01-01',
+        net: 10,
+        delta: 0,
+        movement: null,
+        pending: false,
+      })
+    )
+    const summary = await run()
+    expect(summary.excluded).toEqual([
+      {
+        partId: 'part_1',
+        reason: 'unchanged',
+        detail: expect.stringContaining('10 on 2026-01-01'),
       },
     ])
     expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
-    expect(writtenByPart().has('part_1')).toBe(false)
-  })
-
-  it('names the adjustment as the way to correct a count instead', async () => {
-    h.moved = new Set(['part_1'])
-    const summary = await run()
-    expect(summary.excluded[0]?.detail).toMatch(/adjustment/i)
-  })
-
-  it('never sets a standard cost for an already-moved part', async () => {
-    h.moved = new Set(['part_1'])
-    await run()
-    for (const call of h.ensureSpy.mock.calls) {
-      expect(call[2]).not.toContain('part_1')
-    }
-  })
-
-  // The candidate list the page was rendered from is not an authority (§6.2).
-  it('re-reads the movement guard inside the run', async () => {
-    h.moved = new Set(['part_1', 'part_2'])
-    const summary = await run()
-    expect(summary.opened).toHaveLength(0)
-    expect(h.bulkCreateSpy).not.toHaveBeenCalled()
-  })
-
-  it('opens a part named twice exactly once, and says so', async () => {
-    const summary = await run([
-      { partId: 'part_1', quantity: 10, unitCost: 1200 },
-      { partId: 'part_1', quantity: 3, unitCost: 900 },
-    ])
-    expect(summary.opened.map((row) => row.quantity)).toEqual([10])
-    expect(summary.excluded[0]).toMatchObject({ partId: 'part_1', reason: 'duplicate_entry' })
   })
 })
 
-describe('bulkOpenStockBalance — the per-entry guards', () => {
+describe('the per-entry guards', () => {
   it.each([
-    0,
     -5,
     Number.NaN,
     Number.POSITIVE_INFINITY,
-  ])('fails an entry with a quantity of %s and still opens the rest', async (quantity) => {
+  ])('fails an entry with a quantity of %s and still counts the rest', async (quantity) => {
     const summary = await run([{ partId: 'part_1', quantity, unitCost: 1200 }, ...ENTRIES.slice(1)])
     expect(summary.failed).toEqual([
       { partId: 'part_1', reason: 'invalid_quantity', detail: expect.any(String) },
@@ -461,11 +284,17 @@ describe('bulkOpenStockBalance — the per-entry guards', () => {
     expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
   })
 
+  it('accepts a count of zero', async () => {
+    const summary = await run([{ partId: 'part_1', quantity: 0, unitCost: 100 }])
+    expect(summary.failed).toEqual([])
+    expect(countInputs()[0]?.quantity).toBe(0)
+  })
+
   it.each([
-    0,
     -1200,
     Number.NaN,
-  ])('fails an entry with a unit cost of %s and still opens the rest', async (unitCost) => {
+    1.234567,
+  ])('fails an entry with a unit cost of %s rather than rounding or reinterpreting it', async (unitCost) => {
     const summary = await run([{ partId: 'part_1', quantity: 10, unitCost }, ...ENTRIES.slice(1)])
     expect(summary.failed).toEqual([
       { partId: 'part_1', reason: 'invalid_unit_cost', detail: expect.any(String) },
@@ -473,13 +302,13 @@ describe('bulkOpenStockBalance — the per-entry guards', () => {
     expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
   })
 
-  // 🛑 NOT rounded down into a legal value. A receipt derives its cost from
-  // supplier terms; an opening balance is typed, so a value finer than the
-  // column can hold means the caller is working in the wrong units.
-  it('fails a unit cost finer than five decimal places rather than rounding it', async () => {
-    const summary = await run([{ partId: 'part_1', quantity: 1, unitCost: 1.234567 }])
-    expect(summary.failed[0]).toMatchObject({ reason: 'invalid_unit_cost' })
-    expect(h.bulkCreateSpy).not.toHaveBeenCalled()
+  it('accepts a typed $0 cost and an entry with no cost at all', async () => {
+    const summary = await run([
+      { partId: 'part_1', quantity: 1, unitCost: 0 },
+      { partId: 'part_2', quantity: 1 },
+    ])
+    expect(summary.failed).toEqual([])
+    expect(countInputs().map((input) => input.unitCost)).toEqual([0, undefined])
   })
 
   it('fails a stale part id rather than inventing a write target', async () => {
@@ -490,199 +319,59 @@ describe('bulkOpenStockBalance — the per-entry guards', () => {
     expect(summary.opened).toHaveLength(2)
   })
 
-  it('fails a service per row and still opens the rest (107-D10)', async () => {
+  it('fails a service per row and still counts the rest (107-D10)', async () => {
     h.parts.set('part_svc', { displayName: 'Installation', kind: 'service' })
     const summary = await run([{ partId: 'part_svc', quantity: 1, unitCost: 100 }, ...ENTRIES])
     expect(summary.failed).toEqual([
       { partId: 'part_svc', reason: 'service_part', detail: expect.any(String) },
     ])
-    expect(summary.opened.map((row) => row.partId)).toEqual(['part_1', 'part_2'])
-    expect(h.ensureSpy.mock.calls.flatMap((call) => call[2] as string[])).not.toContain('part_svc')
+    expect(countInputs().map((input) => input.partId)).toEqual(['part_1', 'part_2'])
+  })
+
+  it('counts a part named twice exactly once, and says so', async () => {
+    const summary = await run([
+      { partId: 'part_1', quantity: 10, unitCost: 1200 },
+      { partId: 'part_1', quantity: 3, unitCost: 900 },
+    ])
+    expect(countInputs().map((input) => input.quantity)).toEqual([10])
+    expect(summary.excluded[0]).toMatchObject({ partId: 'part_1', reason: 'duplicate_entry' })
+  })
+
+  it('reports a refused count against its own part and keeps going', async () => {
+    const { err } = await import('neverthrow')
+    h.setCount.mockResolvedValueOnce(err(new BadRequestError('refused')))
+    const summary = await run()
+    expect(summary.failed).toEqual([
+      { partId: 'part_1', reason: 'write_failed', detail: 'refused' },
+    ])
+    expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
   })
 
   it('accounts for every entry exactly once', async () => {
-    h.moved = new Set(['part_3'])
+    h.anchored = new Set(['part_3'])
     const summary = await run([
       ...ENTRIES,
       { partId: 'part_3', quantity: 1, unitCost: 100 },
       { partId: 'ghost', quantity: 1, unitCost: 100 },
-      { partId: 'part_1', quantity: 0, unitCost: 100 },
+      { partId: 'part_1', quantity: -1, unitCost: 100 },
     ])
     expect(summary.requested).toBe(5)
     expect(summary.opened.length + summary.excluded.length + summary.failed.length).toBe(5)
   })
 })
 
-describe('bulkOpenStockBalance — the first standard cost', () => {
-  // 🛑 `ensureStandardCost` takes `partIds: string[]` but ONE `source.unitCost`.
-  // A single call over mixed costs would freeze the first cost onto every part.
-  it('calls ensureStandardCost once per DISTINCT unit cost', async () => {
-    await run([
-      { partId: 'part_1', quantity: 1, unitCost: 1200 },
-      { partId: 'part_2', quantity: 1, unitCost: 1200 },
-      { partId: 'part_3', quantity: 1, unitCost: 550 },
-    ])
-    expect(h.ensureSpy).toHaveBeenCalledTimes(2)
-    expect(h.ensureSpy).toHaveBeenCalledWith(db, ORG, ['part_1', 'part_2'], {
-      kind: 'opening-stock',
-      unitCost: 1200,
-    })
-    expect(h.ensureSpy).toHaveBeenCalledWith(db, ORG, ['part_3'], {
-      kind: 'opening-stock',
-      unitCost: 550,
-    })
-  })
-
-  // The order is the contract: a movement written first, with the standard write
-  // failing after it, is a part holding stock that nothing can value.
-  it('sets the standards BEFORE any movement is written', async () => {
-    const order: string[] = []
-    h.ensureSpy.mockImplementation(async (_db, _org, partIds: string[], source) => {
-      order.push('ensure')
-      const { ok } = await import('neverthrow')
-      for (const partId of partIds) h.standards.set(partId, source.unitCost ?? 1)
-      return ok({ writtenPartIds: partIds })
-    })
-    h.bulkCreateSpy.mockImplementation(async () => {
-      order.push('create')
-      return { created: [{ id: 'mv_0' }, { id: 'mv_1' }], errors: [] }
-    })
-    await run()
-    expect(order).toEqual(['ensure', 'ensure', 'create'])
-  })
-
-  it('fails only the group whose standard cost could not be set', async () => {
-    h.ensureSpy.mockImplementation(async (_db, _org, partIds: string[], source) => {
-      const { err, ok } = await import('neverthrow')
-      if (source.unitCost === 1200) return err(new Error('boom'))
-      for (const partId of partIds) h.standards.set(partId, source.unitCost ?? 1)
-      return ok({ writtenPartIds: partIds })
-    })
-    const summary = await run()
-    expect(summary.failed).toEqual([
-      { partId: 'part_1', reason: 'no_standard_cost', detail: 'boom' },
-    ])
-    expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
-  })
-
-  /** `ensureStandardCost` ran and left every part at `standardCost`. */
-  function ensureLeaves(standardCost: number | null) {
-    h.ensureSpy.mockImplementation(async (_db, _org, partIds: string[]) => {
-      const { ok } = await import('neverthrow')
-      for (const partId of partIds) h.standards.set(partId, standardCost)
-      return ok({ writtenPartIds: [] })
-    })
-  }
-
-  // 111 Q18: `ensureStandardCost` is NULL-only, so "it ran" is not "the part has
-  // a standard". A part still at null is opened PENDING - no cost keys, never a
-  // zero - and parked; the other parts post as before.
-  it('writes a PENDING initial with no cost keys for a part left holding no standard, and parks it', async () => {
-    ensureLeaves(null)
-    const summary = await run([ENTRIES[0]!])
-    expect(summary.failed).toEqual([])
-    expect(summary.opened).toEqual([
-      expect.objectContaining({
-        partId: 'part_1',
-        movementId: 'mv_0',
-        unitCost: null,
-        extendedCost: null,
-        pending: true,
-      }),
-    ])
-    const values = writtenByPart().get('part_1')!
-    expect(values.stock_movement_cost_basis).toBe('pending')
-    expect(values).not.toHaveProperty('stock_movement_unit_cost')
-    expect(values).not.toHaveProperty('stock_movement_extended_cost')
-    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
-    // Nothing to book yet; the pricer posts it. And it contributes no value to the totals.
-    expect(h.postSpy).not.toHaveBeenCalled()
-    expect(summary.totalsByGlAccount).toEqual([])
-    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
-      sourceKind: 'stock_movement',
-      sourceId: 'mv_0',
-      stage: 'price',
-      reasonCode: 'STANDARD_COST_MISSING',
-      externalRef: 'part_1',
-      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_0'], partName: 'Widget 9000' },
-    })
-  })
-
-  // 103 §5a: a stored $0 standard is real, and the typed cost is still this door's number.
-  it('treats a stored $0 standard as real and writes the typed cost at basis standard', async () => {
-    ensureLeaves(0)
-    const summary = await run([ENTRIES[0]!])
-    expect(summary.failed).toEqual([])
-    expect(writtenByPart().get('part_1')).toMatchObject({
-      stock_movement_cost_basis: 'standard',
-      stock_movement_unit_cost: 1200,
-    })
-    expect(h.upsertWorkItem).not.toHaveBeenCalled()
-  })
-
-  it('fails a part left holding a negative standard, and writes nothing for it', async () => {
-    ensureLeaves(-5)
-    const summary = await run([ENTRIES[0]!])
-    expect(summary.failed[0]).toMatchObject({ partId: 'part_1', reason: 'no_standard_cost' })
-    expect(summary.failed[0]?.detail).toContain('Widget 9000')
-    expect(h.bulkCreateSpy).not.toHaveBeenCalled()
-  })
-
-  it('does not park a priced opening', async () => {
-    await run()
-    expect(h.upsertWorkItem).not.toHaveBeenCalled()
-  })
-
-  // A part somebody already rolled keeps its standard: `ensureStandardCost`
-  // never overwrites, and this door does not ask it to.
-  it('leaves an existing standard cost alone', async () => {
-    h.standards.set('part_1', 9999)
-    await run()
-    expect(h.standards.get('part_1')).toBe(9999)
-    expect(writtenByPart().get('part_1')?.stock_movement_unit_cost).toBe(1200)
-  })
-})
-
-describe('bulkOpenStockBalance — it never throws', () => {
-  it('reports a refused movement against the right part, by index', async () => {
-    h.createErrors = new Map([[0, 'refused']])
-    const summary = await run()
-    expect(summary.failed).toEqual([
-      { partId: 'part_1', reason: 'write_failed', detail: 'refused' },
-    ])
-    // The success that DID land is still paired with its own part.
-    expect(summary.opened).toEqual([
-      expect.objectContaining({ partId: 'part_2', movementId: 'mv_1' }),
-    ])
-  })
-
-  it('returns an empty summary rather than an error when every entry is refused', async () => {
-    const summary = await run([{ partId: 'part_1', quantity: -1, unitCost: 1200 }])
-    expect(summary.opened).toHaveLength(0)
-    expect(summary.failed).toHaveLength(1)
-    expect(h.bulkCreateSpy).not.toHaveBeenCalled()
-  })
-
-  // A whole-run precondition IS an error: it is not about a part, and it refuses
-  // every entry identically.
+describe('the whole-run preconditions', () => {
   it('errors when the org has no stock_movement definition', async () => {
     h.defs.delete('stock_movement')
-    const result = await bulkOpenStockBalance(db, ORG, USER, {
-      occurredAt: OCCURRED_AT,
-      entries: ENTRIES,
-    })
-    expect(result.isErr()).toBe(true)
+    const result = await bulkOpenStockBalance(db, ORG, USER, { entries: ENTRIES })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
   })
 
   it('errors when the movement cost fields are not materialised', async () => {
     h.materialised.delete('stock_movement_unit_cost')
-    const result = await bulkOpenStockBalance(db, ORG, USER, {
-      occurredAt: OCCURRED_AT,
-      entries: ENTRIES,
-    })
+    const result = await bulkOpenStockBalance(db, ORG, USER, { entries: ENTRIES })
     expect(result.isErr()).toBe(true)
-    expect(h.bulkCreateSpy).not.toHaveBeenCalled()
+    expect(h.setCount).not.toHaveBeenCalled()
   })
 })
 
@@ -690,7 +379,6 @@ describe('bulkSetPartKind', () => {
   it('sets the kind on every named part in one write', async () => {
     h.bulkSetFieldValueSpy.mockResolvedValue({ count: 2 })
     const result = await bulkSetPartKind(db, ORG, USER, ['part_1', 'part_2'], 'finished_good')
-    expect(result.isOk()).toBe(true)
     expect(h.bulkSetFieldValueSpy).toHaveBeenCalledWith(
       ['def_part:part_1', 'def_part:part_2'],
       'fld_part_kind',
@@ -708,12 +396,9 @@ describe('bulkSetPartKind', () => {
     )
   })
 
-  // 🛑 An unrecognised value stores as an optionId nothing maps, which
-  // `resolveInventoryRoleForPartKind` then reads as the default — silently
-  // posting a finished good to Raw Materials on an `updatable: false` row.
+  // An unrecognised value stores as an optionId nothing maps, which reads as the default account.
   it('refuses a value that is not a part kind, and writes nothing', async () => {
     const result = await bulkSetPartKind(db, ORG, USER, ['part_1'], 'widget')
-    expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     expect(h.bulkSetFieldValueSpy).not.toHaveBeenCalled()
   })
@@ -746,14 +431,3 @@ describe('bulkSetPartKind', () => {
     expect(h.bulkSetFieldValueSpy).not.toHaveBeenCalled()
   })
 })
-
-// The posting seam has its own test (`postings/__tests__/post-inventory-movement.test.ts`);
-// this file is about the movements. `vi.mock` is hoisted, so placement is free.
-vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
-  postInventoryMovementInTx: (...args: unknown[]) => h.postSpy(...args),
-  exportInventoryMovement: async () => null,
-  inventoryTxnDate: (day: Date) => day.toISOString().slice(0, 10),
-  reverseInventoryMovementPosting: async () => null,
-  reversePostingForMovement: async () => null,
-  linkMovementsToPosting: async () => undefined,
-}))
