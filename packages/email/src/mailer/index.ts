@@ -12,6 +12,8 @@ import {
   DeveloperInviteText,
   EmailChangeVerificationEmail,
   EmailChangeVerificationText,
+  ExistingAccountEmail,
+  ExistingAccountText,
   GettingStartedEmail,
   GettingStartedText,
   InviteEmail,
@@ -235,6 +237,33 @@ export const sendResetPasswordEmail = async ({
     })
   } catch (error) {
     logger.error('Error in sendResetPasswordEmail', { error })
+    throw error
+  }
+}
+
+export const sendExistingAccountEmail = async ({
+  email,
+  name,
+  loginLink,
+  resetPasswordLink,
+}: {
+  email: UserEmail
+  name?: string
+  loginLink: string
+  resetPasswordLink: string
+}): Promise<boolean> => {
+  try {
+    const html = await render(await ExistingAccountEmail({ name, loginLink, resetPasswordLink }))
+    const text = ExistingAccountText({ name, loginLink, resetPasswordLink })
+
+    return await sendEmail({
+      to: email,
+      subject: formatSubject('You already have an account'),
+      html,
+      text,
+    })
+  } catch (error) {
+    logger.error('Error in sendExistingAccountEmail', { error })
     throw error
   }
 }

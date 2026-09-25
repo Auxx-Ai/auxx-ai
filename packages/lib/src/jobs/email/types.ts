@@ -7,6 +7,7 @@ export const emailTypeSchema = z.enum([
   'email-change-verification',
   'reset-password',
   'password-reset-notify',
+  'existing-account',
   'two-factor-otp',
   'invite',
   'join-organization',
@@ -76,6 +77,8 @@ export type EmailPayloadByType = {
   'reset-password': WithRecipient<{ resetLink: string }>
   // biome-ignore lint/complexity/noBannedTypes: no additional fields needed
   'password-reset-notify': WithRecipient<{}>
+  /** Sign-up attempt with an already-registered email (better-auth `onExistingUserSignUp`). */
+  'existing-account': WithRecipient<{ loginLink: string; resetPasswordLink: string }>
   /** One-time code for OTP-based two-factor sign-in (better-auth `twoFactor.otpOptions`). */
   'two-factor-otp': WithRecipient<{ otp: string }>
   invite: WithRecipient<{
