@@ -3,15 +3,11 @@
 import { describe, expect, it } from 'vitest'
 import { describeRecordRefresh, type RefreshRunSummary } from '../refresh-outcome'
 
-const ID_CLAUSE = { fieldId: '$externalId', operator: 'in' }
-const CUTOVER_CLAUSE = { fieldId: 'createdAt', operator: 'between' }
-
 const run = (over: Partial<RefreshRunSummary> = {}): RefreshRunSummary => ({
   status: 'completed',
   created: 0,
   updated: 0,
   skipped: 0,
-  recordFilter: [ID_CLAUSE],
   errorSample: null,
   ...over,
 })
@@ -35,10 +31,7 @@ describe('describeRecordRefresh', () => {
     )
   })
 
-  it('tells a pre-cutover record from one the source no longer has', () => {
-    expect(
-      describeRecordRefresh(run({ recordFilter: [ID_CLAUSE, CUTOVER_CLAUSE] }), 'Shopify')
-    ).toEqual(done('neutral', 'This record is from before your books started in auxx'))
+  it('reports a record the source no longer has', () => {
     expect(describeRecordRefresh(run(), 'Shopify')).toEqual(done('neutral', 'Not found in Shopify'))
   })
 

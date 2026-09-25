@@ -16,7 +16,6 @@ export async function readRecordRefresh(
       created: R.created,
       updated: R.updated,
       skipped: R.skipped,
-      recordFilter: R.recordFilter,
       errorSample: R.errorSample,
       sourceName: schema.DataConnector.name,
     })

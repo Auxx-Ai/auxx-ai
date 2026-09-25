@@ -5,18 +5,15 @@ import { randomUUID } from 'node:crypto'
 import { type Database, schema } from '@auxx/database'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { parseDateRange } from '../conditions/date-range'
 import { BadRequestError, ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
 import type { ConnectorRecordFilterCondition } from './connectors/types'
 import { enqueueConnectorSync } from './data-connector-queue'
 import {
   type ReimportKind,
   type ReimportRunOptions,
-  type ValidatedReimportFilter,
   validateReimportFilter,
 } from './reimport-filter'
 import { isConnectorClaimed, loadConnector, type StreamWithMappings } from './service'
-import { readAppPeriodFields } from './slice-orchestrator'
 import type { ConnectorStreamState } from './types'
 
 export interface RequestReimportInput {
@@ -31,7 +28,7 @@ export interface RequestReimportResult {
   /** `queued`: an `id` run waits for the running sync and starts when the claim frees. */
   status: 'started' | 'queued'
   kind: ReimportKind
-  /** The run filter as it will be sent, cutover guard included. */
+  /** The run filter as it will be sent. */
   recordFilter: ConnectorRecordFilterCondition[]
   /** Lands on the run row as `progress.requestId` once the job opens it. */
   requestId: string
@@ -39,8 +36,7 @@ export interface RequestReimportResult {
 
 /**
  * Validate a re-import against N5's refusals and resolve its run options. Refuses a
- * non-app connector, a period run on a stream that never finished a backfill, and a
- * pre-cutover period run; an `id` run instead gets the cutover as an extra `exact` clause.
+ * non-app connector and a period run on a stream that never finished a backfill.
  */
 async function planReimport(
   db: Database,
@@ -84,20 +80,10 @@ async function planReimport(
     }
   }
 
-  const periodFields = await readAppPeriodFields(input.organizationId, connector)
-  // Lazy: keeps the accounting module graph out of connector code that never re-imports.
-  const cutoverStart = streams.some((s) => periodFields.has(s.stream.streamKey ?? ''))
-    ? await (await import('../accounting/ledger/setup/cutover-start')).readActiveCutoverStart(
-        input.organizationId
-      )
-    : null
-  const recordFilter = applyCutoverRule(validated.value, streams, periodFields, cutoverStart)
-  if (recordFilter.isErr()) return err(recordFilter.error)
-
   return ok({
     reimport: {
       streamIds,
-      recordFilter: recordFilter.value,
+      recordFilter: validated.value.clauses,
       initiatedBy: input.initiatedBy ?? null,
     },
     kind,
@@ -143,59 +129,6 @@ export async function requestReimport(
     recordFilter: reimport.recordFilter,
     requestId,
   })
-}
-
-/**
- * The accounting cutover rule (N5) for accounting-active orgs: a period run on a stream with
- * a `periodField` must start on or after the cutover; an `id` run gets the cutover ANDed in
- * as an `exact` clause, so a pre-cutover record is simply not fetched.
- */
-function applyCutoverRule(
-  filter: ValidatedReimportFilter,
-  streams: StreamWithMappings[],
-  periodFields: Map<string, string>,
-  cutoverStart: Date | null
-): Result<ConnectorRecordFilterCondition[], Error> {
-  if (!cutoverStart) return ok(filter.clauses)
-  const guarded = streams.flatMap((s) => {
-    const field = periodFields.get(s.stream.streamKey ?? '')
-    return field ? [{ stream: s, field }] : []
-  })
-  if (guarded.length === 0) return ok(filter.clauses)
-
-  if (filter.kind === 'period') {
-    for (const { stream, field } of guarded) {
-      const bounded = filter.clauses.some((c) => {
-        if (c.fieldId !== field || c.operator !== 'between') return false
-        const from = parseDateRange(c.value)?.from
-        return !!from && from.getTime() >= cutoverStart.getTime()
-      })
-      if (!bounded) {
-        return err(
-          new UnprocessableEntityError(
-            `Stream “${streamLabel(stream)}” needs “${field} between” starting on or after ` +
-              `${cutoverStart.toISOString()}; before that your opening balance owns history.`
-          )
-        )
-      }
-    }
-    return ok(filter.clauses)
-  }
-
-  // One run filter is sent to every named stream, so the guard only fits a single stream.
-  if (streams.length > 1) {
-    return err(new BadRequestError('Refresh the records of one stream at a time.'))
-  }
-  const field = guarded[0]?.field as string
-  return ok([
-    ...filter.clauses,
-    {
-      fieldId: field,
-      operator: 'between',
-      value: { from: cutoverStart.toISOString() },
-      exact: true,
-    },
-  ])
 }
 
 /** Stream ids of `streams` that finished a real backfill: steady now, or done in a full run. */
