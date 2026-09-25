@@ -26,7 +26,6 @@ import {
   Landmark,
   Link2Off,
   PanelRight,
-  RefreshCw,
 } from 'lucide-react'
 import Link from 'next/link'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
@@ -79,12 +78,6 @@ export function PayoutsPage() {
 /** One `ListSelectionProvider` per mount, the shape the outbox and the review queue use. */
 function PayoutsBody() {
   useRequireCapability(PermissionKey.ledgerView)
-  const utils = api.useUtils()
-  // A `useCallback` because the toolbar registration below is memoised over it:
-  // reading `utils.payoutEvidence.invalidate` inline is a fresh identity per
-  // render, which republishes forever.
-  const refreshEvidence = useCallback(() => void utils.payoutEvidence.invalidate(), [utils])
-
   const [payoutId, setPayoutId] = useQueryState('payout')
 
   /**
@@ -211,14 +204,10 @@ function PayoutsBody() {
                 Import issues ({rejectedCount})
               </Button>
             )}
-            <Button variant='ghost' size='sm' className='h-7' onClick={refreshEvidence}>
-              <RefreshCw />
-              Refresh evidence
-            </Button>
           </>
         ),
       }),
-      [rejectedCount, issuesOpen, refreshEvidence]
+      [rejectedCount, issuesOpen]
     )
   )
 
@@ -437,9 +426,7 @@ function PayoutList({
         {query.error && (
           <Alert variant='destructive'>
             <AlertTitle>Could not load payouts</AlertTitle>
-            <AlertDescription>
-              {query.error.message} Use Refresh evidence to try again.
-            </AlertDescription>
+            <AlertDescription>{query.error.message} Reload the page to try again.</AlertDescription>
           </Alert>
         )}
         <TreeRowList

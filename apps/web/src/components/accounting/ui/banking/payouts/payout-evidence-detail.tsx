@@ -50,9 +50,7 @@ export function PayoutEvidenceDetail({ payoutId }: { payoutId: string }) {
       <div className='p-3'>
         <Alert variant='destructive'>
           <AlertTitle>Could not load payout</AlertTitle>
-          <AlertDescription>
-            {query.error.message} Use Refresh evidence to try again.
-          </AlertDescription>
+          <AlertDescription>{query.error.message} Reload the page to try again.</AlertDescription>
         </Alert>
       </div>
     )
