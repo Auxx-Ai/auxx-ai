@@ -106,15 +106,30 @@ describe('OpeningStockList', () => {
     expect(screen.getByText('Counted')).toBeTruthy()
   })
 
-  it('shows the Q25 banner only for a BOM part with unbuilt sales', () => {
+  it('shows one Q25 banner for the BOM parts with unbuilt sales and backflushes them', () => {
     const { onBackflush } = renderList([
       row({ partId: 'lift', hasBom: true, unbuiltSales: 830 }),
       row({ partId: 'motor', title: 'Motor', hasBom: false, unbuiltSales: 0, netToday: -830 }),
       row({ partId: 'frame', title: 'Frame', hasBom: true, unbuiltSales: 0, netToday: 12 }),
     ])
-    expect(screen.getAllByText(/unbuilt sales/)).toHaveLength(1)
+    expect(screen.getByText(/1 made part has unbuilt/)).toBeTruthy()
     fireEvent.click(screen.getByText('Backflush past sales'))
-    expect(onBackflush).toHaveBeenCalledWith(expect.objectContaining({ partId: 'lift' }))
+    expect(onBackflush).toHaveBeenCalledWith([expect.objectContaining({ partId: 'lift' })])
+  })
+
+  it('filters the list to the parts the banner names', () => {
+    renderList([
+      row({ partId: 'lift', title: 'Lift', hasBom: true, unbuiltSales: 830 }),
+      row({ partId: 'frame', title: 'Frame', hasBom: true, unbuiltSales: 0, netToday: 12 }),
+    ])
+    fireEvent.click(screen.getByText('Show them'))
+    expect(screen.queryByText('Frame')).toBeNull()
+    expect(screen.queryByText('Show them')).toBeNull()
+  })
+
+  it('shows no banner when nothing is unbuilt', () => {
+    renderList([row({ partId: 'frame', hasBom: true, unbuiltSales: 0, netToday: 12 })])
+    expect(screen.queryByText('Backflush past sales')).toBeNull()
   })
 })
 

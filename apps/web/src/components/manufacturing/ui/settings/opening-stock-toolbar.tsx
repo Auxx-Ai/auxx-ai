@@ -58,6 +58,7 @@ export function OpeningStockToolbar({
     { value: 'uncounted', label: 'Sold, never counted', count: counts.uncounted },
     { value: 'unclassified', label: 'Unclassified', count: counts.unclassified },
     { value: 'uncosted', label: 'No standard cost', count: counts.uncosted },
+    { value: 'unbuilt', label: 'Unbuilt sales', count: counts.unbuilt },
   ]
   const kindOptions: FilterOption[] = [...kindCounts.entries()]
     .sort((a, b) => b[1] - a[1])

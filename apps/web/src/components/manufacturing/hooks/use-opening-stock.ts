@@ -68,6 +68,7 @@ export type OpeningStockFilter =
   | 'uncounted'
   | 'unclassified'
   | 'uncosted'
+  | 'unbuilt'
   | `kind:${string}`
 
 interface OpeningStockDraft {
@@ -125,6 +126,8 @@ export interface OpeningStockCounts {
   uncounted: number
   unclassified: number
   uncosted: number
+  /** Made parts with sales no build covers: backflush them before counting (Q25). */
+  unbuilt: number
 }
 
 /** SINGLE_SELECT reads come back as arrays on some paths and scalars on others. */
@@ -314,6 +317,7 @@ export function useOpeningStock() {
       uncounted: rows.filter((row) => row.state === 'uncounted').length,
       unclassified: rows.filter((row) => row.isUnclassified).length,
       uncosted: rows.filter((row) => row.standardCost == null).length,
+      unbuilt: rows.filter(needsBackflushFirst).length,
     }),
     [rows]
   )
