@@ -648,6 +648,8 @@ export const auth = betterAuth({
       : []),
     twoFactor({
       issuer: 'Auxx.Ai',
+      // Our Drizzle schema exports the table as `TwoFactor`; the adapter looks models up by key.
+      schema: { twoFactor: { modelName: 'TwoFactor' } },
       otpOptions: {
         async sendOTP({ user, otp }) {
           logger.info('Sending 2FA OTP email', { userId: user.id })
