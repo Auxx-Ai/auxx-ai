@@ -4,6 +4,7 @@ import {
   type AnyPgColumn,
   check,
   foreignKey,
+  index,
   jsonb,
   pgTable,
   sql,
@@ -60,6 +61,8 @@ export const FinancialSourceAcceptance = pgTable(
       foreignColumns: [MoneyTransaction.organizationId, MoneyTransaction.id],
     }).onDelete('no action'),
     unique('FinancialSourceAcceptance_object_key').on(t.organizationId, t.sourceObjectId),
+    // Backs the FK check on an observation delete; without it a bulk delete rescans the org.
+    index('FinancialSourceAcceptance_observation_idx').on(t.organizationId, t.observationId),
     check(
       'FinancialSourceAcceptance_state_check',
       sql`${t.state} IN ('pending','accepted','rejected','blocked')`

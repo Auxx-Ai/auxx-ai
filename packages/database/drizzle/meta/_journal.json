@@ -2801,6 +2801,13 @@
       "when": 1790279843914,
       "tag": "0399_field_value_asset_id",
       "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1790291783915,
+      "tag": "0400_observation_fk_indexes",
+      "breakpoints": true
     }
   ]
 }

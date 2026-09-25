@@ -91,6 +91,11 @@ export const ProcessorBalanceEntry = pgTable(
       foreignColumns: [FinancialSourceObservation.organizationId, FinancialSourceObservation.id],
     }).onDelete('no action'),
     unique('ProcessorBalanceEntry_source_key').on(t.organizationId, t.sourceObjectId),
+    // Backs the FK check on an observation delete; without it a bulk delete rescans the org.
+    index('ProcessorBalanceEntry_current_observation_idx').on(
+      t.organizationId,
+      t.currentObservationId
+    ),
     index('ProcessorBalanceEntry_payout_idx').on(
       t.organizationId,
       t.sourceAccountId,

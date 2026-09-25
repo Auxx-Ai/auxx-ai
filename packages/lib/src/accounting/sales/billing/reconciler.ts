@@ -45,6 +45,7 @@
  * the work order, whose projection reads `invoice_total`. Plan 08 §6.1.
  */
 
+import { createScopedLogger } from '@auxx/logger'
 import {
   defineParentReconciler,
   resolveParentsByRelation,
@@ -86,9 +87,30 @@ async function projectContact(
   await syncContactBillingProjection({ organizationId, userId, contactInstanceId })
 }
 
+const logger = createScopedLogger('billing-reconciler')
+
+/** Batch, not per parent: both bulk lanes reach these keys, and a batch reconciler is exempt from the cap (110 M3/M6). */
+function projectAll(
+  project: (organizationId: string, userId: string, instanceId: string) => Promise<void>
+) {
+  return async (organizationId: string, userId: string, instanceIds: string[]): Promise<void> => {
+    for (const instanceId of instanceIds) {
+      try {
+        await project(organizationId, userId, instanceId)
+      } catch (error) {
+        logger.error('billing projection failed for one parent; continuing with the rest', {
+          organizationId,
+          instanceId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+}
+
 const workOrderReconciler = defineParentReconciler<string>({
   key: BILLING_WORK_ORDER,
-  rebuild: projectWorkOrder,
+  rebuildBatch: projectAll(projectWorkOrder),
 })
 
 const lineReconciler = defineParentReconciler<string>({
@@ -101,17 +123,17 @@ const lineReconciler = defineParentReconciler<string>({
    */
   resolve: (organizationId, lineInstanceIds) =>
     resolveParentsByRelation(organizationId, 'line_item_work_order', lineInstanceIds),
-  rebuild: projectWorkOrder,
+  rebuildBatch: projectAll(projectWorkOrder),
 })
 
 const invoiceReconciler = defineParentReconciler<string>({
   key: BILLING_INVOICE,
-  rebuild: projectInvoice,
+  rebuildBatch: projectAll(projectInvoice),
 })
 
 const contactReconciler = defineParentReconciler<string>({
   key: BILLING_CONTACT,
-  rebuild: projectContact,
+  rebuildBatch: projectAll(projectContact),
 })
 
 /** Register the four drains. Called from `registerAllHooks()`, idempotent per key. */

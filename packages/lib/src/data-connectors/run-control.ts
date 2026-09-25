@@ -94,3 +94,21 @@ export async function completeRunStream(
     return remaining === 0 && finalizingStreamId !== input.streamId ? null : remaining
   })
 }
+
+/**
+ * Keep a run's checkpoint heartbeat warm while long work runs outside the streams (the
+ * relationship pass), so the stale-run sweep does not fail a run that is still working.
+ */
+export function startRunHeartbeat(db: Database, runId: string, intervalMs = 30_000): () => void {
+  const T = schema.DataConnectorRun
+  const beat = () =>
+    db
+      .update(T)
+      .set({ heartbeatAt: new Date() })
+      .where(and(eq(T.id, runId), eq(T.status, 'running')))
+      .then(() => undefined)
+      .catch(() => undefined)
+  const timer = setInterval(beat, intervalMs)
+  timer.unref?.()
+  return () => clearInterval(timer)
+}

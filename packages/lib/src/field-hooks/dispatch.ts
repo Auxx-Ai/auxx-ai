@@ -24,10 +24,11 @@ import type { BatchCore, FieldChangeRef, RegisteredFieldChangeHook } from './typ
 const logger = createScopedLogger('field-hooks:dispatch')
 
 /**
- * Ceiling on the changes a `degraded` list may synthesize (§7 item 4). A def with many
- * system attributes times a truncated scope's record list is the shape this bounds.
+ * Ceiling on the RECORDS a `degraded` list may expand (§7 item 4). Counted per record, not per
+ * synthesized change: a 24-attribute def would otherwise exhaust a per-change cap at ~800
+ * records, and marks dedupe so the extra changes cost nothing but the cap (110 §9a).
  */
-const MAX_DEGRADED_CHANGES = 20_000
+const MAX_DEGRADED_RECORDS = 20_000
 
 export type DispatchLane = 'buffered' | 'sync'
 
@@ -354,12 +355,21 @@ async function dispatchDegraded(
   degraded: RecordId[]
 ): Promise<void> {
   if (degraded.length === 0) return
-  let capped = false
+  let records = 0
 
   for (const recordId of degraded) {
+    if (records >= MAX_DEGRADED_RECORDS) {
+      logger.error('degraded dispatch capped; some derived values will stay stale', {
+        organizationId: state.organizationId,
+        cap: MAX_DEGRADED_RECORDS,
+        records: degraded.length,
+      })
+      return
+    }
     const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(recordId)
     const def = await resolveDef(rawDefId)
     if (!def) continue
+    records++
 
     const entityHooks = getRegisteredEntityFieldChangeHooks(def.entitySlug)
     const entityApplies = entityHooks.some((hook) => appliesDegraded(state.lane, hook))
@@ -371,17 +381,6 @@ async function dispatchDegraded(
       // can only reach its type-keyed chain (an org's own ADDRESS_STRUCT field).
       const chain = field.systemAttribute ? [...entityHooks, ...typeHooks] : typeHooks
       if (field.systemAttribute ? !entityApplies && !typeApplies : !typeApplies) continue
-      if (state.report.degraded >= MAX_DEGRADED_CHANGES) {
-        if (!capped) {
-          capped = true
-          logger.error('degraded dispatch capped; some derived values will stay stale', {
-            organizationId: state.organizationId,
-            cap: MAX_DEGRADED_CHANGES,
-            records: degraded.length,
-          })
-        }
-        return
-      }
       state.report.degraded++
       const ref: FieldChangeRef = {
         recordId: toRecordId(def.entityDefinitionId, entityInstanceId),
