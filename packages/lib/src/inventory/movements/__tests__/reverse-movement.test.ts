@@ -89,6 +89,9 @@ const ALL_MOVEMENT_ATTRS = [
   'stock_movement_vendor_part',
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement',
+  'stock_movement_build',
+  'stock_movement_fulfillment_line',
+  'stock_movement_parent_movement',
 ]
 
 /**
@@ -174,6 +177,8 @@ beforeEach(() => {
     ['stock_movement', 'def_mv'],
     ['vendor_part', 'def_vp'],
     ['purchase_order_line', 'def_pol'],
+    ['build', 'def_build'],
+    ['fulfillment_line', 'def_fl'],
   ])
   h.instanceRows = [{ id: MOVEMENT }]
   h.valueRows = originalReceipt()
@@ -267,6 +272,27 @@ describe('reverseMovement — the row it writes', () => {
     expect(stamped).toBeLessThanOrEqual(Date.now())
   })
 
+  it('copies EVERY link the original carried - build, fulfillment line, parent movement', async () => {
+    // A build consume, a shipment line or an exploded child is found through
+    // its link; a reversal missing it is invisible wherever the original shows.
+    h.valueRows = originalReceipt({
+      stock_movement_build: value('stock_movement_build', { relatedEntityId: 'build_1' }),
+      stock_movement_fulfillment_line: value('stock_movement_fulfillment_line', {
+        relatedEntityId: 'fl_1',
+      }),
+      stock_movement_parent_movement: value('stock_movement_parent_movement', {
+        relatedEntityId: 'mv_parent',
+      }),
+    })
+    const values = await reverseAndRead()
+    expect(values.stock_movement_build).toBe('def_build:build_1')
+    expect(values.stock_movement_fulfillment_line).toBe('def_fl:fl_1')
+    expect(values.stock_movement_parent_movement).toBe('def_mv:mv_parent')
+    expect(values.stock_movement_purchase_order_line).toBe('def_pol:pol_1')
+    expect(values.stock_movement_vendor_part).toBe('def_vp:vp_1')
+    expect(values.stock_movement_reverses_movement).toBe('def_mv:mv_1')
+  })
+
   it('omits the relations the original did not carry', async () => {
     h.valueRows = originalReceipt({}, [
       'stock_movement_vendor_part',
@@ -277,6 +303,9 @@ describe('reverseMovement — the row it writes', () => {
     expect(values).not.toHaveProperty('stock_movement_vendor_part')
     expect(values).not.toHaveProperty('stock_movement_purchase_order_line')
     expect(values).not.toHaveProperty('stock_movement_vendor_unit_price')
+    expect(values).not.toHaveProperty('stock_movement_build')
+    expect(values).not.toHaveProperty('stock_movement_fulfillment_line')
+    expect(values).not.toHaveProperty('stock_movement_parent_movement')
   })
 
   it('returns exactly what it stored', async () => {
@@ -372,6 +401,42 @@ describe('reverseMovement — the refusals', () => {
     // A hand-keyed stock adjustment, or a pre-migration row. There is no cost to
     // preserve and writing the negation at zero is worse than writing nothing.
     h.valueRows = originalReceipt({}, ['stock_movement_unit_cost'])
+    const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('refuses a pre-regime row with no cost and no basis - nothing will ever price it', async () => {
+    h.valueRows = originalReceipt({}, ['stock_movement_unit_cost', 'stock_movement_cost_basis'])
+    const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toMatch(/not pending a price/)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  // 111 Q18: a pending row has no cost to carry, and its negation waits for the
+  // same price. Both are filled together when the standard lands.
+  it('reverses a PENDING row into a pending row - negated quantity, same part, no cost', async () => {
+    h.valueRows = originalReceipt(
+      { stock_movement_cost_basis: value('stock_movement_cost_basis', { optionId: 'pending' }) },
+      ['stock_movement_unit_cost']
+    )
+    const values = await reverseAndRead()
+    expect(values).toMatchObject({
+      stock_movement_part: 'def_part:part_1',
+      stock_movement_quantity: -10,
+      stock_movement_cost_basis: 'pending',
+      stock_movement_gl_account: 'inventory_raw_materials',
+      stock_movement_reverses_movement: 'def_mv:mv_1',
+    })
+    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+  })
+
+  it('refuses a row marked pending that somehow carries a cost', async () => {
+    h.valueRows = originalReceipt({
+      stock_movement_cost_basis: value('stock_movement_cost_basis', { optionId: 'pending' }),
+    })
     const error = await expectErr(reverseMovement(db, ORG, USER, { movementId: MOVEMENT }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(h.createSpy).not.toHaveBeenCalled()

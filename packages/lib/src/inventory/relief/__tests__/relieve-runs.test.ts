@@ -30,6 +30,12 @@ vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) =>
     key === 'ledger.lockedThroughMonth' ? h.lockedThroughMonth : null,
 }))
+vi.mock('../../../settings/read', () => ({
+  readOrganizationSettings: async () => ({
+    'accounting.bookTimeZone': 'UTC',
+    'accounting.cutoffPeriod': null,
+  }),
+}))
 
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
@@ -77,6 +83,13 @@ vi.mock('../../../accounting/work-items/write', () => ({
   upsertWorkItem: async () => ({ isOk: () => true }),
   deleteWorkItemsAtStage: async () => ({ isOk: () => true }),
 }))
+// The park's pending-row read is not this file's subject; the fake db below has no reader shape.
+vi.mock('../../../resources/system-records', async () => ({
+  ...(await vi.importActual<typeof import('../../../resources/system-records')>(
+    '../../../resources/system-records'
+  )),
+  readSystemRecords: async () => [],
+}))
 vi.mock('../../movements', async () => {
   const actual = await vi.importActual<typeof import('../../movements')>('../../movements')
   const { ok } = await import('neverthrow')
@@ -87,7 +100,7 @@ vi.mock('../../movements', async () => {
       inputs: Array<{
         partInstanceId: string
         quantity: number
-        unitCost: number
+        unitCost: number | null
         glAccount: string
         occurredAt: Date
         links: { fulfillmentLineId: string }
@@ -106,7 +119,7 @@ vi.mock('../../movements', async () => {
           partInstanceId: input.partInstanceId,
           quantity: input.quantity,
           unitCost: input.unitCost,
-          extendedCost: input.quantity * input.unitCost,
+          extendedCost: input.unitCost == null ? null : input.quantity * input.unitCost,
           glAccount: input.glAccount,
           occurredAt: input.occurredAt,
         }
@@ -190,14 +203,14 @@ function fakeDb(): Database {
 }
 
 /** The two lines of one dispatch, with the roll-up as the subledger currently stands. */
-function dispatch() {
+function dispatch(quantities: [number, number] = [2, 3]) {
   const relieved = (lineId: string) =>
     -h.movements
       .filter((movement) => movement.fulfillmentLineId === lineId)
       .reduce((sum, movement) => sum + movement.quantity, 0) || null
   return [
-    { id: 'fl_1', lineItemId: 'li_1', quantity: 2 },
-    { id: 'fl_2', lineItemId: 'li_2', quantity: 3 },
+    { id: 'fl_1', lineItemId: 'li_1', quantity: quantities[0] },
+    { id: 'fl_2', lineItemId: 'li_2', quantity: quantities[1] },
   ].map((line) => ({
     fulfillmentLineId: line.id,
     fulfillmentId: 'ful_1',
@@ -209,11 +222,11 @@ function dispatch() {
   }))
 }
 
-function relieve() {
+function relieve(quantities?: [number, number]) {
   return relieveFulfillmentLines(fakeDb(), {
     organizationId: ORG,
     userId: 'u_1',
-    lines: dispatch(),
+    lines: dispatch(quantities),
   })
 }
 
@@ -245,19 +258,38 @@ describe('a dispatch in a reviewed month', () => {
 })
 
 describe('a dispatch relieved in two runs', () => {
-  it('posts one entry per run, each under its own identity, both parented by the fulfillment', async () => {
+  it('111 Q18 - an unpriced line is written pending and left out of the run entry; a later run at zero delta adds nothing', async () => {
     const first = await relieve()
-    expect(first._unsafeUnwrap()).toMatchObject({ skippedNoCost: 1, movementIds: ['mv_0'] })
+    expect(first._unsafeUnwrap()).toMatchObject({
+      skippedNoCost: 1,
+      movementIds: ['mv_0', 'mv_1'],
+    })
+    expect(h.postings).toHaveLength(1)
+    expect(h.postings[0]!.subject).toBe('stock_movement:mv_0:original')
+    expect(h.postings[0]!.lines.every((line) => line.sourceId === 'mv_0')).toBe(true)
 
+    // The standard lands. The pending row is the pricer's to fill and post; relief owes nothing.
     h.standardCosts.set('part_2', 2_000)
     const second = await relieve()
-    expect(second._unsafeUnwrap()).toMatchObject({ skippedNoCost: 0, movementIds: ['mv_1'] })
+    expect(second._unsafeUnwrap()).toMatchObject({ skippedZeroDelta: 2, movementIds: [] })
+    expect(h.movements).toHaveLength(2)
+    expect(h.postings).toHaveLength(1)
+  })
+
+  it('posts one entry per run, each under its own identity, both parented by the fulfillment', async () => {
+    h.standardCosts.set('part_2', 2_000)
+    const first = await relieve()
+    expect(first._unsafeUnwrap()).toMatchObject({ movementIds: ['mv_0', 'mv_1'] })
+
+    // The dispatch is amended: two more of the first line ship.
+    const second = await relieve([4, 3])
+    expect(second._unsafeUnwrap()).toMatchObject({ skippedNoCost: 0, movementIds: ['mv_2'] })
 
     expect(h.postings).toHaveLength(2)
     const [a, b] = h.postings as [FakePosting, FakePosting]
     expect(a.docNumber).not.toBe(b.docNumber)
     expect(a.subject).toBe('stock_movement:mv_0:original')
-    expect(b.subject).toBe('stock_movement:mv_1:original')
+    expect(b.subject).toBe('stock_movement:mv_2:original')
     for (const posting of [a, b]) {
       expect(posting.sources).toEqual(
         expect.arrayContaining([
@@ -265,13 +297,11 @@ describe('a dispatch relieved in two runs', () => {
           { sourceKind: 'order', sourceId: 'ord_1', linkRole: 'parent' },
         ])
       )
-      // Every line names a real movement, not the fulfillment.
-      expect(new Set(posting.lines.map((line) => line.sourceId))).toEqual(
-        new Set([posting.subject.split(':')[1]])
-      )
     }
-    expect(debits(a, 'cogs_product_cost')).toBe(2 * 1_000)
-    expect(debits(b, 'cogs_product_cost')).toBe(3 * 2_000)
+    // Every line of the second entry names its own movement, not the fulfillment.
+    expect(new Set(b.lines.map((line) => line.sourceId))).toEqual(new Set(['mv_2']))
+    expect(debits(a, 'cogs_product_cost')).toBe(2 * 1_000 + 3 * 2_000)
+    expect(debits(b, 'cogs_product_cost')).toBe(2 * 1_000)
   })
 
   it('every run that wrote movements owns a posting of its own', async () => {
@@ -298,8 +328,9 @@ describe('a dispatch relieved in two runs', () => {
     })
 
     expect(retry.isErr()).toBe(true)
-    expect(h.movements).toHaveLength(1)
+    // The first run wrote both rows - the priced one and the pending one - and nothing more.
+    expect(h.movements).toHaveLength(2)
     expect(h.postings).toHaveLength(1)
-    expect(h.recalc).toHaveBeenCalledWith(ORG, ['fl_1'])
+    expect(h.recalc).toHaveBeenCalledWith(ORG, ['fl_1', 'fl_2'])
   })
 })

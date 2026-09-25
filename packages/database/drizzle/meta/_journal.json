@@ -2819,8 +2819,15 @@
     {
       "idx": 402,
       "version": "7",
-      "when": 1790316337551,
-      "tag": "0402_mrp_tables",
+      "when": 1790314513556,
+      "tag": "0402_accounting_work_item_price_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 403,
+      "version": "7",
+      "when": 1790319801319,
+      "tag": "0403_mrp_tables",
       "breakpoints": true
     }
   ]

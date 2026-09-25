@@ -11,6 +11,7 @@
  * back out and the whole relief landed on one account.
  */
 
+import type { ReliefCogsSplit } from '../../accounting/ledger/builders/inventory-movement'
 import type { PartStandardCost } from '../costing/types'
 import { computeExtendedCost } from '../movements/client'
 
@@ -46,4 +47,30 @@ export function splitReliefCost(
     laborMinor,
     overheadMinor,
   }
+}
+
+/** One valued `sale` row and the standard its COGS splits by; `null` when the row carries no composition (an un-relief priced at what the line was relieved at). */
+export interface ReliefSplitLine {
+  /** SIGNED as stored: negative as units leave the shelf. */
+  extendedCost: number
+  /** SIGNED as stored: negative as units leave the shelf. */
+  quantity: number
+  standard: PartStandardCost | null
+}
+
+/**
+ * A relief document's labour and overhead share, summed over its rows — the ONE definition of
+ * how a `sale` document's COGS is split, shared by the relief run and the pricer.
+ * Material is the remainder the entry builder computes, never summed here.
+ */
+export function sumReliefCogsSplit(lines: readonly ReliefSplitLine[]): ReliefCogsSplit {
+  const split: ReliefCogsSplit = { laborMinor: 0, overheadMinor: 0 }
+  for (const line of lines) {
+    if (!line.standard) continue
+    // The movement's cost is signed as it leaves the shelf; the COGS debit is its negation.
+    const part = splitReliefCost(line.standard, -line.extendedCost, -line.quantity)
+    split.laborMinor += part.laborMinor
+    split.overheadMinor += part.overheadMinor
+  }
+  return split
 }

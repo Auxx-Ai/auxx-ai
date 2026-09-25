@@ -326,7 +326,7 @@ export interface BulkOpeningStockInput {
  * | `invalid_unit_cost` | failed | not finite, not above zero, or finer than `RATE_DECIMALS` |
  * | `unknown_part` | failed | no such part in this org, or it is archived |
  * | `service_part` | failed | a service is never stocked (107-D10) |
- * | `no_standard_cost` | failed | the part would have been left holding stock nothing can value |
+ * | `no_standard_cost` | failed | the part holds a negative or non-numeric standard; a part with NONE is opened `pending` (111 Q18) |
  * | `write_failed` | failed | the movement itself was refused |
  */
 export type OpeningStockSkipReason =
@@ -367,15 +367,17 @@ export interface OpenedOpeningStockRow {
   /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
   recordId: string
   quantity: number
-  /** The TYPED cost, minor units, exactly as stored. */
-  unitCost: number
-  /** `round(unitCost x quantity)`, exactly as stored. */
-  extendedCost: number
+  /** The TYPED cost, minor units, exactly as stored; `null` on a pending row. */
+  unitCost: number | null
+  /** `round(unitCost x quantity)`, exactly as stored; `null` on a pending row. */
+  extendedCost: number | null
   /**
    * The inventory account ROLE ('inventory_raw_materials'), never an account
    * code and never a provider id (decision `G8`).
    */
   glAccount: string
+  /** The part had no standard: the row carries no cost until the pricer fills it (111 Q18). */
+  pending: boolean
 }
 
 /**

@@ -603,14 +603,19 @@ export const VectorDbTypeEnum = {
  * A build values at `standard`; a **receipt is the first thing in the system
  * that legitimately writes `actual`**, because it records what was really paid.
  * Under D20 the difference between the two is the purchase price variance.
+ * `pending` marks a row written before its part had a standard: no cost yet,
+ * filled once by `fillPendingCost` (111 Q18). The discriminator for "no cost
+ * yet" is this value, never `unit_cost IS NULL`.
  */
 export const StockMovementCostBasis = {
   STANDARD: 'standard',
   ACTUAL: 'actual',
+  PENDING: 'pending',
 
   values: [
     { value: 'standard', label: 'Standard', color: 'blue' },
     { value: 'actual', label: 'Actual', color: 'green' },
+    { value: 'pending', label: 'Pending', color: 'amber' },
   ] satisfies FieldOptionItem[],
 } as const
 

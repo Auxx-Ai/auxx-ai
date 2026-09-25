@@ -40,7 +40,7 @@ const REASON_CODE = 'STANDARD_COST_MISSING'
 const PART_ATTRIBUTES = ['part_channel_cost', 'part_kind'] as const
 /** `setStandardCosts` takes at most this many items per call. */
 const SAVE_CHUNK = 500
-const GRID_COLUMNS = 'sm:grid sm:grid-cols-[minmax(0,1fr)_5rem_6.5rem_7.5rem_9rem] sm:gap-3'
+const GRID_COLUMNS = 'sm:grid sm:grid-cols-[minmax(0,1fr)_8rem_6.5rem_7rem_8rem] sm:gap-3'
 
 interface SetCostsDialogProps {
   open: boolean
@@ -48,7 +48,7 @@ interface SetCostsDialogProps {
   currencyCode: string
 }
 
-/** Every part waiting on a standard cost, set in one save (106 §6.2). */
+/** Every part whose movements wait on a standard cost, set in one save (106 §6.2, 111 Q18). */
 export function SetCostsDialog({ open, onOpenChange, currencyCode }: SetCostsDialogProps) {
   const utils = api.useUtils()
   const list = api.ledger.listBlocked.useInfiniteQuery(
@@ -162,9 +162,9 @@ export function SetCostsDialog({ open, onOpenChange, currencyCode }: SetCostsDia
           <DialogDescription>
             {loading
               ? 'Loading the parts waiting on a standard cost…'
-              : `${rows.length} ${rows.length === 1 ? 'part' : 'parts'} holding ${waiting} ${
-                  waiting === 1 ? 'shipment' : 'shipments'
-                }. Saving retries everything waiting on them.`}
+              : `${rows.length} ${rows.length === 1 ? 'part' : 'parts'} whose stock movements are waiting to be valued, across ${waiting} ${
+                  waiting === 1 ? 'document' : 'documents'
+                }. Saving values every movement waiting on a part and posts them.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -252,9 +252,11 @@ function SetCostsGridRow({
         <span className='truncate font-medium text-sm' title={row.name}>
           {row.name}
         </span>
-        <span className='text-muted-foreground text-xs tabular-nums sm:text-right sm:text-sm'>
-          <span className='sm:hidden'>Shipments waiting: </span>
-          {row.waiting}
+        <span
+          className='text-muted-foreground text-xs tabular-nums sm:text-right'
+          title={row.waitingLabel}>
+          <span className='sm:hidden'>Waiting: </span>
+          {row.waitingLabel}
         </span>
         <span className='text-muted-foreground text-xs tabular-nums sm:text-right sm:text-sm'>
           <span className='sm:hidden'>Channel cost: </span>

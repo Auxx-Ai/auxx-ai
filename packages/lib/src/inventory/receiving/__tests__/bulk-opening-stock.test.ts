@@ -16,9 +16,9 @@
 //   - 🛑 `ensureStandardCost` takes ONE cost for a whole array, so entries are
 //     grouped by DISTINCT unit cost — a single call over mixed costs would
 //     freeze the first group's number onto every part in the run
-//   - 🛑 a part left with no usable standard after step 3 gets NO movement
-//     (§6.1), because `ensureStandardCost` is NULL-only and `cost_basis:
-//     standard` would otherwise lie
+//   - a part left with NO standard after step 3 gets a PENDING movement with no
+//     cost keys and parks at stage `price` (111 Q18); a stored $0 is a real
+//     standard (103 §5a); only a corrupt (negative) standard fails the part
 //   - it never throws: every entry is accounted for by exactly one of
 //     `opened` / `excluded` / `failed`
 //   - 🛑 QoH is the CREATE TRIGGER's job. This writes on the ordinary lane, so
@@ -49,6 +49,11 @@ const h = vi.hoisted(() => ({
   /** partId -> why it cannot become a service. */
   serviceBlockers: new Map<string, string>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
+  upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
+}))
+
+vi.mock('../../../accounting/work-items/write', () => ({
+  upsertWorkItem: h.upsertWorkItem,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -323,6 +328,7 @@ describe('bulkOpenStockBalance — the movements it writes', () => {
         unitCost: 1200,
         extendedCost: 12000,
         glAccount: 'inventory_raw_materials',
+        pending: false,
       },
       {
         partId: 'part_2',
@@ -332,6 +338,7 @@ describe('bulkOpenStockBalance — the movements it writes', () => {
         unitCost: 550,
         extendedCost: 2200,
         glAccount: 'inventory_finished_goods',
+        pending: false,
       },
     ])
   })
@@ -558,23 +565,72 @@ describe('bulkOpenStockBalance — the first standard cost', () => {
     expect(summary.opened.map((row) => row.partId)).toEqual(['part_2'])
   })
 
-  // 🛑 §6.1: `ensureStandardCost` is NULL-only, so "it ran" is not "the part has
-  // a usable standard". A movement stamped `cost_basis: standard` for a part
-  // whose standard is null or zero is a row nothing downstream can value.
-  it.each([
-    null,
-    0,
-    -5,
-  ])('writes no movement for a part left holding a standard of %s', async (standardCost) => {
+  /** `ensureStandardCost` ran and left every part at `standardCost`. */
+  function ensureLeaves(standardCost: number | null) {
     h.ensureSpy.mockImplementation(async (_db, _org, partIds: string[]) => {
       const { ok } = await import('neverthrow')
       for (const partId of partIds) h.standards.set(partId, standardCost)
       return ok({ writtenPartIds: [] })
     })
+  }
+
+  // 111 Q18: `ensureStandardCost` is NULL-only, so "it ran" is not "the part has
+  // a standard". A part still at null is opened PENDING - no cost keys, never a
+  // zero - and parked; the other parts post as before.
+  it('writes a PENDING initial with no cost keys for a part left holding no standard, and parks it', async () => {
+    ensureLeaves(null)
+    const summary = await run([ENTRIES[0]!])
+    expect(summary.failed).toEqual([])
+    expect(summary.opened).toEqual([
+      expect.objectContaining({
+        partId: 'part_1',
+        movementId: 'mv_0',
+        unitCost: null,
+        extendedCost: null,
+        pending: true,
+      }),
+    ])
+    const values = writtenByPart().get('part_1')!
+    expect(values.stock_movement_cost_basis).toBe('pending')
+    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
+    // Nothing to book yet; the pricer posts it. And it contributes no value to the totals.
+    expect(h.postSpy).not.toHaveBeenCalled()
+    expect(summary.totalsByGlAccount).toEqual([])
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'stock_movement',
+      sourceId: 'mv_0',
+      stage: 'price',
+      reasonCode: 'STANDARD_COST_MISSING',
+      externalRef: 'part_1',
+      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_0'], partName: 'Widget 9000' },
+    })
+  })
+
+  // 103 §5a: a stored $0 standard is real, and the typed cost is still this door's number.
+  it('treats a stored $0 standard as real and writes the typed cost at basis standard', async () => {
+    ensureLeaves(0)
+    const summary = await run([ENTRIES[0]!])
+    expect(summary.failed).toEqual([])
+    expect(writtenByPart().get('part_1')).toMatchObject({
+      stock_movement_cost_basis: 'standard',
+      stock_movement_unit_cost: 1200,
+    })
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('fails a part left holding a negative standard, and writes nothing for it', async () => {
+    ensureLeaves(-5)
     const summary = await run([ENTRIES[0]!])
     expect(summary.failed[0]).toMatchObject({ partId: 'part_1', reason: 'no_standard_cost' })
     expect(summary.failed[0]?.detail).toContain('Widget 9000')
     expect(h.bulkCreateSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not park a priced opening', async () => {
+    await run()
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
   })
 
   // A part somebody already rolled keeps its standard: `ensureStandardCost`

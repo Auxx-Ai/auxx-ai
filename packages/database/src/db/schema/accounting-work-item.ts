@@ -19,7 +19,14 @@ import {
 import { Organization } from './organization'
 
 /** Where the work stopped. Export state stays on `ExportBatch` (89). */
-export const ACCOUNTING_WORK_STAGES = ['evidence', 'money', 'post', 'issue', 'relieve'] as const
+export const ACCOUNTING_WORK_STAGES = [
+  'evidence',
+  'money',
+  'post',
+  'issue',
+  'relieve',
+  'price',
+] as const
 
 export const AccountingWorkItem = pgTable(
   'AccountingWorkItem',
@@ -30,7 +37,7 @@ export const AccountingWorkItem = pgTable(
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onDelete: 'cascade' }),
-    /** `money_transaction`, `fulfillment`, `credit_memo`, `payout`, `financial_source_acceptance`. */
+    /** `WORK_ITEM_SOURCE_KINDS` in lib: `money_transaction`, `fulfillment`, `build`, `stock_movement`, ... */
     sourceKind: text().notNull(),
     sourceId: text().notNull(),
     /** 0 unless one source is worked more than once at the same stage. */
@@ -67,7 +74,7 @@ export const AccountingWorkItem = pgTable(
     index('AccountingWorkItem_due_idx').on(t.organizationId, t.nextAttemptAt),
     check(
       'AccountingWorkItem_stage_check',
-      sql`${t.stage} IN ('evidence','money','post','issue','relieve') AND ${t.attempts} >= 0 AND ${t.occurrence} >= 0`
+      sql`${t.stage} IN ('evidence','money','post','issue','relieve','price') AND ${t.attempts} >= 0 AND ${t.occurrence} >= 0`
     ),
   ]
 )

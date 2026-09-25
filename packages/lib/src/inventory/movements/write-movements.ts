@@ -251,7 +251,7 @@ export async function writeStockMovements(
           partInstanceId: input.partInstanceId,
           quantity: input.quantity,
           unitCost: input.unitCost,
-          extendedCost: values.stock_movement_extended_cost as number,
+          extendedCost: (values.stock_movement_extended_cost as number | undefined) ?? null,
           glAccount: input.glAccount ?? null,
           occurredAt: input.occurredAt,
         })

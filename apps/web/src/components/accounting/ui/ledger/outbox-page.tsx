@@ -121,6 +121,8 @@ export function OutboxPage() {
         onSelectMovement={drawers.openMovement}
         activeShipmentId={drawers.shipmentId}
         onSelectShipment={drawers.openShipment}
+        activeRecordId={drawers.recordId}
+        onSelectRecord={drawers.openRecord}
         activeSummaryKey={drawers.summaryKey}
         onSelectSummary={drawers.openSummary}
       />

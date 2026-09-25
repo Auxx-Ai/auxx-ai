@@ -3,6 +3,7 @@
 'use client'
 
 import type { ExportBatchTab } from '@auxx/lib/accounting/export/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { parseAsArrayOf, parseAsString, useQueryStates } from 'nuqs'
 import { type ReactNode, useCallback, useMemo } from 'react'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
@@ -30,12 +31,15 @@ export interface LedgerDrawers {
   movementId: string | null
   /** A refused shipment from the Outbox's Blocked tab. */
   shipmentId: string | null
+  /** A build or a stock movement waiting on a cost, from the Blocked tab (111 Q18). */
+  recordId: string | null
   /** A Summary row's key, `unbuiltGroupKeyString`. */
   summaryKey: string | null
   journalEntryParam: string | null
   openPosting: (glPostingId: string) => void
   openMovement: (moneyTransactionId: string) => void
   openShipment: (fulfillmentId: string) => void
+  openRecord: (recordId: RecordId) => void
   openSummary: (key: string) => void
   openJournalEntry: (id: string) => void
   /** Clears every drawer param. The way out of a route that is leaving. */
@@ -45,8 +49,8 @@ export interface LedgerDrawers {
 }
 
 /**
- * The ledger drawers — `?posting=`, `?movement=`, `?shipment=`, `?summary=`, `?je=` — for
- * Closeout and Outbox alike, published into the layout's docked outlet.
+ * The ledger drawers — `?posting=`, `?movement=`, `?shipment=`, `?record=`, `?summary=`, `?je=` —
+ * for Closeout and Outbox alike, published into the layout's docked outlet.
  *
  * 🛑 They share ONE dock slot (ui-plan.md §2.1), so opening one closes the
  * others rather than letting the params coexist unrendered. A posting and a
@@ -74,6 +78,7 @@ export function useLedgerDrawers({
     je: parseAsString,
     movement: parseAsString,
     shipment: parseAsString,
+    record: parseAsString,
     summary: parseAsString,
     peek: parseAsArrayOf(parseAsString),
     panel: parseAsString,
@@ -82,6 +87,7 @@ export function useLedgerDrawers({
   })
   const { posting: postingId, je: journalEntryParam, movement: movementId } = params
   const shipmentId = params.shipment
+  const recordId = params.record
   const summaryKey = params.summary
 
   const setBase = useCallback(
@@ -90,6 +96,7 @@ export function useLedgerDrawers({
       je?: string | null
       movement?: string | null
       shipment?: string | null
+      record?: string | null
       summary?: string | null
     }) => {
       void setParams({
@@ -97,6 +104,7 @@ export function useLedgerDrawers({
         je: next.je ?? null,
         movement: next.movement ?? null,
         shipment: next.shipment ?? null,
+        record: next.record ?? null,
         summary: next.summary ?? null,
         peek: null,
         panel: null,
@@ -111,11 +119,12 @@ export function useLedgerDrawers({
   const openJournalEntry = useCallback((id: string) => setBase({ je: id }), [setBase])
   const openMovement = useCallback((id: string) => setBase({ movement: id }), [setBase])
   const openShipment = useCallback((id: string) => setBase({ shipment: id }), [setBase])
+  const openRecord = useCallback((id: RecordId) => setBase({ record: id }), [setBase])
   const openSummary = useCallback((key: string) => setBase({ summary: key }), [setBase])
   const closeDrawers = useCallback(() => setBase({}), [setBase])
 
-  // `je` wins, then `movement`, `posting`, `shipment`, `summary` — the params are mutually
-  // exclusive by construction, so this only decides a hand-written URL.
+  // `je` wins, then `movement`, `posting`, `shipment`, `record`, `summary` — the params are
+  // mutually exclusive by construction, so this only decides a hand-written URL.
   const baseFrame: DrawerFrame | null = journalEntryParam
     ? null
     : movementId
@@ -124,9 +133,11 @@ export function useLedgerDrawers({
         ? toFrame('posting', postingId)
         : shipmentId
           ? toFrame('shipment', shipmentId)
-          : summaryKey
-            ? toFrame('summary', summaryKey)
-            : null
+          : recordId
+            ? (recordId as RecordId)
+            : summaryKey
+              ? toFrame('summary', summaryKey)
+              : null
 
   const ledgerDrawer = useMemo(
     () => (
@@ -250,11 +261,13 @@ export function useLedgerDrawers({
     postingId,
     movementId,
     shipmentId,
+    recordId,
     summaryKey,
     journalEntryParam,
     openPosting,
     openMovement,
     openShipment,
+    openRecord,
     openSummary,
     openJournalEntry,
     closeDrawers,

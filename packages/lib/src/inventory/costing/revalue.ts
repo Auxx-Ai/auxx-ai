@@ -22,7 +22,6 @@ import type { Result } from 'neverthrow'
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
 import { requireCachedEntityDefId } from '../../cache'
@@ -127,7 +126,7 @@ export async function writeRevaluation(
           // The first movement anchors the claim; every one is a member below,
           // the shape every multi-movement inventory document already has.
           subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
-          txnDate: inventoryTxnDate(input.occurredAt),
+          occurredAt: input.occurredAt,
           movements: records.map((record, i) => ({
             id: record.movementId,
             extendedCostMinor: lines[i]!.extendedDeltaMinor,

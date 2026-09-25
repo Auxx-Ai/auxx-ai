@@ -7,9 +7,9 @@ export type WorkItemSeverity = 'info' | 'warning' | 'error'
 export type WorkItemStatus = 'waiting' | 'blocked' | 'warning' | 'skipped' | 'rejected'
 
 /** Mirrors `ACCOUNTING_WORK_STAGES` in the schema, restated so this file stays client-safe. */
-export type WorkItemStage = 'evidence' | 'money' | 'post' | 'issue' | 'relieve'
+export type WorkItemStage = 'evidence' | 'money' | 'post' | 'issue' | 'relieve' | 'price'
 
-/** The `sourceKind` values a work item names. */
+/** The `sourceKind` values a work item names. `build` and `stock_movement` park at `price` only (111 Q21). */
 export const WORK_ITEM_SOURCE_KINDS = [
   'money_transaction',
   'fulfillment',
@@ -17,6 +17,8 @@ export const WORK_ITEM_SOURCE_KINDS = [
   'payout',
   'financial_source_acceptance',
   'provider_ledger_entry',
+  'build',
+  'stock_movement',
 ] as const
 export type WorkItemSourceKind = (typeof WORK_ITEM_SOURCE_KINDS)[number]
 
@@ -241,8 +243,8 @@ export const WORK_ITEM_CODES = {
     sentence: (item) => {
       const part = item.refLabel || detailText(item, 'partName')
       return part
-        ? `${part} has no standard cost, so its shipments cannot relieve inventory. Set or roll its standard cost.`
-        : 'A part has no standard cost, so its shipments cannot relieve inventory. Set or roll standard costs.'
+        ? `${part} has no standard cost, so its movements cannot be valued. Set or roll its standard cost.`
+        : 'A part has no standard cost, so its movements cannot be valued. Set or roll standard costs.'
     },
   },
   TRANSIENT_ERROR: {

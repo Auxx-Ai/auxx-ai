@@ -29,11 +29,9 @@
 import type { Database } from '@auxx/database'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import {
-  exportInventoryMovement,
-  inventoryTxnDate,
-  postInventoryMovementInTx,
-} from '../../accounting/ledger/post/post-inventory-movement'
+import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inventory-document'
+import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
+import { upsertWorkItem } from '../../accounting/work-items/write'
 import { requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
@@ -49,10 +47,12 @@ import type { AdjustStockInput } from './types'
 
 /** What every adjustment stamps beyond the bare count change. */
 interface AdjustmentCost {
-  /** The part's frozen `part_standard_cost`, rounded. Whole minor units, strictly positive. */
-  unitCost: number
+  /** The part's frozen `part_standard_cost`, rounded, minor units; `null` when it has none (pending, 111 Q18). */
+  unitCost: number | null
   /** The inventory account ROLE ('inventory_raw_materials'), never a code and never a provider id. */
   glAccount: string
+  /** For the work item a pending adjustment parks. */
+  displayName: string | null
 }
 
 /**
@@ -61,12 +61,12 @@ interface AdjustmentCost {
  * The order of the steps is the contract, not an implementation detail:
  *
  * 1. `quantity` is a finite, non-zero number, or `BadRequestError`.
- * 2. Resolve the part's STANDARD cost - in both directions - or
- *    `UnprocessableEntityError` naming the part. Nothing is written when this
- *    fails.
+ * 2. Resolve the part's STANDARD cost - in both directions. A part with none
+ *    is not refused: the movement is written `pending` (111 Q18).
  * 3. Write one movement, `type: 'adjust'`, `cost_basis: standard`, with
  *    `unit_cost`, `extended_cost` and `gl_account` stamped whichever way the
- *    count went.
+ *    count went - or `cost_basis: pending` with no cost keys and the account,
+ *    parked at stage `price` until the pricer fills it.
  *
  * 🛑 **Both directions carry a cost, and it is the SERVER's number.** This is
  * decision `G12` and it reverses two earlier behaviours that were both wrong:
@@ -85,11 +85,11 @@ interface AdjustmentCost {
  *   to keep count variance separate from purchase price variance, and a
  *   valueless row cannot be separated from anything.
  *
- * 🛑 **A part with no standard cost fails CLOSED, naming the part.** It must not
- * fall back to `part_cost` - that is live replacement cost, rewritten on every
- * vendor-price change, and it must never value a movement (architecture guide
- * section 11, rule 2) - and it must not write zero, which is the exact defect
- * `receiveStock` refuses. Roll standard cost for the part first.
+ * 🛑 **A part with no standard cost writes a PENDING row, never a zero and never
+ * `part_cost`.** The live part cost is a replacement price, rewritten on every
+ * vendor-price change, and must never value a movement (architecture guide
+ * section 11, rule 2); a zero is the exact defect `receiveStock` refuses. The
+ * count moves now, the cost lands once on the same row when the standard does.
  *
  * ⚠️ **This is a write-path change on an append-only ledger.** Every field on
  * `stock_movement` is `updatable: false`, so movements written before this
@@ -130,27 +130,26 @@ export async function adjustStock(
         })
         return {
           written: record,
-          // The adjustment movement IS the document. Its counter-leg is
-          // `inventory_count_variance`, kept apart from purchase price variance
-          // for the reason `G12` gives: the shelf disagreeing with the ledger
-          // and the vendor billing differently are different questions.
+          // The adjustment movement IS the document (`G12`: its counter-leg is count variance,
+          // never purchase price variance). A pending row posts nothing; the pricer posts it.
           post:
-            record.extendedCost != null && record.glAccount != null
-              ? await postInventoryMovementInTx(tx, {
+            record.extendedCost != null
+              ? await postInventoryDocumentInTx(
+                  tx,
                   organizationId,
-                  kind: 'adjust',
-                  subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
-                  txnDate: inventoryTxnDate(record.occurredAt),
-                  movements: [
+                  [
                     {
-                      id: record.movementId,
-                      extendedCostMinor: record.extendedCost,
-                      glAccountRole: record.glAccount,
+                      movementId: record.movementId,
+                      partInstanceId: record.partInstanceId,
+                      type: StockMovementType.ADJUST,
+                      quantity: record.quantity,
+                      extendedCost: record.extendedCost,
+                      glAccount: record.glAccount,
+                      occurredAt: record.occurredAt,
                     },
                   ],
-                  actorUserId: userId,
-                  memo: input.reason,
-                })
+                  { actorUserId: userId, memo: input.reason }
+                )
               : null,
         }
       })
@@ -159,6 +158,7 @@ export async function adjustStock(
       // pre-commit snapshot from inside the transaction above.
       await batchRecalculateQoH(organizationId, [written.partInstanceId])
       await exportInventoryMovement(db, post)
+      if (written.unitCost == null) await parkPendingAdjustment(db, organizationId, written, cost)
       return written
     },
     'Failed to adjust stock',
@@ -193,7 +193,7 @@ function assertAdjustableQuantity(quantity: number): void {
 }
 
 /**
- * Step 2: read the part's frozen standard cost, or refuse naming the part.
+ * Step 2: read the part's frozen standard cost; `null` when it has none.
  *
  * Rounding is applied BEFORE the zero check so a sub-half-cent standard
  * cost is rejected here rather than stored as a zero the ledger cannot explain -
@@ -225,9 +225,11 @@ async function resolveAdjustmentCost(
   const { standardCost, displayName } = standard.value
   const partLabel = displayName ? `"${displayName}"` : `part ${partId}`
 
-  if (standardCost == null || !Number.isFinite(standardCost)) {
+  // No standard yet: the row goes pending, and the pricer values it when one lands (111 Q18).
+  if (standardCost == null) return { unitCost: null, glAccount, displayName }
+  if (!Number.isFinite(standardCost)) {
     throw new UnprocessableEntityError(
-      `Cannot adjust ${partLabel}: it has no standard cost. An adjustment is valued at the part's standard cost, and there is nothing else it may honestly be valued at - the live part cost is a replacement price that changes with every vendor quote. Roll standard cost for this part first.`,
+      `Cannot adjust ${partLabel}: its standard cost is not a number. Roll standard cost for this part first.`,
       { partId }
     )
   }
@@ -241,14 +243,35 @@ async function resolveAdjustmentCost(
     )
   }
 
-  return { unitCost, glAccount }
+  return { unitCost, glAccount, displayName }
+}
+
+/** The Blocked surface for a pending adjustment: one `price` item on the movement, grouped by its part. */
+async function parkPendingAdjustment(
+  db: Database,
+  organizationId: string,
+  written: MovementRecord,
+  cost: AdjustmentCost
+): Promise<void> {
+  await upsertWorkItem(db, organizationId, {
+    sourceKind: 'stock_movement',
+    sourceId: written.movementId,
+    stage: 'price',
+    reasonCode: 'STANDARD_COST_MISSING',
+    externalRef: written.partInstanceId,
+    detail: {
+      partIds: [written.partInstanceId],
+      pendingMovementIds: [written.movementId],
+      ...(cost.displayName ? { partName: cost.displayName } : {}),
+    },
+  })
 }
 
 interface WriteAdjustMovementArgs {
   movementDefId: string
   partDefId: string
   input: AdjustStockInput
-  /** Never null - `G12` values a removal exactly as it values an addition. */
+  /** `G12` values a removal exactly as it values an addition; a null cost is pending in both directions. */
   cost: AdjustmentCost
   occurredAt: Date
 }
@@ -262,9 +285,8 @@ interface WriteAdjustMovementArgs {
  * never hears about, which is precisely how the popover this replaces got
  * away with writing no cost.
  *
- * Every cost field is stamped unconditionally: `resolveAdjustmentCost` has
- * already refused the write if the part has no standard cost, so there is no
- * branch here in which one is missing.
+ * The cost fields are stamped together or not at all: a part with no standard
+ * writes `cost_basis: pending` and no cost keys (111 Q18), never a zero.
  *
  * 🛑 **`adjustSubparts` is never set here, which is what keeps it `false`.**
  * `explodeBomMovement` inherits the parent movement's type AND its sign, so an
@@ -296,7 +318,8 @@ async function writeAdjustMovement(
         // `part_standard_cost`, read by the server. An adjustment has no
         // supplier and no invoice, so there is no ACTUAL for it to record
         // (`G12`).
-        costBasis: StockMovementCostBasis.STANDARD,
+        costBasis:
+          cost.unitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
         glAccount: cost.glAccount,
         occurredAt,
         reason: input.reason,

@@ -25,7 +25,7 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
-import { StockMovementType } from '../../resources/registry/enum-values'
+import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
 import type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'
@@ -127,7 +127,9 @@ export async function readPartLedgerAverages(
         // Base row = the movement's `quantity` FieldValue. `fv_part` carries
         // the part relationship and restricts to this chunk's ids; `fv_cost`
         // is the same movement's `extended_cost` FieldValue, joined so both
-        // sums come from ONE grouped statement; `fv_flag` is a LEFT JOIN so a
+        // sums come from ONE grouped statement - a LEFT JOIN, so a `pending`
+        // row with no cost yet (111 Q18) still counts in the quantity the
+        // negative-QoH prediction reads; `fv_flag` is a LEFT JOIN so a
         // movement with no `adjust_subparts` row at all still counts (NULL
         // reads as not-flagged) - exactly `bom/qoh.ts`'s shape and its exact
         // `(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
@@ -146,7 +148,7 @@ export async function readPartLedgerAverages(
               AND fv_part."relatedEntityId" IN (${idList})
               AND fv_part."organizationId" = ${organizationId}`
           )
-          .innerJoin(
+          .leftJoin(
             sql`"FieldValue" fv_cost`,
             sql`${schema.FieldValue.entityId} = fv_cost."entityId"
               AND fv_cost."fieldId" = ${extendedCostField.id}
@@ -235,12 +237,16 @@ export async function readFulfillmentLineRelievedAverages(
         'stock_movement_type',
         'stock_movement_quantity',
         'stock_movement_extended_cost',
+        'stock_movement_cost_basis',
       ] as const)
 
       const lineRelField = fields.stock_movement_fulfillment_line
       const typeField = fields.stock_movement_type
       const quantityField = fields.stock_movement_quantity
       const extendedCostField = fields.stock_movement_extended_cost
+      // Optional like the flag in `readPartLedgerAverages`: an org without the
+      // basis field has no pending row, so the exclusion below matches nothing.
+      const basisFieldId = fields.stock_movement_cost_basis?.id ?? ''
 
       if (!lineRelField || !typeField || !quantityField || !extendedCostField) {
         throw new UnprocessableEntityError(
@@ -260,7 +266,8 @@ export async function readFulfillmentLineRelievedAverages(
         // the join itself; `fv_cost` is the same movement's `extended_cost`,
         // joined so both sums come from one grouped statement, mirroring
         // `fulfillment-line-rollups.ts`'s `readTotalsByLine` plus the added
-        // cost sum.
+        // cost sum. A `pending` row (111 Q18) is excluded on its basis: it has
+        // no cost to average, and its quantity must not dilute the priced rows'.
         const rows = await db
           .select({
             lineId: sql<string>`fv_line."relatedEntityId"`,
@@ -288,10 +295,17 @@ export async function readFulfillmentLineRelievedAverages(
               AND fv_cost."fieldId" = ${extendedCostField.id}
               AND fv_cost."organizationId" = ${organizationId}`
           )
+          .leftJoin(
+            sql`"FieldValue" fv_basis`,
+            sql`${schema.FieldValue.entityId} = fv_basis."entityId"
+              AND fv_basis."fieldId" = ${basisFieldId}
+              AND fv_basis."organizationId" = ${organizationId}`
+          )
           .where(
             and(
               eq(schema.FieldValue.fieldId, quantityField.id),
-              eq(schema.FieldValue.organizationId, organizationId)
+              eq(schema.FieldValue.organizationId, organizationId),
+              sql`(fv_basis."optionId" IS NULL OR fv_basis."optionId" <> ${StockMovementCostBasis.PENDING})`
             )
           )
           .groupBy(sql`fv_line."relatedEntityId"`)

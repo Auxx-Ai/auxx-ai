@@ -23,7 +23,8 @@ const REQUIRED_COST_ATTRIBUTES = ['stock_movement_unit_cost', 'stock_movement_co
  * Without `stock_movement_unit_cost` the write would still succeed and would
  * produce exactly the thing the zero-cost rule forbids: a movement that claims
  * to carry a cost and carries none. Refusing here means the org sees "this is
- * not set up" instead of silently accumulating unpostable rows.
+ * not set up" instead of silently accumulating unpostable rows. A `pending`
+ * row needs both fields too: the basis to mark it, the cost to be filled into.
  *
  * The message is a parameter because the two callers are different doors and a
  * person told "receiving is not available" while adjusting stock would look for

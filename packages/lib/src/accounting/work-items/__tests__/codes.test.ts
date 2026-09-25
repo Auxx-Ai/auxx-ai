@@ -1,17 +1,35 @@
 // packages/lib/src/accounting/work-items/__tests__/codes.test.ts
 
-import { describe, expect, it } from 'vitest'
+import type { AccountingWorkStage } from '@auxx/database'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import {
   isWorkItemCode,
   nextAttemptDelayMs,
   WORK_ITEM_CODES,
+  WORK_ITEM_SOURCE_KINDS,
   type WorkItemCode,
+  type WorkItemStage,
   workItemSentence,
   workItemSeverity,
   workItemStatus,
 } from '../codes'
 
 const CODES = Object.keys(WORK_ITEM_CODES) as WorkItemCode[]
+
+describe('the stages and source kinds', () => {
+  it('mirrors the schema stage list, price included (111 Q21)', () => {
+    // The runtime list is pinned in `packages/database/src/tests`; here the two unions must agree.
+    expectTypeOf<WorkItemStage>().toEqualTypeOf<AccountingWorkStage>()
+    const price: WorkItemStage = 'price'
+    expect(price).toBe('price')
+  })
+
+  it('names the two document kinds that park at price beside the shipment', () => {
+    expect(WORK_ITEM_SOURCE_KINDS).toEqual(
+      expect.arrayContaining(['fulfillment', 'build', 'stock_movement'])
+    )
+  })
+})
 
 describe('the reason-code vocabulary', () => {
   it.each(CODES)('%s has a sentence and a severity', (code) => {
@@ -81,6 +99,17 @@ describe('the reason-code vocabulary', () => {
     expect(workItemSentence('STANDARD_COST_MISSING', { detail: { partName: 'Old name' } })).toMatch(
       /^Old name has no standard cost/
     )
+  })
+
+  it('says a missing standard leaves movements unvalued, not shipments unrelieved (111 Q18)', () => {
+    // Under Q18 the shipment HAS relieved inventory; a build or a count parks under the same code.
+    for (const sentence of [
+      workItemSentence('STANDARD_COST_MISSING'),
+      workItemSentence('STANDARD_COST_MISSING', { refLabel: 'Widget' }),
+    ]) {
+      expect(sentence).toContain('its movements cannot be valued')
+      expect(sentence).not.toMatch(/relieve|shipment/)
+    }
   })
 
   it('waits on evidence, and blocks on a gateway or an ownership conflict', () => {

@@ -43,6 +43,13 @@ export {
   type EnsureStandardCostSource,
   ensureStandardCost,
 } from './ensure-standard-cost'
+// The pricer (111 Q18/Q22): a first standard values the part's `pending` rows and
+// posts their documents. Inline from every standard door; the recovery lane retries.
+export {
+  type PricingSummary,
+  pricePendingMovements,
+  pricePendingMovementsQuietly,
+} from './price-pending-movements'
 // The first receipt of a part whose standard was a guess (73 §6.4). U5's
 // receipt path reads `replaced` to skip its `ppv` leg.
 export {

@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   }[],
   ensureStandardCost: vi.fn(),
   requestAccountingRecovery: vi.fn(async () => {}),
+  pricePending: vi.fn(async () => {}),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -27,6 +28,7 @@ vi.mock('@auxx/database', () => ({
   },
 }))
 vi.mock('../ensure-standard-cost', () => ({ ensureStandardCost: h.ensureStandardCost }))
+vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../../../accounting/work-items/recovery', () => ({
   requestAccountingRecovery: h.requestAccountingRecovery,
 }))
@@ -71,7 +73,12 @@ describe('seedStandardFromChannelCost (106 D5)', () => {
     expect(partIds).toEqual(['p1'])
     expect(source.kind).toBe('channel')
     expect(source.unitCosts.get('p1')).toBe(34696)
+    // 111 Q22: the seeded parts' pending rows are priced inline, before the recovery request.
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, ['p1'])
     expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.requestAccountingRecovery.mock.invocationCallOrder[0]!
+    )
   })
 
   it('leaves a part that already has a standard, and a service', async () => {
@@ -88,6 +95,7 @@ describe('seedStandardFromChannelCost (106 D5)', () => {
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.ensureStandardCost).not.toHaveBeenCalled()
     expect(h.requestAccountingRecovery).not.toHaveBeenCalled()
+    expect(h.pricePending).not.toHaveBeenCalled()
   })
 })
 

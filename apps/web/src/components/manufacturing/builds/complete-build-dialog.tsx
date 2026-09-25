@@ -256,7 +256,7 @@ export function CompleteBuildDialog({
   })
 
   const handleComplete = async () => {
-    if (!summary || produced <= 0) return
+    if (!canSubmit) return
     try {
       await completeBuild.mutateAsync({
         buildId,
@@ -293,14 +293,20 @@ export function CompleteBuildDialog({
     }
   }
 
+  // An uncosted part no longer blocks the write: its legs are written pending and the
+  // build posts once every leg is valued (111 Q18), so the run may go without a summary.
   const unpriced = plan?.missingStandardPartIds ?? []
-  const blocked = unpriced.length > 0 || rows.every((row) => row.dropped)
+  const blocked = rows.every((row) => row.dropped)
   // 🛑 `!previewStale` is part of the gate, not a spinner nicety. The button
   // posts the quantities in the INPUTS, so accepting a press while the summary
   // still answers the previous ones would freeze an irreversible ledger entry
   // whose variance nobody was ever shown.
   const canSubmit =
-    !!summary && produced > 0 && !blocked && !previewStale && !completeBuild.isPending
+    (!!summary || unpriced.length > 0) &&
+    produced > 0 &&
+    !blocked &&
+    !previewStale &&
+    !completeBuild.isPending
 
   const writtenRows = rows.filter((row) => !row.dropped).length
 
@@ -736,12 +742,8 @@ function AbsorptionOrigin({
 }
 
 /**
- * The parts that block the write.
- *
- * `completeBuild` refuses rather than posting these at zero: a zero-cost consume
- * row understates COGS, drags every downstream average toward zero, and is
- * frozen onto an `updatable: false` row forever. Naming them here is what makes
- * that refusal actionable instead of a wall.
+ * The parts whose legs are written pending (111 Q18): never at zero, valued and the
+ * build posted once each has a standard. Naming them is what makes that actionable.
  */
 function UnpricedWarning({
   partIds,
@@ -759,8 +761,8 @@ function UnpricedWarning({
     return rows.find((row) => row.partId === id)?.partName ?? id
   }
   return (
-    <div className='rounded-md bg-destructive/10 p-2 text-destructive text-xs'>
-      <p className='font-medium'>Cannot post: these parts have no standard cost:</p>
+    <div className='rounded-md bg-amber-500/10 p-2 text-amber-700 text-xs dark:text-amber-400'>
+      <p className='font-medium'>These parts have no standard cost:</p>
       <ul className='mt-1 space-y-0.5'>
         {partIds.map((id) => (
           <li key={id} className='truncate'>
@@ -769,8 +771,9 @@ function UnpricedWarning({
         ))}
       </ul>
       <p className='mt-1'>
-        Roll the standard cost from the part&apos;s Costing card first. A build is never posted at
-        zero cost.
+        Their movements are written now and valued — and the build posted — once each has a cost.
+        Set or roll it from the part&apos;s Costing card, or under Outbox &gt; Blocked &gt; Set
+        costs.
       </p>
     </div>
   )

@@ -939,7 +939,10 @@ and there does not need to be one.
 `read-close-blockers.ts` is the check: is every movement in a posted entry, do the two sides tie,
 and how many channel credit memos are still unissued. 🛑 **Reads only, and it never throws.** A
 month that cannot be checked is reported as a month with no findings, not as a month that cannot
-be closed — a broken read must not be able to hold an organization's books hostage.
+be closed — a broken read must not be able to hold an organization's books hostage. Its
+`inventory_unposted` predicate is also what the recovery job's `Unposted inventory` lane
+(`ledger/post/sweep-unposted-inventory.ts`) posts from, oldest first, so the blocker drains on its
+own (inventory guide §9.3).
 
 `close-blockers.ts` is the pure, client-safe half. 🛑 **The sentence is a projection of the items,
 never a parallel implementation.** The moment a screen hand-writes its own version of one of these

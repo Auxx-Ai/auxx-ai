@@ -26,10 +26,7 @@ import { StockMovementType } from '../../../resources/registry/enum-values'
 import { systemDefId } from '../../../resources/system-records'
 import type { InventoryMovementLine } from '../../ledger/builders/inventory-movement'
 import type { InTxPostResult } from '../../ledger/post/post-entry'
-import {
-  inventoryTxnDate,
-  postInventoryMovementInTx,
-} from '../../ledger/post/post-inventory-movement'
+import { postInventoryMovementInTx } from '../../ledger/post/post-inventory-movement'
 import type { VendorCreditLineRecord } from './reads'
 
 /** One flagged credit line, resolved to everything the movement and the entry need. */
@@ -205,11 +202,13 @@ export async function writeVendorCreditStockReturns(
     // A $0-standard row still carries its `grni` debit, so it stays unless both are zero.
     .filter(
       ({ record, item }) =>
-        record.glAccount && (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
+        record.glAccount &&
+        record.extendedCost != null &&
+        (record.extendedCost !== 0 || item.grniReliefMinor !== 0)
     )
     .map(({ record, item }) => ({
       id: record.movementId,
-      extendedCostMinor: record.extendedCost,
+      extendedCostMinor: record.extendedCost as number,
       glAccountRole: record.glAccount as string,
       grniReliefMinor: item.grniReliefMinor,
     }))
@@ -221,7 +220,7 @@ export async function writeVendorCreditStockReturns(
     // — itself included — is linked as a member by the poster.
     subject: { sourceKind: 'stock_movement', sourceId: records[0]!.movementId },
     parents: [{ sourceKind: 'vendor_credit', sourceId: vendorCreditInstanceId }],
-    txnDate: inventoryTxnDate(occurredAt),
+    occurredAt,
     movements,
     actorUserId: userId,
     memo: `Returned to vendor on ${number}`,

@@ -51,9 +51,9 @@ import type { InventoryMovementLine } from '../../accounting/ledger/builders/inv
 import type { InTxPostResult } from '../../accounting/ledger/post/post-entry'
 import {
   exportInventoryMovement,
-  inventoryTxnDate,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
+import { upsertWorkItem } from '../../accounting/work-items/write'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import {
   type FieldValueUpdateEntry,
@@ -83,7 +83,7 @@ import {
   requireBuildContext,
   requireBuildMovementContext,
 } from './build-queries'
-import { canCompleteBuild, summarizeBuildCompletion } from './client'
+import { absorbedRunCost, canCompleteBuild, summarizeBuildCompletion, unitsStarted } from './client'
 import { guard } from './guard'
 import type {
   BuildComponentPlan,
@@ -106,13 +106,16 @@ const logger = createScopedLogger('builds:complete')
  *    that a rule rather than a race; a run finished in tranches is a second
  *    build.
  * 2. Resolve components with `loadDirectSubparts` - **direct only** (B4).
- * 3. Value every line at its `part_standard_cost`. **If any component has none,
- *    abort with `UnprocessableEntityError` naming the parts.** Never post a zero
- *    cost: a zero-cost consume row understates COGS, drags every downstream
- *    average toward zero, and is frozen onto an `updatable: false` row forever.
+ * 3. Value every line at its `part_standard_cost`. A leg whose part has none is
+ *    written `pending` with no cost (111 Q18) - never a zero, which understates
+ *    COGS and drags every downstream average toward zero. While any leg is
+ *    pending the build's entry is NOT posted (its subject is the build id and
+ *    can be claimed once, 73-D11) and the build parks at stage `price`.
  * 4. One `build_consume` per component, at `-consumed`.
  * 5. One `build_produce` at `+quantityProduced`.
- * 6. Stamp the five cost fields and `status: 'completed'`.
+ * 6. Stamp the five cost fields and `status: 'completed'`; a pending build
+ *    stamps status, labour and overhead, and `price-build.ts` stamps the rest
+ *    once the last leg is priced.
  *
  * Then, and only after the transaction has committed, one batched
  * quantity-on-hand recalculation.
@@ -152,6 +155,7 @@ export async function completeBuild(
       // rows above; per movement it would be 51 full re-SUMs.
       await recalculateAfterCommit(organizationId, written.result.recalculatedPartIds)
       await exportInventoryMovement(db, written.post)
+      await parkPendingBuild(db, organizationId, written)
       publishBuildUpdate(organizationId, ctx, written.result, completedAt)
       // The ledger's own frame. `publishBuildUpdate` covers the build ROW; the
       // movement rows are silent without this and `build-ledger-card` goes on
@@ -189,8 +193,11 @@ interface WriteCompletionArgs {
 interface WrittenCompletion {
   build: BuildRecord
   result: CompleteBuildResult
-  /** The build's own inventory entry, awaiting its export. */
+  /** The build's own inventory entry, awaiting its export. `null` on a pending build. */
   post: InTxPostResult | null
+  /** The legs written `pending`, and the name of the first uncosted part, for the park. */
+  pendingMovementIds: string[]
+  pendingPartName: string | null
 }
 
 /**
@@ -228,17 +235,12 @@ async function writeCompletion(
     componentOverrides: input.componentOverrides,
   })
   assertPlanIsPostable(plan)
-
-  // Non-null by construction: `assertPlanIsPostable` refuses a plan whose
-  // produced part has no standard, which is the same "never post a zero cost"
-  // rule seen from the other side. Re-checked rather than cast, because a cast
-  // would silently survive somebody weakening that assertion.
+  // 111 Q18: any leg without a standard makes the WHOLE build pending. Its entry
+  // is one document claimed once by the build id, so a partial entry now would
+  // collide with the priced one later (73-D11).
+  const pendingPartIds = plan.missingStandardPartIds
+  const pending = pendingPartIds.length > 0
   const producedUnitCost = plan.producedUnitCost
-  if (producedUnitCost == null) {
-    throw new UnprocessableEntityError(
-      'Refusing to complete a build at zero cost: roll the standard cost for the produced part first'
-    )
-  }
 
   // 🛑 The rates this RUN absorbs must be the same ones the produced part's
   // frozen standard was rolled from, or the variance stops closing to zero and
@@ -252,17 +254,20 @@ async function writeCompletion(
   // (`client.ts`). The form has to show the variance before the write, because a
   // completion is irreversible except by a reversing build (B6) and refuses a
   // second attempt (B8) - and a preview computed by a second implementation is
-  // only accidentally the number that gets stored.
-  const { materialCost, laborCost, overheadCost, producedValue, varianceAmount } =
-    summarizeBuildCompletion({
-      components: plan.components,
-      producedUnitCost,
-      quantityProduced,
-      quantityScrapped,
-      laborCost: input.laborCost,
-      overheadCost: input.overheadCost,
-      rates,
-    })
+  // only accidentally the number that gets stored. A pending build has no
+  // summary yet: the pricer computes and stamps it when the last leg is priced.
+  const summary =
+    producedUnitCost != null && !pending
+      ? summarizeBuildCompletion({
+          components: plan.components,
+          producedUnitCost,
+          quantityProduced,
+          quantityScrapped,
+          laborCost: input.laborCost,
+          overheadCost: input.overheadCost,
+          rates,
+        })
+      : null
 
   const producedKinds = await readPartKinds(txDb, organizationId, [build.partId])
   if (isServicePartKind(producedKinds.get(build.partId))) {
@@ -308,17 +313,18 @@ async function writeCompletion(
     partInstanceId: line.partId,
     type: StockMovementType.BUILD_CONSUME,
     quantity: -line.quantityConsumed,
-    // Non-null by construction: `assertPlanIsPostable` refuses a plan carrying
-    // any component with no standard cost before this point is ever reached.
-    unitCost: line.unitCost as number,
+    // `null` on a component with no standard: the leg is written pending (111 Q18).
+    unitCost: line.unitCost,
     // Negated from the POSITIVE extended cost the plan computed, so the row
     // and `materialCost` cannot disagree by a rounding step. Deriving it from
     // `round(unitCost x -consumed)` instead would differ on a half-cent tail,
     // because `Math.round` breaks ties toward positive infinity - the ONE
-    // documented `extendedCost` override (50 §2.2).
-    extendedCost: -(line.extendedCost ?? 0),
+    // documented `extendedCost` override (50 §2.2). Absent, never 0, on a
+    // pending leg.
+    extendedCost: line.extendedCost == null ? undefined : -line.extendedCost,
     glAccount: line.glAccount,
-    costBasis: StockMovementCostBasis.STANDARD,
+    costBasis:
+      line.unitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
     occurredAt: completedAt,
     // NULL is the OFF-BOM marker and is written as an absence, not a zero: a
     // stamped `0` would claim the bill of materials calls for none of this
@@ -354,9 +360,10 @@ async function writeCompletion(
       // every run and destroy the point of a standard.
       quantity: quantityProduced,
       unitCost: producedUnitCost,
-      extendedCost: producedValue,
+      extendedCost: summary?.producedValue,
       glAccount: produceGlAccount,
-      costBasis: StockMovementCostBasis.STANDARD,
+      costBasis:
+        producedUnitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
       occurredAt: completedAt,
       links: { buildId: buildRecordId },
     },
@@ -372,17 +379,23 @@ async function writeCompletion(
     ...produceWritten.value.records.map((record) => record.movementId),
   ]
 
-  // Step 6.
+  // Step 6. On a pending build only labour and overhead are stamped - they depend on the run,
+  // not on a standard - so the pricer (`price-build.ts`) can summarise with what was absorbed here.
+  const started = unitsStarted(quantityProduced, quantityScrapped)
+  const laborCost = absorbedRunCost(input.laborCost, rates.laborCostPerUnit, started)
+  const overheadCost = absorbedRunCost(input.overheadCost, rates.overheadCostPerUnit, started)
   const buildValues: Record<string, unknown> = {
     build_status: BuildStatus.COMPLETED,
     build_quantity_produced: quantityProduced,
     build_quantity_scrapped: quantityScrapped,
-    build_material_cost: materialCost,
+    build_completed_at: completedAt.toISOString(),
     build_labor_cost: laborCost,
     build_overhead_cost: overheadCost,
-    build_produced_value: producedValue,
-    build_variance_amount: varianceAmount,
-    build_completed_at: completedAt.toISOString(),
+  }
+  if (summary) {
+    buildValues.build_material_cost = summary.materialCost
+    buildValues.build_produced_value = summary.producedValue
+    buildValues.build_variance_amount = summary.varianceAmount
   }
   if (input.notes && ctx.fields.build_notes) {
     buildValues.build_notes = build.notes ? `${build.notes}\n${input.notes}` : input.notes
@@ -392,40 +405,50 @@ async function writeCompletion(
   // The build's own entry, inside the completion's transaction: consumes and
   // produces move between the three inventory accounts, the absorbed labour and
   // overhead come out of their pools, and the residual is the run's variance.
-  const movementLines: InventoryMovementLine[] = [
-    ...consumeWritten.value.records,
-    ...produceWritten.value.records,
-  ]
-    .filter((record) => record.glAccount && record.extendedCost !== 0)
+  // A pending build posts nothing here; the pricer posts it once every leg is priced.
+  const writtenRecords = [...consumeWritten.value.records, ...produceWritten.value.records]
+  const movementLines: InventoryMovementLine[] = writtenRecords
+    .filter(
+      (record) => record.glAccount && record.extendedCost != null && record.extendedCost !== 0
+    )
     .map((record) => ({
       id: record.movementId,
-      extendedCostMinor: record.extendedCost,
+      extendedCostMinor: record.extendedCost as number,
       glAccountRole: record.glAccount as string,
     }))
-  const post = await postInventoryMovementInTx(tx, {
-    organizationId,
-    kind: 'build',
-    subject: { sourceKind: 'build', sourceId: build.buildId },
-    ...(build.orderId ? { parents: [{ sourceKind: 'order', sourceId: build.orderId }] } : {}),
-    txnDate: inventoryTxnDate(completedAt),
-    movements: movementLines,
-    absorbed: { laborMinor: laborCost, overheadMinor: overheadCost },
-    actorUserId: userId,
-  })
+  const post = summary
+    ? await postInventoryMovementInTx(tx, {
+        organizationId,
+        kind: 'build',
+        subject: { sourceKind: 'build', sourceId: build.buildId },
+        ...(build.orderId ? { parents: [{ sourceKind: 'order', sourceId: build.orderId }] } : {}),
+        occurredAt: completedAt,
+        movements: movementLines,
+        absorbed: { laborMinor: summary.laborCost, overheadMinor: summary.overheadCost },
+        actorUserId: userId,
+      })
+    : null
 
+  const firstPendingPartId = pendingPartIds[0]
   return {
     build,
     post,
+    pendingMovementIds: writtenRecords
+      .filter((record) => record.unitCost == null)
+      .map((record) => record.movementId),
+    pendingPartName:
+      plan.components.find((line) => line.partId === firstPendingPartId)?.partName ?? null,
     result: {
       buildId: build.buildId,
       recordId: buildRecordId,
       quantityProduced,
       quantityScrapped,
-      materialCost,
+      materialCost: summary?.materialCost ?? null,
       laborCost,
       overheadCost,
-      producedValue,
-      varianceAmount,
+      producedValue: summary?.producedValue ?? null,
+      varianceAmount: summary?.varianceAmount ?? null,
+      pendingPartIds,
       movementIds,
       // §2.4 item 3: RETURNED by every `writeStockMovements` call, not
       // re-derived - the quiet lane's recalc obligation is then structural
@@ -455,10 +478,11 @@ export async function recalculateAfterCommit(
 }
 
 /**
- * Refuse a plan that cannot be valued, naming the parts.
+ * Refuse a plan that consumes nothing.
  *
- * `readStandardCost` omits a part with no usable standard rather than defaulting it, so a missing
- * standard is a refusal here. A deliberate $0 standard (103 §5a) is present and builds at $0.
+ * A missing standard is no longer a refusal: `readStandardCost` omits a part with no usable
+ * standard, and such a leg is written `pending` (111 Q18). A deliberate $0 standard (103 §5a) is
+ * present and builds at $0.
  */
 function assertPlanIsPostable(plan: BuildComponentPlan): void {
   if (plan.components.length === 0) {
@@ -466,12 +490,28 @@ function assertPlanIsPostable(plan: BuildComponentPlan): void {
       'This build has no components to consume. Add a bill of materials, or record a stock adjustment instead.'
     )
   }
-  if (plan.missingStandardPartIds.length > 0) {
-    throw new UnprocessableEntityError(
-      'Refusing to complete a build without a standard cost: roll the standard cost for these parts first',
-      { partIds: plan.missingStandardPartIds }
-    )
-  }
+}
+
+/** The Blocked surface for a pending build: one `price` item, grouped by the first uncosted part. */
+async function parkPendingBuild(
+  db: Database,
+  organizationId: string,
+  written: WrittenCompletion
+): Promise<void> {
+  const partId = written.result.pendingPartIds[0]
+  if (!partId) return
+  await upsertWorkItem(db, organizationId, {
+    sourceKind: 'build',
+    sourceId: written.result.buildId,
+    stage: 'price',
+    reasonCode: 'STANDARD_COST_MISSING',
+    externalRef: partId,
+    detail: {
+      partIds: written.result.pendingPartIds,
+      pendingMovementIds: written.pendingMovementIds,
+      ...(written.pendingPartName ? { partName: written.pendingPartName } : {}),
+    },
+  })
 }
 
 /**
@@ -501,15 +541,16 @@ function assertQuantities(quantityProduced: number, quantityScrapped: number): v
  * would keep rendering `planned` with empty costs until a reload. Fire and
  * forget, after the commit, exactly as the standard-cost roll publishes.
  */
-function publishBuildUpdate(
+export function publishBuildUpdate(
   organizationId: string,
   ctx: BuildContext,
   result: CompleteBuildResult,
   completedAt: Date
 ): void {
   const entries: FieldValueUpdateEntry[] = []
-  const push = (field: { id: string } | null, value: unknown) => {
-    if (!field) return
+  const push = (field: { id: string } | null, value: Record<string, unknown>) => {
+    // A pending build has no cost figures yet; nothing to push for them.
+    if (!field || ('value' in value && value.value == null)) return
     entries.push({
       key: buildFieldValueKey(result.recordId as RecordId, field.id as FieldId),
       value,

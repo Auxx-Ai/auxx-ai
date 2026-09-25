@@ -34,6 +34,7 @@ export type CloseBlockerItemKey =
   // `ExportFailureItem` in `export/client.ts` is assignable to this interface.
   | 'unmapped_account'
   | 'invalid_mapping'
+  | 'inventory_pending_cost'
   | 'inventory_unposted'
   | 'inventory_balance'
   | 'inventory_standard_value'
@@ -201,7 +202,9 @@ export function monthLabel(periodKey: string): string {
 export interface InventoryCloseCounts {
   /** The MONTH key being closed, `'2026-01'`. */
   periodKey: string
-  /** Movements dated in the month with no member link to a posted inventory entry. */
+  /** Movements dated in the month with `cost_basis = pending`: written before their part had a standard (111 Q18). */
+  pendingCostMovements?: number
+  /** Valued movements dated in the month with no member link to a posted inventory entry. */
   unpostedMovements: number
   /** Σ frozen `stock_movement_extended_cost` through the last day of the month. */
   subledgerMinor: number
@@ -229,13 +232,31 @@ export interface InventoryCloseCounts {
  * the parts list and does not. Under 73 every movement is valued at standard, so
  * the two must agree to the cent.
  *
+ * A pending-cost movement (111 Q18) is not unposted work: it has no value to post
+ * until its part gets a standard, so it is its own item, first. While any exist the
+ * parts-list check still runs — a residue is still a residue — but its remedy names
+ * them, because QoH × standard cannot tie until they are valued and posted.
+ *
  * A zero count and an exact tie produce NO item: this returns the work, not a
  * report card.
  */
 export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBlockerItem[] {
   const { periodKey, unpostedMovements, subledgerMinor, ledgerMinor } = counts
+  const pendingCostMovements = counts.pendingCostMovements ?? 0
   const month = monthLabel(periodKey)
   const items: CloseBlockerItem[] = []
+
+  if (pendingCostMovements > 0) {
+    items.push({
+      key: 'inventory_pending_cost',
+      label: `${pendingCostMovements} stock ${pendingCostMovements === 1 ? 'movement is' : 'movements are'} waiting for a standard cost`,
+      remedy:
+        'Set or roll the standard cost of their parts under Outbox > Blocked > Set costs; ' +
+        'each is valued and posted once its part has one.',
+      count: pendingCostMovements,
+      ref: periodKey,
+    })
+  }
 
   if (unpostedMovements > 0) {
     items.push({
@@ -267,8 +288,13 @@ export function describeInventoryBlockers(counts: InventoryCloseCounts): CloseBl
       label: `Inventory is out by ${standardValueMinor - ledgerMinor} against the parts list`,
       remedy:
         `The parts list values what is on hand at ${standardValueMinor} and the three inventory ` +
-        `accounts hold ${ledgerMinor} through the end of ${month}. Every movement is valued at ` +
-        'standard, so the two must agree: roll, count or revalue before closing.',
+        `accounts hold ${ledgerMinor} through the end of ${month}. ` +
+        (pendingCostMovements > 0
+          ? `${pendingCostMovements} ${pendingCostMovements === 1 ? 'movement is' : 'movements are'} ` +
+            'still waiting for a standard cost, so the two cannot agree until those are valued; ' +
+            'set the missing costs first.'
+          : 'Every movement is valued at standard, so the two must agree: roll, count or ' +
+            'revalue before closing.'),
       ref: periodKey,
     })
   }

@@ -250,7 +250,7 @@ export interface ConnectAndGoBacklogPreview {
   bookTimeZone: string
   shipments: number
   movements: number
-  /** Shipments parked at relief. */
+  /** Shipments parked at `price`: relieved, waiting for a standard cost (111 Q21). */
   relief: number
   /** Imported payments still to materialize into movements. */
   importedPayments: number

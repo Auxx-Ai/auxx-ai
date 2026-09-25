@@ -7,11 +7,9 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../../accounting/work-items/wake', () => ({
-  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
-}))
-
 const h = vi.hoisted(() => ({
+  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+  pricePending: vi.fn(async () => {}),
   partRows: [] as unknown[],
   valueRows: [] as unknown[],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
@@ -145,6 +143,8 @@ vi.mock('../../../realtime', () => ({
 // The roll's step 4. Mocked rather than exercised so this file stays the IO
 // half of the ROLL; `revalue.ts` pulls the whole ledger post path in.
 vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
+vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 
 import { rollStandardCost } from '../standard-cost'
 import { previewStandardCostRoll, readStandardCost } from '../standard-cost-queries'
@@ -422,6 +422,26 @@ describe('rollStandardCost', () => {
         glAccountRole: 'inventory_raw_materials',
       },
     ])
+  })
+
+  // 111 Q22: the pricer, not the roll, values the rows written pending for want of a standard.
+  it('prices the written parts right after the wake', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 4 }),
+      ]
+    )
+
+    await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+
+    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      h.wakeReasonCode.mock.invocationCallOrder[0]!
+    )
   })
 
   it('posts nothing for a FIRST standard - that is a valuation, not a revaluation', async () => {

@@ -15,7 +15,7 @@ import { linkRelationships } from '../../../seed/entity-seeder/link-relationship
 import type { EntityDefMap } from '../../../seed/entity-seeder/types'
 import { ensureStandardCost } from '../../costing/ensure-standard-cost'
 import { backfillFulfillmentRelief } from '../backfill'
-import { sweepFulfillmentRelief } from '../relief-sweep'
+import { sweepPendingPricing } from '../relief-sweep'
 
 vi.mock('@auxx/redis', async (original) => ({
   ...(await original<typeof import('@auxx/redis')>()),
@@ -95,7 +95,7 @@ async function relieveRow(fulfillmentId: string) {
       and(
         eq(schema.AccountingWorkItem.organizationId, organizationId),
         eq(schema.AccountingWorkItem.sourceId, fulfillmentId),
-        eq(schema.AccountingWorkItem.stage, 'relieve')
+        eq(schema.AccountingWorkItem.stage, 'price')
       )
     )
   return row ?? null
@@ -171,13 +171,11 @@ describe('the relieve lane', () => {
       unitCost: 4_000,
     })
     expect(ensured._unsafeUnwrap().writtenPartIds).toEqual([partId])
-    expect((await relieveRow(fulfillmentId))!.nextAttemptAt!.getTime()).toBeLessThanOrEqual(
-      Date.now()
-    )
-
-    const counts = await sweepFulfillmentRelief(db(), { organizationId, limit: 10 })
-    expect(counts).toMatchObject({ scanned: 1, accepted: 1 })
+    // 111 Q22: the first standard priced the pending row inline and cleared the park; the
+    // recovery lane finds nothing left to do.
     expect(await relieveRow(fulfillmentId)).toBeNull()
+    const counts = await sweepPendingPricing(db(), { organizationId, limit: 10 })
+    expect(counts).toMatchObject({ scanned: 0 })
 
     const movements = await db()
       .select({ id: schema.EntityInstance.id })

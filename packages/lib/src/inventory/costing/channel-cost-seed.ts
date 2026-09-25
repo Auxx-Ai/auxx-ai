@@ -7,6 +7,7 @@ import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
 import { getOrgCache } from '../../cache'
 import { isServicePartKind } from './client'
 import { type EnsureStandardCostResult, ensureStandardCost } from './ensure-standard-cost'
+import { pricePendingMovementsQuietly } from './price-pending-movements'
 
 const SEED_ATTRIBUTES = ['part_channel_cost', 'part_standard_cost', 'part_kind'] as const
 
@@ -75,6 +76,7 @@ export async function seedStandardFromChannelCost(
     unitCosts: seeds,
   })
   if (result.isOk() && result.value.writtenPartIds.length > 0) {
+    await pricePendingMovementsQuietly(db, organizationId, result.value.writtenPartIds)
     await requestAccountingRecovery(organizationId)
   }
   return result

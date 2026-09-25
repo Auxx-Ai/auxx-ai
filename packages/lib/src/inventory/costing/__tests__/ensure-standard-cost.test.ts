@@ -15,17 +15,19 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../../accounting/work-items/wake', () => ({
-  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
-}))
-
 const h = vi.hoisted(() => ({
+  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+  pricePending: vi.fn(async () => {}),
   queryQueue: [] as unknown[][],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   publishFieldValueUpdates: vi.fn(async () => {}),
   subparts: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   settings: {} as Record<string, unknown>,
 }))
+
+vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+// The pricer is its own subject (`price-pending-movements.test.ts`); here only the call matters.
+vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 
 function nextRows(): unknown[] {
   return h.queryQueue.shift() ?? []
@@ -264,6 +266,41 @@ describe('ensureStandardCost: writing a first standard', () => {
     expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 2200 })
     expect(writes.get(FIELD.part_standard_cost_effective_at!.id)).toMatchObject({ type: 'date' })
     expect(h.publishFieldValueUpdates).toHaveBeenCalled()
+  })
+
+  // 111 Q22: the rows written pending for want of this standard are valued inline, after the
+  // wake that keeps the recovery lane as the backstop.
+  it('prices the written parts right after the wake', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+      ]
+    )
+
+    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
+
+    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      h.wakeReasonCode.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('prices nothing when nothing was written', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
+      ]
+    )
+
+    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
+
+    expect(h.pricePending).not.toHaveBeenCalled()
   })
 
   it('freezes exactly the explicit unit cost, ignoring the live cost', async () => {

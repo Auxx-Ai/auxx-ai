@@ -170,3 +170,85 @@ describe('unposted_shipments', () => {
     expect(result.items.map((item) => item.key)).not.toContain('unposted_shipments')
   })
 })
+
+/** A movement dated in the month: valued at standard, or written pending (111 Q18). */
+async function movement(overrides: { occurredAt?: string; pending?: boolean } = {}) {
+  const [row] = await db()
+    .insert(schema.EntityInstance)
+    .values({
+      organizationId,
+      entityDefinitionId: defs.get('stock_movement')!.id,
+      createdById: userId,
+      updatedAt: new Date(),
+    })
+    .returning()
+  const id = row!.id
+  const { occurredAt = '2026-03-15T12:00:00.000Z', pending = false } = overrides
+  await value(id, 'stock_movement_occurred_at', { valueDate: occurredAt })
+  await value(id, 'stock_movement_cost_basis', { optionId: pending ? 'pending' : 'standard' })
+  if (!pending) await value(id, 'stock_movement_extended_cost', { valueNumber: 1200 })
+  return id
+}
+
+/** The member link a posted inventory entry holds over a movement. */
+async function member(movementId: string, status: 'posted' | 'reversed' = 'posted') {
+  const [posting] = await db()
+    .insert(schema.GlPosting)
+    .values({
+      organizationId,
+      postingType: 'inventory_movement',
+      periodKey: MONTH,
+      status,
+      txnDate: '2026-03-15',
+      totalMinor: 1200,
+      built: {},
+      postedAt: new Date(),
+    })
+    .returning()
+  await db().insert(schema.GlPostingSource).values({
+    organizationId,
+    glPostingId: posting!.id,
+    sourceKind: 'stock_movement',
+    sourceId: movementId,
+    linkRole: 'member',
+    occurrence: 'original',
+  })
+}
+
+async function inventoryCounts(): Promise<{ pending?: number; unposted?: number }> {
+  const result = await readCloseBlockers(db(), { organizationId, periodKey: MONTH })
+  return {
+    pending: result.items.find((item) => item.key === 'inventory_pending_cost')?.count,
+    unposted: result.items.find((item) => item.key === 'inventory_unposted')?.count,
+  }
+}
+
+describe('inventory_pending_cost and inventory_unposted', () => {
+  it('counts a pending row under pending only, never as unposted', async () => {
+    await movement({ pending: true })
+    await movement({ pending: true, occurredAt: '2026-04-01T12:00:00.000Z' })
+
+    expect(await inventoryCounts()).toEqual({ pending: 1, unposted: undefined })
+  })
+
+  it('counts a valued row with no member link as unposted, and a linked one as nothing', async () => {
+    await movement()
+    await member(await movement())
+
+    expect(await inventoryCounts()).toEqual({ pending: undefined, unposted: 1 })
+  })
+
+  it('counts a valued row again once its entry is reversed', async () => {
+    await member(await movement(), 'reversed')
+
+    expect((await inventoryCounts()).unposted).toBe(1)
+  })
+
+  it('keeps the two apart in one month', async () => {
+    await movement({ pending: true })
+    await movement()
+    await member(await movement())
+
+    expect(await inventoryCounts()).toEqual({ pending: 1, unposted: 1 })
+  })
+})
