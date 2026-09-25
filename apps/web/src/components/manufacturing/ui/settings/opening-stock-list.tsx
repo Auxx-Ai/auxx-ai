@@ -60,8 +60,8 @@ interface OpeningStockListProps {
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
   onDateChange: (partId: string, date: string | null) => void
-  /** The Q25 banner's button: backflush this part's negative replay before counting it. */
-  onBackflush: (row: OpeningStockRow) => void
+  /** The Q25 banner's button: backflush the org before counting the parts it lists. */
+  onBackflush: (rows: OpeningStockRow[]) => void
 }
 
 export function OpeningStockList({
@@ -101,6 +101,7 @@ export function OpeningStockList({
         if (filter === 'uncounted' && row.state !== 'uncounted') return false
         if (filter === 'unclassified' && !row.isUnclassified) return false
         if (filter === 'uncosted' && row.standardCost != null) return false
+        if (filter === 'unbuilt' && !needsBackflushFirst(row)) return false
         if (filter.startsWith('kind:') && row.kind !== filter.slice('kind:'.length)) return false
         if (!query) return true
         return (
@@ -111,6 +112,7 @@ export function OpeningStockList({
   )
 
   const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit])
+  const unbuilt = useMemo(() => rows.filter(needsBackflushFirst), [rows])
 
   // The paged, filtered set: what Cmd+A and a shift-range resolve against.
   const selectableIds = useMemo(() => visible.map((row) => row.partId), [visible])
@@ -140,6 +142,27 @@ export function OpeningStockList({
         canSetKind={canSetKind}
       />
       <div className='flex flex-col gap-3 p-3'>
+        {!isLoading && unbuilt.length > 0 && (
+          <Alert variant='warning' className='flex items-center gap-2 px-3 py-2'>
+            <Factory className='size-4' />
+            <AlertDescription className='flex flex-1 flex-wrap items-center justify-between gap-2 text-xs'>
+              <span>
+                {unbuilt.length} made {unbuilt.length === 1 ? 'part has' : 'parts have'} unbuilt
+                sales (sold, never built). Backflush before counting them, or the count hides them.
+              </span>
+              <span className='flex shrink-0 gap-2'>
+                {filter !== 'unbuilt' && (
+                  <Button variant='ghost' size='xs' onClick={() => changeFilter('unbuilt')}>
+                    Show them
+                  </Button>
+                )}
+                <Button variant='outline' size='xs' onClick={() => onBackflush(unbuilt)}>
+                  Backflush past sales
+                </Button>
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
         {isLoading ? (
           <EmptySection loading />
         ) : filtered.length === 0 ? (
@@ -187,7 +210,6 @@ export function OpeningStockList({
                   onQuantityChange={onQuantityChange}
                   onUnitCostChange={onUnitCostChange}
                   onDateChange={onDateChange}
-                  onBackflush={onBackflush}
                 />
               ))}
               {filtered.length > limit && (
@@ -233,7 +255,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onQuantityChange,
   onUnitCostChange,
   onDateChange,
-  onBackflush,
 }: {
   row: OpeningStockRow
   currencyCode: string
@@ -243,7 +264,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
   onDateChange: (partId: string, date: string | null) => void
-  onBackflush: (row: OpeningStockRow) => void
 }) {
   const bulkMode = useBulkMode()
   const selected = useIsSelected(row.partId)
@@ -254,190 +274,171 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   const selectable = canSetKind && !pending
   const selecting = bulkMode && selectable
   const outcome = rowOutcome(row.state)
-  const backflushFirst = needsBackflushFirst(row)
 
   return (
-    <div className='flex flex-col'>
-      <GridTreeRow
-        columns={OPENING_STOCK_COLS}
-        // `gap-x-2` keeps the bordered cells apart; the header carries the same gap.
-        rowClassName={cn(
-          'gap-x-2 rounded-md bg-primary-100/50 hover:bg-primary-100',
-          pending && 'opacity-60'
-        )}
-        // Row click selects only in bulk mode; outside it the first cell opens the part.
-        onToggleOpen={selecting ? () => toggle(row.partId) : undefined}
-        icon={
-          selectable ? (
-            <span className='relative flex size-5 items-center justify-center'>
-              <Package
-                className={cn(
-                  'size-4 text-muted-foreground transition-opacity',
-                  selecting ? 'opacity-0' : 'group-hover/tree-row:opacity-0'
-                )}
-              />
-              <span
-                className={cn(
-                  'absolute inset-0 flex items-center justify-center transition-opacity',
-                  !selecting &&
-                    'opacity-0 group-hover/tree-row:opacity-100 has-[:focus-visible]:opacity-100'
-                )}>
-                <Checkbox
-                  checked={selected}
-                  aria-label={row.title}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggle(row.partId, { shiftKey: e.shiftKey })
-                  }}
-                />
-              </span>
-            </span>
-          ) : (
-            <Package className='size-4 text-muted-foreground' />
-          )
-        }
-        title={
-          // `min-w-0` is load-bearing: the badge refuses to shrink without it.
-          <span className='flex min-w-0 items-center gap-1.5'>
-            {row.recordId ? (
-              <RecordBadge recordId={row.recordId} showIcon={false} className='min-w-0' />
-            ) : (
-              <span className='min-w-0 truncate'>{row.title}</span>
-            )}
-            <RowBadges row={row} />
-            {pending && (
-              <span className='shrink-0 text-muted-foreground text-xs'>{pendingLabel}</span>
-            )}
-          </span>
-        }
-        cells={[
-          <div key='kind' className='flex w-full min-w-0 items-center gap-1'>
-            <span className='w-32 shrink-0'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: PartKind.values }}
-                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-                value={row.kind}
-                onChange={(value) => {
-                  const next = toOpeningStockKind(value)
-                  if (next) onWriteKind([row.partId], next)
-                }}
-                placeholder='Select a kind...'
-                disabled={!canSetKind || isSettingKind}
-              />
-            </span>
-            {row.kindIsUnconfirmed && (
-              <Tooltip content='A suggested kind nobody has confirmed. It is never written for you.'>
-                <Badge
-                  variant='amber'
-                  size='xs'
-                  className='h-5.5 shrink-0 items-center justify-center px-1'>
-                  <Sparkles />
-                </Badge>
-              </Tooltip>
-            )}
-            {row.kindIsUnconfirmed && canSetKind && (
-              <Tooltip
-                content={`Set to ${partKindLabel(row.kind)}. Until it is stored, this part is held out of the run.`}>
-                <Button
-                  variant='transparent'
-                  className='h-5.5 w-5.5 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
-                  disabled={isSettingKind}
-                  onClick={() => {
-                    const kind = toOpeningStockKind(row.kind)
-                    if (kind) onWriteKind([row.partId], kind)
-                  }}>
-                  <Check />
-                </Button>
-              </Tooltip>
-            )}
-          </div>,
-
-          <Tooltip
-            key='account'
-            content={`${row.accountLabel}. The inventory account the movement is stamped with, frozen on the row.`}>
-            <span className='cursor-default truncate text-xs tabular-nums'>
-              {row.accountCode || row.accountLabel}
-            </span>
-          </Tooltip>,
-
-          <span
-            key='on-hand'
-            data-testid='on-hand'
-            className='w-full pr-1 text-right text-muted-foreground text-xs tabular-nums'>
-            {row.netToday == null ? '…' : formatNumber(row.netToday)}
-          </span>,
-
-          <EditableCell key='quantity' className='w-full'>
-            <FieldInputAdapter
-              fieldType={FieldType.NUMBER}
-              value={row.quantity}
-              onChange={(value) => onQuantityChange(row.partId, (value as number) ?? null)}
-              placeholder='0'
-            />
-          </EditableCell>,
-
-          <EditableCell
-            key='date'
-            className={cn('w-full', !row.hasOwnDate && 'text-muted-foreground')}>
-            <FieldInputAdapter
-              fieldType={FieldType.DATE}
-              triggerProps={{ className: 'ps-1 pe-1 w-full text-xs' }}
-              value={row.date}
-              onChange={(value) =>
-                onDateChange(row.partId, typeof value === 'string' ? value : null)
-              }
-            />
-          </EditableCell>,
-
-          row.standardCost != null ? (
-            <Tooltip
-              key='unit-cost'
-              content="The part's standard cost. The row is valued at it; a count never re-prices a costed part.">
-              <span className='w-full cursor-default pr-1 text-right text-muted-foreground text-xs tabular-nums'>
-                {formatCurrency(row.standardCost, { currencyCode })}
-              </span>
-            </Tooltip>
-          ) : (
-            <EditableCell key='unit-cost' className='w-full'>
-              <FieldInputAdapter
-                fieldType={FieldType.CURRENCY}
-                fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-                value={row.unitCost}
-                onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
-                placeholder='later'
-              />
-            </EditableCell>
-          ),
-
-          <span
-            key='delta'
-            data-testid='delta'
-            className='flex w-full flex-col items-end pr-1 text-right tabular-nums leading-tight'>
-            <span className='text-foreground text-sm'>{formatDelta(row.delta)}</span>
-            {row.quantity != null && (
-              <span className='text-[11px] text-muted-foreground'>
-                {outcome === 'first' ? 'first count' : 'adjusts'}
-              </span>
-            )}
-          </span>,
-        ]}
-      />
-      {backflushFirst && (
-        <Alert variant='warning' className='mx-1 mt-0.5 flex items-center gap-2 px-3 py-1.5'>
-          <Factory className='size-4' />
-          <AlertDescription className='flex flex-1 flex-wrap items-center justify-between gap-2 text-xs'>
-            <span>
-              {formatNumber(row.unbuiltSales)} unbuilt {row.unbuiltSales === 1 ? 'sale' : 'sales'} —
-              backflush them first, or this count will hide them.
-            </span>
-            <Button variant='outline' size='xs' onClick={() => onBackflush(row)}>
-              Backflush past sales
-            </Button>
-          </AlertDescription>
-        </Alert>
+    <GridTreeRow
+      columns={OPENING_STOCK_COLS}
+      // `gap-x-2` keeps the bordered cells apart; the header carries the same gap.
+      rowClassName={cn(
+        'gap-x-2 rounded-md bg-primary-100/50 hover:bg-primary-100',
+        pending && 'opacity-60'
       )}
-    </div>
+      // Row click selects only in bulk mode; outside it the first cell opens the part.
+      onToggleOpen={selecting ? () => toggle(row.partId) : undefined}
+      icon={
+        selectable ? (
+          <span className='relative flex size-5 items-center justify-center'>
+            <Package
+              className={cn(
+                'size-4 text-muted-foreground transition-opacity',
+                selecting ? 'opacity-0' : 'group-hover/tree-row:opacity-0'
+              )}
+            />
+            <span
+              className={cn(
+                'absolute inset-0 flex items-center justify-center transition-opacity',
+                !selecting &&
+                  'opacity-0 group-hover/tree-row:opacity-100 has-[:focus-visible]:opacity-100'
+              )}>
+              <Checkbox
+                checked={selected}
+                aria-label={row.title}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggle(row.partId, { shiftKey: e.shiftKey })
+                }}
+              />
+            </span>
+          </span>
+        ) : (
+          <Package className='size-4 text-muted-foreground' />
+        )
+      }
+      title={
+        // `min-w-0` is load-bearing: the badge refuses to shrink without it.
+        <span className='flex min-w-0 items-center gap-1.5'>
+          {row.recordId ? (
+            <RecordBadge recordId={row.recordId} showIcon={false} className='min-w-0' />
+          ) : (
+            <span className='min-w-0 truncate'>{row.title}</span>
+          )}
+          <RowBadges row={row} />
+          {pending && (
+            <span className='shrink-0 text-muted-foreground text-xs'>{pendingLabel}</span>
+          )}
+        </span>
+      }
+      cells={[
+        <div key='kind' className='flex w-full min-w-0 items-center gap-1'>
+          <span className='w-32 shrink-0'>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: PartKind.values }}
+              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+              value={row.kind}
+              onChange={(value) => {
+                const next = toOpeningStockKind(value)
+                if (next) onWriteKind([row.partId], next)
+              }}
+              placeholder='Select a kind...'
+              disabled={!canSetKind || isSettingKind}
+            />
+          </span>
+          {row.kindIsUnconfirmed && (
+            <Tooltip content='A suggested kind nobody has confirmed. It is never written for you.'>
+              <Badge
+                variant='amber'
+                size='xs'
+                className='h-5.5 shrink-0 items-center justify-center px-1'>
+                <Sparkles />
+              </Badge>
+            </Tooltip>
+          )}
+          {row.kindIsUnconfirmed && canSetKind && (
+            <Tooltip
+              content={`Set to ${partKindLabel(row.kind)}. Until it is stored, this part is held out of the run.`}>
+              <Button
+                variant='transparent'
+                className='h-5.5 w-5.5 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
+                disabled={isSettingKind}
+                onClick={() => {
+                  const kind = toOpeningStockKind(row.kind)
+                  if (kind) onWriteKind([row.partId], kind)
+                }}>
+                <Check />
+              </Button>
+            </Tooltip>
+          )}
+        </div>,
+
+        <Tooltip
+          key='account'
+          content={`${row.accountLabel}. The inventory account the movement is stamped with, frozen on the row.`}>
+          <span className='cursor-default truncate text-xs tabular-nums'>
+            {row.accountCode || row.accountLabel}
+          </span>
+        </Tooltip>,
+
+        <span
+          key='on-hand'
+          data-testid='on-hand'
+          className='w-full pr-1 text-right text-muted-foreground text-xs tabular-nums'>
+          {row.netToday == null ? '…' : formatNumber(row.netToday)}
+        </span>,
+
+        <EditableCell key='quantity' className='w-full'>
+          <FieldInputAdapter
+            fieldType={FieldType.NUMBER}
+            value={row.quantity}
+            onChange={(value) => onQuantityChange(row.partId, (value as number) ?? null)}
+            placeholder='0'
+          />
+        </EditableCell>,
+
+        <EditableCell
+          key='date'
+          className={cn('w-full', !row.hasOwnDate && 'text-muted-foreground')}>
+          <FieldInputAdapter
+            fieldType={FieldType.DATE}
+            triggerProps={{ className: 'ps-1 pe-1 w-full text-xs' }}
+            value={row.date}
+            onChange={(value) => onDateChange(row.partId, typeof value === 'string' ? value : null)}
+          />
+        </EditableCell>,
+
+        row.standardCost != null ? (
+          <Tooltip
+            key='unit-cost'
+            content="The part's standard cost. The row is valued at it; a count never re-prices a costed part.">
+            <span className='w-full cursor-default pr-1 text-right text-muted-foreground text-xs tabular-nums'>
+              {formatCurrency(row.standardCost, { currencyCode })}
+            </span>
+          </Tooltip>
+        ) : (
+          <EditableCell key='unit-cost' className='w-full'>
+            <FieldInputAdapter
+              fieldType={FieldType.CURRENCY}
+              fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+              value={row.unitCost}
+              onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
+              placeholder='later'
+            />
+          </EditableCell>
+        ),
+
+        <span
+          key='delta'
+          data-testid='delta'
+          className='flex w-full flex-col items-end pr-1 text-right tabular-nums leading-tight'>
+          <span className='text-foreground text-sm'>{formatDelta(row.delta)}</span>
+          {row.quantity != null && (
+            <span className='text-[11px] text-muted-foreground'>
+              {outcome === 'first' ? 'first count' : 'adjusts'}
+            </span>
+          )}
+        </span>,
+      ]}
+    />
   )
 })
 

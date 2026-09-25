@@ -54,9 +54,13 @@ function OpeningStockTabInner() {
     ]
   })
 
-  /** Q25: from the part's earliest movement to today, so every negative day is covered. */
-  const openBackflush = (row: OpeningStockRow) => {
-    setBackflush({ from: row.earliest ?? new Date(), to: new Date(), partName: row.title })
+  /** Q25: backflush runs org-wide, from the earliest movement of any listed part to today. */
+  const openBackflush = (rows: OpeningStockRow[]) => {
+    const earliest = rows.reduce<Date | null>(
+      (min, row) => (row.earliest && (!min || row.earliest < min) ? row.earliest : min),
+      null
+    )
+    setBackflush({ from: earliest ?? new Date(), to: new Date() })
   }
 
   const run = (
