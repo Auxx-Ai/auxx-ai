@@ -112,6 +112,7 @@ export {
   listJobsByOrg,
   markJobPlanning,
   markJobReady,
+  reopenPlannedJobs,
   updateJobStatus,
 } from './job'
 // Mapping utilities
@@ -288,6 +289,7 @@ export {
   type ResolveColumnCurrencyCodesInput,
   type ResolveColumnDecimalsInput,
   type ResolveColumnOptionsInput,
+  recountJobPropertyErrors,
   relationCreateKey,
   relationFieldWriteMode,
   resolveArraySplit,

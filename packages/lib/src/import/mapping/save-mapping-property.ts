@@ -10,6 +10,7 @@ import {
   type ImportMergeStrategy,
   isImportMergeStrategy,
 } from '../../write-policy'
+import { reopenPlannedJobs } from '../job/reopen-planned-job'
 import type { RelationConfig } from '../resolution/relation-policy'
 import type { ResolutionConfig } from '../types/resolution'
 import { syncMappingIdentity } from './derive-identifier-keys'
@@ -387,6 +388,7 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
       .update(schema.ImportJob)
       .set({ allowPlanGeneration: false, updatedAt: new Date() })
       .where(eq(schema.ImportJob.importMappingId, input.mappingId))
+    await reopenPlannedJobs(tx, { mappingId: input.mappingId })
 
     // …and re-resolution only re-resolves what is not already cached. A column
     // pointed at a new field, or read as a different type, has to lose its rows
@@ -561,6 +563,7 @@ export async function batchUpdateMappingsFromAutoMap(
       .update(schema.ImportJob)
       .set({ allowPlanGeneration: false, updatedAt: now })
       .where(eq(schema.ImportJob.importMappingId, input.mappingId))
+    await reopenPlannedJobs(tx, { mappingId: input.mappingId })
 
     await invalidateColumnResolutions(tx, changedPropertyIds)
   })

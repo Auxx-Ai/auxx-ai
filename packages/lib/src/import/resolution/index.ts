@@ -74,6 +74,7 @@ export {
 } from './materialize-select-creates'
 export { isOptionResolutionType, resolveOptionLabel } from './option-labels'
 export { type ProcessColumnValuesOptions, processColumnValues } from './process-column-values'
+export { recountJobPropertyErrors } from './recount-job-property-errors'
 export { relationCreateKey } from './relation-create-key'
 // Relation match-field type gate (03 §5.4), technical limit, NOT the identifier gate
 export {

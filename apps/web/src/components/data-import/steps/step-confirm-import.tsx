@@ -58,7 +58,17 @@ export function StepConfirmImport({
   }
 
   const { data: plan, isLoading: planLoading } = api.dataImport.getPlan.useQuery({ jobId })
-  const { data: job, isLoading: jobLoading } = api.dataImport.getJob.useQuery({ jobId })
+  // Polled until planning settles: the refetch after `generatePlan` usually lands before the
+  // worker leaves `waiting`, and the SSE stream only opens once the status reads `planning`.
+  const { data: job, isLoading: jobLoading } = api.dataImport.getJob.useQuery(
+    { jobId },
+    {
+      refetchInterval: (query) =>
+        query.state.data?.status === 'waiting' || query.state.data?.status === 'planning'
+          ? 1000
+          : false,
+    }
+  )
   const { data: mappedColumns } = api.dataImport.getMappedColumns.useQuery({ jobId })
 
   const generatePlan = api.dataImport.generatePlan.useMutation()
@@ -119,6 +129,11 @@ export function StepConfirmImport({
     utils.dataImport.getJob,
   ])
 
+  // The plan read after `generatePlan` can predate the finished plan; re-read once it is ready.
+  useEffect(() => {
+    if (job?.status === 'ready') utils.dataImport.getPlan.invalidate({ jobId })
+  }, [job?.status, jobId, utils.dataImport.getPlan])
+
   // SSE connection for real-time progress (during planning and execution)
   const { progress: sseProgress, isConnected } = useImportSSE({
     jobId,
@@ -162,7 +177,9 @@ export function StepConfirmImport({
     await confirmImport.mutateAsync({ jobId })
   }
 
-  const isLoading = jobLoading || planLoading || generatePlan.isPending || job?.status === 'waiting'
+  // Not `generatePlan.isPending`: fired from a mount effect, that flag never clears under
+  // StrictMode's remount, and the polled job status already covers the planning window.
+  const isLoading = jobLoading || planLoading || job?.status === 'waiting'
 
   // Show loading with skeleton stats
   if (isLoading) {

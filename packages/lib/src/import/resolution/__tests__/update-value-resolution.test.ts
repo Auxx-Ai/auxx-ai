@@ -43,6 +43,10 @@ vi.mock('../resolve-currency-code', () => ({
   resolveColumnDecimals: async () => new Map(),
 }))
 
+// Real SQL, covered by `override-follow-through.int.test.ts`; the fake below cannot run them.
+vi.mock('../recount-job-property-errors', () => ({ recountJobPropertyErrors: vi.fn() }))
+vi.mock('../../job/reopen-planned-job', () => ({ reopenPlannedJobs: vi.fn() }))
+
 class FakeDb {
   mappingProp: { id: string; resolutionType: string; targetFieldKey: string | null }
   jobProp = { id: 'jobprop_0' }
@@ -311,5 +315,43 @@ describe('updateValueResolution on a file:url column', () => {
 
     await expect(override(db, [{ type: 'value', value: 'ftp://x.com/a.png' }])).rejects.toThrow()
     expect(db.captured.values).toBeNull()
+  })
+})
+
+describe('updateValueResolution follow-through', () => {
+  it('recounts the column errors and reopens a planned job after a save', async () => {
+    const { recountJobPropertyErrors } = await import('../recount-job-property-errors')
+    const { reopenPlannedJobs } = await import('../../job/reopen-planned-job')
+    const db = new FakeDb('select:value')
+
+    await override(db, [{ type: 'value', value: 'opt_red' }])
+
+    expect(recountJobPropertyErrors).toHaveBeenCalledWith(expect.anything(), 'jobprop_0')
+    expect(reopenPlannedJobs).toHaveBeenCalledWith(expect.anything(), { jobId: 'job_1' })
+  })
+})
+
+describe('resolverAnswer', () => {
+  it("reports the resolver's own answer for an overridden value, not the override", async () => {
+    const { parseUserOverride, resolverAnswer } = await import('../get-unique-values-with-status')
+    // `updateValueResolution` writes the override over `resolvedValues`; the original is kept here.
+    const userOverride = {
+      isOverridden: true,
+      values: [{ type: 'value', value: 'component' }],
+      originalIsValid: false,
+      originalResolvedValues: [{ type: 'error', error: 'No matching option' }],
+    }
+
+    expect(
+      resolverAnswer([{ type: 'value', value: 'component' }], parseUserOverride(userOverride))
+    ).toBeNull()
+  })
+
+  it('reads the stored value when nothing is overridden', async () => {
+    const { parseUserOverride, resolverAnswer } = await import('../get-unique-values-with-status')
+
+    expect(resolverAnswer([{ type: 'value', value: 'opt_red' }], parseUserOverride(null))).toBe(
+      'opt_red'
+    )
   })
 })

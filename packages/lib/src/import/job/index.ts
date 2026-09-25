@@ -4,6 +4,7 @@ export { type CreateJobInput, type CreateJobResult, createImportJob } from './cr
 export { type DeleteJobInput, deleteJob } from './delete-job'
 export { getJobByOrg, getJobWithMapping, getJobWithMappingProperties } from './get-job'
 export { type ListJobsInput, listJobsByOrg } from './list-jobs'
+export { reopenPlannedJobs } from './reopen-planned-job'
 export {
   allowPlanGeneration,
   finalizeUpload,
