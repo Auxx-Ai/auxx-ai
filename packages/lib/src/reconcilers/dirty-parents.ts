@@ -60,6 +60,8 @@ export type ReconcilerDrain = (params: {
   userId: string
   /** Distinct, in first-marked order. Never empty. */
   parentInstanceIds: string[]
+  /** `'sync'` when the scope was opened by sync finalize, so a drain can batch its frames. */
+  lane?: 'sync'
 }) => Promise<void>
 
 /** The buffer for ONE write scope. Plain values only — see {@link DirtyParentScope}. */
@@ -72,6 +74,7 @@ export interface DirtyParentScope {
   drained: boolean
   /** Some parent was dropped at {@link MAX_DIRTY_PARENTS_PER_KEY}. */
   truncated: boolean
+  lane?: 'sync'
 }
 
 const als = new AsyncLocalStorage<DirtyParentScope>()
@@ -170,7 +173,8 @@ export function markParentDirty(key: string, parentInstanceId: string): boolean 
 export async function runWithDirtyParents<T>(
   organizationId: string,
   userId: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  opts: { lane?: 'sync' } = {}
 ): Promise<T> {
   if (als.getStore()) return fn()
 
@@ -180,6 +184,7 @@ export async function runWithDirtyParents<T>(
     dirty: new Map(),
     drained: false,
     truncated: false,
+    ...(opts.lane ? { lane: opts.lane } : {}),
   }
 
   const result = await als.run(scope, fn)
@@ -251,6 +256,7 @@ export async function drainDirtyParents(scope: DirtyParentScope): Promise<void> 
         organizationId: scope.organizationId,
         userId: scope.userId,
         parentInstanceIds: [...ids],
+        ...(scope.lane ? { lane: scope.lane } : {}),
       })
     } catch (error) {
       logger.error('reconciler drain failed', {

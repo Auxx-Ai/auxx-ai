@@ -144,6 +144,8 @@ interface Fixture {
   defId: string
   defSlug: string
   importJobId: string
+  /** systemAttribute → CustomField id, for the client fieldRefKey `<defId>:<fieldId>`. */
+  fieldIds: Record<string, string>
 }
 
 /** An org with a `contacts` def and an ImportJob run row to hang the manifest off. */
@@ -190,7 +192,22 @@ async function seed(): Promise<Fixture> {
 
   h.roleMap = { [user.id]: { userType: 'USER', role: 'OWNER' } }
 
+  const fields = await db()
+    .insert(schema.CustomField)
+    .values(
+      ['first_name', 'email'].map((attribute) => ({
+        organizationId: org.id,
+        entityDefinitionId: def!.id,
+        name: attribute,
+        type: 'TEXT' as const,
+        systemAttribute: attribute,
+        updatedAt: new Date(),
+      }))
+    )
+    .returning({ id: schema.CustomField.id, systemAttribute: schema.CustomField.systemAttribute })
+
   return {
+    fieldIds: Object.fromEntries(fields.map((field) => [field.systemAttribute!, field.id])),
     orgId: org.id,
     userId: user.id,
     defId: def!.id,
@@ -743,7 +760,10 @@ describe('tier-2 frames (§7b)', () => {
     expect(args.entityDefinitionId).toBe(f.defId)
 
     const byRecord = Object.fromEntries(args.entries.map((e) => [e.recordId as string, e.fieldIds]))
-    expect(byRecord[changed!]).toEqual(['first_name', 'email'])
+    expect(byRecord[changed!]).toEqual([
+      `${f.defId}:${f.fieldIds.first_name}`,
+      `${f.defId}:${f.fieldIds.email}`,
+    ])
     expect(byRecord[created!]).toBeUndefined()
     expect(byRecord[archived!]).toBeUndefined()
   })
@@ -847,7 +867,10 @@ describe('tier-1-only manifest (zero rule subscriptions)', () => {
     const byRecord = Object.fromEntries(
       frameArgs.entries.map((e) => [e.recordId as string, e.fieldIds])
     )
-    expect(byRecord[changed!]).toEqual(['first_name', 'email'])
+    expect(byRecord[changed!]).toEqual([
+      `${f.defId}:${f.fieldIds.first_name}`,
+      `${f.defId}:${f.fieldIds.email}`,
+    ])
     expect(byRecord[created!]).toBeUndefined()
   })
 

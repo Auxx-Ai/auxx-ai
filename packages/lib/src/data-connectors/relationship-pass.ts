@@ -6,22 +6,12 @@
 // pointer). Unresolved targets (not yet synced) stay pending and resolve on a later
 // run; each unresolved edge increments relationshipWarnings.
 //
-// IDEMPOTENT (v10 relationship-pass-idempotency): the sink re-queues every non-clear
-// edge on every run — `linkedRelations` records WHICH field carries an edge, never
-// WHAT it points at — so without a guard this pass rewrote the connector's entire edge
-// set every 15 minutes, DELETE+INSERTing identical `FieldValue` rows and firing a full
-// `entity:field:updated` fan-out (timeline entry, activity touch, record rules) for
-// each. The fix suppresses the WRITE, not the event: one bulk pre-read of the current
-// targets, and an edge that already points where it should is left alone. A genuine
-// edge change still fires everything it fires today — deliberately NOT silent,
-// which would take record rules and field triggers down with it. Writes go through
-// `ctx.relationshipCrud`, an inline-lane `automation`-session handler, so events fire.
-// The loop runs in one dirty-parent scope, so the marks its writes raise drain once
-// per reconciler at the end of the pass rather than once per edge.
+// Edges are written on the run's sync session, so rules, marks, workflows, timeline and
+// realtime run once from sync-finalize via the manifest. An edge that already points at its
+// target is skipped (one bulk pre-read), so re-queued edges do not rewrite the edge set.
 
 import { createScopedLogger } from '@auxx/logger'
 import { wakeRecords } from '../accounting/work-items/wake'
-import { runWithDirtyParents } from '../reconcilers/dirty-parents'
 import { toRecordId } from '../resources/resource-id'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
 import { startRunHeartbeat } from './run-control'
@@ -63,9 +53,9 @@ export async function resolveRelationships(
   const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
   const completed: string[] = []
 
-  // The drains at the end of this scope can outlive the 5-minute stale-run sweep (110 §9a).
+  // A long pass can outlive the 5-minute stale-run sweep (110 §9a).
   const stopHeartbeat = startRunHeartbeat(ctx.db, ctx.runId)
-  await runWithDirtyParents(ctx.orgId, ctx.userId, async () => {
+  try {
     for (const item of items) {
       if (!item.entityInstanceId) continue
       const pending = (item.pendingRelations ?? []) as PendingRelation[]
@@ -94,12 +84,7 @@ export async function resolveRelationships(
         // is one we previously set.
         if (rel.targetExternalId === null) {
           try {
-            await ctx.relationshipCrud.update(
-              parentRecordId,
-              { [rel.fieldKey]: null },
-              undefined,
-              {}
-            )
+            await ctx.crud.update(parentRecordId, { [rel.fieldKey]: null }, undefined, {})
             ctx.touchedDefs.add(item.entityDefinitionId)
             if (linked.delete(rel.fieldKey)) linkedChanged = true
           } catch (error) {
@@ -155,12 +140,7 @@ export async function resolveRelationships(
           // Write the RELATIONSHIP value by addressing the parent's relationship
           // field (by its systemAttribute/key) with the target RecordId. The
           // FieldValueService converter accepts a RecordId; the inverse syncs.
-          await ctx.relationshipCrud.update(
-            parentRecordId,
-            { [rel.fieldKey]: targetRecordId },
-            undefined,
-            {}
-          )
+          await ctx.crud.update(parentRecordId, { [rel.fieldKey]: targetRecordId }, undefined, {})
           ctx.touchedDefs.add(item.entityDefinitionId)
           linkedTargets.push(target.entityInstanceId)
           if (!linked.has(rel.fieldKey)) {
@@ -192,7 +172,9 @@ export async function resolveRelationships(
         })
       }
     }
-  }).finally(stopHeartbeat)
+  } finally {
+    stopHeartbeat()
+  }
 
   // Work parked on a record this pass completed retries now (101 E9); a failed wake
   // leaves the rows on their own schedule.

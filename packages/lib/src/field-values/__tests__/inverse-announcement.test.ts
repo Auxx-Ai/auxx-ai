@@ -16,20 +16,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const publishFieldValueUpdates = vi.fn(async () => {})
+const publishRecordsChanged = vi.fn(async () => {})
 const getRealtimeService = vi.fn(() => ({}) as never)
 const getAmbientTxWriteScope = vi.fn<() => unknown>(() => undefined)
 const recordTxWriteChange = vi.fn()
+const recordTxWriteRefetch = vi.fn()
+const customFieldById = vi.fn(async (_id: string): Promise<unknown> => null)
 
 vi.mock('../../realtime', () => ({
   publishFieldValueUpdates: (...args: unknown[]) => publishFieldValueUpdates(...(args as [])),
+  publishRecordsChanged: (...args: unknown[]) => publishRecordsChanged(...(args as [])),
   getRealtimeService: () => getRealtimeService(),
+}))
+
+vi.mock('../../cache', () => ({
+  getOrgCache: () => ({ from: () => ({ byId: (id: string) => customFieldById(id) }) }),
 }))
 
 vi.mock('../../resources/crud/tx-write-scope', () => ({
   getAmbientTxWriteScope: () => getAmbientTxWriteScope(),
   recordTxWriteChange: (...args: unknown[]) => recordTxWriteChange(...args),
+  recordTxWriteRefetch: (...args: unknown[]) => recordTxWriteRefetch(...args),
 }))
 
+import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
+import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { syncInverseRelationships } from '../relationship-sync'
 
 /** Thenable statement-builder stub: every method chains, awaiting resolves `result`. */
@@ -85,6 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getAmbientTxWriteScope.mockReturnValue(undefined)
   publishFieldValueUpdates.mockResolvedValue(undefined)
+  customFieldById.mockResolvedValue(null)
 })
 
 describe('D-11 — the inverse write announces itself', () => {
@@ -225,6 +237,124 @@ describe('D-11 — the inverse write announces itself', () => {
     )
 
     expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(recordTxWriteChange).not.toHaveBeenCalled()
+  })
+})
+
+/** `count` stored links on order-1 — past the 200-id announcement bound when count > 200. */
+function manyRows(count: number) {
+  return Array.from({ length: count }, (_, i) =>
+    row(`r${i}`, 'order-1', `line-${i}`, `a${String(i).padStart(4, '0')}`)
+  )
+}
+
+const LINK_LINE_TO_ORDER = {
+  entityId: 'line-X',
+  oldRelatedIds: [],
+  newRelatedIds: ['order-1'],
+  inverseInfo: HAS_MANY_INVERSE,
+}
+
+describe('P2 — oversized inverse arrays are announced by id', () => {
+  it('publishes records:changed with the client fieldRefKey instead of the array', async () => {
+    await syncInverseRelationships(
+      { db: fakeDb([[], [], manyRows(201)]), organizationId: 'org-1' },
+      LINK_LINE_TO_ORDER
+    )
+
+    expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(publishRecordsChanged).toHaveBeenCalledTimes(1)
+    const call = publishRecordsChanged.mock.calls[0] as unknown as unknown[]
+    expect(call[1]).toBe('org-1')
+    expect(call[2]).toEqual({
+      entityDefinitionId: 'def-order',
+      entries: [{ recordId: 'order-1', fieldIds: ['def-order:field-inv'] }],
+    })
+    // D-11: the acting tab is told too.
+    expect(call[3]).toBeUndefined()
+  })
+
+  it('keeps sending the array at the bound', async () => {
+    await syncInverseRelationships(
+      { db: fakeDb([[], [], manyRows(200)]), organizationId: 'org-1' },
+      LINK_LINE_TO_ORDER
+    )
+
+    expect(publishRecordsChanged).not.toHaveBeenCalled()
+    expect(publishFieldValueUpdates).toHaveBeenCalledTimes(1)
+  })
+
+  it('buffers the bounded form, not the array, under a write scope', async () => {
+    const scope = { marker: 'buffered' }
+    getAmbientTxWriteScope.mockReturnValue(scope)
+
+    await syncInverseRelationships(
+      { db: fakeDb([[], [], manyRows(201)]), organizationId: 'org-1' },
+      LINK_LINE_TO_ORDER
+    )
+
+    expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(publishRecordsChanged).not.toHaveBeenCalled()
+    const [, args] = recordTxWriteChange.mock.calls[0] as [unknown, { entry?: unknown }]
+    expect(args.entry).toBeUndefined()
+    expect(recordTxWriteRefetch).toHaveBeenCalledWith(scope, 'def-order:order-1', [
+      'def-order:field-inv',
+    ])
+  })
+})
+
+describe('P3 — sync and seed sessions publish nothing', () => {
+  it('a sync session records the mirror in the manifest and publishes nothing', async () => {
+    customFieldById.mockResolvedValue({ id: 'field-inv', systemAttribute: 'order_lines' })
+    const recordMirrorTouched = vi.fn()
+    const collector = { recordMirrorTouched } as unknown as ManifestCollector
+    // No third scripted select: the sync lane never re-reads the array.
+    const db = fakeDb([[], []])
+
+    await runWithWriteSession(
+      { origin: { kind: 'sync', source: 'connector', ref: 'run-1', collector }, depth: 0 },
+      () =>
+        syncInverseRelationships(
+          { db, organizationId: 'org-1' },
+          { ...LINK_LINE_TO_ORDER, oldRelatedIds: ['order-2'] }
+        )
+    )
+
+    expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(publishRecordsChanged).not.toHaveBeenCalled()
+    expect(recordTxWriteChange).not.toHaveBeenCalled()
+    expect(recordMirrorTouched.mock.calls).toEqual([
+      ['def-order:order-2', ['order_lines']],
+      ['def-order:order-1', ['order_lines']],
+    ])
+  })
+
+  it('falls back to the raw field id when the inverse field has no systemAttribute', async () => {
+    const recordMirrorTouched = vi.fn()
+    const collector = { recordMirrorTouched } as unknown as ManifestCollector
+
+    await runWithWriteSession(
+      { origin: { kind: 'sync', source: 'connector', ref: 'run-1', collector }, depth: 0 },
+      () =>
+        syncInverseRelationships(
+          { db: fakeDb([[], []]), organizationId: 'org-1' },
+          LINK_LINE_TO_ORDER
+        )
+    )
+
+    expect(recordMirrorTouched).toHaveBeenCalledWith('def-order:order-1', ['field-inv'])
+  })
+
+  it('a seed session announces nothing', async () => {
+    await runWithWriteSession({ origin: { kind: 'seed', reason: 'test' }, depth: 0 }, () =>
+      syncInverseRelationships(
+        { db: fakeDb([[], [], manyRows(1)]), organizationId: 'org-1' },
+        LINK_LINE_TO_ORDER
+      )
+    )
+
+    expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(publishRecordsChanged).not.toHaveBeenCalled()
     expect(recordTxWriteChange).not.toHaveBeenCalled()
   })
 })

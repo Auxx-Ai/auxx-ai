@@ -38,6 +38,15 @@ export const TOUCHED_KEYS_BYTE_BUDGET = 2_000_000
  */
 export const MAX_DELTA_RECORDS = 5_000
 
+/**
+ * Single-valued edges whose finalize marks read `oldValue` to reach the parent a record left.
+ * Their `{o, n}` is captured whenever there was an old parent, rule subscriptions or not.
+ */
+export const REPOINT_DELTA_ATTRS: ReadonlySet<string> = new Set([
+  'line_item_order',
+  'fulfillment_line_fulfillment',
+])
+
 /** Collector caps — constructor-injectable so tests can exercise overflow cheaply. */
 export interface ManifestCollectorCaps {
   maxTouchedRecords: number
@@ -110,6 +119,8 @@ export interface ManifestCollector {
   hasCreated(recordId: RecordId): boolean
   /** Record an archived id — UNCONDITIONAL membership (no lifecycle-rule gating). */
   recordArchived(recordId: RecordId): void
+  /** Record an inverse-side relationship change on `recordId` (the manifest's `mirrors`). */
+  recordMirrorTouched(recordId: RecordId, keys: string[]): void
   /** Serialize; null when literally nothing was captured. */
   toJson(): SyncChangeManifest | null
 }
@@ -137,6 +148,8 @@ class ManifestAccumulator {
   /** instanceId → first-seen RecordId form. */
   private readonly created = new Map<string, RecordId>()
   private readonly archived = new Map<string, RecordId>()
+  /** instanceId → inverse-side entry; shares the membership cap and key byte budget. */
+  private readonly mirrors = new Map<string, { rid: RecordId; keys: Set<string> }>()
   /** instanceId → raw create values (emitted under the created RecordId form). */
   private readonly createdValues = new Map<string, Record<string, unknown>>()
   /** Membership union (touched ∪ created ∪ archived) by instanceId — the ONE cap. */
@@ -247,6 +260,22 @@ class ManifestAccumulator {
     return this.created.has(parseRecordId(recordId).entityInstanceId)
   }
 
+  recordMirrorTouched(recordId: RecordId, keys: string[]): void {
+    const instanceId = parseRecordId(recordId).entityInstanceId
+    if (!this.admitMember(instanceId)) return
+    let entry = this.mirrors.get(instanceId)
+    if (!entry) {
+      entry = { rid: recordId, keys: new Set() }
+      this.mirrors.set(instanceId, entry)
+    }
+    for (const key of keys) {
+      // Past the byte budget an existing mirror keeps its keys but gains no new ones.
+      if (entry.keys.has(key) || this.keysBytes >= this.caps.touchedKeysByteBudget) continue
+      entry.keys.add(key)
+      this.keysBytes += key.length
+    }
+  }
+
   /** Fold a v2 manifest in (earlier fragments first — first `o` wins, last `n` wins). */
   ingest(m: SyncChangeManifest): void {
     for (const [rid, keys] of Object.entries(m.touched) as [RecordId, string[] | 1][]) {
@@ -261,6 +290,9 @@ class ManifestAccumulator {
     }
     for (const rid of m.createdRecordIds) this.recordCreated(rid, m.createdValues?.[rid])
     for (const rid of m.archivedRecordIds) this.recordArchived(rid)
+    for (const [rid, keys] of Object.entries(m.mirrors ?? {}) as [RecordId, string[]][]) {
+      this.recordMirrorTouched(rid, keys)
+    }
     this.detailTruncated = this.detailTruncated || m.detailTruncated
     this.membershipTruncated = this.membershipTruncated || m.membershipTruncated
   }
@@ -271,6 +303,7 @@ class ManifestAccumulator {
       this.deltas.size === 0 &&
       this.created.size === 0 &&
       this.archived.size === 0 &&
+      this.mirrors.size === 0 &&
       !this.detailTruncated &&
       !this.membershipTruncated
     ) {
@@ -291,6 +324,11 @@ class ManifestAccumulator {
       if (!createdValues) createdValues = {}
       createdValues[rid] = values
     }
+    let mirrors: SyncChangeManifest['mirrors']
+    for (const entry of this.mirrors.values()) {
+      if (!mirrors) mirrors = {}
+      mirrors[entry.rid] = [...entry.keys]
+    }
     return {
       version: 2,
       detailTruncated: this.detailTruncated,
@@ -300,6 +338,7 @@ class ManifestAccumulator {
       createdRecordIds: [...this.created.values()],
       archivedRecordIds: [...this.archived.values()],
       ...(createdValues ? { createdValues } : {}),
+      ...(mirrors ? { mirrors } : {}),
     }
   }
 }
@@ -336,6 +375,10 @@ class RealCollector implements ManifestCollector {
 
   hasCreated(recordId: RecordId): boolean {
     return this.acc.hasCreated(recordId)
+  }
+
+  recordMirrorTouched(recordId: RecordId, keys: string[]): void {
+    this.acc.recordMirrorTouched(recordId, keys)
   }
 
   toJson(): SyncChangeManifest | null {

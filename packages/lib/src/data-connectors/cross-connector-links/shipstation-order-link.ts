@@ -241,10 +241,8 @@ async function runPass(ctx: SyncCtx): Promise<ShipStationOrderLinkSummary> {
     }
 
     try {
-      // Through `relationshipCrud`, not `crud`: `crud` runs under the run's silent
-      // `sync` session, and a genuine new link must keep firing `entity:field:updated`,
-      // the activity touch and record rules.
-      await ctx.relationshipCrud.update(
+      // On the run's sync session: rules, timeline and realtime run from sync-finalize.
+      await ctx.crud.update(
         toRecordId(fields.shipmentDefId, instanceId),
         { [SHIPMENT_ORDER_ATTRIBUTE]: toRecordId(fields.orderDefId, orderInstanceId) },
         undefined,

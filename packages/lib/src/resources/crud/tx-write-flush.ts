@@ -45,7 +45,8 @@ function instanceIdOf(recordId: RecordId): string {
  *    and stays;
  * 3. creates, in insertion order — the same fan-out the inline create path runs;
  * 4. the surviving (C2) field changes, per record;
- * 5. archives.
+ * 5. display-column updates and oversized-announcement refetches, skipping created records;
+ * 6. archives.
  *
  * The registered post-hook chain IS replayed, from the scope, by
  * `dispatchFieldChanges` on the buffered lane (plans/events/10 §4.3) — the composer
@@ -182,6 +183,9 @@ async function replayTxWriteScope(scope: TxWriteScope): Promise<void> {
       .catch((error) => logFailure('change', recordId, error))
   }
 
+  await flushColumns(scope, createdInstanceIds, realtime, service)
+  await flushRefetch(scope, createdInstanceIds, realtime, service)
+
   for (const archive of scope.archived) {
     try {
       publishRecordLifecycleEvent({
@@ -221,14 +225,62 @@ async function flushTruncated(
     ...new Set([
       ...scope.created.map((create) => create.entityDefinitionId),
       ...scope.archived.map((archive) => archive.entityDefinitionId),
-      ...Object.keys(scope.changes).map(
-        (recordId) => parseRecordId(recordId as RecordId).entityDefinitionId
-      ),
+      ...[
+        ...Object.keys(scope.changes),
+        ...Object.keys(scope.columns),
+        ...Object.keys(scope.refetch),
+      ].map((recordId) => parseRecordId(recordId as RecordId).entityDefinitionId),
     ]),
   ]
   await realtime
     .publishRecordsInvalidated(service, scope.organizationId, { entityDefinitionIds })
     .catch((error) => logFailure('truncated', entityDefinitionIds.join(','), error))
+}
+
+/** One `record:updated` per record whose display columns changed; creates already carry theirs. */
+async function flushColumns(
+  scope: TxWriteScope,
+  createdInstanceIds: Set<string>,
+  realtime: RealtimeModule,
+  service: RealtimeService
+): Promise<void> {
+  const updatedAt = new Date().toISOString()
+  for (const [recordId, columns] of Object.entries(scope.columns)) {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+    if (createdInstanceIds.has(entityInstanceId)) continue
+    await service
+      .publish(
+        realtime.rooms.orgRecords(scope.organizationId, entityDefinitionId),
+        'record:updated',
+        {
+          entityDefinitionId,
+          record: { id: entityInstanceId, recordId, ...columns, updatedAt },
+        }
+      )
+      .catch((error) => logFailure('columns', recordId, error))
+  }
+}
+
+/** Oversized announcements, as one `records:changed` per def. */
+async function flushRefetch(
+  scope: TxWriteScope,
+  createdInstanceIds: Set<string>,
+  realtime: RealtimeModule,
+  service: RealtimeService
+): Promise<void> {
+  const byDef = new Map<string, Array<{ recordId: string; fieldIds: string[] }>>()
+  for (const [recordId, fieldIds] of Object.entries(scope.refetch)) {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId as RecordId)
+    if (createdInstanceIds.has(entityInstanceId)) continue
+    const entries = byDef.get(entityDefinitionId) ?? []
+    entries.push({ recordId: entityInstanceId, fieldIds })
+    byDef.set(entityDefinitionId, entries)
+  }
+  for (const [entityDefinitionId, entries] of byDef) {
+    await realtime
+      .publishRecordsChanged(service, scope.organizationId, { entityDefinitionId, entries })
+      .catch((error) => logFailure('refetch', entityDefinitionId, error))
+  }
 }
 
 /** The inline create fan-out (`unified-handler-mutations` createEntity), post-commit. */

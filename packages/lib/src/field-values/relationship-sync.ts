@@ -3,12 +3,19 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { RelationshipType } from '@auxx/types/custom-field'
-import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
+import {
+  buildFieldValueKey,
+  type FieldId,
+  fieldRefToKey,
+  normalizeFieldRef,
+} from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
-import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
-import type { FieldValueUpdateEntry } from '../realtime/events'
+import type { FieldValueUpdateEntry, RecordChangedEntry } from '../realtime/events'
+import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
+import { getAmbientWriteSession } from '../resources/crud/write-session-als'
 import { rowToTypedValue } from './field-value-helpers'
 import type { FieldValueRow } from './types'
 
@@ -149,6 +156,15 @@ async function announceInverseChanges(
   if (wanted.length === 0) return
 
   try {
+    // Sync/seed publish nothing per record (plans/realtime/sync-record-event-flood.md P3):
+    // a sync run names the mirror in its manifest and finalize announces it once.
+    const origin = getAmbientWriteSession()?.origin
+    if (origin?.kind === 'seed') return
+    if (origin?.kind === 'sync') {
+      await recordMirrors(ctx.organizationId, origin.collector, wanted)
+      return
+    }
+
     // The record id and the raw field id are carried alongside the frame rather
     // than re-derived from `entry.key`: `buildFieldValueKey` normalizes a bare
     // field id into a `ResourceFieldId`, so the key is
@@ -158,6 +174,8 @@ async function announceInverseChanges(
       recordId: RecordId
       fieldId: string
       entry: FieldValueUpdateEntry
+      /** Too many links to send by value; announced as a by-id refetch instead. */
+      oversized: boolean
     }> = []
 
     for (const announcement of wanted) {
@@ -193,19 +211,20 @@ async function announceInverseChanges(
             key: buildFieldValueKey(recordId, fieldId as FieldId),
             value: single ? (values[0] ?? null) : values,
           },
+          oversized: values.length > MAX_ANNOUNCED_RELATED_IDS,
         })
       }
     }
 
     if (pending.length === 0) return
 
-    const { getAmbientTxWriteScope, recordTxWriteChange } = await import(
+    const { getAmbientTxWriteScope, recordTxWriteChange, recordTxWriteRefetch } = await import(
       '../resources/crud/tx-write-scope'
     )
     const scope = getAmbientTxWriteScope()
 
     if (scope) {
-      for (const { recordId, fieldId, entry } of pending) {
+      for (const { recordId, fieldId, entry, oversized } of pending) {
         recordTxWriteChange(scope, {
           recordId,
           // The raw field id, matching the owning side's `systemAttribute ?? fieldId`
@@ -214,21 +233,69 @@ async function announceInverseChanges(
           // No `o`: the pre-write array is gone by the time the rows are
           // rewritten, and `recordTxWriteChange` treats `o` as optional.
           change: { n: entry.value ?? null },
-          entry,
+          entry: oversized ? undefined : entry,
         })
+        if (oversized) recordTxWriteRefetch(scope, recordId, [fieldRefKeyOf(recordId, fieldId)])
       }
       return
     }
 
     const realtime = await import('../realtime')
-    await realtime.publishFieldValueUpdates(
-      realtime.getRealtimeService(),
-      ctx.organizationId,
-      pending.map((p) => p.entry)
-    )
+    const service = realtime.getRealtimeService()
+    const inline = pending.filter((p) => !p.oversized)
+    if (inline.length > 0) {
+      await realtime.publishFieldValueUpdates(
+        service,
+        ctx.organizationId,
+        inline.map((p) => p.entry)
+      )
+    }
+
+    const refetchByDef = new Map<string, RecordChangedEntry[]>()
+    for (const { recordId, fieldId, oversized } of pending) {
+      if (!oversized) continue
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      const entries = refetchByDef.get(entityDefinitionId) ?? []
+      entries.push({ recordId: entityInstanceId, fieldIds: [fieldRefKeyOf(recordId, fieldId)] })
+      refetchByDef.set(entityDefinitionId, entries)
+    }
+    for (const [entityDefinitionId, entries] of refetchByDef) {
+      await realtime.publishRecordsChanged(service, ctx.organizationId, {
+        entityDefinitionId,
+        entries,
+      })
+    }
   } catch {
     // Best-effort by contract (3). The write is already durable; a client that
     // misses this frame is exactly as stale as it was before D-11, no worse.
+  }
+}
+
+/**
+ * Above this many links an inverse array is announced by id (`records:changed`), not by
+ * value — re-sending it would trip the publisher's def-wide oversize fallback.
+ */
+const MAX_ANNOUNCED_RELATED_IDS = 200
+
+/** The client value-store field segment (`<defId>:<fieldId>`) a `records:changed` entry names. */
+function fieldRefKeyOf(recordId: RecordId, fieldId: string): string {
+  return fieldRefToKey(normalizeFieldRef(recordId, fieldId as FieldId))
+}
+
+/** Name each other-side record in the sync manifest under its inverse field's output key. */
+async function recordMirrors(
+  organizationId: string,
+  collector: ManifestCollector,
+  announcements: InverseAnnouncement[]
+): Promise<void> {
+  const { getOrgCache } = await import('../cache')
+  const fields = getOrgCache().from(organizationId, 'customFields')
+  for (const { entityDefinitionId, fieldId, entityIds } of announcements) {
+    const field = await fields.byId(fieldId)
+    const outputKey = field?.systemAttribute ?? fieldId
+    for (const entityId of entityIds) {
+      collector.recordMirrorTouched(toRecordId(entityDefinitionId, entityId), [outputKey])
+    }
   }
 }
 

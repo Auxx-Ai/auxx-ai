@@ -61,6 +61,13 @@ export interface SyncChangeManifest {
    * `createdRecordIds`. See Phase 9 / Option A plan Part 4.
    */
   createdValues?: Record<RecordId, Record<string, unknown>>
+  /**
+   * Records whose relationship array changed only as the inverse of a write on the other
+   * side, keyed RecordId → inverse field output keys. Kept out of `touched` so the
+   * per-record lifecycle doors (activity, timeline, dispatch) skip them. An empty key list
+   * means the keys were shed under the byte budget. Absent when none.
+   */
+  mirrors?: Record<RecordId, string[]>
 }
 
 /**

@@ -134,6 +134,7 @@ export const handleSyncRecordRules = async ({ data: event }: { data: AuxxEvent }
 
       let fired = 0
       fired += await fireFieldChanges(organizationId, manifest, fieldRulesByDef)
+      fired += await fireMirrorChanges(organizationId, manifest, fieldRulesByDef)
       fired += await fireLifecycle(
         organizationId,
         manifest.createdRecordIds,
@@ -322,6 +323,78 @@ async function fireFieldChanges(
       }
     })
 
+    await fireRecordRulesBatch(fieldRulesByDef.get(entityDefinitionId)!, {
+      organizationId,
+      entityDefinitionId,
+      source: 'sync',
+      events,
+    })
+    fired += events.length
+  }
+  return fired
+}
+
+/**
+ * Inverse-side firings off `mirrors`. The old array is never captured, so only `changed` rules
+ * can match: `o` stays undefined and `n` is the record's current primary value. An inverse list
+ * the run emptied therefore fires nothing. Keys already carried by a tier-2 delta are skipped.
+ */
+async function fireMirrorChanges(
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  fieldRulesByDef: Map<string, CachedRecordRule[]>
+): Promise<number> {
+  const mirrors = Object.entries(manifest.mirrors ?? {}) as [RecordId, string[]][]
+  if (mirrors.length === 0 || fieldRulesByDef.size === 0) return 0
+
+  const { getCachedResourceFields } = await import('../../cache')
+  const { buildFieldKeyMap } = await import('../../record-rules/resolver')
+
+  type MirrorPlan = { recordId: RecordId; fieldId: string; outputKey: string }
+  const plansByDef = new Map<string, Map<string, MirrorPlan>>()
+  const fetchIds = new Set<RecordId>()
+  const keyMaps = new Map<string, Map<string, string>>()
+
+  for (const [recordId, keys] of mirrors) {
+    const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+    const rules = fieldRulesByDef.get(entityDefinitionId)?.filter((r) => r.on === 'changed')
+    if (!rules?.length) continue
+    let keyMap = keyMaps.get(entityDefinitionId)
+    if (!keyMap) {
+      keyMap = buildFieldKeyMap(await getCachedResourceFields(organizationId, entityDefinitionId))
+      keyMaps.set(entityDefinitionId, keyMap)
+    }
+    const mirrored = new Set(keys)
+    const delta = manifest.deltas[recordId] ?? {}
+    for (const rule of rules) {
+      const fieldId = rule.fieldId as string
+      const outputKey = keyMap.get(fieldId) ?? fieldId
+      if (!mirrored.has(outputKey) || delta[outputKey]) continue
+      let plans = plansByDef.get(entityDefinitionId)
+      if (!plans) plansByDef.set(entityDefinitionId, (plans = new Map()))
+      plans.set(`${entityInstanceId}|${fieldId}`, { recordId, fieldId, outputKey })
+      fetchIds.add(recordId)
+    }
+  }
+  if (plansByDef.size === 0) return 0
+
+  const { fetchResourceSnapshots } = await import('../../record-rules/snapshot-fetcher')
+  const { fireRecordRulesBatch } = await import('../../record-rules/engine')
+  const { database } = await import('@auxx/database')
+  const snapshots = await fetchResourceSnapshots(database, organizationId, [...fetchIds])
+
+  let fired = 0
+  for (const [entityDefinitionId, plans] of plansByDef) {
+    const events = [...plans.values()].map((plan) => {
+      const snapshot = snapshots.get(plan.recordId) ?? null
+      return {
+        entityInstanceId: parseRecordId(plan.recordId).entityInstanceId,
+        fieldId: plan.fieldId,
+        oldValue: undefined,
+        newValue: snapshot?.fieldValues?.[plan.outputKey] ?? null,
+        snapshot,
+      }
+    })
     await fireRecordRulesBatch(fieldRulesByDef.get(entityDefinitionId)!, {
       organizationId,
       entityDefinitionId,

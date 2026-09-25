@@ -245,10 +245,6 @@ async function buildWebhookCtx(
     bypassFieldGuards: new Set<never>(),
     session,
   })
-  // Inline `automation` handler for the relationship pass, which drains in one dirty-parent scope.
-  const relationshipCrud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
-    session: { origin: { kind: 'automation', actor: userId }, depth: 0 },
-  })
   const defs = new Set(streams.flatMap((s) => s.mappings.map((m) => m.entityDefinitionId)))
   for (const defId of defs) {
     await crud.warmCache(defId)
@@ -276,7 +272,6 @@ async function buildWebhookCtx(
     userId,
     crud,
     ownedCrud,
-    relationshipCrud,
     counters,
     failureTally: newRecordFailureTally(),
     manifest,

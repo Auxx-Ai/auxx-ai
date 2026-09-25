@@ -235,6 +235,12 @@ Per projected record, the sink:
 
 Owned vs contributing behavior is enforced here (see §13).
 
+Relationship fields are not written here: the sink registers `pendingRelations`, and the
+relationship pass (`relationship-pass.ts`) plus the cross-connector link pass write the edges at a
+park, at finalize and after a webhook fetch. Both write through `ctx.crud`, the run's sync session, so
+edges land in the run manifest and fire rules, marks, workflows, timeline and realtime once at
+sync-finalize, not per edge.
+
 ### Image URL fields
 
 A string mapped onto a `FILE` field (a product photo URL) is never written by the record write: the FILE normalizer would turn it into `null` and clear the image. `buildWriteSet` diverts it into `pendingImages` (merge strategy still applies — `fill_blank` skips a record that already has an image, `manual_review` never fetches), and after the write commits (step 4d, guarded `!ignoredRevision && instanceId`) the sink calls `enqueueRecordImageFetch` (`files/remote-image/enqueue.ts`). A blank value is neither written nor cleared; a `{ ref }` value from an app that uploads itself passes through as before.

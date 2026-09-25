@@ -76,7 +76,12 @@ interface PerParentSpec<P> extends BaseSpec<P> {
  * per-parent callback would reintroduce exactly the N+1 this whole plan removed.
  */
 interface BatchSpec<P> extends BaseSpec<P> {
-  rebuildBatch: (organizationId: string, userId: string, parents: P[]) => Promise<void>
+  rebuildBatch: (
+    organizationId: string,
+    userId: string,
+    parents: P[],
+    opts?: { lane?: 'sync' }
+  ) => Promise<void>
   rebuild?: never
 }
 
@@ -118,9 +123,9 @@ export function defineParentReconciler<P>(spec: ParentReconcilerSpec<P>): Parent
     register: () => {
       registerReconciler(
         spec.key,
-        async ({ organizationId, userId, parentInstanceIds }) => {
+        async ({ organizationId, userId, parentInstanceIds, lane }) => {
           const parents = await toParents(spec, organizationId, parentInstanceIds)
-          await rebuildAll(spec, organizationId, userId, parents)
+          await rebuildAll(spec, organizationId, userId, parents, lane ? { lane } : {})
         },
         { batch: !!spec.rebuildBatch }
       )
@@ -177,7 +182,8 @@ async function rebuildAll<P>(
   spec: ParentReconcilerSpec<P>,
   organizationId: string,
   userId: string,
-  parents: P[]
+  parents: P[],
+  opts: { lane?: 'sync' } = {}
 ): Promise<void> {
   if (parents.length === 0) return
 
@@ -191,7 +197,7 @@ async function rebuildAll<P>(
   }
 
   if (spec.rebuildBatch) {
-    await spec.rebuildBatch(organizationId, userId, deduped)
+    await spec.rebuildBatch(organizationId, userId, deduped, opts)
     return
   }
   for (const parent of deduped) {

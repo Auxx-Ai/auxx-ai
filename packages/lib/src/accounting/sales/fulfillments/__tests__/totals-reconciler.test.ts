@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   bySystemAttributes: vi.fn(),
   readFieldRelations: vi.fn(),
   stampOrderShipmentTotals: vi.fn(),
+  publishStampBatch: vi.fn(),
   isFulfillmentCancelled: vi.fn(),
   reverseFulfillmentPosting: vi.fn(),
   repostCreditMemosForCancelledFulfillment: vi.fn(),
@@ -25,7 +26,11 @@ vi.mock('../../../../cache', () => ({
 vi.mock('../../../../field-values/read-field-scalars', () => ({
   readFieldRelations: h.readFieldRelations,
 }))
-vi.mock('../stamp-totals', () => ({ stampOrderShipmentTotals: h.stampOrderShipmentTotals }))
+vi.mock('../stamp-totals', () => ({
+  stampOrderShipmentTotals: h.stampOrderShipmentTotals,
+  createStampBatch: () => ({ fieldRefKeys: new Set(), fulfillmentIds: new Set() }),
+  publishStampBatch: h.publishStampBatch,
+}))
 vi.mock('../reads', () => ({ isFulfillmentCancelled: h.isFulfillmentCancelled }))
 vi.mock('../../orders/fulfill', () => ({
   reverseFulfillmentPosting: h.reverseFulfillmentPosting,
@@ -38,6 +43,7 @@ vi.mock('@auxx/database', () => ({ database: {} }))
 import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
 import {
   registerFulfillmentTotalsReconcilers,
+  stampOrders,
   stampTotalsOnFulfillmentChange,
   stampTotalsOnFulfillmentLineChange,
 } from '../totals-reconciler'
@@ -130,7 +136,7 @@ describe('stampTotalsOnFulfillmentLineChange', () => {
     })
 
     expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(1)
-    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_1')
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_1', {})
   })
 
   it('ignores an attribute the stamp does not depend on', async () => {
@@ -172,7 +178,7 @@ describe('stampTotalsOnFulfillmentLineChange', () => {
     })
 
     expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(1)
-    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_new')
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_new', {})
   })
 })
 
@@ -185,7 +191,7 @@ describe('stampTotalsOnFulfillmentChange', () => {
     })
 
     expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(1)
-    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_1')
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_1', {})
   })
 
   it('does not mark on a write to the fields the stamp itself writes', async () => {
@@ -297,5 +303,35 @@ describe('a cancelled shipment reverses', () => {
 
     expect(h.isFulfillmentCancelled).not.toHaveBeenCalled()
     expect(h.reverseFulfillmentPosting).not.toHaveBeenCalled()
+  })
+})
+
+describe('stampOrders — announcement', () => {
+  it('the inline drain leaves each stamp to publish its own frame', async () => {
+    await stampOrders(ORG, USER, ['order_1', 'order_2'])
+
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledWith({}, ORG, 'order_1', {
+      batch: undefined,
+    })
+    expect(h.publishStampBatch).not.toHaveBeenCalled()
+  })
+
+  it('a sync-lane drain shares one batch across orders and publishes it once', async () => {
+    await stampOrders(ORG, USER, ['order_1', 'order_2'], { lane: 'sync' })
+
+    const batches = h.stampOrderShipmentTotals.mock.calls.map((c) => c[3]?.batch)
+    expect(batches[0]).toBeDefined()
+    expect(batches[1]).toBe(batches[0])
+    expect(h.publishStampBatch).toHaveBeenCalledTimes(1)
+    expect(h.publishStampBatch).toHaveBeenCalledWith(ORG, batches[0])
+  })
+
+  it('a failed order still publishes the batch for the rest', async () => {
+    h.stampOrderShipmentTotals.mockRejectedValueOnce(new Error('boom'))
+
+    await stampOrders(ORG, USER, ['order_1', 'order_2'], { lane: 'sync' })
+
+    expect(h.stampOrderShipmentTotals).toHaveBeenCalledTimes(2)
+    expect(h.publishStampBatch).toHaveBeenCalledTimes(1)
   })
 })

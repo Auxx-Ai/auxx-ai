@@ -272,13 +272,31 @@ rate limits. Three patterns guard against it:
 - **Chunking.** `publishFieldValueUpdates` and `flushMailBatch` split entries at
   `CHUNK_SIZE = 50` per frame to stay under the 10KB limit; field-value chunks
   carry `{ index, total }` metadata.
-- **Coarse invalidation over per-record firehose.** Bulk writes (data-connector
-  slice sync) suppress the thousands of per-record `record:created` /
-  `fieldValues:updated` events and instead emit a **single `records:invalidated`
-  per touched entity def per slice**. The client responds with one refetch of the
-  def's visible list. Same idea for mail: `inbox:syncCompleted` replaces
-  per-message events during a sync cycle, and the client invalidates
-  `thread.listIds` once.
+- **Coarse invalidation over per-record firehose.** A write whose session origin
+  is `sync` or `seed` publishes nothing per record: no `record:created`,
+  `fieldValues:updated`, display-column `record:updated`
+  (`publishRecordColumnUpdate`), or inverse-relationship announcement. Instead a
+  connector emits a **single `records:invalidated` per touched entity def per
+  slice**, and the run's finalize (`events/handlers/sync-finalize.ts`
+  `realtimeDoor`) emits tier-2 **`records:changed`** for every created, updated
+  and archived record plus every mirror entry (the other side of a relationship
+  the run wrote; see the entity-events guide §8). The connector relationship pass
+  writes on the run's sync session, so its edges follow the same path. Same idea
+  for mail: `inbox:syncCompleted` replaces per-message events during a sync cycle,
+  and the client invalidates `thread.listIds` once.
+- **`records:changed` field ids are client fieldRefKeys** (`<defId>:<fieldId>`,
+  as `buildFieldValueKey` builds them), not manifest output keys; the client
+  matches them against its value-store keys. An entry with no `fieldIds` refetches
+  every cached cell of the record. Frames chunk at 100 ids.
+- **Inverse relationships are bounded.** Outside a sync, a relationship write
+  re-announces the array on the other side (D-11). Above 200 related ids
+  (`relationship-sync.ts`) it sends `records:changed` for that record instead,
+  because a has-many array of that size trips `publishFieldValueUpdates`'
+  90KB fallback, which invalidates the whole def.
+- **Buffered writes publish after commit.** Inside a `TxWriteScope`, field-value
+  entries, display columns (`columns`) and oversized inverse refetches
+  (`refetch`) are held and flushed by `tx-write-flush.ts` once the transaction
+  commits, so no client sees a value that rolls back.
 - **Batch frames.** `mail:batch` bundles many `MailSyncEvent`s into one Pusher
   publish for initial-/polling-sync; the client unpacks and re-dispatches each
   inner event through the same handlers.
@@ -348,8 +366,12 @@ re-subscribes only when the room key itself changes.
 ### A. Field values & records
 
 - **`useResourceSync`** subscribes to `useOrgChannel` and handles
-  `fieldValues:updated`, `record:created/updated/deleted/archived`, and
-  `records:invalidated`.
+  `fieldValues:updated`, `record:created/updated/deleted/archived`,
+  `records:changed` and `records:invalidated`. `records:changed` invalidates the
+  def's lists and refetches the named records and their cached cells;
+  `records:invalidated` runs a def-wide catch-up capped at 100 cached records.
+  Display names reach the record store only through `record:updated`,
+  `record:created` or a refetch.
 - Patches **Zustand** stores (`useFieldValueStore`, `useRecordStore`) for value /
   AI-state / denormalized-column changes, and **invalidates React Query**
   (`record.listFiltered`) for list membership.

@@ -280,7 +280,7 @@ same writes, and it reaches all three lanes. See `plans/events/10-replay-hooks-f
 | --- | --- | --- | --- | --- |
 | Inline | drawer, dialogs, API, Kopilot | yes | yes | yes |
 | Buffered | the six `runInTxWrite` composers below | yes | yes | yes |
-| Sync | connectors, CSV import, seeders | yes, from `touched` keys | only with a `batch` core | no |
+| Sync | connectors (sink and relationship pass), CSV import, seeders | yes, from `touched` keys and mirrors | only with a `batch` core | no |
 
 The buffered lane is every write inside a `TxWriteScope`: `accounting/money/commands/run-money-command.ts`,
 `accounting/sales/gather.ts`, `accounting/sales/billing/commands.ts`, `accounting/sales/orders/fulfill.ts`,
@@ -296,7 +296,13 @@ the sync finalize calls it from the manifest's `touched` keys, with ids-only rec
 `degraded` (every system-attribute field on the def becomes a valueless change, which only a mark —
 or a sync-lane batch derive — can consume). It resolves defs and fields from the org cache only, runs
 the whole pass inside one `runWithDirtyParents` so marks coalesce into a single drain, and guards
-every handler call so one failure cannot starve the rest.
+every handler call so one failure cannot starve the rest. The sync finalize opens that scope with
+`{ lane: 'sync' }`, which reaches `rebuildBatch` so a drain can announce its batch as one
+`records:changed` (the fulfillment-totals stamp does).
+
+Sync-lane changes are valueless, with one exception: re-pointed single-valued relationships in
+`REPOINT_DELTA_ATTRS` (`line_item_order`, `fulfillment_line_fulfillment`) always capture `{o, n}`,
+and finalize hands them to the marks, so the parent a line left is marked too.
 
 What a handler may do on a lane falls out of its **kind**, declared at registration (§13) and
 typed in `field-hooks/types.ts:255-305`. A `MarkHandler` sees a `FieldChangeRef` — values are
@@ -332,11 +338,14 @@ The manifest carries a second consumer: the field-change hook chain, replayed fr
 
 ```
 SyncChangeManifest {
-  version: 1
-  truncated: boolean                                        // caps hit (5000 changes / 10000 lifecycle)
-  changes: Record<RecordId, Record<outputKey, {o?, n}>>     // subscribed field writes, old→new
-  createdRecordIds: RecordId[]                              // only if the def has a `created` rule
-  archivedRecordIds: RecordId[]                             // only if the def has a `deleted` rule
+  version: 2
+  detailTruncated: boolean                                  // tier-2 cap hit; membership still complete
+  membershipTruncated: boolean                              // membership cap hit; forces the large lane
+  touched: Record<RecordId, outputKey[] | 1>                // every record a sync write changed (1 = keys shed)
+  deltas: Record<RecordId, Record<outputKey, {o?, n}>>      // subscribed fields + REPOINT_DELTA_ATTRS, old→new
+  mirrors?: Record<RecordId, outputKey[]>                   // other side of a relationship the run wrote
+  createdRecordIds: RecordId[]                              // every created record
+  archivedRecordIds: RecordId[]                             // every archived record
   createdValues?: Record<RecordId, Record<sysAttr, raw>>   // raw create values for native handlers
 }
 ```
@@ -346,6 +355,12 @@ The sink captures at its update/create/archive sites (`entity-sink.ts` ~`:661–
 (`record-rules/subscriptions.ts` derives the set from the cached rules). Old values come from
 `capture-field-changes.ts` (`captureUpdateFieldChanges`), which reads the pre-write DB value; this
 module is shared by the sink and the import job.
+
+**Mirrors.** A relationship is stored on both records. When a sync session writes one side,
+`relationship-sync.ts` records the other side in `mirrors` instead of announcing it. Finalize feeds
+mirrors to realtime, the integrity dispatch and record rules (as `changed` with no old value, so a
+list the run emptied fires nothing). Workflows, timeline and the activity touch skip them, matching
+the inline lane, where an order edit never fires "contact updated".
 
 ### Persist → publish → consume
 - **Bulk sync is sliced.** The collector is **per-slice** (each slice is a separate BullMQ job), so

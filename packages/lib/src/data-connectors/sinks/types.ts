@@ -54,8 +54,6 @@ export interface SyncCtx {
   crud: UnifiedCrudHandler
   /** Owned-mode handler with field-guard bypass (writes read-only connector fields). */
   ownedCrud: UnifiedCrudHandler
-  /** Inline `automation` handler the relationship pass writes through in one dirty-parent scope. */
-  relationshipCrud: UnifiedCrudHandler
   /** Mutable run counters. */
   counters: RunCounters
   /**

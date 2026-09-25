@@ -126,7 +126,7 @@ export async function runSyncFinalize(db: Database, input: SyncFinalizeInput): P
   const { organizationId, source, ref, manifest } = input
   try {
     const sets = collectChangedSets(manifest)
-    if (sets.total === 0) return
+    if (sets.total === 0 && Object.keys(manifest.mirrors ?? {}).length === 0) return
 
     const lane = selectSyncLane(manifest, sets.total)
     if (manifest.membershipTruncated) {
@@ -200,7 +200,10 @@ export async function runSyncFinalize(db: Database, input: SyncFinalizeInput): P
 
     // §7b tier-2 delta frames, both lanes. The existing coarse
     // `records:invalidated` publishes at the producers stay untouched.
-    await realtimeDoor(organizationId, manifest, sets, { canonicalDefId })
+    await realtimeDoor(organizationId, manifest, sets, {
+      canonicalDefId,
+      fieldRefKeys: await buildFieldRefKeyResolver(organizationId),
+    })
   } catch (error) {
     logger.error('sync finalize failed', {
       organizationId,
@@ -567,34 +570,71 @@ async function guardedDispatchDoor(
 }
 
 /**
- * §7b tier-2 `records:changed` frames, grouped per canonical def. Changed
- * records carry their touched field keys as `fieldIds`; created, archived,
- * and ids-only-degraded records ship without `fieldIds` ("any field may have
- * changed") — a client refetch of the id surfaces both a new row and a
- * vanished one. Ids only, never values (D-18); `publishRecordsChanged`
- * chunks and canonicalizes the room key itself.
+ * Resolves manifest output keys (`systemAttribute ?? fieldId`) on a canonical def to the
+ * client's fieldRefKey `<defId>:<fieldId>`; null when any key is unknown.
+ */
+type FieldRefKeyResolver = (
+  canonicalDefId: string,
+  outputKeys: string[]
+) => Promise<string[] | null>
+
+async function buildFieldRefKeyResolver(organizationId: string): Promise<FieldRefKeyResolver> {
+  const { getCachedCustomFields } = await import('../../cache')
+  const memo = new Map<string, Promise<Map<string, string>>>()
+  return async (canonicalDefId, outputKeys) => {
+    let pending = memo.get(canonicalDefId)
+    if (!pending) {
+      pending = getCachedCustomFields(organizationId, canonicalDefId)
+        .then((fields) => new Map(fields.map((f) => [f.systemAttribute ?? f.id, f.id])))
+        .catch(() => new Map<string, string>())
+      memo.set(canonicalDefId, pending)
+    }
+    const byOutputKey = await pending
+    const keys: string[] = []
+    for (const outputKey of outputKeys) {
+      const fieldId = byOutputKey.get(outputKey)
+      if (!fieldId) return null
+      keys.push(`${canonicalDefId}:${fieldId}`)
+    }
+    return keys
+  }
+}
+
+/**
+ * §7b tier-2 `records:changed` frames, one entry per record per canonical def. Changed and
+ * mirror (inverse-side) records carry their keys as client fieldRefKeys; created, archived,
+ * ids-only and unresolvable-key records ship without `fieldIds` (refetch every cached cell).
+ * Ids only, never values (D-18); `publishRecordsChanged` chunks and canonicalizes the room.
  */
 async function realtimeDoor(
   organizationId: string,
   manifest: SyncChangeManifest,
   sets: ChangedSets,
-  ctx: { canonicalDefId: (defId: string) => Promise<string> }
+  ctx: {
+    canonicalDefId: (defId: string) => Promise<string>
+    fieldRefKeys: FieldRefKeyResolver
+  }
 ): Promise<void> {
   try {
     const { getRealtimeService, publishRecordsChanged } = await import('../../realtime')
     const service = getRealtimeService()
 
-    const byDef = new Map<string, Array<{ recordId: string; fieldIds?: string[] }>>()
-    const add = async (rid: RecordId, fieldIds?: string[]) => {
+    // canonical def → instance id → output keys, or null for "any field".
+    const byDef = new Map<string, Map<string, Set<string> | null>>()
+    const add = async (rid: RecordId, keys?: string[]) => {
       const { entityDefinitionId, entityInstanceId } = parseRecordId(rid)
       const canonical = await ctx.canonicalDefId(entityDefinitionId)
-      let entries = byDef.get(canonical)
-      if (!entries) byDef.set(canonical, (entries = []))
-      entries.push(
-        fieldIds && fieldIds.length > 0
-          ? { recordId: entityInstanceId, fieldIds }
-          : { recordId: entityInstanceId }
-      )
+      let records = byDef.get(canonical)
+      if (!records) byDef.set(canonical, (records = new Map()))
+      const existing = records.get(entityInstanceId)
+      if (existing === null) return
+      if (!keys || keys.length === 0) {
+        records.set(entityInstanceId, null)
+        return
+      }
+      const merged = existing ?? new Set<string>()
+      for (const key of keys) merged.add(key)
+      records.set(entityInstanceId, merged)
     }
 
     for (const rid of sets.updatedIds) {
@@ -603,8 +643,16 @@ async function realtimeDoor(
     }
     for (const rid of sets.createdIds) await add(rid)
     for (const rid of sets.archivedIds) await add(rid)
+    for (const [rid, keys] of Object.entries(manifest.mirrors ?? {}) as [RecordId, string[]][]) {
+      await add(rid, keys)
+    }
 
-    for (const [entityDefinitionId, entries] of byDef) {
+    for (const [entityDefinitionId, records] of byDef) {
+      const entries: Array<{ recordId: string; fieldIds?: string[] }> = []
+      for (const [recordId, keys] of records) {
+        const fieldIds = keys ? await ctx.fieldRefKeys(entityDefinitionId, [...keys]) : null
+        entries.push(fieldIds ? { recordId, fieldIds } : { recordId })
+      }
       await publishRecordsChanged(service, organizationId, { entityDefinitionId, entries })
     }
   } catch (error) {

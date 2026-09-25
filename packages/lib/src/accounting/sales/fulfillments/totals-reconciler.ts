@@ -16,7 +16,7 @@ import {
   resolveParentsByRelation,
 } from '../../../reconcilers/parent-reconciler'
 import { isFulfillmentCancelled } from './reads'
-import { stampOrderShipmentTotals } from './stamp-totals'
+import { createStampBatch, publishStampBatch, stampOrderShipmentTotals } from './stamp-totals'
 
 const logger = createScopedLogger('sales:fulfillment-totals-reconciler')
 
@@ -44,15 +44,20 @@ const FULFILLMENT_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'fulfillment_line_fulfillment',
 ])
 
-/** Shared rebuild: one order at a time, so one bad order does not block the drain. */
-async function stampOrders(
+/**
+ * Shared rebuild: one order at a time, so one bad order does not block the drain. A sync-lane
+ * drain announces the whole batch as one `records:changed` instead of a frame per order.
+ */
+export async function stampOrders(
   organizationId: string,
   _userId: string,
-  orderInstanceIds: string[]
+  orderInstanceIds: string[],
+  opts: { lane?: 'sync' } = {}
 ): Promise<void> {
+  const batch = opts.lane === 'sync' ? createStampBatch() : undefined
   for (const orderInstanceId of orderInstanceIds) {
     try {
-      await stampOrderShipmentTotals(database, organizationId, orderInstanceId)
+      await stampOrderShipmentTotals(database, organizationId, orderInstanceId, { batch })
     } catch (error) {
       logger.error('fulfillment totals stamp failed for one order — continuing with the rest', {
         organizationId,
@@ -61,6 +66,7 @@ async function stampOrders(
       })
     }
   }
+  if (batch) publishStampBatch(organizationId, batch)
 }
 
 const fulfillmentReconciler = defineParentReconciler<string>({
