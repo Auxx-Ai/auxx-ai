@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   requireCachedEntityDefId: vi.fn(),
   setValueWithType: vi.fn(),
   publishFieldValueUpdates: vi.fn(),
+  publishRecordsChanged: vi.fn(),
   systemFieldMap: vi.fn(),
   readOrderForFulfillment: vi.fn(),
   wakeTotalsNotStamped: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../../../../field-values/field-value-helpers', () => ({
 vi.mock('../../../../realtime', () => ({
   getRealtimeService: () => ({}),
   publishFieldValueUpdates: h.publishFieldValueUpdates,
+  publishRecordsChanged: h.publishRecordsChanged,
 }))
 vi.mock('../../../../resources/system-records', () => ({
   systemFieldMap: h.systemFieldMap,
@@ -44,7 +46,7 @@ vi.mock('../../orders/reads', () => ({
 vi.mock('../../../work-items/wake', () => ({ wakeTotalsNotStamped: h.wakeTotalsNotStamped }))
 
 import type { Database } from '@auxx/database'
-import { stampOrderShipmentTotals } from '../stamp-totals'
+import { createStampBatch, publishStampBatch, stampOrderShipmentTotals } from '../stamp-totals'
 
 const DB = {} as Database
 const ORG = 'org_1'
@@ -136,6 +138,7 @@ beforeEach(() => {
   h.systemFieldMap.mockResolvedValue(FIELDS)
   h.setValueWithType.mockResolvedValue([])
   h.publishFieldValueUpdates.mockResolvedValue(undefined)
+  h.publishRecordsChanged.mockResolvedValue(undefined)
   h.readOrderForFulfillment.mockImplementation(async () => {
     const { ok } = await import('neverthrow')
     return ok(h.order)
@@ -239,5 +242,41 @@ describe('stampOrderShipmentTotals', () => {
     expect(second).toEqual({ fulfillmentsWritten: 0, skippedPosted: 0 })
     expect(h.setValueWithType).not.toHaveBeenCalled()
     expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
+  })
+})
+
+describe('stampOrderShipmentTotals — announcement', () => {
+  it('publishes one fieldValues:updated per order without a batch', async () => {
+    await stamp()
+
+    expect(h.publishFieldValueUpdates).toHaveBeenCalledTimes(1)
+    expect(h.publishRecordsChanged).not.toHaveBeenCalled()
+  })
+
+  it('records into the batch instead of publishing, and the batch publishes once', async () => {
+    const batch = createStampBatch()
+
+    await stampOrderShipmentTotals(DB, ORG, ORDER, { batch })
+
+    expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect([...batch.fulfillmentIds]).toEqual(['ful_1', 'ful_2'])
+
+    publishStampBatch(ORG, batch)
+
+    const fieldIds = [`${DEF}:f-subtotal`, `${DEF}:f-total`, `${DEF}:f-shipping`]
+    expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+    expect(h.publishRecordsChanged).toHaveBeenCalledWith(expect.anything(), ORG, {
+      entityDefinitionId: DEF,
+      entries: [
+        { recordId: 'ful_1', fieldIds },
+        { recordId: 'ful_2', fieldIds },
+      ],
+    })
+  })
+
+  it('an empty batch publishes nothing', () => {
+    publishStampBatch(ORG, createStampBatch())
+
+    expect(h.publishRecordsChanged).not.toHaveBeenCalled()
   })
 })

@@ -64,6 +64,13 @@ export interface TxWriteArchive {
   eventData: Record<string, unknown>
 }
 
+/** The `record:updated` columns a scope holds for one record. */
+export interface TxWriteColumns {
+  displayName?: string | null
+  secondaryDisplayValue?: string | null
+  avatarUrl?: string | null
+}
+
 /**
  * The buffer for ONE transaction attempt (§6.3). Every member is a plain value:
  * never a `FieldValueContext`, a `FieldValueService`, a `UnifiedCrudHandler`, an
@@ -86,6 +93,13 @@ export interface TxWriteScope {
    * verbatim at flush. Keyed by the same RecordId as {@link changes}.
    */
   readonly realtime: Record<RecordId, FieldValueUpdateEntry[]>
+  /** Denormalized display columns changed in-tx, merged per record; flushed as one `record:updated`. */
+  readonly columns: Record<RecordId, TxWriteColumns>
+  /**
+   * Records whose announcement is too large to replay by value (an oversized inverse
+   * array): RecordId → fieldRefKeys, flushed as `records:changed`.
+   */
+  readonly refetch: Record<RecordId, string[]>
   readonly archived: TxWriteArchive[]
   /**
    * Parents a reconciler owes work on, handed over by
@@ -113,6 +127,8 @@ export function createTxWriteScope(organizationId: string, actorUserId: string):
     created: [],
     changes: {},
     realtime: {},
+    columns: {},
+    refetch: {},
     archived: [],
     dirtyParents: new Map(),
     truncated: false,
@@ -272,6 +288,34 @@ export function recordTxWriteChange(
   if (at >= 0) entries[at] = entry
   else entries.push(entry)
   scope.realtime[recordId] = entries
+}
+
+/** Buffer a display-column change; last write wins per column. Drops past the cap. */
+export function recordTxWriteColumns(
+  scope: TxWriteScope,
+  recordId: RecordId,
+  columns: TxWriteColumns
+): void {
+  const existing = scope.columns[recordId]
+  if (!existing && Object.keys(scope.columns).length >= MAX_TX_WRITE_RECORDS) {
+    markTruncated(scope, 'column records')
+    return
+  }
+  scope.columns[recordId] = { ...existing, ...columns }
+}
+
+/** Buffer a by-id refetch of `fieldRefKeys` on a record. Drops past the cap. */
+export function recordTxWriteRefetch(
+  scope: TxWriteScope,
+  recordId: RecordId,
+  fieldRefKeys: string[]
+): void {
+  const existing = scope.refetch[recordId]
+  if (!existing && Object.keys(scope.refetch).length >= MAX_TX_WRITE_RECORDS) {
+    markTruncated(scope, 'refetch records')
+    return
+  }
+  scope.refetch[recordId] = [...new Set([...(existing ?? []), ...fieldRefKeys])]
 }
 
 /**

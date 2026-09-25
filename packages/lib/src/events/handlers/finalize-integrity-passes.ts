@@ -1,7 +1,7 @@
 // packages/lib/src/events/handlers/finalize-integrity-passes.ts
 //
 // The sync lane's replay of the registered field-change hook chain (plans/events/10 §4.4):
-// the manifest projects to VALUELESS changes, marks run from those alone and derives run
+// the manifest projects to valueless changes (re-pointed edges excepted), marks run from those and derives run
 // through their `batch` cores. Archival fires no field change, so archived lines and money
 // records are marked by hand; the fulfillment posting pass keys on membership and runs after
 // the scope drains, so the evidence rows are in place. Lazy-import everything but types and
@@ -39,6 +39,7 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     // the tier documented as unconditional.
     if (
       Object.keys(manifest.touched).length === 0 &&
+      Object.keys(manifest.mirrors ?? {}).length === 0 &&
       (manifest.archivedRecordIds?.length ?? 0) === 0 &&
       (manifest.createdRecordIds?.length ?? 0) === 0
     ) {
@@ -47,25 +48,32 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
 
     const resolveDef = await buildDefEntityTypeResolver(organizationId)
 
-    const [{ dispatchFieldChanges }, { runWithDirtyParents }] = await Promise.all([
-      import('../../field-hooks/dispatch'),
-      import('../../reconcilers/dirty-parents'),
-    ])
+    const [{ dispatchFieldChanges }, { runWithDirtyParents }, { REPOINT_DELTA_ATTRS }] =
+      await Promise.all([
+        import('../../field-hooks/dispatch'),
+        import('../../reconcilers/dirty-parents'),
+        import('../../record-rules/sync-manifest-collector'),
+      ])
 
     // One scope around all three, so the dispatch's marks and the archived-record marks
     // coalesce into a single drain per reconciler.
-    await runWithDirtyParents(organizationId, SYSTEM_ACTOR, async () => {
-      await dispatchFieldChanges({
-        organizationId,
-        userId: SYSTEM_ACTOR,
-        lane: 'sync',
-        db,
-        changes: fromManifest(manifest),
-        degraded: idsOnly(manifest),
-      })
-      await markArchivedLines(organizationId, manifest, resolveDef)
-      await markArchivedMoney(organizationId, manifest, resolveDef)
-    })
+    await runWithDirtyParents(
+      organizationId,
+      SYSTEM_ACTOR,
+      async () => {
+        await dispatchFieldChanges({
+          organizationId,
+          userId: SYSTEM_ACTOR,
+          lane: 'sync',
+          db,
+          changes: fromManifest(manifest, REPOINT_DELTA_ATTRS),
+          degraded: idsOnly(manifest),
+        })
+        await markArchivedLines(organizationId, manifest, resolveDef)
+        await markArchivedMoney(organizationId, manifest, resolveDef)
+      },
+      { lane: 'sync' }
+    )
 
     // The one hole the manifest cannot close by itself: past `MAX_TOUCHED_RECORDS` it stops
     // recording members at all, so the tail waits for the nightly sweep.
@@ -88,17 +96,39 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
 // =============================================================================
 
 /**
- * Tier-1 `touched` keys, no values. Tier-2 `deltas` are deliberately NOT read: they are gated
- * on rule subscriptions and would under-select exactly the way bug B-1 described (an imported
- * address only geocoded when a rule happened to watch the field).
+ * Tier-1 `touched` keys plus inverse-side `mirrors`, valueless. Tier-2 `deltas` never drive
+ * selection: they are rule-subscription gated and would under-select (bug B-1). They only lend
+ * `{o, n}` to re-pointed edges, whose marks need the parent the record left.
  */
-function fromManifest(manifest: SyncChangeManifest): DispatchChange[] {
+function fromManifest(
+  manifest: SyncChangeManifest,
+  repointAttrs: ReadonlySet<string>
+): DispatchChange[] {
   const changes: DispatchChange[] = []
   for (const [rid, touched] of Object.entries(manifest.touched) as [RecordId, string[] | 1][]) {
     if (touched === 1) continue
-    for (const outputKey of touched) changes.push({ recordId: rid, outputKey })
+    for (const outputKey of touched) {
+      const delta = repointAttrs.has(outputKey) ? manifest.deltas[rid]?.[outputKey] : undefined
+      changes.push(
+        delta
+          ? { recordId: rid, outputKey, o: asRelationship(delta.o), n: asRelationship(delta.n) }
+          : { recordId: rid, outputKey }
+      )
+    }
+  }
+  for (const [rid, keys] of Object.entries(manifest.mirrors ?? {}) as [RecordId, string[]][]) {
+    for (const outputKey of keys) changes.push({ recordId: rid, outputKey })
   }
   return changes
+}
+
+/** Manifest values are flattened to RecordId strings; marks read the inline typed shape. */
+function asRelationship(value: unknown): unknown {
+  if (value == null) return null
+  const ids = Array.isArray(value) ? value : [value]
+  return ids.map((recordId) =>
+    typeof recordId === 'string' ? { type: 'relationship', recordId } : recordId
+  )
 }
 
 /** Records whose keys were shed under the byte budget — the dispatch degrades them to marks. */
@@ -106,6 +136,9 @@ function idsOnly(manifest: SyncChangeManifest): RecordId[] {
   const ids: RecordId[] = []
   for (const [rid, touched] of Object.entries(manifest.touched) as [RecordId, string[] | 1][]) {
     if (touched === 1) ids.push(rid)
+  }
+  for (const [rid, keys] of Object.entries(manifest.mirrors ?? {}) as [RecordId, string[]][]) {
+    if (keys.length === 0) ids.push(rid)
   }
   return ids
 }

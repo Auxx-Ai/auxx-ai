@@ -326,7 +326,18 @@ async function executeRowLevelWritesUnguarded(
               }
             : null
           await maybeUpdateDisplayValue(
-            createFieldValueContext(ctx.orgId, undefined, ctx.db),
+            // The run's sync session, so the display frame stays shut like the handler's writes.
+            createFieldValueContext(ctx.orgId, undefined, ctx.db, undefined, {
+              session: {
+                origin: {
+                  kind: 'sync',
+                  source: 'connector',
+                  ref: ctx.runId,
+                  collector: ctx.manifest,
+                },
+                depth: 0,
+              },
+            }),
             recordId,
             { ...action.write.field, entityDefinition } as never,
             action.typed

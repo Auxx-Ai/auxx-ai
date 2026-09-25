@@ -32,6 +32,9 @@ const h = vi.hoisted(() => {
       (service: unknown, org: string, entries: unknown[]) => Promise<void>
     >(async () => {}),
     publishRecordsInvalidated: vi.fn(async () => {}),
+    publishRecordsChanged: vi.fn<(service: unknown, org: string, args: unknown) => Promise<void>>(
+      async () => {}
+    ),
     enqueueDuplicateScan: vi.fn(async () => 'job_1'),
     getEntityInstance: vi.fn(async () => ok({ id: 'inst_1', displayName: 'Invoice 1' })),
     findCachedResource: vi.fn(async () => ({ fields: [] })),
@@ -46,6 +49,7 @@ vi.mock('../../../realtime', () => ({
   rooms: { orgRecords: (org: string, def: string) => `records:${org}:${def}` },
   publishFieldValueUpdates: h.publishFieldValueUpdates,
   publishRecordsInvalidated: h.publishRecordsInvalidated,
+  publishRecordsChanged: h.publishRecordsChanged,
 }))
 vi.mock('../../../events/publisher', () => ({
   publisher: { publishLater: h.publishLater, publish: h.publishLater },
@@ -76,7 +80,9 @@ import {
   MAX_TX_WRITE_RECORDS,
   recordTxWriteArchive,
   recordTxWriteChange,
+  recordTxWriteColumns,
   recordTxWriteCreate,
+  recordTxWriteRefetch,
   runInTxWrite,
   type TxWriteScope,
 } from '../tx-write-scope'
@@ -565,5 +571,92 @@ describe('convergence through the REAL createEntity — B-17, the point of Phase
     // never silence a record on the inline path.
     const realtimeCreates = h.publish.mock.calls.filter((call) => call[1] === 'record:created')
     expect(realtimeCreates).toHaveLength(41)
+  })
+})
+
+describe('display columns and oversized refetches — P1/P2 of plans/realtime/sync-record-event-flood.md', () => {
+  const CONTACT = 'def_contact:c_1' as RecordId
+
+  it('merges columns per record, last write wins per column', () => {
+    const scope = createTxWriteScope(ORG, USER)
+    recordTxWriteColumns(scope, CONTACT, { displayName: 'Ada' })
+    recordTxWriteColumns(scope, CONTACT, { secondaryDisplayValue: 'ada@x.io' })
+    recordTxWriteColumns(scope, CONTACT, { displayName: 'Ada L.' })
+    expect(scope.columns[CONTACT]).toEqual({
+      displayName: 'Ada L.',
+      secondaryDisplayValue: 'ada@x.io',
+    })
+    expect(() => assertTxWriteScopePure(scope)).not.toThrow()
+  })
+
+  it('truncates past the cap', () => {
+    const scope = createTxWriteScope(ORG, USER)
+    for (let i = 0; i <= MAX_TX_WRITE_RECORDS; i++) {
+      recordTxWriteColumns(scope, `def_contact:c_${i}` as RecordId, { displayName: `${i}` })
+    }
+    expect(scope.truncated).toBe(true)
+    expect(Object.keys(scope.columns)).toHaveLength(MAX_TX_WRITE_RECORDS)
+  })
+
+  it('publishes exactly one record:updated per record on flush', async () => {
+    const scope = createTxWriteScope(ORG, USER)
+    recordTxWriteColumns(scope, CONTACT, { displayName: 'Ada' })
+    recordTxWriteColumns(scope, CONTACT, { secondaryDisplayValue: 'ada@x.io' })
+
+    await flushTxWriteScope(scope)
+
+    expect(h.publish).toHaveBeenCalledTimes(1)
+    const [room, event, data] = h.publish.mock.calls[0]!
+    expect(room).toBe(`records:${ORG}:def_contact`)
+    expect(event).toBe('record:updated')
+    expect(data).toMatchObject({
+      entityDefinitionId: 'def_contact',
+      record: {
+        id: 'c_1',
+        recordId: CONTACT,
+        displayName: 'Ada',
+        secondaryDisplayValue: 'ada@x.io',
+      },
+    })
+  })
+
+  it('skips records created in the scope — record:created already carries the columns', async () => {
+    const scope = scopeWithInvoice()
+    recordTxWriteColumns(scope, 'invoice:inv_1' as RecordId, { displayName: 'Invoice 1' })
+
+    await flushTxWriteScope(scope)
+
+    expect(h.publish.mock.calls.map(([, event]) => event)).toEqual(['record:created'])
+  })
+
+  it('a truncated scope covers column-only defs with records:invalidated', async () => {
+    const scope = createTxWriteScope(ORG, USER)
+    recordTxWriteColumns(scope, CONTACT, { displayName: 'Ada' })
+    scope.truncated = true
+
+    await flushTxWriteScope(scope)
+
+    expect(h.publish).not.toHaveBeenCalled()
+    expect(h.publishRecordsInvalidated).toHaveBeenCalledWith(expect.anything(), ORG, {
+      entityDefinitionIds: ['def_contact'],
+    })
+  })
+
+  it('flushes oversized announcements as one records:changed per def', async () => {
+    const scope = createTxWriteScope(ORG, USER)
+    recordTxWriteRefetch(scope, CONTACT, ['def_contact:orders'])
+    recordTxWriteRefetch(scope, CONTACT, ['def_contact:orders', 'def_contact:memos'])
+    recordTxWriteRefetch(scope, 'def_contact:c_2' as RecordId, ['def_contact:orders'])
+
+    await flushTxWriteScope(scope)
+
+    expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+    expect(h.publishRecordsChanged.mock.calls[0]![2]).toEqual({
+      entityDefinitionId: 'def_contact',
+      entries: [
+        { recordId: 'c_1', fieldIds: ['def_contact:orders', 'def_contact:memos'] },
+        { recordId: 'c_2', fieldIds: ['def_contact:orders'] },
+      ],
+    })
   })
 })

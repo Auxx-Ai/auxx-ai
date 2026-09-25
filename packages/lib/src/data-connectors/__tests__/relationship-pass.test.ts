@@ -10,11 +10,7 @@
 // through to the write.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  __resetReconcilersForTest,
-  markParentDirty,
-  registerReconciler,
-} from '../../reconcilers/dirty-parents'
+import { markParentDirty } from '../../reconcilers/dirty-parents'
 import { makeSyncCtx } from '../__test-helpers'
 import type { DataConnectorItemRow, PendingRelation } from '../service'
 import type { SyncCtx } from '../sinks/types'
@@ -85,15 +81,11 @@ function item(
   } as unknown as DataConnectorItemRow
 }
 
-/**
- * A ctx whose `relationshipCrud.update` is the spy every case asserts on — the
- * pass writes through the inline-lane handler (events on), never `ctx.crud`
- * (silent sync session).
- */
+/** A ctx whose `crud.update` (the run's sync session) is the spy every case asserts on. */
 function ctx(): SyncCtx {
   return makeSyncCtx({
     orgId: ORG,
-    relationshipCrud: { update: h.update } as unknown as SyncCtx['relationshipCrud'],
+    crud: { update: h.update } as unknown as SyncCtx['crud'],
   })
 }
 
@@ -146,7 +138,7 @@ describe('resolveRelationships — idempotency guard', () => {
     })
   })
 
-  it('writes when the edge points at a DIFFERENT target, without suppressing events', async () => {
+  it('writes when the edge points at a DIFFERENT target', async () => {
     h.listItems.mockResolvedValue([item([setEdge()], ['customer'])])
     h.readTargets.mockResolvedValue(
       new Map([[`${ORDER_INSTANCE}::${CUSTOMER_FIELD_ID}`, 'inst_contact_OLD']])
@@ -162,9 +154,6 @@ describe('resolveRelationships — idempotency guard', () => {
       undefined,
       {}
     )
-    // A genuine edge change must keep firing entity:field:updated, the activity touch,
-    // and record rules — the options object carries no `skipEvents`.
-    expect(h.update.mock.calls[0]![3]).not.toHaveProperty('skipEvents')
     expect([...c.touchedDefs]).toEqual([ORDER_DEF])
   })
 
@@ -409,30 +398,18 @@ describe('resolveRelationships — the wake (101 E9)', () => {
   })
 })
 
-describe('resolveRelationships — one dirty-parent scope (110 M6)', () => {
-  beforeEach(() => __resetReconcilersForTest())
-
-  it('drains the marks of every edge once, at the end of the pass', async () => {
-    const drain = vi.fn(async (_p: { parentInstanceIds: string[] }) => {})
-    registerReconciler('test:key', drain, { batch: true })
-    h.listItems.mockResolvedValue([
-      item([setEdge()]),
-      { ...item([setEdge()]), id: 'item_2', entityInstanceId: 'inst_order_2' },
-    ])
-    const parents = ['parent_a', 'parent_b']
-    let drainedMidPass = false
+describe('resolveRelationships — marks', () => {
+  it('opens no dirty-parent scope: marks run from sync-finalize, not inline', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()])])
+    const accepted: boolean[] = []
     h.update.mockImplementation(async () => {
-      markParentDirty('test:key', parents[h.update.mock.calls.length - 1]!)
-      drainedMidPass ||= drain.mock.calls.length > 0
+      accepted.push(markParentDirty('test:key', 'parent_a'))
       return {}
     })
 
-    const summary = await resolveRelationships(ctx())
+    await resolveRelationships(ctx())
 
-    expect(summary).toEqual({ resolved: 2, stillPending: 0 })
-    expect(drainedMidPass).toBe(false)
-    expect(h.update).toHaveBeenCalledTimes(2)
-    expect(drain).toHaveBeenCalledTimes(1)
-    expect(drain.mock.calls[0]![0].parentInstanceIds).toEqual(['parent_a', 'parent_b'])
+    expect(h.update).toHaveBeenCalledTimes(1)
+    expect(accepted).toEqual([false])
   })
 })

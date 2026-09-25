@@ -61,7 +61,7 @@ function ctx(): SyncCtx {
   return makeSyncCtx({
     orgId: ORG,
     connector: { id: 'dc1', type: 'app:shipstation' } as unknown as SyncCtx['connector'],
-    relationshipCrud: { update: h.update } as unknown as SyncCtx['relationshipCrud'],
+    crud: { update: h.update } as unknown as SyncCtx['crud'],
   })
 }
 

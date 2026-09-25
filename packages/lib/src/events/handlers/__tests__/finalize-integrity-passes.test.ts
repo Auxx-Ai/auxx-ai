@@ -156,6 +156,43 @@ describe('manifest projection', () => {
     expect(input.changes).toEqual([{ recordId: 'def_contact:c1', outputKey: 'phone' }])
   })
 
+  it('does not select from deltas, but lends {o, n} to a re-pointed edge', async () => {
+    await run(
+      manifest({
+        touched: { 'def_li:li1': ['line_item_order', 'line_item_qty'] },
+        deltas: {
+          'def_li:li1': {
+            line_item_order: { o: ['def_order:a'], n: ['def_order:b'] },
+            line_item_qty: { o: 1, n: 2 },
+          },
+          'def_li:li2': { line_item_order: { o: ['def_order:a'], n: null } },
+        } as never,
+      })
+    )
+
+    expect(dispatched().changes).toEqual([
+      {
+        recordId: 'def_li:li1',
+        outputKey: 'line_item_order',
+        o: [{ type: 'relationship', recordId: 'def_order:a' }],
+        n: [{ type: 'relationship', recordId: 'def_order:b' }],
+      },
+      { recordId: 'def_li:li1', outputKey: 'line_item_qty' },
+    ])
+  })
+
+  it('includes mirror records as valueless changes, and a keyless mirror as degraded', async () => {
+    await run(
+      manifest({
+        mirrors: { 'def_contact:c1': ['contact_orders'], 'def_contact:c2': [] } as never,
+      })
+    )
+
+    const input = dispatched()
+    expect(input.changes).toEqual([{ recordId: 'def_contact:c1', outputKey: 'contact_orders' }])
+    expect(input.degraded).toEqual(['def_contact:c2'])
+  })
+
   it('hands the whole run over in ONE dispatch call', async () => {
     await run(
       manifest({

@@ -412,3 +412,40 @@ describe('handleSyncRecordRules', () => {
     expect(h.runSyncFinalize.mock.calls[0]?.[1]).toMatchObject({ ref: 'run_9' })
   })
 })
+
+describe('handleSyncRecordRules — mirror entries', () => {
+  it('fires `changed` rules on the inverse field with n from the snapshot', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({ mirrors: { 'def_1:c1': ['fld_status'] } as never })
+    )
+    h.getCachedRecordRules.mockResolvedValue([rule(), rule({ id: 'rule_set', on: 'set' })])
+    const snapshot = { id: 'c1', fieldValues: { fld_status: 'def_order:o1' } }
+    h.fetchResourceSnapshots.mockResolvedValue(new Map([['def_1:c1', snapshot]]) as never)
+
+    await handleSyncRecordRules(connectorEvent())
+
+    expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
+    expect(firstEvent()).toMatchObject({
+      entityInstanceId: 'c1',
+      fieldId: 'fld_status',
+      oldValue: undefined,
+      newValue: 'def_order:o1',
+      snapshot,
+    })
+  })
+
+  it('skips a mirror key a tier-2 delta already fired', async () => {
+    h.getRunManifest.mockResolvedValue(
+      manifest({
+        ...fromDeltas({ 'def_1:c1': { fld_status: { o: 'a', n: 'b' } } }),
+        mirrors: { 'def_1:c1': ['fld_status'] } as never,
+      })
+    )
+    h.getCachedRecordRules.mockResolvedValue([rule()])
+
+    await handleSyncRecordRules(connectorEvent())
+
+    expect(h.fireRecordRulesBatch).toHaveBeenCalledTimes(1)
+    expect(firstEvent()).toMatchObject({ oldValue: 'a', newValue: 'b' })
+  })
+})

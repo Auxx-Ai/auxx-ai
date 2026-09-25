@@ -204,9 +204,8 @@ export interface ConnectorSyncSource extends SyncSource {
    *
    * 1. **The relationship pass** (plans/money/tasks/39 §3.6). Without it every edge
    *    whose target has already synced stays pending while the stream cards read
-   *    "done". Same ctx and `relationshipCrud` session as the finalize (events fire the
-   *    same way) and the same counter fold; unresolved edges stay pending and count as
-   *    relationship warnings. Idempotent, so a later finalize re-checks the same edges
+   *    "done". Same ctx, sync session and counter fold as the finalize; unresolved edges
+   *    stay pending and count as relationship warnings. Idempotent, so a later finalize re-checks the same edges
    *    at the cost of one bulk pre-read.
    * 2. **Publishing the run's manifest** (plans/money/tasks/51 §8). `publishSyncRecordsChanged`
    *    otherwise fires only at the last stream's finalize, so a parked run's manifest
@@ -729,16 +728,6 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         session,
       }
     )
-    // Inline `automation` handler for the relationship pass, drained in one dirty-parent scope.
-    const relationshipCrud = new UnifiedCrudHandler(
-      this.deps.organizationId,
-      userId,
-      this.deps.db,
-      undefined,
-      {
-        session: { origin: { kind: 'automation', actor: userId }, depth: 0 },
-      }
-    )
     for (const m of mappings) {
       if (this.warmedDefs.has(m.entityDefinitionId)) continue
       await crud.warmCache(m.entityDefinitionId)
@@ -756,7 +745,6 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       userId,
       crud,
       ownedCrud,
-      relationshipCrud,
       counters,
       failureTally: newRecordFailureTally(),
       signal,

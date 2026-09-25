@@ -323,3 +323,21 @@ describe('the transaction exit', () => {
     expect(() => structuredClone(tx)).not.toThrow()
   })
 })
+
+describe('the sync lane', () => {
+  it('reaches the drain only when the owning scope was opened on it', async () => {
+    const lanes: Array<string | undefined> = []
+    registerReconciler('k', async ({ lane }) => {
+      lanes.push(lane)
+    })
+
+    await runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'a'), { lane: 'sync' })
+    await runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'b'))
+    // A joined call cannot change the owner's lane.
+    await runWithDirtyParents(ORG, USER, async () => {
+      await runWithDirtyParents(ORG, USER, async () => markParentDirty('k', 'c'), { lane: 'sync' })
+    })
+
+    expect(lanes).toEqual(['sync', undefined, undefined])
+  })
+})

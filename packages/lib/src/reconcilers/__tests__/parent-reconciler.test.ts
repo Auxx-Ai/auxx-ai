@@ -209,6 +209,24 @@ describe('rebuildBatch', () => {
 
     expect(rebuildBatch).not.toHaveBeenCalled()
   })
+
+  it('passes the sync lane through from a scope opened on it', async () => {
+    const rebuildBatch = vi.fn(
+      async (_org: string, _user: string, _parents: unknown[], _opts?: { lane?: 'sync' }) => {}
+    )
+    const r = defineParentReconciler<string>({
+      key: 'k',
+      resolve: async () => ['o-1'],
+      rebuildBatch,
+    })
+    r.register()
+
+    await runWithDirtyParents(ORG, USER, async () => r.mark(ORG, USER, 'c-1'), { lane: 'sync' })
+    await runWithDirtyParents(ORG, USER, async () => r.mark(ORG, USER, 'c-2'))
+
+    expect(rebuildBatch.mock.calls[0]![3]).toEqual({ lane: 'sync' })
+    expect(rebuildBatch.mock.calls[1]![3]).toEqual({})
+  })
 })
 
 describe('register', () => {

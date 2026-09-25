@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
+import { buildFieldValueKey, type FieldId, toResourceFieldId } from '@auxx/types/field'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { requireCachedEntityDefId } from '../../../cache'
 import { createFieldValueContext } from '../../../field-values/field-value-helpers'
@@ -12,6 +12,7 @@ import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
+  publishRecordsChanged,
 } from '../../../realtime'
 import { toRecordId } from '../../../resources/resource-id'
 import { systemFieldMap } from '../../../resources/system-records'
@@ -27,15 +28,49 @@ const TOTALS_ATTRS = [
   'fulfillment_shipping_recognised',
 ] as const
 
+/** Fulfillments a batch of stamps wrote, announced once by {@link publishStampBatch}. */
+export interface StampBatch {
+  fulfillmentDefId?: string
+  /** Client fieldRefKeys (`${defId}:${fieldId}`) of the stamped totals fields. */
+  fieldRefKeys: Set<string>
+  fulfillmentIds: Set<string>
+}
+
+export function createStampBatch(): StampBatch {
+  return { fieldRefKeys: new Set(), fulfillmentIds: new Set() }
+}
+
+/** One `records:changed` for everything the batch stamped. Fire-and-forget. */
+export function publishStampBatch(organizationId: string, batch: StampBatch): void {
+  const { fulfillmentDefId, fieldRefKeys, fulfillmentIds } = batch
+  if (!fulfillmentDefId || fulfillmentIds.size === 0) return
+  const fieldIds = [...fieldRefKeys]
+  try {
+    publishRecordsChanged(getRealtimeService(), organizationId, {
+      entityDefinitionId: fulfillmentDefId,
+      entries: [...fulfillmentIds].map((recordId) => ({ recordId, fieldIds })),
+    }).catch((err) => {
+      logger.error('Failed to publish fulfillment totals batch', {
+        organizationId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    })
+  } catch {
+    // `getRealtimeService()` throws synchronously without transport config; best effort.
+  }
+}
+
 /**
  * Stamp every fulfillment's totals on one order, walking them in sequence so the
  * cumulative tax prior is right (plan 78 §4.1). A cancelled one keeps its subtotal
  * with tax and shipping at 0 (§7.1a); a posted one that disagrees is skipped.
+ * With `batch`, the stamp records into it instead of publishing per order.
  */
 export async function stampOrderShipmentTotals(
   db: Database,
   organizationId: string,
-  orderInstanceId: string
+  orderInstanceId: string,
+  opts: { batch?: StampBatch } = {}
 ): Promise<{ fulfillmentsWritten: number; skippedPosted: number }> {
   const read = await readOrderForFulfillment(db, { organizationId, orderId: orderInstanceId })
   if (read.isErr()) throw read.error
@@ -149,7 +184,13 @@ export async function stampOrderShipmentTotals(
   // The shipments parked on these totals are due now; the reconciler path lands here too.
   await wakeTotalsNotStamped(db, organizationId, { fulfillmentIds: stampedIds })
 
-  if (entries.length > 0) {
+  if (opts.batch && stampedIds.length > 0) {
+    opts.batch.fulfillmentDefId = fulfillmentDefId
+    for (const field of [subtotalField, totalField, shippingField]) {
+      opts.batch.fieldRefKeys.add(toResourceFieldId(fulfillmentDefId, field.id))
+    }
+    for (const id of stampedIds) opts.batch.fulfillmentIds.add(id)
+  } else if (entries.length > 0) {
     publishFieldValueUpdates(getRealtimeService(), organizationId, entries).catch((err) => {
       logger.error('Failed to publish fulfillment totals', {
         organizationId,

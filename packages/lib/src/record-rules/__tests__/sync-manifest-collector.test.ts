@@ -7,6 +7,7 @@ import {
   MAX_DELTA_RECORDS,
   MAX_TOUCHED_RECORDS,
   mergeManifests,
+  REPOINT_DELTA_ATTRS,
   TOUCHED_KEYS_BYTE_BUDGET,
   upgradeManifestV1,
 } from '../sync-manifest-collector'
@@ -418,5 +419,57 @@ describe('mergeManifests', () => {
     expect(Object.keys(merged.deltas).length).toBe(3)
     expect(merged.detailTruncated).toBe(false)
     expect(merged.deltas['d:0' as never]).toEqual({ fa: { n: 999 } })
+  })
+})
+
+describe('mirror entries', () => {
+  it('keeps mirrors out of touched, unions keys, and dedupes on the instance id', () => {
+    const c = createManifestCollector({})
+    c.recordMirrorTouched(RID('def_c:c1'), ['contact_orders'])
+    c.recordMirrorTouched(RID('contacts:c1'), ['contact_orders', 'contact_memos'])
+    const m = c.toJson()!
+    expect(m.touched).toEqual({})
+    expect(m.mirrors).toEqual({ 'def_c:c1': ['contact_orders', 'contact_memos'] })
+  })
+
+  it('omits mirrors when none were recorded', () => {
+    const c = createManifestCollector({})
+    c.recordTouched(RID('def_1:i1'), ['fld_a'])
+    expect(c.toJson()).not.toHaveProperty('mirrors')
+  })
+
+  it('shares the membership cap', () => {
+    const c = createManifestCollector({}, { maxTouchedRecords: 1 })
+    c.recordTouched(RID('def_1:i1'), ['fld_a'])
+    c.recordMirrorTouched(RID('def_c:c1'), ['contact_orders'])
+    const m = c.toJson()!
+    expect(m.membershipTruncated).toBe(true)
+    expect(m).not.toHaveProperty('mirrors')
+  })
+
+  it('folds mirrors across slices, and a manifest without them still merges', () => {
+    const a = createManifestCollector({})
+    a.recordMirrorTouched(RID('def_c:c1'), ['contact_orders'])
+    const b = createManifestCollector({})
+    b.recordMirrorTouched(RID('def_c:c1'), ['contact_memos'])
+    b.recordMirrorTouched(RID('def_c:c2'), ['contact_orders'])
+    const merged = mergeManifests(a.toJson(), b.toJson())!
+    expect(merged.mirrors).toEqual({
+      'def_c:c1': ['contact_orders', 'contact_memos'],
+      'def_c:c2': ['contact_orders'],
+    })
+
+    const plain = createManifestCollector({})
+    plain.recordTouched(RID('def_1:i1'), ['fld_a'])
+    expect(mergeManifests(plain.toJson(), a.toJson())!.mirrors).toEqual({
+      'def_c:c1': ['contact_orders'],
+    })
+  })
+
+  it('names the re-pointable edges', () => {
+    expect([...REPOINT_DELTA_ATTRS].sort()).toEqual([
+      'fulfillment_line_fulfillment',
+      'line_item_order',
+    ])
   })
 })

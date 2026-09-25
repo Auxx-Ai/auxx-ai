@@ -53,7 +53,10 @@ import {
 } from '../realtime'
 // Type-only: the collector rides the sync origin (`write-origin.ts`); importing
 // the value module here would be harmless today but the type is all we need.
-import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
+import {
+  type ManifestCollector,
+  REPOINT_DELTA_ATTRS,
+} from '../record-rules/sync-manifest-collector'
 import {
   getAmbientTxWriteScope,
   isTxWriteCreated,
@@ -190,10 +193,12 @@ export function isDeltaSubscribed(
   field: CachedField,
   fieldId: string,
   fallbackEntityDefinitionId: string
-): boolean {
+): boolean | 'repoint' {
   if (!collector) return false
   const defId = field.entityDefinitionId ?? fallbackEntityDefinitionId
-  return collector.subscriptionsFor(defId)?.fieldIds.has(fieldId) === true
+  if (collector.subscriptionsFor(defId)?.fieldIds.has(fieldId) === true) return true
+  // Finalize marks read `oldValue` to reach the parent a re-pointed edge left.
+  return field.systemAttribute && REPOINT_DELTA_ATTRS.has(field.systemAttribute) ? 'repoint' : false
 }
 
 /**
@@ -240,7 +245,7 @@ function typedRowsOrNull(
 export function captureSyncFieldWrite(args: {
   collector: ManifestCollector
   /** Pre-computed `isDeltaSubscribed` answer for this field. */
-  subscribed: boolean
+  subscribed: boolean | 'repoint'
   recordId: RecordId
   field: CachedField
   fieldId: string
@@ -265,11 +270,14 @@ export function captureSyncFieldWrite(args: {
       args.newValues === null
         ? null
         : flattenTypedFieldValue(isArrayReturn ? args.newValues : (args.newValues[0] ?? null))
+    const repoint = args.subscribed === 'repoint'
     if (collector.hasCreated(recordId)) {
-      collector.recordChange(recordId, { [outputKey]: { n } })
+      if (repoint) collector.recordTouched(recordId, [outputKey])
+      else collector.recordChange(recordId, { [outputKey]: { n } })
       return
     }
-    if (args.oldValues === null) {
+    // A repoint delta only earns its tier-2 slot when there was a parent to leave.
+    if (args.oldValues === null || (repoint && args.oldValues.length === 0)) {
       collector.recordTouched(recordId, [outputKey])
       return
     }

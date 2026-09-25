@@ -5,6 +5,8 @@
 // never-throws contract. Boundaries (activity/cache/dispatch/realtime/drizzle)
 // mocked; the pure lane + count helpers run for real.
 
+import { buildFieldValueKey } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SyncChangeManifest } from '../../../record-rules/sync-manifest-types'
 import { SYNC_SMALL_RUN_THRESHOLD } from '../../../resources/crud/door-matrix'
@@ -15,6 +17,15 @@ const h = vi.hoisted(() => ({
   >(async () => {}),
   canonicalizeEntityDefinitionId: vi.fn(async (_org: string, defId: string) =>
     defId === 'part' ? 'def_cuid_part' : defId
+  ),
+  getCachedCustomFields: vi.fn(async (_org: string, defId: string) =>
+    defId === 'def_1'
+      ? [
+          { id: 'fld_a', systemAttribute: null },
+          { id: 'fld_b', systemAttribute: null },
+          { id: 'cf_orders', systemAttribute: 'contact_orders' },
+        ]
+      : []
   ),
   triggerResourceDispatch: vi.fn<
     (args: { data: { type: string; data: Record<string, unknown> } }) => Promise<void>
@@ -41,6 +52,7 @@ vi.mock('../../../entity-instances/activity', () => ({
 }))
 vi.mock('../../../cache', () => ({
   canonicalizeEntityDefinitionId: h.canonicalizeEntityDefinitionId,
+  getCachedCustomFields: h.getCachedCustomFields,
 }))
 vi.mock('../trigger-resource-dispatch', () => ({
   triggerResourceDispatch: h.triggerResourceDispatch,
@@ -277,8 +289,8 @@ describe('runSyncFinalize — small lane', () => {
     )
     expect(byDef.get('def_1')).toEqual(
       expect.arrayContaining([
-        { recordId: 'i1', fieldIds: ['fld_a', 'fld_b'] },
-        { recordId: 'i2', fieldIds: ['fld_a'] },
+        { recordId: 'i1', fieldIds: ['def_1:fld_a', 'def_1:fld_b'] },
+        { recordId: 'i2', fieldIds: ['def_1:fld_a'] },
         { recordId: 'i3' },
         { recordId: 'i5' },
       ])
@@ -338,8 +350,8 @@ describe('runSyncFinalize — tier-1-only manifest (zero rule subscriptions)', (
     const byRecord = Object.fromEntries(
       frameArgs.entries.map((e) => [e.recordId as string, e.fieldIds])
     )
-    expect(byRecord.i1).toEqual(['fld_a', 'fld_b'])
-    expect(byRecord.i2).toEqual(['fld_a'])
+    expect(byRecord.i1).toEqual(['def_1:fld_a', 'def_1:fld_b'])
+    expect(byRecord.i2).toEqual(['def_1:fld_a'])
     expect(byRecord.i3).toBeUndefined()
   })
 
@@ -363,7 +375,7 @@ describe('runSyncFinalize — tier-1-only manifest (zero rule subscriptions)', (
     const [, , frameArgs] = h.publishRecordsChanged.mock.calls[0]!
     const byRecord = Object.fromEntries(frameArgs.entries.map((e) => [e.recordId as string, e]))
     expect(byRecord.i1).toEqual({ recordId: 'i1' })
-    expect(byRecord.i2).toEqual({ recordId: 'i2', fieldIds: ['fld_a'] })
+    expect(byRecord.i2).toEqual({ recordId: 'i2', fieldIds: ['def_1:fld_a'] })
   })
 })
 
@@ -498,5 +510,90 @@ describe('runSyncFinalize — failure isolation', () => {
       )
     ).resolves.toBeUndefined()
     expect(h.publishRecordsChanged).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('runSyncFinalize — records:changed field keys and mirrors', () => {
+  /** The client's match (use-resource-sync `cachedValueRequestsForEntries`) over store keys. */
+  function clientMatches(
+    entityDefinitionId: string,
+    entries: Array<{ recordId: string; fieldIds?: string[] }>,
+    storeKeys: string[]
+  ): string[] {
+    const wanted = new Map(
+      entries.map((e) => [e.recordId, e.fieldIds ? new Set(e.fieldIds) : null])
+    )
+    const prefix = `${entityDefinitionId}:`
+    return storeKeys.filter((key) => {
+      if (!key.startsWith(prefix)) return false
+      const instanceId = key.slice(prefix.length).split(':')[0]!
+      const fields = wanted.get(instanceId)
+      if (fields === undefined) return false
+      return fields === null || fields.has(key.slice(prefix.length + instanceId.length + 1))
+    })
+  }
+
+  it('sends fieldIds the client store keys match', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ touched: { 'def_1:i1': ['fld_a', 'contact_orders'] } as never }))
+    )
+    const [, , args] = h.publishRecordsChanged.mock.calls[0]!
+    const rid = 'def_1:i1' as RecordId
+    const storeKeys = [
+      buildFieldValueKey(rid, 'fld_a' as never),
+      buildFieldValueKey(rid, 'fld_b' as never),
+      buildFieldValueKey(rid, 'cf_orders' as never),
+    ]
+    expect(clientMatches(args.entityDefinitionId, args.entries as never, storeKeys)).toEqual([
+      storeKeys[0],
+      storeKeys[2],
+    ])
+  })
+
+  it('omits fieldIds when an output key does not resolve', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ touched: { 'def_1:i1': ['fld_a', 'gone'] } as never }))
+    )
+    const [, , args] = h.publishRecordsChanged.mock.calls[0]!
+    expect(args.entries).toEqual([{ recordId: 'i1' }])
+  })
+
+  it('announces mirror records on the realtime door only', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(
+        manifest({
+          touched: { 'def_2:line1': ['fld_x'], 'def_1:i1': ['fld_a'] } as never,
+          mirrors: { 'def_1:c1': ['contact_orders'], 'def_1:i1': ['contact_orders'] } as never,
+        })
+      )
+    )
+    const byDef = new Map(
+      h.publishRecordsChanged.mock.calls.map(([, , args]) => [
+        args.entityDefinitionId,
+        args.entries,
+      ])
+    )
+    expect(byDef.get('def_1')).toEqual([
+      { recordId: 'i1', fieldIds: ['def_1:fld_a', 'def_1:cf_orders'] },
+      { recordId: 'c1', fieldIds: ['def_1:cf_orders'] },
+    ])
+    const [ids] = h.touchEntityActivity.mock.calls[0]!
+    expect([...ids].sort()).toEqual(['i1', 'line1'])
+    expect(insertedRows().some((r) => r.entityId === 'c1')).toBe(false)
+    const dispatched = h.triggerResourceDispatch.mock.calls.map(([a]) => a.data.data.recordId)
+    expect(dispatched).not.toContain('def_1:c1')
+  })
+
+  it('runs for a mirror-only manifest', async () => {
+    await runSyncFinalize(
+      fakeDb(),
+      connectorInput(manifest({ mirrors: { 'def_1:c1': ['contact_orders'] } as never }))
+    )
+    expect(h.runIntegrityPasses).toHaveBeenCalledTimes(1)
+    const [, , args] = h.publishRecordsChanged.mock.calls[0]!
+    expect(args.entries).toEqual([{ recordId: 'c1', fieldIds: ['def_1:cf_orders'] }])
   })
 })

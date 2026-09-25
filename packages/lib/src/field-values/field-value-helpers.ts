@@ -45,8 +45,13 @@ import type { FieldOptions } from '../custom-fields/field-options'
 import { BadRequestError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
+import {
+  getAmbientTxWriteScope,
+  isTxWriteCreated,
+  recordTxWriteColumns,
+} from '../resources/crud/tx-write-scope'
 import type { WriteSession } from '../resources/crud/write-origin'
-import { getAmbientWriteDb } from '../resources/crud/write-session-als'
+import { getAmbientWriteDb, getAmbientWriteSession } from '../resources/crud/write-session-als'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -1294,10 +1299,10 @@ export async function recomposeNameDisplayFromParts(
 }
 
 /**
- * Publish a `record:updated` realtime event carrying just the denormalized
- * column(s) that changed, on the def's own record channel (plan v3/03 §8.1).
- * Matches RecordUpdatedEvent's intended contract: "denormalized columns
- * changed". Excludes the originating socket.
+ * Publish a `record:updated` carrying just the denormalized column(s) that changed, on the
+ * def's record channel (plan v3/03 §8.1). Excludes the originating socket.
+ * Sync/seed writes publish nothing (their run announces them) and a buffered scope holds
+ * the frame until commit — see plans/realtime/sync-record-event-flood.md P1.
  */
 async function publishRecordColumnUpdate(
   ctx: FieldValueContext,
@@ -1309,8 +1314,16 @@ async function publishRecordColumnUpdate(
     avatarUrl?: string | null
   }
 ): Promise<void> {
+  // Origin only, not `sessionLane`: `absorbed` bulk edits and `quiet` avatar writes still publish.
+  const origin = (ctx.session ?? getAmbientWriteSession())?.origin.kind
+  if (origin === 'sync' || origin === 'seed') return
   try {
     const recordId = toRecordId(entityDefId, entityInstanceId)
+    const scope = getAmbientTxWriteScope(ctx.session)
+    if (scope) {
+      if (!isTxWriteCreated(scope, recordId)) recordTxWriteColumns(scope, recordId, columns)
+      return
+    }
     getRealtimeService()
       .publish(
         rooms.orgRecords(ctx.organizationId, entityDefId),
