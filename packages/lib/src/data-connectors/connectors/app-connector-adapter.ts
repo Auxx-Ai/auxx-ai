@@ -44,6 +44,8 @@ interface AppExecuteResult {
   rateLimited?: {
     retryAfterMs?: number
   }
+  /** The app narrowed on every `exact` clause of the `recordFilter` it was sent. */
+  narrowed?: true
 }
 
 const logger = createScopedLogger('app-connector-adapter')
@@ -111,6 +113,22 @@ function pickCatalogConnector(
   return connectors[0] ?? null
 }
 
+/** The installed app's catalog connector for an `app:<slug>` connector row, from the org cache. */
+export async function loadAppCatalogConnector(
+  organizationId: string,
+  connector: { type: string; appInstallationId: string | null }
+): Promise<CatalogDataConnector | null> {
+  const slug = connector.type.replace(/^app:/, '')
+  // Lazy-import the cache barrel — same isolation discipline as the cluster.
+  const { getOrgCache } = await import('../../cache')
+  const installedApps = await getOrgCache().get(organizationId, 'installedApps')
+  const installedApp =
+    installedApps.find((a) => a.installationId === connector.appInstallationId) ??
+    installedApps.find((a) => a.app.slug === slug) ??
+    null
+  return pickCatalogConnector(installedApp)
+}
+
 /**
  * The engine's `ConnectorStreamDecl` is now a direct mirror of the catalog's
  * `CatalogConnectorStream` (app-fields-and-entities-plan Phase 2 §4.3) — there
@@ -162,14 +180,7 @@ export function appConnectorAdapter(
   /** Load the installed app + its catalog connector from the org cache (lazy). */
   async function resolveCatalog(): Promise<CatalogDataConnector | null> {
     if (cachedCatalog) return cachedCatalog
-    // Lazy-import the cache barrel — same isolation discipline as the cluster.
-    const { getOrgCache } = await import('../../cache')
-    const installedApps = await getOrgCache().get(organizationId, 'installedApps')
-    const installedApp =
-      installedApps.find((a) => a.installationId === connector.appInstallationId) ??
-      installedApps.find((a) => a.app.slug === slug) ??
-      null
-    cachedCatalog = pickCatalogConnector(installedApp)
+    cachedCatalog = await loadAppCatalogConnector(organizationId, connector)
     if (cachedCatalog) cachedStreams = toEngineStreams(cachedCatalog)
     return cachedCatalog
   }
@@ -297,6 +308,7 @@ export function appConnectorAdapter(
             state: { cursor: flat.cursor, updatedSince: flat.updatedSince },
             config,
             triggerContext: args.triggerContext, // ← webhook steer tokens (undefined on normal syncs)
+            ...(args.recordFilter?.length ? { recordFilter: args.recordFilter } : {}),
             context: lambdaContext,
             timeout: 30000,
           },
@@ -320,6 +332,7 @@ export function appConnectorAdapter(
         cursor: decodeCursor(engineState.backfillCursor),
         updatedSince: engineState.watermark,
       }
+      const sentExact = args.recordFilter?.some((c) => c.exact) ?? false
 
       // Loop `execute` (one page each), threading the flat cursor between our own
       // calls (NOT re-reading engine state mid-slice), and emit a checkpoint after
@@ -328,7 +341,14 @@ export function appConnectorAdapter(
       return {
         records: (async function* (): AsyncGenerator<ConnectorYield> {
           while (true) {
-            const { records = [], nextState = {}, rateLimited } = await invokePage(flat)
+            const { records = [], nextState = {}, rateLimited, narrowed } = await invokePage(flat)
+            // An old bundle ignores `recordFilter`; refuse its page before a record is sunk. An
+            // empty throttled page sinks nothing, so the check waits for a real one.
+            if (sentExact && !narrowed && !(rateLimited && records.length === 0)) {
+              throw new Error(
+                `App connector '${slug}' stream '${args.streamKey}' did not narrow its fetch on an exact filter clause`
+              )
+            }
             for (const record of records) yield record
 
             // Upstream throttle (§2): the app couldn't fetch this page and asked us to

@@ -26,6 +26,7 @@ import {
   deleteConnector,
   deriveConnectorScheduleInfo,
   enqueueConnectorSync,
+  findRecordConnectorBySource,
   findRemovedUpstreamItem,
   finishConnectorSetup,
   getAllConnectorTemplates,
@@ -42,9 +43,12 @@ import {
   markItemArchived,
   projectConnectorOwnedTargets,
   READINESS_REASON,
+  readRecordRefresh,
   removeMapping,
   removeStream,
   requestArchiveCapOverride,
+  requestRecordRefresh,
+  requestReimport,
   STRIPE_FC_CONNECTOR_TYPE,
   sampleConnectorFetch,
   setConnectorFieldPin,
@@ -776,6 +780,99 @@ export const dataConnectorRouter = createTRPCRouter({
       })
       return { success: true }
     }),
+
+  /**
+   * Re-import a period, or refresh records by `$externalId in` (v13 N5). A period run is
+   * refused while a sync holds the connector; an `id` run queues behind it (`queued`).
+   */
+  reimport: permissionProcedure(PermissionKey.connectorsManage)
+    .input(
+      z.object({
+        connectorId: z.string(),
+        streamIds: z.array(z.string()).min(1).max(10),
+        // `exact` is the engine's to set, so the input shape leaves it out.
+        recordFilter: z
+          .array(
+            z.object({ fieldId: z.string(), operator: z.string(), value: z.unknown().optional() })
+          )
+          .min(1)
+          .max(20),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.connectorId)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
+      const started = await requestReimport(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        connectorId: input.connectorId,
+        streamIds: input.streamIds,
+        recordFilter: input.recordFilter,
+        initiatedBy: ctx.session.userId,
+      })
+      if (started.isErr()) throw started.error
+      return started.value
+    }),
+
+  /** The record drawer's refresh button: an `id` run of this record on its root stream (v13 §4). */
+  refreshRecord: permissionProcedure(PermissionKey.connectorsManage)
+    .input(
+      z
+        .object({
+          recordId: z.string(),
+          connectorId: z.string().optional(),
+          // The source chip, when the drawer's cells have not named the connector yet.
+          source: z
+            .object({ appInstallationId: z.string(), connectionId: z.string().nullable() })
+            .optional(),
+        })
+        .refine((v) => !!v.connectorId || !!v.source, { message: 'connectorId or source' })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const organizationId = ctx.session.organizationId
+      const { entityInstanceId } = parseRecordId(input.recordId as RecordId)
+      let connectorId = input.connectorId
+      if (!connectorId && input.source) {
+        const found = await findRecordConnectorBySource(ctx.db, {
+          organizationId,
+          entityInstanceId,
+          ...input.source,
+        })
+        if (found.isErr()) throw found.error
+        connectorId = found.value
+      }
+      const result = await getConnector(ctx.db, organizationId, connectorId as string)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      await assertConnectorCanSync(ctx.db, organizationId, result.value)
+      const started = await requestRecordRefresh(ctx.db, {
+        organizationId,
+        connectorId: result.value.id,
+        entityInstanceId,
+        initiatedBy: ctx.session.userId,
+      })
+      if (started.isErr()) throw started.error
+      return {
+        status: started.value.status,
+        connectorId: result.value.id,
+        requestId: started.value.requestId,
+        sourceName: result.value.name,
+      }
+    }),
+
+  /** Poll target for `refreshRecord`: `waiting` until the job opens its run. */
+  refreshStatus: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ connectorId: z.string(), requestId: z.string() }))
+    .query(({ ctx, input }) =>
+      readRecordRefresh(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        connectorId: input.connectorId,
+        requestId: input.requestId,
+      })
+    ),
 
   /**
    * "Archive N records anyway" (v12.1 Phase 3c). The archive cap refused the last

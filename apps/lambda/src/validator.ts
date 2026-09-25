@@ -240,6 +240,17 @@ const DataConnectorExecutionSchema = AppEventSchema.extend({
   config: z.record(z.string(), z.unknown()),
   /** Webhook steer tokens (present only on a webhook-steered partial fetch). */
   triggerContext: z.record(z.string(), z.string()).optional(),
+  /** AND'd narrowing clauses (SDK `ConnectorRecordFilterCondition`); `exact` is set by the engine. */
+  recordFilter: z
+    .array(
+      z.object({
+        fieldId: z.string().min(1),
+        operator: z.string().min(1),
+        value: z.unknown().optional(),
+        exact: z.boolean().optional(),
+      })
+    )
+    .optional(),
 })
 
 // ============================================================================

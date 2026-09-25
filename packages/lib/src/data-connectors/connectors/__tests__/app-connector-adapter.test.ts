@@ -20,7 +20,13 @@ import { runSyncSlice } from '../../../sync-core/slice-runner'
 import { runConnectorSlice } from '../../connector-slice-loop'
 import { type AppConnectorContext, appConnectorAdapter } from '../app-connector-adapter'
 import { decodeCursor, encodeCursor } from '../app-connector-state'
-import { type ConnectorRecord, type ConnectorYield, isConnectorCheckpoint } from '../types'
+import {
+  ConnectorRateLimitError,
+  type ConnectorRecord,
+  type ConnectorRecordFilterCondition,
+  type ConnectorYield,
+  isConnectorCheckpoint,
+} from '../types'
 
 const invokeLambdaExecutor = vi.fn()
 const prepareLambdaContext = vi.fn((...args: unknown[]) => args[0])
@@ -430,5 +436,76 @@ describe('appConnectorAdapter rateLimited', () => {
 
     invokeLambdaExecutor.mockResolvedValueOnce(throttled(3_600_000))
     expect(await h.run()).toMatchObject({ retryAfterMs: 60_000 })
+  })
+})
+
+describe('appConnectorAdapter recordFilter', () => {
+  const PERIOD: ConnectorRecordFilterCondition = {
+    fieldId: 'created_at',
+    operator: 'between',
+    value: { from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' },
+    exact: true,
+  }
+  const HINT: ConnectorRecordFilterCondition = { fieldId: 'orders_count', operator: '>', value: 0 }
+
+  async function drainFiltered(recordFilter: ConnectorRecordFilterCondition[]) {
+    const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
+      streamKey: 'thing',
+      mode: 'snapshot',
+      state: {},
+      credential: null,
+      config: {} as never,
+      recordFilter,
+    })
+    const out: ConnectorYield[] = []
+    for await (const y of records) out.push(y)
+    return out
+  }
+
+  function narrowedPage(records: ConnectorRecord[], nextState: Record<string, unknown>) {
+    return ok({ execution_result: { records, nextState, narrowed: true } })
+  }
+
+  it('sends recordFilter in the lambda payload, exact flag included', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(narrowedPage([], { backfillComplete: true }))
+    await drainFiltered([PERIOD, HINT])
+    expect(invokeLambdaExecutor.mock.calls[0]![0].payload.recordFilter).toEqual([PERIOD, HINT])
+  })
+
+  it('omits recordFilter from the payload when none is given', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
+    await drain()
+    expect(invokeLambdaExecutor.mock.calls[0]![0].payload).not.toHaveProperty('recordFilter')
+  })
+
+  it('refuses a page that ignored an exact clause before yielding any of its records', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+    const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
+      streamKey: 'thing',
+      mode: 'snapshot',
+      state: {},
+      credential: null,
+      config: {} as never,
+      recordFilter: [PERIOD],
+    })
+    const seen: ConnectorYield[] = []
+    const run = async () => {
+      for await (const y of records) seen.push(y)
+    }
+    await expect(run()).rejects.toThrow(/stream 'thing' did not narrow its fetch/)
+    expect(seen).toEqual([])
+  })
+
+  it('treats an empty throttled page as a throttle, not a refusal', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(
+      ok({ execution_result: { records: [], nextState: {}, rateLimited: { retryAfterMs: 1 } } })
+    )
+    await expect(drainFiltered([PERIOD])).rejects.toBeInstanceOf(ConnectorRateLimitError)
+  })
+
+  it('accepts an un-narrowed page when only non-exact clauses were sent', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+    const records = (await drainFiltered([HINT])).filter((y) => !isConnectorCheckpoint(y))
+    expect(records).toHaveLength(1)
   })
 })

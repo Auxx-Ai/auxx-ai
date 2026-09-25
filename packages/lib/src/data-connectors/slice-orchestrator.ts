@@ -14,6 +14,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { ResourceFieldId } from '@auxx/types/field'
+import { UnrecoverableError } from 'bullmq'
 import { and, desc, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
@@ -24,6 +25,7 @@ import { createThrottleHandle } from '../sync-core/throttle'
 import { connectionQuota } from '../utils/rate-limiter/quota'
 import { prepareConnectorFetch } from './connector-runtime'
 import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
+import { loadAppCatalogConnector } from './connectors/app-connector-adapter'
 import {
   type BackfillSliceJobData,
   enqueueBackfillSlice,
@@ -31,12 +33,15 @@ import {
 } from './data-connector-queue'
 import { materializeConnectorTargets } from './provisioning'
 import { publishConnectorSync } from './realtime'
+import type { ReimportRunOptions } from './reimport-filter'
 import { requestConnectorPause } from './run-control'
 import {
   claimForSync,
+  type DataConnectorRow,
   finalizeConnector,
   getRunFetched,
   initConnectorBackfillLatch,
+  isNewestSyncRun,
   loadConnector,
   openRun,
   parkBackfillAtCeiling,
@@ -44,9 +49,15 @@ import {
   persistStreamState,
   readConnectorBackfillLatch,
   releaseStrandedConnector,
+  type StreamWithMappings,
   setRunRateLimited,
 } from './service'
-import { createConnectorRunLedger, createStreamSyncStateStore } from './sync-core-adapters'
+import {
+  createConnectorRunLedger,
+  createRunSyncStateStore,
+  createStreamSyncStateStore,
+  type RunStreamCursor,
+} from './sync-core-adapters'
 import type { ConnectorStreamState } from './types'
 
 const logger = createScopedLogger('data-connector-slice-orchestrator')
@@ -151,6 +162,33 @@ function computeBackfillFloor(
   return format === 'unix' ? String(Math.floor(floor.getTime() / 1000)) : floor.toISOString()
 }
 
+/** An app period stream's floor (v13 N2): the span's floor, never after an accounting-active org's cutover. */
+export async function appBackfillFloor(
+  organizationId: string,
+  span: BackfillWindowSpan | undefined
+): Promise<string | undefined> {
+  const floor = computeBackfillFloor(span)
+  if (!floor) return undefined
+  // Lazy: keeps the accounting module graph out of every connector test that never floors.
+  const { readActiveCutoverStart } = await import('../accounting/ledger/setup/cutover-start')
+  const cutoverStart = await readActiveCutoverStart(organizationId)
+  return cutoverStart && cutoverStart.getTime() < Date.parse(floor)
+    ? cutoverStart.toISOString()
+    : floor
+}
+
+/** `periodField` per stream key from an app connector's catalog; empty for any other connector. */
+export async function readAppPeriodFields(
+  organizationId: string,
+  connector: { type: string; definitionKind: string; appInstallationId: string | null }
+): Promise<Map<string, string>> {
+  if (connector.definitionKind !== 'app') return new Map()
+  const catalog = await loadAppCatalogConnector(organizationId, connector)
+  return new Map(
+    (catalog?.streams ?? []).flatMap((s) => (s.periodField ? [[s.key, s.periodField]] : []))
+  )
+}
+
 // ── Start a connector sync (backfill or steady) ──────────────────────────────────
 
 export interface StartConnectorSyncOptions {
@@ -162,6 +200,23 @@ export interface StartConnectorSyncOptions {
    * connector — the "Sync everything" resume passes no cap and runs to completion.
    */
   sampleLimit?: number | null
+  /** Set ⇒ a re-import of the named streams under a run filter (v13 N5), not a sync. */
+  reimport?: ReimportRunOptions
+  /** The parked run this sync continues; a backfill continuation no-ops once it was resumed. */
+  continueRunId?: string
+  /** Set ⇒ a claimed connector throws {@link ConnectorClaimedError}, so the job is retried. */
+  retryClaim?: boolean
+}
+
+/** The connector is claimed by another run; thrown only for a job that retries its claim. */
+export class ConnectorClaimedError extends Error {
+  /** Read by the worker: a pending retry is logged quietly until the last attempt. */
+  readonly expectedRetry = true
+
+  constructor(dataConnectorId: string) {
+    super(`Connector ${dataConnectorId} is claimed by another sync`)
+    this.name = 'ConnectorClaimedError'
+  }
 }
 
 /**
@@ -189,6 +244,15 @@ async function startConnectorSyncInner(
   // `syncMode='incremental'` instead fetches a cheap watermark catch-up (its state is
   // deliberately NOT reset below) and never archives. `sweep` flows from the run snapshot.
   const isSweep = options.trigger === 'sweep'
+  const { reimport, continueRunId } = options
+  // A backfill continuation whose parked run a manual Sync now already resumed has nothing left.
+  if (continueRunId && !reimport && !(await isNewestSyncRun(db, dataConnectorId, continueRunId))) {
+    logger.info('startConnectorSync: parked run already resumed, dropping continuation', {
+      dataConnectorId,
+      continueRunId,
+    })
+    return false
+  }
   // Clear a crashed prior chain first so its stuck claim can't block us (H5), then the
   // opposite shape: a claim leaked by a run that ENDED (task 43 D-3). Without the second
   // call a stranded connector can never be re-synced from the UI at all — `claimForSync`
@@ -240,7 +304,15 @@ async function startConnectorSyncInner(
     logger.warn('startConnectorSync: connector not found or has no mappings', { dataConnectorId })
     return false
   }
-  const { connector, streams } = loaded
+  const { connector } = loaded
+  const continued =
+    reimport && continueRunId ? await readContinuedReimport(db, continueRunId) : undefined
+  const reimportIds = reimport
+    ? new Set(reimport.streamIds.filter((id) => !continued?.finishedStreams.has(id)))
+    : undefined
+  const streams = reimportIds
+    ? loaded.streams.filter((s) => reimportIds.has(s.stream.id))
+    : loaded.streams
   if (streams.length === 0) {
     // `loadConnector` drops untargeted/unnamed streams, so a connector that slipped
     // past the readiness guard (e.g. an enqueue from before the guard, or a config
@@ -288,8 +360,23 @@ async function startConnectorSyncInner(
     trigger === 'manual' || trigger === 'backfill'
   )
   if (!claimed) {
-    logger.info('startConnectorSync: already syncing, skipping', { dataConnectorId })
+    if (options.retryClaim) throw new ConnectorClaimedError(dataConnectorId)
+    logger.info('startConnectorSync: already syncing, skipping', {
+      dataConnectorId,
+      reimport: !!reimport,
+    })
     return false
+  }
+
+  if (reimport) {
+    return startReimportChain(db, {
+      organizationId,
+      connector,
+      streams,
+      reimport,
+      continueRunId,
+      cursors: continued?.cursors,
+    })
   }
 
   // Target schema is provisioned + ref-backfilled by `materializeConnectorTargets` above
@@ -316,34 +403,6 @@ async function startConnectorSyncInner(
       ? 'steady'
       : 'backfill'
 
-  // The pinned snapshot — decoded streams + (now-stamped) mappings. The mutable
-  // stream `state`/cursor is deliberately NOT captured; it stays live.
-  const snapshot: ChainSnapshot = {
-    streams: streams.map((s) => ({
-      streamId: s.stream.id,
-      streamKey: s.stream.streamKey ?? '',
-      syncMode: s.syncMode,
-      requestConfig: s.stream.requestConfig ?? undefined,
-      // The column mirrors `ConditionGroup[]` structurally but is typed loosely in
-      // @auxx/database (tier 1 can't import lib) — cast at the decode boundary, same
-      // as `syncMode` above.
-      recordFilter: (s.stream.recordFilter as ConditionGroup[] | null) ?? undefined,
-      mappings: s.mappings,
-    })),
-    sweep: isSweep,
-  }
-
-  const run = await openRun(db, {
-    dataConnectorId,
-    organizationId,
-    trigger: options.trigger ?? (phase === 'steady' ? 'scheduled' : 'backfill'),
-    mode: phase === 'steady' ? 'incremental' : 'snapshot',
-    phase,
-    chainSnapshot: snapshot as unknown as Record<string, unknown>,
-    cursorBefore: connector.state,
-    sampleLimit: options.sampleLimit ?? null,
-  })
-
   // Per-stream state decision for a backfill run (plans/money/tasks/39 §6.3a step one).
   // A stream is reset to a fresh backfill only when it actually needs one:
   //  - RESUME: phase `backfill` with a checkpointed cursor continues from it, whatever
@@ -358,27 +417,73 @@ async function startConnectorSyncInner(
   //    that marker, so the stream must really re-crawl in this run).
   //  - FRESH otherwise: a snapshot stream past its backfill (its orphan reconciliation
   //    needs the full re-crawl), a stream that never ran, a sample.
+  const span = connector.config?.backfillWindowSpan
+  const pendingResync = new Set(connector.resyncPending?.streamIds ?? [])
+  const decisions = streams.map((s, i) => {
+    if (phase !== 'backfill') return 'steady' as const
+    const st = streamStates[i] ?? {}
+    if (st.phase === 'backfill' && !!st.backfillCursor) return 'resume' as const
+    const keepDelta =
+      s.syncMode === 'incremental' &&
+      (st.phase === 'steady' || isSweep) &&
+      !isSample &&
+      !pendingResync.has(s.stream.id)
+    return keepDelta ? ('steady' as const) : ('fresh' as const)
+  })
+
+  // Floors are pinned ONCE per backfill so every slice sends the same value (no `now`
+  // drift); a resumed stream keeps the floor its backfill started with.
+  const periodFields = await readAppPeriodFields(organizationId, connector)
+  const appFloor =
+    periodFields.size > 0 && decisions.includes('fresh')
+      ? await appBackfillFloor(organizationId, span)
+      : undefined
+  const floors = streams.map((s, i) => {
+    const periodField = periodFields.get(s.stream.streamKey ?? '')
+    if (decisions[i] === 'resume') return streamStates[i]?.backfillFloor
+    if (decisions[i] !== 'fresh') return undefined
+    if (periodField) return appFloor
+    // Generic-REST: the param is connector-level but the format is declared per stream.
+    const window = s.stream.requestConfig?.backfillWindow
+    return window ? computeBackfillFloor(span, window.format) : undefined
+  })
+
+  // The pinned snapshot — decoded streams + (now-stamped) mappings. The mutable
+  // stream `state`/cursor is deliberately NOT captured; it stays live.
+  const snapshot: ChainSnapshot = {
+    streams: streams.map((s, i) => {
+      const periodField = periodFields.get(s.stream.streamKey ?? '')
+      const backfillFloor = floors[i]
+      return {
+        ...toSnapshotStream(s),
+        ...(periodField ? { periodField } : {}),
+        ...(backfillFloor ? { backfillFloor } : {}),
+      }
+    }),
+    sweep: isSweep,
+  }
+
+  const run = await openRun(db, {
+    dataConnectorId,
+    organizationId,
+    trigger: options.trigger ?? (phase === 'steady' ? 'scheduled' : 'backfill'),
+    mode: phase === 'steady' ? 'incremental' : 'snapshot',
+    phase,
+    chainSnapshot: snapshot as unknown as Record<string, unknown>,
+    cursorBefore: connector.state,
+    sampleLimit: options.sampleLimit ?? null,
+  })
+
   // The marker is the run row's own `startedAt`, so the orphan diff can key "seen this
   // backfill" on runs started at or after it against one clock (`listBackfillRunIds`).
-  if (phase === 'backfill') {
-    const startedAtIso = run.startedAt.toISOString()
-    const span = connector.config?.backfillWindowSpan
-    const pendingResync = new Set(connector.resyncPending?.streamIds ?? [])
-    for (const [i, s] of streams.entries()) {
-      const st = streamStates[i] ?? {}
-      const resumable = st.phase === 'backfill' && !!st.backfillCursor
-      const keepDelta =
-        s.syncMode === 'incremental' &&
-        (st.phase === 'steady' || isSweep) &&
-        !isSample &&
-        !pendingResync.has(s.stream.id)
-      if (resumable || keepDelta) continue
-      // Pin the floor per stream — the param is connector-level but the format is
-      // declared per stream; streams without a `backfillWindow` get no floor.
-      const window = s.stream.requestConfig?.backfillWindow
-      const floor = window ? computeBackfillFloor(span, window.format) : undefined
-      await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso, floor))
-    }
+  const startedAtIso = run.startedAt.toISOString()
+  for (const [i, s] of streams.entries()) {
+    if (decisions[i] !== 'fresh') continue
+    await persistStreamState(
+      db,
+      s.stream.id,
+      freshBackfillState(streamStates[i] ?? {}, startedAtIso, floors[i])
+    )
   }
 
   // Seed the completion latch to the stream count (B1) BEFORE enqueuing slices, so the
@@ -407,6 +512,93 @@ async function startConnectorSyncInner(
   return true
 }
 
+/** The pinned, decoded view of one stream captured into the run's chain snapshot (B2). */
+function toSnapshotStream(s: StreamWithMappings): SyncSourceStream {
+  return {
+    streamId: s.stream.id,
+    streamKey: s.stream.streamKey ?? '',
+    syncMode: s.syncMode,
+    requestConfig: s.stream.requestConfig ?? undefined,
+    // The column mirrors `ConditionGroup[]` structurally but is typed loosely in
+    // @auxx/database (tier 1 can't import lib) — cast at the decode boundary.
+    recordFilter: (s.stream.recordFilter as ConditionGroup[] | null) ?? undefined,
+    mappings: s.mappings,
+  }
+}
+
+/**
+ * Open a re-import run over `streams` (v13 N5): no phase decision, no fresh state, no
+ * floor. Each slice pages on the run row (`createRunSyncStateStore`), seeded from a
+ * parked predecessor's `cursors` when this run continues one.
+ */
+async function startReimportChain(
+  db: Database,
+  input: {
+    organizationId: string
+    connector: DataConnectorRow
+    streams: StreamWithMappings[]
+    reimport: ReimportRunOptions
+    continueRunId?: string
+    cursors?: Record<string, RunStreamCursor>
+  }
+): Promise<boolean> {
+  const { organizationId, connector, streams, reimport, cursors } = input
+  const snapshot: ChainSnapshot = { streams: streams.map(toSnapshotStream), sweep: false }
+  const run = await openRun(db, {
+    dataConnectorId: connector.id,
+    organizationId,
+    trigger: 'manual',
+    mode: 'reimport',
+    phase: 'backfill',
+    chainSnapshot: snapshot as unknown as Record<string, unknown>,
+    cursorBefore: connector.state,
+    recordFilter: reimport.recordFilter,
+    initiatedBy: reimport.initiatedBy ?? null,
+    progress: {
+      ...(cursors ? { cursors } : {}),
+      ...(reimport.requestId ? { requestId: reimport.requestId } : {}),
+    },
+  })
+
+  await initConnectorBackfillLatch(db, connector.id, streams.length)
+  for (const s of streams) {
+    await enqueueBackfillSlice({
+      connectorId: connector.id,
+      organizationId,
+      streamId: s.stream.id,
+      runId: run.id,
+    })
+  }
+
+  logger.info('startConnectorSync: re-import chain enqueued', {
+    dataConnectorId: connector.id,
+    runId: run.id,
+    streams: streams.length,
+    continuesRunId: input.continueRunId,
+  })
+  await publishConnectorSync(db, organizationId, connector.id, 'run-started')
+  return true
+}
+
+/** A parked re-import's page cursors and the streams it already finished. */
+async function readContinuedReimport(
+  db: Database,
+  runId: string
+): Promise<{ cursors: Record<string, RunStreamCursor>; finishedStreams: Set<string> }> {
+  const row = await db.query.DataConnectorRun.findFirst({
+    where: eq(schema.DataConnectorRun.id, runId),
+    columns: { progress: true },
+  })
+  const progress = row?.progress as {
+    cursors?: Record<string, RunStreamCursor>
+    finishedStreams?: string[]
+  } | null
+  return {
+    cursors: progress?.cursors ?? {},
+    finishedStreams: new Set(progress?.finishedStreams ?? []),
+  }
+}
+
 /**
  * Public entry. Runs the orchestration and, on any throw during setup (before a run
  * exists to record its own failure), stamps `connector.status = 'error'` with the
@@ -424,6 +616,7 @@ export async function startConnectorSync(
   try {
     return await startConnectorSyncInner(db, organizationId, dataConnectorId, options)
   } catch (error) {
+    if (error instanceof ConnectorClaimedError) throw error
     const err = error instanceof Error ? error : new Error(String(error))
     logger.error('startConnectorSync failed during setup — marking connector errored', {
       dataConnectorId,
@@ -433,7 +626,8 @@ export async function startConnectorSync(
     })
     await finalizeConnector(db, dataConnectorId, { ok: false, error: err.message })
     await publishConnectorSync(db, organizationId, dataConnectorId, 'run-finished')
-    throw err
+    // A claim-retrying job carries ~40 attempts; a real failure should not use them.
+    throw options.retryClaim ? new UnrecoverableError(err.message) : err
   }
 }
 
@@ -563,6 +757,8 @@ export async function runBackfillSlice(
       id: runId,
       startedAt: run.startedAt,
       phase: run.phase as 'backfill' | 'steady' | null,
+      mode: run.mode,
+      recordFilter: run.recordFilter,
     },
     stream: streamSnap,
     allStreams: snapshot?.streams ?? [streamSnap],
@@ -614,7 +810,11 @@ export async function runBackfillSlice(
   const sliceSignal = signal ?? new AbortController().signal
   const outcome = await runSyncSlice({
     source,
-    stateStore: createStreamSyncStateStore(db, streamId),
+    // A re-import pages on its own run row; the stream's durable state is never touched.
+    stateStore:
+      run.mode === 'reimport'
+        ? createRunSyncStateStore(db, runId, streamId)
+        : createStreamSyncStateStore(db, streamId),
     ledger: sliceLedger,
     throttle: createThrottleHandle(connectorQuota(connector), { signal: sliceSignal }),
     budget,
@@ -699,8 +899,23 @@ export async function runBackfillSlice(
         // the ceiling in the same window just stops. The job id is keyed on the
         // parked run so a manual Sync now during the delay is not coalesced away.
         if (parked) {
+          const reimport: ReimportRunOptions | undefined =
+            run.mode === 'reimport'
+              ? {
+                  streamIds: snapshot?.streams.map((s) => s.streamId) ?? [],
+                  recordFilter: run.recordFilter ?? [],
+                  initiatedBy: run.initiatedBy,
+                }
+              : undefined
           await enqueueConnectorSync(
-            { connectorId, organizationId, trigger: 'backfill' },
+            {
+              connectorId,
+              organizationId,
+              trigger: 'backfill',
+              ...(reimport ? { reimport } : {}),
+              continueRunId: runId,
+              retryClaim: true,
+            },
             { delayMs: BACKFILL_CONTINUE_DELAY_MS, jobKey: `continue-${runId}` }
           )
         }

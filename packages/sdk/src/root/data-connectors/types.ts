@@ -88,6 +88,8 @@ export interface ConnectorFetchResult {
     /** Server-hinted wait before the next attempt, in ms (`Retry-After` / reset header). */
     retryAfterMs?: number
   }
+  /** The app narrowed the upstream query on every `exact` clause of `args.recordFilter`. */
+  narrowed?: true
 }
 
 /**
@@ -362,6 +364,8 @@ export interface ConnectorRecordFilterCondition {
   /** A platform condition operator key: `'>'`, `'equals'`, `'is_not_empty'`. */
   operator: string
   value?: unknown
+  /** Set by the engine, never declared: the app must narrow on this clause exactly or throw `UnpushableFilterError`. */
+  exact?: boolean
 }
 
 /** One stream (fetch) declaration. */
@@ -401,6 +405,8 @@ export interface ConnectorStreamDecl {
    * merchant can loosen it later. A repeated path (`line_items[].sku`) is refused.
    */
   recordFilter?: readonly ConnectorRecordFilterCondition[]
+  /** Source path of the date that says when a record happened; the backfill floor and the accounting cutover apply to it. */
+  periodField?: string
 }
 
 /**
@@ -430,6 +436,12 @@ export interface ConnectorExecuteArgs<TConfig = Record<string, unknown>> {
    * record(s) and return `nextState: { backfillComplete: true }`.
    */
   triggerContext?: Record<string, string>
+  /**
+   * AND'd clauses to narrow the upstream query; the platform re-applies the full filter
+   * post-fetch. Translate what you can, skip the rest, and return `narrowed: true` once
+   * every `exact` clause is honoured; throw `UnpushableFilterError` for one you cannot.
+   */
+  recordFilter?: readonly ConnectorRecordFilterCondition[]
 }
 
 /**

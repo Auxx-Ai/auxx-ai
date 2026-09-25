@@ -87,6 +87,66 @@ export function createStreamSyncStateStore(db: Database, streamId: string): Sync
   return new StreamSyncStateStore(db, streamId)
 }
 
+// ── SyncStateStore over DataConnectorRun.progress.cursors (re-import) ───────────
+
+/** One stream's page position inside a re-import run; never the stream's durable state. */
+export type RunStreamCursor = Partial<
+  Pick<SyncState, 'phase' | 'cursor' | 'recordsSeen' | 'noProgressStrikes'>
+>
+
+/**
+ * A re-import keeps its page cursor on the run (v13 N5), so the stream's `state` stays
+ * byte-identical. The watermark is never read nor stored: the fetch sends no delta.
+ */
+class RunSyncStateStore implements SyncStateStore {
+  constructor(
+    private readonly db: Database,
+    private readonly runId: string,
+    private readonly streamId: string
+  ) {}
+
+  async load(): Promise<SyncState> {
+    const row = await this.db.query.DataConnectorRun.findFirst({
+      where: eq(schema.DataConnectorRun.id, this.runId),
+      columns: { progress: true },
+    })
+    const cursors = (row?.progress as { cursors?: Record<string, RunStreamCursor> } | null)?.cursors
+    const own = cursors?.[this.streamId] ?? {}
+    return {
+      phase: own.phase ?? 'backfill',
+      cursor: own.cursor,
+      recordsSeen: own.recordsSeen,
+      noProgressStrikes: own.noProgressStrikes,
+    }
+  }
+
+  async save(sync: SyncState): Promise<void> {
+    const own: RunStreamCursor = {
+      phase: sync.phase,
+      ...(sync.cursor ? { cursor: sync.cursor } : {}),
+      recordsSeen: sync.recordsSeen ?? 0,
+      noProgressStrikes: sync.noProgressStrikes ?? 0,
+    }
+    const T = schema.DataConnectorRun
+    // Expression update, not read-modify-write: sibling stream chains share this row.
+    await this.db
+      .update(T)
+      .set({
+        progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), '{cursors}', coalesce(${T.progress}->'cursors', '{}'::jsonb) || jsonb_build_object(${this.streamId}::text, ${JSON.stringify(own)}::jsonb), true)`,
+      })
+      .where(eq(T.id, this.runId))
+  }
+}
+
+/** Build a `SyncStateStore` over one re-import run's `progress.cursors.<streamId>`. */
+export function createRunSyncStateStore(
+  db: Database,
+  runId: string,
+  streamId: string
+): SyncStateStore {
+  return new RunSyncStateStore(db, runId, streamId)
+}
+
 // ── RunLedger over DataConnectorRun ─────────────────────────────────────────────
 
 class ConnectorRunLedger implements RunLedger {

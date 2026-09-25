@@ -404,6 +404,8 @@ export interface CatalogConnectorStream {
    * at install and updated on redeploy; a record that fails it is skipped before mapping.
    */
   recordFilter?: RecordFilterConditionGroup[]
+  /** Source path of the date the backfill floor and the accounting cutover apply to. */
+  periodField?: string
 }
 
 /**

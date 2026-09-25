@@ -8,6 +8,7 @@
 import { database as db } from '@auxx/database'
 import {
   type BackfillSliceJobData,
+  type DataConnectorSyncJobData,
   runBackfillSlice,
   runConnectorTeardownSlice,
   SLICE_LOCK_DURATION_MS,
@@ -21,25 +22,26 @@ import { createWorker } from '../utils/createWorker'
 
 const logger = createScopedLogger('worker:data-connector')
 
-interface DataConnectorSyncJobData {
-  type: 'data-connector-sync'
-  connectorId: string
-  organizationId: string
-  trigger?: 'manual' | 'scheduled' | 'webhook' | 'backfill'
-  /** Trial-sync §4.1 per-stream sample cap — set ⇒ a SAMPLE run that parks for review. */
-  sampleLimit?: number
-}
-
 /** "Sync now" / scheduled fire → start the resumable backfill chain. */
 async function handleDataConnectorSync(ctx: JobContext<DataConnectorSyncJobData>) {
-  const { connectorId, organizationId, trigger, sampleLimit } = ctx.data
+  const { connectorId, organizationId, trigger, sampleLimit, reimport, continueRunId, retryClaim } =
+    ctx.data
   logger.info('Starting data connector backfill chain', {
     connectorId,
     organizationId,
     trigger,
     sampleLimit,
+    reimport: !!reimport,
+    continueRunId,
+    attempt: ctx.job.attemptsMade + 1,
   })
-  await startConnectorSync(db, organizationId, connectorId, { trigger, sampleLimit })
+  await startConnectorSync(db, organizationId, connectorId, {
+    trigger,
+    sampleLimit,
+    reimport,
+    continueRunId,
+    retryClaim,
+  })
 }
 
 interface DataConnectorSweepJobData {

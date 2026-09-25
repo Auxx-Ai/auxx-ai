@@ -11,11 +11,16 @@
 // leaves the steady sibling's watermark alone and lets it run a delta inside the
 // backfill run without closing the run under the crawl; the explicit reset still
 // resets both; and a record seen only in the first run of the two-run backfill is
-// NOT archived when the crawl completes.
+// NOT archived when the crawl completes. The v13 re-import run (N5) and app backfill floor
+// (N2) ride the same world.
 
 import { is, Param, SQL } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ConditionGroup } from '../../conditions/types'
 import type { SyncState, SyncStateStore } from '../../sync-core/contracts'
+import type { ConnectorRecordFilterCondition } from '../connectors/types'
+import type { ReimportRunOptions } from '../reimport-filter'
+import type { RunStreamCursor } from '../sync-core-adapters'
 import type { ConnectorStreamState, DataConnectorDefinition } from '../types'
 
 // ── In-memory world ─────────────────────────────────────────────────────────────
@@ -28,6 +33,7 @@ interface FakeStream {
   syncMode: 'snapshot' | 'incremental'
   enabled: boolean
   requestConfig: null
+  recordFilter: ConditionGroup[] | null
   state: ConnectorStreamState
 }
 
@@ -36,8 +42,12 @@ interface FakeRun {
   dataConnectorId: string
   status: 'running' | 'completed' | 'partial' | 'failed'
   phase: 'backfill' | 'steady' | null
+  mode: string
   trigger: string
   chainSnapshot: Record<string, unknown> | null
+  recordFilter: ConnectorRecordFilterCondition[] | null
+  initiatedBy: string | null
+  progress: { cursors?: Record<string, RunStreamCursor> } | null
   startedAt: Date
   sampleLimit: number | null
   fetched: number
@@ -48,13 +58,32 @@ const world = {
   runs: [] as FakeRun[],
   runSeq: 0,
   connector: {} as Record<string, unknown>,
+  claimable: true,
   latch: null as number | null,
   sliceQueue: [] as { streamId: string; runId: string }[],
-  syncQueue: [] as { data: { trigger?: string }; opts?: { delayMs?: number; jobKey?: string } }[],
+  syncQueue: [] as SyncJob[],
   parkedAtCeiling: [] as string[],
   finalized: [] as { ok: boolean }[],
   resyncCleared: 0,
-  fetchCalls: [] as { streamKey: string; mode: string; state: ConnectorStreamState }[],
+  fetchCalls: [] as {
+    streamKey: string
+    mode: string
+    state: ConnectorStreamState
+    recordFilter?: readonly unknown[]
+  }[],
+  catalogStreams: [] as { key: string; periodField?: string }[],
+  customerPages: 0,
+  sinkFilters: [] as (ConditionGroup[] | undefined)[],
+}
+
+interface SyncJob {
+  data: {
+    trigger?: string
+    reimport?: ReimportRunOptions
+    continueRunId?: string
+    retryClaim?: true
+  }
+  opts?: { delayMs?: number; jobKey?: string }
 }
 
 const PAGE_SIZE = 500
@@ -65,6 +94,7 @@ function resetWorld() {
   world.streams.clear()
   world.runs.length = 0
   world.runSeq = 0
+  world.claimable = true
   world.latch = null
   world.sliceQueue.length = 0
   world.syncQueue.length = 0
@@ -72,6 +102,9 @@ function resetWorld() {
   world.finalized.length = 0
   world.resyncCleared = 0
   world.fetchCalls.length = 0
+  world.catalogStreams = []
+  world.customerPages = CUSTOMER_PAGES
+  world.sinkFilters.length = 0
   world.connector = {
     id: 'dc1',
     organizationId: 'org1',
@@ -92,6 +125,7 @@ function resetWorld() {
     syncMode: 'snapshot',
     enabled: true,
     requestConfig: null,
+    recordFilter: null,
     state: {},
   })
   world.streams.set('s-orders', {
@@ -102,6 +136,7 @@ function resetWorld() {
     syncMode: 'incremental',
     enabled: true,
     requestConfig: null,
+    recordFilter: null,
     state: { phase: 'steady', watermark: 'W1', recordsSeen: 42 },
   })
 }
@@ -180,6 +215,14 @@ const customersMapping = {
 
 // ── Seams ───────────────────────────────────────────────────────────────────────
 
+const spies = vi.hoisted(() => ({
+  resolveRelationships: vi.fn(async () => {}),
+  publishSyncRecordsChanged: vi.fn(async () => {}),
+  reconcileOrphans: vi.fn(),
+  reconcileManagedMarkers: vi.fn(async () => {}),
+  streamStoreBuilt: vi.fn(),
+}))
+
 vi.mock('../service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../service')>()
   return {
@@ -193,9 +236,13 @@ vi.mock('../service', async (importOriginal) => {
       })),
     }),
     claimForSync: async () => {
+      if (!world.claimable) return false
       world.connector.status = 'syncing'
       return true
     },
+    isNewestSyncRun: async (_db: unknown, _id: string, runId: string) =>
+      world.runs.filter((r) => r.trigger !== 'webhook' && r.mode !== 'reimport').at(-1)?.id ===
+      runId,
     initConnectorBackfillLatch: async (_db: unknown, _id: string, n: number) => {
       world.latch = n
     },
@@ -204,14 +251,29 @@ vi.mock('../service', async (importOriginal) => {
       world.latch = Math.max(world.latch - 1, 0)
       return world.latch
     },
-    openRun: async (_db: unknown, input: { trigger: string; phase?: 'backfill' | 'steady' }) => {
+    openRun: async (
+      _db: unknown,
+      input: {
+        trigger: string
+        mode: string
+        phase?: 'backfill' | 'steady'
+        chainSnapshot?: Record<string, unknown>
+        recordFilter?: ConnectorRecordFilterCondition[] | null
+        initiatedBy?: string | null
+        progress?: FakeRun['progress']
+      }
+    ) => {
       const run: FakeRun = {
         id: `run${++world.runSeq}`,
         dataConnectorId: 'dc1',
         status: 'running',
         phase: input.phase ?? null,
+        mode: input.mode,
         trigger: input.trigger,
-        chainSnapshot: (input as { chainSnapshot?: Record<string, unknown> }).chainSnapshot ?? null,
+        chainSnapshot: input.chainSnapshot ?? null,
+        recordFilter: input.recordFilter ?? null,
+        initiatedBy: input.initiatedBy ?? null,
+        progress: input.progress ?? null,
         startedAt: new Date(),
         sampleLimit: null,
         fetched: 0,
@@ -245,7 +307,7 @@ vi.mock('../service', async (importOriginal) => {
     foldRunManifest: async () => {},
     markRunManifestDegraded: async () => {},
     getRunManifest: async () => null,
-    publishSyncRecordsChanged: async () => {},
+    publishSyncRecordsChanged: spies.publishSyncRecordsChanged,
     setRunRateLimited: async () => {},
     parkConnectorSampleIfLastStream: async () => {},
   }
@@ -255,11 +317,27 @@ vi.mock('../sync-core-adapters', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../sync-core-adapters')>()
   return {
     ...actual,
-    createStreamSyncStateStore: (_db: unknown, streamId: string): SyncStateStore => ({
-      load: async () => actual.syncStateFromStream(world.streams.get(streamId)?.state ?? {}),
+    createStreamSyncStateStore: (_db: unknown, streamId: string): SyncStateStore => {
+      spies.streamStoreBuilt(streamId)
+      return {
+        load: async () => actual.syncStateFromStream(world.streams.get(streamId)?.state ?? {}),
+        save: async (sync: SyncState) => {
+          const s = world.streams.get(streamId)
+          if (s) s.state = actual.applySyncStateToStream(s.state, sync)
+        },
+      }
+    },
+    // In-memory mirror of `progress.cursors.<streamId>`; the SQL is covered in reimport.int.test.ts.
+    createRunSyncStateStore: (_db: unknown, runId: string, streamId: string): SyncStateStore => ({
+      load: async () => {
+        const own = world.runs.find((r) => r.id === runId)?.progress?.cursors?.[streamId] ?? {}
+        return { ...own, phase: own.phase ?? 'backfill' }
+      },
       save: async (sync: SyncState) => {
-        const s = world.streams.get(streamId)
-        if (s) s.state = actual.applySyncStateToStream(s.state, sync)
+        const run = world.runs.find((r) => r.id === runId)
+        if (!run) return
+        const { watermark: _held, ...own } = sync
+        run.progress = { ...run.progress, cursors: { ...run.progress?.cursors, [streamId]: own } }
       },
     }),
     createConnectorRunLedger: (_db: unknown, run: { id: string }) => ({
@@ -283,10 +361,7 @@ vi.mock('../data-connector-queue', () => ({
   enqueueBackfillSlice: async (data: { streamId: string; runId: string }) => {
     world.sliceQueue.push({ streamId: data.streamId, runId: data.runId })
   },
-  enqueueConnectorSync: async (
-    data: { trigger?: string },
-    opts?: { delayMs?: number; jobKey?: string }
-  ) => {
+  enqueueConnectorSync: async (data: SyncJob['data'], opts?: SyncJob['opts']) => {
     world.syncQueue.push({ data, opts })
   },
 }))
@@ -325,16 +400,28 @@ vi.mock('../../record-rules/sync-manifest-collector', async (importOriginal) => 
   const actual = await importOriginal<typeof import('../../record-rules/sync-manifest-collector')>()
   return { ...actual, loadManifestCollector: async () => actual.createManifestCollector({}) }
 })
-vi.mock('../relationship-pass', () => ({ resolveRelationships: async () => {} }))
+vi.mock('../relationship-pass', () => ({ resolveRelationships: spies.resolveRelationships }))
 vi.mock('../reconciliation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../reconciliation')>()
-  return { ...actual, reconcileManagedMarkers: async () => {} }
+  spies.reconcileOrphans.mockImplementation(actual.reconcileOrphans)
+  return {
+    ...actual,
+    reconcileOrphans: spies.reconcileOrphans,
+    reconcileManagedMarkers: spies.reconcileManagedMarkers,
+  }
 })
 // The sink is the one seam that stays a spy: each fetched record counts as fetched
 // (what the ceiling reads), and the orphan diff's inputs/outputs are what we assert.
 vi.mock('../sink-source-record', () => ({
-  sinkSourceRecord: async (ctx: { counters: { fetched: number } }) => {
+  sinkSourceRecord: async (
+    ctx: { counters: { fetched: number } },
+    _mappings: unknown,
+    _record: unknown,
+    _updatedAtPath: unknown,
+    recordFilter: ConditionGroup[] | undefined
+  ) => {
     ctx.counters.fetched += 1
+    world.sinkFilters.push(recordFilter)
   },
 }))
 const listExistingItems = vi.fn()
@@ -359,17 +446,22 @@ function fixtureDefinition(): DataConnectorDefinition {
     requestModel: 'fixed',
     streams: [],
     fetch: async (args) => {
-      world.fetchCalls.push({ streamKey: args.streamKey, mode: args.mode, state: args.state })
+      world.fetchCalls.push({
+        streamKey: args.streamKey,
+        mode: args.mode,
+        state: args.state,
+        recordFilter: args.recordFilter,
+      })
       const from = args.state.backfillCursor ? Number(args.state.backfillCursor.value) : 1
       async function* customers() {
-        for (let page = from; page <= CUSTOMER_PAGES; page++) {
+        for (let page = from; page <= world.customerPages; page++) {
           for (let i = 0; i < PAGE_SIZE; i++) {
             yield { streamKey: 'customers', fields: { id: `c-${page}-${i}` } }
           }
           yield {
             __checkpoint: true as const,
             cursor:
-              page < CUSTOMER_PAGES
+              page < world.customerPages
                 ? { kind: 'pageNumber' as const, value: String(page + 1) }
                 : undefined,
           }
@@ -383,30 +475,47 @@ function fixtureDefinition(): DataConnectorDefinition {
     },
   }
 }
+vi.mock('../connectors/app-connector-adapter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../connectors/app-connector-adapter')>()),
+  loadAppCatalogConnector: async () => ({ streams: world.catalogStreams }),
+}))
+vi.mock('../../accounting/ledger/setup/accounting-enabled', () => ({
+  isAccountingActive: async () => false,
+}))
 vi.mock('../connector-runtime', () => ({
   prepareConnectorFetch: async () => ({ definition: fixtureDefinition(), credential: null }),
 }))
 
+import { runFilterGroup } from '../reimport-filter'
 import {
   BACKFILL_CONTINUE_DELAY_MS,
   backfillPendingChange,
+  ConnectorClaimedError,
   runBackfillSlice,
   startConnectorSync,
 } from '../slice-orchestrator'
 
 const DB = db as never
 
+async function runNextSlice(): Promise<void> {
+  const job = world.sliceQueue.shift()!
+  await runBackfillSlice(DB, {
+    connectorId: 'dc1',
+    organizationId: 'org1',
+    streamId: job.streamId,
+    runId: job.runId,
+  })
+}
+
 /** Run every queued slice until the queue drains (the worker re-invoking the chain). */
 async function drainSlices(): Promise<void> {
-  while (world.sliceQueue.length > 0) {
-    const job = world.sliceQueue.shift()!
-    await runBackfillSlice(DB, {
-      connectorId: 'dc1',
-      organizationId: 'org1',
-      streamId: job.streamId,
-      runId: job.runId,
-    })
-  }
+  while (world.sliceQueue.length > 0) await runNextSlice()
+}
+
+/** Run the next queued sync job the way the worker does. */
+function runSyncJob(job: SyncJob) {
+  const { trigger, ...rest } = job.data
+  return startConnectorSync(DB, 'org1', 'dc1', { trigger: trigger as 'backfill', ...rest })
 }
 
 function state(id: string): ConnectorStreamState {
@@ -419,6 +528,7 @@ function fetchesFor(streamKey: string, runIndexStart: number) {
 
 beforeEach(() => {
   resetWorld()
+  for (const spy of Object.values(spies)) spy.mockClear()
   listExistingItems.mockReset()
   archiveRecord.mockReset()
   listExistingItems.mockResolvedValue([])
@@ -437,7 +547,14 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     expect(world.connector.status).toBe('paused')
     expect(world.syncQueue).toEqual([
       {
-        data: { connectorId: 'dc1', organizationId: 'org1', trigger: 'backfill' },
+        data: {
+          connectorId: 'dc1',
+          organizationId: 'org1',
+          trigger: 'backfill',
+          continueRunId: 'run1',
+          // A continuation that finds the connector claimed waits instead of being dropped.
+          retryClaim: true,
+        },
         opts: { delayMs: BACKFILL_CONTINUE_DELAY_MS, jobKey: 'continue-run1' },
       },
     ])
@@ -465,10 +582,7 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
 
     // The continuation the park enqueued (the connector is paused; a `backfill`
     // trigger may claim a paused connector, so it flips back to syncing).
-    const continuation = world.syncQueue.shift()!
-    await startConnectorSync(DB, 'org1', 'dc1', {
-      trigger: continuation.data.trigger as 'backfill',
-    })
+    await runSyncJob(world.syncQueue.shift()!)
 
     // The trigger reset neither stream: the cursor, the progress and the backfill
     // marker survive on the snapshot stream; the sibling keeps its watermark.
@@ -547,8 +661,12 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
       dataConnectorId: 'dc1',
       status: 'completed',
       phase: 'backfill',
+      mode: 'snapshot',
       trigger: 'manual',
       chainSnapshot: null,
+      recordFilter: null,
+      initiatedBy: null,
+      progress: null,
       startedAt: new Date(Date.now() - 86_400_000),
       sampleLimit: null,
       fetched: 0,
@@ -586,5 +704,253 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     // Only the item last seen before the backfill began is archived.
     expect(archiveRecord).toHaveBeenCalledTimes(1)
     expect(archiveRecord.mock.calls[0]?.[1]).toMatchObject({ id: 'i-run-old' })
+  })
+})
+
+describe('the app backfill floor across a two-run backfill (v13 N2, N4)', () => {
+  beforeEach(() => {
+    world.connector.type = 'app:shop'
+    world.connector.definitionKind = 'app'
+    world.connector.config = { backfillWindowSpan: 'last_90_days' }
+    world.catalogStreams = [{ key: 'customers', periodField: 'createdAt' }]
+  })
+
+  it('pins one floor for the whole backfill, sends it exact, and never reconciles by absence', async () => {
+    listExistingItems.mockResolvedValue([
+      {
+        id: 'i-gone',
+        entityInstanceId: 'e0',
+        entityDefinitionId: 'def-customers',
+        lastSeenRunId: null,
+      },
+    ])
+
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    const floor = state('s-customers').backfillFloor
+    expect(floor).toBeDefined()
+    const snapshot = world.runs[0]?.chainSnapshot as { streams: Record<string, unknown>[] }
+    expect(snapshot.streams.find((s) => s.streamId === 's-customers')).toMatchObject({
+      periodField: 'createdAt',
+      backfillFloor: floor,
+    })
+    await drainSlices()
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'backfill' })
+    expect(state('s-customers').backfillFloor).toBe(floor)
+    await drainSlices()
+
+    const clause = {
+      fieldId: 'createdAt',
+      operator: 'between',
+      value: { from: floor },
+      exact: true,
+    }
+    const customerFetches = world.fetchCalls.filter((c) => c.streamKey === 'customers')
+    expect(customerFetches.length).toBeGreaterThan(1)
+    expect(
+      customerFetches.every((c) => JSON.stringify(c.recordFilter) === JSON.stringify([clause]))
+    ).toBe(true)
+    // The steady sibling is not floored.
+    expect(fetchesFor('orders', 0).every((c) => c.recordFilter === undefined)).toBe(true)
+
+    expect(state('s-customers').phase).toBe('steady')
+    expect(listExistingItems).not.toHaveBeenCalled()
+    expect(archiveRecord).not.toHaveBeenCalled()
+  })
+
+  it("sends no floor on span 'all'", async () => {
+    world.connector.config = { backfillWindowSpan: 'all' }
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    expect(state('s-customers').backfillFloor).toBeUndefined()
+    expect(world.fetchCalls.every((c) => c.recordFilter === undefined)).toBe(true)
+  })
+})
+
+describe('the re-import run (v13 N5)', () => {
+  const STORED_CUSTOMER_FILTER: ConditionGroup[] = [
+    {
+      id: 'g1',
+      logicalOperator: 'AND',
+      conditions: [{ id: 'c1', fieldId: 'orders_count', operator: '>', value: 0 }],
+    },
+  ]
+  const STORED_ORDER_FILTER: ConditionGroup[] = [
+    {
+      id: 'g2',
+      logicalOperator: 'AND',
+      conditions: [{ id: 'c2', fieldId: 'financial_status', operator: 'is', value: 'paid' }],
+    },
+  ]
+  const AUGUST: ConnectorRecordFilterCondition = {
+    fieldId: 'createdAt',
+    operator: 'between',
+    value: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+    exact: true,
+  }
+  const reimportOf = (streamId: string): ReimportRunOptions => ({
+    streamIds: [streamId],
+    recordFilter: [AUGUST],
+    initiatedBy: 'u1',
+  })
+  const frozenState = (id: string) => JSON.stringify(state(id))
+
+  beforeEach(() => {
+    world.connector.type = 'app:shop'
+    world.connector.definitionKind = 'app'
+    world.connector.resyncPending = { streamIds: ['s-orders'] }
+    world.customerPages = 2
+    Object.assign(world.streams.get('s-customers')!, {
+      recordFilter: STORED_CUSTOMER_FILTER,
+      state: { phase: 'steady', backfillStartedAt: '2026-01-01T00:00:00.000Z', recordsSeen: 7 },
+    })
+    Object.assign(world.streams.get('s-orders')!, {
+      recordFilter: STORED_ORDER_FILTER,
+      state: { phase: 'steady', watermark: 'W1', recordsSeen: 42, backfillFloor: 'F0' },
+    })
+  })
+
+  it('sends no watermark, sends the run clauses exact, and leaves stream state byte-identical', async () => {
+    const before = frozenState('s-orders')
+    const siblingBefore = frozenState('s-customers')
+
+    await startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: 'manual',
+      reimport: { ...reimportOf('s-orders'), requestId: 'req-1' },
+    })
+    expect(world.runs[0]).toMatchObject({
+      mode: 'reimport',
+      phase: 'backfill',
+      recordFilter: [AUGUST],
+      initiatedBy: 'u1',
+      progress: { requestId: 'req-1' },
+    })
+    expect(world.latch).toBe(1)
+    expect(world.sliceQueue.map((j) => j.streamId)).toEqual(['s-orders'])
+
+    await drainSlices()
+
+    expect(frozenState('s-orders')).toBe(before)
+    expect(frozenState('s-customers')).toBe(siblingBefore)
+    expect(spies.streamStoreBuilt).not.toHaveBeenCalled()
+
+    expect(world.fetchCalls).toHaveLength(1)
+    const [fetch] = world.fetchCalls
+    expect(fetch?.mode).toBe('snapshot')
+    expect(fetch?.state.watermark).toBeUndefined()
+    // The stored filter is pushable here and goes without `exact`; the run clause is exact.
+    expect(fetch?.recordFilter).toEqual([
+      { fieldId: 'financial_status', operator: 'is', value: 'paid' },
+      AUGUST,
+    ])
+    // Post-fetch: the stream filter AND the run filter.
+    expect(world.sinkFilters[0]).toEqual([...STORED_ORDER_FILTER, runFilterGroup([AUGUST])])
+  })
+
+  it('finalizes with the relationship pass, ledger close, claim release and publish, but never reconciles', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: 'manual',
+      reimport: reimportOf('s-customers'),
+    })
+    await drainSlices()
+
+    expect(spies.resolveRelationships).toHaveBeenCalledTimes(1)
+    expect(spies.publishSyncRecordsChanged).toHaveBeenCalledTimes(1)
+    expect(world.runs[0]?.status).toBe('completed')
+    expect(world.finalized.map((f) => f.ok)).toEqual([true])
+    expect(world.connector.status).toBe('live')
+    expect(spies.reconcileOrphans).not.toHaveBeenCalled()
+    expect(spies.reconcileManagedMarkers).not.toHaveBeenCalled()
+    expect(world.resyncCleared).toBe(0)
+    // N4: the snapshot stream's stored filter is withheld; only the run clause is sent.
+    expect(
+      world.fetchCalls.every((c) => JSON.stringify(c.recordFilter) === JSON.stringify([AUGUST]))
+    ).toBe(true)
+  })
+
+  it('pages on the run row, resumes from its progress, and continues a parked run from its cursors', async () => {
+    world.customerPages = 25
+    const before = frozenState('s-customers')
+    await startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: 'manual',
+      reimport: reimportOf('s-customers'),
+    })
+
+    await runNextSlice()
+    expect(world.runs[0]?.progress?.cursors?.['s-customers']?.cursor).toEqual({
+      kind: 'pageNumber',
+      value: '11',
+    })
+    expect(frozenState('s-customers')).toBe(before)
+
+    // The next slice job (a crash replay reads the same place) starts from the run's cursor.
+    await runNextSlice()
+    expect(world.fetchCalls[1]?.state.backfillCursor).toEqual({ kind: 'pageNumber', value: '11' })
+
+    // 10 000 fetched crosses the ceiling: the run parks and a re-import continuation is queued.
+    expect(world.runs[0]?.status).toBe('partial')
+    expect(world.syncQueue).toEqual([
+      {
+        data: {
+          connectorId: 'dc1',
+          organizationId: 'org1',
+          trigger: 'backfill',
+          reimport: reimportOf('s-customers'),
+          continueRunId: 'run1',
+          retryClaim: true,
+        },
+        opts: { delayMs: BACKFILL_CONTINUE_DELAY_MS, jobKey: 'continue-run1' },
+      },
+    ])
+
+    await runSyncJob(world.syncQueue.shift()!)
+    expect(world.runs[1]?.mode).toBe('reimport')
+    expect(world.runs[1]?.progress?.cursors?.['s-customers']?.cursor).toEqual({
+      kind: 'pageNumber',
+      value: '21',
+    })
+    const fetchesBefore = world.fetchCalls.length
+    await drainSlices()
+    expect(world.fetchCalls[fetchesBefore]?.state.backfillCursor).toEqual({
+      kind: 'pageNumber',
+      value: '21',
+    })
+    expect(world.runs[1]?.status).toBe('completed')
+    expect(frozenState('s-customers')).toBe(before)
+  })
+})
+
+describe('waiting for the claim (v13 N5)', () => {
+  it('throws for a claim-retrying job so BullMQ retries it, without erroring the connector', async () => {
+    world.claimable = false
+    const started = startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: 'manual',
+      reimport: { streamIds: ['s-orders'], recordFilter: [] },
+      retryClaim: true,
+    })
+    await expect(started).rejects.toBeInstanceOf(ConnectorClaimedError)
+    expect(world.runs).toHaveLength(0)
+    expect(world.finalized).toEqual([])
+  })
+
+  it('drops a plain sync that finds the connector claimed', async () => {
+    world.claimable = false
+    expect(await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })).toBe(false)
+    expect(world.runs).toHaveLength(0)
+  })
+
+  it('drops a backfill continuation once a manual sync already resumed the parked run', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    const continuation = world.syncQueue.shift()!
+
+    // Sync now resumes the parked crawl and completes it before the continuation fires.
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    expect(world.connector.status).toBe('live')
+    const runs = world.runs.length
+
+    expect(await runSyncJob(continuation)).toBe(false)
+    expect(world.runs).toHaveLength(runs)
+    expect(world.sliceQueue).toEqual([])
   })
 })

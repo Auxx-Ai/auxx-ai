@@ -22,6 +22,7 @@
  */
 
 export { defineDataConnector } from './define-data-connector.js'
+export { EXTERNAL_ID_FIELD, UnpushableFilterError } from './errors.js'
 export type {
   ConnectorConnection,
   ConnectorConnectionField,
@@ -36,6 +37,7 @@ export type {
   ConnectorMapping,
   ConnectorOwnedMappingField,
   ConnectorRecord,
+  ConnectorRecordFilterCondition,
   ConnectorStreamDecl,
   ConnectorStreamState,
   ContributingConnectorMapping,

@@ -239,10 +239,20 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
 
   // The window radio only makes sense when a stream declares which param carries the
   // backfill floor (templates do; bare generic-rest doesn't — Step 9 §1.2/§3.2). We
-  // can't filter a param we don't know, so hide the choice otherwise.
+  // can't filter a param we don't know, so hide the choice otherwise. An app stream
+  // qualifies when its catalog declares a `periodField` the engine floors on (v13 N2).
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
+  const periodStreamKeys = new Set(
+    isGenericRest
+      ? []
+      : (installation?.dataConnectors?.[0]?.streams ?? [])
+          .filter((s) => s.periodField)
+          .map((s) => s.key)
+  )
   const supportsWindow = (streams.data ?? []).some(
-    (s) => (s.requestConfig as { backfillWindow?: { sinceParam?: string } } | null)?.backfillWindow
+    (s) =>
+      (s.requestConfig as { backfillWindow?: { sinceParam?: string } } | null)?.backfillWindow ||
+      periodStreamKeys.has(s.streamKey ?? '')
   )
 
   // Behavior + schedule + backfill window all edit the one connector draft (the unified

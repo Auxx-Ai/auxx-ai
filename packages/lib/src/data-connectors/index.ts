@@ -251,6 +251,15 @@ export {
   type RecordFilterVerdict,
   recordMatchesFilter,
 } from './record-filter'
+export {
+  findRecordConnectorBySource,
+  findRefreshItem,
+  type RequestRecordRefreshResult,
+  requestRecordRefresh,
+} from './refresh-record'
+export { readRecordRefresh } from './refresh-record-status'
+// Re-import a period or refresh records by id (v13 N5)
+export { requestReimport } from './reimport'
 export { type RelationshipPassSummary, resolveRelationships } from './relationship-pass'
 // v12.1 Phases 3c + 5 (removed-upstream): the "Gone upstream" reads, the archive-cap
 // override, and the "Keep record" unbind.
