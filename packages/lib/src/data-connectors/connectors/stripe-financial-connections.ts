@@ -420,16 +420,10 @@ export function createStripeFinancialConnectionsConnector(
       }
 
       if (args.streamKey === FC_ACCOUNTS_STREAM) {
-        return {
-          records: accountStream(account, filters),
-          nextState: { ...args.state },
-        }
+        return { records: accountStream(account, filters) }
       }
 
-      return {
-        records: transactionStream(client, account, args, filters),
-        nextState: { ...args.state },
-      }
+      return { records: transactionStream(client, account, args, filters) }
     },
   }
 }

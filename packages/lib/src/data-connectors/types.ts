@@ -13,6 +13,7 @@ import type {
   CatalogConnectorMapping,
   CatalogConnectorOwnedMappingField,
   CatalogConnectorStream,
+  CatalogConnectorStreamQuery,
   Database,
 } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
@@ -80,13 +81,11 @@ export interface DataConnectorConfig {
   }
   filters?: Record<string, unknown>
   /**
-   * How far back a BACKFILL crawls (Step 9 §1.2, plain-language UX). Connector-level
-   * (applies to every stream). `'all'` (default) crawls full history. A bounded span
-   * injects a `created`-style floor on the first backfill request — but only on streams
-   * whose {@link StreamRequestConfig.backfillWindow} declares WHICH param carries it
-   * (templates do; bare generic-rest doesn't, so the UI hides the choice).
+   * `YYYY-MM-DD` the connector's history starts at; absent ⇒ everything. Becomes the
+   * `period.from` floor of every stream that can be bounded (an app stream's
+   * `query.period`, a generic-REST {@link StreamRequestConfig.backfillWindow}).
    */
-  backfillWindowSpan?: 'all' | 'last_90_days' | 'last_12_months'
+  historyStartDate?: string
   /**
    * Webhook-sync SIGNAL — which inbound event drives this connector (v7). One per
    * connector: a connector is bound to a single credential/baseUrl = one provider, so
@@ -148,11 +147,10 @@ export interface StreamRequestConfig {
   /** Steady-phase delta config (absent ⇒ every steady run re-crawls in full). */
   incremental?: StreamIncrementalConfig
   /**
-   * Declares WHICH request param carries the backfill-window floor (Step 9 §1.2),
-   * e.g. Shopify `created_at_min` / Stripe `created[gte]`. Present ⇒ the connector
-   * can honor {@link DataConnectorConfig.backfillWindowSpan} on this stream (and the
-   * UI offers the window radio). Distinct from `incremental.sinceParam`, which is the
-   * STEADY delta floor (`updated_at`); this one bounds the initial BACKFILL crawl.
+   * Declares WHICH request param carries the history floor, e.g. Shopify
+   * `created_at_min` / Stripe `created[gte]`. Present ⇒ the stream honours
+   * {@link DataConnectorConfig.historyStartDate} (the fetch's `query.period.from`).
+   * Distinct from `incremental.sinceParam`, which is the STEADY delta floor (`updated_at`).
    */
   backfillWindow?: { sinceParam: string; format?: 'iso' | 'unix' }
   /**
@@ -191,7 +189,11 @@ export interface StreamWebhookTrigger {
    * normalized outputs (`resourceId`, `updatedAt`) over the raw body. e.g.
    * `['resourceId', 'updatedAt']` → `{resourceId}` / `{updatedAt}` in the request.
    */
-  paths: string[]
+  paths?: string[]
+  /** App streams only: the payload path whose value the steered fetch queries as `{ ids: [value] }`. */
+  idPath?: string
+  /** App streams only: sent as `query.idKind` when `idPath` holds a foreign id. */
+  idKind?: string
   /** When the event is a delete, skip the fetch and archive by externalId. */
   deleteWhen?: { tokenTruthy?: string } | { topicEquals?: string }
   /** Dotted path into `triggerData` for the externalId to archive on delete. e.g. `'resourceId'`. */
@@ -234,29 +236,15 @@ export interface ConnectorStreamState {
   backfillStartedAt?: string
   /** Running total for the progress UI (counts, never a percent). */
   recordsSeen?: number
-  /** Steady-phase delta floor; the source returns a monotonic max each slice. */
-  watermark?: string
   /**
-   * Backfill-window floor (Step 9 §1.2) — the already-formatted value injected on
-   * every page of a snapshot run (Shopify `created_at_min` / Stripe `created[gte]`).
-   * PINNED ONCE when the backfill resets to fresh (`freshBackfillState`), so it stays
-   * stable across every slice of the chain (no per-slice `now` drift). Absent ⇒ span
-   * `'all'` or no `backfillWindow` declared ⇒ crawl full history.
+   * Steady-phase delta marker. Generic REST: the max `watermarkField` seen (ISO/epoch).
+   * App streams: the app's opaque `since`, JSON-encoded, replaced (never maxed) each run.
    */
-  backfillFloor?: string
+  watermark?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
-  // 🛑 No `backfillComplete` here, deliberately. It was written (`false` by
-  // `freshBackfillState`, `true` by generic-rest's terminal `nextState`) and read by
-  // NOTHING, so on every app connector it sat at `false` forever — a permanent false
-  // negative for anyone who took it to mean "this stream finished its backfill". The
-  // real signal is `phase` (`backfill` → `steady`). Removed in task 43 §4.
-  //
-  // ⚠️ Not to be confused with `AppConnectorPage['nextState'].backfillComplete`
-  // (`connectors/app-connector-adapter.ts`), which is the LIVE wire-protocol flag an
-  // app returns to mark its last page. That one is load-bearing — leave it alone.
-  //
-  // Existing rows still carry the key; the index signature below tolerates it.
+  // `phase` (`backfill` → `steady`) is the only "finished its backfill" signal; older rows
+  // carry dead keys the index signature below tolerates.
   /** Consecutive no-progress slices (stall guard) — see the core `SyncState`. */
   noProgressStrikes?: number
   [key: string]: unknown
@@ -307,6 +295,8 @@ export interface ConnectorCheckpoint {
   cursor?: SyncCursor
   /** Max watermark observed through this page (steady/incremental delta floor). */
   watermark?: string
+  /** An app's encoded `since` from its last page; replaces the watermark instead of folding into it. */
+  since?: string
 }
 
 /** What a connector `fetch` iterable yields — a record to sink or a resume point. */
@@ -365,10 +355,27 @@ export class PermanentSteerError extends Error {
   }
 }
 
-/** A connector fetch result — a stream of records (+ resume checkpoints) plus the next cursor. */
+/**
+ * An app reported its `query.since` as stale (the SDK `DeltaExpiredError`, crossed as data).
+ * The slice handler clears the watermark and restarts the stream's backfill once per run.
+ */
+export class ConnectorDeltaExpiredError extends Error {
+  readonly code = 'DELTA_EXPIRED'
+
+  constructor(streamKey: string) {
+    super(`Stream "${streamKey}" delta marker expired`)
+    this.name = 'ConnectorDeltaExpiredError'
+  }
+}
+
+/** Matched by `code`, like every error that has crossed the sandbox. */
+export function isConnectorDeltaExpired(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 'DELTA_EXPIRED'
+}
+
+/** A connector fetch result — a lazy stream of records interleaved with resume checkpoints. */
 export interface FetchResult {
   records: AsyncIterable<ConnectorYield>
-  nextState: ConnectorStreamState
 }
 
 // ── Source schema declarations (app-fields-and-entities-plan Phase 2 §4.3) ────
@@ -396,19 +403,27 @@ export type ConnectorStreamDecl = CatalogConnectorStream
 /** Decrypted credential handed to a connector's fetch. Shape is provider-defined. */
 export type DecryptedCredential = Record<string, unknown>
 
-/** One AND'd narrowing clause sent to a connector fetch; mirrors the SDK type of the same name. */
-export interface ConnectorRecordFilterCondition {
-  /** A source path into the raw record. */
-  fieldId: string
-  operator: string
-  value?: unknown
-  /** The connector must narrow on this clause exactly, or fail the fetch. */
-  exact?: boolean
+/** What one fetch is asked for; mirrors the SDK `ConnectorQuery`. Honoured exactly. */
+export interface ConnectorQuery {
+  /** Exactly these ids; absent `idKind` ⇒ the stream's own external ids. */
+  ids?: string[]
+  /** A foreign id kind, set with `ids` on a webhook-steered fetch. */
+  idKind?: string
+  /** UTC ISO bounds on the stream's `period` path; `from` inclusive, `to` exclusive. */
+  period?: { from?: string; to?: string }
+  /** The app's opaque marker from its previous run's last page. */
+  since?: unknown
 }
+
+/** What a stream can be queried by; the app catalog declaration. */
+export type ConnectorStreamQueryDecl = CatalogConnectorStreamQuery
 
 /** Arguments passed to a connector fetch. */
 export interface ConnectorFetchArgs {
   streamKey: string
+  /** The typed query an app connector executes; built-ins read only `period.from` (generic REST). */
+  query: ConnectorQuery
+  /** Built-ins only: generic REST's own delta and paging read these. */
   mode: 'snapshot' | 'incremental'
   state: ConnectorStreamState
   /**
@@ -422,15 +437,10 @@ export interface ConnectorFetchArgs {
   /** Per-stream request config (generic-rest). */
   requestConfig?: StreamRequestConfig
   /**
-   * Resolved `{token}` → value map for a webhook-STEERED fetch (sync bridge §4.1).
-   * Undefined for normal scheduled/backfill syncs. The generic-rest connector
-   * interpolates these into the request's path/params/headers/body (the same
-   * `{key}` mechanism `baseUrlTemplate`/`authApply` use) so a webhook delivery
-   * points the fetch at exactly the changed resource.
+   * Generic REST only: the resolved `{token}` → value map of a webhook-steered fetch,
+   * interpolated into the request's path/params/headers/body. App streams steer by `query.ids`.
    */
   triggerContext?: Record<string, string>
-  /** AND'd clauses to narrow the upstream query; the engine re-applies the full filter post-fetch. */
-  recordFilter?: readonly ConnectorRecordFilterCondition[]
   /**
    * Per-call override merged onto the endpoint's `rateLimit` policy. The sliced
    * `SyncSource` sets `{ maxRetries: 0 }` so a throttle returns immediately (the

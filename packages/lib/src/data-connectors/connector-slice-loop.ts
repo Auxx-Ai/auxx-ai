@@ -74,7 +74,9 @@ export async function runConnectorSlice(
 
       if (isConnectorCheckpoint(y)) {
         pages += 1
-        if (y.watermark) watermark = maxWatermark(watermark, y.watermark)
+        // An app's `since` is opaque, so it replaces; a generic-REST watermark is a comparable max.
+        if (y.since !== undefined) watermark = y.since
+        else if (y.watermark) watermark = maxWatermark(watermark, y.watermark)
 
         // No cursor ⇒ the source is exhausted for this phase.
         if (y.cursor === undefined) {

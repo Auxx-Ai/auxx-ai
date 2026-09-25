@@ -59,7 +59,9 @@ function catalog(declare: {
 }): CatalogDataConnector {
   const stream: CatalogConnectorStream = {
     key: 'product',
-    syncMode: declare.syncMode ?? 'incremental',
+    ...((declare.syncMode ?? 'incremental') === 'incremental'
+      ? { query: { since: true as const } }
+      : {}),
     mappings: [
       {
         rootPath: '',

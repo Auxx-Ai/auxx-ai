@@ -10,10 +10,10 @@
 // Three gates decide whether a mapping participates, and each one means something
 // different (v12 §2):
 //
-//  • `syncMode === 'snapshot'` — absence only means deletion when the fetch saw
-//    EVERYTHING. An incremental stream sees a delta, so absence there means
-//    "unchanged", and it never reconciles. This gate is not negotiable; the
-//    deferred id-only reconcile crawl is what will relax it correctly.
+//  • `syncMode === 'snapshot'` fetched with an unbounded `{}` query — absence only
+//    means deletion when the fetch saw EVERYTHING. An incremental stream sees a
+//    delta and a floored one sees a period, so absence there means "not asked for",
+//    and they never reconcile (the caller filters on {@link streamReconcilesByAbsence}).
 //  • `linkMode === 'upsert'` — a reference mapping writes nothing, so it owns
 //    nothing to archive.
 //  • `orphanBehavior !== 'ignore'` — the mapping must ASK. This replaced the old
@@ -52,7 +52,8 @@ import {
 import { type DecodedMapping, findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { EntitySink, SyncCtx } from './sinks/types'
-import type { ConnectorStreamState, OrphanBehavior, SyncMode } from './types'
+import { isUnboundedQuery } from './stream-query'
+import type { ConnectorQuery, ConnectorStreamState, OrphanBehavior, SyncMode } from './types'
 
 const logger = createScopedLogger('data-connector-reconciliation')
 
@@ -78,12 +79,19 @@ export function mappingReconcilesByAbsence(
   return mapping.linkMode === 'upsert' && mapping.orphanBehavior !== 'ignore'
 }
 
-/** Whether {@link reconcileOrphans} could archive or flag anything on this stream. */
-export function streamReconcilesByAbsence(stream: {
-  syncMode: SyncMode
-  mappings: Pick<DecodedMapping, 'linkMode' | 'orphanBehavior'>[]
-}): boolean {
-  return stream.syncMode === 'snapshot' && stream.mappings.some(mappingReconcilesByAbsence)
+/** Whether {@link reconcileOrphans} may archive or flag anything on a stream fetched with `query`. */
+export function streamReconcilesByAbsence(
+  stream: {
+    syncMode: SyncMode
+    mappings: Pick<DecodedMapping, 'linkMode' | 'orphanBehavior'>[]
+  },
+  query: ConnectorQuery
+): boolean {
+  return (
+    stream.syncMode === 'snapshot' &&
+    isUnboundedQuery(query) &&
+    stream.mappings.some(mappingReconcilesByAbsence)
+  )
 }
 
 /**

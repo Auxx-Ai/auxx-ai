@@ -500,6 +500,52 @@ platform side is `CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST` in `app-catalog.ts`, hon
 `assertContributingTargetWritable` the same way as the totals allow-list. Quote, work-order,
 build, ticket and `vendor_bill_internal_number` numbers stay hook-only.
 
+### The stream's `query` and the `execute` contract
+
+A stream declares what it can be **queried by**, and `execute` fetches exactly that query, one
+page at a time. The platform owns everything else: scheduling, phases, the history floor, the
+delta marker's storage and reconciliation. Design: `plans/data-connectors/v14/typed-query-brainstorm.md`;
+engine side: `docs/data-connectors-architecture-guide.md` §4.
+
+```ts
+query?: {
+  ids?: true        // can fetch named records: refresh, re-import a selection, webhook steer
+  period?: string   // source path of the date that says when a record happened (`createdAt`, `issuedAt`)
+  since?: true      // can return a delta marker; makes the stream incremental
+}
+
+execute({ streamKey, query, cursor, connection, config }) // → { records, cursor?, since?, rateLimited? }
+```
+
+- **`query` is honoured exactly; nothing in it is a hint.** `{ ids }` means those records only
+  (`idKind` rides along on a steer whose delivery carries a foreign id); `{ period: { from, to } }`
+  is UTC ISO on the declared `period` path, `from` inclusive, `to` exclusive; `{ since }` is the
+  marker this stream returned last run. `{}` means everything. An undeclared capability is refused
+  **before** the run starts, so `execute` never sees a query its stream can't serve.
+- **`cursor` pages within one query.** Return the next page's cursor, or none when the query is
+  exhausted. The platform loops `execute`; the app never loops itself.
+- **`since` lives across runs.** Return it on the **last page only**. It is opaque JSON: a max
+  `updated_at`, a Gmail `historyId`, a Graph `deltaLink`. The platform stores it and hands it back as
+  the next steady run's `query.since`, never comparing or interpreting it. When the provider
+  says the marker is stale, `throw new DeltaExpiredError(streamKey)`: the platform clears it and
+  restarts the stream's backfill (once per run).
+- **`syncMode` is not declared.** A stream with `since` syncs incremental; every other stream is a
+  snapshot that re-reads its query every run. A `since` stream with a `period` gets both on a
+  steady run (`{ period: { from }, since }`), so a pre-floor record edited today stays out.
+- **The history floor is the connector's, not the app's.** The merchant sets *Import history from*
+  (`config.historyStartDate`, `YYYY-MM-DD`, blank = everything) once on the connector page; the
+  platform clamps it to the accounting cutover and sends it as `query.period.from` to every stream
+  with a `period`. Do not add a history-start field to the app's `config`: config never selects
+  records by time or id.
+- **Only an unbounded `{}` reconciles.** A snapshot stream deletes by absence only when its run
+  asked for everything. A floored period stream, a `since` stream and any `ids` query never delete
+  by absence, whatever the mapping's `orphanBehavior`.
+- **Webhook steering is a query too.** A stream's `webhookTrigger: { filter?, idPath, idKind?,
+  debounceMs? }` names where the id sits in the delivery; the platform runs `{ ids: [value],
+  idKind? }` through the same `execute`. `idKind` absent ⇒ the stream's own external id.
+- **`recordFilter` is not sent.** A stream's declared `recordFilter` seeds the stream's filter,
+  which the platform applies to each raw record after the fetch.
+
 ### Layer A schema and `exampleRecord`
 
 The source schema is built platform-side from the union of every mapping's absolute source paths
@@ -515,7 +561,13 @@ so `entityKind` not `entityKey`). Each variant is one part carrying its sell pri
 
 ```ts
 streams: [{
-  key: 'product', syncMode: 'incremental', exampleRecord,
+  key: 'product', exampleRecord,
+  // Refreshable by id, no delta: a snapshot stream that re-reads the catalog each run.
+  query: { ids: true },
+  // `inventory_levels/update` carries an inventory item id, not a product id.
+  webhookTrigger: {
+    filter: { topic: 'inventory_levels/update' }, idPath: 'resourceId', idKind: 'inventoryItem',
+  },
   mappings: [
     // Shopify product -> native product. No `match` field anywhere: adoption is opt-in,
     // so a fresh merchant creates and nobody gets a silent merge heuristic.
@@ -562,7 +614,8 @@ entities: order, line item and the line-to-part edge all contribute onto native 
 
 ```ts
 streams: [{
-  key: 'order', syncMode: 'incremental', exampleRecord, webhookTrigger,
+  key: 'order', exampleRecord, webhookTrigger,
+  query: { ids: true, period: 'createdAt', since: true },
   mappings: [
     { rootPath: '', target: { entityKind: 'order' },
       fields: [

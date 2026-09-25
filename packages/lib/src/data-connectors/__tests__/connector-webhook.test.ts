@@ -218,6 +218,24 @@ describe('runWebhookSteeredRun', () => {
     )
   })
 
+  it('runs an app stream’s id steer as { ids, idKind } with no triggerContext and no since', async () => {
+    const query = { ids: ['42'], idKind: 'inventoryItem' }
+    resolveWebhookSteer.mockReturnValue({ kind: 'ids', query })
+
+    await runWebhookSteeredRun(db as never, data)
+
+    const args = fetchFn.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(args.query).toEqual(query)
+    expect(args).not.toHaveProperty('triggerContext')
+    expect(sinkSourceRecord).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a generic-REST steer an empty query', async () => {
+    resolveWebhookSteer.mockReturnValue({ kind: 'fetch', triggerContext: { id: '123' } })
+    await runWebhookSteeredRun(db as never, data)
+    expect(fetchFn).toHaveBeenCalledWith(expect.objectContaining({ query: {} }))
+  })
+
   it('archives by externalId on a delete steer and never fetches', async () => {
     resolveWebhookSteer.mockReturnValue({ kind: 'delete', externalId: '123' })
 

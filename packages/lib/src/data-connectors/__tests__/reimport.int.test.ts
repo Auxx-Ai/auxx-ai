@@ -1,5 +1,5 @@
 // packages/lib/src/data-connectors/__tests__/reimport.int.test.ts
-// v13 N5 against real SQL: the run-scoped cursor store and the re-import refusals.
+// Against real SQL: the run-scoped cursor store and the re-import refusals (v13 N5, v14 §3).
 
 import { schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
@@ -8,6 +8,14 @@ import { type BoundRecordFixture, seedBoundRecord, testDb } from '../__int-test-
 
 const seams = vi.hoisted(() => ({
   enqueueConnectorSync: vi.fn(async () => {}),
+  catalogQuery: { ids: true, period: 'createdAt' } as Record<string, unknown> | undefined,
+}))
+
+vi.mock('../connectors/app-connector-adapter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../connectors/app-connector-adapter')>()),
+  loadAppCatalogConnector: async () => ({
+    streams: [{ key: 'product', ...(seams.catalogQuery ? { query: seams.catalogQuery } : {}) }],
+  }),
 }))
 
 vi.mock('../data-connector-queue', async (importOriginal) => ({
@@ -16,6 +24,7 @@ vi.mock('../data-connector-queue', async (importOriginal) => ({
 }))
 
 import { requestReimport } from '../reimport'
+import type { ReimportQuery } from '../reimport-filter'
 import { isNewestSyncRun, openRun } from '../service'
 import { createRunSyncStateStore } from '../sync-core-adapters'
 
@@ -44,21 +53,17 @@ async function completeBackfill(over: Partial<typeof schema.DataConnectorRun.$in
     })
 }
 
-const reimport = (recordFilter: { fieldId: string; operator: string; value?: unknown }[]) =>
+const reimport = (query: ReimportQuery) =>
   requestReimport(testDb(), {
     organizationId: f.orgId,
     connectorId: f.connectorId,
     streamIds: [f.streamId],
-    recordFilter,
+    query,
     initiatedBy: null,
   })
 
-const august = (from = '2026-08-01T00:00:00Z') => ({
-  fieldId: 'createdAt',
-  operator: 'between',
-  value: { from, to: '2026-09-01T00:00:00Z' },
-})
-const refresh = { fieldId: '$externalId', operator: 'in', value: ['5512'] }
+const august = (from = '2026-08-01T00:00:00Z') => ({ period: { from, to: '2026-09-01T00:00:00Z' } })
+const refresh = { ids: ['5512'] }
 
 beforeEach(async () => {
   f = await seedBoundRecord()
@@ -67,6 +72,7 @@ beforeEach(async () => {
     .set({ state: STREAM_STATE })
     .where(eq(schema.DataConnectorStream.id, f.streamId))
   seams.enqueueConnectorSync.mockClear()
+  seams.catalogQuery = { ids: true, period: 'createdAt' }
 })
 
 describe('createRunSyncStateStore', () => {
@@ -115,7 +121,7 @@ describe('createRunSyncStateStore', () => {
 
 describe('requestReimport refusals (N5)', () => {
   it('refuses a generic REST connector', async () => {
-    const result = await reimport([august()])
+    const result = await reimport(august())
     expect(result._unsafeUnwrapErr().name).toBe('BadRequestError')
     expect(result._unsafeUnwrapErr().message).toMatch(/generic REST/)
   })
@@ -126,33 +132,47 @@ describe('requestReimport refusals (N5)', () => {
       organizationId: f.orgId,
       connectorId: f.connectorId,
       streamIds: ['nope'],
-      recordFilter: [august()],
+      query: august(),
     })
     expect(result._unsafeUnwrapErr().name).toBe('NotFoundError')
+  })
+
+  it('refuses before the run a query the stream does not declare, naming stream and capability', async () => {
+    await makeApp()
+    await completeBackfill()
+    seams.catalogQuery = { ids: true }
+    const period = await reimport(august())
+    expect(period._unsafeUnwrapErr().name).toBe('BadRequestError')
+    expect(period._unsafeUnwrapErr().message).toMatch(/“product”.*query\.period/)
+
+    seams.catalogQuery = undefined
+    const ids = await reimport(refresh)
+    expect(ids._unsafeUnwrapErr().message).toMatch(/“product”.*query\.ids/)
+    expect(seams.enqueueConnectorSync).not.toHaveBeenCalled()
   })
 
   it('refuses a period run before the stream finished a backfill, but allows an id run', async () => {
     await makeApp()
     // A sample run marks its streams finished without completing them.
     await completeBackfill({ sampleLimit: 10, status: 'partial' })
-    const period = await reimport([august()])
+    const period = await reimport(august())
     expect(period._unsafeUnwrapErr().name).toBe('UnprocessableEntityError')
     expect(period._unsafeUnwrapErr().message).toContain('product')
 
-    expect((await reimport([refresh]))._unsafeUnwrap()).toMatchObject({
+    expect((await reimport(refresh))._unsafeUnwrap()).toMatchObject({
       status: 'started',
       kind: 'id',
     })
 
     await completeBackfill()
-    expect((await reimport([august()]))._unsafeUnwrap()).toMatchObject({ kind: 'period' })
+    expect((await reimport(august()))._unsafeUnwrap()).toMatchObject({ kind: 'period' })
   })
 
   it('enqueues with a unique job key, and only an id run retries its claim', async () => {
     await makeApp()
     await completeBackfill()
-    await reimport([august()])
-    await reimport([refresh])
+    await reimport(august())
+    await reimport(refresh)
     const calls = seams.enqueueConnectorSync.mock.calls as unknown as [
       { reimport: unknown; retryClaim?: true },
       { jobKey: string },
@@ -163,10 +183,13 @@ describe('requestReimport refusals (N5)', () => {
     expect(calls[0]?.[1].jobKey).not.toBe(calls[1]?.[1].jobKey)
   })
 
-  it('sends an id run filter as given, with no accounting clause', async () => {
+  it('sends an id query as given, and a period normalised to UTC ISO', async () => {
     await makeApp()
-    const result = (await reimport([refresh]))._unsafeUnwrap()
-    expect(result.recordFilter).toEqual([{ ...refresh, exact: true }])
+    await completeBackfill()
+    expect((await reimport(refresh))._unsafeUnwrap().query).toEqual(refresh)
+    expect((await reimport(august('2026-08-01')))._unsafeUnwrap().query).toEqual({
+      period: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+    })
   })
 
   it('refuses a period run while a sync holds the connector, and queues an id run', async () => {
@@ -177,9 +200,9 @@ describe('requestReimport refusals (N5)', () => {
       .set({ status: 'syncing' })
       .where(eq(schema.DataConnector.id, f.connectorId))
 
-    const period = await reimport([august()])
+    const period = await reimport(august())
     expect(period._unsafeUnwrapErr().name).toBe('ConflictError')
-    expect((await reimport([refresh]))._unsafeUnwrap().status).toBe('queued')
+    expect((await reimport(refresh))._unsafeUnwrap().status).toBe('queued')
     expect(seams.enqueueConnectorSync).toHaveBeenCalledTimes(1)
   })
 })

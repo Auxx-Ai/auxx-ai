@@ -10,10 +10,11 @@ export type {
   ConnectorFetchArgs,
   ConnectorMapping,
   ConnectorOwnedMappingField,
+  ConnectorQuery,
   ConnectorRecord,
-  ConnectorRecordFilterCondition,
   ConnectorReleaseContext,
   ConnectorStreamDecl,
+  ConnectorStreamQueryDecl,
   ConnectorStreamState,
   ConnectorYield,
   DataConnectorConfig,
@@ -26,8 +27,10 @@ export type {
   StreamWebhookTrigger,
 } from '../types'
 export {
+  ConnectorDeltaExpiredError,
   ConnectorRateLimitError,
   isConnectorCheckpoint,
+  isConnectorDeltaExpired,
   PaginationStalledError,
   PermanentSteerError,
 } from '../types'

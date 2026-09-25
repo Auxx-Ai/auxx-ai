@@ -133,11 +133,16 @@ function assertValidMapping(
  *
  * `execute` infers its config argument type from `z.output<config>`.
  *
+ * **Query — fetch exactly what `args.query` asks for.** Each stream declares
+ * what it can be queried by (`query: { ids, period, since }`); the platform only
+ * sends what the stream declares. `{}` means everything. `period` bounds the
+ * declared date path; `ids` names records; `since` is the marker you returned
+ * last run. Throw `DeltaExpiredError` when the provider rejects that marker.
+ *
  * **Pagination — one page per `execute`.** The platform loops `execute`, not the
- * app: return ONE page of records plus `nextState.cursor`, and the platform
- * re-invokes with `state.cursor` set to it until you return
- * `nextState.backfillComplete: true` (or omit the cursor). The cursor is any
- * JSON-serializable value the platform persists + restores verbatim.
+ * app: return ONE page of records plus `cursor`, and the platform re-invokes with
+ * `args.cursor` set to it until a page returns no cursor. A `since` stream returns
+ * its next marker on that last page only.
  *
  * **Connection — use `args.connection`, never ambient helpers.** A connector
  * receives its bound connection explicitly on `args.connection` (`{ value, fields,
@@ -163,6 +168,7 @@ function assertValidMapping(
  *   config: z.object({ includeDraftProducts: z.boolean().default(false) }),
  *   streams: [{
  *     key: 'order',
+ *     query: { ids: true, period: 'created_at', since: true },
  *     mappings: [
  *       { rootPath: '', target: { entityKey: orders.key },
  *         fields: [{ key: 'shopifyId', sourcePath: 'id' }, { key: 'name', sourcePath: 'name' }] },
@@ -173,12 +179,12 @@ function assertValidMapping(
  *   execute: shopifyCoreSync,
  * })
  *
- * // execute pages by returning a cursor until the last page:
- * async function shopifyCoreSync({ state, connection }) {
- *   const page = await fetchPage(connection.value, state.cursor)
+ * // execute translates the query and pages by returning a cursor until the last page:
+ * async function shopifyCoreSync({ query, cursor, connection }) {
+ *   const page = await fetchPage(connection.value, toSearch(query), cursor)
  *   return page.hasNext
- *     ? { records: page.records, nextState: { cursor: page.nextCursor } }
- *     : { records: page.records, nextState: { backfillComplete: true, updatedSince: page.maxUpdatedAt } }
+ *     ? { records: page.records, cursor: page.nextCursor }
+ *     : { records: page.records, since: page.maxUpdatedAt }
  * }
  * ```
  */

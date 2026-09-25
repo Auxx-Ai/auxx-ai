@@ -1,10 +1,10 @@
 // packages/lib/src/data-connectors/connectors/__tests__/app-connector-adapter.test.ts
 // Coverage for the app-connector adapter's pagination loop (Step 11): each
-// `execute` is one page, the adapter loops it and emits a checkpoint after each,
-// translating the engine's structured `SyncCursor` ↔ the app's flat cursor. Also
-// proves the chain RESUMES across slices via `runConnectorSlice` (the thing the
-// pre-Step-11 single-shot adapter broke). The lambda cluster + org cache + the
-// connection resolver are mocked (the adapter lazy-imports them at fetch time).
+// `execute` is one page of `args.query`, the adapter loops it and emits a checkpoint
+// after each, translating the engine's structured `SyncCursor` ↔ the app's flat cursor.
+// Also proves the chain RESUMES across slices via `runConnectorSlice`, that `since`
+// rides the terminal checkpoint only, and that an expired delta crosses as an error.
+// The lambda cluster + org cache + connection resolver are mocked (lazy-imported).
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,11 +19,11 @@ import type {
 import { runSyncSlice } from '../../../sync-core/slice-runner'
 import { runConnectorSlice } from '../../connector-slice-loop'
 import { type AppConnectorContext, appConnectorAdapter } from '../app-connector-adapter'
-import { decodeCursor, encodeCursor } from '../app-connector-state'
+import { decodeCursor, decodeSince, encodeCursor } from '../app-connector-state'
 import {
-  ConnectorRateLimitError,
+  ConnectorDeltaExpiredError,
+  type ConnectorQuery,
   type ConnectorRecord,
-  type ConnectorRecordFilterCondition,
   type ConnectorYield,
   isConnectorCheckpoint,
 } from '../types'
@@ -45,6 +45,7 @@ const INSTALLED_APP = {
       streams: [
         {
           key: 'thing',
+          query: { ids: true, since: true },
           mappings: [
             {
               rootPath: '',
@@ -97,23 +98,32 @@ const rec = (id: string): ConnectorRecord => ({
 })
 
 /** Queue one page response (`ok` Result wrapping the sandbox execution_result). */
-function page(records: ConnectorRecord[], nextState: Record<string, unknown>) {
-  return ok({ execution_result: { records, nextState } })
+function page(records: ConnectorRecord[], rest: Record<string, unknown> = {}) {
+  return ok({ execution_result: { records, ...rest } })
+}
+
+/** The lambda payload of the nth invoke. */
+function payload(n = 0): Record<string, unknown> {
+  return invokeLambdaExecutor.mock.calls[n]![0].payload
 }
 
 /** Drive the adapter's fetch and collect everything the generator yields. */
 async function drain(
-  state: Record<string, unknown> = {},
-  triggerContext?: Record<string, string>,
-  config: Record<string, unknown> = {}
+  opts: {
+    state?: Record<string, unknown>
+    query?: ConnectorQuery
+    config?: Record<string, unknown>
+    triggerContext?: Record<string, string>
+  } = {}
 ): Promise<ConnectorYield[]> {
   const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
     streamKey: 'thing',
+    query: opts.query ?? {},
     mode: 'snapshot',
-    state: state as never,
+    state: (opts.state ?? {}) as never,
     credential: null,
-    config: config as never,
-    triggerContext,
+    config: (opts.config ?? {}) as never,
+    triggerContext: opts.triggerContext,
   })
   const out: ConnectorYield[] = []
   for await (const y of records) out.push(y)
@@ -137,79 +147,67 @@ describe('appConnectorAdapter pagination', () => {
     invokeLambdaExecutor
       .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1' }))
       .mockResolvedValueOnce(page([rec('b')], { cursor: 'c2' }))
-      .mockResolvedValueOnce(
-        page([rec('c')], { backfillComplete: true, updatedSince: '2024-01-01' })
-      )
+      .mockResolvedValueOnce(page([rec('c')], { since: '2024-01-01' }))
 
     const yields = await drain()
 
-    // Records interleaved with checkpoints.
     const records = yields.filter((y) => !isConnectorCheckpoint(y)) as ConnectorRecord[]
     expect(records.map((r) => r.externalId)).toEqual(['a', 'b', 'c'])
 
     const checkpoints = yields.filter(isConnectorCheckpoint)
     expect(checkpoints).toHaveLength(3)
-    // Two non-terminal (token-encoded cursors) + one terminal (no cursor).
     expect(checkpoints[0]!.cursor?.kind).toBe('token')
     expect(decodeCursor(checkpoints[0]!.cursor)).toBe('c1')
     expect(decodeCursor(checkpoints[1]!.cursor)).toBe('c2')
     expect(checkpoints[2]!.cursor).toBeUndefined()
-    // Terminal checkpoint carries the watermark.
-    expect(checkpoints[2]!.watermark).toBe('2024-01-01')
-
     expect(invokeLambdaExecutor).toHaveBeenCalledTimes(3)
   })
 
-  it('single-batch app → one terminal checkpoint, no resume checkpoint', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(
-      page([rec('a'), rec('b')], { backfillComplete: true })
-    )
-
-    const yields = await drain()
-    const checkpoints = yields.filter(isConnectorCheckpoint)
-    expect(checkpoints).toHaveLength(1)
-    expect(checkpoints[0]!.cursor).toBeUndefined()
-    expect(invokeLambdaExecutor).toHaveBeenCalledTimes(1)
-  })
-
-  it('treats a missing cursor (no backfillComplete) as terminal', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { updatedSince: '2024-02-02' }))
-    const yields = await drain()
-    const checkpoints = yields.filter(isConnectorCheckpoint)
-    expect(checkpoints).toHaveLength(1)
-    expect(checkpoints[0]!.cursor).toBeUndefined()
-    expect(checkpoints[0]!.watermark).toBe('2024-02-02')
-  })
-
-  it('rides nextState.updatedSince onto a non-terminal checkpoint watermark', async () => {
+  it('carries since on the terminal checkpoint only, JSON-encoded', async () => {
+    const since = { historyId: '84422' }
     invokeLambdaExecutor
-      .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1', updatedSince: '2024-03-03' }))
-      .mockResolvedValueOnce(page([rec('b')], { backfillComplete: true }))
-    const yields = await drain()
-    const checkpoints = yields.filter(isConnectorCheckpoint)
-    expect(checkpoints[0]!.watermark).toBe('2024-03-03')
+      .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1', since: 'ignored-mid-chain' }))
+      .mockResolvedValueOnce(page([rec('b')], { since }))
+    const checkpoints = (await drain()).filter(isConnectorCheckpoint)
+    expect(checkpoints[0]!.since).toBeUndefined()
+    expect(decodeSince(checkpoints[1]!.since)).toEqual(since)
+    expect(checkpoints.every((c) => c.watermark === undefined)).toBe(true)
   })
 
-  describe('inbound resume translation (engine SyncCursor → flat app cursor)', () => {
-    it('decodes a structured backfillCursor into state.cursor for the first invoke', async () => {
-      invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
-      const backfillCursor: SyncCursor = { kind: 'token', value: JSON.stringify({ after: 'c2' }) }
-      await drain({ backfillCursor, watermark: '2024-04-04' })
+  it('a terminal page with no since leaves the checkpoint without one', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a'), rec('b')]))
+    const checkpoints = (await drain()).filter(isConnectorCheckpoint)
+    expect(checkpoints).toHaveLength(1)
+    expect(checkpoints[0]!.cursor).toBeUndefined()
+    expect(checkpoints[0]!.since).toBeUndefined()
+  })
 
-      const payload = invokeLambdaExecutor.mock.calls[0]![0].payload
-      expect(payload.state.cursor).toEqual({ after: 'c2' })
-      expect(payload.state.updatedSince).toBe('2024-04-04')
-    })
+  it('sends args.query verbatim and the decoded page cursor', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([]))
+    const backfillCursor: SyncCursor = { kind: 'token', value: JSON.stringify({ after: 'c2' }) }
+    const query = { period: { from: '2026-01-01T00:00:00.000Z' }, since: '2026-09-01' }
+    await drain({ state: { backfillCursor, watermark: 'never-sent' }, query })
 
-    it('round-trips a plain-string cursor', async () => {
-      invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
-      await drain({ backfillCursor: { kind: 'token', value: '"c2"' } })
-      expect(invokeLambdaExecutor.mock.calls[0]![0].payload.state.cursor).toBe('c2')
-    })
+    expect(payload()).toMatchObject({ streamKey: 'thing', query, cursor: { after: 'c2' } })
+    expect(payload()).not.toHaveProperty('state')
+    expect(payload()).not.toHaveProperty('mode')
+  })
+
+  it('omits cursor on the first page of a query', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([]))
+    await drain()
+    expect(payload()).not.toHaveProperty('cursor')
+  })
+
+  it('never forwards triggerContext, which is generic REST steering', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([]))
+    await drain({ query: { ids: ['1'] }, triggerContext: { resourceId: '123' } })
+    expect(payload()).not.toHaveProperty('triggerContext')
+    expect(payload().query).toEqual({ ids: ['1'] })
   })
 
   it('forwards the resolved connection (incl. metadata) into the lambda context', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
+    invokeLambdaExecutor.mockResolvedValueOnce(page([]))
     await drain()
     const lambdaArgs = prepareLambdaContext.mock.calls[0]![0] as {
       organizationConnection: { metadata: unknown }
@@ -217,18 +215,14 @@ describe('appConnectorAdapter pagination', () => {
     expect(lambdaArgs.organizationConnection.metadata).toEqual(RESOLVED_METADATA)
   })
 
-  it('includes triggerContext in the lambda payload on a steered fetch', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
-    await drain({}, { resourceId: '123' })
-    const payload = invokeLambdaExecutor.mock.calls[0]![0].payload
-    expect(payload.triggerContext).toEqual({ resourceId: '123' })
-  })
-
-  it('leaves triggerContext undefined on a normal (non-steered) fetch', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
-    await drain()
-    const payload = invokeLambdaExecutor.mock.calls[0]![0].payload
-    expect(payload.triggerContext).toBeUndefined()
+  it('throws ConnectorDeltaExpiredError before yielding a record of an expired page', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { deltaExpired: true }))
+    const seen: ConnectorYield[] = []
+    const run = async () => {
+      for (const y of await drain({ query: { since: 'stale' } })) seen.push(y)
+    }
+    await expect(run()).rejects.toBeInstanceOf(ConnectorDeltaExpiredError)
+    expect(seen).toEqual([])
   })
 })
 
@@ -246,6 +240,7 @@ describe('appConnectorAdapter resumes across slices', () => {
   const sliceFetch = () => (resume: { backfillCursor?: SyncCursor; watermark?: string }) =>
     appConnectorAdapter('app:test', ctx()).fetch({
       streamKey: 'thing',
+      query: {},
       mode: 'snapshot',
       state: resume as never,
       credential: null,
@@ -253,7 +248,6 @@ describe('appConnectorAdapter resumes across slices', () => {
     })
 
   it('slice 1 yields hasMore + page-1 cursor; slice 2 seeded with it advances', async () => {
-    // Slice 1 consumes one page (maxPages:1 → bounds at the first checkpoint).
     invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { cursor: 'c1' }))
     const slice1 = await runConnectorSlice({
       fetch: sliceFetch(),
@@ -264,8 +258,7 @@ describe('appConnectorAdapter resumes across slices', () => {
     expect(slice1.hasMore).toBe(true)
     expect(decodeCursor(slice1.nextCursor)).toBe('c1')
 
-    // Slice 2 reseeds with slice 1's cursor → the app's execute sees state.cursor 'c1'.
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('b')], { backfillComplete: true }))
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('b')], { since: 's2' }))
     const slice2 = await runConnectorSlice({
       fetch: sliceFetch(),
       sink: async () => {},
@@ -273,33 +266,46 @@ describe('appConnectorAdapter resumes across slices', () => {
       now: () => 0,
     })
     expect(slice2.hasMore).toBe(false)
-    expect(invokeLambdaExecutor.mock.calls[1]![0].payload.state.cursor).toBe('c1')
+    expect(payload(1).cursor).toBe('c1')
+  })
+
+  it('replaces the inbound watermark with the app since — never a max', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { since: 'aaa' }))
+    const slice = await runConnectorSlice({
+      fetch: sliceFetch(),
+      sink: async () => {},
+      ctx: sliceCtx({ phase: 'steady', watermark: JSON.stringify('zzz') }),
+      now: () => 0,
+    })
+    expect(decodeSince(slice.watermark)).toBe('aaa')
+  })
+
+  it('keeps the inbound watermark when the last page returns no since', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')]))
+    const inbound = JSON.stringify('zzz')
+    const slice = await runConnectorSlice({
+      fetch: sliceFetch(),
+      sink: async () => {},
+      ctx: sliceCtx({ phase: 'steady', watermark: inbound }),
+      now: () => 0,
+    })
+    expect(slice.watermark).toBe(inbound)
   })
 })
 
 // ── The app's declared config actually reaches `execute` ─────────────────────────
-// Regression for v11 §7. The adapter used to read the app's config as
-// `args.config?.filters`, but the setup stepper writes each declared key at the TOP
-// LEVEL of `connector.config` and `createConnectorFromAppCatalog` seeds only
-// `webhookTrigger` — nothing anywhere wrote `config.filters` for an app connector, so
-// every app's declared config arrived as `{}`. Shopify declares `config: z.object({})`,
-// which is the only reason nobody noticed.
+// Regression for v11 §7: the setup stepper writes each declared key at the TOP LEVEL of
+// `connector.config`, so that is where the adapter must read the app's config from.
 
 describe('appConnectorAdapter config passthrough', () => {
   /** The `config` the sandbox was handed on the first (only) page. */
   function sentConfig(): unknown {
-    return (invokeLambdaExecutor.mock.calls[0]?.[0] as { payload: { config: unknown } }).payload
-      .config
+    return payload().config
   }
 
   it('delivers the app’s top-level declared config keys to execute', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
-
-    await drain({}, undefined, {
-      locationId: 'gid://shopify/Location/1',
-      includeArchived: false,
-    })
-
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')]))
+    await drain({ config: { locationId: 'gid://shopify/Location/1', includeArchived: false } })
     expect(sentConfig()).toEqual({
       locationId: 'gid://shopify/Location/1',
       includeArchived: false,
@@ -307,23 +313,22 @@ describe('appConnectorAdapter config passthrough', () => {
   })
 
   it('strips the four PLATFORM-reserved keys — an app never sees the engine’s own config', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
-
-    await drain({}, undefined, {
-      endpoint: { baseUrl: 'https://example.test' },
-      // `filters` stays reserved rather than being repurposed as the app config bag:
-      // the fixture connector already reads `config.filters.fixtures`.
-      filters: { fixtures: [] },
-      backfillWindowSpan: 'last_90_days',
-      webhookTrigger: { triggerId: 't1' },
-      locationId: 'loc1',
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')]))
+    await drain({
+      config: {
+        endpoint: { baseUrl: 'https://example.test' },
+        // `filters` stays reserved: the fixture connector reads `config.filters.fixtures`.
+        filters: { fixtures: [] },
+        historyStartDate: '2026-01-01',
+        webhookTrigger: { triggerId: 't1' },
+        locationId: 'loc1',
+      },
     })
-
     expect(sentConfig()).toEqual({ locationId: 'loc1' })
   })
 
   it('an app that declares no config still gets `{}`, never undefined', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')]))
     await drain()
     expect(sentConfig()).toEqual({})
   })
@@ -352,6 +357,7 @@ describe('appConnectorAdapter rateLimited', () => {
           fetch: (resume) =>
             appConnectorAdapter('app:test', ctx()).fetch({
               streamKey: 'thing',
+              query: {},
               mode: 'snapshot',
               state: resume as never,
               credential: null,
@@ -380,13 +386,7 @@ describe('appConnectorAdapter rateLimited', () => {
   }
 
   const throttled = (retryAfterMs?: number) =>
-    ok({
-      execution_result: {
-        records: [],
-        nextState: { cursor: 'c1' },
-        rateLimited: retryAfterMs === undefined ? {} : { retryAfterMs },
-      },
-    })
+    page([], { cursor: 'c1', rateLimited: retryAfterMs === undefined ? {} : { retryAfterMs } })
 
   it('a throttled page backs off on the held cursor and never counts as a stall', async () => {
     const cursor = encodeCursor('c1')
@@ -404,7 +404,7 @@ describe('appConnectorAdapter rateLimited', () => {
     }
     expect(h.calls).not.toContain('fail')
     for (const [call] of invokeLambdaExecutor.mock.calls) {
-      expect(call.payload.state.cursor).toBe('c1')
+      expect(call.payload.cursor).toBe('c1')
     }
   })
 
@@ -437,75 +437,12 @@ describe('appConnectorAdapter rateLimited', () => {
     invokeLambdaExecutor.mockResolvedValueOnce(throttled(3_600_000))
     expect(await h.run()).toMatchObject({ retryAfterMs: 60_000 })
   })
-})
 
-describe('appConnectorAdapter recordFilter', () => {
-  const PERIOD: ConnectorRecordFilterCondition = {
-    fieldId: 'created_at',
-    operator: 'between',
-    value: { from: '2026-08-01T00:00:00Z', to: '2026-09-01T00:00:00Z' },
-    exact: true,
-  }
-  const HINT: ConnectorRecordFilterCondition = { fieldId: 'orders_count', operator: '>', value: 0 }
-
-  async function drainFiltered(recordFilter: ConnectorRecordFilterCondition[]) {
-    const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
-      streamKey: 'thing',
-      mode: 'snapshot',
-      state: {},
-      credential: null,
-      config: {} as never,
-      recordFilter,
-    })
-    const out: ConnectorYield[] = []
-    for await (const y of records) out.push(y)
-    return out
-  }
-
-  function narrowedPage(records: ConnectorRecord[], nextState: Record<string, unknown>) {
-    return ok({ execution_result: { records, nextState, narrowed: true } })
-  }
-
-  it('sends recordFilter in the lambda payload, exact flag included', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(narrowedPage([], { backfillComplete: true }))
-    await drainFiltered([PERIOD, HINT])
-    expect(invokeLambdaExecutor.mock.calls[0]![0].payload.recordFilter).toEqual([PERIOD, HINT])
-  })
-
-  it('omits recordFilter from the payload when none is given', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([], { backfillComplete: true }))
-    await drain()
-    expect(invokeLambdaExecutor.mock.calls[0]![0].payload).not.toHaveProperty('recordFilter')
-  })
-
-  it('refuses a page that ignored an exact clause before yielding any of its records', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
-    const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
-      streamKey: 'thing',
-      mode: 'snapshot',
-      state: {},
-      credential: null,
-      config: {} as never,
-      recordFilter: [PERIOD],
-    })
-    const seen: ConnectorYield[] = []
-    const run = async () => {
-      for await (const y of records) seen.push(y)
-    }
-    await expect(run()).rejects.toThrow(/stream 'thing' did not narrow its fetch/)
-    expect(seen).toEqual([])
-  })
-
-  it('treats an empty throttled page as a throttle, not a refusal', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(
-      ok({ execution_result: { records: [], nextState: {}, rateLimited: { retryAfterMs: 1 } } })
-    )
-    await expect(drainFiltered([PERIOD])).rejects.toBeInstanceOf(ConnectorRateLimitError)
-  })
-
-  it('accepts an un-narrowed page when only non-exact clauses were sent', async () => {
-    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
-    const records = (await drainFiltered([HINT])).filter((y) => !isConnectorCheckpoint(y))
-    expect(records).toHaveLength(1)
+  it('an expired delta fails the slice with the error the handler restarts on', async () => {
+    const h = harness({ phase: 'steady', watermark: JSON.stringify('stale') })
+    invokeLambdaExecutor.mockResolvedValueOnce(page([], { deltaExpired: true }))
+    const outcome = await h.run()
+    expect(outcome.action).toBe('failed')
+    expect(outcome.action === 'failed' && outcome.error).toBeInstanceOf(ConnectorDeltaExpiredError)
   })
 })

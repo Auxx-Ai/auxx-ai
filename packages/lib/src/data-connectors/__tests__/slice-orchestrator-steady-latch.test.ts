@@ -294,7 +294,7 @@ function fixtureDefinition(): DataConnectorDefinition {
         yield { streamKey: args.streamKey, fields: { id: `${args.streamKey}-1` } }
         yield { __checkpoint: true as const, watermark: 'W2' }
       }
-      return { records: one(), nextState: {} }
+      return { records: one() }
     },
   }
 }

@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { StreamRequestConfig, StreamWebhookTrigger } from '../connectors/types'
-import { isSteerableDelivery, resolveWebhookSteer } from '../webhook-steer'
+import { isSteerableDelivery, resolveWebhookSteer, steerTokenKey } from '../webhook-steer'
 
 const base: StreamWebhookTrigger = {
   paths: ['resourceId'],
@@ -63,14 +63,50 @@ describe('resolveWebhookSteer', () => {
   })
 })
 
+describe('app streams steer by idPath (v14 §4.1)', () => {
+  const app: StreamWebhookTrigger = {
+    filter: { topic: 'inventory_levels/update' },
+    idPath: 'resourceId',
+    idKind: 'inventoryItem',
+  }
+
+  it('resolves to an ids query carrying the declared idKind', () => {
+    expect(resolveWebhookSteer(app, { resourceId: 42 })).toEqual({
+      kind: 'ids',
+      query: { ids: ['42'], idKind: 'inventoryItem' },
+    })
+  })
+
+  it('omits idKind for the stream’s own ids', () => {
+    expect(resolveWebhookSteer({ idPath: 'payload.id' }, { payload: { id: 'o1' } })).toEqual({
+      kind: 'ids',
+      query: { ids: ['o1'] },
+    })
+  })
+
+  it('is steerable only when idPath resolves', () => {
+    const rc: StreamRequestConfig = { webhookTrigger: app }
+    expect(isSteerableDelivery(rc, { resourceId: '42' })).toBe(true)
+    expect(isSteerableDelivery(rc, { topic: 'inventory_levels/update' })).toBe(false)
+    expect(isSteerableDelivery(rc, { resourceId: '' })).toBe(false)
+  })
+
+  it('keys the debounce on the id, so two records never coalesce', () => {
+    const a = steerTokenKey(resolveWebhookSteer(app, { resourceId: '1' }))
+    const b = steerTokenKey(resolveWebhookSteer(app, { resourceId: '2' }))
+    expect(a).toBe('ids=1')
+    expect(a).not.toBe(b)
+  })
+})
+
 describe('isSteerableDelivery', () => {
   it('returns false when the stream declares no webhookTrigger', () => {
     expect(isSteerableDelivery({}, { resourceId: '123' })).toBe(false)
   })
 
-  // Token-less (app / fixed-model) streams: no {token} request template, so
-  // requiredSteerTokens() is vacuously []. The declared paths ARE the contract.
-  describe('token-less (app) streams', () => {
+  // No {token} request template, so requiredSteerTokens() is vacuously []: the declared
+  // paths ARE the contract.
+  describe('paths without a request template', () => {
     const requestConfig: StreamRequestConfig = { webhookTrigger: base }
 
     it('is steerable when every declared path resolves', () => {

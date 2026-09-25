@@ -510,7 +510,7 @@ function fixtureDefinition(): DataConnectorDefinition {
           }
         }
       }
-      return { records: args.streamKey === 'customers' ? customers() : orders(), nextState: {} }
+      return { records: args.streamKey === 'customers' ? customers() : orders() }
     },
   }
 }

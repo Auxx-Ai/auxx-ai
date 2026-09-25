@@ -44,52 +44,46 @@ export interface ConnectorRecord {
   contentHash?: string
 }
 
-/**
- * Per-stream cursor an app returns from one page and reads back on the next. The
- * platform persists + restores it verbatim across runs and slices — the app never
- * sees the engine's internal cursor encoding.
- */
-export interface ConnectorStreamState {
-  /**
-   * Opaque resume token. Any JSON-serializable value — a string token, or a
-   * structured cursor like `{ after: 'x', page: 3 }`. Return it from one page to
-   * fetch the next; the platform hands it straight back on `state.cursor`.
-   */
-  cursor?: unknown
-  /** Steady-phase delta floor (watermark); return the max seen so the next steady run resumes from it. */
-  updatedSince?: string
-  /** Set `true` on the last page — the platform flips the stream to steady (incremental) or finishes the snapshot. */
-  backfillComplete?: boolean
-  [key: string]: unknown
+/** What one fetch is asked for. Honoured exactly; nothing in it is a hint. */
+export interface ConnectorQuery {
+  /** Fetch exactly these ids. Absent `idKind` ⇒ the stream's own external ids. */
+  ids?: string[]
+  /** Set with `ids` on a webhook-steered fetch when the delivery carries a foreign id (declared `webhookTrigger.idKind`). */
+  idKind?: string
+  /** UTC ISO bounds on the stream's declared `period` path; `from` inclusive, `to` exclusive. */
+  period?: { from?: string; to?: string }
+  /** The marker the app returned as `since` on the last page of the previous run. Opaque. */
+  since?: unknown
+}
+
+/** What a stream can be queried by. Absent key ⇒ unsupported; the platform refuses before the run. */
+export interface ConnectorStreamQueryDecl {
+  ids?: true
+  /** Source path of the date that says when a record happened (`created_at`, `issued_at`). */
+  period?: string
+  since?: true
 }
 
 /**
- * A connector fetch result — ONE page of records plus the cursor for the next
- * page. The platform re-invokes `execute` with `state.cursor = nextState.cursor`
- * until `nextState.backfillComplete` (or no cursor), so each `execute` call is a
- * single page; pagination is the loop the platform drives, not one the app does.
+ * ONE page of records for the query. The platform re-invokes `execute` with
+ * `cursor` set to the one returned here until a page returns no cursor.
  */
 export interface ConnectorFetchResult {
   /** Source-shaped records for this page. May be an array or an async iterable. */
   records: ConnectorRecord[] | AsyncIterable<ConnectorRecord>
-  /** Cursor + watermark to persist; the next page / incremental run resumes from here. */
-  nextState: ConnectorStreamState
+  /** Next page of this query. Absent ⇒ the query is exhausted. */
+  cursor?: unknown
+  /** Last page of a `since` stream only: the marker the next run's `query.since` gets back. */
+  since?: unknown
   /**
-   * Upstream throttle signal. When the source rate-limits a page (HTTP 429, or a
-   * provider-specific 403/cost throttle), **return** this instead of throwing or
-   * sleeping — the platform pauses the chain and re-enqueues the next slice after
-   * `retryAfterMs`, so the connector never burns its sandbox budget waiting.
-   *
-   * Return the cursor you want to resume from in `nextState.cursor` alongside this
-   * (typically the SAME page that was throttled). Records already collected this page
-   * are still sinked; the throttled page is retried after the wait.
+   * Return this instead of throwing or sleeping when the source throttles a page; the
+   * platform re-invokes with the same `cursor` after `retryAfterMs`. Records returned
+   * alongside are still sunk.
    */
   rateLimited?: {
     /** Server-hinted wait before the next attempt, in ms (`Retry-After` / reset header). */
     retryAfterMs?: number
   }
-  /** The app narrowed the upstream query on every `exact` clause of `args.recordFilter`. */
-  narrowed?: true
 }
 
 /**
@@ -304,9 +298,9 @@ interface ConnectorMappingBase {
    * Absent ⇒ `'ignore'`, which is the safe default: nothing happens, and a record
    * deleted upstream simply stays as it was.
    *
-   * ⚠️ Only consulted for a `syncMode: 'snapshot'` stream, where the fetch saw
-   * everything and absence therefore means deletion. On an `incremental` stream
-   * absence means "unchanged", so this is ignored there no matter what it says.
+   * ⚠️ Only consulted after an unbounded fetch (`query` sent as `{}`: no `since`, no
+   * `period` floor), where the fetch saw everything and absence therefore means
+   * deletion. After any bounded fetch absence means "not asked for", so this is ignored.
    * Exception: on a child array mapping (`rootPath: 'tax_lines[]'`) it also applies,
    * on every sync, to children missing from their parent's array, so declare it there
    * only when the payload always carries the complete, unpaged array.
@@ -364,20 +358,12 @@ export interface ConnectorRecordFilterCondition {
   /** A platform condition operator key: `'>'`, `'equals'`, `'is_not_empty'`. */
   operator: string
   value?: unknown
-  /** Set by the engine, never declared: the app must narrow on this clause exactly or throw `UnpushableFilterError`. */
-  exact?: boolean
 }
 
 /** One stream (fetch) declaration. */
 export interface ConnectorStreamDecl {
   /** Provider resource id / endpoint key, e.g. `'order'`. */
   key: string
-  /**
-   * How the platform schedules this stream. `incremental` runs the backfill once
-   * then steady `updatedSince`-floored delta runs; `snapshot` (default) re-crawls
-   * in full every run. Drives the `mode` handed to `execute`.
-   */
-  syncMode?: 'snapshot' | 'incremental'
   /**
    * Fan-out mappings — root + embedded branches + id-only refs. The Layer A
    * source schema is built platform-side from the union of every mapping's
@@ -388,15 +374,20 @@ export interface ConnectorStreamDecl {
   /** Canonical sample → schema preview + dry-run before the first live fetch. */
   exampleRecord?: Record<string, unknown>
   /**
-   * Per-stream webhook STEERING. `filter` matches against the delivery's triggerData
-   * (e.g. { topic: 'inventory_levels/update' }); `paths` name triggerData fields exposed
-   * to the app's execute as `triggerContext`; `debounceMs` coalesces same-record bursts.
-   * A stream with `filter` but empty `paths` causes a FULL connector sync per delivery —
-   * never ship that for high-volume topics.
+   * What `execute` can be queried by. A stream with `since` runs incremental deltas after
+   * its backfill; without it every run re-reads (floored by `period` when declared).
+   */
+  query?: ConnectorStreamQueryDecl
+  /**
+   * Per-stream webhook steering. `filter` matches the delivery's triggerData
+   * (e.g. `{ topic: 'inventory_levels/update' }`); the platform then fetches
+   * `{ ids: [triggerData[idPath]], idKind }`, so the stream must declare `query.ids`.
+   * `debounceMs` coalesces same-record bursts.
    */
   webhookTrigger?: {
     filter?: Record<string, unknown>
-    paths: string[]
+    idPath: string
+    idKind?: string
     debounceMs?: number
   }
   /**
@@ -405,8 +396,6 @@ export interface ConnectorStreamDecl {
    * merchant can loosen it later. A repeated path (`line_items[].sku`) is refused.
    */
   recordFilter?: readonly ConnectorRecordFilterCondition[]
-  /** Source path of the date that says when a record happened; the backfill floor and the accounting cutover apply to it. */
-  periodField?: string
 }
 
 /**
@@ -417,10 +406,9 @@ export interface ConnectorStreamDecl {
 export interface ConnectorExecuteArgs<TConfig = Record<string, unknown>> {
   /** Which stream to fetch. */
   streamKey: string
-  /** `snapshot` (full) or `incremental` (delta from the cursor). */
-  mode: 'snapshot' | 'incremental'
-  /** The persisted cursor for this stream (the platform's last `nextState`). */
-  state: ConnectorStreamState
+  query: ConnectorQuery
+  /** Paging within this query only; the value you returned from the previous page. */
+  cursor?: unknown
   /**
    * The borrowed connection (decrypted), or null when none is bound. This is the
    * connector's ONLY connection handle — resolve auth from here, not from a
@@ -429,19 +417,6 @@ export interface ConnectorExecuteArgs<TConfig = Record<string, unknown>> {
   connection: ConnectorConnection | null
   /** The connector's validated config (from the `config` zod schema). */
   config: TConfig
-  /**
-   * Webhook steering tokens (present only on a webhook-steered partial fetch).
-   * Keys are the paths declared in the stream's `webhookTrigger.paths`; values are the
-   * corresponding values from the delivery payload. When set, fetch ONLY the affected
-   * record(s) and return `nextState: { backfillComplete: true }`.
-   */
-  triggerContext?: Record<string, string>
-  /**
-   * AND'd clauses to narrow the upstream query; the platform re-applies the full filter
-   * post-fetch. Translate what you can, skip the rest, and return `narrowed: true` once
-   * every `exact` clause is honoured; throw `UnpushableFilterError` for one you cannot.
-   */
-  recordFilter?: readonly ConnectorRecordFilterCondition[]
 }
 
 /**

@@ -86,7 +86,7 @@ function threeCustomers(): FetchResult {
     yield customer('c2', 0)
     yield customer('c3', 1)
   }
-  return { records: page(), nextState: {} }
+  return { records: page() }
 }
 
 describe('sliced fetch — per-stream record filter (v11)', () => {
@@ -148,7 +148,6 @@ describe('sliced fetch — per-stream record filter (v11)', () => {
         yield customer('c2', 0)
         yield { __checkpoint: true, watermark: '2026-09-03T00:00:00Z' }
       })(),
-      nextState: {},
     } as FetchResult)
     const source = createConnectorStreamSyncSource(deps({ stream: stream(HAS_ORDERS) }, fetchMock))
 

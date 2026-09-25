@@ -145,7 +145,8 @@ describe('compileAndExtractCatalog — entities + data connectors', () => {
     const stream = connector?.streams[0]
     expect(stream).toMatchObject({
       key: 'order',
-      webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
+      query: { ids: true, period: 'created_at', since: true },
+      webhookTrigger: { filter: { topic: 'orders/updated' }, idPath: 'resourceId' },
       // A flat AND list in the declaration, one group with stable ids in the catalog.
       recordFilter: [
         {
@@ -272,7 +273,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKey: 'bogus' },
               fields: [{ key: 'name', sourcePath: 'name' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -304,7 +305,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKey: 'orders' },
               fields: [{ key: 'nope', sourcePath: 'x' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -329,7 +330,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: 'customer', target: { entityKind: 'contact' },
               fields: [{ sourcePath: 'id', appField: 'missing' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -354,7 +355,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'contact' },
               fields: [{ sourcePath: 'id', target: 'record_id' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -387,7 +388,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
               mappings: [{ rootPath: '', target: { entityKind: 'order' },
                 fields: [{ sourcePath: 'name', target: '${target}', mergeStrategy: 'fill_blank' }] }],
             }],
-            execute: async () => ({ records: [], nextState: {} }),
+            execute: async () => ({ records: [] }),
           })],
         }
       `)
@@ -408,7 +409,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'quote' },
               fields: [{ sourcePath: 'name', target: 'quote_number' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -439,7 +440,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
                 { constant: 'finished_good', target: 'part_kind' },
               ] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -460,7 +461,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'part' },
               fields: [{ constant: 'finished_good', sourcePath: 'kind', target: 'part_kind' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -483,7 +484,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'part' },
               fields: [{ constant: 'finished_good', target: 'part_kind', match: true }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -506,7 +507,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'contact' },
               fields: [{ target: 'first_name' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -534,7 +535,7 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
             mappings: [{ rootPath: '', target: { entityKind: 'contact' },
               connectionFields: [{ appField: 'customerId', from: 'label' }] }],
           }],
-          execute: async () => ({ records: [], nextState: {} }),
+          execute: async () => ({ records: [] }),
         })],
       }
     `)
@@ -563,60 +564,69 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
     )
   })
 
-  it('carries a stream periodField into the catalog', async () => {
-    const result = await runApp(`
-      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+  const queryApp = (stream: string) => `
+    import { defineDataConnector } from '@auxx/sdk/data-connectors'
 
-      export const app = {
-        dataConnectors: [defineDataConnector({
-          id: 'test.connector',
-          label: 'Test',
-          requiresConnection: false,
-          streams: [
-            {
-              key: 'order',
-              periodField: 'created_at',
-              mappings: [{ rootPath: '', target: { entityKind: 'contact' },
-                fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
-            },
-            {
-              key: 'customer',
-              mappings: [{ rootPath: '', target: { entityKind: 'contact' },
-                fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
-            },
-          ],
-          execute: async () => ({ records: [], nextState: {} }),
-        })],
-      }
-    `)
-    if (!isComplete(result) || !result.value) throw new Error('expected a catalog')
-    const streams = result.value.dataConnectors?.[0]?.streams ?? []
-    expect(streams[0]).toMatchObject({ key: 'order', periodField: 'created_at' })
-    expect(streams[1]).not.toHaveProperty('periodField')
-  })
-
-  it('rejects an empty periodField', async () => {
-    const result = await runApp(`
-      import { defineDataConnector } from '@auxx/sdk/data-connectors'
-
-      export const app = {
-        dataConnectors: [defineDataConnector({
-          id: 'test.connector',
-          label: 'Test',
-          requiresConnection: false,
-          streams: [{
+    export const app = {
+      dataConnectors: [defineDataConnector({
+        id: 'test.connector',
+        label: 'Test',
+        requiresConnection: false,
+        streams: [
+          {
             key: 'order',
-            periodField: '  ',
+            ${stream}
             mappings: [{ rootPath: '', target: { entityKind: 'contact' },
               fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
-          }],
-          execute: async () => ({ records: [], nextState: {} }),
-        })],
-      }
-    `)
+          },
+          {
+            key: 'customer',
+            mappings: [{ rootPath: '', target: { entityKind: 'contact' },
+              fields: [{ sourcePath: 'email', target: 'primary_email' }] }],
+          },
+        ],
+        execute: async () => ({ records: [] }),
+      })],
+    }
+  `
+
+  it('carries a stream query declaration into the catalog verbatim', async () => {
+    const result = await runApp(
+      queryApp(`query: { ids: true, period: 'created_at', since: true },`)
+    )
+    if (!isComplete(result) || !result.value) throw new Error('expected a catalog')
+    const streams = result.value.dataConnectors?.[0]?.streams ?? []
+    expect(streams[0]).toMatchObject({
+      key: 'order',
+      query: { ids: true, period: 'created_at', since: true },
+    })
+    expect(streams[0]).not.toHaveProperty('syncMode')
+    expect(streams[1]).not.toHaveProperty('query')
+  })
+
+  it('rejects an empty query.period', async () => {
+    const result = await runApp(queryApp(`query: { period: '  ' },`))
     if (!isErrored(result)) throw new Error('expected error')
     expect((result.error as { message: string }).message).toMatch(
-      /stream "order": periodField must be a non-empty source path/
+      /stream "order": query.period must be a non-empty source path/
+    )
+  })
+
+  it('rejects a webhookTrigger without an idPath', async () => {
+    const result = await runApp(
+      queryApp(`query: { ids: true }, webhookTrigger: { filter: { topic: 'x' }, idPath: '' },`)
+    )
+    if (!isErrored(result)) throw new Error('expected error')
+    expect((result.error as { message: string }).message).toMatch(
+      /stream "order": webhookTrigger.idPath must be a non-empty payload path/
+    )
+  })
+
+  it('rejects a webhookTrigger on a stream that cannot be queried by ids', async () => {
+    const result = await runApp(queryApp(`webhookTrigger: { idPath: 'resourceId' },`))
+    if (!isErrored(result)) throw new Error('expected error')
+    expect((result.error as { message: string }).message).toMatch(
+      /stream "order": webhookTrigger fetches by id, so the stream must declare query.ids/
     )
   })
 

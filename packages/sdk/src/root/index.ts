@@ -37,10 +37,11 @@ export type {
   ConnectorFetchResult,
   ConnectorMapping,
   ConnectorOwnedMappingField,
+  ConnectorQuery,
   ConnectorRecord,
   ConnectorRecordFilterCondition,
   ConnectorStreamDecl,
-  ConnectorStreamState,
+  ConnectorStreamQueryDecl,
   ContributingConnectorMapping,
   DataConnectorDefinition,
   FieldMergeStrategy,
@@ -48,9 +49,8 @@ export type {
 } from './data-connectors/index.js'
 // Data Connectors surface — `import { defineDataConnector } from '@auxx/sdk/data-connectors'`
 export {
+  DeltaExpiredError,
   defineDataConnector,
-  EXTERNAL_ID_FIELD,
-  UnpushableFilterError,
 } from './data-connectors/index.js'
 // Entities surface — `import { defineEntity } from '@auxx/sdk/entities'`
 export { defineEntity, type EntityDecl } from './entities/index.js'

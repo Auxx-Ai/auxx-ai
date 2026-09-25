@@ -187,7 +187,7 @@ export interface ConnectorPatch {
 /**
  * Classify a connector edit. A connector change is never `rebind` (identity lives on
  * the mapping) — at most `rebackfill`: a new credential or any `config` change
- * (endpoint / filters / backfill window) invalidates the cursor against the source.
+ * (endpoint / filters / history start) invalidates the cursor against the source.
  * `name`/`syncBehavior`/`scheduleConfig`/`status`/`appInstallationId` are lifecycle,
  * not data — cosmetic.
  */

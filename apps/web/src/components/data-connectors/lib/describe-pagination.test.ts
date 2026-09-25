@@ -49,13 +49,13 @@ describe('describePagination', () => {
     expect(describePagination({ kind: 'offset' }).details[0].value).toMatch(/fewer records/)
   })
 
-  it('adds the history-window row from the backfill span', () => {
+  it('adds the history row from the connector history start date', () => {
     const d = describePagination(
       { kind: 'cursor', cursorPath: 'next' },
-      { backfillWindowSpan: 'last_12_months' }
+      { historyStartDate: '2025-01-01' }
     )
     const byLabel = Object.fromEntries(d.details.map((r) => [r.label, r.value]))
-    expect(byLabel['History window']).toBe('Last 12 months')
+    expect(byLabel['History from']).toBe('Jan 1, 2025')
   })
 
   it('falls back to a stream page-size when the spec omits one', () => {

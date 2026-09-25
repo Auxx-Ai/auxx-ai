@@ -35,6 +35,7 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
 function args(over: Partial<ConnectorFetchArgs> = {}): ConnectorFetchArgs {
   return {
     streamKey: 's1',
+    query: {},
     mode: 'snapshot',
     state: {},
     credential: null,
@@ -253,10 +254,10 @@ describe('generic-rest enriched pagination (Step 6)', () => {
   })
 })
 
-describe('generic-rest backfill window (Step 9 §1.2)', () => {
+describe('generic-rest history floor (query.period.from)', () => {
   const backfillWindow = { sinceParam: 'created[gte]', format: 'unix' as const }
 
-  it('injects the pinned floor on EVERY page of a snapshot run (page pagination)', async () => {
+  it('injects the floor, in the declared unix format, on EVERY page of a snapshot run', async () => {
     fetchMock
       .mockResolvedValueOnce(json({ items: [{}] })) // page 1 → keep going
       .mockResolvedValueOnce(json({ items: [] })) // page 2 → exhausted
@@ -264,7 +265,7 @@ describe('generic-rest backfill window (Step 9 §1.2)', () => {
     await collect(
       args({
         mode: 'snapshot',
-        state: { backfillFloor: '1700000000' },
+        query: { period: { from: '2023-11-14T22:13:20.000Z' } },
         config: {
           endpoint: {
             baseUrl: 'https://api.example.com',
@@ -276,7 +277,7 @@ describe('generic-rest backfill window (Step 9 §1.2)', () => {
       })
     )
 
-    // Pinned floor is re-sent on both pages — not first-page-only.
+    // The floor is re-sent on both pages, not first-page-only.
     expect(decodeURIComponent(String(fetchMock.mock.calls[0]![0]))).toContain(
       'created[gte]=1700000000'
     )
@@ -290,19 +291,19 @@ describe('generic-rest backfill window (Step 9 §1.2)', () => {
     await collect(
       args({
         mode: 'incremental',
-        state: { backfillFloor: '1700000000' },
+        query: { period: { from: '2023-11-14T22:13:20.000Z' } },
         requestConfig: { path: 'charges', pagination: { kind: 'none' }, backfillWindow },
       })
     )
     expect(decodeURIComponent(String(fetchMock.mock.calls[0]![0]))).not.toContain('created[gte]')
   })
 
-  it('does NOT inject when no floor is pinned (span all)', async () => {
+  it('does NOT inject without a period (no history date)', async () => {
     fetchMock.mockResolvedValueOnce(json([{}]))
     await collect(
       args({
         mode: 'snapshot',
-        state: {}, // no backfillFloor
+        query: {},
         requestConfig: { path: 'charges', pagination: { kind: 'none' }, backfillWindow },
       })
     )

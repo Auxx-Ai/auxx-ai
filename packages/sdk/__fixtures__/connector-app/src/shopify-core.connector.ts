@@ -41,7 +41,8 @@ export const shopifyCoreDataConnector = defineDataConnector({
   streams: [
     {
       key: 'order',
-      webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
+      query: { ids: true, period: 'created_at', since: true },
+      webhookTrigger: { filter: { topic: 'orders/updated' }, idPath: 'resourceId' },
       recordFilter: [{ fieldId: 'total_price', operator: '>', value: 0 }],
       mappings: [
         {
@@ -50,7 +51,7 @@ export const shopifyCoreDataConnector = defineDataConnector({
           // inherited from there.
           rootPath: '',
           target: { entityKey: 'orders' },
-          // Crawl reconciliation policy. Only consulted on a `snapshot` stream, and
+          // Crawl reconciliation policy. Only consulted after an unbounded query, and
           // the platform still refuses to archive a record it did not create.
           orphanBehavior: 'archive',
           fields: [

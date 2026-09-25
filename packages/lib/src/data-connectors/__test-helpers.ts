@@ -160,7 +160,7 @@ export function fixturePersistedContext(): PersistedShapeContext {
 function productStream(v2: boolean): CatalogConnectorStream {
   return {
     key: 'product',
-    syncMode: 'incremental',
+    query: { since: true },
     mappings: [
       {
         rootPath: '',
@@ -195,7 +195,7 @@ function productStream(v2: boolean): CatalogConnectorStream {
 function customerStream(v2: boolean): CatalogConnectorStream {
   return {
     key: 'customer',
-    syncMode: v2 ? 'incremental' : 'snapshot',
+    ...(v2 ? { query: { since: true as const } } : {}),
     ...(v2
       ? {
           recordFilter: [
@@ -244,7 +244,7 @@ function customerStream(v2: boolean): CatalogConnectorStream {
 
 const fulfillmentStream: CatalogConnectorStream = {
   key: 'fulfillment',
-  syncMode: 'incremental',
+  query: { since: true },
   mappings: [
     {
       rootPath: '',

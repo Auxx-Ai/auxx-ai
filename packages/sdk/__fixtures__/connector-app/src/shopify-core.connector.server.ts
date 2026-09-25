@@ -1,14 +1,10 @@
 // packages/sdk/__fixtures__/connector-app/src/shopify-core.connector.server.ts
 //
 // Server handler (`shopifyCoreSync`) for the Shopify Core data connector. Runs
-// inside the app-runtime sandbox: fetches orders from the Shopify Admin GraphQL
-// API using the bound connection, pages incrementally (cursor on updated_at),
+// inside the app-runtime sandbox: translates the platform's query into an Admin
+// GraphQL search string, fetches one page of orders with the bound connection,
 // and yields SOURCE-shaped `ConnectorRecord` batches (streamKey 'order',
 // externalId = order id, fields keyed by source path).
-//
-// The handler NEVER sees target defs/mappings and NEVER writes entities — the
-// platform validates these records against the stream's source schema, then
-// maps + sinks them.
 //
 // The catalog extractor stubs `.server.ts` imports at extraction time, so this
 // body is never invoked during catalog projection.
@@ -16,6 +12,7 @@
 import type {
   ConnectorExecuteArgs,
   ConnectorFetchResult,
+  ConnectorQuery,
   ConnectorRecord,
 } from '@auxx/sdk/data-connectors'
 
@@ -32,6 +29,7 @@ const PAGE_SIZE = 50
 interface ShopifyOrderNode {
   id: string
   name: string
+  createdAt: string
   updatedAt: string
   displayFinancialStatus: string | null
   totalPriceSet: { shopMoney: { amount: string } } | null
@@ -49,6 +47,7 @@ const ORDERS_QUERY = /* GraphQL */ `
         node {
           id
           name
+          createdAt
           updatedAt
           displayFinancialStatus
           totalPriceSet { shopMoney { amount } }
@@ -63,6 +62,16 @@ const ORDERS_QUERY = /* GraphQL */ `
   }
 `
 
+/** The Admin API search string for a query; every term is ANDed. */
+function toSearch(query: ConnectorQuery): string | undefined {
+  const terms: string[] = []
+  if (query.ids?.length) terms.push(`(${query.ids.map((id) => `id:${id}`).join(' OR ')})`)
+  if (query.period?.from) terms.push(`created_at:>='${query.period.from}'`)
+  if (query.period?.to) terms.push(`created_at:<'${query.period.to}'`)
+  if (typeof query.since === 'string') terms.push(`updated_at:>'${query.since}'`)
+  return terms.length ? terms.join(' AND ') : undefined
+}
+
 /**
  * Project one Shopify order node into a SOURCE-shaped `ConnectorRecord`. The
  * `fields` keys are the stream's source paths (matching the `order` stream's
@@ -76,6 +85,7 @@ function toConnectorRecord(node: ShopifyOrderNode): ConnectorRecord {
     fields: {
       id: node.id,
       name: node.name,
+      created_at: node.createdAt,
       total_price: node.totalPriceSet?.shopMoney.amount ?? null,
       financial_status: node.displayFinancialStatus,
       'customer.email': node.customer?.email ?? null,
@@ -90,15 +100,11 @@ function toConnectorRecord(node: ShopifyOrderNode): ConnectorRecord {
   }
 }
 
-/**
- * Fetch one page of orders. Incremental mode filters on `updated_at` from the
- * persisted cursor; snapshot mode paginates from the beginning. Returns one
- * page's records + the next cursor so the platform re-invokes to page further.
- */
+/** Fetch one page of orders for the query; the last page returns the next `since`. */
 export default async function shopifyCoreSync(
   args: ConnectorExecuteArgs<ShopifyCoreConfig>
 ): Promise<ConnectorFetchResult> {
-  const { streamKey, mode, state, connection } = args
+  const { streamKey, query, cursor, connection } = args
 
   if (streamKey !== 'order') {
     throw new Error(`shopify.core: unknown stream "${streamKey}"`)
@@ -115,10 +121,6 @@ export default async function shopifyCoreSync(
     throw new Error('shopify.core: connection metadata is missing the shop domain')
   }
 
-  // Incremental: only orders updated since the last cursor. Snapshot: all.
-  const updatedSince = mode === 'incremental' ? state.updatedSince : undefined
-  const queryFilter = updatedSince ? `updated_at:>='${updatedSince}'` : undefined
-
   const endpoint = `https://${shopDomain}/admin/api/${ADMIN_API_VERSION}/graphql.json`
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -128,7 +130,7 @@ export default async function shopifyCoreSync(
     },
     body: JSON.stringify({
       query: ORDERS_QUERY,
-      variables: { first: PAGE_SIZE, after: state.cursor ?? null, query: queryFilter },
+      variables: { first: PAGE_SIZE, after: cursor ?? null, query: toSearch(query) },
     }),
   })
 
@@ -156,22 +158,10 @@ export default async function shopifyCoreSync(
   const edges = ordersConn?.edges ?? []
   const records = edges.map((edge) => toConnectorRecord(edge.node))
 
-  // Track the high-water mark of `updatedAt` so the next incremental run resumes
-  // from the latest record we've seen.
-  const lastUpdatedAt = edges.length ? edges[edges.length - 1]!.node.updatedAt : updatedSince
-
-  const hasNextPage = ordersConn?.pageInfo.hasNextPage ?? false
-  const endCursor = ordersConn?.pageInfo.endCursor ?? undefined
-
-  return {
-    records,
-    nextState: {
-      // While paging within this run, keep the page cursor. When the page chain
-      // ends, drop the cursor and advance `updatedSince` so the next run pulls
-      // the delta from the latest record.
-      cursor: hasNextPage ? endCursor : undefined,
-      updatedSince: hasNextPage ? state.updatedSince : lastUpdatedAt,
-      backfillComplete: !hasNextPage,
-    },
+  if (ordersConn?.pageInfo.hasNextPage) {
+    return { records, cursor: ordersConn.pageInfo.endCursor ?? undefined }
   }
+  // Sorted by UPDATED_AT, so the last record of the last page is the high-water mark.
+  const lastUpdatedAt = edges.length ? edges[edges.length - 1]!.node.updatedAt : query.since
+  return { records, since: lastUpdatedAt }
 }

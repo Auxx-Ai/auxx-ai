@@ -5,12 +5,12 @@
  *
  * Loads the bundled app's `__AUXX_DATA_CONNECTORS__` registry, looks up the
  * requested connector by id, and calls
- * `connector.execute({ streamKey, mode, state, connection, config })` for one
- * stream fetch. The app fetches from the provider and yields source-shaped
- * `ConnectorRecord` batches; the executor returns `{ records, nextState, rateLimited? }`.
+ * `connector.execute({ streamKey, query, cursor, connection, config })` for one
+ * page. The app fetches from the provider and yields source-shaped `ConnectorRecord`
+ * batches; the executor returns `{ records, cursor?, since?, rateLimited?, deltaExpired? }`.
  *
  * The transport is request/response — one batch + cursor per invocation. The
- * platform re-invokes with the returned `nextState` to page. `execute` may
+ * platform re-invokes with the returned `cursor` to page. `execute` may
  * return `records` as an array or an async iterable; this executor materializes
  * iterables into an array for JSON transport (one page worth, bounded by the
  * app's own paging — the platform persists the cursor between calls).
@@ -19,7 +19,7 @@
  * platform validates the returned records against the stream's source schema,
  * then maps + sinks them (the mapping layer + sink are platform-side).
  *
- * See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * See plans/data-connectors/v14/implementation-brief.md §2.
  */
 
 import { compileBundle } from '../bundle-cache.ts'
@@ -50,20 +50,9 @@ export async function executeDataConnector(
     context: any
   }
 ): Promise<ExecutionResult> {
-  const {
-    bundleCode,
-    connectorId,
-    streamKey,
-    mode,
-    state,
-    config,
-    triggerContext,
-    recordFilter,
-    context,
-    timeout,
-  } = options
+  const { bundleCode, connectorId, streamKey, query, cursor, config, context, timeout } = options
 
-  console.log('[DataConnectorExecutor] Starting execution:', { connectorId, streamKey, mode })
+  console.log('[DataConnectorExecutor] Starting execution:', { connectorId, streamKey })
 
   injectServerRuntimeHelpers(context)
 
@@ -99,15 +88,16 @@ export async function executeDataConnector(
       : null
 
     const execPromise = (async () => {
-      const fetchResult = await connector.execute({
-        streamKey,
-        mode,
-        state,
-        connection,
-        config,
-        triggerContext,
-        recordFilter,
-      })
+      let fetchResult: any
+      try {
+        fetchResult = await connector.execute({ streamKey, query, cursor, connection, config })
+      } catch (error) {
+        // Crosses back as data: the app's error class lives in another realm, so `instanceof` never matches.
+        if ((error as { code?: unknown } | null)?.code === 'DELTA_EXPIRED') {
+          return { records: [] as unknown[], deltaExpired: true as const }
+        }
+        throw error
+      }
 
       // Materialize records (array or async iterable) into a bounded array.
       const records: unknown[] = []
@@ -130,9 +120,9 @@ export async function executeDataConnector(
       const rateLimited = sanitizeRateLimited(fetchResult?.rateLimited)
       return {
         records,
-        nextState: fetchResult?.nextState ?? {},
+        ...(fetchResult?.cursor != null ? { cursor: fetchResult.cursor } : {}),
+        ...(fetchResult?.since !== undefined ? { since: fetchResult.since } : {}),
         ...(rateLimited ? { rateLimited } : {}),
-        ...(fetchResult?.narrowed === true ? { narrowed: true as const } : {}),
       }
     })()
 
@@ -153,7 +143,8 @@ export async function executeDataConnector(
       connectorId,
       streamKey,
       recordCount: fetchOutput.records.length,
-      rateLimited: fetchOutput.rateLimited,
+      rateLimited: 'rateLimited' in fetchOutput ? fetchOutput.rateLimited : undefined,
+      deltaExpired: 'deltaExpired' in fetchOutput,
     })
 
     return {

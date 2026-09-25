@@ -100,7 +100,7 @@ export interface SyncState {
   phase: SyncPhase
   /** Durable page cursor, checkpointed AFTER every committed slice. */
   cursor?: SyncCursor
-  /** Steady-phase delta floor; the source returns a monotonic max each slice. */
+  /** Steady-phase delta marker; opaque to the core. */
   watermark?: string
   /** Running total for the progress UI (counts, never a percent). */
   recordsSeen?: number
@@ -150,7 +150,7 @@ export interface SliceResult {
   nextCursor?: SyncCursor
   /** False ⇒ the source is exhausted for this phase (backfill done / no new deltas). */
   hasMore: boolean
-  /** Monotonic max watermark observed this slice (must be >= ctx.watermark). */
+  /** The watermark to store on advance; opaque to the core, which never compares it. */
   watermark?: string
   commit: SliceCommit
   /** Counter deltas for this slice, folded into the run ledger. */

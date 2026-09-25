@@ -22,7 +22,7 @@
  */
 
 export { defineDataConnector } from './define-data-connector.js'
-export { EXTERNAL_ID_FIELD, UnpushableFilterError } from './errors.js'
+export { DeltaExpiredError } from './errors.js'
 export type {
   ConnectorConnection,
   ConnectorConnectionField,
@@ -36,10 +36,11 @@ export type {
   ConnectorFetchResult,
   ConnectorMapping,
   ConnectorOwnedMappingField,
+  ConnectorQuery,
   ConnectorRecord,
   ConnectorRecordFilterCondition,
   ConnectorStreamDecl,
-  ConnectorStreamState,
+  ConnectorStreamQueryDecl,
   ContributingConnectorMapping,
   DataConnectorDefinition,
   FieldMergeStrategy,

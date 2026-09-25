@@ -26,6 +26,7 @@ import { connectionQuota } from '../utils/rate-limiter/quota'
 import { prepareConnectorFetch } from './connector-runtime'
 import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
 import { loadAppCatalogConnector } from './connectors/app-connector-adapter'
+import { isConnectorDeltaExpired } from './connectors/types'
 import {
   type BackfillSliceJobData,
   enqueueBackfillSlice,
@@ -52,13 +53,14 @@ import {
   type StreamWithMappings,
   setRunRateLimited,
 } from './service'
+import { streamHasPeriod } from './stream-query'
 import {
   createConnectorRunLedger,
   createRunSyncStateStore,
   createStreamSyncStateStore,
   type RunStreamCursor,
 } from './sync-core-adapters'
-import type { ConnectorStreamState } from './types'
+import type { ConnectorStreamQueryDecl, ConnectorStreamState } from './types'
 
 const logger = createScopedLogger('data-connector-slice-orchestrator')
 
@@ -122,13 +124,14 @@ interface ChainSnapshot {
    * onto every slice's `SyncCtx`.
    */
   sweep?: boolean
+  /** The history floor every slice of the run sends as `period.from` (UTC ISO). */
+  floor?: string
 }
 
-/** Reset a stream's durable state to a fresh backfill (re-backfill / first run). */
+/** Reset a stream's durable state to a fresh backfill (re-backfill / first run / expired delta). */
 export function freshBackfillState(
   prev: ConnectorStreamState,
-  startedAtIso: string,
-  backfillFloor?: string
+  startedAtIso: string
 ): ConnectorStreamState {
   return {
     ...prev,
@@ -137,56 +140,35 @@ export function freshBackfillState(
     backfillStartedAt: startedAtIso,
     recordsSeen: 0,
     watermark: undefined,
-    // Step 9 §1.2 — pin the window floor ONCE so every slice injects the same value
-    // (no per-slice `now` drift). Undefined ⇒ span 'all' / no window ⇒ full history.
-    backfillFloor,
   }
 }
 
-type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'
-
 /**
- * Compute the pinned backfill-window floor (Step 9 §1.2). `span` is the connector's
- * plain-language choice; `format` comes from the stream's `backfillWindow`. Computed
- * ONCE per fresh backfill so the whole chain shares one floor. `'all'`/absent ⇒ no
- * floor (crawl full history — current behavior).
+ * The history floor: `historyStartDate` at UTC midnight, moved EARLIER to an
+ * accounting-active org's cutover, never later (v13 N2). Absent date ⇒ no floor.
  */
-function computeBackfillFloor(
-  span: BackfillWindowSpan | undefined,
-  format: 'iso' | 'unix' = 'iso'
-): string | undefined {
-  if (!span || span === 'all') return undefined
-  const floor = new Date()
-  if (span === 'last_90_days') floor.setDate(floor.getDate() - 90)
-  else floor.setMonth(floor.getMonth() - 12) // last_12_months
-  return format === 'unix' ? String(Math.floor(floor.getTime() / 1000)) : floor.toISOString()
-}
-
-/** An app period stream's floor (v13 N2): the span's floor, never after an accounting-active org's cutover. */
-export async function appBackfillFloor(
+export async function historyFloor(
   organizationId: string,
-  span: BackfillWindowSpan | undefined
+  historyStartDate: string | undefined
 ): Promise<string | undefined> {
-  const floor = computeBackfillFloor(span)
-  if (!floor) return undefined
+  const ms = historyStartDate ? Date.parse(historyStartDate) : Number.NaN
+  if (!Number.isFinite(ms)) return undefined
   // Lazy: keeps the accounting module graph out of every connector test that never floors.
   const { readActiveCutoverStart } = await import('../accounting/ledger/setup/cutover-start')
   const cutoverStart = await readActiveCutoverStart(organizationId)
-  return cutoverStart && cutoverStart.getTime() < Date.parse(floor)
-    ? cutoverStart.toISOString()
-    : floor
+  return new Date(
+    cutoverStart && cutoverStart.getTime() < ms ? cutoverStart.getTime() : ms
+  ).toISOString()
 }
 
-/** `periodField` per stream key from an app connector's catalog; empty for any other connector. */
-async function readAppPeriodFields(
+/** The catalog `query` declaration per stream key of an app connector; empty for any other connector. */
+async function readAppQueryDecls(
   organizationId: string,
   connector: { type: string; definitionKind: string; appInstallationId: string | null }
-): Promise<Map<string, string>> {
+): Promise<Map<string, ConnectorStreamQueryDecl>> {
   if (connector.definitionKind !== 'app') return new Map()
   const catalog = await loadAppCatalogConnector(organizationId, connector)
-  return new Map(
-    (catalog?.streams ?? []).flatMap((s) => (s.periodField ? [[s.key, s.periodField]] : []))
-  )
+  return new Map((catalog?.streams ?? []).flatMap((s) => (s.query ? [[s.key, s.query]] : [])))
 }
 
 // ── Start a connector sync (backfill or steady) ──────────────────────────────────
@@ -368,11 +350,12 @@ async function startConnectorSyncInner(
     return false
   }
 
+  const queryDecls = await readAppQueryDecls(organizationId, connector)
   if (reimport) {
     return startReimportChain(db, {
       organizationId,
       connector,
-      streams,
+      streams: streams.map((s) => toSnapshotStream(s, queryDecls)),
       reimport,
       continueRunId,
       cursors: continued?.cursors,
@@ -417,7 +400,6 @@ async function startConnectorSyncInner(
   //    that marker, so the stream must really re-crawl in this run).
   //  - FRESH otherwise: a snapshot stream past its backfill (its orphan reconciliation
   //    needs the full re-crawl), a stream that never ran, a sample.
-  const span = connector.config?.backfillWindowSpan
   const pendingResync = new Set(connector.resyncPending?.streamIds ?? [])
   const decisions = streams.map((s, i) => {
     if (phase !== 'backfill') return 'steady' as const
@@ -431,36 +413,17 @@ async function startConnectorSyncInner(
     return keepDelta ? ('steady' as const) : ('fresh' as const)
   })
 
-  // Floors are pinned ONCE per backfill so every slice sends the same value (no `now`
-  // drift); a resumed stream keeps the floor its backfill started with.
-  const periodFields = await readAppPeriodFields(organizationId, connector)
-  const appFloor =
-    periodFields.size > 0 && decisions.includes('fresh')
-      ? await appBackfillFloor(organizationId, span)
-      : undefined
-  const floors = streams.map((s, i) => {
-    const periodField = periodFields.get(s.stream.streamKey ?? '')
-    if (decisions[i] === 'resume') return streamStates[i]?.backfillFloor
-    if (decisions[i] !== 'fresh') return undefined
-    if (periodField) return appFloor
-    // Generic-REST: the param is connector-level but the format is declared per stream.
-    const window = s.stream.requestConfig?.backfillWindow
-    return window ? computeBackfillFloor(span, window.format) : undefined
-  })
-
   // The pinned snapshot — decoded streams + (now-stamped) mappings. The mutable
-  // stream `state`/cursor is deliberately NOT captured; it stays live.
+  // stream `state`/cursor is deliberately NOT captured; it stays live. The floor is a
+  // fixed date, so computing it once per chain gives every slice the same value.
+  const snapshotStreams = streams.map((s) => toSnapshotStream(s, queryDecls))
+  const floor = snapshotStreams.some(streamHasPeriod)
+    ? await historyFloor(organizationId, connector.config?.historyStartDate)
+    : undefined
   const snapshot: ChainSnapshot = {
-    streams: streams.map((s, i) => {
-      const periodField = periodFields.get(s.stream.streamKey ?? '')
-      const backfillFloor = floors[i]
-      return {
-        ...toSnapshotStream(s),
-        ...(periodField ? { periodField } : {}),
-        ...(backfillFloor ? { backfillFloor } : {}),
-      }
-    }),
+    streams: snapshotStreams,
     sweep: isSweep,
+    ...(floor ? { floor } : {}),
   }
 
   const run = await openRun(db, {
@@ -482,7 +445,7 @@ async function startConnectorSyncInner(
     await persistStreamState(
       db,
       s.stream.id,
-      freshBackfillState(streamStates[i] ?? {}, startedAtIso, floors[i])
+      freshBackfillState(streamStates[i] ?? {}, startedAtIso)
     )
   }
 
@@ -513,7 +476,11 @@ async function startConnectorSyncInner(
 }
 
 /** The pinned, decoded view of one stream captured into the run's chain snapshot (B2). */
-function toSnapshotStream(s: StreamWithMappings): SyncSourceStream {
+function toSnapshotStream(
+  s: StreamWithMappings,
+  queryDecls: Map<string, ConnectorStreamQueryDecl>
+): SyncSourceStream {
+  const query = queryDecls.get(s.stream.streamKey ?? '')
   return {
     streamId: s.stream.id,
     streamKey: s.stream.streamKey ?? '',
@@ -522,6 +489,7 @@ function toSnapshotStream(s: StreamWithMappings): SyncSourceStream {
     // The column mirrors `ConditionGroup[]` structurally but is typed loosely in
     // @auxx/database (tier 1 can't import lib) — cast at the decode boundary.
     recordFilter: (s.stream.recordFilter as ConditionGroup[] | null) ?? undefined,
+    ...(query ? { query } : {}),
     mappings: s.mappings,
   }
 }
@@ -536,14 +504,14 @@ async function startReimportChain(
   input: {
     organizationId: string
     connector: DataConnectorRow
-    streams: StreamWithMappings[]
+    streams: SyncSourceStream[]
     reimport: ReimportRunOptions
     continueRunId?: string
     cursors?: Record<string, RunStreamCursor>
   }
 ): Promise<boolean> {
   const { organizationId, connector, streams, reimport, cursors } = input
-  const snapshot: ChainSnapshot = { streams: streams.map(toSnapshotStream), sweep: false }
+  const snapshot: ChainSnapshot = { streams, sweep: false }
   const run = await openRun(db, {
     dataConnectorId: connector.id,
     organizationId,
@@ -552,7 +520,7 @@ async function startReimportChain(
     phase: 'backfill',
     chainSnapshot: snapshot as unknown as Record<string, unknown>,
     cursorBefore: connector.state,
-    recordFilter: reimport.recordFilter,
+    query: reimport.query,
     initiatedBy: reimport.initiatedBy ?? null,
     progress: {
       ...(cursors ? { cursors } : {}),
@@ -565,7 +533,7 @@ async function startReimportChain(
     await enqueueBackfillSlice({
       connectorId: connector.id,
       organizationId,
-      streamId: s.stream.id,
+      streamId: s.streamId,
       runId: run.id,
     })
   }
@@ -758,11 +726,12 @@ export async function runBackfillSlice(
       startedAt: run.startedAt,
       phase: run.phase as 'backfill' | 'steady' | null,
       mode: run.mode,
-      recordFilter: run.recordFilter,
+      query: run.query,
     },
     stream: streamSnap,
     allStreams: snapshot?.streams ?? [streamSnap],
     sweep: snapshot?.sweep ?? false,
+    floor: snapshot?.floor,
     // A sample run that exhausts a stream before the cap parks via the source's
     // natural-completion path; thread the cap so it parks instead of going live.
     sampleLimit: run.sampleLimit,
@@ -804,7 +773,10 @@ export async function runBackfillSlice(
   const sliceLedger = {
     recordSlice: (entry: SliceLedgerEntry) => ledger.recordSlice(entry),
     finalize: async () => {},
-    fail: (error: Error) => ledger.fail(error),
+    // An expired delta may restart the stream below instead of failing the run.
+    fail: async (error: Error) => {
+      if (!isConnectorDeltaExpired(error)) await ledger.fail(error)
+    },
   }
 
   const sliceSignal = signal ?? new AbortController().signal
@@ -903,7 +875,7 @@ export async function runBackfillSlice(
             run.mode === 'reimport'
               ? {
                   streamIds: snapshot?.streams.map((s) => s.streamId) ?? [],
-                  recordFilter: run.recordFilter ?? [],
+                  query: run.query ?? {},
                   initiatedBy: run.initiatedBy,
                 }
               : undefined
@@ -941,6 +913,20 @@ export async function runBackfillSlice(
     return
   }
 
+  if (outcome.action === 'failed' && isConnectorDeltaExpired(outcome.error)) {
+    if (await restartExpiredDelta(db, streamId, run.startedAt, run.mode)) {
+      logger.warn('runBackfillSlice: delta marker expired, restarting the stream backfill', {
+        runId,
+        connectorId,
+        streamId,
+      })
+      await enqueueBackfillSlice({ connectorId, organizationId, streamId, runId })
+      await publishConnectorSync(db, organizationId, connectorId, 'progress')
+      return
+    }
+    await ledger.fail(outcome.error)
+  }
+
   if (outcome.action === 'failed') {
     // The runner already failed the run; release the connector so it isn't stuck
     // 'syncing'. Sibling streams will see the run no longer 'running' and stop.
@@ -962,6 +948,28 @@ export async function runBackfillSlice(
   // an earlier one it's still syncing with this stream done. Either way the snapshot
   // tells the truth — emit a lifecycle frame so the history panel + freshness refetch.
   await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
+}
+
+/**
+ * Clear an expired `since` and reset the stream to a fresh backfill inside the same run.
+ * Only a steady stream sends `since`, and the reset leaves it in backfill, so a second
+ * expiry in the run finds no steady stream and fails it. Never for a re-import.
+ */
+async function restartExpiredDelta(
+  db: Database,
+  streamId: string,
+  runStartedAt: Date,
+  runMode: string
+): Promise<boolean> {
+  if (runMode === 'reimport') return false
+  const row = await db.query.DataConnectorStream.findFirst({
+    where: eq(schema.DataConnectorStream.id, streamId),
+    columns: { state: true },
+  })
+  const state = (row?.state as ConnectorStreamState | null) ?? {}
+  if (state.phase !== 'steady') return false
+  await persistStreamState(db, streamId, freshBackfillState(state, runStartedAt.toISOString()))
+  return true
 }
 
 // ── Stale-run sweep (H5) ──────────────────────────────────────────────────────────

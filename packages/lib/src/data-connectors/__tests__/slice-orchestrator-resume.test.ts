@@ -11,17 +11,21 @@
 // leaves the steady sibling's watermark alone and lets it run a delta inside the
 // backfill run without closing the run under the crawl; the explicit reset still
 // resets both; and a record seen only in the first run of the two-run backfill is
-// NOT archived when the crawl completes. The v13 re-import run (N5) and app backfill floor
-// (N2) ride the same world.
+// NOT archived when the crawl completes. The re-import run, the history floor and the
+// expired-delta restart (v14 §3) ride the same world.
 
 import { is, Param, SQL } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConditionGroup } from '../../conditions/types'
 import type { SyncState, SyncStateStore } from '../../sync-core/contracts'
-import type { ConnectorRecordFilterCondition } from '../connectors/types'
 import type { ReimportRunOptions } from '../reimport-filter'
 import type { RunStreamCursor } from '../sync-core-adapters'
-import type { ConnectorStreamState, DataConnectorDefinition } from '../types'
+import type {
+  ConnectorQuery,
+  ConnectorStreamQueryDecl,
+  ConnectorStreamState,
+  DataConnectorDefinition,
+} from '../types'
 
 // ── In-memory world ─────────────────────────────────────────────────────────────
 
@@ -45,7 +49,7 @@ interface FakeRun {
   mode: string
   trigger: string
   chainSnapshot: Record<string, unknown> | null
-  recordFilter: ConnectorRecordFilterCondition[] | null
+  query: ConnectorQuery | null
   initiatedBy: string | null
   progress: { cursors?: Record<string, RunStreamCursor> } | null
   startedAt: Date
@@ -69,9 +73,11 @@ const world = {
     streamKey: string
     mode: string
     state: ConnectorStreamState
-    recordFilter?: readonly unknown[]
+    query: ConnectorQuery
   }[],
-  catalogStreams: [] as { key: string; periodField?: string }[],
+  catalogStreams: [] as { key: string; query?: ConnectorStreamQueryDecl }[],
+  /** `orders` answers a fetch with an expired delta: on a `since` query, or on every fetch. */
+  expireOrders: null as null | 'since' | 'always',
   customerPages: 0,
   sinkFilters: [] as (ConditionGroup[] | undefined)[],
 }
@@ -104,6 +110,7 @@ function resetWorld() {
   world.fetchCalls.length = 0
   world.catalogStreams = []
   world.customerPages = CUSTOMER_PAGES
+  world.expireOrders = null
   world.sinkFilters.length = 0
   world.connector = {
     id: 'dc1',
@@ -258,7 +265,7 @@ vi.mock('../service', async (importOriginal) => {
         mode: string
         phase?: 'backfill' | 'steady'
         chainSnapshot?: Record<string, unknown>
-        recordFilter?: ConnectorRecordFilterCondition[] | null
+        query?: ConnectorQuery | null
         initiatedBy?: string | null
         progress?: FakeRun['progress']
       }
@@ -271,7 +278,7 @@ vi.mock('../service', async (importOriginal) => {
         mode: input.mode,
         trigger: input.trigger,
         chainSnapshot: input.chainSnapshot ?? null,
-        recordFilter: input.recordFilter ?? null,
+        query: input.query ?? null,
         initiatedBy: input.initiatedBy ?? null,
         progress: input.progress ?? null,
         startedAt: new Date(),
@@ -450,8 +457,15 @@ function fixtureDefinition(): DataConnectorDefinition {
         streamKey: args.streamKey,
         mode: args.mode,
         state: args.state,
-        recordFilter: args.recordFilter,
+        query: args.query,
       })
+      if (
+        args.streamKey === 'orders' &&
+        (world.expireOrders === 'always' ||
+          (world.expireOrders === 'since' && args.query.since !== undefined))
+      ) {
+        throw new ConnectorDeltaExpiredError('orders')
+      }
       const from = args.state.backfillCursor ? Number(args.state.backfillCursor.value) : 1
       async function* customers() {
         for (let page = from; page <= world.customerPages; page++) {
@@ -471,7 +485,7 @@ function fixtureDefinition(): DataConnectorDefinition {
         yield { streamKey: 'orders', fields: { id: 'o-1' } }
         yield { __checkpoint: true as const, watermark: 'W2' }
       }
-      return { records: args.streamKey === 'customers' ? customers() : orders(), nextState: {} }
+      return { records: args.streamKey === 'customers' ? customers() : orders() }
     },
   }
 }
@@ -486,7 +500,8 @@ vi.mock('../connector-runtime', () => ({
   prepareConnectorFetch: async () => ({ definition: fixtureDefinition(), credential: null }),
 }))
 
-import { runFilterGroup } from '../reimport-filter'
+import { ConnectorDeltaExpiredError } from '../connectors/types'
+import { periodFilterGroup } from '../reimport-filter'
 import {
   BACKFILL_CONTINUE_DELAY_MS,
   backfillPendingChange,
@@ -664,7 +679,7 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
       mode: 'snapshot',
       trigger: 'manual',
       chainSnapshot: null,
-      recordFilter: null,
+      query: null,
       initiatedBy: null,
       progress: null,
       startedAt: new Date(Date.now() - 86_400_000),
@@ -707,15 +722,17 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
   })
 })
 
-describe('the app backfill floor across a two-run backfill (v13 N2, N4)', () => {
+describe('the history floor across a two-run backfill (v14 §3)', () => {
+  const FLOOR = '2026-06-01T00:00:00.000Z'
+
   beforeEach(() => {
     world.connector.type = 'app:shop'
     world.connector.definitionKind = 'app'
-    world.connector.config = { backfillWindowSpan: 'last_90_days' }
-    world.catalogStreams = [{ key: 'customers', periodField: 'createdAt' }]
+    world.connector.config = { historyStartDate: '2026-06-01' }
+    world.catalogStreams = [{ key: 'customers', query: { ids: true, period: 'createdAt' } }]
   })
 
-  it('pins one floor for the whole backfill, sends it exact, and never reconciles by absence', async () => {
+  it('sends one floor on every slice of the run, and a floored crawl never reconciles', async () => {
     listExistingItems.mockResolvedValue([
       {
         id: 'i-gone',
@@ -726,43 +743,72 @@ describe('the app backfill floor across a two-run backfill (v13 N2, N4)', () => 
     ])
 
     await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
-    const floor = state('s-customers').backfillFloor
-    expect(floor).toBeDefined()
-    const snapshot = world.runs[0]?.chainSnapshot as { streams: Record<string, unknown>[] }
+    const snapshot = world.runs[0]?.chainSnapshot as {
+      floor?: string
+      streams: Record<string, unknown>[]
+    }
+    expect(snapshot.floor).toBe(FLOOR)
     expect(snapshot.streams.find((s) => s.streamId === 's-customers')).toMatchObject({
-      periodField: 'createdAt',
-      backfillFloor: floor,
+      query: { ids: true, period: 'createdAt' },
     })
     await drainSlices()
     await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'backfill' })
-    expect(state('s-customers').backfillFloor).toBe(floor)
     await drainSlices()
 
-    const clause = {
-      fieldId: 'createdAt',
-      operator: 'between',
-      value: { from: floor },
-      exact: true,
-    }
     const customerFetches = world.fetchCalls.filter((c) => c.streamKey === 'customers')
     expect(customerFetches.length).toBeGreaterThan(1)
-    expect(
-      customerFetches.every((c) => JSON.stringify(c.recordFilter) === JSON.stringify([clause]))
-    ).toBe(true)
-    // The steady sibling is not floored.
-    expect(fetchesFor('orders', 0).every((c) => c.recordFilter === undefined)).toBe(true)
+    expect(customerFetches.every((c) => c.query.period?.from === FLOOR)).toBe(true)
+    // The sibling declares no period, so the floor does not apply to it.
+    expect(fetchesFor('orders', 0).every((c) => JSON.stringify(c.query) === '{}')).toBe(true)
 
     expect(state('s-customers').phase).toBe('steady')
     expect(listExistingItems).not.toHaveBeenCalled()
     expect(archiveRecord).not.toHaveBeenCalled()
   })
 
-  it("sends no floor on span 'all'", async () => {
-    world.connector.config = { backfillWindowSpan: 'all' }
+  it('sends no floor without a history date', async () => {
+    world.connector.config = {}
     await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
     await drainSlices()
-    expect(state('s-customers').backfillFloor).toBeUndefined()
-    expect(world.fetchCalls.every((c) => c.recordFilter === undefined)).toBe(true)
+    expect(world.runs[0]?.chainSnapshot).not.toHaveProperty('floor')
+    expect(world.fetchCalls.every((c) => JSON.stringify(c.query) === '{}')).toBe(true)
+  })
+})
+
+describe('an expired delta restarts the stream backfill once per run (v14 §3)', () => {
+  beforeEach(() => {
+    world.connector.type = 'app:shop'
+    world.connector.definitionKind = 'app'
+    world.customerPages = 2
+    world.catalogStreams = [{ key: 'orders', query: { ids: true, since: true } }]
+    world.streams.get('s-orders')!.state = {
+      phase: 'steady',
+      watermark: JSON.stringify('2026-09-01'),
+      recordsSeen: 42,
+    }
+  })
+
+  it('clears the since, re-crawls the stream in the same run, and completes', async () => {
+    world.expireOrders = 'since'
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+
+    const orders = fetchesFor('orders', 0)
+    expect(orders.map((c) => c.query)).toEqual([{ since: '2026-09-01' }, {}])
+    expect(world.runs).toHaveLength(1)
+    expect(world.runs[0]?.status).toBe('completed')
+    expect(state('s-orders').phase).toBe('steady')
+    expect(state('s-orders').watermark).toBe('W2')
+  })
+
+  it('a second expiry in the same run fails it', async () => {
+    world.expireOrders = 'always'
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+
+    expect(fetchesFor('orders', 0)).toHaveLength(2)
+    expect(world.runs[0]?.status).toBe('failed')
+    expect(world.finalized.at(-1)).toMatchObject({ ok: false })
   })
 })
 
@@ -781,15 +827,12 @@ describe('the re-import run (v13 N5)', () => {
       conditions: [{ id: 'c2', fieldId: 'financial_status', operator: 'is', value: 'paid' }],
     },
   ]
-  const AUGUST: ConnectorRecordFilterCondition = {
-    fieldId: 'createdAt',
-    operator: 'between',
-    value: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
-    exact: true,
+  const AUGUST = {
+    period: { from: '2026-08-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
   }
   const reimportOf = (streamId: string): ReimportRunOptions => ({
     streamIds: [streamId],
-    recordFilter: [AUGUST],
+    query: AUGUST,
     initiatedBy: 'u1',
   })
   const frozenState = (id: string) => JSON.stringify(state(id))
@@ -799,17 +842,21 @@ describe('the re-import run (v13 N5)', () => {
     world.connector.definitionKind = 'app'
     world.connector.resyncPending = { streamIds: ['s-orders'] }
     world.customerPages = 2
+    world.catalogStreams = [
+      { key: 'orders', query: { ids: true, period: 'createdAt', since: true } },
+      { key: 'customers', query: { ids: true, period: 'createdAt' } },
+    ]
     Object.assign(world.streams.get('s-customers')!, {
       recordFilter: STORED_CUSTOMER_FILTER,
       state: { phase: 'steady', backfillStartedAt: '2026-01-01T00:00:00.000Z', recordsSeen: 7 },
     })
     Object.assign(world.streams.get('s-orders')!, {
       recordFilter: STORED_ORDER_FILTER,
-      state: { phase: 'steady', watermark: 'W1', recordsSeen: 42, backfillFloor: 'F0' },
+      state: { phase: 'steady', watermark: JSON.stringify('W1'), recordsSeen: 42 },
     })
   })
 
-  it('sends no watermark, sends the run clauses exact, and leaves stream state byte-identical', async () => {
+  it('sends its own query and no since, and leaves stream state byte-identical', async () => {
     const before = frozenState('s-orders')
     const siblingBefore = frozenState('s-customers')
 
@@ -820,7 +867,7 @@ describe('the re-import run (v13 N5)', () => {
     expect(world.runs[0]).toMatchObject({
       mode: 'reimport',
       phase: 'backfill',
-      recordFilter: [AUGUST],
+      query: AUGUST,
       initiatedBy: 'u1',
       progress: { requestId: 'req-1' },
     })
@@ -837,13 +884,12 @@ describe('the re-import run (v13 N5)', () => {
     const [fetch] = world.fetchCalls
     expect(fetch?.mode).toBe('snapshot')
     expect(fetch?.state.watermark).toBeUndefined()
-    // The stored filter is pushable here and goes without `exact`; the run clause is exact.
-    expect(fetch?.recordFilter).toEqual([
-      { fieldId: 'financial_status', operator: 'is', value: 'paid' },
-      AUGUST,
+    expect(fetch?.query).toEqual(AUGUST)
+    // Post-fetch: the stream filter AND the period re-checked on the declared path.
+    expect(world.sinkFilters[0]).toEqual([
+      ...STORED_ORDER_FILTER,
+      periodFilterGroup('createdAt', AUGUST.period),
     ])
-    // Post-fetch: the stream filter AND the run filter.
-    expect(world.sinkFilters[0]).toEqual([...STORED_ORDER_FILTER, runFilterGroup([AUGUST])])
   })
 
   it('finalizes with the relationship pass, ledger close, claim release and publish, but never reconciles', async () => {
@@ -861,10 +907,9 @@ describe('the re-import run (v13 N5)', () => {
     expect(spies.reconcileOrphans).not.toHaveBeenCalled()
     expect(spies.reconcileManagedMarkers).not.toHaveBeenCalled()
     expect(world.resyncCleared).toBe(0)
-    // N4: the snapshot stream's stored filter is withheld; only the run clause is sent.
-    expect(
-      world.fetchCalls.every((c) => JSON.stringify(c.recordFilter) === JSON.stringify([AUGUST]))
-    ).toBe(true)
+    expect(world.fetchCalls.every((c) => JSON.stringify(c.query) === JSON.stringify(AUGUST))).toBe(
+      true
+    )
   })
 
   it('pages on the run row, resumes from its progress, and continues a parked run from its cursors', async () => {
@@ -924,7 +969,7 @@ describe('waiting for the claim (v13 N5)', () => {
     world.claimable = false
     const started = startConnectorSync(DB, 'org1', 'dc1', {
       trigger: 'manual',
-      reimport: { streamIds: ['s-orders'], recordFilter: [] },
+      reimport: { streamIds: ['s-orders'], query: { ids: ['o-1'] } },
       retryClaim: true,
     })
     await expect(started).rejects.toBeInstanceOf(ConnectorClaimedError)

@@ -12,7 +12,7 @@ import { NotFoundError } from '../errors'
 import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
 import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-shape'
-import type { ConnectorRecordFilterCondition } from './connectors/types'
+import type { ConnectorQuery } from './connectors/types'
 import { maxLevel } from './edit-impact'
 import { completeRunStream, isRunPauseRequested } from './run-control'
 import type {
@@ -387,8 +387,8 @@ export async function openRun(
     chainSnapshot?: Record<string, unknown>
     /** Per-stream sample cap (trial-sync §4.1) — set ⇒ a SAMPLE run that parks for review. */
     sampleLimit?: number | null
-    /** A re-import's run filter as sent (v13 N5). */
-    recordFilter?: ConnectorRecordFilterCondition[] | null
+    /** A re-import's query as sent. */
+    query?: ConnectorQuery | null
     initiatedBy?: string | null
     /** Seed `progress`, e.g. a re-import continuation's page cursors. */
     progress?: Record<string, unknown> | null
@@ -406,7 +406,7 @@ export async function openRun(
       chainSnapshot: input.chainSnapshot ?? null,
       cursorBefore: input.cursorBefore ?? null,
       sampleLimit: input.sampleLimit ?? null,
-      recordFilter: input.recordFilter ?? null,
+      query: input.query ?? null,
       initiatedBy: input.initiatedBy ?? null,
       progress: input.progress ?? null,
     })

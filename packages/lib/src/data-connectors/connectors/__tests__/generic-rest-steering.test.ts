@@ -31,6 +31,7 @@ afterEach(() => {
 function args(over: Partial<ConnectorFetchArgs> = {}): ConnectorFetchArgs {
   return {
     streamKey: 's1',
+    query: {},
     mode: 'snapshot',
     state: {},
     credential: { id: 'c1', type: 'secret', value: 'tok', authApply: null },

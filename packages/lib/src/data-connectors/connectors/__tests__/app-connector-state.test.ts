@@ -3,7 +3,24 @@
 // trip between the engine's opaque token `SyncCursor` and the flat app cursor.
 
 import { describe, expect, it } from 'vitest'
-import { decodeCursor, encodeCursor } from '../app-connector-state'
+import { decodeCursor, decodeSince, encodeCursor, encodeSince } from '../app-connector-state'
+
+describe('encodeSince / decodeSince', () => {
+  it('round-trips an opaque since of any JSON shape', () => {
+    for (const since of ['2026-09-01T00:00:00Z', { historyId: '84422' }, 1_700_000_000, null]) {
+      expect(decodeSince(encodeSince(since))).toEqual(since)
+    }
+  })
+
+  it('keeps an absent since absent', () => {
+    expect(encodeSince(undefined)).toBeUndefined()
+    expect(decodeSince(undefined)).toBeUndefined()
+  })
+
+  it('drops a watermark that is not JSON (a pre-v14 ISO watermark) instead of failing', () => {
+    expect(decodeSince('2026-09-01T00:00:00Z')).toBeUndefined()
+  })
+})
 
 describe('encodeCursor / decodeCursor', () => {
   it('round-trips a plain string cursor', () => {

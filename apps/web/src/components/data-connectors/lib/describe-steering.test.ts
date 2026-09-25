@@ -4,14 +4,29 @@ import { describe, expect, it } from 'vitest'
 import { describeSteering } from './describe-steering'
 
 describe('describeSteering', () => {
-  it('renders filter + paths + debounce (the full Shopify shape)', () => {
+  it('renders filter + idPath + idKind + debounce (the Shopify app shape)', () => {
     expect(
       describeSteering({
         filter: { topic: 'inventory_levels/update' },
-        paths: ['resourceId'],
+        idPath: 'resourceId',
+        idKind: 'inventoryItem',
         debounceMs: 10_000,
       })
-    ).toBe('topic = inventory_levels/update · re-fetches by resourceId · 10s debounce')
+    ).toBe(
+      'topic = inventory_levels/update · re-fetches by resourceId (inventoryItem id) · 10s debounce'
+    )
+  })
+
+  it('renders an idPath without idKind as the stream’s own id', () => {
+    expect(describeSteering({ filter: { topic: 'orders/updated' }, idPath: 'resourceId' })).toBe(
+      'topic = orders/updated · re-fetches by resourceId'
+    )
+  })
+
+  it('renders generic-REST paths', () => {
+    expect(describeSteering({ filter: { topic: 'a' }, paths: ['resourceId'] })).toBe(
+      'topic = a · re-fetches by resourceId'
+    )
   })
 
   it('renders "all deliveries" when there is no filter', () => {

@@ -10,7 +10,7 @@ const seams = vi.hoisted(() => ({ enqueueConnectorSync: vi.fn(async () => {}) })
 
 vi.mock('../connectors/app-connector-adapter', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../connectors/app-connector-adapter')>()),
-  loadAppCatalogConnector: async () => ({ streams: [{ key: 'product' }] }),
+  loadAppCatalogConnector: async () => ({ streams: [{ key: 'product', query: { ids: true } }] }),
 }))
 vi.mock('../data-connector-queue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../data-connector-queue')>()),
@@ -112,12 +112,12 @@ describe('requestRecordRefresh', () => {
     )._unsafeUnwrap()
     expect(result).toMatchObject({ status: 'started', kind: 'id', externalId: 'p1' })
     const [data, opts] = seams.enqueueConnectorSync.mock.calls[0] as unknown as [
-      { reimport: { streamIds: string[]; recordFilter: unknown[]; requestId: string } },
+      { reimport: { streamIds: string[]; query: unknown; requestId: string } },
       { jobKey: string },
     ]
     expect(data.reimport).toMatchObject({
       streamIds: [f.streamId],
-      recordFilter: [{ fieldId: '$externalId', operator: 'in', value: ['p1'], exact: true }],
+      query: { ids: ['p1'] },
       requestId: result.requestId,
     })
     expect(opts.jobKey).toBe(`reimport-${result.requestId}`)
@@ -194,7 +194,7 @@ describe('readRecordRefresh', () => {
       organizationId: f.orgId,
       trigger: 'manual',
       mode: 'reimport',
-      recordFilter: [{ fieldId: '$externalId', operator: 'in', value: ['p1'], exact: true }],
+      query: { ids: ['p1'] },
       progress: { requestId: 'req-1' },
     })
     expect(await readRecordRefresh(testDb(), args)).toEqual({ state: 'running' })

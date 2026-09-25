@@ -25,7 +25,6 @@ function checkpoint(value?: string, watermark?: string): ConnectorYield {
 /** Build a fetch that yields the given sequence; optionally throws at the end. */
 function fakeFetch(seq: ConnectorYield[], throwAtEnd?: Error) {
   return async () => ({
-    nextState: {},
     records: (async function* () {
       for (const y of seq) yield y
       if (throwAtEnd) throw throwAtEnd
@@ -52,7 +51,6 @@ describe('runConnectorSlice', () => {
     })
     const result = await runConnectorSlice({
       fetch: async () => ({
-        nextState: {},
         records: (async function* () {
           yield rec('a')
           yield rec('b')
@@ -148,6 +146,26 @@ describe('runConnectorSlice', () => {
       now: () => 0,
     })
     expect(result.watermark).toBe('2026-03-01')
+  })
+
+  it('never lowers an inbound watermark with a smaller generic-REST max', async () => {
+    const result = await runConnectorSlice({
+      fetch: fakeFetch([rec('a'), checkpoint(undefined, '2026-01-01')]),
+      sink: async () => {},
+      ctx: ctx({ phase: 'steady', watermark: '2026-05-01' }),
+      now: () => 0,
+    })
+    expect(result.watermark).toBe('2026-05-01')
+  })
+
+  it('replaces the inbound watermark with an app since, even a "smaller" one', async () => {
+    const result = await runConnectorSlice({
+      fetch: fakeFetch([rec('a'), { __checkpoint: true, since: '"aaa"' }]),
+      sink: async () => {},
+      ctx: ctx({ phase: 'steady', watermark: '"zzz"' }),
+      now: () => 0,
+    })
+    expect(result.watermark).toBe('"aaa"')
   })
 
   it('H1: a 429 AFTER progress commits the slice and advances (hasMore)', async () => {

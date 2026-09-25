@@ -131,7 +131,7 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
     ...state,
     phase,
     cursor: nextCursor,
-    // The source returns a monotonic max watermark; the core just stores it on advance.
+    // The core stores whatever watermark the source returns on advance, never comparing it.
     watermark: advance ? (result.watermark ?? state.watermark) : state.watermark,
     recordsSeen: (state.recordsSeen ?? 0) + result.recordsProcessed,
     noProgressStrikes: strikes,

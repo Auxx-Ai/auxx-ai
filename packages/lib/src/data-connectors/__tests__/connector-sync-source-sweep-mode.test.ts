@@ -65,7 +65,7 @@ function deps(over: Partial<ConnectorSyncSourceDeps>, fetchMock: ReturnType<type
 /** An empty page — no records, no checkpoint (exhausted immediately). */
 async function* emptyPage(): AsyncGenerator<never> {}
 function emptyFetchResult(): FetchResult {
-  return { records: emptyPage(), nextState: {} }
+  return { records: emptyPage() }
 }
 
 describe('sweep mode selection (v9 §3)', () => {

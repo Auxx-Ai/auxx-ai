@@ -5,17 +5,11 @@
 // contract, so it works identically for generic-rest, template and app connectors.
 
 import { collectConditionFieldIds } from '../conditions/collect-field-ids'
-import { parseDateRange } from '../conditions/date-range'
 import { type ConditionDiagnostic, evaluateConditionsWithDiagnostics } from '../conditions/evaluate'
-import { isKnownOperator } from '../conditions/evaluate-operator'
-import { isRelativeOperator } from '../conditions/operator-definitions'
-import type { Condition, ConditionGroup } from '../conditions/types'
+import type { ConditionGroup } from '../conditions/types'
 import { BadRequestError } from '../errors'
-import type { ConnectorRecord, ConnectorRecordFilterCondition } from './connectors/types'
+import type { ConnectorRecord } from './connectors/types'
 import { getByPath } from './map-record'
-
-/** Reserved `fieldId` for the record's external id, not a payload path (v13 N6). */
-export const EXTERNAL_ID_FIELD = '$externalId'
 
 /** The verdict for one record, plus why the filter could not be honoured as written. */
 export interface RecordFilterVerdict {
@@ -59,10 +53,7 @@ export function recordMatchesFilter(
   const { matched, diagnostics } = evaluateConditionsWithDiagnostics(
     source,
     groups,
-    (record, path) =>
-      String(path) === EXTERNAL_ID_FIELD
-        ? record.externalId
-        : getByPath(record.fields, String(path))
+    (record, path) => getByPath(record.fields, String(path))
   )
 
   // Fail open — see the 🔴 note above.
@@ -89,12 +80,6 @@ export function assertRecordFilterCompiles(groups: ConditionGroup[] | null | und
   if (!groups?.length) return
 
   const { fieldRefs } = collectConditionFieldIds(groups)
-  if (fieldRefs.includes(EXTERNAL_ID_FIELD)) {
-    throw new BadRequestError(
-      `This record filter can’t be saved because “${EXTERNAL_ID_FIELD}” names single records, ` +
-        'which a stream filter has no use for. Refresh the records instead.'
-    )
-  }
 
   // 🔴 A FAN-OUT path can never resolve here, and fails in the DANGEROUS direction.
   //
@@ -144,44 +129,4 @@ function compileDiagnostics(groups: ConditionGroup[]): ConditionDiagnostic[] {
     groups,
     (record, path) => getByPath(record.fields, String(path))
   ).diagnostics
-}
-
-/** One condition as a clause a connector may narrow its fetch on, or why it cannot be one. */
-export function toFetchClause(condition: {
-  fieldId: Condition['fieldId']
-  operator: string
-  value?: unknown
-}): { clause: ConnectorRecordFilterCondition } | { reason: string } {
-  const { fieldId, operator, value } = condition
-  if (typeof fieldId !== 'string' || !fieldId.trim()) return { reason: 'needs a source path' }
-  if (fieldId.includes('[]')) return { reason: 'names a list path, which can’t narrow a fetch' }
-  if (!isKnownOperator(operator)) return { reason: 'uses an unknown operator' }
-  // A relative date reads the server clock, so a resumed run would change its meaning.
-  if (isRelativeOperator(operator)) return { reason: 'is relative to today, not absolute' }
-  if (operator !== 'between') {
-    return { clause: { fieldId, operator, ...(value !== undefined ? { value } : {}) } }
-  }
-  const range = parseDateRange(value)
-  if (!range) return { reason: 'needs a valid { from?, to? } date range' }
-  // The one place bounds become UTC ISO; apps pass them through.
-  const bounds = {
-    ...(range.from && { from: range.from.toISOString() }),
-    ...(range.to && { to: range.to.toISOString() }),
-  }
-  return { clause: { fieldId, operator, value: bounds } }
-}
-
-/**
- * The clauses on the AND spine of `groups` a connector may narrow on (v13 N3): looser than or
- * equal to the filter, and none when it does not compile, since the post-fetch check fails open.
- */
-export function pushableClauses(
-  groups: ConditionGroup[] | null | undefined
-): ConnectorRecordFilterCondition[] {
-  if (!groups?.length || compileDiagnostics(groups).length > 0) return []
-  // Groups AND at the top; an OR over two or more conditions is off the spine.
-  return groups
-    .filter((g) => g.logicalOperator !== 'OR' || g.conditions.length <= 1)
-    .flatMap((g) => g.conditions.map(toFetchClause))
-    .flatMap((r) => ('clause' in r ? [r.clause] : []))
 }

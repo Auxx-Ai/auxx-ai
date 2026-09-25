@@ -42,6 +42,7 @@ import {
 } from './app-catalog'
 import type { StreamWithRawMappings } from './service'
 import { isBoundaryPrefix, relativeSourcePath } from './source-paths'
+import { catalogSyncMode } from './stream-query'
 import type {
   FieldMapping,
   FieldMergeStrategy,
@@ -515,8 +516,8 @@ export function deriveStreamShape(
   )
   return {
     key: stream.key,
-    syncMode: stream.syncMode ?? 'snapshot',
-    webhookTrigger: (stream.webhookTrigger as StreamWebhookTrigger | undefined) ?? null,
+    syncMode: catalogSyncMode(stream.query),
+    webhookTrigger: stream.webhookTrigger ?? null,
     sourceSchema: appCatalogStreamSchema(stream).sourceSchema,
     recordFilter: stream.recordFilter?.length ? stream.recordFilter : null,
     mappings: [...owned, ...contributing],
@@ -609,8 +610,8 @@ function deriveOwnedMappings(
             ? [buildReferenceAnchor()]
             : buildAppOwnedFieldMappings(mapping.fields ?? [], appSlug, entity.apiSlug),
         // Declared by the app, defaulting to `'ignore'` (v12 D2). It only has an effect
-        // on a `snapshot` stream: `reconcileOrphans` gates on syncMode first, because
-        // an incremental fetch sees a delta and absence there is not deletion.
+        // after an unbounded `{}` fetch: a delta or a floored fetch did not ask for
+        // everything, so absence there is not deletion.
         orphanBehavior: mapping.orphanBehavior ?? 'ignore',
         apiSlug: entity.apiSlug,
       },

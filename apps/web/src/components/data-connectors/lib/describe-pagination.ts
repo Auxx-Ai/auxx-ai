@@ -22,15 +22,6 @@ export interface PaginationSpec {
   pageSize?: number
 }
 
-/** Matches `schedule-section.tsx` — the connector-level backfill window span. */
-export type BackfillWindowSpan = 'all' | 'last_90_days' | 'last_12_months'
-
-const WINDOW_LABEL: Record<BackfillWindowSpan, string> = {
-  all: 'All history',
-  last_12_months: 'Last 12 months',
-  last_90_days: 'Last 90 days',
-}
-
 export interface PaginationDescription {
   /** Short chip label — the collapsed view shows only this. */
   badge: string
@@ -41,8 +32,8 @@ export interface PaginationDescription {
 }
 
 interface DescribeOpts {
-  /** Set when the connector has a backfill-window span configured. */
-  backfillWindowSpan?: BackfillWindowSpan
+  /** The connector's `historyStartDate` (`YYYY-MM-DD`) when it floors this stream. */
+  historyStartDate?: string
   /** A stream-level page-size fallback (e.g. a `limit` query param) for the size row. */
   pageSizeFallback?: number
 }
@@ -77,8 +68,8 @@ export function describePagination(
     details.push({ label: 'Page size', value: `${pageSize.toLocaleString()} records per request` })
   }
 
-  if (opts.backfillWindowSpan) {
-    details.push({ label: 'History window', value: WINDOW_LABEL[opts.backfillWindowSpan] })
+  if (opts.historyStartDate) {
+    details.push({ label: 'History from', value: formatDay(opts.historyStartDate) })
   }
 
   return { badge: BADGE[kind], summary: SUMMARY[kind], details }
@@ -100,6 +91,13 @@ const SUMMARY: Record<PaginationSpec['kind'], string> = {
   page: 'Requests numbered pages (1, 2, 3…) until one comes back empty.',
   offset: 'Steps through records by position (offset + limit).',
   none: 'Makes one request and imports that response — no further pages are fetched.',
+}
+
+/** A `YYYY-MM-DD` day as `Jan 1, 2025`, read in UTC so the zone never shifts the day. */
+function formatDay(day: string): string {
+  const date = new Date(`${day}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return day
+  return date.toLocaleDateString('en-US', { timeZone: 'UTC', dateStyle: 'medium' })
 }
 
 function stopCondition(pagination: PaginationSpec | undefined): string | undefined {

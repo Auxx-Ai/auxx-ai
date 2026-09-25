@@ -8,6 +8,10 @@ import { findServerFunctionModules } from '../build/server/generate-server-entry
 import { HIDDEN_AUXX_DIRECTORY } from '../constants/hidden-auxx-directory.js'
 import { complete, errored, isErrored, type Result } from '../errors.js'
 import type {
+  ConnectorStreamDecl,
+  ConnectorStreamQueryDecl,
+} from '../root/data-connectors/types.js'
+import type {
   ActionInputHint,
   AgentSurface,
   ToolActionSurface,
@@ -297,7 +301,7 @@ export interface CatalogConnectorMapping {
    *  a pre-existing system edge. */
   relationshipFieldKey?: string
   /** Crawl-reconciliation policy for a record the crawl did not see; absent ⇒
-   *  `'ignore'`. Only consulted on a `snapshot` stream. */
+   *  `'ignore'`. Only consulted after an unbounded (`{}`) query. */
   orphanBehavior?: 'archive' | 'mark_deleted' | 'ignore'
   /** `{ entityKey }` for an entity this app owns, `{ entityKind }` for a
    *  platform kind the app merely contributes to. */
@@ -305,6 +309,8 @@ export interface CatalogConnectorMapping {
   fields?: Array<CatalogConnectorOwnedMappingField | CatalogConnectorContributingMappingField>
   connectionFields?: CatalogConnectorConnectionField[]
 }
+
+type StreamWebhookTriggerDecl = NonNullable<ConnectorStreamDecl['webhookTrigger']>
 
 /** One condition group of a stream's record filter, in the platform's stored shape. */
 export interface CatalogRecordFilterGroup {
@@ -316,16 +322,14 @@ export interface CatalogRecordFilterGroup {
 /** One stream (fetch) projected from a data connector. */
 export interface CatalogConnectorStream {
   key: string
-  /** Stream scheduling — `incremental` backfills once then runs deltas. */
-  syncMode?: 'snapshot' | 'incremental'
   mappings: CatalogConnectorMapping[]
   exampleRecord?: Record<string, unknown>
+  /** What the stream can be queried by — see `ConnectorStreamDecl.query` (root types). */
+  query?: ConnectorStreamQueryDecl
   /** Per-stream webhook STEERING — see `ConnectorStreamDecl.webhookTrigger` (root types). */
-  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  webhookTrigger?: StreamWebhookTriggerDecl
   /** The stream's `recordFilter` clauses as one AND group with stable ids. */
   recordFilter?: CatalogRecordFilterGroup[]
-  /** Source path of the date the backfill floor and the accounting cutover apply to. */
-  periodField?: string
 }
 
 /**
@@ -1071,23 +1075,35 @@ export async function compileAndExtractCatalog(): Promise<
           })
         }
       }
-      if (
-        stream.periodField !== undefined &&
-        (typeof stream.periodField !== 'string' || !stream.periodField.trim())
-      ) {
+      const period = stream.query?.period
+      if (period !== undefined && (typeof period !== 'string' || !period.trim())) {
         return errored({
           code: 'CATALOG_VALIDATION_FAILED',
-          message: `Connector "${connector.id}" stream "${stream.key}": periodField must be a non-empty source path`,
+          message: `Connector "${connector.id}" stream "${stream.key}": query.period must be a non-empty source path`,
         })
+      }
+      if (stream.webhookTrigger) {
+        const { idPath } = stream.webhookTrigger
+        if (typeof idPath !== 'string' || !idPath.trim()) {
+          return errored({
+            code: 'CATALOG_VALIDATION_FAILED',
+            message: `Connector "${connector.id}" stream "${stream.key}": webhookTrigger.idPath must be a non-empty payload path`,
+          })
+        }
+        if (!stream.query?.ids) {
+          return errored({
+            code: 'CATALOG_VALIDATION_FAILED',
+            message: `Connector "${connector.id}" stream "${stream.key}": webhookTrigger fetches by id, so the stream must declare query.ids`,
+          })
+        }
       }
 
       streams.push({
         key: stream.key,
-        syncMode: stream.syncMode,
         mappings,
         exampleRecord: stream.exampleRecord,
+        ...(stream.query ? { query: stream.query } : {}),
         webhookTrigger: stream.webhookTrigger,
-        ...(stream.periodField ? { periodField: stream.periodField } : {}),
         // Ids are minted from the stream key so a redeploy compares equal to the seeded row.
         ...(recordFilter.length > 0
           ? {
@@ -1432,12 +1448,11 @@ interface RawConnectorMapping {
 
 interface RawConnectorStream {
   key: string
-  syncMode?: 'snapshot' | 'incremental'
   mappings: RawConnectorMapping[]
   exampleRecord?: Record<string, unknown>
-  webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
+  query?: ConnectorStreamQueryDecl
+  webhookTrigger?: StreamWebhookTriggerDecl
   recordFilter?: Array<{ fieldId: string; operator: string; value?: unknown }>
-  periodField?: string
 }
 
 interface RawDataConnector {

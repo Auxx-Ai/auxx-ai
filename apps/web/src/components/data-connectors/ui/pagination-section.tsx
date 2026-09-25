@@ -8,7 +8,6 @@ import { Waypoints } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { RouterOutputs } from '~/trpc/react'
 import {
-  type BackfillWindowSpan,
   describePagination,
   type PaginationDescription,
   type PaginationSpec,
@@ -52,22 +51,23 @@ export function PaginationSection({ connector, stream, sample }: PaginationSecti
   const draftStream = useConnectorDraftStore((s) =>
     s.draft.streams.find((st) => st.id === stream.id)
   )
-  const draftSpan = useConnectorDraftStore(
-    (s) => (s.draft.config as { backfillWindowSpan?: BackfillWindowSpan }).backfillWindowSpan
+  // The draft is authoritative once seeded — a cleared date must not fall back to the saved one.
+  const historyStartDate = useConnectorDraftStore((s) =>
+    s.snapshot
+      ? (s.draft.config as { historyStartDate?: string }).historyStartDate
+      : (connector.config as { historyStartDate?: string } | null)?.historyStartDate
   )
 
   const requestConfig = (draftStream?.requestConfig ?? stream.requestConfig ?? {}) as {
     params?: Record<string, unknown>
     pagination?: PaginationSpec
+    backfillWindow?: unknown
   }
   const pagination = requestConfig.pagination
-  const backfillWindowSpan =
-    draftSpan ??
-    (connector.config as { backfillWindowSpan?: BackfillWindowSpan } | null)?.backfillWindowSpan
   const pageSizeFallback = numericParam(requestConfig.params)
 
   const configuredPagination = describePagination(pagination, {
-    backfillWindowSpan,
+    historyStartDate: requestConfig.backfillWindow ? historyStartDate : undefined,
     pageSizeFallback,
   })
   const detected = sample
