@@ -1070,7 +1070,7 @@ function CommandRadioItem({
   value,
   disabled,
   className,
-  variant = 'radio',
+  variant = 'check',
 }: CommandRadioItemProps) {
   const { value: groupValue, onValueChange } = useCommandRadioGroup()
   const isSelected = value === groupValue

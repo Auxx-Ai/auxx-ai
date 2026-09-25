@@ -62,16 +62,19 @@ export const mrpRouter = createTRPCRouter({
           supplierIds: z.array(id).optional(),
           search: z.string().max(200).optional(),
           sort: z.enum(MRP_LIST_SORTS).optional(),
-          direction: z.enum(['asc', 'desc']).optional(),
+          // Not `direction`: useInfiniteQuery injects its own `direction: 'forward' | 'backward'`.
+          order: z.enum(['asc', 'desc']).optional(),
           limit: z.number().int().min(1).max(2000).optional(),
           cursor: z.number().int().min(0).nullish(),
         })
         .optional()
     )
     .query(async ({ ctx, input }) => {
+      const { order, ...rest } = input ?? {}
       const result = await listPlanItems(ctx.db, ctx.session.organizationId, {
-        ...input,
-        cursor: input?.cursor ?? undefined,
+        ...rest,
+        direction: order,
+        cursor: rest.cursor ?? undefined,
       })
       if (result.isErr()) throw result.error
       return result.value

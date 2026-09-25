@@ -253,7 +253,6 @@ export function useOpeningStock() {
   const [writtenKinds, setWrittenKinds] = useState<Record<string, string>>({})
 
   const bulkMode = useBulkMode()
-  const setBulkMode = useListSelection((s) => s.setBulkMode)
   const clearSelection = useListSelection((s) => s.clear)
   const exitSelection = useListSelection((s) => s.exit)
   const selectedIds = useSelectionIds()
@@ -467,7 +466,6 @@ export function useOpeningStock() {
     prefilter: prefilterIds ? { count: rows.length, fromJob: !!jobParam } : null,
     clearPrefilter,
     bulkMode,
-    setBulkMode,
     selectedCount,
     exitSelection,
     canSetKind,

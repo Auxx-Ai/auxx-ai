@@ -23,6 +23,7 @@ vi.mock('~/components/list-selection', () => ({
   useIsPending: () => false,
   useIsSelected: () => false,
   usePendingLabel: () => '',
+  SelectAllCheckbox: () => null,
   useListSelection: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({ toggle: vi.fn(), setItemIds: vi.fn() }),
 }))
@@ -80,8 +81,6 @@ function renderList(rows: OpeningStockRow[], onBackflush = vi.fn()) {
       kindCounts={new Map()}
       isLoading={false}
       currencyCode='USD'
-      bulkMode={false}
-      onBulkModeChange={vi.fn()}
       canSetKind
       isSettingKind={false}
       onSetKind={vi.fn(async () => {})}
