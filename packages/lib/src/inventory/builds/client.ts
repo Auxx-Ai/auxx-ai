@@ -340,3 +340,5 @@ export {
   type BackfillRunSummary,
   type BackfillStatus,
 } from './backfill-types'
+
+export type { BackflushBuild, BackflushPlan, BackflushRunSummary } from './backflush-types'

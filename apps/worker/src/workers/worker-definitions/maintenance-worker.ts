@@ -8,6 +8,7 @@ import {
   applyScheduledSubscriptionChangesJob,
   approvalOrphanSweeperJob,
   appStorageSweepJob,
+  backflushJob,
   bankFeedMaintenanceJob,
   cleanupExpiredMediaAssetsJob,
   companyEnrichmentSweepJob,
@@ -271,6 +272,10 @@ export const jobMappings = {
   // BACKWARD on purpose - a depreciation entry for March may not exist in January.
   recurringJournalsJob,
   accountingRecoveryJob,
+
+  // Backflush (111 D23/D24): nightly for yesterday per org with the switch on, or one org's
+  // range enqueued from `builds.runBackflush`.
+  backflushJob,
 
   // Queued when an accounting provider connects (plans/accounting/tasks/105 §4).
   connectAndGoPrepareJob,

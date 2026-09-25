@@ -54,3 +54,13 @@ export async function loadAutoBuildSettings(organizationId: string): Promise<Aut
     stockRule: resolveAutoBuildStockRule(settings['inventory.autoBuildStockRule']),
   }
 }
+
+/** `inventory.backflush` (111 D23). Exclusive with `enabled` above; the settings write keeps it so. */
+export interface BackflushSettings {
+  enabled: boolean
+}
+
+export async function loadBackflushSettings(organizationId: string): Promise<BackflushSettings> {
+  const settings = await readOrganizationSettings(organizationId, ['inventory.backflush'] as const)
+  return { enabled: settings['inventory.backflush'] === true }
+}

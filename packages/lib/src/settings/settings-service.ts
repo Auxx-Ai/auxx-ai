@@ -143,6 +143,58 @@ async function stampAutoBuildEnabledAt(params: {
   return true
 }
 
+/** 111 Q14: backflush and order-raised auto-builds never run together in v1. */
+const EXCLUSIVE_BUILD_SWITCHES = {
+  'inventory.backflush': 'inventory.autoBuildFromOrders',
+  'inventory.autoBuildFromOrders': 'inventory.backflush',
+} as const satisfies Partial<Record<SettingKey, SettingKey>>
+
+type ExclusiveBuildSwitch = keyof typeof EXCLUSIVE_BUILD_SWITCHES
+
+function isExclusiveBuildSwitch(key: SettingKey): key is ExclusiveBuildSwitch {
+  return key in EXCLUSIVE_BUILD_SWITCHES
+}
+
+/** Refuse a batch that asks for both switches on; one write cannot mean "on" for either. */
+function assertNotBothBuildSwitchesOn(
+  settings: ReadonlyArray<{ key: SettingKey; value: SettingValue }>
+) {
+  const on = new Set(
+    settings.filter((s) => isExclusiveBuildSwitch(s.key) && s.value === true).map((s) => s.key)
+  )
+  if (on.size > 1) {
+    throw new UnprocessableEntityError(
+      'Backflush and order-raised auto-builds cannot both be on. Turn one off first.'
+    )
+  }
+}
+
+/** Turning one switch on turns the other off, in the same write, so no door can leave both on. */
+async function turnOffOtherBuildSwitch(params: {
+  organizationId: string
+  key: ExclusiveBuildSwitch
+  value: SettingValue
+  db: Database | Transaction
+}): Promise<boolean> {
+  const { organizationId, key, value, db } = params
+  if (value !== true) return false
+  const other = EXCLUSIVE_BUILD_SWITCHES[key]
+  await db
+    .insert(schema.OrganizationSetting)
+    .values({
+      organizationId,
+      key: other,
+      value: false,
+      scope: SETTINGS_CATALOG[other].scope,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
+      set: { value: false, updatedAt: new Date() },
+    })
+  return true
+}
+
 /**
  * Get an organization setting, ignoring user overrides. Sugar over
  * {@link readOrganizationSettings} for the common one-key case.
@@ -440,6 +492,9 @@ async function updateOrganizationSettingInner(params: {
   if (key === 'inventory.autoBuildFromOrders') {
     await stampAutoBuildEnabledAt({ organizationId, previousValue, value: normalizedValue, db })
   }
+  if (isExclusiveBuildSwitch(key)) {
+    await turnOffOtherBuildSwitch({ organizationId, key, value: normalizedValue, db })
+  }
 }
 
 /**
@@ -534,6 +589,7 @@ export async function batchUpdateOrganizationSettings(params: {
       'Use the accounting setLockedThrough command to change the period lock'
     )
   }
+  assertNotBothBuildSwitchesOn(settings)
   let touchedInvoiceDefaultTiming = false
 
   await db.transaction(async (tx) => {
@@ -585,6 +641,9 @@ export async function batchUpdateOrganizationSettings(params: {
           value: normalizedValue,
           db: tx,
         })
+      }
+      if (isExclusiveBuildSwitch(key)) {
+        await turnOffOtherBuildSwitch({ organizationId, key, value: normalizedValue, db: tx })
       }
     }
   })
