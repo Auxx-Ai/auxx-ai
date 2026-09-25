@@ -152,20 +152,46 @@ function buildFieldConfig(
 /**
  * Parse user override from JSONB field.
  */
-function parseUserOverride(userOverride: unknown): {
+export function parseUserOverride(userOverride: unknown): {
   isOverridden: boolean
   values: OverrideValue[] | null
+  /** What the resolver produced before the override replaced `resolvedValues` */
+  originalResolvedValues: ResolvedValue[] | null
 } {
   if (!userOverride || typeof userOverride !== 'object') {
-    return { isOverridden: false, values: null }
+    return { isOverridden: false, values: null, originalResolvedValues: null }
   }
 
-  const override = userOverride as { isOverridden?: boolean; values?: OverrideValue[] }
+  const override = userOverride as {
+    isOverridden?: boolean
+    values?: OverrideValue[]
+    originalResolvedValues?: ResolvedValue[]
+  }
   if (override.isOverridden && Array.isArray(override.values)) {
-    return { isOverridden: true, values: override.values }
+    return {
+      isOverridden: true,
+      values: override.values,
+      originalResolvedValues: Array.isArray(override.originalResolvedValues)
+        ? override.originalResolvedValues
+        : null,
+    }
   }
 
-  return { isOverridden: false, values: null }
+  return { isOverridden: false, values: null, originalResolvedValues: null }
+}
+
+/**
+ * The resolver's own answer for a value. An override is written over `resolvedValues`, so
+ * reading those back would report the user's pick as the resolver's, and the review picker
+ * treats "same as the resolver" as a revert.
+ */
+export function resolverAnswer(
+  resolvedValues: unknown,
+  override: ReturnType<typeof parseUserOverride>
+): string | null {
+  return override.isOverridden && override.originalResolvedValues
+    ? extractResolvedValue(override.originalResolvedValues)
+    : extractResolvedValue(resolvedValues)
 }
 
 /** Parameters for {@link getUniqueValuesWithResolution} */
@@ -311,7 +337,7 @@ export async function getUniqueValuesWithResolution(
           r.hashedValue,
           {
             status: r.status,
-            resolvedValue: extractResolvedValue(r.resolvedValues),
+            resolvedValue: resolverAnswer(r.resolvedValues, override),
             resolvedValues: resolved,
             errorMessage: r.errorMessage,
             isOverridden: override.isOverridden,

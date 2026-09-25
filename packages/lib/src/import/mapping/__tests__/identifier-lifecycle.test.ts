@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError } from '../../../errors'
 import type { ImportStrategyMode } from '../../types/mapping'
 import { deriveIdentifierFieldKeys, syncMappingIdentity } from '../derive-identifier-keys'
@@ -12,6 +12,9 @@ import {
   saveMappingProperty,
 } from '../save-mapping-property'
 import { updateImportStrategy } from '../update-mapping'
+
+// Real SQL, covered by `override-follow-through.int.test.ts`; the fake tx has no `.returning()`.
+vi.mock('../../job/reopen-planned-job', () => ({ reopenPlannedJobs: vi.fn() }))
 
 /**
  * The lifecycle these tests pin is THE bug this whole area exists to fix.

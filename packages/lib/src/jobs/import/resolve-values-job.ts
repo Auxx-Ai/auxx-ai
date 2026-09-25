@@ -9,6 +9,7 @@ import {
   getColumnValues,
   isPendingRelationLookup,
   processColumnValues,
+  recountJobPropertyErrors,
   resolveColumnCurrencyCodes,
   resolveColumnDecimals,
   resolveColumnOptions,
@@ -215,7 +216,6 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
 
       // Count results
       let validCount = 0
-      let errorCount = 0
       const pendingLookups: Array<{ hash: string; value: unknown }> = []
 
       for (const [hash, resolution] of resolutions) {
@@ -227,8 +227,6 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
           } else {
             validCount++
           }
-        } else {
-          errorCount++
         }
       }
 
@@ -241,10 +239,11 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
         .set({
           uniqueValueCount: resolutions.size,
           resolvedCount: validCount,
-          errorCount,
           updatedAt: new Date(),
         })
         .where(eq(schema.ImportJobProperty.id, jobProp.id))
+      // Cached rows carry the user's overrides; a skipped value is not an error.
+      const errorCount = await recountJobPropertyErrors(db, jobProp.id)
 
       columnsProcessed++
 

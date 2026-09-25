@@ -96,6 +96,9 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
         isOverridden,
         overrideValues,
       })
+      // The save recounted the column's errors and may have dropped a stale plan.
+      utils.dataImport.getMappedColumns.invalidate({ jobId })
+      utils.dataImport.getJob.invalidate({ jobId })
     } catch (error) {
       // Rollback: refetch the server's own view of this column.
       //

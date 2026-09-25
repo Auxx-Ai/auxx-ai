@@ -4,10 +4,12 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
+import { reopenPlannedJobs } from '../job/reopen-planned-job'
 import { parseResolutionConfig } from '../mapping/resolution-config'
 import type { OverrideValue, ResolvedValue } from '../types'
 import type { ResolutionConfig, ResolutionType } from '../types/resolution'
 import { isOptionResolutionType } from './option-labels'
+import { recountJobPropertyErrors } from './recount-job-property-errors'
 import { resolveColumnCurrencyCodes, resolveColumnDecimals } from './resolve-currency-code'
 import { resolveValue } from './resolve-value'
 
@@ -240,6 +242,7 @@ export async function updateValueResolution(
           eq(schema.ImportValueResolution.hashedValue, input.hash)
         )
       )
+    await afterOverrideChange(db, input.jobId, jobProp.id)
     return
   }
 
@@ -321,4 +324,15 @@ export async function updateValueResolution(
         updatedAt: now,
       },
     })
+  await afterOverrideChange(db, input.jobId, jobProp.id)
+}
+
+/** An override changes the column's error count and invalidates any plan built before it. */
+async function afterOverrideChange(
+  db: Database,
+  jobId: string,
+  jobPropertyId: string
+): Promise<void> {
+  await recountJobPropertyErrors(db, jobPropertyId)
+  await reopenPlannedJobs(db, { jobId })
 }

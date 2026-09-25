@@ -2,9 +2,12 @@
 
 import type { Database, Transaction } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { invalidateColumnResolutions } from '../invalidate-column-resolutions'
 import { batchUpdateMappingsFromAutoMap, saveMappingProperty } from '../save-mapping-property'
+
+// Real SQL, covered by `override-follow-through.int.test.ts`; the fake tx has no `.returning()`.
+vi.mock('../../job/reopen-planned-job', () => ({ reopenPlannedJobs: vi.fn() }))
 
 /**
  * The stale-resolution defect, pinned.
