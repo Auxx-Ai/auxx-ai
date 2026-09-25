@@ -18,7 +18,6 @@ import {
 } from '../../documents/document-ledger-state'
 import { entryLinesEqual, readBuiltEntry } from '../../documents/edit-in-place/save'
 import { CREDIT_MEMO_SOURCE_TYPE } from '../../ledger/builders/credit-memo'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -78,7 +77,6 @@ export async function repostCreditMemoEntry(
   const liveEntry = await readBuiltEntry(db, organizationId, live.value.id)
   if (rebuilt && entryLinesEqual(rebuilt.entry, liveEntry)) return 'unchanged'
 
-  const lock = await resolvePeriodLock(organizationId)
   const docNumber = live.value.docNumber
   // One transaction under the commit lock, so the reversal and the repost land together.
   await db.transaction(async (tx) => {
@@ -88,7 +86,6 @@ export async function repostCreditMemoEntry(
       organizationId,
       glPostingId: live.value!.id,
       actorUserId,
-      lock,
       memo: `Reversal of ${docNumber} - credit memo ${memo.number}, its shipment cancelled`,
     })
     if (!didLedgerAccept(reversal))

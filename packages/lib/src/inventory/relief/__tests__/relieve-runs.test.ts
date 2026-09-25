@@ -23,6 +23,12 @@ const h = vi.hoisted(() => ({
   movements: [] as Array<{ id: string; fulfillmentLineId: string; quantity: number }>,
   postings: [] as FakePosting[],
   recalc: vi.fn(async () => {}),
+  lockedThroughMonth: null as string | null,
+}))
+
+vi.mock('../../../settings/settings-service', () => ({
+  getOrganizationSetting: async ({ key }: { key: string }) =>
+    key === 'ledger.lockedThroughMonth' ? h.lockedThroughMonth : null,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -116,9 +122,6 @@ vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
 }))
 vi.mock('../../../accounting/ledger/setup/accounting-enabled', () => ({
   isAccountingActive: async () => true,
-}))
-vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThrough: null }),
 }))
 vi.mock('../../../accounting/ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => (await import('neverthrow')).ok([]),
@@ -225,6 +228,20 @@ beforeEach(() => {
   h.movements = []
   h.postings = []
   h.recalc.mockClear()
+  h.lockedThroughMonth = null
+})
+
+describe('a dispatch in a reviewed month', () => {
+  it('writes its movements and its entry on the real date', async () => {
+    h.lockedThroughMonth = '2026-09'
+    h.standardCosts.set('part_2', 2_000)
+
+    const result = await relieve()
+
+    expect(result._unsafeUnwrap().movementIds).toEqual(['mv_0', 'mv_1'])
+    expect(h.postings).toHaveLength(1)
+    expect(h.postings[0]!.subject).toBe('stock_movement:mv_0:original')
+  })
 })
 
 describe('a dispatch relieved in two runs', () => {

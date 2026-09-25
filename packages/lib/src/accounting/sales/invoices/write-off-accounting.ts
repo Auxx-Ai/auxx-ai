@@ -15,7 +15,6 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../../../errors'
 import { buildWriteOffEntry, WRITE_OFF_SOURCE_TYPE } from '../../ledger/builders/write-off'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -98,12 +97,10 @@ export async function acceptInvoiceWriteOffAccounting(
           ]
         : []),
     ]
-    const lock = await resolvePeriodLock(organizationId)
     return await postEntry(db, {
       organizationId,
       entry,
       actorUserId,
-      lock,
       memo: reason,
       sources,
     })
@@ -141,12 +138,10 @@ export async function reverseInvoiceWriteOffAccounting(
   if (live.isErr()) throw new UnprocessableEntityError(live.error.message)
   if (!live.value) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   return reverseEntry(db, {
     organizationId,
     glPostingId: live.value.id,
     actorUserId,
-    lock,
     memo: `Reversal of ${live.value.docNumber} - write-off backed out`,
   })
 }

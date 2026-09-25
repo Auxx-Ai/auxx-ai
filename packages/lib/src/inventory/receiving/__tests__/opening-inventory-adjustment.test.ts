@@ -46,10 +46,6 @@ vi.mock('../../../accounting/ledger/post/post-entry', () => ({
   },
 }))
 
-vi.mock('../../../accounting/ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 import { postOpeningInventoryAdjustment } from '../opening-inventory-adjustment'
 import { readOpeningInventoryDifference } from '../opening-inventory-difference'
 

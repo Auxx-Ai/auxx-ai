@@ -23,7 +23,6 @@ import {
   MANUAL_ENTRY_SOURCE_TYPE,
   type ManualPostingType,
 } from '../../ledger/builders/manual'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { postEntry, previewEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -191,8 +190,7 @@ export async function previewJournalEntry(
     async () => {
       const stored = await requireJournalEntry(db, organizationId, input.journalEntryId)
       const { entry } = buildEntryForJournalEntry({ ...stored, ...pickOverrides(input) })
-      const lock = await resolvePeriodLock(organizationId)
-      return previewEntry(db, { organizationId, entry, lock })
+      return previewEntry(db, { organizationId, entry })
     },
     'Failed to preview journal entry',
     { organizationId, journalEntryId: input.journalEntryId }
@@ -204,7 +202,7 @@ export async function previewJournalEntry(
  *
  * The outer `Result` carries only the refusals made before the ledger is asked
  * (a template, an opening entry, a bad row, an unbalanced entry); everything the
- * ledger says - `period_closed`, `account_invalid`, a provider refusal - comes
+ * ledger says - `account_invalid`, a provider refusal - comes
  * back as the `PostResult` for the screen to render. A refusal leaves the record
  * `draft`, so "fix it and press Post again" needs nothing cleared.
  */
@@ -246,11 +244,9 @@ export async function postBuiltJournalEntry(
   }
 ): Promise<PostResult> {
   const { organizationId, actorUserId, entry } = input
-  const lock = await resolvePeriodLock(organizationId)
   const result = await postEntry(db, {
     organizationId,
     entry: input.built.entry,
-    lock,
     actorUserId,
     memo: input.memo ?? entry.memo ?? undefined,
     sources: [journalEntrySubject(entry)],
@@ -391,12 +387,10 @@ export async function reverseJournalEntry(
         )
       }
 
-      const lock = await resolvePeriodLock(organizationId)
       const result = await reverseEntry(db, {
         organizationId,
         glPostingId: entry.glPostingId,
         actorUserId: userId,
-        lock,
         memo: input.memo,
       })
 

@@ -73,7 +73,6 @@ import {
   readLatestPostingsByType,
   readLedgerSummary,
   removeChartAccount,
-  resolvePeriodLock,
   restoreChartAccount,
   reverseEntries,
   reverseEntry,
@@ -270,19 +269,18 @@ async function hydrateSources<
  *
  * ## Why nothing here maps a status onto an HTTP error
  *
- * `postEntry` and `reverseEntry` never throw. A closed period, an unmapped
- * account role, an unbalanced entry and a provider that refused the push all
- * come back as a typed {@link PostResult} status, and every one of them is
- * something the UI RENDERS - a setup problem, a period to reopen, a role to map
- * - not a 500 to swallow. So these mutations return the result verbatim and let
- * the caller branch on `status`. Collapsing `period_closed` into a `TRPCError`
+ * `postEntry` and `reverseEntry` never throw. An unmapped account role, an
+ * unbalanced entry and a provider that refused the push all come back as a
+ * typed {@link PostResult} status, and every one of them is something the UI
+ * RENDERS - a setup problem, a role to map - not a 500 to swallow. So these
+ * mutations return the result verbatim and let the caller branch on `status`.
+ * Collapsing a refusal into a `TRPCError`
  * would throw away `docNumber`, `failureClass` and `retryable`, which is the
  * whole of what the operator needs to decide what to do next.
  *
- * What DOES throw is everything upstream of the poster: `resolvePeriodLock`
- * fails closed on a malformed `ledger.lockedThroughMonth` setting, `buildEntry`
- * refuses an entry that does not balance, and `periodMonth` rejects a malformed
- * bound. All three throw `AuxxError` subclasses, which `auxxErrorMiddleware`
+ * What DOES throw is everything upstream of the poster: `buildEntry` refuses an
+ * entry that does not balance, and `periodMonth` rejects a malformed bound.
+ * Both throw `AuxxError` subclasses, which `auxxErrorMiddleware`
  * maps to the right status. Nothing here catches them - a `try/catch` that
  * rethrew would have to guard with `isAuxxError(e)` from `~/server/api/trpc`,
  * never `e instanceof TRPCError`, or the 422 flattens into a 500.
@@ -538,13 +536,11 @@ export const ledgerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const lock = await resolvePeriodLock(organizationId)
 
       return reverseEntry(ctx.db, {
         organizationId,
         glPostingId: input.glPostingId,
         actorUserId: userId,
-        lock,
         memo: input.memo,
         onlyIfExported: true,
       })
@@ -561,7 +557,7 @@ export const ledgerRouter = createTRPCRouter({
    * The copy already in the provider is left exactly where it is
    * (plans/accounting/tasks/60-un-syncing-from-the-provider.md E1/E2).
    *
-   * One outcome per posting and never a throw: a locked period, an entry that is
+   * One outcome per posting and never a throw: an entry that is
    * not `posted` and an unmapped account all arrive as that row's `refused`
    * message and land the rest of the selection.
    *
@@ -578,13 +574,11 @@ export const ledgerRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const lock = await resolvePeriodLock(organizationId)
 
       return reverseEntries(ctx.db, {
         organizationId,
         glPostingIds: input.glPostingIds,
         actorUserId: userId,
-        lock,
         memo: input.memo,
         onlyIfExported: true,
       })
@@ -2339,7 +2333,7 @@ export const ledgerRouter = createTRPCRouter({
     /**
      * Build the entry from the stored lines, post it, and stamp the record's
      * pointer. Pre-ledger refusals (not a draft, unbalanced, a bad row) throw;
-     * ledger outcomes (`period_closed`, ...) return as the `PostResult` to render.
+     * ledger outcomes return as the `PostResult` to render.
      */
     post: permissionProcedure(PermissionKey.ledgerPost)
       .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))

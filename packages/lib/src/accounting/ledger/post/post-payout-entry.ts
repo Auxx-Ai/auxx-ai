@@ -1,8 +1,7 @@
 // packages/lib/src/accounting/ledger/post/post-payout-entry.ts
 
 /**
- * The writer for `buildPayoutEntry`. Resolves the period lock and hands the
- * entry to `postEntry`; the accounting is all in the builder.
+ * The writer for `buildPayoutEntry`. Hands the entry to `postEntry`; the accounting is all in the builder.
  *
  * `money/payouts/sync.ts` is the gatherer and the trigger: it lists an org's
  * payouts, resolves the rail through the source context (task 58 §5.5) and
@@ -20,7 +19,6 @@
 import type { Database, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type BuildPayoutEntryInput, buildPayoutEntry } from '../builders/payout'
-import { resolvePeriodLock } from '../periods/period-lock'
 import { isAccountingActive } from '../setup/accounting-enabled'
 import type { PostResult } from '../types'
 import { postEntry } from './post-entry'
@@ -83,13 +81,11 @@ export async function postPayoutEntry(
 
   try {
     const built = buildPayoutEntry(input)
-    const lock = await resolvePeriodLock(organizationId)
     const post = await postEntry(db, {
       organizationId,
       entry: built.entry,
       actorUserId,
       beforeCommit,
-      lock,
       memo: input.memo ?? `Payout ${built.periodKey}`,
       railId: input.rail,
       sources: [

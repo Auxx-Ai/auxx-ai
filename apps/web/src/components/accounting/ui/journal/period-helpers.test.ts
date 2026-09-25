@@ -1,27 +1,7 @@
 // apps/web/src/components/accounting/ui/journal/period-helpers.test.ts
 
-import type { ClosePeriod } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
-import {
-  firstDayOfPeriod,
-  lastDayOfPeriod,
-  nextOpenPeriodAfter,
-  periodKeyForEntryDate,
-  today,
-} from './period-helpers'
-
-function period(overrides: Partial<ClosePeriod>): ClosePeriod {
-  return {
-    periodKey: '2026-08',
-    state: 'open',
-    glPostingId: null,
-    docNumber: null,
-    totalMinor: null,
-    postedAt: null,
-    revision: 0,
-    ...overrides,
-  }
-}
+import { firstDayOfPeriod, lastDayOfPeriod, periodKeyForEntryDate, today } from './period-helpers'
 
 describe('firstDayOfPeriod', () => {
   it('returns the first calendar day of the month', () => {
@@ -53,36 +33,6 @@ describe('lastDayOfPeriod', () => {
 
   it('passes through a key that is not a month', () => {
     expect(lastDayOfPeriod('not-a-key')).toBe('not-a-key')
-  })
-})
-
-describe('nextOpenPeriodAfter', () => {
-  const periods: ClosePeriod[] = [
-    period({ periodKey: '2026-06', state: 'posted' }),
-    period({ periodKey: '2026-07', state: 'locked' }),
-    period({ periodKey: '2026-08', state: 'open' }),
-    period({ periodKey: '2026-09', state: 'open' }),
-  ]
-
-  it('finds the first open period after the given one', () => {
-    expect(nextOpenPeriodAfter(periods, '2026-07')?.periodKey).toBe('2026-08')
-  })
-
-  it('skips a posted period that is not open', () => {
-    expect(nextOpenPeriodAfter(periods, '2026-06')?.periodKey).toBe('2026-08')
-  })
-
-  it('falls back to the first open period anywhere when the given key is the newest', () => {
-    expect(nextOpenPeriodAfter(periods, '2026-09')?.periodKey).toBe('2026-08')
-  })
-
-  it('falls back to the first open period when the given key is not in the list', () => {
-    expect(nextOpenPeriodAfter(periods, '2099-01')?.periodKey).toBe('2026-08')
-  })
-
-  it('returns null when nothing is open', () => {
-    const allClosed = periods.map((p) => ({ ...p, state: 'locked' as const }))
-    expect(nextOpenPeriodAfter(allClosed, '2026-06')).toBeNull()
   })
 })
 

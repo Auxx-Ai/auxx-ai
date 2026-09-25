@@ -72,10 +72,6 @@ describe('refusalFromError', () => {
 
 describe('refusalFromPost', () => {
   it('turns every ledger refusal into its code with the entry keys', () => {
-    expect(refusalFromPost({ status: 'period_closed' }, { periodKey: '2026-09' })).toEqual({
-      reasonCode: 'PERIOD_LOCKED',
-      periodKey: '2026-09',
-    })
     expect(refusalFromPost({ status: 'unbalanced' }).reasonCode).toBe('UNBALANCED')
     expect(refusalFromPost({ status: 'error', error: 'db down' })).toEqual({
       reasonCode: 'TRANSIENT_ERROR',

@@ -145,7 +145,6 @@ export {
 export {
   assertAccountingSetupUnfrozen,
   assertDocumentKey,
-  assertPeriodOpen,
   type CloseBlockersResult,
   compareMonths,
   FROZEN_SETUP_SETTING_KEYS,

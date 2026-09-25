@@ -263,7 +263,7 @@ describe('completeConnectAndGo', () => {
   })
 
   it('treats a refused opening post as a failure', async () => {
-    h.finalizeStatus = 'period_closed'
+    h.finalizeStatus = 'unbalanced'
     const report = (await completeConnectAndGo(db, base))._unsafeUnwrap()
     expect(report.failedAt).toBe('finalize')
     expect(report.message).toBe('Period closed')

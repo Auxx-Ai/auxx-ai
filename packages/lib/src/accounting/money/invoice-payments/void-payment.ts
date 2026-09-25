@@ -20,7 +20,6 @@
 
 import type { Database } from '@auxx/database'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -71,12 +70,10 @@ export async function voidInvoicePayment(
 
   // 🛑 The ledger goes FIRST: a refused reversal must leave the money model
   // exactly as it was, or the invoice reads settled with no entry behind it.
-  const lock = await resolvePeriodLock(input.organizationId)
   const reversal = await reverseEntry(db, {
     organizationId: input.organizationId,
     glPostingId: live.value.id,
     actorUserId: input.userId,
-    lock,
     memo: input.reason?.trim() || 'Payment recorded in error',
   })
   if (!didLedgerAccept(reversal))

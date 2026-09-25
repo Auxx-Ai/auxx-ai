@@ -19,7 +19,6 @@ import {
   readEditStamp,
 } from '../../../entity-instances/edit-snapshot'
 import { BadRequestError, ConflictError } from '../../../errors'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { readPostingHeaders } from '../../ledger/reads/read-posting'
@@ -143,7 +142,6 @@ export async function saveDocumentEdit(
     return { outcome: 'unchanged', docNumber: live[0]!.docNumber, edit: null }
   }
 
-  const lock = await resolvePeriodLock(organizationId)
   const committed = await db.transaction(async (tx) => {
     await withAccountingCommitLock(tx, organizationId)
     // The poster and the reverser each open a transaction of their own. Handed
@@ -165,7 +163,6 @@ export async function saveDocumentEdit(
         organizationId,
         glPostingId: posting.glPostingId,
         actorUserId: userId,
-        lock,
         memo: row.reversalMemo(doc, posting.docNumber),
       })
       if (!didLedgerAccept(reversal)) {

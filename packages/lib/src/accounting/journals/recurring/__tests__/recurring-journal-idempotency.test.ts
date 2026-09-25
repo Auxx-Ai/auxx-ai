@@ -52,10 +52,6 @@ vi.mock('../../../ledger/post/post-entry', () => ({
 
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: async () => h.postResult }))
 
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
-
 vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingLineSourceIds: async () => okResult(h.winningSourceIds),
 }))

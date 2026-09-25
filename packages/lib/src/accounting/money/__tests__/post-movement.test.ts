@@ -9,7 +9,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   isAccountingActive: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
-  resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
   resolveCashEndpoint: vi.fn(),
   settings: {} as Record<string, unknown>,
@@ -25,7 +24,6 @@ vi.mock('../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE: 'f
 vi.mock('../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../cash-endpoint', async () => {
   const actual = await vi.importActual<typeof import('../cash-endpoint')>('../cash-endpoint')
@@ -115,7 +113,6 @@ beforeEach(() => {
   h.marks = []
   h.isAccountingActive.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
   h.resolveCashEndpoint.mockResolvedValue({
     glAccountId: 'gl_undep',
@@ -206,8 +203,11 @@ describe('postMovementEntry', () => {
   })
 
   it('blocks when the ledger refuses', async () => {
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed' })
-    await expect(post()).resolves.toEqual({ status: 'blocked', reason: 'September is closed' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
+    await expect(post()).resolves.toEqual({
+      status: 'blocked',
+      reason: 'The entry does not balance',
+    })
   })
 
   it('blocks when the live-posting read fails', async () => {
@@ -258,11 +258,9 @@ describe('postMovementEntry', () => {
   })
 
   it('parks a ledger refusal as a coded work item with its month, and clears it on accept', async () => {
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
     await post()
-    expect(h.marks).toEqual([
-      { park: { ...KEY, reasonCode: 'PERIOD_LOCKED', periodKey: '2026-09' } },
-    ])
+    expect(h.marks).toEqual([{ park: { ...KEY, reasonCode: 'UNBALANCED' } }])
 
     h.marks = []
     h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })

@@ -196,12 +196,18 @@ describe('repostStoredPayout', () => {
     expect(h.update).not.toHaveBeenCalled()
   })
 
-  it('parks a PERIOD_LOCKED work item when the period is closed, and posts nothing', async () => {
-    h.postPayoutEntry.mockResolvedValue({ status: 'period_closed', error: 'November is closed' })
+  it('parks a work item when the ledger refuses, and posts nothing', async () => {
+    h.postPayoutEntry.mockResolvedValue({
+      status: 'unbalanced',
+      error: 'The entry does not balance',
+    })
 
     const result = await repost()
 
-    expect(result._unsafeUnwrap()).toEqual({ status: 'refused', reason: 'November is closed' })
+    expect(result._unsafeUnwrap()).toEqual({
+      status: 'refused',
+      reason: 'The entry does not balance',
+    })
     expect(h.upsertWorkItem).toHaveBeenCalledWith(
       db,
       ORG,
@@ -209,7 +215,7 @@ describe('repostStoredPayout', () => {
         sourceKind: 'payout',
         sourceId: 'inst_7',
         stage: 'post',
-        reasonCode: 'PERIOD_LOCKED',
+        reasonCode: 'UNBALANCED',
       })
     )
     expect(h.deleteWorkItem).not.toHaveBeenCalled()

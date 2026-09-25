@@ -6,7 +6,6 @@ import type { Result } from 'neverthrow'
 import { DOC_NUMBER_PREFIX } from '../../accounting/ledger/builders/doc-number'
 import { ACCOUNT_ROLES, buildEntry } from '../../accounting/ledger/builders/entry'
 import { hashedPeriodKey } from '../../accounting/ledger/periods/period-key'
-import { resolvePeriodLock } from '../../accounting/ledger/periods/period-lock'
 import { postEntry } from '../../accounting/ledger/post/post-entry'
 import { OPENING_INVENTORY_ADJUSTMENT_SOURCE } from '../../accounting/ledger/reads/opening-inventory'
 import type { GlPostingLineInput, PostResult } from '../../accounting/ledger/types'
@@ -93,7 +92,6 @@ export async function postOpeningInventoryAdjustment(
         entry,
         actorUserId,
         memo,
-        lock: await resolvePeriodLock(organizationId),
         sources: [
           {
             sourceKind: 'opening_balance',

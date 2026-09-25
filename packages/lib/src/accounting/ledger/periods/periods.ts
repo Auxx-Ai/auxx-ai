@@ -7,9 +7,9 @@
 // Together with the posting type it is what makes a double-post unrepresentable
 // at the source rather than merely detected at the destination - see the JSDoc
 // on `GL_POSTING_FIELDS` in resources/registry/resources/gl-posting-fields.ts.
-// Document and fulfillment membership keys instead use `txnDate` for period checks.
+// Document and fulfillment membership keys instead use `txnDate`.
 
-import { BadRequestError, UnprocessableEntityError } from '../../../errors'
+import { BadRequestError } from '../../../errors'
 import { isGroupPeriodKey } from '../builders/doc-number'
 
 /** `'day'` -> `'2026-08-18'`, `'month'` -> `'2026-08'`. */
@@ -187,8 +187,8 @@ export function compareMonths(a: string, b: string): number {
 
 export interface PeriodLock {
   /**
-   * The last month closed to new postings, `'2026-07'`, or `null` when nothing
-   * is closed yet.
+   * The last month reviewed, `'2026-07'`, or `null` when nothing is reviewed yet.
+   * A marker, not a refusal: the poster does not read it.
    *
    * Passed in rather than read from settings inside this module, for two
    * reasons: it keeps this file pure and exhaustively testable with no database,
@@ -199,31 +199,8 @@ export interface PeriodLock {
   lockedThroughMonth: string | null
 }
 
-/**
- * Is this period closed to new postings?
- *
- * A period is locked when its month is at or before `lockedThroughMonth`.
- */
+/** Is this period's month reviewed - at or before `lockedThroughMonth`? Postings into it still succeed. */
 export function isPeriodLocked(periodKey: string, lock: PeriodLock): boolean {
   if (!lock.lockedThroughMonth) return false
   return compareMonths(periodMonth(periodKey), lock.lockedThroughMonth) <= 0
-}
-
-/**
- * Throw unless the period is open.
- *
- * Called before a posting is built, not after: a posting into a closed month
- * cannot be un-posted at the provider by anything this system can do, and the
- * accountant who closed the month has already filed numbers that no longer
- * match. Refusing at the door is the only cheap moment.
- *
- * @throws {UnprocessableEntityError} when the period is locked.
- */
-export function assertPeriodOpen(periodKey: string, lock: PeriodLock): void {
-  if (isPeriodLocked(periodKey, lock)) {
-    throw new UnprocessableEntityError(
-      `Accounting period ${periodMonth(periodKey)} is closed through ${lock.lockedThroughMonth} - post to an open period`,
-      { periodKey, lockedThroughMonth: lock.lockedThroughMonth ?? '' }
-    )
-  }
 }

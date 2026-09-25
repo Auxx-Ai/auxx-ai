@@ -28,7 +28,6 @@ interface LedgerBannersProps {
   /** Every blocker is an ordinary outcome rather than a fault. */
   isSoftRefusal: boolean
   onFix: (key: FixableBlockerItemKey) => void
-  onReviewLock?: () => void
   /** Absent on the newest month. */
   onNextPeriod?: () => void
 }
@@ -53,7 +52,6 @@ export function LedgerBanners({
   blockers,
   isSoftRefusal,
   onFix,
-  onReviewLock,
   onNextPeriod,
 }: LedgerBannersProps) {
   // 🛑 REFUSALS only. With the hold on, every batch rests `ready`, so a banner
@@ -96,7 +94,6 @@ export function LedgerBanners({
           blockers={blockers}
           isSoftRefusal={isSoftRefusal}
           onFix={onFix}
-          onReviewLock={onReviewLock}
           onNextPeriod={onNextPeriod}
         />
       </div>
@@ -128,14 +125,12 @@ function CloseBlockersRow({
   blockers,
   isSoftRefusal,
   onFix,
-  onReviewLock,
   onNextPeriod,
 }: {
   periodLabel: string
   blockers: LedgerBlocker[]
   isSoftRefusal: boolean
   onFix: (key: FixableBlockerItemKey) => void
-  onReviewLock?: () => void
   onNextPeriod?: () => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -168,7 +163,6 @@ function CloseBlockersRow({
         depth={1}
         blockers={blockers}
         onFix={(item) => onFix(item.key as FixableBlockerItemKey)}
-        onReviewLock={onReviewLock}
         onNextPeriod={onNextPeriod}
       />
     </TreeRow>

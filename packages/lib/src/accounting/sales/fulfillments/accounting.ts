@@ -12,7 +12,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
 import { buildFulfillmentEntry } from '../../ledger/builders/fulfillment'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { periodKeyForDate } from '../../ledger/periods/periods'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
@@ -295,12 +294,10 @@ export async function postFulfillmentAccounting(
     return { status: 'blocked', reason: error.message }
   }
 
-  const lock = await resolvePeriodLock(organizationId)
   const post = await postEntry(db, {
     organizationId,
     entry: prepared.entry,
     actorUserId,
-    lock,
     scope: prepared.scope,
     sources: prepared.sources,
     storeId: prepared.storeId,
@@ -308,12 +305,7 @@ export async function postFulfillmentAccounting(
   })
   if (!didLedgerAccept(post) || !post.glPostingId) {
     const reason = post.error ?? `The ledger answered ${post.status}`
-    await parkFulfillment(
-      db,
-      organizationId,
-      fulfillmentId,
-      refusalFromPost(post, { periodKey: prepared.entry.txnDate.slice(0, 7) })
-    )
+    await parkFulfillment(db, organizationId, fulfillmentId, refusalFromPost(post))
     return { status: 'blocked', reason }
   }
   await parkFulfillment(db, organizationId, fulfillmentId, null)

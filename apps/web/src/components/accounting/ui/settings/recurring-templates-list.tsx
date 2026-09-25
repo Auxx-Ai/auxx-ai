@@ -3,12 +3,6 @@
 
 // The left column of Accounting > Settings > Recurring templates (task 21 §1.6).
 // `payment-gateways-list.tsx`'s flat shape - a template has nothing to group by.
-//
-// 🛑 The cadence AND the held month are on the ROW, not only in the editor.
-// "Which of my templates is stuck because February is closed" is the one
-// question this screen exists to answer, and a state that can only be found by
-// clicking through every row in turn stays unfinished. Same argument the
-// gateway list makes for its clearing-account badge.
 
 import { describeRecurrence, type RecurrencePattern } from '@auxx/lib/recurrence/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -21,7 +15,6 @@ import { cn } from '@auxx/ui/lib/utils'
 import { CalendarClock, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { formatPeriodLabel } from '../ledger/format'
 
 /** One row, as `ledger.recurringTemplate.list` returns it. */
 export interface RecurringTemplateRow {
@@ -33,7 +26,7 @@ export interface RecurringTemplateRow {
     lines: unknown[]
   }
   rule: { id: string; pattern: unknown; anchor: string } | null
-  plan: { due: unknown[]; held: { occurrenceDate: string; month: string } | null } | null
+  plan: { due: unknown[] } | null
 }
 
 interface RecurringTemplatesListProps {
@@ -133,15 +126,7 @@ export function RecurringTemplatesList({
                       {row.template.lines.length}{' '}
                       {row.template.lines.length === 1 ? 'line' : 'lines'}
                     </Badge>
-                    {/* 🛑 The held month, in the list. An entry the books are
-                        owed and cannot have is the whole reason this screen has
-                        a status column at all. */}
-                    {row.plan?.held && (
-                      <Badge variant='amber' size='xs'>
-                        Waiting on {formatPeriodLabel(row.plan.held.month)}
-                      </Badge>
-                    )}
-                    {!row.plan?.held && (row.plan?.due.length ?? 0) > 0 && (
+                    {(row.plan?.due.length ?? 0) > 0 && (
                       <Badge variant='outline' size='xs'>
                         {row.plan?.due.length} due
                       </Badge>

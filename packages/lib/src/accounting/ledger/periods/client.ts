@@ -22,7 +22,6 @@ export {
   MAX_COMPACT_PERIOD_KEY,
 } from './period-key'
 export {
-  assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
   monthBounds,

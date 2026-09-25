@@ -6,7 +6,6 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
-import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { reverseEntry } from '../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../ledger/reads/list-postings'
@@ -130,7 +129,6 @@ export async function acceptProviderMatch(
         organizationId: input.organizationId,
         glPostingId: live.value.id,
         actorUserId: input.actorUserId,
-        lock: await resolvePeriodLock(input.organizationId),
         memo: `Reversed: the connected books hold this payment as ${entry.providerTxnType} ${entry.docNumber ?? entry.providerTxnId}`,
       })
       if (!didLedgerAccept(reversed))

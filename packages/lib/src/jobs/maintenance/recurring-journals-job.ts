@@ -18,12 +18,6 @@ const logger = createScopedLogger('recurring-journals-job')
  * three recurrence consumers do not contend, and late enough that the day it
  * generates for is over in every zone west of UTC. See
  * `apps/worker/src/workers/index.ts`.
- *
- * 🛑 It generates DRAFTS and posts nothing (MK's decision A). The summary's
- * `held` list is the one thing worth reading in a log: those are entries the
- * books are owed and cannot have, because the month they belong to is closed.
- * The sweep does not decide - the cursor holds the occurrence, and somebody
- * with `ledgerControl` reopens the month or accepts that the entry is late.
  */
 export async function recurringJournalsJob(ctx: JobContext): Promise<void> {
   logger.info('Running recurring journals sweep', { jobId: ctx.jobId })
@@ -33,7 +27,6 @@ export async function recurringJournalsJob(ctx: JobContext): Promise<void> {
     rulesEvaluated: summary.rulesEvaluated,
     entriesGenerated: summary.entriesGenerated,
     entriesPosted: summary.entriesPosted,
-    heldByClosedPeriod: summary.held.length,
     failed: summary.failed,
   })
 }

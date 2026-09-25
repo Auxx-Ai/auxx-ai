@@ -25,9 +25,6 @@ vi.mock('../../ledger/reads/list-postings', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../ledger/reads/list-postings')>()),
   findLiveSubjectPosting: async () => ok(null),
 }))
-vi.mock('../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) => h.settings[key] ?? null,

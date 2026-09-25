@@ -1,9 +1,8 @@
 // packages/lib/src/accounting/ledger/periods/__tests__/periods.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { BadRequestError, UnprocessableEntityError } from '../../../../errors'
+import { BadRequestError } from '../../../../errors'
 import {
-  assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
   monthBounds,
@@ -186,33 +185,6 @@ describe('isPeriodLocked', () => {
     expect(() => isPeriodLocked('2026-8-1', { lockedThroughMonth: '2026-07' })).toThrow(
       BadRequestError
     )
-  })
-})
-
-describe('assertPeriodOpen', () => {
-  it('passes for an open period', () => {
-    expect(() => assertPeriodOpen('2026-08-18', { lockedThroughMonth: '2026-07' })).not.toThrow()
-  })
-
-  it('throws UnprocessableEntityError for a closed period', () => {
-    expect(() => assertPeriodOpen('2026-07-15', { lockedThroughMonth: '2026-07' })).toThrow(
-      UnprocessableEntityError
-    )
-  })
-
-  it('names both the period and the close in the message', () => {
-    expect(() => assertPeriodOpen('2026-06-15', { lockedThroughMonth: '2026-07' })).toThrow(
-      /2026-06 is closed through 2026-07/
-    )
-  })
-
-  it('maps to HTTP 422', () => {
-    try {
-      assertPeriodOpen('2026-06-15', { lockedThroughMonth: '2026-07' })
-      expect.unreachable('should have thrown')
-    } catch (error) {
-      expect((error as UnprocessableEntityError).statusCode).toBe(422)
-    }
   })
 })
 

@@ -13,7 +13,6 @@ const h = vi.hoisted(() => ({
   resolveRoles: vi.fn(),
   postEntry: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
-  resolvePeriodLock: vi.fn(),
   upsertWorkItem: vi.fn(async () => ({ isErr: () => false })),
   money: null as unknown,
   updates: [] as unknown[],
@@ -25,9 +24,6 @@ vi.mock('../../../ledger/setup/accounting-enabled', () => ({
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
-}))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: h.resolvePeriodLock,
 }))
 vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../ledger/setup/setup-readiness', () => ({
@@ -143,7 +139,6 @@ beforeEach(() => {
     method: null,
   }
   h.isAccountingActive.mockResolvedValue(true)
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.findLiveSubjectPosting.mockResolvedValue({ isErr: () => false, value: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'posting_1' })
   h.getOrganizationSetting.mockImplementation(async ({ key }: { key: string }) => {
@@ -354,14 +349,14 @@ describe('postCustomerReceiptAccounting', () => {
   })
 
   it('blocks when the ledger refuses the entry', async () => {
-    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed.' })
+    h.postEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance.' })
 
     const result = await postCustomerReceiptAccounting(db(), {
       organizationId,
       moneyTransactionId,
     })
 
-    expect(result).toEqual({ status: 'blocked', reason: 'September is closed.' })
+    expect(result).toEqual({ status: 'blocked', reason: 'The entry does not balance.' })
   })
 
   it('skips when accounting is off', async () => {

@@ -32,7 +32,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { canReverseExportedPosting } from '../../export/client'
 import { buildEntry } from '../builders/entry'
-import type { PeriodLock } from '../periods/periods'
 import { readPostingHeader } from '../reads/read-posting'
 import type { ExportAvenue } from '../setup/export-settings'
 import type {
@@ -56,7 +55,6 @@ export interface ReverseEntryOptions {
   /** The `GlPosting` row to back out. It must be `posted`. */
   glPostingId: string
   actorUserId?: string
-  lock: PeriodLock
   memo?: string
   /** The person's Reverse: refused until the provider holds the entry. Undo paths leave it off. */
   onlyIfExported?: boolean
@@ -136,7 +134,7 @@ export async function reverseEntryInTx(
   tx: Transaction,
   options: ReverseEntryOptions
 ): Promise<InTxPostResult> {
-  const { organizationId, glPostingId, actorUserId, lock, memo, onlyIfExported, links } = options
+  const { organizationId, glPostingId, actorUserId, memo, onlyIfExported, links } = options
 
   {
     const db = tx
@@ -299,7 +297,6 @@ export async function reverseEntryInTx(
       assertions: originalAssertions ? reverseAssertions(originalAssertions) : undefined,
       actorUserId,
       memo: memo ?? `Reversal of ${original.docNumber}`,
-      lock,
       reversesId: original.id,
       revision: original.revision + 1,
       docNumber: original.docNumber ? `${original.docNumber}-R${original.revision + 1}` : undefined,
@@ -373,16 +370,12 @@ export interface ReverseEntriesOptions {
  * accounts against the chart and writes its effects - and a batch transaction
  * around forty of them would hold the commit lock for the length of the slowest.
  * A row that refuses lands the rest, which is the whole point of the shape.
- *
- * The period lock is resolved ONCE by the caller and passed in: it cannot change
- * mid-run, and re-reading it per row would let a close land halfway through a
- * selection and split it.
  */
 export async function reverseEntries(
   db: Database,
-  options: ReverseEntriesOptions & { lock: PeriodLock }
+  options: ReverseEntriesOptions
 ): Promise<ReverseManyResult> {
-  const { organizationId, actorUserId, lock, memo, onlyIfExported } = options
+  const { organizationId, actorUserId, memo, onlyIfExported } = options
   const glPostingIds = [...new Set(options.glPostingIds)]
 
   const outcomes: ReverseOutcome[] = []
@@ -391,7 +384,6 @@ export async function reverseEntries(
       organizationId,
       glPostingId,
       actorUserId,
-      lock,
       memo,
       onlyIfExported,
     })

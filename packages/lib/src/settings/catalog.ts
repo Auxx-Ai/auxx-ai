@@ -840,7 +840,7 @@ export const SETTINGS_CATALOG = {
   //
   // `'2026-07'` closes July and everything before it; empty/unset means nothing
   // is closed yet. `packages/lib/src/accounting/ledger/periods/periods.ts` owns the comparison
-  // (`isPeriodLocked` / `assertPeriodOpen`) and takes the lock as an argument;
+  // (`isPeriodLocked`) and takes the lock as an argument;
   // `postings/period-lock.ts` is the one place that turns this row into that
   // argument.
   //

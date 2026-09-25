@@ -41,7 +41,6 @@ import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
 import { findSystemRecordIdsByValue } from '../../../resources/system-records'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
@@ -315,12 +314,10 @@ export async function codeTransaction(
         }
       }
 
-      const lock = await resolvePeriodLock(organizationId)
       const post = await postEntry(db, {
         organizationId,
         entry,
         actorUserId,
-        lock,
         memo: memo ?? line.description ?? `Bank line ${line.externalId ?? transactionId}`,
         sources: [
           {
@@ -550,12 +547,10 @@ export async function transferTransaction(
         memo: memo ?? `Transfer ${line.description ?? ''}`.trim(),
       })
 
-      const lock = await resolvePeriodLock(organizationId)
       const post = await postEntry(db, {
         organizationId,
         entry,
         actorUserId,
-        lock,
         memo: memo ?? `Transfer between bank accounts`,
         // Filed on `filedOn`, whichever leg that is - `undoReview` goes looking
         // for the posting there, so the claim has to live there too.
@@ -834,12 +829,10 @@ export async function undoReview(
       const latest = await findMostRecentBankTransactionPosting(db, organizationId, transactionId)
       if (latest) {
         if (latest.status === 'posted') {
-          const lock = await resolvePeriodLock(organizationId)
           post = await reverseEntry(db, {
             organizationId,
             glPostingId: latest.id,
             actorUserId,
-            lock,
             memo: memo ?? `Undo bank review ${line.externalId ?? transactionId}`,
           })
           if (!didLedgerAccept(post)) {

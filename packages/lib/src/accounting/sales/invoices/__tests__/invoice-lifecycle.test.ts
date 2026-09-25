@@ -211,7 +211,10 @@ describe('markInvoiceSent', () => {
   // is waiting on the document and the refusal is recoverable.
   it('still sends when the ledger refuses the entry', async () => {
     wireInvoice('draft')
-    h.postInvoiceIssuance.mockResolvedValue({ status: 'period_closed', error: 'August is closed.' })
+    h.postInvoiceIssuance.mockResolvedValue({
+      status: 'unbalanced',
+      error: 'The entry does not balance.',
+    })
     await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'sent' })
   })
@@ -270,12 +273,12 @@ describe('voidInvoice', () => {
   it('refuses the void when the reversal is refused, and writes nothing', async () => {
     wireInvoice('sent')
     h.reverseInvoiceIssuance.mockResolvedValue({
-      status: 'period_closed',
-      error: 'August is closed.',
+      status: 'unbalanced',
+      error: 'The entry does not balance.',
     })
     await expect(
       voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
-    ).rejects.toThrow(/August is closed/)
+    ).rejects.toThrow(/The entry does not balance/)
     expect(h.calls).not.toContain('write-status')
   })
 })

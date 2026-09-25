@@ -9,7 +9,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   isAccountingActive: vi.fn(),
   findLiveSubjectPosting: vi.fn(),
-  resolvePeriodLock: vi.fn(),
   postEntry: vi.fn(),
   resolveRoles: vi.fn(),
   resolveBankAccountGlAccountInTx: vi.fn(),
@@ -27,7 +26,6 @@ vi.mock('../../../ledger/setup/setup-readiness', () => ({ FINALIZED_SETUP_STATE:
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../ledger/chart/resolve-cash-account', () => ({
@@ -101,7 +99,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.isAccountingActive.mockResolvedValue(true)
   h.findLiveSubjectPosting.mockResolvedValue(ok(null))
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl_1' })
   h.resolveRoles.mockResolvedValue(
     ok(new Map([['undeposited_funds', { glAccountId: 'gl_undep' }]]))

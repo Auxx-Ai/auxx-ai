@@ -36,7 +36,6 @@ vi.mock('../../../documents/edit-in-place/save', () => ({
   readBuiltEntry: h.readBuiltEntry,
   entryLinesEqual: h.entryLinesEqual,
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: async () => ({}) }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/reads/list-postings', () => ({
   findLiveSubjectPosting: h.findLiveSubjectPosting,

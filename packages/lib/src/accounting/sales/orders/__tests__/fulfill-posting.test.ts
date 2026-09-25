@@ -18,9 +18,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../../ledger/post/accounting-commit-lock', () => ({
   withAccountingCommitLock: vi.fn(),
 }))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 // Gate 1 is on for this file: what is under test is the posting, not the draft.
 
 const h = vi.hoisted(() => ({

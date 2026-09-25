@@ -65,14 +65,6 @@ export const WORK_ITEM_CODES = {
     sentence: () =>
       'A line names an account the chart no longer holds, or holds inactive. Repoint it in the chart of accounts.',
   },
-  PERIOD_LOCKED: {
-    severity: 'error',
-    status: 'blocked',
-    sentence: (item) =>
-      item.periodKey
-        ? `${item.periodKey} is closed. It posts once the period is reopened.`
-        : 'Its period is closed. It posts once the period is reopened.',
-  },
   UNBALANCED: {
     severity: 'error',
     status: 'blocked',

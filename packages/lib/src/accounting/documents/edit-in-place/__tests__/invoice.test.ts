@@ -41,9 +41,6 @@ vi.mock('@auxx/database', async () => {
     withAccountingCommitLock: vi.fn(async () => {}),
   }
 })
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/setup/book-time-zone', () => ({
   todayInBookTimeZone: async () => '2026-09-18',
@@ -303,11 +300,11 @@ describe('saveDocumentEdit', () => {
   it('leaves everything alone when the re-post is refused', async () => {
     raiseTheInvoice()
     h.postInvoiceIssuanceBuiltEntry.mockResolvedValue({
-      status: 'period_closed',
-      error: 'September is locked',
+      status: 'unbalanced',
+      error: 'The entry does not balance',
     })
 
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/September is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/The entry does not balance/)
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 

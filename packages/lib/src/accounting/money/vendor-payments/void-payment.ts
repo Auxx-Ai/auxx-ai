@@ -11,7 +11,6 @@
 
 import type { Database } from '@auxx/database'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
-import { resolvePeriodLock } from '../../ledger/periods/period-lock'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
@@ -59,12 +58,10 @@ export async function voidVendorPayment(
   if (live.value) {
     if (!(await isAccountingActive(input.organizationId)))
       throw new UnprocessableEntityError('Accounting is not enabled for this organization')
-    const lock = await resolvePeriodLock(input.organizationId)
     const reversal = await reverseEntry(db, {
       organizationId: input.organizationId,
       glPostingId: live.value.id,
       actorUserId: input.userId,
-      lock,
       memo: input.reason?.trim() || 'Vendor payment recorded in error',
     })
     if (!didLedgerAccept(reversal))

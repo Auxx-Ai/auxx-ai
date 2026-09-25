@@ -45,7 +45,6 @@ import type { JournalEntryLine, JournalEntryRecord } from '../journals/entries/c
 import { requireJournalEntryFieldContext } from '../journals/entries/fields'
 import { createJournalEntry, updateJournalEntry } from '../journals/entries/writes'
 import { buildOpeningBalanceEntry } from '../ledger/builders/opening-balance'
-import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { assertAccountingSetupUnfrozen } from '../ledger/periods/settled-periods'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { postEntry, previewEntry } from '../ledger/post/post-entry'
@@ -125,7 +124,7 @@ export async function saveOpeningTrialBalance(
  *
  * `lines` overrides the stored draft so the wizard's Finalize page and the
  * settings twin can preview what is on screen without saving first. Everything
- * `previewEntry` returns is renderable: a closed period, an account that has
+ * `previewEntry` returns is renderable: an account that has
  * left the chart, a document number that will not fit. What THROWS is the
  * arithmetic - an unbalanced or empty trial balance never becomes a
  * `BuiltEntry`, and the message names the difference.
@@ -146,8 +145,7 @@ export async function previewOpeningTrialBalance(
         memo: input.memo ?? entry.memo ?? undefined,
         sourceId: entry.id,
       })
-      const lock = await resolvePeriodLock(organizationId)
-      return previewEntry(db, { organizationId, entry: built.entry, lock })
+      return previewEntry(db, { organizationId, entry: built.entry })
     },
     'Failed to preview the opening trial balance',
     { organizationId }
@@ -158,7 +156,7 @@ export async function previewOpeningTrialBalance(
  * Post the opening entry and stamp the record.
  *
  * Returns a `PostResult` verbatim rather than collapsing it into an error, for
- * `postJournalEntry`'s reason: a closed period, an account that is not in the
+ * `postJournalEntry`'s reason: an account that is not in the
  * chart and a provider refusal are all things the wizard's Finalize page
  * RENDERS as an `EntryBlockers` card, and flattening them would throw away
  * `docNumber`, `failureClass` and `retryable`.
@@ -195,13 +193,11 @@ export async function postOpeningTrialBalance(
         sourceId: entry.id,
       })
 
-      const lock = await resolvePeriodLock(organizationId)
       const result = await postEntry(db, {
         organizationId,
         entry: built.entry,
         actorUserId: userId,
         memo: input.memo ?? entry.memo ?? undefined,
-        lock,
         // One opening balance per org, ever: keyed on the cutover date, not the record's number.
         sources: [
           {

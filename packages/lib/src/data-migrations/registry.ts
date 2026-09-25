@@ -44,6 +44,7 @@ import { migration188CreditMemoMoneyPending } from './migrations/188-credit-memo
 import { migration189ThreadTriageFields } from './migrations/189-thread-triage-fields'
 import { migration190PartsAndServices } from './migrations/190-parts-and-services'
 import { migration191ProductStatusUnlisted } from './migrations/191-product-status-unlisted'
+import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -242,6 +243,8 @@ function buildRegistry(): DataMigrationDef[] {
     // Re-upserts the platform `ConnectionDefinition` rows by calling the live
     // idempotent seeder: the smallest useful whole-database migration.
     migration131ReseedPlatformProvidersBankFeed,
+    // The month lock stopped refusing (104 P1b): its parked work items are retried and post.
+    migration192RetryPeriodLockedWorkItems,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

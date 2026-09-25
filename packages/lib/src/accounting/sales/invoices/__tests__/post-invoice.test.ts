@@ -13,7 +13,6 @@ const h = vi.hoisted(() => ({
   postEntry: vi.fn(),
   reverseEntry: vi.fn(),
   listPostingsForSource: vi.fn(),
-  resolvePeriodLock: vi.fn(),
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -28,9 +27,6 @@ vi.mock('../../../ledger/builders/invoice', () => ({
 }))
 vi.mock('../../../ledger/post/post-entry', () => ({ postEntry: h.postEntry }))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: h.resolvePeriodLock,
-}))
 vi.mock('../../../../settings/settings-service', () => ({
   getOrganizationSetting: async ({ key }: { key: string }) =>
     key === 'organization.currency' ? 'USD' : 'UTC',
@@ -97,7 +93,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   claims = []
   h.isAccountingActive.mockResolvedValue(true)
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.buildInvoiceEntry.mockReturnValue({
     entry: {
       postingType: 'invoice_issued',
@@ -190,11 +185,11 @@ describe('reverseInvoiceIssuance', () => {
 
   it('returns the refusal so the void can refuse too', async () => {
     await postInvoiceIssuance(wireInvoice(), { organizationId: ORG, invoiceId: INVOICE })
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'August is closed.' })
+    h.reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance.' })
 
     const result = await reverseInvoiceIssuance(db, { organizationId: ORG, invoiceId: INVOICE })
 
-    expect(result?.status).toBe('period_closed')
+    expect(result?.status).toBe('unbalanced')
   })
 })
 

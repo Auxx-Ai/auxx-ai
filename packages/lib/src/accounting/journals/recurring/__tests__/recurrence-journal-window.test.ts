@@ -2,14 +2,13 @@
 
 /**
  * The window rule, over the real expander. PURE - no database, no mocks, no
- * fake timers: `planRecurringOccurrences` takes `now` and the lock as
- * arguments precisely so this file can exist.
+ * fake timers: `planRecurringOccurrences` takes `now` as an argument
+ * precisely so this file can exist.
  *
  * What is pinned here is the set of decisions that are silent when wrong:
  *
  * - the window looks BACKWARD, so March's entry cannot exist in January;
- * - a CLOSED month holds the cursor rather than advancing past it, which is
- *   the difference between a late entry and a missing one;
+ * - a reviewed month holds nothing back;
  * - `count` exhausts exactly once even though nothing counts the rows;
  * - a monthly rule on day 31 lands on the last day of February.
  */
@@ -22,7 +21,6 @@ import {
   DOC_NUMBER_PREFIX,
 } from '../../../ledger/builders/doc-number'
 import { MAX_COMPACT_PERIOD_KEY } from '../../../ledger/periods/period-key'
-import type { PeriodLock } from '../../../ledger/periods/periods'
 import {
   planRecurringOccurrences,
   RECURRING_JOURNAL_DOC_PREFIX,
@@ -30,7 +28,6 @@ import {
 } from '../client'
 
 const ZONE = 'America/New_York'
-const OPEN: PeriodLock = { lockedThroughMonth: null }
 
 /** Local midnight in {@link ZONE} as the UTC instant, the way a rule's cursor is stored. */
 function at(localDate: string): Date {
@@ -50,11 +47,9 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-01-15'),
-      lock: OPEN,
     })
 
     expect(plan.due.map((o) => o.occurrenceDate)).toEqual(['2026-01-01'])
-    expect(plan.held).toBeNull()
   })
 
   it("does not put March's entry in the books in January", () => {
@@ -66,7 +61,6 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-01-20'),
-      lock: OPEN,
     })
 
     expect(plan.due.map((o) => o.occurrenceDate)).not.toContain('2026-02-01')
@@ -80,7 +74,6 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-04-10'),
-      lock: OPEN,
     })
 
     expect(plan.due.map((o) => o.occurrenceDate)).toEqual([
@@ -98,7 +91,6 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-02-10'),
-      lock: OPEN,
     })
     expect(first.due).toHaveLength(2)
 
@@ -108,13 +100,11 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: first.cursor,
       now: at('2026-02-20'),
-      lock: OPEN,
     })
     expect(second.due).toEqual([])
-    expect(second.held).toBeNull()
   })
 
-  it('leaves the cursor at now when nothing held it', () => {
+  it('leaves the cursor at now', () => {
     const now = at('2026-04-10')
     const plan = planRecurringOccurrences({
       pattern: MONTHLY_FIRST,
@@ -122,100 +112,29 @@ describe('planRecurringOccurrences - the window is backward-looking', () => {
       timezone: ZONE,
       materializedUntil: null,
       now,
-      lock: OPEN,
     })
     expect(plan.cursor).toBe(now)
   })
 })
 
-describe('planRecurringOccurrences - a locked month HOLDS the cursor', () => {
-  const anchor = '2026-01-01'
-  const now = at('2026-04-10')
-
-  it('stops at the first occurrence in a closed month and names the month', () => {
+describe('planRecurringOccurrences - a reviewed month holds nothing back', () => {
+  it('offers every occurrence up to now, whatever the reviewed-through marker says', () => {
+    const now = at('2026-04-10')
     const plan = planRecurringOccurrences({
       pattern: MONTHLY_FIRST,
-      anchor,
+      anchor: '2026-01-01',
       timezone: ZONE,
       materializedUntil: null,
       now,
-      // January and February are closed; March is not.
-      lock: { lockedThroughMonth: '2026-02' },
     })
 
-    expect(plan.due).toEqual([])
-    expect(plan.held).toEqual({ occurrenceDate: '2026-01-01', month: '2026-01' })
-  })
-
-  it('holds the cursor AT the refused occurrence, never at now', () => {
-    const plan = planRecurringOccurrences({
-      pattern: MONTHLY_FIRST,
-      anchor,
-      timezone: ZONE,
-      materializedUntil: null,
-      now,
-      lock: { lockedThroughMonth: '2026-02' },
-    })
-
-    // The bug this pins: `auto-invoice.ts` advances to `now` without
-    // generating when its gate trips. Doing that here loses January and
-    // February permanently, with no error anywhere and a ledger that ties.
-    expect(plan.cursor).not.toBe(now)
-    expect(plan.cursor.getTime()).toBeLessThan(now.getTime())
-  })
-
-  it('re-offers exactly the held occurrences once the month is reopened', () => {
-    const locked = planRecurringOccurrences({
-      pattern: MONTHLY_FIRST,
-      anchor,
-      timezone: ZONE,
-      materializedUntil: null,
-      now,
-      lock: { lockedThroughMonth: '2026-02' },
-    })
-
-    const reopened = planRecurringOccurrences({
-      pattern: MONTHLY_FIRST,
-      anchor,
-      timezone: ZONE,
-      materializedUntil: locked.cursor,
-      now,
-      lock: OPEN,
-    })
-
-    expect(reopened.due.map((o) => o.occurrenceDate)).toEqual([
+    expect(plan.due.map((o) => o.occurrenceDate)).toEqual([
       '2026-01-01',
       '2026-02-01',
       '2026-03-01',
       '2026-04-01',
     ])
-  })
-
-  it('generates the open months before the closed one and holds the rest', () => {
-    const plan = planRecurringOccurrences({
-      pattern: MONTHLY_FIRST,
-      anchor,
-      timezone: ZONE,
-      materializedUntil: null,
-      now,
-      // Nothing before March is closed, so Jan/Feb are generated; a lock that
-      // closes THROUGH March also closes January and February, so this test
-      // uses a lock that only bites later by re-anchoring the cursor instead.
-      lock: OPEN,
-    })
-    expect(plan.due).toHaveLength(4)
-
-    // Now close through March with the cursor already past February.
-    const held = planRecurringOccurrences({
-      pattern: MONTHLY_FIRST,
-      anchor,
-      timezone: ZONE,
-      materializedUntil: at('2026-02-15'),
-      now,
-      lock: { lockedThroughMonth: '2026-03' },
-    })
-    expect(held.due).toEqual([])
-    expect(held.held).toEqual({ occurrenceDate: '2026-03-01', month: '2026-03' })
+    expect(plan.cursor).toBe(now)
   })
 })
 
@@ -229,7 +148,6 @@ describe('planRecurringOccurrences - end conditions', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-06-10'),
-      lock: OPEN,
     })
     expect(first.due.map((o) => o.occurrenceDate)).toEqual([
       '2026-01-01',
@@ -243,7 +161,6 @@ describe('planRecurringOccurrences - end conditions', () => {
       timezone: ZONE,
       materializedUntil: first.cursor,
       now: at('2026-09-10'),
-      lock: OPEN,
     })
     expect(second.due).toEqual([])
   })
@@ -257,7 +174,6 @@ describe('planRecurringOccurrences - end conditions', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-02-10'),
-      lock: OPEN,
     })
     expect(first.due).toHaveLength(2)
 
@@ -267,7 +183,6 @@ describe('planRecurringOccurrences - end conditions', () => {
       timezone: ZONE,
       materializedUntil: first.cursor,
       now: at('2026-08-10'),
-      lock: OPEN,
     })
     // One left, not three.
     expect(second.due.map((o) => o.occurrenceDate)).toEqual(['2026-03-01'])
@@ -280,7 +195,6 @@ describe('planRecurringOccurrences - end conditions', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-06-10'),
-      lock: OPEN,
     })
     expect(plan.due.map((o) => o.occurrenceDate)).toEqual(['2026-01-01', '2026-02-01'])
   })
@@ -294,7 +208,6 @@ describe('planRecurringOccurrences - a monthly rule on day 31', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-04-15'),
-      lock: OPEN,
     })
 
     // 2026 is not a leap year.
@@ -312,7 +225,6 @@ describe('planRecurringOccurrences - a monthly rule on day 31', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2028-03-15'),
-      lock: OPEN,
     })
     expect(plan.due.map((o) => o.occurrenceDate)).toEqual(['2028-01-31', '2028-02-29'])
   })
@@ -324,7 +236,6 @@ describe('planRecurringOccurrences - a monthly rule on day 31', () => {
       timezone: ZONE,
       materializedUntil: null,
       now: at('2026-05-15'),
-      lock: OPEN,
     })
     // May 31 has not happened yet on May 15, which is the backward window
     // doing its job: an entry is a claim about a period that is over.

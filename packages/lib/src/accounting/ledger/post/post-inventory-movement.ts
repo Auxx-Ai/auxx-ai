@@ -22,7 +22,6 @@ import {
   type InventoryMovementLine,
   type ReliefCogsSplit,
 } from '../builders/inventory-movement'
-import { resolvePeriodLock } from '../periods/period-lock'
 import { listPostingsForSource } from '../reads/list-postings'
 import { readPostingLineSourceIds } from '../reads/read-posting'
 import { isAccountingActive } from '../setup/accounting-enabled'
@@ -125,11 +124,9 @@ export async function postInventoryMovementInTx(
     })),
   ]
 
-  const lock = await resolvePeriodLock(organizationId, tx)
   const result = await postEntryInTx(tx, {
     organizationId,
     entry: built.entry,
-    lock,
     sources,
     actorUserId,
     memo,
@@ -231,12 +228,10 @@ export async function reverseInventoryMovementPosting(
   )
   if (!live) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   const result = await reverseEntry(db, {
     organizationId,
     glPostingId: live.id,
     actorUserId,
-    lock,
     memo,
   })
   logger.info('Reversed an inventory entry', {
@@ -274,8 +269,7 @@ export async function reversePostingForMovement(
   )
   if (!live) return null
 
-  const lock = await resolvePeriodLock(organizationId)
-  return reverseEntry(db, { organizationId, glPostingId: live.id, actorUserId, lock, memo })
+  return reverseEntry(db, { organizationId, glPostingId: live.id, actorUserId, memo })
 }
 
 /**

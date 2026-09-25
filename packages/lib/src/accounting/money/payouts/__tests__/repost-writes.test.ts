@@ -2,7 +2,7 @@
 //
 // T26 (`plans/accounting/payout-links.md` §13 Q6): an item matched after its
 // payout posted backs the entry out through the ordinary reverse path, and a
-// closed period refuses it in a sentence rather than throwing.
+// refusal comes back as a sentence rather than a throw.
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,6 @@ const h = vi.hoisted(() => ({
     status: 'posted' as string,
     error: undefined as string | undefined,
   })),
-  resolvePeriodLock: vi.fn(async () => ({ closedThrough: null })),
   repostStoredPayout: vi.fn(),
   findPayoutByGatewayId: vi.fn(),
   upsertWorkItem: vi.fn(),
@@ -20,7 +19,6 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
-vi.mock('../../../ledger/periods/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../sync', () => ({ repostStoredPayout: h.repostStoredPayout }))
 vi.mock('../reads', () => ({ findPayoutByGatewayId: h.findPayoutByGatewayId }))
 vi.mock('../../../work-items/write', () => ({ upsertWorkItem: h.upsertWorkItem }))
@@ -46,7 +44,7 @@ beforeEach(() => {
 })
 
 describe('reverseStalePayoutPosting', () => {
-  it('backs the entry out through the ordinary reverse path, under the period lock it read', async () => {
+  it('backs the entry out through the ordinary reverse path', async () => {
     const result = await reverseStalePayoutPosting(db, {
       organizationId: 'org_1',
       glPostingId: 'glp_1',
@@ -61,24 +59,10 @@ describe('reverseStalePayoutPosting', () => {
         organizationId: 'org_1',
         glPostingId: 'glp_1',
         actorUserId: 'user_1',
-        lock: { closedThrough: null },
         // The mark that lets this reversal, and no person's, be re-booked from stored data.
         links: [{ sourceKind: 'money_transfer', linkRole: 'parent', sourceId: 'mt_1' }],
       })
     )
-  })
-
-  it('refuses in a sentence, never a throw, when the period is closed', async () => {
-    h.reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'June is closed' })
-
-    const result = await reverseStalePayoutPosting(db, {
-      organizationId: 'org_1',
-      glPostingId: 'glp_1',
-      transferId: 'mt_1',
-    })
-
-    expect(result.reversed).toBe(false)
-    expect(result.refusal).toContain('Re-open the period')
   })
 
   it('carries any other refusal through verbatim', async () => {
@@ -126,7 +110,7 @@ describe('repostStoredPayouts', () => {
   })
 
   it('counts a refusal and reports nothing posted', async () => {
-    h.repostStoredPayout.mockResolvedValue(ok({ status: 'refused', reason: 'closed' }))
+    h.repostStoredPayout.mockResolvedValue(ok({ status: 'refused', reason: 'unbalanced' }))
 
     const summary = await repostStoredPayouts(db, { organizationId: 'org_1', targets: [target] })
 

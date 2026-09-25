@@ -11,7 +11,6 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   postEntry: vi.fn(),
   posted: null as string | null,
-  resolvePeriodLock: vi.fn(),
   resolveRoles: vi.fn(),
   resolveBankAccountGlAccountInTx: vi.fn(),
   readSource: vi.fn(),
@@ -40,9 +39,6 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
   }),
 }))
 vi.mock('../../../ledger/post/insert-posting', () => ({ insertSourceLinksInTx: h.insertLinks }))
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: h.resolvePeriodLock,
-}))
 vi.mock('../../../ledger/roles/resolve-roles', () => ({ resolveRoles: h.resolveRoles }))
 vi.mock('../../../ledger/chart/resolve-cash-account', () => ({
   resolveBankAccountGlAccountInTx: h.resolveBankAccountGlAccountInTx,
@@ -131,7 +127,6 @@ beforeEach(() => {
   h.isAccountingActive.mockResolvedValue(true)
   h.sumCreditMemoApplications.mockResolvedValue(0)
   h.sumReservedCreditMemoRefunds.mockResolvedValue(20_000)
-  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postEntry.mockImplementation(async () => {
     h.posted = 'gl_refund'
     return { status: 'posted', glPostingId: 'gl_refund' }

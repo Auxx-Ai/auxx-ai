@@ -41,7 +41,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'Entries that repeat - a monthly depreciation figure, an accrual reversal, a prepaid schedule. A template posts nothing itself: a nightly sweep copies it into an entry for each month it owes and posts it. A month that is closed HOLDS the entry rather than skipping it.'
+  'Entries that repeat - a monthly depreciation figure, an accrual reversal, a prepaid schedule. A template posts nothing itself: a nightly sweep copies it into an entry for each month it owes and posts it.'
 
 export function RecurringTemplatesSettingsPage() {
   // 🛑 `ledgerControl`, not `ledgerView`. Every control on this page is a

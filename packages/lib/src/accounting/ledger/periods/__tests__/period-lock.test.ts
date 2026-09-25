@@ -1,15 +1,7 @@
 // packages/lib/src/accounting/ledger/periods/__tests__/period-lock.test.ts
 //
-// `periods.ts` is pure and exhaustively tested with no database. This module is
-// the one thing it delegates: turning a settings row into the `PeriodLock` that
-// `assertPeriodOpen` compares against.
-//
-// There is really only one behaviour worth defending here and every test below
-// is a face of it: **a value this function cannot understand must stop posting,
-// not permit it.** Treating a malformed lock as "nothing is closed" allows an
-// entry into a month an accountant has already filed numbers for, the entry
-// balances so nothing downstream detects it, and there is no un-post. Refusing
-// is a five-second repair of one settings row.
+// Turning the settings row into the `PeriodLock` the reviewed-month readers compare against.
+// A value this function cannot understand throws rather than reading as "nothing reviewed".
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,7 +21,7 @@ vi.mock('../../../../settings/settings-service', () => ({
 
 import { UnprocessableEntityError } from '../../../../errors'
 import { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from '../period-lock'
-import { assertPeriodOpen, isPeriodLocked } from '../periods'
+import { isPeriodLocked } from '../periods'
 
 const ORG = 'org_1'
 
@@ -74,13 +66,12 @@ describe('resolvePeriodLock', () => {
       h.value = null
       const lock = await resolvePeriodLock(ORG)
       expect(isPeriodLocked('2020-01', lock)).toBe(false)
-      expect(() => assertPeriodOpen('2020-01-01', lock)).not.toThrow()
     })
   })
 
   describe('fails closed on a malformed value', () => {
     // Each of these would be read as "nothing is closed" by a resolver that
-    // shrugged, and each would then let a posting into a closed month.
+    // shrugged.
     it.each([
       ['a month with no zero padding', '2026-7'],
       ['a bare year', '2026'],
@@ -132,13 +123,6 @@ describe('resolvePeriodLock', () => {
       // A day key is bounded by the month that contains it.
       expect(isPeriodLocked('2026-07-31', lock)).toBe(true)
       expect(isPeriodLocked('2026-08-01', lock)).toBe(false)
-    })
-
-    it('produces a lock `assertPeriodOpen` accepts', async () => {
-      h.value = '2026-07'
-      const lock = await resolvePeriodLock(ORG)
-      expect(() => assertPeriodOpen('2026-07-15', lock)).toThrow(/closed through 2026-07/)
-      expect(() => assertPeriodOpen('2026-08-15', lock)).not.toThrow()
     })
   })
 })

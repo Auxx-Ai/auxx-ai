@@ -19,7 +19,6 @@ import {
   VENDOR_BILL_POSTING_TYPE,
   VENDOR_BILL_SOURCE_TYPE,
 } from '../ledger/builders/entry'
-import { resolvePeriodLock } from '../ledger/periods/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../ledger/post/post-entry'
 import { isAccountingActive } from '../ledger/setup/accounting-enabled'
 import type { PostResult } from '../ledger/types'
@@ -147,11 +146,9 @@ export async function postVendorBillEntry(
 
   if (!(await isAccountingActive(organizationId))) return null
 
-  const lock = await resolvePeriodLock(organizationId)
   const result = await postEntry(db, {
     organizationId,
     entry: entry.entry,
-    lock,
     memo: input.memo,
     actorUserId,
     sources: [

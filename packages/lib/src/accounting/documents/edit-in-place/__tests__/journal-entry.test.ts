@@ -30,9 +30,6 @@ vi.mock('@auxx/database', async () => {
     withAccountingCommitLock: vi.fn(async () => {}),
   }
 })
-vi.mock('../../../ledger/periods/period-lock', () => ({
-  resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
-}))
 vi.mock('../../../ledger/post/reverse-entry', () => ({ reverseEntry: h.reverseEntry }))
 vi.mock('../../../ledger/reads/read-posting', () => ({
   readPostingHeader: async (_db: unknown, _org: string, id: string) => ({
@@ -213,10 +210,10 @@ describe('saveDocumentEdit', () => {
   it('leaves everything alone when the repost is refused', async () => {
     h.entry = { ...h.entry, lines: entryLines(60_000) }
     h.postBuiltJournalEntry.mockResolvedValue({
-      status: 'period_closed',
-      error: 'August is locked',
+      status: 'unbalanced',
+      error: 'The entry does not balance',
     })
-    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/August is locked/)
+    await expect(saveDocumentEdit(db, target)).rejects.toThrow(/The entry does not balance/)
     expect(h.deleteEditSnapshot).not.toHaveBeenCalled()
   })
 })

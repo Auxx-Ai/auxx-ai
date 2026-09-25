@@ -58,12 +58,6 @@ export const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'No entry was built or recorded. Enable the accounting module and run its setup.',
     tone: 'neutral',
   },
-  period_closed: {
-    icon: TriangleAlert,
-    title: 'Refused: the period is locked',
-    detail: 'Nothing was written. Unlock the month before posting into it.',
-    tone: 'failure',
-  },
   account_unmapped: {
     icon: TriangleAlert,
     title: 'Refused: an account role is not mapped',

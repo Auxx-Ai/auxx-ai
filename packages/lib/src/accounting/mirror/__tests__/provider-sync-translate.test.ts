@@ -190,7 +190,7 @@ describe('an entry that has stopped appearing', () => {
 
   it('names the entry when the reversal is refused', async () => {
     readMirror.mockResolvedValue(found([mirrorEntry({ withdrawn: true, livePostingId: 'glp_1' })]))
-    reverseEntry.mockResolvedValue({ status: 'period_closed', error: 'January is closed' })
+    reverseEntry.mockResolvedValue({ status: 'unbalanced', error: 'The entry does not balance' })
 
     const result = await translateMirrorRange(db, ORG, INPUT)
 

@@ -1,7 +1,5 @@
 // apps/web/src/components/accounting/ui/journal/period-helpers.ts
 
-import type { ClosePeriod } from '@auxx/lib/accounting/ledger/client'
-
 /**
  * Pure date/period helpers the JE drawer needs and that nothing in `ledger/`
  * already exports. Kept small and testable on purpose - this file has no React
@@ -48,25 +46,6 @@ export function lastDayOfPeriod(periodKey: string): string {
  */
 export function periodKeyForEntryDate(date: string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : null
-}
-
-/**
- * The first OPEN period strictly after `periodKey`, or - if none exists past
- * it - the first open period anywhere in the list. `null` when nothing in the
- * org is open at all.
- *
- * `periods` is `ledger.periods`' own order: cutoff forward, oldest first
- * (`use-ledger-period.ts`). This is what `period_closed`'s "post to the next
- * open period" remedy re-dates a locked entry to.
- */
-export function nextOpenPeriodAfter(periods: ClosePeriod[], periodKey: string): ClosePeriod | null {
-  const index = periods.findIndex((period) => period.periodKey === periodKey)
-  const after = index >= 0 ? periods.slice(index + 1) : periods
-  return after.find((period) => period.state === 'open') ?? findFirstOpen(periods)
-}
-
-function findFirstOpen(periods: ClosePeriod[]): ClosePeriod | null {
-  return periods.find((period) => period.state === 'open') ?? null
 }
 
 /**

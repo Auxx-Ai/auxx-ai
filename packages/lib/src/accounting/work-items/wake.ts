@@ -2,7 +2,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, type Column, eq, gt, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
+import { and, type Column, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { groupsByExternalRef, type WorkItemCode, type WorkItemStage } from './codes'
 
@@ -73,28 +73,6 @@ export async function wakeTotalsNotStamped(
       code('TOTALS_NOT_STAMPED'),
       eq(schema.AccountingWorkItem.sourceKind, 'fulfillment'),
       inArray(schema.AccountingWorkItem.sourceId, [...input.fulfillmentIds])
-    )
-  )
-}
-
-/** The lock moved: every `PERIOD_LOCKED` row whose month is now open. */
-export async function wakePeriodLocked(
-  db: Db,
-  organizationId: string,
-  input: { lockedThrough: string | null }
-): Promise<Result<number, Error>> {
-  return wake(
-    db,
-    organizationId,
-    'period',
-    and(
-      code('PERIOD_LOCKED'),
-      input.lockedThrough
-        ? or(
-            isNull(schema.AccountingWorkItem.periodKey),
-            gt(schema.AccountingWorkItem.periodKey, input.lockedThrough)
-          )
-        : undefined
     )
   )
 }

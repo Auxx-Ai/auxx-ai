@@ -15,7 +15,6 @@ export {
 } from './period-key'
 export { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from './period-lock'
 export {
-  assertPeriodOpen,
   compareMonths,
   isPeriodLocked,
   monthBounds,

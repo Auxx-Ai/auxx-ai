@@ -131,7 +131,6 @@ export {
 } from './chart/client'
 export {
   assertDocumentKey,
-  assertPeriodOpen,
   type CloseBlockerItem,
   type CloseBlockerItemKey,
   closeBlockerMessage,

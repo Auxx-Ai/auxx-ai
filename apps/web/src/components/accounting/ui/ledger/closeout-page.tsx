@@ -379,7 +379,6 @@ export function CloseoutPage() {
                 blockers={activePeriodKey ? entry.blockers : []}
                 isSoftRefusal={false}
                 onFix={onFix}
-                onReviewLock={canControlLedger ? () => void handleToggleLock() : undefined}
                 onNextPeriod={
                   period.nextPeriodKey
                     ? () => goToPeriod(period.nextPeriodKey as string)
