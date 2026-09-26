@@ -48,7 +48,7 @@ export function ListPasskeys() {
     setIsLoading(false)
     if (res?.error) {
       // @better-auth/passkey 1.5 puts a `{ code, message }` object in `message` for cancel/duplicate.
-      const { message } = res.error
+      const message = res.error.message as string | { message?: string } | undefined
       toastError({ description: typeof message === 'string' ? message : message?.message })
     } else {
       toastSuccess({ description: 'Passkey added successfully. You can now use it to login.' })
