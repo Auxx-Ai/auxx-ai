@@ -29,6 +29,13 @@ export type {
 } from './summary'
 export { readSummary } from './summary'
 export type {
+  SupplierHorizon,
+  SupplierHorizonOrder,
+  SupplierHorizonPart,
+  SupplierHorizonWindow,
+} from './supplier-horizon'
+export { readSupplierHorizon } from './supplier-horizon'
+export type {
   BridgeOption,
   LiveNextOrder,
   SupplierCard,
@@ -37,6 +44,7 @@ export type {
 } from './supplier-next-order'
 export { readSupplierNextOrders, recomputeNextOrderLive } from './supplier-next-order'
 export type {
+  OpenOnOrder,
   PartSupplyHistory,
   SupplierPerformance,
   SupplyHistoryLine,

@@ -8,6 +8,7 @@ import {
   MRP_MIN_RECEIPTS,
   MRP_RECEIVED_SHARE_FOR_LEAD_TIME,
   type MrpLeadTimeSource,
+  type MrpObservationExclusion,
   type MrpSupplyType,
 } from '../client'
 import type { PartInput, ReceiptObservation, VendorPartInput } from '../types'
@@ -66,11 +67,7 @@ export function resolveStatedLeadTime(
   return { leadTimeDays: null, source: 'none' }
 }
 
-export type ObservationExclusion =
-  | 'no_ordered_at'
-  | 'created_after_receipt'
-  | 'ordered_on_receipt_day'
-  | 'not_received'
+export type ObservationExclusion = MrpObservationExclusion
 
 export interface LineObservation {
   purchaseOrderLineId: string
@@ -125,6 +122,7 @@ export interface SupplyHistoryStats {
   /** Share of observations with an expected date that arrived on or before it. */
   onTimeRate: number | null
   medianLatenessDays: number | null
+  p90LatenessDays: number | null
   avgFill: number | null
 }
 
@@ -146,6 +144,7 @@ export function summarizeSupplyHistory(lines: readonly ReceiptObservation[]): Su
     p90LeadTimeDays: percentile(leadTimes, 90),
     onTimeRate: lateness.length ? lateness.filter((d) => d <= 0).length / lateness.length : null,
     medianLatenessDays: median(lateness),
+    p90LatenessDays: percentile(lateness, 90),
     avgFill: mean(clean.map((o) => o.fill)),
   }
 }

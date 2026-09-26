@@ -13,7 +13,9 @@ import { Package } from 'lucide-react'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { EMPTY_CELL } from '~/components/global/module-toolbar'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { DeliveryRecord } from '../charts/delivery-record'
 import { formatDays, formatQty } from '../part/key-numbers'
+import { SupplierMetrics } from './supplier-metrics'
 
 type VendorPartSupply = RouterOutputs['mrp']['supplierPerformance']['vendorParts'][number]
 
@@ -21,21 +23,32 @@ function percent(value: number | null): string {
   return value === null ? EMPTY_CELL : `${Math.round(value * 100)} %`
 }
 
-/** One row per vendor part: stated vs observed supply (07 §4.7, 02 §6.2). */
+/** The supplier's metrics and delivery record, then one row per vendor part (07 §4.7, plan 16 §4–5). */
 export function CompanySupplyBlock({ entityInstanceId: supplierId }: DrawerTabProps) {
   const performance = api.mrp.supplierPerformance.useQuery({ supplierId })
-  if (performance.isPending) return <TreeRowSkeleton />
-  const vendorParts = performance.data?.vendorParts ?? []
-  if (vendorParts.length === 0)
+  if (performance.isPending) {
+    return (
+      <div className='flex flex-col gap-3'>
+        <SupplierMetrics performance={undefined} loading />
+        <TreeRowSkeleton />
+      </div>
+    )
+  }
+  const data = performance.data
+  if (!data || data.vendorParts.length === 0)
     return <EmptySection orientation='horizontal' title='No vendor parts from this supplier yet' />
 
   return (
-    <TreeRowList
-      className='@container gap-px'
-      items={vendorParts}
-      getKey={(vp, i) => vp.vendorPartId ?? `${vp.partId ?? 'part'}:${i}`}
-      renderRow={(vp) => <SupplyRow vp={vp} />}
-    />
+    <div className='flex flex-col gap-3'>
+      <SupplierMetrics performance={data} />
+      <DeliveryRecord performance={data} />
+      <TreeRowList
+        className='@container gap-px'
+        items={data.vendorParts}
+        getKey={(vp, i) => vp.vendorPartId ?? `${vp.partId ?? 'part'}:${i}`}
+        renderRow={(vp) => <SupplyRow vp={vp} />}
+      />
+    </div>
   )
 }
 

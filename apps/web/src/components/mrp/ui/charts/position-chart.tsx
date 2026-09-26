@@ -32,13 +32,20 @@ import {
   ReferenceArea,
   ReferenceDot,
   ReferenceLine,
-  Text,
   XAxis,
   YAxis,
 } from 'recharts'
 import { PaginatedLegend, type PaginatedLegendItem } from '~/components/charts/paginated-legend'
+import {
+  type ChartAxis,
+  FadeTick,
+  type PlotOffset,
+  TWEEN_MS,
+  tickSets,
+  usePreviousDistinct,
+} from '~/components/charts/tween-axis'
 import { useIsMobile } from '~/hooks/use-mobile'
-import { type Tween, useTween } from '~/hooks/use-tween'
+import { useTween } from '~/hooks/use-tween'
 import { api } from '~/trpc/react'
 import {
   buildPositionRows,
@@ -234,8 +241,6 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
     </Section>
   )
 }
-
-const TWEEN_MS = 250
 
 // Memoised so a grain/window click doesn't redraw the old data before the new query lands.
 const PositionPlot = memo(function PositionPlot({
@@ -505,69 +510,6 @@ const PositionPlot = memo(function PositionPlot({
     </div>
   )
 })
-
-/** The last value that differed from the current one, or null before any change. */
-function usePreviousDistinct<T>(value: T): T | null {
-  const [pair, setPair] = useState<{ current: T; prev: T | null }>({ current: value, prev: null })
-  if (pair.current !== value) setPair({ current: value, prev: pair.current })
-  return pair.current === value ? pair.prev : pair.current
-}
-
-/**
- * Ticks for one axis during a tween: the union of the old and new tick sets, clipped
- * to the eased domain, with leaving ticks fading out and arriving ticks fading in.
- */
-function tickSets(
-  tween: Tween,
-  at: number,
-  make: (lo: number, hi: number) => number[]
-): { ticks: number[]; opacity: (value: number) => number } {
-  const [lo, hi] = [tween.current[at] ?? 0, tween.current[at + 1] ?? 0]
-  const to = make(tween.to[at] ?? 0, tween.to[at + 1] ?? 0)
-  if (tween.progress >= 1) return { ticks: to, opacity: () => 1 }
-  const from = make(tween.from[at] ?? 0, tween.from[at + 1] ?? 0)
-  const toSet = new Set(to)
-  const fromSet = new Set(from)
-  const ticks = [...new Set([...from, ...to])]
-    .filter((t) => t >= lo && t <= hi)
-    .sort((a, b) => a - b)
-  const opacity = (value: number) =>
-    toSet.has(value) ? (fromSet.has(value) ? 1 : tween.progress) : 1 - tween.progress
-  return { ticks, opacity }
-}
-
-/** An axis tick that takes its opacity from the tween instead of a CSS transition (recharts remounts ticks per frame). */
-function FadeTick({
-  payload,
-  opacity,
-  format,
-  tickFormatter: _tickFormatter,
-  visibleTicksCount: _count,
-  index: _index,
-  ...rest
-}: {
-  payload: { value: number }
-  opacity: (value: number) => number
-  format: (value: number) => string
-  tickFormatter?: unknown
-  visibleTicksCount?: number
-  index?: number
-} & Record<string, unknown>) {
-  return (
-    <Text
-      {...(rest as object)}
-      className='recharts-cartesian-axis-tick-value'
-      style={{ opacity: opacity(payload.value) }}>
-      {format(payload.value)}
-    </Text>
-  )
-}
-
-interface ChartAxis {
-  scale: (value: number) => number
-}
-
-type PlotOffset = { left: number; top: number; width: number; height: number }
 
 /** One rect per usage span with a 2px surface gap after it; `Customized` passes the axis maps. */
 function UsageBars({

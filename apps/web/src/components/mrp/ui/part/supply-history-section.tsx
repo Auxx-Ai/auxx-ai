@@ -1,6 +1,7 @@
 // apps/web/src/components/mrp/ui/part/supply-history-section.tsx
 'use client'
 
+import { MRP_EXCLUSION_LABELS } from '@auxx/lib/mrp/client'
 import { toRecordId } from '@auxx/lib/resources/client'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -11,21 +12,6 @@ import { useResourceProperty } from '~/components/resources'
 import { RecordLink } from '~/components/resources/ui/record-link'
 import { api } from '~/trpc/react'
 import { formatDay, formatDays, openPurchaseLines, type SupplyHistoryLineData } from './key-numbers'
-
-type Exclusion = NonNullable<SupplyHistoryLineData['excludedReason']>
-
-const EXCLUSION_LABELS: Record<Exclusion, { label: string; why: string }> = {
-  no_ordered_at: { label: 'no order date, excluded', why: 'The PO has no order date.' },
-  created_after_receipt: {
-    label: 'created after receipt, excluded',
-    why: 'The PO was created after its goods arrived, so it is backfilled paperwork.',
-  },
-  ordered_on_receipt_day: {
-    label: 'ordered on receipt day, excluded',
-    why: 'The order date is on or after the first receipt, so it measures no lead time.',
-  },
-  not_received: { label: 'never received', why: 'The line closed without reaching 90 % received.' },
-}
 
 /** Per PO line: ordered, expected and received, with lead time, lateness and fill (02 §6.2). */
 export function SupplyHistorySection({ partId }: { partId: string }) {
@@ -52,7 +38,7 @@ export function SupplyHistorySection({ partId }: { partId: string }) {
           items={lines}
           getKey={(l) => l.purchaseOrderLineId}
           renderRow={(l) => {
-            const excluded = l.excludedReason ? EXCLUSION_LABELS[l.excludedReason] : null
+            const excluded = l.excludedReason ? MRP_EXCLUSION_LABELS[l.excludedReason] : null
             const obs = l.observation
             return (
               <TreeRow

@@ -19,6 +19,7 @@ import {
   readPartSeries,
   readSellThrough,
   readSummary,
+  readSupplierHorizon,
   readSupplierNextOrders,
   readSupplierPerformance,
   readSupplyHistory,
@@ -124,6 +125,21 @@ export const mrpRouter = createTRPCRouter({
     .input(z.object({ supplierId: id }))
     .query(async ({ ctx, input }) => {
       const result = await readSupplierPerformance(ctx.db, ctx.session.organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  supplierHorizon: permissionProcedure(PermissionKey.mrpView)
+    .input(
+      z.object({
+        supplierId: id,
+        window: z.enum(['6m', '12m', '24m']),
+        offset: z.number().int().min(0).max(40).optional(),
+        runId,
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await readSupplierHorizon(ctx.db, ctx.session.organizationId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),
