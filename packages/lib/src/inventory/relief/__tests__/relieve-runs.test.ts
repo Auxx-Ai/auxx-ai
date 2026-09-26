@@ -95,7 +95,7 @@ vi.mock('../../movements', async () => {
   const { ok } = await import('neverthrow')
   return {
     ...actual,
-    writeStockMovements: async (
+    writeStockMovementsBatch: async (
       _ctx: unknown,
       inputs: Array<{
         partInstanceId: string

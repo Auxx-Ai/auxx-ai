@@ -5,7 +5,7 @@
  *
  * Every collaborator that touches the database or another module's write lane
  * is mocked - this file is about the ARITHMETIC and the SKIP/WARN
- * decisions §1.5-§4.2 make, not about `writeStockMovements`,
+ * decisions §1.5-§4.2 make, not about `writeStockMovementsBatch`,
  * `batchRecalculateQoH` or the roll-up's own SQL, each of which has its own
  * tests. `readPartLedgerAverages` / `readFulfillmentLineRelievedAverages`
  * (`inventory/costing/cost-reads`) are mocked to their documented return shapes rather than
@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
   relievedQuantities: new Map<string, number>(),
   standardCosts: new Map<string, unknown>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
-  writeStockMovements: vi.fn(),
+  writeStockMovementsBatch: vi.fn(),
   batchRecalculateQoH: vi.fn(async () => {}),
   recalculateFulfillmentLineQuantityRelievedBatch: vi.fn(async () => {}),
   announceQuietReliefWrites: vi.fn(),
@@ -125,7 +125,7 @@ vi.mock('../../../accounting/ledger/post/accounting-commit-lock', () => ({
 
 vi.mock('../../movements', async () => {
   const actual = await vi.importActual<typeof import('../../movements')>('../../movements')
-  return { ...actual, writeStockMovements: h.writeStockMovements }
+  return { ...actual, writeStockMovementsBatch: h.writeStockMovementsBatch }
 })
 
 vi.mock('../../costing/cost-reads', () => ({
@@ -175,11 +175,11 @@ beforeEach(() => {
     origin: { kind: 'automation' },
     mode: { kind: 'quiet' },
   } as never)
-  h.writeStockMovements.mockImplementation(writeDouble({ costed: false }))
+  h.writeStockMovementsBatch.mockImplementation(writeDouble({ costed: false }))
 })
 
 /**
- * A `writeStockMovements` double: mints ids in input order, records every row in
+ * A `writeStockMovementsBatch` double: mints ids in input order, records every row in
  * the fake ledger, and echoes the input's cost - `null` on a pending row - or,
  * with `costed`, the priced figures a real write would return.
  */
@@ -258,7 +258,7 @@ describe('relieveFulfillmentLines', () => {
       skippedService: 0,
       negativeQoHPartIds: [],
     })
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('§1.6 - skips a line with no line_item_part and counts it, never guessing', async () => {
@@ -280,7 +280,7 @@ describe('relieveFulfillmentLines', () => {
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().skippedNoPart).toBe(1)
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('§1.5 - a delta of zero writes no row', async () => {
@@ -302,7 +302,7 @@ describe('relieveFulfillmentLines', () => {
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().skippedZeroDelta).toBe(1)
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('73 §6.2 rule 3 - a positive delta writes a NEGATIVE movement priced at the STANDARD', async () => {
@@ -339,8 +339,8 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     const value = result._unsafeUnwrap()
     expect(value.skippedNoCost).toBe(0)
-    expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
-    const [ctx, inputs] = h.writeStockMovements.mock.calls[0]!
+    expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
+    const [ctx, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(ctx.lane.kind).toBe('quiet')
     expect(inputs).toEqual([
       expect.objectContaining({
@@ -389,7 +389,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({
         partInstanceId: 'part_1',
@@ -414,7 +414,7 @@ describe('relieveFulfillmentLines', () => {
       standardLaborCost: 500,
       standardOverheadCost: 300,
     })
-    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string; quantity: number }>).map(
           (input, index) => ({
@@ -449,7 +449,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(inputs).toEqual([expect.objectContaining({ unitCost: 2_000, costBasis: 'standard' })])
     const posted = h.postSpy.mock.calls[0]![1] as { cogsSplit: unknown }
     expect(posted.cogsSplit).toEqual({ laborMinor: 2_000, overheadMinor: 1_200 })
@@ -467,7 +467,7 @@ describe('relieveFulfillmentLines', () => {
     })
     h.relievedAverages.set('fl_1', { fulfillmentLineId: 'fl_1', unitCostMinor: 4_200 })
     h.relievedQuantities.set('fl_1', 12)
-    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
           movementId: `mv_${index}`,
@@ -527,7 +527,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 1, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({
         quantity: -2,
@@ -570,7 +570,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 1, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(inputs).toEqual([
       expect.objectContaining({ quantity: 2, unitCost: null, costBasis: 'pending' }),
     ])
@@ -593,7 +593,7 @@ describe('relieveFulfillmentLines', () => {
       ],
     })
     h.standardCosts.set('part_1', 1_000)
-    h.writeStockMovements.mockImplementation(
+    h.writeStockMovementsBatch.mockImplementation(
       writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
     )
     const line = (id: string, lineItemId: string) => ({
@@ -728,7 +728,7 @@ describe('relieveFulfillmentLines', () => {
       part_kind: [{ entityId: 'part_1', optionId: 'finished_good' }],
     })
     h.standardCosts.set('part_1', 0)
-    h.writeStockMovements.mockImplementation(
+    h.writeStockMovementsBatch.mockImplementation(
       writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
     )
 
@@ -749,7 +749,7 @@ describe('relieveFulfillmentLines', () => {
     })
 
     expect(result._unsafeUnwrap()).toMatchObject({ skippedNoCost: 0, movementIds: ['mv_0'] })
-    const [, inputs] = h.writeStockMovements.mock.calls[0]!
+    const [, inputs] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(inputs).toEqual([expect.objectContaining({ quantity: -2, unitCost: 0 })])
     // A zero-amount entry is refused by the builder, so the document is never offered to it.
     expect(h.postSpy).not.toHaveBeenCalled()
@@ -786,7 +786,7 @@ describe('relieveFulfillmentLines', () => {
 
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toMatchObject({ skippedService: 1, skippedNoCost: 0 })
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
     expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
       sourceKind: 'fulfillment',
@@ -876,7 +876,7 @@ describe('relieveFulfillmentLines', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap().negativeQoHPartIds).toEqual(['part_1'])
     // Never refuses - the movement still writes.
-    expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
+    expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
   })
 
   it('discharges both post-commit obligations and announces the movement rows', async () => {
@@ -930,7 +930,7 @@ describe('each relief run is its own document', () => {
 
   function pricedDb(): Database {
     h.standardCosts.set('part_1', 1_000)
-    h.writeStockMovements.mockImplementation(
+    h.writeStockMovementsBatch.mockImplementation(
       writeDouble({ costed: true, glAccount: 'inventory_finished_goods' })
     )
     return fakeDb({
@@ -963,7 +963,7 @@ describe('each relief run is its own document', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
     expect(h.postSpy).not.toHaveBeenCalled()
     expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
   })

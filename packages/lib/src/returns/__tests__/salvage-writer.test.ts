@@ -6,7 +6,7 @@
  *
  * Everything that touches the database or another module's write lane is
  * mocked: this file is about WHICH nodes produce a movement, WHAT is on it, and
- * which refusals stop the whole run - not about `writeStockMovements`,
+ * which refusals stop the whole run - not about `writeStockMovementsBatch`,
  * `batchRecalculateQoH` or `reverseMovement`, each of which has its own tests.
  *
  * The TREE is real. `buildSalvageTree`, `selectSalvageMovementNodes`,
@@ -30,7 +30,7 @@ const h = vi.hoisted(() => ({
   partLine: null as unknown,
   handlers: [] as Array<{ options?: { session?: unknown } }>,
   bulkUpdate: vi.fn(async () => ({ updated: 0, errors: [] as unknown[] })),
-  writeStockMovements: vi.fn(),
+  writeStockMovementsBatch: vi.fn(),
   batchRecalculateQoH: vi.fn(async () => {}),
   publishRecordsChanged: vi.fn(
     async (_service: unknown, _organizationId: string, _payload: { entityDefinitionId: string }) =>
@@ -113,7 +113,7 @@ vi.mock('../../inventory/movements', async () => {
   )
   return {
     ...actual,
-    writeStockMovements: h.writeStockMovements,
+    writeStockMovementsBatch: h.writeStockMovementsBatch,
     reverseMovement: h.reverseMovement,
   }
 })
@@ -251,8 +251,8 @@ function unwrap(result: { isOk(): boolean; _unsafeUnwrap(): WriteSalvageMovement
 
 /** The `StockMovementInput[]` handed to the shared writer on the only call. */
 function writtenInputs(): Array<Record<string, unknown>> {
-  expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
-  return h.writeStockMovements.mock.calls[0]![1] as Array<Record<string, unknown>>
+  expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
+  return h.writeStockMovementsBatch.mock.calls[0]![1] as Array<Record<string, unknown>>
 }
 
 beforeEach(() => {
@@ -268,7 +268,7 @@ beforeEach(() => {
   ])
   h.partLine = null
   h.bulkUpdate.mockResolvedValue({ updated: 0, errors: [] })
-  h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+  h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
     ok({
       records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
         movementId: `mv_${index}`,
@@ -297,7 +297,7 @@ describe('writeSalvageMovements - what writes and what does not', () => {
 
     expect(result.movements).toEqual([])
     expect(result.affectedPartIds).toEqual([])
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
     expect(h.batchRecalculateQoH).not.toHaveBeenCalled()
   })
 
@@ -373,7 +373,7 @@ describe('writeSalvageMovements - what writes and what does not', () => {
     )
 
     expect(result.skippedZeroQuantity).toBe(1)
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('skips a row that already carries a movement - the ledger is append-only', async () => {
@@ -471,7 +471,7 @@ describe('writeSalvageMovements - the refusals', () => {
     const error = result._unsafeUnwrapErr() as { reason?: string; message: string }
     expect(error.reason).toBe('missing_standard_cost')
     expect(error.message).toContain('Mast assembly')
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('salvages a part whose standard cost is $0 at $0 (103 §5a)', async () => {
@@ -500,7 +500,7 @@ describe('writeSalvageMovements - the refusals', () => {
     expect((result._unsafeUnwrapErr() as { reason?: string }).reason).toBe(
       'quantity_exceeds_allowance'
     )
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('refuses a salvage percentage above 100 - salvage is never worth more than new', async () => {
@@ -512,7 +512,7 @@ describe('writeSalvageMovements - the refusals', () => {
     expect((result._unsafeUnwrapErr() as { reason?: string }).reason).toBe(
       'salvage_percent_out_of_range'
     )
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
   })
 
   it('refuses a salvage percentage of zero - a worthless part is scrap, which writes nothing', async () => {
@@ -544,7 +544,7 @@ describe('writeSalvageMovements - the refusals', () => {
 })
 
 describe('writeSalvageMovements - the quiet lane and its obligations', () => {
-  it('writes through a declared quiet session, on one handler shared with the movements', async () => {
+  it('writes the movements and the freeze through one declared quiet session', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
@@ -553,10 +553,10 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
     const session = h.handlers[0]?.options?.session as { mode?: { kind?: string } }
     expect(session.mode?.kind).toBe('quiet')
 
-    const [ctx] = h.writeStockMovements.mock.calls[0]!
+    const [ctx] = h.writeStockMovementsBatch.mock.calls[0]!
     expect(ctx.lane.kind).toBe('quiet')
     expect(ctx.lane.session).toBe(session)
-    expect(ctx.handler).toBe(h.handlers[0])
+    expect(ctx.handler).toBeUndefined()
   })
 
   it('discharges ONE post-commit recalc, over the affectedPartIds the writer returned', async () => {
@@ -587,7 +587,7 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
 describe('writeSalvageMovements - the entry each run posts', () => {
   it('gives two lines of one return two entries with distinct document numbers', async () => {
     let minted = 0
-    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string }>).map((input) => ({
           movementId: `mv_${minted++}`,
@@ -645,7 +645,7 @@ describe('reverseSalvageMovement', () => {
       movementId: 'mv_old',
       reason: 'Salvage decision corrected',
     })
-    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
     expect(h.bulkUpdate).not.toHaveBeenCalled()
   })
 
