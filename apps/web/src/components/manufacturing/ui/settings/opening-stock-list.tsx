@@ -31,6 +31,7 @@ import {
 } from '~/components/list-selection'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import {
+  isUncostedOrProvisional,
   needsBackflushFirst,
   OPENING_STOCK_PAGE_SIZE,
   type OpeningStockCounts,
@@ -41,6 +42,7 @@ import {
   rowOutcome,
   toOpeningStockKind,
 } from '../../hooks/use-opening-stock'
+import { StandardSourceBadge } from '../../parts/standard-source-badge'
 import { OpeningStockToolbar } from './opening-stock-toolbar'
 
 /**
@@ -48,7 +50,7 @@ import { OpeningStockToolbar } from './opening-stock-toolbar'
  * Columns: part | kind | account | on hand | count | date | unit cost | delta.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(3.5rem, 4rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(4.5rem, 5.5rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(3.5rem, 4rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
@@ -107,6 +109,7 @@ export function OpeningStockList({
         if (filter === 'uncounted' && row.state !== 'uncounted') return false
         if (filter === 'unclassified' && !row.isUnclassified) return false
         if (filter === 'uncosted' && row.standardCost != null) return false
+        if (filter === 'uncosted-or-provisional' && !isUncostedOrProvisional(row)) return false
         if (filter === 'unbuilt' && !needsBackflushFirst(row)) return false
         if (filter.startsWith('kind:') && row.kind !== filter.slice('kind:'.length)) return false
         if (!query) return true
@@ -207,7 +210,9 @@ export function OpeningStockList({
                 </Tooltip>
                 <div className='px-2 text-right'>Count</div>
                 <div className='px-2'>As of</div>
-                <div className='px-2 text-right'>Unit cost</div>
+                <Tooltip content="The part's standard cost, not dated by As of. A different value replaces it and revalues what is on hand; a part with a BOM rolls from its components.">
+                  <div className='cursor-default px-2 text-right'>Standard</div>
+                </Tooltip>
                 <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
                   <div className='cursor-default px-2 text-right'>Writes</div>
                 </Tooltip>
@@ -420,25 +425,12 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           />
         </EditableCell>,
 
-        row.standardCost != null ? (
-          <Tooltip
-            key='unit-cost'
-            content="The part's standard cost. The row is valued at it; a count never re-prices a costed part.">
-            <span className='w-full cursor-default pr-1 text-right text-muted-foreground text-xs tabular-nums'>
-              {formatCurrency(row.standardCost, { currencyCode })}
-            </span>
-          </Tooltip>
-        ) : (
-          <EditableCell key='unit-cost' className='w-full'>
-            <FieldInputAdapter
-              fieldType={FieldType.CURRENCY}
-              fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-              value={row.unitCost}
-              onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
-              placeholder='later'
-            />
-          </EditableCell>
-        ),
+        <UnitCostCell
+          key='unit-cost'
+          row={row}
+          currencyCode={currencyCode}
+          onUnitCostChange={onUnitCostChange}
+        />,
 
         <span
           key='delta'
@@ -456,11 +448,77 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   )
 })
 
-/** The row's reading: counted before, sold before counted, or unclassified. */
+/** A BOM part's rolled standard (read-only, D-SC3), or the typed, standard or suggested cost. */
+function UnitCostCell({
+  row,
+  currencyCode,
+  onUnitCostChange,
+}: {
+  row: OpeningStockRow
+  currencyCode: string
+  onUnitCostChange: (partId: string, unitCost: number | null) => void
+}) {
+  if (row.hasBom) {
+    return (
+      <Tooltip content='Rolls from its bill of materials. Cost its components, or set a cost on the part itself.'>
+        <span className='w-full cursor-default pr-1 text-right text-muted-foreground text-xs tabular-nums leading-tight'>
+          {row.standardCost != null ? (
+            formatCurrency(row.standardCost, { currencyCode })
+          ) : (
+            <>
+              Rolls from BOM
+              <span className='block text-[11px]'>{row.uncostedLeafCount} uncosted</span>
+            </>
+          )}
+        </span>
+      </Tooltip>
+    )
+  }
+  const { suggestion } = row
+  const other = suggestion?.other
+  const hint = [
+    row.unitCostSuggested && suggestion
+      ? suggestion.source === 'supplier'
+        ? 'From supplier'
+        : 'From channel'
+      : null,
+    other
+      ? `${other.source === 'supplier' ? 'Supplier' : 'Channel'}: ${formatCurrency(other.unitCost, { currencyCode })}`
+      : null,
+    row.standardCost != null && row.sendsUnitCost
+      ? `Replaces ${formatCurrency(row.standardCost, { currencyCode })}`
+      : null,
+  ].filter(Boolean)
+  const cell = (
+    <EditableCell className={cn('w-full', row.unitCostSuggested && 'text-muted-foreground')}>
+      <FieldInputAdapter
+        fieldType={FieldType.CURRENCY}
+        fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+        value={row.unitCost}
+        onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
+        placeholder='later'
+      />
+    </EditableCell>
+  )
+  if (hint.length === 0) return cell
+  return (
+    <Tooltip content={hint.join(' · ')} allowInteraction>
+      <div className='w-full'>{cell}</div>
+    </Tooltip>
+  )
+}
+
+/** The row's reading: counted before, sold before counted, unclassified, and the standard's source. */
 function RowBadges({ row }: { row: OpeningStockRow }) {
   const delta = formatDelta(row.delta)
   return (
     <span className='flex shrink-0 items-center gap-1'>
+      {row.standardCost != null && (
+        <StandardSourceBadge source={row.standardSource} origin={row.standardOrigin} />
+      )}
+      {row.usedIn > 0 && !row.hasBom && (
+        <span className='text-muted-foreground text-xs'>Used in {row.usedIn}</span>
+      )}
       {row.state === 'counted' && (
         <Badge
           variant='green'

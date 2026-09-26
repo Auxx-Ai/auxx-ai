@@ -397,6 +397,8 @@ export interface OpeningStockSkip {
   reason: OpeningStockSkipReason
   /** Human-readable, and specific to this part. Safe to render as-is. */
   detail: string
+  /** `unchanged` only: the count wrote nothing but its typed unit cost changed the standard. */
+  standardCostChange?: StandardCostWrite | null
 }
 
 /** One part that WAS counted, and the ledger row it produced. */
@@ -423,6 +425,8 @@ export interface OpenedOpeningStockRow {
   glAccount: string
   /** The part had no standard: the row carries no cost until the pricer fills it (111 Q18). */
   pending: boolean
+  /** What the typed unit cost did to the standard; `null` when none was typed or it matched. */
+  standardCostChange: StandardCostWrite | null
 }
 
 /**

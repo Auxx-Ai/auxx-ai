@@ -13,31 +13,30 @@ import {
 } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
-import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import Link from 'next/link'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { Tooltip } from '~/components/global/tooltip'
-import { RollStandardCostPopover } from '~/components/manufacturing/parts/roll-standard-cost-popover'
 import { useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
+import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { useAccess } from '~/providers/capabilities-provider'
-import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { isServiceKind } from '../part-kind-gates'
+import { PartRollAction, PartRollDelta, usePartRollPreview } from './part-roll-action'
+import { StandardUnitCostRow } from './standard-unit-cost-row'
 
 /**
  * The three provenance fields migration 100 added under `part_cost`, plus the
  * cost itself — and the frozen standard migration 109 added beside it.
  *
- * All six are computed; this card is read-only and the roll is the only writer
- * of the standard. The five `part_standard_*` fields are declared
+ * The standard is written by the typed Unit cost and the roll, never the field
+ * panel. The five `part_standard_*` fields are declared
  * `showInPanel: false` / `showInDialogs: false` precisely so they surface HERE
  * rather than burying the part's Details panel under five uneditable cost rows
  * (plans/products/build/01-build-plan.md §1.6, §2.5).
@@ -64,7 +63,7 @@ const PART_COSTING_ATTRIBUTES = [
   'part_overhead_cost_per_unit',
 ] as const
 
-/** "12 Aug 2026" — the day the current standard took effect. */
+/** "12 Aug 2026" — the day the current standard was set. */
 function formatEffectiveDate(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -91,84 +90,6 @@ function StandardOriginBadge({ origin }: { origin: string | undefined }) {
         {meta?.label ?? 'Provisional'}
       </Badge>
     </Tooltip>
-  )
-}
-
-/**
- * A typed unit cost (106 §5). Shown while the part has no standard, or a provisional one on a
- * part that has never moved; the server refuses anything else.
- */
-function StandardUnitCostRow({
-  partId,
-  channelCost,
-  hasStandard,
-}: {
-  partId: string
-  channelCost: number | null | undefined
-  hasStandard: boolean
-}) {
-  const [draft, setDraft] = useState<number | null>(null)
-  const utils = api.useUtils()
-  const setStandardCost = api.builds.setStandardCost.useMutation({
-    onError: (error) =>
-      toastError({ title: 'Failed to set the unit cost', description: error.message }),
-  })
-
-  const save = async (unitCost: number) => {
-    await setStandardCost.mutateAsync({ partId, unitCost })
-    setDraft(null)
-    await utils.builds.canRestateStandardCost.invalidate({ partId })
-  }
-
-  const handleChange = (next: unknown) => {
-    const numeric =
-      typeof next === 'number' ? next : next === '' || next == null ? null : Number(next)
-    setDraft(numeric != null && Number.isFinite(numeric) ? numeric : null)
-  }
-
-  return (
-    <FieldPanelRow
-      title='Unit cost'
-      description={
-        hasStandard
-          ? 'Replaces the provisional standard. Nothing has moved at it yet'
-          : 'Sets the standard every stock movement is stamped with. Zero is allowed'
-      }>
-      <div className='space-y-1'>
-        <div className='flex min-h-8 items-center gap-2'>
-          <div className='w-32'>
-            <FieldInputAdapter
-              fieldType={FieldType.CURRENCY}
-              fieldOptions={{ currencyCode: 'USD', decimals: 2, currencyDisplay: 'symbol' }}
-              value={draft}
-              onChange={handleChange}
-              placeholder='0.00'
-            />
-          </div>
-          <Button
-            variant='outline'
-            size='xs'
-            disabled={draft == null}
-            loading={setStandardCost.isPending}
-            loadingText='Saving...'
-            onClick={() => draft != null && save(draft)}>
-            Save
-          </Button>
-        </div>
-        {!hasStandard && channelCost != null && (
-          <div className='flex items-center gap-2 text-muted-foreground text-xs tabular-nums'>
-            Channel cost {formatCurrency(channelCost)}
-            <Button
-              variant='ghost'
-              size='xs'
-              disabled={setStandardCost.isPending}
-              onClick={() => save(channelCost)}>
-              Use
-            </Button>
-          </div>
-        )}
-      </div>
-    </FieldPanelRow>
   )
 }
 
@@ -214,7 +135,7 @@ function AbsorptionRateRow({
         <div className='w-32'>
           <FieldInputAdapter
             fieldType={FieldType.CURRENCY}
-            fieldOptions={{ currencyCode: 'USD', decimals: 2, currencyDisplay: 'symbol' }}
+            fieldOptions={{ currencyDisplay: 'symbol' }}
             value={value ?? null}
             onChange={onChange}
             placeholder='None'
@@ -251,8 +172,13 @@ function AbsorptionRateRow({
  * `drawer-tab-registry.tsx`) — `TabCardSection` owns the "Costing" section
  * header and hides it when this renders nothing.
  */
-export function PartCostingCard({ recordId }: DrawerTabProps) {
+export function PartCostingCard({
+  recordId,
+  onStandardSaved,
+}: DrawerTabProps & { onStandardSaved?: () => void }) {
   const { entityInstanceId: partId } = parseRecordId(recordId)
+  const currencyCode = useOrgCurrency()
+  const money = (minor: number | null | undefined) => formatCurrency(minor, { currencyCode })
 
   const { values } = useSystemValues(recordId, PART_COSTING_ATTRIBUTES, { autoFetch: true })
   const purchaseCost = values.part_purchase_cost as number | null | undefined
@@ -358,21 +284,22 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
     entityDefinitionId: subpartDefId ?? '',
     filters: subpartFilters,
     limit: 1,
-    enabled: isUncosted && !!partId && !!subpartDefId,
+    enabled: !!partId && !!subpartDefId,
   })
   const hasSubparts = subpartRecords.length > 0
 
-  const restatable = api.builds.canRestateStandardCost.useQuery(
-    { partId },
-    { enabled: canEdit && !!partId && standardCost != null && isProvisional }
-  )
-  const showUnitCost =
-    canEdit &&
-    !isServiceKind(values.part_kind) &&
-    (standardCost == null || (isProvisional && restatable.data?.canRestate === true))
+  const isService = isServiceKind(values.part_kind)
+  const rollPreview = usePartRollPreview(partId, canEdit && hasStandardBlock && !isService)
+  // D-SC3: a make-or-buy part set by hand keeps showing what its BOM would roll to.
+  const bomRollsTo =
+    standardOrigin === PartStandardCostOrigin.MANUAL && hasSubparts && rollPreview.line?.changed
+      ? rollPreview.line.standardCost
+      : null
+  // Waits for the BOM read so a BOM part never flashes a plain input.
+  const showUnitCost = canEdit && !isService && !isLoadingSubparts
 
   // A service carries no cost basis or standard (107 D10); the detail sidebar renders this ungated.
-  if (isServiceKind(values.part_kind)) return null
+  if (isService) return null
   if (!hasComparison && !isUncosted && !hasStandardBlock && !showUnitCost) return null
 
   const noneMeta = COST_SOURCE_BY_VALUE[CostSource.NONE]
@@ -383,19 +310,19 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
         <>
           <FieldPanelRow title='Buy (supplier)'>
             <div className='flex min-h-8 items-center gap-2 text-sm tabular-nums'>
-              {formatCurrency(purchaseCost)}
+              {money(purchaseCost)}
               {costSource === CostSource.VENDOR && <PartCostBadge source={costSource} />}
             </div>
           </FieldPanelRow>
           <FieldPanelRow title='Build (BOM)'>
             <div className='flex min-h-8 items-center gap-2 text-sm tabular-nums'>
-              {formatCurrency(rollupCost)}
+              {money(rollupCost)}
               {costSource === CostSource.BOM && <PartCostBadge source={costSource} />}
             </div>
           </FieldPanelRow>
           <FieldPanelRow title='Comparison'>
             <div className='flex min-h-8 items-center text-sm text-muted-foreground'>
-              {formatComparison(purchaseCost, rollupCost)}
+              {formatComparison(purchaseCost, rollupCost, currencyCode)}
             </div>
           </FieldPanelRow>
         </>
@@ -432,25 +359,38 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
               <div className='flex min-h-8 items-center gap-2 text-sm tabular-nums'>
                 {standardCost == null ? (
                   <Badge variant='amber' size='xs'>
-                    Not rolled
+                    No standard
                   </Badge>
                 ) : (
                   <>
-                    {formatCurrency(standardCost)}
+                    {money(standardCost)}
                     {isProvisional && <StandardOriginBadge origin={standardOrigin} />}
                     {standardEffectiveAt && (
                       <span className='text-muted-foreground text-xs'>
-                        set {formatEffectiveDate(standardEffectiveAt)}
+                        set on {formatEffectiveDate(standardEffectiveAt)}
+                      </span>
+                    )}
+                    {bomRollsTo != null && (
+                      <span className='text-muted-foreground text-xs'>
+                        BOM rolls to {money(bomRollsTo)}
                       </span>
                     )}
                   </>
                 )}
-                <RollStandardCostPopover partId={partId}>
-                  <Button variant='outline' size='xs' className='ms-auto'>
-                    Roll
-                  </Button>
-                </RollStandardCostPopover>
+                {canEdit && (
+                  <PartRollAction
+                    partId={partId}
+                    preview={rollPreview}
+                    hasBom={hasSubparts}
+                    currencyCode={currencyCode}
+                    onRolled={onStandardSaved}
+                  />
+                )}
               </div>
+
+              {rollPreview.line?.changed && (
+                <PartRollDelta line={rollPreview.line} currencyCode={currencyCode} />
+              )}
 
               {/* 🛑 The composition, and it is the reason this row exists. A built
                   part's standard carries its own absorption AND every
@@ -462,11 +402,9 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
                   same number twice followed by two zeroes. */}
               {absorbs && standardCost != null && standardMaterialCost != null && (
                 <p className='text-muted-foreground text-xs tabular-nums'>
-                  Material {formatCurrency(standardMaterialCost)}
-                  {standardLaborCost != null && <> · Labour {formatCurrency(standardLaborCost)}</>}
-                  {standardOverheadCost != null && (
-                    <> · Overhead {formatCurrency(standardOverheadCost)}</>
-                  )}
+                  Material {money(standardMaterialCost)}
+                  {standardLaborCost != null && <> · Labour {money(standardLaborCost)}</>}
+                  {standardOverheadCost != null && <> · Overhead {money(standardOverheadCost)}</>}
                 </p>
               )}
 
@@ -495,8 +433,12 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
           {showUnitCost && (
             <StandardUnitCostRow
               partId={partId}
-              channelCost={channelCost}
+              currencyCode={currencyCode}
               hasStandard={standardCost != null}
+              hasBom={hasSubparts}
+              purchaseCost={purchaseCost}
+              channelCost={channelCost}
+              onSaved={onStandardSaved}
             />
           )}
 
@@ -527,7 +469,7 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
               <div className='flex min-h-8 items-center text-sm text-muted-foreground tabular-nums'>
                 {drift === 0
                   ? 'None — the standard matches today\u2019s cost'
-                  : `${drift > 0 ? '+' : ''}${formatCurrency(drift)}`}
+                  : `${drift > 0 ? '+' : ''}${money(drift)}`}
               </div>
             </FieldPanelRow>
           )}
@@ -535,7 +477,15 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
       )}
 
       {!hasStandardBlock && showUnitCost && (
-        <StandardUnitCostRow partId={partId} channelCost={channelCost} hasStandard={false} />
+        <StandardUnitCostRow
+          partId={partId}
+          currencyCode={currencyCode}
+          hasStandard={false}
+          hasBom={hasSubparts}
+          purchaseCost={purchaseCost}
+          channelCost={channelCost}
+          onSaved={onStandardSaved}
+        />
       )}
     </FieldPanel>
   )
@@ -546,11 +496,11 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
  * the more expensive option, so it reads as "what you save by not picking the
  * other one". Equal costs are a real (if rare) answer, not an error.
  */
-function formatComparison(purchaseCost: number, rollupCost: number): string {
+function formatComparison(purchaseCost: number, rollupCost: number, currencyCode: string): string {
   if (purchaseCost === rollupCost) return 'Buying and building cost the same'
   const cheaperLabel = purchaseCost < rollupCost ? 'Buying' : 'Building'
   const delta = Math.abs(purchaseCost - rollupCost)
   const expensive = Math.max(purchaseCost, rollupCost)
   const pct = expensive > 0 ? Math.round((delta / expensive) * 100) : 0
-  return `${cheaperLabel} is ${formatCurrency(delta)} cheaper${pct > 0 ? ` (${pct}%)` : ''}`
+  return `${cheaperLabel} is ${formatCurrency(delta, { currencyCode })} cheaper${pct > 0 ? ` (${pct}%)` : ''}`
 }

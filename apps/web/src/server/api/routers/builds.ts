@@ -41,6 +41,7 @@ import {
   loadPartAbsorptionRates,
   previewStandardCostRoll,
   readMovedPartIds,
+  readStandardCostWorklist,
   rollStandardCost,
   setStandardCost,
   setStandardCosts,
@@ -181,6 +182,7 @@ const completionShape = {
  * | procedure                              | gate                                      |
  * | -------------------------------------- | ----------------------------------------- |
  * | `previewRoll`, `roll`, `setStandardCost(s)`, `canRestateStandardCost` | edit on `part` |
+ * | `standardCostWorklist`                 | view on `part`                            |
  * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
  * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `undoBatchRun` | edit on `build` AND edit on `stock_movement` |
@@ -338,6 +340,21 @@ export const buildsRouter = createTRPCRouter({
 
       const moved = await readMovedPartIds(ctx.db, organizationId, [input.partId])
       return { canRestate: !moved.has(input.partId) }
+    }),
+
+  /**
+   * Set costs and Set counts rows (D-SC3/D-SC4): every stocked part, or the named ones plus the
+   * uncosted leaves under their BOMs. View on `part`: these are the part's own field values.
+   */
+  standardCostWorklist: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).max(5000).optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await readStandardCostWorklist(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   // ─── The build event (phase 2) ──────────────────────────────────────

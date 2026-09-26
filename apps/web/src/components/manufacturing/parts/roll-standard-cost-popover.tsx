@@ -30,7 +30,17 @@ import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { api } from '~/trpc/react'
+
+/** "Oct 1" for a `YYYY-MM-DD` book day, read as that calendar day in every zone. */
+function formatDay(day: string): string {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  })
+}
 
 interface RollStandardCostPopoverProps {
   /** The part's entityInstanceId. */
@@ -46,11 +56,12 @@ export function RollStandardCostPopover({
 }: RollStandardCostPopoverProps) {
   const [open, setOpen] = useState(false)
   const [effectiveAt, setEffectiveAt] = useState<string>(() => toCalendarDayIso(new Date()))
+  const currencyCode = useOrgCurrency()
 
   // A fresh effective date every time it opens — a stale one left over from a
   // popover somebody abandoned yesterday would silently backdate the roll.
   useEffect(() => {
-    if (open) setEffectiveAt(new Date().toISOString())
+    if (open) setEffectiveAt(toCalendarDayIso(new Date()))
   }, [open])
 
   // `keepPreviousData` because the effective date is part of the query key:
@@ -87,6 +98,14 @@ export function RollStandardCostPopover({
 
   const plan = preview.data
   const changed = plan?.lines.filter((line) => line.changed) ?? []
+  // The preview reports the range, only the roll refuses (D-SC5); a placeholder plan is another day's.
+  const range = plan?.dateRange
+  const outOfRange =
+    !!plan &&
+    !!range &&
+    ((range.earliestAt != null && plan.effectiveAt < range.earliestAt) ||
+      plan.effectiveAt > range.latestAt)
+  const money = (minor: number) => formatCurrency(minor, { currencyCode })
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -113,11 +132,23 @@ export function RollStandardCostPopover({
               <FieldInputAdapter
                 fieldType={FieldType.DATE}
                 value={effectiveAt}
-                onChange={(val) => setEffectiveAt((val as string) ?? new Date().toISOString())}
+                onChange={(val) => setEffectiveAt((val as string) ?? toCalendarDayIso(new Date()))}
                 disabled={roll.isPending}
               />
             </FieldPanelRow>
           </FieldPanel>
+
+          {range?.earliestDay && (
+            <p
+              className={outOfRange ? 'text-destructive text-xs' : 'text-muted-foreground text-xs'}>
+              Earliest {formatDay(range.earliestDay)}:{' '}
+              {range.earliestSetBy?.partName ?? 'a part it revalues'} moved{' '}
+              {formatDay(range.earliestDay)}
+            </p>
+          )}
+          {outOfRange && !range?.earliestDay && (
+            <p className='text-destructive text-xs'>A roll can&apos;t be dated in the future.</p>
+          )}
 
           {preview.isPending ? (
             <div className='space-y-2'>
@@ -155,10 +186,10 @@ export function RollStandardCostPopover({
                         <span className='text-muted-foreground'>
                           {line.previousStandardCost == null
                             ? '—'
-                            : formatCurrency(line.previousStandardCost)}
+                            : money(line.previousStandardCost)}
                         </span>
                         <span className='text-muted-foreground'>&rarr;</span>
-                        <span className='font-medium'>{formatCurrency(line.standardCost)}</span>
+                        <span className='font-medium'>{money(line.standardCost)}</span>
                       </div>
                     ))}
                   </div>
@@ -167,20 +198,27 @@ export function RollStandardCostPopover({
 
               {/* The number this whole preview exists for. */}
               <div className='space-y-1 border-t border-border/50 pt-2 text-xs tabular-nums'>
-                <Summary
-                  label='Inventory revaluation'
-                  hint='(new standard − old) × qty on hand'
-                  value={plan.revaluationDelta}
-                  signed
-                />
+                <p className='font-medium'>
+                  Posts {formatDay(plan.dateRange.effectiveDay)} · revalues {plan.revaluedQuantity}{' '}
+                  on hand · {plan.revaluationDelta > 0 ? '+' : ''}
+                  {money(plan.revaluationDelta)}
+                </p>
                 {plan.initialValue !== 0 && (
-                  <Summary
-                    label='First valuation'
-                    hint='parts that had no standard before — not a revaluation'
-                    value={plan.initialValue}
-                  />
+                  <p className='text-muted-foreground'>
+                    First valuation {money(plan.initialValue)}: parts with no standard before, not a
+                    revaluation
+                  </p>
                 )}
               </div>
+
+              {plan.keptManual.length > 0 && (
+                <p className='border-t border-border/50 pt-2 text-muted-foreground text-xs'>
+                  Kept (set by hand):{' '}
+                  {plan.keptManual
+                    .map((part) => `${part.partName ?? part.partId} ${money(part.standardCost)}`)
+                    .join(', ')}
+                </p>
+              )}
 
               {plan.skipped.length > 0 && (
                 <div className='border-t border-border/50 pt-2 text-xs'>
@@ -207,7 +245,13 @@ export function RollStandardCostPopover({
               size='sm'
               loading={roll.isPending}
               loadingText='Rolling...'
-              disabled={!plan || changed.length === 0 || roll.isPending}
+              disabled={
+                !plan ||
+                preview.isPlaceholderData ||
+                changed.length === 0 ||
+                outOfRange ||
+                roll.isPending
+              }
               onClick={handleRoll}>
               Roll standard cost
             </Button>
@@ -215,31 +259,5 @@ export function RollStandardCostPopover({
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-/** One summed number with the arithmetic that produced it spelled out. */
-function Summary({
-  label,
-  hint,
-  value,
-  signed,
-}: {
-  label: string
-  hint: string
-  value: number
-  signed?: boolean
-}) {
-  const sign = signed && value > 0 ? '+' : ''
-  return (
-    <div className='flex items-baseline justify-between gap-2'>
-      <span className='text-muted-foreground'>
-        {label} <span className='text-[10px]'>{hint}</span>
-      </span>
-      <span className='font-medium'>
-        {sign}
-        {formatCurrency(value)}
-      </span>
-    </div>
   )
 }

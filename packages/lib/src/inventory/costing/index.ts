@@ -106,6 +106,13 @@ export {
   widenToAncestors,
   widenToUnvaluedDescendants,
 } from './standard-cost-roll'
+// What Set costs and Set counts show per part: standard, suggestion inputs, BOM leaves (D-SC3).
+export {
+  buildStandardCostWorklist,
+  readStandardCostWorklist,
+  type StandardCostWorklistPart,
+  type WorklistPartFacts,
+} from './standard-cost-worklist'
 export type {
   AbsorptionRates,
   FulfillmentLineRelievedAverage,

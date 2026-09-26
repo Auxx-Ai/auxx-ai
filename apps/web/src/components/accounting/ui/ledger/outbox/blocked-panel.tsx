@@ -301,16 +301,21 @@ export function BlockedPanel({
         actions={
           <>
             {mapInPlace ? (
-              <TreeRowButton
-                persistent
-                tooltipText='Map it'
-                onClick={() =>
-                  group.reasonCode === 'STANDARD_COST_MISSING'
-                    ? setCostPartId(group.externalRef)
-                    : setMapHandle(group.externalRef)
-                }>
-                <MapIcon />
-              </TreeRowButton>
+              group.reasonCode === 'STANDARD_COST_MISSING' ? (
+                <TreeRowButton
+                  persistent
+                  tooltipText='Set cost'
+                  onClick={() => setCostPartId(group.externalRef)}>
+                  <Calculator />
+                </TreeRowButton>
+              ) : (
+                <TreeRowButton
+                  persistent
+                  tooltipText='Map it'
+                  onClick={() => setMapHandle(group.externalRef)}>
+                  <MapIcon />
+                </TreeRowButton>
+              )
             ) : (
               href && (
                 <TreeRowButton persistent tooltipText='Map it' onClick={() => router.push(href)}>

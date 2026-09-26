@@ -34,13 +34,18 @@ export function StandardCostDialog({ partId, onOpenChange }: StandardCostDialogP
         <DialogHeader>
           <DialogTitle>Set the standard cost</DialogTitle>
           <DialogDescription>
-            Rolling the standard retries everything waiting on it.
+            A unit cost values every waiting row at its own date. A part with a bill of materials
+            takes its cost from a roll once its components are costed.
           </DialogDescription>
         </DialogHeader>
         {recordId && partId && (
           <>
             <RecordBadge recordId={recordId} size='sm' />
-            <PartCostingCard recordId={recordId} entityInstanceId={partId} />
+            <PartCostingCard
+              recordId={recordId}
+              entityInstanceId={partId}
+              onStandardSaved={() => onOpenChange(false)}
+            />
           </>
         )}
         <DialogFooter>

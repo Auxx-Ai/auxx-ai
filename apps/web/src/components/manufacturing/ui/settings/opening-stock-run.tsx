@@ -11,6 +11,7 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
+import { formatCurrency } from '@auxx/utils/currency'
 import { PlayCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Fragment, useState } from 'react'
@@ -42,6 +43,8 @@ export interface OpeningStockRunSummaryCounts {
   adjustments: number
   /** Rows on parts with no standard and no typed cost: written pending, valued later. */
   pending: number
+  /** Rows whose typed unit cost replaces the part's standard and revalues what is on hand. */
+  restates: number
   /** Rows the Q25 banner is warning about. */
   backflushFirst: number
 }
@@ -57,6 +60,7 @@ interface OpeningStockRunProps {
   canOpenStock: boolean
   isRunning: boolean
   onRun: () => Promise<OpeningStockRunSummary>
+  currencyCode: string
 }
 
 export function OpeningStockRun({
@@ -69,6 +73,7 @@ export function OpeningStockRun({
   canOpenStock,
   isRunning,
   onRun,
+  currencyCode,
 }: OpeningStockRunProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [lastRun, setLastRun] = useState<OpeningStockRunSummary | null>(null)
@@ -149,6 +154,13 @@ export function OpeningStockRun({
                     standard cost — written now, valued when a cost is set.
                   </li>
                 )}
+                {summary.restates > 0 && (
+                  <li>
+                    <span className='font-medium text-foreground'>{summary.restates}</span>{' '}
+                    {summary.restates === 1 ? 'replaces its' : 'replace their'} standard cost — what
+                    is on hand is revalued at the new cost.
+                  </li>
+                )}
                 {summary.backflushFirst > 0 && (
                   <li className='text-yellow-700 dark:text-yellow-500'>
                     <span className='font-medium'>{summary.backflushFirst}</span> with unbuilt sales
@@ -166,7 +178,9 @@ export function OpeningStockRun({
       </ScrollArea>
 
       <div className='mt-3 flex shrink-0 flex-col gap-1.5 border-t pt-3'>
-        {lastRun && !isRunning && <RunResult run={lastRun} cutoffPeriod={cutoffPeriod} />}
+        {lastRun && !isRunning && (
+          <RunResult run={lastRun} cutoffPeriod={cutoffPeriod} currencyCode={currencyCode} />
+        )}
         <Button
           variant='outline'
           size='sm'
@@ -194,13 +208,21 @@ export function OpeningStockRun({
 function RunResult({
   run,
   cutoffPeriod,
+  currencyCode,
 }: {
   run: OpeningStockRunSummary
   cutoffPeriod: string | null
+  currencyCode: string
 }) {
   const first = run.opened.filter((row) => row.outcome === 'initial').length
   const adjusts = run.opened.length - first
   const unchanged = run.excluded.filter((skip) => skip.reason === 'unchanged').length
+  const changes = [...run.opened, ...run.excluded].flatMap((row) =>
+    row.standardCostChange ? [row.standardCostChange] : []
+  )
+  const setCount = changes.filter((change) => change.action === 'set').length
+  const restated = changes.length - setCount
+  const revalued = changes.reduce((sum, change) => sum + change.revaluationPostedMinor, 0)
   return (
     <div className='flex flex-col gap-1 text-muted-foreground text-xs'>
       <p>
@@ -217,6 +239,16 @@ function RunResult({
           </>
         )}
       </p>
+      {changes.length > 0 && (
+        <p>
+          Standard cost: {setCount > 0 && `${setCount} set`}
+          {setCount > 0 && restated > 0 && ', '}
+          {restated > 0 && `${restated} replaced`}
+          {revalued !== 0 &&
+            ` · revalued on hand ${revalued > 0 ? '+' : ''}${formatCurrency(revalued, { currencyCode })}`}
+          .
+        </p>
+      )}
       {run.failed.length > 0 && (
         <ul className='flex flex-col gap-0.5'>
           {run.failed.slice(0, 5).map((skip) => (

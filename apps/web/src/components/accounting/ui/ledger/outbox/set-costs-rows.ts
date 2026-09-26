@@ -1,9 +1,27 @@
 // apps/web/src/components/accounting/ui/ledger/outbox/set-costs-rows.ts
 
+import {
+  type StandardCostSuggestion,
+  suggestStandardCost,
+} from '@auxx/lib/inventory/costing/client'
 import { minorToMajorString, parseMajorToMinor, RATE_DECIMALS } from '@auxx/utils/currency'
 import { type CountedGroup, sourceBreakdown } from './blocked-levels'
 
-/** One part in the Set costs grid (106 §6.2). */
+/** The worklist fields a row reads (`builds.standardCostWorklist`, 09 D-SC3). */
+export interface SetCostsPartState {
+  partId: string
+  name: string
+  kind: string | null
+  hasBom: boolean
+  standardCost: number | null
+  purchaseCost: number | null
+  channelCost: number | null
+  usedIn: number
+  uncostedLeafCount: number
+  isLeaf: boolean
+}
+
+/** One part in the Set costs grid (106 §6.2, 09 D-SC3). */
 export interface SetCostsRow {
   partId: string
   name: string
@@ -11,16 +29,31 @@ export interface SetCostsRow {
   waiting: number
   /** `waiting` per kind, "446 shipments · 12 builds · 1 count"; one figure when the read has no split. */
   waitingLabel: string
-  /** `part_channel_cost`, minor units per unit; null when the channel reports none. */
-  channelCost: number | null
   /** The part's stored `part_kind`; null when unset. */
   kind: string | null
+  /** A BOM part takes no typed cost unless "Set cost instead" (D-SC3). */
+  hasBom: boolean
+  /** Minor units; a BOM part's rolled standard once its leaves are costed. */
+  standardCost: number | null
+  uncostedLeafCount: number
+  usedIn: number
+  /** Listed because it sits under a blocked BOM part, not blocked itself. */
+  isLeaf: boolean
+  /** D-SC4 prefill; always null for a BOM part. */
+  suggestion: StandardCostSuggestion | null
+  /** Both costs, shown as hints under "Set cost instead". */
+  purchaseCost: number | null
+  channelCost: number | null
 }
 
 /** What a person typed or picked on one row. `unitCost` undefined means never touched. */
 export interface SetCostsDraft {
   unitCost?: string
   kind?: string
+  /** `unitCost` is the untouched D-SC4 suggestion. */
+  suggested?: boolean
+  /** "Set cost instead" on a BOM part. */
+  override?: boolean
 }
 
 export type SetCostsDrafts = Readonly<Record<string, SetCostsDraft>>
@@ -29,37 +62,74 @@ export interface SetCostsItem {
   partId: string
   unitCost: number
   kind?: string
+  overrideBom?: true
 }
 
-/** Some read paths return a SINGLE_SELECT as a one-element array. */
-function optionValue(value: unknown): string | null {
-  const first = Array.isArray(value) ? value[0] : value
-  return typeof first === 'string' && first ? first : null
-}
+type BlockedGroup = CountedGroup & { externalRef: string | null; refLabel: string | null }
 
-/** Rows from the reason's per-part groups and the parts' field values (keyed by part id). */
+/**
+ * Rows in worklist order (blocked parts, then their uncosted leaves). Without a worklist, every
+ * group is a plain editable row. A part no longer blocked keeps its row with nothing waiting.
+ */
 export function buildSetCostsRows(
-  groups: readonly (CountedGroup & { externalRef: string | null; refLabel: string | null })[],
-  valuesByPartId: Readonly<Record<string, Record<string, unknown> | undefined>>
+  groups: readonly BlockedGroup[],
+  parts: readonly SetCostsPartState[] | undefined
 ): SetCostsRow[] {
-  const rows: SetCostsRow[] = []
-  const seen = new Set<string>()
+  const byPart = new Map<string, BlockedGroup>()
   for (const group of groups) {
-    const partId = group.externalRef
-    if (!partId || seen.has(partId)) continue
-    seen.add(partId)
-    const values = valuesByPartId[partId]
-    const channel = values?.part_channel_cost
-    rows.push({
+    if (group.externalRef && !byPart.has(group.externalRef)) byPart.set(group.externalRef, group)
+  }
+  const waitingOf = (partId: string, isLeaf: boolean) => {
+    const group = byPart.get(partId)
+    if (group) return { waiting: group.count, waitingLabel: sourceBreakdown(group) }
+    return { waiting: 0, waitingLabel: isLeaf ? 'Not blocked' : 'Nothing waiting' }
+  }
+
+  if (!parts) {
+    return [...byPart.entries()].map(([partId, group]) => ({
       partId,
       name: group.refLabel ?? partId,
-      waiting: group.count,
-      waitingLabel: sourceBreakdown(group),
-      channelCost: typeof channel === 'number' && Number.isFinite(channel) ? channel : null,
-      kind: optionValue(values?.part_kind),
-    })
+      ...waitingOf(partId, false),
+      kind: null,
+      hasBom: false,
+      standardCost: null,
+      uncostedLeafCount: 0,
+      usedIn: 0,
+      isLeaf: false,
+      suggestion: null,
+      purchaseCost: null,
+      channelCost: null,
+    }))
   }
-  return rows
+  return parts.map((part) => ({
+    partId: part.partId,
+    name: part.name || byPart.get(part.partId)?.refLabel || part.partId,
+    ...waitingOf(part.partId, part.isLeaf),
+    kind: part.kind,
+    hasBom: part.hasBom,
+    standardCost: part.standardCost,
+    uncostedLeafCount: part.uncostedLeafCount,
+    usedIn: part.usedIn,
+    isLeaf: part.isLeaf,
+    suggestion: part.hasBom ? null : suggestStandardCost(part.purchaseCost, part.channelCost),
+    purchaseCost: part.purchaseCost,
+    channelCost: part.channelCost,
+  }))
+}
+
+/** Whether the row takes a typed cost now: no BOM, or "Set cost instead" was chosen. */
+export function isEditableRow(row: SetCostsRow, draft: SetCostsDraft | undefined): boolean {
+  return !row.hasBom || draft?.override === true
+}
+
+/** "No BOM, costed as bought" (D-SC2 guard): a finished good typed with no BOM to roll from. */
+export function isBoughtFinishedGood(row: SetCostsRow, kind: string): boolean {
+  return kind === 'finished_good' && !row.hasBom
+}
+
+/** "From supplier" / "From channel". */
+export function suggestionSourceLabel(source: 'supplier' | 'channel'): string {
+  return source === 'supplier' ? 'From supplier' : 'From channel'
 }
 
 /** The input text for a minor-unit amount, at rate precision. */
@@ -82,45 +152,29 @@ export function parseUnitCost(
   return { ok: true, value }
 }
 
-/** Channel costs into every row nobody has typed in yet; returns the same object when nothing changes. */
-export function seedChannelCosts(
+/** D-SC4 suggestions into every editable row nobody has typed in; same object when nothing changes. */
+export function seedSuggestions(
   rows: readonly SetCostsRow[],
   drafts: SetCostsDrafts,
   currencyCode = 'USD'
-): SetCostsDrafts {
-  return fill(rows, drafts, currencyCode, (draft) => draft?.unitCost === undefined)
-}
-
-/** "Use channel costs": every blank unit cost that has a channel cost. */
-export function fillChannelCosts(
-  rows: readonly SetCostsRow[],
-  drafts: SetCostsDrafts,
-  currencyCode = 'USD'
-): SetCostsDrafts {
-  return fill(rows, drafts, currencyCode, (draft) => !draft?.unitCost?.trim())
-}
-
-function fill(
-  rows: readonly SetCostsRow[],
-  drafts: SetCostsDrafts,
-  currencyCode: string,
-  blank: (draft: SetCostsDraft | undefined) => boolean
 ): SetCostsDrafts {
   let next: Record<string, SetCostsDraft> | null = null
   for (const row of rows) {
-    if (row.channelCost === null || !blank(drafts[row.partId])) continue
+    const draft = drafts[row.partId]
+    if (!row.suggestion || row.hasBom || draft?.unitCost !== undefined) continue
     next ??= { ...drafts }
     next[row.partId] = {
-      ...drafts[row.partId],
-      unitCost: formatUnitCostInput(row.channelCost, currencyCode),
+      ...draft,
+      unitCost: formatUnitCostInput(row.suggestion.unitCost, currencyCode),
+      suggested: true,
     }
   }
   return next ?? drafts
 }
 
 /**
- * The save payload: rows with a unit cost or a changed kind. A service takes no cost, so a stored
- * one is skipped; any other kind change needs a cost, since the mutation writes a standard with it.
+ * The save payload: editable rows with a unit cost or a changed kind. A service takes no cost, so a
+ * stored one is skipped; any other kind change needs a cost, since the mutation writes a standard.
  */
 export function toSetCostsItems(
   rows: readonly SetCostsRow[],
@@ -132,6 +186,8 @@ export function toSetCostsItems(
   for (const row of rows) {
     if (options.skip?.has(row.partId)) continue
     const draft = drafts[row.partId]
+    if (!isEditableRow(row, draft)) continue
+    const overrideBom = row.hasBom ? ({ overrideBom: true } as const) : {}
     const kind = draft?.kind && draft.kind !== row.kind ? draft.kind : undefined
     if ((kind ?? row.kind) === 'service') {
       if (kind) items.push({ partId: row.partId, unitCost: 0, kind })
@@ -143,7 +199,12 @@ export function toSetCostsItems(
       continue
     }
     if (cost.value !== null) {
-      items.push({ partId: row.partId, unitCost: cost.value, ...(kind ? { kind } : {}) })
+      items.push({
+        partId: row.partId,
+        unitCost: cost.value,
+        ...(kind ? { kind } : {}),
+        ...overrideBom,
+      })
     } else if (kind) {
       errors[row.partId] = 'Enter a unit cost to change the kind'
     }
