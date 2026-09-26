@@ -70,8 +70,11 @@ export type WriteMode =
   | { kind: 'buffered'; scope: TxWriteScope }
   /** C3. Doors stay shut at the leaf; `by` names the aggregator that announces. */
   | { kind: 'absorbed'; by: string }
-  /** C4/C5. Doors stay shut on purpose; `reason` is the decision, in prose. */
-  | { kind: 'quiet'; reason: string }
+  /**
+   * C4/C5. Doors stay shut on purpose; `reason` is the decision, in prose. `coveredBy` names the
+   * post-commit publisher that announces the rows, which also shuts the field-value layer's frames.
+   */
+  | { kind: 'quiet'; reason: string; coveredBy?: string }
 
 export interface WriteSession {
   origin: WriteOrigin
@@ -162,15 +165,34 @@ export function isDeclaredSilent(session?: WriteSession): boolean {
  * nobody can enforce.
  *
  * @param reason Why this write is deliberately silent. Required, non-empty.
- * @param base The session to inherit origin and depth from, when there is one.
+ * @param options.base The session to inherit origin and depth from, when there is one.
+ * @param options.coveredBy The function that publishes this write's frames after commit, see
+ *   {@link isCoveredQuiet}. Absent, display-column and inverse frames still go out.
  */
-export function quietSession(reason: string, base?: WriteSession): WriteSession {
+export function quietSession(
+  reason: string,
+  options?: { base?: WriteSession; coveredBy?: string }
+): WriteSession {
   if (!reason.trim()) throw new Error('quietSession requires a non-empty reason')
+  const coveredBy = options?.coveredBy
+  if (coveredBy !== undefined && !coveredBy.trim()) {
+    throw new Error('quietSession coveredBy requires a named publisher')
+  }
+  const base = options?.base
   return {
     origin: base?.origin ?? { kind: 'automation', actor: 'system' },
     depth: base?.depth ?? 0,
-    mode: { kind: 'quiet', reason },
+    mode: coveredBy ? { kind: 'quiet', reason, coveredBy } : { kind: 'quiet', reason },
   }
+}
+
+/**
+ * True for a quiet session whose caller announces its rows after commit: the field-value
+ * layer's display-column and inverse frames skip it (plans/records/lean-create-and-quiet-frames.md §3).
+ */
+export function isCoveredQuiet(session?: WriteSession): boolean {
+  const mode = session?.mode
+  return mode?.kind === 'quiet' && !!mode.coveredBy
 }
 
 /**

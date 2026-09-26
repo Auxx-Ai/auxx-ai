@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
 import { flushTxWriteScope } from '../../resources/crud/tx-write-flush'
 import { runInTxWrite } from '../../resources/crud/tx-write-scope'
-import type { WriteSession } from '../../resources/crud/write-origin'
+import { quietSession, type WriteSession } from '../../resources/crud/write-origin'
 import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { createValuesForEntity } from '../create-values'
 import { createFieldValueContext } from '../field-value-helpers'
@@ -266,6 +266,54 @@ describe('P1 — display-column frames respect the write origin', () => {
         expect.objectContaining({ id: f.instanceId, secondaryDisplayValue: 'ada@example.com' }),
       ])
     )
+  })
+})
+
+describe('covered quiet sessions — the caller announces the rows', () => {
+  it('a coveredBy quiet create publishes no record:updated', async () => {
+    const f = await seed()
+    const ctx = createFieldValueContext(f.orgId, 'user-1', db(), undefined, {
+      session: quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+    })
+
+    await createValuesForEntity(ctx, {
+      recordId: f.recordId,
+      values: displayValues(f, 'Ada', 'ada@example.com'),
+    })
+
+    expect(await storedDisplay(f)).toEqual({ displayName: 'Ada', secondary: 'ada@example.com' })
+    expect(recordUpdatedFrames()).toHaveLength(0)
+  })
+
+  it('an ambient coveredBy quiet update publishes no record:updated', async () => {
+    const f = await seed()
+    const ctx = createFieldValueContext(f.orgId, 'user-1', db())
+
+    await runWithWriteSession(
+      quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+      () =>
+        setValuesForEntity(ctx, {
+          recordId: f.recordId,
+          values: displayValues(f, 'Ada', 'ada@example.com'),
+        })
+    )
+
+    expect(await storedDisplay(f)).toEqual({ displayName: 'Ada', secondary: 'ada@example.com' })
+    expect(recordUpdatedFrames()).toHaveLength(0)
+  })
+
+  it('a plain quiet session (the avatar path) still publishes the display frames', async () => {
+    const f = await seed()
+    const ctx = createFieldValueContext(f.orgId, 'user-1', db(), undefined, {
+      session: quietSession('connector avatar'),
+    })
+
+    await setValuesForEntity(ctx, {
+      recordId: f.recordId,
+      values: displayValues(f, 'Ada', 'ada@example.com'),
+    })
+
+    expect(recordUpdatedFrames()).toHaveLength(2)
   })
 })
 

@@ -53,9 +53,12 @@ export const RELIEF_WRITE_LANE_REASON =
   'inventory relief writes its own sale movements and recalculates QoH plus the ' +
   'fulfillment line relieved roll-up after commit'
 
-/** The session `relieveFulfillmentLines` constructs its write through. */
+/**
+ * The session `relieveFulfillmentLines` constructs its write through. Covered: relief announces
+ * the movements, their parts and fulfillment lines through {@link announceQuietReliefWrites}.
+ */
 export function reliefWriteSession(): WriteSession {
-  return quietSession(RELIEF_WRITE_LANE_REASON)
+  return quietSession(RELIEF_WRITE_LANE_REASON, { coveredBy: 'announceQuietReliefWrites' })
 }
 
 /**

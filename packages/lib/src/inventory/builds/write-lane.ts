@@ -11,7 +11,8 @@
  * and the reason is typed, greppable and checkable rather than a comment nobody
  * can enforce. Its default origin is `automation`, so `sessionLane` resolves to
  * `'silent'` (no bus event, no realtime frame, no dedup enqueue) and the session
- * carries no `collector`, so neither dispatch door opens.
+ * carries no `collector`, so neither dispatch door opens. Completion also sets `coveredBy`,
+ * which shuts the field-value layer's display-column and inverse frames; see `isCoveredQuiet`.
  *
  * ## Why not the three alternatives
  *
@@ -56,16 +57,19 @@ export const BUILD_WRITE_LANE_REASON =
   'build completion posts its own consume/produce ledger and recalculates QoH after commit'
 
 /**
- * The session every movement-writing build path constructs its
- * `UnifiedCrudHandler` with.
- *
- * 🛑 Do NOT pass `skipEvents: true` alongside it. The deprecated alias still
- * wins over the session-derived lane, which would move the decision back to the
- * call site — the state this file exists to end — while closing only one of the
- * two doors.
+ * The quiet session for build writes that do not announce every row they touch (reversal,
+ * pricing). Never pair it with `skipEvents: true`: the deprecated alias overrides the lane.
  */
 export function buildWriteSession(): WriteSession {
   return quietSession(BUILD_WRITE_LANE_REASON)
+}
+
+/**
+ * The completion's session: `completeBuild` announces the build, its movements and their parts
+ * through {@link publishQuietBuildWrites} after commit, so per-record frames are shut too.
+ */
+export function buildCompletionSession(): WriteSession {
+  return quietSession(BUILD_WRITE_LANE_REASON, { coveredBy: 'publishQuietBuildWrites' })
 }
 
 /**

@@ -139,10 +139,11 @@ export const SALVAGE_WRITE_LANE_REASON =
  * One session and one `UnifiedCrudHandler` for the whole call, exactly as
  * `complete-build.ts` does: the handler is handed to `writeStockMovements` as
  * `ctx.handler` so a salvage has a single quiet-lane construction site rather
- * than one per write.
+ * than one per write. Covered: {@link announceQuietSalvageWrites} announces the movements, the
+ * part lines and the parts after commit.
  */
 export function salvageWriteSession(): WriteSession {
-  return quietSession(SALVAGE_WRITE_LANE_REASON)
+  return quietSession(SALVAGE_WRITE_LANE_REASON, { coveredBy: 'announceQuietSalvageWrites' })
 }
 
 /**
@@ -485,6 +486,8 @@ export async function writeSalvageMovements(
         ctx.defId,
         movements.map((movement) => movement.partLineId)
       )
+      // The covered lane sends no inverse frames: the parts' movement lists.
+      announceQuietSalvageWrites(organizationId, partDefId, affectedPartIds)
 
       logger.info('Wrote salvage movements for a return line', {
         organizationId,

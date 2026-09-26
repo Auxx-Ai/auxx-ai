@@ -40,6 +40,7 @@ vi.mock('../../resources/crud/tx-write-scope', () => ({
 }))
 
 import type { ManifestCollector } from '../../record-rules/sync-manifest-collector'
+import { quietSession } from '../../resources/crud/write-origin'
 import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { syncInverseRelationships } from '../relationship-sync'
 
@@ -356,5 +357,35 @@ describe('P3 — sync and seed sessions publish nothing', () => {
     expect(publishFieldValueUpdates).not.toHaveBeenCalled()
     expect(publishRecordsChanged).not.toHaveBeenCalled()
     expect(recordTxWriteChange).not.toHaveBeenCalled()
+  })
+})
+
+describe('covered quiet sessions leave the inverse to their caller', () => {
+  it('a coveredBy quiet session announces nothing, even with a scope open', async () => {
+    getAmbientTxWriteScope.mockReturnValue({ marker: 'buffered' })
+
+    await runWithWriteSession(
+      quietSession('build completion', { coveredBy: 'publishQuietBuildWrites' }),
+      () =>
+        syncInverseRelationships(
+          { db: fakeDb([[], [], manyRows(1)]), organizationId: 'org-1' },
+          LINK_LINE_TO_ORDER
+        )
+    )
+
+    expect(publishFieldValueUpdates).not.toHaveBeenCalled()
+    expect(publishRecordsChanged).not.toHaveBeenCalled()
+    expect(recordTxWriteChange).not.toHaveBeenCalled()
+  })
+
+  it('a plain quiet session still announces the array', async () => {
+    await runWithWriteSession(quietSession('connector avatar'), () =>
+      syncInverseRelationships(
+        { db: fakeDb([[], [], manyRows(1)]), organizationId: 'org-1' },
+        LINK_LINE_TO_ORDER
+      )
+    )
+
+    expect(publishFieldValueUpdates).toHaveBeenCalledTimes(1)
   })
 })

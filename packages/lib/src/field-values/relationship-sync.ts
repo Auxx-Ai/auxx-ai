@@ -15,6 +15,7 @@ import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexin
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { FieldValueUpdateEntry, RecordChangedEntry } from '../realtime/events'
 import type { ManifestCollector } from '../record-rules/sync-manifest-collector'
+import { isCoveredQuiet } from '../resources/crud/write-origin'
 import { getAmbientWriteSession } from '../resources/crud/write-session-als'
 import { rowToTypedValue } from './field-value-helpers'
 import type { FieldValueRow } from './types'
@@ -158,12 +159,15 @@ async function announceInverseChanges(
   try {
     // Sync/seed publish nothing per record (plans/realtime/sync-record-event-flood.md P3):
     // a sync run names the mirror in its manifest and finalize announces it once.
-    const origin = getAmbientWriteSession()?.origin
+    const session = getAmbientWriteSession()
+    const origin = session?.origin
     if (origin?.kind === 'seed') return
     if (origin?.kind === 'sync') {
       await recordMirrors(ctx.organizationId, origin.collector, wanted)
       return
     }
+    // A covered quiet writer re-announces the other-side records itself after commit.
+    if (isCoveredQuiet(session)) return
 
     // The record id and the raw field id are carried alongside the frame rather
     // than re-derived from `entry.key`: `buildFieldValueKey` normalizes a bare

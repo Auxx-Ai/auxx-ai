@@ -80,7 +80,20 @@ const h = vi.hoisted(() => ({
   failOnFinishedGoodGlAccount: false,
   /** Every `getEntityInstance` re-read `createEntity` made, and whether it found the row. */
   freshReadOutcomes: [] as Array<{ id: string; found: boolean }>,
+  /** Every realtime frame, at the service boundary. */
+  frames: [] as Array<{ roomKey: string; event: string; data: unknown }>,
 }))
+
+vi.mock('../../../realtime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../realtime')>()
+  const service = {
+    publish: async (roomKey: string, event: string, data: unknown) => {
+      h.frames.push({ roomKey, event, data })
+      return true
+    },
+  }
+  return { ...actual, getRealtimeService: () => service }
+})
 
 vi.mock('../../movements/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../movements/client')>()
@@ -336,6 +349,50 @@ describe('completeBuild commits its whole ledger', () => {
     // ...and harmless: the ids the caller got back are the real committed rows.
     const stored = await movementInstanceIds()
     expect(stored.sort()).toEqual([...done.value.movementIds].sort())
+  })
+})
+
+describe('completeBuild sends only its covering frames', () => {
+  it('build update, records:changed for movements, parts and build, and the QoH frame', async () => {
+    const buildId = await anInProgressBuild()
+    h.frames = []
+
+    const done = await completeBuild(db(), f.organizationId, f.userId, {
+      buildId,
+      quantityProduced: QUANTITY_PRODUCED,
+    })
+    if (done.isErr()) throw done.error
+    // The covering publishes are fire-and-forget.
+    await vi.waitFor(() =>
+      expect(h.frames.filter((frame) => frame.event === 'records:changed')).toHaveLength(3)
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const defOf = (roomKey: string) => roomKey.split('-records-')[1]
+    const recordFrames = h.frames.filter((frame) => frame.roomKey.includes('-records-'))
+    expect(recordFrames.map((frame) => `${frame.event} ${defOf(frame.roomKey)}`).sort()).toEqual(
+      [
+        `fieldValues:updated ${f.buildDefId}`,
+        `fieldValues:updated ${f.partDefId}`,
+        `records:changed ${f.buildDefId}`,
+        `records:changed ${f.movementDefId}`,
+        `records:changed ${f.partDefId}`,
+      ].sort()
+    )
+
+    const changed = (defId: string) =>
+      (
+        recordFrames.find(
+          (frame) => frame.event === 'records:changed' && defOf(frame.roomKey) === defId
+        )?.data as { entries: Array<{ recordId: string; fieldIds?: string[] }> }
+      ).entries
+    expect(changed(f.buildDefId)).toEqual([{ recordId: buildId }])
+    expect(
+      changed(f.partDefId)
+        .map((entry) => entry.recordId)
+        .sort()
+    ).toEqual([f.producedPartId, ...f.componentPartIds].sort())
+    expect(changed(f.partDefId).every((entry) => entry.fieldIds === undefined)).toBe(true)
   })
 })
 
