@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   defs: new Map<string, string>(),
   partKind: null as string | null,
   ensureSpy: vi.fn(),
+  rollSpy: vi.fn(),
   vendorTerms: null as {
     unitPrice: number | null
     shippingCost?: number | null
@@ -62,6 +63,7 @@ vi.mock('../receipt-queries', async () => {
 vi.mock('../../costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
 }))
+vi.mock('../../costing/roll-unvalued-ancestors', () => ({ rollUnvaluedAncestors: h.rollSpy }))
 
 import { receiveStock } from '../receive-stock'
 
@@ -96,6 +98,7 @@ beforeEach(() => {
     const { ok } = await import('neverthrow')
     return ok({ writtenPartIds: partIds })
   })
+  h.rollSpy.mockImplementation(async () => (await import('neverthrow')).ok([]))
 })
 
 /** The value bag handed to `UnifiedCrudHandler.create` on the single write. */
@@ -554,6 +557,19 @@ describe('receiveStock — the first receipt sets the standard cost', () => {
       kind: 'receipt',
       unitCost: 5240,
     })
+  })
+
+  it('rolls the parents a first standard completes, as the receiving user (D-SC7)', async () => {
+    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 4400 })
+    expect(h.rollSpy).toHaveBeenCalledWith(db, ORG, USER, ['part_1'])
+  })
+
+  it('rolls nothing when the part already had a standard', async () => {
+    h.ensureSpy.mockImplementation(async () =>
+      (await import('neverthrow')).ok({ writtenPartIds: [] })
+    )
+    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 4400 })
+    expect(h.rollSpy).not.toHaveBeenCalled()
   })
 
   it('offers it before the movement is written', async () => {

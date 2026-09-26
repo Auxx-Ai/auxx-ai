@@ -45,10 +45,8 @@ export interface PartStandardCost extends StandardCostComponents {
 
 /** Why a part could not be rolled. Never written, and never written as zero. */
 export type SkipReason =
-  /** A `component` (or an unclassified part) with no `part_cost` at all. */
+  /** A purchased part, or a buildable with no bill of materials, with no `part_cost` at all. */
   | 'no-live-cost'
-  /** A `subassembly` / `finished_good` with no bill of materials to roll. */
-  | 'no-bill-of-materials'
   /**
    * A built part with at least one component that could not be valued.
    *
@@ -138,6 +136,32 @@ export interface StandardCostRollPlan {
   standardCount: number
   /** Of {@link standardCount}, how many came off a receipt (73 §6.4). */
   confirmedStandardCount: number
+  /** `manual`-origin parts left out of the roll because nobody named them (D-SC3). */
+  keptManual: KeptManualPart[]
+  /** On-hand units across the changed, non-initial lines whose standard moves. */
+  revaluedQuantity: number
+  /** The day range {@link effectiveAt} must fall in (D-SC5). */
+  dateRange: RollDateRange
+}
+
+/** A `manual` standard the roll left alone; its ancestors roll from {@link standardCost}. */
+export interface KeptManualPart {
+  partId: string
+  partName: string | null
+  standardCost: number
+}
+
+/** Where a roll may be dated: from the latest movement of a part it revalues, up to now. */
+export interface RollDateRange {
+  /** Book-zone day of {@link StandardCostRollPlan.effectiveAt}, e.g. for "Posts Sep 30". */
+  effectiveDay: string
+  /** Start of the earliest allowed book day; `null` when the roll revalues nothing. */
+  earliestAt: Date | null
+  earliestDay: string | null
+  /** The revalued part whose latest movement sets {@link earliestAt}. */
+  earliestSetBy: { partId: string; partName: string | null; movedAt: Date } | null
+  /** Now: a roll is never dated in the future. */
+  latestAt: Date
 }
 
 /** What a roll DID. */
@@ -171,9 +195,11 @@ export interface RollStandardCostInput {
    *   re-value and because leaving it out is what used to make this throw on
    *   every built part in a fresh org: it would contribute a NULL stored standard
    *   and abort the parent rather than value it short.
+   *
+   * A `manual`-origin standard is rolled only when named here (D-SC3).
    */
   partIds?: string[]
-  /** When the new standards take effect. */
+  /** When the new standards take effect; the roll refuses one outside the plan's `dateRange`. */
   effectiveAt: Date
 }
 

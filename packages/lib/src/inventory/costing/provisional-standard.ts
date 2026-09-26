@@ -1,32 +1,8 @@
 // packages/lib/src/inventory/costing/provisional-standard.ts
 
-/**
- * `replaceProvisionalStandard` — the first receipt of a part whose standard was
- * a guess (73 §6.4).
- *
- * `ensureStandardCost` gives a part its first standard from four doors, three
- * of which are somebody typing a number before any purchase existed, and stamps
- * `part_standard_cost_source = provisional` on those. Under §6.2 rule 1 the
- * first real receipt of such a part would post `ppv = (agreed - guess) x qty` —
- * a variance that says "our guess was wrong", not "the price moved", polluting
- * 5090 with bootstrap noise forever.
- *
- * So the first receipt **replaces** the standard instead of varying against it:
- * the agreed price becomes the standard, the source becomes `confirmed`, and
- * whatever is already on the shelf at the guess is restated through the same
- * `revalue` movement the roll uses. From then on the part varies normally.
- *
- * 🛑 **`provisional` is the ONLY state this fires in.** A `confirmed` standard
- * is a price somebody paid and a NULL one predates the field; replacing either
- * would be a receipt silently moving an agreed standard, which is the moving
- * average the whole subsystem exists to avoid.
- *
- * U5 extends the replacement value from the agreed price to the landed estimate
- * (§7.2) and is what will read {@link ReplaceProvisionalStandardResult.replaced}
- * to skip the receipt's `ppv` leg. Nothing today emits one.
- *
- * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
- */
+// A receipt confirming a provisional standard (73 §6.4), and a typed cost restating a moved part
+// (09 D-SC2a): both price pending rows at the old standard, write, then revalue QoH x delta.
+// No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -35,6 +11,7 @@ import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
+import { BadRequestError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
@@ -44,6 +21,7 @@ import {
   publishFieldValueUpdates,
 } from '../../realtime'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
+import type { StandardCostOriginValue, StandardCostSourceValue } from './client'
 import { guard } from './guard'
 import { pricePendingMovements } from './price-pending-movements'
 import { writeRevaluation } from './revalue'
@@ -56,18 +34,43 @@ import {
 const logger = createScopedLogger('costing:provisional-standard')
 
 export interface ReplaceProvisionalStandardResult {
-  /**
-   * The standard moved. `false` is the ordinary answer — the part was already
-   * confirmed, has no standard at all, or the agreed price already matches.
-   *
-   * 🛑 A receipt must post NO `ppv` when this is `true`: there was never a
-   * price to vary from.
-   */
+  /** The standard moved. A receipt posts NO `ppv` when this is `true`: there was no price to vary from. */
   replaced: boolean
   previousStandard: number | null
   newStandard: number | null
-  /** Signed, minor units. What the on-hand restatement put through the ledger. */
+  /** Signed, minor units. What the on-hand restatement put through the ledger; 0 when nothing posted. */
   revaluationPostedMinor: number
+}
+
+/** `receipt` (default): a provisional standard only, confirmed. `typed`: any standard, stays provisional `manual`. */
+export type ReplaceStandardDoor = 'receipt' | 'typed'
+
+export interface ReplaceProvisionalStandardOptions {
+  occurredAt?: Date
+  door?: ReplaceStandardDoor
+}
+
+interface DoorRules {
+  source: StandardCostSourceValue
+  origin: StandardCostOriginValue
+  replacesConfirmed: boolean
+  reason: string
+}
+
+const DOORS: Record<ReplaceStandardDoor, DoorRules> = {
+  receipt: {
+    source: 'confirmed',
+    origin: 'receipt',
+    replacesConfirmed: false,
+    reason: 'First receipt confirmed a provisional standard',
+  },
+  // A typed cost stays provisional (73 §6.4): the first receipt still confirms it.
+  typed: {
+    source: 'provisional',
+    origin: 'manual',
+    replacesConfirmed: true,
+    reason: 'A typed standard cost restated the stock on hand',
+  },
 }
 
 const UNCHANGED: ReplaceProvisionalStandardResult = {
@@ -78,59 +81,59 @@ const UNCHANGED: ReplaceProvisionalStandardResult = {
 }
 
 /**
- * Replace a provisional standard with what was actually agreed, and revalue
- * whatever is on hand at the guess.
+ * Replace a part's standard and revalue what is on hand at the old one. `unitCost` is minor
+ * units at rate precision. A no-op on a part with no standard, a service, or (receipt door) a
+ * standard that is not `provisional`.
  *
- * `agreedUnitCost` is minor units at rate precision: the purchase order line's
- * agreed price today, the landed estimate once U5 lands.
- *
- * The order of the steps is the contract:
- *
- * 1. The part carries a stored `provisional` standard, or this is a no-op.
- * 2. The agreed price rounds to something positive and different, or a no-op —
- *    a receipt at the guess confirms the standard and revalues nothing.
- * 3. Price the part's `pending` rows at the GUESS (111 §1.2): they are in the
- *    quantity on hand step 5 restates, and a unit never valued has no delta.
- * 4. Write the four components, the effective date and `confirmed`.
- * 5. Post one `revalue` movement for `qty on hand x (agreed - guess)`.
- *
- * 🛑 **Step 4 before step 5.** The entry values the shelf at the new standard,
- * so the record has to carry it before the entry lands, or the close's
- * `qty x standard` check reads the two against each other and disagrees.
+ * Order is the contract: price pending rows at the OLD standard (111 §1.2), write the new one,
+ * then post `qty on hand x delta`, so the record carries the standard the entry values at.
  */
 export async function replaceProvisionalStandard(
   db: Database,
   organizationId: string,
   userId: string,
   partId: string,
-  agreedUnitCost: number,
-  options?: { occurredAt?: Date }
+  unitCost: number,
+  options?: ReplaceProvisionalStandardOptions
 ): Promise<Result<ReplaceProvisionalStandardResult, Error>> {
+  const door = options?.door ?? 'receipt'
+  const rules = DOORS[door]
   return guard(
     async () => {
       const context = await loadStandardCostWriteContext(db, organizationId)
       if (!context.allPartIds.has(partId)) return UNCHANGED
       if (context.partKinds.get(partId) === 'service') return UNCHANGED
-      if (context.standardCostSources.get(partId) !== 'provisional') return UNCHANGED
+      const source = context.standardCostSources.get(partId)
+      if (source !== 'provisional' && !rules.replacesConfirmed) return UNCHANGED
 
       const previousStandard = context.standardCosts.get(partId) ?? null
       if (previousStandard == null) return UNCHANGED
 
-      if (!Number.isFinite(agreedUnitCost) || agreedUnitCost <= 0) return UNCHANGED
-      const newStandard = roundMinorUnits(agreedUnitCost)
-      if (newStandard <= 0) return UNCHANGED
+      // A typed $0 is a value (103 §5a); a receipt at $0 is no price.
+      const valid = Number.isFinite(unitCost) && (door === 'typed' ? unitCost >= 0 : unitCost > 0)
+      if (!valid) {
+        if (door === 'typed') throw new BadRequestError('A unit cost must be zero or more')
+        return UNCHANGED
+      }
+      const newStandard = roundMinorUnits(unitCost)
+      if (door === 'receipt' && newStandard <= 0) return UNCHANGED
+      // A typed cost equal to the standard changes nothing, and must not downgrade a confirmed one.
+      if (door === 'typed' && newStandard === previousStandard) {
+        return { replaced: false, previousStandard, newStandard, revaluationPostedMinor: 0 }
+      }
 
       // Not quiet: a replace over units never valued is the double count §1.2 names.
       const priced = await pricePendingMovements(db, organizationId, [partId])
       if (priced.isErr()) throw priced.error
 
       const effectiveAt = options?.occurredAt ?? new Date()
-      await writeConfirmedStandard(db, organizationId, context, {
+      // A receipt confirms even at the stored price; only the revaluation is skipped then.
+      await writeReplacedStandard(db, organizationId, context, {
         partId,
         newStandard,
-        // A receipt confirms a standard even when the price it confirms is the
-        // one already stored; only the revaluation is skipped.
         effectiveAt,
+        source: rules.source,
+        origin: rules.origin,
       })
 
       const quantityOnHand = context.quantitiesOnHand.get(partId) ?? 0
@@ -148,15 +151,16 @@ export async function replaceProvisionalStandard(
             },
           ],
           occurredAt: effectiveAt,
-          reason: 'First receipt confirmed a provisional standard',
+          reason: rules.reason,
         })
         if (posted.isErr()) throw posted.error
         revaluationPostedMinor = posted.value.postedMinor
       }
 
-      logger.info('Replaced a provisional standard from a receipt', {
+      logger.info('Replaced a standard cost', {
         organizationId,
         partId,
+        door,
         previousStandard,
         newStandard,
         quantityOnHand,
@@ -170,24 +174,23 @@ export async function replaceProvisionalStandard(
         revaluationPostedMinor,
       }
     },
-    'Failed to replace a provisional standard cost',
-    { organizationId, partId }
+    'Failed to replace a standard cost',
+    { organizationId, partId, door }
   )
 }
 
-/**
- * The six field writes, through `setValueWithType` — the same hook-free writer
- * the roll and `ensureStandardCost` use.
- *
- * Labour and overhead go to zero for the same reason `ensureStandardCost`'s
- * explicit-cost branch zeroes them: the part is being STOCKED at a price a
- * vendor charged, not assembled, so the whole cost is material.
- */
-async function writeConfirmedStandard(
+/** The field writes, through the hook-free `setValueWithType`. Stocked, not assembled: all material. */
+async function writeReplacedStandard(
   db: Database,
   organizationId: string,
   context: StandardCostWriteContext,
-  args: { partId: string; newStandard: number; effectiveAt: Date }
+  args: {
+    partId: string
+    newStandard: number
+    effectiveAt: Date
+    source: StandardCostSourceValue
+    origin: StandardCostOriginValue
+  }
 ): Promise<void> {
   const fields: StandardCostFields = context.fields
   const recordId = toRecordId(context.partDefId, args.partId) as RecordId
@@ -204,10 +207,10 @@ async function writeConfirmedStandard(
       value: { type: 'date' as const, value: args.effectiveAt.toISOString() },
     },
     ...(fields.source
-      ? [{ field: fields.source, value: { type: 'option' as const, optionId: 'confirmed' } }]
+      ? [{ field: fields.source, value: { type: 'option' as const, optionId: args.source } }]
       : []),
     ...(fields.origin
-      ? [{ field: fields.origin, value: { type: 'option' as const, optionId: 'receipt' } }]
+      ? [{ field: fields.origin, value: { type: 'option' as const, optionId: args.origin } }]
       : []),
   ]
 

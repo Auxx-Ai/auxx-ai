@@ -232,6 +232,10 @@ vi.mock('../../costing/ensure-standard-cost', async () => {
     ),
   }
 })
+vi.mock('../../costing/roll-unvalued-ancestors', async () => {
+  const { ok } = await import('neverthrow')
+  return { rollUnvaluedAncestors: async () => ok([]) }
+})
 
 // The posting seam has its own tests. Mocked here so the receipt's own
 // `inventory_movement` entry adds no SELECTs of its own to the budget below.

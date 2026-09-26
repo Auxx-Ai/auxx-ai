@@ -1,6 +1,6 @@
 // packages/lib/src/inventory/costing/__tests__/set-standard-cost.test.ts
 
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
@@ -15,6 +15,9 @@ const h = vi.hoisted(() => ({
   },
   movedRows: [] as { partId: string }[],
   ensureStandardCost: vi.fn(),
+  replace: vi.fn(),
+  roll: vi.fn(),
+  edges: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   setValueWithType: vi.fn(async () => []),
   wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
   requestAccountingRecovery: vi.fn(async () => {}),
@@ -28,6 +31,9 @@ vi.mock('../standard-cost-queries', () => ({
   loadStandardCostWriteContext: async () => h.context,
 }))
 vi.mock('../ensure-standard-cost', () => ({ ensureStandardCost: h.ensureStandardCost }))
+vi.mock('../provisional-standard', () => ({ replaceProvisionalStandard: h.replace }))
+vi.mock('../roll-unvalued-ancestors', () => ({ rollUnvaluedAncestors: h.roll }))
+vi.mock('../cost-calculator', () => ({ loadOrgSubpartEdges: async () => h.edges }))
 vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
 vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../../../accounting/work-items/recovery', () => ({
@@ -89,6 +95,11 @@ beforeEach(() => {
   h.context.standardCostSources = new Map()
   h.context.partKinds = new Map()
   h.movedRows = []
+  h.edges = []
+  h.replace.mockImplementation(async () =>
+    ok({ replaced: true, previousStandard: 5000, newStandard: 4200, revaluationPostedMinor: -1600 })
+  )
+  h.roll.mockImplementation(async () => ok([]))
   h.ensureStandardCost.mockImplementation(async (_db, _org, partIds: string[]) =>
     ok({ writtenPartIds: partIds })
   )
@@ -100,7 +111,11 @@ describe('setStandardCost', () => {
 
     const result = await setStandardCost(db, ORG, { partId: 'p1', unitCost: 0 })
 
-    expect(result._unsafeUnwrap()).toEqual({ action: 'set', standardCost: 0 })
+    expect(result._unsafeUnwrap()).toEqual({
+      action: 'set',
+      standardCost: 0,
+      revaluationPostedMinor: 0,
+    })
     const [, , partIds, source] = h.ensureStandardCost.mock.calls[0]!
     expect(partIds).toEqual(['p1'])
     expect(source.kind).toBe('manual')
@@ -113,7 +128,12 @@ describe('setStandardCost', () => {
 
     const result = await setStandardCost(db, ORG, { partId: 'p1', unitCost: 4200 })
 
-    expect(result._unsafeUnwrap()).toEqual({ action: 'restated', standardCost: 4200 })
+    expect(result._unsafeUnwrap()).toEqual({
+      action: 'restated',
+      standardCost: 4200,
+      revaluationPostedMinor: 0,
+    })
+    expect(h.replace).not.toHaveBeenCalled()
     expect(h.ensureStandardCost).not.toHaveBeenCalled()
     const writes = new Map(
       h.setValueWithType.mock.calls.map((call) => {
@@ -134,23 +154,39 @@ describe('setStandardCost', () => {
     expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)
   })
 
-  it('refuses a confirmed standard and tells the person to roll', async () => {
-    part('p1', { standard: 5000, source: 'confirmed' })
+  // 09 D-SC2a: a moved part, provisional or confirmed, revalues through the typed door.
+  it.each([
+    ['a moved provisional', { source: 'provisional', moved: true }],
+    ['a confirmed', { source: 'confirmed', moved: true }],
+  ])('restates %s standard through the revaluing door', async (_label, opts) => {
+    part('p1', { standard: 5000, ...opts })
 
-    const result = await setStandardCost(db, ORG, { partId: 'p1', unitCost: 4200 })
+    const result = await setStandardCost(
+      db,
+      ORG,
+      { partId: 'p1', unitCost: 4200 },
+      { userId: 'u1' }
+    )
 
-    expect(result._unsafeUnwrapErr().message).toMatch(/roll/i)
+    expect(result._unsafeUnwrap()).toEqual({
+      action: 'restated',
+      standardCost: 4200,
+      revaluationPostedMinor: -1600,
+    })
+    expect(h.replace).toHaveBeenCalledWith(db, ORG, 'u1', 'p1', 4200, { door: 'typed' })
     expect(h.setValueWithType).not.toHaveBeenCalled()
-    expect(h.requestAccountingRecovery).not.toHaveBeenCalled()
+    expect(h.roll).not.toHaveBeenCalled()
+    expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)
   })
 
-  it('refuses a provisional standard on a part that has moved', async () => {
+  it('fails the entry when the revaluing door fails', async () => {
     part('p1', { standard: 5000, source: 'provisional', moved: true })
+    h.replace.mockImplementation(async () => err(new Error('pricing down')))
 
     const result = await setStandardCost(db, ORG, { partId: 'p1', unitCost: 4200 })
 
-    expect(result._unsafeUnwrapErr().message).toMatch(/stock movements.*roll/i)
-    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(result._unsafeUnwrapErr().message).toBe('pricing down')
+    expect(h.requestAccountingRecovery).not.toHaveBeenCalled()
   })
 
   it('refuses a service, a negative cost and an unknown part', async () => {
@@ -178,10 +214,75 @@ describe('setStandardCosts', () => {
 
     const outcomes = result._unsafeUnwrap()
     expect(outcomes.map((o) => [o.partId, o.ok])).toEqual([
-      ['conf', false],
+      ['conf', true],
       ['blank', true],
       ['prov', true],
     ])
     expect(h.requestAccountingRecovery).toHaveBeenCalledTimes(1)
+  })
+})
+
+// 09 D-SC3: a part with a BOM rolls from its components unless the person chose "Set cost instead".
+describe('a part with a bill of materials', () => {
+  beforeEach(() => {
+    h.edges = [{ parentPartId: 'fg', childPartId: 'leaf', quantity: 1 }]
+  })
+
+  it('refuses a typed cost and names the way out', async () => {
+    part('fg', { kind: 'finished_good' })
+
+    const result = await setStandardCost(db, ORG, { partId: 'fg', unitCost: 100 })
+
+    expect(result._unsafeUnwrapErr().message).toMatch(/bill of materials.*Set cost instead/)
+    expect(h.ensureStandardCost).not.toHaveBeenCalled()
+  })
+
+  it('writes it as manual with the override, through the same doors', async () => {
+    part('fg', { kind: 'finished_good' })
+    part('fg2', { kind: 'finished_good', standard: 900, source: 'confirmed', moved: true })
+    h.edges.push({ parentPartId: 'fg2', childPartId: 'leaf', quantity: 1 })
+
+    const result = await setStandardCosts(db, ORG, [
+      { partId: 'fg', unitCost: 100, overrideBom: true },
+      { partId: 'fg2', unitCost: 800, overrideBom: true },
+    ])
+
+    expect(result._unsafeUnwrap().map((o) => o.ok)).toEqual([true, true])
+    expect(h.ensureStandardCost.mock.calls[0]![3].kind).toBe('manual')
+    expect(h.replace).toHaveBeenCalledWith(db, ORG, 'user_system', 'fg2', 800, { door: 'typed' })
+  })
+})
+
+// 09 D-SC7: a first standard rolls the parents it completes, once per save.
+describe('rolling the parents of a first standard', () => {
+  it('rolls once, with every part that got a first standard', async () => {
+    part('a')
+    part('b')
+    part('c', { standard: 1, source: 'provisional' })
+
+    await setStandardCosts(
+      db,
+      ORG,
+      [
+        { partId: 'a', unitCost: 1 },
+        { partId: 'b', unitCost: 2 },
+        { partId: 'c', unitCost: 3 },
+      ],
+      { userId: 'u1' }
+    )
+
+    expect(h.roll).toHaveBeenCalledTimes(1)
+    expect(h.roll).toHaveBeenCalledWith(db, ORG, 'u1', ['a', 'b'])
+  })
+
+  it('does not roll when no first standard was written, and a failed roll fails nothing', async () => {
+    part('c', { standard: 1, source: 'provisional' })
+    await setStandardCost(db, ORG, { partId: 'c', unitCost: 3 })
+    expect(h.roll).not.toHaveBeenCalled()
+
+    part('a')
+    h.roll.mockImplementation(async () => err(new Error('roll down')))
+    const result = await setStandardCost(db, ORG, { partId: 'a', unitCost: 1 })
+    expect(result.isOk()).toBe(true)
   })
 })

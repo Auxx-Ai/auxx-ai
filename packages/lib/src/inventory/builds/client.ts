@@ -300,9 +300,7 @@ export function skipReasonLabel(skip: {
 }): string {
   switch (skip.reason) {
     case 'no-live-cost':
-      return 'no supplier price and no priced bill of materials'
-    case 'no-bill-of-materials':
-      return 'classified as buildable but has no bill of materials'
+      return 'no supplier price to roll from'
     case 'component-not-valuable':
       return skip.blockedByPartName
         ? `needs a price on "${skip.blockedByPartName}"`

@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   subparts: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   settings: {} as Record<string, unknown>,
   callOrder: [] as string[],
+  latestMovements: new Map<string, Date>(),
   writeRevaluation: vi.fn(async (..._args: unknown[]) => ({
     isErr: () => false,
     value: { movementIds: ['mv_1'], postedMinor: 0 },
@@ -145,6 +146,10 @@ vi.mock('../../../realtime', () => ({
 vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
 vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
 vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
+vi.mock('../dated-reads', () => ({
+  readLatestMovementAt: async (_org: string, partIds: readonly string[]) =>
+    new Map(partIds.map((id) => [id, h.latestMovements.get(id) ?? null])),
+}))
 
 import { rollStandardCost } from '../standard-cost'
 import { previewStandardCostRoll, readStandardCost } from '../standard-cost-queries'
@@ -207,6 +212,7 @@ beforeEach(() => {
   h.subparts = []
   h.settings = {}
   h.callOrder = []
+  h.latestMovements = new Map()
   h.writeRevaluation.mockImplementation(async () => ({
     isErr: () => false,
     value: { movementIds: ['mv_1'], postedMinor: 0 },
@@ -776,5 +782,157 @@ describe('planStandardCostRoll descendant widening', () => {
     expect(lift?.reason).toBe('component-not-valuable')
     // NOT the assembly in between, which nobody can price.
     expect(lift?.blockedByPartName).toBe('400Lbs Motor')
+  })
+})
+
+/** A part previously standardised at `standard`, with `origin` stamped. */
+function standardRows(partId: string, standard: number, origin: string) {
+  return [
+    fv(partId, FIELD.part_standard_cost!.id, { number: standard }),
+    fv(partId, FIELD.part_standard_material_cost!.id, { number: standard }),
+    fv(partId, FIELD.part_standard_labor_cost!.id, { number: 0 }),
+    fv(partId, FIELD.part_standard_overhead_cost!.id, { number: 0 }),
+    fv(partId, FIELD.part_standard_cost_effective_at!.id, { date: '2026-01-01T00:00:00.000Z' }),
+    fv(partId, FIELD.part_standard_cost_origin!.id, { option: origin }),
+  ]
+}
+
+describe('a manual standard (D-SC3)', () => {
+  /** Motor $22 live; the assembly holds a typed $50 and would roll to $29 from its BOM. */
+  function manualAssemblyOrg() {
+    h.subparts = liftSubparts()
+    queueOrg(PARTS, [
+      fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+      fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+      ...standardRows(MOTOR, 2000, 'receipt'),
+      fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      fv(ASSEMBLY, FIELD.part_labor_cost_per_unit!.id, { number: 500 }),
+      fv(ASSEMBLY, FIELD.part_overhead_cost_per_unit!.id, { number: 200 }),
+      ...standardRows(ASSEMBLY, 5000, 'manual'),
+      fv(LIFT, FIELD.part_kind!.id, { option: 'finished_good' }),
+      ...standardRows(LIFT, 1000, 'roll'),
+    ])
+  }
+
+  it('is left out of an org-wide roll, and its parent rolls from the stored number', async () => {
+    manualAssemblyOrg()
+    const plan = (
+      await previewStandardCostRoll(db, ORG, { effectiveAt: EFFECTIVE_AT })
+    )._unsafeUnwrap()
+
+    expect(plan.lines.map((line) => line.partId).sort()).toEqual([LIFT, MOTOR])
+    expect(plan.lines.find((line) => line.partId === LIFT)!.standardCost).toBe(10000)
+    expect(plan.keptManual).toEqual([
+      { partId: ASSEMBLY, partName: '400Lbs motor Assembly', standardCost: 5000 },
+    ])
+  })
+
+  it('stops the ancestor widening of a scoped roll below it', async () => {
+    manualAssemblyOrg()
+    const plan = (
+      await previewStandardCostRoll(db, ORG, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+    )._unsafeUnwrap()
+
+    expect(plan.lines.map((line) => line.partId)).toEqual([MOTOR])
+    expect(plan.keptManual.map((part) => part.partId)).toEqual([ASSEMBLY])
+  })
+
+  it('is rolled from its BOM when named explicitly', async () => {
+    manualAssemblyOrg()
+    const plan = (
+      await previewStandardCostRoll(db, ORG, { partIds: [ASSEMBLY], effectiveAt: EFFECTIVE_AT })
+    )._unsafeUnwrap()
+
+    const assembly = plan.lines.find((line) => line.partId === ASSEMBLY)!
+    // The motor is out of scope, so it contributes its stored $20 plus $7 conversion.
+    expect(assembly.standardCost).toBe(2700)
+    expect(assembly.changed).toBe(true)
+    expect(plan.lines.map((line) => line.partId)).toEqual([ASSEMBLY, LIFT])
+    expect(plan.keptManual).toEqual([])
+  })
+})
+
+describe('the roll date (D-SC5)', () => {
+  function revaluedMotorOrg() {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 40 }),
+        ...standardRows(MOTOR, 2000, 'receipt'),
+      ]
+    )
+  }
+
+  it('reports the floor, the part that sets it and the posting summary without refusing', async () => {
+    revaluedMotorOrg()
+    h.latestMovements.set(MOTOR, new Date('2026-09-01T15:30:00.000Z'))
+
+    const plan = (
+      await previewStandardCostRoll(db, ORG, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+    )._unsafeUnwrap()
+
+    expect(plan.dateRange.earliestDay).toBe('2026-09-01')
+    expect(plan.dateRange.earliestAt).toEqual(new Date('2026-09-01T00:00:00.000Z'))
+    expect(plan.dateRange.earliestSetBy).toMatchObject({ partId: MOTOR, partName: '400Lbs Motor' })
+    expect(plan.dateRange.effectiveDay).toBe('2026-08-27')
+    expect(plan.revaluedQuantity).toBe(40)
+    expect(plan.revaluationDelta).toBe(8000)
+  })
+
+  it('refuses a roll dated before the latest movement, naming the part and day', async () => {
+    revaluedMotorOrg()
+    h.latestMovements.set(MOTOR, new Date('2026-09-01T15:30:00.000Z'))
+
+    const result = await rollStandardCost(db, ORG, USER, {
+      partIds: [MOTOR],
+      effectiveAt: EFFECTIVE_AT,
+    })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toMatch(/2026-09-01.*400Lbs Motor/)
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+
+  it('allows the day of the latest movement itself', async () => {
+    revaluedMotorOrg()
+    h.latestMovements.set(MOTOR, new Date('2026-09-01T15:30:00.000Z'))
+
+    const result = await rollStandardCost(db, ORG, USER, {
+      partIds: [MOTOR],
+      effectiveAt: new Date('2026-09-01T00:00:00.000Z'),
+    })
+
+    expect(result.isOk()).toBe(true)
+  })
+
+  it('refuses a roll dated in the future', async () => {
+    revaluedMotorOrg()
+    const result = await rollStandardCost(db, ORG, USER, {
+      partIds: [MOTOR],
+      effectiveAt: new Date(Date.now() + 86_400_000),
+    })
+
+    expect(result._unsafeUnwrapErr().message).toMatch(/future/)
+  })
+
+  it('sets no floor on a first standard', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+      ]
+    )
+    h.latestMovements.set(MOTOR, new Date('2026-09-01T15:30:00.000Z'))
+
+    const result = await rollStandardCost(db, ORG, USER, {
+      partIds: [MOTOR],
+      effectiveAt: EFFECTIVE_AT,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().dateRange.earliestAt).toBeNull()
   })
 })

@@ -24,12 +24,7 @@
  * calculator re-reads the whole offer anyway; an override on a classified
  * offer wins under 29 §3.1 and comes out unchanged.
  *
- * ⚠️ No first-standard write here, unlike the trigger path. A rate cannot give
- * an unpriced part a cost - `part_cost` needs a unit price first - so there is
- * no part this can cost for the first time, and the sweep that priced it has
- * already stamped its first standard. Reaching `ensureFirstStandardCosts` from
- * here would also put a static `bom -> builds` edge under the `builds -> bom`
- * one that already exists.
+ * No standard is written here: a price only moves `part_cost` (09 D-SC1).
  *
  * No permission checks: the router asserts `part` edit, because `part` rows are
  * what this writes (`docs/lib-module-guide.md` §6).

@@ -76,6 +76,8 @@ const standardCostItem = z.object({
   unitCost: unitCostInput,
   /** A `PartKind` value, applied first through `bulkSetPartKind` so the 107 kind guard runs. */
   kind: z.string().min(1).optional(),
+  /** "Set cost instead" on a part with a BOM (D-SC3). */
+  overrideBom: z.boolean().optional(),
 })
 
 /** Per-item answer of `setStandardCosts`. `action` is absent when only the kind was written. */
@@ -84,6 +86,8 @@ interface SetStandardCostItemResult {
   ok: boolean
   error?: string
   action?: 'set' | 'restated'
+  /** Signed minor units the restate posted to revaluation; 0 when nothing posted. */
+  revaluationPostedMinor?: number
 }
 
 /** Money is stored in integer minor units (cents) everywhere in this subsystem. */
@@ -251,16 +255,22 @@ export const buildsRouter = createTRPCRouter({
   }),
 
   /**
-   * A typed unit cost for one part (106 §5): a first standard when there is none, a restate of
-   * a provisional standard on a part that has never moved, refused otherwise (roll instead).
+   * A typed unit cost for one part (106 §5, D-SC2a): a first standard, or a restate that revalues
+   * a moved part. A part with a BOM needs `overrideBom` (D-SC3).
    */
   setStandardCost: capabilityProcedure
-    .input(z.object({ partId: z.string().min(1), unitCost: unitCostInput }))
+    .input(
+      z.object({
+        partId: z.string().min(1),
+        unitCost: unitCostInput,
+        overrideBom: z.boolean().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const { organizationId } = ctx.session
+      const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
 
-      const result = await setStandardCost(ctx.db, organizationId, input)
+      const result = await setStandardCost(ctx.db, organizationId, input, { userId })
       if (result.isErr()) throw result.error
       return { partId: input.partId, ...result.value }
     }),
@@ -294,7 +304,7 @@ export const buildsRouter = createTRPCRouter({
       const costItems = input.items.filter(
         (item) => !failed.has(item.partId) && item.kind !== 'service'
       )
-      const costs = await setStandardCosts(ctx.db, organizationId, costItems)
+      const costs = await setStandardCosts(ctx.db, organizationId, costItems, { userId })
       if (costs.isErr()) throw costs.error
       const outcomes = new Map(costs.value.map((outcome) => [outcome.partId, outcome]))
 
@@ -308,7 +318,12 @@ export const buildsRouter = createTRPCRouter({
         if (kindError) results.push({ partId: item.partId, ok: false, error: kindError })
         else if (!outcome) results.push({ partId: item.partId, ok: true })
         else if (outcome.ok) {
-          results.push({ partId: item.partId, ok: true, action: outcome.action })
+          results.push({
+            partId: item.partId,
+            ok: true,
+            action: outcome.action,
+            revaluationPostedMinor: outcome.revaluationPostedMinor,
+          })
         } else results.push({ partId: item.partId, ok: false, error: outcome.error.message })
       }
       return results

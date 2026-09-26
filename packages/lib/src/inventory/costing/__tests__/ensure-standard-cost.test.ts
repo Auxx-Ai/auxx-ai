@@ -1,17 +1,6 @@
 // packages/lib/src/inventory/costing/__tests__/ensure-standard-cost.test.ts
 //
-// plans/money/tasks/15-costing-usability.md section 1. One rule carries the
-// whole safety argument:
-//
-//   🛑 it writes ONLY parts where `part_standard_cost IS NULL`, and never
-//      overwrites.
-//
-// Overwriting would turn a vendor-price change into an automatic revaluation of
-// on-hand inventory. The first two tests here are that rule, from both sides.
-//
-// Harness style follows `standard-cost.test.ts` next door: mock `@auxx/database`
-// so the schema is inert, hand the functions a fake `db` that replays queued
-// rows, and assert on the field-value writer's calls.
+// The first-standard writer: only the named cost, only where no standard exists (09 D-SC1).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,8 +10,6 @@ const h = vi.hoisted(() => ({
   queryQueue: [] as unknown[][],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   publishFieldValueUpdates: vi.fn(async () => {}),
-  subparts: [] as { parentPartId: string; childPartId: string; quantity: number }[],
-  settings: {} as Record<string, unknown>,
 }))
 
 vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
@@ -87,38 +74,6 @@ vi.mock('../../../cache', () => ({
   requireCachedEntityDefId: async () => 'part_def',
 }))
 
-vi.mock('../cost-calculator', () => ({
-  recalculateAllPartCosts: async () => [],
-  loadOrgPricingData: async () => ({ vendorPrices: [], subparts: h.subparts }),
-  buildSubpartGraph: (rows: typeof h.subparts) => {
-    const map = new Map<string, { childId: string; qty: number }[]>()
-    for (const row of rows) {
-      const children = map.get(row.parentPartId) ?? []
-      children.push({ childId: row.childPartId, qty: row.quantity })
-      map.set(row.parentPartId, children)
-    }
-    return map
-  },
-  buildParentGraph: (rows: typeof h.subparts) => {
-    const map = new Map<string, string[]>()
-    for (const row of rows) {
-      const parents = map.get(row.childPartId) ?? []
-      parents.push(row.parentPartId)
-      map.set(row.childPartId, parents)
-    }
-    return map
-  },
-}))
-
-vi.mock('../../../settings/settings-service', () => ({
-  getOrganizationSetting: async ({ key }: { key: string }) => h.settings[key] ?? null,
-}))
-
-vi.mock('../../../settings/read', () => ({
-  readOrganizationSettings: async (_organizationId: string, keys: readonly string[]) =>
-    Object.fromEntries(keys.map((key) => [key, h.settings[key] ?? null])),
-}))
-
 vi.mock('../../../field-values/field-value-helpers', () => ({
   createFieldValueContext: (organizationId: string, userId?: string) => ({
     organizationId,
@@ -161,27 +116,22 @@ function fv(
   }
 }
 
-/**
- * Queue one org read pass: every part instance, then every stored field value.
- *
- * `ensureStandardCost` makes one pass through `planStandardCostRoll`, and a
- * second one through `loadStandardCostWriteContext` only when the plan aborts.
- */
+/** Queue the two reads `loadStandardCostWriteContext` makes: parts, then field values. */
 function queueOrg(
   parts: { id: string; displayName: string | null }[],
-  fieldValues: ReturnType<typeof fv>[],
-  passes = 1
+  values: ReturnType<typeof fv>[]
 ) {
-  h.queryQueue = []
-  for (let i = 0; i < passes; i++) h.queryQueue.push(parts, fieldValues)
+  h.queryQueue = [parts, values]
 }
 
-/** Every `setValueWithType` call for one part, flattened to `[fieldId, value]`. */
+/** Every `setValueWithType` call for one part, as a map of fieldId to value. */
 function writesFor(partId: string) {
-  return h.setValueWithType.mock.calls
-    .map(([, params]) => params as { recordId: string; fieldId: string; value: unknown })
-    .filter((params) => params.recordId.includes(partId))
-    .map((params) => [params.fieldId, params.value] as const)
+  return new Map(
+    h.setValueWithType.mock.calls
+      .map(([, params]) => params as { recordId: string; fieldId: string; value: unknown })
+      .filter((params) => params.recordId.includes(partId))
+      .map((params) => [params.fieldId, params.value] as const)
+  )
 }
 
 const PARTS = [
@@ -190,128 +140,32 @@ const PARTS = [
   { id: TUBE, displayName: 'Support Tube' },
 ]
 
+const kind = (id: string, option: string) => fv(id, FIELD.part_kind!.id, { option })
+
 beforeEach(() => {
   vi.clearAllMocks()
   h.setValueWithType.mockImplementation(async () => [])
   h.queryQueue = []
-  h.subparts = []
-  h.settings = {}
 })
 
-describe('ensureStandardCost: the one rule', () => {
-  it('never overwrites a part that already has a standard cost', async () => {
+describe('ensureStandardCost', () => {
+  it('never overwrites a part that already has a standard, even with an explicit cost', async () => {
     queueOrg(
       [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        // The live cost moved to $22.00...
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-        // ...and the agreed standard is still $20.10, with stock valued at it.
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
-        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2010 }),
-        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 10 }),
-      ]
+      [kind(MOTOR, 'component'), fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 })]
     )
 
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
-    expect(result.isOk()).toBe(true)
-    // Writing here would revalue 10 units of on-hand stock because a vendor
-    // changed a price. That is the manual roll's decision, never this one's.
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-    expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
-  })
-
-  it('never overwrites even when the caller supplies an explicit unit cost', async () => {
-    queueOrg(
-      [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
-        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2010 }),
-      ]
-    )
-
-    // A receipt landing at $12.00 against a standard of $20.10 is a purchase
-    // price variance, not a new standard.
     const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'receipt', unitCost: 1200 })
 
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-})
-
-describe('ensureStandardCost: writing a first standard', () => {
-  it("writes all five fields from the part's live cost", async () => {
-    queueOrg(
-      [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-      ]
-    )
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-    const writes = new Map(writesFor(MOTOR))
-    expect(writes.get(FIELD.part_standard_material_cost!.id)).toEqual({
-      type: 'number',
-      value: 2200,
-    })
-    // A component was not assembled, so its conversion cost is zero as a fact.
-    expect(writes.get(FIELD.part_standard_labor_cost!.id)).toEqual({ type: 'number', value: 0 })
-    expect(writes.get(FIELD.part_standard_overhead_cost!.id)).toEqual({ type: 'number', value: 0 })
-    expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 2200 })
-    expect(writes.get(FIELD.part_standard_cost_effective_at!.id)).toMatchObject({ type: 'date' })
-    expect(h.publishFieldValueUpdates).toHaveBeenCalled()
-  })
-
-  // 111 Q22: the rows written pending for want of this standard are valued inline, after the
-  // wake that keeps the recovery lane as the backstop.
-  it('prices the written parts right after the wake', async () => {
-    queueOrg(
-      [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-      ]
-    )
-
-    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
-    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
-    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
-    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
-      h.wakeReasonCode.mock.invocationCallOrder[0]!
-    )
-  })
-
-  it('prices nothing when nothing was written', async () => {
-    queueOrg(
-      [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
-      ]
-    )
-
-    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
     expect(h.pricePending).not.toHaveBeenCalled()
   })
 
-  it('freezes exactly the explicit unit cost, ignoring the live cost', async () => {
+  it('freezes exactly the explicit cost as material, ignoring the live cost', async () => {
     queueOrg(
       [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        // A live replacement cost of $50.00 that has nothing to do with what
-        // was actually paid for the stock being opened.
-        fv(MOTOR, FIELD.part_cost!.id, { number: 5000 }),
-      ]
+      [kind(MOTOR, 'component'), fv(MOTOR, FIELD.part_cost!.id, { number: 5000 })]
     )
 
     const result = await ensureStandardCost(db, ORG, [MOTOR], {
@@ -320,9 +174,7 @@ describe('ensureStandardCost: writing a first standard', () => {
     })
 
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-    const writes = new Map(writesFor(MOTOR))
-    // The typed number, to the cent. It is being stocked, not built, so there
-    // is no conversion cost to absorb.
+    const writes = writesFor(MOTOR)
     expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 1200 })
     expect(writes.get(FIELD.part_standard_material_cost!.id)).toEqual({
       type: 'number',
@@ -330,262 +182,98 @@ describe('ensureStandardCost: writing a first standard', () => {
     })
     expect(writes.get(FIELD.part_standard_labor_cost!.id)).toEqual({ type: 'number', value: 0 })
     expect(writes.get(FIELD.part_standard_overhead_cost!.id)).toEqual({ type: 'number', value: 0 })
+    expect(writes.get(FIELD.part_standard_cost_effective_at!.id)).toMatchObject({ type: 'date' })
+    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
+      type: 'option',
+      optionId: 'opening_stock',
+    })
+    expect(h.publishFieldValueUpdates).toHaveBeenCalled()
   })
 
-  it('widens to an unvalued parent, so pricing a component makes it rollable', async () => {
-    h.subparts = [{ parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 2 }]
-    queueOrg(
-      [PARTS[0]!, PARTS[1]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-        fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
-      ]
-    )
+  it.each([
+    ['manual', 'provisional', 'manual'],
+    ['receipt', 'confirmed', 'receipt'],
+  ] as const)('stamps a %s cost %s, origin %s', async (door, source, origin) => {
+    queueOrg([PARTS[0]!], [kind(MOTOR, 'component')])
 
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
+    await ensureStandardCost(db, ORG, [MOTOR], { kind: door, unitCost: 1234 })
 
-    // Without the widening the assembly stays "Not rolled" one level up, which
-    // is the state 205 of 206 dev-org parts were in.
-    expect(result._unsafeUnwrap().writtenPartIds.sort()).toEqual([ASSEMBLY, MOTOR].sort())
-    expect(new Map(writesFor(ASSEMBLY)).get(FIELD.part_standard_cost!.id)).toEqual({
-      type: 'number',
-      value: 4400,
+    const writes = writesFor(MOTOR)
+    expect(writes.get(FIELD.part_standard_cost_source!.id)).toEqual({
+      type: 'option',
+      optionId: source,
+    })
+    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
+      type: 'option',
+      optionId: origin,
     })
   })
 
-  it('authors the write as the org system user', async () => {
-    queueOrg(
-      [PARTS[0]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
-      ]
+  it('prices the written parts right after the wake, as the system user', async () => {
+    queueOrg([PARTS[0]!], [kind(MOTOR, 'component')])
+
+    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 1 })
+
+    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      h.wakeReasonCode.mock.invocationCallOrder[0]!
     )
-
-    await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
-    // Nobody pressed a button. Attributing this to whoever edited a price would
-    // put a person's name on a decision the system made.
     const ctx = h.setValueWithType.mock.calls[0]?.[0] as { userId?: string }
     expect(ctx.userId).toBe(SYSTEM_USER)
   })
-})
 
-describe('ensureStandardCost: a service (107-D10)', () => {
-  it('never writes a standard for a service, from a live cost or an explicit one', async () => {
-    for (const source of [
-      { kind: 'supplier-price' as const },
-      { kind: 'opening-stock' as const, unitCost: 1200 },
-    ]) {
-      vi.clearAllMocks()
-      queueOrg(
-        [PARTS[0]!],
-        [
-          fv(MOTOR, FIELD.part_kind!.id, { option: 'service' }),
-          fv(MOTOR, FIELD.part_cost!.id, { number: 5000 }),
-        ]
-      )
-
-      const result = await ensureStandardCost(db, ORG, [MOTOR], source)
-
-      expect(result.isOk()).toBe(true)
-      expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
-      expect(h.setValueWithType).not.toHaveBeenCalled()
-    }
-  })
-})
-
-describe('ensureStandardCost: the doors it is called from', () => {
-  it('skips a part that cannot be valued at all, rather than failing', async () => {
-    queueOrg(
-      [PARTS[0]!],
-      // No `part_cost` and no bill of materials: nothing to freeze.
-      [fv(MOTOR, FIELD.part_kind!.id, { option: 'component' })]
-    )
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'supplier-price' })
-
-    // A post-commit hook that throws on a vendor-price save is worse than one
-    // that writes nothing.
-    expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
-  })
-
-  it('ignores a part id that does not exist', async () => {
-    queueOrg([], [])
-
-    const result = await ensureStandardCost(db, ORG, ['part_ghost'], {
-      kind: 'opening-stock',
-      unitCost: 1200,
-    })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-
-  it('writes the explicit cost even when planning the roll around it aborts', async () => {
-    // The motor's parent also contains an unpriced tube, so the roll cannot
-    // value the assembly and throws before returning a plan.
-    h.subparts = [
-      { parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 1 },
-      { parentPartId: ASSEMBLY, childPartId: TUBE, quantity: 4 },
-    ]
-    queueOrg(
-      PARTS,
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
-        fv(TUBE, FIELD.part_kind!.id, { option: 'component' }),
-      ],
-      // One pass for the plan, one for the fallback context after it aborts.
-      2
-    )
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], {
-      kind: 'opening-stock',
-      unitCost: 1200,
-    })
-
-    // Refusing to freeze a number somebody typed because an unrelated sibling
-    // has no price would make the create form unusable.
-    expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-    expect(new Map(writesFor(MOTOR)).get(FIELD.part_standard_cost!.id)).toEqual({
-      type: 'number',
-      value: 1200,
-    })
-    expect(writesFor(ASSEMBLY)).toEqual([])
-  })
-
-  // ⤵️ Was 'surfaces the failure when the roll aborts'. The roll no longer aborts
-  // on an unvaluable component — it skips it — so this door now returns OK
-  // having written nothing, which is what this module's header asked for all
-  // along: *"a post-commit hook that throws on a vendor-price save is worse than
-  // one that writes nothing"*. The `explicitCost` fallback below still guards
-  // the one case that can still throw, a circular bill of materials.
-  it('writes nothing, and does not fail, when the roll can value nothing', async () => {
-    h.subparts = [
-      { parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 1 },
-      { parentPartId: ASSEMBLY, childPartId: TUBE, quantity: 4 },
-    ]
+  it('infers nothing: no named cost writes nothing, and a parent is never widened in', async () => {
     queueOrg(PARTS, [
-      fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-      fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
-      fv(TUBE, FIELD.part_kind!.id, { option: 'component' }),
+      kind(MOTOR, 'component'),
+      fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+      kind(ASSEMBLY, 'subassembly'),
     ])
 
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual' })
+    expect(
+      (await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual' }))._unsafeUnwrap()
+    ).toEqual({ writtenPartIds: [] })
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+
+    queueOrg(PARTS, [kind(MOTOR, 'component'), kind(ASSEMBLY, 'subassembly')])
+    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 100 })
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
+    expect(writesFor(ASSEMBLY).size).toBe(0)
+  })
+
+  it('skips a service and an unknown id', async () => {
+    queueOrg([PARTS[0]!], [kind(MOTOR, 'service')])
+
+    const result = await ensureStandardCost(db, ORG, [MOTOR, 'part_ghost'], {
+      kind: 'opening-stock',
+      unitCost: 1200,
+    })
 
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 
-  it('refuses a zero or negative explicit unit cost', async () => {
-    queueOrg([PARTS[0]!], [])
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'receipt', unitCost: 0 })
-
-    // Every consumer reads a zero standard as "not rolled", so storing one would
-    // give the part a standard that nothing recognises.
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toMatch(/positive/i)
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-
-  it('does nothing at all for an empty part list', async () => {
-    const result = await ensureStandardCost(db, ORG, [], { kind: 'manual' })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-})
-
-describe('ensureStandardCost: a typed or channel cost (106 §4, §5)', () => {
-  function queueMotor(extra: ReturnType<typeof fv>[] = []) {
-    queueOrg([PARTS[0]!], [fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }), ...extra])
-  }
-
-  it('writes a manual cost as provisional, origin manual', async () => {
-    queueMotor()
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 1234 })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-    const writes = new Map(writesFor(MOTOR))
-    expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 1234 })
-    expect(writes.get(FIELD.part_standard_cost_source!.id)).toEqual({
-      type: 'option',
-      optionId: 'provisional',
-    })
-    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
-      type: 'option',
-      optionId: 'manual',
-    })
-  })
-
-  it('writes a channel cost as provisional, origin channel', async () => {
-    queueMotor()
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'channel', unitCost: 34696 })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-    const writes = new Map(writesFor(MOTOR))
-    expect(writes.get(FIELD.part_standard_cost!.id)).toEqual({ type: 'number', value: 34696 })
-    expect(writes.get(FIELD.part_standard_cost_source!.id)).toEqual({
-      type: 'option',
-      optionId: 'provisional',
-    })
-    expect(writes.get(FIELD.part_standard_cost_origin!.id)).toEqual({
-      type: 'option',
-      optionId: 'channel',
-    })
-  })
-
-  it('accepts zero from a person and from a channel', async () => {
-    for (const kind of ['manual', 'channel'] as const) {
+  it('accepts zero from a person or a count, refuses it from a receipt, refuses negatives', async () => {
+    for (const door of ['manual', 'opening-stock'] as const) {
       vi.clearAllMocks()
-      queueMotor()
-
-      const result = await ensureStandardCost(db, ORG, [MOTOR], { kind, unitCost: 0 })
-
+      queueOrg([PARTS[0]!], [kind(MOTOR, 'component')])
+      const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: door, unitCost: 0 })
       expect(result._unsafeUnwrap().writtenPartIds).toEqual([MOTOR])
-      expect(new Map(writesFor(MOTOR)).get(FIELD.part_standard_cost!.id)).toEqual({
-        type: 'number',
-        value: 0,
-      })
     }
-  })
 
-  it('refuses a negative cost from a person', async () => {
-    queueMotor()
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: -1 })
-
-    expect(result.isErr()).toBe(true)
-    expect(h.setValueWithType).not.toHaveBeenCalled()
-  })
-
-  it('never overwrites a standard with a channel cost', async () => {
-    queueMotor([fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 })])
-
-    const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'channel', unitCost: 999 })
-
-    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
+    vi.clearAllMocks()
+    const receipt = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'receipt', unitCost: 0 })
+    expect(receipt._unsafeUnwrapErr().message).toMatch(/positive/i)
+    const negative = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: -1 })
+    expect(negative.isErr()).toBe(true)
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 
   it('freezes a different explicit cost per part from `unitCosts`', async () => {
-    queueOrg(
-      [PARTS[0]!, PARTS[2]!],
-      [
-        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
-        fv(TUBE, FIELD.part_kind!.id, { option: 'component' }),
-      ]
-    )
+    queueOrg([PARTS[0]!, PARTS[2]!], [kind(MOTOR, 'component'), kind(TUBE, 'component')])
 
     const result = await ensureStandardCost(db, ORG, [MOTOR, TUBE], {
-      kind: 'channel',
+      kind: 'manual',
       unitCosts: new Map([
         [MOTOR, 1000],
         [TUBE, 250],
@@ -593,13 +281,20 @@ describe('ensureStandardCost: a typed or channel cost (106 §4, §5)', () => {
     })
 
     expect(result._unsafeUnwrap().writtenPartIds.sort()).toEqual([MOTOR, TUBE].sort())
-    expect(new Map(writesFor(MOTOR)).get(FIELD.part_standard_cost!.id)).toEqual({
+    expect(writesFor(MOTOR).get(FIELD.part_standard_cost!.id)).toEqual({
       type: 'number',
       value: 1000,
     })
-    expect(new Map(writesFor(TUBE)).get(FIELD.part_standard_cost!.id)).toEqual({
+    expect(writesFor(TUBE).get(FIELD.part_standard_cost!.id)).toEqual({
       type: 'number',
       value: 250,
     })
+  })
+
+  it('does nothing at all for an empty part list', async () => {
+    const result = await ensureStandardCost(db, ORG, [], { kind: 'manual', unitCost: 1 })
+
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
+    expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 })

@@ -14,10 +14,12 @@
 
 import { type Database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { dayKeyInZone, startOfDayInstant } from '@auxx/utils/calendar-day'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { requireCachedEntityDefId } from '../../cache'
-import { UnprocessableEntityError } from '../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import {
   isUsableStoredStandard,
@@ -28,6 +30,7 @@ import {
   type StandardCostSourceValue,
 } from './client'
 import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from './cost-calculator'
+import { readLatestMovementAt } from './dated-reads'
 import { guard } from './guard'
 import {
   computeStandardCosts,
@@ -38,7 +41,9 @@ import {
 } from './standard-cost-roll'
 import type {
   AbsorptionRates,
+  KeptManualPart,
   PartStandardCost,
+  RollDateRange,
   RollStandardCostInput,
   StandardCostRollLine,
   StandardCostRollPlan,
@@ -60,7 +65,7 @@ const ROLL_ATTRIBUTES = [
   'part_overhead_cost_per_unit',
 ] as const
 
-/** The five `part_standard_*` fields the roll owns. `rollStandardCost` is their only writer. */
+/** The `part_standard_*` fields the roll reads and writes, plus its read-only inputs. */
 export interface StandardCostFields {
   material: CustomFieldEntity
   labor: CustomFieldEntity
@@ -72,7 +77,7 @@ export interface StandardCostFields {
    * has not run reads every standard as sourceless.
    */
   source: CustomFieldEntity | null
-  /** `part_standard_cost_origin` (106 D9). Absent on an org short of migration 190; never read back. */
+  /** `part_standard_cost_origin` (106 D9). Absent on an org short of migration 190. */
   origin?: CustomFieldEntity | null
   /** Read-only inputs. Absent on an org whose earlier migrations have not run. */
   partKind: CustomFieldEntity | null
@@ -190,8 +195,8 @@ export interface StoredPartValues {
   effectiveDates: Map<string, string>
   /** `part_standard_cost_source` as stored. Absence means nobody has stamped one. */
   standardCostSources: Map<string, StandardCostSourceValue>
-  /** Parts carrying a `part_standard_cost_origin`: what makes a stored `0` a standard. */
-  standardCostOrigins: Set<string>
+  /** `part_standard_cost_origin` as stored; presence is what makes a stored `0` a standard. */
+  standardCostOrigins: Map<string, string>
   /** `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, only where non-NULL. */
   laborRates: Map<string, number>
   overheadRates: Map<string, number>
@@ -212,7 +217,7 @@ async function loadStoredPartValues(
     standardCosts: new Map(),
     effectiveDates: new Map(),
     standardCostSources: new Map(),
-    standardCostOrigins: new Set(),
+    standardCostOrigins: new Map(),
     laborRates: new Map(),
     overheadRates: new Map(),
   }
@@ -273,7 +278,7 @@ async function loadStoredPartValues(
       const source = resolveStandardCostSource(row.optionId)
       if (source) values.standardCostSources.set(row.entityId, source)
     } else if (fields.origin && row.fieldId === fields.origin.id) {
-      if (row.optionId != null) values.standardCostOrigins.add(row.entityId)
+      if (row.optionId != null) values.standardCostOrigins.set(row.entityId, row.optionId)
     } else if (fields.laborRate && row.fieldId === fields.laborRate.id) {
       // `!= null`, not truthiness: a stored `0` is a declared zero and stores `0`, not NULL.
       if (row.valueNumber != null) values.laborRates.set(row.entityId, row.valueNumber)
@@ -358,14 +363,32 @@ export async function planStandardCostRoll(
   // children, and leaving those out reproduces the same abort one level up.
   const requested = input.partIds?.filter((id) => allPartIds.has(id)) ?? []
   const usableStandards = usableStoredStandards(stored)
+  // D-SC3: a `manual` standard is rolled only when named; elsewhere it contributes as stored.
+  const manual = new Set<string>()
+  for (const [partId, origin] of stored.standardCostOrigins) {
+    if (origin === 'manual' && usableStandards.has(partId) && !requested.includes(partId)) {
+      manual.add(partId)
+    }
+  }
+  // Scoped: the manual parts the upward walk stopped at. Org-wide: every one.
   let scope: Set<string>
+  let kept: string[]
   if (input.partIds && input.partIds.length > 0) {
-    const upward = widenToAncestors(requested, parentGraph)
+    const upward = widenToAncestors(requested, parentGraph, manual)
     const downward = widenToUnvaluedDescendants(upward, subpartGraph, usableStandards)
     scope = new Set([...upward, ...downward].filter((id) => allPartIds.has(id)))
+    kept = [...manual].filter((id) =>
+      (subpartGraph.get(id) ?? []).some((edge) => upward.has(edge.childId))
+    )
   } else {
-    scope = allPartIds
+    scope = new Set([...allPartIds].filter((id) => !manual.has(id)))
+    kept = [...manual].filter((id) => allPartIds.has(id))
   }
+  const keptManual: KeptManualPart[] = kept.map((partId) => ({
+    partId,
+    partName: partNames.get(partId) ?? null,
+    standardCost: usableStandards.get(partId) as number,
+  }))
 
   const computation = computeStandardCosts({
     scope,
@@ -382,6 +405,7 @@ export async function planStandardCostRoll(
   const lines: StandardCostRollLine[] = []
   let revaluationDelta = 0
   let initialValue = 0
+  let revaluedQuantity = 0
 
   // Filled as the bottom-up walk goes, so a parent reads the source its
   // children are about to be written with rather than the one they carry now.
@@ -401,6 +425,7 @@ export async function planStandardCostRoll(
 
     revaluationDelta += lineDelta
     initialValue += lineInitial
+    if (!isInitial && next.standardCost !== previousStandardCost) revaluedQuantity += quantityOnHand
 
     const previousSource = stored.standardCostSources.get(partId) ?? null
     const standardCostSource = rolledStandardCostSource(
@@ -458,7 +483,55 @@ export async function planStandardCostRoll(
       skipped: computation.skipped,
       standardCount,
       confirmedStandardCount,
+      keptManual,
+      revaluedQuantity,
+      dateRange: await readRollDateRange(organizationId, input.effectiveAt, lines, partNames),
     },
+  }
+}
+
+/**
+ * D-SC5: a roll is dated no earlier than the book day of the latest movement of any part it
+ * revalues, so that day's QoH is today's; never after now. Initial lines post nothing, so they
+ * set no floor. The floor is the day's start, which is what `instantForBookDay` gives a past day.
+ */
+async function readRollDateRange(
+  organizationId: string,
+  effectiveAt: Date,
+  lines: readonly StandardCostRollLine[],
+  partNames: ReadonlyMap<string, string>
+): Promise<RollDateRange> {
+  const zone = await readBookTimeZoneOrUtc(organizationId)
+  const revalued = lines.filter((line) => line.changed && !line.isInitial).map((l) => l.partId)
+  const latest = await readLatestMovementAt(organizationId, revalued)
+
+  let setBy: RollDateRange['earliestSetBy'] = null
+  for (const [partId, movedAt] of latest) {
+    if (movedAt && (!setBy || movedAt > setBy.movedAt)) {
+      setBy = { partId, partName: partNames.get(partId) ?? null, movedAt }
+    }
+  }
+  const earliestDay = setBy ? dayKeyInZone(setBy.movedAt, zone) : null
+  return {
+    effectiveDay: dayKeyInZone(effectiveAt, zone),
+    earliestAt: earliestDay ? startOfDayInstant(earliestDay, zone) : null,
+    earliestDay,
+    earliestSetBy: setBy,
+    latestAt: new Date(),
+  }
+}
+
+/** Refuse a roll dated outside {@link RollDateRange}; the preview only reports the range. */
+export function assertRollDateAllowed(plan: StandardCostRollPlan): void {
+  const { effectiveAt, dateRange } = plan
+  if (dateRange.earliestAt && effectiveAt < dateRange.earliestAt && dateRange.earliestSetBy) {
+    const { partName, partId } = dateRange.earliestSetBy
+    throw new BadRequestError(
+      `A roll can't be dated before ${dateRange.earliestDay}: "${partName ?? partId}" last moved that day.`
+    )
+  }
+  if (effectiveAt > new Date()) {
+    throw new BadRequestError('A standard cost roll cannot be dated in the future.')
   }
 }
 

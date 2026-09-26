@@ -12,6 +12,9 @@ const h = vi.hoisted(() => ({
     instance: { id: 'mv_new' },
   })),
   ensureSpy: vi.fn(),
+  rollSpy: vi.fn(),
+  setStandardSpy: vi.fn(),
+  withBom: new Set<string>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   batchQohSpy: vi.fn(async () => {}),
   upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
@@ -78,6 +81,16 @@ vi.mock('../receipt-queries', async () => {
   }
 })
 vi.mock('../../costing/ensure-standard-cost', () => ({ ensureStandardCost: h.ensureSpy }))
+vi.mock('../../costing/roll-unvalued-ancestors', () => ({ rollUnvaluedAncestors: h.rollSpy }))
+vi.mock('../../costing/set-standard-cost', async () => {
+  const { BadRequestError } = await import('../../../errors')
+  return {
+    setStandardCost: h.setStandardSpy,
+    readPartIdsWithBom: async (_db: unknown, _org: string, ids: string[]) =>
+      new Set(ids.filter((id) => h.withBom.has(id))),
+    bomRefusal: () => new BadRequestError('rolls from its bill of materials'),
+  }
+})
 vi.mock('../../costing/qoh', () => ({ batchRecalculateQoH: h.batchQohSpy }))
 vi.mock('../../costing/dated-reads', () => ({
   readPartNetThrough: async (_org: string, ids: string[]) => new Map(ids.map((id) => [id, h.net])),
@@ -112,6 +125,13 @@ beforeEach(() => {
   h.initial = null
   h.zone = 'UTC'
   h.createSpy.mockResolvedValue({ instance: { id: 'mv_new' } })
+  h.withBom = new Set()
+  h.rollSpy.mockImplementation(async () => (await import('neverthrow')).ok([]))
+  h.setStandardSpy.mockImplementation(async (_db: unknown, _org: string, entry) => {
+    h.standardCost = entry.unitCost
+    const { ok } = await import('neverthrow')
+    return ok({ action: 'restated', standardCost: entry.unitCost, revaluationPostedMinor: 700 })
+  })
   h.ensureSpy.mockImplementation(async (_db: unknown, _org: string, _ids: string[], source) => {
     const { ok } = await import('neverthrow')
     if (h.standardCost == null && source.unitCost != null) h.standardCost = source.unitCost
@@ -359,6 +379,68 @@ describe('cost', () => {
       stock_movement_cost_basis: 'standard',
     })
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('rolls the parents a counted first standard completes, as the counter (D-SC7)', async () => {
+    const result = await count({ quantity: 3, unitCost: 1200, actorUserId: 'user_1' })
+    expect(h.rollSpy).toHaveBeenCalledWith(db, ORG, 'user_1', ['part_1'])
+    expect(result.standardCostChange).toEqual({
+      action: 'set',
+      standardCost: 1200,
+      revaluationPostedMinor: 0,
+    })
+  })
+
+  // 09 §12.2: the typed cost used to be dropped silently on a part that had a standard.
+  it('restates an existing standard through the typed door and writes the row at the new one', async () => {
+    h.standardCost = 500
+    const result = await count({ quantity: 3, unitCost: 1200, actorUserId: 'user_1' })
+    expect(h.setStandardSpy).toHaveBeenCalledWith(
+      db,
+      ORG,
+      { partId: 'part_1', unitCost: 1200 },
+      { userId: 'user_1' }
+    )
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+    expect(h.rollSpy).not.toHaveBeenCalled()
+    expect(result.standardCostChange).toMatchObject({
+      action: 'restated',
+      revaluationPostedMinor: 700,
+    })
+    expect(written()).toMatchObject({ stock_movement_unit_cost: 1200 })
+  })
+
+  it('leaves a standard that matches the typed cost alone', async () => {
+    h.standardCost = 1200
+    const result = await count({ quantity: 3, unitCost: 1200 })
+    expect(h.setStandardSpy).not.toHaveBeenCalled()
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+    expect(result.standardCostChange).toBeNull()
+  })
+
+  it('applies a typed cost even when the count itself is unchanged', async () => {
+    h.standardCost = 500
+    h.net = 42
+    const result = await count({ unitCost: 1200 })
+    expect(result.outcome).toBe('unchanged')
+    expect(result.standardCostChange).toMatchObject({ action: 'restated' })
+  })
+
+  it('refuses a typed cost on a part with a BOM, first standard or not (D-SC3)', async () => {
+    h.withBom.add('part_1')
+    for (const standard of [null, 500]) {
+      h.standardCost = standard
+      const result = await setCount(db, ORG, {
+        partId: 'part_1',
+        quantity: 3,
+        day: D,
+        unitCost: 1200,
+      })
+      expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
+    }
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+    expect(h.setStandardSpy).not.toHaveBeenCalled()
+    expect(h.createSpy).not.toHaveBeenCalled()
   })
 
   it('writes a PENDING row with no cost keys and parks it when the part has no standard', async () => {

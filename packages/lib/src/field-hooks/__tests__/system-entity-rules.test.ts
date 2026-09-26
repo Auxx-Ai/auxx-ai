@@ -92,11 +92,7 @@ describe('registerEntitySystemRules — declarations', () => {
     )
   })
 
-  // 🛑 `derivePartKind` promotes the parent to `subassembly`, and the recalc that
-  // follows ends in `ensureFirstStandardCosts`. `absorbsConversionCost` is false
-  // for a `component`, so a roll that ran first would freeze a standard with no
-  // labour or overhead in it on exactly the parts the promotion exists to make
-  // buildable (plans/money/tasks/23 §4.1).
+  // `derivePartKind` promotes the parent first so the recalc reads the promoted kind (23 §4.1).
   it('derives part kind BEFORE the cost recalc on subpart create', () => {
     const created = getSystemRuleDeclarations().find(
       (d) => d.defSlug === 'subparts' && d.on === 'created'

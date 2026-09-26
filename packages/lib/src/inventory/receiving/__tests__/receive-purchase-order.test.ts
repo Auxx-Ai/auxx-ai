@@ -130,6 +130,10 @@ vi.mock('../../costing/provisional-standard', async () => {
 vi.mock('../../costing/ensure-standard-cost', () => ({
   ensureStandardCost: h.ensureSpy,
 }))
+vi.mock('../../costing/roll-unvalued-ancestors', async () => {
+  const { ok } = await import('neverthrow')
+  return { rollUnvaluedAncestors: async () => ok([]) }
+})
 
 vi.mock('../../../field-hooks/post/purchase-order-line-rollups', () => ({
   PURCHASE_ORDER_LINE_ROLLUPS: {

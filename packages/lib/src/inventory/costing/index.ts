@@ -1,6 +1,5 @@
 // packages/lib/src/inventory/costing/index.ts
 
-export { seedStandardFromChannelCost } from './channel-cost-seed'
 export {
   absorbedRate,
   absorbsConversionCost,
@@ -37,9 +36,8 @@ export {
 } from './cost-reads'
 export { type CostWrite, writeCostValues } from './cost-writer'
 // Dated ledger reads (111 D23 / Q26): the replay behind backflush and the count re-anchor.
-export { readEarliestMovementAt, readPartNetThrough } from './dated-reads'
-// The ONLY writer of a FIRST standard cost (plans/money/tasks/15 §1). It never
-// overwrites, which is what makes it safe to call from a post-commit hook.
+export { readEarliestMovementAt, readLatestMovementAt, readPartNetThrough } from './dated-reads'
+// A FIRST standard from a cost a door names (receipt, count, typed). It never overwrites.
 export {
   type EnsureStandardCostResult,
   type EnsureStandardCostSource,
@@ -52,10 +50,11 @@ export {
   pricePendingMovements,
   pricePendingMovementsQuietly,
 } from './price-pending-movements'
-// The first receipt of a part whose standard was a guess (73 §6.4). U5's
-// receipt path reads `replaced` to skip its `ppv` leg.
+// A receipt confirming a provisional standard (73 §6.4), or a typed cost on a moved part (D-SC2a).
 export {
+  type ReplaceProvisionalStandardOptions,
   type ReplaceProvisionalStandardResult,
+  type ReplaceStandardDoor,
   replaceProvisionalStandard,
 } from './provisional-standard'
 export { batchRecalculateQoH } from './qoh'
@@ -76,11 +75,16 @@ export {
   type WriteRevaluationResult,
   writeRevaluation,
 } from './revalue'
-// A typed unit cost (106 §5): a first standard, or a restate of an unmoved provisional one.
+export { rollUnvaluedAncestors } from './roll-unvalued-ancestors'
+// A typed unit cost (106 §5, D-SC2a, D-SC3).
 export {
+  bomRefusal,
   readMovedPartIds,
+  readPartIdsWithBom,
+  type SetStandardCostOptions,
   type StandardCostEntry,
   type StandardCostEntryOutcome,
+  type StandardCostWrite,
   setStandardCost,
   setStandardCosts,
 } from './set-standard-cost'
@@ -105,8 +109,10 @@ export {
 export type {
   AbsorptionRates,
   FulfillmentLineRelievedAverage,
+  KeptManualPart,
   PartLedgerAverage,
   PartStandardCost,
+  RollDateRange,
   RollStandardCostInput,
   SkippedPart,
   SkipReason,

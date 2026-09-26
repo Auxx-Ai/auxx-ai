@@ -11,6 +11,7 @@
  */
 
 import type { DayKey } from '@auxx/utils/calendar-day'
+import type { StandardCostWrite } from '../costing/set-standard-cost'
 import type { MovementRecord } from '../movements/types'
 
 /** A single-line receipt: this many of this part arrived, at this price. */
@@ -132,9 +133,8 @@ export interface SetCountInput {
   /** The count day, `YYYY-MM-DD` in the book time zone. Defaults to today there. */
   day?: DayKey
   /**
-   * What a unit cost, minor units at `RATE_DECIMALS`; zero is a real cost (103 §5a).
-   * Becomes the part's FIRST `part_standard_cost` when it has none; the row is valued at
-   * the standard the part holds after that, or written `pending` when it holds none.
+   * What a unit cost, minor units at `RATE_DECIMALS`; zero is a real cost (103 §5a). Sets or
+   * restates the part's standard (see `setCount`); the row is valued at the standard after that.
    */
   unitCost?: number
   /** Who counted. Defaults to the org's system user. */
@@ -158,6 +158,8 @@ export interface SetCountResult {
   movement: MovementRecord | null
   /** The row took no cost (111 Q18) and is parked at stage `price`. */
   pending: boolean
+  /** What the typed `unitCost` did to the standard; `null` when none was typed or it matched. */
+  standardCostChange: StandardCostWrite | null
 }
 
 /**

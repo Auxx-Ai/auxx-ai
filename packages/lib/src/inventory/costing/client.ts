@@ -159,3 +159,32 @@ export function isUsableStoredStandard(
   if (standardCost == null || !Number.isFinite(standardCost) || standardCost < 0) return false
   return standardCost > 0 || hasOrigin
 }
+
+/** A prefilled standard for a person to accept, and where it came from (09 D-SC4). */
+export interface StandardCostSuggestion {
+  unitCost: number
+  source: 'supplier' | 'channel'
+  /** The other source's cost when both exist and differ, shown as a hint. */
+  other: { unitCost: number; source: 'supplier' | 'channel' } | null
+}
+
+/** Supplier landed cost first, else the channel's cost; a stored `0` is "no price" and never suggested. */
+export function suggestStandardCost(
+  purchaseCost: number | null | undefined,
+  channelCost: number | null | undefined
+): StandardCostSuggestion | null {
+  const supplier = positive(purchaseCost)
+  const channel = positive(channelCost)
+  if (supplier != null) {
+    const other =
+      channel != null && channel !== supplier
+        ? { unitCost: channel, source: 'channel' as const }
+        : null
+    return { unitCost: supplier, source: 'supplier', other }
+  }
+  return channel != null ? { unitCost: channel, source: 'channel', other: null } : null
+}
+
+function positive(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) && value > 0 ? roundMinorUnits(value) : null
+}

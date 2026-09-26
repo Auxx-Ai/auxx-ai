@@ -1,7 +1,8 @@
 // packages/lib/src/inventory/costing/standard-cost.ts
 
 /**
- * `rollStandardCost` — the ONLY writer of the five `part_standard_*` fields.
+ * `rollStandardCost`: values parts from their live cost or BOM. One of several standard writers
+ * (typed cost, PO receipt and Set counts write one too).
  *
  * plans/products/build/01-build-plan.md sections 2.2 and 2.2a, README B11.
  *
@@ -9,7 +10,7 @@
  *
  * | | `part_cost` | `part_standard_cost` |
  * | --- | --- | --- |
- * | written by | `recalculateAffectedParts`, on every vendor-price or BOM change | this function, only when a person runs it |
+ * | written by | `recalculateAffectedParts`, on every vendor-price or BOM change | this roll, a typed cost, a receipt or a count; never on its own |
  * | answers | "what would this cost to build today" | "what we have agreed to value it at" |
  * | stamped onto movements | never | every one |
  *
@@ -49,7 +50,11 @@ import { recalculateAllPartCosts } from './cost-calculator'
 import { guard } from './guard'
 import { pricePendingMovementsQuietly } from './price-pending-movements'
 import { type RevaluationLine, writeRevaluation } from './revalue'
-import { planStandardCostRoll, type StandardCostFields } from './standard-cost-queries'
+import {
+  assertRollDateAllowed,
+  planStandardCostRoll,
+  type StandardCostFields,
+} from './standard-cost-queries'
 import type { RollStandardCostInput, StandardCostRollLine, StandardCostRollResult } from './types'
 
 const logger = createScopedLogger('builds:standard-cost')
@@ -80,7 +85,8 @@ interface PendingWrite {
  * 2. Plan the roll. **Bottom-up**, because a parent read before its children
  *    have their new standard picks up the old one; and when `partIds` is scoped,
  *    **widened to every ancestor**, because a finished good whose subassembly
- *    just moved is carrying a standard built from the old number.
+ *    just moved is carrying a standard built from the old number. Refuse a date
+ *    outside the plan's `dateRange` (D-SC5).
  * 3. Write only what changed, and stamp `standardCostEffectiveAt` on those parts
  *    only — a standard that did not move took effect earlier, and moving its
  *    date forward would erase the one signal that says how stale it is. The
@@ -118,6 +124,7 @@ export async function rollStandardCost(
         organizationId,
         input
       )
+      assertRollDateAllowed(plan)
 
       // Step 3.
       const writtenPartIds = await persistStandardCosts(db, organizationId, userId, {
