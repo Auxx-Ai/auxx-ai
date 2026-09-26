@@ -382,9 +382,12 @@ export class OrganizationCacheService {
    */
   async invalidateAndRecompute(orgId: string, keys: readonly OrgCacheKeyName[]): Promise<void> {
     const redis = await this.getRedis()
+    // Derived keys read their source through the cache, so they recompute after it.
+    const derived = derivedKeysOf(keys)
+    const primary = keys.filter((key) => !derived.includes(key))
 
     await Promise.all(
-      keys.map(async (keyName) => {
+      primary.map(async (keyName) => {
         const lk = this.localKey(keyName, orgId)
 
         // Bump the generation FIRST. Any recompute already in flight — including
@@ -420,6 +423,8 @@ export class OrganizationCacheService {
         }
       })
     )
+
+    if (derived.length > 0) await this.invalidateAndRecompute(orgId, derived)
   }
 
   /**
@@ -427,7 +432,8 @@ export class OrganizationCacheService {
    * Uses Redis SCAN to find and delete matching keys by prefix.
    * Does NOT recompute — next read per org will trigger lazy recompute.
    */
-  async flushKeyForAllOrgs(keys: readonly OrgCacheKeyName[]): Promise<void> {
+  async flushKeyForAllOrgs(requested: readonly OrgCacheKeyName[]): Promise<void> {
+    const keys = [...new Set([...requested, ...derivedKeysOf(requested)])]
     for (const keyName of keys) {
       this.localCache.deleteByPrefix(ORG_CACHE_KEY_CONFIG[keyName].prefix)
     }
@@ -459,7 +465,9 @@ export class OrganizationCacheService {
    * Does NOT recompute — next read will trigger recompute.
    */
   async flush(orgId: string, keys?: readonly OrgCacheKeyName[]): Promise<void> {
-    const keysToFlush = keys ?? (Object.keys(ORG_CACHE_KEY_CONFIG) as OrgCacheKeyName[])
+    const keysToFlush = keys
+      ? [...new Set([...keys, ...derivedKeysOf(keys)])]
+      : (Object.keys(ORG_CACHE_KEY_CONFIG) as OrgCacheKeyName[])
     const redis = await this.getRedis()
 
     for (const keyName of keysToFlush) {
@@ -478,4 +486,13 @@ export class OrganizationCacheService {
       }
     }
   }
+}
+
+/** Keys computed from another key's cached value; invalidating the source invalidates these too. */
+const DERIVED_ORG_KEYS: Partial<Record<OrgCacheKeyName, readonly OrgCacheKeyName[]>> = {
+  resources: ['resourceNav'],
+}
+
+function derivedKeysOf(keys: readonly OrgCacheKeyName[]): OrgCacheKeyName[] {
+  return [...new Set(keys.flatMap((key) => DERIVED_ORG_KEYS[key] ?? []))]
 }

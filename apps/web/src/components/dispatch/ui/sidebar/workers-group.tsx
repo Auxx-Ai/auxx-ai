@@ -75,8 +75,7 @@ function DroppableWorkerRow({
       ref={setNodeRef}
       className={cn(
         'rounded-md transition-colors duration-150 ease-in-out',
-        // Inset variants (entity-folder.tsx's recipe) — the sidebar clips overflow, so a
-        // non-inset ring/outline gets cut off at the group edges.
+        // Inset variants: the sidebar clips overflow, so a non-inset ring/outline gets cut off.
         isCompatibleDrag && 'outline-dashed outline-1 outline-primary/30 [outline-offset:-1px]',
         isCompatibleDrag &&
           isOver &&

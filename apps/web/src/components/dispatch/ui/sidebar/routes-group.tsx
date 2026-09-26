@@ -75,7 +75,7 @@ interface RoutesGroupProps {
 /**
  * Sidebar Routes group (v3 sidebar plan §1.2, map mode only) — one folder-style row per worker
  * (color dot + name + stop count + hover 3-dot menu with Suggest route / Apply times, patterned
- * on `entity-folder.tsx`) collapsing into `SidebarMenuSub` stop rows. Stop rows are whole-row
+ * on the sidebar tree's `sidebar-folder.tsx`) collapsing into `SidebarMenuSub` stop rows. Stop rows are whole-row
  * draggable `useSortable`s (`useRoutePlannerDragEnd` still owns reorders and cross-list drops;
  * the shared `AppDragOverlay` renders the cursor ghost), click through to the record drawer via
  * `onSelectVisit`, and carry a hover X that unassigns the visit back to the backlog.
@@ -215,8 +215,8 @@ function WorkerStopSection({
 
   return (
     // The whole section (header row + stop list) is ONE drop target — a drag can land on the
-    // worker even while their stop list is collapsed. Inset ring/outline (entity-folder.tsx's
-    // recipe): the sidebar clips overflow, so non-inset variants get cut off at the edges.
+    // worker even while their stop list is collapsed. Inset ring/outline: the sidebar clips
+    // overflow, so non-inset variants get cut off at the edges.
     <SidebarMenuItem
       ref={setDroppableRef}
       className={cn(
@@ -294,9 +294,8 @@ function WorkerStopSection({
                       variant='ghost'
                       size='icon'
                       className={cn(
-                        'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                        'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50 data-[state=open]:opacity-100 data-[state=open]:bg-primary-200/50 data-[state=open]:text-foreground/50',
                         {
-                          'bg-primary-200 opacity-100': menuOpen,
                           'sm:group-hover/item:opacity-100': !menuOpen,
                         }
                       )}
@@ -409,7 +408,7 @@ function StopRow({
 
   return (
     <SidebarMenuSubItem>
-      {/* `asChild` + div root (entity-folder.tsx's recipe): the row hosts a nested remove
+      {/* `asChild` + div root: the row hosts a nested remove
           <Button>, so its own root must not be a <button>. */}
       <SidebarMenuSubButton asChild className='h-7 py-0 pe-[3px]'>
         <div

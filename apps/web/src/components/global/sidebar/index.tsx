@@ -12,18 +12,13 @@ import type * as React from 'react'
 import { GETTING_STARTED_GOALS } from '~/components/getting-started/client'
 import { GettingStartedGroup } from '~/components/getting-started/ui/getting-started-group'
 import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
-import { SIDEBAR_MENU } from '~/constants/menu'
 import { useAccess } from '~/providers/capabilities-provider'
 import AppFooter from './app-footer'
-import { EntitySidebarNav } from './entity-sidebar-nav'
-import { FavoritesSidebar } from './favorites-sidebar'
-import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
 import { QuickActionsNav } from './quick-actions-nav'
 import { useSidebarItemActions } from './sidebar-item-actions'
-import { SidebarStateProvider } from './sidebar-state-context'
+import { SidebarTree } from './tree/sidebar-tree'
 
-const navMain = { title: 'Main', items: SIDEBAR_MENU, route: '/app' }
 type Prop = {
   // organizations: { id: string; name: string; logo: React.ReactNode }[]
   user: {
@@ -37,7 +32,7 @@ type Prop = {
   // slug: string
 } & React.ComponentProps<typeof Sidebar>
 
-/** Main application sidebar component with localStorage-persisted open/closed states */
+/** Main application sidebar; collapse state lives in the cookie-backed `useSidebarState` store. */
 export default function AppSidebar({ user, ...props }: Prop) {
   const { editItems, dialogs } = useSidebarItemActions()
   const { can } = useAccess()
@@ -47,7 +42,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
   // shared one inbox keeps the group.
 
   return (
-    <SidebarStateProvider>
+    <>
       <Sidebar {...props}>
         <SidebarHeader>
           <SidebarMenu>
@@ -57,9 +52,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
         </SidebarHeader>
         <SidebarContent className='gap-0'>
           {can('inboxes.view') && <MailSidebar />}
-          <NavMain menu={navMain} itemActions={editItems} />
-          <FavoritesSidebar />
-          <EntitySidebarNav />
+          <SidebarTree navActions={editItems} />
         </SidebarContent>
         <SidebarFooter>
           <GettingStartedGroup checklistId='main' catalog={GETTING_STARTED_GOALS} />
@@ -67,6 +60,6 @@ export default function AppSidebar({ user, ...props }: Prop) {
         </SidebarFooter>
       </Sidebar>
       {dialogs}
-    </SidebarStateProvider>
+    </>
   )
 }

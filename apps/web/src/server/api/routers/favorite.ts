@@ -13,6 +13,7 @@ import {
 } from '@auxx/lib/favorites'
 import { FAVORITE_FOLDER_TITLE_MAX, type FavoriteTargetIdsMap } from '@auxx/lib/favorites/client'
 import { findMemberByUser } from '@auxx/lib/members'
+import { isFavoriteItem, type SidebarNodeEntity } from '@auxx/lib/sidebar-layout/client'
 import { TRPCError } from '@trpc/server'
 import type { Result } from 'neverthrow'
 import { z } from 'zod'
@@ -100,10 +101,17 @@ function unwrap<T>(result: Result<T, Error>): T {
 }
 
 export const favoriteRouter = createTRPCRouter({
-  /** List the user's favorites for the active organization. Served from cache. */
+  /** The user's favorite items and folders in the active organization. Served from cache. */
   list: protectedProcedure.query(async ({ ctx }) => {
-    const cache = getUserCache()
-    return cache.get(ctx.session.userId, 'userFavorites', ctx.session.organizationId)
+    const nodes = await getUserCache().get(
+      ctx.session.userId,
+      'userSidebar',
+      ctx.session.organizationId
+    )
+    return nodes.filter(
+      (node): node is SidebarNodeEntity & { nodeType: 'ITEM' | 'FOLDER' } =>
+        node.nodeType === 'FOLDER' || isFavoriteItem(node)
+    )
   }),
 
   add: protectedProcedure.input(addInput).mutation(async ({ ctx, input }) => {

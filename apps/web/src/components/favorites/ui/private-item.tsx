@@ -1,25 +1,15 @@
 // apps/web/src/components/favorites/ui/private-item.tsx
 'use client'
 
-import { DropdownMenuItem } from '@auxx/ui/components/dropdown-menu'
-import { BookmarkX, Lock } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import { SidebarNavItem } from '~/components/global/sidebar/sidebar-nav-item'
-import { useRemoveFavorite } from '../hooks/use-remove-favorite'
 
 /**
  * Rendered when a favorite's target can't be resolved — it was deleted, is no
- * longer accessible (404 / 403), or never finished loading. Always removable.
+ * longer accessible (404 / 403), or never finished loading. The sidebar tree's
+ * row menu keeps it removable.
  */
 export function PrivateItem({ favoriteId }: { favoriteId: string }) {
-  const handleRemove = useRemoveFavorite(favoriteId)
-
-  const editItems = (
-    <DropdownMenuItem onClick={handleRemove}>
-      <BookmarkX />
-      Remove from favorites
-    </DropdownMenuItem>
-  )
-
   return (
     <SidebarNavItem
       id={favoriteId}
@@ -27,7 +17,6 @@ export function PrivateItem({ favoriteId }: { favoriteId: string }) {
       href='#'
       icon={<Lock />}
       isSubmenu
-      editItems={editItems}
       className='text-muted-foreground italic'
     />
   )

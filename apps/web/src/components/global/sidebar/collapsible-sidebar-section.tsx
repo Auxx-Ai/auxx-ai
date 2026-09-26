@@ -19,8 +19,17 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { MoreVertical } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { type MouseEvent, memo, type ReactNode, useCallback, useEffect, useState } from 'react'
-import { useSidebarState } from '~/hooks/use-sidebar-state'
+import {
+  type HTMLAttributes,
+  type MouseEvent,
+  memo,
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react'
+import { useSidebarSectionOpen, useSidebarStateActions } from '~/hooks/use-sidebar-state'
 
 interface CollapsibleSidebarSectionProps {
   title: string
@@ -35,7 +44,7 @@ interface CollapsibleSidebarSectionProps {
   href?: string
   isActive: boolean
   preventNavigation?: boolean
-  /** Optional unique identifier for localStorage persistence of open/closed state */
+  /** Persists open/closed state in the shared sidebar store when set. */
   sectionId?: string
   /** Dropdown content rendered inside a hover-revealed More button (e.g. "Create view"). */
   actions?: ReactNode
@@ -43,6 +52,11 @@ interface CollapsibleSidebarSectionProps {
   isVisible?: boolean
   /** Called when the edit-mode visibility checkbox is toggled. */
   onToggleVisibility?: () => void
+  /** Ref + props for the root `<li>` (sortable bindings). */
+  rootRef?: Ref<HTMLLIElement>
+  rootProps?: HTMLAttributes<HTMLLIElement>
+  /** Extra node rendered first inside the root `<li>` (e.g. an absolutely positioned button). */
+  rootAddon?: ReactNode
 }
 
 function CollapsibleSidebarSectionComponent({
@@ -60,16 +74,16 @@ function CollapsibleSidebarSectionComponent({
   actions,
   isVisible = true,
   onToggleVisibility,
+  rootRef,
+  rootProps,
+  rootAddon,
 }: CollapsibleSidebarSectionProps) {
   const router = useRouter()
 
-  const sidebarState = useSidebarState()
-
-  const persistedOpen = sectionId ? sidebarState.getSectionOpen(sectionId, defaultOpen) : null
-
+  const { toggleSection } = useSidebarStateActions()
+  const persistedOpen = useSidebarSectionOpen(sectionId, defaultOpen)
   const [localOpen, setLocalOpen] = useState(defaultOpen)
-
-  const isOpen = persistedOpen ?? localOpen
+  const isOpen = sectionId ? persistedOpen : localOpen
 
   const [actionsOpen, setActionsOpen] = useState(false)
 
@@ -87,11 +101,11 @@ function CollapsibleSidebarSectionComponent({
 
   const toggleOpen = useCallback(() => {
     if (sectionId) {
-      sidebarState.toggleSection(sectionId)
+      toggleSection(sectionId, defaultOpen)
     } else {
       setLocalOpen((previous) => !previous)
     }
-  }, [sectionId, sidebarState])
+  }, [sectionId, defaultOpen, toggleSection])
 
   const handleContainerClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -124,7 +138,8 @@ function CollapsibleSidebarSectionComponent({
   const showActionsButton = !!actions && !isEditMode
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem ref={rootRef} {...rootProps}>
+      {rootAddon}
       <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip={title}>
         <div
           onClick={handleContainerClick}
@@ -189,9 +204,8 @@ function CollapsibleSidebarSectionComponent({
                       variant='ghost'
                       size='icon'
                       className={cn(
-                        'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                        'size-6 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50 data-[state=open]:opacity-100 data-[state=open]:bg-primary-200/50 data-[state=open]:text-foreground/50',
                         {
-                          'bg-primary-200 opacity-100': actionsOpen,
                           'sm:group-hover/collapsible:opacity-100': !actionsOpen,
                         }
                       )}

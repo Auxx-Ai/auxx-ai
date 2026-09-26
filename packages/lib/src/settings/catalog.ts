@@ -119,6 +119,14 @@ const sidebarSettings = {
     defaultValue: {}, // Record<folderId, entityId[]>
     description: 'Ordered entity IDs within each Records sidebar folder (membership + order)',
   },
+  // SidebarLayoutSnapshot (sidebar-layout/types.ts); null = the code default.
+  'sidebar.defaultLayout': {
+    scope: 'SIDEBAR',
+    access: 'org',
+    fieldType: 'JSON',
+    defaultValue: null,
+    description: 'Org default sidebar layout for members who have not customized theirs',
+  },
 } satisfies Record<string, SettingConfig>
 
 /**

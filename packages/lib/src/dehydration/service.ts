@@ -16,6 +16,7 @@ import { getOrgCache, getUserCache } from '../cache'
 import type { CachedSubscription } from '../cache/org-cache-keys'
 import { getCapabilities } from '../permissions'
 import { SETTINGS_CATALOG } from '../settings'
+import type { DehydratedSidebar } from '../sidebar-layout/types'
 import type { DehydratedEnvironment, DehydratedOrganization, DehydratedState } from './types'
 
 const logger = createScopedLogger('dehydration-service')
@@ -163,7 +164,29 @@ export class DehydrationService {
       }
     }
 
-    // 5. Assemble (pure function, no DB calls)
+    // 5. The member's sidebar tree + def projection, so first paint renders the whole sidebar.
+    let sidebar: DehydratedSidebar | undefined
+    if (organizationId) {
+      const [nodes, resourceNav] = await Promise.allSettled([
+        this.userCache.get(userId, 'userSidebar', organizationId),
+        this.orgCache.get(organizationId, 'resourceNav'),
+      ])
+      if (nodes.status === 'fulfilled') {
+        sidebar = {
+          nodes: nodes.value,
+          ...(resourceNav.status === 'fulfilled' ? { resourceNav: resourceNav.value } : {}),
+        }
+      }
+      for (const failed of [nodes, resourceNav]) {
+        if (failed.status === 'rejected') {
+          logger.warn('Failed to load sidebar during dehydration', {
+            error: failed.reason instanceof Error ? failed.reason.message : String(failed.reason),
+          })
+        }
+      }
+    }
+
+    // 6. Assemble (pure function, no DB calls)
     return {
       user: userProfile,
       organizationId,
@@ -172,6 +195,7 @@ export class DehydrationService {
       environment: buildEnvironment(),
       timestamp: Date.now(),
       resourceIdMap,
+      sidebar,
     }
   }
 

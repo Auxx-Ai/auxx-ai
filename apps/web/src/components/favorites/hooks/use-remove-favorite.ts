@@ -1,9 +1,10 @@
 // apps/web/src/components/favorites/hooks/use-remove-favorite.ts
 'use client'
 
+import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
+import { useSidebarNodesApi } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
 import { api } from '~/trpc/react'
-import { useFavoritesStore } from '../store/favorites-store'
 
 /**
  * Remove a favorite from the sidebar. Optimistically drops it from the store,
@@ -11,14 +12,18 @@ import { useFavoritesStore } from '../store/favorites-store'
  * so a favorite is always removable — including while its target is still loading.
  */
 export function useRemoveFavorite(favoriteId: string) {
-  const removeById = useFavoritesStore((s) => s.removeById)
+  const store = useSidebarNodesApi()
   const utils = api.useUtils()
-  const removeMutation = api.favorite.remove.useMutation({
-    onSuccess: () => void utils.favorite.list.invalidate(),
+  const { mutate } = api.favorite.remove.useMutation({
+    onSuccess: () => void utils.sidebar.list.invalidate(),
+    onError: (error) => {
+      toastError({ title: 'Could not remove favorite', description: error.message })
+      void utils.sidebar.list.invalidate()
+    },
   })
 
   return useCallback(() => {
-    removeById(favoriteId)
-    removeMutation.mutate({ favoriteId })
-  }, [favoriteId, removeById, removeMutation])
+    store.getState().removeById(favoriteId)
+    mutate({ favoriteId })
+  }, [favoriteId, store, mutate])
 }

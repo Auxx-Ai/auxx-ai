@@ -5,9 +5,12 @@ import { SidebarInset, SidebarProvider } from '@auxx/ui/components/sidebar'
 import { toastSuccess } from '@auxx/ui/components/toast'
 import {
   type Active,
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
+  MeasuringStrategy,
   PointerSensor,
   pointerWithin,
   TouchSensor,
@@ -20,17 +23,19 @@ import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
 import { SyncStatusCard } from '~/components/channels/ui/sync-status/sync-status-card'
 import { DemoBanner } from '~/components/demo/demo-banner'
-import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
-import { useFavoriteDragEnd } from '~/components/favorites/hooks/use-favorite-drag-end'
 import { AppDragOverlay } from '~/components/global/app-drag-overlay'
 import { NotificationPanelRoot } from '~/components/global/notifications/notification-panel-root'
 import { SecondarySidebarPrefsProvider } from '~/components/global/secondary-sidebar-provider'
 import AppSidebar from '~/components/global/sidebar'
 import { SidebarDragPeek } from '~/components/global/sidebar/sidebar-drag-peek'
+import { isSidebarNodeDrag } from '~/components/global/sidebar/tree/sidebar-drop-rules'
+import { useSidebarDnd } from '~/components/global/sidebar/tree/use-sidebar-dnd'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import { KopilotRuntime } from '~/components/kopilot/ui/kopilot-runtime'
 import { useThreadMutation } from '~/components/threads/hooks'
+import type { SidebarPersistedState } from '~/hooks/sidebar-state-store'
 import { useOverages } from '~/hooks/use-overages'
+import { SidebarStateProvider } from '~/hooks/use-sidebar-state'
 import {
   useDehydratedOrganization,
   useDehydratedOrganizationId,
@@ -52,6 +57,9 @@ const ONBOARDING_BOUNCE_KEY = 'auxx:onboarding-bounce-at'
  */
 const ONBOARDING_BOUNCE_WINDOW_MS = 15_000
 
+/** Sidebar drag previews reflow rows outside the changed lists, so every rect is re-measured. */
+const SIDEBAR_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
+
 type Props = {
   user?: any
   children: React.ReactNode
@@ -61,6 +69,8 @@ type Props = {
   defaultSidebarWidth?: number
   /** SSR-provided from the `secondary_sidebar` cookies, for every section's `SidebarSecondary`. */
   defaultSecondarySidebar?: { open?: boolean; width?: number }
+  /** SSR group/section collapse state from the `sidebar_collapse` cookie. */
+  defaultSidebarCollapse?: SidebarPersistedState
 }
 
 export const Dashboard = ({
@@ -70,6 +80,7 @@ export const Dashboard = ({
   defaultSidebarOpen,
   defaultSidebarWidth,
   defaultSecondarySidebar,
+  defaultSidebarCollapse,
 }: Props) => {
   const pathname = usePathname()
   const router = useRouter()
@@ -153,13 +164,35 @@ export const Dashboard = ({
 
   // Use unified mutation hook for optimistic updates
   const { updateBulk } = useThreadMutation()
-  const handleFavoriteDragEnd = useFavoriteDragEnd()
+  const sidebarDnd = useSidebarDnd()
+
+  const collisionDetection = useCallback<CollisionDetection>(
+    (args) =>
+      isSidebarNodeDrag(args.active) ? sidebarDnd.collisionDetection(args) : pointerWithin(args),
+    [sidebarDnd]
+  )
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      if (isSidebarNodeDrag(event.active)) sidebarDnd.onDragOver(event)
+    },
+    [sidebarDnd]
+  )
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDragId(null)
+    setActiveDndItem(null)
+    sidebarDnd.onDragCancel()
+  }, [sidebarDnd])
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
       setActiveDragId(null)
       setActiveDndItem(null)
+
+      // Before the no-over bail-out: a preview that already moved still commits when over is null or self.
+      if (isSidebarNodeDrag(active)) return sidebarDnd.onDragEnd(event)
 
       if (!over || active.id === over.id) return
 
@@ -187,12 +220,8 @@ export const Dashboard = ({
         }
         return
       }
-
-      if (isSidebarFavoriteDrag(active)) {
-        handleFavoriteDragEnd(activeData as Parameters<typeof handleFavoriteDragEnd>[0], overData)
-      }
     },
-    [updateBulk, handleFavoriteDragEnd]
+    [updateBulk, sidebarDnd]
   )
 
   // Render nothing while the redirect above is in flight. This sits BELOW every
@@ -204,39 +233,49 @@ export const Dashboard = ({
   }
 
   return (
-    <SidebarProvider resizable defaultOpen={defaultSidebarOpen} initialWidth={defaultSidebarWidth}>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={pointerWithin}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}>
-        <SidebarDragPeek />
-        <DndStateProvider activeDndItem={activeDndItem}>
-          <div className='flex h-screen overflow-hidden w-full'>
-            <AppSidebar className='min-w-0' user={user} />
-            {/* Safe-area insets live on the content surface (not the bare
+    <SidebarStateProvider initialState={defaultSidebarCollapse}>
+      <SidebarProvider
+        resizable
+        defaultOpen={defaultSidebarOpen}
+        initialWidth={defaultSidebarWidth}>
+        {/* A fixed id keeps dnd-kit's aria-describedby stable between SSR and hydration. */}
+        <DndContext
+          id='app-shell'
+          sensors={sensors}
+          collisionDetection={collisionDetection}
+          measuring={isSidebarNodeDrag(activeDndItem) ? SIDEBAR_DRAG_MEASURING : undefined}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}>
+          <SidebarDragPeek />
+          <DndStateProvider activeDndItem={activeDndItem}>
+            <div className='flex h-screen overflow-hidden w-full'>
+              <AppSidebar className='min-w-0' user={user} />
+              {/* Safe-area insets live on the content surface (not the bare
                 shell) so its bg paints full-bleed to the screen edges while
                 content stays clear of the notch / home indicator. */}
-            <SidebarInset className='min-h-0 pt-safe pb-safe pl-safe pr-safe'>
-              <DemoBanner />
-              <OverageBanner overages={overages} />
-              <SecondarySidebarPrefsProvider
-                defaultOpen={defaultSecondarySidebar?.open}
-                defaultWidth={defaultSecondarySidebar?.width}>
-                {children}
-              </SecondarySidebarPrefsProvider>
-            </SidebarInset>
-            <KopilotDock />
-            {/* Headless turn runner + task-notification watches. Sibling of the
+              <SidebarInset className='min-h-0 pt-safe pb-safe pl-safe pr-safe'>
+                <DemoBanner />
+                <OverageBanner overages={overages} />
+                <SecondarySidebarPrefsProvider
+                  defaultOpen={defaultSecondarySidebar?.open}
+                  defaultWidth={defaultSecondarySidebar?.width}>
+                  {children}
+                </SecondarySidebarPrefsProvider>
+              </SidebarInset>
+              <KopilotDock />
+              {/* Headless turn runner + task-notification watches. Sibling of the
                 dock — it must stay alive when the dock renders null (kopilot
                 page, panel closed). */}
-            <KopilotRuntime />
-          </div>
-        </DndStateProvider>
-        <AppDragOverlay />
-      </DndContext>
-      <NotificationPanelRoot />
-      <SyncStatusCard />
-    </SidebarProvider>
+              <KopilotRuntime />
+            </div>
+          </DndStateProvider>
+          <AppDragOverlay />
+        </DndContext>
+        <NotificationPanelRoot />
+        <SyncStatusCard />
+      </SidebarProvider>
+    </SidebarStateProvider>
   )
 }

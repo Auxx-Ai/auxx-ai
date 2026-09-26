@@ -3,9 +3,10 @@
 
 import type { FavoriteTargetIdsMap, FavoriteTargetType } from '@auxx/lib/favorites/client'
 import { favoriteTargetKey } from '@auxx/lib/favorites/client'
+import { isFavoriteItem } from '@auxx/lib/sidebar-layout/client'
 import type * as React from 'react'
 import { useMemo } from 'react'
-import { useFavoritesStore } from '~/components/favorites/store/favorites-store'
+import { useSidebarNodes } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
 import type { EntitySwitcherItem } from './entity-switcher-list'
 
 /** Group id used by the default Favorites/All partition. */
@@ -63,20 +64,23 @@ export function useEntitySwitcherOrder<T extends FavoriteTargetType = FavoriteTa
   groups,
   favorite,
 }: UseEntitySwitcherOrderInput<T>): EntitySwitcherOrder {
-  const favoritesById = useFavoritesStore((s) => s.byId)
+  const sidebarNodes = useSidebarNodes((s) => s.nodes)
 
   // Every favorited target key the store holds. One pass, reused by every row —
   // `useFavoriteForTarget` is a hook and can't be called per item.
   const favoritedKeys = useMemo(() => {
     const keys = new Set<string>()
-    for (const fav of Object.values(favoritesById)) {
-      if (fav.nodeType !== 'ITEM' || !fav.targetType || !fav.targetIds) continue
+    for (const fav of sidebarNodes) {
+      if (!isFavoriteItem(fav) || !fav.targetIds) continue
       keys.add(
-        favoriteTargetKey(fav.targetType, fav.targetIds as FavoriteTargetIdsMap[FavoriteTargetType])
+        favoriteTargetKey(
+          fav.targetType as FavoriteTargetType,
+          fav.targetIds as FavoriteTargetIdsMap[FavoriteTargetType]
+        )
       )
     }
     return keys
-  }, [favoritesById])
+  }, [sidebarNodes])
 
   const isFavorited = useMemo(
     () => (item: EntitySwitcherItem) =>

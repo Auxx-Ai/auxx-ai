@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { getSession } from '~/auth/session'
 import { AppDialog } from '~/components/apps/host/app-dialog'
 import { AppsProvider } from '~/components/apps/providers/apps-provider'
+import { parseSidebarState, SIDEBAR_COLLAPSE_COOKIE } from '~/hooks/sidebar-state-store'
 import { AppLayoutWrapper } from './_components/app-layout-wrapper'
 
 interface AppLayoutProps {
@@ -34,6 +35,8 @@ export default async function AppLayout({ children }: AppLayoutProps) {
   const cookieStore = await cookies()
   const sidebar = readSidebarCookies(cookieStore, 'sidebar_state')
   const secondarySidebar = readSidebarCookies(cookieStore, 'secondary_sidebar')
+  const collapseCookie = cookieStore.get(SIDEBAR_COLLAPSE_COOKIE)?.value
+  const sidebarCollapse = collapseCookie ? parseSidebarState(collapseCookie) : undefined
 
   return (
     <AppsProvider>
@@ -41,7 +44,8 @@ export default async function AppLayout({ children }: AppLayoutProps) {
         user={session?.user}
         defaultSidebarOpen={sidebar.open}
         defaultSidebarWidth={sidebar.width}
-        defaultSecondarySidebar={secondarySidebar}>
+        defaultSecondarySidebar={secondarySidebar}
+        defaultSidebarCollapse={sidebarCollapse}>
         {children}
       </AppLayoutWrapper>
 

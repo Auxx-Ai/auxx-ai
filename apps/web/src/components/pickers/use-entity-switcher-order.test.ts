@@ -6,8 +6,13 @@
 // drift, `J` walks to a row the user is not looking at.
 
 import { renderHook } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useFavoritesStore } from '~/components/favorites/store/favorites-store'
+import { SidebarNodesStoreProvider } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
+import {
+  createSidebarNodesStore,
+  type SidebarNodesStoreApi,
+} from '~/components/global/sidebar/tree/sidebar-nodes-store'
 import type { EntitySwitcherItem } from './entity-switcher-list'
 import { useEntitySwitcherOrder } from './use-entity-switcher-order'
 
@@ -15,19 +20,22 @@ const item = (id: string): EntitySwitcherItem => ({ id, label: id.toUpperCase() 
 
 const ITEMS = [item('a'), item('b'), item('c'), item('d')]
 
-/** Seed the favorites store with ITEM favorites for the given dashboard ids. */
+let store: SidebarNodesStoreApi
+
+/** Seed the sidebar node store with ITEM favorites for the given dashboard ids. */
 function favorite(...dashboardIds: string[]) {
-  const byId: Record<string, unknown> = {}
-  for (const id of dashboardIds) {
-    byId[`fav_${id}`] = {
+  store.setState({
+    nodes: dashboardIds.map((id) => ({
       id: `fav_${id}`,
       nodeType: 'ITEM',
       targetType: 'DASHBOARD',
       targetIds: { dashboardId: id },
-    }
-  }
-  useFavoritesStore.setState({ byId: byId as never })
+    })) as never,
+  })
 }
+
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(SidebarNodesStoreProvider, { store }, children)
 
 const DASHBOARD_FAVORITE = {
   targetType: 'DASHBOARD' as const,
@@ -36,11 +44,11 @@ const DASHBOARD_FAVORITE = {
 
 describe('useEntitySwitcherOrder', () => {
   beforeEach(() => {
-    useFavoritesStore.setState({ byId: {} })
+    store = createSidebarNodesStore()
   })
 
   it('leaves an ungrouped list in `items` order', () => {
-    const { result } = renderHook(() => useEntitySwitcherOrder({ items: ITEMS }))
+    const { result } = renderHook(() => useEntitySwitcherOrder({ items: ITEMS }), { wrapper })
 
     expect(result.current.sections).toBeNull()
     expect(result.current.ordered.map((i) => i.id)).toEqual(['a', 'b', 'c', 'd'])
@@ -49,8 +57,9 @@ describe('useEntitySwitcherOrder', () => {
   it('puts favorites first, and `ordered` matches the flattened sections', () => {
     favorite('c')
 
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE })
+    const { result } = renderHook(
+      () => useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE }),
+      { wrapper }
     )
 
     expect(result.current.sections?.map((s) => s.heading)).toEqual(['Favorites', 'All'])
@@ -61,8 +70,9 @@ describe('useEntitySwitcherOrder', () => {
   })
 
   it('drops an empty Favorites section rather than rendering a headed void', () => {
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE })
+    const { result } = renderHook(
+      () => useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE }),
+      { wrapper }
     )
 
     expect(result.current.sections?.map((s) => s.id)).toEqual(['__all__'])
@@ -72,8 +82,9 @@ describe('useEntitySwitcherOrder', () => {
   it('reports favorited membership for the list to render its star', () => {
     favorite('b')
 
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE })
+    const { result } = renderHook(
+      () => useEntitySwitcherOrder({ items: ITEMS, favorite: DASHBOARD_FAVORITE }),
+      { wrapper }
     )
 
     expect(result.current.isFavorited(item('b'))).toBe(true)
@@ -81,27 +92,31 @@ describe('useEntitySwitcherOrder', () => {
   })
 
   it('honours a custom groupBy and its declared group order', () => {
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({
-        items: ITEMS,
-        groupBy: (i) => (i.id === 'a' || i.id === 'd' ? 'second' : 'first'),
-        groups: [
-          { id: 'first', heading: 'First' },
-          { id: 'second', heading: 'Second' },
-        ],
-      })
+    const { result } = renderHook(
+      () =>
+        useEntitySwitcherOrder({
+          items: ITEMS,
+          groupBy: (i) => (i.id === 'a' || i.id === 'd' ? 'second' : 'first'),
+          groups: [
+            { id: 'first', heading: 'First' },
+            { id: 'second', heading: 'Second' },
+          ],
+        }),
+      { wrapper }
     )
 
     expect(result.current.ordered.map((i) => i.id)).toEqual(['b', 'c', 'a', 'd'])
   })
 
   it('appends groups the caller did not declare, in first-seen order', () => {
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({
-        items: ITEMS,
-        groupBy: (i) => (i.id === 'a' ? 'known' : i.id),
-        groups: [{ id: 'known', heading: 'Known' }],
-      })
+    const { result } = renderHook(
+      () =>
+        useEntitySwitcherOrder({
+          items: ITEMS,
+          groupBy: (i) => (i.id === 'a' ? 'known' : i.id),
+          groups: [{ id: 'known', heading: 'Known' }],
+        }),
+      { wrapper }
     )
 
     expect(result.current.sections?.map((s) => s.id)).toEqual(['known', 'b', 'c', 'd'])
@@ -112,12 +127,14 @@ describe('useEntitySwitcherOrder', () => {
   it('ignores a custom groupBy nothing declares alongside favorites', () => {
     favorite('c')
 
-    const { result } = renderHook(() =>
-      useEntitySwitcherOrder({
-        items: ITEMS,
-        favorite: DASHBOARD_FAVORITE,
-        groupBy: () => 'one',
-      })
+    const { result } = renderHook(
+      () =>
+        useEntitySwitcherOrder({
+          items: ITEMS,
+          favorite: DASHBOARD_FAVORITE,
+          groupBy: () => 'one',
+        }),
+      { wrapper }
     )
 
     // An explicit groupBy wins over the Favorites/All default.

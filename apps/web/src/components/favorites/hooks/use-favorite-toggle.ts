@@ -1,15 +1,12 @@
 // apps/web/src/components/favorites/hooks/use-favorite-toggle.ts
 'use client'
 
-import type {
-  FavoriteEntity,
-  FavoriteTargetIdsMap,
-  FavoriteTargetType,
-} from '@auxx/lib/favorites/client'
+import type { FavoriteTargetIdsMap, FavoriteTargetType } from '@auxx/lib/favorites/client'
+import type { SidebarNodeEntity } from '@auxx/lib/sidebar-layout/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
+import { useSidebarNodesApi } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
 import { api } from '~/trpc/react'
-import { useFavoritesStore } from '../store/favorites-store'
 import { useFavoriteForTarget } from './use-is-favorited'
 
 /**
@@ -21,28 +18,27 @@ export function useFavoriteToggle<T extends FavoriteTargetType>(
   targetIds: FavoriteTargetIdsMap[T] | null | undefined
 ) {
   const existing = useFavoriteForTarget(targetType, targetIds)
-  const upsert = useFavoritesStore((s) => s.upsert)
-  const removeById = useFavoritesStore((s) => s.removeById)
+  const store = useSidebarNodesApi()
 
   const utils = api.useUtils()
   const add = api.favorite.add.useMutation({
     onSuccess: (created) => {
-      upsert(created as unknown as FavoriteEntity)
-      void utils.favorite.list.invalidate()
+      store.getState().upsert(created as unknown as SidebarNodeEntity)
+      void utils.sidebar.list.invalidate()
     },
     onError: (error) => {
       toastError({ title: 'Could not add favorite', description: error.message })
-      void utils.favorite.list.invalidate()
+      void utils.sidebar.list.invalidate()
     },
   })
   const remove = api.favorite.remove.useMutation({
     onSuccess: () => {
-      void utils.favorite.list.invalidate()
+      void utils.sidebar.list.invalidate()
     },
     onError: (error, variables) => {
       // Re-add optimistically removed row by refetching; simpler than rebuilding from variables.
       toastError({ title: 'Could not remove favorite', description: error.message })
-      void utils.favorite.list.invalidate()
+      void utils.sidebar.list.invalidate()
       void variables
     },
   })
@@ -50,12 +46,12 @@ export function useFavoriteToggle<T extends FavoriteTargetType>(
   const toggle = useCallback(() => {
     if (!targetIds) return
     if (existing) {
-      removeById(existing.id)
+      store.getState().removeById(existing.id)
       remove.mutate({ favoriteId: existing.id })
     } else {
       add.mutate({ targetType, targetIds } as Parameters<typeof add.mutate>[0])
     }
-  }, [existing, removeById, remove, add, targetType, targetIds])
+  }, [existing, store, remove, add, targetType, targetIds])
 
   return {
     toggle,

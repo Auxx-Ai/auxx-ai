@@ -124,7 +124,6 @@ export {
 export { TokenCacheService } from './token-cache-service'
 export { getCachedUserCapabilities, getCachedUserInstanceGrants } from './user-cache-helpers'
 export type {
-  CachedFavorite,
   CachedTableView,
   UserCacheDataMap,
   UserCacheKeyName,

@@ -29,6 +29,8 @@ interface SidebarGroupHeaderProps {
   hideEditOption?: boolean
   /** Generic trailing slot rendered before the 3-dot dropdown (e.g. a count). */
   end?: React.ReactNode
+  /** Runs once the dropdown has fully closed — open inline inputs here so the closing menu can't blur them. */
+  onMenuClosed?: () => void
 }
 
 export function SidebarGroupHeader({
@@ -42,6 +44,7 @@ export function SidebarGroupHeader({
   onToggleGroupVisibility,
   hideEditOption = false,
   end,
+  onMenuClosed,
 }: SidebarGroupHeaderProps) {
   const [popoverOpen, setPopoverOpen] = React.useState(false)
 
@@ -88,9 +91,8 @@ export function SidebarGroupHeader({
                   variant='ghost'
                   size='icon'
                   className={cn(
-                    'size-6 me-0.75 rounded-md opacity-100 sm:opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 sm:group-hover:opacity-100 hover:bg-primary-200/50',
+                    'size-6 me-0.75 rounded-md opacity-100 sm:opacity-0 transition-opacity hover:bg-sidebar-accent focus-visible:ring-primary/10 sm:group-hover:opacity-100 hover:bg-primary-200/50 data-[state=open]:opacity-100 data-[state=open]:bg-primary-200/50',
                     {
-                      'bg-primary-200 opacity-100': popoverOpen,
                       'group-hover/item:opacity-100': !popoverOpen,
                     }
                   )}
@@ -106,7 +108,13 @@ export function SidebarGroupHeader({
               <DropdownMenuContent
                 className='w-50'
                 align='start'
-                onCloseAutoFocus={(e) => e.preventDefault()}>
+                // React bubbles portal events to the header, which would toggle the group or start a drag.
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onCloseAutoFocus={(e) => {
+                  e.preventDefault()
+                  onMenuClosed?.()
+                }}>
                 <DropdownMenuGroup>
                   {additionalOptions}
                   {!hideEditOption && (

@@ -373,6 +373,16 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/accounting'),
       })
     }
+    if (hasAccess('dispatch') && can('dispatch.board.view')) {
+      actions.push({
+        id: 'nav.dispatch',
+        label: 'Dispatch',
+        subtitle: 'Open the dispatch board',
+        icon: 'truck',
+        keywords: 'dispatch board jobs field service',
+        perform: () => nav('/dispatch'),
+      })
+    }
     // `dispatch` + `settings.manage` — matches SIDEBAR_MENU and the page's own
     // `useRequireCapability(settingsManage)` in `catalog-page.tsx`. The feature
     // key is deliberately `dispatch`, not a catalog key of its own.

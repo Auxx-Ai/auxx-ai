@@ -1,117 +1,90 @@
-// hooks/use-sidebar-state.ts
+// apps/web/src/hooks/use-sidebar-state.ts
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import {
+  createContext,
+  createElement,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
+import { useStore } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
+import {
+  createSidebarStateStore,
+  type SidebarPersistedState,
+  type SidebarStateStore,
+  type SidebarStateStoreApi,
+} from './sidebar-state-store'
 
-const SIDEBAR_STATE_KEY = 'auxx:sidebar-state'
+const LEGACY_STORAGE_KEY = 'auxx:sidebar-state'
 
-/** Represents the persisted state of sidebar groups and sections */
-interface SidebarState {
-  /** Sidebar group headers (e.g. unified Mail group, Records group) */
-  groups: Record<string, boolean>
-  /** Collapsible sections within NavMain (by item id) */
-  sections: Record<string, boolean>
+const SidebarStateContext = createContext<SidebarStateStoreApi | null>(null)
+
+/** Unseeded fallback for trees rendered outside the provider; only written from client events. */
+let fallbackStore: SidebarStateStoreApi | undefined
+
+function useSidebarStore<T>(selector: (state: SidebarStateStore) => T): T {
+  const store = useContext(SidebarStateContext) ?? (fallbackStore ??= createSidebarStateStore())
+  return useStore(store, selector)
 }
 
-const DEFAULT_STATE: SidebarState = {
-  groups: {
-    mail: true,
-  },
-  sections: {},
-}
+/** Provides the shared sidebar collapse store, seeded from the `sidebar_collapse` cookie. */
+export function SidebarStateProvider({
+  initialState,
+  children,
+}: {
+  /** Parsed cookie from the server layout; `undefined` means no cookie was set. */
+  initialState?: SidebarPersistedState
+  children: ReactNode
+}) {
+  const [store] = useState(() => createSidebarStateStore(initialState))
 
-/**
- * Hook to manage sidebar open/closed state in localStorage.
- * Provides instant UI updates with persistence across page refreshes.
- */
-export function useSidebarState() {
-  const [state, setState] = useState<SidebarState>(DEFAULT_STATE)
-  const [isHydrated, setIsHydrated] = useState(false)
-
-  // Hydrate from localStorage on mount
+  // One-time move of pre-cookie localStorage state into the cookie.
   useEffect(() => {
+    if (initialState) return
     try {
-      const stored = localStorage.getItem(SIDEBAR_STATE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as SidebarState
-        setState({
-          groups: { ...DEFAULT_STATE.groups, ...parsed.groups },
-          sections: { ...DEFAULT_STATE.sections, ...parsed.sections },
-        })
-      }
+      const stored = localStorage.getItem(LEGACY_STORAGE_KEY)
+      if (!stored) return
+      const legacy = JSON.parse(stored) as Partial<SidebarPersistedState>
+      store.getState().hydrate({
+        groups: legacy.groups ?? {},
+        sections: legacy.sections ?? {},
+        showHidden: false,
+      })
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
     } catch {
-      // Ignore parse errors, use defaults
+      // Unreadable legacy state: keep defaults.
     }
-    setIsHydrated(true)
-  }, [])
+  }, [initialState, store])
 
-  // Persist to localStorage whenever state changes
-  useEffect(() => {
-    if (isHydrated) {
-      localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(state))
-    }
-  }, [state, isHydrated])
+  return createElement(SidebarStateContext.Provider, { value: store }, children)
+}
 
-  /** Get open state for a sidebar group */
-  const getGroupOpen = useCallback(
-    (groupId: string): boolean => {
-      return state.groups[groupId] ?? true
-    },
-    [state.groups]
+/** Open state of a sidebar group header; groups default open. */
+export function useSidebarGroupOpen(id: string, defaultOpen = true): boolean {
+  return useSidebarStore((s) => s.groups[id] ?? defaultOpen)
+}
+
+/** Open state of a collapsible section or folder, falling back to the caller's default. */
+export function useSidebarSectionOpen(id: string | undefined, defaultOpen: boolean): boolean {
+  return useSidebarStore((s) => (id ? (s.sections[id] ?? defaultOpen) : defaultOpen))
+}
+
+/** Sidebar-wide "show hidden rows" flag. */
+export function useSidebarShowHidden(): boolean {
+  return useSidebarStore((s) => s.showHidden)
+}
+
+/** Stable store actions. Pass the same default to toggles that the reader used. */
+export function useSidebarStateActions() {
+  return useSidebarStore(
+    useShallow((s) => ({
+      toggleGroup: s.toggleGroup,
+      toggleSection: s.toggleSection,
+      setSectionOpen: s.setSectionOpen,
+      setShowHidden: s.setShowHidden,
+    }))
   )
-
-  /** Toggle a sidebar group's open state */
-  const toggleGroup = useCallback((groupId: string) => {
-    setState((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        [groupId]: !(prev.groups[groupId] ?? true),
-      },
-    }))
-  }, [])
-
-  /** Get open state for a collapsible section */
-  const getSectionOpen = useCallback(
-    (sectionId: string, defaultValue: boolean): boolean => {
-      // If section has been explicitly set, use that value
-      if (sectionId in state.sections) {
-        return state.sections[sectionId]!
-      }
-      // Otherwise use the default (typically based on isActive)
-      return defaultValue
-    },
-    [state.sections]
-  )
-
-  /** Set a section's open state */
-  const setSectionOpen = useCallback((sectionId: string, isOpen: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      sections: {
-        ...prev.sections,
-        [sectionId]: isOpen,
-      },
-    }))
-  }, [])
-
-  /** Toggle a section's open state */
-  const toggleSection = useCallback((sectionId: string) => {
-    setState((prev) => ({
-      ...prev,
-      sections: {
-        ...prev.sections,
-        [sectionId]: !(prev.sections[sectionId] ?? true),
-      },
-    }))
-  }, [])
-
-  return {
-    isHydrated,
-    getGroupOpen,
-    toggleGroup,
-    getSectionOpen,
-    setSectionOpen,
-    toggleSection,
-  }
 }

@@ -6,8 +6,8 @@ import { useCallback, useEffect } from 'react'
 import { PersonalMailItems } from '~/components/global/sidebar/personal-mail-group'
 import { SharedInboxesSection } from '~/components/global/sidebar/shared-inbox-group'
 import { useMailSidebar } from '~/hooks/use-mail-sidebar'
+import { useSidebarGroupOpen, useSidebarStateActions } from '~/hooks/use-sidebar-state'
 import { SidebarGroupHeader } from './sidebar-group-header'
-import { useSidebarStateContext } from './sidebar-state-context'
 import { ViewsSection } from './views-group'
 
 export function MailSidebar() {
@@ -30,8 +30,8 @@ export function MailSidebar() {
     toggleGroupVisibility,
   } = useMailSidebar()
 
-  const { getGroupOpen, toggleGroup } = useSidebarStateContext()
-  const isMailOpen = getGroupOpen('mail')
+  const { toggleGroup } = useSidebarStateActions()
+  const isMailOpen = useSidebarGroupOpen('mail')
 
   const handleToggleMailOpen = useCallback(() => {
     toggleGroup('mail')

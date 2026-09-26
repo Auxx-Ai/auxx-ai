@@ -3,10 +3,10 @@
 
 import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import type { ReactNode } from 'react'
-import { FavoritesProvider } from '~/components/favorites/providers/favorites-provider'
 import { FilesystemProvider } from '~/components/files/provider/filesystem-provider'
 import { useNewMessageIndicator } from '~/components/global/new-message-indicator/use-new-message-indicator'
 import { useNotificationSubscription } from '~/components/global/notifications/hooks/use-notification-subscription'
+import { SidebarNodesProvider } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
 import { ResourceProvider } from '~/components/resources'
 import { useResourceSync } from '~/components/resources/hooks/use-resource-sync'
 import { useMailSync } from '~/components/threads/realtime'
@@ -48,9 +48,9 @@ export function AuxxAppProviders({ children }: AuxxAppProvidersProps) {
   return (
     <ResourceProvider>
       <FilesystemProvider>
-        <FavoritesProvider>
+        <SidebarNodesProvider>
           <TooltipProvider>{children}</TooltipProvider>
-        </FavoritesProvider>
+        </SidebarNodesProvider>
       </FilesystemProvider>
     </ResourceProvider>
   )

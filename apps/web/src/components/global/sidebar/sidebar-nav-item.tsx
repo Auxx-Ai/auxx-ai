@@ -7,6 +7,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
 import { cn } from '@auxx/ui/lib/utils'
@@ -14,6 +15,7 @@ import { MoreVertical, Pencil } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { SidebarItem } from './sidebar-item'
+import { useSidebarRowMenuItems } from './sidebar-row-menu-context'
 
 interface SidebarNavItemProps {
   id: string
@@ -68,8 +70,9 @@ export function SidebarNavItem({
   onEditCancel,
 }: SidebarNavItemProps) {
   const [popoverOpen, setPopoverOpen] = useState(false)
-  // Only show dropdown if there's content to display
-  const hasDropdownContent = editItems || onToggleEditMode
+  const layoutItems = useSidebarRowMenuItems()
+  const hasOwnItems = !!editItems || !!onToggleEditMode
+  const hasDropdownContent = hasOwnItems || !!layoutItems
 
   const end = (
     <>
@@ -104,9 +107,8 @@ export function SidebarNavItem({
                 variant='ghost'
                 size='icon'
                 className={cn(
-                  'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50',
+                  'size-6 shrink-0 rounded-md opacity-100 sm:opacity-0 hover:bg-primary/10 hover:text-foreground/50 focus-visible:ring-primary/10 hover:bg-primary-200/50 data-[state=open]:opacity-100 data-[state=open]:bg-primary-200/50 data-[state=open]:text-foreground/50',
                   {
-                    'bg-primary-200 opacity-100': popoverOpen,
                     'sm:group-hover/item:opacity-100': !popoverOpen,
                   }
                 )}
@@ -132,6 +134,8 @@ export function SidebarNavItem({
                   </DropdownMenuItem>
                 )}
               </DropdownMenuGroup>
+              {layoutItems && hasOwnItems && <DropdownMenuSeparator />}
+              {layoutItems && <DropdownMenuGroup>{layoutItems}</DropdownMenuGroup>}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

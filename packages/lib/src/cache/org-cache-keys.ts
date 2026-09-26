@@ -41,6 +41,7 @@ import type { FeatureMapObject } from '../permissions/types'
 import type { CachedRecordRule } from '../record-rules/types'
 import type { Resource } from '../resources/registry/types'
 import type { SettingValue } from '../settings/types'
+import type { ResourceNavEntry } from '../sidebar-layout/types'
 import type { CachedChannel } from './providers/channels-provider'
 import type { MailGrantIndex } from './providers/mail-grant-index-provider'
 import type { CachedWorkflowApp } from './providers/workflow-apps-provider'
@@ -684,6 +685,7 @@ export interface OrgCacheDataMap {
   subscription: CachedSubscription | null
   orgProfile: DehydratedOrgProfile
   resources: Resource[]
+  resourceNav: ResourceNavEntry[] // slim sidebar projection of `resources`; recomputed whenever it is
   customFields: Record<string, CustomFieldEntity[]> // entityDefId → fields
   groups: CachedGroup[] // all entity_group instances
   groupMembers: Record<string, string[]> // userId → groupInstanceIds (memberType='user' edges only)
@@ -839,7 +841,9 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // `DEFAULTS` or `SYSTEM_ENTITY_BEHAVIOR` overrides must also bump this key,
   // because the resolved behavior is baked into the cached blob rather than
   // recomputed per read.
-  resources: { prefix: 'org:resources:v7', ttlSeconds: ONE_DAY },
+  // v8: + `featureKeys` on the dispatch/accounting defs (sidebar feature gate).
+  resources: { prefix: 'org:resources:v8', ttlSeconds: ONE_DAY },
+  resourceNav: { prefix: 'org:resource-nav', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },
