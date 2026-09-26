@@ -33,6 +33,8 @@ export function defaultGrain(window: PositionWindow): PositionGrain {
 /** One chart row per day; bucket values repeat over the bucket's days so a bar spans it. */
 export interface PositionRow {
   day: string
+  /** Days since 1970-01-01, the chart's numeric x. */
+  t: number
   onHand: number | null
   projected: number | null
   bandLow: number | null
@@ -54,6 +56,7 @@ export function buildPositionRows(data: PartSeriesData): PositionRow[] {
     if (!r) {
       r = {
         day,
+        t: dayToT(day),
         onHand: null,
         projected: null,
         bandLow: null,
@@ -157,10 +160,92 @@ export function usageSpans(rows: readonly PositionRow[]): UsageSpan[] {
   return spans.filter((s) => s.value > 0)
 }
 
-/** At most `max` evenly spaced x ticks; fixed ticks spare recharts measuring every day's label. */
-export function axisTicks(rows: readonly PositionRow[], max: number): string[] {
-  const step = Math.max(1, Math.ceil(rows.length / max))
-  return rows.filter((_, i) => i % step === 0).map((r) => r.day)
+const DAY_MS = 86_400_000
+
+/** `2026-09-24` → days since the epoch. */
+export function dayToT(day: string): number {
+  return (
+    Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) /
+    DAY_MS
+  )
+}
+
+/** Inverse of `dayToT`. */
+export function tToDay(t: number): string {
+  return new Date(Math.round(t) * DAY_MS).toISOString().slice(0, 10)
+}
+
+/** `[lo, hi]` covering every row's `t`, padded half a day so edge bars sit inside the plot. */
+export function xExtent(rows: readonly PositionRow[]): [number, number] {
+  const first = rows[0]?.t ?? 0
+  const last = rows[rows.length - 1]?.t ?? first
+  return [first - 0.5, last + 0.5]
+}
+
+/**
+ * At most `max` x ticks on a day grid anchored to the epoch, so the same days stay
+ * ticked while the window pages and the labels scroll instead of re-phasing.
+ */
+export function xTicks(lo: number, hi: number, max: number): number[] {
+  const days = Math.max(1, Math.round(hi - lo))
+  const step = Math.max(1, Math.ceil(days / max))
+  const out: number[] = []
+  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) out.push(t + 0)
+  return out
+}
+
+/** Whole-number ticks on a 1/2/5 step, from the floor of `min` to the ceiling of `max`. */
+export function niceTicks(min: number, max: number, count = 5): number[] {
+  if (max <= min) max = min + 1
+  const raw = (max - min) / Math.max(1, count - 1)
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  const norm = raw / mag
+  // d3's thresholds: √50, √10, √2.
+  const step = Math.max(1, (norm >= 7.07 ? 10 : norm >= 3.16 ? 5 : norm >= 1.41 ? 2 : 1) * mag)
+  const lo = Math.floor(min / step) * step
+  const hi = Math.ceil(max / step) * step
+  const out: number[] = []
+  for (let v = lo; v <= hi + step / 2; v += step) out.push(Math.round(v * 1e6) / 1e6)
+  return out
+}
+
+/** The left axis covers on hand, projection band and zones; the right covers usage. */
+export function yExtents(
+  rows: readonly PositionRow[],
+  zoneTop: number | null
+): { left: [number, number]; right: [number, number] } {
+  let lo = 0
+  let hi = zoneTop ?? 0
+  let usage = 0
+  for (const r of rows) {
+    for (const v of [r.onHand, r.projected, r.bandLow]) {
+      if (v === null) continue
+      if (v < lo) lo = v
+      if (v > hi) hi = v
+    }
+    if (r.bandLow !== null && r.bandSpan !== null && r.bandLow + r.bandSpan > hi) {
+      hi = r.bandLow + r.bandSpan
+    }
+    const u = r.used ?? r.projectedUse
+    if (u !== null && u > usage) usage = u
+  }
+  const left = niceTicks(lo, Math.max(hi, 1))
+  const right = niceTicks(0, Math.max(usage, 1))
+  return {
+    left: [left[0] ?? 0, left[left.length - 1] ?? 1],
+    right: [0, right[right.length - 1] ?? 1],
+  }
+}
+
+/** The union of two windows' rows on one axis, `next` winning where days overlap. */
+export function mergeRows(
+  prev: readonly PositionRow[],
+  next: readonly PositionRow[]
+): PositionRow[] {
+  const byDay = new Map<string, PositionRow>()
+  for (const r of prev) byDay.set(r.day, r)
+  for (const r of next) byDay.set(r.day, r)
+  return [...byDay.values()].sort((a, b) => a.t - b.t)
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
