@@ -8,7 +8,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BacklogRowGhost } from '~/components/dispatch/ui/sidebar/backlog-group'
-import { FavoriteDragOverlay } from '~/components/favorites/ui/favorite-drag-overlay'
+import { SidebarDragOverlay } from '~/components/global/sidebar/tree/sidebar-drag-overlay'
 import MailThreadItemDragOverlay from '~/components/mail/mail-thread-item-drag-overlay'
 
 /**
@@ -23,7 +23,8 @@ export function renderAppDragGhost(active: Active): ReactNode {
     | {
         type?: string
         draggedThreadIds?: string[]
-        favoriteId?: string
+        kind?: 'GROUP' | 'FOLDER' | 'ITEM'
+        label?: string
         item?: Parameters<typeof BacklogRowGhost>[0]['item']
       }
     | undefined
@@ -32,8 +33,8 @@ export function renderAppDragGhost(active: Active): ReactNode {
   switch (data.type) {
     case 'thread':
       return <MailThreadItemDragOverlay items={data.draggedThreadIds ?? []} isDragging />
-    case 'favorite':
-      return data.favoriteId ? <FavoriteDragOverlay favoriteId={data.favoriteId} /> : null
+    case 'sidebar-node':
+      return <SidebarDragOverlay kind={data.kind ?? 'ITEM'} label={data.label ?? ''} />
     case 'backlog-visit':
     case 'planner-backlog':
     case 'planner-stop':

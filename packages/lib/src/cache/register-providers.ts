@@ -40,18 +40,19 @@ import { plansProvider } from './providers/plans-provider'
 import { providerChartProvider } from './providers/provider-chart-provider'
 import { publishedAppsProvider } from './providers/published-apps-provider'
 import { recordRulesProvider } from './providers/record-rules-provider'
+import { resourceNavProvider } from './providers/resource-nav-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { restrictedEntityDefIdsProvider } from './providers/restricted-entity-def-ids-provider'
 import { subpartEdgesProvider } from './providers/subpart-edges-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
 import { userCapabilitiesProvider } from './providers/user-capabilities-provider'
-import { userFavoritesProvider } from './providers/user-favorites-provider'
 import { userInstanceGrantsProvider } from './providers/user-instance-grants-provider'
 import { userMailViewsProvider } from './providers/user-mail-views-provider'
 import { userMembershipsProvider } from './providers/user-memberships-provider'
 import { userProfileProvider } from './providers/user-profile-provider'
 import { userSettingsProvider } from './providers/user-settings-provider'
+import { userSidebarProvider } from './providers/user-sidebar-provider'
 import { userTableViewsProvider } from './providers/user-table-views-provider'
 import { workflowAppsProvider } from './providers/workflow-apps-provider'
 import { workflowTemplatesProvider } from './providers/workflow-templates-provider'
@@ -83,6 +84,7 @@ export function registerAllProviders(
   orgCache.register('subscription', subscriptionProvider)
   orgCache.register('orgProfile', orgProfileProvider)
   orgCache.register('resources', resourcesProvider)
+  orgCache.register('resourceNav', resourceNavProvider)
   orgCache.register('customFields', customFieldsProvider)
   orgCache.register('groups', groupsProvider)
   orgCache.register('groupMembers', groupMembersProvider)
@@ -114,7 +116,7 @@ export function registerAllProviders(
   userCache.register('userMemberships', userMembershipsProvider)
   userCache.register('userMailViews', userMailViewsProvider)
   userCache.register('userTableViews', userTableViewsProvider)
-  userCache.register('userFavorites', userFavoritesProvider)
+  userCache.register('userSidebar', userSidebarProvider)
   userCache.register('userInstanceGrants', userInstanceGrantsProvider)
   userCache.register('userCapabilities', userCapabilitiesProvider)
 

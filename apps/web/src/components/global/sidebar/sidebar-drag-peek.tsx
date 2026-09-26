@@ -4,7 +4,7 @@
 import { useSidebar } from '@auxx/ui/components/sidebar'
 import { useDndMonitor } from '@dnd-kit/core'
 import { useCallback, useEffect, useRef } from 'react'
-import { isSidebarFavoriteDrag } from '~/components/favorites/drag-eligibility'
+import { isSidebarNodeDrag } from './tree/sidebar-drop-rules'
 
 /** Distance from the left screen edge (px) that arms the spring-load timer. */
 const EDGE_THRESHOLD = 48
@@ -15,9 +15,9 @@ const CLOSE_DELAY = 300
 
 /**
  * Headless drag-to-peek spring-loader. Mounted inside the app-shell `DndContext` (and under the
- * `SidebarProvider`), it watches for sidebar-eligible drags (favorites) and, while the sidebar
- * is collapsed, floats the peek overlay open once the pointer dwells at the left screen edge —
- * so the favorites droppables (kept mounted even when collapsed) can receive the drop. The
+ * `SidebarProvider`), it watches for sidebar-node drags and, while the sidebar is collapsed, floats
+ * the peek overlay open once the pointer dwells at the left screen edge — so the tree's droppables
+ * (kept mounted even when collapsed) can receive the drop. The
  * sidebar stays collapsed throughout; the overlay slides away shortly after the drag ends.
  */
 export function SidebarDragPeek() {
@@ -60,7 +60,7 @@ export function SidebarDragPeek() {
 
   useDndMonitor({
     onDragStart(event) {
-      eligibleRef.current = isSidebarFavoriteDrag(event.active)
+      eligibleRef.current = isSidebarNodeDrag(event.active)
       sprungRef.current = false
       if (eligibleRef.current) {
         document.addEventListener('pointermove', trackPointer)

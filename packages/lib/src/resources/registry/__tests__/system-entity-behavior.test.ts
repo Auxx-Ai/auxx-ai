@@ -15,10 +15,9 @@ import {
 } from '../system-entity-behavior'
 
 /**
- * The 14 system defs that carry no override and resolve to pure `DEFAULTS`
- * (plan §5.4): `contact`, `ticket`, `part`, `company`, `product`, `order`,
- * `quote`, `invoice`, `credit_memo`, `purchase_order`, `vendor_bill`,
- * `work_order`, `service_request`, `build`.
+ * The system defs that carry no override and resolve to pure `DEFAULTS`
+ * (plan §5.4). The five dispatch documents left this list when they gained
+ * `featureKeys` (plans/sidebar/01-unified-sidebar.md §5).
  */
 const PURE_DEFAULT_ENTITY_TYPES = [
   'contact',
@@ -27,13 +26,8 @@ const PURE_DEFAULT_ENTITY_TYPES = [
   'company',
   'product',
   'order',
-  'quote',
-  'invoice',
-  'credit_memo',
   'purchase_order',
   'vendor_bill',
-  'work_order',
-  'service_request',
   'build',
   'return',
   // The visible parent of the two owned children below (71 §5 U7).
@@ -44,7 +38,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
   // One settled array, no provisional half — forces every new def to be an
   // explicit decision in review. Modeled on
   // ai-entity-visibility.test.ts:236.
-  it('SYSTEM_ENTITY_BEHAVIOR keys are exactly the 39 defs that differ from DEFAULTS', () => {
+  it('SYSTEM_ENTITY_BEHAVIOR keys are exactly the 44 defs that differ from DEFAULTS', () => {
     expect(Object.keys(SYSTEM_ENTITY_BEHAVIOR).sort()).toEqual([
       'article',
       'bank_account',
@@ -52,6 +46,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'bank_rule',
       'bank_transaction',
       'catalog_group',
+      'credit_memo',
       'credit_memo_application',
       'credit_memo_line',
       'customer_transaction',
@@ -60,6 +55,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'fulfillment_line',
       'gl_account',
       'inbox',
+      'invoice',
       'journal_entry',
       'journal_entry_line',
       'line_item',
@@ -70,8 +66,10 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'personal_inbox',
       'processor_balance_entry',
       'purchase_order_line',
+      'quote',
       'return_line',
       'return_part_line',
+      'service_request',
       'shipment',
       'signature',
       'stock_movement',
@@ -85,6 +83,7 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'vendor_credit_application',
       'vendor_credit_line',
       'vendor_part',
+      'work_order',
     ])
   })
 })
@@ -178,6 +177,20 @@ describe('creatable derives from sidebar, and an override wins', () => {
     // plans/entity/system-entity-behavior-map.md §6b.
     expect(resolveSystemEntityBehavior('parcel').sidebar).toBe('off')
     expect(resolveSystemEntityBehavior('parcel').creatable).toBe(false)
+  })
+})
+
+describe('featureKeys gate the dispatch documents', () => {
+  it('is any-of dispatch/accounting for the money documents, dispatch alone for the rest', () => {
+    expect(resolveSystemEntityBehavior('service_request').featureKeys).toEqual(['dispatch'])
+    expect(resolveSystemEntityBehavior('work_order').featureKeys).toEqual(['dispatch'])
+    expect(resolveSystemEntityBehavior('quote').featureKeys).toEqual(['dispatch'])
+    expect(resolveSystemEntityBehavior('invoice').featureKeys).toEqual(['dispatch', 'accounting'])
+    expect(resolveSystemEntityBehavior('credit_memo').featureKeys).toEqual([
+      'dispatch',
+      'accounting',
+    ])
+    expect(resolveSystemEntityBehavior('contact').featureKeys).toBeUndefined()
   })
 })
 

@@ -4,6 +4,7 @@ import type { DehydratedUser } from '../dehydration/types'
 import type { UserCapabilities } from '../permissions/capabilities/compose-user-capabilities'
 import type { UserInstanceGrants } from '../permissions/visibility/context'
 import type { SettingValue } from '../settings/types'
+import type { SidebarNodeEntity } from '../sidebar-layout/types'
 
 /** Membership info for user cache */
 export interface UserMembership {
@@ -47,22 +48,6 @@ export interface CachedTableView {
   updatedAt: string
 }
 
-/** Cached favorite (JSON-serializable; Date → ISO string) */
-export interface CachedFavorite {
-  id: string
-  organizationMemberId: string
-  organizationId: string
-  userId: string
-  nodeType: 'ITEM' | 'FOLDER'
-  title: string | null
-  targetType: string | null
-  targetIds: Record<string, string> | null
-  parentFolderId: string | null
-  sortOrder: string
-  createdAt: string
-  updatedAt: string
-}
-
 /** All user-scoped cache keys and their data types */
 export interface UserCacheDataMap {
   userProfile: DehydratedUser
@@ -70,7 +55,7 @@ export interface UserCacheDataMap {
   userMemberships: UserMembership[]
   userMailViews: CachedMailView[]
   userTableViews: CachedTableView[]
-  userFavorites: CachedFavorite[]
+  userSidebar: SidebarNodeEntity[] // every SidebarNode row of (user, org)
   userInstanceGrants: UserInstanceGrants
   userCapabilities: UserCapabilities
 }
@@ -82,7 +67,7 @@ export const ORG_SCOPED_USER_KEYS = new Set<UserCacheKeyName>([
   'userSettings',
   'userMailViews',
   'userTableViews',
-  'userFavorites',
+  'userSidebar',
   'userInstanceGrants',
   'userCapabilities',
 ])
@@ -130,7 +115,7 @@ export const USER_CACHE_KEY_CONFIG: Record<
   userMailViews: { prefix: 'user:mail-views', ttlSeconds: ONE_DAY },
   // v2 includes entityDefinitionId for effective-Read filtering in tableView.listAll.
   userTableViews: { prefix: 'user:table-views:v2', ttlSeconds: ONE_DAY },
-  userFavorites: { prefix: 'user:favorites', ttlSeconds: ONE_DAY },
+  userSidebar: { prefix: 'user:sidebar', ttlSeconds: ONE_DAY },
   // v2: inboxLens values normalized to scalar lenses (cached entries built
   // from the pre-v5 `inboxes` shape carried SINGLE_SELECT arrays).
   // v3: mail floor switched from a FieldValue to ResourceAccess rows (plan 40

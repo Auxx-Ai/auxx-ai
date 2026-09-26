@@ -67,6 +67,12 @@ export interface SystemEntityBehavior {
 
   /** Appears on Settings > Custom fields. Replaces `HIDDEN_ENTITY_TYPES`. */
   fieldsSettings: boolean
+
+  /**
+   * Feature gate, any-of: the def is offered in the sidebar only when the org has
+   * at least one of these features. Absent = no gate. Render-time only.
+   */
+  featureKeys?: string[]
 }
 
 /**
@@ -85,11 +91,10 @@ export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable'> = {
 }
 
 /**
- * Per-`entityType` overrides for the 38 system defs that differ from
- * {@link DEFAULTS}. The other 14 system defs (`contact`, `ticket`, `part`,
- * `company`, `product`, `order`, `quote`, `invoice`, `credit_memo`,
- * `purchase_order`, `vendor_bill`, `work_order`, `service_request`, `build`)
- * carry no entry here and resolve to pure `DEFAULTS`.
+ * Per-`entityType` overrides for the system defs that differ from
+ * {@link DEFAULTS}. The rest (`contact`, `ticket`, `part`, `company`, `product`,
+ * `order`, `purchase_order`, `vendor_bill`, `build`, …) carry no entry here and
+ * resolve to pure `DEFAULTS`.
  *
  * See plans/entity/system-entity-behavior-map.md §5 for the full inventory and
  * the reasoning behind each row.
@@ -332,6 +337,13 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     sidebar: 'off',
     fieldsSettings: false,
   }, // plan §6 (tracking numbers flood the corpus) and §6b (carrier-minted, never hand-created)
+
+  // Dispatch documents, seeded for every org, gated by feature (plans/sidebar/01-unified-sidebar.md §5).
+  service_request: { featureKeys: ['dispatch'] },
+  work_order: { featureKeys: ['dispatch'] },
+  quote: { featureKeys: ['dispatch'] },
+  invoice: { featureKeys: ['dispatch', 'accounting'] },
+  credit_memo: { featureKeys: ['dispatch', 'accounting'] },
 }
 
 /**

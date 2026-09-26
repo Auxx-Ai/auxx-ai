@@ -23,7 +23,7 @@ import {
 import { CheckCheck, ExternalLink, MoreHorizontal, Rocket, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { type MouseEvent, useCallback, useRef, useState } from 'react'
-import { useSidebarState } from '~/hooks/use-sidebar-state'
+import { useSidebarSectionOpen, useSidebarStateActions } from '~/hooks/use-sidebar-state'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import type { GettingStartedGoal } from '../client'
 import { useGettingStarted } from '../hooks/use-getting-started'
@@ -58,10 +58,11 @@ type Props = {
 export function GettingStartedGroup({ checklistId, catalog, title = 'Getting started' }: Props) {
   const router = useRouter()
   const { docsUrl } = useEnv()
-  const { getSectionOpen, toggleSection } = useSidebarState()
   // Scoped per checklist so the main + dispatch widgets (visible together on
   // dispatch pages) don't share one accordion open/closed state.
   const sectionId = `${SECTION_ID_PREFIX}:${checklistId}`
+  const isOpen = useSidebarSectionOpen(sectionId, true)
+  const { toggleSection } = useSidebarStateActions()
   const {
     isLoading,
     goals,
@@ -96,8 +97,6 @@ export function GettingStartedGroup({ checklistId, catalog, title = 'Getting sta
   // Hidden while loading, once dismissed, or all done. (Footer = post-onboarding.)
   if (isLoading || dismissed || allComplete || total === 0) return null
 
-  const isOpen = getSectionOpen(sectionId, true)
-
   // Default the panel to the first incomplete step until the user hovers one.
   const activeGoal =
     goals.find((g) => g.key === hoveredKey) ?? goals.find((g) => !completed.has(g.key)) ?? goals[0]
@@ -119,7 +118,7 @@ export function GettingStartedGroup({ checklistId, catalog, title = 'Getting sta
             <div ref={measureRef}>
               <SidebarMenuButton asChild tooltip={title}>
                 <div
-                  onClick={() => toggleSection(sectionId)}
+                  onClick={() => toggleSection(sectionId, true)}
                   className='group/gs relative h-7 cursor-pointer'>
                   <Rocket className='size-4' />
                   <span>{title}</span>

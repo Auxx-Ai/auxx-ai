@@ -1708,6 +1708,18 @@
       "import": "./dist/shopify/index.mjs",
       "default": "./src/shopify/index.ts"
     },
+    "./sidebar-layout": {
+      "types": "./src/sidebar-layout/index.ts",
+      "source": "./src/sidebar-layout/index.ts",
+      "import": "./dist/sidebar-layout/index.mjs",
+      "default": "./src/sidebar-layout/index.ts"
+    },
+    "./sidebar-layout/client": {
+      "types": "./src/sidebar-layout/client.ts",
+      "source": "./src/sidebar-layout/client.ts",
+      "import": "./dist/sidebar-layout/client.mjs",
+      "default": "./src/sidebar-layout/client.ts"
+    },
     "./signals": {
       "types": "./src/signals/index.ts",
       "source": "./src/signals/index.ts",

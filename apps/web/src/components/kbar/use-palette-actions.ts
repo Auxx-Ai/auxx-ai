@@ -19,7 +19,6 @@ import type { PaletteAction, PaletteSection } from './types'
  */
 const SIDEBAR_TO_ACTION: Record<string, string> = {
   dashboards: 'nav.dashboards',
-  today: 'nav.today',
   chats: 'nav.chats',
   agents: 'nav.agents',
   calls: 'nav.calls',
@@ -28,6 +27,7 @@ const SIDEBAR_TO_ACTION: Record<string, string> = {
   schedule: 'nav.schedule',
   accounting: 'nav.accounting',
   catalog: 'nav.catalog',
+  dispatch: 'nav.dispatch',
 }
 
 /** Warn (once per render that trips it) about uncovered top-level sidebar items. */

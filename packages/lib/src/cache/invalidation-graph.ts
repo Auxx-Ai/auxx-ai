@@ -185,11 +185,11 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // ── Mixed events (org + user keys) ──
   'member.added': {
-    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities'],
+    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities', 'userSidebar'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.removed': {
-    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities'],
+    user: ['userMemberships', 'userInstanceGrants', 'userCapabilities', 'userSidebar'],
     org: ['members', 'memberRoleMap', 'overages', 'mailGrantIndex'],
   },
   'member.role.changed': {
@@ -294,8 +294,9 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'table-view.default-changed': { user: ['userTableViews'] },
 
   // ── Favorite events ──
-  'favorite.changed': { user: ['userFavorites'] },
-  'favorite-folder.changed': { user: ['userFavorites'] },
+  'favorite.changed': { user: ['userSidebar'] },
+  'favorite-folder.changed': { user: ['userSidebar'] },
+  'sidebar.changed': { user: ['userSidebar'] },
 
   // ── KB & article events (overages for knowledgeBases / kbPublishedArticles;
   // kbCatalog is the agent-prompt ToC of published articles; `knowledgeBases` is

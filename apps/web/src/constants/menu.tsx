@@ -7,11 +7,9 @@ import {
   CalendarClock,
   CheckSquare,
   CircleAlert,
-  ClipboardList,
   ComponentIcon,
   Database,
   Feather,
-  FileText,
   FileUp,
   Folder,
   Forward,
@@ -26,8 +24,6 @@ import {
   Palette,
   PersonStanding,
   Ratio,
-  Receipt,
-  ReceiptText,
   Rows3,
   Settings,
   ShieldCheck,
@@ -42,7 +38,6 @@ import {
   Video,
   Waypoints,
   Webhook,
-  Wrench,
   Zap,
 } from 'lucide-react'
 
@@ -99,11 +94,8 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     // The accounting module (plans/money/tasks/13-accounting-ui.md §1) — the
     // general ledger, the month-end close and the accounting setup wizard.
     //
-    // No sub-items, deliberately. Orders, Purchase Orders, Vendor Bills, Parts,
-    // Products and Builds stay at their existing top-level routes; the Dispatch
-    // entry below shows how they COULD be grouped later (`skipParentSlug` + child
-    // items pointing at top-level routes), but grouping operational records under
-    // "Accounting" would force the group's gate to the loosest of its children.
+    // No sub-items, deliberately: grouping operational records under "Accounting"
+    // would force the group's gate to the loosest of its children.
     id: 'accounting',
     label: 'Accounting',
     slug: 'accounting',
@@ -157,44 +149,6 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     icon: <Truck />,
     featureKey: 'dispatch',
     permissionKey: 'dispatch.board.view',
-    skipParentSlug: true,
-    // Navigable group: clicking the row opens the module home (settings until the
-    // M2 board lands); the chevron toggles the sub-items independently.
-    url: '/app/dispatch',
-    items: [
-      {
-        id: 'dispatch-requests',
-        label: 'Requests',
-        slug: 'service-requests',
-        icon: <ClipboardList />,
-      },
-      {
-        id: 'dispatch-quotes',
-        label: 'Quotes',
-        slug: 'quotes',
-        icon: <FileText />,
-      },
-      {
-        id: 'dispatch-work-orders',
-        label: 'Work Orders',
-        slug: 'work-orders',
-        icon: <Wrench />,
-      },
-      {
-        id: 'dispatch-invoices',
-        label: 'Invoices',
-        slug: 'invoices',
-        icon: <Receipt />,
-      },
-      {
-        // The mirror of an invoice: "you owe us less"
-        // (plans/accounting/tasks/done/10-credit-memos.md §6.1).
-        id: 'dispatch-credit-memos',
-        label: 'Credit Memos',
-        slug: 'credit-memos',
-        icon: <ReceiptText />,
-      },
-    ],
   },
   {
     id: 'examples',

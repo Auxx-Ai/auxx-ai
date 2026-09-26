@@ -1,6 +1,7 @@
 // packages/lib/src/dehydration/types.ts
 
 import type { ClientCapabilities } from '../permissions/capabilities/entity-access'
+import type { DehydratedSidebar } from '../sidebar-layout/types'
 
 /**
  * Window global interface for dehydrated state
@@ -31,6 +32,8 @@ export interface DehydratedState {
    * resource store, so record fetching never waits on hydration on hard loads.
    */
   resourceIdMap?: Record<string, string>
+  /** The member's sidebar nodes + def projection for the ACTIVE org only; best-effort. */
+  sidebar?: DehydratedSidebar
 }
 
 /**

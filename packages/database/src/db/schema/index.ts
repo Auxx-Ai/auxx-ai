@@ -90,7 +90,6 @@ export {
   type ExternalBookConnectionEntity,
 } from './external-book-connection'
 export * from './external-knowledge-source'
-export * from './favorite'
 export * from './field-value'
 export * from './file'
 export * from './file-attachment'
@@ -197,6 +196,7 @@ export * from './scheduled-message'
 export * from './search-history'
 export * from './sequence'
 export * from './session'
+export * from './sidebar-node'
 // SignatureIntegrationShare dropped (plan 36 §7.4) — dead in code since the
 // Signature table was retired; its only writer was the stubbed SignatureService.
 export * from './snippet'

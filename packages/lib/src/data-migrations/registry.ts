@@ -47,6 +47,7 @@ import { migration191ProductStatusUnlisted } from './migrations/191-product-stat
 import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-period-locked-work-items'
 import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-ledger-under-mrp'
 import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
+import { migration198SidebarDefaultLayout } from './migrations/198-sidebar-default-layout'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -252,6 +253,8 @@ function buildRegistry(): DataMigrationDef[] {
     migration131ReseedPlatformProvidersBankFeed,
     // The month lock stopped refusing (104 P1b): its parked work items are retried and post.
     migration192RetryPeriodLockedWorkItems,
+    // The legacy org-wide Records layout becomes the org default sidebar snapshot.
+    migration198SidebarDefaultLayout,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

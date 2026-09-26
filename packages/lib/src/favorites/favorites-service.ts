@@ -1,6 +1,6 @@
 // packages/lib/src/favorites/favorites-service.ts
-// Functional service methods for favorites. Returns neverthrow Result; mutations
-// fire onCacheEvent after successful DB write so the user cache stays warm.
+// Favorite-target CRUD on SidebarNode rows. Folder and move operations delegate to
+// sidebar-layout so re-homing and the favorites-only fast path live in one place.
 
 import { type Database, database as ddb, schema } from '@auxx/database'
 import { generateKeyBetween, getSmartSortPositions, nextKeyAfter } from '@auxx/utils'
@@ -9,6 +9,22 @@ import { err, ok, type Result } from 'neverthrow'
 import { onCacheEvent } from '../cache/invalidate'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../errors'
 import {
+  compareSidebarNodes,
+  countFavoriteBudget,
+  isFavoriteItem,
+  sidebarRef,
+} from '../sidebar-layout/constants'
+import type { SidebarMember } from '../sidebar-layout/draft'
+import { listMemberSidebarNodes } from '../sidebar-layout/node-reads'
+import {
+  createSidebarFolder,
+  deleteNode,
+  moveNode,
+  renameNode,
+} from '../sidebar-layout/sidebar-mutations'
+import { toSidebarNodeEntity } from '../sidebar-layout/to-sidebar-node'
+import type { SidebarNodeEntity } from '../sidebar-layout/types'
+import {
   FAVORITE_TARGET_TYPES,
   FAVORITES_CAP,
   type FavoriteEntity,
@@ -16,83 +32,34 @@ import {
   type FavoriteTargetType,
   favoriteTargetKey,
 } from './client'
-import { toCachedFavorite } from './to-cached-favorite'
 
-interface MemberContext {
-  organizationMemberId: string
-  organizationId: string
-  userId: string
-}
+type MemberContext = SidebarMember
 
 interface AddFavoriteInput<T extends FavoriteTargetType = FavoriteTargetType> {
   targetType: T
   targetIds: FavoriteTargetIdsMap[T]
 }
 
-function rowToEntity(row: typeof schema.Favorite.$inferSelect): FavoriteEntity {
-  const cached = toCachedFavorite(row)
-  return cached as FavoriteEntity
+function toFavoriteEntity(node: SidebarNodeEntity): FavoriteEntity {
+  return node as FavoriteEntity
 }
 
-/** Compute the next sort key for a new sibling at the end of a list. */
-async function nextSortOrderForParent(
+async function findMemberRow(
   db: Database,
-  memberId: string,
-  parentFolderId: string | null
-): Promise<string> {
-  const rows = await db
-    .select({
-      sortOrder: schema.Favorite.sortOrder,
-      parentFolderId: schema.Favorite.parentFolderId,
-    })
-    .from(schema.Favorite)
-    .where(eq(schema.Favorite.organizationMemberId, memberId))
-
-  const siblings = rows
-    .filter((r) => (r.parentFolderId ?? null) === parentFolderId)
-    .map((r) => r.sortOrder)
-    .sort()
-
-  const last = siblings[siblings.length - 1] ?? null
-  return nextKeyAfter(last)
-}
-
-async function countNodes(db: Database, memberId: string): Promise<number> {
-  const rows = await db
-    .select({ id: schema.Favorite.id })
-    .from(schema.Favorite)
-    .where(eq(schema.Favorite.organizationMemberId, memberId))
-  return rows.length
-}
-
-async function findExistingItem<T extends FavoriteTargetType>(
-  db: Database,
-  memberId: string,
-  targetType: T,
-  targetIds: FavoriteTargetIdsMap[T]
-): Promise<typeof schema.Favorite.$inferSelect | null> {
-  const rows = await db
+  member: MemberContext,
+  id: string
+): Promise<SidebarNodeEntity | null> {
+  const [row] = await db
     .select()
-    .from(schema.Favorite)
+    .from(schema.SidebarNode)
     .where(
       and(
-        eq(schema.Favorite.organizationMemberId, memberId),
-        eq(schema.Favorite.nodeType, 'ITEM'),
-        eq(schema.Favorite.targetType, targetType)
+        eq(schema.SidebarNode.id, id),
+        eq(schema.SidebarNode.organizationMemberId, member.organizationMemberId)
       )
     )
-  const wantKey = favoriteTargetKey(targetType, targetIds)
-  return (
-    rows.find((r) => {
-      if (!r.targetType || !r.targetIds) return false
-      return (
-        favoriteTargetKey(
-          r.targetType as FavoriteTargetType,
-          r.targetIds as FavoriteTargetIdsMap[FavoriteTargetType]
-        ) === wantKey
-      )
-    }) ?? null
-  )
+    .limit(1)
+  return row ? toSidebarNodeEntity(row) : null
 }
 
 /** Add a favorite item. Idempotent: returns the existing row if already favorited. */
@@ -105,75 +72,68 @@ export async function addFavorite<T extends FavoriteTargetType>(
     return err(new BadRequestError(`Unsupported favorite target type: ${input.targetType}`))
   }
 
-  const existing = await findExistingItem(
-    db,
-    member.organizationMemberId,
-    input.targetType,
-    input.targetIds
+  const rows = await listMemberSidebarNodes(db, member.organizationMemberId)
+  const wantKey = favoriteTargetKey(input.targetType, input.targetIds)
+  const existing = rows.find(
+    (r) =>
+      isFavoriteItem(r) &&
+      r.targetIds &&
+      favoriteTargetKey(
+        r.targetType as FavoriteTargetType,
+        r.targetIds as FavoriteTargetIdsMap[FavoriteTargetType]
+      ) === wantKey
   )
-  if (existing) {
-    return ok(rowToEntity(existing))
-  }
+  if (existing) return ok(toFavoriteEntity(existing))
 
-  const total = await countNodes(db, member.organizationMemberId)
-  if (total >= FAVORITES_CAP) {
+  if (countFavoriteBudget(rows) >= FAVORITES_CAP) {
     return err(
       new BadRequestError(`Favorites cap reached (${FAVORITES_CAP}). Remove one to add another.`)
     )
   }
 
-  const sortOrder = await nextSortOrderForParent(db, member.organizationMemberId, null)
+  // New stars land in the Favorites group once the layout is materialized, else at the root.
+  const parentId =
+    rows.find((r) => r.nodeType === 'GROUP' && r.systemKey === 'favorites')?.id ?? null
+  const last = rows
+    .filter((r) => r.parentId === parentId)
+    .sort(compareSidebarNodes)
+    .at(-1)
 
   const [created] = await db
-    .insert(schema.Favorite)
+    .insert(schema.SidebarNode)
     .values({
       organizationId: member.organizationId,
       organizationMemberId: member.organizationMemberId,
       userId: member.userId,
       nodeType: 'ITEM',
-      title: null,
       targetType: input.targetType,
       targetIds: input.targetIds as Record<string, string>,
-      parentFolderId: null,
-      sortOrder,
+      parentId,
+      sortOrder: nextKeyAfter(last?.sortOrder ?? null),
     })
     .returning()
 
   if (!created) return err(new Error('Failed to create favorite'))
 
-  await onCacheEvent('favorite.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
-  })
+  await onCacheEvent('favorite.changed', { userId: member.userId, orgId: member.organizationId })
 
-  return ok(rowToEntity(created))
+  return ok(toFavoriteEntity(toSidebarNodeEntity(created)))
 }
 
-/** Remove a favorite by id. Verifies ownership. */
+/** Remove a favorite item, or a folder (whose contents are re-homed, not deleted). */
 export async function removeFavorite(
   member: MemberContext,
   favoriteId: string,
   db: Database = ddb
 ): Promise<Result<void, Error>> {
-  const [row] = await db
-    .select()
-    .from(schema.Favorite)
-    .where(
-      and(
-        eq(schema.Favorite.id, favoriteId),
-        eq(schema.Favorite.organizationMemberId, member.organizationMemberId)
-      )
-    )
-    .limit(1)
-  if (!row) return err(new NotFoundError('Favorite not found'))
+  const row = await findMemberRow(db, member, favoriteId)
+  if (!row || !(row.nodeType === 'FOLDER' || isFavoriteItem(row))) {
+    return err(new NotFoundError('Favorite not found'))
+  }
+  if (row.nodeType === 'FOLDER') return deleteFolder(member, favoriteId, db)
 
-  await db.delete(schema.Favorite).where(eq(schema.Favorite.id, favoriteId))
-
-  await onCacheEvent(row.nodeType === 'FOLDER' ? 'favorite-folder.changed' : 'favorite.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
-  })
-
+  await db.delete(schema.SidebarNode).where(eq(schema.SidebarNode.id, favoriteId))
+  await onCacheEvent('favorite.changed', { userId: member.userId, orgId: member.organizationId })
   return ok(undefined)
 }
 
@@ -187,12 +147,12 @@ export async function reorderFavorites(
 
   const ids = updates.map((u) => u.id)
   const rows = await db
-    .select({ id: schema.Favorite.id })
-    .from(schema.Favorite)
+    .select({ id: schema.SidebarNode.id })
+    .from(schema.SidebarNode)
     .where(
       and(
-        inArray(schema.Favorite.id, ids),
-        eq(schema.Favorite.organizationMemberId, member.organizationMemberId)
+        inArray(schema.SidebarNode.id, ids),
+        eq(schema.SidebarNode.organizationMemberId, member.organizationMemberId)
       )
     )
   if (rows.length !== ids.length) {
@@ -202,112 +162,44 @@ export async function reorderFavorites(
   await db.transaction(async (tx) => {
     for (const u of updates) {
       await tx
-        .update(schema.Favorite)
+        .update(schema.SidebarNode)
         .set({ sortOrder: u.sortOrder, updatedAt: new Date() })
-        .where(eq(schema.Favorite.id, u.id))
+        .where(eq(schema.SidebarNode.id, u.id))
     }
   })
 
-  await onCacheEvent('favorite.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
-  })
+  await onCacheEvent('favorite.changed', { userId: member.userId, orgId: member.organizationId })
 
   return ok(undefined)
 }
 
-/** Move a favorite into a folder (or to root). Recomputes sortOrder for new sibling group. */
+/** Move a favorite into a folder, or back to Favorites (`null`), appended at the end. */
 export async function moveToFolder(
   member: MemberContext,
   favoriteId: string,
   parentFolderId: string | null,
   db: Database = ddb
 ): Promise<Result<void, Error>> {
-  const [row] = await db
-    .select()
-    .from(schema.Favorite)
-    .where(
-      and(
-        eq(schema.Favorite.id, favoriteId),
-        eq(schema.Favorite.organizationMemberId, member.organizationMemberId)
-      )
-    )
-    .limit(1)
-  if (!row) return err(new NotFoundError('Favorite not found'))
-
-  // Folders are root-only — cannot nest folders.
-  if (row.nodeType === 'FOLDER' && parentFolderId !== null) {
-    return err(new BadRequestError('Folders cannot be nested'))
-  }
-
-  if (parentFolderId) {
-    const [folder] = await db
-      .select()
-      .from(schema.Favorite)
-      .where(
-        and(
-          eq(schema.Favorite.id, parentFolderId),
-          eq(schema.Favorite.organizationMemberId, member.organizationMemberId),
-          eq(schema.Favorite.nodeType, 'FOLDER')
-        )
-      )
-      .limit(1)
-    if (!folder) return err(new NotFoundError('Target folder not found'))
-  }
-
-  const sortOrder = await nextSortOrderForParent(db, member.organizationMemberId, parentFolderId)
-
-  await db
-    .update(schema.Favorite)
-    .set({ parentFolderId, sortOrder, updatedAt: new Date() })
-    .where(eq(schema.Favorite.id, favoriteId))
-
-  await onCacheEvent('favorite.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
+  const result = await moveNode(db, member, {
+    nodeId: favoriteId,
+    parentId: parentFolderId ?? sidebarRef.group('favorites'),
   })
-
-  return ok(undefined)
+  return result.map(() => undefined)
 }
 
-/** Create a folder at root. */
+/** Create a folder in Favorites. */
 export async function createFolder(
   member: MemberContext,
   title: string,
   db: Database = ddb
 ): Promise<Result<FavoriteEntity, Error>> {
-  const trimmed = title.trim()
-  if (!trimmed) return err(new BadRequestError('Folder title is required'))
-
-  const total = await countNodes(db, member.organizationMemberId)
-  if (total >= FAVORITES_CAP) {
-    return err(new BadRequestError(`Favorites cap reached (${FAVORITES_CAP})`))
-  }
-
-  const sortOrder = await nextSortOrderForParent(db, member.organizationMemberId, null)
-
-  const [created] = await db
-    .insert(schema.Favorite)
-    .values({
-      organizationId: member.organizationId,
-      organizationMemberId: member.organizationMemberId,
-      userId: member.userId,
-      nodeType: 'FOLDER',
-      title: trimmed,
-      targetType: null,
-      targetIds: null,
-      parentFolderId: null,
-      sortOrder,
-    })
-    .returning()
-  if (!created) return err(new Error('Failed to create folder'))
-
-  await onCacheEvent('favorite-folder.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
+  const result = await createSidebarFolder(db, member, {
+    parentId: sidebarRef.group('favorites'),
+    title,
   })
-
-  return ok(rowToEntity(created))
+  if (result.isErr()) return err(result.error)
+  const created = result.value.nodes.find((n) => n.id === result.value.nodeId)
+  return created ? ok(toFavoriteEntity(created)) : err(new Error('Failed to create folder'))
 }
 
 /** Rename a folder. */
@@ -317,62 +209,22 @@ export async function renameFolder(
   title: string,
   db: Database = ddb
 ): Promise<Result<void, Error>> {
-  const trimmed = title.trim()
-  if (!trimmed) return err(new BadRequestError('Folder title is required'))
-
-  const [row] = await db
-    .select()
-    .from(schema.Favorite)
-    .where(
-      and(
-        eq(schema.Favorite.id, folderId),
-        eq(schema.Favorite.organizationMemberId, member.organizationMemberId),
-        eq(schema.Favorite.nodeType, 'FOLDER')
-      )
-    )
-    .limit(1)
-  if (!row) return err(new NotFoundError('Folder not found'))
-
-  await db
-    .update(schema.Favorite)
-    .set({ title: trimmed, updatedAt: new Date() })
-    .where(eq(schema.Favorite.id, folderId))
-
-  await onCacheEvent('favorite-folder.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
-  })
-
-  return ok(undefined)
+  const row = await findMemberRow(db, member, folderId)
+  if (row?.nodeType !== 'FOLDER') return err(new NotFoundError('Folder not found'))
+  const result = await renameNode(db, member, { nodeId: folderId, title })
+  return result.map(() => undefined)
 }
 
-/** Delete a folder; child rows cascade via FK. */
+/** Delete a folder; its items move to the folder's parent instead of being deleted. */
 export async function deleteFolder(
   member: MemberContext,
   folderId: string,
   db: Database = ddb
 ): Promise<Result<void, Error>> {
-  const [row] = await db
-    .select()
-    .from(schema.Favorite)
-    .where(
-      and(
-        eq(schema.Favorite.id, folderId),
-        eq(schema.Favorite.organizationMemberId, member.organizationMemberId),
-        eq(schema.Favorite.nodeType, 'FOLDER')
-      )
-    )
-    .limit(1)
-  if (!row) return err(new NotFoundError('Folder not found'))
-
-  await db.delete(schema.Favorite).where(eq(schema.Favorite.id, folderId))
-
-  await onCacheEvent('favorite-folder.changed', {
-    userId: member.userId,
-    orgId: member.organizationId,
-  })
-
-  return ok(undefined)
+  const row = await findMemberRow(db, member, folderId)
+  if (row?.nodeType !== 'FOLDER') return err(new NotFoundError('Folder not found'))
+  const result = await deleteNode(db, member, { nodeId: folderId })
+  return result.map(() => undefined)
 }
 
 /** Cleanup hook called when an org member is removed. DB cascade handles the row deletion;

@@ -38,7 +38,7 @@ export interface FavoriteTargetIdsMap {
 export type FavoriteTargetIds<T extends FavoriteTargetType = FavoriteTargetType> =
   FavoriteTargetIdsMap[T]
 
-/** Raw favorite row as it lives in the client store. No server-side display hydration. */
+/** A favorite item or folder row (a `SidebarNode`) as it lives in the client store. */
 export interface FavoriteEntity<T extends FavoriteTargetType = FavoriteTargetType> {
   id: string
   organizationMemberId: string
@@ -46,15 +46,18 @@ export interface FavoriteEntity<T extends FavoriteTargetType = FavoriteTargetTyp
   userId: string
   nodeType: FavoriteNodeType
   title: string | null
+  systemKey: string | null
   targetType: T | null
   targetIds: FavoriteTargetIdsMap[T] | null
-  parentFolderId: string | null
+  /** The containing folder, the Favorites group once the layout is materialized, or null. */
+  parentId: string | null
   sortOrder: string
+  isHidden: boolean
   createdAt: string
   updatedAt: string
 }
 
-/** Hard cap of nodes (items + folders) per (user, organization). */
+/** Hard cap of favorite items + folders per (user, organization); layout rows don't count. */
 export const FAVORITES_CAP = 50
 
 /** Max characters allowed in a folder title. */

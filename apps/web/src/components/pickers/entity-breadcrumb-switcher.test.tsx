@@ -9,13 +9,12 @@ import { TooltipProvider } from '@auxx/ui/components/tooltip'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type * as React from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
 }))
 
-import { useFavoritesStore } from '~/components/favorites/store/favorites-store'
 import { EntityBreadcrumbSwitcher } from './entity-breadcrumb-switcher'
 import type { EntitySwitcherItem } from './entity-switcher-list'
 
@@ -47,10 +46,6 @@ function renderSwitcher(
 }
 
 describe('EntityBreadcrumbSwitcher — nav', () => {
-  beforeEach(() => {
-    useFavoritesStore.setState({ byId: {} })
-  })
-
   it('mounts the arrows beside the crumb when `nav` is set', () => {
     renderSwitcher()
 

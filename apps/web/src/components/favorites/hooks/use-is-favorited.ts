@@ -8,21 +8,21 @@ import type {
 } from '@auxx/lib/favorites/client'
 import { favoriteTargetKey } from '@auxx/lib/favorites/client'
 import { useMemo } from 'react'
-import { useFavoritesStore } from '../store/favorites-store'
+import { useSidebarNodes } from '~/components/global/sidebar/tree/sidebar-nodes-provider'
 
 /**
  * Returns the existing favorite row for (targetType, targetIds), or null.
- * Cheap selector: scans the byId map (≤50 entries hard cap).
+ * Cheap selector: scans the member's sidebar rows (favorites are capped at 50).
  */
 export function useFavoriteForTarget<T extends FavoriteTargetType>(
   targetType: T | null | undefined,
   targetIds: FavoriteTargetIdsMap[T] | null | undefined
 ): FavoriteEntity | null {
-  const byId = useFavoritesStore((s) => s.byId)
+  const nodes = useSidebarNodes((s) => s.nodes)
   return useMemo(() => {
     if (!targetType || !targetIds) return null
     const wantKey = favoriteTargetKey(targetType, targetIds)
-    for (const fav of Object.values(byId)) {
+    for (const fav of nodes as FavoriteEntity[]) {
       if (fav.nodeType !== 'ITEM') continue
       if (!fav.targetType || !fav.targetIds) continue
       if (
@@ -35,7 +35,7 @@ export function useFavoriteForTarget<T extends FavoriteTargetType>(
       }
     }
     return null
-  }, [byId, targetType, targetIds])
+  }, [nodes, targetType, targetIds])
 }
 
 export function useIsFavorited<T extends FavoriteTargetType>(

@@ -21,6 +21,7 @@ import { SubscriptionEnded } from '~/components/subscriptions/subscription-ended
 import { FloatingTaskEditorRoot } from '~/components/tasks/ui/floating-task-editor-root'
 import { FloatingTaskRoot } from '~/components/tasks/ui/floating-task-root'
 import { ThreadActionsProvider, ThreadDataProvider } from '~/components/threads'
+import type { SidebarPersistedState } from '~/hooks/sidebar-state-store'
 import { useIsSelfHosted } from '~/hooks/use-deployment-mode'
 import { useDehydratedOrganizations } from '~/providers/dehydrated-state-provider'
 import { useOrganizationIdContext } from '~/providers/feature-flag-provider'
@@ -34,6 +35,8 @@ interface AppLayoutWrapperProps {
   defaultSidebarWidth?: number
   /** SSR open/width from the `secondary_sidebar` cookies — forwarded to `Dashboard`. */
   defaultSecondarySidebar?: { open?: boolean; width?: number }
+  /** SSR group/section collapse state from the `sidebar_collapse` cookie — forwarded to `Dashboard`. */
+  defaultSidebarCollapse?: SidebarPersistedState
 }
 
 /** Helper function to check if subscription is expired */
@@ -59,6 +62,7 @@ export function AppLayoutWrapper({
   defaultSidebarOpen,
   defaultSidebarWidth,
   defaultSecondarySidebar,
+  defaultSidebarCollapse,
 }: AppLayoutWrapperProps) {
   const organizations = useDehydratedOrganizations()
   const { organizationId: currentOrgId } = useOrganizationIdContext()
@@ -120,7 +124,8 @@ export function AppLayoutWrapper({
                 user={user}
                 defaultSidebarOpen={defaultSidebarOpen}
                 defaultSidebarWidth={defaultSidebarWidth}
-                defaultSecondarySidebar={defaultSecondarySidebar}>
+                defaultSecondarySidebar={defaultSecondarySidebar}
+                defaultSidebarCollapse={defaultSidebarCollapse}>
                 {children}
               </Dashboard>
               <FloatingComposeRoot />

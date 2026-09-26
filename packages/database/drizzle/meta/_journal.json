@@ -2857,6 +2857,13 @@
       "when": 1790382948613,
       "tag": "0407_sync_job_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 408,
+      "version": "7",
+      "when": 1790391934978,
+      "tag": "0408_unified_sidebar_nodes",
+      "breakpoints": true
     }
   ]
 }
