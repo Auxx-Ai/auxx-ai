@@ -267,25 +267,9 @@ export interface BackfillRunSummary {
    * than a `NotFoundError` (45 §10.8).
    */
   batchRun: number | null
-  /**
-   * Builds created, in creation order.
-   *
-   * 🛑 **`created` and {@link leftInProgress} OVERLAP.** A build whose
-   * completion was refused was still raised, so it appears in both: `created`
-   * means "builds that now exist and did not before", never "builds that
-   * finished". Adding the two array lengths double-counts, and a screen that
-   * does will report more builds than the run made.
-   */
+  /** Builds created, in creation order. */
   created: readonly { partId: string; buildId: string; quantity: number; periodKey: string }[]
-  /**
-   * Builds raised whose completion was refused, leaving them `in_progress`.
-   *
-   * Section 7.4: `buildNow` is not atomic and reports this as a RESULT rather
-   * than an error, because the build exists and the person has to be able to
-   * name it. A run must record these and continue, never abort the batch.
-   */
-  leftInProgress: readonly { partId: string; buildId: string; reason: string }[]
-  /** Buckets that produced nothing at all, with the reason. Keyed by `bucketId`. */
+  /** Buckets that produced nothing at all (a refused completion included), with the reason. Keyed by `bucketId`. */
   failed: readonly { partId: string; bucketId: string; periodKey: string; reason: string }[]
 }
 

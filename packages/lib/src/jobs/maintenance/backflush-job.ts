@@ -126,7 +126,6 @@ async function nightly(ctx: JobContext<unknown>): Promise<void> {
         organizationId,
         batchRun: result.value.batchRun,
         written: result.value.written.length,
-        leftInProgress: result.value.leftInProgress.length,
         failed: result.value.failed.length,
         failedDays: result.value.failedDays.length,
       })

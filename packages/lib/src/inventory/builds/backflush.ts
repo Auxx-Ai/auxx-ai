@@ -58,7 +58,6 @@ export async function backflushBuilds(
         batchRun: input.run?.batchRun ?? null,
         days: days.map((day) => day.day),
         written: [],
-        leftInProgress: [],
         failed: [],
         failedDays: [],
         skipped: 0,
@@ -76,30 +75,14 @@ export async function backflushBuilds(
           await rollFirst(db, organizationId, userId, graph, build.partId, rolled, summary, now)
           // Allocated on the first build, so an empty run burns no number (45 §3.2).
           summary.batchRun ??= await allocateRunNumber(organizationId)
-          const { buildId, leftInProgress } = await raiseAndCompleteBuild(
-            db,
-            organizationId,
-            userId,
-            {
-              partId: build.partId,
-              quantity: build.quantity,
-              source: 'backflush',
-              batchRun: summary.batchRun,
-              completedAt: build.completedAt,
-              notes: `Backflush for ${build.day}`,
-            }
-          )
-          if (leftInProgress) {
-            summary.leftInProgress.push({ ...build, buildId, reason: leftInProgress })
-            logger.warn('A backflushed build was raised but not completed', {
-              organizationId,
-              partId: build.partId,
-              day: build.day,
-              buildId,
-              reason: leftInProgress,
-            })
-            return false
-          }
+          const { buildId } = await raiseAndCompleteBuild(db, organizationId, userId, {
+            partId: build.partId,
+            quantity: build.quantity,
+            source: 'backflush',
+            batchRun: summary.batchRun,
+            completedAt: build.completedAt,
+            notes: `Backflush for ${build.day}`,
+          })
           summary.written.push({ ...build, buildId })
           return true
         } catch (error) {
@@ -139,7 +122,6 @@ export async function backflushBuilds(
         batchRun: summary.batchRun,
         days: days.length,
         written: summary.written.length,
-        leftInProgress: summary.leftInProgress.length,
         failed: summary.failed.length,
         failedDays: summary.failedDays.length,
         rolled: summary.rolled.length,

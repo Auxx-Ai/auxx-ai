@@ -102,115 +102,7 @@ export async function createBuild(
   return guard(
     async () => {
       const ctx = await requireBuildContext(organizationId)
-
-      if (!Number.isFinite(input.quantityPlanned) || input.quantityPlanned <= 0) {
-        throw new BadRequestError('A build must plan to produce at least one unit')
-      }
-
-      const partDefId = await requireDefId(organizationId, 'part')
-      await assertPartExists(db, organizationId, partDefId, input.partId)
-
-      const kinds = await readPartKinds(db, organizationId, [input.partId])
-      const partKind = resolvePartKind(kinds.get(input.partId))
-      if (partKind === 'service') {
-        throw new BadRequestError('A service is not stocked, so it cannot be built')
-      }
-      if (partKind === 'component') {
-        throw new UnprocessableEntityError(
-          'This part is classified as purchased, so it cannot be built. Change its part kind ' +
-            'to a subassembly or a finished good if it is made in-house.'
-        )
-      }
-
-      const subparts = await loadDirectSubparts(db, organizationId, input.partId)
-      if (subparts.length === 0) {
-        throw new UnprocessableEntityError(
-          'This part has no bill of materials, so a build would consume nothing'
-        )
-      }
-
-      const values: Record<string, unknown> = {
-        build_part: toRecordId(partDefId, input.partId),
-        build_status: BuildStatus.PLANNED,
-        build_quantity_planned: input.quantityPlanned,
-        build_source: input.source ?? 'manual',
-      }
-      if (input.notes) values.build_notes = input.notes
-
-      // The demand period a batch build claims (plans/money/tasks/44 §6.2).
-      //
-      // 🛑 Written HERE or never, and `createBuild` being the ONLY writer is
-      // what actually holds that. This comment used to say the fields being
-      // `updatable: false` made a post-create write impossible. It does not:
-      // `field-hooks/register-hooks.ts:523` states plainly that the write path
-      // NEVER reads `capabilities.updatable`, so the flag is documentation plus
-      // a UI and connector gate, nothing more (plans/money/tasks/45 §10.5). The
-      // invariant is a convention this file keeps, which is why a second writer
-      // would break it in silence: moving a claimed period restates what the
-      // next netting run believes is already covered.
-      //
-      // Guarded on `source` for the same reason `build_order_revision` is: an
-      // order-raised build answers to one order and a hand-raised one to nobody,
-      // so neither claims a period, and a stray period on one would make it look
-      // like coverage to a pass that must not see it.
-      if (input.period && (input.source ?? 'manual') === 'batch') {
-        if (input.period.end.getTime() <= input.period.start.getTime()) {
-          throw new BadRequestError('A build period must end after it starts')
-        }
-        if (ctx.fields.build_period_start && ctx.fields.build_period_end) {
-          values.build_period_start = input.period.start.toISOString()
-          values.build_period_end = input.period.end.toISOString()
-        }
-      }
-
-      // Which batch run raised this build (plans/money/tasks/45 §3). Same shape
-      // and the same three rules as the period above: written here or never,
-      // ignored unless the source is `batch`, and skipped when the field is not
-      // provisioned.
-      //
-      // ⚠️ The number is ALLOCATED ONCE PER RUN by `executeBackfill` and passed
-      // down (45 §3.2). Nothing is allocated here, because allocating per build
-      // would burn the sequence and give every build in the run its own run
-      // number, which is exactly the handle undo hangs on.
-      //
-      // 🛑 The provisioning guard is what keeps an org short of entity
-      // migration 141 from a 500. It gets un-numbered builds instead, which
-      // costs it undo and costs the netting read nothing.
-      // `backflush` too: its run number is what `undoBatchRun` keys on (111 D24).
-      if (input.batchRun !== undefined && RUN_NUMBERED_SOURCES.has(input.source ?? 'manual')) {
-        if (ctx.fields.build_batch_run) {
-          values.build_batch_run = input.batchRun
-        }
-      }
-
-      if (input.orderId) {
-        const orderDefId = await requireDefId(organizationId, 'order')
-        values.build_order = toRecordId(orderDefId, input.orderId)
-
-        // Stamp what the order asked production for AT THIS MOMENT
-        // (plans/products/13 Model A+). Compared later against the order's own
-        // `order_build_revision` to show that the order has changed since.
-        //
-        // 🛑 Only for a build the ORDER raised. A person who raises a build
-        // against an order deliberately is not tracking it, and stamping them
-        // would report drift for a build that never claimed to follow anything
-        // — the same distinction `build_source` exists to make (12 AB7).
-        //
-        // Absent on failure rather than fatal: `hasDrifted` reads a missing
-        // stamp as *unknown*, not *drifted*, so the worst case is a build that
-        // cannot show drift — never a build that is not raised.
-        //
-        // `input.orderRevision` short-circuits the read and nothing else. The
-        // convergence pass has already computed this exact fingerprint in order
-        // to decide whether to raise anything at all, so re-deriving it here
-        // would re-run `loadAutoBuildOrders` for one order per build raised.
-        if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
-          const stamp =
-            input.orderRevision ??
-            (await readOrderDemandFingerprint(db, organizationId, input.orderId))
-          if (stamp) values.build_order_revision = stamp
-        }
-      }
+      const values = await raiseBuildValues(db, organizationId, ctx, input)
 
       // The DEFAULT (interactive) write session on purpose. Only the two paths
       // that write stock movements take the quiet lane (`write-lane.ts`); a
@@ -238,6 +130,127 @@ export async function createBuild(
     'Failed to create build',
     { organizationId, partId: input.partId }
   )
+}
+
+/**
+ * The validated create values of a `planned` build; `recordCompletedBuild` raises from the same
+ * values so a one-pass build is refused exactly where `createBuild` would be.
+ */
+export async function raiseBuildValues(
+  db: Database,
+  organizationId: string,
+  ctx: BuildContext,
+  input: CreateBuildInput
+): Promise<Record<string, unknown>> {
+  if (!Number.isFinite(input.quantityPlanned) || input.quantityPlanned <= 0) {
+    throw new BadRequestError('A build must plan to produce at least one unit')
+  }
+
+  const partDefId = await requireDefId(organizationId, 'part')
+  await assertPartExists(db, organizationId, partDefId, input.partId)
+
+  const kinds = await readPartKinds(db, organizationId, [input.partId])
+  const partKind = resolvePartKind(kinds.get(input.partId))
+  if (partKind === 'service') {
+    throw new BadRequestError('A service is not stocked, so it cannot be built')
+  }
+  if (partKind === 'component') {
+    throw new UnprocessableEntityError(
+      'This part is classified as purchased, so it cannot be built. Change its part kind ' +
+        'to a subassembly or a finished good if it is made in-house.'
+    )
+  }
+
+  const subparts = await loadDirectSubparts(db, organizationId, input.partId)
+  if (subparts.length === 0) {
+    throw new UnprocessableEntityError(
+      'This part has no bill of materials, so a build would consume nothing'
+    )
+  }
+
+  const values: Record<string, unknown> = {
+    build_part: toRecordId(partDefId, input.partId),
+    build_status: BuildStatus.PLANNED,
+    build_quantity_planned: input.quantityPlanned,
+    build_source: input.source ?? 'manual',
+  }
+  if (input.notes) values.build_notes = input.notes
+
+  // The demand period a batch build claims (plans/money/tasks/44 §6.2).
+  //
+  // 🛑 Written HERE or never, and this function being the ONLY writer is
+  // what actually holds that. This comment used to say the fields being
+  // `updatable: false` made a post-create write impossible. It does not:
+  // `field-hooks/register-hooks.ts:523` states plainly that the write path
+  // NEVER reads `capabilities.updatable`, so the flag is documentation plus
+  // a UI and connector gate, nothing more (plans/money/tasks/45 §10.5). The
+  // invariant is a convention this file keeps, which is why a second writer
+  // would break it in silence: moving a claimed period restates what the
+  // next netting run believes is already covered.
+  //
+  // Guarded on `source` for the same reason `build_order_revision` is: an
+  // order-raised build answers to one order and a hand-raised one to nobody,
+  // so neither claims a period, and a stray period on one would make it look
+  // like coverage to a pass that must not see it.
+  if (input.period && (input.source ?? 'manual') === 'batch') {
+    if (input.period.end.getTime() <= input.period.start.getTime()) {
+      throw new BadRequestError('A build period must end after it starts')
+    }
+    if (ctx.fields.build_period_start && ctx.fields.build_period_end) {
+      values.build_period_start = input.period.start.toISOString()
+      values.build_period_end = input.period.end.toISOString()
+    }
+  }
+
+  // Which batch run raised this build (plans/money/tasks/45 §3). Same shape
+  // and the same three rules as the period above: written here or never,
+  // ignored unless the source is `batch`, and skipped when the field is not
+  // provisioned.
+  //
+  // ⚠️ The number is ALLOCATED ONCE PER RUN by `executeBackfill` and passed
+  // down (45 §3.2). Nothing is allocated here, because allocating per build
+  // would burn the sequence and give every build in the run its own run
+  // number, which is exactly the handle undo hangs on.
+  //
+  // 🛑 The provisioning guard is what keeps an org short of entity
+  // migration 141 from a 500. It gets un-numbered builds instead, which
+  // costs it undo and costs the netting read nothing.
+  // `backflush` too: its run number is what `undoBatchRun` keys on (111 D24).
+  if (input.batchRun !== undefined && RUN_NUMBERED_SOURCES.has(input.source ?? 'manual')) {
+    if (ctx.fields.build_batch_run) {
+      values.build_batch_run = input.batchRun
+    }
+  }
+
+  if (input.orderId) {
+    const orderDefId = await requireDefId(organizationId, 'order')
+    values.build_order = toRecordId(orderDefId, input.orderId)
+
+    // Stamp what the order asked production for AT THIS MOMENT
+    // (plans/products/13 Model A+). Compared later against the order's own
+    // `order_build_revision` to show that the order has changed since.
+    //
+    // 🛑 Only for a build the ORDER raised. A person who raises a build
+    // against an order deliberately is not tracking it, and stamping them
+    // would report drift for a build that never claimed to follow anything
+    // — the same distinction `build_source` exists to make (12 AB7).
+    //
+    // Absent on failure rather than fatal: `hasDrifted` reads a missing
+    // stamp as *unknown*, not *drifted*, so the worst case is a build that
+    // cannot show drift — never a build that is not raised.
+    //
+    // `input.orderRevision` short-circuits the read and nothing else. The
+    // convergence pass has already computed this exact fingerprint in order
+    // to decide whether to raise anything at all, so re-deriving it here
+    // would re-run `loadAutoBuildOrders` for one order per build raised.
+    if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
+      const stamp =
+        input.orderRevision ?? (await readOrderDemandFingerprint(db, organizationId, input.orderId))
+      if (stamp) values.build_order_revision = stamp
+    }
+  }
+
+  return values
 }
 
 /**

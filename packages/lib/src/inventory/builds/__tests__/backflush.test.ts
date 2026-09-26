@@ -3,7 +3,7 @@
 // Backflush (111 D23/D24): the replay `qoh(day) < 0 → one build of the shortfall`, parents
 // before the children they consume, dated the end of the local day, rolled first, idempotent.
 //
-// The ledger is an in-memory list of dated movements. The `completeBuild` double appends the
+// The ledger is an in-memory list of dated movements. The `recordCompletedBuild` double appends the
 // produce and consume legs a real completion writes, so the parent-before-child property is
 // exercised through the same dated read the run uses, not asserted by inspection.
 
@@ -39,14 +39,12 @@ const h = vi.hoisted(() => ({
   standardCostSources: new Map<string, string>(),
   archived: new Set<string>(),
   calls: [] as string[],
-  createCalls: [] as Record<string, unknown>[],
   completeCalls: [] as Record<string, unknown>[],
   rollCalls: [] as Record<string, unknown>[],
   completeRefusals: new Map<string, Error>(),
   rollRefusal: null as Error | null,
   numbering: 0,
   nextBuild: 0,
-  buildParts: new Map<string, string>(),
   reads: 0,
 }))
 
@@ -119,33 +117,21 @@ vi.mock('../build-queries', () => ({
   ),
 }))
 
-vi.mock('../build-mutations', () => ({
-  createBuild: vi.fn(
-    async (_db: unknown, _org: string, _user: string, input: Record<string, unknown>) => {
-      h.createCalls.push(input)
-      h.nextBuild += 1
-      const buildId = `bld_${h.nextBuild}`
-      h.buildParts.set(buildId, String(input.partId))
-      h.calls.push(`create:${String(input.partId)}`)
-      return ok({ buildId, partId: input.partId, status: 'planned' })
-    }
-  ),
-  startBuild: vi.fn(async (_db: unknown, _org: string, _user: string, input: { buildId: string }) =>
-    ok({ buildId: input.buildId, status: 'in_progress' })
-  ),
-}))
+vi.mock('../build-mutations', () => ({ createBuild: vi.fn() }))
 
 vi.mock('../complete-build', () => ({
-  completeBuild: vi.fn(
+  recordCompletedBuild: vi.fn(
     async (_db: unknown, _org: string, _user: string, input: Record<string, unknown>) => {
       h.completeCalls.push(input)
-      const buildId = String(input.buildId)
-      const partId = h.buildParts.get(buildId) ?? ''
+      const partId = String(input.partId)
       h.calls.push(`complete:${partId}`)
+      // A refused completion rolls its whole build back: nothing is written.
       const refusal = h.completeRefusals.get(partId)
       if (refusal) return err(refusal)
+      h.nextBuild += 1
+      const buildId = `bld_${h.nextBuild}`
       // The legs a real completion writes, dated the build's accounting date.
-      const quantity = Number(input.quantityProduced)
+      const quantity = Number(input.quantity)
       const at = input.completedAt as Date
       h.ledger.push({ partId, quantity, at })
       for (const edge of h.subparts.filter((s) => s.parentPartId === partId)) {
@@ -192,14 +178,12 @@ beforeEach(() => {
   h.timeZone = TZ
   h.ledger = []
   h.calls = []
-  h.createCalls = []
   h.completeCalls = []
   h.rollCalls = []
   h.completeRefusals = new Map()
   h.rollRefusal = null
   h.numbering = 0
   h.nextBuild = 0
-  h.buildParts = new Map()
   h.reads = 0
   h.archived = new Set()
   h.standardCosts = new Map()
@@ -222,17 +206,17 @@ describe('forty sales on a day', () => {
       [LIFT, 40, '2026-09-23'],
       [MOTOR, 40, '2026-09-23'],
     ])
-    expect(h.createCalls[0]).toMatchObject({
+    expect(h.completeCalls[0]).toMatchObject({
       partId: LIFT,
-      quantityPlanned: 40,
+      quantity: 40,
       source: 'backflush',
       batchRun: 1,
       notes: 'Backflush for 2026-09-23',
+      completedAt: END_0923,
     })
-    expect(h.completeCalls[0]).toMatchObject({ quantityProduced: 40, completedAt: END_0923 })
     // One run number for the whole call: what `undoBatchRun` keys on.
     expect(summary.batchRun).toBe(1)
-    expect(h.createCalls.every((c) => c.batchRun === 1)).toBe(true)
+    expect(h.completeCalls.every((c) => c.batchRun === 1)).toBe(true)
   })
 
   it('processes the parent before the child it consumes, and leaves a bought part negative', async () => {
@@ -270,7 +254,7 @@ describe('forty sales on a day', () => {
     const summary = await run()
     expect(summary.written).toEqual([])
     expect(summary.skipped).toBe(2)
-    expect(h.createCalls).toEqual([])
+    expect(h.completeCalls).toEqual([])
   })
 
   it('only counts movements dated on or before the end of the day', async () => {
@@ -301,12 +285,7 @@ describe('the roll before the first build (Q20)', () => {
       { partIds: [LIFT], effectiveAt: NOW },
       { partIds: [MOTOR], effectiveAt: NOW },
     ])
-    expect(h.calls.slice(0, 4)).toEqual([
-      `roll:${LIFT}`,
-      `create:${LIFT}`,
-      `complete:${LIFT}`,
-      `roll:${MOTOR}`,
-    ])
+    expect(h.calls.slice(0, 3)).toEqual([`roll:${LIFT}`, `complete:${LIFT}`, `roll:${MOTOR}`])
   })
 
   it('leaves a confirmed standard alone and rolls a part with no standard at all', async () => {
@@ -327,17 +306,17 @@ describe('the roll before the first build (Q20)', () => {
 })
 
 describe('never throws', () => {
-  it('records a refused completion as leftInProgress and does not consume its children', async () => {
+  it('records a refused completion as failed and does not consume its children', async () => {
     h.completeRefusals.set(LIFT, new UnprocessableEntityError('period locked'))
     sale(LIFT, 5, '2026-09-23')
     const summary = await run()
 
-    expect(summary.leftInProgress).toEqual([
-      expect.objectContaining({ partId: LIFT, buildId: 'bld_1', reason: 'period locked' }),
+    expect(summary.failed).toEqual([
+      expect.objectContaining({ partId: LIFT, reason: 'period locked' }),
     ])
     // The lift never completed, so the motor was never consumed and is not built.
     expect(summary.written).toEqual([])
-    expect(h.createCalls).toHaveLength(1)
+    expect(h.completeCalls).toHaveLength(1)
   })
 
   it('records a day whose read failed and continues with the next', async () => {
@@ -365,7 +344,7 @@ describe('never throws', () => {
       now: NOW,
     })
     expect(result.isErr()).toBe(true)
-    expect(h.createCalls).toEqual([])
+    expect(h.completeCalls).toEqual([])
   })
 
   it('never walks a day whose end is still in the future', async () => {
@@ -378,8 +357,8 @@ describe('never throws', () => {
     sale(LIFT, 1, '2026-09-23')
     const result = await backflushBuilds(db, ORG, { ...range, now: NOW })
     expect(result.isOk()).toBe(true)
-    const { createBuild } = await import('../build-mutations')
-    expect(vi.mocked(createBuild).mock.calls[0]?.[2]).toBe('user_system')
+    const { recordCompletedBuild } = await import('../complete-build')
+    expect(vi.mocked(recordCompletedBuild).mock.calls[0]?.[2]).toBe('user_system')
   })
 })
 
@@ -422,7 +401,7 @@ describe('one ledger read per slice (plans/mrp/11 §3)', () => {
     if (result.isErr()) throw result.error
     expect(result.value.batchRun).toBe(7)
     expect(h.numbering).toBe(0)
-    expect(h.createCalls.every((c) => c.batchRun === 7)).toBe(true)
+    expect(h.completeCalls.every((c) => c.batchRun === 7)).toBe(true)
     expect(h.rollCalls).toEqual([{ partIds: [MOTOR], effectiveAt: NOW }])
     expect([...rolled]).toEqual([LIFT, MOTOR])
   })
@@ -436,7 +415,7 @@ describe('the preview (D24)', () => {
 
     const preview = await previewBackflush(db, ORG, { ...range, to, now: NOW })
     if (preview.isErr()) throw preview.error
-    expect(h.createCalls).toEqual([])
+    expect(h.completeCalls).toEqual([])
     expect(preview.value.buildCount).toBe(4)
     expect(preview.value.unitCount).toBe(10)
     expect(preview.value.builds.map((b) => [b.partId, b.day, b.quantity])).toEqual([

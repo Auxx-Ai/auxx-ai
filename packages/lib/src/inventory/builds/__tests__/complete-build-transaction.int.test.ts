@@ -18,20 +18,15 @@
 //
 //   1. **Commit.** After a completion, all N consume rows and the single
 //      produce row are in the database, priced from the frozen standard.
-//   2. **Rollback.** A failure raised between the consume writes and the produce
-//      write leaves NOTHING behind — no movement instances, no movement field
-//      values, and a build still reading `in_progress`.
+//   2. **Rollback.** A failure raised after the movement writes leaves NOTHING
+//      behind — no movement instances, no movement field values, and a build
+//      still reading `in_progress`.
 //   3. **The post-commit recalculation sees committed rows.** `batchRecalculateQoH`
 //      runs on the module-level pool after the transaction returns (trap 1), so
 //      the quantity on hand it writes is the proof the rows were visible to a
 //      different connection by then.
 //
-// It also pins the known wrinkle rather than trusting the reasoning about it:
-// `createEntity`'s post-write `getEntityInstance` re-read uses the module-level
-// pool and therefore CANNOT see the row it just created inside `tx`. That is
-// observed directly below (`freshReadOutcomes`) and shown to be harmless,
-// because the re-read falls back to the in-transaction instance and the quiet
-// lane suppresses its only other consumer, the realtime frame.
+// The pool probe after the batched write (`freshReadOutcomes`) is what shows the rows are on `tx`.
 
 import { type Database, schema } from '@auxx/database'
 import { getTestDb } from '@auxx/test-utils'
@@ -70,15 +65,11 @@ vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => {
 
 const h = vi.hoisted(() => ({
   /**
-   * Armed only around the call under test. `resolveInventoryRoleForPartKind` is
-   * called once per component line while the plan is PRICED (outside any write)
-   * and then once more for the produce row — after every consume movement has
-   * been written and before the build's own status/cost update. Throwing on the
-   * `finished_good` call is therefore a failure exactly partway through the
-   * transaction, which is the shape a real defect takes.
+   * Armed only around the call under test: the build's posting throws, after every movement
+   * and the build update were written inside the transaction — a failure partway through.
    */
-  failOnFinishedGoodGlAccount: false,
-  /** Every `getEntityInstance` re-read `createEntity` made, and whether it found the row. */
+  failPosting: false,
+  /** Every movement the batched writer returned, probed through the pool: was it visible there? */
   freshReadOutcomes: [] as Array<{ id: string; found: boolean }>,
   /** Every realtime frame, at the service boundary. */
   frames: [] as Array<{ roomKey: string; event: string; data: unknown }>,
@@ -95,40 +86,38 @@ vi.mock('../../../realtime', async (importOriginal) => {
   return { ...actual, getRealtimeService: () => service }
 })
 
-vi.mock('../../movements/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../movements/client')>()
+vi.mock('../../../accounting/ledger/post/post-inventory-movement', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../accounting/ledger/post/post-inventory-movement')>()
   return {
     ...actual,
-    resolveInventoryRoleForPartKind: (
-      kind: Parameters<typeof actual.resolveInventoryRoleForPartKind>[0]
-    ) => {
-      if (h.failOnFinishedGoodGlAccount && kind === 'finished_good') {
-        throw new Error('injected failure between the consume rows and the produce row')
+    postInventoryMovementInTx: (...args: Parameters<typeof actual.postInventoryMovementInTx>) => {
+      if (h.failPosting) {
+        throw new Error('injected failure after the movement rows were written')
       }
-      return actual.resolveInventoryRoleForPartKind(kind)
+      return actual.postInventoryMovementInTx(...args)
     },
   }
 })
 
-vi.mock('../../../entity-instances', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../entity-instances')>()
+vi.mock('../../movements/write-movements-batch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../movements/write-movements-batch')>()
+  const { getEntityInstance } = await import('../../../entity-instances')
   return {
     ...actual,
-    // Right after each instance insert, probe for the row through the
-    // MODULE-LEVEL pool (a different connection from `tx`). `createEntity`
-    // used to do such a re-read itself; now the fresh row comes back on the
-    // write's own connection, so the probe lives here.
-    createEntityInstance: async (
-      params: Parameters<typeof actual.createEntityInstance>[0],
-      tx?: Parameters<typeof actual.createEntityInstance>[1]
+    // Probe each written row through the MODULE-LEVEL pool, a different connection from `tx`.
+    writeStockMovementsBatch: async (
+      ...args: Parameters<typeof actual.writeStockMovementsBatch>
     ) => {
-      const result = await actual.createEntityInstance(params, tx)
+      const result = await actual.writeStockMovementsBatch(...args)
       if (result.isOk()) {
-        const probe = await actual.getEntityInstance({
-          id: result.value.id,
-          organizationId: params.organizationId,
-        })
-        h.freshReadOutcomes.push({ id: result.value.id, found: probe.isOk() })
+        for (const record of result.value.records) {
+          const probe = await getEntityInstance({
+            id: record.movementId,
+            organizationId: args[0].organizationId,
+          })
+          h.freshReadOutcomes.push({ id: record.movementId, found: probe.isOk() })
+        }
       }
       return result
     },
@@ -259,7 +248,7 @@ async function optionsByEntity(
 }
 
 beforeEach(async () => {
-  h.failOnFinishedGoodGlAccount = false
+  h.failPosting = false
   h.freshReadOutcomes = []
   f = await seedBuildOrg()
 })
@@ -402,7 +391,7 @@ describe('a failure partway through rolls the whole completion back', () => {
     expect(await movementInstanceIds()).toHaveLength(0)
     h.freshReadOutcomes = []
 
-    h.failOnFinishedGoodGlAccount = true
+    h.failPosting = true
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY_PRODUCED,
@@ -425,7 +414,7 @@ describe('a failure partway through rolls the whole completion back', () => {
   it('leaves no movement field values behind', async () => {
     const buildId = await anInProgressBuild()
 
-    h.failOnFinishedGoodGlAccount = true
+    h.failPosting = true
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY_PRODUCED,
@@ -450,7 +439,7 @@ describe('a failure partway through rolls the whole completion back', () => {
   it('does not leave the build reading completed', async () => {
     const buildId = await anInProgressBuild()
 
-    h.failOnFinishedGoodGlAccount = true
+    h.failPosting = true
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY_PRODUCED,
@@ -467,7 +456,7 @@ describe('a failure partway through rolls the whole completion back', () => {
   it('leaves the build completable on a second, unfailed attempt', async () => {
     const buildId = await anInProgressBuild()
 
-    h.failOnFinishedGoodGlAccount = true
+    h.failPosting = true
     expect(
       (
         await completeBuild(db(), f.organizationId, f.userId, {
@@ -477,7 +466,7 @@ describe('a failure partway through rolls the whole completion back', () => {
       ).isErr()
     ).toBe(true)
 
-    h.failOnFinishedGoodGlAccount = false
+    h.failPosting = false
     const retry = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY_PRODUCED,
@@ -517,7 +506,7 @@ describe('the post-commit recalculation sees the committed rows', () => {
   it('recalculates nothing when the completion rolled back', async () => {
     const buildId = await anInProgressBuild()
 
-    h.failOnFinishedGoodGlAccount = true
+    h.failPosting = true
     const done = await completeBuild(db(), f.organizationId, f.userId, {
       buildId,
       quantityProduced: QUANTITY_PRODUCED,

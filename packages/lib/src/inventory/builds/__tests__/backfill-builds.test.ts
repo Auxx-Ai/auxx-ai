@@ -11,10 +11,8 @@
 //
 // Two properties carry most of the weight:
 //
-//   1. §7.4 — a refused completion is a `leftInProgress` RESULT carrying the
-//      build id, and the run CONTINUES. An error channel cannot name a build,
-//      so the person would be told "failed" about builds that exist and would
-//      press the button again.
+//   1. A completed build is one transaction (`recordCompletedBuild`), so a
+//      refused completion is a `failed` bucket with no build, and the run CONTINUES.
 //   2. §6.2 / the accounting rule — `completedAt` comes from the bucket's own
 //      demand period, in the book timezone, and never from `new Date()`.
 //      Dating eight months of production to today puts all of it in one
@@ -49,14 +47,12 @@ const h = vi.hoisted(() => ({
   counters: new Map<string, number>(),
   /** Every `createBuild` call, as the `CreateBuildInput` it was handed. */
   createCalls: [] as Record<string, unknown>[],
-  startCalls: [] as Record<string, unknown>[],
+  /** Every `recordCompletedBuild` call, as the input it was handed. */
   completeCalls: [] as Record<string, unknown>[],
   /** partIds whose `createBuild` must return an `err`. */
   createRefusals: new Map<string, Error>(),
-  /** buildIds whose `startBuild` must return an `err`. */
-  startRefusals: new Map<string, Error>(),
-  /** buildIds whose `completeBuild` must return an `err`. */
-  completeRefusals: new Map<string, Error>(),
+  /** 1-based `recordCompletedBuild` call numbers that must return an `err`. */
+  completeRefusals: new Map<number, Error>(),
   nextBuild: 0,
 }))
 
@@ -92,10 +88,10 @@ vi.mock('../../../records/record-numbering', () => ({
   },
 }))
 
-// The three sanctioned writers are doubles: each has its own suite, and what is
-// under test here is the SEAM between them. `createBuild` in particular owns the
-// part-kind and bill-of-materials refusals and the demand-period write, so this
-// file asserts on the input it is handed rather than re-testing those.
+// The two sanctioned writers are doubles: each has its own suite, and what is
+// under test here is the SEAM to them. They own the part-kind and bill-of-materials
+// refusals and the demand-period write, so this file asserts on the input they are
+// handed rather than re-testing those.
 vi.mock('../build-mutations', () => ({
   createBuild: vi.fn(
     async (_db: unknown, _org: string, _user: string, input: Record<string, unknown>) => {
@@ -107,21 +103,16 @@ vi.mock('../build-mutations', () => ({
       return ok(raised(buildId, { partId: String(input.partId) }))
     }
   ),
-  startBuild: vi.fn(
-    async (_db: unknown, _org: string, _user: string, input: { buildId: string }) => {
-      h.startCalls.push(input)
-      const refusal = h.startRefusals.get(input.buildId)
-      return refusal ? err(refusal) : ok(raised(input.buildId, { status: 'in_progress' }))
-    }
-  ),
 }))
 
 vi.mock('../complete-build', () => ({
-  completeBuild: vi.fn(
+  recordCompletedBuild: vi.fn(
     async (_db: unknown, _org: string, _user: string, input: Record<string, unknown>) => {
       h.completeCalls.push(input)
-      const refusal = h.completeRefusals.get(String(input.buildId))
-      return refusal ? err(refusal) : ok({ buildId: input.buildId, movementIds: ['mv_1'] })
+      const refusal = h.completeRefusals.get(h.completeCalls.length)
+      if (refusal) return err(refusal)
+      h.nextBuild += 1
+      return ok({ buildId: `bld_${h.nextBuild}`, movementIds: ['mv_1'] })
     }
   ),
 }))
@@ -214,10 +205,8 @@ beforeEach(() => {
   h.numberingCalls = []
   h.counters = new Map()
   h.createCalls = []
-  h.startCalls = []
   h.completeCalls = []
   h.createRefusals = new Map()
-  h.startRefusals = new Map()
   h.completeRefusals = new Map()
   h.nextBuild = 0
 })
@@ -321,12 +310,11 @@ describe('one bucket, one build', () => {
       { partId: LIFT, buildId: 'bld_2', quantity: 10, periodKey: '2026-02' },
     ])
     expect(summary.failed).toEqual([])
-    expect(summary.leftInProgress).toEqual([])
   })
 
   it('does nothing at all for an empty plan', async () => {
     const summary = (await executeBackfill(db, ORG, USER, planOf(), PLANNED))._unsafeUnwrap()
-    expect(summary).toEqual({ batchRun: null, created: [], leftInProgress: [], failed: [] })
+    expect(summary).toEqual({ batchRun: null, created: [], failed: [] })
     expect(h.createCalls).toHaveLength(0)
   })
 })
@@ -415,20 +403,28 @@ describe('🛑 the batch run number is allocated once per run', () => {
 })
 
 describe('planned is the whole of the write', () => {
-  it('never starts or completes a planned run', async () => {
+  it('never completes a planned run', async () => {
     await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED)
-    expect(h.startCalls).toHaveLength(0)
     expect(h.completeCalls).toHaveLength(0)
   })
 })
 
-describe('completed walks create -> start -> complete', () => {
-  it('completes at the period date, not at now', async () => {
+describe('completed writes each build completed, in one pass', () => {
+  it('completes at the period date, not at now, with the demand period and run', async () => {
     await executeBackfill(db, ORG, USER, planOf(bucket()), COMPLETED)
 
-    expect(h.startCalls).toEqual([{ buildId: 'bld_1' }])
+    expect(h.createCalls).toHaveLength(0)
     expect(h.completeCalls).toHaveLength(1)
-    expect(h.completeCalls[0]).toMatchObject({ buildId: 'bld_1', quantityProduced: 10 })
+    expect(h.completeCalls[0]).toMatchObject({
+      partId: LIFT,
+      quantity: 10,
+      source: 'batch',
+      batchRun: 1,
+      period: {
+        start: new Date('2026-01-01T00:00:00.000Z'),
+        end: new Date('2026-02-01T00:00:00.000Z'),
+      },
+    })
     expect((h.completeCalls[0]?.completedAt as Date).toISOString()).toBe('2026-01-31T23:59:59.999Z')
   })
 
@@ -463,7 +459,7 @@ describe('completed walks create -> start -> complete', () => {
       await executeBackfill(db, ORG, USER, planOf(bucket()), COMPLETED)
     )._unsafeUnwrap()
 
-    expect(h.createCalls).toHaveLength(0)
+    expect(h.completeCalls).toHaveLength(0)
     expect(summary.created).toEqual([])
     expect(summary.failed).toHaveLength(1)
     expect(summary.failed[0]?.reason).toContain('has not ended yet')
@@ -471,56 +467,28 @@ describe('completed walks create -> start -> complete', () => {
   })
 })
 
-// ─── §7.4 — it is not atomic, and the summary says so ───────────────────
-
-describe('🛑 a refused completion is a result, not an error', () => {
-  it('records the build that exists and CONTINUES the run', async () => {
-    h.completeRefusals.set(
-      'bld_1',
-      new UnprocessableEntityError('Feet Bracket has no standard cost')
-    )
+// A refused completion rolled its whole build back, so the bucket produced nothing.
+describe('🛑 a refused completion is a failed bucket, and the run continues', () => {
+  it('records the refusal verbatim, creates no build for it, and runs the next bucket', async () => {
+    h.completeRefusals.set(1, new UnprocessableEntityError('Feet Bracket has no standard cost'))
     const plan = planOf(bucket(), bucket({ periodKey: '2026-02', bucketId: `${LIFT}:2026-02` }))
 
     const result = await executeBackfill(db, ORG, USER, plan, COMPLETED)
 
-    // ✅ Ok, not err — the caller has to be able to name and link the run.
     expect(result.isOk()).toBe(true)
     const summary = result._unsafeUnwrap()
-    expect(summary.leftInProgress).toEqual([
-      { partId: LIFT, buildId: 'bld_1', reason: 'Feet Bracket has no standard cost' },
+    expect(summary.failed).toEqual([
+      {
+        partId: LIFT,
+        bucketId: `${LIFT}:2026-01`,
+        periodKey: '2026-01',
+        reason: 'Feet Bracket has no standard cost',
+      },
     ])
-    // The batch is NOT aborted: the second bucket still ran and completed.
-    expect(h.createCalls).toHaveLength(2)
+    expect(summary.created).toEqual([
+      { partId: LIFT, buildId: 'bld_1', quantity: 10, periodKey: '2026-02' },
+    ])
     expect(h.completeCalls).toHaveLength(2)
-  })
-
-  // A build left in progress WAS created, and `created.length` is the answer to
-  // "how many builds does this org have that it did not before".
-  it('still counts the raised build as created', async () => {
-    h.completeRefusals.set('bld_1', new UnprocessableEntityError('nope'))
-    const summary = (
-      await executeBackfill(db, ORG, USER, planOf(bucket()), COMPLETED)
-    )._unsafeUnwrap()
-
-    expect(summary.created).toHaveLength(1)
-    expect(summary.created[0]?.buildId).toBe('bld_1')
-    expect(summary.failed).toEqual([])
-  })
-
-  it('records a refused START too, because that build also exists', async () => {
-    h.startRefusals.set(
-      'bld_1',
-      new UnprocessableEntityError('Only a planned build can be started')
-    )
-
-    const summary = (
-      await executeBackfill(db, ORG, USER, planOf(bucket()), COMPLETED)
-    )._unsafeUnwrap()
-
-    expect(h.completeCalls).toHaveLength(0)
-    expect(summary.leftInProgress).toHaveLength(1)
-    expect(summary.leftInProgress[0]?.buildId).toBe('bld_1')
-    expect(summary.leftInProgress[0]?.reason).toContain('could not be started')
   })
 })
 
@@ -559,8 +527,8 @@ describe('🛑 never throws', () => {
 
 // 🛑 The part-kind, bill-of-materials, part-existence and quantity refusals all
 // live in `createBuild` and have their own suite there. What this file owns is
-// what a refusal MEANS to a run: the bucket wrote nothing, so it is `failed` and
-// never `leftInProgress`, and the run keeps going.
+// what a refusal MEANS to a run: the bucket wrote nothing, so it is `failed`, and
+// the run keeps going.
 describe('a refused raise is a failed bucket, not a build to go and finish', () => {
   it('records the refusal verbatim and raises nothing', async () => {
     h.createRefusals.set(
@@ -573,7 +541,6 @@ describe('a refused raise is a failed bucket, not a build to go and finish', () 
     )._unsafeUnwrap()
 
     expect(summary.created).toEqual([])
-    expect(summary.leftInProgress).toEqual([])
     expect(summary.failed).toEqual([
       {
         partId: LIFT,
@@ -582,13 +549,6 @@ describe('a refused raise is a failed bucket, not a build to go and finish', () 
         reason: 'This part is classified as purchased, so it cannot be built.',
       },
     ])
-  })
-
-  it('never starts or completes a bucket whose raise was refused', async () => {
-    h.createRefusals.set(LIFT, new UnprocessableEntityError('no bill of materials'))
-    await executeBackfill(db, ORG, USER, planOf(bucket()), COMPLETED)
-    expect(h.startCalls).toHaveLength(0)
-    expect(h.completeCalls).toHaveLength(0)
   })
 })
 

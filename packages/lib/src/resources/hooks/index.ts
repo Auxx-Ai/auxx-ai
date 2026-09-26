@@ -19,6 +19,7 @@ export {
   getHooksForAttribute,
   getSystemHooks,
   hasSystemHooks,
+  runSystemPreHooks,
 } from './system-hooks'
 export { TICKET_HOOKS } from './ticket-hooks'
 export type { SystemHook, SystemHookContext, SystemHookRegistry } from './types'

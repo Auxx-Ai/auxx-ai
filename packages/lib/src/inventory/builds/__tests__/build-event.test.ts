@@ -226,6 +226,22 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   },
 }))
 
+// The batched writer's own SQL is covered by the integration suite; here each leg goes through
+// the per-row writer and the CRUD double above, with no handler construction of its own.
+vi.mock('../../movements/write-movements-batch', async () => {
+  const { writeStockMovements } = await vi.importActual<
+    typeof import('../../movements/write-movements')
+  >('../../movements/write-movements')
+  const { UnifiedCrudHandler } = await import('../../../resources/crud/unified-handler')
+  return {
+    writeStockMovementsBatch: (
+      ctx: Parameters<typeof writeStockMovements>[0],
+      inputs: Parameters<typeof writeStockMovements>[1]
+    ) =>
+      writeStockMovements({ ...ctx, handler: Object.create(UnifiedCrudHandler.prototype) }, inputs),
+  }
+})
+
 import { amendPlannedBuildQuantity, cancelBuild, createBuild, startBuild } from '../build-mutations'
 import { completeBuild } from '../complete-build'
 import { reverseBuild } from '../reverse-build'
