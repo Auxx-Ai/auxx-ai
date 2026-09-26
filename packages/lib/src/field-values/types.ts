@@ -180,6 +180,10 @@ export interface SetValuesForEntityInput {
   isCreate?: boolean
   /** See {@link SetValueWithBuiltInInput.collectFieldChanges}. */
   collectFieldChanges?: RecordFieldChange[]
+  /** The caller inserted this instance in the same call: `createValuesForEntity` skips its empty-row probe. */
+  freshInstance?: boolean
+  /** Display text the instance insert already carries, by field id (`computeCreateDisplayColumns`). */
+  precomputedDisplay?: ReadonlyMap<string, string | null>
 }
 
 /**

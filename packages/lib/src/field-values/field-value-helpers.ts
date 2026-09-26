@@ -1389,6 +1389,34 @@ export async function stampEntityInstancesUpdatedAt(
 }
 
 /**
+ * The text a scalar (non-avatar, non-RELATIONSHIP) display field writes into its display
+ * column; the create-time precompute uses it too, so both store the same string.
+ */
+export async function formatDisplayColumnText(
+  organizationId: string,
+  field: Pick<CachedField, 'type' | 'options'>,
+  typedValue: TypedFieldValueInput | TypedFieldValueInput[]
+): Promise<string | null> {
+  // Multi-value fields render their PRIMARY (first) value — `formatToDisplayValue`
+  // maps over arrays, and writing that array into the column would corrupt it.
+  const primaryTyped = primaryValue(typedValue)
+  if (!primaryTyped) return null
+  // `withOrgCurrency` layers the org rung under a CURRENCY field that never picked
+  // its own code, so the persisted display value follows `organization.currency`.
+  const options =
+    field.type === 'CURRENCY'
+      ? withOrgCurrency(
+          field.options as never,
+          'CURRENCY',
+          await getOrgCurrencyCode(organizationId)
+        )
+      : (field.options as never)
+  return formatToDisplayValue(primaryTyped, toFieldType(field.type), options as any) as
+    | string
+    | null
+}
+
+/**
  * Update EntityInstance display columns if field is a display field.
  * Handles primary (displayName), secondary (secondaryDisplayValue), and avatar (avatarUrl).
  */
@@ -1531,27 +1559,7 @@ export async function maybeUpdateDisplayValue(
         }
       }
     } else {
-      // Use centralized formatter for display value computation. Multi-value
-      // fields render their PRIMARY (first) value — `formatToDisplayValue`
-      // maps over arrays, and writing that array into the display column
-      // would corrupt `displayName`/`secondaryDisplayValue`.
-      const primaryTyped = primaryValue(typedValue)
-      // `withOrgCurrency` layers the org rung under a CURRENCY field that never
-      // picked its own code, so the persisted display value follows
-      // `organization.currency`. A no-op for every other field type.
-      const options =
-        field.type === 'CURRENCY'
-          ? withOrgCurrency(
-              field.options as never,
-              'CURRENCY',
-              await getOrgCurrencyCode(ctx.organizationId)
-            )
-          : (field.options as never)
-      displayValue = primaryTyped
-        ? (formatToDisplayValue(primaryTyped, toFieldType(field.type), options as any) as
-            | string
-            | null)
-        : null
+      displayValue = await formatDisplayColumnText(ctx.organizationId, field, typedValue)
     }
   }
 
