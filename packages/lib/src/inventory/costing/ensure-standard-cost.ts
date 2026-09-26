@@ -10,6 +10,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
+import { requestPartPricing } from '../../accounting/work-items/recovery'
 import { wakePricedParts } from '../../accounting/work-items/wake'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
@@ -23,7 +24,6 @@ import {
 } from '../../realtime'
 import type { StandardCostOriginValue, StandardCostSourceValue } from './client'
 import { guard } from './guard'
-import { pricePendingMovementsQuietly } from './price-pending-movements'
 import { loadStandardCostWriteContext, type StandardCostFields } from './standard-cost-queries'
 import type { StandardCostComponents } from './types'
 
@@ -102,11 +102,11 @@ export async function ensureStandardCost(
         source: source.kind === 'receipt' ? 'confirmed' : 'provisional',
       })
 
-      // The rows written pending for want of a standard are valued now (111 Q22); the wake
-      // keeps the recovery lane as the backstop.
+      // The rows written pending for want of a standard are valued by `pricePartsJob` (111 Q22),
+      // off the request; the wake keeps the recovery lane as the backstop.
       if (writtenPartIds.length > 0) {
         await wakePricedParts(db, organizationId, { partIds: writtenPartIds })
-        await pricePendingMovementsQuietly(db, organizationId, writtenPartIds)
+        await requestPartPricing(organizationId, writtenPartIds)
       }
 
       logger.info('Ensured first standard cost', {

@@ -35,6 +35,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
+import { requestPartPricing } from '../../accounting/work-items/recovery'
 import { wakePricedParts } from '../../accounting/work-items/wake'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
@@ -48,7 +49,7 @@ import { resolveInventoryRoleForPartKind } from '../movements/client'
 import type { PartKindValue } from './client'
 import { recalculateAllPartCosts } from './cost-calculator'
 import { guard } from './guard'
-import { pricePendingMovementsQuietly } from './price-pending-movements'
+import { pricePendingMovements } from './price-pending-movements'
 import { type RevaluationLine, writeRevaluation } from './revalue'
 import {
   assertRollDateAllowed,
@@ -126,6 +127,21 @@ export async function rollStandardCost(
       )
       assertRollDateAllowed(plan)
 
+      // A restated part may still hold rows `pricePartsJob` has not reached; they take the OLD
+      // standard first or the revaluation double counts them (09 D-SC2a, 111 §1.2).
+      const restatedPartIds = plan.lines
+        .filter(
+          (line) =>
+            !line.isInitial &&
+            line.previousStandardCost != null &&
+            line.standardCost !== line.previousStandardCost
+        )
+        .map((line) => line.partId)
+      if (restatedPartIds.length > 0) {
+        const priced = await pricePendingMovements(db, organizationId, restatedPartIds)
+        if (priced.isErr()) throw priced.error
+      }
+
       // Step 3.
       const writtenPartIds = await persistStandardCosts(db, organizationId, userId, {
         partDefId,
@@ -142,11 +158,11 @@ export async function rollStandardCost(
         effectiveAt: plan.effectiveAt,
       })
 
-      // The rows written pending for want of a standard are valued now (111 Q22); the wake
-      // keeps the recovery lane as the backstop.
+      // The rows written pending for want of a standard are valued by `pricePartsJob` (111 Q22),
+      // off the request; the wake keeps the recovery lane as the backstop.
       if (writtenPartIds.length > 0) {
         await wakePricedParts(db, organizationId, { partIds: writtenPartIds })
-        await pricePendingMovementsQuietly(db, organizationId, writtenPartIds)
+        await requestPartPricing(organizationId, writtenPartIds)
       }
 
       logger.info('Rolled standard cost', {

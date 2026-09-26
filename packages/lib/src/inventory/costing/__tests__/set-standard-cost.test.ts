@@ -21,7 +21,7 @@ const h = vi.hoisted(() => ({
   setValueWithType: vi.fn(async () => []),
   wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
   requestAccountingRecovery: vi.fn(async () => {}),
-  pricePending: vi.fn(async () => {}),
+  requestPartPricing: vi.fn(async () => {}),
 }))
 
 vi.mock('@auxx/database', () => ({
@@ -35,9 +35,9 @@ vi.mock('../provisional-standard', () => ({ replaceProvisionalStandard: h.replac
 vi.mock('../roll-unvalued-ancestors', () => ({ rollUnvaluedAncestors: h.roll }))
 vi.mock('../cost-calculator', () => ({ loadOrgSubpartEdges: async () => h.edges }))
 vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
-vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../../../accounting/work-items/recovery', () => ({
   requestAccountingRecovery: h.requestAccountingRecovery,
+  requestPartPricing: h.requestPartPricing,
 }))
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
@@ -145,10 +145,9 @@ describe('setStandardCost', () => {
     expect(writes.get('f_mat')).toEqual({ type: 'number', value: 4200 })
     expect(writes.get('f_origin')).toEqual({ type: 'option', optionId: 'manual' })
     expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: ['p1'] })
-    // 111 Q22: priced inline after the wake (a no-op by construction here - an unmoved part
-    // has no rows - but the door prices like the other three).
-    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, ['p1'])
-    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+    // 111 Q22: pricing queued after the wake, like the other doors.
+    expect(h.requestPartPricing).toHaveBeenCalledWith(ORG, ['p1'])
+    expect(h.requestPartPricing.mock.invocationCallOrder[0]!).toBeGreaterThan(
       h.wakePricedParts.mock.invocationCallOrder[0]!
     )
     expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)

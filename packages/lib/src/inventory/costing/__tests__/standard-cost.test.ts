@@ -9,7 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
-  pricePending: vi.fn(async () => {}),
+  pricePending: vi.fn(async (..._args: unknown[]) => ({ isErr: () => false, value: {} })),
+  requestPartPricing: vi.fn(async (..._args: unknown[]) => {}),
   partRows: [] as unknown[],
   valueRows: [] as unknown[],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
@@ -145,7 +146,10 @@ vi.mock('../../../realtime', () => ({
 // half of the ROLL; `revalue.ts` pulls the whole ledger post path in.
 vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
 vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
-vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
+vi.mock('../price-pending-movements', () => ({ pricePendingMovements: h.pricePending }))
+vi.mock('../../../accounting/work-items/recovery', () => ({
+  requestPartPricing: h.requestPartPricing,
+}))
 vi.mock('../dated-reads', () => ({
   readLatestMovementAt: async (_org: string, partIds: readonly string[]) =>
     new Map(partIds.map((id) => [id, h.latestMovements.get(id) ?? null])),
@@ -430,8 +434,8 @@ describe('rollStandardCost', () => {
     ])
   })
 
-  // 111 Q22: the pricer, not the roll, values the rows written pending for want of a standard.
-  it('prices the written parts right after the wake', async () => {
+  // 111 Q22: `pricePartsJob`, not the roll, values the rows written pending for want of a standard.
+  it('queues pricing for the written parts right after the wake', async () => {
     queueOrg(
       [PARTS[0]!],
       [
@@ -444,9 +448,36 @@ describe('rollStandardCost', () => {
     await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
 
     expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: [MOTOR] })
-    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
-    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+    expect(h.requestPartPricing).toHaveBeenCalledWith(ORG, [MOTOR])
+    expect(h.requestPartPricing.mock.invocationCallOrder[0]!).toBeGreaterThan(
       h.wakePricedParts.mock.invocationCallOrder[0]!
+    )
+    // A first standard has no old one to price at, so nothing is priced inline.
+    expect(h.pricePending).not.toHaveBeenCalled()
+  })
+
+  // 09 D-SC2a: rows the job has not reached take the OLD standard before the revaluation posts.
+  it('prices a restated part inline, before writing the new standard', async () => {
+    queueOrg(
+      [PARTS[0]!],
+      [
+        fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+        fv(MOTOR, FIELD.part_cost!.id, { number: 2200 }),
+        fv(MOTOR, FIELD.part_quantity_on_hand!.id, { number: 10 }),
+        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 2010 }),
+        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 2010 }),
+        fv(MOTOR, FIELD.part_standard_cost_effective_at!.id, { date: '2026-01-01T00:00:00.000Z' }),
+      ]
+    )
+
+    await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
+
+    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.setValueWithType.mock.invocationCallOrder[0]!
+    )
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.writeRevaluation.mock.invocationCallOrder[0]!
     )
   })
 

@@ -14,6 +14,7 @@ import { createAllFields } from '../../../seed/entity-seeder/create-fields'
 import { linkRelationships } from '../../../seed/entity-seeder/link-relationships'
 import type { EntityDefMap } from '../../../seed/entity-seeder/types'
 import { ensureStandardCost } from '../../costing/ensure-standard-cost'
+import { pricePendingMovements } from '../../costing/price-pending-movements'
 import { backfillFulfillmentRelief } from '../backfill'
 import { sweepPendingPricing } from '../relief-sweep'
 
@@ -24,6 +25,11 @@ vi.mock('@auxx/redis', async (original) => ({
   },
 }))
 vi.mock('../../../resources/crud/tx-write-flush', () => ({ flushTxWriteScope: vi.fn() }))
+// The doors enqueue on BullMQ; this test prices by calling the job's pricer directly.
+vi.mock('../../../accounting/work-items/recovery', () => ({
+  requestAccountingRecovery: vi.fn(),
+  requestPartPricing: vi.fn(),
+}))
 vi.mock('../../../events/publisher', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return { ...actual, publisher: { publish: async () => {}, publishLater: async () => {} } }
@@ -171,8 +177,12 @@ describe('the relieve lane', () => {
       unitCost: 4_000,
     })
     expect(ensured._unsafeUnwrap().writtenPartIds).toEqual([partId])
-    // 111 Q22: the first standard priced the pending row inline and cleared the park; the
-    // recovery lane finds nothing left to do.
+    // 111 Q22: the first standard wakes the park and queues `pricePartsJob`, which prices off
+    // the request; the recovery lane then finds nothing left to do.
+    const woken = await relieveRow(fulfillmentId)
+    expect(woken!.nextAttemptAt!.getTime()).toBeLessThanOrEqual(Date.now())
+    const priced = await pricePendingMovements(db(), organizationId, [partId])
+    expect(priced._unsafeUnwrap().pricedMovementIds).toHaveLength(1)
     expect(await relieveRow(fulfillmentId)).toBeNull()
     const counts = await sweepPendingPricing(db(), { organizationId, limit: 10 })
     expect(counts).toMatchObject({ scanned: 0 })

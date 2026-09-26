@@ -6,15 +6,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
-  pricePending: vi.fn(async () => {}),
+  requestPartPricing: vi.fn(async () => {}),
   queryQueue: [] as unknown[][],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   publishFieldValueUpdates: vi.fn(async () => {}),
 }))
 
 vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
-// The pricer is its own subject (`price-pending-movements.test.ts`); here only the call matters.
-vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
+// The pricing job is its own subject (`price-parts-job.test.ts`); here only the enqueue matters.
+vi.mock('../../../accounting/work-items/recovery', () => ({
+  requestPartPricing: h.requestPartPricing,
+}))
 
 function nextRows(): unknown[] {
   return h.queryQueue.shift() ?? []
@@ -159,7 +161,7 @@ describe('ensureStandardCost', () => {
 
     expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.setValueWithType).not.toHaveBeenCalled()
-    expect(h.pricePending).not.toHaveBeenCalled()
+    expect(h.requestPartPricing).not.toHaveBeenCalled()
   })
 
   it('freezes exactly the explicit cost as material, ignoring the live cost', async () => {
@@ -209,14 +211,14 @@ describe('ensureStandardCost', () => {
     })
   })
 
-  it('prices the written parts right after the wake, as the system user', async () => {
+  it('queues pricing for the written parts right after the wake, as the system user', async () => {
     queueOrg([PARTS[0]!], [kind(MOTOR, 'component')])
 
     await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 1 })
 
     expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: [MOTOR] })
-    expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
-    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
+    expect(h.requestPartPricing).toHaveBeenCalledWith(ORG, [MOTOR])
+    expect(h.requestPartPricing.mock.invocationCallOrder[0]!).toBeGreaterThan(
       h.wakePricedParts.mock.invocationCallOrder[0]!
     )
     const ctx = h.setValueWithType.mock.calls[0]?.[0] as { userId?: string }

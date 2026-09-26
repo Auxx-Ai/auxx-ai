@@ -24,9 +24,9 @@ const PRICE_SOURCE_KINDS = [
 ] as const satisfies readonly WorkItemSourceKind[]
 
 /**
- * The backstop under the inline pricer (111 Q22): re-offer every document parked at stage `price`
- * to the pricer. Nothing is fresh here - the four standard doors price inline; this lane exists
- * for an org that was in draft, a pricer that threw, or a part priced by a route with no door.
+ * The backstop under `pricePartsJob` (111 Q22): re-offer every document parked at stage `price`
+ * to the pricer. Nothing is fresh here - the standard doors queue the job; this lane exists for
+ * an org that was in draft, a pricer that threw, a lost enqueue, or a part priced by a route with no door.
  */
 export async function sweepPendingPricing(
   db: Database,

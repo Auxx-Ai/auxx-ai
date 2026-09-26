@@ -24,7 +24,7 @@ type PostingSweep = (
 const POSTING_SWEEPS: Array<[label: string, sweep: PostingSweep]> = [
   ['Payment accounting', sweepMovementAccounting],
   ['Shipment accounting', sweepFulfillmentAccounting],
-  // Stage `price` (111 Q21): the backstop under the inline pricer.
+  // Stage `price` (111 Q21): the backstop under `pricePartsJob`.
   ['Pricing', sweepPendingPricing],
   // Valued post-cutover movements in no posted entry - written in draft, or a post that threw (111 Q22b).
   ['Unposted inventory', sweepUnpostedInventory],
