@@ -17,12 +17,13 @@
 // syncs the record actually needs) instead of ~5 statements per field.
 //
 // Hazard (section 6): it is only sound for an instance whose FieldValue set
-// is EMPTY. The precondition is asserted, not assumed: one indexed probe, and
-// any stored row sends the write to `writeValuesForEntity` unchanged. It is a
+// is EMPTY. The precondition is asserted, not assumed: one indexed probe (skipped
+// only for `freshInstance`, the inserting caller's own row), and any stored row
+// sends the write to `writeValuesForEntity` unchanged. It is a
 // separate entry point on purpose; no flag on the update path can select it.
 
 import { schema } from '@auxx/database'
-import type { FieldType } from '@auxx/database/types'
+import type { CustomFieldEntity, FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import {
   isArrayReturnFieldType,
@@ -60,10 +61,12 @@ import {
 import { getAmbientTxWriteScope, isTxWriteCreated } from '../resources/crud/tx-write-scope'
 import { isDeclaredSilent } from '../resources/crud/write-origin'
 import { getModelType, parseRecordId, toRecordId } from '../resources/resource-id'
+import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import {
   type CachedField,
   canonicalizeRelationshipValue,
   type FieldValueContext,
+  formatDisplayColumnText,
   getInverseInfoFromField,
   maybeUpdateDisplayValue,
   preBatchValidateRelationships,
@@ -84,6 +87,7 @@ import {
   type WriteValuesForEntityResult,
   writeValuesForEntity,
 } from './field-value-mutations'
+import { FieldValueValidator } from './field-value-validator'
 import { formatToTypedInput } from './formatter'
 import { flushInstanceDerived } from './instance-derived'
 import { coerceNameInput, readNameParts } from './name-parts'
@@ -135,22 +139,25 @@ async function createValuesForEntityUnguarded(
 
   // The precondition, asserted: a fresh instance has no rows. Anything else
   // (a caller handing us an existing record, a retry after a partial write)
-  // is an UPDATE and goes through the reconcile.
-  const [existing] = await ctx.db
-    .select({ id: schema.FieldValue.id })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.entityId, entityInstanceId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
+  // is an UPDATE and goes through the reconcile. `freshInstance` is the
+  // inserting caller's word that the row was created in this same call.
+  if (!params.freshInstance) {
+    const [existing] = await ctx.db
+      .select({ id: schema.FieldValue.id })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
       )
-    )
-    .limit(1)
-  if (existing) {
-    logger.warn('createValuesForEntity called for an instance with stored values; reconciling', {
-      recordId,
-    })
-    return writeValuesForEntity(ctx, params)
+      .limit(1)
+    if (existing) {
+      logger.warn('createValuesForEntity called for an instance with stored values; reconciling', {
+        recordId,
+      })
+      return writeValuesForEntity(ctx, params)
+    }
   }
 
   return writeFreshValues(ctx, { ...params, publishEvents: requestedPublish && !bufferedScope })
@@ -167,6 +174,7 @@ async function writeFreshValues(
     skipInverseSync = false,
     skipSearchTextRefresh = false,
     skipInstanceStamp = false,
+    precomputedDisplay,
   } = params
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const modelType = getModelType(entityDefinitionId)
@@ -417,6 +425,7 @@ async function writeFreshValues(
 
   // ---- derived work, per record ----------------------------------------
   const collector = syncCollectorOf(ctx.session)
+  const insertedDisplay: Array<string | null> = []
   const realtimeEntries: FieldValueUpdateEntry[] = []
   const writtenFieldIds: string[] = []
   const typedByField = new Map<string, TypedFieldValue[]>()
@@ -465,13 +474,23 @@ async function writeFreshValues(
     }
     writtenFieldIds.push(fieldId)
 
-    // Display columns (skipping the NAME recompose handled above).
+    // Display columns (skipping the NAME recompose handled above). A column the
+    // insert already carries is skipped when the stored value formats the same;
+    // a pre-hook that changed the value falls through to the UPDATE.
     const value: TypedFieldValueInput | TypedFieldValueInput[] =
       p.values.length === 1 ? p.values[0]! : p.values
-    await maybeUpdateDisplayValue(ctx, recordId, field, value, {
-      skipSearchTextRefresh: true,
-      skipNameCompose: composedPartIds.has(fieldId),
-    })
+    const precomputed = precomputedDisplay?.get(fieldId)
+    if (
+      precomputed !== undefined &&
+      precomputed === (await formatDisplayColumnText(ctx.organizationId, field, value))
+    ) {
+      insertedDisplay.push(precomputed)
+    } else {
+      await maybeUpdateDisplayValue(ctx, recordId, field, value, {
+        skipSearchTextRefresh: true,
+        skipNameCompose: composedPartIds.has(fieldId),
+      })
+    }
 
     // Inverse relationships: a fresh record removes nothing, only adds.
     if (fieldType === 'RELATIONSHIP' && !skipInverseSync) {
@@ -520,6 +539,14 @@ async function writeFreshValues(
         aiMetadata: null,
       })
     }
+  }
+
+  if (precomputedDisplay) {
+    await settleInsertedDisplay(ctx, recordId, entityType, precomputedDisplay, {
+      kept: insertedDisplay,
+      written: writtenFieldIds,
+      cachedField,
+    })
   }
 
   // Results, one per input entry: composite NAME entries report under the
@@ -639,4 +666,92 @@ async function writeFreshValues(
   })
 
   return { results, instance }
+}
+
+/** Display columns `createEntity` writes in its insert, and the text per field they cover. */
+export interface CreateDisplayColumns {
+  columns: { displayName?: string | null; secondaryDisplayValue?: string | null }
+  byFieldId: Map<string, string | null>
+}
+
+// Converting the scalar types below reads nothing but the validator.
+const precomputeCtx = { validator: new FieldValueValidator() } as unknown as FieldValueContext
+
+/** Display fields whose column is not a pure function of the written value. */
+const POST_INSERT_DISPLAY_TYPES = new Set(['RELATIONSHIP', 'NAME', 'FILE'])
+
+/**
+ * The `displayName` / `secondaryDisplayValue` a record about to be inserted gets from its
+ * own values, for scalar display fields only (plans/records/lean-create-and-quiet-frames.md §2).
+ * Field pre-hooks have not run yet; `writeFreshValues` re-checks each against what it stores.
+ */
+export async function computeCreateDisplayColumns(
+  organizationId: string,
+  display: { primaryDisplayFieldId?: string | null; secondaryDisplayFieldId?: string | null },
+  fields: readonly CustomFieldEntity[],
+  values: Record<string, unknown>
+): Promise<CreateDisplayColumns> {
+  const result: CreateDisplayColumns = { columns: {}, byFieldId: new Map() }
+  const targets = [
+    { column: 'displayName' as const, fieldId: display.primaryDisplayFieldId },
+    { column: 'secondaryDisplayValue' as const, fieldId: display.secondaryDisplayFieldId },
+  ]
+  for (const { column, fieldId } of targets) {
+    if (!fieldId || result.byFieldId.has(fieldId)) continue
+    const field = fields.find((f) => f.id === fieldId)
+    if (!field || POST_INSERT_DISPLAY_TYPES.has(field.type)) continue
+    // Same key resolution as `setFieldValues`; the last matching key wins, as in the write.
+    const keys = new Set([field.id, field.systemAttribute ?? field.name])
+    let raw: unknown
+    for (const [key, v] of Object.entries(values)) {
+      if (keys.has(key) && v !== undefined) raw = v
+    }
+    if (raw === undefined || raw === null) continue
+    try {
+      const typed = await validateAndConvertValue(
+        precomputeCtx,
+        raw,
+        toFieldType(field.type),
+        field as CachedField
+      )
+      if (typed === null || (Array.isArray(typed) && typed.length === 0)) continue
+      const text = await formatDisplayColumnText(organizationId, field, typed)
+      result.columns[column] = text
+      result.byFieldId.set(field.id, text)
+    } catch {
+      // The write reports the conversion failure; the column just stays empty.
+    }
+  }
+  return result
+}
+
+/**
+ * What `maybeUpdateDisplayValue` would still have done for columns the insert carried:
+ * clear one whose field was not stored, and cascade a kept one to dependents.
+ */
+async function settleInsertedDisplay(
+  ctx: FieldValueContext,
+  recordId: RecordId,
+  entityType: string | null,
+  precomputed: ReadonlyMap<string, string | null>,
+  state: {
+    kept: ReadonlyArray<string | null>
+    written: readonly string[]
+    cachedField: (fieldId: string) => CachedField | undefined
+  }
+): Promise<void> {
+  for (const [fieldId, text] of precomputed) {
+    if (text === null || state.written.includes(fieldId)) continue
+    const field = state.cachedField(fieldId)
+    if (!field) continue
+    await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh: true })
+  }
+  if (state.kept.length === 0) return
+  // Dependents exist only if this create's own inverse sync linked one.
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const deps = await getDisplayFieldDeps(ctx.organizationId, entityType ?? entityDefinitionId)
+  if (deps.length === 0) return
+  for (const text of state.kept) {
+    await cascadeDependentDisplayNames(ctx, [entityInstanceId], text, deps)
+  }
 }

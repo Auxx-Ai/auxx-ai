@@ -31,6 +31,7 @@ import type { FieldValueService } from '../../field-values'
 // Leaf path on purpose (not the field-values barrel): the one shared narrowing
 // helper for tier-1 sync capture, so this file's lifecycle seams and the field
 // seams apply the identical sync-origin policy (plan 07 §4).
+import { computeCreateDisplayColumns } from '../../field-values/create-values'
 import { syncCollectorOf } from '../../field-values/field-value-mutations'
 // Leaf path on purpose, same reasoning as `syncCollectorOf` above: the Phase 3
 // server-side read-only guard for app/connector-owned fields
@@ -162,8 +163,16 @@ export interface MutationContext {
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
-    opts?: { publishEvents?: boolean; isCreate?: boolean }
+    opts?: SetFieldValuesOptions
   ) => Promise<FieldWriteOutcome>
+}
+
+/** Options for {@link MutationContext.setFieldValues}; the last two are set only by `createEntity`. */
+export interface SetFieldValuesOptions {
+  publishEvents?: boolean
+  isCreate?: boolean
+  freshInstance?: boolean
+  precomputedDisplay?: ReadonlyMap<string, string | null>
 }
 
 /** What one record's field write produced, as `createEntity` / `updateEntity` read it. */
@@ -435,11 +444,22 @@ export async function createEntity(
   // Pass ctx.db so a transaction-scoped handler (billing invoice builders) creates the row
   // INSIDE its transaction — a global-pool insert here is invisible to the transaction's
   // serializable FK checks, so allocation rows referencing the new instance would 23503.
+  // Scalar display columns ride the insert instead of one UPDATE each afterwards.
+  const display = await computeCreateDisplayColumns(
+    ctx.organizationId,
+    {
+      primaryDisplayFieldId: resource?.display?.primaryDisplayField?.id,
+      secondaryDisplayFieldId: resource?.display?.secondaryDisplayField?.id,
+    },
+    entityFields,
+    processedValues
+  )
   const instanceResult = await createEntityInstance(
     {
       entityDefinitionId: entityDef.id,
       organizationId: ctx.organizationId,
       createdById: ctx.userId,
+      ...display.columns,
     },
     ctx.db
   )
@@ -495,6 +515,8 @@ export async function createEntity(
   const outcome = await ctx.setFieldValues(recordId, processedValues, undefined, {
     publishEvents: publishEvents || txScope !== undefined,
     isCreate: true,
+    freshInstance: true,
+    precomputedDisplay: display.byFieldId,
   })
   const failures = outcome.failures
 

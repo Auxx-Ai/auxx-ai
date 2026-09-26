@@ -313,3 +313,32 @@ describe('P1 — display-column frames under a buffered scope', () => {
     })
   })
 })
+
+describe('createValuesForEntity on an instance that already holds values', () => {
+  it('without freshInstance, the probe finds the rows and the write reconciles', async () => {
+    const f = await seed()
+    const ctx = createFieldValueContext(f.orgId, 'user-1', db())
+    await setValuesForEntity(ctx, {
+      recordId: f.recordId,
+      values: displayValues(f, 'Ada', 'ada@example.com'),
+    })
+
+    await createValuesForEntity(ctx, {
+      recordId: f.recordId,
+      values: displayValues(f, 'Grace', 'grace@example.com'),
+    })
+
+    const rows = await db()
+      .select({ fieldId: schema.FieldValue.fieldId, value: schema.FieldValue.valueText })
+      .from(schema.FieldValue)
+      .where(eq(schema.FieldValue.entityId, f.instanceId))
+    expect(rows).toHaveLength(2)
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { fieldId: f.nameFieldId, value: 'Grace' },
+        { fieldId: f.emailFieldId, value: 'grace@example.com' },
+      ])
+    )
+    expect(await storedDisplay(f)).toEqual({ displayName: 'Grace', secondary: 'grace@example.com' })
+  })
+})

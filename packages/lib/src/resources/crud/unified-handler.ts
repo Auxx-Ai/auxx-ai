@@ -66,6 +66,7 @@ import {
   type MutationContext,
   mergeEntities,
   restoreEntity,
+  type SetFieldValuesOptions,
   updateEntity,
   updateValues as updateValuesImpl,
 } from './unified-handler-mutations'
@@ -1403,7 +1404,7 @@ export class UnifiedCrudHandler {
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
-    opts?: { publishEvents?: boolean; isCreate?: boolean }
+    opts?: SetFieldValuesOptions
   ): Promise<FieldWriteOutcome> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
@@ -1451,6 +1452,8 @@ export class UnifiedCrudHandler {
         values: setEntries.map((e) => ({ fieldId: e.fieldId, value: e.value })),
         publishEvents,
         isCreate: opts?.isCreate,
+        freshInstance: opts?.freshInstance,
+        precomputedDisplay: opts?.precomputedDisplay,
         // The per-field bus events land here; `updateEntity` publishes them
         // as ONE record-level event (`createEntity` announces via `:created`).
         collectFieldChanges: changes,
