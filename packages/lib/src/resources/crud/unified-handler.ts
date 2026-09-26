@@ -30,7 +30,7 @@ import {
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
 import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
-import { getCommonHooks, getSystemHooks } from '../hooks'
+import { runSystemPreHooks } from '../hooks'
 import {
   type LookupByFieldResult,
   type LookupCandidate,
@@ -1524,53 +1524,15 @@ export class UnifiedCrudHandler {
     values: Record<string, unknown>,
     existingInstance?: EntityInstanceEntity
   ): Promise<Record<string, unknown>> {
-    // Get entity-specific hooks and common hooks (run for ALL entities)
-    const entityHooks = getSystemHooks(entityDef.entityType)
-    const commonHooks = getCommonHooks()
-
-    // Merge hooks: common hooks first, then entity-specific hooks
-    // Entity-specific hooks can override common behavior if needed
-    const mergedHooks: Record<string, (typeof entityHooks)[string]> = { ...commonHooks }
-    for (const [attr, fns] of Object.entries(entityHooks)) {
-      mergedHooks[attr] = [...(mergedHooks[attr] ?? []), ...fns]
-    }
-
-    let processedValues = { ...values }
-
-    // Get all fields for the entity (needed for looking up related fields in hooks)
-    const allFields = await this.getCustomFieldsCached(entityDef.id)
-
-    for (const [systemAttribute, hookFns] of Object.entries(mergedHooks)) {
-      // Find field with this systemAttribute
-      const field = await this.getFieldBySystemAttribute(entityDef.id, systemAttribute)
-      if (!field) continue
-
-      // For create operations, always run hooks (allows auto-generation like ticket_number)
-      // For update operations, only run hooks if the field is being updated. Values may be
-      // keyed by fieldId OR systemAttribute (setFieldValues resolves both) — check both, or a
-      // systemAttribute-keyed update would silently bypass update hooks (e.g. status guards).
-      if (
-        operation === 'update' &&
-        !(field.id in processedValues) &&
-        !(systemAttribute in processedValues)
-      )
-        continue
-
-      for (const hook of hookFns) {
-        processedValues = await hook({
-          operation,
-          entityDef,
-          field,
-          values: processedValues,
-          existingInstance,
-          organizationId: this.organizationId,
-          userId: this.userId,
-          allFields,
-        })
-      }
-    }
-
-    return processedValues
+    return runSystemPreHooks({
+      operation,
+      entityDef,
+      values,
+      existingInstance,
+      organizationId: this.organizationId,
+      userId: this.userId,
+      allFields: await this.getCustomFieldsCached(entityDef.id),
+    })
   }
 
   private async validateUniqueFields(
@@ -1634,10 +1596,5 @@ export class UnifiedCrudHandler {
         }
       }
     }
-  }
-
-  private async getFieldBySystemAttribute(entityDefinitionId: string, systemAttribute: string) {
-    const fields = await this.getCustomFieldsCached(entityDefinitionId)
-    return fields.find((f) => f.systemAttribute === systemAttribute) ?? null
   }
 }

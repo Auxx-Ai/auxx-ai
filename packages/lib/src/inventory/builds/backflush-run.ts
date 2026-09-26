@@ -113,11 +113,6 @@ export async function runBackflushSlice(
       const summary = result.value
 
       const failures: BackflushRunFailure[] = [
-        ...summary.leftInProgress.map((b) => ({
-          day: b.day,
-          partName: b.partName,
-          reason: b.reason,
-        })),
         ...summary.failed.map((b) => ({ day: b.day, partName: b.partName, reason: b.reason })),
         ...summary.failedDays.map((d) => ({ day: d.day, partName: null, reason: d.reason })),
       ]
@@ -125,7 +120,6 @@ export async function runBackflushSlice(
         ...meta,
         cursor: last.day,
         written: meta.written + summary.written.length,
-        leftInProgress: meta.leftInProgress + summary.leftInProgress.length,
         failedBuilds: meta.failedBuilds + summary.failed.length,
         failedDays: meta.failedDays + summary.failedDays.length,
         rolled: [...rolled],

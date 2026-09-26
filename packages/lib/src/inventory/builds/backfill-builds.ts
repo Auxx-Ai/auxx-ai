@@ -11,15 +11,10 @@
  * painful cases — on-hand spread across eight buckets, a completed build that
  * must not be counted twice — are unit tests rather than browser clicks.
  *
- * ## 🛑 It is NOT atomic, and the summary is what says so
+ * ## A completed build is one transaction
  *
- * `createBuild -> startBuild -> completeBuild` is three separate writes, so a
- * refused completion leaves a raised run sitting at `in_progress` with no
- * movements. Section 7.4: that comes back as the `leftInProgress` RESULT rather
- * than an error, carrying the build id, and the run CONTINUES. An error channel
- * cannot name a build, so the person would be told "failed" about builds that
- * exist and would press the button again — the exact failure `build-now.ts`'s
- * header refuses, multiplied by four hundred.
+ * `recordCompletedBuild` raises and completes each build atomically, so a refused
+ * completion leaves no build behind and lands in `failed`; the run continues.
  *
  * ## 🛑 `completedAt` is derived from the PERIOD, never from now
  *
@@ -85,8 +80,8 @@ import type {
   BackfillRequest,
   BackfillRunSummary,
 } from './backfill-types'
-import { createBuild, startBuild } from './build-mutations'
-import { completeBuild } from './complete-build'
+import { createBuild } from './build-mutations'
+import { recordCompletedBuild } from './complete-build'
 import { guard } from './guard'
 
 const logger = createScopedLogger('builds:backfill')
@@ -111,7 +106,6 @@ const PROGRESS_EVERY = 25
 interface MutableRunSummary {
   batchRun: number | null
   created: { partId: string; buildId: string; quantity: number; periodKey: string }[]
-  leftInProgress: { partId: string; buildId: string; reason: string }[]
   failed: { partId: string; bucketId: string; periodKey: string; reason: string }[]
 }
 
@@ -139,13 +133,7 @@ interface RunContext {
  *
  * One bucket becomes one build, `source: 'batch'`, carrying the bucket's demand
  * period rather than its orders (section 6.2). When `request.status` is
- * `completed` the build is then started and completed at its period date.
- *
- * ⚠️ **Every raised build appears in `created`, including one whose completion
- * was refused** — that build exists, and `created.length` is therefore the
- * answer to "how many builds does this org now have that it did not before".
- * `leftInProgress` flags the subset that needs a person, and its entries are
- * also in `created`.
+ * `completed` the build is written completed at its period date, in one transaction.
  *
  * @param plan what to build, from `planBackfill`. Parts ascending, buckets
  *   chronological; this executes them in exactly that order.
@@ -166,7 +154,6 @@ export async function executeBackfill(
       const summary: MutableRunSummary = {
         batchRun: null,
         created: [],
-        leftInProgress: [],
         failed: [],
       }
       // 🛑 BEFORE `prepareRun`, deliberately: an empty plan writes no build, so
@@ -225,7 +212,6 @@ export async function executeBackfill(
         grouping: request.grouping,
         planned: plan.buildCount,
         created: summary.created.length,
-        leftInProgress: summary.leftInProgress.length,
         failed: summary.failed.length,
       })
 
@@ -290,41 +276,31 @@ export interface RaiseAndCompleteInput {
 }
 
 /**
- * create → start → complete, for one build. Throws only when the raise itself was refused
- * (nothing written); a refused start or completion comes back as `leftInProgress`, the reason
- * verbatim, with the build that now exists.
+ * One build: `planned` without a `completedAt`, else completed in one transaction
+ * (`recordCompletedBuild`). Throws the refusal verbatim, and a refused build leaves nothing behind.
  */
 export async function raiseAndCompleteBuild(
   db: Database,
   organizationId: string,
   userId: string,
   input: RaiseAndCompleteInput
-): Promise<{ buildId: string; leftInProgress: string | null }> {
-  const created = await createBuild(db, organizationId, userId, {
+): Promise<{ buildId: string }> {
+  const raise = {
     partId: input.partId,
-    quantityPlanned: input.quantity,
     source: input.source,
     period: input.period,
     batchRun: input.batchRun,
     notes: input.notes,
-  })
-  if (created.isErr()) throw created.error
-  const buildId = created.value.buildId
-  if (!input.completedAt) return { buildId, leftInProgress: null }
-
-  const started = await startBuild(db, organizationId, userId, { buildId })
-  if (started.isErr()) {
-    return {
-      buildId,
-      leftInProgress: `The build was raised but could not be started: ${started.error.message}`,
-    }
   }
-  const completed = await completeBuild(db, organizationId, userId, {
-    buildId,
-    quantityProduced: input.quantity,
-    completedAt: input.completedAt,
-  })
-  return { buildId, leftInProgress: completed.isErr() ? completed.error.message : null }
+  const written = input.completedAt
+    ? await recordCompletedBuild(db, organizationId, userId, {
+        ...raise,
+        quantity: input.quantity,
+        completedAt: input.completedAt,
+      })
+    : await createBuild(db, organizationId, userId, { ...raise, quantityPlanned: input.quantity })
+  if (written.isErr()) throw written.error
+  return { buildId: written.value.buildId }
 }
 
 /**
@@ -399,7 +375,7 @@ async function executeBucket(
     }
   }
 
-  // 🛑 The period and the run number go in HERE or never: `createBuild` is the
+  // 🛑 The period and the run number go in HERE or never: `raiseBuildValues` is the
   // only writer of `build_period_start`, `build_period_end` and
   // `build_batch_run`, because moving a claimed period silently restates what
   // the next netting run believes is already covered (section 6.2) and moving a
@@ -412,7 +388,7 @@ async function executeBucket(
   // A refused raise wrote nothing at all, so it is a `failed` bucket rather than
   // a build somebody has to go and finish. Thrown, not returned, so the bucket
   // layer records it and the run steps over it.
-  const { buildId, leftInProgress } = await raiseAndCompleteBuild(db, organizationId, userId, {
+  const { buildId } = await raiseAndCompleteBuild(db, organizationId, userId, {
     partId: bucket.partId,
     quantity: bucket.quantityToBuild,
     source: 'batch',
@@ -426,33 +402,6 @@ async function executeBucket(
     buildId,
     quantity: bucket.quantityToBuild,
     periodKey: bucket.periodKey,
-  })
-
-  // The refusal verbatim — an unpriced component, almost always — because it
-  // is what the person has to go and fix.
-  if (leftInProgress) recordLeftInProgress(summary, bucket, buildId, leftInProgress)
-}
-
-/**
- * A build that exists and needs a person.
- *
- * 🛑 NOT `failed`, whose contract is "buckets that produced nothing at all".
- * The distinction is the whole of section 7.4: this build is in the builds list
- * and somebody has to complete or cancel it, and reporting it as a failure is
- * what makes them run the backfill again and raise a duplicate.
- */
-function recordLeftInProgress(
-  summary: MutableRunSummary,
-  bucket: BackfillBucket,
-  buildId: string,
-  reason: string
-): void {
-  summary.leftInProgress.push({ partId: bucket.partId, buildId, reason })
-  logger.warn('A backfilled build was raised but not completed', {
-    partId: bucket.partId,
-    periodKey: bucket.periodKey,
-    buildId,
-    reason,
   })
 }
 

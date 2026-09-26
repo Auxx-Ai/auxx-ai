@@ -523,7 +523,7 @@ month.
 A derived, rebuildable copy of every `stock_movement` (id, part, type, signed quantity,
 `COALESCE(occurredAt, createdAt)`, links, and a consumption class), owned by
 `inventory/movements/fact/` (plans/mrp/02-data-structures.md §3). It is written in the caller's
-transaction by `writeStockMovements` and by the raw BOM explosion
+transaction by `writeStockMovements` / `writeStockMovementsBatch` and by the raw BOM explosion
 (`field-hooks/post/bom-movement-triggers.ts`), removed by its `id` foreign key's `ON DELETE CASCADE`
 from `EntityInstance` on any delete path, and replayed by
 `rebuildMovementFacts`; `compareFactsToLedger` is its drift check. **Nothing in QoH, costing,
@@ -852,6 +852,10 @@ part's first build in a run the standard-cost roll runs unless its standard is `
 part still builds, its legs pending (§7.4). Re-running a day finds `qoh(day) >= 0` and writes
 nothing. `inventory.backflush` and `inventory.autoBuildFromOrders` are mutually exclusive
 (Q14): the settings write turns the other off and refuses a batch asking for both.
+
+Backflush and a `completed` backfill write each build through `recordCompletedBuild`: raise,
+start and complete in ONE transaction, legs through `writeStockMovementsBatch`. A refused
+completion leaves no build and is a `failed` row; manual create → start → complete is unchanged.
 
 ---
 
@@ -1463,7 +1467,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | Path | Owns |
 | --- | --- |
 | `packages/lib/src/accounting/purchasing/` | `match.ts` (the pure match), `match-hook.ts` (triggers), `match-reconciler.ts` (re-match on receipt), `aging-sweep.ts` (the one time-driven trigger), `allocate-landed-cost.ts`, `lifecycle.ts`, `post-vendor-bill.ts` (the one poster; Edit and Save are generic now — `accounting/documents/edit-in-place/`), `vendor-bill-balance.ts`, `purchase-order-status*.ts`, `vendor-part-lookup.ts`, `bill-intake/`, `intake/`, `expense-bill/`, `landed-cost/` (`reads.ts`, `clear.ts`, `cleared.ts`), `vendor-credit/` |
-| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `initial-queries.ts` (`readPartInitials`), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
+| `packages/lib/src/inventory/movements/` | `write-movements.ts` (`writeStockMovements`, the ONE writer), `write-movements-batch.ts` (`writeStockMovementsBatch`, the same rows in one pass for a build completion's legs, quiet lane only), `values.ts` (the nine keys every writer stamps), `fill-pending-cost.ts` (the one lane that prices a `pending` row), `initial-queries.ts` (`readPartInitials`), `cost-fields.ts`, `reverse-movement.ts`, `client.ts` (`computeExtendedCost`, `resolveInventoryRoleForPartKind`), `types.ts` (`MovementRecord`) |
 | `packages/lib/src/inventory/costing/` | `standard-cost.ts` (`rollStandardCost`, and the writer of its revaluation), `revalue.ts` (the cost-only movement), `provisional-standard.ts` (`replaceProvisionalStandard`), `price-pending-movements.ts` (the pricer: `pending` rows valued and their documents posted), `standard-cost-roll.ts` (pure), `standard-cost-queries.ts`, `ensure-standard-cost.ts` (first standard only, never an overwrite), `cost-calculator.ts` (`recalculateAffectedParts`, the live `part_cost` roll-up), `vendor-cost.ts` (`computeLandedCost`, the tariff resolution), `cost-reads.ts` (the ledger averages, now a report), `qoh.ts` (`batchRecalculateQoH`, the one QoH owner), `reanchor-initials.ts` (the count anchor re-derived), `dated-reads.ts` (`readPartNetThrough`, `readEarliestMovementAt`), `client.ts` (`absorbedRate`, `resolvePartKind`) |
 | `packages/lib/src/inventory/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `accruals.ts` (the pure receipt split), `adjust-stock.ts`, `set-count.ts` (the one count door), `set-count-preflight.ts`, `open-stock-balance.ts` and `bulk-opening-stock.ts` (its two callers), `opening-stock-subledger.ts`, `receipt-queries.ts`, `client.ts`, `guard.ts` |
 | `packages/lib/src/inventory/builds/` | `complete-build.ts` (the only movement writer in the module), `price-build.ts` (a pending build's last leg priced: stamp and post), `reverse-build.ts`, `build-mutations.ts`, `build-now.ts`, `build-queries.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `backfill-*.ts`, `write-lane.ts`, `guard.ts` |

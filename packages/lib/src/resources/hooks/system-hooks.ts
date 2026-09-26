@@ -15,7 +15,7 @@ import { QUOTE_HOOKS } from './quote-hooks'
 import { RETURN_HOOKS, RETURN_LINE_HOOKS } from './return-hooks'
 import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
-import type { SystemHook, SystemHookRegistry } from './types'
+import type { SystemHook, SystemHookContext, SystemHookRegistry } from './types'
 import { VENDOR_CREDIT_HOOKS } from './vendor-credit-hooks'
 import { WORK_ORDER_HOOKS } from './work-order-hooks'
 
@@ -111,4 +111,31 @@ export function hasSystemHooks(entityType: string | null): boolean {
  */
 export function getCommonHooks(): SystemHookRegistry {
   return COMMON_HOOKS
+}
+
+/**
+ * The pre-hook pass of every `UnifiedCrudHandler` create/update: common hooks, then the
+ * entity's own. On update a hook runs only when its field is being written.
+ */
+export async function runSystemPreHooks(
+  params: Omit<SystemHookContext, 'field'>
+): Promise<Record<string, unknown>> {
+  const { operation, entityDef, allFields } = params
+  const mergedHooks: SystemHookRegistry = { ...getCommonHooks() }
+  for (const [attr, fns] of Object.entries(getSystemHooks(entityDef.entityType))) {
+    mergedHooks[attr] = [...(mergedHooks[attr] ?? []), ...fns]
+  }
+
+  let values = { ...params.values }
+  for (const [systemAttribute, hookFns] of Object.entries(mergedHooks)) {
+    const field = allFields.find((f) => f.systemAttribute === systemAttribute)
+    if (!field) continue
+    // Values may be keyed by fieldId OR systemAttribute; checking one would let a
+    // systemAttribute-keyed update bypass its update hooks (e.g. status guards).
+    if (operation === 'update' && !(field.id in values) && !(systemAttribute in values)) continue
+    for (const hook of hookFns) {
+      values = await hook({ ...params, field, values })
+    }
+  }
+  return values
 }

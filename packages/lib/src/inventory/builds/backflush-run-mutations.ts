@@ -46,7 +46,6 @@ export async function claimBackflushRun(
       actorUserId: input.actorUserId,
       cursor: null,
       written: 0,
-      leftInProgress: 0,
       failedBuilds: 0,
       failedDays: 0,
       rolled: [],

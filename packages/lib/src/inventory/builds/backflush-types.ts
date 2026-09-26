@@ -34,9 +34,7 @@ export interface BackflushRunSummary {
   days: string[]
   /** Builds completed. */
   written: (BackflushBuild & { buildId: string })[]
-  /** Builds raised whose completion was refused, with the refusal verbatim. */
-  leftInProgress: (BackflushBuild & { buildId: string; reason: string })[]
-  /** Builds that produced nothing at all. */
+  /** Builds that produced nothing at all, a refused completion included. */
   failed: (BackflushBuild & { reason: string })[]
   /** Days whose ledger read failed; no part was checked for them. */
   failedDays: { day: string; reason: string }[]
@@ -84,7 +82,6 @@ export interface BackflushRunMetadata {
   /** The last day walked, `YYYY-MM-DD`; `null` before the first slice. */
   cursor: string | null
   written: number
-  leftInProgress: number
   failedBuilds: number
   failedDays: number
   /** Parts rolled before their first build this run (111 Q20), so a later slice does not roll again. */

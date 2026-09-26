@@ -42,7 +42,7 @@
 // window, the groupings are five and are filtered live by the *Create as*
 // answer beside them, the exclusions table counts quantities rather than listing
 // documents by date, the preflight and its consent checkbox have no analogue,
-// and the result reports builds raised and left in progress rather than entries
+// and the result reports builds created and buckets refused rather than entries
 // posted. Registering it would mean a pluggable range, a dynamic grouping list,
 // an overridable exclusions block, an overridable result page and a
 // source-supplied run predicate — five slots that exactly one source would ever
@@ -417,8 +417,8 @@ function CompletionPreflight({
             <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
             <span>
               {unpricedParts.length} {unpricedParts.length === 1 ? 'part has' : 'parts have'} no
-              standard cost. A completion is refused per build when a component is unpriced, so
-              those builds will be raised and left in progress.
+              standard cost. Their builds are written with the unpriced legs pending until a
+              standard is rolled.
             </span>
           </p>
           <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
@@ -490,7 +490,6 @@ function BackfillResult({
   if (!result) return null
 
   const created = result.created.length
-  const left = result.leftInProgress.length
   const failed = result.failed.length
 
   return (
@@ -499,24 +498,6 @@ function BackfillResult({
         <strong className='font-medium'>{created}</strong>{' '}
         {created === 1 ? 'build was' : 'builds were'} created.
       </p>
-
-      {left > 0 && (
-        <div>
-          <p className='flex items-start gap-1.5'>
-            <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
-            <span>
-              {left} of them could not be completed and {left === 1 ? 'is' : 'are'} sitting in
-              progress. They exist — do not run the backfill again for them.
-            </span>
-          </p>
-          <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
-            {result.leftInProgress.slice(0, 12).map((row) => (
-              <li key={row.buildId}>{row.reason}</li>
-            ))}
-            {left > 12 && <li>and {left - 12} more</li>}
-          </ul>
-        </div>
-      )}
 
       {failed > 0 && (
         <div>

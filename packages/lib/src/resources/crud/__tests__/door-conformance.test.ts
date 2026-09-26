@@ -125,8 +125,7 @@ vi.mock('../../../cache', async (importOriginal) => ({
 // is observable per origin. Partial mock — the module has more exports.
 vi.mock('../../hooks', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getSystemHooks: () => ({ first_name: [h.preHook] }),
-  getCommonHooks: () => ({}),
+  runSystemPreHooks: (hookCtx: { values: Record<string, unknown> }) => h.preHook(hookCtx),
 }))
 
 import { createManifestCollector } from '../../../record-rules/sync-manifest-collector'

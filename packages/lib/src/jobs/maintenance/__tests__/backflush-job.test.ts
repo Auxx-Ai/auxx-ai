@@ -67,7 +67,7 @@ vi.mock('../../../inventory/builds/backflush', () => ({
     async (_db: unknown, organizationId: string, input: Record<string, unknown>) => {
       h.runs.push({ organizationId, input })
       if (h.failing.has(organizationId)) return err(new Error('boom'))
-      return ok({ batchRun: 1, written: [], leftInProgress: [], failed: [], failedDays: [] })
+      return ok({ batchRun: 1, written: [], failed: [], failedDays: [] })
     }
   ),
 }))

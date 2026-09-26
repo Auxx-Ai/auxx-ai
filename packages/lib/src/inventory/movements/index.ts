@@ -47,3 +47,4 @@ export type {
 export type { ResolvedStockMovementLinks, StockMovementValueFields } from './values'
 export { buildStockMovementValues } from './values'
 export { writeStockMovements } from './write-movements'
+export { writeStockMovementsBatch } from './write-movements-batch'

@@ -729,7 +729,7 @@ export async function computeCreateDisplayColumns(
  * What `maybeUpdateDisplayValue` would still have done for columns the insert carried:
  * clear one whose field was not stored, and cascade a kept one to dependents.
  */
-async function settleInsertedDisplay(
+export async function settleInsertedDisplay(
   ctx: FieldValueContext,
   recordId: RecordId,
   entityType: string | null,

@@ -2,8 +2,9 @@
 
 /**
  * `writeStockMovements` - the ONE writer behind `receive-stock.ts`,
- * `adjust-stock.ts`, `reverse-movement.ts`, `complete-build.ts` and
- * `reverse-build.ts` (plans/money/tasks/50-batch-inventory-relief.md §2).
+ * `adjust-stock.ts`, `reverse-movement.ts` and `reverse-build.ts`
+ * (plans/money/tasks/50-batch-inventory-relief.md §2). A build completion writes the
+ * same rows through `writeStockMovementsBatch` (`write-movements-batch.ts`).
  *
  * `bulk-opening-stock.ts` is the sixth caller and deliberately does NOT go
  * through this function: its cardinality is `UnifiedCrudHandler.bulkCreate`
@@ -162,11 +163,36 @@ function buildHandler(ctx: StockMovementsCtx): UnifiedCrudHandler {
   return new UnifiedCrudHandler(ctx.organizationId, ctx.userId, ctx.db)
 }
 
+/** The create values bag for one input, links resolved; shared with `writeStockMovementsBatch`. */
+export async function movementValues(
+  ctx: StockMovementsCtx,
+  input: StockMovementInput
+): Promise<Record<string, unknown>> {
+  return buildStockMovementValues({
+    partRecordId: toRecordId(ctx.partDefId, input.partInstanceId),
+    type: input.type,
+    quantity: input.quantity,
+    unitCost: input.unitCost,
+    costBasis: input.costBasis,
+    glAccount: input.glAccount,
+    occurredAt: input.occurredAt,
+    extendedCost: input.extendedCost,
+    adjustSubparts: input.adjustSubparts,
+    reason: input.reason,
+    reference: input.reference,
+    qtyPerUnit: input.qtyPerUnit,
+    vendorUnitPrice: input.vendorUnitPrice,
+    accrued: input.accrued,
+    count: input.count,
+    links: await resolveLinks(ctx, input.links),
+  })
+}
+
 /**
  * Refuse any input whose part is a `service` (107-D10). A reversal is exempt: it
  * undoes a movement written while the part was still stocked.
  */
-async function assertNoServiceParts(
+export async function assertNoServiceParts(
   ctx: StockMovementsCtx,
   inputs: readonly StockMovementInput[]
 ): Promise<void> {
@@ -193,9 +219,7 @@ async function assertNoServiceParts(
  * `adjust-stock.ts`, `reverse-movement.ts`), once with the whole batch for a
  * writer whose rows carry no live, order-dependent computation between them
  * (`reverse-build.ts`), or split across calls when a value genuinely can only
- * be known after an earlier write has landed (`complete-build.ts`'s produce
- * row, whose GL account is resolved after every consume row is written -
- * see that file's own comment for why the split is load-bearing there).
+ * be known after an earlier write has landed.
  */
 export async function writeStockMovements(
   ctx: StockMovementsCtx,
@@ -213,28 +237,7 @@ export async function writeStockMovements(
         : new Map()
 
       for (const input of inputs) {
-        const links = await resolveLinks(ctx, input.links)
-        const partRecordId = toRecordId(ctx.partDefId, input.partInstanceId)
-
-        const values = buildStockMovementValues({
-          partRecordId,
-          type: input.type,
-          quantity: input.quantity,
-          unitCost: input.unitCost,
-          costBasis: input.costBasis,
-          glAccount: input.glAccount,
-          occurredAt: input.occurredAt,
-          extendedCost: input.extendedCost,
-          adjustSubparts: input.adjustSubparts,
-          reason: input.reason,
-          reference: input.reference,
-          qtyPerUnit: input.qtyPerUnit,
-          vendorUnitPrice: input.vendorUnitPrice,
-          accrued: input.accrued,
-          count: input.count,
-          links,
-        })
-
+        const values = await movementValues(ctx, input)
         const created = await crud.create(ctx.movementDefId, values)
         // The planning mirror (plans/mrp/02-data-structures.md §3.2), on the caller's transaction.
         await insertMovementFacts(ctx.db, ctx.organizationId, [

@@ -185,16 +185,9 @@ export interface StockMovementsCtx {
    * A `UnifiedCrudHandler` this call MUST write through, instead of
    * constructing its own.
    *
-   * A caller that makes several `writeStockMovements` calls inside one
-   * quiet-lane write (`complete-build.ts` splits consume from produce so the
-   * produce row's GL account can be resolved after every consume row has
-   * landed) must still route every movement through the SAME handler it
-   * updates its own row with - `build-event.test.ts` pins "one handler
-   * construction per quiet-lane completion" as the proof `bypassFieldGuards`
-   * cannot silently disarm a guard on an attribute nobody meant to bypass.
-   * Omit it and this function constructs its own, exactly as a
-   * single-movement writer (`receive-stock.ts`, `adjust-stock.ts`,
-   * `reverse-movement.ts`) already does.
+   * A quiet-lane caller routes its movements through the SAME handler it updates its own row
+   * with, so `bypassFieldGuards` has one construction site. Omit it and this function
+   * constructs its own. `writeStockMovementsBatch` writes without a handler and ignores it.
    */
   handler?: UnifiedCrudHandler
 }
