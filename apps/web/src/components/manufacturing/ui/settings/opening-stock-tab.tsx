@@ -87,9 +87,9 @@ function OpeningStockTabInner() {
         paneOpen={runOpen}
         onPaneClose={() => setRunOpen(false)}
         defaultWidth={480}>
-        <div className='flex flex-col'>
+        <div className='flex h-full min-h-0 flex-col'>
           {(!isDesktop || opening.prefilter) && (
-            <div className='flex flex-wrap items-center gap-2 px-3 pt-3'>
+            <div className='flex shrink-0 flex-wrap items-center gap-2 px-3 pt-3'>
               {!isDesktop && (
                 <Button variant='outline' size='sm' onClick={() => setRunOpen(true)}>
                   <Boxes />

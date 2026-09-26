@@ -95,6 +95,7 @@ export const mrpRouter = createTRPCRouter({
         window: z.enum(['3m', '6m', '12m']),
         grain: z.enum(['day', 'week', 'month']),
         runId,
+        offset: z.number().int().min(0).max(100).optional(),
       })
     )
     .query(async ({ ctx, input }) => {

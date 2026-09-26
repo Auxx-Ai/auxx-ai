@@ -23,6 +23,7 @@ import { readRecordNames } from './labels'
 import { readItems } from './part-item'
 import {
   bucketUsage,
+  PART_SERIES_STEP_MONTHS,
   PART_SERIES_WINDOW_MONTHS,
   type PartSeriesGrain,
   type PartSeriesProjectionPoint,
@@ -51,6 +52,8 @@ export interface PartSeriesInput {
   window: PartSeriesWindow
   grain: PartSeriesGrain
   runId?: string | null
+  /** Steps of `PART_SERIES_STEP_MONTHS` back from the run day; 0 shows the latest history plus the projection. */
+  offset?: number
 }
 
 /** The position chart's data (07 §5.1); empty `days` means the part has never moved. */
@@ -68,6 +71,8 @@ export interface PartSeries {
   seasonal: boolean
   /** Whole months since the part's first movement. */
   historyMonths: number
+  /** The part moved before this window, so it can page further back. */
+  hasEarlier: boolean
 }
 
 /** Zones for a buffered item; null otherwise. */
@@ -199,8 +204,10 @@ export async function readPartSeries(
         readBookTimeZoneOrUtc(organizationId),
       ])
       const asOf = run?.asOfDay ?? todayInZone(zone)
-      const from = addMonthsToDayKey(asOf, -PART_SERIES_WINDOW_MONTHS[input.window])
-      const to = previousDayKey(asOf)
+      const offset = input.offset ?? 0
+      const end = addMonthsToDayKey(asOf, -PART_SERIES_STEP_MONTHS[input.window] * offset)
+      const from = addMonthsToDayKey(end, -PART_SERIES_WINDOW_MONTHS[input.window])
+      const to = previousDayKey(end)
 
       const F = schema.InventoryMovementFact
       const [[first], series, items] = await Promise.all([
@@ -217,11 +224,20 @@ export async function readPartSeries(
         run,
         zone,
         runAsOf: asOf,
-        zones: zonesFromItem(item),
+        // Zones are today's buffer; drawn over an earlier window they'd read as history.
+        zones: offset === 0 ? zonesFromItem(item) : null,
         seasonal: Boolean(item?.seasonalIndex),
       }
       if (!first?.at) {
-        return { ...base, days: [], usage: [], projection: [], events: [], historyMonths: 0 }
+        return {
+          ...base,
+          days: [],
+          usage: [],
+          projection: [],
+          events: [],
+          historyMonths: 0,
+          hasEarlier: false,
+        }
       }
       const historyMonths = Math.max(0, monthsBetween(dayKeyInZone(first.at, zone), asOf) ?? 0)
 
@@ -232,7 +248,7 @@ export async function readPartSeries(
 
       let walk: ReturnType<typeof walkProjection> = []
       const events = itemEvents(item)
-      if (item && item.baseAdu !== null) {
+      if (offset === 0 && item && item.baseAdu !== null) {
         const supply = await readReceipts(db, organizationId, partId, item, asOf)
         events.push(...supply.events)
         walk = walkProjection({
@@ -255,6 +271,7 @@ export async function readPartSeries(
         projection: walk.map(({ used: _used, ...point }) => point),
         events,
         historyMonths,
+        hasEarlier: dayKeyInZone(first.at, zone) < from,
       }
     },
     'Failed to read the part series',

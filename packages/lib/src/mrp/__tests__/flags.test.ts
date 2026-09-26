@@ -18,6 +18,8 @@ const CLEAN: FlagInput = {
   bufferMode: null,
   reliefGapLines: 0,
   unbuiltSales: false,
+  negativeOnHand: false,
+  thinUsage: false,
   leadTimeDrift: false,
   mirrorDrift: false,
   wontMakeNextArrival: false,
@@ -94,6 +96,10 @@ describe('04 §6: bad data surfaces instead of hiding', () => {
 describe('the remaining flags', () => {
   it('relief_gaps when relief skipped lines for the part (01 §3 P1)', () => {
     expect(computeFlags({ ...CLEAN, reliefGapLines: 2 })).toEqual(['relief_gaps'])
+    expect(computeFlags({ ...CLEAN, negativeOnHand: true, thinUsage: true })).toEqual([
+      'negative_on_hand',
+      'thin_usage',
+    ])
   })
 
   it('lead_time_drift, mirror_drift and wont_make_next_arrival pass through', () => {

@@ -60,6 +60,10 @@ export interface FlagInput {
   reliefGapLines: number
   /** From {@link unbuiltSalesPartIds}. */
   unbuiltSales: boolean
+  /** On hand ended below zero in the usage window or now. */
+  negativeOnHand: boolean
+  /** `UsageStats.censorCapped`. */
+  thinUsage: boolean
   leadTimeDrift: boolean
   /** Mirror drift from the nightly check or {@link hasMirrorDrift}. */
   mirrorDrift: boolean
@@ -73,6 +77,8 @@ export function computeFlags(input: FlagInput): MrpFlag[] {
   const raised = new Set<MrpFlag>()
   if (input.reliefGapLines > 0) raised.add('relief_gaps')
   if (input.unbuiltSales) raised.add('unbuilt_sales')
+  if (input.negativeOnHand) raised.add('negative_on_hand')
+  if (input.thinUsage) raised.add('thin_usage')
   // `unclassified` already names what is missing; there is no vendor part or build to time.
   if (input.leadTimeSource === 'none' && input.supplyType !== 'unclassified') {
     raised.add('no_lead_time')

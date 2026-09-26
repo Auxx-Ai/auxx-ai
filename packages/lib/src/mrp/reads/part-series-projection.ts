@@ -20,6 +20,13 @@ export const PART_SERIES_WINDOW_MONTHS: Record<PartSeriesWindow, number> = {
   '12m': 12,
 }
 
+/** Paging moves a third of the window at a time. */
+export const PART_SERIES_STEP_MONTHS: Record<PartSeriesWindow, number> = {
+  '3m': 1,
+  '6m': 2,
+  '12m': 3,
+}
+
 /** The projection runs at least this far past the run day (07 §5.1). */
 export const PROJECTION_MIN_DAYS = 90
 /** Upper bound on the projection, whatever the following arrival says. */

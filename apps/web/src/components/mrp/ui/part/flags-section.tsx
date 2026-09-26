@@ -28,6 +28,10 @@ function explain(flag: MrpFlag, item: MrpPlanItemData): string {
       return 'More was sold than was built plus opening stock'
     case 'mirror_drift':
       return 'The movement history disagrees with on hand'
+    case 'negative_on_hand':
+      return 'On hand went below zero, so builds or receipts are missing'
+    case 'thin_usage':
+      return 'Stocked out most of the window, so average use counts every day'
     case 'wont_make_next_arrival':
       return 'Stock runs out before the next scheduled order can arrive'
     case 'unclassified':
