@@ -685,8 +685,10 @@ export async function readPartKinds(
   const kinds = new Map<string, string>()
   if (partIds.length === 0) return kinds
 
+  // The org cache even inside a transaction: only the long-lived field's id is read, and a
+  // build completion calls this several times.
   const fields = await systemFieldMap(
-    db,
+    undefined,
     organizationId,
     pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
   )

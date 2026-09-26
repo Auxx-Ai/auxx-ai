@@ -142,7 +142,8 @@ export async function loadDirectSubparts(
 ): Promise<{ childId: string; qty: number }[]> {
   const subpartDefId = await requireCachedEntityDefId(organizationId, 'subpart')
 
-  const cfFields = await systemFieldMap(db, organizationId, [
+  // The org cache even inside a transaction, like the def id above: only the fields' ids are read.
+  const cfFields = await systemFieldMap(undefined, organizationId, [
     'subpart_parent_part',
     'subpart_child_part',
     'subpart_quantity',
