@@ -11,14 +11,16 @@ import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
+import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { GridTreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Check, Factory, Package, Sparkles } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { Tooltip } from '~/components/global/tooltip'
 import {
   useBulkMode,
@@ -82,14 +84,18 @@ export function OpeningStockList({
   const [filter, setFilter] = useState<OpeningStockFilter>('all')
   const [limit, setLimit] = useState(OPENING_STOCK_PAGE_SIZE)
   const setItemIds = useListSelection((s) => s.setItemIds)
+  const viewportRef = useRef<HTMLDivElement>(null)
 
+  // A view change starts at the top instead of wherever the old list was scrolled to.
   const changeFilter = (next: OpeningStockFilter) => {
     setFilter(next)
     setLimit(OPENING_STOCK_PAGE_SIZE)
+    viewportRef.current?.scrollTo({ top: 0 })
   }
   const changeSearch = (next: string) => {
     setSearch(next)
     setLimit(OPENING_STOCK_PAGE_SIZE)
+    viewportRef.current?.scrollTo({ top: 0 })
   }
 
   const query = search.trim().toLowerCase()
@@ -132,100 +138,107 @@ export function OpeningStockList({
 
   return (
     <>
-      <OpeningStockToolbar
-        search={search}
-        onSearchChange={changeSearch}
-        filter={filter}
-        onFilterChange={changeFilter}
-        counts={counts}
-        kindCounts={kindCounts}
-        canSetKind={canSetKind}
-      />
-      <div className='flex flex-col gap-3 p-3'>
-        {!isLoading && unbuilt.length > 0 && (
-          <Alert variant='warning' className='flex items-center gap-2 px-3 py-2'>
-            <Factory className='size-4' />
-            <AlertDescription className='flex flex-1 flex-wrap items-center justify-between gap-2 text-xs'>
-              <span>
-                {unbuilt.length} made {unbuilt.length === 1 ? 'part has' : 'parts have'} unbuilt
-                sales (sold, never built). Backflush before counting them, or the count hides them.
-              </span>
-              <span className='flex shrink-0 gap-2'>
-                {filter !== 'unbuilt' && (
-                  <Button variant='ghost' size='xs' onClick={() => changeFilter('unbuilt')}>
-                    Show them
-                  </Button>
-                )}
-                <Button variant='outline' size='xs' onClick={() => onBackflush(unbuilt)}>
-                  Backflush past sales
-                </Button>
-              </span>
-            </AlertDescription>
-          </Alert>
-        )}
-        {isLoading ? (
-          <EmptySection loading />
-        ) : filtered.length === 0 ? (
-          <EmptySection
-            icon={<Package className='size-5' />}
-            title={
-              rows.length === 0
-                ? 'No parts'
-                : filter === 'not-counted'
-                  ? 'Every part has been counted'
-                  : 'No matches'
-            }
-            description={
-              rows.length === 0 ? 'Create a part and it appears here to be counted.' : undefined
-            }
-          />
-        ) : (
-          <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
-            <div
-              className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
-              style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
-              <div className='flex items-center gap-1 pl-2'>Part</div>
-              <div className='px-2'>Kind</div>
-              <div>Account</div>
-              <Tooltip content='Net of every movement on the ledger to now.'>
-                <div className='cursor-default px-2 text-right'>On hand</div>
-              </Tooltip>
-              <div className='px-2 text-right'>Count</div>
-              <div className='px-2'>As of</div>
-              <div className='px-2 text-right'>Unit cost</div>
-              <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
-                <div className='cursor-default px-2 text-right'>Writes</div>
-              </Tooltip>
-            </div>
-
-            <div className='flex flex-col gap-0.5 py-1'>
-              {visible.map((row) => (
-                <OpeningStockRowLine
-                  key={row.partId}
-                  row={row}
-                  currencyCode={currencyCode}
-                  canSetKind={canSetKind}
-                  isSettingKind={isSettingKind}
-                  onWriteKind={writeKind}
-                  onQuantityChange={onQuantityChange}
-                  onUnitCostChange={onUnitCostChange}
-                  onDateChange={onDateChange}
-                />
-              ))}
-              {filtered.length > limit && (
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='mt-1 self-center'
-                  onClick={() => setLimit((current) => current + OPENING_STOCK_PAGE_SIZE)}>
-                  Show {Math.min(OPENING_STOCK_PAGE_SIZE, filtered.length - limit)} more of{' '}
-                  {filtered.length}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+      <div className='shrink-0'>
+        <OpeningStockToolbar
+          search={search}
+          onSearchChange={changeSearch}
+          filter={filter}
+          onFilterChange={changeFilter}
+          counts={counts}
+          kindCounts={kindCounts}
+          canSetKind={canSetKind}
+        />
       </div>
+      {/* `noFade`: the table header sticks inside this viewport. */}
+      <ScrollArea
+        viewportRef={viewportRef}
+        className='min-h-0 flex-1'
+        scrollbarClassName='w-1.5'
+        noFade>
+        <div className='flex flex-col gap-3 p-3 pb-16'>
+          {!isLoading && unbuilt.length > 0 && (
+            <Alert variant='warning' className='flex items-center gap-2 px-3 py-2'>
+              <Factory className='size-4' />
+              <AlertDescription className='flex flex-1 flex-wrap items-center justify-between gap-2 text-xs'>
+                <span>
+                  {unbuilt.length} made {unbuilt.length === 1 ? 'part has' : 'parts have'} unbuilt
+                  sales (sold, never built). Backflush before counting them, or the count hides
+                  them.
+                </span>
+                <span className='flex shrink-0 gap-2'>
+                  {filter !== 'unbuilt' && (
+                    <Button variant='ghost' size='xs' onClick={() => changeFilter('unbuilt')}>
+                      Show them
+                    </Button>
+                  )}
+                  <Button variant='outline' size='xs' onClick={() => onBackflush(unbuilt)}>
+                    Backflush past sales
+                  </Button>
+                </span>
+              </AlertDescription>
+            </Alert>
+          )}
+          {isLoading ? (
+            <EmptySection loading />
+          ) : filtered.length === 0 ? (
+            <EmptySection
+              icon={<Package className='size-5' />}
+              title={
+                rows.length === 0
+                  ? 'No parts'
+                  : filter === 'not-counted'
+                    ? 'Every part has been counted'
+                    : 'No matches'
+              }
+              description={
+                rows.length === 0 ? 'Create a part and it appears here to be counted.' : undefined
+              }
+            />
+          ) : (
+            <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
+              <div
+                className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
+                style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
+                <div className='flex items-center gap-1 pl-2'>Part</div>
+                <div className='px-2'>Kind</div>
+                <div>Account</div>
+                <Tooltip content='Net of every movement on the ledger to now.'>
+                  <div className='cursor-default px-2 text-right'>On hand</div>
+                </Tooltip>
+                <div className='px-2 text-right'>Count</div>
+                <div className='px-2'>As of</div>
+                <div className='px-2 text-right'>Unit cost</div>
+                <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
+                  <div className='cursor-default px-2 text-right'>Writes</div>
+                </Tooltip>
+              </div>
+
+              <div className='flex flex-col gap-0.5 py-1'>
+                {visible.map((row) => (
+                  <OpeningStockRowLine
+                    key={row.partId}
+                    row={row}
+                    currencyCode={currencyCode}
+                    canSetKind={canSetKind}
+                    isSettingKind={isSettingKind}
+                    onWriteKind={writeKind}
+                    onQuantityChange={onQuantityChange}
+                    onUnitCostChange={onUnitCostChange}
+                    onDateChange={onDateChange}
+                  />
+                ))}
+                {/* Every row is already loaded; a "page" only mounts the next 50 rows. */}
+                <InfiniteListTail
+                  hasNextPage={filtered.length > limit}
+                  isFetchingNextPage={false}
+                  fetchNextPage={() => setLimit((current) => current + OPENING_STOCK_PAGE_SIZE)}
+                  loadingLabel='Loading more parts...'
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
     </>
   )
 }
@@ -400,6 +413,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           className={cn('w-full', !row.hasOwnDate && 'text-muted-foreground')}>
           <FieldInputAdapter
             fieldType={FieldType.DATE}
+            fieldOptions={{ format: 'short' }}
             triggerProps={{ className: 'ps-1 pe-1 w-full text-xs' }}
             value={row.date}
             onChange={(value) => onDateChange(row.partId, typeof value === 'string' ? value : null)}

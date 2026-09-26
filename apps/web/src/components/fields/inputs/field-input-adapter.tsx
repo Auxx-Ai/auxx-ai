@@ -145,6 +145,13 @@ export interface FieldInputAdapterProps {
   allowCurrentUser?: boolean
 }
 
+/** The field's display `format` as a date-fns pattern for the picker trigger. */
+const PICKER_DATE_FORMAT: Partial<Record<NonNullable<FieldOptions['format']>, string>> = {
+  short: 'P',
+  medium: 'PP',
+  long: 'PPP',
+}
+
 /**
  * FieldInputAdapter
  * Renders the appropriate input component for a given FieldType.
@@ -609,6 +616,7 @@ export function FieldInputAdapter({
         <DateTimeInput
           {...nodeInputProps}
           type='date'
+          dateFormat={fieldOptions?.format ? PICKER_DATE_FORMAT[fieldOptions.format] : undefined}
           triggerProps={triggerProps}
           open={open}
           onOpenChange={onOpenChange}

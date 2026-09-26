@@ -16,7 +16,7 @@ interface DateTimeInputProps extends NodeInputProps {
   minDate?: Date
   /** Maximum date */
   maxDate?: Date
-  /** Date format string (unused, for backward compatibility) */
+  /** date-fns format for the trigger's date part. Defaults to the picker's `PPP`. */
   dateFormat?: string
   /** Trigger customization options */
   triggerProps?: PickerTriggerOptions
@@ -45,6 +45,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
     type = 'datetime',
     minDate,
     maxDate,
+    dateFormat,
     triggerProps,
     open,
     onOpenChange,
@@ -100,6 +101,7 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
         value={isValidDate ? dateValue : undefined}
         onChange={handleChange}
         mode={mode}
+        dateFormat={dateFormat}
         placeholder={getPlaceholder()}
         minDate={minDate}
         maxDate={maxDate}
