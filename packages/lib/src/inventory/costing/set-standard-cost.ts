@@ -10,7 +10,7 @@ import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
+import { requestAccountingRecovery, requestPartPricing } from '../../accounting/work-items/recovery'
 import { wakePricedParts } from '../../accounting/work-items/wake'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
@@ -25,7 +25,6 @@ import {
 import { loadOrgSubpartEdges } from './cost-calculator'
 import { ensureStandardCost } from './ensure-standard-cost'
 import { guard } from './guard'
-import { pricePendingMovementsQuietly } from './price-pending-movements'
 import { replaceProvisionalStandard } from './provisional-standard'
 import { rollUnvaluedAncestors } from './roll-unvalued-ancestors'
 import {
@@ -156,7 +155,7 @@ export async function setStandardCosts(
         }
         if (restated.size > 0) {
           await wakePricedParts(db, organizationId, { partIds: [...restated] })
-          await pricePendingMovementsQuietly(db, organizationId, [...restated])
+          await requestPartPricing(organizationId, [...restated])
         }
       }
 

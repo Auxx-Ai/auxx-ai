@@ -25,3 +25,30 @@ export async function requestAccountingRecovery(organizationId: string): Promise
     })
   }
 }
+
+/** Queue `pricePartsJob` for parts that just got a standard. Never throws; falls back to recovery. */
+export async function requestPartPricing(
+  organizationId: string,
+  partIds: readonly string[]
+): Promise<void> {
+  if (partIds.length === 0) return
+  try {
+    const [{ getQueue }, { Queues }] = await Promise.all([
+      import('../../jobs/queues'),
+      import('../../jobs/queues/types'),
+    ])
+    // No custom jobId: the pricer is idempotent, so a duplicate only re-reads an empty pending set.
+    await getQueue(Queues.maintenanceQueue).add(
+      'pricePartsJob',
+      { organizationId, partIds: [...new Set(partIds)] },
+      { removeOnComplete: true, removeOnFail: { count: 30 } }
+    )
+  } catch (error) {
+    logger.warn('Could not enqueue part pricing; the recovery sweep prices the woken rows', {
+      organizationId,
+      partIds: partIds.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    await requestAccountingRecovery(organizationId)
+  }
+}

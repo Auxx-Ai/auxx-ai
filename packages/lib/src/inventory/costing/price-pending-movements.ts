@@ -1,8 +1,8 @@
 // packages/lib/src/inventory/costing/price-pending-movements.ts
 //
 // The pricer (111 Q18, Q22): a part's first standard values its `pending`
-// movements and posts the documents they belong to. Called inline from every
-// door that writes a standard; the recovery job's `price` lane is the backstop.
+// movements and posts the documents they belong to. The standard doors queue it
+// as `pricePartsJob`; the recovery job's `price` lane is the backstop.
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -123,23 +123,6 @@ export async function pricePendingMovements(
     'Failed to price pending stock movements',
     { organizationId, partIds: partIds.length }
   )
-}
-
-/** {@link pricePendingMovements} for a door that wrote a standard: a pricing failure is logged, never the caller's error. */
-export async function pricePendingMovementsQuietly(
-  db: Database,
-  organizationId: string,
-  partIds: readonly string[]
-): Promise<void> {
-  if (partIds.length === 0) return
-  const priced = await pricePendingMovements(db, organizationId, partIds)
-  if (priced.isErr()) {
-    logger.error('Pricing after a standard-cost write failed; the recovery lane retries it', {
-      organizationId,
-      partIds: partIds.length,
-      error: priced.error.message,
-    })
-  }
 }
 
 /** Every `pending` movement of these parts, in ledger order. */

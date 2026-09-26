@@ -39,6 +39,7 @@ import {
   orphanedStorageObjectJob,
   outlookSubscriptionHealthJob,
   payoutSyncJob,
+  pricePartsJob,
   quotaResetJob,
   reconcileRecordIdentitiesJob,
   recordUsageEventJob,
@@ -282,6 +283,9 @@ export const jobMappings = {
 
   // Queued when an accounting provider connects (plans/accounting/tasks/105 §4).
   connectAndGoPrepareJob,
+
+  // Values a part's pending rows once a standard door wrote its first standard (111 Q22).
+  pricePartsJob,
 
   // Money P24 vendor-bill aging daily sweep. THE ONLY time-driven trigger in the
   // three-way match: every other one is an edit or a receipt. Without it a prepaid

@@ -49,12 +49,8 @@ export {
   ensureStandardCost,
 } from './ensure-standard-cost'
 // The pricer (111 Q18/Q22): a first standard values the part's `pending` rows and
-// posts their documents. Inline from every standard door; the recovery lane retries.
-export {
-  type PricingSummary,
-  pricePendingMovements,
-  pricePendingMovementsQuietly,
-} from './price-pending-movements'
+// posts their documents. The standard doors queue it (`pricePartsJob`); the recovery lane retries.
+export { type PricingSummary, pricePendingMovements } from './price-pending-movements'
 // A receipt confirming a provisional standard (73 §6.4), or a typed cost on a moved part (D-SC2a).
 export {
   type ReplaceProvisionalStandardOptions,

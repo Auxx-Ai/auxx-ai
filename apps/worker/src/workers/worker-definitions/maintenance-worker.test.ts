@@ -57,6 +57,8 @@ describe('maintenance worker registrations', () => {
     // Nightly and on-demand (`builds.runBackflush`) share this one name; unregistered, the
     // switch would be on and nothing would ever be built (111 D23).
     ['backflush', 'backflushJob'],
+    // Every first standard queues it; unregistered, pending rows wait for the 60s sweep.
+    ['price parts', 'pricePartsJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })
