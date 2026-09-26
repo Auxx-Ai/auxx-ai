@@ -53,7 +53,8 @@ import {
   exportInventoryMovement,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { upsertWorkItem } from '../../accounting/work-items/write'
+import type { WorkItemRefusal } from '../../accounting/work-items/refusal'
+import { upsertWorkItem, type WorkItemKey } from '../../accounting/work-items/write'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { flushInstanceDerived } from '../../field-values/instance-derived'
 import {
@@ -72,6 +73,7 @@ import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { isServicePartKind } from '../costing/client'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
+import type { AbsorptionRates } from '../costing/types'
 import {
   type StockMovementInput,
   type WriteStockMovementsResult,
@@ -214,7 +216,7 @@ interface WriteCompletionArgs {
 }
 
 /** Everything the post-commit work needs, plus the caller's answer. */
-interface WrittenCompletion {
+export interface WrittenCompletion {
   result: CompleteBuildResult
   /** The build's own inventory entry, awaiting its export. `null` on a pending build. */
   post: InTxPostResult | null
@@ -224,7 +226,7 @@ interface WrittenCompletion {
 }
 
 /** Steps 2 and 3 plus the run's absorbed costs: everything the writes need, read on `tx`. */
-interface PricedCompletion {
+export interface PricedCompletion {
   plan: BuildComponentPlan
   pendingPartIds: string[]
   summary: BuildCompletionSummary | null
@@ -331,19 +333,35 @@ async function priceCompletion(
     quantityScrapped,
     componentOverrides: args.componentOverrides,
   })
-  assertPlanIsPostable(plan)
-  // 111 Q18: any leg without a standard makes the WHOLE build pending. Its entry
-  // is one document claimed once by the build id, so a partial entry now would
-  // collide with the priced one later (73-D11).
-  const pendingPartIds = plan.missingStandardPartIds
-  const producedUnitCost = plan.producedUnitCost
-
   // 🛑 The rates this RUN absorbs must be the same ones the produced part's
   // frozen standard was rolled from, or the variance stops closing to zero and
   // the difference lands in 5090 on `updatable: false` rows, on every single
   // completion. Read on `txDb` so it is the same snapshot `planBuildComponents`
   // took its standard costs from.
   const rates = await loadPartAbsorptionRates(txDb, organizationId, partId)
+  const producedKinds = await readPartKinds(txDb, organizationId, [partId])
+  return priceFromPlan(plan, rates, producedKinds.get(partId) ?? null, args)
+}
+
+/** Steps 2 and 3 from what they read; the batched completion prices every build with it. */
+export function priceFromPlan(
+  plan: BuildComponentPlan,
+  rates: AbsorptionRates,
+  producedKind: string | null,
+  args: {
+    quantityProduced: number
+    quantityScrapped: number
+    laborCost?: number
+    overheadCost?: number
+  }
+): PricedCompletion {
+  const { quantityProduced, quantityScrapped } = args
+  assertPlanIsPostable(plan)
+  // 111 Q18: any leg without a standard makes the WHOLE build pending. Its entry
+  // is one document claimed once by the build id, so a partial entry now would
+  // collide with the priced one later (73-D11).
+  const pendingPartIds = plan.missingStandardPartIds
+  const producedUnitCost = plan.producedUnitCost
 
   // 🛑 The SAME function the completion form runs to preview these five numbers
   // (`client.ts`): a preview computed by a second implementation is only
@@ -362,8 +380,7 @@ async function priceCompletion(
         })
       : null
 
-  const producedKinds = await readPartKinds(txDb, organizationId, [partId])
-  if (isServicePartKind(producedKinds.get(partId))) {
+  if (isServicePartKind(producedKind ?? undefined)) {
     throw new BadRequestError('A service is not stocked, so it cannot be built')
   }
 
@@ -374,7 +391,7 @@ async function priceCompletion(
     summary,
     // From the produced part's OWN `part_kind`, not hard-coded to 1330: a subassembly
     // stamped 1330 would put raw-materials stock into Finished Goods.
-    produceGlAccount: resolveInventoryRoleForPartKind(producedKinds.get(partId) ?? null),
+    produceGlAccount: resolveInventoryRoleForPartKind(producedKind),
     laborCost: absorbedRunCost(args.laborCost, rates.laborCostPerUnit, started),
     overheadCost: absorbedRunCost(args.overheadCost, rates.overheadCostPerUnit, started),
   }
@@ -397,7 +414,27 @@ async function writeCompletionMovements(
     completedAt: Date
   }
 ): Promise<WriteStockMovementsResult> {
-  const { movementCtx, priced, buildRecordId, completedAt } = args
+  const written = await writeStockMovementsBatch(
+    {
+      db: txDb,
+      organizationId,
+      userId,
+      movementDefId: args.movementCtx.defId,
+      partDefId: args.movementCtx.partDefId,
+      lane: { kind: 'quiet', session: args.session, bypassFieldGuards: BUILD_STATUS_BYPASS },
+    },
+    completionMovementInputs(args.priced, args)
+  )
+  if (written.isErr()) throw written.error
+  return written.value
+}
+
+/** A completion's legs, consumes in plan order then the produce. */
+export function completionMovementInputs(
+  priced: PricedCompletion,
+  args: { buildRecordId: RecordId; quantityProduced: number; completedAt: Date }
+): StockMovementInput[] {
+  const { buildRecordId, completedAt } = args
   const consumeInputs: StockMovementInput[] = priced.plan.components.map((line) => ({
     partInstanceId: line.partId,
     type: StockMovementType.BUILD_CONSUME,
@@ -432,24 +469,11 @@ async function writeCompletionMovements(
     occurredAt: completedAt,
     links: { buildId: buildRecordId },
   }
-
-  const written = await writeStockMovementsBatch(
-    {
-      db: txDb,
-      organizationId,
-      userId,
-      movementDefId: movementCtx.defId,
-      partDefId: movementCtx.partDefId,
-      lane: { kind: 'quiet', session: args.session, bypassFieldGuards: BUILD_STATUS_BYPASS },
-    },
-    [...consumeInputs, produceInput]
-  )
-  if (written.isErr()) throw written.error
-  return written.value
+  return [...consumeInputs, produceInput]
 }
 
 /** The status and cost fields a completion stamps on its build. */
-function completionBuildValues(
+export function completionBuildValues(
   priced: PricedCompletion,
   run: { quantityProduced: number; quantityScrapped: number; completedAt: Date }
 ): Record<string, unknown> {
@@ -474,7 +498,7 @@ function completionBuildValues(
  * the inventory accounts, absorbed labour and overhead come out of their pools, and the residual
  * is the run's variance. A pending build posts nothing; the pricer posts it once every leg is priced.
  */
-async function postCompletion(
+export async function postCompletion(
   tx: Transaction,
   organizationId: string,
   userId: string,
@@ -659,7 +683,7 @@ export async function recalculateAfterCommit(
  * standard, and such a leg is written `pending` (111 Q18). A deliberate $0 standard (103 §5a) is
  * present and builds at $0.
  */
-function assertPlanIsPostable(plan: BuildComponentPlan): void {
+export function assertPlanIsPostable(plan: BuildComponentPlan): void {
   if (plan.components.length === 0) {
     throw new UnprocessableEntityError(
       'This build has no components to consume. Add a bill of materials, or record a stock adjustment instead.'
@@ -673,9 +697,17 @@ async function parkPendingBuild(
   organizationId: string,
   written: WrittenCompletion
 ): Promise<void> {
+  const item = pendingBuildWorkItem(written)
+  if (item) await upsertWorkItem(db, organizationId, item)
+}
+
+/** The `price` work item a pending build parks under, or null for a priced build. */
+export function pendingBuildWorkItem(
+  written: WrittenCompletion
+): (WorkItemKey & WorkItemRefusal) | null {
   const partId = written.result.pendingPartIds[0]
-  if (!partId) return
-  await upsertWorkItem(db, organizationId, {
+  if (!partId) return null
+  return {
     sourceKind: 'build',
     sourceId: written.result.buildId,
     stage: 'price',
@@ -686,7 +718,7 @@ async function parkPendingBuild(
       pendingMovementIds: written.pendingMovementIds,
       ...(written.pendingPartName ? { partName: written.pendingPartName } : {}),
     },
-  })
+  }
 }
 
 /**
@@ -698,7 +730,7 @@ async function parkPendingBuild(
  * would silently REDUCE the material consumed below what the bill of materials
  * calls for.
  */
-function assertQuantities(quantityProduced: number, quantityScrapped: number): void {
+export function assertQuantities(quantityProduced: number, quantityScrapped: number): void {
   if (!Number.isFinite(quantityProduced) || quantityProduced <= 0) {
     throw new BadRequestError('A completed build must produce at least one unit')
   }

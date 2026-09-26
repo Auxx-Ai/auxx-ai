@@ -853,9 +853,14 @@ part still builds, its legs pending (§7.4). Re-running a day finds `qoh(day) >=
 nothing. `inventory.backflush` and `inventory.autoBuildFromOrders` are mutually exclusive
 (Q14): the settings write turns the other off and refuses a batch asking for both.
 
-Backflush and a `completed` backfill write each build through `recordCompletedBuild`: raise,
-start and complete in ONE transaction, legs through `writeStockMovementsBatch`. A refused
-completion leaves no build and is a `failed` row; manual create → start → complete is unchanged.
+Backfill writes each `completed` build through `recordCompletedBuild`: raise, start and complete
+in ONE transaction, legs through `writeStockMovementsBatch`. Backflush walks a slice first and
+writes its builds through `recordCompletedBuilds`: every build of a batch (the slice, or
+`batchBuilds` cut at a day) in ONE transaction through the batched create
+(`resources/crud/create-entities-batch.ts`), `B-` numbers from one `createRange`, one QoH
+recalculation and one frame per def after the commit. A refused build refuses its batch; the
+rest of the slice is then walked again build by build, so the refusal is one `failed` row and
+the rest land. Manual create → start → complete is unchanged.
 
 ---
 

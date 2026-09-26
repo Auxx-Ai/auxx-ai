@@ -161,7 +161,8 @@ export async function walkBackflushDay(
 /**
  * The whole walk, one ledger read per `sliceDays` days. `carry` keeps the simulated delta for the
  * whole walk (the preview, which writes nothing); otherwise it resets at each read, which already
- * holds the run's earlier builds.
+ * holds the run's earlier builds. `onSlice` runs after each slice's days are walked, before the
+ * next read, and answers the slice's skipped count (it may re-walk some of its days).
  */
 export async function walkBackflush(params: {
   organizationId: string
@@ -170,6 +171,10 @@ export async function walkBackflush(params: {
   carry: boolean
   act: (build: BackflushBuild) => Promise<boolean>
   onDayError: (day: BackflushDay, error: unknown) => void
+  onSlice?: (
+    slice: readonly BackflushDay[],
+    skippedByDay: ReadonlyMap<string, number>
+  ) => Promise<number>
   sliceDays?: number
   readNet?: typeof readPartNetThroughEach
 }): Promise<{ skipped: number }> {
@@ -192,20 +197,21 @@ export async function walkBackflush(params: {
       for (const day of slice) params.onDayError(day, error)
       continue
     }
+    const skippedByDay = new Map<string, number>()
     for (const [index, day] of slice.entries()) {
       // One bad day must not lose the range.
       try {
-        skipped += await walkBackflushDay(
-          params.graph,
-          day,
-          nets[index] ?? new Map(),
-          delta,
-          params.act
+        skippedByDay.set(
+          day.day,
+          await walkBackflushDay(params.graph, day, nets[index] ?? new Map(), delta, params.act)
         )
       } catch (error) {
         params.onDayError(day, error)
       }
     }
+    skipped += params.onSlice
+      ? await params.onSlice(slice, skippedByDay)
+      : [...skippedByDay.values()].reduce((sum, n) => sum + n, 0)
   }
   return { skipped }
 }

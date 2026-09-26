@@ -235,6 +235,13 @@ Single entry point for entity CRUD across system + custom: `create`, `update`, `
 `findByField` / `findOrCreate` (priority-ordered equality matching with `normalizeForLookup`) and bulk
 variants. Uses ResourceRegistryService + FieldValueService internally.
 
+`bulkCreate` runs `createEntitiesBatch` (`create-entities-batch.ts`) inside a savepoint when the
+def and session qualify: one instance insert, one value insert, one inverse sync per field, one
+flush for N records, storing what N `createEntity` calls store. Eligible: `stock_movement`,
+`build` and user-authored defs whose hooks pass `batch-create-audit.ts` (no unique field, no
+NAME/FILE display, no avatar), on a quiet or sync session. A failed batch rolls back and the
+items are created one by one, so one bad item is one error.
+
 ### Org cache — `packages/lib/src/cache/`
 
 Per-org caches (see CLAUDE.md "Org Cache" rules): `resources`, `customFields`, `entityDefs`,

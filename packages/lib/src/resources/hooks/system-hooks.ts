@@ -116,9 +116,13 @@ export function getCommonHooks(): SystemHookRegistry {
 /**
  * The pre-hook pass of every `UnifiedCrudHandler` create/update: common hooks, then the
  * entity's own. On update a hook runs only when its field is being written.
+ *
+ * `preassigned` (systemAttribute -> value) replaces that attribute's hooks with the value, in the
+ * hooks' place: the batched create allocates a range of record numbers instead of one per hook call.
  */
 export async function runSystemPreHooks(
-  params: Omit<SystemHookContext, 'field'>
+  params: Omit<SystemHookContext, 'field'>,
+  preassigned?: ReadonlyMap<string, unknown>
 ): Promise<Record<string, unknown>> {
   const { operation, entityDef, allFields } = params
   const mergedHooks: SystemHookRegistry = { ...getCommonHooks() }
@@ -133,6 +137,10 @@ export async function runSystemPreHooks(
     // Values may be keyed by fieldId OR systemAttribute; checking one would let a
     // systemAttribute-keyed update bypass its update hooks (e.g. status guards).
     if (operation === 'update' && !(field.id in values) && !(systemAttribute in values)) continue
+    if (preassigned?.has(systemAttribute)) {
+      values = { ...values, [field.id]: preassigned.get(systemAttribute) }
+      continue
+    }
     for (const hook of hookFns) {
       values = await hook({ ...params, field, values })
     }

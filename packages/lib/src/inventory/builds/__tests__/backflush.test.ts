@@ -4,8 +4,8 @@
 // before the children they consume, dated the end of the local day, idempotent, never rolling a
 // standard (plans/mrp/09 §12.2 D-SC7).
 //
-// The ledger is an in-memory list of dated movements. The `recordCompletedBuild` double appends the
-// produce and consume legs a real completion writes, so the parent-before-child property is
+// The ledger is an in-memory list of dated movements. The `recordCompletedBuild(s)` doubles append
+// the produce and consume legs a real completion writes, so the parent-before-child property is
 // exercised through the same dated read the run uses, not asserted by inspection.
 
 import { err, ok } from 'neverthrow'
@@ -41,6 +41,8 @@ const h = vi.hoisted(() => ({
   completeCalls: [] as Record<string, unknown>[],
   rollCalls: [] as Record<string, unknown>[],
   completeRefusals: new Map<string, Error>(),
+  batches: [] as string[][],
+  refuseDay: null as string | null,
   numbering: 0,
   nextBuild: 0,
   reads: 0,
@@ -113,25 +115,57 @@ vi.mock('../build-queries', () => ({
 
 vi.mock('../build-mutations', () => ({ createBuild: vi.fn() }))
 
+/** The legs a real completion writes, dated the build's accounting date; returns the build id. */
+function writeBuild(input: Record<string, unknown>): string {
+  h.completeCalls.push(input)
+  const partId = String(input.partId)
+  h.nextBuild += 1
+  const quantity = Number(input.quantity)
+  const at = input.completedAt as Date
+  h.ledger.push({ partId, quantity, at })
+  for (const edge of h.subparts.filter((s) => s.parentPartId === partId)) {
+    h.ledger.push({ partId: edge.childPartId, quantity: -quantity * edge.quantity, at })
+  }
+  return `bld_${h.nextBuild}`
+}
+
+function refusalFor(input: Record<string, unknown>): Error | undefined {
+  const byDay = h.refuseDay && String(input.notes).endsWith(h.refuseDay)
+  return (
+    h.completeRefusals.get(String(input.partId)) ?? (byDay ? new Error('day closed') : undefined)
+  )
+}
+
 vi.mock('../complete-build', () => ({
   recordCompletedBuild: vi.fn(
     async (_db: unknown, _org: string, _user: string, input: Record<string, unknown>) => {
-      h.completeCalls.push(input)
       const partId = String(input.partId)
       h.calls.push(`complete:${partId}`)
       // A refused completion rolls its whole build back: nothing is written.
-      const refusal = h.completeRefusals.get(partId)
-      if (refusal) return err(refusal)
-      h.nextBuild += 1
-      const buildId = `bld_${h.nextBuild}`
-      // The legs a real completion writes, dated the build's accounting date.
-      const quantity = Number(input.quantity)
-      const at = input.completedAt as Date
-      h.ledger.push({ partId, quantity, at })
-      for (const edge of h.subparts.filter((s) => s.parentPartId === partId)) {
-        h.ledger.push({ partId: edge.childPartId, quantity: -quantity * edge.quantity, at })
+      const refusal = refusalFor(input)
+      if (refusal) {
+        h.completeCalls.push(input)
+        return err(refusal)
       }
-      return ok({ buildId, movementIds: ['mv'] })
+      return ok({ buildId: writeBuild(input), movementIds: ['mv'] })
+    }
+  ),
+}))
+
+vi.mock('../record-completed-builds', () => ({
+  recordCompletedBuilds: vi.fn(
+    async (_db: unknown, _org: string, _user: string, inputs: Record<string, unknown>[]) => {
+      h.batches.push(inputs.map((input) => String(input.partId)))
+      // One refused build rolls the whole batch back.
+      if (inputs.some((input) => refusalFor(input))) {
+        return err(new UnprocessableEntityError('a build in the batch was refused'))
+      }
+      return ok(
+        inputs.map((input) => {
+          h.calls.push(`complete:${String(input.partId)}`)
+          return { buildId: writeBuild(input), movementIds: ['mv'] }
+        })
+      )
     }
   ),
 }))
@@ -175,6 +209,8 @@ beforeEach(() => {
   h.completeCalls = []
   h.rollCalls = []
   h.completeRefusals = new Map()
+  h.batches = []
+  h.refuseDay = null
   h.numbering = 0
   h.nextBuild = 0
   h.reads = 0
@@ -317,8 +353,84 @@ describe('never throws', () => {
     sale(LIFT, 1, '2026-09-23')
     const result = await backflushBuilds(db, ORG, { ...range, now: NOW })
     expect(result.isOk()).toBe(true)
-    const { recordCompletedBuild } = await import('../complete-build')
-    expect(vi.mocked(recordCompletedBuild).mock.calls[0]?.[2]).toBe('user_system')
+    const { recordCompletedBuilds } = await import('../record-completed-builds')
+    expect(vi.mocked(recordCompletedBuilds).mock.calls[0]?.[2]).toBe('user_system')
+  })
+})
+
+describe('batched slices (plans/mrp/12 §2)', () => {
+  const week = { from: '2026-09-17', to: '2026-09-23' }
+
+  it('writes a slice as one batch, in walk order', async () => {
+    sale(LIFT, 2, '2026-09-17')
+    sale(LIFT, 3, '2026-09-19')
+    const summary = await run({ ...week, sliceDays: 7 })
+    expect(h.batches).toEqual([[LIFT, MOTOR, LIFT, MOTOR]])
+    expect(summary.written.map((b) => [b.partId, b.day])).toEqual([
+      [LIFT, '2026-09-17'],
+      [MOTOR, '2026-09-17'],
+      [LIFT, '2026-09-19'],
+      [MOTOR, '2026-09-19'],
+    ])
+  })
+
+  it('cuts a slice into batches of whole days', async () => {
+    sale(LIFT, 2, '2026-09-17')
+    sale(LIFT, 3, '2026-09-19')
+    sale(MOTOR, 1, '2026-09-20')
+    const summary = await backflushBuilds(db, ORG, {
+      ...week,
+      actorUserId: USER,
+      now: NOW,
+      sliceDays: 7,
+      batchBuilds: 2,
+    })
+    expect(summary.isOk()).toBe(true)
+    expect(h.batches).toEqual([[LIFT, MOTOR], [LIFT, MOTOR], [MOTOR]])
+  })
+
+  it('a refused batch is walked again build by build: the refusal fails alone, the rest land', async () => {
+    sale(MOTOR, 4, '2026-09-18')
+    sale(LIFT, 2, '2026-09-23')
+    h.completeRefusals.set(LIFT, new UnprocessableEntityError('period locked'))
+    const summary = await run({ ...week, sliceDays: 7 })
+
+    expect(h.batches).toEqual([[MOTOR, LIFT, MOTOR]])
+    expect(summary.failed).toEqual([
+      expect.objectContaining({ partId: LIFT, day: '2026-09-23', reason: 'period locked' }),
+    ])
+    // Build by build, the unbuilt lift consumes no motor: only the motor's own sale is built.
+    expect(summary.written.map((b) => [b.partId, b.day, b.quantity])).toEqual([
+      [MOTOR, '2026-09-18', 4],
+    ])
+    // The qoh >= 0 checks a walk build by build makes, counted once despite the second walk.
+    expect(summary.skipped).toBe(12)
+  })
+
+  it('keeps the batches before a refused one and re-walks only from its day', async () => {
+    sale(LIFT, 2, '2026-09-17')
+    sale(LIFT, 3, '2026-09-19')
+    h.refuseDay = '2026-09-19'
+    const summary = await backflushBuilds(db, ORG, {
+      ...week,
+      actorUserId: USER,
+      now: NOW,
+      sliceDays: 7,
+      batchBuilds: 1,
+    })
+    if (summary.isErr()) throw summary.error
+    expect(h.batches).toEqual([
+      [LIFT, MOTOR],
+      [LIFT, MOTOR],
+    ])
+    // What one completion per build writes: the 19th's lift fails, the 20th builds its shortfall.
+    expect(summary.value.written.map((b) => [b.partId, b.day, b.quantity])).toEqual([
+      [LIFT, '2026-09-17', 2],
+      [MOTOR, '2026-09-17', 2],
+      [LIFT, '2026-09-20', 3],
+      [MOTOR, '2026-09-20', 3],
+    ])
+    expect(summary.value.failed.map((b) => [b.partId, b.day])).toEqual([[LIFT, '2026-09-19']])
   })
 })
 

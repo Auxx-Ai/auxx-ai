@@ -98,6 +98,69 @@ export async function upsertWorkItem(
   })
 }
 
+/** {@link upsertWorkItem} for many items sharing one reason code, in one statement. */
+export async function upsertWorkItems(
+  db: Db,
+  organizationId: string,
+  inputs: ReadonlyArray<WorkItemKey & WorkItemRefusal>
+): Promise<Result<void, Error>> {
+  const reasonCode = inputs[0]?.reasonCode
+  if (!reasonCode) return ok(undefined)
+  if (inputs.some((input) => input.reasonCode !== reasonCode)) {
+    return err(new Error('upsertWorkItems takes one reason code per call'))
+  }
+  const t = schema.AccountingWorkItem
+  const firstDelay = nextAttemptDelayMs(reasonCode, 1)
+  const nextAttemptAt = firstDelay === null ? null : new Date(Date.now() + firstDelay)
+  const rows = inputs.map((input) => ({
+    organizationId,
+    sourceKind: input.sourceKind,
+    sourceId: input.sourceId,
+    occurrence: input.occurrence ?? 0,
+    stage: input.stage,
+    reasonCode,
+    role: input.role ?? null,
+    railId: input.railId ?? null,
+    glAccountId: input.glAccountId ?? null,
+    periodKey: input.periodKey ?? null,
+    externalRef: input.externalRef ?? null,
+    detail: input.detail ?? {},
+    attempts: 1,
+    nextAttemptAt,
+  }))
+  const attempts = sql`(CASE WHEN ${t.reasonCode} = ${reasonCode} THEN ${t.attempts} + 1 ELSE 1 END)`
+  const nextAttempt =
+    firstDelay === null
+      ? sql`NULL`
+      : isTransientCode(reasonCode)
+        ? sql`now() + make_interval(secs => LEAST(60 * power(2, ${attempts} - 1), 21600))`
+        : nextAttemptAt
+  return guarded(
+    'Could not record work items',
+    { organizationId, count: rows.length },
+    async () => {
+      await db
+        .insert(t)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [t.organizationId, t.sourceKind, t.sourceId, t.occurrence, t.stage],
+          set: {
+            reasonCode,
+            role: sql`excluded."role"`,
+            railId: sql`excluded."railId"`,
+            glAccountId: sql`excluded."glAccountId"`,
+            periodKey: sql`excluded."periodKey"`,
+            externalRef: sql`excluded."externalRef"`,
+            detail: sql`excluded."detail"`,
+            attempts,
+            nextAttemptAt: nextAttempt,
+            updatedAt: new Date(),
+          },
+        })
+    }
+  )
+}
+
 /**
  * Re-point a `price` item at the parts still holding it, keeping its attempts and schedule.
  * `partName` is dropped: it named the first part, which may be the one just priced.

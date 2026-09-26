@@ -71,7 +71,12 @@ export async function runBackflushSlice(
   db: Database,
   organizationId: string,
   runId: string,
-  options: { now?: Date; sliceDays?: number; expectedCursor?: string | null } = {}
+  options: {
+    now?: Date
+    sliceDays?: number
+    batchBuilds?: number
+    expectedCursor?: string | null
+  } = {}
 ): Promise<Result<BackflushStep | null, Error>> {
   return guard(
     async () => {
@@ -107,6 +112,7 @@ export async function runBackflushSlice(
         now,
         run: { batchRun: meta.batchRun },
         sliceDays,
+        batchBuilds: options.batchBuilds,
       })
       if (result.isErr()) throw result.error
       const summary = result.value
@@ -166,7 +172,7 @@ export async function finalizeBackflushRun(
       if (!row || !isActive(row)) return false
       const meta = row.metadata
 
-      // Per-build recalcs run after each commit; a worker killed in between left QoH stale.
+      // Each batch recalculates after its commit; a worker killed in between left QoH stale.
       const graph = await readBackflushGraph(db, organizationId)
       const parts = new Set(graph.order)
       for (const partId of graph.order) {

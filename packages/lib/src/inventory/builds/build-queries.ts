@@ -40,8 +40,8 @@ import {
   systemValueJoin,
 } from '../../resources/system-records'
 import { loadDirectSubparts } from '../bom/subpart-graph'
-import { readStandardCost } from '../costing/standard-cost-queries'
-import type { PartStandardCost } from '../costing/types'
+import { loadStandardCostFields, readStandardCost } from '../costing/standard-cost-queries'
+import type { AbsorptionRates, PartStandardCost } from '../costing/types'
 import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../movements/client'
 import {
   type BuildStatusValue,
@@ -552,11 +552,37 @@ export async function planBuildComponents(
   organizationId: string,
   input: BuildComponentPlanInput
 ): Promise<BuildComponentPlan> {
-  const quantityProduced = input.quantityProduced
-  const quantityScrapped = input.quantityScrapped ?? 0
-  const started = unitsStarted(quantityProduced, quantityScrapped)
-
   const edges = await loadDirectSubparts(db, organizationId, input.partId)
+  const lines = planComponentLines(input, edges)
+  const componentIds = lines.map((line) => line.partId)
+  const [standards, kinds, names] = await Promise.all([
+    readStandardCostMap(db, organizationId, [input.partId, ...componentIds]),
+    readPartKinds(db, organizationId, componentIds),
+    readPartNames(db, organizationId, componentIds),
+  ])
+  return priceComponentPlan(input, lines, { standards, kinds, names })
+}
+
+/** One BOM line of a run before it is priced. */
+export interface PlannedComponentLine {
+  partId: string
+  qtyPerUnit: number | null
+  quantityConsumed: number
+}
+
+/** What pricing a plan reads, keyed by part id; a batch loads it once for many plans. */
+export interface ComponentPlanLookups {
+  standards: ReadonlyMap<string, PartStandardCost>
+  kinds: ReadonlyMap<string, string>
+  names: ReadonlyMap<string, string>
+}
+
+/** The run's BOM lines from its direct edges and overrides; zero-quantity lines are dropped. */
+export function planComponentLines(
+  input: BuildComponentPlanInput,
+  edges: ReadonlyArray<{ childId: string; qty: number }>
+): PlannedComponentLine[] {
+  const started = unitsStarted(input.quantityProduced, input.quantityScrapped ?? 0)
   const overrides = new Map<string, number>()
   for (const override of input.componentOverrides ?? []) {
     overrides.set(override.partId, override.quantityConsumed)
@@ -565,7 +591,7 @@ export async function planBuildComponents(
   // BOM order first, then any off-BOM substitution, so a form renders the bill
   // of materials in its own order and the exceptions after it.
   const bomPartIds = new Set(edges.map((edge) => edge.childId))
-  const planned: { partId: string; qtyPerUnit: number | null; quantityConsumed: number }[] = []
+  const planned: PlannedComponentLine[] = []
 
   for (const edge of edges) {
     const overridden = overrides.get(edge.childId)
@@ -589,22 +615,18 @@ export async function planBuildComponents(
   // A zero-quantity line is dropped rather than written. A movement of zero is a
   // row in an append-only ledger that changes nothing and can never be removed;
   // `adjustStock` refuses one for the same reason.
-  const lines = planned.filter((line) => line.quantityConsumed !== 0)
+  return planned.filter((line) => line.quantityConsumed !== 0)
+}
 
-  const partIds = [input.partId, ...lines.map((line) => line.partId)]
-  const [standards, kinds, names] = await Promise.all([
-    readStandardCostMap(db, organizationId, partIds),
-    readPartKinds(
-      db,
-      organizationId,
-      lines.map((line) => line.partId)
-    ),
-    readPartNames(
-      db,
-      organizationId,
-      lines.map((line) => line.partId)
-    ),
-  ])
+/** The priced plan from its lines and the standards, kinds and names they read. */
+export function priceComponentPlan(
+  input: BuildComponentPlanInput,
+  lines: readonly PlannedComponentLine[],
+  lookups: ComponentPlanLookups
+): BuildComponentPlan {
+  const quantityProduced = input.quantityProduced
+  const quantityScrapped = input.quantityScrapped ?? 0
+  const { standards, kinds, names } = lookups
 
   const missingStandardPartIds: string[] = []
   if (!standards.has(input.partId)) missingStandardPartIds.push(input.partId)
@@ -632,7 +654,7 @@ export async function planBuildComponents(
     partId: input.partId,
     quantityProduced,
     quantityScrapped,
-    unitsStarted: started,
+    unitsStarted: unitsStarted(quantityProduced, quantityScrapped),
     producedUnitCost: standards.get(input.partId)?.standardCost ?? null,
     components,
     missingStandardPartIds,
@@ -660,7 +682,7 @@ export async function explodeBuildComponents(
 }
 
 /** {@link readStandardCost}, unwrapped — the plan is already inside a `guard`. */
-async function readStandardCostMap(
+export async function readStandardCostMap(
   db: Database,
   organizationId: string,
   partIds: string[]
@@ -734,4 +756,42 @@ export async function readPartNames(
     if (displayName) names.set(partId, displayName)
   }
   return names
+}
+
+/** `loadPartAbsorptionRates` for several parts in one query; a part with no row reads both null. */
+export async function readAbsorptionRates(
+  db: Database,
+  organizationId: string,
+  partIds: string[]
+): Promise<Map<string, AbsorptionRates>> {
+  const rates = new Map<string, AbsorptionRates>(
+    partIds.map((partId) => [partId, { laborCostPerUnit: null, overheadCostPerUnit: null }])
+  )
+  const fields = await loadStandardCostFields(organizationId)
+  const fieldIds = [fields.laborRate?.id, fields.overheadRate?.id].filter((id): id is string =>
+    Boolean(id)
+  )
+  if (fieldIds.length === 0 || partIds.length === 0) return rates
+
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      fieldId: schema.FieldValue.fieldId,
+      valueNumber: schema.FieldValue.valueNumber,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.entityId, [...new Set(partIds)]),
+        inArray(schema.FieldValue.fieldId, fieldIds)
+      )
+    )
+  for (const row of rows) {
+    const part = rates.get(row.entityId)
+    if (!part) continue
+    if (row.fieldId === fields.laborRate?.id) part.laborCostPerUnit = row.valueNumber
+    else if (row.fieldId === fields.overheadRate?.id) part.overheadCostPerUnit = row.valueNumber
+  }
+  return rates
 }
