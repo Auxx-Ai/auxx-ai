@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest'
 import type { MrpListRow } from '../rows/mrp-row'
 import { groupAllPartsByFinishedGood, NO_FINISHED_GOOD_ID } from './all-parts-rows'
 
-function item(partId: string, productIds: string[], productNames = productIds): MrpListRow {
+function item(
+  partId: string,
+  finishedGoodIds: string[],
+  finishedGoodNames = finishedGoodIds
+): MrpListRow {
   return {
     partId,
     partName: partId,
-    productIds,
-    productNames,
+    finishedGoodIds,
+    finishedGoodNames,
     flags: [],
     supplyType: 'bought',
     leadTimeSource: 'none',
@@ -18,7 +22,7 @@ function item(partId: string, productIds: string[], productNames = productIds): 
 const today = new Date('2026-09-24T00:00:00Z')
 
 describe('groupAllPartsByFinishedGood', () => {
-  it('heads a section with the product, repeats shared parts, and ends with the rest', () => {
+  it('heads a section with the finished good, repeats shared parts, and ends with the rest', () => {
     const items = [
       item('motor', ['liftA', 'liftB']),
       item('liftA', ['liftA']),

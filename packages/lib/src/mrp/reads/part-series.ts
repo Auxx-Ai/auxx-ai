@@ -98,7 +98,7 @@ export function itemEvents(item: MrpPlanItemRow | undefined): PartSeriesEvent[] 
   return events
 }
 
-const byDay = (a: { day: DayKey }, b: { day: DayKey }) =>
+export const byDay = (a: { day: DayKey }, b: { day: DayKey }) =>
   a.day < b.day ? -1 : a.day > b.day ? 1 : 0
 
 /** Median lateness per vendor part, read only when a line is overdue (02 §6.2). */
@@ -120,30 +120,47 @@ async function latenessByVendorPart(
   return { byId, fallback }
 }
 
-/** Open issued PO lines and builds as dated receipts with their chart markers. */
-async function readReceipts(
+/** A part's open supply as dated receipts, with their chart markers. */
+export interface PartReceipts {
+  receipts: { day: DayKey; quantity: number }[]
+  events: PartSeriesEvent[]
+}
+
+/** Open issued PO lines and builds for every item's part in one read each; a part with no supply maps to empty arrays. */
+export async function readReceiptsForParts(
   db: Database,
   organizationId: string,
-  partId: string,
-  item: MrpPlanItemRow,
+  items: ReadonlyMap<string, MrpPlanItemRow>,
   asOf: DayKey
-): Promise<{ receipts: { day: DayKey; quantity: number }[]; events: PartSeriesEvent[] }> {
+): Promise<Map<string, PartReceipts>> {
+  const partIds = [...items.keys()]
+  const out = new Map<string, PartReceipts>(partIds.map((id) => [id, { receipts: [], events: [] }]))
+  if (partIds.length === 0) return out
   const [poLines, builds] = await Promise.all([
-    readOpenIssuedPoLines(db, organizationId, [partId]),
-    readOpenBuilds(db, organizationId, new Set([partId])),
+    readOpenIssuedPoLines(db, organizationId, partIds),
+    readOpenBuilds(db, organizationId, new Set(partIds)),
   ])
-  const leadTime = item.leadTimeSource === 'vendor' ? item.leadTimeDays : null
-  const buildLeadTime = item.leadTimeSource === 'build' ? item.leadTimeDays : null
+  const vendorLead = (partId: string) => {
+    const item = items.get(partId)
+    return item?.leadTimeSource === 'vendor' ? item.leadTimeDays : null
+  }
   // The line's own date, before `poLineLandingDay` moves an overdue one.
-  const due = (line: OpenPoLineInput) =>
-    line.expectedAt ??
-    (line.orderedAt && leadTime !== null
-      ? addDaysToDayKey(line.orderedAt, Math.ceil(leadTime))
-      : asOf)
-  const lateness = poLines.some((l) => due(l) < asOf)
-    ? await latenessByVendorPart(db, organizationId, partId)
-    : null
-  const [poNames, buildNames] = await Promise.all([
+  const due = (line: OpenPoLineInput) => {
+    const leadTime = vendorLead(line.partId)
+    return (
+      line.expectedAt ??
+      (line.orderedAt && leadTime !== null
+        ? addDaysToDayKey(line.orderedAt, Math.ceil(leadTime))
+        : asOf)
+    )
+  }
+  const latePartIds = [...new Set(poLines.filter((l) => due(l) < asOf).map((l) => l.partId))]
+  const [lateness, poNames, buildNames] = await Promise.all([
+    Promise.all(
+      latePartIds.map(
+        async (id) => [id, await latenessByVendorPart(db, organizationId, id)] as const
+      )
+    ).then((pairs) => new Map(pairs)),
     readRecordNames(
       db,
       organizationId,
@@ -158,18 +175,19 @@ async function readReceipts(
     ),
   ])
 
-  const receipts: { day: DayKey; quantity: number }[] = []
-  const events: PartSeriesEvent[] = []
   for (const line of poLines) {
+    const target = out.get(line.partId)
+    if (!target) continue
+    const partLateness = lateness.get(line.partId)
     const median =
-      (line.vendorPartId ? lateness?.byId.get(line.vendorPartId) : undefined) ??
-      lateness?.fallback ??
+      (line.vendorPartId ? partLateness?.byId.get(line.vendorPartId) : undefined) ??
+      partLateness?.fallback ??
       null
-    const day = poLineLandingDay(line, asOf, leadTime, median)
+    const day = poLineLandingDay(line, asOf, vendorLead(line.partId), median)
     const late = due(line) < asOf
     const name = poNames.get(line.purchaseOrderId) ?? 'Purchase order'
-    receipts.push({ day, quantity: line.quantityOpen })
-    events.push({
+    target.receipts.push({ day, quantity: line.quantityOpen })
+    target.events.push({
       day,
       kind: 'po_arrival',
       label: late ? `${name} (overdue)` : name,
@@ -177,17 +195,21 @@ async function readReceipts(
     })
   }
   for (const build of builds) {
+    const target = out.get(build.partId)
+    if (!target) continue
+    const item = items.get(build.partId)
+    const buildLeadTime = item?.leadTimeSource === 'build' ? item.leadTimeDays : null
     const dueDay = build.dueDay ?? addDaysToDayKey(asOf, Math.ceil(buildLeadTime ?? 0))
     const day = dueDay < asOf ? asOf : dueDay
-    receipts.push({ day, quantity: build.quantityOpen })
-    events.push({
+    target.receipts.push({ day, quantity: build.quantityOpen })
+    target.events.push({
       day,
       kind: 'build_due',
       label: buildNames.get(build.id) ?? 'Build',
       qty: build.quantityOpen,
     })
   }
-  return { receipts, events }
+  return out
 }
 
 /** One part's position chart (07 §5.1): ledger history, bucketed usage and the run's projection. */
@@ -249,7 +271,9 @@ export async function readPartSeries(
       let walk: ReturnType<typeof walkProjection> = []
       const events = itemEvents(item)
       if (offset === 0 && item && item.baseAdu !== null) {
-        const supply = await readReceipts(db, organizationId, partId, item, asOf)
+        const supply = (
+          await readReceiptsForParts(db, organizationId, new Map([[partId, item]]), asOf)
+        ).get(partId) ?? { receipts: [], events: [] }
         events.push(...supply.events)
         walk = walkProjection({
           fromDay: asOf,

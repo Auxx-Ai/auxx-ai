@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { buildParentGraph } from '../../../inventory/costing/cost-calculator'
-import { isSoldFinishedGood, likePattern, productsAbove, toListItem } from '../../reads/list'
+import { finishedGoodsAbove, isSoldFinishedGood, likePattern, toListItem } from '../../reads/list'
 import { lateDays } from '../../reads/part-item'
 import { orderByHorizons, shapeSummary, shapeSupplierFacet } from '../../reads/summary'
 import { item } from '../support/plan-item'
@@ -106,7 +106,7 @@ describe('supplier facet', () => {
   })
 })
 
-describe('products above a part', () => {
+describe('finished goods above a part', () => {
   const edge = (parentPartId: string, childPartId: string) => ({
     parentPartId,
     childPartId,
@@ -123,24 +123,24 @@ describe('products above a part', () => {
     edge('trike', 'a'),
   ])
 
-  it('lists every top-level product above a shared component once', () => {
-    expect(productsAbove('bolt', parents, false)).toEqual(['bike', 'trike'])
-    expect(productsAbove('frame', parents, false)).toEqual(['bike', 'trike'])
+  it('lists every top-level finished good above a shared component once', () => {
+    expect(finishedGoodsAbove('bolt', parents, false)).toEqual(['bike', 'trike'])
+    expect(finishedGoodsAbove('frame', parents, false)).toEqual(['bike', 'trike'])
   })
 
   it('survives a cycle', () => {
-    expect(productsAbove('b', parents, false)).toEqual(['trike'])
+    expect(finishedGoodsAbove('b', parents, false)).toEqual(['trike'])
   })
 
-  it('lists a parentless part as its own product only when it is a sold finished good', () => {
-    expect(productsAbove('bike', parents, true)).toEqual(['bike'])
-    expect(productsAbove('bike', parents, false)).toEqual([])
+  it('lists a parentless part as its own finished good only when it is a sold finished good', () => {
+    expect(finishedGoodsAbove('bike', parents, true)).toEqual(['bike'])
+    expect(finishedGoodsAbove('bike', parents, false)).toEqual([])
     expect(isSoldFinishedGood('finished_good', 0.4)).toBe(true)
     expect(isSoldFinishedGood('finished_good', 0)).toBe(false)
     expect(isSoldFinishedGood('component', 3)).toBe(false)
   })
 
-  it('carries the products onto the list item, empty by default', () => {
+  it('carries the finished goods onto the list item, empty by default', () => {
     const row = {
       item: item({ partId: 'bolt' }),
       partName: null,
@@ -148,12 +148,12 @@ describe('products above a part', () => {
       stockStatus: null,
       supplierName: null,
     }
-    expect(toListItem(row, '2026-09-24').productIds).toEqual([])
+    expect(toListItem(row, '2026-09-24').finishedGoodIds).toEqual([])
     const withProducts = toListItem(row, '2026-09-24', {
-      productIds: ['bike'],
-      productNames: ['Bike'],
+      finishedGoodIds: ['bike'],
+      finishedGoodNames: ['Bike'],
     })
-    expect(withProducts.productNames).toEqual(['Bike'])
+    expect(withProducts.finishedGoodNames).toEqual(['Bike'])
   })
 })
 

@@ -48,12 +48,12 @@ describe('plan tabs', () => {
     expect(groups[0]?.items.map((r) => r.id)).toEqual([2, 4])
   })
 
-  it('groups by finished good, a shared part under each product, none last', () => {
+  it('groups by finished good, a shared part under each finished good, none last', () => {
     const rows = [
-      { id: 1, productIds: [], productNames: [] },
-      { id: 2, productIds: ['bike', 'trike'], productNames: ['Bike', 'Trike'] },
-      { id: 3, productIds: ['trike'], productNames: ['Trike'] },
-      { id: 4, productIds: ['bike'], productNames: ['Bike'] },
+      { id: 1, finishedGoodIds: [], finishedGoodNames: [] },
+      { id: 2, finishedGoodIds: ['bike', 'trike'], finishedGoodNames: ['Bike', 'Trike'] },
+      { id: 3, finishedGoodIds: ['trike'], finishedGoodNames: ['Trike'] },
+      { id: 4, finishedGoodIds: ['bike'], finishedGoodNames: ['Bike'] },
     ]
     const groups = groupByFinishedGood(rows)
     expect(groups.map((g) => g.label)).toEqual(['Bike', 'Trike', 'No finished good'])

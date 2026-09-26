@@ -140,7 +140,7 @@ export function flatAllParts(items: readonly MrpListRow[], today: Date): AllPart
 
 /**
  * One section per finished good, headed by its own item when loaded, in order of first
- * appearance so the list's sort carries over; a part under several products repeats.
+ * appearance so the list's sort carries over; a part under several finished goods repeats.
  */
 export function groupAllPartsByFinishedGood(
   items: readonly MrpListRow[],
@@ -153,18 +153,18 @@ export function groupAllPartsByFinishedGood(
   const loose: MrpListRow[] = []
 
   for (const item of items) {
-    if (item.productIds.length === 0) {
+    if (item.finishedGoodIds.length === 0) {
       loose.push(item)
       continue
     }
-    item.productIds.forEach((productId, index) => {
-      let section = sections.get(productId)
+    item.finishedGoodIds.forEach((finishedGoodId, index) => {
+      let section = sections.get(finishedGoodId)
       if (!section) {
-        section = { name: item.productNames[index] ?? 'Unnamed part', children: [] }
-        sections.set(productId, section)
+        section = { name: item.finishedGoodNames[index] ?? 'Unnamed part', children: [] }
+        sections.set(finishedGoodId, section)
       }
       // A sold finished good lists itself; it is the section head, not a line under it.
-      if (productId !== item.partId) section.children.push(item)
+      if (finishedGoodId !== item.partId) section.children.push(item)
     })
   }
 
@@ -175,16 +175,16 @@ export function groupAllPartsByFinishedGood(
     return { ...toAllPartsRow(item, today), id, depth: 1 }
   }
 
-  const rows: ReportGridRow[] = [...sections].map(([productId, section]) => {
-    const own = byPartId.get(productId)
-    if (own) partIdByRowId.set(productId, productId)
+  const rows: ReportGridRow[] = [...sections].map(([finishedGoodId, section]) => {
+    const own = byPartId.get(finishedGoodId)
+    if (own) partIdByRowId.set(finishedGoodId, finishedGoodId)
     const head: ReportGridRow = own
       ? toAllPartsRow(own, today)
-      : { id: productId, label: section.name, depth: 0, kind: 'line', values: [] }
+      : { id: finishedGoodId, label: section.name, depth: 0, kind: 'line', values: [] }
     return {
       ...head,
       kind: 'section',
-      children: section.children.map((item) => line(productId, item)),
+      children: section.children.map((item) => line(finishedGoodId, item)),
     }
   })
 
