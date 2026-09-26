@@ -54,7 +54,7 @@ function VariantRow({ variant: v }: { variant: ProductVariant }) {
   const openRecord = useOpenRecord()
   const router = useRouter()
   const open = () => {
-    if (openRecord) openRecord(recordId)
+    if (openRecord) openRecord(recordId, { tab: 'mrp' })
     else if (href) router.push(href)
   }
 

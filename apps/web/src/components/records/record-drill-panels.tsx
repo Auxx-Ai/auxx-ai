@@ -271,11 +271,16 @@ export interface RecordPeekStack<F extends string = RecordId> {
   /** `frames.length`. */
   depth: number
   /** Push a frame onto the stack. Already-present (incl. the base) → truncate back to it. */
-  push: (frame: F) => void
+  push: (frame: F, options?: PushFrameOptions) => void
   /** Drop the top peek frame. No-op at depth 1 (base only). */
   pop: () => void
   /** Empty the peek stack entirely. */
   clear: () => void
+}
+
+/** Options for a peek-stack push. `tab` lands the pushed frame on that tab instead of its default. */
+export interface PushFrameOptions {
+  tab?: string
 }
 
 /** `useRecordPeekStack`'s options. */
@@ -362,10 +367,10 @@ export function useRecordPeekStack<F extends string = RecordId>(
   const top = frames[depth - 1] ?? null
 
   const write = React.useCallback(
-    (nextPeek: F[]) => {
+    (nextPeek: F[], tab?: string) => {
       void setState({
         [paramKey]: nextPeek.length > 0 ? nextPeek : null,
-        [tabParam]: null,
+        [tabParam]: tab ?? null,
         panel: null,
         item: null,
       })
@@ -374,11 +379,14 @@ export function useRecordPeekStack<F extends string = RecordId>(
   )
 
   const push = React.useCallback(
-    (frame: F) => {
+    (frame: F, options?: PushFrameOptions) => {
       const existingIndex = frames.indexOf(frame)
       // Already on the stack (including the base, index 0) — truncate back to
       // it instead of appending a duplicate (decision #6, kills SR→QT→SR cycles).
-      write(existingIndex >= 0 ? frames.slice(1, existingIndex + 1) : [...frames.slice(1), frame])
+      write(
+        existingIndex >= 0 ? frames.slice(1, existingIndex + 1) : [...frames.slice(1), frame],
+        options?.tab
+      )
     },
     [frames, write]
   )
@@ -397,7 +405,7 @@ export function useRecordPeekStack<F extends string = RecordId>(
  * enclosing `useRecordPeekStack`, so any nested card/row can push a related
  * record onto the stack without prop-threading. */
 interface RecordStackContextValue {
-  push: (frame: DrawerFrame) => void
+  push: (frame: DrawerFrame, options?: PushFrameOptions) => void
   depth: number
 }
 
@@ -414,7 +422,7 @@ export function RecordStackProvider<F extends string>({
   value,
   children,
 }: {
-  value: { push: (frame: F) => void; depth: number }
+  value: { push: (frame: F, options?: PushFrameOptions) => void; depth: number }
   children: React.ReactNode
 }) {
   const ctx = value as RecordStackContextValue
@@ -428,7 +436,7 @@ export function RecordStackProvider<F extends string>({
  * drills into it in place. Outside one → `null`, so the caller falls back to
  * its existing href/`router.push` navigation.
  */
-export function useOpenRecord(): ((frame: DrawerFrame) => void) | null {
+export function useOpenRecord(): ((frame: DrawerFrame, options?: PushFrameOptions) => void) | null {
   const ctx = React.useContext(RecordStackContext)
   return ctx?.push ?? null
 }
@@ -448,7 +456,8 @@ export function useOpenRecord(): ((frame: DrawerFrame) => void) | null {
  */
 export function useOpenRecordLinkClick(
   recordId: RecordId | null | undefined,
-  enabled: boolean | undefined
+  enabled: boolean | undefined,
+  tab?: string
 ): ((event: React.MouseEvent) => void) | undefined {
   const openRecord = useOpenRecord()
   const push = enabled ? openRecord : null
@@ -460,7 +469,7 @@ export function useOpenRecordLinkClick(
         return
       }
       event.preventDefault()
-      push(recordId)
+      push(recordId, tab ? { tab } : undefined)
     }
-  }, [push, recordId])
+  }, [push, recordId, tab])
 }

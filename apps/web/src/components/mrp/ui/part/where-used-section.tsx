@@ -48,7 +48,10 @@ export function WhereUsedSection({ partId, recordId, runId }: WhereUsedSectionPr
                 p.isDirectSale ? (
                   'Sold directly'
                 ) : (
-                  <RecordLink recordId={toRecordId(partDefId, p.partId)} openInStack>
+                  <RecordLink
+                    recordId={toRecordId(partDefId, p.partId)}
+                    link={{ tab: 'mrp' }}
+                    openInStack>
                     {p.name ?? 'Unnamed part'}
                   </RecordLink>
                 )

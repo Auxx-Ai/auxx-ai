@@ -37,7 +37,10 @@ export function SellThroughSection({ partId, runId }: SellThroughSectionProps) {
           loading={loading}
           value={
             limiting ? (
-              <RecordLink recordId={toRecordId('part', limiting.partId)} openInStack>
+              <RecordLink
+                recordId={toRecordId('part', limiting.partId)}
+                link={{ tab: 'mrp' }}
+                openInStack>
                 {limiting.name ?? 'Unnamed part'}
               </RecordLink>
             ) : (

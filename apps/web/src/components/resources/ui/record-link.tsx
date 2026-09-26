@@ -34,7 +34,7 @@ interface RecordLinkProps {
  */
 export function RecordLink({ recordId, children, className, link, openInStack }: RecordLinkProps) {
   const href = useRecordLink(recordId ?? null, link)
-  const handleStackOpen = useOpenRecordLinkClick(recordId, openInStack)
+  const handleStackOpen = useOpenRecordLinkClick(recordId, openInStack, link?.tab)
 
   if (!href) return <span className={className}>{children}</span>
 
