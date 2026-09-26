@@ -62,6 +62,8 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   'product:parts': () =>
     import('../drawers/tabs/product-parts-tab').then((m) => ({ default: m.ProductPartsTab })),
+  'product:mrp': () =>
+    import('../mrp/ui/product/product-mrp-tab').then((m) => ({ default: m.ProductMrpTab })),
 
   // ─────────────────────────────────────────────────────────────────
   // QUOTE TABS

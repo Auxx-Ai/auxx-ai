@@ -145,6 +145,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // edge the detail page's Variants tab lists.
     additionalTabs: [
       { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
+      { value: 'mrp', label: 'Planning', icon: 'calendar-clock', permissionKey: 'mrp.view' },
     ],
     // Overview blocks (plans/products/09-variant-ui.md §7). Both render nothing
     // when they have nothing — an empty family, or no linked vendor — which

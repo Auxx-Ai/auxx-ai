@@ -66,6 +66,8 @@ export const DRAWER_TAB_COMPONENTS: Record<
   // ─────────────────────────────────────────────────────────────────
   'product:parts': () =>
     import('./tabs/product-parts-tab').then((m) => ({ default: m.ProductPartsTab })),
+  'product:mrp': () =>
+    import('../mrp/ui/product/product-mrp-tab').then((m) => ({ default: m.ProductMrpTab })),
 }
 
 /**
