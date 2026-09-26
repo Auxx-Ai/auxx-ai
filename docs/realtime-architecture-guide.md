@@ -284,6 +284,15 @@ rate limits. Three patterns guard against it:
   writes on the run's sync session, so its edges follow the same path. Same idea
   for mail: `inbox:syncCompleted` replaces per-message events during a sync cycle,
   and the client invalidates `thread.listIds` once.
+- **Covered quiet writes publish nothing per record.** A `quietSession(reason, { coveredBy })`
+  names the function that announces its rows after commit (build completion:
+  `publishQuietBuildWrites`; relief: `announceQuietReliefWrites`; salvage:
+  `announceQuietSalvageWrites`). On such a session the display-column `record:updated`
+  and the inverse-relationship announcement are skipped, so the covering publisher must
+  send `records:changed` for the written rows and for every record at the other end of
+  a relationship they set. A quiet session without `coveredBy` (connector avatars,
+  public tokens, geo) still sends both. `silent-write-conformance.test.ts` keeps a ledger
+  of the claims.
 - **`records:changed` field ids are client fieldRefKeys** (`<defId>:<fieldId>`,
   as `buildFieldValueKey` builds them), not manifest output keys; the client
   matches them against its value-store keys. An entry with no `fieldIds` refetches

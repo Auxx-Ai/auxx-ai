@@ -91,7 +91,7 @@ import type {
   CompleteBuildInput,
   CompleteBuildResult,
 } from './types'
-import { buildWriteSession, publishQuietBuildWrites } from './write-lane'
+import { buildCompletionSession, publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:complete')
 
@@ -161,6 +161,13 @@ export async function completeBuild(
       // movement rows are silent without this and `build-ledger-card` goes on
       // rendering "Nothing posted yet" until the drawer remounts.
       publishQuietBuildWrites(organizationId, movementCtx.defId, written.result.movementIds)
+      // The covered lane sends no inverse frames: the parts' and the build's movement lists.
+      publishQuietBuildWrites(
+        organizationId,
+        movementCtx.partDefId,
+        written.result.recalculatedPartIds
+      )
+      publishQuietBuildWrites(organizationId, ctx.defId, [written.result.buildId])
 
       logger.info('Completed build', {
         organizationId,
@@ -274,7 +281,7 @@ async function writeCompletion(
     throw new BadRequestError('A service is not stocked, so it cannot be built')
   }
   // The one construction site for the quiet lane. See `write-lane.ts`.
-  const buildSession = buildWriteSession()
+  const buildSession = buildCompletionSession()
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
     session: buildSession,
     // 🛑 Step 6 writes `build_status: 'completed'`, which

@@ -574,13 +574,13 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
     expect(result.affectedPartIds).toEqual(['part_mast', 'part_pump'])
   })
 
-  it('self-announces both the movement rows and the return part line rows', async () => {
+  it('self-announces the movement rows, the return part line rows and the parts', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
 
     const defs = h.publishRecordsChanged.mock.calls.map((call) => call[2].entityDefinitionId)
-    expect(defs).toEqual(['def_movement', 'def_return_part_line'])
+    expect(defs).toEqual(['def_movement', 'def_return_part_line', 'def_part'])
   })
 })
 

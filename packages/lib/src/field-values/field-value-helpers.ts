@@ -50,7 +50,7 @@ import {
   isTxWriteCreated,
   recordTxWriteColumns,
 } from '../resources/crud/tx-write-scope'
-import type { WriteSession } from '../resources/crud/write-origin'
+import { isCoveredQuiet, type WriteSession } from '../resources/crud/write-origin'
 import { getAmbientWriteDb, getAmbientWriteSession } from '../resources/crud/write-session-als'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
@@ -1301,8 +1301,8 @@ export async function recomposeNameDisplayFromParts(
 /**
  * Publish a `record:updated` carrying just the denormalized column(s) that changed, on the
  * def's record channel (plan v3/03 §8.1). Excludes the originating socket.
- * Sync/seed writes publish nothing (their run announces them) and a buffered scope holds
- * the frame until commit — see plans/realtime/sync-record-event-flood.md P1.
+ * Sync/seed writes and covered quiet writes publish nothing (their caller announces them) and a
+ * buffered scope holds the frame until commit — see plans/realtime/sync-record-event-flood.md P1.
  */
 async function publishRecordColumnUpdate(
   ctx: FieldValueContext,
@@ -1314,9 +1314,10 @@ async function publishRecordColumnUpdate(
     avatarUrl?: string | null
   }
 ): Promise<void> {
-  // Origin only, not `sessionLane`: `absorbed` bulk edits and `quiet` avatar writes still publish.
-  const origin = (ctx.session ?? getAmbientWriteSession())?.origin.kind
-  if (origin === 'sync' || origin === 'seed') return
+  // Not `sessionLane`: `absorbed` bulk edits and uncovered `quiet` avatar writes still publish.
+  const session = ctx.session ?? getAmbientWriteSession()
+  const origin = session?.origin.kind
+  if (origin === 'sync' || origin === 'seed' || isCoveredQuiet(session)) return
   try {
     const recordId = toRecordId(entityDefId, entityInstanceId)
     const scope = getAmbientTxWriteScope(ctx.session)

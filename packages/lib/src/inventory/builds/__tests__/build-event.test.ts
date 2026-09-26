@@ -912,12 +912,21 @@ describe('completeBuild', () => {
     }
   })
 
-  it('announces the movements with ONE tier-2 frame, after the commit', async () => {
+  it('announces movements, their parts and the build with one tier-2 frame each, after the commit', async () => {
     await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
 
-    // ONE frame: a completion writes movements only — its build row already
-    // exists, and `publishBuildUpdate` carries that row's changed values.
-    expect(h.movementFrames).toHaveLength(1)
+    // The covered lane sends no inverse frames, so the parts' and the build's movement lists
+    // ride on their own `records:changed`, with no field ids.
+    expect(h.movementFrames.map((f) => f.entityDefinitionId)).toEqual([
+      'def_mv',
+      'def_part',
+      'def_build',
+    ])
+    const partIds = new Set(
+      movementWrites().map((values) => String(values.stock_movement_part).split(':')[1])
+    )
+    expect(new Set(h.movementFrames[1]!.entries.map((entry) => entry.recordId))).toEqual(partIds)
+    expect(h.movementFrames[2]!.entries).toEqual([{ recordId: BUILD }])
     const frame = h.movementFrames[0]!
     // The `stock_movement` def, NOT `build`: the ledger card lists movements, so
     // a frame addressed to the build def is delivered to the wrong query.
@@ -936,10 +945,11 @@ describe('completeBuild', () => {
     const ledgerHandlers = h.constructions.filter((options) => options?.session)
     expect(ledgerHandlers).toHaveLength(1)
     const session = ledgerHandlers[0]?.session as {
-      mode?: { kind: string }
+      mode?: { kind: string; coveredBy?: string }
       origin: { kind: string }
     }
     expect(session.mode?.kind).toBe('quiet')
+    expect(session.mode?.coveredBy).toBe('publishQuietBuildWrites')
     // `automation`, not `seed`: a build completion is production automation, and
     // a seed reason string would be a lie.
     expect(session.origin.kind).toBe('automation')

@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   absorbedSession,
+  isCoveredQuiet,
   isDeclaredSilent,
   quietSession,
   seedSession,
@@ -109,6 +110,58 @@ describe('silent-write conformance — every shut door names its reason', () => 
   })
 })
 
+/**
+ * Every `quietSession(..., { coveredBy })` claim, keyed by file. A covered claim also shuts the
+ * display-column and inverse frames, so each must name a publisher that exists and is called.
+ */
+const COVERED_QUIET_WRITERS: Record<string, string> = {
+  'inventory/builds/write-lane.ts': 'publishQuietBuildWrites',
+  'inventory/relief/write-lane.ts': 'announceQuietReliefWrites',
+  'returns/salvage-writer.ts': 'announceQuietSalvageWrites',
+}
+
+function coveredByClaims(): Record<string, string> {
+  const claims: Record<string, string> = {}
+  for (const file of walk(LIB_SRC)) {
+    const rel = relative(LIB_SRC, file).replace(/\\/g, '/')
+    if (rel === 'resources/crud/write-origin.ts') continue
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue
+      const match = /coveredBy:\s*(.*)$/.exec(line)
+      if (!match) continue
+      // A literal, so the claim stays greppable at the site that makes it.
+      const literal = /^'([A-Za-z0-9_]+)'/.exec(match[1]!.trim())
+      claims[rel] = literal ? literal[1]! : `<non-literal: ${match[1]!.trim()}>`
+    }
+  }
+  return claims
+}
+
+describe('covered quiet writers — every coveredBy names a real publisher', () => {
+  it('the claims match the ledger', () => {
+    expect(coveredByClaims()).toEqual(COVERED_QUIET_WRITERS)
+  })
+
+  it('each named publisher is declared in lib and called outside its declaration', () => {
+    const sources = walk(LIB_SRC).map((file) => readFileSync(file, 'utf8'))
+    for (const [file, publisher] of Object.entries(COVERED_QUIET_WRITERS)) {
+      const declared = sources.some((src) =>
+        new RegExp(`export function ${publisher}\\(`).test(src)
+      )
+      expect(declared, `${file} claims ${publisher}, which is not declared`).toBe(true)
+      const called = sources.some((src) =>
+        src
+          .split('\n')
+          .some(
+            (line) => new RegExp(`\\b${publisher}\\(`).test(line) && !line.includes('function ')
+          )
+      )
+      expect(called, `${file} claims ${publisher}, which nothing calls`).toBe(true)
+    }
+  })
+})
+
 describe('the declarations themselves', () => {
   it('a quiet session is silent, and carries its reason', () => {
     const session = quietSession('because the derivation is not a user edit')
@@ -136,9 +189,23 @@ describe('the declarations themselves', () => {
 
   it('inherits origin and depth so a declaration does not reset provenance', () => {
     const base = { origin: { kind: 'interactive' as const, userId: 'user_1' }, depth: 3 }
-    const session = quietSession('a reason', base)
+    const session = quietSession('a reason', { base })
     expect(session.origin).toEqual(base.origin)
     expect(session.depth).toBe(3)
+  })
+
+  it('a covered quiet session names its publisher, and refuses an empty one', () => {
+    const covered = quietSession('a reason', { coveredBy: 'publishQuietBuildWrites' })
+    expect(sessionLane(covered)).toBe('silent')
+    expect(isCoveredQuiet(covered)).toBe(true)
+    expect(covered.mode).toEqual({
+      kind: 'quiet',
+      reason: 'a reason',
+      coveredBy: 'publishQuietBuildWrites',
+    })
+    expect(isCoveredQuiet(quietSession('a reason'))).toBe(false)
+    expect(isCoveredQuiet(absorbedSession('setBulkValues'))).toBe(false)
+    expect(() => quietSession('a reason', { coveredBy: ' ' })).toThrow(/named publisher/)
   })
 
   it('is narrower than the silent LANE — a silent ORIGIN is not a declaration', () => {

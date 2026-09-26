@@ -491,9 +491,10 @@ async function relieveLines(
         }
       }
 
-      const [movementDefId, partDefId] = await Promise.all([
+      const [movementDefId, partDefId, lineDefId] = await Promise.all([
         requireCachedEntityDefId(organizationId, 'stock_movement'),
         requireCachedEntityDefId(organizationId, 'part'),
+        requireCachedEntityDefId(organizationId, 'fulfillment_line'),
       ])
 
       // §1.7: quietSession(reason) -> N movements in one tx -> (AFTER COMMIT)
@@ -568,6 +569,9 @@ async function relieveLines(
       await batchRecalculateQoH(organizationId, affectedPartIds)
       await recalculateFulfillmentLineQuantityRelievedBatch(organizationId, relievedLineIds)
       announceQuietReliefWrites(organizationId, movementDefId, movementIds)
+      // The covered lane sends no inverse frames: the parts' and lines' movement lists.
+      announceQuietReliefWrites(organizationId, partDefId, affectedPartIds)
+      announceQuietReliefWrites(organizationId, lineDefId, [...new Set(relievedLineIds)])
 
       logger.info('Relieved inventory for fulfillment lines', {
         organizationId,

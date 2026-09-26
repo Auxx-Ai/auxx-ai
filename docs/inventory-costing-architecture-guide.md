@@ -1258,7 +1258,9 @@ dispatches the native rules from it.
 **For a deliberately silent ledger write, use `quietSession(reason)`** — not `seedSession` (the
 reason string would be a lie), not `absorbedSession` (it needs a real named aggregator), and not
 a bare `publishEvents: false` (`silent-write-conformance.test.ts` scans for it and fails).
-`inventory/builds/write-lane.ts` is the reference.
+`inventory/builds/write-lane.ts` is the reference. Add `{ coveredBy: '<publisher>' }` only when
+that publisher sends `records:changed` after commit for the rows AND their parts, builds and lines
+(the inverse lists); it then also shuts the display-column and inverse frames (realtime guide §5).
 
 ⚠️ **A quiet lane silences the WHOLE rule.** `mfg-stock-movements-created` also fires
 `recalculatePartQoH`. Go quiet and the caller's own post-commit recalc becomes the **only** QoH

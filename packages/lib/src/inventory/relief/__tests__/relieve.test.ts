@@ -16,7 +16,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   fieldsByAttr: {} as Record<string, { id: string } | undefined>,
-  defIds: { stock_movement: 'def_stock_movement', part: 'def_part' } as Record<string, string>,
+  defIds: {
+    stock_movement: 'def_stock_movement',
+    part: 'def_part',
+    fulfillment_line: 'def_fulfillment_line',
+  } as Record<string, string>,
   ledgerAverages: new Map<string, unknown>(),
   relievedAverages: new Map<string, unknown>(),
   /** What the `sale` movements say each line has relieved, as the in-tx re-read sees it. */
@@ -908,6 +912,8 @@ describe('relieveFulfillmentLines', () => {
     expect(h.batchRecalculateQoH).toHaveBeenCalledWith(ORG, ['part_1'])
     expect(h.recalculateFulfillmentLineQuantityRelievedBatch).toHaveBeenCalledWith(ORG, ['fl_1'])
     expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_stock_movement', ['mv_0'])
+    expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_part', ['part_1'])
+    expect(h.announceQuietReliefWrites).toHaveBeenCalledWith(ORG, 'def_fulfillment_line', ['fl_1'])
   })
 })
 
