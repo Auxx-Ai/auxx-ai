@@ -7,20 +7,20 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { Variant } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
-import { EntityIcon } from '@auxx/ui/components/icons'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
+import { TreeRow, TreeRowEmpty, TreeRowSkeleton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { ChevronRight } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { ArrowDownLeft, ArrowUpRight, History, Package } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import { PartStockActions } from '~/components/manufacturing/parts/part-stock-actions'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+import { TREE_SECONDARY_NOTRUNCATE } from './related-record-row'
 
 /** Map movement type values to badge color variants */
 const TYPE_COLOR_MAP: Record<string, Variant> = Object.fromEntries(
@@ -46,7 +46,10 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   out_of_stock: 'Out of Stock',
 }
 
-// `part_kind` rides along for the Build gate below — one read, already made.
+/** How many movements render before the inline "Show more" row collapses the rest. */
+const MOVEMENT_PREVIEW_LIMIT = 10
+
+// `part_kind` rides along for the Build gate in `PartStockActions` — one read, already made.
 const PART_ATTRIBUTES = ['part_quantity_on_hand', 'part_stock_status', 'part_kind'] as const
 
 const MOVEMENT_ATTRIBUTES = [
@@ -60,10 +63,7 @@ const MOVEMENT_ATTRIBUTES = [
   'stock_movement_occurred_at',
 ] as const
 
-// ─────────────────────────────────────────────────────────────────
-// Movement Row
-// ─────────────────────────────────────────────────────────────────
-
+/** One stock movement as a nested TreeRow: signed quantity, type badge, reason, cost + date. */
 function MovementRow({
   recordId,
   createdAt,
@@ -85,64 +85,62 @@ function MovementRow({
   const shownAt = occurredAt ?? createdAt
 
   const isPositive = quantity != null && quantity > 0
-  const label = type ? (TYPE_LABEL_MAP[type] ?? type) : '—'
-  const color = type ? TYPE_COLOR_MAP[type] : undefined
+  const Icon = isPositive ? ArrowDownLeft : ArrowUpRight
 
   return (
-    <div className='flex items-center gap-2 py-1.5 text-sm ps-0.5'>
-      <Badge variant={color} size='xs' className='shrink-0 w-[90px] justify-center'>
-        {label}
-      </Badge>
-      <span
-        className={`font-mono text-xs font-medium tabular-nums ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-        {quantity != null ? `${isPositive ? '+' : ''}${quantity}` : '—'}
-      </span>
-      {unitCost != null && (
-        <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
-          {formatCurrency(unitCost, { currencyCode })}
+    <TreeRow
+      depth={1}
+      rowClassName='hover:bg-primary-100'
+      icon={
+        <Icon
+          className={cn(
+            'size-4',
+            isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+          )}
+        />
+      }
+      title={
+        <span className='font-mono text-xs font-medium tabular-nums text-foreground'>
+          {quantity != null ? `${isPositive ? '+' : ''}${quantity}` : '—'}
         </span>
-      )}
-      <span className='flex-1 truncate text-xs text-muted-foreground'>
-        {reason || reference || ''}
-      </span>
-      {shownAt && (
-        <span className='shrink-0 text-xs text-muted-foreground'>
-          {formatRelativeTime(shownAt, true)}
+      }
+      secondaryFill
+      secondary={
+        <span className='flex min-w-0 items-center gap-1.5'>
+          {type && (
+            <Badge variant={TYPE_COLOR_MAP[type]} size='xs' className='shrink-0'>
+              {TYPE_LABEL_MAP[type] ?? type}
+            </Badge>
+          )}
+          <span className='truncate text-xs'>{reason || reference || ''}</span>
         </span>
-      )}
-    </div>
+      }
+      actions={
+        <span className='flex shrink-0 items-center gap-2 pe-1 text-xs text-muted-foreground tabular-nums'>
+          {unitCost != null && (
+            <span className='font-mono'>{formatCurrency(unitCost, { currencyCode })}</span>
+          )}
+          {shownAt && <span>{formatRelativeTime(shownAt, true)}</span>}
+        </span>
+      }
+    />
   )
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Movements List (inline collapsible content)
-// ─────────────────────────────────────────────────────────────────
+/** Inventory card for the part overview tab: on-hand + status, and the movements behind it. */
+export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps) {
+  const partId = entityInstanceId
+  const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
+  const [isOpen, setIsOpen] = useState(false)
 
-/**
- * The movements list, and the `Actions` popover that produces them.
- *
- * The three write forms live in `part-stock-actions.tsx`; this component owns
- * only the list and hands that surface a refresh.
- *
- * Actions stays INSIDE this component, i.e. behind the Status row's expand,
- * rather than being promoted to the card's always-visible top row. Promoting it
- * would put a write action above a read-only count on a card that is otherwise a
- * clean label/value grid; it is noted as an option and not taken here
- * (plans/money/tasks/23 §2.1).
- */
-function MovementsList({
-  partId,
-  currentQoH,
-  partKind,
-}: {
-  partId: string
-  currentQoH: number
-  /** The part's stored `part_kind`, read once by the card above. */
-  partKind: string | undefined
-}) {
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+
+  const qoh = (values.part_quantity_on_hand as number) ?? 0
+  const partKind = values.part_kind as string | undefined
+  const stockStatus =
+    (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -161,164 +159,78 @@ function MovementsList({
     ],
     [partId]
   )
-
   const sorting = useMemo(() => [{ id: 'createdAt', desc: true }], [])
 
-  const { records, isLoading, isLoadingRecords, refresh } = useRecordList({
+  // Lazy: the movements are only fetched once the row is expanded.
+  const {
+    records,
+    isLoading: isLoadingMovements,
+    isLoadingRecords,
+    refresh,
+  } = useRecordList({
     entityDefinitionId: stockMovementDefId ?? '',
     filters,
     sorting,
     limit: 50,
-    enabled: !!partId && !!stockMovementDefId,
+    enabled: isOpen && !!partId && !!stockMovementDefId,
   })
 
-  /**
-   * What every write form calls when it lands.
-   *
-   * Only the movements list. The QoH number at the top of the card is NOT
-   * refetched here on purpose: every writer of it — `recalculateQoHForPart` and
-   * `batchRecalculateQoH` — ends in `publishFieldValueUpdates` with no
-   * `excludeSocketId`, and `use-resource-sync` merges that frame with no
-   * self-filter, so the acting tab repaints from realtime like every other. The
-   * alternative, `invalidateResource`, DELETES every cached field value on the
-   * part — the pattern two purchasing surfaces removed after it visibly reset
-   * their open forms.
-   */
+  // Only the list: QoH repaints from the realtime frame every QoH recalculation
+  // publishes, and `invalidateResource` would wipe the part's cached values.
   const handleSuccess = () => {
     refresh()
   }
 
+  if (isLoading) return <TreeRowSkeleton />
+
   return (
-    <div className='border-t border-border/50 pt-2 mt-1'>
-      <div className='flex items-center justify-between mb-2'>
-        <h4 className='text-xs font-semibold text-muted-foreground'>Stock Movements</h4>
+    <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+      <DrawerCardActions>
         <PartStockActions
           partId={partId}
-          currentQoH={currentQoH}
+          currentQoH={qoh}
           partKind={partKind}
           onSuccess={handleSuccess}
         />
-      </div>
-
-      {isLoading || isLoadingRecords ? (
-        <div className='space-y-2'>
-          <Skeleton className='h-6 w-full' />
-          <Skeleton className='h-6 w-full' />
-          <Skeleton className='h-6 w-full' />
-        </div>
-      ) : records.length === 0 ? (
-        <p className='text-xs text-muted-foreground text-center py-3'>No movements yet</p>
-      ) : (
-        <ScrollArea className='max-h-[250px]' allowScrollChaining>
-          <div className='divide-y divide-border/50'>
-            {records.map((record) => (
+      </DrawerCardActions>
+      <TreeRow
+        rowClassName='hover:bg-primary-100'
+        icon={<Package className='size-4' />}
+        title='Qty on hand'
+        secondary={
+          <Badge variant={STATUS_VARIANT_MAP[stockStatus]} size='xs'>
+            {STATUS_LABEL_MAP[stockStatus]}
+          </Badge>
+        }
+        actions={
+          <span className='pe-1 text-sm font-semibold tabular-nums text-foreground'>{qoh}</span>
+        }
+      />
+      <TreeRow
+        rowClassName='hover:bg-primary-100'
+        icon={<History className='size-4' />}
+        title='Stock movements'
+        expandable
+        isOpen={isOpen}
+        onToggleOpen={() => setIsOpen((open) => !open)}>
+        {!isLoadingMovements && !isLoadingRecords && records.length === 0 ? (
+          <TreeRowEmpty depth={1} title='No movements yet' />
+        ) : (
+          <TreeRowList
+            items={records}
+            loading={isLoadingMovements || (isLoadingRecords && !records.length)}
+            getKey={(record) => record.id}
+            visibleLimit={MOVEMENT_PREVIEW_LIMIT}
+            renderRow={(record) => (
               <MovementRow
-                key={record.id}
                 recordId={toRecordId(stockMovementDefId!, record.id)}
                 createdAt={record.createdAt}
                 currencyCode={currencyCode}
               />
-            ))}
-          </div>
-        </ScrollArea>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Inventory Card
-// ─────────────────────────────────────────────────────────────────
-
-/** Inventory card for the part overview tab */
-export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps) {
-  const partId = entityInstanceId
-  const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
-  const [isOpen, setIsOpen] = useState(false)
-
-  const qoh = (values.part_quantity_on_hand as number) ?? 0
-  const partKind = values.part_kind as string | undefined
-  const stockStatus =
-    (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
-
-  const statusVariant = STATUS_VARIANT_MAP[stockStatus]
-  const statusLabel = STATUS_LABEL_MAP[stockStatus]
-
-  return (
-    <div className='group/entity-card bg-primary-100/50 dark:bg-[#23272e]/50 dark:border rounded-2xl relative outline-none focus:outline-none ring-border-illustration shadow-black/6.5 shadow-md ring-1 w-full'>
-      <div className='flex flex-col gap-0 p-3 pe-2'>
-        {/* Quantity on Hand */}
-        <div className='flex w-full h-fit min-h-[30px] items-center'>
-          <div className='items-center self-start flex gap-[4px] h-[24px] shrink-0'>
-            <EntityIcon
-              iconId='package'
-              variant='default'
-              size='default'
-              className='text-neutral-400'
-            />
-            <div className='w-[120px] flex items-center text-sm text-neutral-400 shrink-0'>
-              <div className='truncate me-1'>Qty on Hand</div>
-            </div>
-          </div>
-          <div className='flex-1 flex items-center justify-end me-3'>
-            {isLoading ? (
-              <Skeleton className='h-5 w-12' />
-            ) : (
-              <span className='text-sm font-semibold tabular-nums'>{qoh}</span>
             )}
-          </div>
-        </div>
-
-        {/* Stock Status (clickable to toggle movements) */}
-        <button
-          type='button'
-          className='flex w-full h-[30px] items-center cursor-pointer rounded-md -mx-1 px-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5'
-          onClick={() => setIsOpen(!isOpen)}>
-          <div className='items-center self-start flex gap-[4px] h-[24px] shrink-0 mt-1'>
-            <EntityIcon
-              iconId='activity'
-              variant='default'
-              size='default'
-              className='text-neutral-400 '
-            />
-            <div className='w-[120px] flex items-center text-sm text-neutral-400 shrink-0'>
-              <div className='truncate me-1'>Status</div>
-            </div>
-          </div>
-          <div className='flex-1 flex items-center justify-end gap-2'>
-            {!isLoading && (
-              <Badge variant={statusVariant} size='xs'>
-                {statusLabel}
-              </Badge>
-            )}
-            <ChevronRight
-              className={cn(
-                'size-4 text-muted-foreground transition-transform duration-200',
-                isOpen && 'rotate-90'
-              )}
-            />
-          </div>
-        </button>
-
-        {/* Collapsible movements list */}
-        <AnimatePresence initial={false}>
-          {isOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
-              animate={{
-                height: 'auto',
-                opacity: 1,
-                filter: 'blur(0px)',
-                overflow: 'hidden',
-                transitionEnd: { overflow: 'visible' },
-              }}
-              exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <MovementsList partId={partId} currentQoH={qoh} partKind={partKind} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          />
+        )}
+      </TreeRow>
     </div>
   )
 }
