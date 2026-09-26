@@ -244,44 +244,74 @@ export const recordNumbering = {
     organizationId: string,
     scope: AnySequenceScope
   ): Promise<{ recordNumber: string; sequenceNumber: number }> {
-    // First use: seed the row. onConflictDoNothing keys on the (organizationId, scope) unique.
-    await database
-      .insert(schema.RecordSequence)
-      .values({
-        organizationId,
-        scope,
-        currentNumber: 0,
-        prefix: SCOPE_DEFAULTS[scope].prefix,
-        paddingLength: 4,
-        usePrefix: true,
-        updatedAt: new Date(),
-      })
-      .onConflictDoNothing({
-        target: [schema.RecordSequence.organizationId, schema.RecordSequence.scope],
-      })
-
-    // THE RACE FIX: atomic increment + read-back in one statement. The old code
-    // SELECTed, computed currentNumber+1 in JS, then UPDATEd — concurrent creates collided.
-    const [updated] = await database
-      .update(schema.RecordSequence)
-      .set({
-        currentNumber: sql`${schema.RecordSequence.currentNumber} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.RecordSequence.organizationId, organizationId),
-          eq(schema.RecordSequence.scope, scope)
-        )
-      )
-      .returning()
-
-    // The upsert above guarantees the row exists, so an empty RETURNING means the counter was
-    // deleted between the two statements — surface it rather than crashing on `undefined`.
-    if (!updated) {
-      throw new NotFoundError(`Record sequence for scope "${scope}" is missing`)
-    }
-
+    const updated = await advanceSequence(organizationId, scope, 1)
     return { recordNumber: formatRecordNumber(updated), sequenceNumber: updated.currentNumber }
   },
+
+  /**
+   * The next `count` numbers of an org+scope in one atomic increment, formatted as `create`
+   * formats each; concurrent ranges never overlap. A number is burnt if its write rolls back.
+   */
+  async createRange(
+    organizationId: string,
+    scope: AnySequenceScope,
+    count: number
+  ): Promise<{ first: number; last: number; recordNumbers: string[] }> {
+    if (!Number.isInteger(count) || count < 1) {
+      throw new UnprocessableEntityError('A number range holds at least one number')
+    }
+    const updated = await advanceSequence(organizationId, scope, count)
+    const last = updated.currentNumber
+    const first = last - count + 1
+    const recordNumbers = Array.from({ length: count }, (_, index) =>
+      formatRecordNumber({ ...updated, currentNumber: first + index })
+    )
+    return { first, last, recordNumbers }
+  },
+}
+
+/** Seed the counter on first use, then add `count` and read the row back in one statement. */
+async function advanceSequence(
+  organizationId: string,
+  scope: AnySequenceScope,
+  count: number
+): Promise<typeof schema.RecordSequence.$inferSelect> {
+  // First use: seed the row. onConflictDoNothing keys on the (organizationId, scope) unique.
+  await database
+    .insert(schema.RecordSequence)
+    .values({
+      organizationId,
+      scope,
+      currentNumber: 0,
+      prefix: SCOPE_DEFAULTS[scope].prefix,
+      paddingLength: 4,
+      usePrefix: true,
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [schema.RecordSequence.organizationId, schema.RecordSequence.scope],
+    })
+
+  // THE RACE FIX: atomic increment + read-back in one statement. The old code
+  // SELECTed, computed currentNumber+1 in JS, then UPDATEd — concurrent creates collided.
+  const [updated] = await database
+    .update(schema.RecordSequence)
+    .set({
+      currentNumber: sql`${schema.RecordSequence.currentNumber} + ${count}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.RecordSequence.organizationId, organizationId),
+        eq(schema.RecordSequence.scope, scope)
+      )
+    )
+    .returning()
+
+  // The upsert above guarantees the row exists, so an empty RETURNING means the counter was
+  // deleted between the two statements — surface it rather than crashing on `undefined`.
+  if (!updated) {
+    throw new NotFoundError(`Record sequence for scope "${scope}" is missing`)
+  }
+  return updated
 }

@@ -20,7 +20,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
@@ -142,15 +142,66 @@ export async function raiseBuildValues(
   ctx: BuildContext,
   input: CreateBuildInput
 ): Promise<Record<string, unknown>> {
-  if (!Number.isFinite(input.quantityPlanned) || input.quantityPlanned <= 0) {
-    throw new BadRequestError('A build must plan to produce at least one unit')
-  }
+  assertPlannedQuantity(input.quantityPlanned)
 
   const partDefId = await requireDefId(organizationId, 'part')
   await assertPartExists(db, organizationId, partDefId, input.partId)
 
   const kinds = await readPartKinds(db, organizationId, [input.partId])
-  const partKind = resolvePartKind(kinds.get(input.partId))
+  const subparts = await loadDirectSubparts(db, organizationId, input.partId)
+  const values = composeRaiseValues(ctx, partDefId, input, {
+    kind: kinds.get(input.partId),
+    subpartCount: subparts.length,
+  })
+
+  if (input.orderId) {
+    const orderDefId = await requireDefId(organizationId, 'order')
+    values.build_order = toRecordId(orderDefId, input.orderId)
+
+    // Stamp what the order asked production for AT THIS MOMENT
+    // (plans/products/13 Model A+). Compared later against the order's own
+    // `order_build_revision` to show that the order has changed since.
+    //
+    // 🛑 Only for a build the ORDER raised. A person who raises a build
+    // against an order deliberately is not tracking it, and stamping them
+    // would report drift for a build that never claimed to follow anything
+    // — the same distinction `build_source` exists to make (12 AB7).
+    //
+    // Absent on failure rather than fatal: `hasDrifted` reads a missing
+    // stamp as *unknown*, not *drifted*, so the worst case is a build that
+    // cannot show drift — never a build that is not raised.
+    //
+    // `input.orderRevision` short-circuits the read and nothing else. The
+    // convergence pass has already computed this exact fingerprint in order
+    // to decide whether to raise anything at all, so re-deriving it here
+    // would re-run `loadAutoBuildOrders` for one order per build raised.
+    if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
+      const stamp =
+        input.orderRevision ?? (await readOrderDemandFingerprint(db, organizationId, input.orderId))
+      if (stamp) values.build_order_revision = stamp
+    }
+  }
+
+  return values
+}
+
+export function assertPlannedQuantity(quantityPlanned: number): void {
+  if (!Number.isFinite(quantityPlanned) || quantityPlanned <= 0) {
+    throw new BadRequestError('A build must plan to produce at least one unit')
+  }
+}
+
+/**
+ * The create values of a build without an order, from its part's kind and BOM size; refuses a
+ * part that cannot be built. The batched completion raises from the same function.
+ */
+export function composeRaiseValues(
+  ctx: BuildContext,
+  partDefId: string,
+  input: CreateBuildInput,
+  part: { kind: string | undefined; subpartCount: number }
+): Record<string, unknown> {
+  const partKind = resolvePartKind(part.kind)
   if (partKind === 'service') {
     throw new BadRequestError('A service is not stocked, so it cannot be built')
   }
@@ -161,8 +212,7 @@ export async function raiseBuildValues(
     )
   }
 
-  const subparts = await loadDirectSubparts(db, organizationId, input.partId)
-  if (subparts.length === 0) {
+  if (part.subpartCount === 0) {
     throw new UnprocessableEntityError(
       'This part has no bill of materials, so a build would consume nothing'
     )
@@ -222,35 +272,32 @@ export async function raiseBuildValues(
     }
   }
 
-  if (input.orderId) {
-    const orderDefId = await requireDefId(organizationId, 'order')
-    values.build_order = toRecordId(orderDefId, input.orderId)
-
-    // Stamp what the order asked production for AT THIS MOMENT
-    // (plans/products/13 Model A+). Compared later against the order's own
-    // `order_build_revision` to show that the order has changed since.
-    //
-    // 🛑 Only for a build the ORDER raised. A person who raises a build
-    // against an order deliberately is not tracking it, and stamping them
-    // would report drift for a build that never claimed to follow anything
-    // — the same distinction `build_source` exists to make (12 AB7).
-    //
-    // Absent on failure rather than fatal: `hasDrifted` reads a missing
-    // stamp as *unknown*, not *drifted*, so the worst case is a build that
-    // cannot show drift — never a build that is not raised.
-    //
-    // `input.orderRevision` short-circuits the read and nothing else. The
-    // convergence pass has already computed this exact fingerprint in order
-    // to decide whether to raise anything at all, so re-deriving it here
-    // would re-run `loadAutoBuildOrders` for one order per build raised.
-    if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
-      const stamp =
-        input.orderRevision ?? (await readOrderDemandFingerprint(db, organizationId, input.orderId))
-      if (stamp) values.build_order_revision = stamp
-    }
-  }
-
   return values
+}
+
+/** Every part exists, is live and is a `part`; one read for a batch of builds. */
+export async function assertPartsExist(
+  db: Database,
+  organizationId: string,
+  partDefId: string,
+  partIds: string[]
+): Promise<void> {
+  const wanted = [...new Set(partIds)]
+  if (wanted.length === 0) return
+  const rows = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        inArray(schema.EntityInstance.id, wanted),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, partDefId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+  const found = new Set(rows.map((row) => row.id))
+  const missing = wanted.find((partId) => !found.has(partId))
+  if (missing) throw new NotFoundError(`Part ${missing} not found`)
 }
 
 /**

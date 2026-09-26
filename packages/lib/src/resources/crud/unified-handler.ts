@@ -43,6 +43,7 @@ import type { RecordPickerItem } from '../picker/types'
 import { isSystemResourceId } from '../registry'
 import type { TableId } from '../registry/field-registry'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import { batchCreateLane, canBatchCreate } from './create-entities-batch'
 import { assertFinancialRecordCanDelete } from './financial-record-binding'
 import { assertRecordRowsEditable } from './record-row-access'
 import { flushTxWriteScope } from './tx-write-flush'
@@ -266,6 +267,7 @@ export class UnifiedCrudHandler {
       userId: this.userId,
       socketId: this.socketId,
       session: this.session,
+      bypassFieldGuards: this.bypassFieldGuards,
       fieldValueService: this.fieldValueService,
       resolveEntityDefinition: this.resolveEntityDefinition.bind(this),
       getFields: this.getCustomFieldsCached.bind(this),
@@ -760,8 +762,9 @@ export class UnifiedCrudHandler {
    * @param options - Optional CRUD options (skipEvents)
    */
   async supportsBulkCreate(entityDefinitionId: string): Promise<boolean> {
-    await this.resolveEntityDefinition(entityDefinitionId)
-    return false
+    const entityDef = await this.resolveEntityDefinition(entityDefinitionId)
+    if (!batchCreateLane(this.session)) return false
+    return canBatchCreate(this.organizationId, entityDef.id)
   }
 
   /** Create records using the registered storage binding's batching behavior. */

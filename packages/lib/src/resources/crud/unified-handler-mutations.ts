@@ -2,6 +2,7 @@
 
 import type { Database, schema, Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { Result } from 'neverthrow'
 import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
@@ -50,6 +51,13 @@ import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import { applyDefaults, assertRequiredFieldsPresent } from './create-defaults'
+import {
+  batchCreateLane,
+  canBatchCreate,
+  createEntitiesBatch,
+  readCreatedInstances,
+  stageSyncCaptures,
+} from './create-entities-batch'
 import {
   collectDeleteClosure,
   type DeleteClosureGroup,
@@ -137,6 +145,8 @@ export interface MutationContext {
    * {@link derivePublishEvents} — the deprecated `skipEvents` alias still wins.
    */
   session: WriteSession
+  /** The handler's field-guard exemptions, forwarded to a batched create. */
+  bypassFieldGuards?: ReadonlySet<SystemAttribute>
   fieldValueService: FieldValueService
   resolveEntityDefinition: (entityDefinitionId: string) => Promise<ResolvedEntityDefinition>
   getFields: (entityDefinitionId: string) => Promise<CustomFieldEntity[]>
@@ -862,6 +872,9 @@ export async function bulkCreateEntities(
 ): Promise<{ created: EntityInstanceEntity[]; errors: Array<{ index: number; error: string }> }> {
   if (items.length === 0) return { created: [], errors: [] }
 
+  const batched = await tryCreateBatch(ctx, entityDefinitionId, items, options)
+  if (batched) return { created: batched, errors: [] }
+
   const created: EntityInstanceEntity[] = []
   const errors: Array<{ index: number; error: string }> = []
 
@@ -877,6 +890,53 @@ export async function bulkCreateEntities(
   }
 
   return { created, errors }
+}
+
+/**
+ * The batched create inside a savepoint, or `null` when the definition, lane or items do not
+ * qualify or the batch failed; the caller then creates item by item, so one bad row is one error.
+ */
+async function tryCreateBatch(
+  ctx: MutationContext,
+  entityDefinitionId: string,
+  items: Record<string, unknown>[],
+  options: CrudOptions
+): Promise<EntityInstanceEntity[] | null> {
+  if (items.length < 2 || options.skipEvents === true || !batchCreateLane(ctx.session)) return null
+  if (items.some((item) => Array.isArray(item.external_id))) return null
+  if (!(await canBatchCreate(ctx.organizationId, entityDefinitionId))) return null
+  const staged = stageSyncCaptures(ctx.session)
+  try {
+    const instances = await ctx.db.transaction(async (tx) => {
+      const txDb = tx as unknown as Database
+      const result = await createEntitiesBatch(
+        {
+          db: txDb,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId,
+          session: staged.session,
+          bypassFieldGuards: ctx.bypassFieldGuards,
+        },
+        entityDefinitionId,
+        items
+      )
+      if (result.isErr()) throw result.error
+      return readCreatedInstances(
+        txDb,
+        ctx.organizationId,
+        result.value.map((record) => record.id)
+      )
+    })
+    staged.commit()
+    return instances
+  } catch (error) {
+    logger.warn('Batched create failed; creating record by record', {
+      entityDefinitionId,
+      count: items.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
 }
 
 /**
