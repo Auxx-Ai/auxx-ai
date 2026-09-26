@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/lib/legend-pages.test.ts
+// apps/web/src/components/charts/legend-pages.test.ts
 
 import { describe, expect, it } from 'vitest'
 import { binIntoPages } from './legend-pages'

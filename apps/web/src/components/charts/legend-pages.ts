@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/lib/legend-pages.ts
+// apps/web/src/components/charts/legend-pages.ts
 
 /**
  * Bin legend item widths into pages that each fit the available width — the pure

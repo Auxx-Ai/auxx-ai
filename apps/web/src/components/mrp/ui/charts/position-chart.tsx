@@ -22,7 +22,7 @@ import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/sectio
 import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { memo, type ReactNode, useId, useMemo, useState } from 'react'
+import { memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import {
   Area,
   CartesianGrid,
@@ -32,19 +32,24 @@ import {
   ReferenceArea,
   ReferenceDot,
   ReferenceLine,
+  Text,
   XAxis,
   YAxis,
 } from 'recharts'
+import { PaginatedLegend, type PaginatedLegendItem } from '~/components/charts/paginated-legend'
 import { useIsMobile } from '~/hooks/use-mobile'
+import { type Tween, useTween } from '~/hooks/use-tween'
 import { api } from '~/trpc/react'
 import {
-  axisTicks,
   buildPositionRows,
+  dayToT,
   defaultGrain,
   formatDay,
   formatMonth,
   formatQty,
   grainAllowed,
+  mergeRows,
+  niceTicks,
   type PartSeriesData,
   POSITION_GRAINS,
   POSITION_WINDOWS,
@@ -52,8 +57,12 @@ import {
   type PositionRow,
   type PositionWindow,
   stockoutRuns,
+  tToDay,
   type UsageSpan,
   usageSpans,
+  xExtent,
+  xTicks,
+  yExtents,
 } from './position-chart-data'
 
 export interface PositionChartProps {
@@ -93,6 +102,14 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
     { partId, window: range, grain, runId, offset },
     { placeholderData: keepPreviousData }
   )
+  // Neighbouring pages warm so a step slides at once instead of after the round trip.
+  const utils = api.useUtils()
+  useEffect(() => {
+    if (!data) return
+    const base = { partId, window: range, grain, runId }
+    if (data.hasEarlier) void utils.mrp.partSeries.prefetch({ ...base, offset: offset + 1 })
+    if (offset > 0) void utils.mrp.partSeries.prefetch({ ...base, offset: offset - 1 })
+  }, [data, partId, range, grain, runId, offset, utils])
 
   const compact = variant === 'section'
   const setWindow = (value: PositionWindow) => {
@@ -212,11 +229,13 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
       ) : !data || data.days.length === 0 ? (
         <EmptySection className='mx-3' title='No movements yet' />
       ) : (
-        <PositionPlot data={data} compact={compact} />
+        <PositionPlot key={partId} data={data} compact={compact} />
       )}
     </Section>
   )
 }
+
+const TWEEN_MS = 250
 
 // Memoised so a grain/window click doesn't redraw the old data before the new query lands.
 const PositionPlot = memo(function PositionPlot({
@@ -230,9 +249,38 @@ const PositionPlot = memo(function PositionPlot({
   const showBars = !isMobile
   const hatchId = `hatch-${useId().replace(/:/g, '')}`
   const rows = useMemo(() => buildPositionRows(data), [data])
-  const stockouts = useMemo(() => stockoutRuns(rows), [rows])
-  const spans = useMemo(() => usageSpans(rows), [rows])
-  const ticks = useMemo(() => axisTicks(rows, compact ? 5 : 10), [rows, compact])
+  const prevRows = usePreviousDistinct(rows)
+
+  // The scales tween, not the marks: every layer reads the eased domains, so a page
+  // step scrolls the plot and a window change zooms it, ticks and bars included.
+  const target = useMemo(() => {
+    const x = xExtent(rows)
+    const { left, right } = yExtents(rows, data.zones?.topOfGreen ?? null)
+    return [...x, ...left, ...right]
+  }, [rows, data.zones])
+  const tween = useTween(target, TWEEN_MS)
+  // Also true on the frame new data lands, before the tween's first tick, so old rows don't flash out.
+  const moving = tween.progress < 1 || tween.to.join(',') !== target.join(',')
+  const [xLo, xHi, lLo, lHi, rLo, rHi] = tween.current as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]
+  // Old rows stay mounted while the old window scrolls out of view.
+  const drawn = useMemo(
+    () => (moving && prevRows ? mergeRows(prevRows, rows) : rows),
+    [moving, prevRows, rows]
+  )
+  const maxXTicks = compact ? 5 : 10
+  const xAxis = tickSets(tween, 0, (lo, hi) => xTicks(lo, hi, maxXTicks))
+  const leftAxis = tickSets(tween, 2, (lo, hi) => niceTicks(lo, hi))
+  const rightAxis = tickSets(tween, 4, (lo, hi) => niceTicks(lo, hi))
+
+  const stockouts = useMemo(() => stockoutRuns(drawn), [drawn])
+  const spans = useMemo(() => usageSpans(drawn), [drawn])
   const first = rows[0]?.day
   const last = rows[rows.length - 1]?.day
   const inRange = (day: string) => !!first && !!last && day >= first && day <= last
@@ -264,36 +312,44 @@ const PositionPlot = memo(function PositionPlot({
     <CartesianGrid key='grid' vertical={false} />,
     <XAxis
       key='x'
-      dataKey='day'
-      scale='band'
-      ticks={ticks}
+      dataKey='t'
+      type='number'
+      domain={[xLo, xHi]}
+      allowDataOverflow
+      ticks={xAxis.ticks}
       interval={0}
       tickLine={false}
       axisLine={false}
       tickMargin={6}
-      tickFormatter={formatDay}
+      tick={(props) => (
+        <FadeTick {...props} opacity={xAxis.opacity} format={(t) => formatDay(tToDay(t))} />
+      )}
     />,
     <YAxis
       key='left'
       yAxisId='left'
+      domain={[lLo, lHi]}
+      allowDataOverflow
+      ticks={leftAxis.ticks}
       tickLine={false}
       axisLine={false}
       width={compact ? 0 : 40}
       mirror={compact}
-      tickFormatter={formatQty}
-      allowDecimals={false}
+      tick={(props) => <FadeTick {...props} opacity={leftAxis.opacity} format={formatQty} />}
     />,
     showBars ? (
       <YAxis
         key='right'
         yAxisId='right'
         orientation='right'
+        domain={[rLo, rHi]}
+        allowDataOverflow
+        ticks={rightAxis.ticks}
         tickLine={false}
         axisLine={false}
         width={compact ? 0 : 36}
         mirror={compact}
-        tickFormatter={formatQty}
-        allowDecimals={false}
+        tick={(props) => <FadeTick {...props} opacity={rightAxis.opacity} format={formatQty} />}
       />
     ) : null,
     ...zoneBands.map((z) => (
@@ -305,14 +361,14 @@ const PositionPlot = memo(function PositionPlot({
         fill={z.color}
         fillOpacity={0.07}
         strokeOpacity={0}
-        ifOverflow='extendDomain'
+        ifOverflow='hidden'
         label={{ value: z.label, position: 'insideRight', fill: MUTED_TEXT, fontSize: 10 }}
       />
     )),
     showBars ? (
       <Customized key='usage' component={<UsageBars spans={spans} hatchId={hatchId} />} />
     ) : null,
-    // Invisible, so the right axis scales to usage and the tooltip lists it.
+    // Invisible, so the tooltip lists usage.
     showBars ? (
       <Line
         key='used'
@@ -387,7 +443,7 @@ const PositionPlot = memo(function PositionPlot({
     <ReferenceLine
       key='today'
       yAxisId='left'
-      x={data.runAsOf}
+      x={dayToT(data.runAsOf)}
       stroke='var(--gray-10)'
       label={{
         value: data.runAsOf === today ? 'Today' : `Run ${formatDay(data.runAsOf)}`,
@@ -401,7 +457,7 @@ const PositionPlot = memo(function PositionPlot({
         <ReferenceLine
           key={`ev-${i}`}
           yAxisId='left'
-          x={e.day}
+          x={dayToT(e.day)}
           stroke='var(--gray-10)'
           strokeDasharray='2 3'
           label={{ value: e.label, position: 'insideTopRight', fill: MUTED_TEXT, fontSize: 10 }}
@@ -410,18 +466,18 @@ const PositionPlot = memo(function PositionPlot({
         <ReferenceDot
           key={`ev-${i}`}
           yAxisId='left'
-          x={e.day}
+          x={dayToT(e.day)}
           y={e.kind === 'stockout' ? 0 : (projectedOn.get(e.day) ?? 0)}
           r={4}
           fill={e.kind === 'stockout' ? 'var(--gray-12)' : LINE}
           stroke='var(--background)'
           strokeWidth={2}
-          ifOverflow='extendDomain'
         />
       )
     ),
     <ChartTooltip
       key='tooltip'
+      active={moving ? false : undefined}
       content={
         <ChartTooltipContent
           indicator='line'
@@ -436,7 +492,7 @@ const PositionPlot = memo(function PositionPlot({
     <div className={cn('flex flex-col gap-2', !compact && 'px-3')}>
       <ChartContainer config={chartConfig} className='aspect-auto h-64 w-full'>
         <ComposedChart
-          data={rows}
+          data={drawn}
           margin={
             compact
               ? { top: 4, right: 0, left: 0, bottom: 0 }
@@ -450,9 +506,68 @@ const PositionPlot = memo(function PositionPlot({
   )
 })
 
-interface ChartAxis {
-  scale: ((value: string | number) => number) & { bandwidth?: () => number }
+/** The last value that differed from the current one, or null before any change. */
+function usePreviousDistinct<T>(value: T): T | null {
+  const [pair, setPair] = useState<{ current: T; prev: T | null }>({ current: value, prev: null })
+  if (pair.current !== value) setPair({ current: value, prev: pair.current })
+  return pair.current === value ? pair.prev : pair.current
 }
+
+/**
+ * Ticks for one axis during a tween: the union of the old and new tick sets, clipped
+ * to the eased domain, with leaving ticks fading out and arriving ticks fading in.
+ */
+function tickSets(
+  tween: Tween,
+  at: number,
+  make: (lo: number, hi: number) => number[]
+): { ticks: number[]; opacity: (value: number) => number } {
+  const [lo, hi] = [tween.current[at] ?? 0, tween.current[at + 1] ?? 0]
+  const to = make(tween.to[at] ?? 0, tween.to[at + 1] ?? 0)
+  if (tween.progress >= 1) return { ticks: to, opacity: () => 1 }
+  const from = make(tween.from[at] ?? 0, tween.from[at + 1] ?? 0)
+  const toSet = new Set(to)
+  const fromSet = new Set(from)
+  const ticks = [...new Set([...from, ...to])]
+    .filter((t) => t >= lo && t <= hi)
+    .sort((a, b) => a - b)
+  const opacity = (value: number) =>
+    toSet.has(value) ? (fromSet.has(value) ? 1 : tween.progress) : 1 - tween.progress
+  return { ticks, opacity }
+}
+
+/** An axis tick that takes its opacity from the tween instead of a CSS transition (recharts remounts ticks per frame). */
+function FadeTick({
+  payload,
+  opacity,
+  format,
+  tickFormatter: _tickFormatter,
+  visibleTicksCount: _count,
+  index: _index,
+  ...rest
+}: {
+  payload: { value: number }
+  opacity: (value: number) => number
+  format: (value: number) => string
+  tickFormatter?: unknown
+  visibleTicksCount?: number
+  index?: number
+} & Record<string, unknown>) {
+  return (
+    <Text
+      {...(rest as object)}
+      className='recharts-cartesian-axis-tick-value'
+      style={{ opacity: opacity(payload.value) }}>
+      {format(payload.value)}
+    </Text>
+  )
+}
+
+interface ChartAxis {
+  scale: (value: number) => number
+}
+
+type PlotOffset = { left: number; top: number; width: number; height: number }
 
 /** One rect per usage span with a 2px surface gap after it; `Customized` passes the axis maps. */
 function UsageBars({
@@ -460,29 +575,37 @@ function UsageBars({
   hatchId,
   xAxisMap,
   yAxisMap,
+  offset,
 }: {
   spans: UsageSpan[]
   hatchId: string
   xAxisMap?: Record<string, ChartAxis>
   yAxisMap?: Record<string, ChartAxis>
+  offset?: PlotOffset
 }) {
   const x = xAxisMap ? Object.values(xAxisMap)[0] : undefined
   const y = yAxisMap?.right
-  if (!x || !y) return null
-  const band = x.scale.bandwidth?.() ?? 0
+  if (!x || !y || !offset) return null
   const base = y.scale(0)
+  const plotLeft = offset.left
+  const plotRight = offset.left + offset.width
   return (
     <g>
       {spans.map((s) => {
-        const left = x.scale(s.from)
-        const span = x.scale(s.to) + band - left
-        const top = y.scale(s.value)
+        // A day's bar is centred on its point: half a day either side.
+        const from = x.scale(dayToT(s.from) - 0.5)
+        const to = x.scale(dayToT(s.to) + 0.5)
+        const span = to - from
+        const left = Math.max(plotLeft, from)
+        const right = Math.min(plotRight, from + Math.max(0.5, span - Math.min(2, span / 3)))
+        if (right <= left) return null
+        const top = Math.max(offset.top, y.scale(s.value))
         return (
           <rect
             key={s.from}
             x={left}
             y={top}
-            width={Math.max(0.5, span - Math.min(2, span / 3))}
+            width={right - left}
             height={Math.max(0, base - top)}
             fill={s.projected ? `url(#${hatchId})` : USED}
             // Projected bars sit over the zones, so they stay see-through.
@@ -502,17 +625,20 @@ function StockoutStrip({
 }: {
   runs: { from: string; to: string }[]
   xAxisMap?: Record<string, ChartAxis>
-  offset?: { top: number; height: number }
+  offset?: PlotOffset
 }) {
   const x = xAxisMap ? Object.values(xAxisMap)[0] : undefined
   if (!x || !offset) return null
-  const band = x.scale.bandwidth?.() ?? 0
   const y = offset.top + offset.height - STOCKOUT_STRIP / 2
+  const plotLeft = offset.left
+  const plotRight = offset.left + offset.width
   return (
     <g stroke={STOCKOUT} strokeOpacity={0.5} strokeWidth={STOCKOUT_STRIP}>
-      {runs.map((r) => (
-        <line key={r.from} x1={x.scale(r.from)} x2={x.scale(r.to) + band} y1={y} y2={y} />
-      ))}
+      {runs.map((r) => {
+        const x1 = Math.max(plotLeft, x.scale(dayToT(r.from) - 0.5))
+        const x2 = Math.min(plotRight, x.scale(dayToT(r.to) + 0.5))
+        return x2 > x1 ? <line key={r.from} x1={x1} x2={x2} y1={y} y2={y} /> : null
+      })}
     </g>
   )
 }
@@ -544,46 +670,64 @@ function PositionLegend({
   hatchId: string
   compact: boolean
 }) {
-  const flat = data.projection.length > 0 && !data.seasonal
-  return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground',
-        compact && 'px-3'
-      )}>
-      {showBars && (
+  const hasProjection = data.projection.length > 0
+  const flat = hasProjection && !data.seasonal
+  const items: (PaginatedLegendItem | false)[] = [
+    showBars && {
+      key: 'used',
+      node: (
         <LegendKey label='Used'>
           <span className='size-2.5 rounded-[2px]' style={{ background: USED, opacity: 0.55 }} />
         </LegendKey>
-      )}
-      {showBars && data.projection.length > 0 && (
-        <LegendKey label='Projected use'>
-          <svg className='size-2.5' aria-hidden='true'>
-            <rect width='100%' height='100%' fill={`url(#${hatchId})`} />
-          </svg>
+      ),
+    },
+    showBars &&
+      hasProjection && {
+        key: 'projectedUse',
+        node: (
+          <LegendKey label='Projected use'>
+            <svg className='size-2.5' aria-hidden='true'>
+              <rect width='100%' height='100%' fill={`url(#${hatchId})`} />
+            </svg>
+          </LegendKey>
+        ),
+      },
+    {
+      key: 'onHand',
+      node: (
+        <LegendKey label='On hand'>
+          <span className='h-0.5 w-3 rounded-full' style={{ background: LINE }} />
         </LegendKey>
-      )}
-      <LegendKey label='On hand'>
-        <span className='h-0.5 w-3 rounded-full' style={{ background: LINE }} />
-      </LegendKey>
-      {data.projection.length > 0 && (
+      ),
+    },
+    hasProjection && {
+      key: 'projected',
+      node: (
         <LegendKey label='Projected'>
           <span className='w-3 border-t-2 border-dashed' style={{ borderColor: LINE }} />
         </LegendKey>
-      )}
-      {data.days.some((d) => d.stockout) && (
+      ),
+    },
+    data.days.some((d) => d.stockout) && {
+      key: 'stockout',
+      node: (
         <LegendKey label='Stockout'>
           <span className='w-3 border-t-[3px]' style={{ borderColor: STOCKOUT, opacity: 0.5 }} />
         </LegendKey>
-      )}
-      {flat && (
+      ),
+    },
+    flat && {
+      key: 'flat',
+      node: (
         <span>
           Projection flat: {data.historyMonths} {data.historyMonths === 1 ? 'month' : 'months'} of
           history
         </span>
-      )}
-    </div>
-  )
+      ),
+    },
+  ]
+  const visible = items.filter((i): i is PaginatedLegendItem => i !== false)
+  return <PaginatedLegend items={visible} align='start' className={cn(compact && 'px-3')} />
 }
 
 function LegendKey({ label, children }: { label: string; children: ReactNode }) {
