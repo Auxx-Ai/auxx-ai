@@ -9,6 +9,7 @@ import type {
   AccountingWorkChangedEvent,
   ApprovalPingEvent,
   ApprovalResolvedEvent,
+  BackflushRunEvent,
   DashboardDraftUpdatedEvent,
   DashboardKopilotTurnEvent,
   DataConnectorSyncEvent,
@@ -297,6 +298,17 @@ export async function publishDataExportJob(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'dataExport:job', data)
+    .catch(() => {})
+}
+
+/** Publish `backflush:run` on the org channel (see `BackflushRunEvent`); fire-and-forget. */
+export async function publishBackflushRunEvent(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: BackflushRunEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'backflush:run', data)
     .catch(() => {})
 }
 

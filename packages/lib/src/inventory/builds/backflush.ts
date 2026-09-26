@@ -38,6 +38,10 @@ export interface BackflushInput {
   actorUserId?: string
   /** Injected by tests; days whose end is after it are not walked. */
   now?: Date
+  /** One slice of a sliced run (`backflush-run.ts`): its batch number and the parts it already rolled. */
+  run?: { batchRun: number; rolled: Set<string> }
+  /** Days per ledger read; tests set 1 to compare against per-day reads. */
+  sliceDays?: number
 }
 
 export async function backflushBuilds(
@@ -51,7 +55,7 @@ export async function backflushBuilds(
       const timeZone = await readBookTimeZoneOrUtc(organizationId)
       const days = listBackflushDays(input, timeZone, now)
       const summary: BackflushRunSummary = {
-        batchRun: null,
+        batchRun: input.run?.batchRun ?? null,
         days: days.map((day) => day.day),
         written: [],
         leftInProgress: [],
@@ -65,7 +69,7 @@ export async function backflushBuilds(
       const graph = await readBackflushGraph(db, organizationId)
       if (graph.order.length === 0) return summary
       const userId = input.actorUserId ?? (await getOrgCache().get(organizationId, 'systemUser'))
-      const rolled = new Set<string>()
+      const rolled = input.run?.rolled ?? new Set<string>()
 
       const act = async (build: BackflushBuild): Promise<boolean> => {
         try {
@@ -116,6 +120,7 @@ export async function backflushBuilds(
         graph,
         days,
         carry: false,
+        sliceDays: input.sliceDays,
         act,
         onDayError: (day, error) => {
           const reason = error instanceof Error ? error.message : String(error)

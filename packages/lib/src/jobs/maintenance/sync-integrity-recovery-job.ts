@@ -12,6 +12,7 @@ import type {
   SyncChangeManifestV1,
 } from '../../record-rules/sync-manifest-types'
 import type { JobContext } from '../types/job-context'
+import { recoverStaleBackflushRuns } from './backflush-job'
 
 const logger = createScopedLogger('sync-integrity-recovery')
 
@@ -21,6 +22,10 @@ const BATCH = 5
 
 /** Re-runs the finalize integrity passes for runs and imports whose claimant died mid-pass. */
 export async function syncIntegrityRecoveryJob(_ctx: JobContext): Promise<void> {
+  // Same heartbeat rule for backflush runs (plans/mrp/11 §4).
+  await recoverStaleBackflushRuns().catch((error) =>
+    logger.warn('backflush stale sweep failed', { error: String(error) })
+  )
   const cutoff = new Date(Date.now() - STALE_AFTER_MS)
   for (const source of ['connector', 'import'] as const) {
     const table = source === 'connector' ? schema.DataConnectorRun : schema.ImportJob

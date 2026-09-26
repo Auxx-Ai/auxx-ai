@@ -19,11 +19,14 @@ import {
   planBackfill,
   previewBackflush,
   readBackfillPlanReads,
+  readBackflushRunRow,
   readBatchRun,
   readBuildDrift,
   readPartQuantitiesOnHand,
   reverseBuild,
   startBuild,
+  summarizeBackflushPlan,
+  toBackflushRun,
   undoBatchRun,
 } from '@auxx/lib/inventory/builds'
 import type {
@@ -743,12 +746,12 @@ export const buildsRouter = createTRPCRouter({
 
       const result = await previewBackflush(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
-      return result.value
+      return summarizeBackflushPlan(result.value)
     }),
 
   /**
-   * Queue a backflush over a range on the worker; returns at enqueue. The same walk the preview
-   * showed, re-planned server-side against the ledger at run time.
+   * Start a sliced backflush run on the worker (plans/mrp/11); 409 while one is running. The same
+   * walk the preview showed, re-planned against the ledger as each slice runs.
    */
   runBackflush: capabilityProcedure
     .input(z.object(backflushShape))
@@ -756,8 +759,18 @@ export const buildsRouter = createTRPCRouter({
       const { organizationId, userId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
-      await enqueueBackflushRun(organizationId, input, userId)
-      return { queued: true as const }
+      return enqueueBackflushRun(organizationId, input, userId)
+    }),
+
+  /** One backflush run, or the org's latest; `null` when there is none. */
+  getBackflushRun: capabilityProcedure
+    .input(z.object({ runId: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const row = await readBackflushRunRow(ctx.db, organizationId, input.runId)
+      return row ? toBackflushRun(row) : null
     }),
 
   // ─── The batch run (plans/money/tasks/45 §4, §11) ───────────────────

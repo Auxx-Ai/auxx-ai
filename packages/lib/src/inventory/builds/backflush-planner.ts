@@ -11,15 +11,15 @@ import { isDayKeyShape } from '@auxx/utils/calendar-day'
 import { UnprocessableEntityError } from '../../errors'
 import { isBuildablePartKind } from '../costing/client'
 import { buildSubpartGraph, loadOrgPricingData } from '../costing/cost-calculator'
-import { readPartNetThrough } from '../costing/dated-reads'
+import { readPartNetThroughEach } from '../costing/dated-reads'
 import { loadStandardCostWriteContext } from '../costing/standard-cost-queries'
 import type { SubpartEdge } from '../costing/standard-cost-roll'
 import { endOfLocalDay } from './backfill-builds'
 import type { BackflushBuild } from './backflush-types'
 import { readPartNames } from './build-queries'
 
-/** A range longer than this is a mistake, not history. */
-const MAX_DAYS = 366
+/** Days per ledger read in {@link walkBackflush}; the run's job slices on the same size. */
+export const BACKFLUSH_SLICE_DAYS = 30
 
 export interface BackflushGraph {
   /** Live parts with a BOM and a made kind, parents before the children they consume. */
@@ -110,9 +110,6 @@ export function listBackflushDays(
   }
   const days: BackflushDay[] = []
   for (let day = first; day <= last; day = nextDay(day)) {
-    if (days.length >= MAX_DAYS) {
-      throw new UnprocessableEntityError(`A backflush covers at most ${MAX_DAYS} days at a time`)
-    }
     const completedAt = endOfLocalDay(day, timeZone)
     if (Number.isNaN(completedAt.getTime())) {
       throw new UnprocessableEntityError(`Cannot derive the end of ${day} in ${timeZone}`)
@@ -171,8 +168,9 @@ export async function walkBackflushDay(
 }
 
 /**
- * The whole walk. `carry` keeps the simulated delta across days (the preview, which writes
- * nothing) or resets it per day (the run, whose builds are in the ledger by the next read).
+ * The whole walk, one ledger read per `sliceDays` days. `carry` keeps the simulated delta for the
+ * whole walk (the preview, which writes nothing); otherwise it resets at each read, which already
+ * holds the run's earlier builds.
  */
 export async function walkBackflush(params: {
   organizationId: string
@@ -181,19 +179,41 @@ export async function walkBackflush(params: {
   carry: boolean
   act: (build: BackflushBuild) => Promise<boolean>
   onDayError: (day: BackflushDay, error: unknown) => void
-  readNet?: typeof readPartNetThrough
+  sliceDays?: number
+  readNet?: typeof readPartNetThroughEach
 }): Promise<{ skipped: number }> {
-  const readNet = params.readNet ?? readPartNetThrough
+  const readNet = params.readNet ?? readPartNetThroughEach
+  const sliceDays = Math.max(1, params.sliceDays ?? BACKFLUSH_SLICE_DAYS)
   const delta: BackflushDelta = new Map()
   let skipped = 0
-  for (const day of params.days) {
+  for (let start = 0; start < params.days.length; start += sliceDays) {
+    const slice = params.days.slice(start, start + sliceDays)
     if (!params.carry) delta.clear()
-    // One bad day must not lose the range.
+    let nets: Map<string, number>[]
     try {
-      const net = await readNet(params.organizationId, params.graph.order, day.completedAt)
-      skipped += await walkBackflushDay(params.graph, day, net, delta, params.act)
+      nets = await readNet(
+        params.organizationId,
+        params.graph.order,
+        slice.map((day) => day.completedAt)
+      )
     } catch (error) {
-      params.onDayError(day, error)
+      // No day of the slice can be decided without its read.
+      for (const day of slice) params.onDayError(day, error)
+      continue
+    }
+    for (const [index, day] of slice.entries()) {
+      // One bad day must not lose the range.
+      try {
+        skipped += await walkBackflushDay(
+          params.graph,
+          day,
+          nets[index] ?? new Map(),
+          delta,
+          params.act
+        )
+      } catch (error) {
+        params.onDayError(day, error)
+      }
     }
   }
   return { skipped }

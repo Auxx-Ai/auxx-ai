@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   getImportManifest: vi.fn(),
   integrityDoor: vi.fn(async () => {}),
   updateSet: vi.fn(),
+  recoverBackflush: vi.fn(async () => 0),
 }))
 
 vi.mock('@auxx/database', () => {
@@ -36,6 +37,7 @@ vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn(), isNotNull: vi.fn(), l
 vi.mock('../../../data-connectors/service', () => ({ getRunManifest: h.getRunManifest }))
 vi.mock('../../../import', () => ({ getImportManifest: h.getImportManifest }))
 vi.mock('../../../events/handlers/sync-finalize', () => ({ integrityDoor: h.integrityDoor }))
+vi.mock('../backflush-job', () => ({ recoverStaleBackflushRuns: h.recoverBackflush }))
 vi.mock('../../../record-rules/sync-manifest-collector', () => ({
   upgradeManifestV1: (m: unknown) => m,
 }))
@@ -75,5 +77,14 @@ describe('syncIntegrityRecoveryJob', () => {
     await syncIntegrityRecoveryJob(ctx)
     expect(h.integrityDoor).not.toHaveBeenCalled()
     expect(h.updateSet).toHaveBeenCalledWith({ integrityPendingSince: null })
+  })
+
+  it('sweeps stale backflush runs too, and a failing sweep does not stop the integrity passes', async () => {
+    h.recoverBackflush.mockRejectedValueOnce(new Error('db down'))
+    h.staleRuns = [{ id: 'run_1', organizationId: 'org_1' }]
+    h.getRunManifest.mockResolvedValue(MANIFEST)
+    await syncIntegrityRecoveryJob(ctx)
+    expect(h.recoverBackflush).toHaveBeenCalledTimes(1)
+    expect(h.integrityDoor).toHaveBeenCalledTimes(1)
   })
 })

@@ -47,6 +47,7 @@ const h = vi.hoisted(() => ({
   numbering: 0,
   nextBuild: 0,
   buildParts: new Map<string, string>(),
+  reads: 0,
 }))
 
 vi.mock('../../../settings/settings-service', () => ({
@@ -72,15 +73,20 @@ vi.mock('../../../records/record-numbering', () => ({
 }))
 
 vi.mock('../../costing/dated-reads', () => ({
-  readPartNetThrough: vi.fn(async (_org: string, partIds: readonly string[], through: Date) => {
-    const net = new Map<string, number>(partIds.map((id) => [id, 0]))
-    for (const row of h.ledger) {
-      if (row.at.getTime() <= through.getTime() && net.has(row.partId)) {
-        net.set(row.partId, (net.get(row.partId) ?? 0) + row.quantity)
-      }
+  readPartNetThroughEach: vi.fn(
+    async (_org: string, partIds: readonly string[], throughs: readonly Date[]) => {
+      h.reads += 1
+      return throughs.map((through) => {
+        const net = new Map<string, number>(partIds.map((id) => [id, 0]))
+        for (const row of h.ledger) {
+          if (row.at.getTime() <= through.getTime() && net.has(row.partId)) {
+            net.set(row.partId, (net.get(row.partId) ?? 0) + row.quantity)
+          }
+        }
+        return net
+      })
     }
-    return net
-  }),
+  ),
 }))
 
 vi.mock('../../costing/standard-cost-queries', () => ({
@@ -194,13 +200,14 @@ beforeEach(() => {
   h.numbering = 0
   h.nextBuild = 0
   h.buildParts = new Map()
+  h.reads = 0
   h.archived = new Set()
   h.standardCosts = new Map()
   h.standardCostSources = new Map()
   liftBom()
 })
 
-async function run(over: Partial<{ from: string; to: string }> = {}) {
+async function run(over: Partial<{ from: string; to: string; sliceDays: number }> = {}) {
   const result = await backflushBuilds(db, ORG, { ...range, ...over, actorUserId: USER, now: NOW })
   if (result.isErr()) throw result.error
   return result.value
@@ -334,12 +341,21 @@ describe('never throws', () => {
   })
 
   it('records a day whose read failed and continues with the next', async () => {
-    const { readPartNetThrough } = await import('../../costing/dated-reads')
-    vi.mocked(readPartNetThrough).mockRejectedValueOnce(new Error('ledger unavailable'))
+    const { readPartNetThroughEach } = await import('../../costing/dated-reads')
+    vi.mocked(readPartNetThroughEach).mockRejectedValueOnce(new Error('ledger unavailable'))
     sale(LIFT, 1, '2026-09-24')
-    const summary = await run({ to: '2026-09-24' })
+    const summary = await run({ to: '2026-09-24', sliceDays: 1 })
     expect(summary.failedDays).toEqual([{ day: '2026-09-23', reason: 'ledger unavailable' }])
     expect(summary.written.map((b) => b.day)).toEqual(['2026-09-24', '2026-09-24'])
+  })
+
+  it('fails every day of a slice whose one read failed', async () => {
+    const { readPartNetThroughEach } = await import('../../costing/dated-reads')
+    vi.mocked(readPartNetThroughEach).mockRejectedValueOnce(new Error('ledger unavailable'))
+    sale(LIFT, 1, '2026-09-24')
+    const summary = await run({ to: '2026-09-24' })
+    expect(summary.failedDays.map((d) => d.day)).toEqual(['2026-09-23', '2026-09-24'])
+    expect(summary.written).toEqual([])
   })
 
   it('refuses a range that ends before it starts, writing nothing', async () => {
@@ -364,6 +380,51 @@ describe('never throws', () => {
     expect(result.isOk()).toBe(true)
     const { createBuild } = await import('../build-mutations')
     expect(vi.mocked(createBuild).mock.calls[0]?.[2]).toBe('user_system')
+  })
+})
+
+describe('one ledger read per slice (plans/mrp/11 §3)', () => {
+  function salesOverAWeek() {
+    sale(LIFT, 2, '2026-09-17')
+    sale(MOTOR, 1, '2026-09-18')
+    sale(LIFT, 3, '2026-09-19')
+    h.ledger.push({ partId: MOTOR, quantity: 4, at: new Date('2026-09-20T18:00:00.000Z') })
+    sale(LIFT, 5, '2026-09-21')
+    sale(MOTOR, 6, '2026-09-23')
+  }
+  const week = { from: '2026-09-17', to: '2026-09-23' }
+
+  it('writes exactly the builds one read per day would, with one read per slice', async () => {
+    salesOverAWeek()
+    const perDay = await run({ ...week, sliceDays: 1 })
+    expect(h.reads).toBe(7)
+    const perDayBuilds = perDay.written.map((b) => [b.partId, b.day, b.quantity])
+    expect(perDayBuilds.length).toBeGreaterThan(3)
+
+    // The same ledger again, walked in slices of three days: 3 reads.
+    h.ledger = []
+    h.reads = 0
+    salesOverAWeek()
+    const sliced = await run({ ...week, sliceDays: 3 })
+    expect(h.reads).toBe(3)
+    expect(sliced.written.map((b) => [b.partId, b.day, b.quantity])).toEqual(perDayBuilds)
+  })
+
+  it('a slice of a run reuses its batch number and does not re-roll a part rolled earlier', async () => {
+    sale(LIFT, 1, '2026-09-23')
+    const rolled = new Set([LIFT])
+    const result = await backflushBuilds(db, ORG, {
+      ...range,
+      actorUserId: USER,
+      now: NOW,
+      run: { batchRun: 7, rolled },
+    })
+    if (result.isErr()) throw result.error
+    expect(result.value.batchRun).toBe(7)
+    expect(h.numbering).toBe(0)
+    expect(h.createCalls.every((c) => c.batchRun === 7)).toBe(true)
+    expect(h.rollCalls).toEqual([{ partIds: [MOTOR], effectiveAt: NOW }])
+    expect([...rolled]).toEqual([LIFT, MOTOR])
   })
 })
 
