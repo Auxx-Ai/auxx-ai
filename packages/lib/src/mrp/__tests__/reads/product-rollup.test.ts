@@ -7,6 +7,7 @@ import type { ProjectionWalkPoint } from '../../reads/part-series-projection'
 import {
   familyDaysOfCover,
   familyEvents,
+  familySellThroughTotals,
   familyUnbuilt,
   foldSeriesKeys,
   OTHER_SERIES_KEY,
@@ -247,6 +248,16 @@ describe('family sums', () => {
         { sold: 5, built: 0, opening: -3 }, // negative opening counts as 0 → 5
       ])
     ).toBe(9)
+  })
+
+  it('counts sold, built and unbuilt only over variants with a BOM', () => {
+    const tree = [node('bolt')]
+    expect(
+      familySellThroughTotals([
+        { tree, sold: 10, built: 4, opening: 2 },
+        { tree: [], sold: 50, built: 0, opening: 0 }, // a component sold as is
+      ])
+    ).toEqual({ withBom: 1, sold: 10, built: 4, unbuilt: 4 })
   })
 
   it('takes days of cover as Σ on hand ÷ Σ ADU, null without usage', () => {

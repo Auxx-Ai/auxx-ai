@@ -239,6 +239,24 @@ export function familyUnbuilt(
   )
 }
 
+/** Sold, built and unbuilt over the variants with a BOM; a variant sold as-is adds nothing (15 D42). */
+export function familySellThroughTotals(
+  variants: readonly {
+    tree: readonly WalkedNode[]
+    sold: number
+    built: number
+    opening: number
+  }[]
+): { withBom: number; sold: number; built: number; unbuilt: number } {
+  const withBom = variants.filter((v) => v.tree.length > 0)
+  return {
+    withBom: withBom.length,
+    sold: withBom.reduce((sum, v) => sum + v.sold, 0),
+    built: withBom.reduce((sum, v) => sum + v.built, 0),
+    unbuilt: familyUnbuilt(withBom),
+  }
+}
+
 /** Σ on hand ÷ Σ ADU in whole days from the run day; null when Σ ADU is 0. */
 export function familyDaysOfCover(onHand: number, adu: number): number | null {
   if (adu <= 0) return null
