@@ -10,8 +10,11 @@ import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { listBackflushDays, readBackflushGraph, walkBackflush } from './backflush-planner'
-import type { BackflushPlan } from './backflush-types'
+import type { BackflushPlan, BackflushPlanPart, BackflushPlanSummary } from './backflush-types'
 import { guard } from './guard'
+
+/** The preview writes nothing, so it can read a year at a time. */
+const PREVIEW_SLICE_DAYS = 366
 
 export async function previewBackflush(
   db: Database,
@@ -41,6 +44,7 @@ export async function previewBackflush(
         graph,
         days,
         carry: true,
+        sliceDays: PREVIEW_SLICE_DAYS,
         act: async (build) => {
           plan.builds.push(build)
           return true
@@ -60,4 +64,28 @@ export async function previewBackflush(
     'Previewing the backflush failed',
     { organizationId, from: input.from, to: input.to }
   )
+}
+
+/** Per-part counts for the confirm; the per-build list of a multi-year range is too big to send. */
+export function summarizeBackflushPlan(plan: BackflushPlan): BackflushPlanSummary {
+  const parts = new Map<string, BackflushPlanPart>()
+  for (const build of plan.builds) {
+    const part = parts.get(build.partId) ?? {
+      partId: build.partId,
+      partName: build.partName,
+      builds: 0,
+      units: 0,
+    }
+    part.builds += 1
+    part.units += build.quantity
+    parts.set(build.partId, part)
+  }
+  return {
+    dayCount: plan.days.length,
+    buildCount: plan.buildCount,
+    unitCount: plan.unitCount,
+    skipped: plan.skipped,
+    failedDays: plan.failedDays,
+    parts: [...parts.values()].sort((a, b) => b.builds - a.builds),
+  }
 }

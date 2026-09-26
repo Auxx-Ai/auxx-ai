@@ -4,6 +4,7 @@ export type {
   AccountingWorkChangedEvent,
   AiStatus,
   AiValueMetadata,
+  BackflushRunEvent,
   DataConnectorSyncEvent,
   ExportBatchChangedEvent,
   FieldValuesUpdatedEvent,

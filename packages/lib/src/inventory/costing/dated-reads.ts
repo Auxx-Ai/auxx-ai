@@ -41,6 +41,47 @@ export async function readPartNetThrough(
 }
 
 /**
+ * {@link readPartNetThrough} at every instant of `throughs` (ascending), in ONE grouped read:
+ * entry `i` equals `readPartNetThrough(org, partIds, throughs[i])`.
+ */
+export async function readPartNetThroughEach(
+  organizationId: string,
+  partIds: readonly string[],
+  throughs: readonly Date[]
+): Promise<Map<string, number>[]> {
+  const unique = [...new Set(partIds)]
+  const result = throughs.map(() => new Map<string, number>(unique.map((id) => [id, 0])))
+  const last = throughs.at(-1)
+  if (unique.length === 0 || !last) return result
+  for (let i = 1; i < throughs.length; i += 1) {
+    if ((throughs[i] as Date).getTime() < (throughs[i - 1] as Date).getTime()) {
+      throw new Error('readPartNetThroughEach needs ascending instants')
+    }
+  }
+
+  // Inlined, not bound: GROUP BY must repeat the select's expression verbatim, and `toISOString` output is safe.
+  const bounds = sql.raw(
+    `ARRAY[${throughs.map((t) => `'${t.toISOString()}'`).join(',')}]::timestamptz[]`
+  )
+  const rows = await aggregatePerPart(organizationId, unique, {
+    aggregate: (q) => sql<string>`COALESCE(SUM(${q.valueNumber}), 0)`,
+    where: (movedAt) => sql`${movedAt} <= ${last}`,
+    // Bucket k = how many bounds lie strictly before the movement (µs-exact), so `<= throughs[j]` is k <= j.
+    bucket: (movedAt) =>
+      sql<number>`width_bucket(${movedAt} - interval '1 microsecond', ${bounds})`,
+  })
+  for (const row of rows) {
+    if (!row.partId) continue
+    const quantity = Number(row.value ?? 0)
+    for (let j = Number(row.bucket ?? 0); j < result.length; j += 1) {
+      const net = result[j] as Map<string, number>
+      net.set(row.partId, (net.get(row.partId) ?? 0) + quantity)
+    }
+  }
+  return result
+}
+
+/**
  * The earliest movement date per part, or `null` for a part with no movements.
  * `excludeMovementIds` leaves rows out, so a re-anchor never measures an `initial` against itself.
  */
@@ -76,8 +117,10 @@ async function aggregatePerPart<T>(
   shape: {
     aggregate: (qty: QuantityValue, movedAt: SQL) => SQL<T>
     where: (movedAt: SQL, qty: QuantityValue) => SQL
+    /** A second grouping key per part, e.g. a date bucket. */
+    bucket?: (movedAt: SQL) => SQL<number>
   }
-): Promise<Array<{ partId: string | null; value: T }>> {
+): Promise<Array<{ partId: string | null; value: T; bucket?: number }>> {
   const fields = await systemFieldMap(undefined, organizationId, LEDGER_PICK)
   const qtyField = fields.stock_movement_quantity
   const partField = fields.stock_movement_part
@@ -88,9 +131,14 @@ async function aggregatePerPart<T>(
   const flag = alias(schema.FieldValue, 'dated_flag')
   const occurred = alias(schema.FieldValue, 'dated_occurred')
   const movedAt = sql`COALESCE(${occurred.valueDate}, ${schema.EntityInstance.createdAt})`
+  const bucket = shape.bucket?.(movedAt)
 
   return database
-    .select({ partId: part.relatedEntityId, value: shape.aggregate(qty, movedAt) })
+    .select({
+      partId: part.relatedEntityId,
+      value: shape.aggregate(qty, movedAt),
+      ...(bucket ? { bucket } : {}),
+    })
     .from(qty)
     .innerJoin(
       schema.EntityInstance,
@@ -132,5 +180,5 @@ async function aggregatePerPart<T>(
         shape.where(movedAt, qty)
       )
     )
-    .groupBy(part.relatedEntityId)
+    .groupBy(...(bucket ? [part.relatedEntityId, bucket] : [part.relatedEntityId]))
 }

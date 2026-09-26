@@ -171,6 +171,7 @@ Every helper:
 | `publishProcedureUpdated` | orgPresence | `procedure:updated` | `realtimeSync` |
 | `publishEvalCaseChanged` | orgPresence | `eval:case-changed` | `realtimeSync` |
 | `publishExportBatchChanged` | orgPresence | `exportBatch:changed` | none (no flag exists in code today) |
+| `publishBackflushRunEvent` | orgPresence | `backflush:run` | none; throttled per run by `inventory/builds/backflush-run-realtime.ts` |
 
 Record lifecycle events (`record:created/updated/deleted/archived`) are published
 inline from the entity CRUD layer

@@ -1,0 +1,1 @@
+ALTER TABLE "SyncJob" ADD COLUMN "metadata" jsonb;

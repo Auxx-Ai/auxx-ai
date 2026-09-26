@@ -73,8 +73,24 @@ export {
 } from './backfill-types'
 // Backflush (111 D23/D24): the replay that builds what sales drove negative, and its preview.
 export { type BackflushInput, backflushBuilds } from './backflush'
-export { previewBackflush } from './backflush-preview'
-export type { BackflushBuild, BackflushPlan, BackflushRunSummary } from './backflush-types'
+export { previewBackflush, summarizeBackflushPlan } from './backflush-preview'
+export {
+  type BackflushStep,
+  finalizeBackflushRun,
+  runBackflushSlice,
+  startBackflushRun,
+} from './backflush-run'
+export { readBackflushRunRow, toBackflushRun } from './backflush-run-queries'
+export type {
+  BackflushBuild,
+  BackflushPlan,
+  BackflushPlanPart,
+  BackflushPlanSummary,
+  BackflushRun,
+  BackflushRunFailure,
+  BackflushRunStatus,
+  BackflushRunSummary,
+} from './backflush-types'
 // The batch run reads (plans/money/tasks/45 §10.4). `readBatchRun` is what the
 // drawer card and the undo preview render; `readBatchRunBuilds` is the per-build
 // set `undoBatchRun` acts on, exported rather than private because reads and

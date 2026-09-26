@@ -63,6 +63,7 @@ export type ResourceSyncEvent =
   | ResourceDefChangedEvent
   | DataConnectorSyncEvent
   | DataExportJobEvent
+  | BackflushRunEvent
   | ExportBatchChangedEvent
   | AccountingWorkChangedEvent
   | RunCompletedEvent
@@ -277,6 +278,24 @@ export interface DataExportJobEvent {
     total?: number
     /** Output file name (finished frames). */
     fileName?: string
+  }
+}
+
+/**
+ * A backflush run's progress on the org channel (plans/mrp/11 §5): `progress` patches the cached
+ * `builds.getBackflushRun` counters; `started` / `finished` refetch the row.
+ */
+export interface BackflushRunEvent {
+  event: 'backflush:run'
+  data: {
+    runId: string
+    kind: 'started' | 'progress' | 'finished'
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+    /** Days walked. */
+    processed: number
+    total: number
+    written: number
+    failed: number
   }
 }
 

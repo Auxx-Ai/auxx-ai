@@ -21,36 +21,26 @@
 // A run is not a record (§3.1), so there is no run detail page. This card IS the
 // run's detail view, reached through any of its members.
 
-import type { Operator } from '@auxx/lib/conditions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { ListFilter, Undo2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { EmptyRow, RowSkeleton } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { PurchasingSummaryStrip } from '~/components/purchasing/purchasing-summary-strip'
-import { useRecordsSearchStore } from '~/components/records/records-search-store'
-import { useFieldByKey, useResourceProperty } from '~/components/resources'
+import { useResourceProperty } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-
-/** Where the builds list lives, and where the "see the run" link goes. */
-const BUILDS_PATH = '/app/builds'
+import { useOpenBatchRun } from './use-open-batch-run'
 
 export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const router = useRouter()
   const utils = api.useUtils()
 
   const buildDefId = useResourceProperty('build', 'id')
   const movementDefId = useResourceProperty('stock_movement', 'id')
-
-  // The org's own `build_batch_run` field, resolved by system attribute rather
-  // than by key: the builds list filters on the materialized CustomField id, not
-  // on the registry ref, so the link below needs the org's id for it.
-  const batchRunField = useFieldByKey(buildDefId, 'build_batch_run')
+  const openBatchRun = useOpenBatchRun()
 
   // The client mirror of what `builds.undoBatchRun` asserts (§11.5). Undo
   // cancels AND reverses, and the reversal arm appends stock movements, so it
@@ -125,29 +115,6 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
     if (confirmed) undoBatchRun.mutate({ runNumber })
   }
 
-  /**
-   * "See the builds this run raised", which is §4.3's first affordance.
-   *
-   * The context is set before the condition: `RecordsSearchBar` calls
-   * `setContext(entityDefinitionId)` on mount, and that CLEARS the conditions
-   * whenever the key changes. Setting it here first makes the list's own call a
-   * no-op, so the filter survives the navigation.
-   */
-  const openRunInList = () => {
-    if (!buildDefId || !batchRunField) return
-    const store = useRecordsSearchStore.getState()
-    store.setContext(buildDefId)
-    store.setConditions([
-      {
-        id: 'build-batch-run',
-        fieldId: batchRunField.id,
-        operator: 'is' as Operator,
-        value: runNumber,
-      },
-    ])
-    router.push(BUILDS_PATH)
-  }
-
   return (
     <div className='space-y-2'>
       <ConfirmDialog />
@@ -197,8 +164,8 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
           variant='outline'
           size='xs'
           className='w-full justify-start'
-          disabled={!buildDefId || !batchRunField}
-          onClick={openRunInList}>
+          disabled={!openBatchRun}
+          onClick={() => openBatchRun?.(runNumber)}>
           <ListFilter />
           Show all {summary.total} builds in run {runNumber}
         </Button>

@@ -1,8 +1,7 @@
 // apps/web/src/components/manufacturing/builds/backflush-dialog.tsx
 'use client'
 
-// The D24 confirm (111 §4): a date range, what a backflush over it would write, and the
-// press that queues the run on the worker.
+// The D24 confirm (111 §4) and the run it starts (plans/mrp/11 §5).
 
 import { FieldType } from '@auxx/database/enums'
 import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
@@ -27,11 +26,13 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
+import { BackflushRunPanel, isBackflushRunLive } from './backflush-run-panel'
+import { useBackflushRunRealtime } from './use-backflush-run-realtime'
 
 /** When no caller knows the earliest sale, the range starts this many days before yesterday. */
 const DEFAULT_LOOKBACK_DAYS = 90
@@ -66,7 +67,8 @@ function daysBefore(date: Date, days: number): Date {
 export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogProps) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [queued, setQueued] = useState(false)
+  // The run this dialog shows: one it started, or a live one found on open.
+  const [runId, setRunId] = useState<string | null>(null)
 
   // Reset on every open: a dialog never carries a stale range into a fresh open.
   useEffect(() => {
@@ -74,8 +76,20 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
     const end = range?.to ?? yesterday()
     setFrom(toCalendarDayIso(range?.from ?? daysBefore(end, DEFAULT_LOOKBACK_DAYS)))
     setTo(toCalendarDayIso(end))
-    setQueued(false)
+    setRunId(null)
   }, [open, range?.from, range?.to])
+
+  const run = api.builds.getBackflushRun.useQuery(runId ? { runId } : {}, {
+    enabled: open,
+    // Safety net under the realtime frames while the run is live.
+    refetchInterval: (query) => (isBackflushRunLive(query.state.data) ? 3000 : false),
+  })
+  useEffect(() => {
+    if (!runId && isBackflushRunLive(run.data)) setRunId(run.data?.runId ?? null)
+  }, [runId, run.data])
+  useBackflushRunRealtime(runId)
+  const shownRun = runId && run.data?.runId === runId ? run.data : null
+  const busy = !!runId || run.isPending
 
   // Days, not instants: the server walks them in the book zone.
   const fromDay = calendarDayKey(from)
@@ -84,36 +98,22 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
 
   const preview = api.builds.previewBackflush.useQuery(
     { from: fromDay ?? '', to: toDay ?? '' },
-    { enabled: open && valid && !queued }
+    { enabled: open && valid && !busy }
   )
   const runBackflush = api.builds.runBackflush.useMutation({
     onError: (error) =>
-      toastError({ title: 'The backflush was not queued', description: error.message }),
+      toastError({ title: 'The backflush did not start', description: error.message }),
   })
 
-  const byPart = useMemo(() => {
-    const map = new Map<string, { name: string; builds: number; units: number }>()
-    for (const build of preview.data?.builds ?? []) {
-      const row = map.get(build.partId) ?? {
-        name: build.partName ?? build.partId,
-        builds: 0,
-        units: 0,
-      }
-      row.builds += 1
-      row.units += build.quantity
-      map.set(build.partId, row)
-    }
-    return [...map.values()].sort((a, b) => b.builds - a.builds)
-  }, [preview.data])
-
+  const parts = preview.data?.parts ?? []
   const buildCount = preview.data?.buildCount ?? 0
-  const canConfirm = valid && !preview.isPending && buildCount > 0 && !queued
+  const canConfirm = valid && !preview.isPending && buildCount > 0 && !busy
 
   const handleConfirm = async () => {
     if (!fromDay || !toDay) return
     try {
-      await runBackflush.mutateAsync({ from: fromDay, to: toDay })
-      setQueued(true)
+      const started = await runBackflush.mutateAsync({ from: fromDay, to: toDay })
+      setRunId(started.runId)
     } catch {
       // Surfaced by the mutation's onError.
     }
@@ -135,48 +135,49 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
           </DialogDescription>
         </DialogHeader>
 
-        <FieldPanel
-          className='p-0'
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='backflush-dialog'
-          defaultLabelWidth={120}>
-          <FieldPanelRow title='From' type={BaseType.DATE} showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.DATE}
-              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-              value={from}
-              onChange={(value) => {
-                if (typeof value === 'string' && value) setFrom(value)
-              }}
-              disabled={queued || runBackflush.isPending}
-            />
-          </FieldPanelRow>
-          <FieldPanelRow title='To' type={BaseType.DATE} showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.DATE}
-              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-              value={to}
-              onChange={(value) => {
-                if (typeof value === 'string' && value) setTo(value)
-              }}
-              disabled={queued || runBackflush.isPending}
-            />
-          </FieldPanelRow>
-        </FieldPanel>
+        {!runId && (
+          <FieldPanel
+            className='p-0'
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='backflush-dialog'
+            defaultLabelWidth={120}>
+            <FieldPanelRow title='From' type={BaseType.DATE} showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                value={from}
+                onChange={(value) => {
+                  if (typeof value === 'string' && value) setFrom(value)
+                }}
+                disabled={runBackflush.isPending}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='To' type={BaseType.DATE} showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                value={to}
+                onChange={(value) => {
+                  if (typeof value === 'string' && value) setTo(value)
+                }}
+                disabled={runBackflush.isPending}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
+        )}
 
-        {queued ? (
-          <Alert variant='success'>
-            <AlertDescription>
-              Queued. The builds are written on the worker and appear on each part's movements as
-              they complete.
-            </AlertDescription>
-          </Alert>
+        {runId ? (
+          shownRun ? (
+            <BackflushRunPanel run={shownRun} />
+          ) : (
+            <Skeleton className='h-16 w-full' />
+          )
         ) : !valid ? (
           <p className='text-muted-foreground text-xs'>
             The range must start on or before its end.
           </p>
-        ) : preview.isPending ? (
+        ) : busy || preview.isPending ? (
           <Skeleton className='h-16 w-full' />
         ) : preview.isError ? (
           <Alert variant='destructive'>
@@ -189,15 +190,16 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
                 'Nothing to build in this range: no made part ends a day below zero.'
               ) : (
                 <>
-                  Would write <span className='font-medium'>{buildCount}</span>{' '}
+                  Would write <span className='font-medium'>{buildCount.toLocaleString()}</span>{' '}
                   {buildCount === 1 ? 'build' : 'builds'} across{' '}
-                  <span className='font-medium'>{byPart.length}</span>{' '}
-                  {byPart.length === 1 ? 'part' : 'parts'} ({preview.data?.unitCount ?? 0} units
-                  over {preview.data?.days.length ?? 0} days).
+                  <span className='font-medium'>{parts.length}</span>{' '}
+                  {parts.length === 1 ? 'part' : 'parts'} (
+                  {(preview.data?.unitCount ?? 0).toLocaleString()} units over{' '}
+                  {(preview.data?.dayCount ?? 0).toLocaleString()} days).
                 </>
               )}
             </p>
-            {byPart.length > 0 && (
+            {parts.length > 0 && (
               <div className='max-h-56 overflow-y-auto rounded-md border'>
                 <Table>
                   <TableHeader>
@@ -208,14 +210,14 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {byPart.map((row) => (
-                      <TableRow key={row.name} className='hover:bg-transparent'>
-                        <TableCell className='text-xs'>{row.name}</TableCell>
+                    {parts.map((row) => (
+                      <TableRow key={row.partId} className='hover:bg-transparent'>
+                        <TableCell className='text-xs'>{row.partName ?? row.partId}</TableCell>
                         <TableCell className='text-right text-xs tabular-nums'>
-                          {row.builds}
+                          {row.builds.toLocaleString()}
                         </TableCell>
                         <TableCell className='text-right text-xs tabular-nums'>
-                          {row.units}
+                          {row.units.toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -240,15 +242,15 @@ export function BackflushDialog({ open, onOpenChange, range }: BackflushDialogPr
             size='sm'
             onClick={() => onOpenChange(false)}
             disabled={runBackflush.isPending}>
-            {queued ? 'Close' : 'Cancel'} <Kbd shortcut='esc' variant='ghost' size='sm' />
+            {runId ? 'Close' : 'Cancel'} <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          {!queued && (
+          {!runId && (
             <Button
               variant='outline'
               size='sm'
               disabled={!canConfirm}
               loading={runBackflush.isPending}
-              loadingText='Queuing...'
+              loadingText='Starting...'
               onClick={() => void handleConfirm()}
               data-dialog-submit>
               Backflush <KbdSubmit variant='outline' size='sm' />

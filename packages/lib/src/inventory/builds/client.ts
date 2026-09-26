@@ -341,4 +341,13 @@ export {
   type BackfillStatus,
 } from './backfill-types'
 
-export type { BackflushBuild, BackflushPlan, BackflushRunSummary } from './backflush-types'
+export type {
+  BackflushBuild,
+  BackflushPlan,
+  BackflushPlanPart,
+  BackflushPlanSummary,
+  BackflushRun,
+  BackflushRunFailure,
+  BackflushRunStatus,
+  BackflushRunSummary,
+} from './backflush-types'

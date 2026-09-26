@@ -2850,6 +2850,13 @@
       "when": 1790373799930,
       "tag": "0406_data_connector_run_query",
       "breakpoints": true
+    },
+    {
+      "idx": 407,
+      "version": "7",
+      "when": 1790382948613,
+      "tag": "0407_sync_job_metadata",
+      "breakpoints": true
     }
   ]
 }
