@@ -134,6 +134,11 @@ describe('buildPositionRows — stacked by key', () => {
     expect(left[1]).toBeGreaterThanOrEqual(75)
     expect(right[1]).toBeGreaterThanOrEqual(32)
   })
+
+  it('sizes the usage axis from the positive segments only', () => {
+    const rows = [row('2026-09-21', { used: 5, usedByKey: [30, -25] })]
+    expect(yExtents(rows, null).right[1]).toBeGreaterThanOrEqual(30)
+  })
 })
 
 describe('xTicks', () => {

@@ -265,8 +265,9 @@ export function yExtents(
     }
     const u = r.used ?? r.projectedUse
     if (u !== null && u > usage) usage = u
+    // StackedBar skips segments at or below zero, so they add no height.
     if (r.usedByKey) {
-      const stacked = r.usedByKey.reduce((a, v) => a + v, 0)
+      const stacked = r.usedByKey.reduce((a, v) => a + Math.max(0, v), 0)
       if (stacked > usage) usage = stacked
     }
   }
