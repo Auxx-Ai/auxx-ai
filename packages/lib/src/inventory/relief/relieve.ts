@@ -715,10 +715,10 @@ function groupByFulfillment(
  * an earlier run are still waiting on a price. The pricer clears the item once
  * it has filled them.
  */
-async function syncReliefWorkItems(
+export async function syncReliefWorkItems(
   db: Database,
   organizationId: string,
-  lines: readonly FulfillmentLineToRelieve[],
+  lines: readonly Pick<FulfillmentLineToRelieve, 'fulfillmentLineId' | 'fulfillmentId'>[],
   unpricedParts: ReadonlyMap<string, string[]>
 ): Promise<void> {
   const offered = [...new Set(lines.map((line) => line.fulfillmentId))]
@@ -757,7 +757,7 @@ async function syncReliefWorkItems(
 async function readPendingMovements(
   db: Database,
   organizationId: string,
-  lines: readonly FulfillmentLineToRelieve[]
+  lines: readonly Pick<FulfillmentLineToRelieve, 'fulfillmentLineId' | 'fulfillmentId'>[]
 ): Promise<Map<string, { movementIds: string[]; partIds: string[] }>> {
   const result = new Map<string, { movementIds: string[]; partIds: string[] }>()
   if (lines.length === 0) return result
