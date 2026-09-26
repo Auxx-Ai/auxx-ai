@@ -40,8 +40,8 @@ export interface WhereUsedParent {
   item: ItemBits | null
 }
 
-/** A top-level product above the part in the current BOM: what running out of it would stop. */
-export interface WhereUsedProduct {
+/** A top-level finished good above the part in the current BOM: what running out of it would stop. */
+export interface WhereUsedFinishedGood {
   partId: string
   name: string | null
   stockStatus: string | null
@@ -53,7 +53,7 @@ export interface WhereUsed {
   window: { from: DayKey; to: DayKey }
   totalConsumed: number
   parents: WhereUsedParent[]
-  products: WhereUsedProduct[]
+  finishedGoods: WhereUsedFinishedGood[]
 }
 
 /** Roots reachable upward from `partId` through the parent graph, excluding the part. */
@@ -119,7 +119,7 @@ export function shapeParents(params: {
   return rows.sort((a, b) => b.consumed - a.consumed || a.partId.localeCompare(b.partId))
 }
 
-/** For a part: the products it limits and the share of its consumption per parent (02 §7a). */
+/** For a part: the finished goods it limits and the share of its consumption per parent (02 §7a). */
 export async function readWhereUsed(
   db: Database,
   organizationId: string,
@@ -156,8 +156,8 @@ export async function readWhereUsed(
         shares: shares.value,
         totalConsumed,
       })
-      const productIds = topLevelAncestors(partId, edges ?? [])
-      const ids = [...new Set([...parentRows.map((p) => p.partId), ...productIds])]
+      const finishedGoodIds = topLevelAncestors(partId, edges ?? [])
+      const ids = [...new Set([...parentRows.map((p) => p.partId), ...finishedGoodIds])]
       const [labels, items] = await Promise.all([
         readPartLabels(db, organizationId, ids),
         run ? readItems(db, organizationId, run.id, ids) : new Map<string, MrpPlanItemRow>(),
@@ -186,7 +186,7 @@ export async function readWhereUsed(
           stockStatus: labels.get(p.partId)?.stockStatus ?? null,
           item: bits(p.partId),
         })),
-        products: productIds.map((id) => ({
+        finishedGoods: finishedGoodIds.map((id) => ({
           partId: id,
           name: labels.get(id)?.name ?? null,
           stockStatus: labels.get(id)?.stockStatus ?? null,

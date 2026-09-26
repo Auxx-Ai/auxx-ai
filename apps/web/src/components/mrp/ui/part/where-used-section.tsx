@@ -22,14 +22,16 @@ export function WhereUsedSection({ partId, recordId, runId }: WhereUsedSectionPr
   const { entityDefinitionId: partDefId } = parseRecordId(recordId)
 
   const parents = whereUsed.data?.parents ?? []
-  const products = whereUsed.data?.products ?? []
+  const finishedGoods = whereUsed.data?.finishedGoods ?? []
   // Nothing uses it and it is not sold: the section has nothing to say.
   if (!whereUsed.isLoading && parents.length === 0) return null
 
   return (
     <Section
       title='Where used'
-      secondary={products.length > 1 ? `shared with ${products.length} products` : undefined}>
+      secondary={
+        finishedGoods.length > 1 ? `shared with ${finishedGoods.length} finished goods` : undefined
+      }>
       {whereUsed.isLoading ? (
         <EmptySection loading />
       ) : (
@@ -46,7 +48,10 @@ export function WhereUsedSection({ partId, recordId, runId }: WhereUsedSectionPr
                 p.isDirectSale ? (
                   'Sold directly'
                 ) : (
-                  <RecordLink recordId={toRecordId(partDefId, p.partId)} openInStack>
+                  <RecordLink
+                    recordId={toRecordId(partDefId, p.partId)}
+                    link={{ tab: 'mrp' }}
+                    openInStack>
                     {p.name ?? 'Unnamed part'}
                   </RecordLink>
                 )

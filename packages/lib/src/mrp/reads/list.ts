@@ -58,10 +58,10 @@ export interface MrpListItem extends MrpPlanItemRow {
   supplierName: string | null
   /** Stockout date − the run's day; null without a stockout. */
   daysOfCover: number | null
-  /** Top-level products above the part in the current BOM; a sold finished good lists itself. */
-  productIds: string[]
-  /** Names parallel to `productIds`; an unnamed part reads "Unnamed part". */
-  productNames: string[]
+  /** Top-level finished goods above the part in the current BOM; a sold finished good lists itself. */
+  finishedGoodIds: string[]
+  /** Names parallel to `finishedGoodIds`; an unnamed part reads "Unnamed part". */
+  finishedGoodNames: string[]
 }
 
 export interface MrpList {
@@ -180,22 +180,28 @@ export async function listPlanItems(
       const parents = buildParentGraph(
         (await getOrgCache().get(organizationId, 'subpartEdges')) ?? []
       )
-      const products = new Map(
+      const finishedGoods = new Map(
         page.map((row) => [
           row.item.partId,
-          productsAbove(row.item.partId, parents, isSoldFinishedGood(row.partKind, row.item.adu)),
+          finishedGoodsAbove(
+            row.item.partId,
+            parents,
+            isSoldFinishedGood(row.partKind, row.item.adu)
+          ),
         ])
       )
-      const productLabels = await readPartLabels(db, organizationId, [
-        ...new Set([...products.values()].flat()),
+      const finishedGoodLabels = await readPartLabels(db, organizationId, [
+        ...new Set([...finishedGoods.values()].flat()),
       ])
       return {
         run,
         items: page.map((row) => {
-          const productIds = products.get(row.item.partId) ?? []
+          const finishedGoodIds = finishedGoods.get(row.item.partId) ?? []
           return toListItem(row, run.asOfDay, {
-            productIds,
-            productNames: productIds.map((id) => productLabels.get(id)?.name ?? 'Unnamed part'),
+            finishedGoodIds,
+            finishedGoodNames: finishedGoodIds.map(
+              (id) => finishedGoodLabels.get(id)?.name ?? 'Unnamed part'
+            ),
           })
         }),
         nextCursor: rows.length > limit ? offset + limit : null,
@@ -211,13 +217,13 @@ export function isSoldFinishedGood(kind: string | null, adu: number | null): boo
   return kind === 'finished_good' && (adu ?? 0) > 0
 }
 
-/** Roots above `partId` in the parent graph, sorted; a root part lists itself only when `selfIsProduct`. */
-export function productsAbove(
+/** Roots above `partId` in the parent graph, sorted; a root part lists itself only when `selfIsFinishedGood`. */
+export function finishedGoodsAbove(
   partId: string,
   parents: ParentGraph,
-  selfIsProduct: boolean
+  selfIsFinishedGood: boolean
 ): string[] {
-  if (!parents.get(partId)?.length) return selfIsProduct ? [partId] : []
+  if (!parents.get(partId)?.length) return selfIsFinishedGood ? [partId] : []
   const roots = new Set<string>()
   const seen = new Set<string>([partId])
   const stack = [...(parents.get(partId) ?? [])]
@@ -242,7 +248,10 @@ export function toListItem(
     supplierName: string | null
   },
   asOfDay: DayKey,
-  products: Pick<MrpListItem, 'productIds' | 'productNames'> = { productIds: [], productNames: [] }
+  finishedGoods: Pick<MrpListItem, 'finishedGoodIds' | 'finishedGoodNames'> = {
+    finishedGoodIds: [],
+    finishedGoodNames: [],
+  }
 ): MrpListItem {
   return {
     ...row.item,
@@ -251,6 +260,6 @@ export function toListItem(
     stockStatus: row.stockStatus,
     supplierName: row.supplierName,
     daysOfCover: row.item.stockoutDate ? daysBetween(asOfDay, row.item.stockoutDate) : null,
-    ...products,
+    ...finishedGoods,
   }
 }

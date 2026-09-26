@@ -121,10 +121,10 @@ export function groupBySupplier<
   return none ? [...groups.values(), none] : [...groups.values()]
 }
 
-/** Rows grouped by the finished goods above them, first-seen order; a part under several products appears under each. */
-export function groupByFinishedGood<T extends { productIds: string[]; productNames: string[] }>(
-  items: readonly T[]
-): PlanGroup<T>[] {
+/** Rows grouped by the finished goods above them, first-seen order; a part under several finished goods appears under each. */
+export function groupByFinishedGood<
+  T extends { finishedGoodIds: string[]; finishedGoodNames: string[] },
+>(items: readonly T[]): PlanGroup<T>[] {
   const groups = new Map<string, PlanGroup<T>>()
   const add = (key: string, label: string, item: T) => {
     let group = groups.get(key)
@@ -135,8 +135,10 @@ export function groupByFinishedGood<T extends { productIds: string[]; productNam
     group.items.push(item)
   }
   for (const item of items) {
-    if (item.productIds.length === 0) add('', 'No finished good', item)
-    item.productIds.forEach((id, i) => add(id, item.productNames[i] ?? 'Unnamed part', item))
+    if (item.finishedGoodIds.length === 0) add('', 'No finished good', item)
+    item.finishedGoodIds.forEach((id, i) =>
+      add(id, item.finishedGoodNames[i] ?? 'Unnamed part', item)
+    )
   }
   const none = groups.get('')
   groups.delete('')

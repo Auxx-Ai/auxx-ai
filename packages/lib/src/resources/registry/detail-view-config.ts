@@ -177,6 +177,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // variants list leads — a product IS its title/image plus a set of parts.
     mainTabs: [
       { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
+      // The variants' MRP rollup (plans/mrp/15-product-planning-tab.md D37).
+      { value: 'mrp', label: 'Planning', icon: 'calendar-clock', permissionKey: 'mrp.view' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

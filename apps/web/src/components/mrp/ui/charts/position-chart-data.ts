@@ -2,8 +2,28 @@
 
 import type { RouterOutputs } from '~/trpc/react'
 
-export type PartSeriesData = RouterOutputs['mrp']['partSeries']
+type PartSeriesData = RouterOutputs['mrp']['partSeries']
 export type PartSeriesEvent = PartSeriesData['events'][number]
+
+/** A stack key: one variant, or `'other'` folding the tail (plan 15 D40). */
+export interface SeriesKey {
+  key: string
+  name: string
+  partIds: string[]
+}
+
+/** `mrp.partSeries` or `mrp.productSeries`; a part carries no `series` and no per-key arrays. */
+export interface SeriesData extends Omit<PartSeriesData, 'days' | 'usage'> {
+  /** Stack keys, bottom first; `...ByKey[i]` ↔ `series[i]`. */
+  series?: SeriesKey[]
+  days: Array<PartSeriesData['days'][number] & { onHandByKey?: number[] }>
+  usage: Array<PartSeriesData['usage'][number] & { consumedByKey?: number[] }>
+}
+
+/** True when the data stacks by variant. */
+export function hasSeries(data: SeriesData): boolean {
+  return (data.series?.length ?? 0) > 0
+}
 
 export type PositionWindow = '3m' | '6m' | '12m'
 export type PositionGrain = 'day' | 'week' | 'month'
@@ -42,6 +62,10 @@ export interface PositionRow {
   bandSpan: number | null
   used: number | null
   projectedUse: number | null
+  /** Per stack key, floored at zero; null for a part or a projected day. */
+  onHandByKey: number[] | null
+  /** Per stack key, the bucket's past usage; null for a part or a projected day. */
+  usedByKey: number[] | null
   /** The bucket's last day, drawn with a gap after it. */
   bucketEnd: boolean
   stockout: boolean
@@ -49,7 +73,8 @@ export interface PositionRow {
 }
 
 /** Joins history, projection and usage buckets on one daily axis. */
-export function buildPositionRows(data: PartSeriesData): PositionRow[] {
+export function buildPositionRows(data: SeriesData): PositionRow[] {
+  const keyed = hasSeries(data)
   const rows = new Map<string, PositionRow>()
   const row = (day: string): PositionRow => {
     let r = rows.get(day)
@@ -63,6 +88,8 @@ export function buildPositionRows(data: PartSeriesData): PositionRow[] {
         bandSpan: null,
         used: null,
         projectedUse: null,
+        onHandByKey: null,
+        usedByKey: null,
         bucketEnd: false,
         stockout: false,
         events: [],
@@ -75,6 +102,7 @@ export function buildPositionRows(data: PartSeriesData): PositionRow[] {
     const r = row(d.day)
     r.onHand = d.onHandEod
     r.stockout = d.stockout
+    if (keyed) r.onHandByKey = d.onHandByKey ?? null
   }
   // The dashed line starts where the solid one ends.
   const last = data.days[data.days.length - 1]
@@ -101,6 +129,7 @@ export function buildPositionRows(data: PartSeriesData): PositionRow[] {
       const past = r.day < data.runAsOf
       r.used = past ? bucket.consumed : null
       r.projectedUse = past ? null : bucket.projected
+      if (keyed && past) r.usedByKey = bucket.consumedByKey ?? null
     }
     const next = ordered[i + 1]
     const nextBucket = buckets[b + 1]
@@ -138,6 +167,8 @@ export interface UsageSpan {
   to: string
   value: number
   projected: boolean
+  /** Per stack key, stacked bottom first; absent for a part or a projected bar. */
+  byKey?: number[]
 }
 
 /** Collapses the per-day usage values into one span per bar, so a year draws ~25 rects, not ~750. */
@@ -153,6 +184,7 @@ export function usageSpans(rows: readonly PositionRow[]): UsageSpan[] {
     if (open) open.to = r.day
     else {
       open = { from: r.day, to: r.day, value, projected: r.used === null }
+      if (r.usedByKey) open.byKey = r.usedByKey
       spans.push(open)
     }
     if (r.bucketEnd) open = null
@@ -209,7 +241,7 @@ export function niceTicks(min: number, max: number, count = 5): number[] {
   return out
 }
 
-/** The left axis covers on hand, projection band and zones; the right covers usage. */
+/** The left axis covers on hand, stacked areas, band and zones; the right covers usage. */
 export function yExtents(
   rows: readonly PositionRow[],
   zoneTop: number | null
@@ -226,8 +258,18 @@ export function yExtents(
     if (r.bandLow !== null && r.bandSpan !== null && r.bandLow + r.bandSpan > hi) {
       hi = r.bandLow + r.bandSpan
     }
+    // Floored slices can stack above a negative true sum.
+    if (r.onHandByKey) {
+      const stacked = r.onHandByKey.reduce((a, v) => a + v, 0)
+      if (stacked > hi) hi = stacked
+    }
     const u = r.used ?? r.projectedUse
     if (u !== null && u > usage) usage = u
+    // StackedBar skips segments at or below zero, so they add no height.
+    if (r.usedByKey) {
+      const stacked = r.usedByKey.reduce((a, v) => a + Math.max(0, v), 0)
+      if (stacked > usage) usage = stacked
+    }
   }
   const left = niceTicks(lo, Math.max(hi, 1))
   const right = niceTicks(0, Math.max(usage, 1))
