@@ -2,7 +2,7 @@
 
 import type { ColumnAggregateOp, ConditionGroup, GroupByConfig } from '@auxx/lib/conditions/client'
 import { skipToken } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { useNormalizedDefinitionId } from '../utils/normalize-record-id'
 
@@ -22,6 +22,8 @@ interface UseGroupSummaryOptions {
   /** Column id (ResourceFieldId) → op; callers pass only aggregatable columns. */
   aggregates?: Record<string, ColumnAggregateOp>
   enabled?: boolean
+  /** `useRecordList().listRefetchedAt` — every list refetch re-pulls the counts. */
+  listRefetchedAt?: number
 }
 
 interface UseGroupSummaryResult {
@@ -51,8 +53,17 @@ export function useGroupSummary({
   timezone,
   aggregates,
   enabled = true,
+  listRefetchedAt = 0,
 }: UseGroupSummaryOptions): UseGroupSummaryResult {
   const entityDefinitionId = useNormalizedDefinitionId(rawEntityDefinitionId)
+  const utils = api.useUtils()
+
+  // Whatever refetched the list (merge, import, an action's invalidate) also changed the
+  // counts; following the list is what keeps the ~16 `listFiltered.invalidate` call sites honest.
+  useEffect(() => {
+    if (!listRefetchedAt || !groupBy || !entityDefinitionId) return
+    void utils.record.groupSummary.invalidate({ entityDefinitionId })
+  }, [listRefetchedAt, groupBy, entityDefinitionId, utils])
 
   // Key order must match `useRecordList`'s summary partial input so its optimistic writes land.
   const input = useMemo(

@@ -2,7 +2,7 @@
 
 import type { ConditionGroup, GroupByConfig } from '@auxx/lib/conditions/client'
 import { type DroppedFilterNotice, toRecordId } from '@auxx/lib/resources/client'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import {
   createListKey,
@@ -107,6 +107,8 @@ interface UseRecordListResult<T = RecordMeta> {
   fetchNextPage: () => void
   /** Force refresh */
   refresh: () => void
+  /** `dataUpdatedAt` of the last full refetch (pages replaced, not appended); 0 until one happens. */
+  listRefetchedAt: number
   /**
    * Add a freshly-created record to this list's caches — BOTH the record store
    * and the tRPC query pages. The acting tab is excluded from its own
@@ -340,6 +342,18 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       droppedConditionCount: data.pages[0]?.droppedConditionCount,
     })
   }, [data, dataUpdatedAt, listKey, setList, isPlaceholderData])
+
+  // A refetch replaces the pages; pagination appends one. Only the former means the
+  // rows changed underneath a grouped view, so only it is exposed as a stamp.
+  const [listRefetchedAt, setListRefetchedAt] = useState(0)
+  const lastPageCountRef = useRef(0)
+  useEffect(() => {
+    const pageCount = data?.pages?.length ?? 0
+    if (dataUpdatedAt && pageCount > 0 && pageCount <= lastPageCountRef.current) {
+      setListRefetchedAt(dataUpdatedAt)
+    }
+    lastPageCountRef.current = pageCount
+  }, [data, dataUpdatedAt])
 
   // ─── FETCH NEXT PAGE ────────────────────────────────────────────────
 
@@ -575,6 +589,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     hasNextPage: hasNextPage ?? cachedList?.nextCursor !== null,
     fetchNextPage,
     refresh,
+    listRefetchedAt,
     appendCreated,
     removeFromList,
     isCached: !!cachedList,

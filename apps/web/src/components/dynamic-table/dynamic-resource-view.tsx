@@ -343,6 +343,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     fetchNextPage,
     refresh,
     groupKeyById,
+    listRefetchedAt,
     error: listError,
   } = useRecordList<TRow>({
     entityDefinitionId: entityDefinitionId ?? '',
@@ -364,6 +365,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     timezone,
     aggregates: summaryAggregates,
     enabled: !!entityDefinitionId && isConfigReady,
+    listRefetchedAt,
   })
 
   useEffect(() => {
