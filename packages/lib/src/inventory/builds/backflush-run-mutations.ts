@@ -48,7 +48,6 @@ export async function claimBackflushRun(
       written: 0,
       failedBuilds: 0,
       failedDays: 0,
-      rolled: [],
       failures: [],
       recoveries: 0,
       finalizedAt: null,

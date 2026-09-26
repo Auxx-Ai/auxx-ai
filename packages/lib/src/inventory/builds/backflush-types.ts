@@ -39,8 +39,6 @@ export interface BackflushRunSummary {
   /** Days whose ledger read failed; no part was checked for them. */
   failedDays: { day: string; reason: string }[]
   skipped: number
-  /** Parts whose standard was rolled before their first build this run (111 Q20). */
-  rolled: string[]
 }
 
 /** One part's share of a preview. */
@@ -84,8 +82,6 @@ export interface BackflushRunMetadata {
   written: number
   failedBuilds: number
   failedDays: number
-  /** Parts rolled before their first build this run (111 Q20), so a later slice does not roll again. */
-  rolled: string[]
   /** The first few failures. */
   failures: BackflushRunFailure[]
   /** Times the stale sweep re-enqueued the run. */

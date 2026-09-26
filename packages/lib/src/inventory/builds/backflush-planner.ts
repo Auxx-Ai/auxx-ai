@@ -27,9 +27,6 @@ export interface BackflushGraph {
   /** parent → direct children with the per-unit quantity a build consumes. */
   subparts: ReadonlyMap<string, SubpartEdge[]>
   names: ReadonlyMap<string, string>
-  /** For the roll-first gate (111 Q20): a part with no confirmed standard is rolled before its first build. */
-  standardCosts: ReadonlyMap<string, number>
-  standardCostSources: ReadonlyMap<string, string>
 }
 
 export interface BackflushDay {
@@ -59,13 +56,7 @@ export async function readBackflushGraph(
   }
   const order = orderParentsFirst(candidates, subparts)
   const names = await readPartNames(db, organizationId, order)
-  return {
-    order,
-    subparts,
-    names,
-    standardCosts: context.standardCosts,
-    standardCostSources: context.standardCostSources,
-  }
+  return { order, subparts, names }
 }
 
 // ── Pure ──────────────────────────────────────────────────────────────────────

@@ -100,13 +100,12 @@ export async function runBackflushSlice(
       const last = slice.at(-1)
       if (!first || !last) return { kind: 'finalize' }
 
-      const rolled = new Set(meta.rolled)
       const result = await backflushBuilds(db, organizationId, {
         from: first.day,
         to: last.day,
         actorUserId: meta.actorUserId,
         now,
-        run: { batchRun: meta.batchRun, rolled },
+        run: { batchRun: meta.batchRun },
         sliceDays,
       })
       if (result.isErr()) throw result.error
@@ -122,7 +121,6 @@ export async function runBackflushSlice(
         written: meta.written + summary.written.length,
         failedBuilds: meta.failedBuilds + summary.failed.length,
         failedDays: meta.failedDays + summary.failedDays.length,
-        rolled: [...rolled],
         failures: [...meta.failures, ...failures].slice(0, MAX_FAILURES),
       }
       const advanced = await checkpointBackflushRun(db, runId, {
