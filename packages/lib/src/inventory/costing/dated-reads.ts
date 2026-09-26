@@ -11,6 +11,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { StockMovementType } from '../../resources/registry/enum-values'
 import { systemFieldMap } from '../../resources/system-records'
 
 const LEDGER_PICK = [
@@ -125,6 +126,42 @@ export async function readLatestMovementAt(
     if (!row.partId || row.value == null) continue
     const date = row.value instanceof Date ? row.value : new Date(row.value)
     result.set(row.partId, Number.isNaN(date.getTime()) ? null : date)
+  }
+  return result
+}
+
+/** Units produced by builds per part, all time; a reversed `build_produce` row drops out. Absent parts read `0`. */
+export async function readPartBuiltTotal(
+  organizationId: string,
+  partIds: readonly string[]
+): Promise<Map<string, number>> {
+  const unique = [...new Set(partIds)]
+  const result = new Map<string, number>(unique.map((id) => [id, 0]))
+  if (unique.length === 0) return result
+
+  const fields = await systemFieldMap(undefined, organizationId, [
+    'stock_movement_type',
+    'stock_movement_reverses_movement',
+  ] as const)
+  const typeField = fields.stock_movement_type
+  const reversesField = fields.stock_movement_reverses_movement
+  if (!typeField || !reversesField) return result
+
+  // A reversal is typed `adjust`, not `-build_produce`, so the produce row itself must be excluded.
+  const rows = await aggregatePerPart(organizationId, unique, {
+    aggregate: (q) => sql<string>`COALESCE(SUM(${q.valueNumber}), 0)`,
+    where: (_movedAt, q) => sql`EXISTS (
+        SELECT 1 FROM "FieldValue" t
+        WHERE t."entityId" = ${q.entityId} AND t."fieldId" = ${typeField.id}
+          AND t."optionId" = ${StockMovementType.BUILD_PRODUCE}
+      ) AND NOT EXISTS (
+        SELECT 1 FROM "FieldValue" r
+        WHERE r."organizationId" = ${organizationId} AND r."fieldId" = ${reversesField.id}
+          AND r."relatedEntityId" = ${q.entityId}
+      )`,
+  })
+  for (const row of rows) {
+    if (row.partId) result.set(row.partId, Number(row.value ?? 0))
   }
   return result
 }

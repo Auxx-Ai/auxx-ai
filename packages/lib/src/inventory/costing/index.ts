@@ -36,7 +36,12 @@ export {
 } from './cost-reads'
 export { type CostWrite, writeCostValues } from './cost-writer'
 // Dated ledger reads (111 D23 / Q26): the replay behind backflush and the count re-anchor.
-export { readEarliestMovementAt, readLatestMovementAt, readPartNetThrough } from './dated-reads'
+export {
+  readEarliestMovementAt,
+  readLatestMovementAt,
+  readPartBuiltTotal,
+  readPartNetThrough,
+} from './dated-reads'
 // A FIRST standard from a cost a door names (receipt, count, typed). It never overwrites.
 export {
   type EnsureStandardCostResult,

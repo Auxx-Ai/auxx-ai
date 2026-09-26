@@ -4,7 +4,11 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
-import { readEarliestMovementAt, readPartNetThrough } from '../costing/dated-reads'
+import {
+  readEarliestMovementAt,
+  readPartBuiltTotal,
+  readPartNetThrough,
+} from '../costing/dated-reads'
 import { readPartInitials } from '../movements/initial-queries'
 import { guard } from './guard'
 
@@ -18,6 +22,8 @@ export interface SetCountPreflight {
   hasBom: boolean
   /** BOM parts only: the negative replay a backflush would cover, `max(0, −netToday)`. */
   unbuiltSales: number
+  /** Units produced by builds, all time, net of undone builds. */
+  built: number
 }
 
 export async function readSetCountPreflight(
@@ -29,11 +35,12 @@ export async function readSetCountPreflight(
     async () => {
       const unique = [...new Set(partIds.filter(Boolean))]
       if (unique.length === 0) return []
-      const [nets, earliests, initials, boms] = await Promise.all([
+      const [nets, earliests, initials, boms, builts] = await Promise.all([
         readPartNetThrough(organizationId, unique, new Date()),
         readEarliestMovementAt(organizationId, unique),
         readPartInitials(db, organizationId, unique),
         readPartsWithBom(db, organizationId, unique),
+        readPartBuiltTotal(organizationId, unique),
       ])
       return unique.map((partId) => {
         const netToday = nets.get(partId) ?? 0
@@ -45,6 +52,7 @@ export async function readSetCountPreflight(
           earliest: earliests.get(partId) ?? null,
           hasBom,
           unbuiltSales: hasBom ? Math.max(0, -netToday) : 0,
+          built: builts.get(partId) ?? 0,
         }
       })
     },

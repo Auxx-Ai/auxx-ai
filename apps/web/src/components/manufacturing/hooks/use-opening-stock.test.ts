@@ -50,6 +50,7 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     uncostedLeafCount: 0,
     usedIn: 0,
     unbuiltSales: 0,
+    built: 0,
     earliest: null,
     delta: 4,
     ...overrides,
