@@ -11,7 +11,7 @@
  *
  * ## What this is NOT
  *
- * 🔧 **A caller of `writeStockMovements`, never a ninth hand-rolled insert.**
+ * 🔧 **A caller of `writeStockMovementsBatch`, never a ninth hand-rolled insert.**
  * `inventory/movements/` is the one writer (task 50 section 2), and three of the
  * rules this brief used to spell out are now properties of its contract rather
  * than things this file must remember: `adjustSubparts` is typed `?: true` so
@@ -102,7 +102,7 @@ import {
   reverseMovement,
   type StockMovementInput,
   type StockMovementsCtx,
-  writeStockMovements,
+  writeStockMovementsBatch,
 } from '../inventory/movements'
 import { resolveInventoryRoleForPartKind } from '../inventory/movements/client'
 import { getRealtimeService, publishRecordsChanged } from '../realtime'
@@ -136,11 +136,9 @@ export const SALVAGE_WRITE_LANE_REASON =
  * The session both the movements and the `return_part_line` freeze writes go
  * through.
  *
- * One session and one `UnifiedCrudHandler` for the whole call, exactly as
- * `complete-build.ts` does: the handler is handed to `writeStockMovements` as
- * `ctx.handler` so a salvage has a single quiet-lane construction site rather
- * than one per write. Covered: {@link announceQuietSalvageWrites} announces the movements, the
- * part lines and the parts after commit.
+ * One session for the whole call: the batched movement writer and the freeze's
+ * `UnifiedCrudHandler` both write through it. Covered: {@link announceQuietSalvageWrites}
+ * announces the movements, the part lines and the parts after commit.
  */
 export function salvageWriteSession(): WriteSession {
   return quietSession(SALVAGE_WRITE_LANE_REASON, { coveredBy: 'announceQuietSalvageWrites' })
@@ -381,14 +379,12 @@ export async function writeSalvageMovements(
       let affectedPartIds: string[] = []
       let post: InTxPostResult | null = null
 
-      // This function owns the transaction boundary - `writeStockMovements`
+      // This function owns the transaction boundary - `writeStockMovementsBatch`
       // never opens one of its own - so the movements and the freeze writes
       // land or roll back together. A frozen cost without its movement, or a
       // movement nothing points at, are both worse than neither.
       await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
-        // The one quiet-lane handler construction site for this call.
-        const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, { session })
         const movementCtx: StockMovementsCtx = {
           db: txDb,
           organizationId,
@@ -396,10 +392,9 @@ export async function writeSalvageMovements(
           movementDefId,
           partDefId,
           lane: { kind: 'quiet', session },
-          handler: crud,
         }
 
-        const written = await writeStockMovements(movementCtx, inputs)
+        const written = await writeStockMovementsBatch(movementCtx, inputs)
         if (written.isErr()) throw written.error
         affectedPartIds = written.value.affectedPartIds
 
@@ -407,7 +402,7 @@ export async function writeSalvageMovements(
         // `pending`'s order.
         movements = written.value.records.map((record, index) => {
           const entry = pending[index]
-          if (!entry) throw new Error('writeStockMovements returned more records than inputs')
+          if (!entry) throw new Error('writeStockMovementsBatch returned more records than inputs')
           return {
             partLineId: entry.row.id,
             partId: entry.node.partId,
@@ -423,6 +418,7 @@ export async function writeSalvageMovements(
         // the unit cost is the output, and `part_standard_cost` is re-rolled, so
         // a year from now the percentage alone cannot reproduce the number the
         // movement carries. One bulk call rather than a row loop.
+        const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, { session })
         const freeze = await crud.bulkUpdate(
           movements.map((movement) => ({
             recordId: toRecordId(ctx.defId, movement.partLineId) as RecordId,

@@ -2,7 +2,7 @@
 
 /**
  * `relieveFulfillmentLines` - the ~40-line seventh caller of
- * `writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md §1).
+ * `writeStockMovementsBatch` (plans/money/tasks/50-batch-inventory-relief.md §1).
  *
  * One `sale` movement per `fulfillment_line`, for `quantity -
  * quantity_relieved`, written automatically at the dispatch's own date. §1.5
@@ -47,7 +47,7 @@
  *    a zero cost" is the same rule `complete-build.ts` enforces from the build
  *    side; a pending row is not a zero, it is an absence with a marker.
  * 4. **The unit cost is rounded to `RATE_DECIMALS`** via `roundMinorUnits`
- *    before it is handed to `writeStockMovements`, defensively - `V / Q` and
+ *    before it is handed to `writeStockMovementsBatch`, defensively - `V / Q` and
  *    `Σcost / Σqty` are both arbitrary-precision divisions and this module
  *    does not assume `cost-reads.ts` already rounded its output.
  */
@@ -84,7 +84,11 @@ import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../
 import { batchRecalculateQoH } from '../costing/qoh'
 import type { PartStandardCost } from '../costing/types'
 import type { WrittenStockMovement } from '../movements'
-import { type StockMovementInput, type StockMovementsCtx, writeStockMovements } from '../movements'
+import {
+  type StockMovementInput,
+  type StockMovementsCtx,
+  writeStockMovementsBatch,
+} from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { type ReliefSplitLine, sumReliefCogsSplit } from './cogs-split'
 import { guard } from './guard'
@@ -499,9 +503,10 @@ async function relieveLines(
 
       // §1.7: quietSession(reason) -> N movements in one tx -> (AFTER COMMIT)
       // batchRecalculateQoH. This function owns the transaction boundary -
-      // `writeStockMovements` never opens one of its own (its own header) -
+      // `writeStockMovementsBatch` never opens one of its own -
       // exactly as `complete-build.ts`'s `db.transaction` wraps `writeCompletion`.
-      // A run that throws here leaves nothing: the movements' ids are minted inside it.
+      // A run that throws here leaves nothing: the movements' ids are minted inside it, and a
+      // field that fails to convert fails the whole batch rather than being dropped.
       const session = reliefWriteSession()
       let movementIds: string[] = []
       let affectedPartIds: string[] = []
@@ -521,7 +526,7 @@ async function relieveLines(
             partDefId,
             lane: { kind: 'quiet', session },
           }
-          const written = await writeStockMovements(ctx, inputs)
+          const written = await writeStockMovementsBatch(ctx, inputs)
           if (written.isErr()) throw written.error
           movementIds = written.value.records.map((record) => record.movementId)
           affectedPartIds = written.value.affectedPartIds

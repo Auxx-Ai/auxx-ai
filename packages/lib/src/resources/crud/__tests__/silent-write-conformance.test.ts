@@ -116,6 +116,7 @@ describe('silent-write conformance — every shut door names its reason', () => 
  */
 const COVERED_QUIET_WRITERS: Record<string, string> = {
   'inventory/builds/write-lane.ts': 'publishQuietBuildWrites',
+  'inventory/costing/revalue.ts': 'announceQuietRevalueWrites',
   'inventory/relief/write-lane.ts': 'announceQuietReliefWrites',
   'returns/salvage-writer.ts': 'announceQuietSalvageWrites',
 }
