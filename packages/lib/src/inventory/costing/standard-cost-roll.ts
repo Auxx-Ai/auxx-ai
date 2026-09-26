@@ -182,8 +182,10 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
       return null
     }
 
-    // ── A purchased part: its landed cost, and nothing else ──
-    if (!absorbsConversionCost(partKind)) {
+    const children = inputs.subpartGraph.get(partId) ?? []
+
+    // A purchased part, or a buildable with no BOM at roll time (D-SC2b): its landed cost, and nothing else.
+    if (!absorbsConversionCost(partKind) || children.length === 0) {
       const live = inputs.liveCosts.get(partId)
       // `part_cost` stores a real `0` for an unpriced part, so `<= 0` is "no price", never "free".
       if (live == null || !Number.isFinite(live) || live <= 0) {
@@ -198,8 +200,7 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
         return null
       }
       const material = roundMinorUnits(live)
-      // Zero, not null: we know we did not assemble it, so its conversion cost
-      // is a fact rather than an absence.
+      // Zero, not null: we know we did not assemble it, so its conversion cost is a fact.
       return {
         standardMaterialCost: material,
         standardLaborCost: 0,
@@ -209,17 +210,6 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     }
 
     // ── A built part: the sum of what goes into it, plus conversion ──
-    const children = inputs.subpartGraph.get(partId) ?? []
-    if (children.length === 0) {
-      // Nothing to roll. Not an abort: a part classified as buildable before its
-      // bill of materials was entered has no inputs at all, so no number is
-      // being understated. It is reported so it is visible, not written.
-      skipped.push({ partId, reason: 'no-bill-of-materials', partName: partName(partId) })
-      // Its own root cause: this is the part whose bill of materials is missing.
-      blameFor.set(partId, partName(partId))
-      return null
-    }
-
     let material = 0
     for (const child of children) {
       const childStandard = contributionOf(child.childId)
@@ -282,18 +272,22 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
  * reason: a finished good whose subassembly's standard just moved is carrying a
  * standard built from the old number. Ancestors only — pulling descendants in
  * would re-value the subassemblies the caller did not ask to re-value.
+ *
+ * `stopAt` parts are neither added nor walked through unless named in `partIds` (D-SC3: a kept
+ * `manual` standard shields its ancestors from the change below it).
  */
 export function widenToAncestors(
   partIds: Iterable<string>,
-  parentGraph: ReadonlyMap<string, string[]>
+  parentGraph: ReadonlyMap<string, string[]>,
+  stopAt: ReadonlySet<string> = new Set()
 ): Set<string> {
   const widened = new Set<string>()
-  const walk = (partId: string) => {
-    if (widened.has(partId)) return
+  const walk = (partId: string, named: boolean) => {
+    if (widened.has(partId) || (!named && stopAt.has(partId))) return
     widened.add(partId)
-    for (const parent of parentGraph.get(partId) ?? []) walk(parent)
+    for (const parent of parentGraph.get(partId) ?? []) walk(parent, false)
   }
-  for (const partId of partIds) walk(partId)
+  for (const partId of partIds) walk(partId, true)
   return widened
 }
 

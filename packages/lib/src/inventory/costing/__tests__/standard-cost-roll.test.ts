@@ -656,7 +656,26 @@ describe('computeStandardCosts', () => {
     expect(costs.get(ASSEMBLY)!.standardMaterialCost).toBe(951)
   })
 
-  it('skips a buildable part that has no bill of materials yet', () => {
+  it('values a buildable with no bill of materials from its live cost, with no conversion (D-SC2b)', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([LIFT]),
+        partKinds: new Map<string, PartKindValue>([[LIFT, 'finished_good']]),
+        liveCosts: new Map([[LIFT, 4250]]),
+      })
+    )
+
+    expect(skipped).toEqual([])
+    // Labour and overhead are 0 although the lift declares rates: it was bought, not assembled.
+    expect(costs.get(LIFT)).toEqual({
+      standardMaterialCost: 4250,
+      standardLaborCost: 0,
+      standardOverheadCost: 0,
+      standardCost: 4250,
+    })
+  })
+
+  it('skips a buildable with no bill of materials and no live cost as no-live-cost', () => {
     const { costs, skipped } = computeStandardCosts(
       inputs({
         scope: new Set([ASSEMBLY]),
@@ -664,10 +683,21 @@ describe('computeStandardCosts', () => {
       })
     )
 
-    // Not an abort: nothing is being understated, because there are no inputs at
-    // all. It is reported so it stays visible.
     expect(costs.has(ASSEMBLY)).toBe(false)
-    expect(skipped).toEqual([{ partId: ASSEMBLY, reason: 'no-bill-of-materials', partName: null }])
+    expect(skipped).toEqual([{ partId: ASSEMBLY, reason: 'no-live-cost', partName: null }])
+  })
+
+  it('keeps an explicit $0 standard on a buildable with no bill of materials and no live cost', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([ASSEMBLY]),
+        partKinds: new Map<string, PartKindValue>([[ASSEMBLY, 'subassembly']]),
+        storedStandardCosts: new Map([[ASSEMBLY, 0]]),
+      })
+    )
+
+    expect(costs.has(ASSEMBLY)).toBe(false)
+    expect(skipped).toEqual([])
   })
 
   it('walks bottom-up, so every child settles before the parent that reads it', () => {
@@ -772,6 +802,14 @@ describe('widenToAncestors', () => {
     // Rolling a finished good values it at its subassemblies' already-agreed
     // standards. Widening downward would re-value what the caller did not ask to.
     expect([...widenToAncestors([LIFT], parentGraph)]).toEqual([LIFT])
+  })
+
+  it('stops at a stop-set part unless it is named (D-SC3)', () => {
+    const stopAt = new Set([ASSEMBLY])
+    expect([...widenToAncestors([MOTOR], parentGraph, stopAt)]).toEqual([MOTOR])
+    expect([...widenToAncestors([ASSEMBLY], parentGraph, stopAt)].sort()).toEqual(
+      [ASSEMBLY, LIFT].sort()
+    )
   })
 
   it('terminates on a cycle in the parent graph', () => {

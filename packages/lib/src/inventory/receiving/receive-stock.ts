@@ -29,6 +29,7 @@ import { systemDefId } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { replaceProvisionalStandard } from '../costing/provisional-standard'
 import { batchRecalculateQoH } from '../costing/qoh'
+import { rollUnvaluedAncestors } from '../costing/roll-unvalued-ancestors'
 import { readStandardCost } from '../costing/standard-cost-queries'
 import { writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
@@ -328,9 +329,8 @@ interface WriteReceiveMovementArgs {
  * (plans/money/tasks/15-costing-usability.md §2c).
  *
  * `ensureStandardCost` writes only where `part_standard_cost IS NULL`, so this
- * is a no-op on every receipt after the first, and on any part somebody already
- * rolled. It is not gated on a setting: a receipt carries a landed cost off an
- * invoice, which is a fact, not an inference from a price list.
+ * is a no-op on every receipt after the first. A first standard then rolls the
+ * parents it completes (D-SC7).
  *
  * 🛑 **`unitCost` is the LANDED estimate, not the agreed price** (73 §7.2): the
  * standard is landed, so a first standard set from the base alone would post the
@@ -370,18 +370,25 @@ export async function setFirstStandardCostFromReceipt(
     })
     return
   }
+  const actorId = userId ?? (await getOrgCache().get(organizationId, 'systemUser'))
+
+  // A first standard can complete a parent's BOM (D-SC7).
+  if (ensured.value.writtenPartIds.length > 0) {
+    const rolled = await rollUnvaluedAncestors(db, organizationId, actorId, [partId])
+    if (rolled.isErr()) {
+      logger.warn('Could not roll the parents of a first receipt', {
+        organizationId,
+        partId,
+        error: rolled.error,
+      })
+    }
+  }
 
   // 73 §6.4. A no-op unless the part carries a stored `provisional` standard,
   // in which case this replaces it and revalues whatever is on the shelf at the
   // guess. Swallowed for the same reason the line above is: the arrival is the
   // fact being recorded.
-  const replaced = await replaceProvisionalStandard(
-    db,
-    organizationId,
-    userId ?? (await getOrgCache().get(organizationId, 'systemUser')),
-    partId,
-    unitCost
-  )
+  const replaced = await replaceProvisionalStandard(db, organizationId, actorId, partId, unitCost)
   if (replaced.isErr()) {
     logger.warn('Could not replace a provisional standard from a receipt', {
       organizationId,

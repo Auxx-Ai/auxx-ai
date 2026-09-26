@@ -8,6 +8,12 @@
 // run, because the movement freezes the account it resolves (§6.3).
 
 import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
+import {
+  type StandardCostOriginValue,
+  type StandardCostSourceValue,
+  type StandardCostSuggestion,
+  suggestStandardCost,
+} from '@auxx/lib/inventory/costing/client'
 import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
 import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -53,6 +59,7 @@ export type OpeningStockCandidate =
 export type SetCountPreflightRow = RouterOutputs['purchasing']['setCountPreflight'][number]
 export type OpeningStockKind = RouterInputs['purchasing']['bulkSetPartKind']['kind']
 export type OpeningStockRunSummary = RouterOutputs['purchasing']['runSetCounts']
+type WorklistPart = RouterOutputs['builds']['standardCostWorklist'][number]
 
 /**
  * `new`: no movement yet, a count writes an `initial` on the count day. `uncounted`: moved
@@ -68,11 +75,13 @@ export type OpeningStockFilter =
   | 'uncounted'
   | 'unclassified'
   | 'uncosted'
+  | 'uncosted-or-provisional'
   | 'unbuilt'
   | `kind:${string}`
 
 interface OpeningStockDraft {
   quantity?: number | null
+  /** Present once typed, even as `null`; absent means the row shows the standard or the suggestion. */
   unitCost?: number | null
   /** Calendar-day ISO. Absent: the row follows the run-wide date. */
   date?: string
@@ -92,16 +101,27 @@ export interface OpeningStockRow {
   isUnclassified: boolean
   /** `part_standard_cost`, minor units; `null` means the row is valued when a cost is set. */
   standardCost: number | null
+  standardSource: StandardCostSourceValue | null
+  standardOrigin: StandardCostOriginValue | null
   quantity: number | null
-  /** Typed only for an uncosted part; it becomes the part's first standard. */
+  /** What the Unit cost cell shows: typed, else the standard, else the D-SC4 suggestion. */
   unitCost: number | null
+  /** `unitCost` is the untouched suggestion. */
+  unitCostSuggested: boolean
+  suggestion: StandardCostSuggestion | null
+  /** The run sends `unitCost`: set, or different from the standard (which restates it). */
+  sendsUnitCost: boolean
   /** Calendar-day ISO: the row's own date, or the run-wide one. */
   date: string
   hasOwnDate: boolean
   state: OpeningStockRowState
   /** Net of every movement to now; `null` until the preflight lands. */
   netToday: number | null
+  /** A BOM part's cost comes only from a roll, so its Unit cost is read-only (D-SC3). */
   hasBom: boolean
+  uncostedLeafCount: number
+  /** Distinct BOM parents this part sits under. */
+  usedIn: number
   /** BOM parts only: the negative replay a backflush would cover (111 Q25). */
   unbuiltSales: number
   earliest: Date | null
@@ -126,6 +146,7 @@ export interface OpeningStockCounts {
   uncounted: number
   unclassified: number
   uncosted: number
+  uncostedOrProvisional: number
   /** Made parts with sales no build covers: backflush them before counting (Q25). */
   unbuilt: number
 }
@@ -187,6 +208,34 @@ export function exclusionDetail(row: OpeningStockRow, reason: OpeningStockExclus
   }
 }
 
+/** The Unit cost cell (D-SC3/D-SC4): a BOM part takes none; a typed value wins over the standard. */
+export function resolveUnitCost(input: {
+  hasBom: boolean
+  standardCost: number | null
+  suggestion: StandardCostSuggestion | null
+  /** `undefined`: never typed. */
+  typed: number | null | undefined
+}): Pick<OpeningStockRow, 'unitCost' | 'unitCostSuggested' | 'sendsUnitCost'> {
+  if (input.hasBom) return { unitCost: null, unitCostSuggested: false, sendsUnitCost: false }
+  const suggested = input.typed === undefined && input.standardCost == null && !!input.suggestion
+  const unitCost =
+    input.typed !== undefined
+      ? input.typed
+      : (input.standardCost ?? input.suggestion?.unitCost ?? null)
+  return {
+    unitCost,
+    unitCostSuggested: suggested,
+    sendsUnitCost: unitCost != null && unitCost !== input.standardCost,
+  }
+}
+
+/** No standard, or one nobody has confirmed. */
+export function isUncostedOrProvisional(
+  row: Pick<OpeningStockRow, 'standardCost' | 'standardSource'>
+): boolean {
+  return row.standardCost == null || row.standardSource === 'provisional'
+}
+
 function rowState(candidate: OpeningStockCandidate): OpeningStockRowState {
   if (candidate.hasInitialMovement) return 'counted'
   return candidate.hasMovements ? 'uncounted' : 'new'
@@ -200,7 +249,13 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
 
 export function useOpeningStock() {
   const candidates = api.purchasing.listOpeningStockCandidates.useQuery()
+  // Standard source, suggestion inputs and BOM facts; the tab still works without it.
+  const worklist = api.builds.standardCostWorklist.useQuery({}, { retry: false })
   const utils = api.useUtils()
+  const worklistById = useMemo(
+    () => new Map<string, WorklistPart>((worklist.data ?? []).map((part) => [part.partId, part])),
+    [worklist.data]
+  )
 
   const partDefId = useResourceProperty('part', 'id')
   // Asked separately from the page's `part` gate: `stock_movement` carries its own grant.
@@ -278,9 +333,19 @@ export function useOpeningStock() {
 
       const draft = drafts[candidate.partId]
       const quantity = draft?.quantity ?? null
-      const unitCost = candidate.standardCost == null ? (draft?.unitCost ?? null) : null
       const flight = preflight.get(candidate.partId)
       const netToday = flight?.netToday ?? null
+      const part = worklistById.get(candidate.partId)
+      const hasBom = part?.hasBom ?? flight?.hasBom ?? false
+      const suggestion = hasBom
+        ? null
+        : suggestStandardCost(part?.purchaseCost ?? null, part?.channelCost ?? null)
+      const cost = resolveUnitCost({
+        hasBom,
+        standardCost: candidate.standardCost,
+        suggestion,
+        typed: draft && 'unitCost' in draft ? (draft.unitCost ?? null) : undefined,
+      })
 
       return {
         partId: candidate.partId,
@@ -295,19 +360,33 @@ export function useOpeningStock() {
         accountRole: resolveInventoryRoleForPartKind(kind || null),
         isUnclassified: isPartKindUnclassified(storedKind),
         standardCost: candidate.standardCost,
+        standardSource: part?.standardCostSource ?? null,
+        standardOrigin: part?.standardCostOrigin ?? null,
         quantity,
-        unitCost,
+        ...cost,
+        suggestion,
         date: draft?.date ?? occurredAt,
         hasOwnDate: draft?.date != null,
         state: flight ? (flight.hasInitial ? 'counted' : rowState(candidate)) : rowState(candidate),
         netToday,
-        hasBom: flight?.hasBom ?? false,
+        hasBom,
+        uncostedLeafCount: part?.uncostedLeafCount ?? 0,
+        usedIn: part?.usedIn ?? 0,
         unbuiltSales: flight?.unbuiltSales ?? 0,
         earliest: flight?.earliest ?? null,
         delta: previewDelta(quantity, netToday),
       }
     })
-  }, [candidates.data, prefilterIds, drafts, writtenKinds, partDefId, preflight, occurredAt])
+  }, [
+    candidates.data,
+    prefilterIds,
+    drafts,
+    writtenKinds,
+    partDefId,
+    preflight,
+    occurredAt,
+    worklistById,
+  ])
 
   const counts = useMemo<OpeningStockCounts>(
     () => ({
@@ -317,6 +396,7 @@ export function useOpeningStock() {
       uncounted: rows.filter((row) => row.state === 'uncounted').length,
       unclassified: rows.filter((row) => row.isUnclassified).length,
       uncosted: rows.filter((row) => row.standardCost == null).length,
+      uncostedOrProvisional: rows.filter(isUncostedOrProvisional).length,
       unbuilt: rows.filter(needsBackflushFirst).length,
     }),
     [rows]
@@ -356,7 +436,7 @@ export function useOpeningStock() {
       ready.map((row) => ({
         partId: row.partId,
         quantity: row.quantity as number,
-        ...(row.standardCost == null && row.unitCost != null
+        ...(row.sendsUnitCost && row.unitCost != null
           ? { unitCost: roundMinorUnits(row.unitCost) }
           : {}),
         day: calendarDayKey(row.date) ?? undefined,
@@ -368,7 +448,8 @@ export function useOpeningStock() {
     () => ({
       firstCounts: ready.filter((row) => rowOutcome(row.state) === 'first').length,
       adjustments: ready.filter((row) => rowOutcome(row.state) === 'adjust').length,
-      pending: ready.filter((row) => row.standardCost == null && row.unitCost == null).length,
+      pending: ready.filter((row) => row.standardCost == null && !row.sendsUnitCost).length,
+      restates: ready.filter((row) => row.standardCost != null && row.sendsUnitCost).length,
       backflushFirst: ready.filter(needsBackflushFirst).length,
     }),
     [ready]
@@ -448,6 +529,7 @@ export function useOpeningStock() {
     clearSelection()
     void candidates.refetch()
     void utils.purchasing.setCountPreflight.invalidate()
+    void utils.builds.standardCostWorklist.invalidate()
     return result
   }, [runSetCounts, occurredAt, entries, candidates, clearSelection, utils])
 

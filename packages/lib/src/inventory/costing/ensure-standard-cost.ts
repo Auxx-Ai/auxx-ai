@@ -1,41 +1,8 @@
 // packages/lib/src/inventory/costing/ensure-standard-cost.ts
 
-/**
- * `ensureStandardCost` — the ONLY writer that sets a FIRST standard cost.
- *
- * plans/money/tasks/15-costing-usability.md §1.
- *
- * 🛑 **It writes only parts where `part_standard_cost IS NULL`. It never overwrites.**
- *
- * That single rule is the whole safety argument. Overwriting would turn a
- * vendor-price change into an automatic revaluation of on-hand inventory, which
- * is exactly what `standard-cost.ts`'s header forbids: *"If the standard were
- * recalculated automatically it would just BE `part_cost`, and every movement's
- * frozen `unitCost` would drift with vendor prices."* Re-valuing is
- * {@link rollStandardCost}'s job and nothing else's.
- *
- * Five callers, one function (§2):
- *
- * | source        | fires when                          | cost from                 |
- * | ------------- | ----------------------------------- | ------------------------- |
- * | `supplier-price` | a `vendor_part` price is written | the refreshed `part_cost` |
- * | `opening-stock`  | a part is created with stock     | `unitCost`, typed         |
- * | `receipt`        | a part's first receipt           | `unitCost`, landed        |
- * | `manual`         | a person types a unit cost       | `unitCost`, or `part_cost` |
- * | `channel`        | a connector writes `part_channel_cost` | `unitCost`, the channel's (106 D5) |
- *
- * A first standard revalues nothing: the roll's `isInitial` skip stands, and
- * the movements written while the part had none are `pending` rows (111 Q18)
- * that `pricePendingMovements` values and posts right after the write below.
- *
- * Every door stamps `part_standard_cost_source` (73 §6.4): `receipt` is
- * `confirmed`, because an invoice is a price somebody paid; the others are
- * `provisional`, because they are a number somebody typed before any purchase
- * existed. {@link replaceProvisionalStandard} is what the first receipt of a
- * provisional part then calls.
- *
- * No permission checks: the router asserts (`docs/lib-module-guide.md` §6).
- */
+// Writes a FIRST standard from a cost a door names (receipt, count, typed), never overwriting one
+// (plans/money/tasks/15 §1). Nothing is inferred from a price list (09 D-SC1); the doors roll the
+// parents themselves (`rollUnvaluedAncestors`). No permission checks: the router asserts.
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -57,12 +24,7 @@ import {
 import type { StandardCostOriginValue, StandardCostSourceValue } from './client'
 import { guard } from './guard'
 import { pricePendingMovementsQuietly } from './price-pending-movements'
-import {
-  loadStandardCostWriteContext,
-  planStandardCostRoll,
-  type StandardCostFields,
-  type StandardCostWriteContext,
-} from './standard-cost-queries'
+import { loadStandardCostWriteContext, type StandardCostFields } from './standard-cost-queries'
 import type { StandardCostComponents } from './types'
 
 const logger = createScopedLogger('builds:ensure-standard-cost')
@@ -70,19 +32,12 @@ const logger = createScopedLogger('builds:ensure-standard-cost')
 /** How many parts are written concurrently. Mirrors `persistStandardCosts`. */
 const WRITE_BATCH_SIZE = 20
 
-/** Which door called, and the cost it can supply. */
+/** Which door called, and the cost it names: minor units at rate precision. */
 export interface EnsureStandardCostSource {
-  kind: 'supplier-price' | 'opening-stock' | 'receipt' | 'manual' | 'channel'
-  /**
-   * The cost to freeze, in minor units, at rate precision (five major-unit places).
-   *
-   * Supplied by `opening-stock`, `receipt` and `channel`, which know an exact number.
-   * Omitted by `supplier-price` (and optionally `manual`), which fall back to the
-   * part's refreshed `part_cost` through the normal roll. `manual` and `channel`
-   * accept zero (103 §5a); every other door refuses it.
-   */
+  kind: 'opening-stock' | 'receipt' | 'manual'
+  /** One cost for every named part. A receipt refuses zero; a person or a count may type it (103 §5a). */
   unitCost?: number
-  /** Per-part explicit costs, for a caller freezing many different numbers in one call. Wins over `unitCost`. */
+  /** Per-part costs; wins over `unitCost`. A named part with no cost is not written. */
   unitCosts?: ReadonlyMap<string, number>
 }
 
@@ -99,23 +54,9 @@ interface FirstStandard {
 }
 
 /**
- * Give every named part a standard cost, if and only if it has none.
- *
- * Widens to ancestors first, then applies the NULL filter to the wider set:
- * pricing a component makes its parent rollable, and without the widening the
- * parent stays unvalued one level up.
- *
- * 🛑 **Never throws on an unvaluable part.** A part with no cost at all is
- * skipped and reported, not an error — these callers are post-commit hooks and
- * create forms, and one that throws on a vendor-price save is worse than one
- * that writes nothing.
- *
- * ⚠️ Deliberately does NOT run `recalculateAllPartCosts`. `rollStandardCost`
- * opens with that full-org sweep; every caller here has either just recalculated
- * the affected parts or supplies `unitCost` outright.
- *
- * Authored as the org's system user: nobody pressed a button, and attributing
- * the write to whoever edited a price is a lie.
+ * Give each named part its named cost as a first standard, if and only if it has none. An
+ * unknown id, a service, or a part that already has a standard is skipped, not an error.
+ * Authored as the org's system user.
  */
 export async function ensureStandardCost(
   db: Database,
@@ -129,88 +70,36 @@ export async function ensureStandardCost(
       if (requested.length === 0) return { writtenPartIds: [] }
 
       const explicitCosts = resolveExplicitCosts(requested, source)
-      const effectiveAt = new Date()
+      if (explicitCosts.size === 0) return { writtenPartIds: [] }
 
-      // The plan is where the widening happens: up to every ancestor, and (since
-      // task 15 §3) down to the descendants that have no standard either. Every
-      // line it returns is a candidate; the NULL filter below is what turns the
-      // candidates into writes.
-      let context: StandardCostWriteContext
-      let candidates: FirstStandard[] = []
-      let skipped = 0
-
-      try {
-        const planned = await planStandardCostRoll(db, organizationId, {
-          partIds: requested,
-          effectiveAt,
+      const context = await loadStandardCostWriteContext(db, organizationId)
+      const writes: FirstStandard[] = []
+      for (const partId of requested) {
+        const cost = explicitCosts.get(partId)
+        if (cost == null || !context.allPartIds.has(partId)) continue
+        if (context.standardCosts.get(partId) != null) continue
+        // A service is never stocked, so it never carries a standard (107-D10).
+        if (context.partKinds.get(partId) === 'service') continue
+        writes.push({
+          partId,
+          components: {
+            standardMaterialCost: cost,
+            standardLaborCost: 0,
+            standardOverheadCost: 0,
+            standardCost: cost,
+          },
+          origin: originOf(source.kind),
         })
-        context = {
-          partDefId: planned.partDefId,
-          fields: planned.fields,
-          allPartIds: planned.allPartIds,
-          standardCosts: planned.stored.standardCosts,
-          standardCostSources: planned.stored.standardCostSources,
-          quantitiesOnHand: planned.stored.quantitiesOnHand,
-          partKinds: planned.stored.partKinds,
-        }
-        skipped = planned.plan.skipped.length
-        // 🛑 THE ONE RULE. `previousStandardCost` is the stored
-        // `part_standard_cost`, so `== null` is literally `IS NULL`. It is
-        // applied here rather than to the input because the widened set is what
-        // gets written, and a widened ancestor that already has a standard must
-        // survive this untouched.
-        candidates = planned.plan.lines
-          .filter((line) => line.previousStandardCost == null)
-          .map((line) => ({
-            partId: line.partId,
-            components: {
-              standardMaterialCost: line.standardMaterialCost,
-              standardLaborCost: line.standardLaborCost,
-              standardOverheadCost: line.standardOverheadCost,
-              standardCost: line.standardCost,
-            },
-            origin:
-              source.kind === 'supplier-price' && requested.includes(line.partId)
-                ? 'supplier_price'
-                : 'roll',
-          }))
-      } catch (error) {
-        // With no cost of our own there is nothing left to do, so the failure is
-        // the answer. With one, the plan was only ever the widening half: an
-        // unpriced sibling under a shared parent aborts it, and refusing to
-        // freeze a cost somebody typed because of an unrelated part is worse
-        // than writing exactly what they typed.
-        if (explicitCosts.size === 0) throw error
-        logger.warn('Could not plan the roll around an explicit cost, writing it alone', {
-          organizationId,
-          source: source.kind,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        context = await loadStandardCostWriteContext(db, organizationId)
       }
+      if (writes.length === 0) return { writtenPartIds: [] }
 
-      const writes = orderWrites(requested, candidates, explicitCosts, context, source.kind)
-      if (writes.length === 0) {
-        logger.info('No first standard cost to write', {
-          organizationId,
-          source: source.kind,
-          considered: requested.length,
-          written: 0,
-          skipped,
-        })
-        return { writtenPartIds: [] }
-      }
-
-      // Nobody pressed a button. Attributing the write to whoever edited a price
-      // would put a person's name on a decision the system made.
       const userId = await getOrgCache().get(organizationId, 'systemUser')
-
       const writtenPartIds = await persistFirstStandards(db, organizationId, userId, {
         partDefId: context.partDefId,
         fields: context.fields,
-        effectiveAt,
+        effectiveAt: new Date(),
         writes,
-        source: standardCostSourceOf(source.kind),
+        source: source.kind === 'receipt' ? 'confirmed' : 'provisional',
       })
 
       // The rows written pending for want of a standard are valued now (111 Q22); the wake
@@ -224,12 +113,8 @@ export async function ensureStandardCost(
         organizationId,
         source: source.kind,
         considered: requested.length,
-        planned: writes.length,
         written: writtenPartIds.length,
-        skipped,
-        explicitCosts: explicitCosts.size,
       })
-
       return { writtenPartIds }
     },
     'Failed to ensure standard cost',
@@ -237,20 +122,12 @@ export async function ensureStandardCost(
   )
 }
 
-/**
- * Validate the caller's costs, in minor units at rate precision, keyed by part.
- *
- * Zero is a value only from a person (a typed count cost included) or a channel
- * (103 §5a). The other doors keep refusing it: a zero there only ever means a
- * part nobody could value.
- */
+/** Validate the caller's costs, keyed by part. Zero only from a person or a count (103 §5a). */
 function resolveExplicitCosts(
   requested: readonly string[],
   source: EnsureStandardCostSource
 ): Map<string, number> {
-  // A typed count cost may be $0 too (103 §5a, 111 X4).
-  const allowZero =
-    source.kind === 'manual' || source.kind === 'channel' || source.kind === 'opening-stock'
+  const allowZero = source.kind !== 'receipt'
   const costs = new Map<string, number>()
   const raw: [string, number][] = source.unitCosts
     ? [...source.unitCosts]
@@ -271,75 +148,7 @@ function resolveExplicitCosts(
   return costs
 }
 
-/**
- * Merge the planned first standards with the caller's explicit cost, in the
- * order they must be written.
- *
- * The explicit cost wins on the parts the caller NAMED, and only there: it is
- * the cost of the stock being taken in, so material is that number and
- * conversion is zero (the part is being stocked, not built). A widened ancestor
- * is never overridden: it has a bill of materials and rolls normally.
- *
- * Overrides go first so the write order stays bottom-up: a part being stocked
- * is a leaf of whatever the plan widened to above it.
- */
-function orderWrites(
-  requested: string[],
-  candidates: FirstStandard[],
-  explicitCosts: ReadonlyMap<string, number>,
-  context: StandardCostWriteContext,
-  kind: EnsureStandardCostSource['kind']
-): FirstStandard[] {
-  const ordered: FirstStandard[] = []
-  const claimed = new Set<string>()
-
-  for (const partId of requested) {
-    const explicitCost = explicitCosts.get(partId)
-    if (explicitCost == null) continue
-    // A stale id from a caller must never invent a write target, and a part
-    // that already has a standard is never touched.
-    if (!context.allPartIds.has(partId)) continue
-    if (context.standardCosts.get(partId) != null) continue
-    // A service is never stocked, so it never carries a standard (107-D10).
-    if (context.partKinds.get(partId) === 'service') continue
-    if (claimed.has(partId)) continue
-    claimed.add(partId)
-    ordered.push({
-      partId,
-      components: {
-        standardMaterialCost: explicitCost,
-        standardLaborCost: 0,
-        standardOverheadCost: 0,
-        standardCost: explicitCost,
-      },
-      origin: originOf(kind),
-    })
-  }
-
-  // `candidates` is already the plan's bottom-up order.
-  for (const candidate of candidates) {
-    if (claimed.has(candidate.partId)) continue
-    claimed.add(candidate.partId)
-    ordered.push(candidate)
-  }
-
-  return ordered
-}
-
-/**
- * Write the five `part_standard_*` fields through `setValueWithType`, the same
- * writer `persistStandardCosts` uses.
- *
- * Two deliberate differences from the roll's persist step:
- *
- *  1. **It never throws.** These callers are post-commit hooks and create forms.
- *     A failed batch stops the loop (so what landed is still a bottom-up PREFIX
- *     of the plan, the same consistency guarantee the roll gives) and is logged,
- *     but the caller gets the parts that were written rather than an error that
- *     would roll back a vendor price somebody just saved.
- *  2. **Every part here is a FIRST standard,** so there is no `changed` diff to
- *     apply: a part with nothing stored has, by definition, changed.
- */
+/** Write the `part_standard_*` fields. Never throws: a failed batch stops the loop and is logged. */
 async function persistFirstStandards(
   db: Database,
   organizationId: string,
@@ -443,26 +252,7 @@ function numberValue(value: number | null): { type: 'number'; value: number } | 
   return value == null ? null : { type: 'number', value }
 }
 
-/**
- * Which source each door stamps (73 §6.4).
- *
- * A receipt is an invoice - a price somebody paid, so `confirmed`. The others
- * are a typed supplier price, a typed opening cost, a typed unit cost and a
- * channel's cost, all of them guesses about a purchase that has not happened; a
- * `ppv` against one would say "our guess was wrong", not "the price moved".
- */
-function standardCostSourceOf(kind: EnsureStandardCostSource['kind']): StandardCostSourceValue {
-  return kind === 'receipt' ? 'confirmed' : 'provisional'
-}
-
-/** The origin an explicit cost from each door stamps (106 D9). */
+/** The origin each door stamps (106 D9). */
 function originOf(kind: EnsureStandardCostSource['kind']): StandardCostOriginValue {
-  switch (kind) {
-    case 'supplier-price':
-      return 'supplier_price'
-    case 'opening-stock':
-      return 'opening_stock'
-    default:
-      return kind
-  }
+  return kind === 'opening-stock' ? 'opening_stock' : kind
 }

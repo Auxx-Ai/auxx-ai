@@ -66,7 +66,6 @@ const DRAFT_KEYS = [
   'mrp.defaultLeadTimeFactor',
   'mrp.defaultVariabilityFactor',
   'mrp.runRetentionDays',
-  'manufacturing.autoRollFirstStandard',
 ] as const
 
 export function PartsGeneralSettingsPage() {
@@ -226,15 +225,7 @@ export function PartsGeneralSettingsPage() {
             )}
           </div>
           <div className='flex flex-col gap-8'>
-            <StandardCostSection>
-              <SettingsFieldRow
-                settingKey='manufacturing.autoRollFirstStandard'
-                title='Set a first standard automatically'
-                description='When a part first gets a price, opening stock or a receipt, freeze that as its standard cost.'
-                {...controlled('manufacturing.autoRollFirstStandard')}
-                value={draft['manufacturing.autoRollFirstStandard'] ?? true}
-              />
-            </StandardCostSection>
+            <StandardCostSection />
           </div>
         </div>
       </ScrollArea>

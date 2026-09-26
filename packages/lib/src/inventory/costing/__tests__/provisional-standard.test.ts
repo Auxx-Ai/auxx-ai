@@ -307,3 +307,49 @@ describe('every other part is left alone', () => {
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 })
+
+// 09 D-SC2a: a typed cost on a moved part takes the same sequence, confirmed standards included.
+describe('the typed door', () => {
+  it('replaces a confirmed standard, stays provisional, and revalues the shelf', async () => {
+    queueOrg(motorAt(1200, 5, 'confirmed'))
+
+    const result = await replaceProvisionalStandard(db, ORG, USER, MOTOR, 1000, {
+      occurredAt: AT,
+      door: 'typed',
+    })
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      replaced: true,
+      previousStandard: 1200,
+      newStandard: 1000,
+    })
+    expect(h.pricePending.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.setValueWithType.mock.invocationCallOrder[0]!
+    )
+    expect(writesFor(MOTOR)).toContainEqual([
+      FIELD.part_standard_cost_source!.id,
+      { type: 'option', optionId: 'provisional' },
+    ])
+    expect(h.writeRevaluation.mock.calls[0]![3]).toMatchObject({
+      lines: [expect.objectContaining({ unitDeltaMinor: -200, extendedDeltaMinor: -1000 })],
+    })
+  })
+
+  it('accepts a typed $0', async () => {
+    queueOrg(motorAt(1000, 0, 'provisional'))
+
+    const result = await replaceProvisionalStandard(db, ORG, USER, MOTOR, 0, { door: 'typed' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ replaced: true, newStandard: 0 })
+  })
+
+  it('writes nothing when the typed cost is the standard, so a confirmed one stays confirmed', async () => {
+    queueOrg(motorAt(1200, 5, 'confirmed'))
+
+    const result = await replaceProvisionalStandard(db, ORG, USER, MOTOR, 1200, { door: 'typed' })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ replaced: false, revaluationPostedMinor: 0 })
+    expect(h.pricePending).not.toHaveBeenCalled()
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+})

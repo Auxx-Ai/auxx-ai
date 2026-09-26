@@ -110,10 +110,7 @@ export function registerEntitySystemRules(): void {
   })
 
   // `part_kind` from the bill of materials (plans/money/tasks/23 §4) — BATCH, and declared
-  // BEFORE the subpart cost recalc on the same rule. The recalc ends in
-  // `ensureFirstStandardCosts`, and `absorbsConversionCost` is false for a `component`, so a
-  // roll that ran first would freeze a standard with no conversion cost in it on exactly the
-  // parts this promotion exists to make buildable.
+  // BEFORE the subpart cost recalc on the same rule, so the recalc reads the promoted kind.
   registerNativeRuleHandler(DERIVE_PART_KIND, async (event) => {
     const { derivePartKindForSubpartBatch } = await import('./post/part-kind-derivation')
     await derivePartKindForSubpartBatch({

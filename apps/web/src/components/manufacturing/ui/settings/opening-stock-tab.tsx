@@ -74,6 +74,7 @@ function OpeningStockTabInner() {
       canOpenStock={opening.canOpenStock}
       isRunning={opening.isRunning}
       onRun={opening.run}
+      currencyCode={opening.currencyCode}
     />
   )
 

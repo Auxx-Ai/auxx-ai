@@ -225,6 +225,39 @@ describe('bulkOpenStockBalance is setCount per part', () => {
   })
 })
 
+describe('a typed unit cost that changed the standard', () => {
+  it('rides on the opened row, and on an unchanged count', async () => {
+    const { ok } = await import('neverthrow')
+    const change = { action: 'restated', standardCost: 1200, revaluationPostedMinor: 300 }
+    const base = h.setCount.getMockImplementation()
+    h.setCount.mockImplementationOnce(async (...args: unknown[]) => {
+      const result = await (base as (...a: unknown[]) => Promise<{ value: object }>)(...args)
+      return ok({ ...result.value, standardCostChange: change })
+    })
+    h.setCount.mockResolvedValueOnce(
+      ok({
+        outcome: 'unchanged',
+        partId: 'part_2',
+        countQuantity: 4,
+        countDate: RUN_DAY,
+        net: 4,
+        delta: 0,
+        movement: null,
+        pending: false,
+        standardCostChange: change,
+      })
+    )
+    const summary = await run()
+    expect(summary.opened[0]?.standardCostChange).toEqual(change)
+    expect(summary.excluded[0]).toMatchObject({
+      partId: 'part_2',
+      reason: 'unchanged',
+      standardCostChange: change,
+      detail: expect.stringContaining('only the standard cost'),
+    })
+  })
+})
+
 describe('an anchored part', () => {
   it('is excluded by default, with the adjust leg named, and the others still run', async () => {
     h.anchored = new Set(['part_1'])

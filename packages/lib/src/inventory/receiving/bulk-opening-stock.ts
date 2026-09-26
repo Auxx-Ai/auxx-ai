@@ -115,7 +115,10 @@ export async function bulkOpenStockBalance(
           excluded.push({
             partId: entry.partId,
             reason: 'unchanged',
-            detail: `The ledger already read ${count.countQuantity} on ${count.countDate}; nothing was written`,
+            detail: count.standardCostChange
+              ? `The ledger already read ${count.countQuantity} on ${count.countDate}; only the standard cost was updated`
+              : `The ledger already read ${count.countQuantity} on ${count.countDate}; nothing was written`,
+            ...(count.standardCostChange ? { standardCostChange: count.standardCostChange } : {}),
           })
           continue
         }
@@ -130,6 +133,7 @@ export async function bulkOpenStockBalance(
           extendedCost: count.movement.extendedCost,
           glAccount: count.movement.glAccount ?? '',
           pending: count.pending,
+          standardCostChange: count.standardCostChange,
         })
       }
 

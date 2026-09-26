@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest'
 import {
   excludeReason,
   exclusionDetail,
+  isUncostedOrProvisional,
   needsBackflushFirst,
   type OpeningStockRow,
   partKindLabel,
   previewDelta,
+  resolveUnitCost,
   rowOutcome,
   setCountsHrefForJob,
   setCountsHrefForParts,
@@ -33,13 +35,20 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     accountRole: 'inventory_raw_materials',
     isUnclassified: true,
     standardCost: 2050,
+    standardSource: 'provisional',
+    standardOrigin: 'manual',
     quantity: 4,
     unitCost: null,
+    unitCostSuggested: false,
+    suggestion: null,
+    sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
     hasOwnDate: false,
     state: 'new',
     netToday: 0,
     hasBom: false,
+    uncostedLeafCount: 0,
+    usedIn: 0,
     unbuiltSales: 0,
     earliest: null,
     delta: 4,
@@ -161,5 +170,41 @@ describe('partKindLabel', () => {
   it("reads the label off the field's own option list", () => {
     expect(partKindLabel('finished_good')).toBe('Finished Good')
     expect(partKindLabel(null)).toBe('Unclassified')
+  })
+})
+
+describe('resolveUnitCost (09 D-SC3/D-SC4)', () => {
+  const suggestion = { unitCost: 420, source: 'supplier' as const, other: null }
+
+  it('takes no cost on a BOM part', () => {
+    expect(resolveUnitCost({ hasBom: true, standardCost: null, suggestion, typed: 900 })).toEqual({
+      unitCost: null,
+      unitCostSuggested: false,
+      sendsUnitCost: false,
+    })
+  })
+
+  it('prefills the suggestion on an uncosted part and sends it', () => {
+    expect(
+      resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: undefined })
+    ).toEqual({ unitCost: 420, unitCostSuggested: true, sendsUnitCost: true })
+  })
+
+  it('shows an existing standard and sends only a different typed value', () => {
+    expect(
+      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: undefined })
+    ).toEqual({ unitCost: 500, unitCostSuggested: false, sendsUnitCost: false })
+    expect(
+      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: 650 })
+    ).toMatchObject({ unitCost: 650, sendsUnitCost: true })
+    expect(
+      resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: null })
+    ).toMatchObject({ unitCost: null, sendsUnitCost: false })
+  })
+
+  it('filters no standard or a provisional one', () => {
+    expect(isUncostedOrProvisional({ standardCost: null, standardSource: null })).toBe(true)
+    expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'provisional' })).toBe(true)
+    expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'confirmed' })).toBe(false)
   })
 })

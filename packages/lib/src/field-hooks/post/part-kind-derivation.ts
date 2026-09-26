@@ -101,11 +101,7 @@ export function resolvePartKindPromotion(stored: string | null | undefined): 'pr
  * than one of each per edge. The parent is read from the threaded create values
  * first and only falls back to a query for the edges that did not carry it.
  *
- * 🛑 **Registered BEFORE the cost recalc on `mfg-subparts-created`.** The recalc
- * ends in `ensureFirstStandardCosts`, and `absorbsConversionCost` is false for a
- * `component` — so a roll that ran before the promotion would freeze a standard
- * with no labour or overhead in it, on exactly the parts this rule exists to
- * make buildable.
+ * Registered BEFORE the cost recalc on `mfg-subparts-created`, so the recalc reads the promoted kind.
  *
  * Never throws. This is post-commit work hanging off a subpart write, and the
  * subpart is the fact the user asked to record: the worst case here is a part

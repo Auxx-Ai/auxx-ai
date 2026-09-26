@@ -9,8 +9,9 @@
  * An `initial` exists: one `adjust` dated D for `N − net(D)`; movements after D stand (Q15).
  * A count that changes nothing writes nothing.
  *
- * Cost: the part's standard, first set from a typed `unitCost` when it has none (a typed $0
- * is real, 103 §5a); a part still holding none writes a `pending` row parked at stage `price`.
+ * Cost: the part's standard. A typed `unitCost` sets a first one (rolling the parents it
+ * completes) or restates one through the typed door, revaluing a moved part (09 D-SC2a); a part
+ * with a BOM refuses it (D-SC3). A part still holding none writes a `pending` row at `price`.
  * The entry posts through `postInventoryDocumentInTx`, which decides by date (Q19): nothing
  * at or before the cutover, Count Variance after it.
  *
@@ -18,6 +19,7 @@
  */
 
 import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import {
   addDaysToDayKey,
   dayKeyInZone,
@@ -26,7 +28,7 @@ import {
   startOfDayInstant,
   todayInZone,
 } from '@auxx/utils/calendar-day'
-import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
+import { isAtPrecision, RATE_DECIMALS, roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inventory-document'
 import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
@@ -40,6 +42,13 @@ import { isServicePartKind } from '../costing/client'
 import { readEarliestMovementAt, readPartNetThrough } from '../costing/dated-reads'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { batchRecalculateQoH } from '../costing/qoh'
+import { rollUnvaluedAncestors } from '../costing/roll-unvalued-ancestors'
+import {
+  bomRefusal,
+  readPartIdsWithBom,
+  type StandardCostWrite,
+  setStandardCost,
+} from '../costing/set-standard-cost'
 import { writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
@@ -50,6 +59,8 @@ import { readPartKind, readPartStandardCost } from './receipt-queries'
 import type { SetCountInput, SetCountResult } from './types'
 
 export type { SetCountInput, SetCountOutcome, SetCountResult } from './types'
+
+const logger = createScopedLogger('inventory:set-count')
 
 /** The last instant of `dayKey` in `zone`: everything dated on the count day counts. */
 export function endOfDayInstant(dayKey: string, zone: string): Date {
@@ -106,26 +117,32 @@ export async function setCount(
       const earliest = earliests.get(input.partId) ?? null
       const initial = initials.get(input.partId) ?? null
       const delta = input.quantity - net
-
-      const base = {
-        partId: input.partId,
-        countQuantity: input.quantity,
-        countDate,
-        net,
-        delta,
-      }
       if (!initial && earliest == null && input.quantity === 0) {
         throw new BadRequestError(
           'A count of zero on a part with no history anchors nothing. Count it once it has stock or movements.',
           { partId: input.partId }
         )
       }
+
+      const userId = input.actorUserId ?? (await getOrgCache().get(organizationId, 'systemUser'))
+      // Before the delta check: a typed cost on an unchanged count is still applied.
+      const standardCostChange =
+        input.unitCost != null
+          ? await applyCountUnitCost(db, organizationId, userId, input.partId, input.unitCost)
+          : null
+      const base = {
+        partId: input.partId,
+        countQuantity: input.quantity,
+        countDate,
+        net,
+        delta,
+        standardCostChange,
+      }
       if (delta === 0) {
         return { ...base, outcome: 'unchanged', movement: null, pending: false }
       }
 
       const standard = await resolveCountCost(db, organizationId, input)
-      const userId = input.actorUserId ?? (await getOrgCache().get(organizationId, 'systemUser'))
       const row = initial
         ? { type: StockMovementType.ADJUST, occurredAt: startOfDayInstant(countDate, zone) }
         : {
@@ -236,22 +253,54 @@ function assertCountUnitCost(unitCost: number): void {
 }
 
 /**
- * The cost the row is written at: the part's standard after a typed `unitCost` has been
- * offered as its first one. `null` means pending (111 Q18); a negative or non-numeric
- * standard refuses, since nothing downstream can value against one.
+ * Apply a typed count cost: a first standard (then its parents roll, D-SC7), or a restate through
+ * the typed door when it differs. Never silently dropped; a part with a BOM refuses it (D-SC3).
+ */
+async function applyCountUnitCost(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  partId: string,
+  typed: number
+): Promise<StandardCostWrite | null> {
+  const unitCost = roundMinorUnits(typed)
+  const current = await readPartStandardCost(db, organizationId, partId)
+  if (current.isErr()) throw current.error
+  if (current.value.standardCost === unitCost) return null
+  if ((await readPartIdsWithBom(db, organizationId, [partId])).has(partId)) throw bomRefusal()
+
+  if (current.value.standardCost != null) {
+    const restated = await setStandardCost(db, organizationId, { partId, unitCost }, { userId })
+    if (restated.isErr()) throw restated.error
+    return restated.value
+  }
+
+  const ensured = await ensureStandardCost(db, organizationId, [partId], {
+    kind: 'opening-stock',
+    unitCost,
+  })
+  if (ensured.isErr()) throw ensured.error
+  if (ensured.value.writtenPartIds.length === 0) return null
+  const rolled = await rollUnvaluedAncestors(db, organizationId, userId, [partId])
+  if (rolled.isErr()) {
+    logger.warn('Could not roll the parents of a counted first standard', {
+      organizationId,
+      partId,
+      error: rolled.error.message,
+    })
+  }
+  return { action: 'set', standardCost: unitCost, revaluationPostedMinor: 0 }
+}
+
+/**
+ * The cost the row is written at: the part's standard. `null` means pending (111 Q18); a
+ * negative or non-numeric standard refuses, since nothing downstream can value against one.
  */
 async function resolveCountCost(
   db: Database,
   organizationId: string,
   input: SetCountInput
 ): Promise<{ unitCost: number | null; displayName: string | null }> {
-  if (input.unitCost != null) {
-    const ensured = await ensureStandardCost(db, organizationId, [input.partId], {
-      kind: 'opening-stock',
-      unitCost: input.unitCost,
-    })
-    if (ensured.isErr()) throw ensured.error
-  }
   const standard = await readPartStandardCost(db, organizationId, input.partId)
   if (standard.isErr()) throw standard.error
   const { standardCost, displayName } = standard.value

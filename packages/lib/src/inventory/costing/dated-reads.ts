@@ -108,6 +108,27 @@ export async function readEarliestMovementAt(
   return result
 }
 
+/** The latest movement date per part, or `null` for a part with no movements. One grouped read. */
+export async function readLatestMovementAt(
+  organizationId: string,
+  partIds: readonly string[]
+): Promise<Map<string, Date | null>> {
+  const unique = [...new Set(partIds)]
+  const result = new Map<string, Date | null>(unique.map((id) => [id, null]))
+  if (unique.length === 0) return result
+
+  const rows = await aggregatePerPart(organizationId, unique, {
+    aggregate: (_q, movedAt) => sql<string | Date | null>`MAX(${movedAt})`,
+    where: () => sql`TRUE`,
+  })
+  for (const row of rows) {
+    if (!row.partId || row.value == null) continue
+    const date = row.value instanceof Date ? row.value : new Date(row.value)
+    result.set(row.partId, Number.isNaN(date.getTime()) ? null : date)
+  }
+  return result
+}
+
 type QuantityValue = ReturnType<typeof alias<typeof schema.FieldValue, 'dated_qty'>>
 
 /** One grouped aggregate over the part's counted movements; `movedAt` is the COALESCEd date. */
