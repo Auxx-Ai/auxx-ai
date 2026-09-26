@@ -10,6 +10,7 @@ import {
   familySellThroughTotals,
   familyUnbuilt,
   foldSeriesKeys,
+  heldWalks,
   OTHER_SERIES_KEY,
   pickFamilyLimiting,
   productTotals,
@@ -159,6 +160,38 @@ describe('sumProjections', () => {
 
   it('is empty without walks', () => {
     expect(sumProjections([])).toEqual({ projection: [], used: [] })
+  })
+})
+
+describe('heldWalks', () => {
+  it('holds a variant without ADU at its level so the projection starts where history ends', () => {
+    const keys = [{ key: 'all', name: 'All', partIds: ['a', 'b', 'c'] }]
+    const rows = [
+      row('a', '2026-09-01', 84),
+      row('b', '2026-09-01', 50),
+      row('c', '2026-09-01', 0),
+      row('a', '2026-08-31', 90),
+    ]
+    const days = sumFamilyDays(rows, ['a', 'b', 'c'], keys)
+    expect(days.at(-1)?.onHandEod).toBe(134)
+
+    const items = new Map([
+      ['a', item({ partId: 'a', baseAdu: 2, onHand: 84 })],
+      ['c', item({ partId: 'c', onHand: 3, openDemand: 5 })],
+    ])
+    const walk = [point('2026-09-02', 84, 2, 2), point('2026-09-03', 82, 3, 2)]
+    const held = heldWalks(['a', 'b', 'c'], new Set(['a']), items, rows, '2026-09-02')
+    expect(held).toEqual([
+      [{ day: '2026-09-02', onHand: 50, low: 50, high: 50, used: 0 }],
+      [{ day: '2026-09-02', onHand: 0, low: 0, high: 0, used: 0 }],
+    ])
+
+    const { projection, used } = sumProjections([walk, ...held])
+    expect(projection.map((p) => [p.onHand, p.high])).toEqual([
+      [134, 136],
+      [132, 135],
+    ])
+    expect(used.map((u) => u.used)).toEqual([2, 2])
   })
 })
 

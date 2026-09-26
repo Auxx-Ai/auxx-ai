@@ -28,6 +28,7 @@ import {
 import {
   familyEvents,
   foldSeriesKeys,
+  heldWalks,
   type ProductSeriesDay,
   type ProductSeriesKey,
   type ProductSeriesUsageBucket,
@@ -138,6 +139,8 @@ export async function readProductSeries(
           })
         )
       }
+      if (walks.length > 0)
+        walks.push(...heldWalks(stockedIds, new Set(walking.keys()), items, rows.value, asOf))
       const summed = sumProjections(walks)
 
       return {

@@ -156,6 +156,33 @@ export function sumProjections(walks: readonly (readonly ProjectionWalkPoint[])[
   return { projection, used }
 }
 
+/**
+ * One-point walks on `day` for stocked variants that do not walk (no item or no `baseAdu`): the
+ * variant's level with no usage and no band, so the summed projection has no cliff at the run day.
+ */
+export function heldWalks(
+  stockedIds: readonly string[],
+  walkingIds: ReadonlySet<string>,
+  items: ReadonlyMap<string, Pick<MrpPlanItemRow, 'onHand' | 'openDemand'>>,
+  rows: readonly DailySeriesRow[],
+  day: DayKey
+): ProjectionWalkPoint[][] {
+  const last = new Map<string, DailySeriesRow>()
+  for (const row of rows) {
+    const seen = last.get(row.partId)
+    if (!seen || row.day > seen.day) last.set(row.partId, row)
+  }
+  return stockedIds
+    .filter((id) => !walkingIds.has(id))
+    .map((id) => {
+      const item = items.get(id)
+      const level = item
+        ? Math.max(0, item.onHand - item.openDemand)
+        : (last.get(id)?.onHandEod ?? 0)
+      return [{ day, onHand: level, low: level, high: level, used: 0 }]
+    })
+}
+
 /** The family's usage buckets, each carrying its per-key consumption. */
 export function rollUpUsage(
   days: readonly (Pick<ProductSeriesDay, 'day' | 'consumed' | 'stockout'> & {
