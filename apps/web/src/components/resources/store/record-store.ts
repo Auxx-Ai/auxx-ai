@@ -83,6 +83,8 @@ export interface RecordMeta {
 interface ListCache {
   /** Ordered record IDs matching this filter/sort combo */
   ids: string[]
+  /** Group key per id, index-aligned with `ids`; present only for a grouped list. */
+  groupKeys?: Array<string | null>
   /** Total count from server */
   total: number
   /** When this cache was created */
@@ -148,15 +150,21 @@ export interface RecordStoreState {
   setList: (key: string, cache: ListCache) => void
 
   /** Append IDs to list (for infinite scroll) */
-  appendToList: (key: string, ids: string[], nextCursor: string | null) => void
+  appendToList: (
+    key: string,
+    ids: string[],
+    nextCursor: string | null,
+    groupKeys?: Array<string | null>
+  ) => void
 
   /**
    * Append a single freshly-created record's id to a cached list (the phantom
    * draft "no refresh()" path) — bumps `total`, leaves `nextCursor` untouched.
    * No-ops if the list isn't cached yet (a subsequent fetch will include it
-   * naturally) or the id is already present.
+   * naturally) or the id is already present. On a grouped list the id lands
+   * after the last loaded row of `groupKey` (falling back to the end).
    */
-  appendCreatedRecord: (key: string, id: string) => void
+  appendCreatedRecord: (key: string, id: string, groupKey?: string | null) => void
 
   // ─────────────────────────────────────────────────────────────────
   // BATCHED RECORD FETCHING (unified across resource types)
@@ -238,6 +246,22 @@ export interface RecordStoreState {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
 
+/** The grouping inputs that change a list's rows or order (see `createListKey`). */
+export interface ListGroupingKey {
+  groupBy?: { fieldId: string; desc?: boolean; dateGranularity?: string }
+  timezone?: string
+  excludeGroupKeys?: string[]
+}
+
+/**
+ * Index to insert a new id of `groupKey` at: after the last loaded row of that key,
+ * else the end. `groupKeys` is index-aligned with the list's ids.
+ */
+export function groupInsertIndex(groupKeys: ReadonlyArray<string | null>, groupKey: string | null) {
+  const last = groupKeys.lastIndexOf(groupKey)
+  return last === -1 ? groupKeys.length : last + 1
+}
+
 /**
  * Create a stable key for list cache.
  *
@@ -250,9 +274,15 @@ export function createListKey(
   entityDefinitionId: string,
   filters: ConditionGroup[],
   sorting: Array<{ id: string; desc: boolean }>,
-  search?: string
+  search?: string,
+  grouping?: ListGroupingKey
 ): string {
-  const config = JSON.stringify({ f: filters, s: sorting, q: search ?? '' })
+  // Grouping joins the hash only when present, so ungrouped keys stay byte-identical.
+  const config = JSON.stringify(
+    grouping
+      ? { f: filters, s: sorting, q: search ?? '', g: grouping }
+      : { f: filters, s: sorting, q: search ?? '' }
+  )
   // Simple hash for shorter keys
   let hash = 5381
   for (let i = 0; i < config.length; i++) {
@@ -341,6 +371,7 @@ export const useRecordStore = create<RecordStoreState>()(
               const idx = cache.ids.indexOf(id)
               if (idx !== -1) {
                 cache.ids.splice(idx, 1)
+                cache.groupKeys?.splice(idx, 1)
                 cache.total--
               }
             }
@@ -356,21 +387,31 @@ export const useRecordStore = create<RecordStoreState>()(
         })
       },
 
-      appendToList: (key, ids, nextCursor) => {
+      appendToList: (key, ids, nextCursor, groupKeys) => {
         set((state) => {
           const cache = state.lists[key]
           if (cache) {
             cache.ids.push(...ids)
+            cache.groupKeys?.push(...(groupKeys ?? ids.map(() => null)))
             cache.nextCursor = nextCursor
           }
         })
       },
 
-      appendCreatedRecord: (key, id) => {
+      appendCreatedRecord: (key, id, groupKey) => {
         set((state) => {
           const cache = state.lists[key]
           if (!cache || cache.ids.includes(id)) return
-          cache.ids.push(id)
+          if (cache.groupKeys) {
+            const index =
+              groupKey === undefined
+                ? cache.groupKeys.length
+                : groupInsertIndex(cache.groupKeys, groupKey)
+            cache.ids.splice(index, 0, id)
+            cache.groupKeys.splice(index, 0, groupKey ?? null)
+          } else {
+            cache.ids.push(id)
+          }
           cache.total += 1
         })
       },

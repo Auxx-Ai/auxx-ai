@@ -243,6 +243,7 @@ export function useResourceSync() {
         //    tRPC data stays cached while it refetches, so rows do not blank.
         invalidateLists(entityDefinitionId)
         utils.record.listFiltered.invalidate({ entityDefinitionId })
+        utils.record.groupSummary.invalidate({ entityDefinitionId })
 
         const ids = cachedRecordIdsForDef(entityDefinitionId, CATCH_UP_RECORD_CAP)
         if (ids.length === 0) continue
@@ -329,6 +330,7 @@ export function useResourceSync() {
         for (const defId of defIds) {
           invalidateLists(defId)
           utils.record.listFiltered.invalidate({ entityDefinitionId: defId })
+          utils.record.groupSummary.invalidate({ entityDefinitionId: defId })
         }
       }, CATCH_UP_COALESCE_MS)
     },
@@ -417,6 +419,7 @@ export function useResourceSync() {
       setRecords(data.entityDefinitionId, [{ ...(data.record as any), _access: known?._access }])
       invalidateLists(data.entityDefinitionId)
       utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      utils.record.groupSummary.invalidate({ entityDefinitionId: data.entityDefinitionId })
       if (data.fieldValues?.length) {
         setValues(data.fieldValues)
       }
@@ -452,6 +455,7 @@ export function useResourceSync() {
       invalidateLists(data.entityDefinitionId)
       invalidateResource(data.recordId)
       utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      utils.record.groupSummary.invalidate({ entityDefinitionId: data.entityDefinitionId })
       clearParticipantsForRecord(data.recordId)
     },
     [removeRecord, invalidateLists, invalidateResource, utils]
@@ -462,6 +466,7 @@ export function useResourceSync() {
       const data = raw as RecordArchivedEvent['data']
       invalidateLists(data.entityDefinitionId)
       utils.record.listFiltered.invalidate({ entityDefinitionId: data.entityDefinitionId })
+      utils.record.groupSummary.invalidate({ entityDefinitionId: data.entityDefinitionId })
       clearParticipantsForRecord(data.recordId)
     },
     [invalidateLists, utils]

@@ -31,14 +31,24 @@ const h = vi.hoisted(() => ({
   /** Stand-in for the tRPC infinite-query cache `setInfiniteData` mutates. */
   cache: undefined as { pages: Array<Record<string, unknown>>; pageParams: unknown[] } | undefined,
   refetch: vi.fn(),
+  /** Whether the faked query reports its data as a placeholder. */
+  isPlaceholderData: false,
+  /** Last input the hook handed `useInfiniteQuery`. */
+  lastInput: undefined as Record<string, unknown> | undefined,
+  /** Stand-in for one `record.groupSummary` cache entry. */
+  summary: undefined as
+    | { groups: Array<{ key: string | null; count: number; aggregates: object }> }
+    | undefined,
+  summaryInvalidate: vi.fn(),
 }))
 
 vi.mock('~/trpc/react', () => ({
   api: {
     record: {
       listFiltered: {
-        useInfiniteQuery: (_input: unknown, opts: { enabled: boolean }) => {
+        useInfiniteQuery: (input: Record<string, unknown>, opts: { enabled: boolean }) => {
           h.enabledSeen.push(opts.enabled)
+          h.lastInput = input
           return {
             data: h.data,
             dataUpdatedAt: h.dataUpdatedAt,
@@ -47,6 +57,8 @@ vi.mock('~/trpc/react', () => ({
             hasNextPage: false,
             fetchNextPage: vi.fn(),
             refetch: h.refetch,
+            error: null,
+            isPlaceholderData: h.isPlaceholderData,
           }
         },
       },
@@ -57,6 +69,16 @@ vi.mock('~/trpc/react', () => ({
           setInfiniteData: (_input: unknown, updater: (prev: typeof h.cache) => typeof h.cache) => {
             h.cache = updater(h.cache)
           },
+        },
+        groupSummary: {
+          setQueriesData: (
+            _input: unknown,
+            _filters: unknown,
+            updater: (prev: typeof h.summary) => typeof h.summary
+          ) => {
+            h.summary = updater(h.summary)
+          },
+          invalidate: h.summaryInvalidate,
         },
       },
     }),
@@ -93,6 +115,10 @@ beforeEach(() => {
   h.enabledSeen = []
   h.cache = undefined
   h.refetch = vi.fn()
+  h.isPlaceholderData = false
+  h.lastInput = undefined
+  h.summary = undefined
+  h.summaryInvalidate.mockClear()
   useRecordStore.setState({
     records: {},
     lists: {},
@@ -332,5 +358,155 @@ describe('removeFromList', () => {
     const { result } = render()
     act(() => result.current.removeFromList('zzz'))
     expect(h.cache?.pages[0]?.total).toBe(1)
+  })
+})
+
+describe('grouping', () => {
+  const GROUP_BY = { fieldId: `${DEF}:status` }
+  const GROUPED_KEY = createListKey(DEF, EMPTY_FILTERS, EMPTY_SORTING, undefined, {
+    groupBy: { fieldId: GROUP_BY.fieldId, desc: undefined, dateGranularity: undefined },
+    timezone: 'UTC',
+    excludeGroupKeys: undefined,
+  })
+
+  function renderGrouped(excludeGroupKeys?: string[]) {
+    return renderHook(() =>
+      useRecordList({
+        entityDefinitionId: DEF,
+        groupBy: GROUP_BY,
+        timezone: 'UTC',
+        excludeGroupKeys,
+      })
+    )
+  }
+
+  function groupedPage(ids: string[], groupKeys: Array<string | null>, total?: number) {
+    return { ids, groupKeys, total, hasMore: false }
+  }
+
+  it('leaves the ungrouped list key untouched', () => {
+    expect(createListKey(DEF, EMPTY_FILTERS, EMPTY_SORTING, undefined, undefined)).toBe(LIST_KEY)
+  })
+
+  it('keys the list by groupBy and by collapsed groups', () => {
+    const collapsed = createListKey(DEF, EMPTY_FILTERS, EMPTY_SORTING, undefined, {
+      groupBy: GROUP_BY,
+      timezone: 'UTC',
+      excludeGroupKeys: ['open'],
+    })
+    expect(GROUPED_KEY).not.toBe(LIST_KEY)
+    expect(collapsed).not.toBe(GROUPED_KEY)
+
+    const { result, rerender } = renderHook(
+      ({ exclude }: { exclude?: string[] }) =>
+        useRecordList({
+          entityDefinitionId: DEF,
+          groupBy: GROUP_BY,
+          timezone: 'UTC',
+          excludeGroupKeys: exclude,
+        }),
+      { initialProps: { exclude: undefined as string[] | undefined } }
+    )
+    const before = result.current.listKey
+    expect(h.lastInput?.groupBy).toEqual(GROUP_BY)
+    rerender({ exclude: ['open'] })
+    expect(result.current.listKey).not.toBe(before)
+    expect(h.lastInput?.excludeGroupKeys).toEqual(['open'])
+  })
+
+  it('does not send grouping inputs for an ungrouped list', () => {
+    render()
+    expect(h.lastInput).not.toHaveProperty('groupBy')
+    expect(h.lastInput).not.toHaveProperty('excludeGroupKeys')
+  })
+
+  it('keeps groupKeys parallel to ids across pages and in the store', () => {
+    h.data = {
+      pages: [
+        groupedPage(['a', 'b'], ['open', 'open'], 3),
+        groupedPage(['b', 'c'], ['open', null]),
+      ],
+      pageParams: [undefined, { offset: 2 }],
+    }
+    h.dataUpdatedAt = NOW
+
+    const { result } = renderGrouped()
+
+    const cached = useRecordStore.getState().lists[result.current.listKey]
+    expect(cached?.ids).toEqual(['a', 'b', 'c'])
+    expect(cached?.groupKeys).toEqual(['open', 'open', null])
+    expect(result.current.groupKeyById.get('c')).toBeNull()
+    expect(result.current.groupKeyById.get('a')).toBe('open')
+  })
+
+  it('does not write placeholder pages into the new list key', () => {
+    h.data = pages(page(['a'], { total: 1 }))
+    h.dataUpdatedAt = NOW
+    h.isPlaceholderData = true
+
+    const { result } = renderGrouped(['open'])
+
+    expect(useRecordStore.getState().lists[result.current.listKey]).toBeUndefined()
+  })
+
+  it('appendCreated lands after the last loaded row of its group, in both caches', () => {
+    const initial = () => ({
+      pages: [groupedPage(['a', 'b', 'c'], ['open', 'done', null], 3)],
+      pageParams: [undefined],
+    })
+    h.data = initial()
+    h.dataUpdatedAt = NOW
+    h.cache = initial()
+    h.summary = {
+      groups: [
+        { key: 'open', count: 1, aggregates: {} },
+        { key: 'done', count: 1, aggregates: {} },
+      ],
+    }
+
+    const { result } = renderGrouped()
+    act(() => result.current.appendCreated('n', 'open'))
+
+    const cached = useRecordStore.getState().lists[result.current.listKey]
+    expect(cached?.ids).toEqual(['a', 'n', 'b', 'c'])
+    expect(cached?.groupKeys).toEqual(['open', 'open', 'done', null])
+    expect(h.cache?.pages[0]?.ids).toEqual(['a', 'n', 'b', 'c'])
+    expect(h.cache?.pages[0]?.groupKeys).toEqual(['open', 'open', 'done', null])
+    expect(h.summary?.groups[0]?.count).toBe(2)
+    expect(h.summaryInvalidate).toHaveBeenCalled()
+  })
+
+  it('appendCreated falls back to the end for a group with no loaded rows', () => {
+    h.data = { pages: [groupedPage(['a'], ['open'], 1)], pageParams: [undefined] }
+    h.dataUpdatedAt = NOW
+    h.cache = { pages: [groupedPage(['a'], ['open'], 1)], pageParams: [undefined] }
+
+    const { result } = renderGrouped()
+    act(() => result.current.appendCreated('n', 'done'))
+
+    expect(useRecordStore.getState().lists[result.current.listKey]?.ids).toEqual(['a', 'n'])
+    expect(h.cache?.pages[0]?.groupKeys).toEqual(['open', 'done'])
+  })
+
+  it('removeFromList keeps groupKeys aligned and decrements the group count', () => {
+    h.data = { pages: [groupedPage(['a', 'b'], ['open', 'done'], 2)], pageParams: [undefined] }
+    h.dataUpdatedAt = NOW
+    h.cache = { pages: [groupedPage(['a', 'b'], ['open', 'done'], 2)], pageParams: [undefined] }
+    h.summary = { groups: [{ key: 'open', count: 1, aggregates: {} }] }
+
+    const { result } = renderGrouped()
+    act(() => result.current.removeFromList('a'))
+
+    const cached = useRecordStore.getState().lists[result.current.listKey]
+    expect(cached?.ids).toEqual(['b'])
+    expect(cached?.groupKeys).toEqual(['done'])
+    expect(h.cache?.pages[0]?.groupKeys).toEqual(['done'])
+    expect(h.summary?.groups[0]?.count).toBe(0)
+  })
+
+  it('refresh invalidates the group summary', () => {
+    const { result } = renderGrouped()
+    act(() => result.current.refresh())
+    expect(h.summaryInvalidate).toHaveBeenCalledWith({ entityDefinitionId: DEF })
   })
 })

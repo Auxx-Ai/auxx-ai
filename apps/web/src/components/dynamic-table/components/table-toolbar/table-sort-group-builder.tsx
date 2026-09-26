@@ -50,6 +50,10 @@ interface TableSortGroupBuilderProps {
   allowGrouping: boolean
   groupBy: GroupByConfig | undefined
   onGroupByChange: (groupBy: GroupByConfig | undefined) => void
+  /** The server refused the group field; shown as the orphaned-config notice. */
+  groupError?: string
+  /** The summary hit its 500-group cap. */
+  hasMoreGroups?: boolean
   disabled?: boolean
 }
 
@@ -106,6 +110,8 @@ export function TableSortGroupBuilder({
   allowGrouping,
   groupBy,
   onGroupByChange,
+  groupError,
+  hasMoreGroups = false,
   disabled = false,
 }: TableSortGroupBuilderProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -163,7 +169,8 @@ export function TableSortGroupBuilder({
   const activeGroupField = activeGroup
     ? groupableFields.find((field) => fieldSortId(field) === activeGroup.fieldId)
     : undefined
-  const isOrphanedGroup = !!activeGroup && !activeGroupField
+  const isOrphanedGroup = !!activeGroup && (!activeGroupField || !!groupError)
+  const appliedGroupField = groupError ? undefined : activeGroupField
 
   const directionOptions = getSortOptionsForFieldType(activeField?.fieldType)
 
@@ -228,13 +235,13 @@ export function TableSortGroupBuilder({
 
   const tooltip =
     [
-      activeGroupField && `Grouped by ${activeGroupField.label}`,
+      appliedGroupField && `Grouped by ${appliedGroupField.label}`,
       activeField && `Sorted by ${activeField.label}`,
     ]
       .filter(Boolean)
       .join(' · ') || 'Sort and group rows'
 
-  const hasActive = !!activeGroupField || !!activeField
+  const hasActive = !!appliedGroupField || !!activeField
   const SortIcon = active?.desc ? ArrowDown : ArrowUp
 
   return (
@@ -249,7 +256,7 @@ export function TableSortGroupBuilder({
               {hasActive && (
                 <>
                   <span className='hidden items-center gap-0.5 @lg/controls:flex'>
-                    {activeGroupField && (
+                    {appliedGroupField && (
                       <span className='flex items-center rounded bg-accent px-1 py-0.5'>
                         <Group className='size-3' />
                       </span>
@@ -275,9 +282,13 @@ export function TableSortGroupBuilder({
               <SectionLabel>Group by</SectionLabel>
               {isOrphanedGroup && (
                 <OrphanedNotice>
-                  This view groups by a field that is no longer available, so it is not being
-                  applied.
+                  {activeGroupField
+                    ? `This field can no longer be grouped by (${groupError}), so grouping is not being applied.`
+                    : 'This view groups by a field that is no longer available, so it is not being applied.'}
                 </OrphanedNotice>
+              )}
+              {hasMoreGroups && !isOrphanedGroup && (
+                <p className='px-1 text-xs text-muted-foreground'>Showing the first 500 groups</p>
               )}
               <div className='px-1'>
                 <ResourceFieldSelector

@@ -375,6 +375,13 @@ export interface GroupingProps {
   presetForKey?: (key: string | null) => Record<string, unknown> | undefined
 }
 
+/** Group-by state the toolbar explains: a server refusal, or the 500-group cap. */
+export interface GroupStatus {
+  /** The server refused the group field; grouping is not applied. */
+  error?: string
+  hasMoreGroups?: boolean
+}
+
 /**
  * Main dynamic table props
  */
@@ -553,6 +560,9 @@ export interface DynamicTableProps<TData = any> {
 
   /** Group rows under per-key header rows (table view only). */
   grouping?: GroupingProps
+
+  /** What the Sort & group popover should say about the active group-by. */
+  groupStatus?: GroupStatus
 }
 
 /**

@@ -37,6 +37,7 @@ import type {
   CustomField,
   DynamicTableProps,
   GroupingProps,
+  GroupStatus,
   KanbanViewConfig,
   ResourceField,
   ViewConfig,
@@ -56,6 +57,7 @@ function DynamicViewInner<TData extends object>({
   saveCurrentView,
   resetViewChanges,
   grouping,
+  groupStatus,
 }: {
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -64,6 +66,7 @@ function DynamicViewInner<TData extends object>({
   saveCurrentView?: () => void
   resetViewChanges?: () => void
   grouping?: GroupingProps
+  groupStatus?: GroupStatus
 }) {
   // Access focused contexts
   const {
@@ -210,6 +213,7 @@ function DynamicViewInner<TData extends object>({
           hasUnsavedViewChanges={hasUnsavedViewChanges}
           saveCurrentView={saveCurrentView}
           resetViewChanges={resetViewChanges}
+          groupStatus={groupStatus}
         />
       ) : (
         <ToolbarSkeleton showSearch={enableSearch} />
@@ -337,6 +341,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     standalone = false,
     disableColumnDnd = false,
     grouping,
+    groupStatus,
     ...tableProps
   } = props
 
@@ -554,6 +559,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
                   saveCurrentView={saveCurrentView}
                   resetViewChanges={resetViewChanges}
                   grouping={grouping}
+                  groupStatus={groupStatus}
                 />
               </div>
             </CellSelectionConfigProvider>

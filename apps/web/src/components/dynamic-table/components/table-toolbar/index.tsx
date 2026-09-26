@@ -49,7 +49,7 @@ import {
   useTableSorting,
   useTableViews,
 } from '../../stores/store-selectors'
-import type { ViewConfig, ViewType } from '../../types'
+import type { GroupStatus, ViewConfig, ViewType } from '../../types'
 import { CalendarViewSettings } from './calendar-view-settings'
 import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
@@ -73,6 +73,8 @@ interface TableToolbarProps {
   saveCurrentView?: () => void
   /** Reset view changes callback */
   resetViewChanges?: () => void
+  /** Server-side group-by problems to explain in the Sort & group popover. */
+  groupStatus?: GroupStatus
 }
 
 /**
@@ -87,6 +89,7 @@ export function TableToolbar<TData = any>({
   hasUnsavedViewChanges = false,
   saveCurrentView,
   resetViewChanges,
+  groupStatus,
 }: TableToolbarProps) {
   // Config from focused contexts
   const {
@@ -259,6 +262,8 @@ export function TableToolbar<TData = any>({
             allowGrouping={allowGrouping}
             groupBy={groupBy}
             onGroupByChange={setGroupBy}
+            groupError={groupStatus?.error}
+            hasMoreGroups={groupStatus?.hasMoreGroups}
           />
         </div>
       )}

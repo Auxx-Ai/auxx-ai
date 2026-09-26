@@ -35,7 +35,10 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
         state.viewPreferences[tableViewPreferenceKey(preference.tableId, preference.tableViewId)] =
           preference
         if (preference.tableViewId) {
-          state.personalConfigs[preference.tableViewId] = toPersonalOverlayConfig(preference.config)
+          const overlay = toPersonalOverlayConfig(preference.config)
+          // A row holding only collapsed groups is not a personal overlay of the view.
+          if (Object.keys(overlay).length > 0)
+            state.personalConfigs[preference.tableViewId] = overlay
         }
       }
     })
