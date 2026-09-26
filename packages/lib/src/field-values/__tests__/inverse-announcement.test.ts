@@ -56,14 +56,15 @@ function chain(result: unknown): Record<string, unknown> {
 }
 
 /**
- * A db whose `select` answers a scripted sequence. The multi-value add path
- * runs two selects (existing links, then max sortKeys) before the D-11 re-read,
+ * A db whose `select` and `execute` answer one scripted sequence. The multi-value add path
+ * runs two reads (existing links, then last sortKeys) before the D-11 re-read,
  * so the third scripted answer is the array being announced.
  */
 function fakeDb(selectResults: unknown[][]) {
   let call = 0
   return {
     select: () => chain(selectResults[call++] ?? []),
+    execute: async () => ({ rows: selectResults[call++] ?? [] }),
     delete: () => chain([]),
     insert: () => ({ values: () => Promise.resolve() }),
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => await fn(undefined),

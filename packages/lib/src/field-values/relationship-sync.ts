@@ -54,6 +54,11 @@ export interface SyncInverseInput {
   newRelatedIds: string[]
   /** Pre-extracted inverse field info */
   inverseInfo: InverseFieldInfo
+  /**
+   * Records inserted in this same call; every source must be one. A pre-existing target cannot
+   * hold a link to a fresh source, so only pairs whose target is also fresh are dedup-checked.
+   */
+  createdIds?: ReadonlySet<string>
 }
 
 /** Result of inverse sync operation */
@@ -75,6 +80,8 @@ export interface BulkRelationshipUpdate {
 export interface BulkSyncInput {
   updates: BulkRelationshipUpdate[]
   inverseInfo: InverseFieldInfo
+  /** See {@link SyncInverseInput.createdIds}. */
+  createdIds?: ReadonlySet<string>
 }
 
 // ============================================================================
@@ -185,16 +192,21 @@ async function announceInverseChanges(
     for (const announcement of wanted) {
       const { entityDefinitionId, fieldId, entityIds, single } = announcement
 
+      // At most one past the cap per record: an oversized list is announced by id, so its rows
+      // beyond that are never needed (a part's movement list grows with its history).
+      const capped = sql`(
+        SELECT k.id FROM unnest(${sql.param(entityIds)}::text[]) AS t(id)
+        CROSS JOIN LATERAL (
+          SELECT fv.id FROM "FieldValue" fv
+          WHERE fv."entityId" = t.id AND fv."fieldId" = ${fieldId}
+            AND fv."organizationId" = ${ctx.organizationId}
+          ORDER BY fv."sortKey" LIMIT ${MAX_ANNOUNCED_RELATED_IDS + 1}
+        ) k
+      )`
       const rows = await ctx.db
         .select()
         .from(schema.FieldValue)
-        .where(
-          and(
-            inArray(schema.FieldValue.entityId, entityIds),
-            eq(schema.FieldValue.fieldId, fieldId),
-            eq(schema.FieldValue.organizationId, ctx.organizationId)
-          )
-        )
+        .where(inArray(schema.FieldValue.id, capped))
         .orderBy(asc(schema.FieldValue.entityId), asc(schema.FieldValue.sortKey))
 
       // Seed every affected id with an empty list FIRST, so a record whose
@@ -399,7 +411,7 @@ export async function syncInverseRelationships(
   ctx: RelationshipSyncContext,
   input: SyncInverseInput
 ): Promise<InverseSyncResult> {
-  const { entityId, oldRelatedIds, newRelatedIds, inverseInfo } = input
+  const { entityId, oldRelatedIds, newRelatedIds, inverseInfo, createdIds } = input
 
   // Calculate what changed
   const removedIds = oldRelatedIds.filter((id) => !newRelatedIds.includes(id))
@@ -428,6 +440,7 @@ export async function syncInverseRelationships(
       targetEntityDefinitionId: inverseInfo.targetEntityDefinitionId,
       additions: new Map(addedIds.map((targetId) => [targetId, new Set([entityId])])),
       sourceFieldId: inverseInfo.sourceFieldId,
+      createdIds,
     })
   }
 
@@ -476,7 +489,7 @@ export async function syncInverseRelationshipsBulk(
   ctx: RelationshipSyncContext,
   input: BulkSyncInput
 ): Promise<void> {
-  const { updates, inverseInfo } = input
+  const { updates, inverseInfo, createdIds } = input
   const { inverseFieldId, inverseRelationshipType, sourceEntityDefinitionId } = inverseInfo
 
   // ═══ Aggregate all changes ═══
@@ -523,6 +536,7 @@ export async function syncInverseRelationshipsBulk(
       targetEntityDefinitionId: inverseInfo.targetEntityDefinitionId,
       additions,
       sourceFieldId: inverseInfo.sourceFieldId,
+      createdIds,
     })
   }
 
@@ -610,6 +624,8 @@ interface BatchAddParams {
   additions: Map<string, Set<string>>
   /** The source field's ID (for cascade cleanup when inverse is single-value) */
   sourceFieldId: string
+  /** See {@link SyncInverseInput.createdIds}. */
+  createdIds?: ReadonlySet<string>
 }
 
 /**
@@ -619,9 +635,9 @@ interface BatchAddParams {
  * - 1 DELETE to clear all existing values
  * - 1 batch INSERT for all new values
  *
- * Multi-value (has_many/many_to_many): 3 queries total
- * - 1 query to check existing links (dedupe)
- * - 1 query to get max sortKeys
+ * Multi-value (has_many/many_to_many): up to 3 queries, none reading a target's whole list
+ * - existing links among the pairs being added (dedupe; skipped for fresh sources)
+ * - the last sortKey per target
  * - 1 batch INSERT for all new values
  *
  * @returns the ids of PREVIOUS owners whose own list was shortened by a
@@ -639,6 +655,7 @@ async function batchAddToInverse(
     targetEntityDefinitionId,
     additions,
     sourceFieldId,
+    createdIds,
   } = params
 
   if (additions.size === 0) return []
@@ -842,22 +859,10 @@ async function batchAddToInverse(
     // MULTI-VALUE: Check existing, get sortKeys, insert missing
     // ─────────────────────────────────────────────────────────────
 
-    // 1 query: Get ALL existing links for these targets to check for duplicates
-    const existing = await ctx.db
-      .select({
-        entityId: schema.FieldValue.entityId,
-        relatedEntityId: schema.FieldValue.relatedEntityId,
-      })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, allTargetIds),
-          eq(schema.FieldValue.fieldId, inverseFieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        )
-      )
-
-    const existingLinks = new Set(existing.map((e) => `${e.entityId}:${e.relatedEntityId}`))
+    // A fresh source can only be linked already where this call wrote the row itself: on a
+    // target that is fresh too (a self-referencing field). Every other pair is new.
+    const toCheck = createdIds ? pairs.filter(({ targetId }) => createdIds.has(targetId)) : pairs
+    const existingLinks = await readExistingLinks(ctx, inverseFieldId, toCheck)
 
     // Filter to only non-existing pairs (avoid duplicates)
     const toInsert = pairs.filter(
@@ -867,25 +872,7 @@ async function batchAddToInverse(
     if (toInsert.length === 0) return cascadeOwnerIds
 
     const targetIdsNeedingInsert = [...new Set(toInsert.map((p) => p.targetId))]
-
-    // 1 query: Get max sortKeys for targets that need inserts
-    const sortKeyRows = await ctx.db
-      .select({
-        entityId: schema.FieldValue.entityId,
-        maxKey: sql<string>`MAX(${schema.FieldValue.sortKey})`.as('maxKey'),
-      })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, targetIdsNeedingInsert),
-          eq(schema.FieldValue.fieldId, inverseFieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        )
-      )
-      .groupBy(schema.FieldValue.entityId)
-
-    // Build sortKey lookup
-    const keyMap = new Map(sortKeyRows.map((r) => [r.entityId, r.maxKey]))
+    const keyMap = await readLastSortKeys(ctx, inverseFieldId, targetIdsNeedingInsert)
 
     // Track next key per target (for multiple inserts to same target)
     const nextKeyForTarget = new Map<string, string>()
@@ -912,4 +899,46 @@ async function batchAddToInverse(
   }
 
   return cascadeOwnerIds
+}
+
+/** `target:source` keys of the given pairs already stored on the inverse field. */
+async function readExistingLinks(
+  ctx: RelationshipSyncContext,
+  inverseFieldId: string,
+  pairs: readonly { targetId: string; sourceId: string }[]
+): Promise<Set<string>> {
+  if (pairs.length === 0) return new Set()
+  const targetIds = [...new Set(pairs.map((p) => p.targetId))]
+  const sourceIds = [...new Set(pairs.map((p) => p.sourceId))]
+  // MATERIALIZED drives the read from the sources: with the target predicate inlined the
+  // planner walks (entityId, fieldId), i.e. every link the target holds.
+  const result = await ctx.db.execute<{ entityId: string; relatedEntityId: string }>(sql`
+    WITH links AS MATERIALIZED (
+      SELECT "entityId", "relatedEntityId" FROM "FieldValue"
+      WHERE "organizationId" = ${ctx.organizationId} AND "fieldId" = ${inverseFieldId}
+        AND "relatedEntityId" = ANY(${sql.param(sourceIds)}::text[])
+    )
+    SELECT "entityId", "relatedEntityId" FROM links
+    WHERE "entityId" = ANY(${sql.param(targetIds)}::text[])
+  `)
+  return new Set(result.rows.map((r) => `${r.entityId}:${r.relatedEntityId}`))
+}
+
+/** The highest sortKey per target on the inverse field, one backward index probe each. */
+async function readLastSortKeys(
+  ctx: RelationshipSyncContext,
+  inverseFieldId: string,
+  targetIds: readonly string[]
+): Promise<Map<string, string>> {
+  const result = await ctx.db.execute<{ entityId: string; maxKey: string }>(sql`
+    SELECT t.id AS "entityId", k."sortKey" AS "maxKey"
+    FROM unnest(${sql.param(targetIds)}::text[]) AS t(id)
+    CROSS JOIN LATERAL (
+      SELECT fv."sortKey" FROM "FieldValue" fv
+      WHERE fv."entityId" = t.id AND fv."fieldId" = ${inverseFieldId}
+        AND fv."organizationId" = ${ctx.organizationId}
+      ORDER BY fv."sortKey" DESC LIMIT 1
+    ) k
+  `)
+  return new Map(result.rows.map((r) => [r.entityId, r.maxKey]))
 }

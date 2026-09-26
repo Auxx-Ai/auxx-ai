@@ -271,14 +271,15 @@ describe('the batched completion stores what the per-row path stores', () => {
 })
 
 /** Every SQL statement any pg client ran while `fn` executed. */
-async function countStatements(fn: () => Promise<unknown>): Promise<number> {
-  let count = 0
+async function statements(fn: () => Promise<unknown>): Promise<string[]> {
+  const texts: string[] = []
   const original = pg.Client.prototype.query
   const spy = vi.spyOn(pg.Client.prototype, 'query').mockImplementation(function (
     this: pg.Client,
     ...args: unknown[]
   ) {
-    count += 1
+    const q = args[0]
+    texts.push(typeof q === 'string' ? q : ((q as { text?: string })?.text ?? ''))
     return (original as (...a: unknown[]) => unknown).apply(this, args)
   } as never)
   try {
@@ -286,7 +287,11 @@ async function countStatements(fn: () => Promise<unknown>): Promise<number> {
   } finally {
     spy.mockRestore()
   }
-  return count
+  return texts
+}
+
+async function countStatements(fn: () => Promise<unknown>): Promise<number> {
+  return (await statements(fn)).length
 }
 
 describe('statements per completion', () => {
@@ -381,6 +386,29 @@ describe('recordCompletedBuild — raise, start and complete in one transaction'
       await buildSnapshot(legacy.value.buildId)
     )
     expect(await ledgerSnapshot(onePass.value)).toEqual(await ledgerSnapshot(legacy.value))
+  })
+
+  it('reads no field definitions from the database once the org cache is warm', async () => {
+    f = await seedBuildOrg({ components: 3 })
+    const run = async () => {
+      const done = await recordCompletedBuild(db(), f.organizationId, f.userId, {
+        ...input,
+        partId: f.producedPartId,
+        quantity: 5,
+      })
+      if (done.isErr()) throw done.error
+    }
+    // Without Redis the org cache lives 100 ms in process; a frozen clock keeps it warm.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now())
+    try {
+      await run()
+      const sql = await statements(run)
+      // The searchText refresh joins CustomField inside an UPDATE; only reads of the defs count.
+      const reads = sql.filter((text) => /^select\b/i.test(text) && text.includes('"CustomField"'))
+      expect(reads).toEqual([])
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('leaves no build behind when the completion is refused', async () => {

@@ -504,7 +504,14 @@ async function writeFreshValues(
           .map((v) => parseRecordId(v.recordId).entityInstanceId)
         await syncInverseRelationships(
           { db: ctx.db, organizationId: ctx.organizationId },
-          { entityId: entityInstanceId, oldRelatedIds: [], newRelatedIds, inverseInfo }
+          {
+            entityId: entityInstanceId,
+            oldRelatedIds: [],
+            newRelatedIds,
+            inverseInfo,
+            // Only the inserting caller's word makes the id fresh; the probe alone does not.
+            createdIds: params.freshInstance ? new Set([entityInstanceId]) : undefined,
+          }
         )
       }
     }

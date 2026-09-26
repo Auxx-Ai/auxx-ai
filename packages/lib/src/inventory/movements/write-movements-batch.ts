@@ -459,10 +459,11 @@ async function syncInverseRows(
       })
     }
   }
+  const createdIds = new Set(records.map((record) => record.id))
   for (const { info, updates } of byField.values()) {
     await syncInverseRelationshipsBulk(
       { db: fvCtx.db, organizationId: fvCtx.organizationId },
-      { updates, inverseInfo: info }
+      { updates, inverseInfo: info, createdIds }
     )
   }
 }
