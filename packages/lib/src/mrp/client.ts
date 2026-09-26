@@ -140,6 +140,30 @@ export const MRP_SUPPLY_BANDS = {
   fillHigh: 0.9,
 } as const
 
+/** Why a PO line is left out of the supply stats (02 §6.2). */
+export type MrpObservationExclusion =
+  | 'no_ordered_at'
+  | 'created_after_receipt'
+  | 'ordered_on_receipt_day'
+  | 'not_received'
+
+export const MRP_EXCLUSION_LABELS: Record<MrpObservationExclusion, { label: string; why: string }> =
+  {
+    no_ordered_at: { label: 'no order date, excluded', why: 'The PO has no order date.' },
+    created_after_receipt: {
+      label: 'created after receipt, excluded',
+      why: 'The PO was created after its goods arrived, so it is backfilled paperwork.',
+    },
+    ordered_on_receipt_day: {
+      label: 'ordered on receipt day, excluded',
+      why: 'The order date is on or after the first receipt, so it measures no lead time.',
+    },
+    not_received: {
+      label: 'never received',
+      why: 'The line closed without reaching 90 % received.',
+    },
+  }
+
 /** 02 §6.2: the receipt that brings a line to this share received ends its lead time. */
 export const MRP_RECEIVED_SHARE_FOR_LEAD_TIME = 0.9
 /** Q10: drift when |median − stated| exceeds the larger of these. */

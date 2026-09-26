@@ -140,6 +140,14 @@ function ledgerBlock(input: {
 export const COMPANY_PURCHASING_BLOCKS: LayoutBlock[] = [
   // The supplier's MRP blocks (plans/mrp/07-ui-plan.md D28): what to act on first, settings last.
   {
+    id: 'card:mrp-horizon',
+    kind: 'card',
+    cardValue: 'mrp-horizon',
+    label: 'Horizon',
+    icon: 'calendar-clock',
+    permissionKey: 'mrp.view',
+  },
+  {
     id: 'card:mrp-next-order',
     kind: 'card',
     cardValue: 'mrp-next-order',

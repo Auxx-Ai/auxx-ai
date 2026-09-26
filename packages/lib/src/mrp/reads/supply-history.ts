@@ -67,6 +67,13 @@ export interface PartSupplyHistory {
   vendorParts: VendorPartSupply[]
 }
 
+/** Issued PO lines still awaiting receipt, rolled up per supplier. */
+export interface OpenOnOrder {
+  poCount: number
+  quantity: number
+  earliestExpectedAt: DayKey | null
+}
+
 export interface SupplierPerformance {
   zone: string
   supplier: {
@@ -75,10 +82,13 @@ export interface SupplierPerformance {
     orderMode: 'when_needed' | 'scheduled' | null
     statedCycleDays: number | null
     nextOrderDate: DayKey | null
+    /** Over every line of every vendor part, not an average of the per-part stats. */
+    stats: SupplyHistoryStats
   }
   /** Median days between consecutive issued/closed orders, beside the stated cycle (D16). */
   medianOrderIntervalDays: number | null
   orderCount: number
+  openOnOrder: OpenOnOrder
   vendorParts: VendorPartSupply[]
 }
 
@@ -93,7 +103,26 @@ export function medianOrderInterval(orderedDays: readonly (DayKey | null)[]): nu
   return median(gaps)
 }
 
-/** Lines of issued/closed orders grouped by vendor part (or part + supplier when the line names none), with stats. */
+/** Remaining quantity on issued orders' unreceived lines; the PO count and earliest date cover only those orders. */
+export function summarizeOpenOnOrder(
+  orders: readonly PurchaseOrderRow[],
+  lines: readonly PurchaseOrderLineRow[]
+): OpenOnOrder {
+  const issued = new Map(orders.filter((o) => o.status === 'issued').map((o) => [o.id, o]))
+  const openOrders = new Set<PurchaseOrderRow>()
+  let quantity = 0
+  for (const line of lines) {
+    const order = line.purchaseOrderId ? issued.get(line.purchaseOrderId) : undefined
+    const remaining = line.quantityOrdered - line.quantityReceived
+    if (!order || remaining <= 0) continue
+    openOrders.add(order)
+    quantity += remaining
+  }
+  const expected = [...openOrders].flatMap((o) => (o.expectedAt ? [o.expectedAt] : [])).sort()
+  return { poCount: openOrders.size, quantity, earliestExpectedAt: expected[0] ?? null }
+}
+
+/** Lines of issued/closed orders grouped by vendor part (or part + supplier when the line names none), with stats per group and over all lines. */
 export function buildSupplyHistory(params: {
   zone: string
   vendorParts: readonly VendorPartRow[]
@@ -102,7 +131,7 @@ export function buildSupplyHistory(params: {
   receipts: readonly PoLineReceiptRow[]
   partLabels: ReadonlyMap<string, { name: string | null; sku: string | null }>
   supplierNames: ReadonlyMap<string, string | null>
-}): VendorPartSupply[] {
+}): { vendorParts: VendorPartSupply[]; stats: SupplyHistoryStats } {
   const receiptsByLine = new Map<string, { day: DayKey; quantity: number }[]>()
   for (const r of params.receipts) {
     const list = receiptsByLine.get(r.purchaseOrderLineId) ?? []
@@ -153,7 +182,7 @@ export function buildSupplyHistory(params: {
     })
   }
 
-  return [...groups.values()].map((group) => {
+  const vendorParts = [...groups.values()].map((group): VendorPartSupply => {
     const vp = group.vendorPart
     const stats = summarizeSupplyHistory(group.rows.map((r) => r.observation))
     const label = group.partId ? params.partLabels.get(group.partId) : undefined
@@ -197,6 +226,8 @@ export function buildSupplyHistory(params: {
       lines,
     }
   })
+  const all = [...groups.values()].flatMap((g) => g.rows.map((r) => r.observation))
+  return { vendorParts, stats: summarizeSupplyHistory(all) }
 }
 
 /** Receipts, labels and names for a set of lines already scoped to issued/closed orders. */
@@ -207,7 +238,7 @@ async function assemble(
   vendorParts: VendorPartRow[],
   lines: PurchaseOrderLineRow[],
   orders: Map<string, PurchaseOrderRow>
-): Promise<VendorPartSupply[]> {
+): Promise<ReturnType<typeof buildSupplyHistory>> {
   const scoped = lines.filter((l) => l.purchaseOrderId && orders.has(l.purchaseOrderId))
   const receipts = await readReceiptsForPoLines(
     db,
@@ -257,10 +288,8 @@ export async function readSupplyHistory(
         'closed',
       ])
       const byId = new Map(orders.map((o) => [o.id, o]))
-      return {
-        zone,
-        vendorParts: await assemble(db, organizationId, zone, vendorParts, lines, byId),
-      }
+      const history = await assemble(db, organizationId, zone, vendorParts, lines, byId)
+      return { zone, vendorParts: history.vendorParts }
     },
     'Failed to read supply history',
     { organizationId, partId: input.partId }
@@ -290,7 +319,7 @@ export async function readSupplierPerformance(
         purchaseOrderIds: orders.map((o) => o.id),
       })
       const byId = new Map(orders.map((o) => [o.id, o]))
-      const vendorPartSupply = await assemble(db, organizationId, zone, vendorParts, lines, byId)
+      const history = await assemble(db, organizationId, zone, vendorParts, lines, byId)
       return {
         zone,
         supplier: {
@@ -299,11 +328,13 @@ export async function readSupplierPerformance(
           orderMode: supplier.orderMode,
           statedCycleDays: supplier.orderCycleDays,
           nextOrderDate: supplier.nextOrderDate,
+          stats: history.stats,
         },
         medianOrderIntervalDays: medianOrderInterval(orders.map((o) => o.orderedAt)),
         orderCount: orders.length,
-        // The card lists stats per vendor part; the per-line list is the part tab's.
-        vendorParts: vendorPartSupply.map((vp) => ({ ...vp, lines: [] })),
+        openOnOrder: summarizeOpenOnOrder(orders, lines),
+        // Lines ride along for the supplier charts' per-line scatter (plans/mrp/16-supplier-charts.md §4.3).
+        vendorParts: history.vendorParts,
       }
     },
     'Failed to read supplier performance',

@@ -97,6 +97,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
       default: m.RecordInteractionCard,
     })),
   // The Purchasing tab's MRP blocks (07 D28), placed as `card` blocks in `COMPANY_PURCHASING_BLOCKS`.
+  'company:mrp-horizon': () =>
+    import('../mrp/ui/company/company-horizon-block').then((m) => ({
+      default: m.CompanyHorizonBlock,
+    })),
   'company:mrp-next-order': () =>
     import('../mrp/ui/company/company-next-order-block').then((m) => ({
       default: m.CompanyNextOrderBlock,

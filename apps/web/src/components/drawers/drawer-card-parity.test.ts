@@ -315,6 +315,7 @@ describe('registry layout blocks', () => {
         .map((d) => d.block.label)
 
     expect(sectionLabels('company', 'purchasing')).toEqual([
+      'Horizon',
       'Next order',
       'Supply performance',
       'Purchase orders',

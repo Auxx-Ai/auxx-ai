@@ -159,6 +159,7 @@ describe('summarizeSupplyHistory', () => {
     expect(stats.p90LeadTimeDays).toBeCloseTo(11.6)
     expect(stats.onTimeRate).toBeCloseTo(1 / 3)
     expect(stats.medianLatenessDays).toBe(3)
+    expect(stats.p90LatenessDays).toBeCloseTo(4.6)
     expect(stats.avgFill).toBeCloseTo((1 + 1 + 0.9) / 3)
   })
 })
