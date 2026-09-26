@@ -20,6 +20,11 @@ export const POSITION_GRAINS: { value: PositionGrain; label: string }[] = [
   { value: 'month', label: 'Month' },
 ]
 
+/** Day grain draws a bar per day, too thin to read and too heavy to render past 3 months. */
+export function grainAllowed(grain: PositionGrain, window: PositionWindow): boolean {
+  return grain !== 'day' || window === '3m'
+}
+
 /** Daily at 3 months, weekly at 6, monthly at 12 (07 §4.5). */
 export function defaultGrain(window: PositionWindow): PositionGrain {
   return window === '3m' ? 'day' : window === '6m' ? 'week' : 'month'
@@ -124,12 +129,51 @@ export function stockoutRuns(rows: readonly PositionRow[]): { from: string; to: 
   return runs
 }
 
+/** One usage bar: a bucket's days on one side of the run day. */
+export interface UsageSpan {
+  from: string
+  to: string
+  value: number
+  projected: boolean
+}
+
+/** Collapses the per-day usage values into one span per bar, so a year draws ~25 rects, not ~750. */
+export function usageSpans(rows: readonly PositionRow[]): UsageSpan[] {
+  const spans: UsageSpan[] = []
+  let open: UsageSpan | null = null
+  for (const r of rows) {
+    const value = r.used ?? r.projectedUse
+    if (value === null) {
+      open = null
+      continue
+    }
+    if (open) open.to = r.day
+    else {
+      open = { from: r.day, to: r.day, value, projected: r.used === null }
+      spans.push(open)
+    }
+    if (r.bucketEnd) open = null
+  }
+  return spans.filter((s) => s.value > 0)
+}
+
+/** At most `max` evenly spaced x ticks; fixed ticks spare recharts measuring every day's label. */
+export function axisTicks(rows: readonly PositionRow[], max: number): string[] {
+  const step = Math.max(1, Math.ceil(rows.length / max))
+  return rows.filter((_, i) => i % step === 0).map((r) => r.day)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** `2026-09-24` → `Sep 24`. */
 export function formatDay(day: string): string {
   const month = MONTHS[Number(day.slice(5, 7)) - 1] ?? ''
   return `${month} ${Number(day.slice(8, 10))}`
+}
+
+/** `2026-09-24` → `Sep 2026`. */
+export function formatMonth(day: string): string {
+  return `${MONTHS[Number(day.slice(5, 7)) - 1] ?? ''} ${day.slice(0, 4)}`
 }
 
 /** Compact quantities for axes and labels. */

@@ -1,22 +1,33 @@
 // apps/web/src/components/mrp/ui/charts/position-chart.tsx
 'use client'
 
+import { Button } from '@auxx/ui/components/button'
 import {
   type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@auxx/ui/components/chart'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
-import { type ReactNode, useId, useMemo, useState } from 'react'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { memo, type ReactNode, useId, useMemo, useState } from 'react'
 import {
   Area,
-  Bar,
   CartesianGrid,
   ComposedChart,
+  Customized,
   Line,
   ReferenceArea,
   ReferenceDot,
@@ -27,10 +38,13 @@ import {
 import { useIsMobile } from '~/hooks/use-mobile'
 import { api } from '~/trpc/react'
 import {
+  axisTicks,
   buildPositionRows,
   defaultGrain,
   formatDay,
+  formatMonth,
   formatQty,
+  grainAllowed,
   type PartSeriesData,
   POSITION_GRAINS,
   POSITION_WINDOWS,
@@ -38,6 +52,8 @@ import {
   type PositionRow,
   type PositionWindow,
   stockoutRuns,
+  type UsageSpan,
+  usageSpans,
 } from './position-chart-data'
 
 export interface PositionChartProps {
@@ -50,6 +66,8 @@ export interface PositionChartProps {
 const LINE = 'var(--blue-9)'
 const USED = 'var(--gray-8)'
 const MUTED_TEXT = 'var(--muted-foreground)'
+const STOCKOUT = 'var(--red-9)'
+const STOCKOUT_STRIP = 3
 
 const chartConfig = {
   onHand: { label: 'On hand', color: LINE },
@@ -68,41 +86,121 @@ const ZONES = [
 export function PositionChart({ partId, runId, variant = 'page' }: PositionChartProps) {
   const [range, setRange] = useState<PositionWindow>('6m')
   const [grainOverride, setGrainOverride] = useState<PositionGrain | null>(null)
+  const [offset, setOffset] = useState(0)
   const grain = grainOverride ?? defaultGrain(range)
 
   const { data, isLoading, error } = api.mrp.partSeries.useQuery(
-    { partId, window: range, grain, runId },
+    { partId, window: range, grain, runId, offset },
     { placeholderData: keepPreviousData }
   )
 
   const compact = variant === 'section'
+  const setWindow = (value: PositionWindow) => {
+    setRange(value)
+    setGrainOverride(null)
+    setOffset(0)
+  }
+  const period = data?.days.length
+    ? `${formatMonth(data.days[0]!.day)} – ${formatMonth((data.projection.at(-1) ?? data.days.at(-1))!.day)}`
+    : null
+  const grainLabel = POSITION_GRAINS.find((g) => g.value === grain)?.label
+  const windowLabel = POSITION_WINDOWS.find((w) => w.value === range)?.label
+
+  // Section is the `@container`: a narrow drawer folds grain and window into one dropdown.
   const controls = (
-    <div className={cn('flex items-center gap-2', compact && 'flex-col items-end gap-1')}>
-      <RadioTab size='sm' value={grain} onValueChange={(v) => setGrainOverride(v as PositionGrain)}>
-        {POSITION_GRAINS.map((g) => (
-          <RadioTabItem key={g.value} value={g.value} size='sm'>
-            {g.label}
-          </RadioTabItem>
-        ))}
-      </RadioTab>
-      <RadioTab
-        size='sm'
-        value={range}
-        onValueChange={(v) => {
-          setRange(v as PositionWindow)
-          setGrainOverride(null)
-        }}>
-        {POSITION_WINDOWS.map((w) => (
-          <RadioTabItem key={w.value} value={w.value} size='sm'>
-            {w.label}
-          </RadioTabItem>
-        ))}
-      </RadioTab>
+    <div className='flex items-center gap-2'>
+      {period && (
+        <span className='hidden text-xs text-muted-foreground tabular-nums @xl:inline'>
+          {period}
+        </span>
+      )}
+      <div className='flex items-center gap-0.5'>
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          aria-label='Earlier'
+          className='disabled:opacity-20'
+          disabled={!data?.hasEarlier}
+          onClick={() => setOffset((o) => o + 1)}>
+          <ChevronLeft />
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon-xs'
+          aria-label='Later'
+          className='disabled:opacity-20'
+          disabled={offset === 0}
+          onClick={() => setOffset((o) => Math.max(0, o - 1))}>
+          <ChevronRight />
+        </Button>
+      </div>
+      <div className='hidden items-center gap-2 @3xl:flex'>
+        <RadioTab
+          size='sm'
+          value={grain}
+          onValueChange={(v) => setGrainOverride(v as PositionGrain)}>
+          {POSITION_GRAINS.map((g) => (
+            <RadioTabItem
+              key={g.value}
+              value={g.value}
+              size='sm'
+              disabled={!grainAllowed(g.value, range)}>
+              {g.label}
+            </RadioTabItem>
+          ))}
+        </RadioTab>
+        <RadioTab size='sm' value={range} onValueChange={(v) => setWindow(v as PositionWindow)}>
+          {POSITION_WINDOWS.map((w) => (
+            <RadioTabItem key={w.value} value={w.value} size='sm'>
+              {w.label}
+            </RadioTabItem>
+          ))}
+        </RadioTab>
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant='outline' size='xs' className='@3xl:hidden'>
+            {grainLabel} · {windowLabel}
+            <ChevronDown />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end'>
+          {period && (
+            <DropdownMenuLabel className='font-normal text-muted-foreground tabular-nums'>
+              {period}
+            </DropdownMenuLabel>
+          )}
+          <DropdownMenuLabel>Group by</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={grain}
+            onValueChange={(v) => setGrainOverride(v as PositionGrain)}>
+            {POSITION_GRAINS.map((g) => (
+              <DropdownMenuRadioItem
+                key={g.value}
+                value={g.value}
+                disabled={!grainAllowed(g.value, range)}>
+                {g.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Window</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={range}
+            onValueChange={(v) => setWindow(v as PositionWindow)}>
+            {POSITION_WINDOWS.map((w) => (
+              <DropdownMenuRadioItem key={w.value} value={w.value}>
+                {w.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 
   return (
-    <Section title='Position' className={SECTION_BLEED} actions={controls}>
+    <Section title='Position' className={cn('@container', SECTION_BLEED)} actions={controls}>
       {isLoading ? (
         <EmptySection loading className='mx-3' />
       ) : error ? (
@@ -120,12 +218,21 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
   )
 }
 
-function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolean }) {
+// Memoised so a grain/window click doesn't redraw the old data before the new query lands.
+const PositionPlot = memo(function PositionPlot({
+  data,
+  compact,
+}: {
+  data: PartSeriesData
+  compact: boolean
+}) {
   const isMobile = useIsMobile()
   const showBars = !isMobile
   const hatchId = `hatch-${useId().replace(/:/g, '')}`
   const rows = useMemo(() => buildPositionRows(data), [data])
   const stockouts = useMemo(() => stockoutRuns(rows), [rows])
+  const spans = useMemo(() => usageSpans(rows), [rows])
+  const ticks = useMemo(() => axisTicks(rows, compact ? 5 : 10), [rows, compact])
   const first = rows[0]?.day
   const last = rows[rows.length - 1]?.day
   const inRange = (day: string) => !!first && !!last && day >= first && day <= last
@@ -158,10 +265,12 @@ function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolea
     <XAxis
       key='x'
       dataKey='day'
+      scale='band'
+      ticks={ticks}
+      interval={0}
       tickLine={false}
       axisLine={false}
       tickMargin={6}
-      minTickGap={32}
       tickFormatter={formatDay}
     />,
     <YAxis
@@ -200,38 +309,32 @@ function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolea
         label={{ value: z.label, position: 'insideRight', fill: MUTED_TEXT, fontSize: 10 }}
       />
     )),
-    ...stockouts.map((s) => (
-      <ReferenceArea
-        key={`out-${s.from}`}
-        yAxisId='left'
-        x1={s.from}
-        x2={s.to}
-        fill='var(--gray-9)'
-        fillOpacity={0.12}
-        strokeOpacity={0}
-      />
-    )),
     showBars ? (
-      <Bar
+      <Customized key='usage' component={<UsageBars spans={spans} hatchId={hatchId} />} />
+    ) : null,
+    // Invisible, so the right axis scales to usage and the tooltip lists it.
+    showBars ? (
+      <Line
         key='used'
         yAxisId='right'
         dataKey='used'
-        stackId='usage'
-        fill='var(--color-used)'
-        fillOpacity={0.55}
+        stroke='var(--color-used)'
+        strokeWidth={0}
+        dot={false}
+        activeDot={false}
         isAnimationActive={false}
-        shape={<BucketBar />}
       />
     ) : null,
     showBars ? (
-      <Bar
+      <Line
         key='projectedUse'
         yAxisId='right'
         dataKey='projectedUse'
-        stackId='usage'
-        fill={`url(#${hatchId})`}
+        stroke='var(--color-projectedUse)'
+        strokeWidth={0}
+        dot={false}
+        activeDot={false}
         isAnimationActive={false}
-        shape={<BucketBar />}
       />
     ) : null,
     <Area
@@ -280,6 +383,7 @@ function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolea
       dot={false}
       isAnimationActive={false}
     />,
+    <Customized key='stockouts' component={<StockoutStrip runs={stockouts} />} />,
     <ReferenceLine
       key='today'
       yAxisId='left'
@@ -333,8 +437,6 @@ function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolea
       <ChartContainer config={chartConfig} className='aspect-auto h-64 w-full'>
         <ComposedChart
           data={rows}
-          barCategoryGap={0}
-          barGap={0}
           margin={
             compact
               ? { top: 4, right: 0, left: 0, bottom: 0 }
@@ -346,24 +448,73 @@ function PositionPlot({ data, compact }: { data: PartSeriesData; compact: boolea
       <PositionLegend data={data} showBars={showBars} hatchId={hatchId} compact={compact} />
     </div>
   )
+})
+
+interface ChartAxis {
+  scale: ((value: string | number) => number) & { bandwidth?: () => number }
 }
 
-/** A bucket's bar over its days, with a 2px surface gap after the bucket's last day. */
-function BucketBar(props: {
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  fill?: string
-  fillOpacity?: number
-  payload?: PositionRow
+/** One rect per usage span with a 2px surface gap after it; `Customized` passes the axis maps. */
+function UsageBars({
+  spans,
+  hatchId,
+  xAxisMap,
+  yAxisMap,
+}: {
+  spans: UsageSpan[]
+  hatchId: string
+  xAxisMap?: Record<string, ChartAxis>
+  yAxisMap?: Record<string, ChartAxis>
 }) {
-  const { x = 0, y = 0, width = 0, height = 0, fill, fillOpacity, payload } = props
-  if (height <= 0 || width <= 0) return null
-  const gap = payload?.bucketEnd ? Math.min(2, width / 3) : 0
-  // Overdraw by half a pixel so adjacent days of one bucket read as one bar.
-  const w = Math.max(0.5, width - gap + (gap ? 0 : 0.5))
-  return <rect x={x} y={y} width={w} height={height} fill={fill} fillOpacity={fillOpacity} />
+  const x = xAxisMap ? Object.values(xAxisMap)[0] : undefined
+  const y = yAxisMap?.right
+  if (!x || !y) return null
+  const band = x.scale.bandwidth?.() ?? 0
+  const base = y.scale(0)
+  return (
+    <g>
+      {spans.map((s) => {
+        const left = x.scale(s.from)
+        const span = x.scale(s.to) + band - left
+        const top = y.scale(s.value)
+        return (
+          <rect
+            key={s.from}
+            x={left}
+            y={top}
+            width={Math.max(0.5, span - Math.min(2, span / 3))}
+            height={Math.max(0, base - top)}
+            fill={s.projected ? `url(#${hatchId})` : USED}
+            // Projected bars sit over the zones, so they stay see-through.
+            fillOpacity={s.projected ? 0.5 : 0.55}
+          />
+        )
+      })}
+    </g>
+  )
+}
+
+/** Stockout runs as a thin strip on the plot's bottom edge, a timeline marker rather than a wash. */
+function StockoutStrip({
+  runs,
+  xAxisMap,
+  offset,
+}: {
+  runs: { from: string; to: string }[]
+  xAxisMap?: Record<string, ChartAxis>
+  offset?: { top: number; height: number }
+}) {
+  const x = xAxisMap ? Object.values(xAxisMap)[0] : undefined
+  if (!x || !offset) return null
+  const band = x.scale.bandwidth?.() ?? 0
+  const y = offset.top + offset.height - STOCKOUT_STRIP / 2
+  return (
+    <g stroke={STOCKOUT} strokeOpacity={0.5} strokeWidth={STOCKOUT_STRIP}>
+      {runs.map((r) => (
+        <line key={r.from} x1={x.scale(r.from)} x2={x.scale(r.to) + band} y1={y} y2={y} />
+      ))}
+    </g>
+  )
 }
 
 function TooltipLabel({ row }: { row?: PositionRow }) {
@@ -422,10 +573,7 @@ function PositionLegend({
       )}
       {data.days.some((d) => d.stockout) && (
         <LegendKey label='Stockout'>
-          <span
-            className='size-2.5 rounded-[2px]'
-            style={{ background: 'var(--gray-9)', opacity: 0.2 }}
-          />
+          <span className='w-3 border-t-[3px]' style={{ borderColor: STOCKOUT, opacity: 0.5 }} />
         </LegendKey>
       )}
       {flat && (

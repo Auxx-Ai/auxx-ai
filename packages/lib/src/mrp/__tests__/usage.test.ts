@@ -83,16 +83,39 @@ describe('computeUsage', () => {
     ).toBe(2)
   })
 
-  it('returns null ADU when every day is censored', () => {
+  it('counts a negative on-hand day with no use as usage, not a stockout', () => {
+    const usage = computeUsage(
+      series([
+        [0, -3],
+        [2, -5],
+        [0, -5],
+        [0, -5],
+      ])
+    )
+    expect(usage.stockoutDaysExcluded).toBe(0)
+    expect(usage.negativeDays).toBe(4)
+    expect(usage.adu).toBe(0.5)
+  })
+
+  it('averages every day once stockouts pass half the window', () => {
     const usage = computeUsage(
       series([
         [0, 0],
-        [0, -1],
+        [0, 0],
+        [0, 0],
+        [4, 0],
       ])
     )
+    expect(usage.censorCapped).toBe(true)
+    expect(usage.stockoutDaysExcluded).toBe(0)
+    expect(usage.adu).toBe(1)
+  })
+
+  it('returns null ADU for an empty window', () => {
+    const usage = computeUsage([])
     expect(usage.adu).toBeNull()
     expect(usage.cv).toBeNull()
-    expect(usage.stockoutDaysExcluded).toBe(2)
+    expect(usage.censorCapped).toBe(false)
   })
 })
 

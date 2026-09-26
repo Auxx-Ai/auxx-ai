@@ -3,7 +3,13 @@
 import { MRP_FLAGS, type MrpFlag } from '@auxx/lib/mrp/client'
 
 /** Data-quality flags lead (07 §4.4); `channel_drift` joins after `unbuilt_sales` once it exists. */
-const DATA_QUALITY_FLAGS: readonly MrpFlag[] = ['relief_gaps', 'unbuilt_sales', 'mirror_drift']
+const DATA_QUALITY_FLAGS: readonly MrpFlag[] = [
+  'relief_gaps',
+  'unbuilt_sales',
+  'negative_on_hand',
+  'mirror_drift',
+  'thin_usage',
+]
 
 /** Every flag in the order the Flags page lists its groups. */
 export const FLAG_GROUP_ORDER: readonly MrpFlag[] = [
@@ -16,6 +22,10 @@ export const FLAG_EXPLANATIONS: Record<MrpFlag, string> = {
   relief_gaps: 'Some sales never relieved stock in the ledger, so usage reads low.',
   unbuilt_sales: 'More was sold than was built plus opening stock, so usage or on hand is off.',
   mirror_drift: 'The movement history disagrees with on hand.',
+  negative_on_hand:
+    'On hand went below zero, so builds or receipts are missing and stock and usage are unreliable.',
+  thin_usage:
+    'Stocked out most of the usage window, so average use counts every day, not just in-stock days.',
   no_lead_time: 'No supplier lead time or build lead time is set, so no order-by date.',
   lead_time_drift: 'Receipts arrive on a different lead time from the stated one.',
   overdue_receipt: 'An issued purchase order is past its expected date.',

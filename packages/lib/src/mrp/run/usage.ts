@@ -1,7 +1,7 @@
 // packages/lib/src/mrp/run/usage.ts
 
 import { mean, median, stddev } from '@auxx/utils/stats'
-import { MRP_BATCH_BUILD_RATIO, MRP_SOLD_FROM_SHELF_SHARE } from '../client'
+import { MRP_BATCH_BUILD_RATIO, MRP_MAX_STOCKOUT_SHARE, MRP_SOLD_FROM_SHELF_SHARE } from '../client'
 import type { DailyActivity, DailySeriesPoint } from '../types'
 
 export interface UsageStats {
@@ -15,21 +15,33 @@ export interface UsageStats {
   observedDays: number
   stockoutDaysExcluded: number
   totalUsage: number
+  /** Days that ended below zero: missing movements, not an empty shelf. */
+  negativeDays: number
+  /** Stockouts passed `MRP_MAX_STOCKOUT_SHARE`, so every day counted towards ADU. */
+  censorCapped: boolean
 }
 
-/** A stockout day: nothing on the shelf at end of day and nothing consumed, so zero use is not zero demand. */
+/** A stockout day: the shelf ended empty and nothing was consumed, so zero use is not zero demand. */
 export function isStockoutDay(point: DailySeriesPoint): boolean {
-  return point.onHandEod <= 0 && point.consumed + point.scrapped === 0
+  // Below zero is a ledger gap, not an empty shelf; censoring it would inflate ADU.
+  return Math.abs(point.onHandEod) < 1e-9 && point.consumed + point.scrapped === 0
 }
 
 /** ADU, σ and CV for one part's dense daily series; scrap counts as usage (01 §2). */
 export function computeUsage(points: readonly DailySeriesPoint[]): UsageStats {
-  const daily: number[] = []
+  const all: number[] = []
+  const inStock: number[] = []
   let excluded = 0
+  let negativeDays = 0
   for (const point of points) {
+    const used = point.consumed + point.scrapped
+    all.push(used)
+    if (point.onHandEod < 0) negativeDays++
     if (isStockoutDay(point)) excluded++
-    else daily.push(point.consumed + point.scrapped)
+    else inStock.push(used)
   }
+  const censorCapped = points.length > 0 && excluded / points.length > MRP_MAX_STOCKOUT_SHARE
+  const daily = censorCapped ? all : inStock
   const adu = mean(daily)
   const sigma = stddev(daily)
   return {
@@ -37,8 +49,10 @@ export function computeUsage(points: readonly DailySeriesPoint[]): UsageStats {
     sigma,
     cv: adu && sigma !== null ? sigma / adu : null,
     observedDays: daily.length,
-    stockoutDaysExcluded: excluded,
+    stockoutDaysExcluded: censorCapped ? 0 : excluded,
     totalUsage: daily.reduce((sum, v) => sum + v, 0),
+    negativeDays,
+    censorCapped,
   }
 }
 

@@ -461,6 +461,8 @@ export function planItems(inputs: RunInputs, settings: RunSettings): PlanItem[] 
       // TODO(mrp): count relief-skipped fulfillment lines per part (01 §3 P1); no cheap read yet.
       reliefGapLines: 0,
       unbuiltSales: unbuilt.has(item.partId),
+      negativeOnHand: s.usage.negativeDays > 0 || item.onHand < 0,
+      thinUsage: s.usage.censorCapped,
       leadTimeDrift: s.stats !== null && hasLeadTimeDrift(item.leadTimeDays, s.stats),
       mirrorDrift: inputs.driftedPartIds.has(item.partId),
       wontMakeNextArrival: wontMake.has(item.partId),

@@ -6,6 +6,8 @@
 export const MRP_FLAGS = [
   'relief_gaps',
   'unbuilt_sales',
+  'negative_on_hand',
+  'thin_usage',
   'no_lead_time',
   'lead_time_drift',
   'overdue_receipt',
@@ -20,6 +22,8 @@ export type MrpFlag = (typeof MRP_FLAGS)[number]
 export const MRP_FLAG_LABELS: Record<MrpFlag, string> = {
   relief_gaps: 'Sales missing from the ledger',
   unbuilt_sales: 'Sold more than was built',
+  negative_on_hand: 'Negative on hand',
+  thin_usage: 'Mostly stocked out',
   no_lead_time: 'No lead time',
   lead_time_drift: 'Lead time differs from receipts',
   overdue_receipt: 'Receipt overdue',
@@ -141,6 +145,9 @@ export const MRP_RECEIVED_SHARE_FOR_LEAD_TIME = 0.9
 /** Q10: drift when |median − stated| exceeds the larger of these. */
 export const MRP_DRIFT_MIN_DAYS = 3
 export const MRP_DRIFT_MIN_SHARE = 0.25
+
+/** Above this share of stockout days, ADU averages every day; censoring would rest on too few days. */
+export const MRP_MAX_STOCKOUT_SHARE = 0.5
 
 /** Q9 and 02 §8: sold from the shelf when more than this share of sale days had no same-day build (book-zone calendar day). */
 export const MRP_SOLD_FROM_SHELF_SHARE = 0.5

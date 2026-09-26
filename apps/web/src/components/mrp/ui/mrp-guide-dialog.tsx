@@ -99,6 +99,8 @@ export function MrpGuideDialog({ open, onOpenChange }: MrpGuideDialogProps) {
 const FLAG_HELP: Record<(typeof MRP_FLAGS)[number], string> = {
   relief_gaps: 'Sales reached the channel but never took stock out, so usage reads low.',
   unbuilt_sales: 'More units were sold than were built, so component usage reads low.',
+  negative_on_hand: FLAG_EXPLANATIONS.negative_on_hand,
+  thin_usage: FLAG_EXPLANATIONS.thin_usage,
   no_lead_time: FLAG_EXPLANATIONS.no_lead_time,
   lead_time_drift: 'Received orders took noticeably longer or shorter than the stated lead time.',
   overdue_receipt: 'A purchase order is past its expected date and still not received.',
