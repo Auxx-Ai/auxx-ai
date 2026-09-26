@@ -74,6 +74,8 @@ vi.mock('../../costing/price-pending-movements', () => ({
       pendingMovementIds: pending,
     }
   },
+  readStillPending: async (_db: unknown, _org: string, ids: string[]) =>
+    new Set(ids.filter((id) => h.pending.has(id))),
   readBuildPendingParts: async (_db: unknown, _org: string, buildId: string) => {
     const pending = (h.buildPending.get(buildId) ?? []).filter((id) => h.pending.has(id))
     return {
@@ -153,6 +155,25 @@ describe('a parked dispatch', () => {
     park('ful_1', { pendingMovementIds: ['mv_1', 'mv_2'] })
     h.pending.set('mv_1', 'part_a').set('mv_2', 'part_a')
     h.standards.add('part_a')
+
+    expect(await handle('fulfillment', 'ful_1')).toEqual({ status: 'accepted' })
+    expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'fulfillment',
+      sourceIds: ['ful_1'],
+      stage: 'price',
+    })
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+  })
+
+  it('is done when a concurrent pass priced its rows, though this pass priced none', async () => {
+    park('ful_1', { pendingMovementIds: ['mv_1', 'mv_2'] })
+    h.pending.set('mv_1', 'part_a').set('mv_2', 'part_a')
+    h.standards.add('part_a')
+    // The other pass claimed both rows first; this pass's fill skipped them.
+    h.pricePendingMovements.mockImplementationOnce(async () => {
+      h.pending.clear()
+      return { isErr: () => false, value: { pricedMovementIds: [], unpricedPartIds: [] } }
+    })
 
     expect(await handle('fulfillment', 'ful_1')).toEqual({ status: 'accepted' })
     expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {

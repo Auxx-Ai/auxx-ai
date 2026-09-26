@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+  wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
   pricePending: vi.fn(async () => {}),
   partRows: [] as unknown[],
   valueRows: [] as unknown[],
@@ -144,7 +144,7 @@ vi.mock('../../../realtime', () => ({
 // The roll's step 4. Mocked rather than exercised so this file stays the IO
 // half of the ROLL; `revalue.ts` pulls the whole ledger post path in.
 vi.mock('../revalue', () => ({ writeRevaluation: h.writeRevaluation }))
-vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
 vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../dated-reads', () => ({
   readLatestMovementAt: async (_org: string, partIds: readonly string[]) =>
@@ -443,10 +443,10 @@ describe('rollStandardCost', () => {
 
     await rollStandardCost(db, ORG, USER, { partIds: [MOTOR], effectiveAt: EFFECTIVE_AT })
 
-    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: [MOTOR] })
     expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
     expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
-      h.wakeReasonCode.mock.invocationCallOrder[0]!
+      h.wakePricedParts.mock.invocationCallOrder[0]!
     )
   })
 

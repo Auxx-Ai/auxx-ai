@@ -467,6 +467,49 @@ describe('what the pricer leaves alone', () => {
     expect(result._unsafeUnwrap()).toMatchObject({ documentsPosted: 1, documentsFailed: 1 })
     expect(h.ledger.every((row) => row.costBasis === 'standard')).toBe(true)
   })
+
+  it('posts only the rows the fill claimed when a concurrent pass priced one first', async () => {
+    h.ledger = [pending('mv_1', 'part_a', 'adjust', 1), pending('mv_2', 'part_a', 'adjust', 2)]
+    // The fill skips mv_2: another pass claimed it between the read and the write.
+    h.fillPendingCost.mockImplementationOnce(async () => ({
+      isErr: () => false,
+      value: [
+        {
+          movementId: 'mv_1',
+          partInstanceId: 'part_a',
+          quantity: 1,
+          unitCost: 1_000,
+          extendedCost: 1_000,
+          glAccount: 'inventory_finished_goods',
+          occurredAt: new Date('2026-08-18T12:00:00.000Z'),
+        },
+      ],
+    }))
+
+    const result = await pricePendingMovements(db, ORG, ['part_a'])
+
+    expect(result._unsafeUnwrap()).toMatchObject({
+      pricedMovementIds: ['mv_1'],
+      documentsPosted: 1,
+      documentsFailed: 0,
+    })
+    expect(postedEntries().map((call) => call.sources[0]?.sourceId)).toEqual(['mv_1'])
+    expect(h.deleteWorkItemsAtStage).toHaveBeenCalledWith(db, ORG, {
+      sourceKind: 'stock_movement',
+      sourceIds: ['mv_1'],
+      stage: 'price',
+    })
+  })
+
+  it('posts nothing when a concurrent pass claimed every row', async () => {
+    h.ledger = [pending('mv_1', 'part_a', 'adjust', 1)]
+    h.fillPendingCost.mockImplementationOnce(async () => ({ isErr: () => false, value: [] }))
+
+    const result = await pricePendingMovements(db, ORG, ['part_a'])
+
+    expect(result._unsafeUnwrap()).toMatchObject({ pricedMovementIds: [], documentsPosted: 0 })
+    expect(h.postEntryInTx).not.toHaveBeenCalled()
+  })
 })
 
 describe('the work items it resolves', () => {

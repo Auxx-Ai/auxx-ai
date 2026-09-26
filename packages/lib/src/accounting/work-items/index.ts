@@ -49,6 +49,7 @@ export {
 export {
   type WorkItemGroupKey,
   wakeArrivedOrders,
+  wakePricedParts,
   wakeReasonCode,
   wakeRecords,
   wakeRoleUnmapped,

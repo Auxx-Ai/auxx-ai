@@ -29,7 +29,7 @@ import { readStandardCost } from './standard-cost-queries'
 const logger = createScopedLogger('costing:price-pending')
 
 export interface PricingSummary {
-  /** Every row this pass valued. */
+  /** Every row this pass valued; a row a concurrent pass priced first is not in it. */
   pricedMovementIds: string[]
   /** Named parts still without a standard; their rows stay pending. */
   unpricedPartIds: string[]
@@ -84,16 +84,22 @@ export async function pricePendingMovements(
         }))
       )
       if (filled.isErr()) throw filled.error
+      // Only rows this pass filled are posted; a row a concurrent pass claimed is that pass's to post.
       const costByMovement = new Map(filled.value.map((row) => [row.movementId, row.extendedCost]))
-      const rows: InventoryDocumentRow[] = pending.map((row) =>
-        valuedDocumentRow({
-          ...row,
-          pending: false,
-          costBasis: StockMovementCostBasis.STANDARD,
-          extendedCost: costByMovement.get(row.movementId) ?? null,
-        })
+      const rows: InventoryDocumentRow[] = pending.flatMap((row) =>
+        costByMovement.has(row.movementId)
+          ? [
+              valuedDocumentRow({
+                ...row,
+                pending: false,
+                costBasis: StockMovementCostBasis.STANDARD,
+                extendedCost: costByMovement.get(row.movementId)!,
+              }),
+            ]
+          : []
       )
       const pricedMovementIds = rows.map((row) => row.movementId)
+      if (rows.length === 0) return { ...EMPTY, unpricedPartIds }
 
       const userId = await getOrgCache().get(organizationId, 'systemUser')
       const posted = await postDocuments(db, organizationId, rows, userId)
@@ -307,7 +313,8 @@ function pendingMovementIdsOf(detail: Record<string, unknown> | null): string[] 
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
 }
 
-async function readStillPending(
+/** The movements among these that are still `pending`. */
+export async function readStillPending(
   db: Database,
   organizationId: string,
   movementIds: readonly string[]

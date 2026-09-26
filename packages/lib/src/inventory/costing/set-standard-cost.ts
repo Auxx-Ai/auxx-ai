@@ -11,7 +11,7 @@ import { roundMinorUnits } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
-import { wakeReasonCode } from '../../accounting/work-items/wake'
+import { wakePricedParts } from '../../accounting/work-items/wake'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
@@ -155,7 +155,7 @@ export async function setStandardCosts(
           )
         }
         if (restated.size > 0) {
-          await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+          await wakePricedParts(db, organizationId, { partIds: [...restated] })
           await pricePendingMovementsQuietly(db, organizationId, [...restated])
         }
       }

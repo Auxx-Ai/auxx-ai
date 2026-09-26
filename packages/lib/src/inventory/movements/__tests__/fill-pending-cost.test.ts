@@ -1,7 +1,7 @@
 // packages/lib/src/inventory/movements/__tests__/fill-pending-cost.test.ts
 // The one lane that prices a `pending` row (111 Q18, fill once). The org cache,
-// the system-records reader and the CRUD handler are mocked, so nothing here
-// needs a database.
+// the system-records reader, the row claim and the CRUD handler are mocked, so
+// nothing here needs a database.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
@@ -35,6 +35,14 @@ vi.mock('../../../cache', () => ({
         ),
     }),
   }),
+}))
+
+// The claim locks what is still pending; here, what the fake store says is pending.
+vi.mock('../claim-pending', () => ({
+  claimPendingMovements: vi.fn(
+    async (_tx: unknown, _org: string, _fieldId: string, ids: string[]) =>
+      new Set(ids.filter((id) => h.stored.get(id)?.costBasis === 'pending'))
+  ),
 }))
 
 vi.mock('../../../resources/crud/unified-handler', () => ({
@@ -81,7 +89,7 @@ vi.mock('../../../resources/system-records', async () => ({
 import { fillPendingCost } from '../fill-pending-cost'
 
 const ORG = 'org_1'
-const db = {} as never
+const db = { transaction: async (run: (tx: unknown) => unknown) => run({}) } as never
 
 const ALL_ATTRS = [
   'stock_movement_part',
@@ -191,25 +199,21 @@ describe('fillPendingCost - the fill', () => {
 })
 
 describe('fillPendingCost - fill ONCE', () => {
-  it('refuses a row whose basis is already standard, and writes nothing for the batch', async () => {
+  it('skips a row another pass already priced, and fills the rest', async () => {
     h.stored.set('mv_adjust', { ...pendingRow('mv_adjust', 7), costBasis: 'standard' })
-    const error = await expectErr(
-      fillPendingCost(db, ORG, [
-        { movementId: 'mv_sale', unitCost: 100 },
-        { movementId: 'mv_adjust', unitCost: 100 },
-      ])
-    )
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(error.message).toMatch(/written once/)
-    expect(h.updateSpy).not.toHaveBeenCalled()
+    const result = await fillPendingCost(db, ORG, [
+      { movementId: 'mv_sale', unitCost: 100 },
+      { movementId: 'mv_adjust', unitCost: 100 },
+    ])
+    expect(result._unsafeUnwrap().map((row) => row.movementId)).toEqual(['mv_sale'])
+    expect(h.updateSpy).toHaveBeenCalledTimes(1)
+    expect(h.updateSpy).toHaveBeenCalledWith('def_mv:mv_sale', expect.any(Object))
   })
 
-  it('refuses a pre-regime row with a null basis - null is not pending', async () => {
+  it('skips a pre-regime row with a null basis - null is not pending', async () => {
     h.stored.set('mv_sale', { ...pendingRow('mv_sale', -3), costBasis: null })
-    const error = await expectErr(
-      fillPendingCost(db, ORG, [{ movementId: 'mv_sale', unitCost: 100 }])
-    )
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    const result = await fillPendingCost(db, ORG, [{ movementId: 'mv_sale', unitCost: 100 }])
+    expect(result._unsafeUnwrap()).toEqual([])
     expect(h.updateSpy).not.toHaveBeenCalled()
   })
 
