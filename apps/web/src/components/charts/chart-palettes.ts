@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/lib/chart-palettes.ts
+// apps/web/src/components/charts/chart-palettes.ts
 //
 // The single source of truth for chart color SCHEMES (plan 12). Pure + client-
 // safe. A scheme id (`ChartPaletteId`) derives every series color: single-hue

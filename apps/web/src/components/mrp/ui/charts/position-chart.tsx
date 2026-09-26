@@ -22,7 +22,7 @@ import { EmptySection, SECTION_BLEED, Section } from '@auxx/ui/components/sectio
 import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import { Fragment, memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import {
   Area,
   CartesianGrid,
@@ -35,6 +35,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { seriesColors } from '~/components/charts/chart-palettes'
 import { PaginatedLegend, type PaginatedLegendItem } from '~/components/charts/paginated-legend'
 import {
   type ChartAxis,
@@ -55,14 +56,15 @@ import {
   formatMonth,
   formatQty,
   grainAllowed,
+  hasSeries,
   mergeRows,
   niceTicks,
-  type PartSeriesData,
   POSITION_GRAINS,
   POSITION_WINDOWS,
   type PositionGrain,
   type PositionRow,
   type PositionWindow,
+  type SeriesData,
   stockoutRuns,
   tToDay,
   type UsageSpan,
@@ -72,8 +74,12 @@ import {
   yExtents,
 } from './position-chart-data'
 
+export type PositionSource =
+  | { kind: 'part'; partId: string }
+  | { kind: 'product'; productId: string }
+
 export interface PositionChartProps {
-  partId: string
+  source: PositionSource
   runId?: string | null
   /** `section` is the docked drawer: controls stack, margins go to zero, axes sit inside the plot. */
   variant?: 'page' | 'section'
@@ -84,13 +90,33 @@ const USED = 'var(--gray-8)'
 const MUTED_TEXT = 'var(--muted-foreground)'
 const STOCKOUT = 'var(--red-9)'
 const STOCKOUT_STRIP = 3
+/** The surface gap between stacked bar segments. */
+const STACK_GAP = 2
+const KEY_AREA_OPACITY = 0.12
 
-const chartConfig = {
-  onHand: { label: 'On hand', color: LINE },
-  projected: { label: 'Projected', color: LINE },
-  used: { label: 'Used', color: USED },
-  projectedUse: { label: 'Projected use', color: 'var(--gray-6)' },
-} satisfies ChartConfig
+/** A product's usage is what it sold; a part's is what it used. */
+const USAGE_LABELS = {
+  part: { used: 'Used', projectedUse: 'Projected use' },
+  product: { used: 'Sold', projectedUse: 'Projected sales' },
+} as const
+
+type UsageLabels = (typeof USAGE_LABELS)[PositionSource['kind']]
+
+function chartConfigFor(labels: UsageLabels) {
+  return {
+    onHand: { label: 'On hand', color: LINE },
+    projected: { label: 'Projected', color: LINE },
+    used: { label: labels.used, color: USED },
+    projectedUse: { label: labels.projectedUse, color: 'var(--gray-6)' },
+  } satisfies ChartConfig
+}
+
+/** One colour per stack key in order; the folded tail is grey like a part's usage. */
+function keyColors(data: SeriesData): string[] {
+  const series = data.series ?? []
+  const palette = seriesColors('default', series.length)
+  return series.map((s, i) => (s.key === 'other' ? USED : (palette[i] ?? USED)))
+}
 
 const ZONES = [
   { key: 'red', label: 'Red', color: 'var(--red-9)' },
@@ -98,25 +124,38 @@ const ZONES = [
   { key: 'green', label: 'Green', color: 'var(--green-9)' },
 ] as const
 
-/** The Planning tab's Position section (07 §5.1): ledger on hand, projected depletion, usage bars and zones. */
-export function PositionChart({ partId, runId, variant = 'page' }: PositionChartProps) {
+/** The Position section (07 §5.1, 15 §3.1): a part's position, or a product's stacked by variant. */
+export function PositionChart({ source, runId, variant = 'page' }: PositionChartProps) {
   const [range, setRange] = useState<PositionWindow>('6m')
   const [grainOverride, setGrainOverride] = useState<PositionGrain | null>(null)
   const [offset, setOffset] = useState(0)
   const grain = grainOverride ?? defaultGrain(range)
 
-  const { data, isLoading, error } = api.mrp.partSeries.useQuery(
+  const isPart = source.kind === 'part'
+  const partId = isPart ? source.partId : ''
+  const productId = isPart ? '' : source.productId
+  const part = api.mrp.partSeries.useQuery(
     { partId, window: range, grain, runId, offset },
-    { placeholderData: keepPreviousData }
+    { enabled: isPart, placeholderData: keepPreviousData }
   )
+  const product = api.mrp.productSeries.useQuery(
+    { productId, window: range, grain, runId, offset },
+    { enabled: !isPart, placeholderData: keepPreviousData }
+  )
+  const { isLoading, error } = isPart ? part : product
+  const data: SeriesData | undefined = isPart ? part.data : product.data
   // Neighbouring pages warm so a step slides at once instead of after the round trip.
   const utils = api.useUtils()
   useEffect(() => {
     if (!data) return
-    const base = { partId, window: range, grain, runId }
-    if (data.hasEarlier) void utils.mrp.partSeries.prefetch({ ...base, offset: offset + 1 })
-    if (offset > 0) void utils.mrp.partSeries.prefetch({ ...base, offset: offset - 1 })
-  }, [data, partId, range, grain, runId, offset, utils])
+    const base = { window: range, grain, runId }
+    const warm = (at: number) =>
+      isPart
+        ? utils.mrp.partSeries.prefetch({ ...base, partId, offset: at })
+        : utils.mrp.productSeries.prefetch({ ...base, productId, offset: at })
+    if (data.hasEarlier) void warm(offset + 1)
+    if (offset > 0) void warm(offset - 1)
+  }, [data, isPart, partId, productId, range, grain, runId, offset, utils])
 
   const compact = variant === 'section'
   const setWindow = (value: PositionWindow) => {
@@ -236,7 +275,12 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
       ) : !data || data.days.length === 0 ? (
         <EmptySection className='mx-3' title='No movements yet' />
       ) : (
-        <PositionPlot key={partId} data={data} compact={compact} />
+        <PositionPlot
+          key={`${source.kind}:${partId || productId}`}
+          data={data}
+          labels={USAGE_LABELS[source.kind]}
+          compact={compact}
+        />
       )}
     </Section>
   )
@@ -245,14 +289,21 @@ export function PositionChart({ partId, runId, variant = 'page' }: PositionChart
 // Memoised so a grain/window click doesn't redraw the old data before the new query lands.
 const PositionPlot = memo(function PositionPlot({
   data,
+  labels,
   compact,
 }: {
-  data: PartSeriesData
+  data: SeriesData
+  labels: UsageLabels
   compact: boolean
 }) {
   const isMobile = useIsMobile()
   const showBars = !isMobile
   const hatchId = `hatch-${useId().replace(/:/g, '')}`
+  const chartConfig = useMemo(() => chartConfigFor(labels), [labels])
+  const keys = useMemo(() => {
+    const colors = keyColors(data)
+    return (data.series ?? []).map((s, i) => ({ ...s, color: colors[i] ?? USED }))
+  }, [data])
   const rows = useMemo(() => buildPositionRows(data), [data])
   const prevRows = usePreviousDistinct(rows)
 
@@ -370,8 +421,27 @@ const PositionPlot = memo(function PositionPlot({
         label={{ value: z.label, position: 'insideRight', fill: MUTED_TEXT, fontSize: 10 }}
       />
     )),
+    // Under the bars and the summed line; the line stays the outline of the stack.
+    ...keys.map((k, i) => (
+      <Area
+        key={`onHand-${k.key}`}
+        yAxisId='left'
+        dataKey={(r: PositionRow) => r.onHandByKey?.[i] ?? null}
+        stackId='onHand'
+        type='linear'
+        stroke='none'
+        fill={k.color}
+        fillOpacity={KEY_AREA_OPACITY}
+        tooltipType='none'
+        activeDot={false}
+        isAnimationActive={false}
+      />
+    )),
     showBars ? (
-      <Customized key='usage' component={<UsageBars spans={spans} hatchId={hatchId} />} />
+      <Customized
+        key='usage'
+        component={<UsageBars spans={spans} hatchId={hatchId} colors={keys.map((k) => k.color)} />}
+      />
     ) : null,
     // Invisible, so the tooltip lists usage.
     showBars ? (
@@ -487,7 +557,9 @@ const PositionPlot = memo(function PositionPlot({
         <ChartTooltipContent
           indicator='line'
           valueFormatter={(v) => formatQty(Number(v))}
-          labelFormatter={(_, payload) => <TooltipLabel row={payload?.[0]?.payload} />}
+          labelFormatter={(_, payload) => (
+            <TooltipLabel row={payload?.[0]?.payload} keys={keys} usedLabel={labels.used} />
+          )}
         />
       }
     />,
@@ -506,7 +578,14 @@ const PositionPlot = memo(function PositionPlot({
           {layers}
         </ComposedChart>
       </ChartContainer>
-      <PositionLegend data={data} showBars={showBars} hatchId={hatchId} compact={compact} />
+      <PositionLegend
+        data={data}
+        keys={keys}
+        labels={labels}
+        showBars={showBars}
+        hatchId={hatchId}
+        compact={compact}
+      />
     </div>
   )
 })
@@ -515,12 +594,15 @@ const PositionPlot = memo(function PositionPlot({
 function UsageBars({
   spans,
   hatchId,
+  colors,
   xAxisMap,
   yAxisMap,
   offset,
 }: {
   spans: UsageSpan[]
   hatchId: string
+  /** Per stack key; a span with `byKey` stacks one segment per key. */
+  colors: string[]
   xAxisMap?: Record<string, ChartAxis>
   yAxisMap?: Record<string, ChartAxis>
   offset?: PlotOffset
@@ -541,6 +623,20 @@ function UsageBars({
         const left = Math.max(plotLeft, from)
         const right = Math.min(plotRight, from + Math.max(0.5, span - Math.min(2, span / 3)))
         if (right <= left) return null
+        if (s.byKey) {
+          return (
+            <StackedBar
+              key={s.from}
+              values={s.byKey}
+              colors={colors}
+              left={left}
+              width={right - left}
+              base={base}
+              plotTop={offset.top}
+              scale={y.scale}
+            />
+          )
+        }
         const top = Math.max(offset.top, y.scale(s.value))
         return (
           <rect
@@ -557,6 +653,41 @@ function UsageBars({
       })}
     </g>
   )
+}
+
+/** One segment per key, bottom first, with a surface gap between segments. */
+function StackedBar({
+  values,
+  colors,
+  left,
+  width,
+  base,
+  plotTop,
+  scale,
+}: {
+  values: number[]
+  colors: string[]
+  left: number
+  width: number
+  base: number
+  plotTop: number
+  scale: (value: number) => number
+}) {
+  let sum = 0
+  let below = base
+  const segments: ReactNode[] = []
+  for (const [i, v] of values.entries()) {
+    if (v <= 0) continue
+    sum += v
+    const top = Math.max(plotTop, scale(sum))
+    const bottom = below === base ? base : below - STACK_GAP
+    below = top
+    if (bottom - top <= 0) continue
+    segments.push(
+      <rect key={i} x={left} y={top} width={width} height={bottom - top} fill={colors[i] ?? USED} />
+    )
+  }
+  return <g>{segments}</g>
 }
 
 /** Stockout runs as a thin strip on the plot's bottom edge, a timeline marker rather than a wash. */
@@ -585,7 +716,17 @@ function StockoutStrip({
   )
 }
 
-function TooltipLabel({ row }: { row?: PositionRow }) {
+type StackKey = { key: string; name: string; color: string }
+
+function TooltipLabel({
+  row,
+  keys,
+  usedLabel,
+}: {
+  row?: PositionRow
+  keys: StackKey[]
+  usedLabel: string
+}) {
   if (!row) return null
   return (
     <div className='flex flex-col gap-0.5'>
@@ -597,37 +738,88 @@ function TooltipLabel({ row }: { row?: PositionRow }) {
           {e.qty ? ` · ${formatQty(e.qty)}` : ''}
         </span>
       ))}
+      {keys.length > 0 && (row.onHandByKey || row.usedByKey) && (
+        <KeyTable row={row} keys={keys} usedLabel={usedLabel} />
+      )}
+    </div>
+  )
+}
+
+/** The hovered day's per-key on hand and bucket usage, in stack order. */
+function KeyTable({
+  row,
+  keys,
+  usedLabel,
+}: {
+  row: PositionRow
+  keys: StackKey[]
+  usedLabel: string
+}) {
+  const { onHandByKey, usedByKey } = row
+  return (
+    <div className='mt-1 grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 gap-y-1 font-normal'>
+      <span />
+      <span />
+      <span className='text-right text-muted-foreground'>{onHandByKey ? 'On hand' : ''}</span>
+      <span className='text-right text-muted-foreground'>{usedByKey ? usedLabel : ''}</span>
+      {keys.map((k, i) => (
+        <Fragment key={k.key}>
+          <span className='h-2.5 w-1 rounded-[2px]' style={{ background: k.color }} />
+          <span className='truncate text-muted-foreground'>{k.name}</span>
+          <span className='text-right font-mono tabular-nums'>
+            {onHandByKey ? formatQty(onHandByKey[i] ?? 0) : ''}
+          </span>
+          <span className='text-right font-mono tabular-nums'>
+            {usedByKey ? formatQty(usedByKey[i] ?? 0) : ''}
+          </span>
+        </Fragment>
+      ))}
     </div>
   )
 }
 
 function PositionLegend({
   data,
+  keys,
+  labels,
   showBars,
   hatchId,
   compact,
 }: {
-  data: PartSeriesData
+  data: SeriesData
+  keys: StackKey[]
+  labels: UsageLabels
   showBars: boolean
   hatchId: string
   compact: boolean
 }) {
   const hasProjection = data.projection.length > 0
   const flat = hasProjection && !data.seasonal
+  const stacked = hasSeries(data)
   const items: (PaginatedLegendItem | false)[] = [
-    showBars && {
-      key: 'used',
+    ...keys.map((k) => ({
+      key: `key-${k.key}`,
       node: (
-        <LegendKey label='Used'>
-          <span className='size-2.5 rounded-[2px]' style={{ background: USED, opacity: 0.55 }} />
+        <LegendKey label={k.name}>
+          <span className='size-2.5 rounded-[2px]' style={{ background: k.color }} />
         </LegendKey>
       ),
-    },
+    })),
+    // Stacked bars take the keys' colours, so the grey usage key would name nothing.
+    showBars &&
+      !stacked && {
+        key: 'used',
+        node: (
+          <LegendKey label={labels.used}>
+            <span className='size-2.5 rounded-[2px]' style={{ background: USED, opacity: 0.55 }} />
+          </LegendKey>
+        ),
+      },
     showBars &&
       hasProjection && {
         key: 'projectedUse',
         node: (
-          <LegendKey label='Projected use'>
+          <LegendKey label={labels.projectedUse}>
             <svg className='size-2.5' aria-hidden='true'>
               <rect width='100%' height='100%' fill={`url(#${hatchId})`} />
             </svg>

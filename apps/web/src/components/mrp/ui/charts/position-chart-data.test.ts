@@ -1,14 +1,17 @@
 // apps/web/src/components/mrp/ui/charts/position-chart-data.test.ts
 import { describe, expect, it } from 'vitest'
 import {
+  buildPositionRows,
   dayToT,
   grainAllowed,
   mergeRows,
   niceTicks,
   type PositionRow,
+  type SeriesData,
   tToDay,
   usageSpans,
   xTicks,
+  yExtents,
 } from './position-chart-data'
 
 const row = (day: string, over: Partial<PositionRow> = {}): PositionRow => ({
@@ -20,6 +23,8 @@ const row = (day: string, over: Partial<PositionRow> = {}): PositionRow => ({
   bandSpan: null,
   used: null,
   projectedUse: null,
+  onHandByKey: null,
+  usedByKey: null,
   bucketEnd: false,
   stockout: false,
   events: [],
@@ -51,6 +56,83 @@ describe('usageSpans', () => {
     expect(usageSpans(rows)).toEqual([
       { from: '2026-09-23', to: '2026-09-23', value: 3, projected: false },
     ])
+  })
+})
+
+const day = (d: string, onHandEod: number, onHandByKey?: number[]) => ({
+  day: d,
+  consumed: 0,
+  scrapped: 0,
+  net: 0,
+  onHandEod,
+  stockout: false,
+  ...(onHandByKey && { onHandByKey }),
+})
+
+const series = (over: Partial<SeriesData> = {}): SeriesData => ({
+  run: null,
+  zone: 'UTC',
+  days: [],
+  usage: [],
+  projection: [],
+  events: [],
+  zones: null,
+  runAsOf: '2026-09-23',
+  seasonal: true,
+  historyMonths: 12,
+  hasEarlier: false,
+  ...over,
+})
+
+const product = series({
+  series: [
+    { key: 'a', name: 'Lift A', partIds: ['a'] },
+    { key: 'other', name: 'Other', partIds: ['b', 'c'] },
+  ],
+  days: [day('2026-09-21', 5, [3, 4]), day('2026-09-22', -1, [0, 2])],
+  usage: [
+    { bucket: '2026-09-21', consumed: 6, projected: null, stockoutDays: 0, consumedByKey: [2, 4] },
+    { bucket: '2026-09-23', consumed: null, projected: 5, stockoutDays: 0, consumedByKey: [0, 0] },
+  ],
+  projection: [{ day: '2026-09-23', onHand: 0, low: 0, high: 2 }],
+})
+
+describe('buildPositionRows — stacked by key', () => {
+  it('carries per-key on hand and per-key usage on past days only', () => {
+    const rows = buildPositionRows(product)
+    expect(rows.map((r) => [r.day, r.onHandByKey, r.usedByKey])).toEqual([
+      ['2026-09-21', [3, 4], [2, 4]],
+      ['2026-09-22', [0, 2], [2, 4]],
+      ['2026-09-23', null, null],
+    ])
+    expect(rows.map((r) => r.onHand)).toEqual([5, -1, null])
+  })
+
+  it('leaves the per-key fields null for a part', () => {
+    const part = series({
+      days: [day('2026-09-21', 5)],
+      usage: [{ bucket: '2026-09-21', consumed: 6, projected: null, stockoutDays: 0 }],
+    })
+    const [r] = buildPositionRows(part)
+    expect(r?.onHandByKey).toBeNull()
+    expect(r?.usedByKey).toBeNull()
+    expect(r?.used).toBe(6)
+  })
+
+  it('draws one stacked span per bucket, not one per day', () => {
+    expect(usageSpans(buildPositionRows(product))).toEqual([
+      { from: '2026-09-21', to: '2026-09-22', value: 6, projected: false, byKey: [2, 4] },
+      { from: '2026-09-23', to: '2026-09-23', value: 5, projected: true },
+    ])
+  })
+
+  it('stretches the left axis over the floored stack and the right over the stacked bucket', () => {
+    const rows = [
+      row('2026-09-21', { onHand: -1, onHandByKey: [30, 45], used: 2, usedByKey: [20, 12] }),
+    ]
+    const { left, right } = yExtents(rows, null)
+    expect(left[1]).toBeGreaterThanOrEqual(75)
+    expect(right[1]).toBeGreaterThanOrEqual(32)
   })
 })
 
@@ -91,6 +173,12 @@ describe('niceTicks', () => {
 })
 
 describe('mergeRows', () => {
+  it('keeps the per-key arrays of the winning row', () => {
+    const prev = [row('2026-09-02', { onHandByKey: [1, 1] })]
+    const next = [row('2026-09-02', { onHandByKey: [4, 5] })]
+    expect(mergeRows(prev, next)[0]?.onHandByKey).toEqual([4, 5])
+  })
+
   it('unions two windows with the newer window winning on overlap', () => {
     const prev = [row('2026-09-01', { used: 1 }), row('2026-09-02', { used: 1 })]
     const next = [row('2026-09-02', { used: 9 }), row('2026-09-03', { used: 9 })]

@@ -1,4 +1,4 @@
-// apps/web/src/components/dashboard/lib/chart-palettes.test.ts
+// apps/web/src/components/charts/chart-palettes.test.ts
 
 import { CHART_PALETTE_IDS, normalizePaletteId } from '@auxx/lib/dashboards/client'
 import { describe, expect, it } from 'vitest'

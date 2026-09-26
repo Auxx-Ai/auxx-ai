@@ -20,9 +20,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { cn } from '@auxx/ui/lib/utils'
 import { Check } from 'lucide-react'
 import { useState } from 'react'
+import { CHART_PALETTES, paletteDef, previewSwatches } from '~/components/charts/chart-palettes'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
-import { CHART_PALETTES, paletteDef, previewSwatches } from '../../lib/chart-palettes'
 import { SwatchStack } from './swatch-stack'
 
 export function ColorRow({

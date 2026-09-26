@@ -34,7 +34,7 @@ export function PartMrpTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const sections = (
     <>
       <PositionChart
-        partId={partId}
+        source={{ kind: 'part', partId }}
         runId={runId}
         variant={variant === 'section' ? 'section' : 'page'}
       />
