@@ -170,6 +170,7 @@ export function useDefaultTablePersistence({
       columnOrder: order,
       columnSizing: sizing,
       columnPinning: pinning,
+      collapsedGroups: preference?.config.collapsedGroups,
     }
 
     upsertPreference.mutate({ tableId, tableViewId: null, config })

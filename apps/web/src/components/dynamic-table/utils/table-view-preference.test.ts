@@ -28,6 +28,8 @@ describe('table view preferences', () => {
       columnLabels: undefined,
       columnFormatting: undefined,
       rowHeight: undefined,
+      columnAggregates: undefined,
+      collapsedGroups: undefined,
     })
     expect(preference).not.toHaveProperty('sorting')
     expect(preference).not.toHaveProperty('viewType')
@@ -40,6 +42,54 @@ describe('table view preferences', () => {
     })
 
     expect(hasPresentationPreference(preference)).toBe(false)
+  })
+
+  it('keeps column aggregates and stored collapsed groups but drops groupBy', () => {
+    const preference = toTableViewPreferenceConfig(
+      {
+        groupBy: { fieldId: 'def:status', desc: true },
+        columnAggregates: { 'def:amount': 'sum' },
+      },
+      { 'def:status': ['open', '__empty__'] }
+    )
+
+    expect(preference.columnAggregates).toEqual({ 'def:amount': 'sum' })
+    expect(preference.collapsedGroups).toEqual({ 'def:status': ['open', '__empty__'] })
+    expect(preference).not.toHaveProperty('groupBy')
+    expect(tableViewPreferenceConfigSchema.parse(preference)).toMatchObject({
+      columnAggregates: { 'def:amount': 'sum' },
+      collapsedGroups: { 'def:status': ['open', '__empty__'] },
+    })
+  })
+
+  it('treats group-by-only interaction as transient', () => {
+    const preference = toTableViewPreferenceConfig({ groupBy: { fieldId: 'def:status' } })
+
+    expect(hasPresentationPreference(preference)).toBe(false)
+  })
+
+  it('counts aggregates and non-empty collapsed groups as presentation', () => {
+    expect(
+      hasPresentationPreference(toTableViewPreferenceConfig({ columnAggregates: { a: 'avg' } }))
+    ).toBe(true)
+    expect(
+      hasPresentationPreference(toTableViewPreferenceConfig({}, { 'def:status': ['open'] }))
+    ).toBe(true)
+    expect(hasPresentationPreference(toTableViewPreferenceConfig({}, { 'def:status': [] }))).toBe(
+      false
+    )
+  })
+
+  it('keeps collapsed groups out of the personal overlay', () => {
+    const overlay = toPersonalOverlayConfig({
+      columnVisibility: {},
+      columnOrder: [],
+      columnSizing: {},
+      columnAggregates: { 'def:amount': 'max' },
+      collapsedGroups: { 'def:status': ['open'] },
+    })
+
+    expect(overlay).toEqual({ columnAggregates: { 'def:amount': 'max' } })
   })
 
   it('drops empty containers when hydrating a personal overlay', () => {

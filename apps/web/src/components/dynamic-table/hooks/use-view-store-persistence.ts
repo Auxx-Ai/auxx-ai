@@ -78,7 +78,10 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
 
   const persistPreference = useCallback(() => {
     if (!viewId || !view?.isShared || !personalConfig) return
-    const config = toTableViewPreferenceConfig(personalConfig)
+    const config = toTableViewPreferenceConfig(
+      personalConfig,
+      savedPreference?.config.collapsedGroups
+    )
     if (!hasPresentationPreference(config) && !savedPreference) return
 
     const serialized = JSON.stringify(config)

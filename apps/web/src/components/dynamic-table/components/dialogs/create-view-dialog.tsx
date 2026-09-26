@@ -35,6 +35,7 @@ import { Calendar, LayoutGrid, Table2 } from 'lucide-react'
 import { useState } from 'react'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useViewMutations } from '../../hooks/use-view-mutations'
+import { useColumnAggregates, useTableGroupBy } from '../../stores/store-selectors'
 import type { TableView, ViewConfig } from '../../types'
 
 /** Select field for kanban grouping */
@@ -98,6 +99,8 @@ export function CreateViewDialog({
   const [selectedDateFieldId, setSelectedDateFieldId] = useState<string>('')
 
   const { createView } = useViewMutations(tableId)
+  const groupBy = useTableGroupBy(tableId)
+  const columnAggregates = useColumnAggregates(tableId)
   const { canAdministerDef } = useAccess()
   const hasDateFields = (dateFields ?? []).length > 0
   const canCreateField = entityDefinitionId ? canAdministerDef(entityDefinitionId) : false
@@ -127,6 +130,8 @@ export function CreateViewDialog({
       columnSizing: currentTableState?.columnSizing ?? {},
       columnPinning: currentTableState?.columnPinning,
       viewType,
+      ...(viewType === 'table' && groupBy && { groupBy }),
+      ...(Object.keys(columnAggregates).length > 0 && { columnAggregates }),
       ...(viewType === 'kanban' && {
         kanban: {
           // Use empty string if creating new field - backend will populate

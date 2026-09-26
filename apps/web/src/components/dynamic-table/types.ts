@@ -24,9 +24,12 @@ export type { TargetTimeInStatus }
 export type {
   CalendarViewConfig,
   CheckboxColumnFormatting,
+  ColumnAggregateOp,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
+  GroupByConfig,
+  GroupDateGranularity,
   KanbanColumnSettings,
   KanbanViewConfig,
   NumberColumnFormatting,

@@ -1624,6 +1624,12 @@
       "import": "./dist/resources/crud/record-row-access.mjs",
       "default": "./src/resources/crud/record-row-access.ts"
     },
+    "./resources/grouping/client": {
+      "types": "./src/resources/grouping/client.ts",
+      "source": "./src/resources/grouping/client.ts",
+      "import": "./dist/resources/grouping/client.mjs",
+      "default": "./src/resources/grouping/client.ts"
+    },
     "./resources/merge/client": {
       "types": "./src/resources/merge/client.ts",
       "source": "./src/resources/merge/client.ts",

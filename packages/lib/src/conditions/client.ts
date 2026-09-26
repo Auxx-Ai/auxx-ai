@@ -55,9 +55,12 @@ export type {
 export type {
   CalendarViewConfig,
   CheckboxColumnFormatting,
+  ColumnAggregateOp,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
+  GroupByConfig,
+  GroupDateGranularity,
   KanbanColumnSettings,
   KanbanViewConfig,
   NumberColumnFormatting,
@@ -69,9 +72,12 @@ export type {
 // View config schemas and types
 export {
   calendarConfigSchema,
+  columnAggregateOpSchema,
   columnFormattingSchema,
   currencyFormattingSchema,
   dateFormattingSchema,
+  groupByConfigSchema,
+  groupDateGranularitySchema,
   kanbanColumnSettingsSchema,
   kanbanConfigSchema,
   numberFormattingSchema,

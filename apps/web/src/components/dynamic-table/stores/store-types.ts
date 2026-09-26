@@ -11,7 +11,9 @@ import type {
 import type { StateCreator } from 'zustand'
 import type {
   CalendarViewConfig,
+  ColumnAggregateOp,
   ColumnFormatting,
+  GroupByConfig,
   KanbanViewConfig,
   TableView,
   TableViewPreference,
@@ -35,6 +37,8 @@ export interface TableUIConfig {
   viewType?: 'table' | 'kanban' | 'calendar'
   kanban?: KanbanViewConfig
   calendar?: CalendarViewConfig
+  groupBy?: GroupByConfig
+  columnAggregates?: Record<string, ColumnAggregateOp>
 }
 
 /** Default UI config */
@@ -144,12 +148,21 @@ export interface SharedSlice {
   getActiveFilters: (tableId: string) => ConditionGroup[]
 }
 
+/** Group collapse slice - per-user collapsed group keys, never part of a view config */
+export interface GroupCollapseSlice {
+  /** Keyed by `groupCollapseScopeKey(tableId, viewId, groupByFieldId)`. */
+  collapsedGroups: Record<string, string[]>
+
+  toggleGroupCollapsed: (scopeKey: string, key: string) => void
+  setCollapsedGroups: (scopeKey: string, keys: string[]) => void
+}
+
 // ============================================================================
 // COMBINED STORE
 // ============================================================================
 
 /** Combined dynamic table store */
-export type DynamicTableStore = ViewSlice & UISlice & FilterSlice & SharedSlice
+export type DynamicTableStore = ViewSlice & UISlice & FilterSlice & SharedSlice & GroupCollapseSlice
 
 /** Middleware types for slice creators */
 type Middlewares = [['zustand/subscribeWithSelector', never], ['zustand/immer', never]]

@@ -11,21 +11,26 @@ import type {
 import { useShallow } from 'zustand/react/shallow'
 import type {
   CalendarViewConfig,
+  ColumnAggregateOp,
   ColumnFormatting,
+  GroupByConfig,
   KanbanViewConfig,
   TableView,
   ViewConfig,
 } from '../types'
 import {
+  EMPTY_COLUMN_AGGREGATES,
   EMPTY_COLUMN_FORMATTING,
   EMPTY_COLUMN_LABELS,
   EMPTY_COLUMN_SIZING,
   EMPTY_FILTERS,
+  EMPTY_GROUP_KEYS,
   EMPTY_SORTING,
   EMPTY_VIEWS,
   PERSONAL_TABLE_VIEW_NAME,
 } from '../utils/constants'
 import { useDynamicTableStore } from './dynamic-table-store'
+import type { DynamicTableStore } from './store-types'
 
 /** True for the per-user default-table override row (not a named/saved view). */
 function isPersonalTableView(view: TableView): boolean {
@@ -284,6 +289,52 @@ export function useColumnFormatting(tableId: string): Record<string, ColumnForma
         EMPTY_COLUMN_FORMATTING
       )
     })
+  )
+}
+
+/**
+ * Resolve the active group-by (pending → personal if shared → saved → session).
+ * Checks key presence, not `??`: clearing writes `groupBy: undefined`, which must shadow the saved value.
+ */
+export function resolveGroupBy(s: DynamicTableStore, tableId: string): GroupByConfig | undefined {
+  const viewId = s.activeViewIds[tableId]
+  if (!viewId) return s.sessionConfigs[tableId]?.groupBy
+  const pending = s.pendingConfigs[viewId]
+  if (pending && 'groupBy' in pending) return pending.groupBy
+  const shared = s.viewsByTableId[tableId]?.find((candidate) => candidate.id === viewId)?.isShared
+  const personal = shared ? s.personalConfigs[viewId] : undefined
+  if (personal && 'groupBy' in personal) return personal.groupBy
+  return s.viewConfigs[viewId]?.groupBy
+}
+
+/** Get group-by for current table/view */
+export function useTableGroupBy(tableId: string): GroupByConfig | undefined {
+  return useDynamicTableStore(useShallow((s) => resolveGroupBy(s, tableId)))
+}
+
+/** Get per-column aggregate ops for current table/view */
+export function useColumnAggregates(tableId: string): Record<string, ColumnAggregateOp> {
+  const viewId = useDynamicTableStore((s) => s.activeViewIds[tableId])
+  return useDynamicTableStore(
+    useShallow((s) => {
+      if (!viewId) return s.sessionConfigs[tableId]?.columnAggregates ?? EMPTY_COLUMN_AGGREGATES
+      const shared = s.viewsByTableId[tableId]?.find(
+        (candidate) => candidate.id === viewId
+      )?.isShared
+      return (
+        s.pendingConfigs[viewId]?.columnAggregates ??
+        (shared ? s.personalConfigs[viewId]?.columnAggregates : undefined) ??
+        s.viewConfigs[viewId]?.columnAggregates ??
+        EMPTY_COLUMN_AGGREGATES
+      )
+    })
+  )
+}
+
+/** Get collapsed group keys for a `groupCollapseScopeKey`; null while not grouped */
+export function useCollapsedGroupKeys(scopeKey: string | null): string[] {
+  return useDynamicTableStore((s) =>
+    scopeKey ? (s.collapsedGroups[scopeKey] ?? EMPTY_GROUP_KEYS) : EMPTY_GROUP_KEYS
   )
 }
 

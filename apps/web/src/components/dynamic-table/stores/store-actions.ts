@@ -9,8 +9,15 @@ import type {
   VisibilityState,
 } from '@tanstack/react-table'
 import { useCallback } from 'react'
-import type { CalendarViewConfig, ColumnFormatting, KanbanViewConfig } from '../types'
+import type {
+  CalendarViewConfig,
+  ColumnAggregateOp,
+  ColumnFormatting,
+  GroupByConfig,
+  KanbanViewConfig,
+} from '../types'
 import { useDynamicTableStore } from './dynamic-table-store'
+import { resolveGroupBy } from './store-selectors'
 import type { DynamicTableStore, TableUIConfig } from './store-types'
 
 function isSharedView(state: DynamicTableStore, tableId: string, viewId: string): boolean {
@@ -72,6 +79,33 @@ export function useSetSorting(tableId: string) {
         updateInteractiveConfig(s, viewId, shared, { sorting })
       } else {
         s.updateSessionConfig(tableId, { sorting })
+      }
+    },
+    [tableId]
+  )
+}
+
+/** Get action to set group-by; `undefined` clears it */
+export function useSetGroupBy(tableId: string) {
+  return useCallback(
+    (
+      groupByOrUpdater:
+        | GroupByConfig
+        | undefined
+        | ((old: GroupByConfig | undefined) => GroupByConfig | undefined)
+    ) => {
+      const s = useDynamicTableStore.getState()
+      const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
+      const groupBy =
+        typeof groupByOrUpdater === 'function'
+          ? groupByOrUpdater(resolveGroupBy(s, tableId))
+          : groupByOrUpdater
+
+      if (viewId) {
+        updateInteractiveConfig(s, viewId, shared, { groupBy })
+      } else {
+        s.updateSessionConfig(tableId, { groupBy })
       }
     },
     [tableId]
@@ -308,6 +342,37 @@ export function useSetSingleColumnFormatting(tableId: string) {
   )
 }
 
+/** Set or clear (`null`) the aggregate op for a single column */
+export function useSetColumnAggregate(tableId: string) {
+  return useCallback(
+    (columnId: string, op: ColumnAggregateOp | null) => {
+      const s = useDynamicTableStore.getState()
+      const viewId = s.activeViewIds[tableId]
+      const shared = viewId ? isSharedView(s, tableId, viewId) : false
+      const current = viewId
+        ? (s.pendingConfigs[viewId]?.columnAggregates ??
+          (shared ? s.personalConfigs[viewId]?.columnAggregates : undefined) ??
+          s.viewConfigs[viewId]?.columnAggregates ??
+          {})
+        : (s.sessionConfigs[tableId]?.columnAggregates ?? {})
+
+      const columnAggregates = { ...current }
+      if (op === null) {
+        delete columnAggregates[columnId]
+      } else {
+        columnAggregates[columnId] = op
+      }
+
+      if (viewId) {
+        updateInteractiveConfig(s, viewId, shared, { columnAggregates })
+      } else {
+        s.updateSessionConfig(tableId, { columnAggregates })
+      }
+    },
+    [tableId]
+  )
+}
+
 /** Set pinned column - pins all columns up to and including the target column */
 export function useSetPinnedColumn(tableId: string, getAllColumnIds: () => string[]) {
   return useCallback(
@@ -344,6 +409,13 @@ export function useSetPinnedColumn(tableId: string, getAllColumnIds: () => strin
     },
     [tableId, getAllColumnIds]
   )
+}
+
+// ─── Group Collapse Actions ───────────────────────────────────────────────────
+
+/** Get action to toggle one group key within a `groupCollapseScopeKey` */
+export function useToggleGroupCollapsed() {
+  return useDynamicTableStore((s) => s.toggleGroupCollapsed)
 }
 
 // ─── View Actions ─────────────────────────────────────────────────────────────

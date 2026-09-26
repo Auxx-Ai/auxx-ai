@@ -11,8 +11,10 @@ import type {
 } from '@tanstack/react-table'
 import type {
   CalendarViewConfig,
+  ColumnAggregateOp,
   ColumnFormatting,
   ExtendedColumnDef,
+  GroupByConfig,
   KanbanViewConfig,
   ViewConfig,
 } from '../types'
@@ -28,6 +30,8 @@ export interface ViewStateSnapshot {
   columnPinning?: ColumnPinningState
   columnLabels?: Record<string, string>
   columnFormatting?: Record<string, ColumnFormatting>
+  groupBy?: GroupByConfig
+  columnAggregates?: Record<string, ColumnAggregateOp>
   filters?: ConditionGroup[]
 }
 
@@ -52,6 +56,8 @@ export function buildViewConfig(snapshot: ViewStateSnapshot): ViewConfig {
     columnPinning: snapshot.columnPinning,
     columnLabels: snapshot.columnLabels,
     columnFormatting: snapshot.columnFormatting,
+    groupBy: snapshot.groupBy,
+    columnAggregates: snapshot.columnAggregates,
     filters: snapshot.filters,
   })
 }
@@ -170,6 +176,8 @@ export function normalizeViewConfig(config?: Partial<ViewConfig> | null): ViewCo
     kanban: config?.kanban ? cloneKanbanConfig(config.kanban) : undefined,
     // Preserve calendar configuration if present
     calendar: config?.calendar ? cloneCalendarConfig(config.calendar) : undefined,
+    groupBy: config?.groupBy ? { ...config.groupBy } : undefined,
+    columnAggregates: config?.columnAggregates ? { ...config.columnAggregates } : {},
   }
 }
 
