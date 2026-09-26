@@ -1,27 +1,10 @@
 // packages/lib/src/inventory/movements/fill-pending-cost.ts
 
-/**
- * `fillPendingCost` - the ONE lane that writes a cost onto a `pending` stock
- * movement (111 Q18, fill once).
- *
- * A movement written while its part had no standard carries
- * `cost_basis = pending` and no cost keys. When the standard lands, this fills
- * `unit_cost`, `extended_cost = round(unitCost x quantity)` (signed like the
- * quantity) and `cost_basis = standard` onto the SAME row, once. A row whose
- * basis is anything else is refused: cost fields are written once, at write
- * time or here, and never changed.
- *
- * Posts nothing. The pricer (`costing/price-pending-movements.ts`) calls this
- * and posts the document once every row of it is priced.
- *
- * `updatable: false` on the movement fields is advisory and unread on the
- * write path (inventory guide §6.4); the write goes through `UnifiedCrudHandler`
- * on a quiet automation session, the same lane `completeBuild` stamps its own
- * row through, so nothing here has to bypass a guard. The basis check is a
- * read-then-write; the caller serialises pricing per org.
- */
+// The ONE lane that writes a cost onto a `pending` stock movement, once (111 Q18; inventory guide §7.4).
+// Rows are claimed `FOR UPDATE` in the same transaction as the write, so two concurrent pricers never fill one row twice.
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
@@ -31,8 +14,11 @@ import { quietSession } from '../../resources/crud/write-origin'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
+import { claimPendingMovements } from './claim-pending'
 import { computeExtendedCost } from './client'
 import { guard } from './guard'
+
+const logger = createScopedLogger('inventory-movements:fill-pending')
 
 /** The prose recorded on every silent fill. Greppable, and the audit trail. */
 export const FILL_PENDING_COST_REASON =
@@ -67,10 +53,8 @@ const FILL_ATTRIBUTES = [
 ] as const
 
 /**
- * Price these pending rows, once. Refuses the whole batch (writes nothing)
- * when any row is missing, is not pending, or is named twice.
- *
- * A `unitCost` of 0 is accepted: a stored $0 standard is a real cost (103 §5a).
+ * Price the rows still `pending` and return only those; a row another pass already priced is skipped.
+ * Refuses the whole batch when a row is missing or named twice. A `unitCost` of 0 is a real cost (103 §5a).
  */
 export async function fillPendingCost(
   db: Database,
@@ -106,49 +90,61 @@ export async function fillPendingCost(
       if (missing.length > 0) {
         throw new NotFoundError('Stock movements not found', { movementIds: missing })
       }
-      const notPending = records.filter(
-        (record) => record.option('stock_movement_cost_basis') !== StockMovementCostBasis.PENDING
-      )
-      if (notPending.length > 0) {
-        throw new UnprocessableEntityError(
-          'Only a pending stock movement can be priced; a cost is written once and never changed',
-          { movementIds: notPending.map((record) => record.id) }
-        )
-      }
-
       const userId = await getOrgCache().get(organizationId, 'systemUser')
-      const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
-        session: quietSession(FILL_PENDING_COST_REASON),
-      })
-
-      const filled: FilledStockMovement[] = []
-      for (const record of records) {
-        const quantity = record.number('stock_movement_quantity')
-        if (quantity == null || !Number.isFinite(quantity)) {
-          throw new UnprocessableEntityError(
-            `Stock movement ${record.id} has no quantity and cannot be priced`
-          )
+      const basisFieldId = fields.stock_movement_cost_basis.id
+      return db.transaction(async (tx: Transaction) => {
+        const claimed = await claimPendingMovements(
+          tx,
+          organizationId,
+          basisFieldId,
+          records.map((record) => record.id)
+        )
+        if (claimed.size < records.length) {
+          logger.info('Skipped stock movements no longer pending', {
+            organizationId,
+            skipped: records.length - claimed.size,
+          })
         }
-        const unitCost = costByMovement.get(record.id)!
-        // `|| 0`: a $0 standard on a negative quantity rounds to `-0`.
-        const extendedCost = computeExtendedCost(unitCost, quantity) || 0
-        await crud.update(toRecordId(movementDefId, record.id) as RecordId, {
-          stock_movement_unit_cost: unitCost,
-          stock_movement_extended_cost: extendedCost,
-          stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
-        })
-        const occurredAt = record.date('stock_movement_occurred_at')
-        filled.push({
-          movementId: record.id,
-          partInstanceId: record.related('stock_movement_part') ?? '',
-          quantity,
-          unitCost,
-          extendedCost,
-          glAccount: record.text('stock_movement_gl_account'),
-          occurredAt: occurredAt ? new Date(occurredAt) : null,
-        })
-      }
-      return filled
+        const crud = new UnifiedCrudHandler(
+          organizationId,
+          userId,
+          tx as unknown as Database,
+          undefined,
+          {
+            session: quietSession(FILL_PENDING_COST_REASON),
+          }
+        )
+
+        const filled: FilledStockMovement[] = []
+        for (const record of records) {
+          if (!claimed.has(record.id)) continue
+          const quantity = record.number('stock_movement_quantity')
+          if (quantity == null || !Number.isFinite(quantity)) {
+            throw new UnprocessableEntityError(
+              `Stock movement ${record.id} has no quantity and cannot be priced`
+            )
+          }
+          const unitCost = costByMovement.get(record.id)!
+          // `|| 0`: a $0 standard on a negative quantity rounds to `-0`.
+          const extendedCost = computeExtendedCost(unitCost, quantity) || 0
+          await crud.update(toRecordId(movementDefId, record.id) as RecordId, {
+            stock_movement_unit_cost: unitCost,
+            stock_movement_extended_cost: extendedCost,
+            stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
+          })
+          const occurredAt = record.date('stock_movement_occurred_at')
+          filled.push({
+            movementId: record.id,
+            partInstanceId: record.related('stock_movement_part') ?? '',
+            quantity,
+            unitCost,
+            extendedCost,
+            glAccount: record.text('stock_movement_gl_account'),
+            occurredAt: occurredAt ? new Date(occurredAt) : null,
+          })
+        }
+        return filled
+      })
     },
     'Failed to price pending stock movements',
     { organizationId, count: rows.length }

@@ -35,7 +35,7 @@ import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import { wakeReasonCode } from '../../accounting/work-items/wake'
+import { wakePricedParts } from '../../accounting/work-items/wake'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
 import { toFieldType } from '../../field-values/stored-field-type'
@@ -145,7 +145,7 @@ export async function rollStandardCost(
       // The rows written pending for want of a standard are valued now (111 Q22); the wake
       // keeps the recovery lane as the backstop.
       if (writtenPartIds.length > 0) {
-        await wakeReasonCode(db, organizationId, 'STANDARD_COST_MISSING')
+        await wakePricedParts(db, organizationId, { partIds: writtenPartIds })
         await pricePendingMovementsQuietly(db, organizationId, writtenPartIds)
       }
 

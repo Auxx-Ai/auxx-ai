@@ -661,8 +661,8 @@ Quantity never waits on cost. A part with no standard still moves: relief, `adju
 `unit_cost` / `extended_cost` key — absent, never `0` (`buildStockMovementValues` refuses a null
 cost on any other basis). `fillPendingCost` (`inventory/movements/fill-pending-cost.ts`) is the
 **one** lane that later writes `unit_cost`, `extended_cost = round(unitCost × quantity)` and
-`cost_basis = standard` onto the **same row**, once; it refuses any row not currently `pending`
-and posts nothing — the pricer that calls it posts the document. The invariant is therefore
+`cost_basis = standard` onto the **same row**, once; it claims the still-`pending` rows `FOR UPDATE`
+in the write's transaction, skips any a concurrent pass priced first, and posts nothing — the pricer that calls it posts the document. The invariant is therefore
 "cost fields are written once — at write time or at pricing — never changed". `revalue` keeps
 its one meaning. A pending row reverses into a pending row; a pending build undoes into pending
 legs. The document parks at work-item stage `price` (`fulfillment` · `build` · `stock_movement`)

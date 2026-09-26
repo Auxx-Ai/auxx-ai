@@ -2,7 +2,7 @@
 
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, type Column, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, type Column, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { groupsByExternalRef, type WorkItemCode, type WorkItemStage } from './codes'
 import { workItemRefs } from './reads'
@@ -110,6 +110,45 @@ export async function wakeReasonCode(
   reasonCode: WorkItemCode
 ): Promise<Result<number, Error>> {
   return wake(db, organizationId, reasonCode, code(reasonCode))
+}
+
+/**
+ * A standard landed on these parts: the `price` rows naming any of them (`externalRef` or
+ * `detail.partIds`), plus re-staged dispatch rows that name no movements and so no parts.
+ */
+export async function wakePricedParts(
+  db: Db,
+  organizationId: string,
+  input: { partIds: readonly string[] }
+): Promise<Result<number, Error>> {
+  const ids = [...new Set(input.partIds.filter(Boolean))]
+  if (ids.length === 0) return ok(0)
+  const t = schema.AccountingWorkItem
+  const refs = workItemRefs({
+    reasonCode: sql`${t.reasonCode}`,
+    externalRef: sql`${t.externalRef}`,
+    detail: sql`${t.detail}`,
+  })
+  return wake(
+    db,
+    organizationId,
+    'priced-parts',
+    and(
+      code('STANDARD_COST_MISSING'),
+      eq(t.stage, 'price'),
+      or(
+        sql`jsonb_exists_any(${refs}, ARRAY[${sql.join(
+          ids.map((id) => sql`${id}`),
+          sql`, `
+        )}]::text[])`,
+        and(
+          eq(t.sourceKind, 'fulfillment'),
+          sql`(CASE WHEN jsonb_typeof(${t.detail}->'pendingMovementIds') = 'array'
+            THEN jsonb_array_length(${t.detail}->'pendingMovementIds') = 0 ELSE true END)`
+        )
+      )
+    )
+  )
 }
 
 /** The rows of these sources at one stage, e.g. the acceptances on an order that changed. */

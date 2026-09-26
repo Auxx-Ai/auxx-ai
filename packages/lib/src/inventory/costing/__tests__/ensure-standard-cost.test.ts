@@ -5,14 +5,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+  wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
   pricePending: vi.fn(async () => {}),
   queryQueue: [] as unknown[][],
   setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
   publishFieldValueUpdates: vi.fn(async () => {}),
 }))
 
-vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
 // The pricer is its own subject (`price-pending-movements.test.ts`); here only the call matters.
 vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 
@@ -214,10 +214,10 @@ describe('ensureStandardCost', () => {
 
     await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual', unitCost: 1 })
 
-    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: [MOTOR] })
     expect(h.pricePending).toHaveBeenCalledWith(db, ORG, [MOTOR])
     expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
-      h.wakeReasonCode.mock.invocationCallOrder[0]!
+      h.wakePricedParts.mock.invocationCallOrder[0]!
     )
     const ctx = h.setValueWithType.mock.calls[0]?.[0] as { userId?: string }
     expect(ctx.userId).toBe(SYSTEM_USER)

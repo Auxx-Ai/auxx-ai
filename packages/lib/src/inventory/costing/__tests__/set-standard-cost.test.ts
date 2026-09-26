@@ -19,7 +19,7 @@ const h = vi.hoisted(() => ({
   roll: vi.fn(),
   edges: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   setValueWithType: vi.fn(async () => []),
-  wakeReasonCode: vi.fn(async () => ({ isOk: () => true })),
+  wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
   requestAccountingRecovery: vi.fn(async () => {}),
   pricePending: vi.fn(async () => {}),
 }))
@@ -34,7 +34,7 @@ vi.mock('../ensure-standard-cost', () => ({ ensureStandardCost: h.ensureStandard
 vi.mock('../provisional-standard', () => ({ replaceProvisionalStandard: h.replace }))
 vi.mock('../roll-unvalued-ancestors', () => ({ rollUnvaluedAncestors: h.roll }))
 vi.mock('../cost-calculator', () => ({ loadOrgSubpartEdges: async () => h.edges }))
-vi.mock('../../../accounting/work-items/wake', () => ({ wakeReasonCode: h.wakeReasonCode }))
+vi.mock('../../../accounting/work-items/wake', () => ({ wakePricedParts: h.wakePricedParts }))
 vi.mock('../price-pending-movements', () => ({ pricePendingMovementsQuietly: h.pricePending }))
 vi.mock('../../../accounting/work-items/recovery', () => ({
   requestAccountingRecovery: h.requestAccountingRecovery,
@@ -144,12 +144,12 @@ describe('setStandardCost', () => {
     expect(writes.get('f_std')).toEqual({ type: 'number', value: 4200 })
     expect(writes.get('f_mat')).toEqual({ type: 'number', value: 4200 })
     expect(writes.get('f_origin')).toEqual({ type: 'option', optionId: 'manual' })
-    expect(h.wakeReasonCode).toHaveBeenCalledWith(db, ORG, 'STANDARD_COST_MISSING')
+    expect(h.wakePricedParts).toHaveBeenCalledWith(db, ORG, { partIds: ['p1'] })
     // 111 Q22: priced inline after the wake (a no-op by construction here - an unmoved part
     // has no rows - but the door prices like the other three).
     expect(h.pricePending).toHaveBeenCalledWith(db, ORG, ['p1'])
     expect(h.pricePending.mock.invocationCallOrder[0]!).toBeGreaterThan(
-      h.wakeReasonCode.mock.invocationCallOrder[0]!
+      h.wakePricedParts.mock.invocationCallOrder[0]!
     )
     expect(h.requestAccountingRecovery).toHaveBeenCalledWith(ORG)
   })

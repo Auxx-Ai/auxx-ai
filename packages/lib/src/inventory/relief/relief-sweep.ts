@@ -11,6 +11,7 @@ import {
   pricePendingMovements,
   readBuildPendingParts,
   readMovementPartIds,
+  readStillPending,
 } from '../costing/price-pending-movements'
 import { readReliefLines } from './backfill'
 import { relieveFulfillmentLines } from './relieve'
@@ -54,8 +55,8 @@ export async function sweepPendingPricing(
 }
 
 /**
- * Price one parked document. `accepted` when nothing of it is pending any more (the pricer
- * cleared the row), `blocked` while a part still has no standard, `skipped` when the source is
+ * Price one parked document. `accepted` when nothing of it is pending any more, whoever priced
+ * it, `blocked` while a part still has no standard, `skipped` when the source is
  * gone. A blocked row is re-recorded so it backs off rather than being re-offered every pass.
  */
 export async function priceOne(
@@ -92,10 +93,9 @@ export async function priceOne(
 
   const priced = await pricePendingMovements(db, organizationId, target.partIds)
   if (priced.isErr()) throw priced.error
-  const remaining = target.pendingMovementIds.filter(
-    (id) => !priced.value.pricedMovementIds.includes(id)
-  )
-  if (remaining.length === 0) {
+  // Decide by what is still pending, not by what this pass priced: a concurrent pass may have priced them.
+  const remaining = await readStillPending(db, organizationId, target.pendingMovementIds)
+  if (remaining.size === 0) {
     await deleteWorkItemsAtStage(db, organizationId, {
       sourceKind,
       sourceIds: [sourceId],
