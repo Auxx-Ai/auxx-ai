@@ -78,7 +78,11 @@ vi.mock('@auxx/lib/identity', () => ({
 vi.mock('@auxx/lib/field-values', () => ({ getDescendantIds: fieldValues.getDescendantIds }))
 vi.mock('@auxx/lib/conditions', async () => {
   const { z } = await import('zod')
-  return { conditionGroupSchema: z.any() }
+  return {
+    conditionGroupSchema: z.any(),
+    groupByConfigSchema: z.any(),
+    columnAggregateOpSchema: z.any(),
+  }
 })
 
 // The barrel hangs under vitest — hand back the REAL guards from their deep

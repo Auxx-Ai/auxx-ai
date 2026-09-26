@@ -388,6 +388,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
       orderedKeys: groupSummary.orderedKeys,
       summary: groupSummary.summary,
       hasMoreGroups: groupSummary.hasMoreGroups,
+      hasMoreRows: !!hasNextPage,
       collapsedKeys: collapsedKeySet,
       onToggleCollapsed: toggleCollapsed,
       presetForKey: (key) => groupPreset(groupField, key),
@@ -399,6 +400,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     groupSummary.orderedKeys,
     groupSummary.summary,
     groupSummary.hasMoreGroups,
+    hasNextPage,
     collapsedKeySet,
     toggleCollapsed,
   ])

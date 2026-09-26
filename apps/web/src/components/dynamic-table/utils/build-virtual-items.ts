@@ -16,7 +16,10 @@ export interface VirtualItemsResult {
   rowTops: number[]
 }
 
-type GroupingInput = Pick<GroupingProps, 'keyForRow' | 'orderedKeys' | 'collapsedKeys'>
+type GroupingInput = Pick<
+  GroupingProps,
+  'keyForRow' | 'orderedKeys' | 'collapsedKeys' | 'hasMoreRows'
+>
 
 /** Pixel height of one virtual item. */
 export function virtualItemSize(item: TableVirtualItem): number {
@@ -49,7 +52,7 @@ export function buildVirtualItems(
     }
   }
 
-  const { keyForRow, orderedKeys, collapsedKeys } = grouping
+  const { keyForRow, orderedKeys, collapsedKeys, hasMoreRows } = grouping
 
   // Contiguous runs of rows sharing a key, in server order.
   const segments: Array<{ key: string | null; start: number; end: number }> = []
@@ -103,7 +106,7 @@ export function buildVirtualItems(
     }
   }
 
-  for (const segment of segments) {
+  segments.forEach((segment, index) => {
     const segmentIndex = orderIndex?.get(toStringKey(segment.key))
     if (segmentIndex !== undefined) flushCollapsedBefore(segmentIndex)
 
@@ -113,7 +116,7 @@ export function buildVirtualItems(
     // Rows of a group collapsed while its rows are still loaded stay hidden until the refetch lands.
     if (collapsedKeys.has(toStringKey(segment.key))) {
       for (let i = segment.start; i <= segment.end; i++) rowTops[i] = headerTop
-      continue
+      return
     }
 
     for (let i = segment.start; i <= segment.end; i++) {
@@ -122,13 +125,15 @@ export function buildVirtualItems(
       top += ROW_HEIGHT
     }
 
-    if (options.addRow) {
+    // The last loaded group may continue on the next page, so it is not closed yet.
+    const isOpenTail = hasMoreRows && index === segments.length - 1
+    if (options.addRow && !isOpenTail) {
       items.push({ kind: 'add', id: `add:${toStringKey(segment.key)}${suffix}`, key: segment.key })
       top += ADD_ROW_HEIGHT
     }
-  }
+  })
 
-  for (const key of pendingCollapsed) pushHeader(key, -1)
+  if (!hasMoreRows) for (const key of pendingCollapsed) pushHeader(key, -1)
 
   return { items, rowTops }
 }

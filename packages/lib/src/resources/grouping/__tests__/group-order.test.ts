@@ -119,6 +119,14 @@ describe('buildGroupOrderBy', () => {
     expect(render(orderBy[1]!).sql).toBe(`${render(keyExpr).sql} ASC NULLS LAST`)
   })
 
+  it('SINGLE_SELECT folds a legacy `value` key onto its option id so one option is one group', () => {
+    const key = render(build(status).keyExpr)
+    expect(key.sql).toMatch(
+      /SELECT COALESCE\(\(ARRAY\[\$\d+, \$\d+\]::text\[\]\)\[array_position\(ARRAY\[\$\d+, \$\d+\]::text\[\], "FieldValue"\."optionId"\)\], "FieldValue"\."optionId"\)/
+    )
+    expect(key.params.slice(0, 4)).toEqual(['opt_open', 'opt_done', 'open', 'done'])
+  })
+
   it('RELATIONSHIP ranks by the related displayName with the raw key as tie-break', () => {
     const { keyExpr, orderBy } = build(company)
     expect(render(keyExpr).sql).toContain('"FieldValue"."relatedEntityId"')

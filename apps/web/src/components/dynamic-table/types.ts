@@ -368,6 +368,8 @@ export interface GroupingProps {
   orderedKeys?: Array<string | null>
   summary?: Map<string | null, GroupSummaryEntry>
   hasMoreGroups?: boolean
+  /** More list pages remain, so the last loaded group and later collapsed groups are not final. */
+  hasMoreRows?: boolean
   /** Collapsed keys; `EMPTY_GROUP_KEY` stands for `null`. */
   collapsedKeys: ReadonlySet<string>
   onToggleCollapsed: (key: string | null) => void

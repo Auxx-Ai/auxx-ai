@@ -800,7 +800,7 @@ export const recordRouter = createTRPCRouter({
         /** IANA zone for date-time group buckets. Required when grouping by a DATETIME field. */
         timezone: z.string().max(64).optional(),
         /** Collapsed group keys, left out of the page and `total`. `'__empty__'` = no value. */
-        excludeGroupKeys: z.array(z.string()).max(500).optional(),
+        excludeGroupKeys: z.array(z.string().max(256)).max(500).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -839,7 +839,11 @@ export const recordRouter = createTRPCRouter({
         groupBy: groupByConfigSchema,
         timezone: z.string().max(64).optional(),
         /** Column id (ResourceFieldId) → op. NUMBER / CURRENCY, single-valued columns only. */
-        aggregates: z.record(z.string(), columnAggregateOpSchema).optional(),
+        aggregates: z
+          .record(z.string(), columnAggregateOpSchema)
+          // One LEFT JOIN per entry; a table never has this many summarizable columns.
+          .refine((aggregates) => Object.keys(aggregates).length <= 50, 'Too many aggregates')
+          .optional(),
       })
     )
     .query(async ({ ctx, input }) => {

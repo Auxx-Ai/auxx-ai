@@ -8,7 +8,7 @@ import { bucketExpr } from '../aggregate/date-buckets'
 import type { EntityQueryContext } from '../query-builder/entity-condition-builder'
 import { entityConditionBuilder } from '../query-builder/entity-condition-builder'
 import type { ResourceField } from '../registry/field-types'
-import { getFieldOptions } from '../registry/option-helpers'
+import { buildOptionIndex, getFieldOptions, optionKey } from '../registry/option-helpers'
 import { EMPTY_GROUP_KEY, isGroupableField } from './client'
 import type { GroupByInput } from './types'
 
@@ -95,6 +95,22 @@ export function optionOrderKeys(field: ResourceField): string[] {
   return keys
 }
 
+/** Folds every stored option key onto the option's write key (`id ?? value`), so one option is one group. */
+function canonicalOptionKey(stored: SQL, field: ResourceField): SQL {
+  const index = buildOptionIndex(getFieldOptions(field))
+  const from: string[] = []
+  const to: string[] = []
+  for (const [key, option] of index) {
+    const canonical = optionKey(option)
+    if (canonical && canonical !== key) {
+      from.push(key)
+      to.push(canonical)
+    }
+  }
+  if (from.length === 0) return stored
+  return sql`COALESCE((${textArray(to)})[array_position(${textArray(from)}, ${stored})], ${stored})`
+}
+
 /**
  * Actor ids (users, agents and agent users, groups) sorted by display name — the
  * bounded key set an ACTOR group ranks against. Mirrors `resolveGroupLabels`' naming.
@@ -145,6 +161,7 @@ export function directColumn(field: ResourceField, context: EntityQueryContext) 
 
 function rawValueExpr(field: ResourceField, kind: GroupKind, context: EntityQueryContext): SQL {
   const column = directColumn(field, context)
+  if (column && kind === 'select') return canonicalOptionKey(sql`(${column})::text`, field)
   if (column) {
     // A naive `timestamp` column holds UTC; make it a timestamptz before bucketing.
     const withTimezone = (column as { withTimezone?: boolean }).withTimezone
@@ -156,7 +173,11 @@ function rawValueExpr(field: ResourceField, kind: GroupKind, context: EntityQuer
   const fieldId = field.id || field.key
   switch (kind) {
     case 'select':
-      return fieldValueSubquery(sql`"FieldValue"."optionId"`, fieldId, context)
+      return fieldValueSubquery(
+        canonicalOptionKey(sql`"FieldValue"."optionId"`, field),
+        fieldId,
+        context
+      )
     case 'relationship':
       return fieldValueSubquery(sql`"FieldValue"."relatedEntityId"`, fieldId, context)
     case 'actor':

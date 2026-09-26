@@ -169,7 +169,7 @@ async function setup() {
 describe('queryEntityGroupSummary', () => {
   let p: Awaited<ReturnType<typeof setup>>
 
-  /** r0,r1 → opt_z; r2 → 'legacy' (value keyspace of opt_a); r3 → no value. */
+  /** r0,r1 → opt_z; r2 → 'legacy' (value keyspace of opt_a, grouped as opt_a); r3 → no value. */
   async function seedStatusRows() {
     const rows = await seedInstances(p.org.id, p.def.id, 4)
     const [r0, r1, r2, r3] = rows as [
@@ -205,7 +205,7 @@ describe('queryEntityGroupSummary', () => {
     expect(result._unsafeUnwrap()).toEqual({
       groups: [
         { key: 'opt_z', count: 2, aggregates: { [p.ref(p.ids.amount)]: 15 } },
-        { key: 'legacy', count: 1, aggregates: { [p.ref(p.ids.amount)]: null } },
+        { key: 'opt_a', count: 1, aggregates: { [p.ref(p.ids.amount)]: null } },
         { key: null, count: 1, aggregates: { [p.ref(p.ids.amount)]: 7 } },
       ],
       hasMoreGroups: false,
@@ -218,7 +218,22 @@ describe('queryEntityGroupSummary', () => {
       ...p.params,
       groupBy: { fieldId: p.ref(p.ids.status), desc: true },
     })
-    expect(result._unsafeUnwrap().groups.map((g) => g.key)).toEqual(['legacy', 'opt_z', null])
+    expect(result._unsafeUnwrap().groups.map((g) => g.key)).toEqual(['opt_a', 'opt_z', null])
+  })
+
+  it('one option stored under both keyspaces is one group, keyed by its id', async () => {
+    const { r3 } = await seedStatusRows()
+    await seedValues(p.org.id, p.def.id, [
+      { entityId: r3.id, fieldId: p.ids.status, optionId: 'opt_a' },
+    ])
+    const result = await queryEntityGroupSummary(db(), {
+      ...p.params,
+      groupBy: { fieldId: p.ref(p.ids.status) },
+    })
+    expect(result._unsafeUnwrap().groups.map((g) => [g.key, g.count])).toEqual([
+      ['opt_z', 2],
+      ['opt_a', 2],
+    ])
   })
 
   it('the visibility predicate removes hidden rows from the counts', async () => {
@@ -303,7 +318,7 @@ describe('queryEntityGroupSummary', () => {
       groupBy: { fieldId: p.ref(p.ids.status) },
     })
     expect(page.ids).toEqual([r0.id, r1.id, r2.id, r3.id])
-    expect(page.groupKeys).toEqual(['opt_z', 'opt_z', 'legacy', null])
+    expect(page.groupKeys).toEqual(['opt_z', 'opt_z', 'opt_a', null])
     expect(page.total).toBe(4)
 
     const collapsed = await queryEntityInstanceIdsPaged({
@@ -317,7 +332,7 @@ describe('queryEntityGroupSummary', () => {
       excludeGroupKeys: ['opt_z', '__empty__'],
     })
     expect(collapsed.ids).toEqual([r2.id])
-    expect(collapsed.groupKeys).toEqual(['legacy'])
+    expect(collapsed.groupKeys).toEqual(['opt_a'])
     expect(collapsed.total).toBe(1)
 
     const keepsEmpty = await queryEntityInstanceIdsPaged({
@@ -330,7 +345,7 @@ describe('queryEntityGroupSummary', () => {
       groupBy: { fieldId: p.ref(p.ids.status) },
       excludeGroupKeys: ['opt_z'],
     })
-    expect(keepsEmpty.groupKeys).toEqual(['legacy', null])
+    expect(keepsEmpty.groupKeys).toEqual(['opt_a', null])
     expect(keepsEmpty.total).toBe(2)
   })
 })

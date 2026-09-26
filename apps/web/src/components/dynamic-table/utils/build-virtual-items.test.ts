@@ -98,6 +98,31 @@ describe('buildVirtualItems', () => {
     expectTopsConsistent(items, rowTops)
   })
 
+  it('while more rows remain, leaves the last loaded group open and defers later collapsed headers', () => {
+    const { rows, keyForRow } = rowsFor(['a', 'b'])
+    const grouping = {
+      keyForRow,
+      orderedKeys: ['a', 'b', 'c', null],
+      collapsedKeys: new Set(['c', EMPTY_GROUP_KEY]),
+      hasMoreRows: true,
+    }
+    const { items, rowTops } = buildVirtualItems(rows, grouping, { addRow: true })
+    expect(shape(items)).toEqual(['header:a', 'row:0', 'add:a', 'header:b', 'row:1'])
+    expectTopsConsistent(items, rowTops)
+
+    const done = buildVirtualItems(rows, { ...grouping, hasMoreRows: false }, { addRow: true })
+    expect(shape(done.items)).toEqual([
+      'header:a',
+      'row:0',
+      'add:a',
+      'header:b',
+      'row:1',
+      'add:b',
+      'header:c',
+      'header:null',
+    ])
+  })
+
   it('places a collapsed first group before the first loaded group', () => {
     const { rows, keyForRow } = rowsFor(['b'])
     const { items } = buildVirtualItems(
