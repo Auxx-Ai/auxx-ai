@@ -47,14 +47,10 @@ export const COLUMN_AGGREGATE_OPS: ReadonlyArray<{
   { value: 'max', label: 'Max', short: 'max' },
 ]
 
-/** Effective storage type — CALC fields group/aggregate as their result type. */
+/** Storage type; CALC yields undefined because computed values never reach FieldValue. */
 function effectiveFieldType(field: ResourceField): string | undefined {
   const type = field.fieldType as string | undefined
-  if (type === 'CALC') {
-    return (field.options as { calc?: { resultFieldType?: string } } | undefined)?.calc
-      ?.resultFieldType
-  }
-  return type
+  return type === 'CALC' ? undefined : type
 }
 
 /** True when the field stores at most one value per record. */

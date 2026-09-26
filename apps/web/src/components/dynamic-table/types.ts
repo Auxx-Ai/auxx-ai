@@ -3,6 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type {
   ColumnFormatting,
+  GroupDateGranularity,
   TableViewPreferenceConfig,
   ViewConfig,
 } from '@auxx/lib/conditions/client'
@@ -345,6 +346,35 @@ export interface RowSelectionFeatures {
   onStarToggle?: (rowId: string) => void
 }
 
+// ============================================================================
+// GROUPING (see plans/table/group-by-plan.md §5)
+// ============================================================================
+
+/** Count and per-column aggregates for one group, from `record.groupSummary`. */
+export interface GroupSummaryEntry {
+  count: number
+  aggregates: Record<string, number | null>
+}
+
+/** Everything the table body needs to draw group headers; built by the data layer. */
+export interface GroupingProps {
+  /** The resolved group-by field. */
+  field: ResourceField
+  /** Date fields only. */
+  granularity?: GroupDateGranularity
+  /** Group key of a loaded row; `null` is the "No value" group. */
+  keyForRow: (rowId: string) => string | null
+  /** Keys in server group order (from the summary), used to place headers for collapsed groups. */
+  orderedKeys?: Array<string | null>
+  summary?: Map<string | null, GroupSummaryEntry>
+  hasMoreGroups?: boolean
+  /** Collapsed keys; `EMPTY_GROUP_KEY` stands for `null`. */
+  collapsedKeys: ReadonlySet<string>
+  onToggleCollapsed: (key: string | null) => void
+  /** Create-dialog preset for "+ New" inside a group; `undefined` for a plain create. */
+  presetForKey?: (key: string | null) => Record<string, unknown> | undefined
+}
+
 /**
  * Main dynamic table props
  */
@@ -520,6 +550,9 @@ export interface DynamicTableProps<TData = any> {
    * interaction. Off by default (existing tables keep drag-reorder).
    */
   disableColumnDnd?: boolean
+
+  /** Group rows under per-key header rows (table view only). */
+  grouping?: GroupingProps
 }
 
 /**

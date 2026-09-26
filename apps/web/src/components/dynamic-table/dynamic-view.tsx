@@ -36,6 +36,7 @@ import type {
   CalendarViewConfig,
   CustomField,
   DynamicTableProps,
+  GroupingProps,
   KanbanViewConfig,
   ResourceField,
   ViewConfig,
@@ -54,6 +55,7 @@ function DynamicViewInner<TData extends object>({
   hasUnsavedViewChanges,
   saveCurrentView,
   resetViewChanges,
+  grouping,
 }: {
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -61,6 +63,7 @@ function DynamicViewInner<TData extends object>({
   hasUnsavedViewChanges: boolean
   saveCurrentView?: () => void
   resetViewChanges?: () => void
+  grouping?: GroupingProps
 }) {
   // Access focused contexts
   const {
@@ -284,7 +287,11 @@ function DynamicViewInner<TData extends object>({
               ) : (
                 <>
                   {/* hideToolbar forced true — toolbar is outside the scroll container */}
-                  <TableBody hideToolbar scrollContainerRef={scrollContainerRef} />
+                  <TableBody
+                    hideToolbar
+                    scrollContainerRef={scrollContainerRef}
+                    grouping={grouping}
+                  />
                   <div className='grow' />
                 </>
               )}
@@ -329,6 +336,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     entityDefinitionId,
     standalone = false,
     disableColumnDnd = false,
+    grouping,
     ...tableProps
   } = props
 
@@ -545,6 +553,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
                   hasUnsavedViewChanges={hasUnsavedViewChanges}
                   saveCurrentView={saveCurrentView}
                   resetViewChanges={resetViewChanges}
+                  grouping={grouping}
                 />
               </div>
             </CellSelectionConfigProvider>

@@ -120,6 +120,12 @@ export function getSortOptionsForFieldType(fieldType?: FieldType): SortOption[] 
  */
 export const ROW_HEIGHT = 38
 
+/** Height of a group header row in a grouped table */
+export const GROUP_HEADER_HEIGHT = 36
+
+/** Height of the "+ New" row closing each expanded group */
+export const ADD_ROW_HEIGHT = 32
+
 /**
  * Toolbar height (py-2 + content height)
  */

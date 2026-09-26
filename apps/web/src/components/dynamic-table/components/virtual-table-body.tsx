@@ -7,11 +7,15 @@ import type { Table } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useInView } from 'react-intersection-observer'
+import { RowGeometryProvider } from '../context/row-geometry-context'
 import { useRowSelection } from '../context/row-selection-context'
 import { useTableConfig } from '../context/table-config-context'
-import type { DragDropConfig } from '../types'
-import { ROW_HEIGHT } from '../utils/constants'
+import { useViewMetadata } from '../context/view-metadata-context'
+import type { DragDropConfig, GroupingProps } from '../types'
+import { buildVirtualItems, virtualItemSize } from '../utils/build-virtual-items'
 import { DragDropRow } from './drag-drop-row'
+import { GroupAddRow } from './group-add-row'
+import { GroupHeaderRow } from './group-header-row'
 import { SelectionOverlay } from './selection-overlay'
 import { VirtualTableRow } from './virtual-table-row'
 
@@ -22,6 +26,7 @@ interface VirtualTableBodyProps<TData> {
   dragDropConfig?: DragDropConfig<TData>
   /** Whether cell selection is enabled - passed as prop to avoid context re-renders */
   cellSelectionEnabled?: boolean
+  grouping?: GroupingProps
 }
 
 /**
@@ -35,8 +40,10 @@ export function VirtualTableBody<TData>({
   scrollContainerRef,
   dragDropConfig,
   cellSelectionEnabled = false,
+  grouping,
 }: VirtualTableBodyProps<TData>) {
   const { onRowClick, rowClassName, onScrollToBottom } = useTableConfig<TData>()
+  const { onAddNew } = useViewMetadata<TData>()
   const {
     getLastClickedRowId,
     setLastClickedRowId,
@@ -46,6 +53,12 @@ export function VirtualTableBody<TData>({
   } = useRowSelection<TData>()
 
   const { rows } = table.getRowModel()
+
+  const addRow = !!onAddNew && grouping?.field.capabilities?.updatable !== false
+  const { items, rowTops } = useMemo(
+    () => buildVirtualItems(rows, grouping, { addRow }),
+    [rows, grouping, addRow]
+  )
 
   // Extract state values once at component level to avoid new object references
   const tableState = table.getState()
@@ -188,8 +201,9 @@ export function VirtualTableBody<TData>({
   }, [scrollContainerRef, containerRef, rows.length, shadowLeftPosition, isVisible])
 
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    estimateSize: () => ROW_HEIGHT,
+    count: items.length,
+    estimateSize: (index) => (items[index] ? virtualItemSize(items[index]) : 0),
+    getItemKey: (index) => items[index]?.id ?? index,
     // Must be the actual scrolling element (the base-ui ScrollArea.Viewport,
     // wired via scrollContainerRef) — NOT containerRef, which is the inner
     // `min-w-full` content wrapper that never scrolls. Pointing the virtualizer
@@ -229,7 +243,7 @@ export function VirtualTableBody<TData>({
   )
 
   return (
-    <>
+    <RowGeometryProvider value={rowTops}>
       <div
         style={{
           height: `${rowVirtualizer.getTotalSize()}px`,
@@ -237,13 +251,32 @@ export function VirtualTableBody<TData>({
         }}>
         {cellSelectionEnabled && <SelectionOverlay scrollContainerRef={scrollContainerRef} />}
         {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const row = rows[virtualRow.index]
+          const item = items[virtualRow.index]
+          if (!item) return null
+
+          if (item.kind !== 'row') {
+            if (!grouping) return null
+            const GroupRow = item.kind === 'header' ? GroupHeaderRow : GroupAddRow
+            return (
+              <GroupRow
+                key={item.id}
+                table={table}
+                groupKey={item.key}
+                grouping={grouping}
+                virtualRow={virtualRow}
+                rowVirtualizer={rowVirtualizer}
+              />
+            )
+          }
+
+          const row = rows[item.rowIndex]
           if (!row) return null
 
           const isLastClicked = row.id === getLastClickedRowId()
           const isSelected = row.getIsSelected()
 
-          if (dragDropConfig?.enabled) {
+          // Server order owns row position while grouped, so row drag-and-drop is off.
+          if (dragDropConfig?.enabled && !grouping) {
             return (
               <DragDropRow
                 key={row.id}
@@ -298,6 +331,6 @@ export function VirtualTableBody<TData>({
         </div>
       </div>
       <div ref={bottomRef} style={{ height: 1 }} />
-    </>
+    </RowGeometryProvider>
   )
 }

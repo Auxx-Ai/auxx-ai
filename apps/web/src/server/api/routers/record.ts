@@ -5,7 +5,11 @@ import { getCachedEntityDefId, getCachedResource, getCachedResources } from '@au
 // module, which pulls cheerio and the whole files graph into the web server for a function
 // that only writes a queue message.
 import { enqueueCompanyEnrichment } from '@auxx/lib/companies/enrichment/enqueue'
-import { conditionGroupSchema } from '@auxx/lib/conditions'
+import {
+  columnAggregateOpSchema,
+  conditionGroupSchema,
+  groupByConfigSchema,
+} from '@auxx/lib/conditions'
 import {
   type AuxxError,
   BadRequestError,
@@ -791,6 +795,12 @@ export const recordRouter = createTRPCRouter({
         cursor: z.object({ offset: z.number() }).optional(),
         /** Pagination offset. `cursor.offset` wins when both are given. */
         offset: z.number().min(0).optional(),
+        /** Group rows by one field; the response then carries `groupKeys` parallel to `ids`. */
+        groupBy: groupByConfigSchema.optional(),
+        /** IANA zone for date-time group buckets. Required when grouping by a DATETIME field. */
+        timezone: z.string().max(64).optional(),
+        /** Collapsed group keys, left out of the page and `total`. `'__empty__'` = no value. */
+        excludeGroupKeys: z.array(z.string()).max(500).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -809,6 +819,44 @@ export const recordRouter = createTRPCRouter({
         limit: input.limit,
         cursor: input.cursor,
         offset: input.offset,
+        groupBy: input.groupBy,
+        timezone: input.timezone,
+        excludeGroupKeys: input.excludeGroupKeys,
+      })
+    }),
+
+  /**
+   * Per-group record counts and column aggregates for a grouped table
+   * (plans/table/group-by-plan.md §4.4). Same gates and WHERE as `listFiltered`;
+   * groups come in the list's group order, capped at 500 (`hasMoreGroups`).
+   */
+  groupSummary: capabilityProcedure
+    .input(
+      z.object({
+        entityDefinitionId: z.string(),
+        filters: z.array(conditionGroupSchema).optional(),
+        search: z.string().max(200).optional(),
+        groupBy: groupByConfigSchema,
+        timezone: z.string().max(64).optional(),
+        /** Column id (ResourceFieldId) → op. NUMBER / CURRENCY, single-valued columns only. */
+        aggregates: z.record(z.string(), columnAggregateOpSchema).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+      await assertNotInstanceAccessDefForRead(organizationId, [input.entityDefinitionId])
+
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+        requestPath: true,
+      })
+      return handler.groupSummary({
+        entityDefinitionId: input.entityDefinitionId,
+        filters: input.filters,
+        search: input.search,
+        groupBy: input.groupBy,
+        timezone: input.timezone,
+        aggregates: input.aggregates,
       })
     }),
 

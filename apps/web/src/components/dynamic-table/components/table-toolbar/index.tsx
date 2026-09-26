@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isSystemResourceId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -39,11 +40,12 @@ import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
 import { useDynamicTableStore } from '../../stores/dynamic-table-store'
-import { useSetFilters, useSetSorting } from '../../stores/store-actions'
+import { useSetFilters, useSetGroupBy, useSetSorting } from '../../stores/store-actions'
 import {
   useActiveView,
   useActiveViewId,
   useTableFilters,
+  useTableGroupBy,
   useTableSorting,
   useTableViews,
 } from '../../stores/store-selectors'
@@ -53,7 +55,7 @@ import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
 import { RecordsGuideDialog } from './records-guide-dialog'
 import { TableFilterBuilder } from './table-filter-builder'
-import { TableSortBuilder } from './table-sort-builder'
+import { TableSortGroupBuilder } from './table-sort-group-builder'
 import { ViewSelector } from './view-selector'
 
 interface TableToolbarProps {
@@ -111,6 +113,8 @@ export function TableToolbar<TData = any>({
   const filters = useTableFilters(tableId)
   const setFilters = useSetFilters(tableId)
   const setSorting = useSetSorting(tableId)
+  const groupBy = useTableGroupBy(tableId)
+  const setGroupBy = useSetGroupBy(tableId)
   const setActiveView = useDynamicTableStore((state) => state.setActiveView)
 
   // Get filterable + sortable fields from resource system
@@ -120,6 +124,9 @@ export function TableToolbar<TData = any>({
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
   const isKanbanView = viewType === 'kanban'
   const isCalendarView = viewType === 'calendar'
+  // Grouping is table-view only, on the EntityInstance lane (plans/table/group-by-plan.md §1).
+  const allowGrouping =
+    viewType === 'table' && !!entityDefinitionId && !isSystemResourceId(entityDefinitionId)
 
   // Check if current filters differ from the active view's saved filters
   const hasUnsavedFilters = useMemo(() => {
@@ -240,21 +247,18 @@ export function TableToolbar<TData = any>({
         </div>
       )}
 
-      {/* Sort Button — deliberately its own control rather than a section of the
-          filter popover: that one is a buffered draft that commits on close,
-          while sorting applies immediately (as the column header does).
-
-          Shown for kanban and calendar too. `DynamicResourceView` passes the
-          view's sorting to `useRecordList` whatever the view type, so a sort set
-          on the table keeps applying there — and those two render no column
-          headers at all, which would leave it invisible and unclearable. */}
+      {/* Sort & group applies immediately (unlike the buffered filter popover). Shown for kanban
+          and calendar too: their sort still applies and they have no column headers to clear it. */}
       {enableSorting && entityDefinitionId && (
         <div className='group-data-[search-expanded]/toolbar:hidden'>
-          <TableSortBuilder
+          <TableSortGroupBuilder
             sorting={sorting}
             onSortingChange={setSorting}
             sortableFields={sortableFields}
             resourceType={entityDefinitionId}
+            allowGrouping={allowGrouping}
+            groupBy={groupBy}
+            onGroupByChange={setGroupBy}
           />
         </div>
       )}

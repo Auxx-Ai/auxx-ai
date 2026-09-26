@@ -8,6 +8,7 @@ import { useCellSelection } from '../context/cell-selection-context'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewStoreInitialized } from '../stores/store-selectors'
+import type { GroupingProps } from '../types'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { AddColumnButton } from './add-column-button'
 import { CheckboxHeaderCell } from './checkbox-header-cell'
@@ -24,6 +25,7 @@ interface TableBodyProps {
   hideToolbar?: boolean
   /** Reference to the scroll container (for virtualization and cell navigation) */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
+  grouping?: GroupingProps
 }
 
 /**
@@ -32,6 +34,7 @@ interface TableBodyProps {
 export function TableBody<TData extends object>({
   hideToolbar,
   scrollContainerRef,
+  grouping,
 }: TableBodyProps) {
   // Get config from focused contexts
   const { isLoading, entityDefinitionId, dragDropConfig, emptyState, standalone, hideHeader } =
@@ -173,6 +176,7 @@ export function TableBody<TData extends object>({
                   scrollContainerRef={scrollContainerRef}
                   dragDropConfig={dragDropConfig}
                   cellSelectionEnabled={cellSelectionConfig?.enabled}
+                  grouping={grouping}
                 />
               ) : null}
             </div>

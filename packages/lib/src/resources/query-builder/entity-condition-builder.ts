@@ -193,11 +193,9 @@ export class EntityConditionBuilder extends BaseConditionBuilder<EntityQueryCont
   /**
    * Resolve a field reference to a ResourceField.
    * Handles: resourceFieldId ("entityDefId:fieldId"), key, or plain id.
+   * Public so table grouping resolves its field exactly as `buildOrderBySql` does.
    */
-  private resolveFieldRef(
-    fieldRef: string,
-    context: EntityQueryContext
-  ): ResourceField | undefined {
+  resolveFieldRef(fieldRef: string, context: EntityQueryContext): ResourceField | undefined {
     // 1. By resourceFieldId (scoped lookup)
     const byRfId = context.fields.find((f) => f.resourceFieldId === fieldRef)
     if (byRfId) return byRfId
