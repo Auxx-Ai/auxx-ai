@@ -17,14 +17,8 @@ import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-z
 import { getOrgCache } from '../../cache'
 import { recordNumbering } from '../../records/record-numbering'
 import { systemFieldMap } from '../../resources/system-records'
-import { rollStandardCost } from '../costing/standard-cost'
 import { raiseAndCompleteBuild } from './backfill-builds'
-import {
-  type BackflushGraph,
-  listBackflushDays,
-  readBackflushGraph,
-  walkBackflush,
-} from './backflush-planner'
+import { listBackflushDays, readBackflushGraph, walkBackflush } from './backflush-planner'
 import type { BackflushBuild, BackflushRunSummary } from './backflush-types'
 import { guard } from './guard'
 
@@ -34,12 +28,12 @@ export interface BackflushInput {
   /** Inclusive `YYYY-MM-DD` days in the book time zone. */
   from: string
   to: string
-  /** Who the builds and the roll are attributed to; the org's system user when a job runs it. */
+  /** Who the builds are attributed to; the org's system user when a job runs it. */
   actorUserId?: string
   /** Injected by tests; days whose end is after it are not walked. */
   now?: Date
-  /** One slice of a sliced run (`backflush-run.ts`): its batch number and the parts it already rolled. */
-  run?: { batchRun: number; rolled: Set<string> }
+  /** One slice of a sliced run (`backflush-run.ts`): its batch number. */
+  run?: { batchRun: number }
   /** Days per ledger read; tests set 1 to compare against per-day reads. */
   sliceDays?: number
 }
@@ -61,18 +55,15 @@ export async function backflushBuilds(
         failed: [],
         failedDays: [],
         skipped: 0,
-        rolled: [],
       }
       if (days.length === 0) return summary
 
       const graph = await readBackflushGraph(db, organizationId)
       if (graph.order.length === 0) return summary
       const userId = input.actorUserId ?? (await getOrgCache().get(organizationId, 'systemUser'))
-      const rolled = input.run?.rolled ?? new Set<string>()
 
       const act = async (build: BackflushBuild): Promise<boolean> => {
         try {
-          await rollFirst(db, organizationId, userId, graph, build.partId, rolled, summary, now)
           // Allocated on the first build, so an empty run burns no number (45 §3.2).
           summary.batchRun ??= await allocateRunNumber(organizationId)
           const { buildId } = await raiseAndCompleteBuild(db, organizationId, userId, {
@@ -124,50 +115,12 @@ export async function backflushBuilds(
         written: summary.written.length,
         failed: summary.failed.length,
         failedDays: summary.failedDays.length,
-        rolled: summary.rolled.length,
       })
       return summary
     },
     'Backflushing builds failed',
     { organizationId, from: input.from, to: input.to }
   )
-}
-
-/**
- * 111 Q20: before a part's first backflushed build this run, roll its standard so a provisional
- * (channel) standard becomes a rolled one and on hand is revalued once. A confirmed standard is
- * left alone. A failed roll is logged and the build still goes through — its legs come out
- * pending until a standard exists.
- */
-async function rollFirst(
-  db: Database,
-  organizationId: string,
-  userId: string,
-  graph: BackflushGraph,
-  partId: string,
-  rolled: Set<string>,
-  summary: BackflushRunSummary,
-  now: Date
-): Promise<void> {
-  if (rolled.has(partId)) return
-  rolled.add(partId)
-  const confirmed =
-    graph.standardCosts.get(partId) != null && graph.standardCostSources.get(partId) === 'confirmed'
-  if (confirmed) return
-  const result = await rollStandardCost(db, organizationId, userId, {
-    partIds: [partId],
-    effectiveAt: now,
-  })
-  if (result.isErr()) {
-    logger.warn('The roll before a backflushed build was refused; the build still goes through', {
-      organizationId,
-      partId,
-      reason: result.error.message,
-    })
-    return
-  }
-  summary.rolled.push(partId)
-  for (const written of result.value.writtenPartIds) rolled.add(written)
 }
 
 /** One `build_batch` number per run; an org short of the field gets un-numbered builds and no undo. */

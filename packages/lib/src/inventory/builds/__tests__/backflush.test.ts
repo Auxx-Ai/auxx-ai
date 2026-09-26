@@ -1,7 +1,8 @@
 // packages/lib/src/inventory/builds/__tests__/backflush.test.ts
 //
 // Backflush (111 D23/D24): the replay `qoh(day) < 0 → one build of the shortfall`, parents
-// before the children they consume, dated the end of the local day, rolled first, idempotent.
+// before the children they consume, dated the end of the local day, idempotent, never rolling a
+// standard (plans/mrp/09 §12.2 D-SC7).
 //
 // The ledger is an in-memory list of dated movements. The `recordCompletedBuild` double appends the
 // produce and consume legs a real completion writes, so the parent-before-child property is
@@ -35,14 +36,11 @@ const h = vi.hoisted(() => ({
   ledger: [] as Movement[],
   subparts: [] as { parentPartId: string; childPartId: string; quantity: number }[],
   partKinds: new Map<string, string>(),
-  standardCosts: new Map<string, number>(),
-  standardCostSources: new Map<string, string>(),
   archived: new Set<string>(),
   calls: [] as string[],
   completeCalls: [] as Record<string, unknown>[],
   rollCalls: [] as Record<string, unknown>[],
   completeRefusals: new Map<string, Error>(),
-  rollRefusal: null as Error | null,
   numbering: 0,
   nextBuild: 0,
   reads: 0,
@@ -91,8 +89,6 @@ vi.mock('../../costing/standard-cost-queries', () => ({
   loadStandardCostWriteContext: vi.fn(async () => ({
     allPartIds: new Set([...h.partKinds.keys()].filter((id) => !h.archived.has(id))),
     partKinds: h.partKinds,
-    standardCosts: h.standardCosts,
-    standardCostSources: h.standardCostSources,
   })),
 }))
 
@@ -104,8 +100,6 @@ vi.mock('../../costing/cost-calculator', async (importOriginal) => ({
 vi.mock('../../costing/standard-cost', () => ({
   rollStandardCost: vi.fn(async (_db: unknown, _org: string, _user: string, input: unknown) => {
     h.rollCalls.push(input as Record<string, unknown>)
-    h.calls.push(`roll:${(input as { partIds: string[] }).partIds.join(',')}`)
-    if (h.rollRefusal) return err(h.rollRefusal)
     return ok({ writtenPartIds: (input as { partIds: string[] }).partIds })
   }),
 }))
@@ -181,13 +175,10 @@ beforeEach(() => {
   h.completeCalls = []
   h.rollCalls = []
   h.completeRefusals = new Map()
-  h.rollRefusal = null
   h.numbering = 0
   h.nextBuild = 0
   h.reads = 0
   h.archived = new Set()
-  h.standardCosts = new Map()
-  h.standardCostSources = new Map()
   liftBom()
 })
 
@@ -265,43 +256,12 @@ describe('forty sales on a day', () => {
   })
 })
 
-describe('the roll before the first build (Q20)', () => {
-  it('rolls a provisional part once per run, before its first build, and not again on day two', async () => {
-    h.standardCosts = new Map([
-      [LIFT, 1200],
-      [MOTOR, 300],
-    ])
-    h.standardCostSources = new Map([
-      [LIFT, 'provisional'],
-      [MOTOR, 'provisional'],
-    ])
+describe('standard costs', () => {
+  it('never rolls a standard, even for a part with none', async () => {
     sale(LIFT, 2, '2026-09-23')
-    sale(LIFT, 3, '2026-09-24')
-    const summary = await run({ to: '2026-09-24' })
-
-    expect(summary.written).toHaveLength(4)
-    expect(summary.rolled).toEqual([LIFT, MOTOR])
-    expect(h.rollCalls).toEqual([
-      { partIds: [LIFT], effectiveAt: NOW },
-      { partIds: [MOTOR], effectiveAt: NOW },
-    ])
-    expect(h.calls.slice(0, 3)).toEqual([`roll:${LIFT}`, `complete:${LIFT}`, `roll:${MOTOR}`])
-  })
-
-  it('leaves a confirmed standard alone and rolls a part with no standard at all', async () => {
-    h.standardCosts = new Map([[LIFT, 1200]])
-    h.standardCostSources = new Map([[LIFT, 'confirmed']])
-    sale(LIFT, 1, '2026-09-23')
-    const summary = await run()
-    expect(summary.rolled).toEqual([MOTOR])
-  })
-
-  it('a refused roll is not fatal: the build still goes through', async () => {
-    h.rollRefusal = new UnprocessableEntityError('no cost on the coil')
-    sale(LIFT, 1, '2026-09-23')
     const summary = await run()
     expect(summary.written.map((b) => b.partId)).toEqual([LIFT, MOTOR])
-    expect(summary.rolled).toEqual([])
+    expect(h.rollCalls).toEqual([])
   })
 })
 
@@ -389,21 +349,18 @@ describe('one ledger read per slice (plans/mrp/11 §3)', () => {
     expect(sliced.written.map((b) => [b.partId, b.day, b.quantity])).toEqual(perDayBuilds)
   })
 
-  it('a slice of a run reuses its batch number and does not re-roll a part rolled earlier', async () => {
+  it('a slice of a run reuses its batch number', async () => {
     sale(LIFT, 1, '2026-09-23')
-    const rolled = new Set([LIFT])
     const result = await backflushBuilds(db, ORG, {
       ...range,
       actorUserId: USER,
       now: NOW,
-      run: { batchRun: 7, rolled },
+      run: { batchRun: 7 },
     })
     if (result.isErr()) throw result.error
     expect(result.value.batchRun).toBe(7)
     expect(h.numbering).toBe(0)
     expect(h.completeCalls.every((c) => c.batchRun === 7)).toBe(true)
-    expect(h.rollCalls).toEqual([{ partIds: [MOTOR], effectiveAt: NOW }])
-    expect([...rolled]).toEqual([LIFT, MOTOR])
   })
 })
 
