@@ -38,6 +38,7 @@ import {
   type OpeningStockFilter,
   type OpeningStockKind,
   type OpeningStockRow,
+  onHandNote,
   partKindLabel,
   rowOutcome,
   toOpeningStockKind,
@@ -257,7 +258,35 @@ export function formatDelta(delta: number | null): string {
 }
 
 function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
+  return value.toLocaleString('en-US', { maximumFractionDigits: 4 })
+}
+
+/** The ledger net, plus what it means for a never-counted part. */
+function OnHandCell({ row }: { row: OpeningStockRow }) {
+  const note = onHandNote(row)
+  const value = (
+    <span className='flex w-full cursor-default flex-col items-end pr-1 text-right tabular-nums leading-tight'>
+      <span data-testid='on-hand' className='text-muted-foreground text-xs'>
+        {row.netToday == null ? '…' : formatNumber(row.netToday)}
+      </span>
+      {note && (
+        <span data-testid='on-hand-note' className='text-[11px] text-muted-foreground'>
+          {note === 'built' ? `${formatNumber(row.built)} built` : 'not received'}
+        </span>
+      )}
+    </span>
+  )
+  if (!note) return value
+  return (
+    <Tooltip
+      content={
+        note === 'built'
+          ? 'Builds cover every sale, so this is not shelf stock. Count what is on the shelf; the count adds it.'
+          : `At least ${formatNumber(-(row.netToday ?? 0))} arrived over time and none were recorded. Count what is on the shelf today; the count adds this on top.`
+      }>
+      {value}
+    </Tooltip>
+  )
 }
 
 /**
@@ -397,12 +426,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           </span>
         </Tooltip>,
 
-        <span
-          key='on-hand'
-          data-testid='on-hand'
-          className='w-full pr-1 text-right text-muted-foreground text-xs tabular-nums'>
-          {row.netToday == null ? '…' : formatNumber(row.netToday)}
-        </span>,
+        <OnHandCell key='on-hand' row={row} />,
 
         <EditableCell key='quantity' className='w-full'>
           <FieldInputAdapter

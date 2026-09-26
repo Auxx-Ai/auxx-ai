@@ -124,6 +124,8 @@ export interface OpeningStockRow {
   usedIn: number
   /** BOM parts only: the negative replay a backflush would cover (111 Q25). */
   unbuiltSales: number
+  /** Units produced by builds, net of undone builds; `0` until the preflight lands. */
+  built: number
   earliest: Date | null
   /** `quantity − netToday`, the row the run would write today; `null` when either is unknown. */
   delta: number | null
@@ -176,6 +178,19 @@ export function setKindConfirmTitle(count: number, kind: OpeningStockKind): stri
 export function previewDelta(quantity: number | null, netToday: number | null): number | null {
   if (quantity == null || !Number.isFinite(quantity) || netToday == null) return null
   return quantity - netToday
+}
+
+/**
+ * The line under a never-counted part's on-hand (13-backflush-summary §5): a made part's 0 is
+ * builds matching sales, a bought part's negative is what arrived unrecorded, never shelf stock.
+ */
+export function onHandNote(
+  row: Pick<OpeningStockRow, 'state' | 'netToday' | 'hasBom' | 'built'>
+): 'built' | 'not-received' | null {
+  if (row.state === 'counted' || row.netToday == null) return null
+  if (row.hasBom && row.built > 0) return 'built'
+  if (!row.hasBom && row.netToday < 0) return 'not-received'
+  return null
 }
 
 /** `first`: a backdated `initial` anchors the part; `adjust`: the part is counted already. */
@@ -373,6 +388,7 @@ export function useOpeningStock() {
         uncostedLeafCount: part?.uncostedLeafCount ?? 0,
         usedIn: part?.usedIn ?? 0,
         unbuiltSales: flight?.unbuiltSales ?? 0,
+        built: flight?.built ?? 0,
         earliest: flight?.earliest ?? null,
         delta: previewDelta(quantity, netToday),
       }

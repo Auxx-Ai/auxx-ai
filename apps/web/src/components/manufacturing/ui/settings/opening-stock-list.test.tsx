@@ -60,6 +60,7 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     netToday: -830,
     hasBom: false,
     unbuiltSales: 0,
+    built: 0,
     earliest: new Date('2024-10-01T00:00:00.000Z'),
     delta: 872,
     ...overrides,
@@ -98,6 +99,23 @@ describe('OpeningStockList', () => {
     renderList([row()])
     expect(screen.getByTestId('on-hand').textContent).toBe('-830')
     expect(screen.getByTestId('delta').textContent).toBe('+872first count')
+  })
+
+  it("reads a never-counted bought part's negative as not received, grouped", () => {
+    renderList([row({ netToday: -12756, delta: 13156 })])
+    expect(screen.getByTestId('on-hand').textContent).toBe('-12,756')
+    expect(screen.getByTestId('on-hand-note').textContent).toBe('not received')
+  })
+
+  it('shows what a never-counted made part built instead of reading its 0 as empty', () => {
+    renderList([row({ hasBom: true, netToday: 0, built: 1955, delta: 42 })])
+    expect(screen.getByTestId('on-hand').textContent).toBe('0')
+    expect(screen.getByTestId('on-hand-note').textContent).toBe('1,955 built')
+  })
+
+  it('drops the note once a part is counted', () => {
+    renderList([row({ state: 'counted', netToday: -5, delta: 47 })])
+    expect(screen.queryByTestId('on-hand-note')).toBeNull()
   })
 
   it('labels an anchored part as an adjustment', () => {
