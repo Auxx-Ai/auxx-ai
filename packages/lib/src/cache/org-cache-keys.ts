@@ -32,6 +32,7 @@ import type { CredentialsResponse, ProviderConfiguration } from '../ai/providers
 import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
+import type { BackflushPlanSummary } from '../inventory/builds/backflush-types'
 import type { SubpartRow } from '../inventory/costing/cost-calculator'
 import type { StockSetupStatus } from '../inventory/receiving/stock-setup-status'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
@@ -706,6 +707,7 @@ export interface OrgCacheDataMap {
   chartAccounts: ChartAccountRow[] // every gl_account row, archived stamped isArchived, in chart-tree order
   subpartEdges: SubpartRow[] // every live BOM edge of the org; UI reads only, the MRP run reads fresh
   stockSetupStatus: StockSetupStatus // plans/mrp/17 §5; lazy, derived from subpartEdges + orgSettings
+  backflushPreview: BackflushPlanSummary // the no-dates preview (17 D1); lazy, derived from subpartEdges
   providerChart: CachedProviderChart | null // the active book's live provider chart, inactive rows kept; null = no active book
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
@@ -1007,6 +1009,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   subpartEdges: { prefix: 'org:subpart-edges', ttlSeconds: ONE_DAY },
   // Short TTL: new movements (sales, receipts) move it too and fire no event of their own.
   stockSetupStatus: { prefix: 'org:stock-setup-status', ttlSeconds: 300, lazy: true },
+  // Same backstop: new sales change the shortfall and fire no event; the run re-plans anyway.
+  backflushPreview: { prefix: 'org:backflush-preview', ttlSeconds: 300, lazy: true },
   // 900 s: the rows change at the provider, outside our writes (plans/accounting/tasks/84 §7.1).
   providerChart: { prefix: 'org:provider-chart', ttlSeconds: 900 },
 

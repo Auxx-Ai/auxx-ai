@@ -3,7 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { instantForBookDay } from '@auxx/lib/accounting/ledger'
-import { getCachedEntityDefId } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
 import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
 import {
   buildNow,
@@ -822,6 +822,8 @@ export const buildsRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
+      // The UI sends no range; that preview is cached per org (plans/mrp/17 D1).
+      if (!input.from && !input.to) return getOrgCache().get(organizationId, 'backflushPreview')
       const result = await previewBackflush(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
       return summarizeBackflushPlan(result.value)
