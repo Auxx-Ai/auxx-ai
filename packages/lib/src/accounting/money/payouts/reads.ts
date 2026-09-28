@@ -25,6 +25,7 @@ import {
   systemValueJoin,
 } from '../../../resources/system-records'
 import { findLiveSubjectPostings } from '../../ledger/reads/list-postings'
+import { PROCESSORS } from '../../processors/client'
 import { listLinkedFeeds } from '../../rails/reads'
 import { workItemSentence } from '../../work-items/codes'
 import { resolvePayoutStatus } from './client'
@@ -331,12 +332,20 @@ function connectorPayoutQuery(
   return query
 }
 
+/** `(providerKey, status)` pairs a processor maps to `paid`, for SQL. */
+const PAID_PROVIDER_STATUSES = PROCESSORS.flatMap((processor) =>
+  Object.entries(processor.payoutStatuses)
+    .filter(([, state]) => state === 'paid')
+    .map(([status]) => [processor.id, status] as const)
+)
+
 /**
- * Connector payout records on a linked feed that carry no `payout_gateway_id` yet, for the
- * promotion to stamp (brief 114 P2). A provider id another live record already holds is left out:
- * that is a legacy twin, and stamping it would post the payout twice.
+ * Connector payout records on a linked feed for the promotion to stamp (brief 114 P2): those with
+ * no `payout_gateway_id` yet, and those stamped with their own provider id and rail that still say
+ * `in_transit` while the provider reports paid. A provider id another live record already holds is
+ * left out: that is a legacy twin, and stamping it would post the payout twice.
  */
-export async function listUnpromotedConnectorPayouts(
+export async function listPromotableConnectorPayouts(
   db: Database,
   organizationId: string,
   input: { limit: number; sourceAccountId?: string }
@@ -349,11 +358,39 @@ export async function listUnpromotedConnectorPayouts(
     payout_source_environment: environment,
     payout_source_external_id: external,
     payout_gateway_id: gateway,
+    payout_source_status: sourceStatus,
+    payout_source_issued_on: issuedOn,
+    payout_status: status,
+    payout_payment_gateway: railField,
   } = ctx.fields
   if (!provider || !account || !environment || !external || !gateway) return []
   const value = (alias: string, fieldId: string) =>
     sql`JOIN "FieldValue" ${sql.raw(alias)} ON ${sql.raw(alias)}."organizationId" = e."organizationId"
       AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}`
+  const has = (alias: string, fieldId: string, condition: SQL) =>
+    sql`EXISTS (SELECT 1 FROM "FieldValue" ${sql.raw(alias)}
+      WHERE ${sql.raw(alias)}."organizationId" = e."organizationId"
+        AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}
+        AND ${condition})`
+  const behind =
+    sourceStatus && issuedOn && status && railField && PAID_PROVIDER_STATUSES.length
+      ? sql`(${has('own', gateway.id, sql`own."valueText" = ex."valueText"`)}
+          AND ${has('st', status.id, sql`st."optionId" = 'in_transit'`)}
+          AND ${has(
+            'ss',
+            sourceStatus.id,
+            sql`(pk."valueText", ss."valueText") IN (${sql.join(
+              PAID_PROVIDER_STATUSES.map(([key, paid]) => sql`(${key}, ${paid})`),
+              sql`, `
+            )})`
+          )}
+          AND ${has('io', issuedOn.id, sql`io."valueText" IS NOT NULL`)}
+          AND NOT ${has(
+            'rl',
+            railField.id,
+            sql`rl."relatedEntityId" IS NOT NULL AND rl."relatedEntityId" <> a."paymentGatewayId"`
+          )})`
+      : sql`FALSE`
   const result = await db.execute(sql`
     SELECT e.id
     FROM "EntityInstance" e
@@ -373,8 +410,8 @@ export async function listUnpromotedConnectorPayouts(
         JOIN "EntityInstance" held ON held."organizationId" = gw."organizationId"
           AND held.id = gw."entityId" AND held."archivedAt" IS NULL
         WHERE gw."organizationId" = e."organizationId" AND gw."fieldId" = ${gateway.id}
-          AND gw."valueText" IS NOT NULL
-          AND (gw."entityId" = e.id OR gw."valueText" = ex."valueText"))
+          AND gw."entityId" <> e.id AND gw."valueText" = ex."valueText")
+      AND (NOT ${has('own', gateway.id, sql`own."valueText" IS NOT NULL`)} OR ${behind})
     ORDER BY e.id
     LIMIT ${input.limit}
   `)

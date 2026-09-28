@@ -95,9 +95,12 @@ import { listPaymentGateways } from '../../rails/reads'
 import { stampPaymentGatewayLastSettlement } from '../../rails/writes'
 import { refusalFromPost } from '../../work-items/refusal'
 import { deleteWorkItem, upsertWorkItem } from '../../work-items/write'
+import { type UnbookedPayoutLine, unpostablePayoutReason } from './client'
+import { listPayoutEntries } from './entry-reads'
 import { type PayoutFieldContext, requirePayoutFieldContext } from './fields'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
+import { MATCHABLE_ENTRY_TYPES } from './match-entries'
 import {
   type ConnectorPayoutScope,
   countPayoutEntryAttempts,
@@ -418,6 +421,33 @@ async function resolveMemberEntryIds(
   })
 }
 
+/** This payout's unmatched negative lines of a type the entry has no leg for. */
+async function readUnbookedLines(
+  db: Database,
+  ctx: PayoutSourceCtx,
+  providerPayoutId: string
+): Promise<UnbookedPayoutLine[]> {
+  const accountIds = await listPayoutFeedAccountIds(
+    db,
+    ctx.organizationId,
+    ctx.sourceId,
+    ctx.rail.id
+  )
+  const rows = await listPayoutEntries(
+    db,
+    ctx.organizationId,
+    accountIds.map((sourceAccountId) => ({ sourceAccountId, payoutExternalId: providerPayoutId }))
+  )
+  return rows
+    .filter(
+      (row) =>
+        row.matchState !== 'matched' &&
+        Number(row.netMinor) < 0 &&
+        !MATCHABLE_ENTRY_TYPES.includes(row.type)
+    )
+    .map((row) => ({ type: row.type, netMinor: Number(row.netMinor) }))
+}
+
 /** The context's feeds as a connector names them: provider key plus external account ids. */
 async function connectorPayoutScope(
   db: Database,
@@ -534,6 +564,31 @@ async function ingestOne(
   const entryNumber = attempts === 0 ? number : `${number}-R${attempts + 1}`
 
   const workKey = { sourceKind: 'payout', sourceId: payoutInstanceId, stage: 'post' as const }
+
+  // Deterministic: the same split refuses on every retry, so it parks as REFUSED, not transient.
+  const unpostable = unpostablePayoutReason({
+    number,
+    currency,
+    split: gathered.split,
+    unbookedLines:
+      gathered.split.unrecognisedNetMinor < 0
+        ? await readUnbookedLines(db, ctx, providerPayoutId)
+        : [],
+  })
+  if (unpostable) {
+    logger.warn('Payout refused before its entry was built', {
+      organizationId,
+      payoutId: providerPayoutId,
+      reason: unpostable,
+    })
+    await upsertWorkItem(db, organizationId, {
+      ...workKey,
+      reasonCode: 'REFUSED',
+      railId: rail.id,
+      detail: { message: unpostable },
+    })
+    return { created, posted: false, alreadyPosted: false, refusal: unpostable }
+  }
 
   /** Park the refusal as a work item and return the pre-claim result. Nothing is built. */
   const block = async (reason: string): Promise<PostResult> => {

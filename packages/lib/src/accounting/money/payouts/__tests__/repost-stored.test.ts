@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
   upsertWorkItem: vi.fn(async (..._args: unknown[]) => undefined),
   deleteWorkItem: vi.fn(async (..._args: unknown[]) => undefined),
   isPayoutHeldReversed: vi.fn(async (..._args: unknown[]) => false),
+  listPayoutEntries: vi.fn(async (..._args: unknown[]) => [] as unknown[]),
 }))
 
 vi.mock('@auxx/database', async (original) => ({
@@ -50,6 +51,7 @@ vi.mock('../reads', () => ({
 }))
 vi.mock('../repost-reads', () => ({ isPayoutHeldReversed: h.isPayoutHeldReversed }))
 vi.mock('../match-sync', () => ({ syncStoredMatches: h.syncStoredMatches }))
+vi.mock('../entry-reads', () => ({ listPayoutEntries: h.listPayoutEntries }))
 vi.mock('../../../work-items/write', () => ({
   upsertWorkItem: h.upsertWorkItem,
   deleteWorkItem: h.deleteWorkItem,
@@ -256,6 +258,83 @@ describe('repostStoredPayout', () => {
       expect.objectContaining({ sourceId: 'inst_7', reasonCode: 'REFUSED' })
     )
     expect(h.postPayoutEntry).not.toHaveBeenCalled()
+  })
+
+  describe('refusals no retry can fix park as REFUSED (brief 114 follow-up)', () => {
+    const split = (over: Partial<typeof NEW_SPLIT>) =>
+      h.syncStoredMatches.mockResolvedValue(
+        new Map([
+          ['fsa_1', { split: { ...NEW_SPLIT, ...over }, entryCount: 2, stalePostingIds: [] }],
+        ])
+      )
+
+    it('names a negative line of a type the entry does not book (PAY-0167)', async () => {
+      split({ unrecognisedNetMinor: -618, unrecognisedCount: 1 })
+      h.listPayoutEntries.mockResolvedValue([
+        { type: 'charge', matchState: 'matched', netMinor: 9_700 },
+        { type: 'unknown', matchState: null, netMinor: -618 },
+        // A pending refund can still match, so it is not named.
+        { type: 'refund', matchState: 'pending', netMinor: -50 },
+      ])
+
+      const result = await repost()
+
+      const reason =
+        'Payout PAY-0007 includes a -$6.18 adjustment auxx does not book yet (type unknown), so it is not posted.'
+      expect(result._unsafeUnwrap()).toEqual({ status: 'refused', reason })
+      expect(h.listPayoutEntries).toHaveBeenCalledWith(db, ORG, [
+        { sourceAccountId: 'fsa_1', payoutExternalId: 'po_7' },
+      ])
+      expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
+        sourceKind: 'payout',
+        sourceId: 'inst_7',
+        stage: 'post',
+        reasonCode: 'REFUSED',
+        railId: 'pg_shop',
+        detail: { message: reason },
+      })
+      expect(h.postPayoutEntry).not.toHaveBeenCalled()
+    })
+
+    it('names a negative payout as one (PAY-0180)', async () => {
+      split({ grossMinor: -305_200, feesMinor: 0, netMinor: -305_200 })
+
+      const result = await repost()
+
+      const reason =
+        'Payout PAY-0007 is a negative payout (-$3,052.00 pulled back from the bank); auxx does not post negative payouts yet.'
+      expect(result._unsafeUnwrap()).toEqual({ status: 'refused', reason })
+      expect(h.upsertWorkItem).toHaveBeenCalledWith(
+        db,
+        ORG,
+        expect.objectContaining({
+          reasonCode: 'REFUSED',
+          railId: 'pg_shop',
+          detail: { message: reason },
+        })
+      )
+      expect(h.listPayoutEntries).not.toHaveBeenCalled()
+      expect(h.postPayoutEntry).not.toHaveBeenCalled()
+    })
+
+    it('leaves a negative remainder with nothing unbooked to the builder', async () => {
+      split({ unrecognisedNetMinor: -50, unrecognisedCount: 1 })
+      h.listPayoutEntries.mockResolvedValue([
+        { type: 'refund', matchState: 'pending', netMinor: -50 },
+      ])
+
+      await repost()
+
+      expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
+    })
+
+    it('still posts an ordinary payout without reading its lines', async () => {
+      const result = await repost()
+
+      expect(result._unsafeUnwrap()).toEqual({ status: 'posted' })
+      expect(h.listPayoutEntries).not.toHaveBeenCalled()
+      expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    })
   })
 
   it('leaves an old payout a person reversed alone', async () => {
