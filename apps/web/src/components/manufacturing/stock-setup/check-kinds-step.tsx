@@ -6,6 +6,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { isPartKindUnclassified } from '~/components/drawers/cards/part-family-suggestion'
 import {
   type OpeningStockKind,
@@ -14,7 +15,7 @@ import {
 } from '~/components/manufacturing/hooks/use-opening-stock'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { booksStartLabel, useAccountingSetupState } from './accounting-status-line'
+import { useAccountingSetupState } from './accounting-status-line'
 
 type KindConflict = RouterOutputs['builds']['kindConflicts'][number]
 
@@ -184,8 +185,7 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
         </p>
         {accounting.enabled && accounting.finalized && accounting.cutoffPeriod && (
           <p>
-            Movements from {booksStartLabel(accounting.cutoffPeriod)} on post to this part's
-            account.
+            Movements from {booksStartDate(accounting.cutoffPeriod)} on post to this part's account.
           </p>
         )}
       </div>

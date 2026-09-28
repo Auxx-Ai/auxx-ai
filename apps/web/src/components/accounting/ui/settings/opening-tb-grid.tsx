@@ -17,6 +17,7 @@
 import type { ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
 import { accountDepth, GL_ACCOUNT_TYPES, sortChartTree } from '@auxx/lib/accounting/ledger/client'
 import type { OpeningTrialBalanceRow } from '@auxx/lib/accounting/opening/client'
+import { booksStartDateFromCutoverDay, formatBooksDay } from '../../books-start'
 import { formatAccountLabel } from '../account-label-format'
 import { formatMinor } from '../ledger/format'
 import type { StatementColumn, StatementRow } from '../reports/statement-parts'
@@ -115,22 +116,23 @@ export function openingEvidenceInstruction(
   source: 'manual' | 'provider' | 'none',
   cutoverDate: string
 ): string {
+  const start = booksStartDateFromCutoverDay(cutoverDate)
   if (source === 'none') {
     return (
-      `Your books begin at ${cutoverDate} with nothing carried in, so there is no evidence to ` +
+      `Your books start ${start} with nothing carried in, so there is no evidence to ` +
       'gather and no opening entry to post. Untick the box below if that is not right.'
     )
   }
   if (source === 'provider') {
     return (
-      `These are book balances from your accounting system as of ${cutoverDate}. They already account for ` +
-      'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
-      'not replace them with the statement figure. Check them against what you expect.'
+      `These are book balances from your accounting system as your books start, ${start}. They ` +
+      'already account for payments that had not cleared by then, which a statement balance does ' +
+      'not, so do not replace them with the statement figure. Check them against what you expect.'
     )
   }
   return (
-    `Use the ${cutoverDate.slice(5).replace('-', '/')} statement balance for every bank and card ` +
-    'account. Do not use the tax return.'
+    `Use the statement balance on ${formatBooksDay(cutoverDate)}, the day before your books start, ` +
+    'for every bank and card account. Do not use the tax return.'
   )
 }
 
@@ -336,7 +338,7 @@ export function openingVerdict(
       : {
           label: 'Nothing entered yet.',
           ok: false,
-          detail: 'Enter what each account was worth on the cutover date.',
+          detail: 'Enter what each account was worth when your books start.',
         }
   }
   const difference = debitMinor - creditMinor

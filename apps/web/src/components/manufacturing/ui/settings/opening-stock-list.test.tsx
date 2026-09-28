@@ -134,9 +134,9 @@ describe('OpeningStockList', () => {
     expect(screen.queryByTestId('on-hand-note')).toBeNull()
   })
 
-  it('labels a counted part as a correction', () => {
+  it('labels a counted part as a recount', () => {
     renderList([row({ state: 'counted', netToday: 40, delta: 2 })])
-    expect(screen.getByTestId('delta').textContent).toBe('+2correction')
+    expect(screen.getByTestId('delta').textContent).toBe('+2recount')
     expect(screen.getByText('Counted')).toBeTruthy()
   })
 

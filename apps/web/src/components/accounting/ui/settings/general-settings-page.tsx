@@ -33,6 +33,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { CalendarRange, ExternalLink, Lock, Send } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
@@ -232,7 +233,10 @@ export function AccountingGeneralSettingsPage() {
                 className='mt-1 p-0'
                 resizeId='accounting-general-period'
                 defaultLabelWidth={220}>
-                <SettingsFieldRow settingKey={ACCOUNTING_KEYS.cutoffPeriod} title='Cutoff period'>
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.cutoffPeriod}
+                  title='Cutoff period'
+                  description={`The last month closed in your previous accounting system, as YYYY-MM.${cutoff && MONTH_KEY.test(cutoff) ? ` Books start ${booksStartDate(cutoff)}.` : ''}`}>
                   <MonthTextField
                     value={cutoff}
                     error={cutoffError}

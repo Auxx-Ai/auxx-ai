@@ -115,14 +115,14 @@ describe('openingEvidenceInstruction', () => {
   it('stops asking for evidence when the books start from nothing', () => {
     const text = openingEvidenceInstruction('none', '2026-12-31')
     expect(text).toMatch(/no opening entry to post/)
+    expect(text).toMatch(/^Your books start 1 Jan 2027 with nothing carried in/)
     expect(text).not.toMatch(/statement balance/i)
   })
 
   it('gives the statement-balance instruction, verbatim, for a manual grid', () => {
-    // Including the cutoverDate.slice(5).replace('-', '/') substitution the
-    // page already did before this helper existed.
     expect(openingEvidenceInstruction('manual', '2025-12-31')).toBe(
-      'Use the 12/31 statement balance for every bank and card account. Do not use the tax return.'
+      'Use the statement balance on 31 Dec 2025, the day before your books start, for every bank ' +
+        'and card account. Do not use the tax return.'
     )
   })
 
@@ -139,9 +139,9 @@ describe('openingEvidenceInstruction', () => {
     // is why it ends by telling them to check rather than that they are done.
     const instruction = openingEvidenceInstruction('provider', '2025-12-31')
     expect(instruction).toBe(
-      'These are book balances from your accounting system as of 2025-12-31. They already account for ' +
-        'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
-        'not replace them with the statement figure. Check them against what you expect.'
+      'These are book balances from your accounting system as your books start, 1 Jan 2026. They ' +
+        'already account for payments that had not cleared by then, which a statement balance does ' +
+        'not, so do not replace them with the statement figure. Check them against what you expect.'
     )
   })
 

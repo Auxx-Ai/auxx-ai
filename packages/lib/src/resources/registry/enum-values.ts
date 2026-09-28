@@ -397,7 +397,7 @@ export const PartStandardCostOrigin = {
 
   values: [
     { value: 'supplier_price', label: 'Supplier price', color: 'blue' },
-    { value: 'opening_stock', label: 'Opening stock', color: 'gray' },
+    { value: 'opening_stock', label: 'Stock count', color: 'gray' },
     { value: 'receipt', label: 'Receipt', color: 'green' },
     { value: 'manual', label: 'Manual', color: 'purple' },
     { value: 'channel', label: 'Channel', color: 'teal' },

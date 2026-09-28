@@ -4,19 +4,12 @@
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { BookOpen } from 'lucide-react'
 import Link from 'next/link'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 export const OPENING_INVENTORY_DIFFERENCE_HREF = '/app/accounting/settings/opening?s=inventory'
-
-/** `'2025-11'` → `'Dec 2025'`: the books start the month after the cutoff. */
-export function booksStartLabel(cutoffPeriod: string): string {
-  const match = /^(\d{4})-(\d{2})$/.exec(cutoffPeriod)
-  if (!match) return cutoffPeriod
-  const start = new Date(Date.UTC(Number(match[1]), Number(match[2]), 1))
-  return start.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
-}
 
 export interface AccountingSetupState {
   /** Off when the org has no accounting feature; nothing is shown then. */
@@ -53,12 +46,12 @@ export function AccountingStatusLine() {
       }
     : !accounting.finalized
       ? {
-          text: `Books start ${booksStartLabel(accounting.cutoffPeriod)}. Builds and counts before then post nothing.`,
+          text: `Books start ${booksStartDate(accounting.cutoffPeriod)}. Builds and counts before then post nothing.`,
           linkText: 'Continue accounting setup',
           href: '/app/accounting?setup=wizard',
         }
       : {
-          text: `Books start ${booksStartLabel(accounting.cutoffPeriod)} and are open. From here on, stock changes post.`,
+          text: `Books start ${booksStartDate(accounting.cutoffPeriod)} and are open. From here on, stock changes post.`,
           linkText: 'Opening inventory difference',
           href: OPENING_INVENTORY_DIFFERENCE_HREF,
         }

@@ -7,6 +7,7 @@
 import { cutoverDateFor, DEFAULT_CHART_OF_ACCOUNTS } from '@auxx/lib/accounting/ledger/client'
 import { calendarDayKey, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { resolveInventoryRoleForPartKind } from '@auxx/lib/inventory/movements/client'
+import { booksStartDateFromCutoverDay } from '~/components/accounting/books-start'
 
 /** Everything the Set count section holds. */
 export interface OpeningStockFormValues {
@@ -119,7 +120,7 @@ export function setCountPostingSentence(posting: SetCountPosting): string {
     case 'off':
       return 'Moves stock only; nothing is posted until accounting is set up.'
     case 'covered':
-      return `Dated on or before the cutover (${posting.cutoverDate}), so nothing is posted; the opening balance covers it.`
+      return `Dated before your books start (${booksStartDateFromCutoverDay(posting.cutoverDate)}), so nothing is posted; the opening balance covers it.`
     case 'variance':
       return `Posts the difference to ${posting.inventoryAccount} against ${posting.varianceAccount}.`
   }

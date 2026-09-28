@@ -12,6 +12,7 @@ import { Label } from '@auxx/ui/components/label'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertTriangle } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { booksStartDateFromCutoverDay } from '~/components/accounting/books-start'
 import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -175,7 +176,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             status: 'unbalanced',
             error:
               summary.rows === 0
-                ? 'Nothing has been entered yet. Fill in what each account was worth at the cutover \u2014 or tick "These books start from nothing" if your business began trading at the cutoff.'
+                ? 'Nothing has been entered yet. Fill in what each account was worth when your books start \u2014 or tick "These books start from nothing" if your business began trading then.'
                 : 'Debits and credits do not agree. Find the missing balance, and never add a plug account to make it agree.',
           })
           return false
@@ -228,8 +229,8 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
       <div className='flex flex-col gap-4 p-4'>
         <div className='flex flex-col gap-1'>
           <p className='text-muted-foreground text-sm'>
-            What every account was worth at the close of {cutoverDate}, the day before Auxx starts
-            valuing your books.
+            What every account was worth when your books start,{' '}
+            {booksStartDateFromCutoverDay(cutoverDate)}.
           </p>
           {/*
             The evidence rule. It is here rather than in a tooltip because it is
@@ -264,8 +265,9 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
 
         {fromNothing && summary.rows === 0 && (
           <p className='text-muted-foreground text-xs'>
-            No opening entry will be posted. Your ledger starts empty at {cutoverDate}, which is
-            right for a business that began trading at the cutoff and wrong for one that did not.
+            No opening entry will be posted. Your ledger starts empty on{' '}
+            {booksStartDateFromCutoverDay(cutoverDate)}, which is right for a business that began
+            trading then and wrong for one that did not.
           </p>
         )}
 

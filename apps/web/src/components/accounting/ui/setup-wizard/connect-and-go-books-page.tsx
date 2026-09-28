@@ -17,12 +17,11 @@ import {
   formatInTimezone,
   monthKeyOfDay,
   shiftMonthKey,
-  startOfDayInstant,
-  startOfMonthDay,
   startOfMonthInstant,
   todayInZone,
 } from '@auxx/utils'
 import { CalendarClock, TriangleAlert } from 'lucide-react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { TimeZonePicker } from '~/components/pickers/timezone-picker'
 import { BaseType } from '~/components/workflow/types'
@@ -152,9 +151,9 @@ export function ConnectAndGoBooksPage({
           <Alert variant='warning'>
             <TriangleAlert />
             <AlertDescription>
-              Everything after the cutover is posted and exported by Auxx.ai. If another app already
-              writes your Shopify sales into {providerLabel} (its native app, Synder, A2X), stop it
-              at the cutover, or those sales are counted twice. Everything on or before the cutover
+              Everything from the day your books start is posted and exported by Auxx.ai. If another
+              app already writes your Shopify sales into {providerLabel} (its native app, Synder,
+              A2X), stop it on that day, or those sales are counted twice. Everything before it
               comes in as the opening entry and is never posted order by order.
             </AlertDescription>
           </Alert>
@@ -174,8 +173,7 @@ function cutoverMonthOptions(selected: string): string[] {
 /** The first day Auxx.ai owns: the day after the last month of the old books. */
 function takeoverNote(cutoffPeriod: string): string | null {
   if (!isMonthKey(cutoffPeriod)) return null
-  const firstDay = startOfMonthDay(shiftMonthKey(cutoffPeriod, 1))
-  return `Auxx.ai starts ${formatInTimezone(startOfDayInstant(firstDay, 'UTC'), 'UTC', 'MM/dd/yy')}`
+  return `Books start ${booksStartDate(cutoffPeriod)}`
 }
 
 function cutoverNote(source: CutoverSource, providerLabel: string): string {

@@ -65,6 +65,9 @@ describe('describeSetCountPosting (111 Q19)', () => {
         accountingActive: true,
       })
     ).toEqual({ kind: 'covered', cutoverDate: '2025-12-31' })
+    expect(setCountPostingSentence({ kind: 'covered', cutoverDate: '2025-12-31' })).toBe(
+      'Dated before your books start (1 Jan 2026), so nothing is posted; the opening balance covers it.'
+    )
   })
 
   it('posts to Count Variance after the cutover, against the kind’s inventory account', () => {

@@ -32,6 +32,7 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
@@ -89,7 +90,7 @@ export function ProviderSyncNowRow({ todayInBooks, cutoverPeriod }: ProviderSync
   return (
     <FieldPanelRow
       title='Sync now'
-      description={`Read ${providerLabel}'s general ledger from the ${cutoverPeriod ? `${cutoverPeriod} cutover` : 'cutover'} forward and write everything your accountant authored there into these books. Depreciation, accruals, reclasses and payroll - the entries that are never authored here.`}>
+      description={`Read ${providerLabel}'s general ledger from the day your books start${cutoverPeriod ? ` (${booksStartDate(cutoverPeriod)})` : ''} forward and write everything your accountant authored there into these books. Depreciation, accruals, reclasses and payroll - the entries that are never authored here.`}>
       <div className='flex w-full flex-col gap-2'>
         <div className='flex items-center justify-between gap-2'>
           <span className='text-sm'>{reading.headline}</span>

@@ -19,8 +19,8 @@ export function WizardWelcomePage() {
           <GuideConcept
             glyph={<CalendarClock className='size-3.5 text-muted-foreground' />}
             term='Accounting period'>
-            The cutover — the last month your old books are closed through — and the timezone your
-            books are kept in.
+            The last month your old books are closed through, which sets the day your books start,
+            and the timezone your books are kept in.
           </GuideConcept>
           <GuideConcept
             glyph={<Plug className='size-3.5 text-muted-foreground' />}
@@ -41,7 +41,7 @@ export function WizardWelcomePage() {
           <GuideConcept
             glyph={<Equal className='size-3.5 text-muted-foreground' />}
             term='Opening balances'>
-            What every account, inventory included, was worth at the cutover — read from your
+            What every account, inventory included, was worth when your books start — read from your
             accounting system, entered by you, or a tick to say your books start from nothing.
           </GuideConcept>
         </GuideConcepts>

@@ -125,7 +125,7 @@ export function useConnectAndGo(providerLabel: string) {
   }
 
   const booksInvalid = !isMonthKey(draft.cutoffPeriod)
-    ? 'Enter the cutover month as YYYY-MM.'
+    ? 'Enter the last month in your old books as YYYY-MM.'
     : !isValidTimeZone(draft.bookTimeZone)
       ? `"${draft.bookTimeZone}" is not a valid IANA timezone.`
       : null

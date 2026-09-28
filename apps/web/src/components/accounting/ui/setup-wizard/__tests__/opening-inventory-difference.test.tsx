@@ -17,7 +17,9 @@ const h = vi.hoisted(() => ({
     complete: false,
     canManageStock: true,
     firstOpen: 'count' as string | undefined,
-    status: { uncostedPartCount: 30 } as Record<string, unknown> | undefined,
+    status: { uncostedPartCount: 30, movedPartCount: 40, countedPartCount: 28 } as
+      | Record<string, unknown>
+      | undefined,
   },
 }))
 
@@ -79,7 +81,6 @@ vi.mock('~/trpc/react', () => ({
 import {
   adjustDisabledReason,
   creditAccountLabel,
-  dayAfter,
   OpeningInventoryDifference,
 } from '../opening-inventory-difference'
 
@@ -108,7 +109,7 @@ beforeEach(() => {
     complete: false,
     canManageStock: true,
     firstOpen: 'count',
-    status: { uncostedPartCount: 30 },
+    status: { uncostedPartCount: 30, movedPartCount: 40, countedPartCount: 28 },
   }
 })
 
@@ -161,7 +162,7 @@ describe('OpeningInventoryDifference', () => {
     expect(h.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         description: expect.stringContaining(
-          'Cr Inventory $2,000.00 against 5092 Inventory Revaluation, dated 2026-01-01, exported'
+          'Cr Inventory $2,000.00 against 5092 Inventory Revaluation, dated 1 Jan 2026, exported'
         ),
       })
     )
@@ -178,7 +179,9 @@ describe('OpeningInventoryDifference', () => {
     h.stock = { ...h.stock, visible: true, firstOpen: 'builds' }
     renderScreen()
     const line = screen.getByTestId('stock-setup-first')
-    expect(line.textContent).toContain('1 part not counted, 30 without a cost: finish stock setup')
+    expect(line.textContent).toContain(
+      '12 parts not counted, 30 without a cost: finish stock setup'
+    )
     expect(screen.getByText('Continue stock setup').getAttribute('href')).toBe(
       '/app/inventory/setup?step=builds'
     )
@@ -208,11 +211,6 @@ describe('helpers', () => {
   it('names the credit account per answer', () => {
     expect(creditAccountLabel('revaluation')).toBe('5092 Inventory Revaluation')
     expect(creditAccountLabel('opening_equity')).toBe('3900 Opening Balance Equity')
-  })
-
-  it('dates the entry the day after the cutover', () => {
-    expect(dayAfter('2025-12-31')).toBe('2026-01-01')
-    expect(dayAfter('2026-02-28')).toBe('2026-03-01')
   })
 
   it('gives the reason the press is held', () => {
