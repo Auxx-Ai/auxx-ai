@@ -29,7 +29,10 @@ export function createGuard(scope: string) {
         })
         return err(error)
       }
-      logger.error(logMessage, { error, ...meta })
+      // Drizzle wraps the driver error as "Failed query"; the Postgres reason is only on `cause`.
+      const cause =
+        error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined
+      logger.error(logMessage, { error, cause, ...meta })
       return err(new AuxxError('Internal error'))
     }
   }

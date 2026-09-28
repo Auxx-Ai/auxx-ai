@@ -56,8 +56,10 @@ describe('stockSetupStatusProvider', () => {
 })
 
 describe('stock-setup.changed', () => {
-  it('invalidates exactly the stockSetupStatus key for the org', async () => {
+  it('invalidates the status and the backflush preview for the org', async () => {
     await onCacheEvent('stock-setup.changed', { orgId: ORG })
-    expect(h.orgInvalidations).toEqual([{ orgId: ORG, keys: ['stockSetupStatus'] }])
+    expect(h.orgInvalidations).toEqual([
+      { orgId: ORG, keys: ['stockSetupStatus', 'backflushPreview'] },
+    ])
   })
 })

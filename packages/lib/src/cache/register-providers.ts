@@ -8,6 +8,7 @@ import { aiCredentialsProvider } from './providers/ai-credentials-provider'
 import { aiDefaultModelsProvider } from './providers/ai-default-models-provider'
 import { aiProviderConfigsProvider } from './providers/ai-provider-configs-provider'
 import { appSlugMapProvider } from './providers/app-slug-map-provider'
+import { backflushPreviewProvider } from './providers/backflush-preview-provider'
 // Build user cache providers
 import { buildAppsProvider } from './providers/build-apps-provider'
 import { buildDeveloperAccountsProvider } from './providers/build-developer-accounts-provider'
@@ -105,6 +106,7 @@ export function registerAllProviders(
   orgCache.register('chartAccounts', chartAccountsProvider)
   orgCache.register('subpartEdges', subpartEdgesProvider)
   orgCache.register('stockSetupStatus', stockSetupStatusProvider)
+  orgCache.register('backflushPreview', backflushPreviewProvider)
   orgCache.register('providerChart', providerChartProvider)
 
   // Org-scoped: AI provider data

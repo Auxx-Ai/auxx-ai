@@ -491,7 +491,7 @@ export class OrganizationCacheService {
 /** Keys computed from another key's cached value; invalidating the source invalidates these too. */
 const DERIVED_ORG_KEYS: Partial<Record<OrgCacheKeyName, readonly OrgCacheKeyName[]>> = {
   resources: ['resourceNav'],
-  subpartEdges: ['stockSetupStatus'],
+  subpartEdges: ['stockSetupStatus', 'backflushPreview'],
   orgSettings: ['stockSetupStatus'],
 }
 
