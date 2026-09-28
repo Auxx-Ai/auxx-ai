@@ -2,10 +2,16 @@
 
 'use client'
 
-import { type Active, DragOverlay, useDndContext } from '@dnd-kit/core'
+import {
+  type Active,
+  DragOverlay,
+  type DropAnimation,
+  defaultDropAnimationSideEffects,
+  useDndContext,
+} from '@dnd-kit/core'
 import { snapCenterToCursor } from '@dnd-kit/modifiers'
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BacklogRowGhost } from '~/components/dispatch/ui/sidebar/backlog-group'
 import { SidebarDragOverlay } from '~/components/global/sidebar/tree/sidebar-drag-overlay'
@@ -44,6 +50,13 @@ export function renderAppDragGhost(active: Active): ReactNode {
   }
 }
 
+/** Settles a dropped sidebar ghost into its slot with a slight overshoot (after Define). */
+const SIDEBAR_DROP_ANIMATION: DropAnimation = {
+  duration: 350,
+  easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
+}
+
 /**
  * Portaled `DragOverlay` — the cursor-following ghost for whichever item is being dragged.
  * Extracted from `dashboard.tsx`'s inline block so every `DndContext` on `/app/dispatch` (the
@@ -59,6 +72,10 @@ export function renderAppDragGhost(active: Active): ReactNode {
 export function AppDragOverlay() {
   const { active } = useDndContext()
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  // The drop animation runs after `active` clears, so remember what was being dragged.
+  const lastSidebarDrag = useRef(false)
+  if (active) lastSidebarDrag.current = active.data.current?.type === 'sidebar-node'
+  const isSidebarDrag = lastSidebarDrag.current
 
   useEffect(() => {
     setPortalContainer(document.body)
@@ -76,9 +93,10 @@ export function AppDragOverlay() {
 
   return createPortal(
     <DragOverlay
-      dropAnimation={null}
+      dropAnimation={isSidebarDrag ? SIDEBAR_DROP_ANIMATION : null}
       adjustScale={false}
-      modifiers={[snapCenterToCursor]}
+      // Sidebar ghosts stay where they were grabbed so their tilt pivots on the grab point.
+      modifiers={isSidebarDrag ? undefined : [snapCenterToCursor]}
       style={{ width: 'auto' }}
       className='w-auto'>
       {active ? renderAppDragGhost(active) : null}
