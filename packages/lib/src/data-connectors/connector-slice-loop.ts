@@ -24,9 +24,17 @@ export type SliceFetch = (resume: {
 /** Sink one mapped source record (the connector-agnostic write path). */
 export type SliceSink = (record: ConnectorRecord) => Promise<void>
 
+/** Sink one page of source records together (`sinkSourcePage`). */
+export type SlicePageSink = (records: ConnectorRecord[]) => Promise<void>
+
+/** A page sinks at its checkpoint, or at this many records when a source pages larger or not at all. */
+export const SINK_PAGE_MAX_RECORDS = 100
+
 export interface RunConnectorSliceArgs {
   fetch: SliceFetch
   sink: SliceSink
+  /** When set, records are buffered and sunk a page at a time instead of through `sink`. */
+  sinkPage?: SlicePageSink
   ctx: SyncSliceCtx
   /** Injectable clock (tests pass a fake to exercise the `maxMs` budget). */
   now: () => number
@@ -60,6 +68,24 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
   let rateLimitWaitMs = 0
   let nextCursor = ctx.cursor
   let watermark = ctx.watermark
+  // Records of the current page not yet sunk; an abort or a 429 drops them with the page.
+  let buffer: ConnectorRecord[] = []
+  const timedSink = async (write: () => Promise<void>) => {
+    const sinkStart = now()
+    try {
+      await write()
+    } finally {
+      mark = now()
+      sinkMs += mark - sinkStart
+    }
+  }
+  const drain = async () => {
+    if (!args.sinkPage || buffer.length === 0) return
+    const page = buffer
+    buffer = []
+    await timedSink(() => args.sinkPage!(page))
+    recordsProcessed += page.length
+  }
 
   try {
     const { records } = await fetch({ backfillCursor: ctx.cursor, watermark: ctx.watermark })
@@ -81,6 +107,7 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
       }
 
       if (isConnectorCheckpoint(y)) {
+        await drain()
         pages += 1
         // An app's `since` is opaque, so it replaces; a generic-REST watermark is a comparable max.
         if (y.since !== undefined) watermark = y.since
@@ -119,15 +146,16 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
         continue
       }
 
-      const sinkStart = now()
-      try {
-        await sink(y)
-      } finally {
-        mark = now()
-        sinkMs += mark - sinkStart
+      if (args.sinkPage) {
+        buffer.push(y)
+        if (buffer.length >= SINK_PAGE_MAX_RECORDS) await drain()
+        else mark = now()
+        continue
       }
+      await timedSink(() => sink(y))
       recordsProcessed += 1
     }
+    await drain()
   } catch (error) {
     // The wait that threw (a 429, an abort) was fetch time; after a sink throw this adds ~0.
     fetchMs += now() - mark

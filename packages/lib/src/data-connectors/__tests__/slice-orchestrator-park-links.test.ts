@@ -437,8 +437,8 @@ vi.mock('../sinks/entity-sink', () => ({
  * the record's edges the way `mergePending` would on first sight. A record seen again
  * (the resumed run re-crawls `customers`) is a touch, nothing re-queued.
  */
-vi.mock('../sink-source-record', () => ({
-  sinkSourceRecord: async (
+vi.mock('../sink-source-record', () => {
+  const sinkSourceRecord = async (
     ctx: { counters: { fetched: number } },
     _mappings: unknown,
     record: { streamKey: string; fields: { id: string }; pendingRelations?: PendingRelation[] }
@@ -456,8 +456,15 @@ vi.mock('../sink-source-record', () => ({
       linkedRelations: null,
       archivedAt: null,
     })
-  },
-}))
+  }
+  type Args = Parameters<typeof sinkSourceRecord>
+  return {
+    sinkSourceRecord,
+    sinkSourcePage: async (ctx: Args[0], mappings: Args[1], records: Args[2][]) => {
+      for (const record of records) await sinkSourceRecord(ctx, mappings, record)
+    },
+  }
+})
 
 const LAST_ORDER = `o-${ORDER_PAGES}-0`
 

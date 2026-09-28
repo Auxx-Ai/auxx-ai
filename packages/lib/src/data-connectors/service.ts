@@ -1004,7 +1004,11 @@ export async function findItemByDef(
       eq(schema.DataConnectorItem.externalId, externalId)
     ),
   })
-  // Best-effort dedup: a bound, non-archived row wins; else the first row.
+  return pickDefItem(rows)
+}
+
+/** Best-effort dedup for a def-keyed lookup: a bound, non-archived row wins; else the first row. */
+export function pickDefItem(rows: DataConnectorItemRow[]): DataConnectorItemRow | null {
   return rows.find((r) => r.entityInstanceId && !r.archivedAt) ?? rows[0] ?? null
 }
 
@@ -1063,45 +1067,53 @@ export interface UpsertItemInput {
   mintedInstance?: boolean
 }
 
+/** The columns `upsertItem` writes over an existing binding. */
+export function upsertItemSet(existing: DataConnectorItemRow, input: UpsertItemInput, now: Date) {
+  return {
+    entityInstanceId: input.entityInstanceId,
+    entityDefinitionId: input.entityDefinitionId,
+    contentHash: input.contentHash,
+    managedFields: input.managedFields,
+    pendingRelations: input.pendingRelations ?? existing.pendingRelations ?? null,
+    upstreamUpdatedAt: input.upstreamUpdatedAt ?? existing.upstreamUpdatedAt,
+    lastSeenRunId: input.lastSeenRunId,
+    lastSyncedAt: now,
+    // Sticky: once this connector minted the instance it stays minted.
+    mintedInstance: input.mintedInstance || existing.mintedInstance,
+    archivedAt: null,
+    // Seen again ⇒ it is not gone upstream after all. Clearing this is what makes
+    // `mark_deleted` self-healing: a product that comes back un-flags itself.
+    removedUpstreamAt: null,
+    error: null,
+  }
+}
+
+/** Update an existing binding with `upsertItem`'s semantics. */
+export async function updateItem(
+  db: Database,
+  existing: DataConnectorItemRow,
+  input: UpsertItemInput
+): Promise<DataConnectorItemRow> {
+  const [row] = await db
+    .update(schema.DataConnectorItem)
+    .set(upsertItemSet(existing, input, new Date()))
+    .where(eq(schema.DataConnectorItem.id, existing.id))
+    .returning()
+  return row!
+}
+
 /**
- * Create or update the binding keyed by (dataConnectorId, mappingId, externalId).
- * Clears `archivedAt`, stamps `lastSeenRunId`/`lastSyncedAt`, and merges the
- * supplied pending relations onto the row (resolved in the two-pass).
+ * Insert a new binding. A row that appeared since the caller's read (a concurrent lane) is
+ * merged with `upsertItem`'s update semantics on the unique `(connector, mapping, externalId)`.
  */
-export async function upsertItem(
+export async function insertItem(
   db: Database,
   input: UpsertItemInput
 ): Promise<DataConnectorItemRow> {
+  const I = schema.DataConnectorItem
   const now = new Date()
-  const existing = await findItem(db, input.dataConnectorId, input.mappingId, input.externalId)
-
-  if (existing) {
-    const [row] = await db
-      .update(schema.DataConnectorItem)
-      .set({
-        entityInstanceId: input.entityInstanceId,
-        entityDefinitionId: input.entityDefinitionId,
-        contentHash: input.contentHash,
-        managedFields: input.managedFields,
-        pendingRelations: input.pendingRelations ?? existing.pendingRelations ?? null,
-        upstreamUpdatedAt: input.upstreamUpdatedAt ?? existing.upstreamUpdatedAt,
-        lastSeenRunId: input.lastSeenRunId,
-        lastSyncedAt: now,
-        // Sticky: once this connector minted the instance it stays minted.
-        mintedInstance: input.mintedInstance || existing.mintedInstance,
-        archivedAt: null,
-        // Seen again ⇒ it is not gone upstream after all. Clearing this is what makes
-        // `mark_deleted` self-healing: a product that comes back un-flags itself.
-        removedUpstreamAt: null,
-        error: null,
-      })
-      .where(eq(schema.DataConnectorItem.id, existing.id))
-      .returning()
-    return row!
-  }
-
   const [row] = await db
-    .insert(schema.DataConnectorItem)
+    .insert(I)
     .values({
       dataConnectorId: input.dataConnectorId,
       organizationId: input.organizationId,
@@ -1117,8 +1129,38 @@ export async function upsertItem(
       lastSyncedAt: now,
       mintedInstance: input.mintedInstance ?? false,
     })
+    .onConflictDoUpdate({
+      target: [I.dataConnectorId, I.mappingId, I.externalId],
+      set: {
+        entityInstanceId: sql`excluded."entityInstanceId"`,
+        entityDefinitionId: sql`excluded."entityDefinitionId"`,
+        contentHash: sql`excluded."contentHash"`,
+        managedFields: sql`excluded."managedFields"`,
+        pendingRelations: sql`coalesce(excluded."pendingRelations", ${I.pendingRelations})`,
+        upstreamUpdatedAt: sql`coalesce(excluded."upstreamUpdatedAt", ${I.upstreamUpdatedAt})`,
+        lastSeenRunId: sql`excluded."lastSeenRunId"`,
+        lastSyncedAt: sql`excluded."lastSyncedAt"`,
+        mintedInstance: sql`excluded."mintedInstance" or ${I.mintedInstance}`,
+        archivedAt: null,
+        removedUpstreamAt: null,
+        error: null,
+      },
+    })
     .returning()
   return row!
+}
+
+/**
+ * Create or update the binding keyed by (dataConnectorId, mappingId, externalId).
+ * Clears `archivedAt`, stamps `lastSeenRunId`/`lastSyncedAt`, and merges the
+ * supplied pending relations onto the row (resolved in the two-pass).
+ */
+export async function upsertItem(
+  db: Database,
+  input: UpsertItemInput
+): Promise<DataConnectorItemRow> {
+  const existing = await findItem(db, input.dataConnectorId, input.mappingId, input.externalId)
+  return existing ? updateItem(db, existing, input) : insertItem(db, input)
 }
 
 /**
@@ -1141,14 +1183,23 @@ export async function touchItem(
 ): Promise<void> {
   await db
     .update(schema.DataConnectorItem)
-    .set({
-      lastSeenRunId,
-      lastSyncedAt: new Date(),
-      removedUpstreamAt: null,
-      archivedAt: null,
-      ...(upstreamUpdatedAt ? { upstreamUpdatedAt } : {}),
-    })
+    .set(touchItemSet(lastSeenRunId, upstreamUpdatedAt, new Date()))
     .where(eq(schema.DataConnectorItem.id, itemId))
+}
+
+/** The columns `touchItem` writes. */
+export function touchItemSet(
+  lastSeenRunId: string,
+  upstreamUpdatedAt: Date | null | undefined,
+  now: Date
+) {
+  return {
+    lastSeenRunId,
+    lastSyncedAt: now,
+    removedUpstreamAt: null,
+    archivedAt: null,
+    ...(upstreamUpdatedAt ? { upstreamUpdatedAt } : {}),
+  }
 }
 
 /** Clear resolved pending relations on an item, leaving any still-unresolved. */

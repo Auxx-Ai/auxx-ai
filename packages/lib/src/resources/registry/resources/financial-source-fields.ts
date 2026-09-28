@@ -80,3 +80,18 @@ export function financialSourceRelationship<A extends SystemAttribute>(
         },
   }
 }
+
+/**
+ * Fields a financial source re-stamps on every fetch (the scan id, its start time, the page).
+ * The connector sink still writes them but leaves them out of the content hash, so a
+ * re-fetch of unchanged evidence is a skip rather than a rewrite.
+ */
+export const ACQUISITION_METADATA_ATTRIBUTES: ReadonlySet<string> = new Set<SystemAttribute>([
+  'processor_balance_acquisition_id',
+  'processor_balance_acquired_at',
+  'processor_balance_page',
+  'payout_source_acquisition_id',
+  'payout_source_acquired_at',
+  'customer_transaction_acquisition_id',
+  'customer_transaction_acquired_at',
+])

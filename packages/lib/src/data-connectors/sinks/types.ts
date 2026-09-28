@@ -7,6 +7,7 @@ import type { ManifestCollector } from '../../record-rules/sync-manifest-collect
 import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { RecordFailureTally } from '../record-failure-tally'
 import type { DataConnectorRow, DecodedMapping, PendingRelation, RunCounters } from '../service'
+import type { SinkPage } from './sink-page'
 
 /** A single projected write produced by the mapping layer (04 §1a). */
 export interface ProjectedRecord {
@@ -120,11 +121,21 @@ export interface SyncCtx {
    * binding, but log + skip their field writes.
    */
   sliceWriteWinners?: Map<string, string>
+  /** The open page's binds and deferred item writes (`upsertRecords`); unset on the per-record lanes. */
+  sinkPage?: SinkPage
+}
+
+/** One projected write of a page, in the order the page sinks it. */
+export interface PageWrite {
+  mapping: DecodedMapping
+  record: ProjectedRecord
 }
 
 /** The entity sink contract (04 §1b). */
 export interface EntitySink {
   upsertRecord(ctx: SyncCtx, mapping: DecodedMapping, record: ProjectedRecord): Promise<void>
+  /** Sink a page of projected writes in order with page-scoped binds (plans/mrp/14 §4). */
+  upsertRecords(writes: PageWrite[], ctx: SyncCtx): Promise<void>
   archiveRecord(
     ctx: SyncCtx,
     item: { id: string; entityInstanceId: string | null; entityDefinitionId: string },

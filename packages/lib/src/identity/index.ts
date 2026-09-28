@@ -6,7 +6,7 @@ export {
   type ResolveExternalLinkInput,
   resolveExternalLink,
 } from './external-link'
-export { findRecordByIdentity } from './find'
+export { findRecordByIdentity, findRecordsByIdentity } from './find'
 export {
   interpolateLinkTemplate,
   LINK_VARIABLE,

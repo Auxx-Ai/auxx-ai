@@ -276,6 +276,13 @@ vi.mock('../sink-source-record', () => ({
   sinkSourceRecord: async (ctx: { counters: { fetched: number } }) => {
     ctx.counters.fetched += 1
   },
+  sinkSourcePage: async (
+    ctx: { counters: { fetched: number } },
+    _m: unknown,
+    records: unknown[]
+  ) => {
+    ctx.counters.fetched += records.length
+  },
 }))
 vi.mock('../sinks/entity-sink', () => ({
   entitySink: { listExistingItems: async () => [], archiveRecord: async () => {} },

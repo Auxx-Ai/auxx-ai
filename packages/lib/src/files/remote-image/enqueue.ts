@@ -35,15 +35,7 @@ export async function enqueueRecordImageFetch(
   const { organizationId, instanceId, fieldId, url } = data
   if (!organizationId || !instanceId || !fieldId || !url) return false
 
-  const deferrals = data.deferrals ?? 0
-  const id = jobId(
-    'record-image',
-    organizationId,
-    instanceId,
-    fieldId,
-    stableHash(url).slice(0, 16),
-    ...(deferrals > 0 ? [`d${deferrals}`] : [])
-  )
+  const id = recordImageJobId(data)
   try {
     await getQueue(Queues.remoteImageQueue).add(FETCH_RECORD_IMAGE_JOB_NAME, data, {
       jobId: id,
@@ -59,4 +51,37 @@ export async function enqueueRecordImageFetch(
     })
     return false
   }
+}
+
+/** Queue many record-image fetches in one round trip. Never throws, like the single form. */
+export async function enqueueRecordImageFetches(items: FetchRecordImageJobData[]): Promise<void> {
+  const valid = items.filter((d) => d.organizationId && d.instanceId && d.fieldId && d.url)
+  if (valid.length === 0) return
+  try {
+    await getQueue(Queues.remoteImageQueue).addBulk(
+      valid.map((data) => ({
+        name: FETCH_RECORD_IMAGE_JOB_NAME,
+        data,
+        opts: { jobId: recordImageJobId(data) },
+      }))
+    )
+  } catch (error) {
+    logger.error('Failed to enqueue record image fetches', {
+      organizationId: valid[0]!.organizationId,
+      count: valid.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+function recordImageJobId(data: FetchRecordImageJobData): string {
+  const deferrals = data.deferrals ?? 0
+  return jobId(
+    'record-image',
+    data.organizationId,
+    data.instanceId,
+    data.fieldId,
+    stableHash(data.url).slice(0, 16),
+    ...(deferrals > 0 ? [`d${deferrals}`] : [])
+  )
 }

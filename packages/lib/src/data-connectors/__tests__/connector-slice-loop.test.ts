@@ -4,7 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { SliceBudget, SyncSliceCtx } from '../../sync-core/contracts'
-import { runConnectorSlice } from '../connector-slice-loop'
+import { runConnectorSlice, SINK_PAGE_MAX_RECORDS } from '../connector-slice-loop'
 import {
   ConnectorRateLimitError,
   type ConnectorYield,
@@ -295,6 +295,98 @@ describe('runConnectorSlice', () => {
         ctx: ctx(),
       })
       expect(result.commit).toBe('all')
+      expect(result.counters).toEqual({ fetchMs: 300, sinkMs: 30 })
+    })
+  })
+
+  describe('page sink', () => {
+    it('sinks each page once at its checkpoint, in order', async () => {
+      const pages: string[][] = []
+      const sink = vi.fn(async () => {})
+      const result = await runConnectorSlice({
+        fetch: fakeFetch([rec('a'), rec('b'), checkpoint('c1'), rec('c'), checkpoint(undefined)]),
+        sink,
+        sinkPage: async (records) => {
+          pages.push(records.map((r) => (r.fields as { id: string }).id))
+        },
+        ctx: ctx(),
+        now: () => 0,
+      })
+      expect(pages).toEqual([['a', 'b'], ['c']])
+      expect(sink).not.toHaveBeenCalled()
+      expect(result).toMatchObject({ recordsProcessed: 3, pagesProcessed: 2, hasMore: false })
+    })
+
+    it('drains the tail of a source that ends without a checkpoint', async () => {
+      const pages: number[] = []
+      const result = await runConnectorSlice({
+        fetch: fakeFetch([rec('a'), rec('b')]),
+        sink: async () => {},
+        sinkPage: async (records) => {
+          pages.push(records.length)
+        },
+        ctx: ctx(),
+        now: () => 0,
+      })
+      expect(pages).toEqual([2])
+      expect(result.recordsProcessed).toBe(2)
+    })
+
+    it('splits a page larger than SINK_PAGE_MAX_RECORDS', async () => {
+      const pages: number[] = []
+      const seq = Array.from({ length: SINK_PAGE_MAX_RECORDS + 1 }, (_, i) => rec(`r${i}`))
+      await runConnectorSlice({
+        fetch: fakeFetch([...seq, checkpoint(undefined)]),
+        sink: async () => {},
+        sinkPage: async (records) => {
+          pages.push(records.length)
+        },
+        ctx: ctx(),
+        now: () => 0,
+      })
+      expect(pages).toEqual([SINK_PAGE_MAX_RECORDS, 1])
+    })
+
+    it('drops a half-read page on a 429 and resumes from the last checkpoint', async () => {
+      const pages: string[][] = []
+      const result = await runConnectorSlice({
+        fetch: fakeFetch(
+          [rec('a'), checkpoint('c1'), rec('b')],
+          new ConnectorRateLimitError('slow down', 0)
+        ),
+        sink: async () => {},
+        sinkPage: async (records) => {
+          pages.push(records.map((r) => (r.fields as { id: string }).id))
+        },
+        ctx: ctx(),
+        now: () => 0,
+      })
+      expect(pages).toEqual([['a']])
+      expect(result).toMatchObject({
+        recordsProcessed: 1,
+        nextCursor: { kind: 'token', value: 'c1' },
+        commit: 'all',
+      })
+    })
+
+    it('times the page sink as sink time and the waits as fetch time', async () => {
+      let t = 0
+      const result = await runConnectorSlice({
+        fetch: async () => ({
+          records: (async function* () {
+            for (const y of [rec('a'), rec('b'), checkpoint()]) {
+              t += 100
+              yield y
+            }
+          })(),
+        }),
+        sink: async () => {},
+        sinkPage: async () => {
+          t += 30
+        },
+        ctx: ctx(),
+        now: () => t,
+      })
       expect(result.counters).toEqual({ fetchMs: 300, sinkMs: 30 })
     })
   })

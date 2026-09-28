@@ -34,7 +34,7 @@ import type {
 } from '../sync-core/contracts'
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
-import { runConnectorSlice } from './connector-slice-loop'
+import { runConnectorSlice, type SlicePageSink } from './connector-slice-loop'
 import { decodeSince } from './connectors/app-connector-state'
 import { resolveCrossConnectorLinks } from './cross-connector-links'
 import {
@@ -63,7 +63,7 @@ import {
   publishSyncRecordsChanged,
   type RunCounters,
 } from './service'
-import { sinkSourceRecord } from './sink-source-record'
+import { sinkSourcePage, sinkSourceRecord } from './sink-source-record'
 import type { SyncCtx } from './sinks/types'
 import { syncQuery } from './stream-query'
 import { createConnectorRunLedger } from './sync-core-adapters'
@@ -288,6 +288,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
             this.updatedAtPath,
             this.postFetchFilter
           ),
+        sinkPage: this.pageSink(syncCtx),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
       await this.persistManifest(syncCtx)
@@ -334,6 +335,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           this.updatedAtPath,
           this.postFetchFilter
         ),
+      sinkPage: this.pageSink(syncCtx),
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
@@ -344,6 +346,19 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       countersByKey: counters.byMapping,
       errorSample: counters.errorSample,
     }
+  }
+
+  /** The backfill and steady chains sink a page at a time; a re-import stays per record (plan 14 §6.8). */
+  private pageSink(syncCtx: SyncCtx): SlicePageSink | undefined {
+    if (this.reimport) return undefined
+    return (records) =>
+      sinkSourcePage(
+        syncCtx,
+        this.deps.stream.mappings,
+        records,
+        this.updatedAtPath,
+        this.postFetchFilter
+      )
   }
 
   /** The bulk export a plain backfill runs instead of paging; never for a re-import. */
