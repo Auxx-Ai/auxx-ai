@@ -138,7 +138,11 @@ vi.mock('@auxx/lib/field-values', () => ({ getDescendantIds: fieldValues.getDesc
 
 vi.mock('@auxx/lib/conditions', async () => {
   const { z } = await import('zod')
-  return { conditionGroupSchema: z.any() }
+  return {
+    conditionGroupSchema: z.any(),
+    groupByConfigSchema: z.any(),
+    columnAggregateOpSchema: z.any(),
+  }
 })
 
 // The `@auxx/lib/permissions` barrel hangs under vitest — hand back the REAL

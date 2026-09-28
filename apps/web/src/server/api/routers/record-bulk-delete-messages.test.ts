@@ -72,7 +72,11 @@ vi.mock('@auxx/lib/identity', () => ({ getRecordIdentityViews: vi.fn(async () =>
 vi.mock('@auxx/lib/field-values', () => ({ getDescendantIds: vi.fn(async () => []) }))
 vi.mock('@auxx/lib/conditions', async () => {
   const { z } = await import('zod')
-  return { conditionGroupSchema: z.any() }
+  return {
+    conditionGroupSchema: z.any(),
+    groupByConfigSchema: z.any(),
+    columnAggregateOpSchema: z.any(),
+  }
 })
 vi.mock('@auxx/lib/permissions', async () => {
   const registry = await import('@auxx/lib/permissions/capabilities/registry')

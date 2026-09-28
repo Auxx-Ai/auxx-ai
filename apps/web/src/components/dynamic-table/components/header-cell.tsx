@@ -7,6 +7,7 @@ import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { isAiEligible } from '@auxx/lib/custom-fields/client'
 import type { FieldOptions } from '@auxx/lib/field-values/client'
 import { toRecordId } from '@auxx/lib/resources/client'
+import { isAggregatableField } from '@auxx/lib/resources/grouping/client'
 import type { AiOptions } from '@auxx/types/custom-field'
 import {
   buildFieldValueKey,
@@ -72,6 +73,7 @@ import {
   useColumnLabels,
   useColumnPinning,
   useTableFilters,
+  useTableGroupBy,
 } from '../stores/store-selectors'
 import type { ColumnFormatting, ExtendedColumnDef, FormattableFieldType } from '../types'
 import { FORMATTABLE_FIELD_TYPES } from '../types'
@@ -79,6 +81,7 @@ import { decodeColumnId } from '../utils/column-id'
 import { getSortOptionsForFieldType, type SORT_OPTIONS } from '../utils/constants'
 import { EditColumnFormattingDialog } from './dialogs/edit-column-formatting-dialog'
 import { EditColumnLabelDialog } from './dialogs/edit-column-label-dialog'
+import { SummarizeSubMenu } from './summarize-menu'
 
 interface HeaderCellProps<TData> {
   header: Header<TData, unknown>
@@ -161,6 +164,7 @@ function HeaderCellOptionsDropdown<TData>({
   table,
   entityDefinitionId,
   editableField,
+  summarizeTableId,
 }: {
   column: Header<TData, unknown>['column']
   columnDef: ExtendedColumnDef<TData>
@@ -190,6 +194,8 @@ function HeaderCellOptionsDropdown<TData>({
   table: Table<TData>
   entityDefinitionId: string | undefined
   editableField: ResourceFieldId | null
+  /** Set while grouped on an aggregatable column; enables the Summarize submenu. */
+  summarizeTableId: string | null
 }) {
   const [showLabelDialog, setShowLabelDialog] = useState(false)
   const [showFormattingDialog, setShowFormattingDialog] = useState(false)
@@ -407,6 +413,8 @@ function HeaderCellOptionsDropdown<TData>({
           </DropdownMenuItem>
         )}
 
+        {summarizeTableId && <SummarizeSubMenu tableId={summarizeTableId} columnId={column.id} />}
+
         {editableField && (
           <>
             <DropdownMenuSeparator />
@@ -554,6 +562,11 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
   const aiFieldRef: FieldReference | null =
     aiMenuEnabled && !isPathColumn ? (decoded.resourceFieldId as ResourceFieldId) : null
 
+  // Group header aggregates exist only while grouped, on direct NUMBER / CURRENCY columns.
+  const groupBy = useTableGroupBy(tableId)
+  const canSummarize =
+    !!groupBy && !isPathColumn && !!directField && isAggregatableField(directField)
+
   // ─── EDITABLE CUSTOM FIELD GATE ────────────────────────────────────────────
   // Show "Edit field" / "Delete field" only when the column maps to a non-system
   // custom field. For path columns, target the terminal field (which lives on
@@ -657,6 +670,7 @@ export function HeaderCell<TData>({ header, isDragging = false }: HeaderCellProp
             table={table}
             entityDefinitionId={entityDefinitionId}
             editableField={editableField}
+            summarizeTableId={canSummarize ? tableId : null}
           />
         </div>
       )}

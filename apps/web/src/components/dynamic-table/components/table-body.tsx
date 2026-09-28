@@ -8,6 +8,8 @@ import { useCellSelection } from '../context/cell-selection-context'
 import { useTableConfig } from '../context/table-config-context'
 import { useTableInstance } from '../context/table-instance-context'
 import { useViewStoreInitialized } from '../stores/store-selectors'
+import type { GroupingProps } from '../types'
+import { hasGroupHeaders } from '../utils/build-virtual-items'
 import { sanitizeColumnId } from '../utils/sanitize-column-id'
 import { AddColumnButton } from './add-column-button'
 import { CheckboxHeaderCell } from './checkbox-header-cell'
@@ -24,6 +26,7 @@ interface TableBodyProps {
   hideToolbar?: boolean
   /** Reference to the scroll container (for virtualization and cell navigation) */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
+  grouping?: GroupingProps
 }
 
 /**
@@ -32,6 +35,7 @@ interface TableBodyProps {
 export function TableBody<TData extends object>({
   hideToolbar,
   scrollContainerRef,
+  grouping,
 }: TableBodyProps) {
   // Get config from focused contexts
   const { isLoading, entityDefinitionId, dragDropConfig, emptyState, standalone, hideHeader } =
@@ -41,6 +45,9 @@ export function TableBody<TData extends object>({
 
   // Get view loading state from store (skip check for standalone tables)
   const isLoadingViews = standalone ? false : !useViewStoreInitialized()
+
+  // With every group collapsed there are no rows, but the headers still render.
+  const hasRows = table.getRowModel().rows.length > 0 || hasGroupHeaders(grouping)
 
   // Container ref for virtualization AND CSS variables
   const containerRef = useRef<HTMLDivElement>(null)
@@ -149,7 +156,7 @@ export function TableBody<TData extends object>({
           {/* Table Body with Row DndContext */}
           <RowDndProvider>
             <div className='relative block flex-1 h-full'>
-              {(isLoading && table.getRowModel().rows?.length === 0) || isLoadingViews ? (
+              {(isLoading && !hasRows) || isLoadingViews ? (
                 // Loading state
                 Array.from({ length: 5 }).map((_, index) => (
                   <div
@@ -165,7 +172,7 @@ export function TableBody<TData extends object>({
                     ))}
                   </div>
                 ))
-              ) : table.getRowModel().rows?.length ? (
+              ) : hasRows ? (
                 // Virtual table body with data rows
                 <VirtualTableBody
                   table={table}
@@ -173,6 +180,7 @@ export function TableBody<TData extends object>({
                   scrollContainerRef={scrollContainerRef}
                   dragDropConfig={dragDropConfig}
                   cellSelectionEnabled={cellSelectionConfig?.enabled}
+                  grouping={grouping}
                 />
               ) : null}
             </div>
@@ -183,7 +191,7 @@ export function TableBody<TData extends object>({
       {/* Empty state */}
       {!isLoading &&
         !isLoadingViews &&
-        table.getRowModel().rows?.length === 0 &&
+        !hasRows &&
         (emptyState ? (
           <div className='inset-0 absolute flex flex-1 min-h-0 flex-col'>{emptyState}</div>
         ) : (

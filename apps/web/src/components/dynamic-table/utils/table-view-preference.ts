@@ -3,9 +3,13 @@
 import type { TableViewPreferenceConfig } from '@auxx/lib/conditions/client'
 import type { TableUIConfig } from '../stores/store-types'
 
-/** Strip transient query state and shared-view structure from a personal overlay. */
+/**
+ * Strip transient query state and shared-view structure from a personal overlay.
+ * `collapsedGroups` lives outside the UI config; pass the stored value so the write keeps it.
+ */
 export function toTableViewPreferenceConfig(
-  config: Partial<TableUIConfig>
+  config: Partial<TableUIConfig>,
+  collapsedGroups?: TableViewPreferenceConfig['collapsedGroups']
 ): TableViewPreferenceConfig {
   return {
     columnVisibility: config.columnVisibility ?? {},
@@ -15,6 +19,8 @@ export function toTableViewPreferenceConfig(
     columnLabels: config.columnLabels,
     columnFormatting: config.columnFormatting,
     rowHeight: config.rowHeight,
+    columnAggregates: config.columnAggregates,
+    collapsedGroups,
   }
 }
 
@@ -28,6 +34,8 @@ export function toTableViewPreferenceConfig(
 export function toPersonalOverlayConfig(config: TableViewPreferenceConfig): Partial<TableUIConfig> {
   const overlay: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(config)) {
+    // Collapsed groups belong to the group-collapse slice, not the UI overlay.
+    if (key === 'collapsedGroups') continue
     if (value == null) continue
     if (Array.isArray(value) && value.length === 0) continue
     if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
@@ -50,6 +58,11 @@ export function hasPresentationPreference(config: TableViewPreferenceConfig): bo
     ) ||
     Boolean(config.columnLabels && Object.keys(config.columnLabels).length > 0) ||
     Boolean(config.columnFormatting && Object.keys(config.columnFormatting).length > 0) ||
-    Boolean(config.rowHeight)
+    Boolean(config.rowHeight) ||
+    Boolean(config.columnAggregates && Object.keys(config.columnAggregates).length > 0) ||
+    Boolean(
+      config.collapsedGroups &&
+        Object.values(config.collapsedGroups).some((keys) => keys.length > 0)
+    )
   )
 }

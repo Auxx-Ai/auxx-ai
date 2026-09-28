@@ -113,6 +113,24 @@ export const calendarConfigSchema = z.object({
 })
 
 // ============================================================================
+// GROUP BY SCHEMAS
+// ============================================================================
+
+/** Date bucket size for grouping by a DATE / DATETIME field. */
+export const groupDateGranularitySchema = z.enum(['day', 'week', 'month', 'quarter', 'year'])
+
+/** Table group-by; see plans/table/group-by-plan.md §3.1. */
+export const groupByConfigSchema = z.object({
+  /** ResourceFieldId — same keyspace as `sorting[].id`. */
+  fieldId: z.string(),
+  desc: z.boolean().optional(),
+  /** Only when the field is DATE / DATETIME. Default 'day' on the server. */
+  dateGranularity: groupDateGranularitySchema.optional(),
+})
+
+export const columnAggregateOpSchema = z.enum(['sum', 'avg', 'min', 'max'])
+
+// ============================================================================
 // VIEW CONFIG SCHEMA (SINGLE SOURCE OF TRUTH)
 // ============================================================================
 
@@ -135,21 +153,30 @@ export const viewConfigSchema = z.object({
   viewType: z.enum(['table', 'kanban', 'calendar']).optional().default('table'),
   kanban: kanbanConfigSchema.optional(),
   calendar: calendarConfigSchema.optional(),
+  groupBy: groupByConfigSchema.optional(),
+  /** Column id → op. Rendered in group header rows now; a totals footer later. */
+  columnAggregates: z.record(z.string(), columnAggregateOpSchema).optional(),
 })
 
 /**
  * Per-user presentation fields that may overlay a shared or unnamed table.
  * Query semantics and view structure are deliberately excluded.
  */
-export const tableViewPreferenceConfigSchema = viewConfigSchema.pick({
-  columnVisibility: true,
-  columnOrder: true,
-  columnSizing: true,
-  columnPinning: true,
-  columnLabels: true,
-  columnFormatting: true,
-  rowHeight: true,
-})
+export const tableViewPreferenceConfigSchema = viewConfigSchema
+  .pick({
+    columnVisibility: true,
+    columnOrder: true,
+    columnSizing: true,
+    columnPinning: true,
+    columnLabels: true,
+    columnFormatting: true,
+    rowHeight: true,
+    columnAggregates: true,
+  })
+  .extend({
+    /** groupBy.fieldId → collapsed group keys. `'__empty__'` stands for the null key. */
+    collapsedGroups: z.record(z.string(), z.array(z.string())).optional(),
+  })
 
 // ============================================================================
 // INFERRED TYPES (derived from schemas - always in sync)
@@ -164,6 +191,9 @@ export type ColumnFormatting = z.infer<typeof columnFormattingSchema>
 export type KanbanColumnSettings = z.infer<typeof kanbanColumnSettingsSchema>
 export type KanbanViewConfig = z.infer<typeof kanbanConfigSchema>
 export type CalendarViewConfig = z.infer<typeof calendarConfigSchema>
+export type GroupDateGranularity = z.infer<typeof groupDateGranularitySchema>
+export type GroupByConfig = z.infer<typeof groupByConfigSchema>
+export type ColumnAggregateOp = z.infer<typeof columnAggregateOpSchema>
 export type ViewConfig = z.infer<typeof viewConfigSchema>
 export type TableViewPreferenceConfig = z.infer<typeof tableViewPreferenceConfigSchema>
 export type ViewType = ViewConfig['viewType']

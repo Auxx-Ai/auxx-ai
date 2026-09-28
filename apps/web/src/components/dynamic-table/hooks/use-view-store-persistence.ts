@@ -9,6 +9,7 @@ import { DYNAMIC_TABLE_CONFIG } from '../config/table-config'
 import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import type { TableView, ViewConfig } from '../types'
 import { tableViewPreferenceKey } from '../utils/constants'
+import { enqueuePreferenceWrite, preferenceWritesSettled } from '../utils/preference-write-queue'
 import {
   hasPresentationPreference,
   toTableViewPreferenceConfig,
@@ -70,7 +71,7 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
   // Track the last saved config to detect actual changes
   const lastSavedRef = useRef<string | null>(null)
   const lastPreferenceRef = useRef<string | null>(null)
-  const preferenceWriteRef = useRef<Promise<unknown> | null>(null)
+  const preferenceKey = tableViewPreferenceKey(tableId, viewId)
 
   useEffect(() => {
     lastPreferenceRef.current = savedPreference ? JSON.stringify(savedPreference.config) : null
@@ -78,21 +79,33 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
 
   const persistPreference = useCallback(() => {
     if (!viewId || !view?.isShared || !personalConfig) return
-    const config = toTableViewPreferenceConfig(personalConfig)
+    const config = toTableViewPreferenceConfig(
+      personalConfig,
+      savedPreference?.config.collapsedGroups
+    )
     if (!hasPresentationPreference(config) && !savedPreference) return
 
     const serialized = JSON.stringify(config)
     if (serialized === lastPreferenceRef.current) return
     lastPreferenceRef.current = serialized
-    const previousWrite = preferenceWriteRef.current ?? Promise.resolve()
-    const nextWrite = previousWrite
-      .then(() => upsertPreference.mutateAsync({ tableId, tableViewId: viewId, config }))
-      .catch(() => undefined)
-    preferenceWriteRef.current = nextWrite
-    void nextWrite.finally(() => {
-      if (preferenceWriteRef.current === nextWrite) preferenceWriteRef.current = null
+    void enqueuePreferenceWrite(preferenceKey, () => {
+      // Re-read collapsed groups at write time; the collapse writer may have landed meanwhile.
+      const stored = useDynamicTableStore.getState().viewPreferences[preferenceKey]
+      return upsertPreference.mutateAsync({
+        tableId,
+        tableViewId: viewId,
+        config: { ...config, collapsedGroups: stored?.config.collapsedGroups },
+      })
     })
-  }, [viewId, view?.isShared, personalConfig, savedPreference, upsertPreference, tableId])
+  }, [
+    viewId,
+    view?.isShared,
+    personalConfig,
+    savedPreference,
+    upsertPreference,
+    tableId,
+    preferenceKey,
+  ])
 
   const debouncedPreferenceSave = useDebouncedCallback(
     persistPreference,
@@ -133,7 +146,7 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
 
       if (view?.isShared) {
         debouncedPreferenceSave.cancel?.()
-        await preferenceWriteRef.current
+        await preferenceWritesSettled(preferenceKey)
         clearPersonalConfig(viewId)
         clearPersonalFilters(viewId)
         await deletePreference.mutateAsync({ tableId, tableViewId: viewId })
@@ -168,6 +181,7 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
     deletePreference,
     debouncedPreferenceSave,
     utils,
+    preferenceKey,
   ])
 
   /** Debounced save - called automatically when config changes */
@@ -187,7 +201,7 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
   const resetPersonalization = useCallback(async () => {
     if (!viewId || !view?.isShared) return
     debouncedPreferenceSave.cancel?.()
-    await preferenceWriteRef.current
+    await preferenceWritesSettled(preferenceKey)
     clearPersonalConfig(viewId)
     clearPersonalFilters(viewId)
     clearViewPreference(tableId, viewId)
@@ -202,6 +216,7 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
     clearViewPreference,
     deletePreference,
     debouncedPreferenceSave,
+    preferenceKey,
   ])
 
   // Cleanup debounced callback on unmount
@@ -214,8 +229,12 @@ export function useViewStorePersistence(view: TableView | null, tableId: string)
 
   // Subscribe to isSaving state for reactivity
   const isSaving = useDynamicTableStore((state) => (viewId ? state.isSaving(viewId) : false))
+  // Collapsed groups ride on the same row but are not a personalization of the view.
+  const hasSavedPresentation =
+    !!savedPreference &&
+    hasPresentationPreference({ ...savedPreference.config, collapsedGroups: undefined })
   const hasPersonalization = Boolean(
-    view?.isShared && (personalConfig || personalFilters || savedPreference)
+    view?.isShared && (personalConfig || personalFilters || hasSavedPresentation)
   )
 
   return {

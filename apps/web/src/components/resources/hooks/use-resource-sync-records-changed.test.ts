@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   /** Captured org-channel dispatcher. */
   onOrgEvent: undefined as ((event: string, payload: unknown) => void) | undefined,
   listFilteredInvalidate: vi.fn(),
+  groupSummaryInvalidate: vi.fn(),
   getByIdsFetch: vi.fn<(input: any, opts: any) => Promise<any>>(async () => ({})),
   refetch: vi.fn(async () => {}),
 }))
@@ -37,6 +38,7 @@ vi.mock('../store/field-value-fetch-queue', () => ({
 const utils = {
   record: {
     listFiltered: { invalidate: h.listFilteredInvalidate },
+    groupSummary: { invalidate: h.groupSummaryInvalidate },
     getByIds: { fetch: h.getByIdsFetch },
   },
   resource: { list: { invalidate: vi.fn() } },
@@ -82,6 +84,7 @@ beforeEach(() => {
   h.onRecordEvent = undefined
   h.onOrgEvent = undefined
   h.listFilteredInvalidate.mockClear()
+  h.groupSummaryInvalidate.mockClear()
   h.getByIdsFetch.mockClear()
   h.getByIdsFetch.mockImplementation(async () => ({}))
   h.refetch.mockClear()
@@ -109,6 +112,8 @@ describe('records:changed — targeted catch-up', () => {
     // The coalesced list invalidate is what surfaces r-new (a created row).
     expect(h.listFilteredInvalidate).toHaveBeenCalledTimes(1)
     expect(h.listFilteredInvalidate).toHaveBeenCalledWith({ entityDefinitionId: DEF_A })
+    // Grouped tables' header counts refresh with the rows.
+    expect(h.groupSummaryInvalidate).toHaveBeenCalledWith({ entityDefinitionId: DEF_A })
   })
 
   it('restricts the value refetch to the entry fieldIds when present', async () => {

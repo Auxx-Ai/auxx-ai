@@ -20,11 +20,13 @@ import {
   getOrgCache,
 } from '../../cache'
 import type { ConditionGroup } from '../../conditions'
+import type { GroupDateGranularity } from '../../conditions/view-config'
 import { ForbiddenError } from '../../errors'
 import { FieldValueService, formatToRawValue } from '../../field-values'
 import type { CapabilityView } from '../../permissions/capabilities/capability-view'
 import { textSearchPredicate, textSearchRank } from '../../search/text-search-sql'
 import { BaseType } from '../../workflow-engine/core/types'
+import { excludeGroupKeysWhere, resolveGroupOrder } from '../grouping/group-order'
 import { isMailLensTableId, MAIL_LENS_REFUSAL } from '../picker/mail-lens-tables'
 import type {
   DroppedCondition,
@@ -93,6 +95,20 @@ export interface ListFilteredInput {
    * deep page (paginating agent tools).
    */
   includeTotal?: boolean
+  /** Table group-by; see {@link ListGroupingParams}. */
+  groupBy?: ListGroupingParams['groupBy']
+  timezone?: string
+  excludeGroupKeys?: string[]
+}
+
+/** Group-by inputs of the `EntityInstance` list lane (plans/table/group-by-plan.md §4.3). */
+export interface ListGroupingParams {
+  /** ResourceFieldId of a groupable field; orders groups before `sorting[0]`. */
+  groupBy?: { fieldId: string; desc?: boolean; dateGranularity?: GroupDateGranularity }
+  /** IANA zone for DATETIME buckets. Required when grouping by one. */
+  timezone?: string
+  /** Collapsed group keys whose rows are left out of page AND total; `'__empty__'` = null key. */
+  excludeGroupKeys?: string[]
 }
 
 /**
@@ -148,6 +164,8 @@ export interface ListFilteredResult {
   total?: number
   /** Whether more results exist, derived from a `limit + 1` probe row */
   hasMore: boolean
+  /** Group key per id (parallel to {@link ids}); present only when `groupBy` was requested. */
+  groupKeys?: Array<string | null>
   /**
    * Filter conditions the builder could not compile, and therefore **did not
    * apply**. Present only when at least one was dropped; `undefined` means every
@@ -304,9 +322,9 @@ export function extractRequiredRelatedEntities(
 }
 
 /**
- * Internal: build the context, WHERE clause, and ORDER BY clauses for an entity-instance
- * query. Shared between the paged and count-only helpers so we don't duplicate field
- * resolution + related-entity lookups.
+ * Build the context, WHERE clause, and ORDER BY clauses for an entity-instance
+ * query. Shared by the paged, count, match and group-summary queries so their
+ * WHERE clauses (filters, search, collapsed groups) can never disagree.
  *
  * `search` is the free-text half of the records search bar, kept OUT of
  * `filters` on purpose (plan decision 0.3): conditions **narrow**, the typed text
@@ -314,16 +332,24 @@ export function extractRequiredRelatedEntities(
  * filters — and, when the user has not picked a sort column, it also supplies the
  * default ordering.
  */
-async function buildEntityInstanceQueryParts(params: {
-  organizationId: string
-  entityDefinitionId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-  /** Free-text query from the search bar. Blank/whitespace is treated as absent. */
-  search?: string
-}): Promise<{
+export async function buildEntityInstanceQueryParts(
+  params: {
+    organizationId: string
+    entityDefinitionId: string
+    filters: ConditionGroup[]
+    sorting: Array<{ id: string; desc: boolean }>
+    /** Free-text query from the search bar. Blank/whitespace is treated as absent. */
+    search?: string
+  } & ListGroupingParams
+): Promise<{
   whereClause: SQL<unknown> | undefined
   orderByClauses: SQL<unknown>[] | undefined
+  /** The row's group key; present exactly when `groupBy` was given. */
+  groupKeyExpr?: SQL<unknown>
+  /** Group order over an already-computed key; present exactly when `groupBy` was given. */
+  groupOrderByKey?: (key: SQL<unknown>) => SQL<unknown>[]
+  /** The resolved field universe, for callers that resolve more fields (aggregates). */
+  context: EntityQueryContext
   /**
    * Conditions that produced no SQL. Returned rather than only logged so the
    * paged query can hand them to its caller — see
@@ -365,7 +391,20 @@ async function buildEntityInstanceQueryParts(params: {
 
   // Search NARROWS. `and()` drops `undefined`, so a filter-less search and a
   // search-less filter both fall out of the same expression.
-  const whereClause = search ? and(built.sql, recordSearchPredicate(search)) : built.sql
+  const searchedWhere = search ? and(built.sql, recordSearchPredicate(search)) : built.sql
+
+  const group = params.groupBy
+    ? await resolveGroupOrder({
+        organizationId,
+        groupBy: params.groupBy,
+        context,
+        timezone: params.timezone,
+      })
+    : undefined
+  const excludeWhere = group
+    ? excludeGroupKeysWhere(group.keyExpr, params.excludeGroupKeys ?? [])
+    : undefined
+  const whereClause = excludeWhere ? and(searchedWhere, excludeWhere) : searchedWhere
 
   // An explicit column sort beats relevance [decision, plan §3.3b]: sorting by
   // name and watching rows reorder by score would read as a bug. Rank is the
@@ -375,19 +414,28 @@ async function buildEntityInstanceQueryParts(params: {
   // the common case, not the exception — every row that matches only the ILIKE
   // fallback scores 0. The caller appends `id ASC` as the final tie-break.
   const [primarySort] = sorting
-  const orderByClauses = primarySort
+  const sortClauses = primarySort
     ? entityConditionBuilder.buildOrderBySql(
         primarySort.id,
         primarySort.desc ? 'desc' : 'asc',
         context
       )
-    : search
-      ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
-      : undefined
+    : undefined
+  // Grouped: group order first; within a group the sort, else newest first (the
+  // ungrouped no-sort fallback). Relevance ranking is an ungrouped-only default.
+  const orderByClauses = group
+    ? [...group.orderBy, ...(sortClauses ?? [desc(schema.EntityInstance.createdAt)])]
+    : primarySort
+      ? sortClauses
+      : search
+        ? [desc(recordSearchRank(search)), desc(schema.EntityInstance.updatedAt)]
+        : undefined
 
   return {
     whereClause,
     orderByClauses,
+    context,
+    ...(group ? { groupKeyExpr: group.keyExpr, groupOrderByKey: group.orderByKey } : {}),
     dropped: built.droppedConditions,
     allConditionsDropped: built.allConditionsDropped,
   }
@@ -649,42 +697,48 @@ function describeFilterProblems(
  *
  * @returns `ids` (length ≤ limit), `hasMore`, and `total` only when `includeTotal`.
  */
-export async function queryEntityInstanceIdsPaged(params: {
-  db: Database | Transaction
-  entityDefinitionId: string
-  organizationId: string
-  filters: ConditionGroup[]
-  sorting: Array<{ id: string; desc: boolean }>
-  limit: number
-  offset: number
-  /**
-   * Free-text search (plan step 2.4). ANDs the ranked predicate into `baseWhere`
-   * — which the page query AND the `COUNT(*)` share, so `total` describes the
-   * searched set — and, absent an explicit `sorting`, orders by relevance.
-   */
-  search?: string
-  /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
-  includeTotal?: boolean
-  /**
-   * The §5.1 per-record visibility predicate, from
-   * {@link import('../../permissions/capabilities/record-visibility-scope').recordVisibilityScope}.
-   *
-   * Joined into `baseWhere`, which the page query AND the `COUNT(*)` both read —
-   * so `total` stays honest over the VISIBLE set rather than describing rows the
-   * member cannot open. `undefined` = arm 1 (the member sees every row): no
-   * predicate is added and the query is byte-identical to the pre-P5 one.
-   */
-  visibilityWhere?: SQL
-}): Promise<ListFilteredResult> {
+export async function queryEntityInstanceIdsPaged(
+  params: {
+    db: Database | Transaction
+    entityDefinitionId: string
+    organizationId: string
+    filters: ConditionGroup[]
+    sorting: Array<{ id: string; desc: boolean }>
+    limit: number
+    offset: number
+    /**
+     * Free-text search (plan step 2.4). ANDs the ranked predicate into `baseWhere`
+     * — which the page query AND the `COUNT(*)` share, so `total` describes the
+     * searched set — and, absent an explicit `sorting`, orders by relevance.
+     */
+    search?: string
+    /** Run the parallel `COUNT(*)`. Callers pay for it on the first page only. */
+    includeTotal?: boolean
+    /**
+     * The §5.1 per-record visibility predicate, from
+     * {@link import('../../permissions/capabilities/record-visibility-scope').recordVisibilityScope}.
+     *
+     * Joined into `baseWhere`, which the page query AND the `COUNT(*)` both read —
+     * so `total` stays honest over the VISIBLE set rather than describing rows the
+     * member cannot open. `undefined` = arm 1 (the member sees every row): no
+     * predicate is added and the query is byte-identical to the pre-P5 one.
+     */
+    visibilityWhere?: SQL
+  } & ListGroupingParams
+): Promise<ListFilteredResult> {
   const { db, entityDefinitionId, organizationId, filters, sorting, limit, offset } = params
 
-  const { whereClause, orderByClauses, dropped } = await buildEntityInstanceQueryParts({
-    organizationId,
-    entityDefinitionId,
-    filters,
-    sorting,
-    search: params.search,
-  })
+  const { whereClause, orderByClauses, dropped, groupKeyExpr } =
+    await buildEntityInstanceQueryParts({
+      organizationId,
+      entityDefinitionId,
+      filters,
+      sorting,
+      search: params.search,
+      groupBy: params.groupBy,
+      timezone: params.timezone,
+      excludeGroupKeys: params.excludeGroupKeys,
+    })
 
   const baseWhere = and(
     eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
@@ -713,7 +767,14 @@ export async function queryEntityInstanceIdsPaged(params: {
 
   // limit + 1: the extra row is a probe, never returned — its presence IS `hasMore`.
   const idsQuery = db
-    .select({ id: schema.EntityInstance.id })
+    .select(
+      groupKeyExpr
+        ? {
+            id: schema.EntityInstance.id,
+            groupKey: sql<string | null>`${groupKeyExpr}`.as('groupKey'),
+          }
+        : { id: schema.EntityInstance.id }
+    )
     .from(schema.EntityInstance)
     .where(baseWhere)
     .orderBy(...finalOrderBy)
@@ -725,9 +786,11 @@ export async function queryEntityInstanceIdsPaged(params: {
     : undefined
 
   const [idsResult, countResult] = await Promise.all([idsQuery, countQuery])
+  const page = idsResult.slice(0, limit) as Array<{ id: string; groupKey?: string | null }>
 
   return {
-    ids: idsResult.slice(0, limit).map((r) => r.id),
+    ids: page.map((r) => r.id),
+    ...(groupKeyExpr ? { groupKeys: page.map((r) => r.groupKey ?? null) } : {}),
     ...(countResult ? { total: Number(countResult[0]?.count ?? 0) } : {}),
     hasMore: idsResult.length > limit,
     // `total` and `ids` both describe a WIDER set than the caller asked for when

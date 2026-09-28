@@ -3,6 +3,7 @@
 
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useCellSelectionConfig } from '../context/cell-selection-context'
+import { useRowTops } from '../context/row-geometry-context'
 import { useTableConfig } from '../context/table-config-context'
 import { useSelectionStore } from '../stores/selection-store'
 import type { CellRange } from '../types'
@@ -24,13 +25,14 @@ interface OverlayRect {
 
 /**
  * Compute the pixel rect for a range within the scroll container.
- * Vertical extent is arithmetic (rowIndex × ROW_HEIGHT) so virtualized rows
- * that aren't mounted still produce a correct rectangle. Horizontal extent
- * reads the DOM (columns are resizable).
+ * Vertical extent is arithmetic (`rowTops`, or rowIndex × ROW_HEIGHT without
+ * one) so virtualized rows that aren't mounted still produce a correct
+ * rectangle. Horizontal extent reads the DOM (columns are resizable).
  */
 function useRangeRect(
   range: CellRange | null,
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>,
+  rowTops: readonly number[] | null
 ): OverlayRect | null {
   const [rect, setRect] = useState<OverlayRect | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -50,8 +52,9 @@ function useRangeRect(
       // + 1px bottom) via border-box, so the cell content area is inset 1px on
       // each end within each ROW_HEIGHT slot. Match that so the range ring
       // aligns with the anchor cell's `.cell-active::after`.
-      const top = bounds.top * ROW_HEIGHT + 1
-      const height = (bounds.bottom - bounds.top + 1) * ROW_HEIGHT - 2
+      const rowTop = (index: number) => rowTops?.[index] ?? index * ROW_HEIGHT
+      const top = rowTop(bounds.top) + 1
+      const height = rowTop(bounds.bottom) + ROW_HEIGHT - rowTop(bounds.top) - 2
 
       // Horizontal: read DOM cell rects for the left/right columns from any
       // mounted row. All columns are always rendered (just scrolled), so we
@@ -103,7 +106,7 @@ function useRangeRect(
         rafRef.current = null
       }
     }
-  }, [range, scrollContainerRef])
+  }, [range, scrollContainerRef, rowTops])
 
   // Recompute on window resize too (column widths can shift)
   useEffect(() => {
@@ -161,9 +164,11 @@ export function SelectionOverlay({ scrollContainerRef }: SelectionOverlayProps) 
   const copyHighlight = useSelectionStore((s) => s.tables[tableId]?.copyHighlight ?? null)
   const isEditing = useSelectionStore((s) => s.tables[tableId]?.editingCell != null)
 
-  const rangeRect = useRangeRect(range, scrollContainerRef)
-  const previewRect = useRangeRect(fillDrag?.preview ?? null, scrollContainerRef)
-  const copyRect = useRangeRect(copyHighlight, scrollContainerRef)
+  const rowTops = useRowTops()
+
+  const rangeRect = useRangeRect(range, scrollContainerRef, rowTops)
+  const previewRect = useRangeRect(fillDrag?.preview ?? null, scrollContainerRef, rowTops)
+  const copyRect = useRangeRect(copyHighlight, scrollContainerRef, rowTops)
 
   const single = range ? isSingleCell(range) : false
 

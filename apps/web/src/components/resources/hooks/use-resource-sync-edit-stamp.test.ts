@@ -28,6 +28,7 @@ vi.mock('../store/field-value-fetch-queue', () => ({
 const utils = {
   record: {
     listFiltered: { invalidate: vi.fn() },
+    groupSummary: { invalidate: vi.fn() },
     getByIds: { fetch: h.getByIdsFetch },
   },
   resource: { list: { invalidate: vi.fn() } },

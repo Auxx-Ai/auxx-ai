@@ -36,11 +36,14 @@ import type {
   CalendarViewConfig,
   CustomField,
   DynamicTableProps,
+  GroupingProps,
+  GroupStatus,
   KanbanViewConfig,
   ResourceField,
   ViewConfig,
   ViewType,
 } from './types'
+import { hasGroupHeaders } from './utils/build-virtual-items'
 import './styles/table.css'
 
 /**
@@ -54,6 +57,8 @@ function DynamicViewInner<TData extends object>({
   hasUnsavedViewChanges,
   saveCurrentView,
   resetViewChanges,
+  grouping,
+  groupStatus,
 }: {
   searchQuery: string
   setSearchQuery: (query: string) => void
@@ -61,6 +66,8 @@ function DynamicViewInner<TData extends object>({
   hasUnsavedViewChanges: boolean
   saveCurrentView?: () => void
   resetViewChanges?: () => void
+  grouping?: GroupingProps
+  groupStatus?: GroupStatus
 }) {
   // Access focused contexts
   const {
@@ -191,7 +198,7 @@ function DynamicViewInner<TData extends object>({
 
   // Determine if we have any data
   const rowCount = table.getRowModel().rows.length
-  const hasData = rowCount > 0
+  const hasData = rowCount > 0 || hasGroupHeaders(grouping)
 
   // Unified initial loading state
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
@@ -207,6 +214,7 @@ function DynamicViewInner<TData extends object>({
           hasUnsavedViewChanges={hasUnsavedViewChanges}
           saveCurrentView={saveCurrentView}
           resetViewChanges={resetViewChanges}
+          groupStatus={groupStatus}
         />
       ) : (
         <ToolbarSkeleton showSearch={enableSearch} />
@@ -284,7 +292,11 @@ function DynamicViewInner<TData extends object>({
               ) : (
                 <>
                   {/* hideToolbar forced true — toolbar is outside the scroll container */}
-                  <TableBody hideToolbar scrollContainerRef={scrollContainerRef} />
+                  <TableBody
+                    hideToolbar
+                    scrollContainerRef={scrollContainerRef}
+                    grouping={grouping}
+                  />
                   <div className='grow' />
                 </>
               )}
@@ -329,6 +341,8 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
     entityDefinitionId,
     standalone = false,
     disableColumnDnd = false,
+    grouping,
+    groupStatus,
     ...tableProps
   } = props
 
@@ -545,6 +559,8 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
                   hasUnsavedViewChanges={hasUnsavedViewChanges}
                   saveCurrentView={saveCurrentView}
                   resetViewChanges={resetViewChanges}
+                  grouping={grouping}
+                  groupStatus={groupStatus}
                 />
               </div>
             </CellSelectionConfigProvider>

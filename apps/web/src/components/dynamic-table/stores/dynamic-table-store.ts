@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { createFilterSlice } from './filter-slice'
+import { createGroupCollapseSlice } from './group-collapse-slice'
 import { createSharedSlice } from './shared-slice'
 import type { DynamicTableStore } from './store-types'
 import { createUISlice } from './ui-slice'
@@ -18,6 +19,7 @@ export const useDynamicTableStore = create<DynamicTableStore>()(
       ...createUISlice(...a),
       ...createFilterSlice(...a),
       ...createSharedSlice(...a),
+      ...createGroupCollapseSlice(...a),
     }))
   )
 )

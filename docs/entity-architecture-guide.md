@@ -354,6 +354,12 @@ store (`api.record.getByIds`).
   `utils/cell-renderers.tsx` (date, number, currency, phone, email/url, checkbox, relationship via
   `RecordBadge`, actor via `ActorBadge`, address, select/tags). All renderers wrap in `ExpandableCell` for
   consistent row height/padding.
+- **Group by** (table view, EntityInstance lane): `record.listFiltered` orders by the group field and
+  returns `groupKeys` parallel to `ids`; `record.groupSummary` (`use-group-summary.ts`) supplies group
+  order, counts and per-column aggregates. `utils/build-virtual-items.ts` turns rows into header / row /
+  add virtual items, so geometry goes through `rowTops`, never `rowIndex × ROW_HEIGHT`. Collapsed groups
+  are per user on `TableViewPreference.config.collapsedGroups`, excluded server-side via
+  `excludeGroupKeys`. See `plans/table/group-by-plan.md`.
 
 **Custom-field & entity editing** (`components/custom-fields/ui/` and
 `app/(protected)/app/settings/custom-fields/`):

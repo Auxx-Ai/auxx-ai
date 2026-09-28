@@ -19,7 +19,7 @@ import {
   CalendarArrowDown,
   CalendarArrowUp,
 } from 'lucide-react'
-import type { ColumnFormatting, SortOption, TableView } from '../types'
+import type { ColumnAggregateOp, ColumnFormatting, SortOption, TableView } from '../types'
 
 // ============================================================================
 // STABLE EMPTY REFERENCES (prevent re-renders)
@@ -49,6 +49,8 @@ export const EMPTY_COLUMN_VISIBILITY: VisibilityState = {}
 export const EMPTY_COLUMN_SIZING: ColumnSizingState = {}
 export const EMPTY_COLUMN_LABELS: Record<string, string> = {}
 export const EMPTY_COLUMN_FORMATTING: Record<string, ColumnFormatting> = {}
+export const EMPTY_COLUMN_AGGREGATES: Record<string, ColumnAggregateOp> = {}
+export const EMPTY_GROUP_KEYS: string[] = []
 export const EMPTY_ROW_SELECTION: RowSelectionState = {}
 
 /** Text-like sort options (A-Z) */
@@ -117,6 +119,12 @@ export function getSortOptionsForFieldType(fieldType?: FieldType): SortOption[] 
  * Fixed row height for all rows
  */
 export const ROW_HEIGHT = 38
+
+/** Height of a group header row in a grouped table */
+export const GROUP_HEADER_HEIGHT = 36
+
+/** Height of the "+ New" row closing each expanded group */
+export const ADD_ROW_HEIGHT = 32
 
 /**
  * Toolbar height (py-2 + content height)

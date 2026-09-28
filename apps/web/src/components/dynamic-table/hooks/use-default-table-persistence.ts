@@ -10,6 +10,7 @@ import { useDynamicTableStore } from '../stores/dynamic-table-store'
 import { useActiveViewId, useViewStoreInitialized } from '../stores/store-selectors'
 import type { ExtendedColumnDef, ViewConfig } from '../types'
 import { tableViewPreferenceKey } from '../utils/constants'
+import { enqueuePreferenceWrite } from '../utils/preference-write-queue'
 
 const DEBOUNCE_MS = 400
 
@@ -165,14 +166,22 @@ export function useDefaultTablePersistence({
 
     lastPersistedRef.current = serialized
 
-    const config = {
-      columnVisibility: sparse,
-      columnOrder: order,
-      columnSizing: sizing,
-      columnPinning: pinning,
-    }
-
-    upsertPreference.mutate({ tableId, tableViewId: null, config })
+    const preferenceKey = tableViewPreferenceKey(tableId, null)
+    void enqueuePreferenceWrite(preferenceKey, () => {
+      // Read at write time so a collapse write that landed meanwhile is kept.
+      const stored = useDynamicTableStore.getState().viewPreferences[preferenceKey]
+      return upsertPreference.mutateAsync({
+        tableId,
+        tableViewId: null,
+        config: {
+          columnVisibility: sparse,
+          columnOrder: order,
+          columnSizing: sizing,
+          columnPinning: pinning,
+          collapsedGroups: stored?.config.collapsedGroups,
+        },
+      })
+    })
   }, [isDefaultTable, tableId, registryVisibility, preference, upsertPreference])
 
   const debouncedPersist = useDebouncedCallback(persist, DEBOUNCE_MS)

@@ -2,8 +2,20 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
+import type { ColumnAggregateOp, ConditionGroup, ViewConfig } from '@auxx/lib/conditions/client'
+import {
+  getRelatedEntityDefinitionId,
+  isSystemResourceId,
+  type RecordId,
+  type RelationshipConfig,
+  type ResourceField,
+} from '@auxx/lib/resources/client'
+import {
+  EMPTY_GROUP_KEY,
+  isAggregatableField,
+  isGroupableField,
+} from '@auxx/lib/resources/grouping/client'
+import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import Loader from '@auxx/ui/components/loader'
 import { type DockedPanelConfig, MainPageContent } from '@auxx/ui/components/main-page'
@@ -16,6 +28,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react'
 import { MainPageLoading } from '~/components/global/main-page-states'
 // Leaf import, not the `records/nav` barrel — that barrel pulls the switcher and
@@ -23,10 +36,13 @@ import { MainPageLoading } from '~/components/global/main-page-states'
 import { useRecordListContextPublisher } from '~/components/records/nav/use-record-list-context-publisher'
 import { type RecordMeta, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-value-syncer'
+import { useGroupSummary } from '~/components/resources/hooks/use-group-summary'
+import { useActorStore } from '~/components/resources/store/actor-store'
 import type {
   FieldReference,
   StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
+import { errorStatus } from '~/trpc/query-client'
 import { CreatedNotInViewNotice } from './components/created-not-in-view-notice'
 import { CustomFieldCell } from './components/custom-field-cell'
 import { DroppedFiltersNotice } from './components/dropped-filters-notice'
@@ -34,6 +50,7 @@ import { DynamicTableFooter } from './components/dynamic-table-footer'
 
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
+import { useCollapsedGroupsPersistence } from './hooks/use-collapsed-groups-persistence'
 import { useCreatedNotInView } from './hooks/use-created-not-in-view'
 import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
 import { useSelectionStore } from './stores/selection-store'
@@ -41,19 +58,61 @@ import { useSetFilters } from './stores/store-actions'
 import {
   useActiveView,
   useActiveViewId,
+  useColumnAggregates,
   useColumnVisibility,
   useTableFilters,
+  useTableGroupBy,
   useTableSorting,
 } from './stores/store-selectors'
 import type {
   BulkAction,
   CellSelectionConfig,
   ExtendedColumnDef,
+  GroupingProps,
+  GroupStatus,
   NamedImporterEntry,
 } from './types'
 
 /** Page size for the infinite query. Matches the prior records-view page size. */
 const PAGE_SIZE = 100
+
+/** Create-dialog preset for "+ New" inside a group (plans/table/group-by-plan.md §5.1). */
+function groupPreset(
+  field: ResourceField,
+  key: string | null
+): Record<string, unknown> | undefined {
+  if (key === null || !field.id) return undefined
+  switch (field.fieldType) {
+    case 'SINGLE_SELECT':
+      return { [field.id]: key }
+    case 'RELATIONSHIP': {
+      const targetDefId = field.relationship
+        ? getRelatedEntityDefinitionId(field.relationship as unknown as RelationshipConfig)
+        : null
+      return { [field.id]: [targetDefId ? toRecordId(targetDefId, key) : key] }
+    }
+    case 'ACTOR': {
+      // Keys are raw ids; mirror the header's user-vs-group resolution.
+      let actorId = key as ActorId
+      if (!isActorId(key)) {
+        const { actors, notFoundIds } = useActorStore.getState()
+        const isGroup =
+          actors.has(toActorId('group', key)) || notFoundIds.has(toActorId('user', key))
+        actorId = toActorId(isGroup ? 'group' : 'user', key)
+      }
+      const { type, id } = parseActorId(actorId)
+      return { [field.id]: { actorType: type, id, actorId } }
+    }
+    case 'CHECKBOX':
+      return { [field.id]: key === 'true' }
+    case 'DATE':
+    case 'DATETIME':
+      // Bucket start in the viewer's zone, the same Date shape the calendar's create passes.
+      return { [field.id]: new Date(`${key}T00:00:00`) }
+    default:
+      return undefined
+  }
+}
 
 /**
  * Imperative handle exposed via ref.
@@ -219,6 +278,59 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   }, [baselineFilter, viewFilters])
   const sortingForQuery = viewSorting.length > 0 ? viewSorting : undefined
 
+  // ─── GROUP BY (table view, EntityInstance lane only) ──────────────────
+  const viewGroupBy = useTableGroupBy(tableId)
+  const columnAggregates = useColumnAggregates(tableId)
+  const viewType = (activeView?.config as ViewConfig | undefined)?.viewType ?? 'table'
+  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
+
+  /** Sort/group/aggregate ids are ResourceFieldIds, as in the toolbar. */
+  const fieldColumnId = useCallback(
+    (field: ResourceField) =>
+      field.resourceFieldId ??
+      toResourceFieldId(entityDefinitionId ?? '', toFieldId(field.id as string)),
+    [entityDefinitionId]
+  )
+
+  // Missing or ineligible fields pass no grouping; the toolbar shows the orphan notice.
+  const groupField = useMemo(() => {
+    if (!viewGroupBy || viewType !== 'table' || !entityDefinitionId) return undefined
+    if (isSystemResourceId(entityDefinitionId)) return undefined
+    const field = resource?.fields.find(
+      (candidate) => !!candidate.id && fieldColumnId(candidate) === viewGroupBy.fieldId
+    )
+    if (!field || !isGroupableField(field)) return undefined
+    return { ...field, resourceFieldId: fieldColumnId(field) }
+  }, [viewGroupBy, viewType, entityDefinitionId, resource?.fields, fieldColumnId])
+
+  // A 422 from the server for this exact group config drops grouping until the config changes.
+  const groupSignature =
+    groupField && viewGroupBy
+      ? JSON.stringify([viewGroupBy.fieldId, !!viewGroupBy.desc, viewGroupBy.dateGranularity])
+      : null
+  const [groupRefusal, setGroupRefusal] = useState<{ signature: string; message: string }>()
+  const groupRefused = !!groupSignature && groupRefusal?.signature === groupSignature
+  const activeGroupBy = groupField && !groupRefused ? viewGroupBy : undefined
+
+  const { collapsedKeys, toggle: toggleCollapsed } = useCollapsedGroupsPersistence({
+    tableId,
+    viewId: activeViewId,
+    groupByFieldId: activeGroupBy?.fieldId,
+  })
+
+  // Stale aggregate entries (a column since deleted or retyped) would 422 the summary.
+  const summaryAggregates = useMemo(() => {
+    if (!activeGroupBy || !resource) return undefined
+    const result: Record<string, ColumnAggregateOp> = {}
+    for (const [columnId, op] of Object.entries(columnAggregates)) {
+      const field = resource.fields.find(
+        (candidate) => !!candidate.id && fieldColumnId(candidate) === columnId
+      )
+      if (field && isAggregatableField(field)) result[columnId] = op
+    }
+    return Object.keys(result).length > 0 ? result : undefined
+  }, [activeGroupBy, resource, columnAggregates, fieldColumnId])
+
   // Config-ready gate — `useColumnVisibility` returns `undefined` until the
   // store hydrates. Without this gate every mount fires a double `listFiltered`.
   const isConfigReady = storeColumnVisibility !== undefined
@@ -234,6 +346,9 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     hasNextPage,
     fetchNextPage,
     refresh,
+    groupKeyById,
+    listRefetchedAt,
+    error: listError,
   } = useRecordList<TRow>({
     entityDefinitionId: entityDefinitionId ?? '',
     filters: filtersForQuery,
@@ -241,7 +356,78 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     sorting: sortingForQuery,
     limit: PAGE_SIZE,
     enabled: !!entityDefinitionId && isConfigReady,
+    groupBy: activeGroupBy,
+    timezone: activeGroupBy ? timezone : undefined,
+    excludeGroupKeys: activeGroupBy ? collapsedKeys : undefined,
   })
+
+  const groupSummary = useGroupSummary({
+    entityDefinitionId: entityDefinitionId ?? '',
+    filters: filtersForQuery,
+    search,
+    groupBy: activeGroupBy,
+    timezone,
+    aggregates: summaryAggregates,
+    enabled: !!entityDefinitionId && isConfigReady,
+    listRefetchedAt,
+  })
+
+  useEffect(() => {
+    if (!groupSignature || groupRefused || !activeGroupBy) return
+    const refusal = [listError, groupSummary.error].find((error) => errorStatus(error) === 422)
+    if (refusal) {
+      setGroupRefusal({
+        signature: groupSignature,
+        message: refusal instanceof Error ? refusal.message : 'not supported',
+      })
+    }
+  }, [groupSignature, groupRefused, activeGroupBy, listError, groupSummary.error])
+
+  const collapsedKeySet = useMemo(() => new Set(collapsedKeys), [collapsedKeys])
+
+  // Collapsing drops the group's rows from the selection so a bulk action never hits hidden rows.
+  const onToggleCollapsed = useCallback(
+    (key: string | null) => {
+      if (!collapsedKeySet.has(key ?? EMPTY_GROUP_KEY)) {
+        const hidden = [...groupKeyById].filter(([, rowKey]) => rowKey === key).map(([id]) => id)
+        useSelectionStore.getState().deselectRows(tableId, hidden)
+      }
+      toggleCollapsed(key)
+    },
+    [collapsedKeySet, groupKeyById, tableId, toggleCollapsed]
+  )
+
+  const grouping = useMemo<GroupingProps | undefined>(() => {
+    if (!activeGroupBy || !groupField) return undefined
+    return {
+      field: groupField,
+      granularity: activeGroupBy.dateGranularity,
+      keyForRow: (rowId) => groupKeyById.get(rowId) ?? null,
+      orderedKeys: groupSummary.orderedKeys,
+      summary: groupSummary.summary,
+      hasMoreGroups: groupSummary.hasMoreGroups,
+      hasMoreRows: !!hasNextPage,
+      collapsedKeys: collapsedKeySet,
+      onToggleCollapsed,
+      presetForKey: (key) => groupPreset(groupField, key),
+    }
+  }, [
+    activeGroupBy,
+    groupField,
+    groupKeyById,
+    groupSummary.orderedKeys,
+    groupSummary.summary,
+    groupSummary.hasMoreGroups,
+    hasNextPage,
+    collapsedKeySet,
+    onToggleCollapsed,
+  ])
+
+  const groupStatus = useMemo<GroupStatus | undefined>(() => {
+    if (groupRefused) return { error: groupRefusal?.message }
+    if (grouping?.hasMoreGroups) return { hasMoreGroups: true }
+    return undefined
+  }, [groupRefused, groupRefusal?.message, grouping?.hasMoreGroups])
 
   // "You created a record here and this view isn't showing it." Lives at this
   // level, not inside `DynamicTableFooter`, because that footer is table-only —
@@ -441,7 +627,9 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
         onAddCard={onAddCard}
         entityDefinitionId={entityDefinitionId}
         selectedKanbanCardIds={selectedKanbanCardIds}
-        onSelectedKanbanCardIdsChange={onSelectedKanbanCardIdsChange}>
+        onSelectedKanbanCardIdsChange={onSelectedKanbanCardIdsChange}
+        grouping={grouping}
+        groupStatus={groupStatus}>
         <DynamicTableFooter>
           <div className='flex items-center justify-between px-4 py-2 text-sm'>
             <div>

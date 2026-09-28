@@ -3,6 +3,7 @@
 import type { FieldType } from '@auxx/database/types'
 import type {
   ColumnFormatting,
+  GroupDateGranularity,
   TableViewPreferenceConfig,
   ViewConfig,
 } from '@auxx/lib/conditions/client'
@@ -24,9 +25,12 @@ export type { TargetTimeInStatus }
 export type {
   CalendarViewConfig,
   CheckboxColumnFormatting,
+  ColumnAggregateOp,
   ColumnFormatting,
   CurrencyColumnFormatting,
   DateColumnFormatting,
+  GroupByConfig,
+  GroupDateGranularity,
   KanbanColumnSettings,
   KanbanViewConfig,
   NumberColumnFormatting,
@@ -342,6 +346,44 @@ export interface RowSelectionFeatures {
   onStarToggle?: (rowId: string) => void
 }
 
+// ============================================================================
+// GROUPING (see plans/table/group-by-plan.md §5)
+// ============================================================================
+
+/** Count and per-column aggregates for one group, from `record.groupSummary`. */
+export interface GroupSummaryEntry {
+  count: number
+  aggregates: Record<string, number | null>
+}
+
+/** Everything the table body needs to draw group headers; built by the data layer. */
+export interface GroupingProps {
+  /** The resolved group-by field. */
+  field: ResourceField
+  /** Date fields only. */
+  granularity?: GroupDateGranularity
+  /** Group key of a loaded row; `null` is the "No value" group. */
+  keyForRow: (rowId: string) => string | null
+  /** Keys in server group order (from the summary), used to place headers for collapsed groups. */
+  orderedKeys?: Array<string | null>
+  summary?: Map<string | null, GroupSummaryEntry>
+  hasMoreGroups?: boolean
+  /** More list pages remain, so the last loaded group and later collapsed groups are not final. */
+  hasMoreRows?: boolean
+  /** Collapsed keys; `EMPTY_GROUP_KEY` stands for `null`. */
+  collapsedKeys: ReadonlySet<string>
+  onToggleCollapsed: (key: string | null) => void
+  /** Create-dialog preset for "+ New" inside a group; `undefined` for a plain create. */
+  presetForKey?: (key: string | null) => Record<string, unknown> | undefined
+}
+
+/** Group-by state the toolbar explains: a server refusal, or the 500-group cap. */
+export interface GroupStatus {
+  /** The server refused the group field; grouping is not applied. */
+  error?: string
+  hasMoreGroups?: boolean
+}
+
 /**
  * Main dynamic table props
  */
@@ -517,6 +559,12 @@ export interface DynamicTableProps<TData = any> {
    * interaction. Off by default (existing tables keep drag-reorder).
    */
   disableColumnDnd?: boolean
+
+  /** Group rows under per-key header rows (table view only). */
+  grouping?: GroupingProps
+
+  /** What the Sort & group popover should say about the active group-by. */
+  groupStatus?: GroupStatus
 }
 
 /**

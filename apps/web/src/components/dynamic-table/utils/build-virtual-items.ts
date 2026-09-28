@@ -1,0 +1,146 @@
+// apps/web/src/components/dynamic-table/utils/build-virtual-items.ts
+
+import { EMPTY_GROUP_KEY } from '@auxx/lib/resources/grouping/client'
+import type { GroupingProps } from '../types'
+import { ADD_ROW_HEIGHT, GROUP_HEADER_HEIGHT, ROW_HEIGHT } from './constants'
+
+/** One virtualized line of the table body. `id` is unique and stable (the virtualizer key). */
+export type TableVirtualItem =
+  | { kind: 'header'; id: string; key: string | null; firstRowIndex: number; lastRowIndex: number }
+  | { kind: 'row'; id: string; rowIndex: number }
+  | { kind: 'add'; id: string; key: string | null }
+
+export interface VirtualItemsResult {
+  items: TableVirtualItem[]
+  /** Pixel top of each `rows[i]`, relative to the body container. */
+  rowTops: number[]
+}
+
+type GroupingInput = Pick<
+  GroupingProps,
+  'keyForRow' | 'orderedKeys' | 'collapsedKeys' | 'hasMoreRows'
+>
+
+/** Pixel height of one virtual item. */
+export function virtualItemSize(item: TableVirtualItem): number {
+  if (item.kind === 'header') return GROUP_HEADER_HEIGHT
+  if (item.kind === 'add') return ADD_ROW_HEIGHT
+  return ROW_HEIGHT
+}
+
+function toStringKey(key: string | null): string {
+  return key ?? EMPTY_GROUP_KEY
+}
+
+/** True when group headers must render even with no loaded rows. */
+export function hasGroupHeaders(
+  grouping: Pick<GroupingProps, 'orderedKeys' | 'collapsedKeys'> | undefined
+): boolean {
+  if (!grouping) return false
+  if (grouping.orderedKeys) return grouping.orderedKeys.length > 0
+  return grouping.collapsedKeys.size > 0
+}
+
+function fromStringKey(key: string): string | null {
+  return key === EMPTY_GROUP_KEY ? null : key
+}
+
+/**
+ * Flatten `rows` into header / row / add items (plans/table/group-by-plan.md §5.2).
+ * Rows arrive contiguous by group from the server; a header is emitted on every key change.
+ */
+export function buildVirtualItems(
+  rows: ReadonlyArray<{ id: string }>,
+  grouping: GroupingInput | undefined,
+  options: { addRow: boolean }
+): VirtualItemsResult {
+  if (!grouping) {
+    return {
+      items: rows.map((row, rowIndex) => ({ kind: 'row', id: row.id, rowIndex })),
+      rowTops: rows.map((_, rowIndex) => rowIndex * ROW_HEIGHT),
+    }
+  }
+
+  const { keyForRow, orderedKeys, collapsedKeys, hasMoreRows } = grouping
+
+  // Contiguous runs of rows sharing a key, in server order.
+  const segments: Array<{ key: string | null; start: number; end: number }> = []
+  rows.forEach((row, index) => {
+    const key = keyForRow(row.id)
+    const last = segments[segments.length - 1]
+    if (last && last.key === key) last.end = index
+    else segments.push({ key, start: index, end: index })
+  })
+
+  const loaded = new Set(segments.map((segment) => toStringKey(segment.key)))
+
+  // Summary groups without loaded rows still get a header: collapsed ones (excluded
+  // server-side) and just-expanded ones whose rows are still in flight.
+  let pendingHeaders: Array<string | null>
+  let orderIndex: Map<string, number> | null = null
+  if (orderedKeys) {
+    orderIndex = new Map(orderedKeys.map((key, index) => [toStringKey(key), index]))
+    pendingHeaders = orderedKeys.filter((key) => !loaded.has(toStringKey(key)))
+  } else {
+    const extra = [...collapsedKeys].filter((k) => !loaded.has(k))
+    extra.sort((a, b) => Number(a === EMPTY_GROUP_KEY) - Number(b === EMPTY_GROUP_KEY))
+    pendingHeaders = extra.map(fromStringKey)
+  }
+
+  const items: TableVirtualItem[] = []
+  const rowTops: number[] = new Array(rows.length)
+  const headerCounts = new Map<string, number>()
+  let top = 0
+
+  const pushHeader = (key: string | null, firstRowIndex: number, lastRowIndex: number) => {
+    const k = toStringKey(key)
+    const seen = headerCounts.get(k) ?? 0
+    headerCounts.set(k, seen + 1)
+    // A repeated key (e.g. a just-created row appended out of order) needs a distinct id.
+    const suffix = seen === 0 ? '' : `#${seen}`
+    items.push({ kind: 'header', id: `header:${k}${suffix}`, key, firstRowIndex, lastRowIndex })
+    top += GROUP_HEADER_HEIGHT
+    return suffix
+  }
+
+  const flushPendingBefore = (limit: number) => {
+    while (pendingHeaders.length > 0) {
+      const next = pendingHeaders[0]!
+      const index = orderIndex?.get(toStringKey(next)) ?? Number.POSITIVE_INFINITY
+      if (index >= limit) break
+      pendingHeaders.shift()
+      pushHeader(next, -1, -1)
+    }
+  }
+
+  segments.forEach((segment, index) => {
+    const segmentIndex = orderIndex?.get(toStringKey(segment.key))
+    if (segmentIndex !== undefined) flushPendingBefore(segmentIndex)
+
+    const headerTop = top
+    const suffix = pushHeader(segment.key, segment.start, segment.end)
+
+    // Rows of a group collapsed while its rows are still loaded stay hidden until the refetch lands.
+    if (collapsedKeys.has(toStringKey(segment.key))) {
+      for (let i = segment.start; i <= segment.end; i++) rowTops[i] = headerTop
+      return
+    }
+
+    for (let i = segment.start; i <= segment.end; i++) {
+      items.push({ kind: 'row', id: rows[i]!.id, rowIndex: i })
+      rowTops[i] = top
+      top += ROW_HEIGHT
+    }
+
+    // The last loaded group may continue on the next page, so it is not closed yet.
+    const isOpenTail = hasMoreRows && index === segments.length - 1
+    if (options.addRow && !isOpenTail) {
+      items.push({ kind: 'add', id: `add:${toStringKey(segment.key)}${suffix}`, key: segment.key })
+      top += ADD_ROW_HEIGHT
+    }
+  })
+
+  if (!hasMoreRows) for (const key of pendingHeaders) pushHeader(key, -1, -1)
+
+  return { items, rowTops }
+}

@@ -88,6 +88,7 @@ export const createSharedSlice: SliceCreator<SharedSlice> = (set, get) => ({
       state.personalFilters = {}
       state.sessionFilters = {}
       state.dirtyViewIds = new Set()
+      state.collapsedGroups = {}
     })
   },
 

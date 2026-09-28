@@ -13,7 +13,7 @@ import { findCachedResource, getCachedCustomFields, getCachedResources } from '.
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import { checkUniqueValue } from '../../custom-fields'
 import { getEntityInstance, listEntityInstances } from '../../entity-instances'
-import { ForbiddenError, UniqueValueConflictError } from '../../errors'
+import { ForbiddenError, UniqueValueConflictError, UnprocessableEntityError } from '../../errors'
 import { publisher } from '../../events/publisher'
 import type { RecordFieldChange } from '../../events/types'
 import { FieldValueService } from '../../field-values'
@@ -30,6 +30,8 @@ import {
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
 import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
+import { queryEntityGroupSummary } from '../grouping/group-summary'
+import type { GroupAggregatesInput, GroupSummaryResult } from '../grouping/types'
 import { runSystemPreHooks } from '../hooks'
 import {
   type LookupByFieldResult,
@@ -76,6 +78,7 @@ import {
   type ListAllInput,
   type ListAllResult,
   type ListFilteredResult,
+  type ListGroupingParams,
   listAll as listAllQuery,
   matchEntityInstanceIds,
   queryEntityInstanceIdsPaged,
@@ -937,35 +940,37 @@ export class UnifiedCrudHandler {
    *
    * @param params - Filter parameters
    */
-  async listFiltered(params: {
-    entityDefinitionId: string
-    filters?: ConditionGroup[]
-    /**
-     * Free-text search — a separate axis from `filters` (plan decision 0.3):
-     * conditions narrow, the typed text IS the search. Ranked and typo-tolerant
-     * on the EntityInstance path.
-     *
-     * **On the system-resource path it is honoured only for tables that have a
-     * ranked binding** in `resources/search/system-search-bindings.ts` — today
-     * `article`, and nothing else. For every other `TableId` (`user`, `inbox`,
-     * `dataset`, …) it is silently ignored: the filters still apply and the
-     * ordering is unchanged, so a table can be adopted by adding a corpus
-     * column, two GIN indexes and one registry entry, without a flag day.
-     *
-     * `thread` / `message` are excluded on purpose rather than pending — mail
-     * content is governed by the member lens and is blocked from this path
-     * entirely (`resources/picker/mail-lens-tables.ts`); it binds the same
-     * builder under its own scopes in `mail-query/thread-search-sql.ts`.
-     */
-    search?: string
-    sorting?: Array<{ id: string; desc: boolean }>
-    limit?: number
-    /** Pagination offset. `cursor.offset` wins when both are given. */
-    offset?: number
-    cursor?: { offset: number }
-    /** Force the `COUNT(*)`. Defaults to `offset === 0`. */
-    includeTotal?: boolean
-  }): Promise<ListFilteredResult> {
+  async listFiltered(
+    params: {
+      entityDefinitionId: string
+      filters?: ConditionGroup[]
+      /**
+       * Free-text search — a separate axis from `filters` (plan decision 0.3):
+       * conditions narrow, the typed text IS the search. Ranked and typo-tolerant
+       * on the EntityInstance path.
+       *
+       * **On the system-resource path it is honoured only for tables that have a
+       * ranked binding** in `resources/search/system-search-bindings.ts` — today
+       * `article`, and nothing else. For every other `TableId` (`user`, `inbox`,
+       * `dataset`, …) it is silently ignored: the filters still apply and the
+       * ordering is unchanged, so a table can be adopted by adding a corpus
+       * column, two GIN indexes and one registry entry, without a flag day.
+       *
+       * `thread` / `message` are excluded on purpose rather than pending — mail
+       * content is governed by the member lens and is blocked from this path
+       * entirely (`resources/picker/mail-lens-tables.ts`); it binds the same
+       * builder under its own scopes in `mail-query/thread-search-sql.ts`.
+       */
+      search?: string
+      sorting?: Array<{ id: string; desc: boolean }>
+      limit?: number
+      /** Pagination offset. `cursor.offset` wins when both are given. */
+      offset?: number
+      cursor?: { offset: number }
+      /** Force the `COUNT(*)`. Defaults to `offset === 0`. */
+      includeTotal?: boolean
+    } & ListGroupingParams
+  ): Promise<ListFilteredResult> {
     const { entityDefinitionId, sorting = [], limit = 100, cursor } = params
 
     // Step 0.1 — the mail-content tables are refused BEFORE anything else on
@@ -979,6 +984,12 @@ export class UnifiedCrudHandler {
     // it; `assertNotMailLensTable` carries the full reasoning.
     if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
 
+    const isSystem = isSystemResource(entityDefinitionId)
+    // Grouping is EntityInstance-lane only (plans/table/group-by-plan.md §1); refuse, never ignore.
+    if (isSystem && params.groupBy) {
+      throw new UnprocessableEntityError('Grouping is not supported for this resource')
+    }
+
     // Read enforcement (§5.1). Arm 4 returns an empty page WITHOUT querying;
     // arms 2/3 join their predicate into `baseWhere`, which the page query and
     // the `COUNT(*)` share — so `total` describes the visible set.
@@ -988,7 +999,6 @@ export class UnifiedCrudHandler {
     // `"EntityInstance"."id"`, the system lane (plan v3/06 W1) correlates
     // `ArticlePlacement` against `"Article"."id"`. Each predicate is qualified to
     // its own table and is invalid in the other's query.
-    const isSystem = isSystemResource(entityDefinitionId)
     const scope = isSystem
       ? await this.systemTableScope(entityDefinitionId)
       : await this.recordScope(entityDefinitionId)
@@ -1035,7 +1045,52 @@ export class UnifiedCrudHandler {
       offset,
       includeTotal,
       visibilityWhere: scope.where,
+      groupBy: params.groupBy,
+      timezone: params.timezone,
+      excludeGroupKeys: params.excludeGroupKeys,
     })
+  }
+
+  /**
+   * Per-group counts and column aggregates for a grouped table. Mirrors
+   * {@link listFiltered}'s preamble (mail-lens refusal, visibility scope,
+   * `valueSource` resolution) so the counts describe exactly the list's rows.
+   */
+  async groupSummary(params: {
+    entityDefinitionId: string
+    filters?: ConditionGroup[]
+    search?: string
+    groupBy: NonNullable<ListGroupingParams['groupBy']>
+    timezone?: string
+    aggregates?: GroupAggregatesInput
+  }): Promise<GroupSummaryResult> {
+    const { entityDefinitionId } = params
+    if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+    if (isSystemResource(entityDefinitionId)) {
+      throw new UnprocessableEntityError('Grouping is not supported for this resource')
+    }
+
+    const scope = await this.recordScope(entityDefinitionId)
+    if (scope.arm === 'none') return { groups: [], hasMoreGroups: false }
+
+    const filters = resolveConditionContext(params.filters ?? [], {
+      currentUserId: this.userId,
+    })
+
+    const result = await queryEntityGroupSummary(this.db, {
+      entityDefinitionId: isEntityDefinitionType(entityDefinitionId)
+        ? (await this.resolveEntityDefinition(entityDefinitionId)).id
+        : entityDefinitionId,
+      organizationId: this.organizationId,
+      filters: filters as ConditionGroup[],
+      search: params.search,
+      groupBy: params.groupBy,
+      timezone: params.timezone,
+      aggregates: params.aggregates,
+      visibilityWhere: scope.where,
+    })
+    if (result.isErr()) throw result.error
+    return result.value
   }
 
   /**

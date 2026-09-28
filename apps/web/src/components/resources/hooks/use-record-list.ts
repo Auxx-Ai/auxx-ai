@@ -1,14 +1,16 @@
 // apps/web/src/components/resources/hooks/use-record-list.ts
 
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import type { ConditionGroup, GroupByConfig } from '@auxx/lib/conditions/client'
 import { type DroppedFilterNotice, toRecordId } from '@auxx/lib/resources/client'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import {
   createListKey,
   EMPTY_FILTERS,
   EMPTY_SORTING,
+  groupInsertIndex,
   isListStale,
+  type ListGroupingKey,
   type RecordMeta,
   useRecordStore,
 } from '../store/record-store'
@@ -19,6 +21,29 @@ const EMPTY_IDS: string[] = []
 
 /** Stable empty array so a clean list never hands consumers a fresh identity. */
 const EMPTY_DROPPED: DroppedFilterNotice[] = []
+
+const EMPTY_GROUP_KEYS: Array<string | null> = []
+const EMPTY_GROUP_KEY_MAP = new Map<string, string | null>()
+
+/** True when a cached list query's input equals `input` apart from `excludeGroupKeys`. */
+function sameExceptExcluded(
+  queryKey: readonly unknown[] | undefined,
+  input: Record<string, unknown>
+): boolean {
+  const previous = (queryKey?.[1] as { input?: Record<string, unknown> } | undefined)?.input
+  if (!previous) return false
+  const strip = ({ excludeGroupKeys: _excluded, ...rest }: Record<string, unknown>) =>
+    JSON.stringify(rest)
+  return strip(previous) === strip(input)
+}
+
+function insertAt<V>(list: V[], index: number, value: V): V[] {
+  return [...list.slice(0, index), value, ...list.slice(index)]
+}
+
+function removeAt<V>(list: V[], index: number): V[] {
+  return [...list.slice(0, index), ...list.slice(index + 1)]
+}
 
 interface UseRecordListOptions {
   /** EntityDefinition UUID. Alias forms (entityType/apiSlug) are normalized internally. */
@@ -37,6 +62,12 @@ interface UseRecordListOptions {
   limit?: number
   /** Disable fetching */
   enabled?: boolean
+  /** Group rows by one field; the server orders by it and returns a key per id. */
+  groupBy?: GroupByConfig
+  /** IANA zone for date-time group buckets. Only sent with `groupBy`. */
+  timezone?: string
+  /** Collapsed group keys (`'__empty__'` = no value), left out of the rows and `total`. */
+  excludeGroupKeys?: string[]
 }
 
 interface UseRecordListResult<T = RecordMeta> {
@@ -56,6 +87,10 @@ interface UseRecordListResult<T = RecordMeta> {
   droppedConditionCount: number
   /** Resolved records from record store (may be partial while loading) */
   records: T[]
+  /** Group key per id, index-aligned with {@link recordIds}; empty when not grouped. */
+  groupKeys: Array<string | null>
+  /** Group key by record id; resolves `records` without relying on index alignment. */
+  groupKeyById: ReadonlyMap<string, string | null>
   /** True if records are still being fetched */
   isLoadingRecords: boolean
   /** The list key (for cache reference) */
@@ -72,13 +107,15 @@ interface UseRecordListResult<T = RecordMeta> {
   fetchNextPage: () => void
   /** Force refresh */
   refresh: () => void
+  /** `dataUpdatedAt` of the last full refetch (pages replaced, not appended); 0 until one happens. */
+  listRefetchedAt: number
   /**
    * Add a freshly-created record to this list's caches — BOTH the record store
    * and the tRPC query pages. The acting tab is excluded from its own
    * `record:created` realtime frame, so this is its only path; writing just one
    * cache makes the row revert on the next remount.
    */
-  appendCreated: (instanceId: string) => void
+  appendCreated: (instanceId: string, groupKey?: string | null) => void
   /**
    * Optimistically drop a record from this list's caches. Does the full store
    * eviction (`removeRecord`) as well — do not pair it with a separate
@@ -87,6 +124,8 @@ interface UseRecordListResult<T = RecordMeta> {
   removeFromList: (instanceId: string) => void
   /** Data came from cache */
   isCached: boolean
+  /** The list query's error, if its last fetch failed. */
+  error: unknown
 }
 
 /**
@@ -109,6 +148,9 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   sorting,
   limit = 50,
   enabled = true,
+  groupBy,
+  timezone,
+  excludeGroupKeys,
 }: UseRecordListOptions): UseRecordListResult<T> {
   // Canonicalize the definition prefix once — listKey, requestRecord, and all
   // records[...] reads below key by the EntityDefinition UUID.
@@ -118,10 +160,28 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const stableFilters = filters ?? EMPTY_FILTERS
   const stableSorting = sorting ?? EMPTY_SORTING
 
+  const excludeKey = excludeGroupKeys?.length ? excludeGroupKeys.join('\u0000') : ''
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on field values so a fresh-but-equal groupBy / exclude array does not refetch.
+  const grouping = useMemo<ListGroupingKey | undefined>(
+    () =>
+      groupBy
+        ? {
+            groupBy: {
+              fieldId: groupBy.fieldId,
+              desc: groupBy.desc,
+              dateGranularity: groupBy.dateGranularity,
+            },
+            timezone,
+            excludeGroupKeys: excludeGroupKeys?.length ? excludeGroupKeys : undefined,
+          }
+        : undefined,
+    [groupBy?.fieldId, groupBy?.desc, groupBy?.dateGranularity, timezone, excludeKey]
+  )
+
   // Create stable list key for store caching
   const listKey = useMemo(
-    () => createListKey(entityDefinitionId, stableFilters, stableSorting, search),
-    [entityDefinitionId, stableFilters, stableSorting, search]
+    () => createListKey(entityDefinitionId, stableFilters, stableSorting, search, grouping),
+    [entityDefinitionId, stableFilters, stableSorting, search, grouping]
   )
 
   // ─── SELECTORS ─────────────────────────────────────────────────────
@@ -169,8 +229,30 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       search: search || undefined,
       sorting: stableSorting.length > 0 ? stableSorting : undefined,
       limit,
+      ...(grouping
+        ? {
+            groupBy: grouping.groupBy as GroupByConfig,
+            timezone: grouping.timezone,
+            excludeGroupKeys: grouping.excludeGroupKeys,
+          }
+        : {}),
     }),
-    [entityDefinitionId, stableFilters, search, stableSorting, limit]
+    [entityDefinitionId, stableFilters, search, stableSorting, limit, grouping]
+  )
+
+  // Partial input matching every `record.groupSummary` query of this list (any aggregates).
+  const summaryInput = useMemo(
+    () =>
+      grouping
+        ? {
+            entityDefinitionId,
+            filters: queryInput.filters,
+            search: queryInput.search,
+            groupBy: grouping.groupBy as GroupByConfig,
+            timezone: grouping.timezone,
+          }
+        : undefined,
+    [grouping, entityDefinitionId, queryInput]
   )
 
   const {
@@ -181,9 +263,15 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     hasNextPage,
     fetchNextPage: fetchNextPageRaw,
     refetch,
+    error,
+    isPlaceholderData,
   } = api.record.listFiltered.useInfiniteQuery(queryInput, {
     enabled: shouldFetch,
     staleTime: 30_000,
+    // Collapsing a group only changes `excludeGroupKeys`: keep the rows on screen until the
+    // narrowed list lands (the body hides the collapsed group's rows meanwhile).
+    placeholderData: (previous, previousQuery) =>
+      grouping && sameExceptExcluded(previousQuery?.queryKey, queryInput) ? previous : undefined,
     getNextPageParam: (lastPage, allPages) => {
       if (!lastPage.hasMore) return undefined
       // Calculate total IDs fetched so far across all pages
@@ -213,7 +301,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   //      written FROM these pages and has since taken optimistic appends /
   //      removals), which is why the guard is `>=` and not `>`.
   useEffect(() => {
-    if (!data?.pages?.length) return
+    if (!data?.pages?.length || isPlaceholderData) return
 
     const existing = useRecordStore.getState().lists[listKey]
     if (existing && existing.fetchedAt >= dataUpdatedAt) return
@@ -221,15 +309,18 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     // Flatten all pages into IDs with deduplication (preserves order)
     const seenIds = new Set<string>()
     const allIds: string[] = []
+    const grouped = data.pages.some((page) => page.groupKeys)
+    const allGroupKeys: Array<string | null> = []
 
     for (const page of data.pages) {
       if (page.ids) {
-        for (const id of page.ids) {
+        page.ids.forEach((id, index) => {
           if (!seenIds.has(id)) {
             seenIds.add(id)
             allIds.push(id)
+            if (grouped) allGroupKeys.push(page.groupKeys?.[index] ?? null)
           }
-        }
+        })
       }
     }
 
@@ -240,6 +331,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
     setList(listKey, {
       ids: allIds,
+      groupKeys: grouped ? allGroupKeys : undefined,
       // `total` rides on the first page only — later pages omit the COUNT.
       total: data.pages[0]?.total ?? allIds.length,
       fetchedAt: dataUpdatedAt,
@@ -249,7 +341,19 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       droppedConditions: data.pages[0]?.droppedConditions,
       droppedConditionCount: data.pages[0]?.droppedConditionCount,
     })
-  }, [data, dataUpdatedAt, listKey, setList])
+  }, [data, dataUpdatedAt, listKey, setList, isPlaceholderData])
+
+  // A refetch replaces the pages; pagination appends one. Only the former means the
+  // rows changed underneath a grouped view, so only it is exposed as a stamp.
+  const [listRefetchedAt, setListRefetchedAt] = useState(0)
+  const lastPageCountRef = useRef(0)
+  useEffect(() => {
+    const pageCount = data?.pages?.length ?? 0
+    if (dataUpdatedAt && pageCount > 0 && pageCount <= lastPageCountRef.current) {
+      setListRefetchedAt(dataUpdatedAt)
+    }
+    lastPageCountRef.current = pageCount
+  }, [data, dataUpdatedAt])
 
   // ─── FETCH NEXT PAGE ────────────────────────────────────────────────
 
@@ -264,7 +368,26 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const refresh = useCallback(() => {
     useRecordStore.getState().invalidateList(listKey)
     refetch()
-  }, [listKey, refetch])
+    if (grouping) void utils.record.groupSummary.invalidate({ entityDefinitionId })
+  }, [listKey, refetch, grouping, utils, entityDefinitionId])
+
+  /** Optimistic `count ± 1` on one group's summary entry, then a real refetch. */
+  const bumpGroupCount = useCallback(
+    (groupKey: string | null, delta: 1 | -1) => {
+      if (!summaryInput) return
+      utils.record.groupSummary.setQueriesData(summaryInput, {}, (prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          groups: prev.groups.map((group) =>
+            group.key === groupKey ? { ...group, count: Math.max(0, group.count + delta) } : group
+          ),
+        }
+      })
+      void utils.record.groupSummary.invalidate({ entityDefinitionId })
+    },
+    [summaryInput, utils, entityDefinitionId]
+  )
 
   // ─── OPTIMISTIC MEMBERSHIP (BOTH CACHES) ───────────────────────────
   //
@@ -283,29 +406,49 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   /** Add a freshly-created record to both caches for this list. */
   const appendCreated = useCallback(
-    (instanceId: string) => {
-      useRecordStore.getState().appendCreatedRecord(listKey, instanceId)
+    (instanceId: string, groupKey?: string | null) => {
+      useRecordStore.getState().appendCreatedRecord(listKey, instanceId, groupKey)
       utils.record.listFiltered.setInfiniteData(queryInput, (prev) => {
         // 🛑 Never fabricate a page. `undefined` means "never fetched"; inventing
         // one here reads as loaded data and would suppress the first real fetch
         // forever — strictly worse than the bug this exists to fix.
         if (!prev?.pages.length) return prev
         if (prev.pages.some((page) => page.ids.includes(instanceId))) return prev
-        const lastIndex = prev.pages.length - 1
+        // Grouped: after the last loaded row of the key (else the last page's end).
+        let targetPage = prev.pages.length - 1
+        let targetIndex = prev.pages[targetPage]!.ids.length
+        if (groupKey !== undefined && prev.pages.some((page) => page.groupKeys)) {
+          for (let p = prev.pages.length - 1; p >= 0; p--) {
+            const keys = prev.pages[p]!.groupKeys ?? []
+            if (keys.includes(groupKey)) {
+              targetPage = p
+              targetIndex = groupInsertIndex(keys, groupKey)
+              break
+            }
+          }
+        }
         return {
           ...prev,
-          pages: prev.pages.map((page, i) => ({
-            ...page,
-            ids: i === lastIndex ? [...page.ids, instanceId] : page.ids,
-            // `total` rides on the first page only — bumping it on every page
-            // would drift the count by the number of pages loaded. An absent
-            // total stays absent rather than being invented as 1.
-            total: i === 0 && page.total !== undefined ? page.total + 1 : page.total,
-          })),
+          pages: prev.pages.map((page, i) => {
+            const isTarget = i === targetPage
+            return {
+              ...page,
+              ids: isTarget ? insertAt(page.ids, targetIndex, instanceId) : page.ids,
+              groupKeys:
+                isTarget && page.groupKeys
+                  ? insertAt(page.groupKeys, targetIndex, groupKey ?? null)
+                  : page.groupKeys,
+              // `total` rides on the first page only — bumping it on every page
+              // would drift the count by the number of pages loaded. An absent
+              // total stays absent rather than being invented as 1.
+              total: i === 0 && page.total !== undefined ? page.total + 1 : page.total,
+            }
+          }),
         }
       })
+      if (groupKey !== undefined) bumpGroupCount(groupKey, 1)
     },
-    [listKey, queryInput, utils]
+    [listKey, queryInput, utils, bumpGroupCount]
   )
 
   /**
@@ -318,21 +461,32 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
    */
   const removeFromList = useCallback(
     (instanceId: string) => {
+      const cached = useRecordStore.getState().lists[listKey]
+      const cachedIndex = cached?.ids.indexOf(instanceId) ?? -1
+      let groupKey: string | null | undefined =
+        cachedIndex === -1 ? undefined : cached?.groupKeys?.[cachedIndex]
       useRecordStore.getState().removeRecord(entityDefinitionId, instanceId)
       utils.record.listFiltered.setInfiniteData(queryInput, (prev) => {
         if (!prev?.pages.length) return prev
         if (!prev.pages.some((page) => page.ids.includes(instanceId))) return prev
         return {
           ...prev,
-          pages: prev.pages.map((page, i) => ({
-            ...page,
-            ids: page.ids.filter((id) => id !== instanceId),
-            total: i === 0 && page.total !== undefined ? Math.max(0, page.total - 1) : page.total,
-          })),
+          pages: prev.pages.map((page, i) => {
+            const index = page.ids.indexOf(instanceId)
+            if (index !== -1 && groupKey === undefined) groupKey = page.groupKeys?.[index]
+            return {
+              ...page,
+              ids: index === -1 ? page.ids : removeAt(page.ids, index),
+              groupKeys:
+                index === -1 || !page.groupKeys ? page.groupKeys : removeAt(page.groupKeys, index),
+              total: i === 0 && page.total !== undefined ? Math.max(0, page.total - 1) : page.total,
+            }
+          }),
         }
       })
+      if (groupKey !== undefined) bumpGroupCount(groupKey, -1)
     },
-    [entityDefinitionId, listKey, queryInput, utils]
+    [entityDefinitionId, listKey, queryInput, utils, bumpGroupCount]
   )
 
   // ─── RETURN ────────────────────────────────────────────────────────
@@ -350,6 +504,21 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     [cachedList, data]
   )
   const total = cachedList?.total ?? data?.pages?.[0]?.total ?? 0
+
+  const groupKeys = useMemo(() => {
+    if (!grouping) return EMPTY_GROUP_KEYS
+    if (cachedList) return cachedList.groupKeys ?? EMPTY_GROUP_KEYS
+    return data?.pages?.flatMap((p) => p.groupKeys ?? p.ids.map(() => null)) ?? EMPTY_GROUP_KEYS
+  }, [grouping, cachedList, data])
+
+  const groupKeyById = useMemo(() => {
+    if (groupKeys.length === 0) return EMPTY_GROUP_KEY_MAP
+    const map = new Map<string, string | null>()
+    recordIds.forEach((id, index) => {
+      if (!map.has(id)) map.set(id, groupKeys[index] ?? null)
+    })
+    return map
+  }, [recordIds, groupKeys])
 
   // Read through the store cache exactly like `ids`/`total` do — the cache is
   // served INSTEAD of the query for 5 minutes, so sourcing this from `data` alone
@@ -410,6 +579,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     droppedConditions,
     droppedConditionCount,
     records,
+    groupKeys,
+    groupKeyById,
     isLoadingRecords,
     listKey,
     total,
@@ -418,8 +589,10 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     hasNextPage: hasNextPage ?? cachedList?.nextCursor !== null,
     fetchNextPage,
     refresh,
+    listRefetchedAt,
     appendCreated,
     removeFromList,
     isCached: !!cachedList,
+    error: error ?? null,
   }
 }

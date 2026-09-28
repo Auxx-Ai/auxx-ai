@@ -21,5 +21,8 @@ export function extractUIConfig(viewConfig: ViewConfig): TableUIConfig {
     rowHeight: uiConfig.rowHeight,
     viewType: uiConfig.viewType ?? 'table',
     kanban: uiConfig.kanban,
+    calendar: uiConfig.calendar,
+    groupBy: uiConfig.groupBy,
+    columnAggregates: uiConfig.columnAggregates,
   }
 }
