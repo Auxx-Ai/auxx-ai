@@ -89,6 +89,8 @@ async function buildSnapshot(
       recordsSeen: st.recordsSeen ?? 0,
       phase: st.phase ?? ('backfill' as const),
       done: st.phase === 'steady',
+      coverageFrom: st.coverageFrom,
+      stoppedAtRecords: st.stoppedAtRecords ?? null,
     }
   })
   const recordsSeen = perStream.reduce((n, s) => n + s.recordsSeen, 0)

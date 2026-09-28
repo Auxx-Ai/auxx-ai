@@ -87,6 +87,11 @@ export interface DataConnectorConfig {
    */
   historyStartDate?: string
   /**
+   * Most records a stream's first sync reads before it stops and goes steady; absent ⇒ no
+   * limit. Only streams declaring `query.limit` honour it; never applied to a re-import.
+   */
+  historyMaxRecords?: number
+  /**
    * Webhook-sync SIGNAL — which inbound event drives this connector (v7). One per
    * connector: a connector is bound to a single credential/baseUrl = one provider, so
    * every stream shares the same signal; only topic/token STEERING differs per stream
@@ -247,6 +252,17 @@ export interface ConnectorStreamState {
   // carry dead keys the index signature below tolerates.
   /** Consecutive no-progress slices (stall guard) — see the core `SyncState`. */
   noProgressStrikes?: number
+  /** The app's provisional `since` from the last backfill page; becomes the watermark on a capped stop. */
+  pendingSince?: string
+  /**
+   * How far back the last backfill reached (UTC ISO); `null` = everything. The floor when the
+   * crawl ran out, the last record's `period` value when the history limit stopped it.
+   */
+  coverageFrom?: string | null
+  /** Records read when the history limit ended the backfill; absent when it ran out. */
+  stoppedAtRecords?: number
+  /** Set by a reset once the stream has completed a backfill; the history limit then never applies. */
+  backfilledBefore?: true
   [key: string]: unknown
 }
 
@@ -295,7 +311,7 @@ export interface ConnectorCheckpoint {
   cursor?: SyncCursor
   /** Max watermark observed through this page (steady/incremental delta floor). */
   watermark?: string
-  /** An app's encoded `since` from its last page; replaces the watermark instead of folding into it. */
+  /** An app's encoded `since`: final on the last page (replaces the watermark), provisional before it. */
   since?: string
 }
 

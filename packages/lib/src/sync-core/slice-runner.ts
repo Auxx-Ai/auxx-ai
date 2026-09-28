@@ -68,6 +68,8 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
     phase,
     cursor: state.cursor,
     watermark: state.watermark,
+    pendingSince: state.pendingSince,
+    recordsSeen: state.recordsSeen,
     budget,
     throttle,
     signal,
@@ -133,6 +135,11 @@ export async function runSyncSlice(args: RunSliceArgs): Promise<SliceOutcome> {
     cursor: nextCursor,
     // The core stores whatever watermark the source returns on advance, never comparing it.
     watermark: advance ? (result.watermark ?? state.watermark) : state.watermark,
+    pendingSince: exhausted
+      ? undefined
+      : advance
+        ? (result.pendingSince ?? state.pendingSince)
+        : state.pendingSince,
     recordsSeen: (state.recordsSeen ?? 0) + result.recordsProcessed,
     noProgressStrikes: strikes,
   }

@@ -101,7 +101,7 @@ import {
 } from '../src/accounting/providers/quickbooks/account-map'
 import { getOrgCache } from '../src/cache'
 import { onCacheEvent } from '../src/cache/invalidate'
-import { freshBackfillState } from '../src/data-connectors/slice-orchestrator'
+import { wipedStreamState } from '../src/data-connectors/slice-orchestrator'
 import { deleteEntityInstances } from '../src/entity-instances'
 import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
@@ -1018,8 +1018,8 @@ async function main() {
       await db
         .update(schema.DataConnectorStream)
         .set({
-          state: freshBackfillState(
-            (stream.state ?? {}) as Parameters<typeof freshBackfillState>[0],
+          state: wipedStreamState(
+            (stream.state ?? {}) as Parameters<typeof wipedStreamState>[0],
             startedAtIso
           ),
           updatedAt: new Date(),

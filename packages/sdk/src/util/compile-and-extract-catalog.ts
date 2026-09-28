@@ -1082,6 +1082,12 @@ export async function compileAndExtractCatalog(): Promise<
           message: `Connector "${connector.id}" stream "${stream.key}": query.period must be a non-empty source path`,
         })
       }
+      if (stream.query?.limit && !stream.query.since) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `Connector "${connector.id}" stream "${stream.key}": query.limit needs query.since (a stopped crawl resumes from its provisional since)`,
+        })
+      }
       if (stream.webhookTrigger) {
         const { idPath } = stream.webhookTrigger
         if (typeof idPath !== 'string' || !idPath.trim()) {

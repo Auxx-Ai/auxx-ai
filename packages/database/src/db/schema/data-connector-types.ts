@@ -95,6 +95,8 @@ export interface DataConnectorConfig {
   webhookTrigger?: { triggerId?: string; webhookEndpointId?: string }
   /** `YYYY-MM-DD` the history floor starts at; absent ⇒ everything. Mirror of lib `DataConnectorConfig.historyStartDate`. */
   historyStartDate?: string
+  /** Per-stream record cap on a first sync. Mirror of lib `DataConnectorConfig.historyMaxRecords`. */
+  historyMaxRecords?: number
 }
 
 /**
@@ -168,6 +170,12 @@ export interface ConnectorStreamState {
   /** Consecutive no-progress slices (pagination stall guard). Mirror of lib
    *  `ConnectorStreamState.noProgressStrikes`. */
   noProgressStrikes?: number
+  /** Provisional `since` of an in-flight backfill. Mirror of lib `ConnectorStreamState.pendingSince`. */
+  pendingSince?: string
+  /** How far back the backfill reached (UTC ISO), null = everything. Mirror of lib. */
+  coverageFrom?: string | null
+  /** Records read when the history limit ended the backfill. Mirror of lib. */
+  stoppedAtRecords?: number
   [key: string]: unknown
 }
 

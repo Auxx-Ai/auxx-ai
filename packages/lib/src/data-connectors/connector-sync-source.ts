@@ -36,6 +36,14 @@ import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice, type SlicePageSink } from './connector-slice-loop'
 import { decodeSince } from './connectors/app-connector-state'
+import type { ConnectorRecord } from './connectors/types'
+import {
+  extendStreamCoverage,
+  historyMaxRecordsOf,
+  markRunStreamStopped,
+  periodValueOf,
+  writeStreamCoverage,
+} from './coverage'
 import { resolveCrossConnectorLinks } from './cross-connector-links'
 import {
   listBackfillRunIds,
@@ -65,7 +73,7 @@ import {
 } from './service'
 import { sinkSourcePage, sinkSourceRecord } from './sink-source-record'
 import type { SyncCtx } from './sinks/types'
-import { syncQuery } from './stream-query'
+import { streamHasPeriod, syncQuery } from './stream-query'
 import { createConnectorRunLedger } from './sync-core-adapters'
 import type {
   ConnectorQuery,
@@ -158,6 +166,8 @@ export interface ConnectorSyncSourceDeps {
   }
   /** The chain's history floor (UTC ISO), computed once per run; absent ⇒ no floor. */
   floor?: string
+  /** The stream completed a backfill before this one, so the history limit does not apply. */
+  backfilledBefore?: boolean
   /** The pinned stream this source drives (its own continuation chain). */
   stream: SyncSourceStream
   /**
@@ -242,6 +252,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   private readonly reimport: boolean
   /** The stream filter AND, on a period re-import, the period re-checked on the declared path. */
   private readonly postFetchFilter?: ConditionGroup[]
+  /** `historyMaxRecords` when it may stop this stream's backfill (§3.5); else undefined. */
+  private readonly historyLimit?: number
+  /** Last record the current slice read; its `period` value is a capped stop's coverage. */
+  private lastRecord?: ConnectorRecord
+  /** Set when the history limit ended this slice's backfill. */
+  private limitStop?: { atRecords: number }
 
   constructor(private readonly deps: ConnectorSyncSourceDeps) {
     this.id = `${deps.connector.id}:${deps.stream.streamId}`
@@ -257,6 +273,19 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       period && periodPath
         ? [...(deps.stream.recordFilter ?? []), periodFilterGroup(periodPath, period)]
         : deps.stream.recordFilter
+    // First backfill only: never a re-import (D4), a sample (it must not commit a watermark),
+    // a snapshot stream (a partial crawl would reconcile by absence), or a re-crawl (a re-sync
+    // must re-project every record it synced before).
+    this.historyLimit =
+      !this.reimport &&
+      !deps.backfilledBefore &&
+      !deps.connector.resyncPending?.streamIds?.includes(deps.stream.streamId) &&
+      deps.sampleLimit == null &&
+      deps.run.phase === 'backfill' &&
+      deps.stream.syncMode === 'incremental' &&
+      deps.stream.query?.limit
+        ? historyMaxRecordsOf(deps.config)
+        : undefined
   }
 
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
@@ -310,10 +339,14 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         ? 'incremental'
         : 'snapshot'
 
+    const pageSink = this.pageSink(syncCtx)
     const result = await runConnectorSlice({
       ctx,
       now: this.now,
-      shouldStop: () => isRunPauseRequested(this.deps.db, this.deps.run.id),
+      shouldStop: async (page) => {
+        if (ctx.phase === 'backfill' && this.limitReached(ctx, page)) return 'complete'
+        return isRunPauseRequested(this.deps.db, this.deps.run.id)
+      },
       fetch: ({ backfillCursor, watermark }) =>
         this.deps.definition.fetch({
           streamKey,
@@ -327,15 +360,22 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           rateLimitOverride: { maxRetries: 0 },
           signal: ctx.signal,
         }),
-      sink: (record) =>
-        sinkSourceRecord(
+      sink: (record) => {
+        this.lastRecord = record
+        return sinkSourceRecord(
           syncCtx,
           this.deps.stream.mappings,
           record,
           this.updatedAtPath,
           this.postFetchFilter
-        ),
-      sinkPage: this.pageSink(syncCtx),
+        )
+      },
+      sinkPage: pageSink
+        ? (records) => {
+            this.lastRecord = records.at(-1) ?? this.lastRecord
+            return pageSink(records)
+          }
+        : undefined,
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
@@ -346,6 +386,56 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       countersByKey: counters.byMapping,
       errorSample: counters.errorSample,
     }
+  }
+
+  /** Whether the history limit ends the backfill at this page; refuses without a resume mark. */
+  private limitReached(
+    ctx: SyncSliceCtx,
+    page: { recordsProcessed: number; pendingSince?: string }
+  ): boolean {
+    if (this.historyLimit === undefined) return false
+    const seen = (ctx.recordsSeen ?? 0) + page.recordsProcessed
+    if (seen < this.historyLimit) return false
+    if (page.pendingSince === undefined) {
+      logger.warn('history limit reached but the app reported no provisional since; crawling on', {
+        sourceId: this.id,
+        seen,
+        limit: this.historyLimit,
+      })
+      return false
+    }
+    this.limitStop = { atRecords: seen }
+    return true
+  }
+
+  /**
+   * How far back the finished backfill reached: the floor (or everything) when it ran out,
+   * the last record's `period` value when the limit stopped it. A period re-import only
+   * ever moves an existing coverage earlier.
+   */
+  private async recordCoverage(): Promise<void> {
+    const { db, stream, run } = this.deps
+    if (this.reimport) {
+      await extendStreamCoverage(db, stream.streamId, run.query?.period)
+      return
+    }
+    if (!this.limitStop) {
+      await writeStreamCoverage(db, stream.streamId, {
+        coverageFrom: (streamHasPeriod(stream) && this.deps.floor) || null,
+        stoppedAtRecords: null,
+      })
+      return
+    }
+    const periodPath = stream.query?.period
+    const reached =
+      periodPath && this.lastRecord ? periodValueOf(this.lastRecord, periodPath) : undefined
+    // No period value ⇒ coverage is unknown, never "everything".
+    if (!reached) logger.warn('capped stop: last record has no period value', { sourceId: this.id })
+    await writeStreamCoverage(db, stream.streamId, {
+      coverageFrom: reached,
+      stoppedAtRecords: this.limitStop.atRecords,
+    })
+    await markRunStreamStopped(db, run.id, stream.streamId, this.limitStop.atRecords)
   }
 
   /** The backfill and steady chains sink a page at a time; a re-import stays per record (plan 14 §6.8). */
@@ -436,6 +526,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
    * last stream knows the whole multi-stream chain is done.
    */
   async finalizeBackfill(): Promise<void> {
+    await this.recordCoverage()
     if (await this.finalizePause()) return
     // Sample run: a stream that exhausted before its cap still parks for review (the
     // sample IS everything for this stream, but the run stays paused so the user

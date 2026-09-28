@@ -186,8 +186,8 @@ export interface ConnectorPatch {
 
 /**
  * Classify a connector edit. A connector change is never `rebind` (identity lives on
- * the mapping) — at most `rebackfill`: a new credential or any `config` change
- * (endpoint / filters / history start) invalidates the cursor against the source.
+ * the mapping) — at most `rebackfill`: a new credential or any `config` change (endpoint /
+ * filters / history start; not `historyMaxRecords`) invalidates the cursor against the source.
  * `name`/`syncBehavior`/`scheduleConfig`/`status`/`appInstallationId` are lifecycle,
  * not data — cosmetic.
  */
@@ -198,9 +198,15 @@ export function classifyConnectorChange(
   const reasons: string[] = []
   if (patch.credentialId !== undefined && (patch.credentialId ?? null) !== prev.credentialId)
     reasons.push('credential')
-  if (patch.config !== undefined && JSON.stringify(patch.config) !== JSON.stringify(prev.config))
+  if (patch.config !== undefined && configKey(patch.config) !== configKey(prev.config))
     reasons.push('config')
   return { level: levelFor(reasons), reasons }
+}
+
+/** `historyMaxRecords` only caps a stream's first backfill, so changing it alone is cosmetic. */
+function configKey(config: DataConnectorConfig | null | undefined): string {
+  const { historyMaxRecords: _limit, ...rest } = config ?? {}
+  return JSON.stringify(rest)
 }
 
 /** The patch shape `setStreamRequestConfig` accepts. */

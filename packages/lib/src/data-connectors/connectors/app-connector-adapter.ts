@@ -33,7 +33,7 @@ interface AppExecuteResult {
   records?: ConnectorRecord[]
   /** Next page of this query; absent ⇒ exhausted. */
   cursor?: unknown
-  /** Last page only: the marker the next run's `query.since` gets back. */
+  /** The next run's `query.since`; on a non-terminal backfill page it is provisional (§3.4). */
   since?: unknown
   rateLimited?: {
     retryAfterMs?: number
@@ -57,6 +57,7 @@ const PLATFORM_RESERVED_CONFIG_KEYS = new Set([
   'endpoint',
   'filters',
   'historyStartDate',
+  'historyMaxRecords',
   'webhookTrigger',
 ])
 
@@ -339,14 +340,19 @@ export function appConnectorAdapter(
               recordCount: records.length,
             })
 
-            // No cursor ⇒ the query is exhausted. `since` rides the terminal checkpoint only.
+            // No cursor ⇒ the query is exhausted. An earlier page's `since` is provisional.
+            const since = encodeSince(page.since)
             if (page.cursor == null) {
-              yield { __checkpoint: true, since: encodeSince(page.since) }
+              yield { __checkpoint: true, since }
               return
             }
 
             cursor = page.cursor
-            yield { __checkpoint: true, cursor: encodeCursor(page.cursor) }
+            yield {
+              __checkpoint: true,
+              cursor: encodeCursor(page.cursor),
+              ...(since !== undefined ? { since } : {}),
+            }
           }
         })(),
       }

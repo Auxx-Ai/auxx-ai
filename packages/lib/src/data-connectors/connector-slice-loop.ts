@@ -38,8 +38,14 @@ export interface RunConnectorSliceArgs {
   ctx: SyncSliceCtx
   /** Injectable clock (tests pass a fake to exercise the `maxMs` budget). */
   now: () => number
-  /** Consulted at page boundaries so a user pause never loses half a page. */
-  shouldStop?: () => Promise<boolean>
+  /**
+   * Consulted at page boundaries so a user pause never loses half a page. `'complete'` ends
+   * the phase here: the slice reports exhausted with `pendingSince` as its watermark.
+   */
+  shouldStop?: (page: {
+    recordsProcessed: number
+    pendingSince?: string
+  }) => Promise<boolean | 'complete'>
 }
 
 /**
@@ -60,6 +66,7 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
   let fetchMs = 0
   let sinkMs = 0
   const done = (r: Omit<SliceResult, 'counters'>): SliceResult => ({
+    pendingSince,
     ...r,
     counters: { fetchMs, sinkMs },
   })
@@ -68,6 +75,7 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
   let rateLimitWaitMs = 0
   let nextCursor = ctx.cursor
   let watermark = ctx.watermark
+  let pendingSince = ctx.pendingSince
   // Records of the current page not yet sunk; an abort or a 429 drops them with the page.
   let buffer: ConnectorRecord[] = []
   const timedSink = async (write: () => Promise<void>) => {
@@ -109,29 +117,46 @@ export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<Sl
       if (isConnectorCheckpoint(y)) {
         await drain()
         pages += 1
-        // An app's `since` is opaque, so it replaces; a generic-REST watermark is a comparable max.
-        if (y.since !== undefined) watermark = y.since
-        else if (y.watermark) watermark = maxWatermark(watermark, y.watermark)
+        // A generic-REST watermark is a comparable max; an app's `since` is opaque and replaces.
+        if (y.watermark) watermark = maxWatermark(watermark, y.watermark)
 
         // No cursor ⇒ the source is exhausted for this phase.
         if (y.cursor === undefined) {
+          if (y.since !== undefined) watermark = y.since
           return done({
             recordsProcessed,
             pagesProcessed: pages,
             nextCursor: undefined,
             hasMore: false,
             watermark,
+            pendingSince: undefined,
             commit: 'all',
             rateLimitWaitMs,
           })
         }
         nextCursor = y.cursor
+        // A mid-crawl `since` is provisional: a backfill keeps it for an early stop; a steady
+        // delta that dies half-way must repeat from its old watermark, so it is ignored.
+        if (y.since !== undefined && ctx.phase === 'backfill') pendingSince = y.since
 
+        const stop = await args.shouldStop?.({ recordsProcessed, pendingSince })
+        if (stop === 'complete') {
+          return done({
+            recordsProcessed,
+            pagesProcessed: pages,
+            nextCursor: undefined,
+            hasMore: false,
+            watermark: pendingSince,
+            pendingSince: undefined,
+            commit: 'all',
+            rateLimitWaitMs,
+          })
+        }
         const budgetHit =
           pages >= ctx.budget.maxPages ||
           recordsProcessed >= ctx.budget.maxRecords ||
           now() - started >= ctx.budget.maxMs
-        if (budgetHit || (await args.shouldStop?.())) {
+        if (budgetHit || stop) {
           return done({
             recordsProcessed,
             pagesProcessed: pages,

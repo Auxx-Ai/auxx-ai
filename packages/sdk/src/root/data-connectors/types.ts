@@ -62,6 +62,8 @@ export interface ConnectorStreamQueryDecl {
   /** Source path of the date that says when a record happened (`created_at`, `issued_at`). */
   period?: string
   since?: true
+  /** The crawl runs newest first and reports a provisional `since` on every page, so the platform may stop it early (`historyMaxRecords`). */
+  limit?: true
 }
 
 /**
@@ -73,7 +75,10 @@ export interface ConnectorFetchResult {
   records: ConnectorRecord[] | AsyncIterable<ConnectorRecord>
   /** Next page of this query. Absent ⇒ the query is exhausted. */
   cursor?: unknown
-  /** Last page of a `since` stream only: the marker the next run's `query.since` gets back. */
+  /**
+   * The marker the next run's `query.since` gets back. On the last page it is final; on any
+   * earlier page it is provisional: "resume from here if the platform ends this crawl now".
+   */
   since?: unknown
   /**
    * Return this instead of throwing or sleeping when the source throttles a page; the

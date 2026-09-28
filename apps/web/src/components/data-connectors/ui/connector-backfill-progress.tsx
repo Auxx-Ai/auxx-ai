@@ -35,6 +35,8 @@ interface ConnectorBackfillProgressProps {
   completed?: boolean
   /** Freshness time shown in the completed footer (lastSyncedAt). */
   syncedAt?: Date | string | null
+  /** Streams declaring `query.limit`: their first sync crawls newest first. */
+  newestFirstKeys?: string[]
 }
 
 /**
@@ -51,9 +53,13 @@ export function ConnectorBackfillProgress({
   sampleLimit,
   completed = false,
   syncedAt,
+  newestFirstKeys = [],
 }: ConnectorBackfillProgressProps) {
   const total = perStream.reduce((n, s) => n + s.recordsSeen, 0)
   const isSample = sampleLimit != null
+  const newestFirst = perStream
+    .filter((s) => !s.done && newestFirstKeys.includes(s.streamKey))
+    .map((s) => s.streamKey)
 
   const header = completed
     ? `Synced from ${sourceLabel}`
@@ -101,6 +107,7 @@ export function ConnectorBackfillProgress({
             {isSample
               ? `Sampling up to ${sampleLimit?.toLocaleString()} per stream`
               : `${total.toLocaleString()} records so far`}
+            {newestFirst.length > 0 && ` · ${newestFirst.join(', ')} newest first`}
           </>
         )}
       </div>

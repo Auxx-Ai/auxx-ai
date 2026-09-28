@@ -4,6 +4,16 @@
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { MetricCell, MetricGrid } from '@auxx/ui/components/metric-grid'
 import { ArrowDownUp, CalendarClock, History, RefreshCw } from 'lucide-react'
+import { describeHistoryFrom } from '../lib/format-history'
+
+/** How far back one stream's last backfill reached (`getStatus.perStream`). */
+export interface StreamCoverage {
+  streamKey: string
+  /** ISO; null = everything, undefined = not recorded. */
+  coverageFrom?: string | null
+  /** Set when the history limit ended that backfill. */
+  stoppedAtRecords?: number | null
+}
 
 interface ConnectorFreshnessPanelProps {
   lastSyncedAt: Date | string | null
@@ -17,6 +27,8 @@ interface ConnectorFreshnessPanelProps {
   /** 'manual' | 'scheduled' | 'webhook'. */
   syncBehavior: string
   latestRun?: { created?: number; updated?: number } | null
+  /** Per-stream history reach; streams without a recorded coverage are left out. */
+  coverage?: StreamCoverage[]
 }
 
 /**
@@ -34,6 +46,7 @@ export function ConnectorFreshnessPanel({
   cadenceLabel,
   syncBehavior,
   latestRun,
+  coverage = [],
 }: ConnectorFreshnessPanelProps) {
   const created = latestRun?.created ?? 0
   const updated = latestRun?.updated ?? 0
@@ -45,29 +58,48 @@ export function ConnectorFreshnessPanel({
   const freshnessLabel = isWebhook ? 'Last event' : 'Last synced'
   const freshnessAt = isWebhook ? (lastWebhookEventAt ?? lastSyncedAt) : lastSyncedAt
 
+  const reached = coverage.filter((s) => s.coverageFrom !== undefined)
+
   return (
-    <MetricGrid columns={2}>
-      <MetricCell
-        label={freshnessLabel}
-        icon={<History className='size-4 text-muted-foreground' />}
-        value={freshnessAt ? <LastUpdated timestamp={freshnessAt} className='text-sm' /> : '—'}
-      />
-      <MetricCell
-        label='Synced this run'
-        icon={<ArrowDownUp className='size-4 text-muted-foreground' />}
-        value={delta}
-      />
-      <MetricCell
-        label='Next sync'
-        icon={<CalendarClock className='size-4 text-muted-foreground' />}
-        value={nextSync(nextSyncAt, syncBehavior, cadenceLabel)}
-      />
-      <MetricCell
-        label='Keeping up to date'
-        icon={<RefreshCw className='size-4 text-muted-foreground' />}
-        value={cadence(syncBehavior, cadenceLabel)}
-      />
-    </MetricGrid>
+    <>
+      <MetricGrid columns={2}>
+        <MetricCell
+          label={freshnessLabel}
+          icon={<History className='size-4 text-muted-foreground' />}
+          value={freshnessAt ? <LastUpdated timestamp={freshnessAt} className='text-sm' /> : '—'}
+        />
+        <MetricCell
+          label='Synced this run'
+          icon={<ArrowDownUp className='size-4 text-muted-foreground' />}
+          value={delta}
+        />
+        <MetricCell
+          label='Next sync'
+          icon={<CalendarClock className='size-4 text-muted-foreground' />}
+          value={nextSync(nextSyncAt, syncBehavior, cadenceLabel)}
+        />
+        <MetricCell
+          label='Keeping up to date'
+          icon={<RefreshCw className='size-4 text-muted-foreground' />}
+          value={cadence(syncBehavior, cadenceLabel)}
+        />
+      </MetricGrid>
+      {reached.length > 0 && (
+        <div className='flex flex-col gap-0.5 border-b px-4 py-2 text-[11px] text-muted-foreground'>
+          {reached.map((s) => (
+            <div key={s.streamKey} className='flex min-w-0 gap-1.5'>
+              <span className='shrink-0 capitalize text-foreground'>
+                {s.streamKey || 'Records'}
+              </span>
+              <span className='truncate'>
+                {describeHistoryFrom(s.coverageFrom ?? null)}
+                {s.stoppedAtRecords ? ` · stopped at ${s.stoppedAtRecords.toLocaleString()}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

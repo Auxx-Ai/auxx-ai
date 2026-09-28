@@ -170,6 +170,8 @@ interface ConnectorDraftState {
   setScheduleConfig: (config: Record<string, unknown> | null) => void
   /** `YYYY-MM-DD`, or undefined to import everything (drops the key). */
   setHistoryStartDate: (date: string | undefined) => void
+  /** Per-stream record cap on a first sync, or undefined for no limit (drops the key). */
+  setHistoryMaxRecords: (max: number | undefined) => void
 
   // ── stream setters (draft-only) ──
   renameStream: (streamId: string, streamKey: string) => void
@@ -332,6 +334,12 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
         // Spread in place when setting so the key keeps its position (no false dirty).
         const { historyStartDate: _prev, ...rest } = s.draft.config
         const config = date ? { ...s.draft.config, historyStartDate: date } : rest
+        return { draft: { ...s.draft, config } }
+      }),
+    setHistoryMaxRecords: (max) =>
+      set((s) => {
+        const { historyMaxRecords: _prev, ...rest } = s.draft.config
+        const config = max ? { ...s.draft.config, historyMaxRecords: max } : rest
         return { draft: { ...s.draft, config } }
       }),
 

@@ -18,6 +18,7 @@ import { Button } from '@auxx/ui/components/button'
 import { format, parseISO } from 'date-fns'
 import { AlertTriangle, ArrowRight, Check, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
+import { ConnectorCoverageCheck } from '~/components/data-connectors/ui/connector-coverage-check'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useActor } from '~/components/resources/hooks'
@@ -152,6 +153,9 @@ export function SetupStatusSection({
             )
           })}
         </ul>
+
+        {/* Informational, not a requirement: history can be imported after finalizing too. */}
+        <ConnectorCoverageCheck />
 
         {/*
           The list is settings-derived and complete for what it claims. Three

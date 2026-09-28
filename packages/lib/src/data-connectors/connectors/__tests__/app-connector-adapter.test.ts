@@ -163,14 +163,17 @@ describe('appConnectorAdapter pagination', () => {
     expect(invokeLambdaExecutor).toHaveBeenCalledTimes(3)
   })
 
-  it('carries since on the terminal checkpoint only, JSON-encoded', async () => {
+  it('carries since on every page checkpoint, JSON-encoded', async () => {
     const since = { historyId: '84422' }
     invokeLambdaExecutor
-      .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1', since: 'ignored-mid-chain' }))
-      .mockResolvedValueOnce(page([rec('b')], { since }))
+      .mockResolvedValueOnce(page([rec('a')], { cursor: 'c1', since: 'provisional' }))
+      .mockResolvedValueOnce(page([rec('b')], { cursor: 'c2' }))
+      .mockResolvedValueOnce(page([rec('c')], { since }))
     const checkpoints = (await drain()).filter(isConnectorCheckpoint)
-    expect(checkpoints[0]!.since).toBeUndefined()
-    expect(decodeSince(checkpoints[1]!.since)).toEqual(since)
+    expect(decodeSince(checkpoints[0]!.since)).toBe('provisional')
+    expect(decodeCursor(checkpoints[0]!.cursor)).toBe('c1')
+    expect(checkpoints[1]!).not.toHaveProperty('since')
+    expect(decodeSince(checkpoints[2]!.since)).toEqual(since)
     expect(checkpoints.every((c) => c.watermark === undefined)).toBe(true)
   })
 

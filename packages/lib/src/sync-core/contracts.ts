@@ -102,6 +102,8 @@ export interface SyncState {
   cursor?: SyncCursor
   /** Steady-phase delta marker; opaque to the core. */
   watermark?: string
+  /** A backfill's provisional resume marker; opaque to the core, cleared when the phase ends. */
+  pendingSince?: string
   /** Running total for the progress UI (counts, never a percent). */
   recordsSeen?: number
   backfillStartedAt?: string
@@ -132,6 +134,9 @@ export interface SyncSliceCtx {
   phase: SyncPhase
   cursor?: SyncCursor
   watermark?: string
+  pendingSince?: string
+  /** Records seen by this phase's earlier slices. */
+  recordsSeen?: number
   budget: SliceBudget
   throttle: ThrottleHandle
   /** Cancellation — the cancellable-worker hook aborts between/within slices. */
@@ -152,6 +157,8 @@ export interface SliceResult {
   hasMore: boolean
   /** The watermark to store on advance; opaque to the core, which never compares it. */
   watermark?: string
+  /** The provisional marker to store on advance; dropped once the phase is exhausted. */
+  pendingSince?: string
   commit: SliceCommit
   /** Counter deltas for this slice, folded into the run ledger. */
   counters?: Partial<SyncRunCounters>

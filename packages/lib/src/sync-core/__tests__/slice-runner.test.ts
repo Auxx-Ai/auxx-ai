@@ -370,3 +370,41 @@ describe('runSyncSlice', () => {
     expect(state.saves).toHaveLength(0) // nothing checkpointed
   })
 })
+
+describe('runSyncSlice — pendingSince', () => {
+  const run = (initial: SyncState, slice: SliceResult) => {
+    const state = fakeStateStore(initial)
+    return runSyncSlice({
+      source: source({ slice }),
+      stateStore: state.store,
+      ledger: fakeLedger().ledger,
+      throttle: THROTTLE,
+      budget: BUDGET,
+      signal: new AbortController().signal,
+    }).then(() => state.current)
+  }
+
+  it('stores a mid-backfill pendingSince with the cursor', async () => {
+    const next = await run(
+      { phase: 'backfill' },
+      {
+        recordsProcessed: 1,
+        nextCursor: { kind: 'token', value: 'c1' },
+        hasMore: true,
+        pendingSince: '"t0"',
+        commit: 'all',
+      }
+    )
+    expect(next).toMatchObject({ phase: 'backfill', pendingSince: '"t0"' })
+    expect(next.watermark).toBeUndefined()
+  })
+
+  it('drops it once the phase is exhausted', async () => {
+    const next = await run(
+      { phase: 'backfill', pendingSince: '"t0"' },
+      { recordsProcessed: 1, hasMore: false, watermark: '"t0"', commit: 'all' }
+    )
+    expect(next).toMatchObject({ phase: 'steady', watermark: '"t0"' })
+    expect(next.pendingSince).toBeUndefined()
+  })
+})

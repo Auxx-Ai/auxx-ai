@@ -142,7 +142,9 @@ function assertValidMapping(
  * **Pagination — one page per `execute`.** The platform loops `execute`, not the
  * app: return ONE page of records plus `cursor`, and the platform re-invokes with
  * `args.cursor` set to it until a page returns no cursor. A `since` stream returns
- * its next marker on that last page only.
+ * its next marker on the last page, and may return a provisional one on any earlier
+ * page ("resume here if the crawl ends now"). A stream that crawls newest first and
+ * does so on every page declares `query.limit` and can be stopped early by a record limit.
  *
  * **Connection — use `args.connection`, never ambient helpers.** A connector
  * receives its bound connection explicitly on `args.connection` (`{ value, fields,
