@@ -13,6 +13,7 @@ import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Check, PartyPopper } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useSettings } from '~/hooks/use-settings'
 import {
   useDehydratedOrganizationId,
@@ -134,6 +135,14 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
           </div>
         )}
       </div>
+
+      {/* Not blocking: the opening inventory difference catches up after finalizing. */}
+      {!readiness.finalized && (
+        <StockSetupProgressLine
+          note='Not needed to finalize; the opening inventory difference catches up once it is.'
+          className='mx-auto max-w-sm text-center'
+        />
+      )}
 
       {/* With an accounting system connected, the opening is filled from its balance sheet. */}
       {!readiness.finalized && !fromNothing && (

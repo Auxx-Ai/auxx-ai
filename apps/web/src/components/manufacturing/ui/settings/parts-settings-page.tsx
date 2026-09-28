@@ -1,21 +1,16 @@
 // apps/web/src/components/manufacturing/ui/settings/parts-settings-page.tsx
 'use client'
 
-// Inventory > General (25-parts-settings-tab.md §4; shape: plans/mrp/07-ui-plan.md §4.8).
-//
-// A document page under the Manage shell: the toolbar title, then one
-// `ScrollArea` of two `SettingsSection` columns holding `FieldPanel` rows over one
-// `useDirtyDraft` slice and one `FormSaveBar`.
-//
-// 🛑 Draft keys are scoped explicitly. `useSettings({ scope: 'GENERAL' })`
-// returns EVERY `GENERAL`-scope setting in the whole app and both keys here are
-// `GENERAL` (there is no `INVENTORY` value in the `SettingScope` pg enum), so an
-// unscoped save would clobber unrelated settings.
+// Inventory > General (25-parts-settings-tab.md §4; build mode: plans/mrp/17 §6).
+// Draft keys are listed explicitly: `useSettings({ scope: 'GENERAL' })` returns every GENERAL
+// setting in the app, so an unscoped save would clobber unrelated ones.
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
+import { RadioGroup } from '@auxx/ui/components/radio-group'
+import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Factory, History, SlidersHorizontal } from 'lucide-react'
+import { Factory, SlidersHorizontal } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -26,37 +21,28 @@ import { SettingsSection } from '~/components/global/settings-page'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
-import {
-  applyBuildSwitchExclusivity,
-  BUILD_SWITCH_EXCLUSIVITY_SENTENCE,
-} from './build-switch-exclusivity'
 import { StandardCostSection } from './standard-cost-section'
 
-const PAGE_DESCRIPTION = 'Whether an order raises a build, and for which parts'
+const PAGE_DESCRIPTION = 'How builds are recorded, planning defaults and standard costs'
 
 /**
- * The three catalog keys this page owns.
- *
- * 🛑 The other two `inventory.autoBuild*` keys are deliberately absent, and
- * neither omission is an oversight:
- *
- * - `inventory.autoBuildEnabledAt` is written by the settings write path itself.
- *   Both `updateOrganizationSetting` and `batchUpdateOrganizationSettings` read
- *   the previous value BEFORE the upsert and call `stampAutoBuildEnabledAt` on
- *   an off->on transition (AB8). Putting it in a draft would write a stale value
- *   back in the same batch that flips the switch, defeating the stamp — and the
- *   stamp is the only thing between turning auto-build on and manufacturing
- *   against years of back-filled order history.
- * - `inventory.autoBuildStatus` has ONE legal value: `resolveAutoBuildStatus`
- *   ignores its argument and returns `'planned'` unconditionally (AB5). A select
- *   with one option is a control that cannot be operated, and it would advertise
- *   a `completed` mode that aborts `completeBuild` on its first run.
+ * Not in the draft: `autoBuildEnabledAt`, which the write path stamps on off→on (a draft would
+ * write it back stale, AB8), and `autoBuildStatus`, which has one legal value (AB5).
  */
 const PARTS_SETTINGS_KEYS = {
   autoBuildFromOrders: 'inventory.autoBuildFromOrders',
   autoBuildStockRule: 'inventory.autoBuildStockRule',
   backflush: 'inventory.backflush',
 } as const
+
+/** The two keys behind the one build-mode choice; the write refuses both on (111 Q14). */
+type BuildMode = 'sales' | 'orders' | 'off'
+
+function buildModeOf(backflush: SettingValue, fromOrders: SettingValue): BuildMode {
+  if (backflush === true) return 'sales'
+  if (fromOrders === true) return 'orders'
+  return 'off'
+}
 
 const DRAFT_KEYS = [
   PARTS_SETTINGS_KEYS.autoBuildFromOrders,
@@ -105,13 +91,20 @@ export function PartsGeneralSettingsPage() {
   /** Controlled-mode props for a catalog `SettingsFieldRow` fed by this draft. */
   const controlled = (key: (typeof DRAFT_KEYS)[number]) => ({
     value: draft[key],
-    // SELECT inputs report a clear as `undefined`, not `null` — normalize, since
-    // `SettingValue` and the server normalizer only accept `null` for "unset".
-    // The two build switches are exclusive (111 Q14): the draft shows the partner
-    // turning off the moment one is turned on, the same thing the write does.
+    // SELECT inputs report a clear as `undefined`; the server only accepts `null` for unset.
     onChange: (value: unknown) =>
-      patch(applyBuildSwitchExclusivity(key, (value === undefined ? null : value) as SettingValue)),
+      patch({ [key]: (value === undefined ? null : value) as SettingValue }),
   })
+
+  const buildMode = buildModeOf(
+    draft[PARTS_SETTINGS_KEYS.backflush] ?? null,
+    draft[PARTS_SETTINGS_KEYS.autoBuildFromOrders] ?? null
+  )
+  const setBuildMode = (mode: string) =>
+    patch({
+      [PARTS_SETTINGS_KEYS.backflush]: mode === 'sales',
+      [PARTS_SETTINGS_KEYS.autoBuildFromOrders]: mode === 'orders',
+    })
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
@@ -121,72 +114,43 @@ export function PartsGeneralSettingsPage() {
         <div className='grid grid-cols-1 items-start gap-8 p-3 sm:p-6 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
             <SettingsSection
-              title='Automatic builds'
+              title='How builds are recorded'
               icon={Factory}
-              description='When an order asks for a part that is made rather than bought, raise the production run for it.'>
-              <FieldPanel
-                className='mt-1 p-0'
-                resizeId='parts-general-auto-build'
-                defaultLabelWidth={220}>
-                <SettingsFieldRow
-                  settingKey={PARTS_SETTINGS_KEYS.autoBuildFromOrders}
-                  title='Raise builds from orders'
-                  {...controlled(PARTS_SETTINGS_KEYS.autoBuildFromOrders)}
+              description='For parts you make rather than buy.'>
+              <RadioGroup value={buildMode} onValueChange={setBuildMode}>
+                <RadioGroupItemCard
+                  value='sales'
+                  label='From sales, every night'
+                  description="Best when you build to stock and don't track builds by hand."
                 />
-                <SettingsFieldRow
-                  settingKey={PARTS_SETTINGS_KEYS.autoBuildStockRule}
-                  title='When to raise one'
-                  {...controlled(PARTS_SETTINGS_KEYS.autoBuildStockRule)}
+                <RadioGroupItemCard
+                  value='orders'
+                  label='From orders, as planned builds'
+                  description='Best when each order is built. Someone completes each one.'
                 />
-              </FieldPanel>
-
-              {/*
-                Three things that are true, non-obvious, and will otherwise be
-                discovered as bugs. They live here rather than in the catalog's own
-                `description` strings, which are also the connector and API surface.
-              */}
-              <div className='space-y-2 text-muted-foreground text-xs'>
-                <p>
-                  Only orders placed <strong>after</strong> this is switched on are built. Turning
-                  it off and on again restarts the window, so a switch left off for three months
-                  does not reopen those three months when it comes back.
-                </p>
-                <p>
-                  A build is raised only for a part that is made rather than purchased{' '}
-                  <strong>and</strong> has a bill of materials. An order line for a purchased
-                  component, or for a part whose bill of materials is empty, raises nothing.
-                </p>
-                <p>
-                  What gets raised is a <strong>planned</strong> build. It moves no stock and
-                  records no cost until somebody completes it, which is what makes this safe to turn
-                  on before a part has a standard cost.
-                </p>
-                <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection
-              title='Backflush'
-              icon={History}
-              description='Every night, one completed build per made part for whatever yesterday’s sales drove below zero.'>
-              <FieldPanel
-                className='mt-1 p-0'
-                resizeId='parts-general-auto-build'
-                defaultLabelWidth={220}>
-                <SettingsFieldRow
-                  settingKey={PARTS_SETTINGS_KEYS.backflush}
-                  title='Backflush sales'
-                  {...controlled(PARTS_SETTINGS_KEYS.backflush)}
+                <RadioGroupItemCard
+                  value='off'
+                  label='Off'
+                  description='Builds are only recorded by hand.'
                 />
-              </FieldPanel>
-              <div className='space-y-2 text-muted-foreground text-xs'>
-                <p>
-                  A build is written <strong>completed</strong>, dated the end of the day it covers,
-                  so components are consumed on the day the finished part shipped. A part with an
-                  uncosted component is valued when that component gets a cost.
-                </p>
-                <p>{BUILD_SWITCH_EXCLUSIVITY_SENTENCE}</p>
-              </div>
+              </RadioGroup>
+              {buildMode === 'orders' && (
+                <>
+                  <FieldPanel
+                    className='mt-1 p-0'
+                    resizeId='parts-general-auto-build'
+                    defaultLabelWidth={220}>
+                    <SettingsFieldRow
+                      settingKey={PARTS_SETTINGS_KEYS.autoBuildStockRule}
+                      title='When to raise one'
+                      {...controlled(PARTS_SETTINGS_KEYS.autoBuildStockRule)}
+                    />
+                  </FieldPanel>
+                  <p className='text-muted-foreground text-xs'>
+                    Only orders placed after you choose this.
+                  </p>
+                </>
+              )}
             </SettingsSection>
 
             {showMrp && (
@@ -230,17 +194,8 @@ export function PartsGeneralSettingsPage() {
         </div>
       </ScrollArea>
 
-      {/*
-        One draft, one bar. Both keys save in a single
-        `batchUpdateOrganizationSettings` call, which the settings service runs
-        in one transaction — that is the reason this page does not use
-        `SettingsFieldRow`'s default autosave. The stock rule only means
-        anything while the switch is on, so an autosaved switch would leave the
-        reconciler live under whichever rule was stored while the person is
-        still reaching for the second row.
-
-        The wrapper's padding is what `FormSaveBar`'s negative margins cancel.
-      */}
+      {/* One batch, one transaction: the build mode flips two keys together. The padding is
+          what `FormSaveBar`'s negative margins cancel. */}
       <div className='shrink-0 px-3 pb-3 sm:px-6 sm:pb-6'>
         <FormSaveBar
           dirty={dirty}

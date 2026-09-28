@@ -282,6 +282,8 @@ export const SYSTEM_ATTRIBUTES = [
   'part_build_cycle_days',
   'part_mrp_lead_time_factor',
   'part_mrp_variability_factor',
+  // "Keep it" on a kind conflict (plans/mrp/17 D3)
+  'part_kind_conflict_confirmed',
   'part_line_items', // inverse of line_item_part
   'part_stock_movements',
 

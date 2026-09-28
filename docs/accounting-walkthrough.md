@@ -81,27 +81,35 @@ all.
 
 *Owner or bookkeeper. Half an hour.*
 
-Auto-opens on the first visit anywhere under `/app/accounting`. Nine pages, and
-**the order is load-bearing** — each page depends on what the one before it
-wrote. Every page is skippable, and every page writes real settings rather than
-wizard-local progress, so the settings screens, the checklist and the Post gate
-all read one source and agree.
+Auto-opens on the first visit anywhere under `/app/accounting`. Two intro pages,
+then one of two paths (`PAGE_TITLES` in `accounting-setup-wizard.tsx`). **The
+order is load-bearing** — each page depends on what the one before it wrote.
+Every page writes real settings rather than wizard-local progress, so the
+settings screens, the checklist and the Post gate all read one source and agree.
 
 1. **Welcome** — what the wizard is about to change.
-2. **Accounting period** — fiscal year start, book time zone, cutover month.
-3. **Opening inventory** — the snapshot the three inventory accounts start from.
-4. **Opening trial balance** — every other account's starting balance. Its three
-   inventory rows are prefilled from step 3 and locked, which is why it sits here
-   and not first.
-5. **Costing** — standard cost settings.
-6. **Account roles** — which of your accounts plays each role. Must come before
-   mapping: a role has to point at one of our accounts before that account has
-   anything to be paired with.
-7. **Accounting system** — connect QuickBooks, or don't.
-8. **QuickBooks accounts** — pair each of our accounts with one of theirs. Cannot
-   render a row until step 7 fetched a provider chart.
-9. **Finalize** — posts the opening balance entry, dated the day before cutover,
-   and freezes the baseline.
+2. **How to keep the books** — keep them in Auxx (standalone), or import them from
+   a connected accounting system.
+
+Standalone:
+
+3. **Accounting period** — book time zone and cutover month.
+4. **Account roles** — which of your accounts plays each role. The chart comes
+   before the rails that mint accounts into it.
+5. **Payment rails** — a clearing account per card rail on your orders.
+6. **Opening balances** — every account's balance at the cutover, inventory
+   included, as one balanced entry (or "these books start from nothing").
+7. **Finalize** — posts the opening entry, dated the cutover, and freezes the
+   baseline.
+
+Import (Connect-and-go): **Accounting system** (only until a provider is
+connected) → **Imported** → **Books** → **Accounts** (only when there are account
+questions) → **Mapping** → **Posting** → **Finish**.
+
+Inventory quantities and costs are not set in the wizard: they come from
+**Stock setup** (Inventory › Stock setup — kinds, past builds, counts and
+first costs), and the opening inventory difference under Accounting › Settings ›
+Opening balances squares the books with it. Neither setup blocks the other.
 
 > 🛑 **The setup freezes on the first posting.** Once a single `GlPosting` exists
 > for the org, the server *refuses* further changes to the opening balances, the

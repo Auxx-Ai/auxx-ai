@@ -171,6 +171,15 @@ export const SETTINGS_CATALOG = {
     description: 'Accounting getting-started state (wizard + checklist dismissal/completions)',
   },
 
+  'onboarding.stockGettingStarted': {
+    scope: 'ONBOARDING',
+    access: 'org',
+    fieldType: 'JSON',
+    // GettingStartedState; goals are live signals, only the dismissal lives here.
+    defaultValue: { dismissedAt: null, manualCompletions: [] },
+    description: 'Stock setup getting-started state (checklist dismissal/completions)',
+  },
+
   'notification.emailDigest': {
     scope: 'NOTIFICATION',
     access: 'user',
@@ -1481,6 +1490,22 @@ export const SETTINGS_CATALOG = {
       'When on, a nightly job writes one completed build per made part per day for whatever ' +
       'sales drove below zero. Cannot be on together with order-raised auto-builds: turning ' +
       'this on turns that off, and the reverse.',
+  },
+  // Stock setup step 2 skipped (plans/mrp/17 D5): count without recording past builds.
+  'inventory.stockSetup.buildsSkipped': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    defaultValue: false,
+    description: 'Stock setup: past builds were skipped, so counting opens without them.',
+  },
+  // Stock setup step 3 closed by "Done counting" (plans/mrp/17 Q2); one flag, no per-part mark.
+  'inventory.stockSetup.countingDone': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    defaultValue: false,
+    description: 'Stock setup: the first count is finished. Uncounted parts keep their numbers.',
   },
   // ── MRP planning (plans/mrp/08-implementation-plan.md §6) ─────────────────────────────
   // GENERAL for the same reason as `inventory.*` above: `SettingScope` has no INVENTORY value.

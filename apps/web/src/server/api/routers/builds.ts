@@ -10,6 +10,7 @@ import {
   cancelBuild,
   completeBuild,
   computeBackfillPreflight,
+  confirmKindConflicts,
   createBuild,
   executeBackfill,
   explodeBuildComponents,
@@ -19,15 +20,19 @@ import {
   planBackfill,
   previewBackflush,
   readBackfillPlanReads,
+  readBackflushKindDrift,
   readBackflushRunRow,
   readBatchRun,
   readBuildDrift,
+  readKindConflictFacts,
+  readKindConflicts,
   readPartQuantitiesOnHand,
+  readUndoBackflushRunRow,
   reverseBuild,
   startBuild,
   summarizeBackflushPlan,
   toBackflushRun,
-  undoBatchRun,
+  toUndoBackflushRun,
 } from '@auxx/lib/inventory/builds'
 import type {
   BackfillExclusion,
@@ -47,7 +52,7 @@ import {
   setStandardCosts,
 } from '@auxx/lib/inventory/costing'
 import { bulkSetPartKind } from '@auxx/lib/inventory/receiving'
-import { enqueueBackflushRun } from '@auxx/lib/jobs'
+import { enqueueBackflushRun, enqueueUndoBackflushRun } from '@auxx/lib/jobs'
 import { getOrganizationSetting } from '@auxx/lib/settings'
 import { dayKeyInZone, previousDayKey, startOfDayInstant } from '@auxx/utils/calendar-day'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
@@ -152,10 +157,10 @@ const backfillShape = {
   status: z.enum(BACKFILL_STATUS_VALUES),
 }
 
-/** A backflush range: inclusive local days in the book time zone (111 D24). */
+/** Inclusive book-zone days; the UI sends neither and the server resolves them (plans/mrp/17 D1). */
 const backflushShape = {
-  from: calendarDaySchema,
-  to: calendarDaySchema,
+  from: calendarDaySchema.optional(),
+  to: calendarDaySchema.optional(),
 }
 
 /** The two quantities and the overrides — everything that prices a run. */
@@ -185,7 +190,7 @@ const completionShape = {
  * | `standardCostWorklist`                 | view on `part`                            |
  * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `undoBatchRun` | edit on `build` AND edit on `stock_movement` |
+ * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `backflushKindDrift` | edit on `build` AND edit on `stock_movement` |
  *
  * Three notes on why those, and not something coarser:
  *
@@ -193,7 +198,7 @@ const completionShape = {
  *    server mirror of the `canEditEntity(defId)` the cards run to decide whether
  *    to render a button, so the button the UI hides and the door the server
  *    closes are the same door.
- * 2. **`complete`, `reverse` and `undoBatchRun` assert BOTH.** They are paths in
+ * 2. **`complete`, `reverse` and `startUndoBackflush` assert BOTH.** They are paths in
  *    this router that write a `stock_movement`, and `stock_movement` is where
  *    the rest of manufacturing puts that authority — `purchasing.receiveStock`,
  *    `adjustStock` and `reverseMovement` all gate on exactly that def. A person
@@ -353,6 +358,44 @@ export const buildsRouter = createTRPCRouter({
       ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
       const result = await readStandardCostWorklist(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  // ─── Kind conflicts (plans/mrp/17 D3/D4) ─────────────────────────────
+
+  /** Parts whose kind disagrees with their BOM and was not confirmed; `partIds` narrows. */
+  kindConflicts: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).max(5000).optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await readKindConflicts(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** Whether each part sits inside a BOM or has one, for the confirm before saving a kind. */
+  kindConflictFacts: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).min(1).max(5000) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await readKindConflictFacts(organizationId, input.partIds)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** "Sold as-is too, keep it": the current kind is intended. Same gate as the kind write. */
+  confirmKindConflicts: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).min(1).max(5000) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await confirmKindConflicts(ctx.db, organizationId, userId, input.partIds)
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -782,8 +825,8 @@ export const buildsRouter = createTRPCRouter({
     }),
 
   /**
-   * Start a sliced backflush run on the worker (plans/mrp/11); 409 while one is running. The same
-   * walk the preview showed, re-planned against the ledger as each slice runs.
+   * Start a sliced backflush run on the worker (plans/mrp/11); 409 while one is running, 422 while
+   * a kind conflict is left. The same walk the preview showed, re-planned as each slice runs.
    */
   runBackflush: capabilityProcedure
     .input(z.object(backflushShape))
@@ -831,37 +874,41 @@ export const buildsRouter = createTRPCRouter({
     }),
 
   /**
-   * Cancel or reverse every build a batch run raised (45 §4.1).
+   * Undo past builds on the worker (plans/mrp/17 §8): every backflush batch run, or `runNumber`
+   * alone (the drawer card). Planned builds are cancelled, completed ones reversed, dated today;
+   * nothing is deleted. 409 while a backflush or undo run is live for the org.
    *
-   * 🛑 **The full ledger gate, because `willReverse` writes movements.** A
-   * `planned` or `in_progress` member is cancelled and moves nothing, but a
-   * `completed` one is REVERSED, and a reversal appends the negation of every
-   * consume and produce row the completion wrote. So this takes exactly the pair
-   * {@link assertCanPostBuildLedger} exists for: EDIT on `build` and EDIT on
-   * `stock_movement`. Gating on `build` alone would let somebody who may raise a
-   * run post a four-figure ledger correction through a button whose only other
-   * arm is a cancellation.
-   *
-   * 🛑 **Never a delete**, and never a time machine. `reverseMovement` dates its
-   * rows `new Date()`, so undoing a run that covered a CLOSED month books the
-   * correction in today's open period and leaves that month as posted (§4.2).
-   * The card says so before it asks.
-   *
-   * Per-build isolation: the lib call never throws for one member's failure, it
-   * returns the four buckets (`cancelled`, `reversed`, `skipped`, `failed`).
-   * A run that aborted on the first refusal would report "failed" about builds
-   * it had already undone.
+   * The full ledger gate, because the reversals write movements (45 §4.1).
    */
-  undoBatchRun: capabilityProcedure
-    .input(z.object({ runNumber: z.number().int().positive() }))
+  startUndoBackflush: capabilityProcedure
+    .input(z.object({ runNumber: z.number().int().positive().optional() }).optional())
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
-      const result = await undoBatchRun(ctx.db, organizationId, userId, input.runNumber)
-      if (result.isErr()) throw result.error
-      return result.value
+      return enqueueUndoBackflushRun(organizationId, userId, input?.runNumber)
     }),
+
+  /** One undo run, or the org's latest; `null` when there is none. */
+  getUndoBackflushRun: capabilityProcedure
+    .input(z.object({ runId: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const row = await readUndoBackflushRunRow(ctx.db, organizationId, input.runId)
+      return row ? toUndoBackflushRun(row) : null
+    }),
+
+  /** Parts whose standing backflush legs were stamped for a kind they no longer have (13 §7). */
+  backflushKindDrift: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    await assertCanPostBuildLedger(ctx)
+
+    const result = await readBackflushKindDrift(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return { partCount: result.value.partCount }
+  }),
 })
 
 /**

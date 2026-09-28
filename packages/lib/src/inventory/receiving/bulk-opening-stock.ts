@@ -25,6 +25,7 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { readSystemRecords, systemDefId, systemFieldMap } from '../../resources/system-records'
+import { clearKindConflictConfirmations } from '../builds/kind-conflict-mutations'
 import { isServicePartKind } from '../costing/client'
 import { readServiceKindBlockers, serviceKindRefusal } from '../costing/service-kind-blockers'
 import { assertCostFieldsMaterialized } from '../movements/cost-fields'
@@ -209,6 +210,8 @@ export async function bulkSetPartKind(
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const recordIds = writable.map((partId) => toRecordId(partDefId, partId) as RecordId)
       const { count } = await crud.bulkSetFieldValue(recordIds, kindField.id, kind)
+      // The bulk write fires no field pre-hooks, so the kind's "keep it" reset happens here.
+      await clearKindConflictConfirmations(db, organizationId, writable)
       return { count, failed }
     },
     'Failed to set part kind in bulk',

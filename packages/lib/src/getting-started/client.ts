@@ -12,11 +12,14 @@ export const DISPATCH_GETTING_STARTED_SETTING_KEY = 'onboarding.dispatchGettingS
 /** The setting key under which the accounting getting-started state is persisted. */
 export const ACCOUNTING_GETTING_STARTED_SETTING_KEY = 'onboarding.accountingGettingStarted' as const
 
+/** The setting key under which the stock setup getting-started state is persisted. */
+export const STOCK_GETTING_STARTED_SETTING_KEY = 'onboarding.stockGettingStarted' as const
+
 /**
- * The known onboarding checklists. `main` is the org-wide checklist; `dispatch`
- * and `accounting` are the module ones.
+ * The known onboarding checklists. `main` is the org-wide checklist; `dispatch`,
+ * `accounting` and `stock` are the module ones.
  */
-export const CHECKLIST_IDS = ['main', 'dispatch', 'accounting'] as const
+export const CHECKLIST_IDS = ['main', 'dispatch', 'accounting', 'stock'] as const
 
 export type ChecklistId = (typeof CHECKLIST_IDS)[number]
 
@@ -70,14 +73,20 @@ export const ACCOUNTING_GOAL_KEYS = [
   'map-accounts',
   'route-payment-rails',
   'set-opening-balances',
+  // Only applicable to an org with stocked parts that moved; met otherwise (plans/mrp/17 §5.5).
+  'set-up-stock',
   'finalize-setup',
   'post-first-entry',
 ] as const
 
+/** Stock setup (plans/mrp/17 §5): the three steps of the Stock setup page, in order. */
+export const STOCK_GOAL_KEYS = ['check-part-kinds', 'record-past-builds', 'count-and-cost'] as const
+
 export type MainGoalKey = (typeof MAIN_GOAL_KEYS)[number]
 export type DispatchGoalKey = (typeof DISPATCH_GOAL_KEYS)[number]
 export type AccountingGoalKey = (typeof ACCOUNTING_GOAL_KEYS)[number]
-export type GoalKey = MainGoalKey | DispatchGoalKey | AccountingGoalKey
+export type StockGoalKey = (typeof STOCK_GOAL_KEYS)[number]
+export type GoalKey = MainGoalKey | DispatchGoalKey | AccountingGoalKey | StockGoalKey
 
 /** Per-checklist registry: setting key, goal-key set, and manual-only goals. */
 export const CHECKLISTS: Record<
@@ -87,6 +96,7 @@ export const CHECKLISTS: Record<
       | typeof GETTING_STARTED_SETTING_KEY
       | typeof DISPATCH_GETTING_STARTED_SETTING_KEY
       | typeof ACCOUNTING_GETTING_STARTED_SETTING_KEY
+      | typeof STOCK_GETTING_STARTED_SETTING_KEY
     goalKeys: readonly GoalKey[]
     /** Goals with no server signal — completed only via manualCompletions. */
     manualGoalKeys: readonly GoalKey[]
@@ -105,6 +115,11 @@ export const CHECKLISTS: Record<
   accounting: {
     settingKey: ACCOUNTING_GETTING_STARTED_SETTING_KEY,
     goalKeys: ACCOUNTING_GOAL_KEYS,
+    manualGoalKeys: [],
+  },
+  stock: {
+    settingKey: STOCK_GETTING_STARTED_SETTING_KEY,
+    goalKeys: STOCK_GOAL_KEYS,
     manualGoalKeys: [],
   },
 }

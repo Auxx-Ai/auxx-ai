@@ -73,7 +73,13 @@ export {
 } from './backfill-types'
 // Backflush (111 D23/D24): the replay that builds what sales drove negative, and its preview.
 export { type BackflushInput, backflushBuilds } from './backflush'
+export { readBackflushKindDrift } from './backflush-kind-drift'
 export { previewBackflush, summarizeBackflushPlan } from './backflush-preview'
+export {
+  type BackflushRange,
+  NIGHTLY_BACKFLUSH_LOOKBACK_DAYS,
+  resolveBackflushRange,
+} from './backflush-range'
 export {
   type BackflushStep,
   finalizeBackflushRun,
@@ -148,6 +154,24 @@ export {
   reconcileOrdersFromSync,
   registerOrderDriftReconcilers,
 } from './drift-reconciler'
+// Kind conflicts (plans/mrp/17 D3): the read that blocks backflush, and the "keep it" flag.
+export {
+  clearKindConflictConfirmations,
+  confirmKindConflicts,
+} from './kind-conflict-mutations'
+export {
+  type KindConflict,
+  type KindConflictReason,
+  kindConflictFor,
+  type SuggestedPartKind,
+  suggestedKindFor,
+} from './kind-conflict-policy'
+export {
+  type KindConflictEdges,
+  readKindConflictEdges,
+  readKindConflictFacts,
+  readKindConflicts,
+} from './kind-conflicts'
 export { hasDrifted, type OrderDemand, orderDemandFingerprint } from './order-fingerprint'
 export {
   type OrderBuildAmendment,
@@ -189,6 +213,24 @@ export type {
   UndoBatchRunEntry,
   UndoBatchRunSummary,
 } from './types'
+export {
+  findLiveBackflushOrUndoRun,
+  listBackflushRunNumbers,
+  readUndoBackflushRunRow,
+  toUndoBackflushRun,
+} from './undo-backflush-queries'
+export {
+  finalizeUndoBackflushRun,
+  runUndoBackflushSlice,
+  startUndoBackflushRun,
+  type UndoBackflushStep,
+} from './undo-backflush-run'
+export type {
+  UndoBackflushFailure,
+  UndoBackflushRun,
+  UndoBackflushRunMetadata,
+  UndoBackflushScope,
+} from './undo-backflush-types'
 // Undo a whole batch run (plans/money/tasks/45 §4). Cancels what is `planned`
 // or `in_progress` and REVERSES what is `completed`, never deletes, and never
 // throws: per-build isolation, the same discipline `executeBackfill` keeps.

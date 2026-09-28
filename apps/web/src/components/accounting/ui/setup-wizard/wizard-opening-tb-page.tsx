@@ -12,6 +12,7 @@ import { Label } from '@auxx/ui/components/label'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertTriangle } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
@@ -241,6 +242,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
           <p className='font-medium text-foreground text-sm'>
             {openingEvidenceInstruction(openingSource, cutoverDate)}
           </p>
+          <StockSetupProgressLine />
         </div>
 
         <div className='flex flex-wrap items-center justify-between gap-2'>

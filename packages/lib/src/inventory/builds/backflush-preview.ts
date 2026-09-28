@@ -4,14 +4,17 @@
  * What `backflushBuilds` would write over a range (111 D24's confirm). The same walk, nothing
  * written: a planned build's consumption is simulated through the walk's delta and carried
  * across days, so the preview lists exactly the builds the run will raise on the same ledger.
+ * An absent end is resolved by `resolveBackflushRange`; no movement at all previews nothing.
  */
 
 import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { listBackflushDays, readBackflushGraph, walkBackflush } from './backflush-planner'
+import { resolveBackflushRange, yesterdayInZone } from './backflush-range'
 import type { BackflushPlan, BackflushPlanPart, BackflushPlanSummary } from './backflush-types'
 import { guard } from './guard'
+import { readKindConflicts } from './kind-conflicts'
 
 /** The preview writes nothing, so it can read a year at a time. */
 const PREVIEW_SLICE_DAYS = 366
@@ -19,25 +22,35 @@ const PREVIEW_SLICE_DAYS = 366
 export async function previewBackflush(
   db: Database,
   organizationId: string,
-  input: { from: string; to: string; now?: Date }
+  input: { from?: string; to?: string; now?: Date }
 ): Promise<Result<BackflushPlan, Error>> {
   return guard(
     async () => {
       const now = input.now ?? new Date()
-      const timeZone = await readBookTimeZoneOrUtc(organizationId)
-      const days = listBackflushDays(input, timeZone, now)
+      const [timeZone, graph, conflicts] = await Promise.all([
+        readBookTimeZoneOrUtc(organizationId),
+        readBackflushGraph(db, organizationId),
+        readKindConflicts(db, organizationId),
+      ])
+      if (conflicts.isErr()) throw conflicts.error
+      const range = await resolveBackflushRange(organizationId, input, {
+        timeZone,
+        now,
+        madePartIds: graph.order,
+      })
+      const days = range ? listBackflushDays(range, timeZone, now) : []
+      const yesterday = yesterdayInZone(now, timeZone)
       const plan: BackflushPlan = {
+        range: range ?? { from: yesterday, to: yesterday },
         days: days.map((day) => day.day),
         builds: [],
         buildCount: 0,
         unitCount: 0,
         skipped: 0,
         failedDays: [],
+        kindConflicts: conflicts.value,
       }
-      if (days.length === 0) return plan
-
-      const graph = await readBackflushGraph(db, organizationId)
-      if (graph.order.length === 0) return plan
+      if (days.length === 0 || graph.order.length === 0) return plan
 
       const { skipped } = await walkBackflush({
         organizationId,
@@ -81,11 +94,13 @@ export function summarizeBackflushPlan(plan: BackflushPlan): BackflushPlanSummar
     parts.set(build.partId, part)
   }
   return {
+    range: plan.range,
     dayCount: plan.days.length,
     buildCount: plan.buildCount,
     unitCount: plan.unitCount,
     skipped: plan.skipped,
     failedDays: plan.failedDays,
     parts: [...parts.values()].sort((a, b) => b.builds - a.builds),
+    kindConflicts: plan.kindConflicts,
   }
 }

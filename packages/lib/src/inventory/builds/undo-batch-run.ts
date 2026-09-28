@@ -121,7 +121,7 @@ export async function undoBatchRun(
       for (const build of builds) {
         // 🛑 One refused build must not lose the rest of the run.
         try {
-          await undoOneBuild(db, organizationId, userId, runNumber, build, summary)
+          await undoBatchRunBuild(db, organizationId, userId, runNumber, build, summary)
         } catch (error) {
           summary.failed.push(entry(build, 'failed', message(error)))
           logger.error('Undoing one build failed; continuing with the run', {
@@ -159,8 +159,8 @@ export async function undoBatchRun(
   )
 }
 
-/** The rules table, for one build. */
-async function undoOneBuild(
+/** The rules table, for one build; also the undo job's per-build step. Throws only on a crash. */
+export async function undoBatchRunBuild(
   db: Database,
   organizationId: string,
   userId: string,

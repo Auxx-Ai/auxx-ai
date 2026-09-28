@@ -85,7 +85,18 @@ vi.mock('../../costing/dated-reads', () => ({
       })
     }
   ),
+  readEarliestMovementAt: vi.fn(async (_org: string, partIds: readonly string[]) => {
+    const earliest = new Map<string, Date | null>(partIds.map((id) => [id, null]))
+    for (const row of h.ledger) {
+      if (!earliest.has(row.partId)) continue
+      const at = earliest.get(row.partId)
+      if (!at || row.at < at) earliest.set(row.partId, row.at)
+    }
+    return earliest
+  }),
 }))
+
+vi.mock('../kind-conflicts', () => ({ readKindConflicts: vi.fn(async () => ok([])) }))
 
 vi.mock('../../costing/standard-cost-queries', () => ({
   loadStandardCostWriteContext: vi.fn(async () => ({
@@ -499,6 +510,23 @@ describe('the preview (D24)', () => {
     expect(summary.written.map((b) => [b.partId, b.day, b.quantity])).toEqual(
       preview.value.builds.map((b) => [b.partId, b.day, b.quantity])
     )
+  })
+
+  it('resolves an absent range: the earliest made-part movement to yesterday', async () => {
+    sale(LIFT, 2, '2026-09-23')
+    sale(LIFT, 3, '2026-09-24')
+
+    const preview = await previewBackflush(db, ORG, { now: NOW })
+    if (preview.isErr()) throw preview.error
+    expect(preview.value.range).toEqual({ from: '2026-09-23', to: '2026-09-25' })
+    expect(preview.value.buildCount).toBe(4)
+  })
+
+  it('previews nothing when no made part has moved', async () => {
+    const preview = await previewBackflush(db, ORG, { now: NOW })
+    if (preview.isErr()) throw preview.error
+    expect(preview.value.days).toEqual([])
+    expect(preview.value.buildCount).toBe(0)
   })
 })
 

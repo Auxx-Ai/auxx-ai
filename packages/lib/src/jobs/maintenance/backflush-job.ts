@@ -2,9 +2,12 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { periodKeyForDate } from '../../accounting/ledger/periods/periods'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { backflushBuilds } from '../../inventory/builds/backflush'
+import {
+  lookbackRange,
+  NIGHTLY_BACKFLUSH_LOOKBACK_DAYS,
+} from '../../inventory/builds/backflush-range'
 import {
   finalizeBackflushRun,
   publishBackflushRunFailed,
@@ -15,10 +18,9 @@ import {
   failBackflushRun,
   recordBackflushRecovery,
 } from '../../inventory/builds/backflush-run-mutations'
-import {
-  findActiveBackflushRun,
-  listStaleBackflushRuns,
-} from '../../inventory/builds/backflush-run-queries'
+import { listStaleBackflushRuns } from '../../inventory/builds/backflush-run-queries'
+import { readKindConflicts } from '../../inventory/builds/kind-conflicts'
+import { findLiveBackflushOrUndoRun } from '../../inventory/builds/undo-backflush-queries'
 import { listOrganizationIdsBySetting } from '../../settings/read'
 import { jobId } from '../job-id'
 import type { JobContext } from '../types/job-context'
@@ -40,13 +42,7 @@ const STALE_AFTER_MS = 10 * 60_000
 const MAX_RECOVERIES = 5
 const STEP_ATTEMPTS = 3
 
-/** The local day before `now` in `timeZone`, `YYYY-MM-DD`. */
-export function yesterdayInZone(now: Date, timeZone: string): string {
-  const today = periodKeyForDate(now, 'day', timeZone)
-  const date = new Date(`${today}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() - 1)
-  return date.toISOString().slice(0, 10)
-}
+export { yesterdayInZone } from '../../inventory/builds/backflush-range'
 
 // TODO(mrp): once the plan run exists, schedule it after this job — the planner must read a ledger
 // the backflush has already caught up.
@@ -109,18 +105,24 @@ async function nightly(ctx: JobContext<unknown>): Promise<void> {
   for (const organizationId of organizations) {
     // One org's failure must not lose the others.
     try {
-      // The run walks yesterday too; two walks at once would both build its shortfall.
-      if (await findActiveBackflushRun(database, organizationId)) {
+      // A live run walks these days too, and a live undo is reversing them.
+      if (await findLiveBackflushOrUndoRun(database, organizationId)) {
         logger.info('Nightly backflush skipped: a run is in progress', { organizationId })
         continue
       }
+      const conflicts = await readKindConflicts(database, organizationId)
+      if (conflicts.isErr()) throw conflicts.error
+      if (conflicts.value.length > 0) {
+        logger.warn('Nightly backflush skipped: part kinds conflict with parts lists', {
+          organizationId,
+          conflicts: conflicts.value.length,
+        })
+        continue
+      }
       const timeZone = await readBookTimeZoneOrUtc(organizationId)
-      const yesterday = yesterdayInZone(now, timeZone)
-      const result = await backflushBuilds(database, organizationId, {
-        from: yesterday,
-        to: yesterday,
-        now,
-      })
+      // A run only fills days still below zero, so re-walking the window picks up late sales only.
+      const range = lookbackRange(now, timeZone, NIGHTLY_BACKFLUSH_LOOKBACK_DAYS)
+      const result = await backflushBuilds(database, organizationId, { ...range, now })
       if (result.isErr()) throw result.error
       logger.info('Nightly backflush finished', {
         organizationId,
@@ -142,10 +144,10 @@ async function nightly(ctx: JobContext<unknown>): Promise<void> {
   })
 }
 
-/** Claim a run over one range (refused while another is active) and queue its first slice. */
+/** Claim a run (refused while another is active) and queue its first slice; an absent end is resolved. */
 export async function enqueueBackflushRun(
   organizationId: string,
-  range: { from: string; to: string },
+  range: { from?: string; to?: string },
   actorUserId: string
 ): Promise<{ runId: string }> {
   const started = await startBackflushRun(database, organizationId, { ...range, actorUserId })

@@ -48,6 +48,7 @@ import { migration192RetryPeriodLockedWorkItems } from './migrations/192-retry-p
 import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-ledger-under-mrp'
 import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
 import { migration198SidebarDefaultLayout } from './migrations/198-sidebar-default-layout'
+import { migration199PartKindConflictConfirmed } from './migrations/199-part-kind-conflict-confirmed'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -231,6 +232,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration193InventoryLedgerUnderMrp,
   // MRP planning overrides on `part` and the supplier ordering rhythm on `company`, no backfill.
   migration197MrpPlanningFields,
+  // The hidden "keep it" flag on a part kind conflict (plans/mrp/17 D3), no backfill.
+  migration199PartKindConflictConfirmed,
 ]
 
 /**

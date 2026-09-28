@@ -349,3 +349,17 @@ export type {
   BackflushRunStatus,
   BackflushRunSummary,
 } from './backflush-types'
+// The kind-conflict rule (plans/mrp/17 D3/D4), for the app's confirm before saving a kind.
+export {
+  type KindConflict,
+  type KindConflictInput,
+  type KindConflictReason,
+  kindConflictFor,
+  type SuggestedPartKind,
+  suggestedKindFor,
+} from './kind-conflict-policy'
+export type {
+  UndoBackflushFailure,
+  UndoBackflushRun,
+  UndoBackflushScope,
+} from './undo-backflush-types'

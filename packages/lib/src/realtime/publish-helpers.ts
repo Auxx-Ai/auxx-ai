@@ -23,6 +23,7 @@ import type {
   RunCompletedEvent,
   ThreadCreatedEvent,
   ThreadMeta,
+  UndoBackflushRunEvent,
   WorkflowDraftUpdatedEvent,
   WorkflowKopilotTurnEvent,
 } from './events'
@@ -309,6 +310,17 @@ export async function publishBackflushRunEvent(
 ) {
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'backflush:run', data)
+    .catch(() => {})
+}
+
+/** Publish `backflush:undo` on the org channel (see `UndoBackflushRunEvent`); fire-and-forget. */
+export async function publishUndoBackflushRunEvent(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  data: UndoBackflushRunEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'backflush:undo', data)
     .catch(() => {})
 }
 

@@ -10,9 +10,9 @@ import {
   ACTIVE_BACKFLUSH_STATUSES,
   BACKFLUSH_RUN_CATEGORY,
   BACKFLUSH_RUN_TYPE,
-  findActiveBackflushRun,
 } from './backflush-run-queries'
 import type { BackflushRunMetadata } from './backflush-types'
+import { findLiveBackflushOrUndoRun } from './undo-backflush-queries'
 
 /**
  * Insert a PENDING run, refused with `ConflictError` while the org has an active one.
@@ -32,11 +32,15 @@ export async function claimBackflushRun(
   return db.transaction(async (tx) => {
     // Serializes two concurrent claims for one org; released at commit.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`backflush:${organizationId}`}))`)
-    const active = await findActiveBackflushRun(tx as unknown as Database, organizationId)
+    // An undo run (plans/mrp/17 §8) holds the same lock and blocks a backflush too.
+    const active = await findLiveBackflushOrUndoRun(tx as unknown as Database, organizationId)
     if (active) {
-      throw new ConflictError('A backflush is already running for this organization', {
-        runId: active.id,
-      })
+      throw new ConflictError(
+        active.kind === 'undo'
+          ? 'Past builds are being undone for this organization; wait for it to finish'
+          : 'A backflush is already running for this organization',
+        { runId: active.id, kind: active.kind }
+      )
     }
     const batchRun = await input.allocateBatchRun()
     const metadata: BackflushRunMetadata = {

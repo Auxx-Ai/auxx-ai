@@ -152,6 +152,7 @@ import {
 } from './pre/lifecycle-status-guard'
 import { guardOrderDelete } from './pre/order-delete-guard'
 import { guardPartDelete } from './pre/part-delete-guard'
+import { resetKindConflictConfirmation } from './pre/part-kind-conflict-reset'
 import { guardPartKindService } from './pre/part-kind-service-guard'
 import { guardPurchaseOrderDelete } from './pre/purchase-order-delete-guard'
 import {
@@ -754,7 +755,7 @@ export function registerAllHooks(): void {
   // reversal and `vendor-bills` a posted/part-paid status, both read off the
   // captured values.
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
-  registerFieldPreHooks('parts', 'part_kind', [guardPartKindService])
+  registerFieldPreHooks('parts', 'part_kind', [guardPartKindService, resetKindConflictConfirmation])
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])

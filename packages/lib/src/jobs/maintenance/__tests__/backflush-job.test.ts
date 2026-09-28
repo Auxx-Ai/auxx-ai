@@ -1,6 +1,6 @@
 // packages/lib/src/jobs/maintenance/__tests__/backflush-job.test.ts
 //
-// The nightly shape walks yesterday in each org's book zone; a run step walks one slice and queues
+// The nightly shape walks the last 30 days to yesterday in each org's book zone; a run step walks one slice and queues
 // the next. One org's failure never loses the others.
 
 import { err, ok } from 'neverthrow'
@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   failed: [] as Array<[string, string]>,
   stale: [] as Array<Record<string, unknown>>,
   recoveries: [] as Array<[string, number]>,
+  conflicted: new Set<string>(),
 }))
 
 vi.mock('../../queues', () => ({
@@ -37,10 +38,12 @@ vi.mock('../../../inventory/builds/backflush-run', () => ({
   startBackflushRun: vi.fn(async () => ok({ runId: 'run_1', batchRun: 3 })),
 }))
 vi.mock('../../../inventory/builds/backflush-run-queries', () => ({
-  findActiveBackflushRun: vi.fn(async (_db: unknown, organizationId: string) =>
-    h.active.has(organizationId) ? { id: 'run_live' } : null
-  ),
   listStaleBackflushRuns: vi.fn(async () => h.stale),
+}))
+vi.mock('../../../inventory/builds/undo-backflush-queries', () => ({
+  findLiveBackflushOrUndoRun: vi.fn(async (_db: unknown, organizationId: string) =>
+    h.active.has(organizationId) ? { id: 'run_live', kind: 'backflush' } : null
+  ),
 }))
 vi.mock('../../../inventory/builds/backflush-run-mutations', () => ({
   failBackflushRun: vi.fn(async (_db: unknown, runId: string, error: string) => {
@@ -49,6 +52,15 @@ vi.mock('../../../inventory/builds/backflush-run-mutations', () => ({
   recordBackflushRecovery: vi.fn(async (_db: unknown, runId: string, n: number) => {
     h.recoveries.push([runId, n])
   }),
+}))
+
+vi.mock('../../../inventory/costing/dated-reads', () => ({
+  readEarliestMovementAt: vi.fn(async () => null),
+}))
+vi.mock('../../../inventory/builds/kind-conflicts', () => ({
+  readKindConflicts: vi.fn(async (_db: unknown, organizationId: string) =>
+    ok(h.conflicted.has(organizationId) ? [{ partId: 'part_1' }] : [])
+  ),
 }))
 
 vi.mock('../../../settings/read', () => ({
@@ -102,6 +114,7 @@ beforeEach(() => {
   h.failed = []
   h.stale = []
   h.recoveries = []
+  h.conflicted = new Set()
   vi.useRealTimers()
 })
 
@@ -117,7 +130,7 @@ describe('yesterdayInZone', () => {
 })
 
 describe('the nightly shape', () => {
-  it("walks yesterday in each org's book zone, per org with the switch on", async () => {
+  it("walks the last 30 days in each org's book zone, per org with the switch on", async () => {
     vi.useFakeTimers({ now: new Date('2026-09-24T05:00:00.000Z') })
     h.organizations = ['org_hnl', 'org_utc']
     h.timeZones = { org_hnl: 'Pacific/Honolulu' }
@@ -127,10 +140,11 @@ describe('the nightly shape', () => {
     expect(h.runs.map((r) => r.organizationId)).toEqual(['org_hnl', 'org_utc'])
     // 2026-09-23 19:00 in Honolulu (UTC-10), so its yesterday is the 22nd.
     const hnl = h.runs[0]?.input
-    expect(hnl?.from).toBe('2026-09-22')
+    expect(hnl?.from).toBe('2026-08-24')
     expect(hnl?.to).toBe('2026-09-22')
     expect(hnl?.actorUserId).toBeUndefined()
-    expect(h.runs[1]?.input.from).toBe('2026-09-23')
+    expect(h.runs[1]?.input.from).toBe('2026-08-25')
+    expect(h.runs[1]?.input.to).toBe('2026-09-23')
   })
 
   it('keeps going past an org whose run fails', async () => {
@@ -140,7 +154,14 @@ describe('the nightly shape', () => {
     expect(h.runs.map((r) => r.organizationId)).toEqual(['org_a', 'org_b'])
   })
 
-  it('skips an org whose sliced run is still going, so yesterday is not walked twice', async () => {
+  it('skips an org while its part kinds conflict with parts lists', async () => {
+    h.organizations = ['org_a', 'org_b']
+    h.conflicted = new Set(['org_a'])
+    await backflushJob(ctx(undefined))
+    expect(h.runs.map((r) => r.organizationId)).toEqual(['org_b'])
+  })
+
+  it('skips an org whose sliced run is still going, so its days are not walked twice', async () => {
     h.organizations = ['org_a', 'org_b']
     h.active = new Set(['org_a'])
     await backflushJob(ctx(undefined))

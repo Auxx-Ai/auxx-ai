@@ -2,6 +2,8 @@
 
 /** The contract of the backflush (111 D23/D24). Types only, client-safe. */
 
+import type { KindConflict } from './kind-conflict-policy'
+
 /** One build the replay calls for: one part, one local day. */
 export interface BackflushBuild {
   partId: string
@@ -16,6 +18,8 @@ export interface BackflushBuild {
 
 /** What a run over a range would write, in write order (days ascending, parents first). */
 export interface BackflushPlan {
+  /** The range asked for or resolved (plans/mrp/17 D1); day keys. */
+  range: { from: string; to: string }
   /** Every local day walked, `YYYY-MM-DD`. Days whose end is still in the future are never walked. */
   days: string[]
   builds: BackflushBuild[]
@@ -25,6 +29,8 @@ export interface BackflushPlan {
   skipped: number
   /** Days whose ledger read failed; no part was checked for them. */
   failedDays: { day: string; reason: string }[]
+  /** While any is left, `startBackflushRun` refuses (plans/mrp/17 D3). */
+  kindConflicts: KindConflict[]
 }
 
 /** What one run did. Never throws; a failure is a row in here. */
@@ -51,6 +57,7 @@ export interface BackflushPlanPart {
 
 /** The preview as a request returns it: counts per part, not every build of a multi-year range. */
 export interface BackflushPlanSummary {
+  range: { from: string; to: string }
   dayCount: number
   buildCount: number
   unitCount: number
@@ -58,6 +65,7 @@ export interface BackflushPlanSummary {
   failedDays: { day: string; reason: string }[]
   /** Most builds first. */
   parts: BackflushPlanPart[]
+  kindConflicts: KindConflict[]
 }
 
 /** `SyncJob.status` of a backflush run. */

@@ -116,8 +116,8 @@ interface BlockedPanelProps {
   /** The build or stock movement open in the `?record=` drawer; without a handler the badge links out. */
   activeRecordId?: string | null
   onSelectRecord?: (recordId: RecordId) => void
-  /** The `STANDARD_COST_MISSING` reason row's "Set costs" (106 §6.2); no button without it. */
-  onSetCosts?: () => void
+  /** Where the `STANDARD_COST_MISSING` row's "Set costs" goes (17 D6); no button without it. */
+  setCostsHref?: string
 }
 
 /** Every parked group, newest first, with Map and Retry all per row and over a selection. */
@@ -133,7 +133,7 @@ export function BlockedPanel({
   onSelectShipment,
   activeRecordId = null,
   onSelectRecord,
-  onSetCosts,
+  setCostsHref,
 }: BlockedPanelProps) {
   const utils = api.useUtils()
   const router = useRouter()
@@ -239,8 +239,11 @@ export function BlockedPanel({
         onToggleOpen={() => toggle(id)}
         actions={
           <>
-            {onSetCosts && group.reasonCode === 'STANDARD_COST_MISSING' && (
-              <TreeRowButton persistent tooltipText='Set costs' onClick={onSetCosts}>
+            {setCostsHref && group.reasonCode === 'STANDARD_COST_MISSING' && (
+              <TreeRowButton
+                persistent
+                tooltipText='Set costs'
+                onClick={() => router.push(setCostsHref)}>
                 <Calculator />
               </TreeRowButton>
             )}

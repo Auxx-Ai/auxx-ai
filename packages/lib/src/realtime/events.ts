@@ -64,6 +64,7 @@ export type ResourceSyncEvent =
   | DataConnectorSyncEvent
   | DataExportJobEvent
   | BackflushRunEvent
+  | UndoBackflushRunEvent
   | ExportBatchChangedEvent
   | AccountingWorkChangedEvent
   | RunCompletedEvent
@@ -295,6 +296,22 @@ export interface BackflushRunEvent {
     processed: number
     total: number
     written: number
+    failed: number
+  }
+}
+
+/** An undo run's progress on the org channel (plans/mrp/17 §8), as {@link BackflushRunEvent}. */
+export interface UndoBackflushRunEvent {
+  event: 'backflush:undo'
+  data: {
+    runId: string
+    kind: 'started' | 'progress' | 'finished'
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+    /** Builds handled of `total`. */
+    processed: number
+    total: number
+    reversed: number
+    cancelled: number
     failed: number
   }
 }

@@ -45,7 +45,8 @@ vi.mock('~/components/money/ui/provider-payment-notice', () => ({
   useProviderName: () => 'QuickBooks',
 }))
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+const routerPush = vi.hoisted(() => vi.fn())
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: routerPush }) }))
 vi.mock('~/realtime/hooks', () => ({
   useOrgChannel: (handlers: { onEvent: (event: string, payload?: unknown) => void }) => {
     state.onEvent = handlers.onEvent
@@ -181,7 +182,7 @@ function group(overrides: Record<string, unknown> = {}) {
 
 function renderPanel(
   props: {
-    onSetCosts?: () => void
+    setCostsHref?: string
     onSelectShipment?: (id: string) => void
     onSelectRecord?: (id: string) => void
     activeRecordId?: string | null
@@ -377,15 +378,14 @@ describe('BlockedPanel', () => {
     expect(screen.queryByLabelText('Open Build')).toBeNull()
   })
 
-  it('offers Set costs on the standard-cost reason only when a handler is given', () => {
+  it('offers Set costs on the standard-cost reason only when a link is given, and follows it', () => {
     state.groups = [reason({ reasonCode: 'STANDARD_COST_MISSING' })]
     const { unmount } = renderPanel()
     expect(screen.queryByLabelText('Set costs')).toBeNull()
     unmount()
-    const onSetCosts = vi.fn()
-    renderPanel({ onSetCosts })
+    renderPanel({ setCostsHref: '/app/inventory/setup?step=count&filter=uncosted' })
     fireEvent.click(screen.getByLabelText('Set costs'))
-    expect(onSetCosts).toHaveBeenCalledOnce()
+    expect(routerPush).toHaveBeenCalledWith('/app/inventory/setup?step=count&filter=uncosted')
   })
 
   it('shows a group being retried in place of Retry all', () => {

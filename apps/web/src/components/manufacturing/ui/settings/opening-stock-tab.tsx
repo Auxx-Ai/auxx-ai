@@ -1,9 +1,8 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-tab.tsx
 'use client'
 
-// Inventory > Set counts (money 52 §2.3; 111 D21): the Set counts checklist
-// on the left and THE RUN on the right. `?parts=` / `?job=` prefilter the list (111 Q24).
-// Below `lg` the pane is a drawer, so the list carries its own trigger for it.
+// Stock setup step 3 (plans/mrp/17 §5.3): the count list on the left and the run on the right.
+// `?parts=` / `?job=` prefilter the list (111 Q24). Below `lg` the pane is a drawer.
 
 import { PartKind } from '@auxx/lib/resources/client'
 import { ActionBar, type ActionBarAction } from '@auxx/ui/components/action-bar'
@@ -13,12 +12,7 @@ import { useState } from 'react'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import { ListSelectionProvider } from '~/components/list-selection'
 import { useMedia } from '~/hooks/use-media'
-import { BackflushDialog, type BackflushDialogRange } from '../../builds/backflush-dialog'
-import {
-  type OpeningStockRow,
-  toOpeningStockKind,
-  useOpeningStock,
-} from '../../hooks/use-opening-stock'
+import { toOpeningStockKind, useOpeningStock } from '../../hooks/use-opening-stock'
 import { OpeningStockList } from './opening-stock-list'
 import { OpeningStockRun } from './opening-stock-run'
 
@@ -37,7 +31,6 @@ function OpeningStockTabInner() {
   const opening = useOpeningStock()
   const isDesktop = useMedia(DESKTOP_QUERY)
   const [runOpen, setRunOpen] = useState(false)
-  const [backflush, setBackflush] = useState<BackflushDialogRange | null>(null)
   const { KindConfirmDialog } = opening
 
   // One action per kind the write path takes; a fourth registry kind never renders a button.
@@ -54,27 +47,18 @@ function OpeningStockTabInner() {
     ]
   })
 
-  /** Q25: backflush runs org-wide, from the earliest movement of any listed part to today. */
-  const openBackflush = (rows: OpeningStockRow[]) => {
-    const earliest = rows.reduce<Date | null>(
-      (min, row) => (row.earliest && (!min || row.earliest < min) ? row.earliest : min),
-      null
-    )
-    setBackflush({ from: earliest ?? new Date(), to: new Date() })
-  }
-
   const run = (
     <OpeningStockRun
-      entryCount={opening.entries.length}
+      entryCount={opening.runSize}
       summary={opening.summary}
       exclusions={opening.exclusions}
+      counts={opening.counts}
       cutoffPeriod={opening.cutoffPeriod}
       occurredAt={opening.occurredAt}
       onOccurredAtChange={opening.setOccurredAt}
       canOpenStock={opening.canOpenStock}
       isRunning={opening.isRunning}
       onRun={opening.run}
-      currencyCode={opening.currencyCode}
     />
   )
 
@@ -84,7 +68,7 @@ function OpeningStockTabInner() {
         id='parts-opening-stock'
         scroll='columns'
         pane={run}
-        paneTitle='The run'
+        paneTitle='Save counts'
         paneOpen={runOpen}
         onPaneClose={() => setRunOpen(false)}
         defaultWidth={480}>
@@ -94,7 +78,7 @@ function OpeningStockTabInner() {
               {!isDesktop && (
                 <Button variant='outline' size='sm' onClick={() => setRunOpen(true)}>
                   <Boxes />
-                  Review the run ({opening.entries.length})
+                  Review and save ({opening.runSize})
                 </Button>
               )}
               {opening.prefilter && (
@@ -123,7 +107,7 @@ function OpeningStockTabInner() {
             onQuantityChange={opening.setQuantity}
             onUnitCostChange={opening.setUnitCost}
             onDateChange={opening.setDate}
-            onBackflush={openBackflush}
+            onUseSuggestions={opening.applySuggestions}
           />
         </div>
       </MasterDetailSplit>
@@ -139,13 +123,6 @@ function OpeningStockTabInner() {
         showClose
       />
       <KindConfirmDialog />
-      <BackflushDialog
-        open={backflush !== null}
-        onOpenChange={(open) => {
-          if (!open) setBackflush(null)
-        }}
-        range={backflush ?? undefined}
-      />
     </>
   )
 }
