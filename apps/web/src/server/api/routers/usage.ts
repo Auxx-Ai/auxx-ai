@@ -2,7 +2,7 @@
 
 import { getUserOrganizationId } from '@auxx/lib/email'
 import type { UsageMetric } from '@auxx/lib/usage'
-import { createUsageGuard } from '@auxx/lib/usage'
+import { createUsageGuard, readRecordsUsage } from '@auxx/lib/usage'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
@@ -55,5 +55,17 @@ export const usageRouter = createTRPCRouter({
     )
 
     return results
+  }),
+
+  /** Org-wide counted records against `recordsSoft`/`recordsHard` (null = unlimited). */
+  getRecords: protectedProcedure.query(async ({ ctx }) => {
+    const organizationId = getUserOrganizationId(ctx.session)
+    if (!organizationId) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
+    }
+
+    const result = await readRecordsUsage(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
   }),
 })

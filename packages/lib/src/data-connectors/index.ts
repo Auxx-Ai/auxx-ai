@@ -137,6 +137,7 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
+export { isFirstImport, readIsFirstImport } from './first-import'
 // v15 §4 D — how far back each connector's history reaches, and the gap import
 export {
   type HistoryImportOutcome,

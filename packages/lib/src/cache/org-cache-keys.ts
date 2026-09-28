@@ -853,7 +853,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // because the resolved behavior is baked into the cached blob rather than
   // recomputed per read.
   // v8: + `featureKeys` on the dispatch/accounting defs (sidebar feature gate).
-  resources: { prefix: 'org:resources:v8', ttlSeconds: ONE_DAY },
+  // v9: + `metered` (the records plan limit, plans/billing/06-records-limit.md).
+  resources: { prefix: 'org:resources:v9', ttlSeconds: ONE_DAY },
   resourceNav: { prefix: 'org:resource-nav', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },

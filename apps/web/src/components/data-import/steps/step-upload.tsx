@@ -9,6 +9,7 @@ import { formatBytes } from '@auxx/utils/file'
 import { AlertCircle, Columns, Rows3, Trash2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { FileSelectDropZone } from '~/components/file-select/file-select-drop-zone'
+import { showUsageLimitDialog } from '~/components/subscriptions/usage-limit-dialog'
 import { ACCEPTED_FILE_EXTENSIONS, MAX_FILE_SIZE_BYTES } from '../constants'
 import { useChunkedUpload } from '../hooks/use-chunked-upload'
 import type { ParsedCSVData } from '../types'
@@ -33,7 +34,10 @@ export function StepUpload({ entityDefinitionId, onComplete }: StepUploadProps) 
 
   const { upload, progress, reset } = useChunkedUpload({
     onComplete: (jobId) => onComplete(jobId),
-    onError: (error) => setParseError(error.message),
+    onError: (error) => {
+      setParseError(error.message)
+      showUsageLimitDialog(error)
+    },
   })
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
@@ -71,12 +75,16 @@ export function StepUpload({ entityDefinitionId, onComplete }: StepUploadProps) 
   const handleStartUpload = async () => {
     if (!parsedData || !fileName) return
 
-    await upload({
-      entityDefinitionId,
-      fileName,
-      headers: parsedData.headers,
-      rows: parsedData.rows,
-    })
+    try {
+      await upload({
+        entityDefinitionId,
+        fileName,
+        headers: parsedData.headers,
+        rows: parsedData.rows,
+      })
+    } catch {
+      // Surfaced by `onError`.
+    }
   }
 
   const handleReset = () => {

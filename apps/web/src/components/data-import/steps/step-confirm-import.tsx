@@ -5,8 +5,10 @@
 import { isFinishedImportStatus } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
+import { toastError } from '@auxx/ui/components/toast'
 import { Play } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { showUsageLimitDialog } from '~/components/subscriptions/usage-limit-dialog'
 import { api } from '~/trpc/react'
 import { useImportSSE } from '../hooks/use-import-sse'
 import type { PreviewColumnMapping } from '../plan-preview'
@@ -174,7 +176,16 @@ export function StepConfirmImport({
 
   const handleConfirmImport = async () => {
     setIsExecuting(true)
-    await confirmImport.mutateAsync({ jobId })
+    try {
+      await confirmImport.mutateAsync({ jobId })
+    } catch (error) {
+      setIsExecuting(false)
+      if (!showUsageLimitDialog(error))
+        toastError({
+          title: 'Could not start the import',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+    }
   }
 
   // Not `generatePlan.isPending`: fired from a mount effect, that flag never clears under

@@ -25,6 +25,7 @@ import {
   voidVendorCredit,
 } from '@auxx/lib/accounting/purchasing'
 import { PermissionKey } from '@auxx/lib/permissions'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { calendarDaySchema } from '~/server/api/calendar-day-schema'
@@ -66,7 +67,10 @@ export const vendorCreditRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return createVendorCredit(ctx.db, {
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {
+        entityDefinitionId: 'vendor_credit',
+      })
+      const result = await createVendorCredit(ctx.db, {
         organizationId: ctx.session.organizationId,
         userId: ctx.session.userId,
         vendorCompanyInstanceId: parseRecordId(input.vendorRecordId).entityInstanceId,
@@ -101,6 +105,8 @@ export const vendorCreditRouter = createTRPCRouter({
           ...(line.returnsStock ? { returnsStock: true } : {}),
         })),
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
+      return result
     }),
 
   /**

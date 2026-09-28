@@ -39,6 +39,7 @@ import {
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import type { CapabilitySet } from '@auxx/lib/permissions'
 import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { TRPCError } from '@trpc/server'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { z } from 'zod'
@@ -131,6 +132,10 @@ export const dataImportRouter = createTRPCRouter({
         FeatureKey.importRowsLimit,
         async () => input.rowCount
       )
+      // An org at its records limit cannot start an import into a counted def.
+      await assertRecordRoom(ctx.db, organizationId, {
+        entityDefinitionId: input.entityDefinitionId,
+      })
 
       try {
         const result = await createImportJob(ctx.db, {
@@ -823,6 +828,16 @@ export const dataImportRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Import plan not found' })
       }
 
+      // All-or-nothing against the records limit: the job runs on the ungated sync lane.
+      const planned = await getPlanWithEstimates(ctx.db, input.jobId, job.rowCount)
+      const toCreate = planned?.estimates.toCreate ?? 0
+      if (toCreate > 0) {
+        await assertRecordRoom(ctx.db, organizationId, {
+          entityDefinitionId: job.importMapping.entityDefinitionId,
+          quantity: toCreate,
+        })
+      }
+
       // Mark job as executing
       await markJobExecuting(ctx.db, input.jobId)
 
@@ -834,6 +849,8 @@ export const dataImportRouter = createTRPCRouter({
         organizationId,
         userId,
       })
+      // Rows land in the worker (which invalidates again on finish); a confirm meanwhile recounts.
+      await invalidateMeteredRecordCount(organizationId)
 
       return { success: true }
     }),

@@ -27,6 +27,7 @@ import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import type { WriteSession } from '../../resources/crud/write-origin'
 import { runWithWriteSession } from '../../resources/crud/write-session-als'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { invalidateMeteredRecordCount } from '../../usage/records-count'
 import type { JobContext } from '../types'
 
 const logger = createScopedLogger('execute-plan-job')
@@ -419,6 +420,7 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
     // carries. Publishing a literal `'completed'` here is what let a run that
     // rejected all 201 rows close the wizard on a green success card.
     const finalStatus = await markJobCompleted(db, jobId, result.statistics)
+    await invalidateMeteredRecordCount(organizationId)
 
     // Final frame, unthrottled: the last batch's progress publish may have been
     // swallowed by the throttle, and it is the one carrying the tail of the rows.
@@ -492,6 +494,8 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
 
     // Mark job as failed
     await markJobFailed(db, jobId, errorMessage)
+    // A failed run may still have landed rows.
+    await invalidateMeteredRecordCount(organizationId)
 
     await publishEvent({ type: 'error', message: errorMessage })
     await publishEvent({ type: 'job:status', status: 'failed' })

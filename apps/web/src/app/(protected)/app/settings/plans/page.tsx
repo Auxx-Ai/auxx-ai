@@ -20,6 +20,7 @@ import { PlanViewTracker } from './_components/plan-view-tracker'
 import { ShopifyAdminBillingBannerWrapper } from './_components/shopify-admin-billing-banner-wrapper'
 import { ShopifySyncOnMount } from './_components/shopify-sync-on-mount'
 import { UpgradeConfetti } from './_components/upgrade-confetti'
+import { UsageSection } from './_components/usage-section'
 
 export default function PlansPage() {
   if (isSelfHosted()) redirect('/app/settings')
@@ -44,6 +45,8 @@ export default function PlansPage() {
             <PlanChangeCard />
           </Suspense>
         </div>
+
+        <UsageSection />
 
         <ShopifyAdminBillingBannerWrapper />
 

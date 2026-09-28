@@ -47,6 +47,7 @@ import {
   readOrderOptionsForContact,
   setReturnIntakeOrderOptions,
 } from '@auxx/lib/returns/intake'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter, isAuxxError } from '~/server/api/trpc'
@@ -279,9 +280,15 @@ export const returnIntakeRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return'))
+      // One RMA per group; the whole commit is refused rather than half-committed at the limit.
+      await assertRecordRoom(ctx.db, organizationId, {
+        entityDefinitionId: 'return',
+        quantity: input.groupIds.length,
+      })
 
       const result = await commitReturnIntakeDraft(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
+      await invalidateMeteredRecordCount(organizationId)
       return result.value
     }),
 

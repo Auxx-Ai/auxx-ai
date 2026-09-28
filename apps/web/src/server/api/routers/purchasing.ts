@@ -62,6 +62,7 @@ import {
 } from '@auxx/lib/inventory/tariffs'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -1340,9 +1341,11 @@ export const purchasingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
+      await assertRecordRoom(ctx.db, organizationId, { entityDefinitionId: 'purchase_order' })
 
       const result = await commitIntakeDraft(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
+      await invalidateMeteredRecordCount(organizationId)
       return result.value
     }),
 

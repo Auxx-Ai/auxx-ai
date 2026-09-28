@@ -8,6 +8,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { resolveSystemAttributeRef } from '~/components/resources/utils/resolve-system-attribute'
+import { showUsageLimitDialog } from '~/components/subscriptions/usage-limit-dialog'
 import { api } from '~/trpc/react'
 import {
   type CreatedRecordInstance,
@@ -114,10 +115,11 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
         onCreated?.(created)
         return created
       } catch (error) {
-        toastError({
-          title: 'Error creating record',
-          description: error instanceof Error ? error.message : 'Could not create the record',
-        })
+        if (!showUsageLimitDialog(error))
+          toastError({
+            title: 'Error creating record',
+            description: error instanceof Error ? error.message : 'Could not create the record',
+          })
         throw error
       }
     },
@@ -150,10 +152,11 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
           return created
         })
       } catch (error) {
-        toastError({
-          title: 'Error creating records',
-          description: error instanceof Error ? error.message : 'Could not create the records',
-        })
+        if (!showUsageLimitDialog(error))
+          toastError({
+            title: 'Error creating records',
+            description: error instanceof Error ? error.message : 'Could not create the records',
+          })
         throw error
       }
     },

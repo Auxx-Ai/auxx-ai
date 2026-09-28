@@ -63,6 +63,7 @@ import {
   updateReturnLine,
   writeSalvageMovements,
 } from '@auxx/lib/returns'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
@@ -271,9 +272,11 @@ export const returnRouter = createTRPCRouter({
   create: capabilityProcedure.input(z.object(returnFields)).mutation(async ({ ctx, input }) => {
     const { organizationId, userId } = ctx.session
     ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return'))
+    await assertRecordRoom(ctx.db, organizationId, { entityDefinitionId: 'return' })
 
     const result = await createReturn(ctx.db, organizationId, userId, input)
     if (result.isErr()) throw result.error
+    await invalidateMeteredRecordCount(organizationId)
     return result.value
   }),
 

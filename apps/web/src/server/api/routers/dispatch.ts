@@ -70,6 +70,7 @@ import {
   getRecurrenceRuleById,
   recurrencePatternSchema,
 } from '@auxx/lib/recurrence'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
@@ -172,22 +173,32 @@ export const dispatchRouter = createTRPCRouter({
     .input(z.object({ requestRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.requestRecordId)
-      return convertRequestToWorkOrder({
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {
+        entityDefinitionId: 'work_order',
+      })
+      const result = await convertRequestToWorkOrder({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         requestInstanceId: entityInstanceId,
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
+      return result
     }),
   // SECONDARY intake path (01 §8) — ticket → job, kept alongside convertToWorkOrder.
   createFromTicket: dispatchManageProcedure
     .input(z.object({ ticketRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.ticketRecordId)
-      return createWorkOrderFromTicket({
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {
+        entityDefinitionId: 'work_order',
+      })
+      const result = await createWorkOrderFromTicket({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         ticketInstanceId: entityInstanceId,
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
+      return result
     }),
 
   // §A — DispatchWorker CRUD (07-m2-build.md §A.3).
@@ -547,6 +558,9 @@ export const dispatchRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {
+        entityDefinitionId: 'work_order',
+      })
       const result = await createWorkOrder({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
@@ -557,6 +571,7 @@ export const dispatchRouter = createTRPCRouter({
         assigneeWorkerId: input.assigneeWorkerId,
         excludeSocketId: excludeSocketId(ctx),
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
       const workOrderStatus = await getWorkOrderStatus(
         ctx.session.organizationId,
         ctx.session.user.id,

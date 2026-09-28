@@ -32,6 +32,7 @@ import {
   RESOURCE_TABLE_REGISTRY,
   UnifiedCrudHandler,
 } from '@auxx/lib/resources'
+import { assertRecordRoom } from '@auxx/lib/usage'
 import { type FieldId, parseResourceFieldId, resourceFieldIdSchema } from '@auxx/types/field'
 import {
   ENTITY_DEFINITION_TYPES,
@@ -961,6 +962,7 @@ export const recordRouter = createTRPCRouter({
       const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
         capabilities: ctx.capabilities,
         requestPath: true,
+        enforceRecordLimit: true,
       })
       return await handler.create(input.entityDefinitionId, input.values ?? {})
     } catch (error: any) {
@@ -988,8 +990,14 @@ export const recordRouter = createTRPCRouter({
   createMany: capabilityProcedure.input(createManyInputSchema).mutation(async ({ ctx, input }) => {
     const { organizationId, user } = ctx.session
     await assertNotInstanceAccessDefForWrite(organizationId, [input.entityDefinitionId])
+    // Whole batch up front, so a batch that would pass the limit creates nothing.
+    await assertRecordRoom(ctx.db, organizationId, {
+      entityDefinitionId: input.entityDefinitionId,
+      quantity: input.records.length,
+    })
     const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
       capabilities: ctx.capabilities,
+      enforceRecordLimit: true,
     })
     const created: Array<Pick<CreateEntityResult, 'recordId' | 'instance'>> = []
 
