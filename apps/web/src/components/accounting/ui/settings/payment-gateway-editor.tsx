@@ -575,9 +575,11 @@ function FeedsRow({ gatewayId, canControl }: { gatewayId: string; canControl: bo
 
   const invalidate = () =>
     Promise.all([
-      utils.paymentGateway.readiness.invalidate({ gatewayId }),
+      // Every rail's readiness: another rail may now read `linked_elsewhere`.
+      utils.paymentGateway.readiness.invalidate(),
       utils.paymentGateway.list.invalidate(),
       utils.paymentGateway.listUnlinkedFeeds.invalidate(),
+      utils.paymentGateway.feedStateForHandles.invalidate(),
     ])
 
   const linkFeed = api.paymentGateway.linkFeed.useMutation({

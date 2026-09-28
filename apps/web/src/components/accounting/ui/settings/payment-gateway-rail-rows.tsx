@@ -92,12 +92,20 @@ export function railReadinessLine(state: {
   clearingMapped: boolean
   bankMapped: boolean
   feedLinked: boolean
-  feed?: Pick<RailFeedStatus, 'state' | 'optional'> | null
+  feed?:
+    | (Pick<RailFeedStatus, 'state' | 'optional'> & Partial<Pick<RailFeedStatus, 'linkedGateway'>>)
+    | null
 }): { ready: boolean; text: string } {
   if (!state.clearingMapped) return { ready: false, text: 'Needs a clearing account.' }
   if (state.feedLinked && !state.bankMapped)
     return { ready: false, text: 'Needs a receiving bank account for its feed.' }
   const { feed } = state
+  // Receipts still post here; only the payouts that relieve them land on the other rail.
+  if (!state.feedLinked && feed?.state === 'linked_elsewhere' && feed.linkedGateway)
+    return {
+      ready: true,
+      text: `Ready to post, but its payouts clear on ${feed.linkedGateway.name}.`,
+    }
   if (!state.feedLinked && feed && !feed.optional && BY_HAND_FEED_STATES.includes(feed.state))
     return { ready: true, text: 'Ready to post by hand.' }
   return { ready: true, text: 'Ready to post.' }

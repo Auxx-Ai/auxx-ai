@@ -2,13 +2,14 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { feedAppForHandles } from '@auxx/lib/accounting/processors/client'
+import { processorByHandle } from '@auxx/lib/accounting/processors/client'
 import {
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   type PaymentGatewayFeeTreatmentValue,
   type PaymentGatewayRow,
+  type RailFeedStatus,
 } from '@auxx/lib/accounting/rails/client'
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
 import { defaultMintFeeAccount } from '@auxx/lib/accounting/rails/rail-groups'
@@ -39,7 +40,7 @@ import {
   useFeedOptions,
   useHandleOptions,
 } from './payment-gateway-rail-rows'
-import { ProcessorFeedHint } from './rail-feed-note'
+import { RailFeedNote, railFeedCopy } from './rail-feed-note'
 
 const FEE_TREATMENT_OPTIONS = PAYMENT_GATEWAY_FEE_TREATMENTS.map((value) => ({
   value,
@@ -55,7 +56,7 @@ export interface AddDraft {
   accounts: Record<RailRole, MappingAccountValue>
   feedId: string | null
   /** A person typed or picked it, so a new first handle stops re-suggesting it. */
-  touched: { name: boolean; feeTreatment: boolean; fee: boolean }
+  touched: { name: boolean; feeTreatment: boolean; fee: boolean; feed: boolean }
 }
 
 /** A fresh draft, seeded from the catalogue's guess for `handle`. */
@@ -72,7 +73,7 @@ export function draftFor(handle?: string): AddDraft {
       bank: null,
     },
     feedId: null,
-    touched: { name: false, feeTreatment: false, fee: false },
+    touched: { name: false, feeTreatment: false, fee: false, feed: false },
   }
 }
 
@@ -100,6 +101,19 @@ export function findSiblingGateway(
         })
     ) ?? null
   )
+}
+
+/**
+ * The feed state the dialog shows for its handles. `linked_elsewhere` is dropped while the sibling
+ * suggestion is up, because that alert already offers to add the handle to the other gateway.
+ */
+export function addDialogFeed(
+  feed: RailFeedStatus | null | undefined,
+  siblingShown: boolean
+): RailFeedStatus | null {
+  if (!feed) return null
+  if (feed.state === 'linked_elsewhere' && siblingShown) return null
+  return railFeedCopy(feed, true) ? feed : null
 }
 
 export interface PaymentGatewayAddDialogProps {
@@ -132,6 +146,7 @@ export function PaymentGatewayAddDialog({
       utils.paymentGateway.observedHandles.invalidate(),
       utils.paymentGateway.listUnlinkedFeeds.invalidate(),
       utils.paymentGateway.readiness.invalidate(),
+      utils.paymentGateway.feedStateForHandles.invalidate(),
       utils.ledger.roleMap.invalidate(),
       utils.ledger.chartAccounts.invalidate(),
     ])
@@ -174,13 +189,29 @@ export function PaymentGatewayAddDialog({
     [firstHandle, gateways.data]
   )
 
-  const hasFeedApp = feedAppForHandles(draft.handles) !== null
+  const hasProcessor = draft.handles.some((handle) => processorByHandle(handle) !== null)
+  const feedState = api.paymentGateway.feedStateForHandles.useQuery(
+    { groups: [draft.handles] },
+    { enabled: open && hasProcessor }
+  )
+  const feed = addDialogFeed(hasProcessor ? feedState.data?.[0] : null, !!sibling)
+  const candidateFeedId = feed?.candidateSourceAccountId ?? null
+
+  // `available` cannot Link a gateway that does not exist yet, so it preselects the feed instead.
+  useEffect(() => {
+    if (!open || !candidateFeedId) return
+    setDraft((prev) =>
+      prev.feedId === null && !prev.touched.feed ? { ...prev, feedId: candidateFeedId } : prev
+    )
+  }, [open, candidateFeedId])
+
   const feeAccount = roleMap.data?.roles.find((r) => r.role === 'payment_processing_fees')?.account
   const name = draft.name.trim()
   const readiness = railReadinessLine({
     clearingMapped: draft.accounts.clearing !== null,
     bankMapped: !!draft.accounts.bank && draft.accounts.bank !== MINT_ACCOUNT_VALUE,
     feedLinked: draft.feedId !== null,
+    feed,
   })
 
   function setHandles(handles: string[]) {
@@ -342,27 +373,34 @@ export function PaymentGatewayAddDialog({
               icon={<PlugZap className='size-4 text-muted-foreground' />}
               showIcon
               description='The processor account that reports this rail’s payouts.'>
-              {!feeds.isPending && feeds.options.length === 0 && hasFeedApp ? (
-                <ProcessorFeedHint handles={draft.handles} className='min-h-8 py-1' />
+              {!feeds.isPending && feeds.options.length === 0 && feed ? (
+                <RailFeedNote feed={feed} canControl={false} className='min-h-8 py-1' />
               ) : (
-                <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  fieldOptions={{ options: feeds.options }}
-                  value={draft.feedId}
-                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                  placeholder={
-                    feeds.isPending
-                      ? 'Loading…'
-                      : feeds.options.length === 0
-                        ? 'No unclaimed feed'
-                        : 'Select a feed'
-                  }
-                  disabled={pending || feeds.options.length === 0}
-                  onChange={(value) => {
-                    const next = Array.isArray(value) ? value[0] : value
-                    setDraft((prev) => ({ ...prev, feedId: (next as string | undefined) ?? null }))
-                  }}
-                />
+                <div className='flex min-w-0 flex-col'>
+                  <FieldInputAdapter
+                    fieldType={FieldType.SINGLE_SELECT}
+                    fieldOptions={{ options: feeds.options }}
+                    value={draft.feedId}
+                    triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                    placeholder={
+                      feeds.isPending
+                        ? 'Loading…'
+                        : feeds.options.length === 0
+                          ? 'No unclaimed feed'
+                          : 'Select a feed'
+                    }
+                    disabled={pending || feeds.options.length === 0}
+                    onChange={(value) => {
+                      const next = Array.isArray(value) ? value[0] : value
+                      setDraft((prev) => ({
+                        ...prev,
+                        feedId: (next as string | undefined) ?? null,
+                        touched: { ...prev.touched, feed: true },
+                      }))
+                    }}
+                  />
+                  {feed && <RailFeedNote feed={feed} canControl={false} className='pb-1' />}
+                </div>
               )}
             </FieldPanelRow>
           </FieldPanel>

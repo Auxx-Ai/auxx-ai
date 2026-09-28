@@ -7,9 +7,6 @@ vi.mock('~/trpc/react', () => ({ api: {} }))
 vi.mock('~/components/data-connectors/hooks/use-can-manage-connectors', () => ({
   useCanManageConnectors: () => true,
 }))
-vi.mock('~/components/apps/providers/apps-context', () => ({
-  useOptionalAppsContext: () => null,
-}))
 
 import { railFeedCopy } from '../rail-feed-note'
 
@@ -22,6 +19,8 @@ function feed(overrides: Partial<RailFeedStatus>): RailFeedStatus {
     connectorId: null,
     candidateSourceAccountId: null,
     optional: false,
+    processorHandle: 'affirm',
+    linkedGateway: null,
     ...overrides,
   }
 }
@@ -82,5 +81,32 @@ describe('railFeedCopy', () => {
     expect(copy?.sentence).toBe(
       'Optional: Authorize.Net is installed. Connect it so auxx reads and posts Authorize.Net payouts.'
     )
+  })
+
+  it('sends a rail whose feed is linked elsewhere to that gateway, never Optional', () => {
+    const copy = railFeedCopy(
+      feed({
+        state: 'linked_elsewhere',
+        feedApp: 'authorize-net',
+        processorLabel: 'Authorize.Net',
+        processorHandle: 'authorize.net',
+        optional: true,
+        linkedGateway: { id: 'pg_anet', name: 'Authorize.Net', handles: ['authorize_net'] },
+      }),
+      false
+    )
+    expect(copy).toEqual({
+      sentence:
+        'The Authorize.Net feed is linked to Authorize.Net (authorize_net). Payouts for authorize.net settle there - add authorize.net to that gateway instead.',
+      action: {
+        kind: 'href',
+        href: '/app/accounting/settings/payment-gateways?gateway=pg_anet',
+        label: 'Open Authorize.Net',
+      },
+    })
+  })
+
+  it('says nothing for linked_elsewhere without the other gateway', () => {
+    expect(railFeedCopy(feed({ state: 'linked_elsewhere' }), true)).toBeNull()
   })
 })

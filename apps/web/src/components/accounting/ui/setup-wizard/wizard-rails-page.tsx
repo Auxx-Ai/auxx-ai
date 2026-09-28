@@ -3,6 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { ACCOUNT_ROLES } from '@auxx/lib/accounting/ledger/client'
+import { processorByHandle } from '@auxx/lib/accounting/processors/client'
 import {
   buildRailGroups,
   defaultMintFeeAccount,
@@ -28,7 +29,7 @@ import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel
 import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-import { ProcessorFeedHint, RailFeedNote } from '../settings/rail-feed-note'
+import { RailFeedNote } from '../settings/rail-feed-note'
 
 const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 
@@ -97,6 +98,25 @@ export function WizardRailsPage() {
   )
   const shared = useMemo(() => sharedClearingAccounts(gatewayRows), [gatewayRows])
 
+  // An unclaimed group has no gateway to carry a feed state, so ask for it by handles, in one call.
+  const unclaimedFeedGroups = useMemo(
+    () =>
+      groups
+        .filter((group) => group.claimedBy.length === 0)
+        .map((group) => ({ key: group.key, handles: group.handles.map((row) => row.handle) }))
+        .filter((group) => group.handles.some((handle) => processorByHandle(handle) !== null)),
+    [groups]
+  )
+  const unclaimedFeeds = api.paymentGateway.feedStateForHandles.useQuery(
+    { groups: unclaimedFeedGroups.map((group) => group.handles) },
+    { enabled: unclaimedFeedGroups.length > 0 }
+  )
+  const feedByGroupKey = useMemo(
+    () =>
+      new Map(unclaimedFeedGroups.map((group, index) => [group.key, unclaimedFeeds.data?.[index]])),
+    [unclaimedFeedGroups, unclaimedFeeds.data]
+  )
+
   // 🛑 Gate the fee warning on the role map having ANSWERED. "No account holds
   // this role" is a claim about the organization, and making it while the query
   // is still in flight is a false one on the page whose whole job is telling
@@ -117,6 +137,7 @@ export function WizardRailsPage() {
       utils.paymentGateway.list.invalidate(),
       utils.paymentGateway.handleCensus.invalidate(),
       utils.paymentGateway.observedHandles.invalidate(),
+      utils.paymentGateway.feedStateForHandles.invalidate(),
       utils.ledger.chartAccounts.invalidate(),
       utils.ledger.roleMap.invalidate(),
     ])
@@ -267,8 +288,9 @@ export function WizardRailsPage() {
                             className='pt-1'
                           />
                         ) : (
-                          <ProcessorFeedHint
-                            handles={group.handles.map((handle) => handle.handle)}
+                          <RailFeedNote
+                            feed={feedByGroupKey.get(group.key)}
+                            canControl={canControl}
                             className='pt-1'
                           />
                         )}

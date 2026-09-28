@@ -8,6 +8,7 @@ function inputs(overrides: Partial<RailFeedInputs> = {}): RailFeedInputs {
     handles: ['affirm'],
     linked: false,
     unlinkedFeeds: [],
+    linkedFeeds: [],
     connectors: [],
     installedApps: new Map(),
     installableApps: new Map(),
@@ -16,6 +17,12 @@ function inputs(overrides: Partial<RailFeedInputs> = {}): RailFeedInputs {
 }
 
 const affirmFeed = { processorAccountId: 'fsa_affirm', providerKey: 'affirm' }
+const shopifyGateway = { id: 'pg_shop', name: 'Shopify Payments', handles: ['shopify_payments'] }
+const shopifyLinked = { providerKey: 'shopify_payments', gateway: shopifyGateway }
+const shopifyConnected = {
+  connectors: [{ id: 'dc_shop', type: 'app:shopify', status: 'ready' }],
+  installedApps: new Map([['shopify', 'Shopify']]),
+}
 
 describe('decideRailFeedState', () => {
   it('is linked when a live feed points at the rail, whatever else is true', () => {
@@ -142,6 +149,66 @@ describe('decideRailFeedState', () => {
       state: 'not_connected',
       feedApp: 'shopify',
       processorLabel: 'Shopify Payments',
+    })
+  })
+
+  it('is linked_elsewhere when the processor feed is linked to another gateway and none is free', () => {
+    const status = decideRailFeedState(
+      inputs({ handles: ['shop_cash'], linkedFeeds: [shopifyLinked], ...shopifyConnected })
+    )
+    expect(status).toMatchObject({
+      state: 'linked_elsewhere',
+      processorLabel: 'Shopify Payments',
+      processorHandle: 'shop_cash',
+      connectorId: 'dc_shop',
+      linkedGateway: shopifyGateway,
+      candidateSourceAccountId: null,
+    })
+  })
+
+  it('ignores a linked feed of another processor', () => {
+    const status = decideRailFeedState(
+      inputs({ handles: ['affirm'], linkedFeeds: [shopifyLinked], installedApps: new Map() })
+    )
+    expect(status).toMatchObject({ state: 'none', linkedGateway: null })
+  })
+
+  it('prefers an unlinked feed of the processor over one linked elsewhere', () => {
+    const status = decideRailFeedState(
+      inputs({
+        handles: ['shop_cash'],
+        linkedFeeds: [shopifyLinked],
+        unlinkedFeeds: [{ processorAccountId: 'fsa_shop_2', providerKey: 'shopify_payments' }],
+        ...shopifyConnected,
+      })
+    )
+    expect(status).toMatchObject({
+      state: 'available',
+      candidateSourceAccountId: 'fsa_shop_2',
+      linkedGateway: null,
+    })
+  })
+
+  it('stays linked when this rail has its own feed, whatever is linked elsewhere', () => {
+    const status = decideRailFeedState(
+      inputs({ handles: ['shopify_payments'], linked: true, linkedFeeds: [shopifyLinked] })
+    )
+    expect(status).toMatchObject({ state: 'linked', linkedGateway: null })
+  })
+
+  it('keeps Authorize.net optional when its feed is linked elsewhere', () => {
+    const other = { id: 'pg_anet', name: 'Authorize.Net', handles: ['authorize_net'] }
+    const status = decideRailFeedState(
+      inputs({
+        handles: ['authorize.net'],
+        linkedFeeds: [{ providerKey: 'authorize_net', gateway: other }],
+      })
+    )
+    expect(status).toMatchObject({
+      state: 'linked_elsewhere',
+      optional: true,
+      processorHandle: 'authorize.net',
+      linkedGateway: other,
     })
   })
 })

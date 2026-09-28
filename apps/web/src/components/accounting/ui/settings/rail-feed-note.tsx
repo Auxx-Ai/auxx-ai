@@ -1,14 +1,12 @@
 // apps/web/src/components/accounting/ui/settings/rail-feed-note.tsx
 'use client'
 
-import { processorByHandle } from '@auxx/lib/accounting/processors/client'
 import type { RailFeedStatus } from '@auxx/lib/accounting/rails/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
-import { useOptionalAppsContext } from '~/components/apps/providers/apps-context'
 import { useCanManageConnectors } from '~/components/data-connectors/hooks/use-can-manage-connectors'
 import { connectSourceHref } from '~/components/data-connectors/lib/connect-source-href'
 import { api } from '~/trpc/react'
@@ -22,6 +20,8 @@ export interface RailFeedCopy {
     | { kind: 'ask'; text: string }
     | null
 }
+
+const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 
 /** The copy for one rail's feed state (brief 113 D2/D4); pure so the list tooltip can reuse it. */
 export function railFeedCopy(
@@ -42,6 +42,21 @@ export function railFeedCopy(
             action: { kind: 'link', sourceAccountId: feed.candidateSourceAccountId },
           }
         : { sentence: `${prefix}More than one ${label} feed is ready. Pick one.`, action: null }
+    case 'linked_elsewhere': {
+      // Never "Optional": receipts clear here while payouts relieve the other rail, billed or not.
+      const other = feed.linkedGateway
+      if (!other) return null
+      const handle = feed.processorHandle ?? 'this handle'
+      const otherHandles = other.handles.length > 0 ? ` (${other.handles.join(', ')})` : ''
+      return {
+        sentence: `The ${label} feed is linked to ${other.name}${otherHandles}. Payouts for ${handle} settle there - add ${handle} to that gateway instead.`,
+        action: {
+          kind: 'href',
+          href: `${GATEWAYS_HREF}?gateway=${encodeURIComponent(other.id)}`,
+          label: `Open ${other.name}`,
+        },
+      }
+    }
     case 'syncing':
       return {
         sentence: `${prefix}${app} is connected and has not synced payouts yet.`,
@@ -75,8 +90,8 @@ export function railFeedCopy(
 
 interface RailFeedNoteProps {
   feed: RailFeedStatus | null | undefined
-  /** The rail `linkFeed` points the candidate at. */
-  gatewayId: string
+  /** The rail `linkFeed` points the candidate at; without one (no gateway yet) there is no Link. */
+  gatewayId?: string
   /** `PermissionKey.ledgerControl`: false hides Link; connector actions follow connector access. */
   canControl: boolean
   className?: string
@@ -89,9 +104,11 @@ export function RailFeedNote({ feed, gatewayId, canControl, className }: RailFee
   const linkFeed = api.paymentGateway.linkFeed.useMutation({
     onSuccess: () =>
       Promise.all([
-        utils.paymentGateway.readiness.invalidate({ gatewayId }),
+        // Every rail's readiness: another rail may now read `linked_elsewhere`.
+        utils.paymentGateway.readiness.invalidate(),
         utils.paymentGateway.list.invalidate(),
         utils.paymentGateway.listUnlinkedFeeds.invalidate(),
+        utils.paymentGateway.feedStateForHandles.invalidate(),
       ]),
     onError: (error) => toastError({ title: 'Error linking the feed', description: error.message }),
   })
@@ -107,7 +124,7 @@ export function RailFeedNote({ feed, gatewayId, canControl, className }: RailFee
         className
       )}>
       <span>{copy.sentence}</span>
-      {action?.kind === 'link' && canControl && (
+      {action?.kind === 'link' && canControl && gatewayId && (
         <Button
           variant='outline'
           size='xs'
@@ -119,47 +136,6 @@ export function RailFeedNote({ feed, gatewayId, canControl, className }: RailFee
       )}
       {action?.kind === 'href' && <FeedHrefButton href={action.href} label={action.label} />}
       {action?.kind === 'ask' && <span>{action.text}</span>}
-    </div>
-  )
-}
-
-interface ProcessorFeedHintProps {
-  /** The rail's handles, as typed or seen on orders. */
-  handles: readonly string[]
-  className?: string
-}
-
-/**
- * The feed nudge for a rail with no gateway yet, from the processor descriptor alone. Says
- * nothing about install or connector state because nothing here has read it.
- */
-export function ProcessorFeedHint({ handles, className }: ProcessorFeedHintProps) {
-  const canManageConnectors = useCanManageConnectors()
-  const installations = useOptionalAppsContext()?.appInstallations
-  const processor = handles.map(processorByHandle).find((p) => p?.feedApp) ?? null
-  if (!processor?.feedApp) return null
-
-  const feedApp = processor.feedApp
-  const app =
-    installations?.find((installation) => installation.app.slug === feedApp)?.app.title ??
-    processor.label
-  const prefix = processor.feeTreatment === 'billed' ? 'Optional: ' : ''
-
-  return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs',
-        className
-      )}>
-      <span>
-        {prefix}
-        {processor.label} payouts can be read and posted by the {app} app.
-      </span>
-      {canManageConnectors ? (
-        <FeedHrefButton href={connectSourceHref(feedApp)} label={`Connect ${app}`} />
-      ) : (
-        <span>Ask whoever manages connectors to connect {app}.</span>
-      )}
     </div>
   )
 }

@@ -24,6 +24,7 @@ import {
   listUnlinkedFeeds,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_STATUSES,
+  railFeedStatusesForHandles,
   readClearingAccountBalance,
   readiness,
   setUpPaymentGateway,
@@ -76,6 +77,26 @@ export const paymentGatewaysRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         gatewayId: input.gatewayId,
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The feed state a gateway with these handles would have, one per group in order (brief 113 D2):
+   * the add dialog and the wizard's unrouted rails ask before the gateway exists.
+   */
+  feedStateForHandles: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        groups: z.array(z.array(z.string().min(1).max(64)).max(50)).max(100),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await railFeedStatusesForHandles(
+        ctx.db,
+        ctx.session.organizationId,
+        input.groups
+      )
       if (result.isErr()) throw result.error
       return result.value
     }),
