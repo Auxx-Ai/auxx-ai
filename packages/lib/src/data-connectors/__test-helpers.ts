@@ -43,6 +43,7 @@ export function zeroRunCounters(): SyncCtx['counters'] {
     failed: 0,
     relationshipWarnings: 0,
     errorSample: [],
+    byMapping: {},
   }
 }
 

@@ -15,6 +15,7 @@ import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-s
 import type { ConnectorQuery } from './connectors/types'
 import { maxLevel } from './edit-impact'
 import { completeRunStream, isRunPauseRequested } from './run-control'
+import type { MappingCounters } from './run-counters'
 import type {
   DataConnectorType,
   FieldMapping,
@@ -354,6 +355,8 @@ export interface RunCounters {
   // (stale sweep / ledger fail), rendered under a neutral "Error" bucket. Shared
   // with the sliced sync-core ledger fold (`SliceLedgerEntry.errorSample`).
   errorSample: SyncRunErrorSample[]
+  /** The created/updated/skipped/failed totals split by mapping id (plan 14a). */
+  byMapping: Record<string, MappingCounters>
 }
 
 export function newRunCounters(): RunCounters {
@@ -369,6 +372,7 @@ export function newRunCounters(): RunCounters {
     failed: 0,
     relationshipWarnings: 0,
     errorSample: [],
+    byMapping: {},
   }
 }
 

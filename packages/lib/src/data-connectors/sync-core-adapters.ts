@@ -7,7 +7,7 @@
 // table directly. See plans/data-connectors/v3/shared-sync-core-plan.md §3.
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, type SQL, sql } from 'drizzle-orm'
 import type { RunLedger, SliceLedgerEntry, SyncState, SyncStateStore } from '../sync-core/contracts'
 import { persistStreamState } from './service'
 import type { ConnectorStreamState } from './types'
@@ -148,6 +148,39 @@ export function createRunSyncStateStore(
 
 // ── RunLedger over DataConnectorRun ─────────────────────────────────────────────
 
+const MAPPING_OUTCOMES = ['created', 'updated', 'skipped', 'failed'] as const
+
+/**
+ * `progress` plus this slice's `timing: { fetchMs, sinkMs }` and
+ * `byMapping: { [mappingId]: { created, updated, skipped, failed } }`; undefined when there is
+ * nothing to add. Reads only the pre-update column, so it nests inside the checkpoint `jsonb_set`.
+ */
+function foldProgressSql(entry: SliceLedgerEntry): SQL | undefined {
+  const T = schema.DataConnectorRun
+  const c = entry.counters ?? {}
+  const byMapping = Object.entries(entry.countersByKey ?? {})
+  const timed = c.fetchMs !== undefined || c.sinkMs !== undefined
+  if (!timed && byMapping.length === 0) return undefined
+  let out = sql`coalesce(${T.progress}, '{}'::jsonb)`
+  if (timed) {
+    const add = (key: string, n = 0) =>
+      sql`coalesce((${T.progress} #>> array['timing', ${key}])::numeric, 0) + ${Math.round(n)}`
+    out = sql`jsonb_set(${out}, '{timing}', jsonb_build_object('fetchMs', ${add('fetchMs', c.fetchMs)}, 'sinkMs', ${add('sinkMs', c.sinkMs)}), true)`
+  }
+  if (byMapping.length > 0) {
+    // One `jsonb_build_object` per mapping: the function caps at 100 arguments.
+    const merged = byMapping.map(([id, d]) => {
+      const fields = MAPPING_OUTCOMES.map(
+        (k) =>
+          sql`${k}::text, coalesce((${T.progress} #>> array['byMapping', ${id}, ${k}])::bigint, 0) + ${d[k] ?? 0}`
+      )
+      return sql`jsonb_build_object(${id}::text, jsonb_build_object(${sql.join(fields, sql`, `)}))`
+    })
+    out = sql`jsonb_set(${out}, '{byMapping}', coalesce(${T.progress} -> 'byMapping', '{}'::jsonb) || ${sql.join(merged, sql` || `)}, true)`
+  }
+  return out
+}
+
 class ConnectorRunLedger implements RunLedger {
   constructor(
     private readonly db: Database,
@@ -200,9 +233,13 @@ class ConnectorRunLedger implements RunLedger {
       heartbeatAt: new Date(),
     }
 
+    const progress = foldProgressSql(entry)
     // No idempotency key (held-cursor retry / single-shot steady): always fold.
     if (!entry.checkpointKey) {
-      await this.db.update(T).set(increments).where(eq(T.id, this.runId))
+      await this.db
+        .update(T)
+        .set(progress ? { ...increments, progress } : increments)
+        .where(eq(T.id, this.runId))
       return
     }
 
@@ -213,7 +250,9 @@ class ConnectorRunLedger implements RunLedger {
       .update(T)
       .set({
         ...increments,
-        progress: sql`jsonb_set(coalesce(${T.progress}, '{}'::jsonb), array['checkpoints', ${this.scopeId}], to_jsonb(${entry.checkpointKey}::text), true)`,
+        // Merge onto `checkpoints` rather than a two-level jsonb_set path, which is a no-op
+        // while `checkpoints` is missing and so never stamped a key.
+        progress: sql`jsonb_set(${progress ?? sql`coalesce(${T.progress}, '{}'::jsonb)`}, '{checkpoints}', coalesce(${T.progress} -> 'checkpoints', '{}'::jsonb) || jsonb_build_object(${this.scopeId}::text, ${entry.checkpointKey}::text), true)`,
       })
       .where(
         and(
