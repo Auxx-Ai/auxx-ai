@@ -13,18 +13,23 @@
 // guards and returns fast; the geocode + write-back run fire-and-forget (an un-awaited promise
 // with its own try/catch) so the save response never waits on MapTiler.
 
+import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
 import type { FieldId } from '@auxx/types/field'
 import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { stableHash } from '@auxx/utils/hash'
+import { and, eq } from 'drizzle-orm'
 import { refToEvent, runWithPool } from '../field-hooks/batch-helpers'
 import type {
   BatchCore,
   EntityFieldChangeEvent,
   EntityFieldChangeHandler,
 } from '../field-hooks/types'
-import { createFieldValueContext } from '../field-values/field-value-helpers'
+import {
+  createFieldValueContext,
+  type FieldValueContext,
+} from '../field-values/field-value-helpers'
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
 import { getValue } from '../field-values/field-value-queries'
 import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
@@ -328,6 +333,26 @@ function mergeAddress(
   return merged
 }
 
+/** The contributing connector stamped on the address cell, if any. */
+async function readConnectorMarker(
+  db: FieldValueContext['db'],
+  event: EntityFieldChangeEvent,
+  entityInstanceId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ marker: schema.FieldValue.managedByConnectorId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, event.organizationId),
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.fieldId, event.field.id)
+      )
+    )
+    .limit(1)
+  return row?.marker ?? null
+}
+
 /**
  * Write the normalized struct back QUIETLY: `setValueWithBuiltIn` under `QUIET_NORMALIZED_ADDRESS`
  * skips the field-change post-hook chain (so this can never re-fire itself), field triggers, and
@@ -357,6 +382,9 @@ async function writeBack(
   )
   if (!current || componentHash(current) !== componentHash(original)) return false
 
+  const { entityInstanceId } = parseRecordId(event.recordId)
+  const connectorMarker = await readConnectorMarker(ctx.db, event, entityInstanceId)
+
   // C4 (plan 04 §3) — see `QUIET_NORMALIZED_ADDRESS` for the reason.
   const result = await setValueWithBuiltIn(
     { ...ctx, session: QUIET_NORMALIZED_ADDRESS },
@@ -369,7 +397,21 @@ async function writeBack(
 
   if (result.values.length === 0) return false
 
-  const { entityInstanceId } = parseRecordId(event.recordId)
+  // A set-write clears the marker (it reads as a hand edit); a geocode is not one, and an
+  // unstamped connector cell is drift that re-syncs the record every run.
+  if (connectorMarker) {
+    await ctx.db
+      .update(schema.FieldValue)
+      .set({ managedByConnectorId: connectorMarker })
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, event.organizationId),
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, event.field.id)
+        )
+      )
+  }
+
   const publishRecordId = event.field.entityDefinitionId
     ? toRecordId(event.field.entityDefinitionId, entityInstanceId)
     : event.recordId

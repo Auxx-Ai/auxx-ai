@@ -338,3 +338,46 @@ describe('entitySink: a pinned field stays managed', () => {
     })
   })
 })
+
+describe('entitySink: managedFields lists only what the write left a value in', () => {
+  it('a blank source value is written as a clear and never becomes managed', async () => {
+    findItem.mockResolvedValue(boundItem([], { managedFields: [] }))
+    const { db } = makeDb()
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(
+      ctx,
+      mapping(),
+      record({ [FIRST_REF]: 'Jane', [NOTES_REF]: null })
+    )
+
+    expect(update.mock.calls[0]?.[1]).toEqual({ [FIRST_KEY]: 'Jane', [NOTES_UUID]: null })
+    expect(upsertItem.mock.calls[0]?.[1].managedFields).toEqual([FIRST_REF])
+  })
+
+  it('a previously managed field the source now blanks is dropped from managedFields', async () => {
+    findItem.mockResolvedValue(boundItem([], { managedFields: [FIRST_REF, NOTES_REF] }))
+    const { db } = makeDb()
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, mapping(), record({ [FIRST_REF]: 'Jane', [NOTES_REF]: '' }))
+
+    expect(upsertItem.mock.calls[0]?.[1].managedFields).toEqual([FIRST_REF])
+  })
+
+  it('connector_owned_only takes an empty cell it never managed, but not a filled one', async () => {
+    findItem.mockResolvedValue(boundItem([], { managedFields: [] }))
+    getFieldValues.mockResolvedValue(new Map([[FIRST_UUID, { type: 'text', value: 'Hand typed' }]]))
+    const { db } = makeDb()
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(
+      ctx,
+      mapping('connector_owned_only'),
+      record({ [FIRST_REF]: 'Jane', [NOTES_REF]: 'from shop' })
+    )
+
+    expect(update.mock.calls[0]?.[1]).toEqual({ [NOTES_UUID]: 'from shop' })
+    expect(upsertItem.mock.calls[0]?.[1].managedFields).toEqual([NOTES_REF])
+  })
+})

@@ -27,6 +27,7 @@ import { enqueueRecordImageFetch } from '../../files/remote-image/enqueue'
 import { findRecordByIdentity, upsertRecordIdentity } from '../../identity'
 import { getInstanceId, toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
+import { countOutcome } from '../run-counters'
 import {
   type DecodedMapping,
   findItem,
@@ -456,8 +457,11 @@ async function captureAmbiguousMatch(
  * `pinnedFields` are the concrete `CustomField` ids the user PAUSED on this
  * record (`DataConnectorItem.pinnedFields`, plans/money/tasks/40). A pinned field
  * reaches neither `writeSet` nor `rowWrites`, so it is never written and never
- * stamped (stamping keys off the write set); it stays in `managedFields`, so the
- * read side can show `paused` rather than nothing.
+ * stamped (stamping keys off the write set); it stays in `managedFields` when the source
+ * carries a value, so the read side can show `paused` rather than nothing.
+ *
+ * `managedFields` lists the refs this run wrote a non-blank value for; `clearedFields` the
+ * refs it wrote blank (the write clears the cell, so there is nothing left to heal).
  */
 async function buildWriteSet(
   ctx: SyncCtx,
@@ -471,13 +475,15 @@ async function buildWriteSet(
   writeSet: Record<string, unknown>
   rowWrites: RowLevelWrite[]
   managedFields: string[]
+  clearedFields: string[]
   identityFieldKeys: string[]
   pendingImages: PendingImage[]
 }> {
-  // managedFields stay keyed by the raw `targetFieldRef` — the same key space as
-  // `record.fields`, `mergeByKey`, and the prior runs' stored `managedFields`
-  // (used by the `connector_owned_only` ownership check below).
-  const managedFields = Object.keys(record.fields)
+  const mappedRefs = Object.keys(record.fields)
+  // Raw `targetFieldRef` keys, the key space of the stored `DataConnectorItem.managedFields`.
+  // A ref with no row after this write must not be managed, or drift re-syncs it every run.
+  const managedFields: string[] = []
+  const clearedFields: string[] = []
   // Write-set keys are concrete field ids (`getFieldId(resolvedRef)`) — what
   // `setFieldValues`/`createEntity` expect (a bare uuid or systemAttribute).
   const writeSet: Record<string, unknown> = {}
@@ -513,7 +519,7 @@ async function buildWriteSet(
   // missed lookup silently turns `fill_blank` into `overwrite`.
   let keyToId: Map<string, string> | null = null
   let fieldMap: Map<string, RowLevelField> | null = null
-  if (managedFields.length > 0) {
+  if (mappedRefs.length > 0) {
     keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
     fieldMap = (await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)) as unknown as Map<
       string,
@@ -522,7 +528,7 @@ async function buildWriteSet(
   }
 
   // Read current values once (only needed for fill_blank / connector_owned_only).
-  const needsCurrent = managedFields.some((k) => {
+  const needsCurrent = mappedRefs.some((k) => {
     const strat = strategyFor(k)
     return strat === 'fill_blank' || strat === 'connector_owned_only' || strat === 'manual_review'
   })
@@ -546,6 +552,8 @@ async function buildWriteSet(
     // `fieldUuid`; the write key itself is that uuid for a custom field and the
     // systemAttribute for a system field, so both forms are checked.
     if (pinnedFields.includes(fieldId) || (fieldUuid != null && pinnedFields.includes(fieldUuid))) {
+      // Stays managed so unpinning re-asserts it; drift ignores it while pinned.
+      if (!isBlank(sourceValue)) managedFields.push(rawRef)
       continue
     }
     const fieldRow = fieldUuid ? fieldMap?.get(fieldUuid) : undefined
@@ -575,6 +583,7 @@ async function buildWriteSet(
         if (item && !(item.managedFields ?? []).includes(rawRef)) continue
       }
       pendingImages.push({ fieldId: fieldUuid, url })
+      managedFields.push(rawRef)
       continue
     }
 
@@ -621,6 +630,7 @@ async function buildWriteSet(
         })
         continue
       }
+      managedFields.push(rawRef)
       if (!existingInstanceId) {
         // Fresh instance: no rows to protect — plain write (becomes the one row).
         writeSet[fieldId] = value
@@ -643,20 +653,26 @@ async function buildWriteSet(
       continue
     }
 
-    if (strategy === 'overwrite') {
+    const write = () => {
       writeSet[fieldId] = value
+      ;(isBlank(value) ? clearedFields : managedFields).push(rawRef)
+    }
+    if (strategy === 'overwrite') {
+      write()
       continue
     }
     if (strategy === 'connector_owned_only') {
-      // Write only if this connector created/owns the field on this record.
+      // Write only if this connector created/owns the field on this record. An empty cell is
+      // nobody's, so a field that was blank upstream until now is still taken.
       const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
-      const owns = !item || (item.managedFields ?? []).includes(rawRef)
-      if (owns) writeSet[fieldId] = value
+      const cur = current ? rawOf(current.get(fieldUuid ?? fieldId)) : undefined
+      const owns = !item || (item.managedFields ?? []).includes(rawRef) || isBlank(cur)
+      if (owns) write()
       continue
     }
     if (strategy === 'fill_blank') {
       const cur = current ? rawOf(current.get(fieldUuid ?? fieldId)) : undefined
-      if (isBlank(cur)) writeSet[fieldId] = value
+      if (isBlank(cur)) write()
       continue
     }
     if (strategy === 'manual_review') {
@@ -669,7 +685,7 @@ async function buildWriteSet(
     }
   }
 
-  return { writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages }
+  return { writeSet, rowWrites, managedFields, clearedFields, identityFieldKeys, pendingImages }
 }
 
 /**
@@ -1035,7 +1051,7 @@ export const entitySink: EntitySink = {
       record.upstreamUpdatedAt.getTime() < bound.upstreamUpdatedAt.getTime()
     ) {
       await touchItem(ctx.db, bound.id, ctx.runId)
-      ctx.counters.skipped += 1
+      countOutcome(ctx.counters, mapping.row.id, 'skipped')
       if (record.pendingRelations.length > 0) {
         await mergePendingRelations(
           ctx,
@@ -1075,7 +1091,7 @@ export const entitySink: EntitySink = {
       if (resolved.failed) {
         // Every configured match candidate was array-shaped — fail the record
         // VISIBLY instead of falling through to create a silent duplicate.
-        ctx.counters.failed += 1
+        countOutcome(ctx.counters, mapping.row.id, 'failed')
         if (ctx.counters.errorSample.length < 50) {
           ctx.counters.errorSample.push({
             externalId: record.externalId,
@@ -1124,7 +1140,7 @@ export const entitySink: EntitySink = {
             reason,
           }
         )
-        ctx.counters.skipped += 1
+        countOutcome(ctx.counters, mapping.row.id, 'skipped')
         if (ctx.counters.errorSample.length < 50) {
           ctx.counters.errorSample.push({
             externalId: record.externalId,
@@ -1179,7 +1195,7 @@ export const entitySink: EntitySink = {
             ? record.upstreamUpdatedAt
             : undefined
         await touchItem(ctx.db, bound.id, ctx.runId, newerStamp)
-        ctx.counters.skipped += 1
+        countOutcome(ctx.counters, mapping.row.id, 'skipped')
         // Still re-register pending relations so a later-arriving target resolves
         // (and a clear-on-empty edge fires even when the source is otherwise unchanged).
         if (record.pendingRelations.length > 0) {
@@ -1206,7 +1222,7 @@ export const entitySink: EntitySink = {
           winnerExternalId: ctx.sliceWriteWinners?.get(`${mapping.row.id}::${instanceId}`),
         }
       )
-      ctx.counters.skipped += 1
+      countOutcome(ctx.counters, mapping.row.id, 'skipped')
       await upsertItem(ctx.db, {
         dataConnectorId: ctx.connector.id,
         organizationId: ctx.orgId,
@@ -1230,7 +1246,7 @@ export const entitySink: EntitySink = {
 
     // 3. Build the write set with per-field merge strategy. Multi fields on an
     //    existing instance divert to `rowWrites` (row-level own-row upserts).
-    let { writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages } =
+    let { writeSet, rowWrites, managedFields, clearedFields, identityFieldKeys, pendingImages } =
       await buildWriteSet(
         ctx,
         mapping,
@@ -1264,6 +1280,7 @@ export const entitySink: EntitySink = {
     // not the record — drop the conflicting key from the write set and retry, so
     // the sync stays green instead of the whole record retrying forever.
     const maxConflictDrops = Object.keys(writeSet).length
+    const droppedKeys = new Set<string>()
     for (let conflictDrops = 0; ; ) {
       try {
         if (instanceId) {
@@ -1276,12 +1293,12 @@ export const entitySink: EntitySink = {
           // Event suppression comes from the handler's silent `sync` session
           // (plan 03 §3.4), not a per-call flag.
           await handler.update(recordId, { ...writeSet })
-          ctx.counters.updated += 1
+          countOutcome(ctx.counters, mapping.row.id, 'updated')
         } else {
           const created = await handler.create(mapping.entityDefinitionId, { ...writeSet })
           instanceId = created.instance.id
           justCreated = true
-          ctx.counters.created += 1
+          countOutcome(ctx.counters, mapping.row.id, 'created')
           // Claim the fresh instance for this slice's two-source dedupe so a later
           // source record matching it (e.g. by alias) defers its field writes.
           ;(ctx.sliceWriteWinners ??= new Map()).set(
@@ -1304,7 +1321,7 @@ export const entitySink: EntitySink = {
           })
           if (instance?.archivedAt) {
             if (bound) await touchItem(ctx.db, bound.id, ctx.runId)
-            ctx.counters.skipped += 1
+            countOutcome(ctx.counters, mapping.row.id, 'skipped')
             return
           }
         }
@@ -1320,16 +1337,22 @@ export const entitySink: EntitySink = {
           if (resolved.instanceId === error.canonicalRecordId) {
             instanceId = resolved.instanceId
             matched = resolved.matched
-            ;({ writeSet, rowWrites, managedFields, identityFieldKeys, pendingImages } =
-              await buildWriteSet(
-                ctx,
-                mapping,
-                record,
-                instanceId,
-                refToConcrete,
-                bound?.pinnedFields ?? [],
-                matched
-              ))
+            ;({
+              writeSet,
+              rowWrites,
+              managedFields,
+              clearedFields,
+              identityFieldKeys,
+              pendingImages,
+            } = await buildWriteSet(
+              ctx,
+              mapping,
+              record,
+              instanceId,
+              refToConcrete,
+              bound?.pinnedFields ?? [],
+              matched
+            ))
             rowPlan = await planRowLevelWrites(
               ctx,
               mapping.entityDefinitionId,
@@ -1341,7 +1364,7 @@ export const entitySink: EntitySink = {
         }
         if (instanceId && error instanceof StaleFinancialSourceRevisionError) {
           await recordStaleFinancialObservation(ctx.db, ctx.orgId, error)
-          ctx.counters.skipped += 1
+          countOutcome(ctx.counters, mapping.row.id, 'skipped')
           ignoredRevision = true
           break
         }
@@ -1349,6 +1372,7 @@ export const entitySink: EntitySink = {
           const droppedKey = dropConflictingKey(writeSet, error)
           if (droppedKey) {
             conflictDrops += 1
+            droppedKeys.add(droppedKey)
             logger.warn('unique-value conflict — value dropped, record still syncs', {
               mappingId: mapping.row.id,
               externalId: record.externalId,
@@ -1359,7 +1383,7 @@ export const entitySink: EntitySink = {
           }
         }
         const message = error instanceof Error ? error.message : String(error)
-        ctx.counters.failed += 1
+        countOutcome(ctx.counters, mapping.row.id, 'failed')
         if (ctx.counters.errorSample.length < 50) {
           ctx.counters.errorSample.push({
             externalId: record.externalId,
@@ -1422,8 +1446,15 @@ export const entitySink: EntitySink = {
 
     // 5. Upsert the binding — merge any new managed fields with prior ones
     //    (contributing records are co-owned field-by-field across connectors).
-    const mergedManaged = Array.from(
-      new Set([...(bound?.managedFields ?? []), ...(ignoredRevision ? [] : managedFields)])
+    const cleared = new Set(ignoredRevision ? [] : clearedFields)
+    const written = ignoredRevision
+      ? []
+      : managedFields.filter((ref) => {
+          const concrete = refToConcrete.get(ref)
+          return !concrete || !droppedKeys.has(getFieldId(concrete))
+        })
+    const mergedManaged = Array.from(new Set([...(bound?.managedFields ?? []), ...written])).filter(
+      (ref) => !cleared.has(ref)
     )
     await upsertItem(ctx.db, {
       dataConnectorId: ctx.connector.id,

@@ -280,3 +280,65 @@ describe('computeDriftedInstances with a cleared cell', () => {
     expect(ctx.counters.skipped).toBe(1)
   })
 })
+
+// A mapped field whose source value is blank has no row to heal, so it must not be managed:
+// before, `managedFields` listed every mapped key and such a record was drift on every sync.
+describe('computeDriftedInstances with a blank upstream value', () => {
+  const blank = (): ProjectedRecord => ({
+    ...projected(f),
+    fields: { [f.descriptionRef]: null, [f.titleRef]: SOURCE_TITLE },
+  })
+
+  beforeEach(async () => {
+    await testDb()
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, f.instanceId),
+          eq(schema.FieldValue.fieldId, f.descriptionFieldId)
+        )
+      )
+    await testDb()
+      .update(schema.DataConnectorItem)
+      .set({ contentHash: 'stale', managedFields: [] })
+      .where(eq(schema.DataConnectorItem.id, f.itemId))
+  })
+
+  const managed = async () => {
+    const [item] = await testDb()
+      .select({ managedFields: schema.DataConnectorItem.managedFields })
+      .from(schema.DataConnectorItem)
+      .where(eq(schema.DataConnectorItem.id, f.itemId))
+    return item?.managedFields
+  }
+
+  it('the blank field is not in managedFields after the write', async () => {
+    await entitySink.upsertRecord(runCtx(f, update), decoded(f), blank())
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(await managed()).toEqual([f.titleRef])
+  })
+
+  it('the unchanged record is skipped by the hash on the second sync', async () => {
+    await entitySink.upsertRecord(runCtx(f, update), decoded(f), blank())
+    const ctx = runCtx(f, update)
+
+    await entitySink.upsertRecord(ctx, decoded(f), blank())
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(ctx.counters.skipped).toBe(1)
+  })
+
+  it('a value arriving later is managed again, and clearing it by hand then heals', async () => {
+    await entitySink.upsertRecord(runCtx(f, update), decoded(f), blank())
+    await entitySink.upsertRecord(runCtx(f, update), decoded(f), projected(f))
+    expect(await managed()).toEqual([f.titleRef, f.descriptionRef])
+
+    // Same source again, cell still empty (the crud double wrote no row): drift, so it heals.
+    const ctx = runCtx(f, update)
+    await entitySink.upsertRecord(ctx, decoded(f), projected(f))
+
+    expect(update).toHaveBeenCalledTimes(3)
+    expect(ctx.counters.updated).toBe(1)
+  })
+})
