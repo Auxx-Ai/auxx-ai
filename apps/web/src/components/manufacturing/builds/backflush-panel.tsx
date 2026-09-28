@@ -15,7 +15,7 @@ import {
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import Link from 'next/link'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
 import { api } from '~/trpc/react'
 import { BackflushRunPanel, isBackflushRunLive } from './backflush-run-panel'
@@ -36,6 +36,8 @@ interface BackflushPanelProps {
   enabled?: boolean
   /** Draws the confirm; absent, the panel draws its own button under the preview. */
   actions?: (controls: BackflushPanelControls) => ReactNode
+  /** Called once when the followed run completes or fails. */
+  onFinished?: () => void
 }
 
 /** A day key as "16 Jul 2021"; UTC so the day never shifts in the viewer's zone. */
@@ -61,7 +63,8 @@ function conflictLine(conflict: KindConflict): string {
 }
 
 /** Preview and run of an org-wide backflush over the server's range (plans/mrp/17 §5.2). */
-export function BackflushPanel({ enabled = true, actions }: BackflushPanelProps) {
+export function BackflushPanel({ enabled = true, actions, onFinished }: BackflushPanelProps) {
+  const utils = api.useUtils()
   // The run shown: one this panel started, or a live one found on open.
   const [runId, setRunId] = useState<string | null>(null)
 
@@ -81,7 +84,20 @@ export function BackflushPanel({ enabled = true, actions }: BackflushPanelProps)
   const shownRun = runId && run.data?.runId === runId ? run.data : null
   const busy = !!runId || run.isPending
 
-  const preview = api.builds.previewBackflush.useQuery({}, { enabled: enabled && !busy })
+  const finishedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!shownRun || isBackflushRunLive(shownRun) || finishedRef.current === shownRun.runId) return
+    finishedRef.current = shownRun.runId
+    void utils.builds.previewBackflush.invalidate()
+    void utils.builds.hasBackflushBuilds.invalidate()
+    onFinished?.()
+  }, [shownRun, onFinished, utils])
+
+  // A full-history replay: never refetched in the background.
+  const preview = api.builds.previewBackflush.useQuery(
+    {},
+    { enabled: enabled && !busy, staleTime: 60_000, refetchOnWindowFocus: false }
+  )
   const runBackflush = api.builds.runBackflush.useMutation({
     onError: (error) =>
       toastError({ title: 'Recording past builds did not start', description: error.message }),

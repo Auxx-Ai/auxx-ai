@@ -43,6 +43,7 @@ import { recordRulesProvider } from './providers/record-rules-provider'
 import { resourceNavProvider } from './providers/resource-nav-provider'
 import { resourcesProvider } from './providers/resources-provider'
 import { restrictedEntityDefIdsProvider } from './providers/restricted-entity-def-ids-provider'
+import { stockSetupStatusProvider } from './providers/stock-setup-status-provider'
 import { subpartEdgesProvider } from './providers/subpart-edges-provider'
 import { subscriptionProvider } from './providers/subscription-provider'
 import { systemUserProvider } from './providers/system-user-provider'
@@ -103,6 +104,7 @@ export function registerAllProviders(
   orgCache.register('knowledgeBases', knowledgeBasesProvider)
   orgCache.register('chartAccounts', chartAccountsProvider)
   orgCache.register('subpartEdges', subpartEdgesProvider)
+  orgCache.register('stockSetupStatus', stockSetupStatusProvider)
   orgCache.register('providerChart', providerChartProvider)
 
   // Org-scoped: AI provider data

@@ -411,7 +411,7 @@ export class OrganizationCacheService {
         // Recompute if provider is registered. `skipLock` because the waiter
         // branch would adopt an in-flight (pre-commit) snapshot instead of
         // reading the DB — the exact failure this invalidation exists to undo.
-        if (this.providers.has(keyName)) {
+        if (this.providers.has(keyName) && !ORG_CACHE_KEY_CONFIG[keyName].lazy) {
           try {
             await this.recompute(orgId, keyName, true)
           } catch (error) {
@@ -491,6 +491,8 @@ export class OrganizationCacheService {
 /** Keys computed from another key's cached value; invalidating the source invalidates these too. */
 const DERIVED_ORG_KEYS: Partial<Record<OrgCacheKeyName, readonly OrgCacheKeyName[]>> = {
   resources: ['resourceNav'],
+  subpartEdges: ['stockSetupStatus'],
+  orgSettings: ['stockSetupStatus'],
 }
 
 function derivedKeysOf(keys: readonly OrgCacheKeyName[]): OrgCacheKeyName[] {

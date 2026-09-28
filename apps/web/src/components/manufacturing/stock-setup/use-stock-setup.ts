@@ -40,13 +40,10 @@ export function firstOpenStep(states: Record<StockSetupStep, StockSetupStepState
 export function useStockSetup() {
   const utils = api.useUtils()
   const [stepParam, setStepParam] = useQueryState('step')
+  // Writers on this page invalidate it; a finished backflush run does so via `onFinished`.
   const status = api.purchasing.stockSetupStatus.useQuery(undefined, {
-    // Picks up a finished backflush run while its step is open; the read is one bulk pass.
-    refetchInterval: (query) => {
-      const open = resolveStepStates(query.state.data)
-      const shown = isStep(stepParam) ? stepParam : firstOpenStep(open)
-      return query.state.data && shown === 'builds' && open.builds === 'todo' ? 15_000 : false
-    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const states = useMemo(() => resolveStepStates(status.data), [status.data])

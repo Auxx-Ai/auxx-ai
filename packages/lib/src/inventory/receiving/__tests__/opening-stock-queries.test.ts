@@ -11,8 +11,8 @@
 //     read to render
 //   - 🛑 FOUR bulk reads, never a per-part loop. 495 parts through the
 //     single-part door's five questions is roughly 2,500 queries
-//   - `hasMovements` and `hasInitialMovement` come from ONE grouped scan, so
-//     they cannot disagree about which movements were visible
+//   - `hasMovements` and `hasInitialMovement` come from the two coverage reads
+//     (`movement-coverage.ts`, tested on its own)
 //   - an org missing an optional field still gets rows, with that column null
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -34,8 +34,9 @@ const h = vi.hoisted(() => ({
   partRows: [] as Record<string, unknown>[],
   /** Their stored values, the reader's second statement. */
   partValueRows: [] as Record<string, unknown>[],
-  /** The grouped movement scan's answer. */
-  coverageRows: [] as Array<{ partId: string | null; hasInitial: boolean }>,
+  /** Parts with any movement, and parts with an `initial`. */
+  moved: [] as string[],
+  initials: [] as string[],
   /** Parts that are somebody's `subpart_child_part`. */
   subpartChildRows: [] as Array<{ partId: string | null }>,
   /** How many statements the read issued, so a per-part loop cannot hide. */
@@ -62,14 +63,18 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
+vi.mock('../movement-coverage', () => ({
+  readPartsWithMovements: async () => new Set(h.moved),
+  readPartsWithInitialMovement: async () => new Set(h.initials),
+}))
+
 import { listOpeningStockCandidates } from '../opening-stock-queries'
 
 const ORG = 'org_1'
 
 /**
- * A drizzle chain that answers whichever of the three statements is being
- * built, told apart by shape: `groupBy` is the movement scan, `selectDistinct`
- * is the subpart probe, and everything else is the candidate join.
+ * A drizzle chain that answers whichever statement is being built, told apart by
+ * shape: `selectDistinct` is the subpart probe, and everything else is the part read.
  */
 const db = {
   select: (columns?: unknown) => chain(false, columns === undefined),
@@ -78,26 +83,16 @@ const db = {
 
 function chain(distinct: boolean, values: boolean) {
   h.queries += 1
-  const state = { distinct, values, grouped: false }
+  const state = { distinct, values }
   const link: Record<string, unknown> = {}
   link.from = () => link
   link.leftJoin = () => link
   link.innerJoin = () => link
   link.where = () => link
-  link.groupBy = () => {
-    state.grouped = true
-    return link
-  }
-  // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
   link.orderBy = () => link
+  // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
   link.then = (resolve: (rows: unknown[]) => unknown, reject: (error: unknown) => unknown) => {
-    const rows = state.grouped
-      ? h.coverageRows
-      : state.distinct
-        ? h.subpartChildRows
-        : state.values
-          ? h.partValueRows
-          : h.partRows
+    const rows = state.distinct ? h.subpartChildRows : state.values ? h.partValueRows : h.partRows
     return Promise.resolve(rows as unknown[]).then(resolve, reject)
   }
   return link
@@ -146,7 +141,8 @@ beforeEach(() => {
     value('part_1', 'fld_part_standard_cost', { valueNumber: 1200 }),
     value('part_1', 'fld_part_product', { relatedEntityId: 'prod_1' }),
   ]
-  h.coverageRows = []
+  h.moved = []
+  h.initials = []
   h.subpartChildRows = []
 })
 
@@ -201,16 +197,15 @@ describe('listOpeningStockCandidates — the checklist row', () => {
     expect(h.queries).toBeLessThanOrEqual(4)
   })
 
-  // The two facts come from one scan, so they cannot disagree about which
-  // movements were visible.
   it('reports a part with movements but no initial as MOVED, not opened', async () => {
-    h.coverageRows = [{ partId: 'part_1', hasInitial: false }]
+    h.moved = ['part_1']
     const [first] = await list()
     expect(first).toMatchObject({ hasMovements: true, hasInitialMovement: false })
   })
 
   it('reports a part with an initial movement as opened', async () => {
-    h.coverageRows = [{ partId: 'part_1', hasInitial: true }]
+    h.moved = ['part_1']
+    h.initials = ['part_1']
     const [first] = await list()
     expect(first).toMatchObject({ hasMovements: true, hasInitialMovement: true })
   })
@@ -224,20 +219,6 @@ describe('listOpeningStockCandidates — the checklist row', () => {
 })
 
 describe('listOpeningStockCandidates — an org that is not fully provisioned', () => {
-  it('reports every part as never moved when there is no stock_movement definition', async () => {
-    h.defs.delete('stock_movement')
-    h.coverageRows = [{ partId: 'part_1', hasInitial: true }]
-    const rows = await list()
-    expect(rows.every((row) => !row.hasMovements)).toBe(true)
-  })
-
-  it('reports every part as never moved when the movement part link is missing', async () => {
-    h.materialised.delete('stock_movement_part')
-    h.coverageRows = [{ partId: 'part_1', hasInitial: true }]
-    const rows = await list()
-    expect(rows.every((row) => !row.hasMovements)).toBe(true)
-  })
-
   it('reports nobody as a subpart when the subpart field is missing', async () => {
     h.materialised.delete('subpart_child_part')
     h.subpartChildRows = [{ partId: 'part_1' }]

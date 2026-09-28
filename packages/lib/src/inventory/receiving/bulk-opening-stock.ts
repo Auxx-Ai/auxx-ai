@@ -17,7 +17,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
-import { requireCachedEntityDefId } from '../../cache'
+import { onCacheEvent, requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { PartKind } from '../../resources/registry/enum-values'
@@ -212,6 +212,7 @@ export async function bulkSetPartKind(
       const { count } = await crud.bulkSetFieldValue(recordIds, kindField.id, kind)
       // The bulk write fires no field pre-hooks, so the kind's "keep it" reset happens here.
       await clearKindConflictConfirmations(db, organizationId, writable)
+      await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       return { count, failed }
     },
     'Failed to set part kind in bulk',

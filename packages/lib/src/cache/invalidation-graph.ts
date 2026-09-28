@@ -77,6 +77,8 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'chart-account.changed': ['chartAccounts'],
   // Emitted by the subpart system rules in field-hooks/, which fire on all three write lanes.
   'subpart.changed': ['subpartEdges'],
+  // Emitted by the Stock setup writers: kinds, counts, first standards, backflush/undo runs.
+  'stock-setup.changed': ['stockSetupStatus'],
 
   'group.created': ['groups'],
   'group.updated': ['groups'],

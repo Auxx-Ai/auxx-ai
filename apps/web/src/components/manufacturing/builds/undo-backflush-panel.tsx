@@ -123,6 +123,8 @@ export function UndoBackflushPanel({ onDone }: UndoBackflushPanelProps) {
       void utils.builds.hasBackflushBuilds.invalidate()
       void utils.builds.movementAccountDrift.invalidate()
       void utils.builds.previewBackflush.invalidate()
+      void utils.purchasing.stockSetupStatus.invalidate()
+      void utils.gettingStarted.getStatus.invalidate()
     },
   })
   const start = api.builds.startUndoBackflush.useMutation({

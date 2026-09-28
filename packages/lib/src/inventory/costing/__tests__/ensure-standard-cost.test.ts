@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
+  onCacheEvent: vi.fn(async () => {}),
   wakePricedParts: vi.fn(async () => ({ isOk: () => true })),
   requestPartPricing: vi.fn(async () => {}),
   queryQueue: [] as unknown[][],
@@ -66,6 +67,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
 const SYSTEM_USER = 'user_system'
 
 vi.mock('../../../cache', () => ({
+  onCacheEvent: h.onCacheEvent,
   getOrgCache: () => ({
     from: () => ({
       bySystemAttributes: async (attrs: readonly string[]) =>
@@ -190,6 +192,7 @@ describe('ensureStandardCost', () => {
       optionId: 'opening_stock',
     })
     expect(h.publishFieldValueUpdates).toHaveBeenCalled()
+    expect(h.onCacheEvent).toHaveBeenCalledWith('stock-setup.changed', { orgId: ORG })
   })
 
   it.each([

@@ -26,6 +26,7 @@ export function useStockSetupProgress() {
   const status = api.purchasing.stockSetupStatus.useQuery(undefined, {
     retry: false,
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
   const canManageStock = useCanManageStock()
   const states = resolveStepStates(status.data)

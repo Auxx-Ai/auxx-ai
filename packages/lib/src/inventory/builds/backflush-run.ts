@@ -11,7 +11,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { requestAccountingRecovery } from '../../accounting/work-items/recovery'
-import { getCachedEntityDefId } from '../../cache'
+import { getCachedEntityDefId, onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
 import { recordNumbering } from '../../records/record-numbering'
@@ -212,6 +212,8 @@ export async function finalizeBackflushRun(
         written: builds.value.filter((b) => b.status === 'completed').length,
         finalizedAt: new Date().toISOString(),
       }
+      // Before COMPLETED is visible, so a client refetching on it reads the new status.
+      await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       await completeBackflushRun(db, runId, finished)
       await publishBackflushRun(organizationId, {
         runId,
@@ -244,6 +246,8 @@ export async function publishBackflushRunFailed(
   runId: string
 ): Promise<void> {
   const row = await readBackflushRunRow(db, organizationId, runId)
+  // A failed run may still have committed some days' builds.
+  await onCacheEvent('stock-setup.changed', { orgId: organizationId })
   if (row) await publish(organizationId, row, 'finished', 'FAILED')
 }
 

@@ -34,7 +34,7 @@ import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inv
 import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { upsertWorkItem } from '../../accounting/work-items/write'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { getOrgCache, onCacheEvent, requireCachedEntityDefId } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
 import { systemDefId } from '../../resources/system-records'
@@ -230,6 +230,7 @@ export async function setCount(
         occurredAt: row.occurredAt,
         purchaseOrderLineId: null,
       }
+      await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       return { ...base, outcome: initial ? 'adjust' : 'initial', movement, pending }
     },
     'Failed to set count',

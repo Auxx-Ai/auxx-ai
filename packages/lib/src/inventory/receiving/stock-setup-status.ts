@@ -1,13 +1,22 @@
 // packages/lib/src/inventory/receiving/stock-setup-status.ts
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
-import { readKindConflicts } from '../builds/kind-conflicts'
+import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
+import { pickSystemAttributes } from '../../resources/registry/system-attributes'
+import { readSystemRecords, systemFields } from '../../resources/system-records'
+import { readKindConflictEdges, readKindConflicts } from '../builds/kind-conflicts'
+import { isServicePartKind } from '../costing/client'
 import { readPartNetThrough } from '../costing/dated-reads'
 import { guard } from './guard'
-import { listOpeningStockCandidates } from './opening-stock-queries'
+import { readPartsWithMovements } from './movement-coverage'
+
+const PART_PICK = pickSystemAttributes(PART_FIELDS, [
+  'part_kind',
+  'part_standard_cost',
+  'part_product',
+] as const)
 
 /** Where the three Stock setup steps stand (plans/mrp/17 §5). Cheap: no backflush replay. */
 export interface StockSetupStatus {
@@ -31,42 +40,42 @@ function isUnclassified(kind: string | null): boolean {
   return kind == null || kind === '' || kind === 'component'
 }
 
+/**
+ * The status loader behind the `stockSetupStatus` org cache key; read the cache, not this.
+ * No backflush replay; the only movement-sized read is the net of the made parts that moved.
+ */
 export async function readStockSetupStatus(
   db: Database,
   organizationId: string
 ): Promise<Result<StockSetupStatus, Error>> {
   return guard(
     async () => {
-      const [candidatesResult, conflictsResult, settings, bomParents] = await Promise.all([
-        listOpeningStockCandidates(db, organizationId),
+      const [parts, moved, edges, conflictsResult, settings] = await Promise.all([
+        readStockedParts(db, organizationId),
+        readPartsWithMovements(db, organizationId),
+        readKindConflictEdges(organizationId),
         readKindConflicts(db, organizationId),
         getOrgCache().get(organizationId, 'orgSettings'),
-        readBomParentIds(db, organizationId),
       ])
-      if (candidatesResult.isErr()) throw candidatesResult.error
       if (conflictsResult.isErr()) throw conflictsResult.error
-      const candidates = candidatesResult.value
       const conflictIds = new Set(conflictsResult.value.map((c) => c.partId))
 
-      const unconfirmedKindCount = candidates.filter(
-        (c) =>
-          !conflictIds.has(c.partId) &&
-          c.hasProduct &&
-          !c.isSubpartOfAssembly &&
-          isUnclassified(c.partKind)
+      const unconfirmedKindCount = parts.filter(
+        (p) =>
+          !conflictIds.has(p.partId) &&
+          p.hasProduct &&
+          !edges.children.has(p.partId) &&
+          isUnclassified(p.kind)
       ).length
 
-      const madeMoved = candidates
-        .filter((c) => c.hasMovements && bomParents.has(c.partId))
-        .map((c) => c.partId)
+      const movedParts = parts.filter((p) => moved.has(p.partId))
+      const madeMoved = movedParts.filter((p) => edges.parents.has(p.partId)).map((p) => p.partId)
       const nets = await readPartNetThrough(organizationId, madeMoved, new Date())
       const unbuiltPartCount = madeMoved.filter((id) => (nets.get(id) ?? 0) < 0).length
 
       const buildsSkipped = settings['inventory.stockSetup.buildsSkipped'] === true
       const countingDone = settings['inventory.stockSetup.countingDone'] === true
-      const uncostedPartCount = candidates.filter(
-        (c) => c.hasMovements && c.standardCost == null
-      ).length
+      const uncostedPartCount = movedParts.filter((p) => p.standardCost == null).length
 
       const kindConflictCount = conflictIds.size
       return {
@@ -76,7 +85,7 @@ export async function readStockSetupStatus(
         buildsSkipped,
         countingDone,
         uncostedPartCount,
-        hasStockedMovements: candidates.some((c) => c.hasMovements),
+        hasStockedMovements: movedParts.length > 0,
         steps: {
           kinds: kindConflictCount === 0 && unconfirmedKindCount === 0,
           builds: unbuiltPartCount === 0 || buildsSkipped,
@@ -89,27 +98,22 @@ export async function readStockSetupStatus(
   )
 }
 
-/** Every part that heads a live BOM line, org-wide. */
-async function readBomParentIds(db: Database, organizationId: string): Promise<Set<string>> {
-  const parents = new Set<string>()
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['subpart_parent_part'] as const)
-  const parentField = fields.subpart_parent_part
-  if (!parentField) return parents
-
-  const rows = await db
-    .selectDistinct({ partId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, parentField.id),
-        isNotNull(schema.FieldValue.relatedEntityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-  for (const row of rows) if (row.partId) parents.add(row.partId)
-  return parents
+/** Every live, non-service part with the three facts the status counts from. */
+async function readStockedParts(
+  db: Database,
+  organizationId: string
+): Promise<
+  { partId: string; kind: string | null; standardCost: number | null; hasProduct: boolean }[]
+> {
+  const ctx = await systemFields(db, organizationId, 'part', PART_PICK)
+  if (!ctx) return []
+  const rows = await readSystemRecords(db, organizationId, ctx)
+  return rows
+    .filter((row) => !isServicePartKind(row.option('part_kind')))
+    .map((row) => ({
+      partId: row.id,
+      kind: row.option('part_kind'),
+      standardCost: row.number('part_standard_cost'),
+      hasProduct: row.related('part_product') != null,
+    }))
 }

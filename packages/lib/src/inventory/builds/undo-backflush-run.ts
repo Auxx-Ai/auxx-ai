@@ -10,7 +10,7 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId } from '../../cache'
+import { getCachedEntityDefId, onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { getRealtimeService, publishRecordsInvalidated } from '../../realtime'
 import { type BatchRunBuild, listBatchRuns, readBatchRunBuilds } from './batch-run-queries'
@@ -210,6 +210,7 @@ export async function finalizeUndoBackflushRun(
 
       await announce(organizationId)
       const finished: UndoBackflushRunMetadata = { ...meta, finalizedAt: new Date().toISOString() }
+      await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       await completeUndoBackflushRun(db, runId, finished)
       await publishUndoBackflushRun(organizationId, {
         runId,
@@ -244,6 +245,7 @@ export async function publishUndoBackflushRunFailed(
   runId: string
 ): Promise<void> {
   const row = await readUndoBackflushRunRow(db, organizationId, runId)
+  await onCacheEvent('stock-setup.changed', { orgId: organizationId })
   if (row) await publish(organizationId, row, 'finished', 'FAILED')
 }
 

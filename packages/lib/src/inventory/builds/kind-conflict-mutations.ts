@@ -4,6 +4,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { onCacheEvent } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
@@ -34,7 +35,9 @@ export async function confirmKindConflicts(
       }
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const recordIds = unique.map((partId) => toRecordId(ctx.defId, partId) as RecordId)
-      return crud.bulkSetFieldValue(recordIds, flag.id, true)
+      const written = await crud.bulkSetFieldValue(recordIds, flag.id, true)
+      await onCacheEvent('stock-setup.changed', { orgId: organizationId })
+      return written
     },
     'Failed to confirm part kind conflicts',
     { organizationId, partIds: partIds.length }
