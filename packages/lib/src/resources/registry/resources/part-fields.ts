@@ -403,6 +403,32 @@ export const PART_FIELDS = defineResourceFields({
     description: 'The part kind was confirmed as intended despite its bill-of-materials use',
   },
 
+  // A person picked this kind. A stored `component` alone may be the field default, so the
+  // finished-good suggestion only stops once this is set.
+  kindConfirmed: {
+    id: toFieldId('kindConfirmed'),
+    key: 'kindConfirmed',
+    label: 'Kind Confirmed',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'part_kind_confirmed',
+    systemSortOrder: 'a4c',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'A person chose this part kind, so no other kind is suggested for it',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

@@ -49,6 +49,7 @@ import { migration193InventoryLedgerUnderMrp } from './migrations/193-inventory-
 import { migration197MrpPlanningFields } from './migrations/197-mrp-planning-fields'
 import { migration198SidebarDefaultLayout } from './migrations/198-sidebar-default-layout'
 import { migration199PartKindConflictConfirmed } from './migrations/199-part-kind-conflict-confirmed'
+import { migration200PartKindConfirmed } from './migrations/200-part-kind-confirmed'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -234,6 +235,8 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   migration197MrpPlanningFields,
   // The hidden "keep it" flag on a part kind conflict (plans/mrp/17 D3), no backfill.
   migration199PartKindConflictConfirmed,
+  // The hidden "a person picked this kind" flag on part, no backfill.
+  migration200PartKindConfirmed,
 ]
 
 /**

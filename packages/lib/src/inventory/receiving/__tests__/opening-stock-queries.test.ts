@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const FIELD_TYPE: Record<string, string> = {
   part_sku: 'TEXT',
   part_kind: 'SINGLE_SELECT',
+  part_kind_confirmed: 'CHECKBOX',
   part_standard_cost: 'CURRENCY',
   part_product: 'RELATIONSHIP',
 }
@@ -119,6 +120,7 @@ function value(entityId: string, fieldId: string, columns: Record<string, unknow
 const ALL_ATTRS = [
   'part_sku',
   'part_kind',
+  'part_kind_confirmed',
   'part_standard_cost',
   'part_product',
   'subpart_child_part',
@@ -138,6 +140,7 @@ beforeEach(() => {
   h.partValueRows = [
     value('part_1', 'fld_part_sku', { valueText: 'W-9000' }),
     value('part_1', 'fld_part_kind', { optionId: 'component' }),
+    value('part_1', 'fld_part_kind_confirmed', { valueBoolean: true }),
     value('part_1', 'fld_part_standard_cost', { valueNumber: 1200 }),
     value('part_1', 'fld_part_product', { relatedEntityId: 'prod_1' }),
   ]
@@ -161,6 +164,7 @@ describe('listOpeningStockCandidates — the checklist row', () => {
         title: 'Widget 9000',
         sku: 'W-9000',
         partKind: 'component',
+        kindConfirmed: true,
         standardCost: 1200,
         hasMovements: false,
         hasInitialMovement: false,
@@ -172,6 +176,7 @@ describe('listOpeningStockCandidates — the checklist row', () => {
         title: '',
         sku: null,
         partKind: null,
+        kindConfirmed: false,
         standardCost: null,
         hasMovements: false,
         hasInitialMovement: false,

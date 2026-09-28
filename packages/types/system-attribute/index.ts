@@ -284,6 +284,8 @@ export const SYSTEM_ATTRIBUTES = [
   'part_mrp_variability_factor',
   // "Keep it" on a kind conflict (plans/mrp/17 D3)
   'part_kind_conflict_confirmed',
+  // A person picked the kind, so no finished-good suggestion
+  'part_kind_confirmed',
   'part_line_items', // inverse of line_item_part
   'part_stock_movements',
 

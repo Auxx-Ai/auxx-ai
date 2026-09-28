@@ -26,8 +26,10 @@ interface KindRow {
   suggestedKind: OpeningStockKind
   /** Why the kind looks wrong, in plain words. */
   reason: string
-  /** Label of the "this kind is intended" action; conflicts only (17 D3). */
-  keepLabel: string | null
+  /** Label of the "this kind is intended" action. */
+  keepLabel: string
+  /** A BOM conflict (17 D3) keeps via the conflict flag; the rest re-write their kind. */
+  isConflict: boolean
 }
 
 function listNames(names: string[]): string {
@@ -49,6 +51,7 @@ function conflictRow(conflict: KindConflict): KindRow {
     suggestedKind,
     reason,
     keepLabel: conflict.reason === 'finished_good_in_bom' ? 'Sold as-is too, keep it' : 'Keep it',
+    isConflict: true,
   }
 }
 
@@ -83,6 +86,7 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
           !seen.has(c.partId) &&
           c.hasProduct &&
           !c.isSubpartOfAssembly &&
+          !c.kindConfirmed &&
           isPartKindUnclassified(c.partKind)
       )
       .map<KindRow>((c) => ({
@@ -92,7 +96,8 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
         suggestedKind: 'finished_good',
         reason:
           'Sold as a product and used inside nothing, but marked Component. Parts sold as they are are usually Finished Goods.',
-        keepLabel: null,
+        keepLabel: `Keep ${partKindLabel(toOpeningStockKind(c.partKind) ?? 'component')}`,
+        isConflict: false,
       }))
     return [...conflictRows, ...unconfirmed]
   }, [conflicts.data, candidates.data])
@@ -155,9 +160,14 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
     )
 
   const keep = (row: KindRow) =>
-    withBusy([row.partId], false, async () => {
+    withBusy([row.partId], !row.isConflict, async () => {
       try {
-        await keepKind.mutateAsync({ partIds: [row.partId] })
+        if (row.isConflict) await keepKind.mutateAsync({ partIds: [row.partId] })
+        else
+          await setKind.mutateAsync({
+            partIds: [row.partId],
+            kind: toOpeningStockKind(row.currentKind) ?? 'component',
+          })
       } catch (error) {
         toastError({ title: 'Error keeping the kind', description: (error as Error).message })
       }
@@ -232,15 +242,13 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
                     </span>
                   </div>
                   <div className='flex shrink-0 flex-wrap items-center gap-2'>
-                    {row.keepLabel && (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        disabled={busy}
-                        onClick={() => void keep(row)}>
-                        {row.keepLabel}
-                      </Button>
-                    )}
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      disabled={busy}
+                      onClick={() => void keep(row)}>
+                      {row.keepLabel}
+                    </Button>
                     <Button
                       variant='outline'
                       size='sm'

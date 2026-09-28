@@ -24,6 +24,7 @@ import {
 const ELIGIBLE = {
   hasProduct: true,
   partKind: undefined as unknown,
+  kindConfirmed: false,
   subpartCheckLoaded: true,
   isSubpartOfAssembly: false,
 }
@@ -84,6 +85,12 @@ describe('shouldSuggestFinishedGood', () => {
     ).toBe(false)
     expect(
       shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component', subpartCheckLoaded: false })
+    ).toBe(false)
+  })
+
+  it('stays quiet once a person confirmed the kind, even a component', () => {
+    expect(
+      shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component', kindConfirmed: true })
     ).toBe(false)
   })
 })
@@ -192,6 +199,7 @@ describe('shouldSuggestFamily', () => {
         shouldSuggestFamily(input) &&
         shouldSuggestFinishedGood({
           ...input,
+          kindConfirmed: false,
           subpartCheckLoaded: true,
           isSubpartOfAssembly: false,
         })

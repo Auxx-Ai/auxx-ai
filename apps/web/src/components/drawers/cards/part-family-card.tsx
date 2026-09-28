@@ -32,7 +32,7 @@ import {
 } from './part-family-suggestion'
 
 /** The part's own family-relevant fields. */
-const PART_FAMILY_ATTRIBUTES = ['part_product', 'part_kind'] as const
+const PART_FAMILY_ATTRIBUTES = ['part_product', 'part_kind', 'part_kind_confirmed'] as const
 /** ...and the product's, once the relation resolves. */
 const PRODUCT_ATTRIBUTES = ['product_title', 'product_status'] as const
 
@@ -208,6 +208,7 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
   const suggestFinishedGood = shouldSuggestFinishedGood({
     hasProduct: !!productId,
     partKind,
+    kindConfirmed: values.part_kind_confirmed === true,
     subpartCheckLoaded: !isLoadingUsedIn,
     isSubpartOfAssembly: usedInRecords.length > 0,
   })
@@ -329,11 +330,20 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
             product family and is not used in any assembly.
           </p>
           <Button
+            variant='ghost'
+            size='xs'
+            disabled={isPending}
+            onClick={() => void save({ part_kind: PartKind.COMPONENT, part_kind_confirmed: true })}>
+            Keep Component
+          </Button>
+          <Button
             variant='outline'
             size='xs'
             loading={isPending}
             loadingText='Saving...'
-            onClick={() => void save({ part_kind: PartKind.FINISHED_GOOD })}>
+            onClick={() =>
+              void save({ part_kind: PartKind.FINISHED_GOOD, part_kind_confirmed: true })
+            }>
             Set Finished Good
           </Button>
         </div>
