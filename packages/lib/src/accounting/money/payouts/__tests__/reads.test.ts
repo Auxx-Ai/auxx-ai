@@ -29,6 +29,7 @@ import {
   findPayoutByGatewayId,
   hasConnectorPayouts,
   listPayouts,
+  listUnpromotedConnectorPayouts,
 } from '../reads'
 import { fieldStubs } from './support/field-stubs'
 
@@ -430,5 +431,55 @@ describe('listPayouts', () => {
         source: 'synced',
       })
     }
+  })
+})
+
+describe('listUnpromotedConnectorPayouts (brief 114 P2)', () => {
+  const dialect = new PgDialect()
+
+  async function render(input: { limit: number; sourceAccountId?: string }) {
+    h.getCachedEntityDefId.mockResolvedValue('def_payout')
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        payout_gateway_id: 'f_gw',
+        payout_status: 'f_status',
+        payout_source_provider_key: 'f_pk',
+        payout_source_account_id: 'f_ac',
+        payout_source_environment: 'f_en',
+        payout_source_external_id: 'f_ex',
+      })
+    )
+    const queries: Array<{ sql: string; params: unknown[] }> = []
+    const db = {
+      execute: async (query: SQL) => {
+        queries.push(dialect.sqlToQuery(query))
+        return { rows: [{ id: 'inst_1' }] }
+      },
+    } as unknown as Database
+    const ids = await listUnpromotedConnectorPayouts(db, ORG, input)
+    return { ids, query: queries[0]! }
+  }
+
+  it('takes live records on a linked feed that carry no gateway id', async () => {
+    const { ids, query } = await render({ limit: 10 })
+    expect(ids).toEqual(['inst_1'])
+    expect(query.sql).toMatch(
+      /JOIN "FinancialSourceAccount" a[\s\S]*a."providerKey" = pk."valueText"[\s\S]*a."environment" = en."valueText"[\s\S]*a."paymentGatewayId" IS NOT NULL/
+    )
+    expect(query.sql).toContain('e."archivedAt" IS NULL')
+    expect(query.params).toEqual(expect.arrayContaining(['f_gw', 'f_ex', 'def_payout', 10]))
+  })
+
+  it("leaves out a record whose provider id another live record holds, a legacy twin's", async () => {
+    const { query } = await render({ limit: 10 })
+    expect(query.sql).toMatch(
+      /NOT EXISTS \(SELECT 1 FROM "FieldValue" gw[\s\S]*held."archivedAt" IS NULL[\s\S]*gw."entityId" = e.id OR gw."valueText" = ex."valueText"/
+    )
+  })
+
+  it('narrows to one feed when asked', async () => {
+    const { query } = await render({ limit: 10, sourceAccountId: 'fsa_1' })
+    expect(query.sql).toContain('AND a.id = $')
+    expect(query.params).toContain('fsa_1')
   })
 })

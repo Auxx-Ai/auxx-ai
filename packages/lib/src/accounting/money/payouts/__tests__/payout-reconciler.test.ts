@@ -10,6 +10,7 @@ import { runWithDirtyParents } from '../../../../reconcilers/dirty-parents'
 const h = vi.hoisted(() => ({
   assess: vi.fn(),
   bridge: vi.fn(),
+  promote: vi.fn(),
   owners: vi.fn(),
   order: [] as string[],
   db: { select: () => ({ from: () => ({ innerJoin: () => ({ where: () => h.owners() }) }) }) },
@@ -21,6 +22,7 @@ vi.mock('@auxx/database', async () => {
 })
 vi.mock('../assess-payouts', () => ({ assessPayouts: h.assess }))
 vi.mock('../../customer-money/bridge', () => ({ bridgeFinancialRecords: h.bridge }))
+vi.mock('../promote', () => ({ promoteConnectorPayouts: h.promote }))
 
 import { markPayoutForAssessment, registerPayoutReconciler } from '../payout-reconciler'
 
@@ -40,6 +42,10 @@ beforeEach(() => {
   h.owners.mockResolvedValue([])
   h.bridge.mockImplementation(async () => {
     h.order.push('bridge')
+  })
+  h.promote.mockImplementation(async () => {
+    h.order.push('promote')
+    return { isErr: () => false }
   })
   h.assess.mockImplementation(async () => {
     h.order.push('assess')
@@ -84,10 +90,30 @@ describe('payout assessment runs once per write', () => {
 
     await markPayoutForAssessment(ORG, USER, 'p1')
 
-    expect(h.order).toEqual(['bridge', 'assess'])
+    expect(h.order).toEqual(['bridge', 'promote', 'assess'])
     expect(h.bridge.mock.calls[0]![1].records).toEqual([
       { id: 'p1', kind: 'payout' },
       { id: 'e1', kind: 'processor_balance_entry' },
     ])
+  })
+
+  it('promotes only the marked payouts, not their balance entries (brief 114 P2)', async () => {
+    h.owners.mockResolvedValue([
+      { id: 'p1', entityType: 'payout' },
+      { id: 'e1', entityType: 'processor_balance_entry' },
+    ])
+
+    await markPayoutForAssessment(ORG, USER, 'p1')
+
+    expect(h.promote).toHaveBeenCalledWith(h.db, { organizationId: ORG, payoutIds: ['p1'] })
+  })
+
+  it('skips the promotion when only balance entries were marked', async () => {
+    h.owners.mockResolvedValue([{ id: 'e1', entityType: 'processor_balance_entry' }])
+
+    await markPayoutForAssessment(ORG, USER, 'e1')
+
+    expect(h.promote).not.toHaveBeenCalled()
+    expect(h.assess).toHaveBeenCalledOnce()
   })
 })

@@ -97,6 +97,8 @@ vi.mock('../../../../users/system-user-service', () => ({
 }))
 
 import type { Database } from '@auxx/database'
+import type { SQL } from 'drizzle-orm'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import type { PaymentGatewayRow } from '../../../rails/client'
 import type { PayoutSource, PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests, registerPayoutSource } from '../source-registry'
@@ -106,9 +108,13 @@ const ORG = 'org_1'
 const NOW = new Date('2026-09-14T12:00:00.000Z')
 
 /** The only select is the first-record floor, answered "a record from a year ago". */
+const floorCalls: Array<{ method: string; args: unknown[] }> = []
 const floorChain: Record<string, unknown> = {}
 for (const method of ['from', '$dynamic', 'leftJoin', 'innerJoin', 'where', 'orderBy'])
-  floorChain[method] = () => floorChain
+  floorChain[method] = (...args: unknown[]) => {
+    floorCalls.push({ method, args })
+    return floorChain
+  }
 floorChain.limit = async () => [{ createdAt: new Date('2025-09-01T00:00:00Z') }]
 const db = {
   select: () => floorChain,
@@ -151,6 +157,7 @@ const sync = () => syncPayoutSource(db, CTX, { now: NOW })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  floorCalls.length = 0
   __resetPayoutSourcesForTests()
   registerPayoutSource(SOURCE)
   h.findPayoutByGatewayId.mockReset().mockResolvedValue(null)
@@ -246,5 +253,23 @@ describe('a legacy-only feed', () => {
     expect(h.findConnectorPayout).not.toHaveBeenCalled()
     expect(h.hasConnectorPayouts).not.toHaveBeenCalled()
     expect(h.update).toHaveBeenCalledWith('def_payout:inst_lib', expect.anything())
+  })
+})
+
+describe('the first-sync floor (brief 114 §3)', () => {
+  const render = (value: unknown) => new PgDialect().sqlToQuery(value as SQL)
+
+  it('counts only live rows stamped with this rail', async () => {
+    await sync()
+
+    expect(floorCalls.some((call) => call.method === 'leftJoin')).toBe(false)
+    const join = floorCalls.find((call) => call.method === 'innerJoin')
+    const on = render(join?.args[1])
+    expect(on.sql).toContain('"relatedEntityId" = $')
+    expect(on.params).toContain('pg_shop')
+    expect(on.sql).not.toMatch(/is null/i)
+    const where = render(floorCalls.find((call) => call.method === 'where')?.args[0])
+    expect(where.sql).toContain('"archivedAt" is null')
+    expect(where.sql).not.toContain('"relatedEntityId" is null')
   })
 })

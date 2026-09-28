@@ -1299,6 +1299,9 @@ finalize integrity pass or not at all (`inventory/relief/backfill.ts` is the man
 (`money/payouts/sweep-stored-entries.ts`) exists because payout records import in draft with no
 entry and the nightly sync re-offers only its 30-day lookback: it lists paid payouts dated after
 the cutover month with no subject claim, oldest first, and hands each to `repostStoredPayout`.
+Since brief 114 P3 it posts on any linked rail (Affirm, Authorize.net included; no registered
+`PayoutSource` needed), floors only on `cutoffPeriod`, waits until the rail's feed holds the
+payout's `ProcessorBalanceEntry` rows, and first promotes one page of unpromoted connector payouts.
 
 ### 8.5 Payouts
 
@@ -1362,7 +1365,9 @@ be the obvious shape, but then an order and its own lines dirtied by one write d
 
 **Payout and balance-entry records reach the payout reconciler through mark hooks**
 (`customer-money/record-marks.ts`: `assessOnPayoutChange`, `assessOnProcessorBalanceEntryChange`,
-each watching its `BRIDGE_ATTRIBUTES` set) on all three write lanes. The sync lane replays them
+each watching its `BRIDGE_ATTRIBUTES` set) on all three write lanes. The drain also promotes a
+connector payout in place (`money/payouts/promote.ts`, brief 114 P2): ledger fields from its
+evidence, rail from the linked `FinancialSourceAccount`; `linkFeed` promotes that feed's payouts. The sync lane replays them
 from the manifest's `touched` keys in `events/handlers/finalize-integrity-passes.ts`, inside one
 `runWithDirtyParents`; archival fires no field change, so archived records are hand-marked there
 (`markArchivedFinancialRecords`). Both money reconcilers are batch, and a batch reconciler is exempt

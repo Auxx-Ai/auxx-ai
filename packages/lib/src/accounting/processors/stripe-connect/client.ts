@@ -11,4 +11,12 @@ export const STRIPE_CONNECT_PROCESSOR: ProcessorDescriptor = {
   feeTreatment: 'netted',
   feedApp: null,
   accountLabel: 'label',
+  payoutStatuses: {
+    paid: 'paid',
+    pending: 'in_transit',
+    in_transit: 'in_transit',
+    failed: 'negative',
+    canceled: 'negative',
+  },
+  otherPayoutStatus: 'in_transit',
 }

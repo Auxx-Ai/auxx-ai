@@ -45,7 +45,7 @@ describe('railFeedCopy', () => {
 
   it('points connector states at the picker or the connector', () => {
     expect(railFeedCopy(feed({ state: 'not_installed' }), true)).toEqual({
-      sentence: 'Affirm can read these payouts for matching.',
+      sentence: 'Affirm can read and post these payouts.',
       action: { kind: 'href', href: '/app/connectors?connect=app:affirm', label: 'Install Affirm' },
     })
     expect(railFeedCopy(feed({ state: 'not_connected' }), true)?.action).toEqual({
@@ -80,7 +80,7 @@ describe('railFeedCopy', () => {
       true
     )
     expect(copy?.sentence).toBe(
-      'Optional: Authorize.Net is installed. Connect it so auxx reads Authorize.Net payouts for matching.'
+      'Optional: Authorize.Net is installed. Connect it so auxx reads and posts Authorize.Net payouts.'
     )
   })
 })

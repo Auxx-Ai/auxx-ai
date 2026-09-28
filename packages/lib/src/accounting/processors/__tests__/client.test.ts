@@ -1,7 +1,13 @@
 // packages/lib/src/accounting/processors/__tests__/client.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { FEED_APPS, feedAppForHandles, processorByHandle, processorByProviderKey } from '../client'
+import {
+  FEED_APPS,
+  feedAppForHandles,
+  processorByHandle,
+  processorByProviderKey,
+  providerPayoutState,
+} from '../client'
 
 describe('feedAppForHandles', () => {
   it('reads all three Authorize.Net spellings as the authorize-net app', () => {
@@ -35,5 +41,34 @@ describe('lookups', () => {
 
   it('collects the feed apps', () => {
     expect([...FEED_APPS].sort()).toEqual(['affirm', 'authorize-net', 'shopify'])
+  })
+})
+
+describe('providerPayoutState', () => {
+  it.each([
+    ['shopify_payments', 'paid', 'paid'],
+    ['shopify_payments', 'scheduled', 'in_transit'],
+    ['shopify_payments', 'in_transit', 'in_transit'],
+    ['shopify_payments', 'failed', 'negative'],
+    ['shopify_payments', 'canceled', 'negative'],
+    ['shopify_payments', 'something_new', 'in_transit'],
+    ['affirm', 'paid', 'paid'],
+    ['affirm', 'failed', 'negative'],
+    ['affirm', 'rejected', 'negative'],
+    ['affirm', 'some_future_removal', 'negative'],
+    ['authorize_net', 'settledSuccessfully', 'paid'],
+    ['authorize_net', 'pendingSettlement', 'in_transit'],
+    ['authorize_net', 'settlementError', 'negative'],
+    ['authorize_net', 'somethingElse', 'in_transit'],
+    ['stripe', 'paid', 'paid'],
+    ['paypal', 'paid', 'in_transit'],
+  ] as const)('%s %s reads as %s', (providerKey, status, state) => {
+    expect(providerPayoutState(providerKey, status)).toBe(state)
+  })
+
+  it('reads an empty status and an inherited key as in transit', () => {
+    expect(providerPayoutState('affirm', null)).toBe('in_transit')
+    expect(providerPayoutState('affirm', '')).toBe('in_transit')
+    expect(providerPayoutState('shopify_payments', 'constructor')).toBe('in_transit')
   })
 })

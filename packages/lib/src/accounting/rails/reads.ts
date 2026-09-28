@@ -470,6 +470,7 @@ export interface LinkedFeed {
   id: string
   providerKey: string
   externalAccountId: string
+  environment: string
   name: string | null
   /** Never null: an unlinked feed is a manual rail and is filtered out below. */
   paymentGatewayId: string
@@ -494,6 +495,7 @@ export async function listLinkedFeeds(
       paymentGatewayId: schema.FinancialSourceAccount.paymentGatewayId,
       providerKey: schema.FinancialSourceAccount.providerKey,
       externalAccountId: schema.FinancialSourceAccount.externalAccountId,
+      environment: schema.FinancialSourceAccount.environment,
       name: schema.FinancialSourceAccount.name,
     })
     .from(schema.FinancialSourceAccount)

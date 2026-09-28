@@ -15,4 +15,7 @@ export const AFFIRM_PROCESSOR: ProcessorDescriptor = {
   feeTreatment: 'netted',
   feedApp: 'affirm',
   accountLabel: 'label',
+  // Any `removal_state` replaces `paid` verbatim, so every other value is a removal.
+  payoutStatuses: { paid: 'paid' },
+  otherPayoutStatus: 'negative',
 }

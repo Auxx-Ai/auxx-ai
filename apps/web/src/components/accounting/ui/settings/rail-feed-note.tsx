@@ -56,7 +56,7 @@ export function railFeedCopy(
       }
     case 'not_connected':
       return {
-        sentence: `${prefix}${app} is installed. Connect it so auxx reads ${label} payouts for matching.`,
+        sentence: `${prefix}${app} is installed. Connect it so auxx reads and posts ${label} payouts.`,
         action:
           canManageConnectors && feed.feedApp
             ? { kind: 'href', href: connectSourceHref(feed.feedApp), label: `Connect ${app}` }
@@ -64,7 +64,7 @@ export function railFeedCopy(
       }
     case 'not_installed':
       return {
-        sentence: `${prefix}${app} can read these payouts for matching.`,
+        sentence: `${prefix}${app} can read and post these payouts.`,
         action:
           canManageConnectors && feed.feedApp
             ? { kind: 'href', href: connectSourceHref(feed.feedApp), label: `Install ${app}` }
@@ -153,7 +153,7 @@ export function ProcessorFeedHint({ handles, className }: ProcessorFeedHintProps
       )}>
       <span>
         {prefix}
-        {processor.label} payouts can be read by the {app} app for matching.
+        {processor.label} payouts can be read and posted by the {app} app.
       </span>
       {canManageConnectors ? (
         <FeedHrefButton href={connectSourceHref(feedApp)} label={`Connect ${app}`} />

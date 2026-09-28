@@ -12,8 +12,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   fresh: [] as string[],
   queries: [] as Array<{ sql: string; params: unknown[] }>,
-  records: {} as Record<string, { gatewayId: string; railId: string }>,
+  records: {} as Record<string, { gatewayId: string; railId: string; providerKey?: string }>,
   repostStoredPayout: vi.fn(),
+  promotePendingPayouts: vi.fn(),
   upsertWorkItem: vi.fn(),
 }))
 
@@ -36,16 +37,11 @@ vi.mock('../../../rails/reads', () => ({
   listPaymentGateways: async () =>
     ok([
       { id: 'pg_shop', settlementSource: 'shopify_payments' },
+      { id: 'pg_affirm', settlementSource: 'affirm' },
       { id: 'pg_manual', settlementSource: 'manual' },
     ]),
 }))
-vi.mock('../source-registry', async () => {
-  const { err, ok } = await import('neverthrow')
-  return {
-    getPayoutSource: (id: string) =>
-      id === 'shopify_payments' ? ok({ id }) : err(new Error(`No payout source "${id}"`)),
-  }
-})
+vi.mock('../promote', () => ({ promotePendingPayouts: h.promotePendingPayouts }))
 vi.mock('../../../../resources/system-records', () => ({
   readSystemRecords: async (
     _db: unknown,
@@ -60,7 +56,11 @@ vi.mock('../../../../resources/system-records', () => ({
         {
           id,
           text: (attribute: string) =>
-            attribute === 'payout_gateway_id' ? record.gatewayId : null,
+            attribute === 'payout_gateway_id'
+              ? record.gatewayId
+              : attribute === 'payout_source_provider_key'
+                ? (record.providerKey ?? null)
+                : null,
           related: (attribute: string) =>
             attribute === 'payout_payment_gateway' ? record.railId : null,
         },
@@ -91,6 +91,7 @@ beforeEach(() => {
   h.fresh = []
   h.records = {}
   h.repostStoredPayout.mockResolvedValue(ok({ status: 'posted' }))
+  h.promotePendingPayouts.mockResolvedValue(ok({ promoted: 0, reversed: 0, skipped: 0 }))
 })
 
 describe('sweepStoredPayoutEntries', () => {
@@ -107,6 +108,42 @@ describe('sweepStoredPayoutEntries', () => {
     expect(list?.sql).toContain('item."stage" =')
     expect(list?.params).toEqual(expect.arrayContaining(['payout', 'post']))
     expect(list?.sql).toContain('ORDER BY pa."valueDate" ASC, e.id ASC')
+  })
+
+  it("waits for the payout's balance entries on a feed linked to its rail (brief 114 P3)", async () => {
+    await sweepStoredPayoutEntries(db, { organizationId: 'org_1' })
+    const [list] = h.queries
+    expect(list?.sql).toMatch(
+      /AND EXISTS \(SELECT 1 FROM "ProcessorBalanceEntry" pbe[\s\S]*pbe."payoutExternalId" = gw."valueText"[\s\S]*pbe."isOutgoingTransfer" = false[\s\S]*fa."paymentGatewayId" = rl."relatedEntityId"/
+    )
+  })
+
+  it('floors on the cutover month of the paid date alone, never on a first sync', async () => {
+    await sweepStoredPayoutEntries(db, { organizationId: 'org_1' })
+    const [list] = h.queries
+    // One date predicate, on the payout's own paid date: nothing reads the rail's watermark
+    // or its first record, so a post-cutover payout from before any lib sync is a candidate.
+    expect(list?.sql.match(/pa."valueDate"/g)).toHaveLength(3)
+    expect(list?.sql).not.toContain('createdAt')
+    expect(list?.sql).not.toContain('lastSettlement')
+  })
+
+  it('promotes pending connector payouts before it lists', async () => {
+    await sweepStoredPayoutEntries(db, { organizationId: 'org_1', limit: 7 })
+    expect(h.promotePendingPayouts).toHaveBeenCalledWith(db, { organizationId: 'org_1', limit: 7 })
+  })
+
+  it('posts an Affirm-rail payout, which no registered source reads, without GATEWAY_UNMAPPED', async () => {
+    h.fresh = ['po_a']
+    h.records = { po_a: { gatewayId: 'aff_1', railId: 'pg_affirm', providerKey: 'affirm' } }
+    const counts = await sweepStoredPayoutEntries(db, { organizationId: 'org_1' })
+
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    expect(h.repostStoredPayout.mock.calls[0]![1]).toMatchObject({
+      ctx: { sourceId: 'affirm', rail: { id: 'pg_affirm' }, handle: null },
+      providerPayoutId: 'aff_1',
+    })
+    expect(counts).toMatchObject({ accepted: 1 })
   })
 
   it('hands each listed payout to repostStoredPayout once, with its rail context', async () => {
@@ -131,7 +168,20 @@ describe('sweepStoredPayoutEntries', () => {
     expect(counts).toMatchObject({ scanned: 2, accepted: 2 })
   })
 
-  it('parks a payout whose rail has no payout source instead of re-offering it', async () => {
+  it('parks a payout whose rail is gone', async () => {
+    h.fresh = ['po_1']
+    h.records = { po_1: { gatewayId: 'gw_1', railId: 'pg_archived' } }
+    await sweepStoredPayoutEntries(db, { organizationId: 'org_1' })
+
+    expect(h.repostStoredPayout).not.toHaveBeenCalled()
+    expect(h.upsertWorkItem).toHaveBeenCalledWith(
+      db,
+      'org_1',
+      expect.objectContaining({ sourceId: 'po_1', reasonCode: 'GATEWAY_UNMAPPED' })
+    )
+  })
+
+  it('parks a payout on a manual rail with no feed instead of re-offering it', async () => {
     h.fresh = ['po_1']
     h.records = { po_1: { gatewayId: 'gw_1', railId: 'pg_manual' } }
     const counts = await sweepStoredPayoutEntries(db, { organizationId: 'org_1' })

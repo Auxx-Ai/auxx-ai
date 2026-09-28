@@ -75,13 +75,13 @@ import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, isNull, or, type SQL } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
-import { systemValueJoin } from '../../../resources/system-records'
+import { systemRecordScope, systemValueJoin } from '../../../resources/system-records'
 import { SystemUserService } from '../../../users/system-user-service'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
@@ -696,8 +696,8 @@ function payoutValues(gathered: GatheredPayout, ctx: PayoutSourceCtx): Record<st
 /**
  * How far back this run reads, per rail (brief 27 §6.5).
  *
- * The floor is the rail's FIRST sync: the earliest payout record stamped with
- * this rail (or unstamped, which the pair lookup adopts - every pre-157 row).
+ * The floor is the rail's FIRST sync: the earliest live payout record stamped
+ * with this rail.
  * Everything before it is in the opening balances. Bounded by
  * `SYNC_LOOKBACK_DAYS`, so a worker that missed a few days catches up and a
  * re-run never walks an account's whole history.
@@ -733,11 +733,8 @@ async function resolveSince(
 }
 
 /**
- * When this rail's first payout record was written, or `null` for none.
- *
- * The pointer predicate is `findPayoutByGatewayId`'s: a row stamped with THIS
- * rail, or with no rail at all (every row written before a rail pointer was
- * ever stamped).
+ * When this rail's first payout record was written, or `null` for none. Only live rows stamped
+ * with this rail count: an unstamped row is another feed's connector evidence (brief 114 §3).
  */
 async function readEarliestPayoutCreatedAt(
   db: Database,
@@ -751,23 +748,16 @@ async function readEarliestPayoutCreatedAt(
     .from(schema.EntityInstance)
     .$dynamic()
 
-  const where: SQL[] = [
-    eq(schema.EntityInstance.organizationId, ctx.organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, fieldCtx.defId),
-  ]
-
   if (railField) {
     const pointer = alias(schema.FieldValue, 'payout_payment_gateway_v')
-    query = query.leftJoin(pointer, systemValueJoin(pointer, railField.id))
-    const pointerMatches = or(
-      isNull(pointer.relatedEntityId),
-      eq(pointer.relatedEntityId, ctx.rail.id)
+    query = query.innerJoin(
+      pointer,
+      and(systemValueJoin(pointer, railField.id), eq(pointer.relatedEntityId, ctx.rail.id))
     )
-    if (pointerMatches) where.push(pointerMatches)
   }
 
   const [earliest] = await query
-    .where(and(...where))
+    .where(systemRecordScope(ctx.organizationId, fieldCtx.defId))
     .orderBy(asc(schema.EntityInstance.createdAt))
     .limit(1)
   return earliest?.createdAt ?? null
@@ -793,16 +783,27 @@ async function readEarliestPayoutCreatedAt(
  */
 export async function reverseFailedPayout(
   db: Database,
-  params: { organizationId: string; gatewayPayoutId: string; actorUserId?: string }
+  params: {
+    organizationId: string
+    gatewayPayoutId: string
+    actorUserId?: string
+    /** The rail, when the caller knows it (a promoted connector payout); otherwise id-only. */
+    paymentGatewayId?: string
+  }
 ): Promise<Result<{ reversed: boolean }, Error>> {
-  const { organizationId, gatewayPayoutId, actorUserId } = params
+  const { organizationId, gatewayPayoutId, actorUserId, paymentGatewayId } = params
 
   return guard(
     async () => {
       const ctx = await requirePayoutFieldContext(db, organizationId)
-      // Id-only: a `payout.failed` webhook names the provider's id and nothing
-      // else, so this matches on the id alone across every rail.
-      const record = await findPayoutByGatewayId(db, organizationId, gatewayPayoutId)
+      // Id-only unless the caller names a rail: a `payout.failed` webhook names the provider's id
+      // and nothing else.
+      const record = await findPayoutByGatewayId(
+        db,
+        organizationId,
+        gatewayPayoutId,
+        paymentGatewayId ?? null
+      )
       if (!record) {
         logger.info('A payout failed that auxx never ingested, nothing to reverse', {
           organizationId,

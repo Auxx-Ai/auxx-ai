@@ -9,6 +9,7 @@ export {
   PROCESSORS,
   processorByHandle,
   processorByProviderKey,
+  providerPayoutState,
   SHOPIFY_APP_SLUG,
   SHOPIFY_PAYMENTS_PROCESSOR,
   STRIPE_CONNECT_PROCESSOR,
@@ -24,4 +25,9 @@ export {
   SHOPIFY_PAYMENTS_SOURCE_ID,
 } from './shopify-payments/source'
 export { STRIPE_CONNECT_PAYOUT_SOURCE, STRIPE_CONNECT_SOURCE_ID } from './stripe-connect/source'
-export type { ProcessorAccountLabel, ProcessorDescriptor, ProcessorId } from './types'
+export type {
+  ProcessorAccountLabel,
+  ProcessorDescriptor,
+  ProcessorId,
+  ProviderPayoutState,
+} from './types'

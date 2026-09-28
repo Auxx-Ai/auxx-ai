@@ -332,6 +332,56 @@ function connectorPayoutQuery(
 }
 
 /**
+ * Connector payout records on a linked feed that carry no `payout_gateway_id` yet, for the
+ * promotion to stamp (brief 114 P2). A provider id another live record already holds is left out:
+ * that is a legacy twin, and stamping it would post the payout twice.
+ */
+export async function listUnpromotedConnectorPayouts(
+  db: Database,
+  organizationId: string,
+  input: { limit: number; sourceAccountId?: string }
+): Promise<string[]> {
+  const ctx = await loadPayoutFieldContext(db, organizationId)
+  if (!ctx) return []
+  const {
+    payout_source_provider_key: provider,
+    payout_source_account_id: account,
+    payout_source_environment: environment,
+    payout_source_external_id: external,
+    payout_gateway_id: gateway,
+  } = ctx.fields
+  if (!provider || !account || !environment || !external || !gateway) return []
+  const value = (alias: string, fieldId: string) =>
+    sql`JOIN "FieldValue" ${sql.raw(alias)} ON ${sql.raw(alias)}."organizationId" = e."organizationId"
+      AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}`
+  const result = await db.execute(sql`
+    SELECT e.id
+    FROM "EntityInstance" e
+    ${value('pk', provider.id)}
+    ${value('ac', account.id)}
+    ${value('en', environment.id)}
+    ${value('ex', external.id)} AND ex."valueText" IS NOT NULL
+    JOIN "FinancialSourceAccount" a ON a."organizationId" = e."organizationId"
+      AND a."providerKey" = pk."valueText" AND a."externalAccountId" = ac."valueText"
+      AND a."environment" = en."valueText" AND a."archivedAt" IS NULL
+      AND a."paymentGatewayId" IS NOT NULL
+      ${input.sourceAccountId ? sql`AND a.id = ${input.sourceAccountId}` : sql``}
+    WHERE e."organizationId" = ${organizationId}
+      AND e."entityDefinitionId" = ${ctx.defId}
+      AND e."archivedAt" IS NULL
+      AND NOT EXISTS (SELECT 1 FROM "FieldValue" gw
+        JOIN "EntityInstance" held ON held."organizationId" = gw."organizationId"
+          AND held.id = gw."entityId" AND held."archivedAt" IS NULL
+        WHERE gw."organizationId" = e."organizationId" AND gw."fieldId" = ${gateway.id}
+          AND gw."valueText" IS NOT NULL
+          AND (gw."entityId" = e.id OR gw."valueText" = ex."valueText"))
+    ORDER BY e.id
+    LIMIT ${input.limit}
+  `)
+  return (result.rows as Array<{ id: string }>).map((row) => row.id)
+}
+
+/**
  * Every confirmed settlement destination on the `bank_account` record(s) mapped to `glAccountId`
  * (58 §5.4 rule 2). Read through the entity layer directly rather than by importing `banking/` -
  * the same anti-cycle posture the deleted `findBankAccountByStripeExternalAccountId` kept: a

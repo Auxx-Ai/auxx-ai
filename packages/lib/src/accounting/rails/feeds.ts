@@ -20,6 +20,7 @@ import type { Result } from 'neverthrow'
 import { NotFoundError } from '../../errors'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
+import { promotePendingPayouts } from '../money/payouts/promote'
 import { listOpenDestinationMismatches } from '../money/payouts/reads'
 import { wakeReasonCode } from '../work-items/wake'
 import type { RailFeedStatus } from './client'
@@ -28,6 +29,9 @@ import { guard } from './guard'
 import { getPaymentGateway, listLinkedFeeds } from './reads'
 
 const logger = createScopedLogger('payment-gateways')
+
+/** How many of a newly linked feed's payouts `linkFeed` promotes inline; the sweep takes the rest. */
+const LINK_PROMOTE_LIMIT = 200
 
 /** What `linkFeed` accepts. */
 export interface LinkFeedInput {
@@ -72,6 +76,19 @@ export async function linkFeed(
       }
 
       await wakeReasonCode(db, organizationId, 'GATEWAY_UNMAPPED')
+      // The feed's connector payouts take this rail now (brief 114 P2). The link stands either way.
+      const promoted = await promotePendingPayouts(db, {
+        organizationId,
+        sourceAccountId,
+        limit: LINK_PROMOTE_LIMIT,
+        actorUserId: input.actorUserId,
+      })
+      if (promoted.isErr())
+        logger.warn('Linked a feed but could not promote its payouts', {
+          organizationId,
+          sourceAccountId,
+          error: promoted.error.message,
+        })
       logger.info('Linked a feed to a payment gateway', {
         organizationId,
         gatewayId,

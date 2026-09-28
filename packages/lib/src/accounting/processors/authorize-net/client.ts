@@ -15,4 +15,10 @@ export const AUTHORIZE_NET_PROCESSOR: ProcessorDescriptor = {
   feeTreatment: 'billed',
   feedApp: 'authorize-net',
   accountLabel: 'label',
+  payoutStatuses: {
+    settledSuccessfully: 'paid',
+    pendingSettlement: 'in_transit',
+    settlementError: 'negative',
+  },
+  otherPayoutStatus: 'in_transit',
 }

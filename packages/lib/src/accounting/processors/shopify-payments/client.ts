@@ -17,4 +17,12 @@ export const SHOPIFY_PAYMENTS_PROCESSOR: ProcessorDescriptor = {
   feeTreatment: 'netted',
   feedApp: SHOPIFY_APP_SLUG,
   accountLabel: 'label',
+  payoutStatuses: {
+    paid: 'paid',
+    scheduled: 'in_transit',
+    in_transit: 'in_transit',
+    failed: 'negative',
+    canceled: 'negative',
+  },
+  otherPayoutStatus: 'in_transit',
 }
