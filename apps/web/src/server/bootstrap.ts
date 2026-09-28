@@ -8,7 +8,7 @@ import { configService } from '@auxx/credentials'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { createScopedLogger } from '@auxx/logger'
 import { registerAccountingProviders } from '~/server/accounting-providers'
-import { registerPayoutSources } from '~/server/payout-sources'
+import { registerProcessors } from '~/server/processors'
 
 const logger = createScopedLogger('web-bootstrap')
 let initPromise: Promise<void> | null = null
@@ -32,7 +32,7 @@ export async function ensureWebAppInitialized(): Promise<void> {
     // `PayoutSource` interface, and "Sync now" runs it in this process (brief 27
     // §4, §7). The nightly `payoutSyncJob` is the other door and registers in the
     // worker; there is no payout webhook.
-    registerPayoutSources()
+    registerProcessors()
     logger.info('Web app initialization completed successfully')
   })()
 

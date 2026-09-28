@@ -24,7 +24,12 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import type { SQL } from 'drizzle-orm'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { findPayoutByGatewayId, listPayouts } from '../reads'
+import {
+  findConnectorPayout,
+  findPayoutByGatewayId,
+  hasConnectorPayouts,
+  listPayouts,
+} from '../reads'
 import { fieldStubs } from './support/field-stubs'
 
 const ORG = 'org_1'
@@ -146,6 +151,117 @@ describe('findPayoutByGatewayId', () => {
 
     expect(captured.leftJoins).toBe(0)
     expect(render(captured.where).params).toEqual([ORG, PAYOUT_DEF])
+  })
+})
+
+// ── Brief 114 P1: the connector's record, by provider key, account and external id ──
+describe('findConnectorPayout / hasConnectorPayouts', () => {
+  const dialect = new PgDialect()
+  interface Captured {
+    joins: unknown[]
+    where: unknown
+    selects: number
+  }
+
+  function capturingDb(captured: Captured): Database {
+    const chain = (): Record<string, unknown> => {
+      const c: Record<string, unknown> = {}
+      for (const method of ['$dynamic', 'limit']) c[method] = () => chain()
+      for (const method of ['innerJoin', 'leftJoin'])
+        c[method] = (_table: unknown, on: unknown) => {
+          captured.joins.push(on)
+          return chain()
+        }
+      c.where = (predicate: unknown) => {
+        captured.where = predicate
+        return chain()
+      }
+      // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+      c.then = (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) =>
+        Promise.resolve([]).then(resolve, reject)
+      return c
+    }
+    return {
+      select: () => {
+        captured.selects += 1
+        return { from: () => chain() }
+      },
+    } as unknown as Database
+  }
+
+  const params = (captured: Captured) =>
+    captured.joins.flatMap((on) => dialect.sqlToQuery(on as SQL).params)
+
+  beforeEach(() => {
+    h.getCachedEntityDefId.mockResolvedValue('def_payout')
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        payout_gateway_id: 'f_gateway_id',
+        payout_status: 'f_status',
+        payout_payment_gateway: 'f_rail',
+        payout_source_provider_key: 'f_provider',
+        payout_source_account_id: 'f_account',
+        payout_source_external_id: 'f_external',
+      })
+    )
+  })
+
+  it('matches the external id, provider key and feed accounts, on this rail or none', async () => {
+    const captured: Captured = { joins: [], where: undefined, selects: 0 }
+
+    await findConnectorPayout(capturingDb(captured), ORG, 'po_9', 'pg_shop', {
+      providerKey: 'shopify_payments',
+      externalAccountIds: ['shop_1'],
+    })
+
+    expect(params(captured)).toEqual(
+      expect.arrayContaining([
+        'f_provider',
+        'shopify_payments',
+        'f_external',
+        'po_9',
+        'f_account',
+        'shop_1',
+      ])
+    )
+    const { sql, params: whereParams } = dialect.sqlToQuery(captured.where as SQL)
+    expect(whereParams).toEqual([ORG, 'def_payout', 'pg_shop'])
+    expect(sql).toMatch(/\(\s*is null or\s*= \$3\)/)
+  })
+
+  it('asks nothing about the account when the context knows none', async () => {
+    const captured: Captured = { joins: [], where: undefined, selects: 0 }
+
+    await findConnectorPayout(capturingDb(captured), ORG, 'po_9', 'pg_shop', {
+      providerKey: 'shopify_payments',
+      externalAccountIds: [],
+    })
+
+    expect(params(captured)).not.toContain('f_account')
+  })
+
+  it('reports no evidence without a known account, and never queries', async () => {
+    const captured: Captured = { joins: [], where: undefined, selects: 0 }
+
+    const has = await hasConnectorPayouts(capturingDb(captured), ORG, {
+      providerKey: 'shopify_payments',
+      externalAccountIds: [],
+    })
+
+    expect(has).toBe(false)
+    expect(captured.selects).toBe(0)
+  })
+
+  it('reads any payout of the provider on the feed accounts, whatever its external id', async () => {
+    const captured: Captured = { joins: [], where: undefined, selects: 0 }
+
+    const has = await hasConnectorPayouts(capturingDb(captured), ORG, {
+      providerKey: 'shopify_payments',
+      externalAccountIds: ['shop_1'],
+    })
+
+    expect(has).toBe(false)
+    expect(params(captured)).toEqual(['f_provider', 'shopify_payments', 'f_account', 'shop_1'])
   })
 })
 

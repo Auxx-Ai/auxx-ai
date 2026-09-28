@@ -15,7 +15,8 @@ import {
 } from '@auxx/ui/components/main-page'
 import { useHotkey } from '@tanstack/react-hotkeys'
 import { Lock, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { ConnectorList } from '~/components/data-connectors/ui/connector-list'
 import { ConnectorsBulkBar } from '~/components/data-connectors/ui/connectors-bulk-bar'
 import { ConnectorsToolbar } from '~/components/data-connectors/ui/connectors-toolbar'
@@ -34,6 +35,22 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 function ConnectorsPageContent() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [initialType, setInitialType] = useState<string | undefined>()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // `?connect=<type>` (see connectSourceHref) opens the picker on that source, then leaves the URL.
+  useEffect(() => {
+    const connect = searchParams.get('connect')
+    if (!connect) return
+    setInitialType(connect)
+    setPickerOpen(true)
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('connect')
+    const query = next.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }, [searchParams, pathname, router])
 
   // Page-local shortcut: N opens the "Connect a source" picker.
   useHotkey('N', () => setPickerOpen(true))
@@ -77,7 +94,14 @@ function ConnectorsPageContent() {
           <ConnectorsBulkBar />
         </ListSelectionProvider>
       </MainPageContent>
-      <SourceTemplateDialog open={pickerOpen} onOpenChange={setPickerOpen} />
+      <SourceTemplateDialog
+        open={pickerOpen}
+        onOpenChange={(next) => {
+          setPickerOpen(next)
+          if (!next) setInitialType(undefined)
+        }}
+        initialType={initialType}
+      />
     </MainPage>
   )
 }

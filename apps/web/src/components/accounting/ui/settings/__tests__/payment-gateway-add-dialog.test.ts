@@ -79,4 +79,20 @@ describe('railReadinessLine', () => {
       railReadinessLine({ clearingMapped: true, bankMapped: false, feedLinked: false }).ready
     ).toBe(true)
   })
+
+  it('says by hand when an app could supply the feed and none is linked', () => {
+    const base = { clearingMapped: true, bankMapped: false, feedLinked: false }
+    for (const state of ['not_installed', 'not_connected', 'syncing', 'available'] as const) {
+      expect(railReadinessLine({ ...base, feed: { state, optional: false } })).toEqual({
+        ready: true,
+        text: 'Ready to post by hand.',
+      })
+    }
+    expect(
+      railReadinessLine({ ...base, feed: { state: 'not_installed', optional: true } }).text
+    ).toBe('Ready to post.')
+    expect(railReadinessLine({ ...base, feed: { state: 'none', optional: false } }).text).toBe(
+      'Ready to post.'
+    )
+  })
 })

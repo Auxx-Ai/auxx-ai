@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/__tests__/stripe-connect.test.ts
+// packages/lib/src/accounting/processors/stripe-connect/__tests__/source.test.ts
 //
 // brief 27 §13 test 1, updated for task 58: Stripe behind the `PayoutSource`
 // interface. One Stripe fixture - a payout and its balance transactions - runs
@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
     has_more: false,
   })),
   findPayoutByGatewayId: vi.fn(async (..._args: unknown[]) => null as unknown),
+  findConnectorPayout: vi.fn(async (..._args: unknown[]) => null as unknown),
+  hasConnectorPayouts: vi.fn(async (..._args: unknown[]) => false),
   listLinkedFeedAccounts: vi.fn(
     async () => [] as { id: string; externalAccountId: string; paymentGatewayId: string }[]
   ),
@@ -71,15 +73,17 @@ vi.mock('../../../ledger/setup/accounting-enabled', () => ({
   isAccountingActive: h.isAccountingActive,
   isAccountingEnabled: async () => true,
 }))
-vi.mock('../fields', () => ({
+vi.mock('../../../money/payouts/fields', () => ({
   requirePayoutFieldContext: async () => ({
     defId: 'def_payout',
     fields: { payout_payment_gateway: { id: 'f_pg' } },
   }),
 }))
-vi.mock('../reads', () => ({
+vi.mock('../../../money/payouts/reads', () => ({
   countPayoutEntryAttempts: h.countPayoutEntryAttempts,
   findPayoutByGatewayId: h.findPayoutByGatewayId,
+  findConnectorPayout: h.findConnectorPayout,
+  hasConnectorPayouts: h.hasConnectorPayouts,
   listLinkedFeedAccounts: h.listLinkedFeedAccounts,
   listPayoutFeedAccountIds: async (
     _db: unknown,
@@ -93,15 +97,15 @@ vi.mock('../reads', () => ({
   listPayoutMemberEntryIds: h.listPayoutMemberEntryIds,
   readBankAccountSettlementDestinations: h.readDestinations,
 }))
-vi.mock('../match-sync', () => ({ syncStoredMatches: h.syncStoredMatches }))
+vi.mock('../../../money/payouts/match-sync', () => ({ syncStoredMatches: h.syncStoredMatches }))
 vi.mock('../../../work-items/write', () => ({
   upsertWorkItem: h.upsertWorkItem,
   deleteWorkItem: h.deleteWorkItem,
 }))
-vi.mock('../../stripe-connect/account', () => ({
+vi.mock('../../../money/stripe-connect/account', () => ({
   getPaymentAccount: async () => ({ stripeAccountId: 'acct_1' }),
 }))
-vi.mock('../../stripe-connect/client', () => ({
+vi.mock('../../../money/stripe-connect/client', () => ({
   getStripeConnectClient: () => ({
     payouts: { list: h.payoutsList },
     balanceTransactions: { list: h.balanceList },
@@ -122,7 +126,7 @@ vi.mock('../../../ledger/reads/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
 // This file is about Stripe alone; keep the shopify_payments source (registered
-// alongside it by `registerPayoutSources`) a no-op rather than hitting the real DB.
+// alongside it by `registerProcessors`) a no-op rather than hitting the real DB.
 vi.mock('../../../../apps/invoke-app-tool', () => ({
   resolveAppToolContext: async () => ({ connected: false }),
 }))
@@ -138,15 +142,15 @@ vi.mock('../../../../resources/crud/unified-handler', () => ({
 vi.mock('../../../../users/system-user-service', () => ({
   SystemUserService: { getSystemUserForActions: async () => 'user_system' },
 }))
-vi.mock('../recognise', () => ({ recognise: h.recognise }))
+vi.mock('../../../money/payouts/recognise', () => ({ recognise: h.recognise }))
 
 import type { Database } from '@auxx/database'
+import type { PayoutSourceCtx } from '../../../money/payouts/source'
+import { __resetPayoutSourcesForTests } from '../../../money/payouts/source-registry'
+import { syncPayouts } from '../../../money/payouts/sync'
 import type { PaymentGatewayRow } from '../../../rails/client'
-import type { PayoutSourceCtx } from '../source'
-import { __resetPayoutSourcesForTests } from '../source-registry'
-import { registerPayoutSources } from '../sources'
-import { STRIPE_CONNECT_PAYOUT_SOURCE } from '../sources/stripe-connect'
-import { syncPayouts } from '../sync'
+import { registerProcessors } from '../../register'
+import { STRIPE_CONNECT_PAYOUT_SOURCE } from '../source'
 
 const ORG = 'org_1'
 const NOW = new Date('2026-09-14T12:00:00.000Z')
@@ -254,7 +258,7 @@ const EXPECTED_ENTRY_INPUT = {
 beforeEach(() => {
   vi.clearAllMocks()
   __resetPayoutSourcesForTests()
-  registerPayoutSources()
+  registerProcessors()
   h.isAccountingActive.mockResolvedValue(true)
   h.gateways = [RAIL]
   h.listLinkedFeedAccounts.mockResolvedValue([LINKED_FEED])
@@ -283,6 +287,23 @@ describe('Stripe behind the interface is bit-for-bit (§13 test 1)', () => {
     expect(result._unsafeUnwrap()).toMatchObject({ seen: 1, created: 1, posted: 1, refused: [] })
     expect(h.create).toHaveBeenCalledTimes(1)
     expect(h.create).toHaveBeenCalledWith('def_payout', EXPECTED_PAYOUT_VALUES)
+  })
+
+  it('still creates its own record: no connector writes `stripe` payouts (brief 114 P1)', async () => {
+    const result = await syncPayouts(stubDb(), { organizationId: ORG, now: NOW })
+
+    expect(result._unsafeUnwrap()).toMatchObject({ created: 1, posted: 1, deferred: [] })
+    expect(h.findConnectorPayout).toHaveBeenCalledWith(
+      expect.anything(),
+      ORG,
+      'po_1',
+      'pg_stripe',
+      {
+        providerKey: 'stripe',
+        externalAccountIds: ['acct_1'],
+      }
+    )
+    expect(h.create).toHaveBeenCalledTimes(1)
   })
 
   it('in draft writes the payout record but no entry and no work item (110 G3)', async () => {

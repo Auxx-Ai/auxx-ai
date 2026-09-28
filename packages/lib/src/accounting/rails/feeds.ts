@@ -22,6 +22,8 @@ import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { readRoleAssignments } from '../ledger/roles/role-assignments'
 import { listOpenDestinationMismatches } from '../money/payouts/reads'
 import { wakeReasonCode } from '../work-items/wake'
+import type { RailFeedStatus } from './client'
+import { railFeedStatus } from './feed-status'
 import { guard } from './guard'
 import { getPaymentGateway, listLinkedFeeds } from './reads'
 
@@ -155,6 +157,8 @@ export interface GatewayReadiness {
    */
   ready: boolean
   mismatches: GatewayMismatch[]
+  /** Where this rail's feed stands (brief 113 D2). Never affects `ready`. */
+  feed: RailFeedStatus
 }
 
 /**
@@ -198,6 +202,8 @@ export async function readiness(
       }))
 
       const mismatches = await listOpenDestinationMismatches(db, organizationId, gatewayId)
+      const feed = await railFeedStatus(db, organizationId, gateway.value)
+      if (feed.isErr()) throw feed.error
 
       return {
         paymentGatewayId: gatewayId,
@@ -207,6 +213,7 @@ export async function readiness(
         linkedFeeds,
         ready: clearingMapped && (linkedFeeds.length === 0 || bankMapped),
         mismatches,
+        feed: feed.value,
       } satisfies GatewayReadiness
     },
     'Failed to read payment gateway readiness',

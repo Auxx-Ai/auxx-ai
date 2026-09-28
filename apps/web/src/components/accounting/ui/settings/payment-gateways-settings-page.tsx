@@ -59,7 +59,7 @@ export function PaymentGatewaysSettingsPage() {
   const [showClosed, setShowClosed] = useQueryState('closed', parseAsBoolean.withDefault(false))
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const gateways = api.paymentGateway.list.useQuery({ includeArchived: true })
+  const gateways = api.paymentGateway.list.useQuery({ includeArchived: true, withFeed: true })
   const rows = useMemo(() => gateways.data ?? [], [gateways.data])
   const visibleRows = useMemo(
     () => (showClosed ? rows : rows.filter((row) => row.status !== 'closed')),

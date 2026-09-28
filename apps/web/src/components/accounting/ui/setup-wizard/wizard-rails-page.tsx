@@ -12,6 +12,7 @@ import {
   sharedClearingAccounts,
   warnsAboutFeeFallback,
 } from '@auxx/lib/accounting/rails/rail-groups'
+import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -25,7 +26,9 @@ import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { ProcessorFeedHint, RailFeedNote } from '../settings/rail-feed-note'
 
 const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 
@@ -78,9 +81,11 @@ interface CreateDraft {
  */
 export function WizardRailsPage() {
   const census = api.paymentGateway.handleCensus.useQuery()
-  const gateways = api.paymentGateway.list.useQuery({ includeArchived: true })
+  const gateways = api.paymentGateway.list.useQuery({ includeArchived: true, withFeed: true })
   const roleMap = api.ledger.roleMap.useQuery()
   const utils = api.useUtils()
+  const { can } = useAccess()
+  const canControl = can(PermissionKey.ledgerControl)
 
   const [draft, setDraft] = useState<CreateDraft | null>(null)
 
@@ -254,6 +259,19 @@ export function WizardRailsPage() {
                             ? ` · ${group.handles.map((handle) => handle.handle).join(', ')}`
                             : ''}
                         </span>
+                        {claiming ? (
+                          <RailFeedNote
+                            feed={claiming.feed}
+                            gatewayId={claiming.id}
+                            canControl={canControl}
+                            className='pt-1'
+                          />
+                        ) : (
+                          <ProcessorFeedHint
+                            handles={group.handles.map((handle) => handle.handle)}
+                            className='pt-1'
+                          />
+                        )}
                       </div>
 
                       <div className='flex shrink-0 items-center gap-2'>

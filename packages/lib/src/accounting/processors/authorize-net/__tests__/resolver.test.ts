@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/__tests__/authorize-net-resolver.test.ts
+// packages/lib/src/accounting/processors/authorize-net/__tests__/resolver.test.ts
 
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,9 +13,9 @@ vi.mock('../../../../cache', () => ({
   getCachedCustomFields: async (_org: string, defId: string) => h.fields.get(defId) ?? [],
 }))
 
-import { BRIDGE_ATTRIBUTES } from '../../customer-money/bridge'
-import type { UnreferencedEntry } from '../reference-resolvers'
-import { AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER } from '../resolvers/authorize-net'
+import { BRIDGE_ATTRIBUTES } from '../../../money/customer-money/bridge'
+import type { UnreferencedEntry } from '../../../money/payouts/reference-resolvers'
+import { AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER } from '../resolver'
 
 /** Every bridged `customer_transaction` attribute as a field whose id is `f:<attribute>`. */
 const transactionFields = [...BRIDGE_ATTRIBUTES.customer_transaction.keys()].map((attribute) => ({

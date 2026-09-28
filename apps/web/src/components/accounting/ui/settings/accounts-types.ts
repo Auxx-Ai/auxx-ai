@@ -346,9 +346,9 @@ export function resolveSelectedPacks(selected: ReadonlySet<ChartPackKey>): Chart
  */
 export function defaultSelectedPacks(railsPresent: {
   stripeConnect: boolean
-  shopify: boolean
+  processorApp: boolean
 }): ChartPackKey[] {
-  return railsPresent.stripeConnect || railsPresent.shopify ? ['core', 'card_rail'] : ['core']
+  return railsPresent.stripeConnect || railsPresent.processorApp ? ['core', 'card_rail'] : ['core']
 }
 
 /**

@@ -32,7 +32,7 @@
  *
  * 🛑 **The sweep runs in the worker, which must register the accounting
  * providers before it** (27 §1.5). `apps/worker/src/server.ts` calls
- * `registerAccountingProviders()` and `registerPayoutSources()` before
+ * `registerAccountingProviders()` and `registerProcessors()` before
  * `startWorkers()`; without the first every entry lands as `not_required`,
  * without the second there is nothing to poll.
  */

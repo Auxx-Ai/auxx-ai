@@ -59,16 +59,24 @@ vi.mock('../../../../users/system-user-service', () => ({
 }))
 
 import type { Database } from '@auxx/database'
+import { registerProcessors } from '../../../processors/register'
 import type { PaymentGatewayRow } from '../../../rails/client'
 import type { PayoutSource, PayoutSourceCtx } from '../source'
 import { __resetPayoutSourcesForTests, registerPayoutSource } from '../source-registry'
-import { registerPayoutSources } from '../sources'
 import { syncPayoutSource, syncPayouts } from '../sync'
 
 const ORG = 'org_1'
 const db = {} as Database
 
-const EMPTY = { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [], failed: [] }
+const EMPTY = {
+  seen: 0,
+  created: 0,
+  posted: 0,
+  alreadyPosted: 0,
+  refused: [],
+  deferred: [],
+  failed: [],
+}
 
 /** A `Database` whose one select (the first-sync floor) answers `rows`. */
 function stubDb(rows: { createdAt: Date }[] = []): Database {
@@ -83,7 +91,7 @@ function stubDb(rows: { createdAt: Date }[] = []): Database {
 beforeEach(() => {
   vi.clearAllMocks()
   __resetPayoutSourcesForTests()
-  registerPayoutSources()
+  registerProcessors()
   h.isAccountingEnabled.mockResolvedValue(true)
   h.getPaymentAccount.mockResolvedValue(null)
   h.listLinkedFeedAccounts.mockResolvedValue([])
@@ -139,7 +147,7 @@ describe('accounting enabled', () => {
 
   it('finds nothing to run when no source is registered at all', async () => {
     // The §7 hazard, stated: a process that never called
-    // `registerPayoutSources()` syncs nothing, silently.
+    // `registerProcessors()` syncs nothing, silently.
     __resetPayoutSourcesForTests()
 
     const result = await syncPayouts(db, { organizationId: ORG })

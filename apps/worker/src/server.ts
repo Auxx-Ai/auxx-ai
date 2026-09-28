@@ -5,7 +5,7 @@ import '@auxx/logger/openobserve'
 import { getDevPort } from '@auxx/config/server'
 import { configService } from '@auxx/credentials'
 import { closePools } from '@auxx/database'
-import { registerPayoutSources } from '@auxx/lib/accounting/money/payouts/sources'
+import { registerProcessors } from '@auxx/lib/accounting/processors'
 import { registerAccountingProviders } from '@auxx/lib/accounting/providers/accounting-providers'
 import { registerChannelHooks } from '@auxx/lib/channels'
 import { closeAllQueues, closeFlowProducer } from '@auxx/lib/jobs/queues'
@@ -44,7 +44,7 @@ async function initializeApp() {
   // And the settlement feeds `payoutSyncJob` polls: the pipeline knows only the
   // `PayoutSource` interface, and an empty registry syncs nothing for any org
   // (brief 27 §4, §7). Same boot step, same reason.
-  registerPayoutSources()
+  registerProcessors()
   // Deserialize the phone geocoding tables (~13ms) up front. The worker runs mail/SMS ingest,
   // which is the heaviest producer of phone writes, so paying this at boot keeps it off the
   // first inbound message. Idempotent and never throws.

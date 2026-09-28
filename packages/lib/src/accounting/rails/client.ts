@@ -32,10 +32,9 @@
  * the `PayoutSource` registry. A value may sit in this vocabulary with no source
  * registered against it: `getPayoutSource` answers a `NotFoundError` naming the
  * id, and the sweep only polls sources that registered themselves. `affirm` and
- * `authorize_net` are permanently in that state on purpose - both are read by
- * the financial connector, which is mutually exclusive with the `PayoutSource`
- * registry (`plans/apps/affirm/affirm-build-plan.md` §5.3,
- * `plans/apps/authorize-net/authorize-net-build-plan.md` §5.4).
+ * `authorize_net` are in that state: their feeds are read by app connectors, so
+ * their `accounting/processors/` folders have no `source.ts`. Every non-`manual`
+ * value needs a processor folder (`processors/__tests__/descriptors.test.ts`).
  */
 export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = [
   'stripe',
@@ -324,4 +323,35 @@ export function matchGatewayRoute(
   )
   return matches.length === 1 ? matches[0]?.paymentGatewayId : undefined
 }
+/**
+ * Where a rail's feed stands, most-settled first (brief 113 D2). `available` with a null
+ * `candidateSourceAccountId` means two or more unlinked feeds match: the plain picker, no one-click Link.
+ */
+export const RAIL_FEED_STATES = [
+  'linked',
+  'available',
+  'syncing',
+  'not_connected',
+  'not_installed',
+  'none',
+] as const
+export type RailFeedState = (typeof RAIL_FEED_STATES)[number]
+
+/** One rail's feed state and what the gateway editor needs to act on it. */
+export interface RailFeedStatus {
+  state: RailFeedState
+  /** The app slug whose connector reads this rail's processor, or null. */
+  feedApp: string | null
+  /** The feed app's title, from the installed app or its marketplace listing. */
+  feedAppTitle: string | null
+  /** The processor's label (`Affirm`), or null for a rail no processor settles. */
+  processorLabel: string | null
+  /** A live `app:<feedApp>` connector, when one exists. */
+  connectorId: string | null
+  /** Set only in `available` with exactly one matching unlinked feed: the row `linkFeed` takes. */
+  candidateSourceAccountId: string | null
+  /** A billed-fee processor wants no feed to post, so any nudge is optional, never a readiness gap. */
+  optional: boolean
+}
+
 export type { RailFeeAccount, RailFeeStatus } from './rail-fee-status'

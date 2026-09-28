@@ -101,6 +101,8 @@ export interface SyncPayoutsResult {
   alreadyPosted: number
   /** Payouts the entry refused, with the reason. */
   refused: { payoutId: string; reason: string }[]
+  /** Payouts left for a connector to raise first; a later run adopts its record (brief 114 P1). */
+  deferred: { payoutId: string; reason: string }[]
   /**
    * Source contexts that could not run at all - the provider unreachable, the
    * source unregistered - named by rail. A failed rail never stops the others

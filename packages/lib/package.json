@@ -154,12 +154,6 @@
       "import": "./dist/accounting/money/payouts/client.mjs",
       "default": "./src/accounting/money/payouts/client.ts"
     },
-    "./accounting/money/payouts/sources": {
-      "types": "./src/accounting/money/payouts/sources.ts",
-      "source": "./src/accounting/money/payouts/sources.ts",
-      "import": "./dist/accounting/money/payouts/sources.mjs",
-      "default": "./src/accounting/money/payouts/sources.ts"
-    },
     "./accounting/opening": {
       "types": "./src/accounting/opening/index.ts",
       "source": "./src/accounting/opening/index.ts",
@@ -177,6 +171,18 @@
       "source": "./src/accounting/parties/index.ts",
       "import": "./dist/accounting/parties/index.mjs",
       "default": "./src/accounting/parties/index.ts"
+    },
+    "./accounting/processors": {
+      "types": "./src/accounting/processors/index.ts",
+      "source": "./src/accounting/processors/index.ts",
+      "import": "./dist/accounting/processors/index.mjs",
+      "default": "./src/accounting/processors/index.ts"
+    },
+    "./accounting/processors/client": {
+      "types": "./src/accounting/processors/client.ts",
+      "source": "./src/accounting/processors/client.ts",
+      "import": "./dist/accounting/processors/client.mjs",
+      "default": "./src/accounting/processors/client.ts"
     },
     "./accounting/provider-matches": {
       "types": "./src/accounting/provider-matches/index.ts",

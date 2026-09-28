@@ -58,6 +58,10 @@ vi.mock('../../money/payouts/reads', () => ({
   listOpenDestinationMismatches: async () => state.mismatches,
 }))
 
+vi.mock('../feed-status', () => ({
+  railFeedStatus: async () => ({ isErr: () => false, isOk: () => true, value: { state: 'none' } }),
+}))
+
 /** A minimal Drizzle double: `.select().from(table).where()` and `.update(table).set().where().returning()`. */
 function fakeDb() {
   return {

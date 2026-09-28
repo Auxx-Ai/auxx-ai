@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/resolvers/authorize-net.ts
+// packages/lib/src/accounting/processors/authorize-net/resolver.ts
 
 /**
  * `authorize_net` entry reference resolver (build plan §6, payout-links §12 T3): a batch
@@ -7,14 +7,14 @@
  */
 
 import type { Database, Transaction } from '@auxx/database'
-import { getCachedCustomFields, getCachedEntityDefId } from '../../../../cache'
-import { findSystemRecordIdsByValue } from '../../../../resources/system-records'
-import { bridgeFieldSpecs, pivotRecordFields } from '../../customer-money/bridge'
+import { getCachedCustomFields, getCachedEntityDefId } from '../../../cache'
+import { findSystemRecordIdsByValue } from '../../../resources/system-records'
+import { bridgeFieldSpecs, pivotRecordFields } from '../../money/customer-money/bridge'
 import type {
   EntryReferenceResolver,
   FinancialSourceReference,
   UnreferencedEntry,
-} from '../reference-resolvers'
+} from '../../money/payouts/reference-resolvers'
 
 /** The `FinancialSourceObject.objectType` a storefront transaction is stored under. */
 const OBJECT_TYPE = 'order_transaction'

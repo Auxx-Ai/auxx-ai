@@ -102,6 +102,7 @@ import {
 } from '@auxx/lib/accounting/money'
 import { finalizeAccountingSetup } from '@auxx/lib/accounting/opening'
 import { ensureGuestContact } from '@auxx/lib/accounting/parties'
+import { FEED_APPS } from '@auxx/lib/accounting/processors/client'
 import {
   accountingOpeningPolicySchema,
   activateAccountingBookConnection,
@@ -1140,8 +1141,9 @@ export const ledgerRouter = createTRPCRouter({
   /**
    * Which card rails this org already has, so the wizard can pre-check the
    * `card_rail` pack (brief 16 §3.2). Facts about the org, not switches: a
-   * Stripe Connect account is the read the payouts sync makes, and the Shopify
-   * app is the `installedApps` cache. Nothing provisions off either (16 §3.3).
+   * Stripe Connect account is the read the payouts sync makes, and `processorApp`
+   * is any installed app that reads a processor feed (`FEED_APPS`, brief 113 G2).
+   * Nothing provisions off either (16 §3.3).
    */
   paymentRailsPresent: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
@@ -1151,7 +1153,7 @@ export const ledgerRouter = createTRPCRouter({
     ])
     return {
       stripeConnect: Boolean(account?.stripeAccountId),
-      shopify: installedApps.some((installed) => installed.app.slug === 'shopify'),
+      processorApp: installedApps.some((installed) => FEED_APPS.has(installed.app.slug)),
     }
   }),
 

@@ -61,6 +61,7 @@ import {
   useFeedOptions,
   useHandleOptions,
 } from './payment-gateway-rail-rows'
+import { RailFeedNote } from './rail-feed-note'
 
 // 🛑 Not a label. `billed` removes the fee leg from this rail's payout entry
 // entirely (brief 26 §4), and `gross === net` becomes the expected arithmetic
@@ -575,6 +576,7 @@ function FeedsRow({ gatewayId, canControl }: { gatewayId: string; canControl: bo
   const invalidate = () =>
     Promise.all([
       utils.paymentGateway.readiness.invalidate({ gatewayId }),
+      utils.paymentGateway.list.invalidate(),
       utils.paymentGateway.listUnlinkedFeeds.invalidate(),
     ])
 
@@ -613,6 +615,24 @@ function FeedsRow({ gatewayId, canControl }: { gatewayId: string; canControl: bo
     }
   }
 
+  const feed = readiness.data?.feed
+  // `unlinked` is disabled without `canControl`, and a disabled query stays pending.
+  const loaded = !readiness.isPending && (!canControl || !unlinked.isPending)
+  const showNote = loaded && !!feed && feed.state !== 'linked' && feed.state !== 'none'
+  const select = (
+    <FieldInputAdapter
+      fieldType={FieldType.MULTI_SELECT}
+      fieldOptions={{ options }}
+      value={linkedIds}
+      triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
+      placeholder={
+        !loaded ? 'Loading…' : options.length === 0 ? 'No unclaimed feed' : 'Link a feed'
+      }
+      disabled={!canControl || linkFeed.isPending || unlinkFeed.isPending}
+      onChange={(value) => void handleChange(Array.isArray(value) ? (value as string[]) : [])}
+    />
+  )
+
   return (
     <>
       <FieldPanelRow
@@ -620,21 +640,26 @@ function FeedsRow({ gatewayId, canControl }: { gatewayId: string; canControl: bo
         icon={<PlugZap className='size-4 text-muted-foreground' />}
         showIcon
         description='The processor accounts that report this rail’s payouts.'>
-        <FieldInputAdapter
-          fieldType={FieldType.MULTI_SELECT}
-          fieldOptions={{ options }}
-          value={linkedIds}
-          triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
-          placeholder={
-            readiness.isPending
-              ? 'Loading…'
-              : options.length === 0
-                ? 'No unclaimed feed'
-                : 'Link a feed'
-          }
-          disabled={!canControl || linkFeed.isPending || unlinkFeed.isPending}
-          onChange={(value) => void handleChange(Array.isArray(value) ? (value as string[]) : [])}
-        />
+        {options.length === 0 && showNote ? (
+          <RailFeedNote
+            feed={feed}
+            gatewayId={gatewayId}
+            canControl={canControl}
+            className='min-h-8 py-1'
+          />
+        ) : (
+          <div className='flex min-w-0 flex-col'>
+            {select}
+            {showNote && (
+              <RailFeedNote
+                feed={feed}
+                gatewayId={gatewayId}
+                canControl={canControl}
+                className='pb-1'
+              />
+            )}
+          </div>
+        )}
       </FieldPanelRow>
       <ConfirmDialog />
     </>
@@ -649,6 +674,7 @@ function RailReadiness({ gatewayId }: { gatewayId: string }) {
     clearingMapped: readiness.data.clearingMapped,
     bankMapped: readiness.data.bankMapped,
     feedLinked: readiness.data.linkedFeeds.length > 0,
+    feed: readiness.data.feed,
   })
 
   return (
