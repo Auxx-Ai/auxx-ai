@@ -39,6 +39,7 @@ import type { ReimportRunOptions } from './reimport-filter'
 import { requestConnectorPause } from './run-control'
 import {
   claimForSync,
+  countConnectorItems,
   type DataConnectorRow,
   finalizeConnector,
   getRunFetched,
@@ -82,7 +83,8 @@ export const SLICE_LOCK_DURATION_MS = 90_000
  * run-level `fetched` count crosses it (checked at slice boundaries, so it overshoots
  * by up to one slice) the run parks `partial`, links what it can, publishes its
  * manifest, and a delayed continuation resumes every mid-backfill stream from its
- * checkpointed cursor in a fresh run that counts from zero. The delay lets sibling
+ * checkpointed cursor in a fresh run that counts from zero, skipping the streams the
+ * parked run already finished. The delay lets sibling
  * slices still in flight finish before the connector is re-claimed. NOT to be
  * confused with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
  */
@@ -303,8 +305,7 @@ async function startConnectorSyncInner(
     return false
   }
   const { connector } = loaded
-  const continued =
-    reimport && continueRunId ? await readContinuedReimport(db, continueRunId) : undefined
+  const continued = continueRunId ? await readContinuedRun(db, continueRunId) : undefined
   const reimportIds = reimport
     ? new Set(reimport.streamIds.filter((id) => !continued?.finishedStreams.has(id)))
     : undefined
@@ -416,8 +417,19 @@ async function startConnectorSyncInner(
   //    that marker, so the stream must really re-crawl in this run).
   //  - FRESH otherwise: a snapshot stream past its backfill (its orphan reconciliation
   //    needs the full re-crawl), a stream that never ran, a sample.
+  //  - SKIP: a ceiling continuation leaves alone what its parked run already finished.
+  //    A pause or sample stop also lands in `finishedStreams` but leaves the stream
+  //    mid-backfill, so only a stream now `steady` counts as done.
+  const finished = new Set(
+    streams
+      .filter(
+        (s, i) => continued?.finishedStreams.has(s.stream.id) && streamStates[i]?.phase === 'steady'
+      )
+      .map((s) => s.stream.id)
+  )
   const pendingResync = new Set(connector.resyncPending?.streamIds ?? [])
   const decisions = streams.map((s, i) => {
+    if (finished.has(s.stream.id)) return 'skip' as const
     if (phase !== 'backfill') return 'steady' as const
     const st = streamStates[i] ?? {}
     if (st.phase === 'backfill' && !!st.backfillCursor) return 'resume' as const
@@ -442,6 +454,20 @@ async function startConnectorSyncInner(
     ...(floor ? { floor } : {}),
   }
 
+  // Unreachable in practice: a run whose every stream finished closed instead of parking.
+  if (finished.size === streams.length) {
+    logger.warn('startConnectorSync: continuation found every stream finished, releasing', {
+      dataConnectorId,
+      continueRunId,
+    })
+    await finalizeConnector(db, dataConnectorId, {
+      ok: true,
+      itemCount: await countConnectorItems(db, dataConnectorId),
+    })
+    await publishConnectorSync(db, organizationId, dataConnectorId, 'run-finished')
+    return false
+  }
+
   const run = await openRun(db, {
     dataConnectorId,
     organizationId,
@@ -451,6 +477,8 @@ async function startConnectorSyncInner(
     chainSnapshot: snapshot as unknown as Record<string, unknown>,
     cursorBefore: connector.state,
     sampleLimit: options.sampleLimit ?? null,
+    // Pre-marked so the run-scoped latch never waits on a stream that gets no chain.
+    progress: finished.size > 0 ? { finishedStreams: [...finished] } : null,
   })
 
   // The marker is the run row's own `startedAt`, so the orphan diff can key "seen this
@@ -468,9 +496,10 @@ async function startConnectorSyncInner(
   // Seed the completion latch to the stream count (B1) BEFORE enqueuing slices, so the
   // first stream to finish can't fire the connector finalize prematurely. Covers both
   // phases — the last stream (backfill OR steady) releases the connector.
-  await initConnectorBackfillLatch(db, dataConnectorId, streams.length)
+  await initConnectorBackfillLatch(db, dataConnectorId, streams.length - finished.size)
 
   for (const s of streams) {
+    if (finished.has(s.stream.id)) continue
     await enqueueBackfillSlice({
       connectorId: dataConnectorId,
       organizationId,
@@ -483,7 +512,8 @@ async function startConnectorSyncInner(
     dataConnectorId,
     runId: run.id,
     phase,
-    streams: streams.length,
+    streams: streams.length - finished.size,
+    skipped: finished.size,
   })
   // Light up every open detail view immediately — including for a webhook/scheduled
   // run the 4s poll never armed for (it only polls when status already reads syncing).
@@ -564,8 +594,8 @@ async function startReimportChain(
   return true
 }
 
-/** A parked re-import's page cursors and the streams it already finished. */
-async function readContinuedReimport(
+/** A parked run's re-import page cursors and the streams it already finished. */
+async function readContinuedRun(
   db: Database,
   runId: string
 ): Promise<{ cursors: Record<string, RunStreamCursor>; finishedStreams: Set<string> }> {

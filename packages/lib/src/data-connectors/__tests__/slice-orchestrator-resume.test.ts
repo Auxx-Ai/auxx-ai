@@ -51,7 +51,7 @@ interface FakeRun {
   chainSnapshot: Record<string, unknown> | null
   query: ConnectorQuery | null
   initiatedBy: string | null
-  progress: { cursors?: Record<string, RunStreamCursor> } | null
+  progress: { cursors?: Record<string, RunStreamCursor>; finishedStreams?: string[] } | null
   startedAt: Date
   sampleLimit: number | null
   fetched: number
@@ -95,6 +95,8 @@ interface SyncJob {
 const PAGE_SIZE = 500
 /** 25 pages × 500 = 12 500 customers: two slices (5 000 each) cross the 9 000 ceiling. */
 const CUSTOMER_PAGES = 25
+/** A one-page snapshot catalogue that finishes inside the first run. */
+const PRODUCT_COUNT = 70
 
 function resetWorld() {
   world.streams.clear()
@@ -220,6 +222,12 @@ const customersMapping = {
   fieldMappings: [],
 }
 
+const productsMapping = {
+  ...customersMapping,
+  row: { id: 'm-products' },
+  entityDefinitionId: 'def-products',
+}
+
 // ── Seams ───────────────────────────────────────────────────────────────────────
 
 const spies = vi.hoisted(() => ({
@@ -239,7 +247,12 @@ vi.mock('../service', async (importOriginal) => {
       streams: [...world.streams.values()].map((s) => ({
         stream: s,
         syncMode: s.syncMode,
-        mappings: s.streamKey === 'customers' ? [customersMapping] : [],
+        mappings:
+          s.streamKey === 'customers'
+            ? [customersMapping]
+            : s.streamKey === 'products'
+              ? [productsMapping]
+              : [],
       })),
     }),
     claimForSync: async () => {
@@ -253,9 +266,23 @@ vi.mock('../service', async (importOriginal) => {
     initConnectorBackfillLatch: async (_db: unknown, _id: string, n: number) => {
       world.latch = n
     },
-    decrementConnectorBackfillLatch: async () => {
+    // Mirrors `completeRunStream`: the latch is the pinned streams not yet finished in the run.
+    decrementConnectorBackfillLatch: async (
+      _db: unknown,
+      _id: string,
+      scope?: { runId: string; streamId: string }
+    ) => {
       if (world.latch === null) return null
-      world.latch = Math.max(world.latch - 1, 0)
+      const run = scope && world.runs.find((r) => r.id === scope.runId)
+      if (!run) {
+        world.latch = Math.max(world.latch - 1, 0)
+        return world.latch
+      }
+      if (run.status !== 'running') return null
+      const finished = new Set([...(run.progress?.finishedStreams ?? []), scope.streamId])
+      run.progress = { ...run.progress, finishedStreams: [...finished] }
+      const pinned = (run.chainSnapshot?.streams as { streamId: string }[] | undefined) ?? []
+      world.latch = pinned.filter((s) => !finished.has(s.streamId)).length
       return world.latch
     },
     openRun: async (
@@ -499,7 +526,19 @@ function fixtureDefinition(): DataConnectorDefinition {
         yield { streamKey: 'orders', fields: { id: 'o-1' } }
         yield { __checkpoint: true as const, watermark: 'W2' }
       }
-      return { records: args.streamKey === 'customers' ? customers() : orders() }
+      async function* products() {
+        for (let i = 0; i < PRODUCT_COUNT; i++) {
+          yield { streamKey: 'products', fields: { id: `p-${i}` } }
+        }
+        yield { __checkpoint: true as const }
+      }
+      const records =
+        args.streamKey === 'customers'
+          ? customers()
+          : args.streamKey === 'products'
+            ? products()
+            : orders()
+      return { records }
     },
   }
 }
@@ -602,7 +641,7 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     expect(fetchesFor('orders', 0)[0]?.state.watermark).toBe('W1')
   })
 
-  it('resumes the snapshot stream from its checkpoint on the next trigger and does not reset the steady sibling', async () => {
+  it('resumes the snapshot stream from its checkpoint and skips the sibling that already ran its delta', async () => {
     await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
     await drainSlices()
     const parkedAt = { ...state('s-customers') }
@@ -633,18 +672,35 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     expect(state('s-customers').phase).toBe('steady')
     expect(state('s-customers').backfillCursor).toBeUndefined()
 
-    // The sibling ran a delta from its own watermark, not a fresh crawl.
-    const sibling = fetchesFor('orders', fetchesBefore)
-    expect(sibling).toHaveLength(1)
-    expect(sibling[0]?.mode).toBe('incremental')
-    expect(sibling[0]?.state.watermark).toBe('W2')
+    // The sibling finished its delta in run 1, so the continuation gives it no chain.
+    expect(fetchesFor('orders', fetchesBefore)).toHaveLength(0)
+    expect(state('s-orders')).toEqual(ordersBefore)
 
-    // Run 2 closed exactly once, by the last stream, with the connector released
-    // live; the sibling's steady completion did not close it under the crawl.
+    // Run 2 closed exactly once, by the last stream, with the connector released live.
     expect(world.runs[1]?.status).toBe('completed')
     expect(world.parkedAtCeiling).toEqual(['run1'])
     expect(world.connector.status).toBe('live')
     expect(world.finalized.map((f) => f.ok)).toEqual([true])
+  })
+
+  it('a manual trigger while the crawl is parked resumes it and runs the sibling delta', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    const fetchesBefore = world.fetchCalls.length
+
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    expect(world.latch).toBe(2)
+    await drainSlices()
+
+    expect(fetchesFor('customers', fetchesBefore)[0]?.state.backfillCursor).toEqual({
+      kind: 'pageNumber',
+      value: '21',
+    })
+    const sibling = fetchesFor('orders', fetchesBefore)
+    expect(sibling).toHaveLength(1)
+    expect(sibling[0]?.mode).toBe('incremental')
+    expect(sibling[0]?.state.watermark).toBe('W2')
+    expect(world.runs[1]?.status).toBe('completed')
   })
 
   it('the explicit reset (Backfill now on a pending structural change) still resets both streams', async () => {
@@ -733,6 +789,135 @@ describe('per-stream resume after the ingest ceiling (§6.3a step one)', () => {
     // Only the item last seen before the backfill began is archived.
     expect(archiveRecord).toHaveBeenCalledTimes(1)
     expect(archiveRecord.mock.calls[0]?.[1]).toMatchObject({ id: 'i-run-old' })
+  })
+})
+
+describe('a ceiling continuation skips the streams its parked run finished', () => {
+  beforeEach(() => {
+    world.streams.set('s-products', {
+      id: 's-products',
+      dataConnectorId: 'dc1',
+      organizationId: 'org1',
+      streamKey: 'products',
+      syncMode: 'snapshot',
+      enabled: true,
+      requestConfig: null,
+      recordFilter: null,
+      state: { phase: 'steady', backfilledBefore: true },
+    })
+  })
+
+  it('leaves a finished snapshot stream alone across two continuations, and never orphans what it saw', async () => {
+    // 45 pages: run 1 and run 2 each park at the ceiling, run 3 completes the crawl.
+    world.customerPages = 45
+    listExistingItems.mockImplementation(
+      async (_ctx: unknown, m: { entityDefinitionId: string }) =>
+        m.entityDefinitionId === 'def-products'
+          ? [
+              {
+                id: 'i-p',
+                entityInstanceId: 'ep',
+                entityDefinitionId: 'def-products',
+                lastSeenRunId: 'run1',
+              },
+            ]
+          : []
+    )
+
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    expect(world.parkedAtCeiling).toEqual(['run1'])
+    const products = { ...state('s-products') }
+    expect(products.phase).toBe('steady')
+    expect(products.backfillStartedAt).toBe(world.runs[0]?.startedAt.toISOString())
+
+    for (const parked of ['run1', 'run2']) {
+      const job = world.syncQueue.shift()!
+      expect(job.data.continueRunId).toBe(parked)
+      await runSyncJob(job)
+      const run = world.runs.at(-1)!
+      // No reset, no chain, and a latch that waits only on the crawl still running.
+      expect(state('s-products')).toEqual(products)
+      expect(world.sliceQueue).toEqual([{ streamId: 's-customers', runId: run.id }])
+      expect(world.latch).toBe(1)
+      expect(run.progress?.finishedStreams?.sort()).toEqual(['s-orders', 's-products'])
+      await drainSlices()
+    }
+
+    expect(world.parkedAtCeiling).toEqual(['run1', 'run2'])
+    expect(fetchesFor('products', 0)).toHaveLength(1)
+    expect(state('s-customers').recordsSeen).toBe(45 * PAGE_SIZE)
+    expect(world.runs[2]?.status).toBe('completed')
+    expect(world.connector.status).toBe('live')
+    expect(world.finalized.map((f) => f.ok)).toEqual([true])
+    // The finalize reconciled once, over every pinned stream, and run 1's sighting counts.
+    expect(spies.reconcileOrphans).toHaveBeenCalledTimes(1)
+    expect(archiveRecord).not.toHaveBeenCalled()
+  })
+
+  it('a manual sync (not a continuation) still re-crawls a finished snapshot stream fresh', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    expect(state('s-products').phase).toBe('steady')
+
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    expect(state('s-products').phase).toBe('backfill')
+    expect(state('s-products').backfillStartedAt).toBe(world.runs[1]?.startedAt.toISOString())
+    expect(world.sliceQueue.map((j) => j.streamId).sort()).toEqual([
+      's-customers',
+      's-orders',
+      's-products',
+    ])
+    expect(world.latch).toBe(3)
+    expect(world.runs[1]?.progress).toBeNull()
+  })
+
+  it('a continuation that finds every stream finished releases the connector without a run', async () => {
+    for (const id of ['s-customers', 's-orders', 's-products']) {
+      world.streams.get(id)!.state = { phase: 'steady' }
+    }
+    world.runs.push({
+      id: 'run1',
+      dataConnectorId: 'dc1',
+      status: 'partial',
+      phase: 'backfill',
+      mode: 'snapshot',
+      trigger: 'manual',
+      chainSnapshot: null,
+      query: null,
+      initiatedBy: null,
+      progress: { finishedStreams: ['s-customers', 's-orders', 's-products'] },
+      startedAt: new Date(),
+      sampleLimit: null,
+      fetched: 9_000,
+    })
+    world.connector.status = 'paused'
+
+    const started = await startConnectorSync(DB, 'org1', 'dc1', {
+      trigger: 'backfill',
+      continueRunId: 'run1',
+      retryClaim: true,
+    })
+
+    expect(started).toBe(false)
+    expect(world.runs).toHaveLength(1)
+    expect(world.sliceQueue).toEqual([])
+    expect(world.connector.status).toBe('live')
+    expect(world.finalized.map((f) => f.ok)).toEqual([true])
+  })
+
+  it('still resumes a stream a pause stopped mid-backfill, even though the run lists it finished', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    const run1 = world.runs[0]!
+    run1.progress = {
+      ...run1.progress,
+      finishedStreams: [...(run1.progress?.finishedStreams ?? []), 's-customers'],
+    }
+
+    await runSyncJob(world.syncQueue.shift()!)
+    expect(world.sliceQueue.map((j) => j.streamId)).toEqual(['s-customers'])
+    expect(state('s-customers').backfillCursor).toEqual({ kind: 'pageNumber', value: '21' })
   })
 })
 
