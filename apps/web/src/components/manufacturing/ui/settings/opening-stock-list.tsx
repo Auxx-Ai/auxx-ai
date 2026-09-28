@@ -51,7 +51,7 @@ import { OpeningStockToolbar } from './opening-stock-toolbar'
  * Columns: part | kind | account | on hand | count | date | unit cost | delta.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(3.5rem, 4rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
@@ -270,7 +270,9 @@ function OnHandCell({ row }: { row: OpeningStockRow }) {
         {row.netToday == null ? '…' : formatNumber(row.netToday)}
       </span>
       {note && (
-        <span data-testid='on-hand-note' className='text-[11px] text-muted-foreground'>
+        <span
+          data-testid='on-hand-note'
+          className='whitespace-nowrap text-[11px] text-muted-foreground'>
           {note === 'built' ? `${formatNumber(row.built)} built` : 'not received'}
         </span>
       )}
