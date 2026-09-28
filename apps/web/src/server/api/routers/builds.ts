@@ -14,18 +14,20 @@ import {
   createBuild,
   executeBackfill,
   explodeBuildComponents,
+  fixMovementAccounts,
   getBuild,
+  hasStandingBackflushBuilds,
   listBuilds,
   loadAutoBuildSettings,
   planBackfill,
   previewBackflush,
   readBackfillPlanReads,
-  readBackflushKindDrift,
   readBackflushRunRow,
   readBatchRun,
   readBuildDrift,
   readKindConflictFacts,
   readKindConflicts,
+  readMovementAccountDrift,
   readPartQuantitiesOnHand,
   readUndoBackflushRunRow,
   reverseBuild,
@@ -190,7 +192,8 @@ const completionShape = {
  * | `standardCostWorklist`                 | view on `part`                            |
  * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `backflushKindDrift` | edit on `build` AND edit on `stock_movement` |
+ * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `hasBackflushBuilds`, `fixMovementAccounts` | edit on `build` AND edit on `stock_movement` |
+ * | `movementAccountDrift`                 | view on `part` AND view on `stock_movement` |
  *
  * Three notes on why those, and not something coarser:
  *
@@ -900,15 +903,43 @@ export const buildsRouter = createTRPCRouter({
       return row ? toUndoBackflushRun(row) : null
     }),
 
-  /** Parts whose standing backflush legs were stamped for a kind they no longer have (13 §7). */
-  backflushKindDrift: capabilityProcedure.query(async ({ ctx }) => {
-    const { organizationId } = ctx.session
+  /** Whether any backflush build still stands, so "Undo past builds" has something to undo. */
+  hasBackflushBuilds: capabilityProcedure.query(async ({ ctx }) => {
     await assertCanPostBuildLedger(ctx)
-
-    const result = await readBackflushKindDrift(ctx.db, organizationId)
-    if (result.isErr()) throw result.error
-    return { partCount: result.value.partCount }
+    return hasStandingBackflushBuilds(ctx.db, ctx.session.organizationId)
   }),
+
+  /** Parts whose movements carry an account their current kind no longer maps to (17 §5.2). */
+  movementAccountDrift: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const [partDefId, movementDefId] = await Promise.all([
+      requireDefId(organizationId, 'part'),
+      requireDefId(organizationId, 'stock_movement'),
+    ])
+    ctx.capabilities.assertViewEntity(partDefId)
+    ctx.capabilities.assertViewEntity(movementDefId)
+
+    const result = await readMovementAccountDrift(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Restamp unposted drifted movements and post one correcting entry per part for posted ones.
+   * The ledger gate, because it rewrites movements and may post.
+   */
+  fixMovementAccounts: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).max(5000).optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const result = await fixMovementAccounts(ctx.db, organizationId, userId, {
+        partIds: input?.partIds,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 })
 
 /**

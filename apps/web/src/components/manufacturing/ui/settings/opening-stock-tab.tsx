@@ -106,7 +106,6 @@ function OpeningStockTabInner() {
             onSetKind={opening.setKind}
             onQuantityChange={opening.setQuantity}
             onUnitCostChange={opening.setUnitCost}
-            onDateChange={opening.setDate}
             onUseSuggestions={opening.applySuggestions}
           />
         </div>

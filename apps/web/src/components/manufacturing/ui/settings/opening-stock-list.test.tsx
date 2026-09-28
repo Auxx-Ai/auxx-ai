@@ -67,7 +67,6 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     suggestion: null,
     sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
-    hasOwnDate: false,
     state: 'uncounted',
     netToday: -830,
     hasBom: false,
@@ -103,7 +102,6 @@ function renderList(rows: OpeningStockRow[], onUseSuggestions = vi.fn()) {
       onSetKind={vi.fn(async () => {})}
       onQuantityChange={vi.fn()}
       onUnitCostChange={vi.fn()}
-      onDateChange={vi.fn()}
       onUseSuggestions={onUseSuggestions}
     />
   )

@@ -88,6 +88,16 @@ export function unbuiltWarning(unbuilt: OpeningStockRunSummaryCounts['unbuilt'])
   return `${who} Counting now means backflush won't build them later.`
 }
 
+/** "today", or "on 26 Sep 2026", for a calendar-day ISO. */
+function countDayLabel(day: string): string {
+  const key = day.slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  if (key === today) return 'today'
+  const date = new Date(`${key}T00:00:00`)
+  return `on ${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
 export function OpeningStockRun({
   entryCount,
   summary,
@@ -102,6 +112,7 @@ export function OpeningStockRun({
 }: OpeningStockRunProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [lastRun, setLastRun] = useState<OpeningStockRunResult | null>(null)
+  const [editingDate, setEditingDate] = useState(false)
   const line = runSummaryLine(summary)
   const warning = unbuiltWarning(summary.unbuilt)
 
@@ -136,17 +147,30 @@ export function OpeningStockRun({
         <div className='flex flex-col gap-4'>
           <section className='flex flex-col gap-1.5'>
             <h3 className='font-medium text-foreground text-sm'>Count date</h3>
-            <FieldInputAdapter
-              fieldType={FieldType.DATE}
-              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-              value={occurredAt}
-              onChange={(value) => {
-                if (typeof value === 'string' && value) onOccurredAtChange(value)
-              }}
-              disabled={isRunning}
-            />
+            {editingDate ? (
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                value={occurredAt}
+                onChange={(value) => {
+                  if (typeof value === 'string' && value) onOccurredAtChange(value)
+                }}
+                disabled={isRunning}
+              />
+            ) : (
+              <div className='flex items-center gap-1 text-sm'>
+                <span>Counted {countDayLabel(occurredAt)}</span>
+                <Button
+                  variant='ghost'
+                  size='xs'
+                  disabled={isRunning}
+                  onClick={() => setEditingDate(true)}>
+                  Change
+                </Button>
+              </div>
+            )}
             <p className='text-muted-foreground text-xs'>
-              Used by every part without a date of its own.{' '}
+              The day you looked at the shelf, for every part in this save.{' '}
               {cutoffPeriod
                 ? `Counts dated on or before your books start (${cutoffPeriod}) post nothing; later ones post the difference to Inventory Count Variance.`
                 : 'Nothing posts to the books until accounting is set up; the count still sets your stock.'}

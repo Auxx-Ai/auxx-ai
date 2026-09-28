@@ -98,8 +98,6 @@ interface OpeningStockDraft {
   quantity?: number | null
   /** Present once typed, even as `null`; absent means the row shows the standard or the suggestion. */
   unitCost?: number | null
-  /** Calendar-day ISO. Absent: the row follows the run-wide date. */
-  date?: string
 }
 
 export interface OpeningStockRow {
@@ -128,9 +126,8 @@ export interface OpeningStockRow {
   suggestion: StandardCostSuggestion | null
   /** The run sends `unitCost` as a first cost; never true once the part has a standard (D6). */
   sendsUnitCost: boolean
-  /** Calendar-day ISO: the row's own date, or the run-wide one. */
+  /** Calendar-day ISO: the run's count date. */
   date: string
-  hasOwnDate: boolean
   state: OpeningStockRowState
   /** Net of every movement to now; `null` until the preflight lands. */
   netToday: number | null
@@ -421,8 +418,7 @@ export function useOpeningStock() {
         quantity,
         ...cost,
         suggestion,
-        date: draft?.date ?? occurredAt,
-        hasOwnDate: draft?.date != null,
+        date: occurredAt,
         state: flight ? (flight.hasInitial ? 'counted' : rowState(candidate)) : rowState(candidate),
         netToday,
         hasBom,
@@ -546,14 +542,6 @@ export function useOpeningStock() {
     },
     [rows]
   )
-  const setDate = useCallback((partId: string, date: string | null) => {
-    setDrafts((prev) => {
-      const next = { ...prev[partId] }
-      if (date) next.date = date
-      else delete next.date
-      return { ...prev, [partId]: next }
-    })
-  }, [])
 
   // ── Writes ──────────────────────────────────────────────────────────────
   const bulkSetPartKind = api.purchasing.bulkSetPartKind.useMutation()
@@ -714,7 +702,6 @@ export function useOpeningStock() {
     setQuantity,
     setUnitCost,
     applySuggestions,
-    setDate,
     prefilter: prefilterIds ? { count: rows.length, fromJob: !!jobParam } : null,
     clearPrefilter,
     bulkMode,

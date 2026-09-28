@@ -3,10 +3,10 @@
 /** Reads of an undo run's `SyncJob` row, and which batch runs backflush wrote (plans/mrp/17 §8). */
 
 import { type Database, schema } from '@auxx/database'
-import { and, desc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, lt, notExists, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { BuildSource } from '../../resources/registry/enum-values'
-import { systemValueJoin } from '../../resources/system-records'
+import { optionalFieldId, systemValueJoin } from '../../resources/system-records'
 import {
   ACTIVE_BACKFLUSH_STATUSES,
   BACKFLUSH_RUN_CATEGORY,
@@ -158,6 +158,58 @@ export async function listBackflushRunNumbers(
     .map((row) => Number(row.runNumber))
     .filter((n) => Number.isFinite(n))
     .sort((a, b) => b - a)
+}
+
+/** Whether any backflush build still stands: run-numbered, not archived, not reversed. */
+export async function hasStandingBackflushBuilds(
+  db: Database,
+  organizationId: string
+): Promise<boolean> {
+  const ctx = await loadBuildContext(organizationId)
+  const runField = ctx?.fields.build_batch_run
+  const sourceField = ctx?.fields.build_source
+  if (!ctx || !runField || !sourceField) return false
+
+  const runValue = alias(schema.FieldValue, 'standing_run_v')
+  const sourceValue = alias(schema.FieldValue, 'standing_source_v')
+  const reversalValue = alias(schema.FieldValue, 'standing_reversal_v')
+  const reversal = alias(schema.EntityInstance, 'standing_reversal')
+  const reversedBy = db
+    .select({ one: sql`1` })
+    .from(reversalValue)
+    .innerJoin(reversal, and(eq(reversal.id, reversalValue.entityId), isNull(reversal.archivedAt)))
+    .where(
+      and(
+        eq(reversalValue.organizationId, organizationId),
+        eq(reversalValue.fieldId, optionalFieldId(ctx.fields.build_reversal_of)),
+        eq(reversalValue.relatedEntityId, schema.EntityInstance.id)
+      )
+    )
+
+  const [row] = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      runValue,
+      and(systemValueJoin(runValue, runField.id), isNotNull(runValue.valueNumber))
+    )
+    .innerJoin(
+      sourceValue,
+      and(
+        systemValueJoin(sourceValue, sourceField.id),
+        eq(sourceValue.optionId, BuildSource.BACKFLUSH)
+      )
+    )
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.defId),
+        isNull(schema.EntityInstance.archivedAt),
+        notExists(reversedBy)
+      )
+    )
+    .limit(1)
+  return !!row
 }
 
 /** The panel's view of an undo row. */

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { booksStartLabel } from './accounting-status-line'
+import { fixAccountsCopy, listPartNames, type MovementAccountDrift } from './fix-accounts-copy'
 import { STOCK_SETUP_HREF, stockSetupHref } from './stock-setup-href'
 import { firstOpenStep, resolveStepStates, type StockSetupStatus } from './use-stock-setup'
 
@@ -66,5 +67,53 @@ describe('booksStartLabel', () => {
   it('names the month after the cutoff', () => {
     expect(booksStartLabel('2025-11')).toBe('Dec 2025')
     expect(booksStartLabel('2025-12')).toBe('Jan 2026')
+  })
+})
+
+function drift(overrides: Partial<MovementAccountDrift> = {}): MovementAccountDrift {
+  const part = (partName: string, movementCount: number) => ({
+    partId: partName,
+    partName,
+    currentKind: 'component',
+    expectedAccountRole: 'inventory_raw_materials',
+    fromAccountRoles: ['inventory_finished_goods'],
+    movementCount,
+    unpostedCount: movementCount,
+    postedCount: 0,
+  })
+  return {
+    parts: [part('Box 1', 20000), part('Box 2', 18000), part('Square Nut M5', 120)],
+    movementCount: 38120,
+    unpostedCount: 38120,
+    postedCount: 0,
+    ...overrides,
+  }
+}
+
+describe('fixAccountsCopy', () => {
+  it('names the parts, the kind and both accounts', () => {
+    const copy = fixAccountsCopy(drift())
+    expect(copy.title).toBe('3 parts changed kind after their movements were recorded')
+    expect(copy.lead).toBe(
+      `Box 1, Box 2 and Square Nut M5 are now Components, but ${(38120).toLocaleString()} of their past movements still carry the Finished Goods account.`
+    )
+    expect(copy.tail).toBe(
+      'moves them to Raw Materials. Quantities, dates and builds stay exactly as they are.'
+    )
+    expect(copy.posted).toBeNull()
+  })
+
+  it('adds the booked line only when some movements are posted', () => {
+    const copy = fixAccountsCopy(drift({ postedCount: 412 }))
+    expect(copy.posted).toBe(
+      '412 of them are already in your books. Those stay as they are; one correcting entry per part moves their value instead.'
+    )
+    expect(copy.confirm).toContain('412 already in your books')
+  })
+
+  it('lists up to three names, then counts the rest', () => {
+    expect(listPartNames(['A'])).toBe('A')
+    expect(listPartNames(['A', 'B'])).toBe('A and B')
+    expect(listPartNames(['A', 'B', 'C', 'D', 'E'])).toBe('A, B, C and 2 more')
   })
 })

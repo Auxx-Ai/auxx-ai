@@ -93,6 +93,9 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
   const refresh = () => {
     void utils.builds.kindConflicts.invalidate()
     void utils.purchasing.listOpeningStockCandidates.invalidate()
+    void utils.purchasing.stockSetupStatus.invalidate()
+    void utils.builds.movementAccountDrift.invalidate()
+    void utils.builds.previewBackflush.invalidate()
     onChanged()
   }
 

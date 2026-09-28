@@ -50,10 +50,10 @@ import { OpeningStockToolbar } from './opening-stock-toolbar'
 
 /**
  * One `grid-template-columns` for the header and every row, so the list reads as a table.
- * Columns: part | kind | account | on hand | count | date | unit cost | delta.
+ * Columns: part | kind | account | on hand | count | cost | change.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
@@ -66,7 +66,6 @@ interface OpeningStockListProps {
   onSetKind: (partIds: string[], kind: OpeningStockKind) => Promise<void>
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onDateChange: (partId: string, date: string | null) => void
   /** "Use suggestions": take the suggested first cost on these rows. */
   onUseSuggestions?: (partIds: string[]) => void
 }
@@ -82,7 +81,6 @@ export function OpeningStockList({
   onSetKind,
   onQuantityChange,
   onUnitCostChange,
-  onDateChange,
   onUseSuggestions,
 }: OpeningStockListProps) {
   const [search, setSearch] = useState('')
@@ -210,7 +208,6 @@ export function OpeningStockList({
                   <div className='cursor-default px-2 text-right'>On hand</div>
                 </Tooltip>
                 <div className='px-2 text-right'>Count</div>
-                <div className='px-2'>As of</div>
                 <Tooltip content='A first cost for parts that have none. A part that already has one shows it; change it on the part.'>
                   <div className='cursor-default px-2 text-right'>Cost</div>
                 </Tooltip>
@@ -230,7 +227,6 @@ export function OpeningStockList({
                     onWriteKind={writeKind}
                     onQuantityChange={onQuantityChange}
                     onUnitCostChange={onUnitCostChange}
-                    onDateChange={onDateChange}
                   />
                 ))}
                 {/* Every row is already loaded; a "page" only mounts the next 50 rows. */}
@@ -303,7 +299,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind,
   onQuantityChange,
   onUnitCostChange,
-  onDateChange,
 }: {
   row: OpeningStockRow
   currencyCode: string
@@ -312,7 +307,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind: (partIds: string[], kind: OpeningStockKind) => void
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onDateChange: (partId: string, date: string | null) => void
 }) {
   const bulkMode = useBulkMode()
   const selected = useIsSelected(row.partId)
@@ -436,18 +430,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
             value={row.quantity}
             onChange={(value) => onQuantityChange(row.partId, (value as number) ?? null)}
             placeholder='0'
-          />
-        </EditableCell>,
-
-        <EditableCell
-          key='date'
-          className={cn('w-full', !row.hasOwnDate && 'text-muted-foreground')}>
-          <FieldInputAdapter
-            fieldType={FieldType.DATE}
-            fieldOptions={{ format: 'short' }}
-            triggerProps={{ className: 'ps-1 pe-1 w-full text-xs' }}
-            value={row.date}
-            onChange={(value) => onDateChange(row.partId, typeof value === 'string' ? value : null)}
           />
         </EditableCell>,
 

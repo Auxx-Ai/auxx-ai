@@ -117,11 +117,11 @@ interface UndoBackflushPanelProps {
 export function UndoBackflushPanel({ onDone }: UndoBackflushPanelProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
-  const drift = api.builds.backflushKindDrift.useQuery()
   const { run, runId, setRunId, isPending } = useUndoBackflushRun({
     adopt: (live) => live.scope === 'backflush',
     onFinished: () => {
-      void utils.builds.backflushKindDrift.invalidate()
+      void utils.builds.hasBackflushBuilds.invalidate()
+      void utils.builds.movementAccountDrift.invalidate()
       void utils.builds.previewBackflush.invalidate()
     },
   })
@@ -129,8 +129,6 @@ export function UndoBackflushPanel({ onDone }: UndoBackflushPanelProps) {
     onError: (error) =>
       toastError({ title: 'Undoing past builds did not start', description: error.message }),
   })
-
-  const driftCount = drift.data?.partCount ?? 0
 
   const handleUndo = async () => {
     const confirmed = await confirm({
@@ -156,15 +154,6 @@ export function UndoBackflushPanel({ onDone }: UndoBackflushPanelProps) {
   return (
     <div className='flex flex-col gap-3' data-testid='undo-backflush-panel'>
       <ConfirmDialog />
-      <p className='text-sm'>
-        Undo every past build recorded by backflush, then record them again.
-      </p>
-      {driftCount > 0 && (
-        <p className='text-sm text-muted-foreground' data-testid='undo-backflush-drift'>
-          Past builds were recorded before{' '}
-          {driftCount === 1 ? "1 part's kind" : `${driftCount} parts' kinds`} changed.
-        </p>
-      )}
 
       {run ? (
         <>

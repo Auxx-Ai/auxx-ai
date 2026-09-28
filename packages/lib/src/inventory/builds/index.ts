@@ -73,7 +73,6 @@ export {
 } from './backfill-types'
 // Backflush (111 D23/D24): the replay that builds what sales drove negative, and its preview.
 export { type BackflushInput, backflushBuilds } from './backflush'
-export { readBackflushKindDrift } from './backflush-kind-drift'
 export { previewBackflush, summarizeBackflushPlan } from './backflush-preview'
 export {
   type BackflushRange,
@@ -172,6 +171,25 @@ export {
   readKindConflictFacts,
   readKindConflicts,
 } from './kind-conflicts'
+export {
+  loadMovementAccountDrift,
+  type MovementAccountDrift,
+  type MovementAccountDriftPart,
+  readMovementAccountDrift,
+  readPostedMovementIds,
+} from './movement-account-drift'
+export {
+  type AccountCorrectionLeg,
+  type DriftedMovement,
+  expectedInventoryRole,
+  type PartAccountDriftPlan,
+  planPartAccountDrift,
+} from './movement-account-drift-plan'
+export {
+  accountFixOccurrence,
+  type FixMovementAccountsOutcome,
+  fixMovementAccounts,
+} from './movement-account-fix'
 export { hasDrifted, type OrderDemand, orderDemandFingerprint } from './order-fingerprint'
 export {
   type OrderBuildAmendment,
@@ -215,6 +233,7 @@ export type {
 } from './types'
 export {
   findLiveBackflushOrUndoRun,
+  hasStandingBackflushBuilds,
   listBackflushRunNumbers,
   readUndoBackflushRunRow,
   toUndoBackflushRun,

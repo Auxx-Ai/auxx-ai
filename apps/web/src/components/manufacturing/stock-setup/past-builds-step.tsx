@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { BackflushPanel } from '~/components/manufacturing/builds/backflush-panel'
 import { UndoBackflushPanel } from '~/components/manufacturing/builds/undo-backflush-panel'
 import { api } from '~/trpc/react'
+import { FixAccountsCard } from './fix-accounts-card'
 import type { StockSetupStatus } from './use-stock-setup'
 
 const BUILD_MODE_HREF = '/app/inventory/general'
@@ -19,7 +20,7 @@ interface PastBuildsStepProps {
 
 /** Step 2 (plans/mrp/17 §5.2): backflush all history, or skip it (D5). */
 export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
-  const drift = api.builds.backflushKindDrift.useQuery()
+  const hasBuilds = api.builds.hasBackflushBuilds.useQuery()
   const setFlag = api.purchasing.setStockSetupFlag.useMutation()
 
   const setSkipped = async (value: boolean) => {
@@ -33,18 +34,10 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
 
   const covered = status?.unbuiltPartCount === 0
   const skipped = !covered && (status?.buildsSkipped ?? false)
-  const driftCount = drift.data?.partCount ?? 0
 
   return (
     <div className='mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6'>
-      {driftCount > 0 && (
-        <UndoBackflushPanel
-          onDone={() => {
-            void drift.refetch()
-            onChanged()
-          }}
-        />
-      )}
+      <FixAccountsCard onFixed={onChanged} />
 
       {covered ? (
         <div className='flex flex-col gap-2 rounded-lg border px-4 py-6 text-sm'>
@@ -94,6 +87,27 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
             </div>
           )}
         </>
+      )}
+
+      {hasBuilds.data && (
+        <section
+          className='mt-4 flex flex-col gap-3 rounded-lg border border-dashed bg-muted/30 px-4 py-4 text-sm'
+          data-testid='undo-past-builds-section'>
+          <div className='font-medium'>Changed a parts list?</div>
+          <p className='text-muted-foreground'>
+            If a parts list was wrong — a wrong part, or the wrong quantity per unit — past builds
+            used up the wrong parts.{' '}
+            <span className='font-medium text-foreground'>Undo past builds</span> removes every
+            build recorded from past sales, so you can record them again with the corrected list. It
+            runs in the background and takes a while (about an hour for 25,000 builds).
+          </p>
+          <UndoBackflushPanel
+            onDone={() => {
+              void hasBuilds.refetch()
+              onChanged()
+            }}
+          />
+        </section>
       )}
     </div>
   )

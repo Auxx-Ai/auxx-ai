@@ -46,7 +46,6 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     suggestion: null,
     sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
-    hasOwnDate: false,
     state: 'new',
     netToday: 0,
     hasBom: false,
