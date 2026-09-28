@@ -37,7 +37,7 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
 
   return (
     <div className='mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6'>
-      <FixAccountsCard onFixed={onChanged} />
+      <FixAccountsCard />
 
       {covered ? (
         <div className='flex flex-col gap-2 rounded-lg border px-4 py-6 text-sm'>
@@ -69,7 +69,7 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
               </Button>
             </div>
           )}
-          <BackflushPanel />
+          <BackflushPanel onFinished={onChanged} />
           {!skipped && (
             <div className='flex flex-col gap-1 border-t pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
               <span className='text-muted-foreground text-xs'>

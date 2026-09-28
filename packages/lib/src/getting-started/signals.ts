@@ -25,10 +25,7 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
-import {
-  readStockSetupStatus,
-  type StockSetupStatus,
-} from '../inventory/receiving/stock-setup-status'
+import type { StockSetupStatus } from '../inventory/receiving/stock-setup-status'
 import type { ChecklistId, GoalKey } from './client'
 import type { GettingStartedContext } from './types'
 
@@ -303,20 +300,12 @@ async function hasPostedEntry(ctx: GettingStartedContext): Promise<boolean> {
 }
 
 // ── stock checklist signals ──
-// One read serves all three goals and the Stock setup page, so they cannot disagree.
-
-// Keyed on the ctx object, so the three goals of one status call share a single read.
-const stockStatusByCtx = new WeakMap<GettingStartedContext, Promise<StockSetupStatus | null>>()
+// One cached read serves all four goals and the Stock setup page, so they cannot disagree.
 
 function stockSteps(ctx: GettingStartedContext): Promise<StockSetupStatus | null> {
-  let pending = stockStatusByCtx.get(ctx)
-  if (!pending) {
-    pending = readStockSetupStatus((ctx.db ?? database) as Database, ctx.organizationId).then(
-      (result) => (result.isOk() ? result.value : null)
-    )
-    stockStatusByCtx.set(ctx, pending)
-  }
-  return pending
+  return getOrgCache()
+    .get(ctx.organizationId, 'stockSetupStatus')
+    .catch(() => null)
 }
 
 const hasCheckedPartKinds = async (ctx: GettingStartedContext) =>

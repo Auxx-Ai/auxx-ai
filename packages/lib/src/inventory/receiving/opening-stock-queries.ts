@@ -20,23 +20,16 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { requireCachedEntityDefId } from '../../cache'
-import { StockMovementType } from '../../resources/registry/enum-values'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
-import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { pickSystemAttributes } from '../../resources/registry/system-attributes'
-import {
-  readSystemRecords,
-  systemDefId,
-  systemFieldMap,
-  systemValueJoin,
-} from '../../resources/system-records'
+import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
 import { isServicePartKind } from '../costing/client'
 import { guard } from './guard'
+import { readPartsWithInitialMovement, readPartsWithMovements } from './movement-coverage'
 import type { OpeningStockCandidate } from './types'
 
 /** Every part-side attribute a candidate row is assembled from. */
@@ -52,12 +45,6 @@ const PART_ATTRIBUTES = [...PART_PICK, 'part_sku'] as const
 
 /** The BOM edge behind `isSubpartOfAssembly`; on `subpart`, not on `part`. */
 const SUBPART_PICK = pickSystemAttributes(SUBPART_FIELDS, ['subpart_child_part'] as const)
-
-/** The movement-side attributes the "has it ever moved?" probe needs. */
-const MOVEMENT_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
-  'stock_movement_part',
-  'stock_movement_type',
-] as const)
 
 /**
  * Every part in the org, with the five facts the opening-stock checklist and
@@ -96,95 +83,30 @@ export async function listOpeningStockCandidates(
       const fields = await systemFieldMap(db, organizationId, PART_ATTRIBUTES)
       const subpartFields = await systemFieldMap(db, organizationId, SUBPART_PICK)
 
-      const rows = await readSystemRecords(db, organizationId, { defId: partDefId, fields })
-
-      const movements = await readMovementCoverage(db, organizationId)
-      const subpartChildren = await readSubpartChildPartIds(
-        db,
-        organizationId,
-        subpartFields.subpart_child_part?.id
-      )
+      const [rows, moved, initials, subpartChildren] = await Promise.all([
+        readSystemRecords(db, organizationId, { defId: partDefId, fields }),
+        readPartsWithMovements(db, organizationId),
+        readPartsWithInitialMovement(db, organizationId),
+        readSubpartChildPartIds(db, organizationId, subpartFields.subpart_child_part?.id),
+      ])
 
       // A service is never stocked, so it is not a checklist item (107-D10).
       const stocked = rows.filter((row) => !isServicePartKind(row.option('part_kind')))
-      return stocked.map((row) => {
-        const coverage = movements.get(row.id)
-        return {
-          partId: row.id,
-          title: row.displayName ?? '',
-          sku: row.text('part_sku'),
-          partKind: row.option('part_kind'),
-          standardCost: row.number('part_standard_cost'),
-          hasMovements: coverage != null,
-          hasInitialMovement: coverage?.hasInitial ?? false,
-          hasProduct: row.related('part_product') != null,
-          isSubpartOfAssembly: subpartChildren.has(row.id),
-        }
-      })
+      return stocked.map((row) => ({
+        partId: row.id,
+        title: row.displayName ?? '',
+        sku: row.text('part_sku'),
+        partKind: row.option('part_kind'),
+        standardCost: row.number('part_standard_cost'),
+        hasMovements: moved.has(row.id),
+        hasInitialMovement: initials.has(row.id),
+        hasProduct: row.related('part_product') != null,
+        isSubpartOfAssembly: subpartChildren.has(row.id),
+      }))
     },
     'Failed to list opening stock candidates',
     { organizationId }
   )
-}
-
-/** What the ledger already says about one part. */
-interface MovementCoverage {
-  /** At least one movement of type `initial` exists, so the part is already opened. */
-  hasInitial: boolean
-}
-
-/**
- * Every part that has ANY `stock_movement`, and whether one of them is
- * `initial`, in one grouped read.
- *
- * `bool_or` rather than a second query: the two facts are answered by the same
- * scan, and asking twice invites them to disagree about which movements were
- * visible.
- *
- * No `archivedAt` filter, deliberately. See {@link listOpeningStockCandidates}.
- */
-async function readMovementCoverage(
-  db: Database,
-  organizationId: string
-): Promise<Map<string, MovementCoverage>> {
-  const coverage = new Map<string, MovementCoverage>()
-
-  const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-  if (!movementDefId) return coverage
-
-  const fields = await systemFieldMap(db, organizationId, MOVEMENT_PICK)
-  const partField = fields.stock_movement_part
-  // Without the part link a movement cannot be attributed to anything, so there
-  // is no coverage to report and every part reads as never moved.
-  if (!partField) return coverage
-
-  const partValue = alias(schema.FieldValue, 'osc_mv_part')
-  const typeValue = alias(schema.FieldValue, 'osc_mv_type')
-
-  const rows = await db
-    .select({
-      partId: partValue.relatedEntityId,
-      // A SINGLE_SELECT stores its chosen value in `optionId`; for a
-      // system-seeded enum that id IS the value ('initial').
-      hasInitial: sql<boolean>`BOOL_OR(${typeValue.optionId} = ${StockMovementType.INITIAL})`,
-    })
-    .from(schema.EntityInstance)
-    .innerJoin(partValue, systemValueJoin(partValue, partField.id))
-    .leftJoin(typeValue, systemValueJoin(typeValue, fields.stock_movement_type?.id ?? ''))
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, movementDefId),
-        isNotNull(partValue.relatedEntityId)
-      )
-    )
-    .groupBy(partValue.relatedEntityId)
-
-  for (const row of rows) {
-    if (!row.partId) continue
-    coverage.set(row.partId, { hasInitial: row.hasInitial === true })
-  }
-  return coverage
 }
 
 /**

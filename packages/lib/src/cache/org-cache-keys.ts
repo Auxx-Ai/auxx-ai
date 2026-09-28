@@ -33,6 +33,7 @@ import type { ConditionGroup } from '../conditions/types'
 import type { DehydratedOrganization } from '../dehydration/types'
 import type { Inbox } from '../inboxes/types'
 import type { SubpartRow } from '../inventory/costing/cost-calculator'
+import type { StockSetupStatus } from '../inventory/receiving/stock-setup-status'
 import type { KbCatalogEntry } from '../kb/catalog/kb-catalog'
 import type { CachedMailFilter } from '../mail-filters/types'
 import type { Overage } from '../permissions/overage-detection-service'
@@ -704,6 +705,7 @@ export interface OrgCacheDataMap {
   knowledgeBases: CachedKnowledgeBase[] // id + kind for EVERY KB — the article-visibility allow-list (plan v3/06 §5.3)
   chartAccounts: ChartAccountRow[] // every gl_account row, archived stamped isArchived, in chart-tree order
   subpartEdges: SubpartRow[] // every live BOM edge of the org; UI reads only, the MRP run reads fresh
+  stockSetupStatus: StockSetupStatus // plans/mrp/17 §5; lazy, derived from subpartEdges + orgSettings
   providerChart: CachedProviderChart | null // the active book's live provider chart, inactive rows kept; null = no active book
 
   // AI provider data (15-min TTL, invalidated via ai-provider/model events)
@@ -728,7 +730,14 @@ const THIRTY_DAYS = ONE_DAY * 30
  */
 export const ORG_CACHE_KEY_CONFIG: Record<
   OrgCacheKeyName,
-  { prefix: string; ttlSeconds: number; localOnly?: boolean; localTtlMs?: number }
+  {
+    prefix: string
+    ttlSeconds: number
+    localOnly?: boolean
+    localTtlMs?: number
+    /** Invalidation drops the entry and the next read recomputes; for costly keys with bursty writers. */
+    lazy?: boolean
+  }
 > = {
   // Near-immutable (30-day TTL, invalidated only on create/delete)
   entityDefs: { prefix: 'org:entity-defs', ttlSeconds: THIRTY_DAYS },
@@ -996,6 +1005,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // Default localTtlMs on purpose: readers post money (see the note on this config).
   chartAccounts: { prefix: 'org:chart-accounts', ttlSeconds: ONE_DAY },
   subpartEdges: { prefix: 'org:subpart-edges', ttlSeconds: ONE_DAY },
+  // Short TTL: new movements (sales, receipts) move it too and fire no event of their own.
+  stockSetupStatus: { prefix: 'org:stock-setup-status', ttlSeconds: 300, lazy: true },
   // 900 s: the rows change at the provider, outside our writes (plans/accounting/tasks/84 §7.1).
   providerChart: { prefix: 'org:provider-chart', ttlSeconds: 900 },
 

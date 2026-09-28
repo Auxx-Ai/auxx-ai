@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
+  onCacheEvent: vi.fn(async () => {}),
   createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
     instance: { id: 'mv_new' },
   })),
@@ -46,6 +47,7 @@ vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
   exportInventoryMovement: async () => null,
 }))
 vi.mock('../../../cache', () => ({
+  onCacheEvent: h.onCacheEvent,
   getCachedEntityDefId: vi.fn(async () => undefined),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => `def_${entityType}`),
   getOrgCache: () => ({
@@ -226,6 +228,7 @@ describe('a first count on a part with no history', () => {
     const result = await setCount(db, ORG, { partId: 'part_1', quantity: 0, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     expect(h.createSpy).not.toHaveBeenCalled()
+    expect(h.onCacheEvent).not.toHaveBeenCalled()
   })
 })
 
@@ -252,6 +255,7 @@ describe('a further count on an anchored part', () => {
     expect(values.stock_movement_quantity).toBe(-5)
     expect(values.stock_movement_occurred_at).toBe('2026-03-10T00:00:00.000Z')
     expect(values).not.toHaveProperty('stock_movement_count_quantity')
+    expect(h.onCacheEvent).toHaveBeenCalledWith('stock-setup.changed', { orgId: ORG })
   })
 
   // Q15: the adjust is dated D for N − net(D); what happened after D is not re-read here.

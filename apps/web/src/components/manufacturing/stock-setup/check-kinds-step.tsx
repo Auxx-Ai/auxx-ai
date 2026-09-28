@@ -59,8 +59,14 @@ interface CheckKindsStepProps {
 export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
   const utils = api.useUtils()
   const accounting = useAccountingSetupState()
-  const conflicts = api.builds.kindConflicts.useQuery({})
-  const candidates = api.purchasing.listOpeningStockCandidates.useQuery()
+  const conflicts = api.builds.kindConflicts.useQuery(
+    {},
+    { staleTime: 60_000, refetchOnWindowFocus: false }
+  )
+  const candidates = api.purchasing.listOpeningStockCandidates.useQuery(undefined, {
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
   const setKind = api.purchasing.bulkSetPartKind.useMutation()
   const keepKind = api.builds.confirmKindConflicts.useMutation()
   const [confirm, ConfirmDialog] = useConfirm()
@@ -90,16 +96,18 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
     return [...conflictRows, ...unconfirmed]
   }, [conflicts.data, candidates.data])
 
-  const refresh = () => {
+  // `onChanged` refreshes the status. Drift and preview are step 2's and refetch when it opens.
+  const refresh = (kindsWritten: boolean) => {
     void utils.builds.kindConflicts.invalidate()
-    void utils.purchasing.listOpeningStockCandidates.invalidate()
-    void utils.purchasing.stockSetupStatus.invalidate()
-    void utils.builds.movementAccountDrift.invalidate()
     void utils.builds.previewBackflush.invalidate()
+    if (kindsWritten) {
+      void utils.purchasing.listOpeningStockCandidates.invalidate()
+      void utils.builds.movementAccountDrift.invalidate()
+    }
     onChanged()
   }
 
-  const withBusy = async (partIds: string[], work: () => Promise<void>) => {
+  const withBusy = async (partIds: string[], kindsWritten: boolean, work: () => Promise<void>) => {
     setBusyIds((prev) => new Set([...prev, ...partIds]))
     try {
       await work()
@@ -109,7 +117,7 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
         for (const id of partIds) next.delete(id)
         return next
       })
-      refresh()
+      refresh(kindsWritten)
     }
   }
 
@@ -117,6 +125,7 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
   const applyKinds = (target: KindRow[]) =>
     withBusy(
       target.map((row) => row.partId),
+      true,
       async () => {
         const byKind = new Map<OpeningStockKind, string[]>()
         for (const row of target) {
@@ -145,7 +154,7 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
     )
 
   const keep = (row: KindRow) =>
-    withBusy([row.partId], async () => {
+    withBusy([row.partId], false, async () => {
       try {
         await keepKind.mutateAsync({ partIds: [row.partId] })
       } catch (error) {

@@ -45,6 +45,8 @@ const ENRICH_COMPANY_FROM_DOMAIN = 'enrichCompanyFromDomain'
 const ENRICH_COMPANY_FROM_WEBSITE = 'enrichCompanyFromWebsite'
 /** Field twin of the lifecycle handler in `system-entity-rules.ts`; same key on purpose. */
 const INVALIDATE_SUBPART_EDGES = 'invalidateSubpartEdges'
+/** Busts the `stockSetupStatus` org cache when a part's kind or standard cost is edited. */
+const INVALIDATE_STOCK_SETUP = 'invalidateStockSetup'
 
 /** Adapt a native batch event to the legacy `FieldTriggerEvent` shape. */
 function asFieldTriggerEvent(
@@ -82,6 +84,10 @@ export function registerFieldSystemRules(): void {
   registerNativeRuleHandler(INVALIDATE_SUBPART_EDGES, async (event) => {
     const { onCacheEvent } = await import('../cache/invalidate')
     await onCacheEvent('subpart.changed', { orgId: event.organizationId })
+  })
+  registerNativeRuleHandler(INVALIDATE_STOCK_SETUP, async (event) => {
+    const { onCacheEvent } = await import('../cache/invalidate')
+    await onCacheEvent('stock-setup.changed', { orgId: event.organizationId })
   })
   registerNativeRuleHandler(CLEAR_OTHER_PREFERRED, async (event) => {
     const { clearOtherPreferred } = await import('./post/vendor-part-triggers')
@@ -223,6 +229,14 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     on: 'changed',
     actions: [{ type: 'native', handler: WRITE_VENDOR_PART_PRICE }],
   },
+  ...(['part_kind', 'part_standard_cost'] as const).map((systemAttribute) => ({
+    key: `mfg-${systemAttribute.replace(/_/g, '-')}-stock-setup`,
+    name: `Refresh stock setup status on ${systemAttribute} change`,
+    defSlug: 'parts',
+    fieldRef: { systemAttribute },
+    on: 'changed' as const,
+    actions: [{ type: 'native' as const, handler: INVALIDATE_STOCK_SETUP }],
+  })),
   {
     key: 'mfg-part-reorder-point',
     name: 'Recalculate stock status on reorder point change',

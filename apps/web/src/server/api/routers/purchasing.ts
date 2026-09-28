@@ -45,7 +45,6 @@ import {
   listReceipts,
   openStockBalance,
   readSetCountPreflight,
-  readStockSetupStatus,
   receivePurchaseOrder,
   receiveStock,
 } from '@auxx/lib/inventory/receiving'
@@ -665,9 +664,7 @@ export const purchasingRouter = createTRPCRouter({
     const movementDefId = await requireDefId(organizationId, 'stock_movement')
     ctx.capabilities.assertViewEntity(movementDefId)
 
-    const result = await readStockSetupStatus(ctx.db, organizationId)
-    if (result.isErr()) throw result.error
-    return result.value
+    return getOrgCache().get(organizationId, 'stockSetupStatus')
   }),
 
   /** Stock setup's two flags (17 D5, Q2). Gated like the page, on part edit, not `settingsManage`. */

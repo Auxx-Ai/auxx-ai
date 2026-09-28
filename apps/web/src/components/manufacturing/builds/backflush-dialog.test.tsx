@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   start: vi.fn(async () => ({ runId: 'run_1' })),
   realtimeRunIds: [] as Array<string | null>,
   openBatchRun: vi.fn(),
+  invalidate: vi.fn(),
 }))
 
 vi.mock('next/link', () => ({
@@ -43,6 +44,12 @@ vi.mock('./use-backflush-run-realtime', () => ({
 vi.mock('./use-open-batch-run', () => ({ useOpenBatchRun: () => h.openBatchRun }))
 vi.mock('~/trpc/react', () => ({
   api: {
+    useUtils: () => ({
+      builds: {
+        previewBackflush: { invalidate: h.invalidate },
+        hasBackflushBuilds: { invalidate: h.invalidate },
+      },
+    }),
     builds: {
       previewBackflush: {
         useQuery: (input: unknown, options: { enabled?: boolean }) => {
@@ -63,6 +70,7 @@ vi.mock('~/trpc/react', () => ({
 }))
 
 import { BackflushDialog } from './backflush-dialog'
+import { BackflushPanel } from './backflush-panel'
 
 const FULL_PREVIEW = h.preview
 
@@ -95,6 +103,7 @@ beforeEach(() => {
   h.realtimeRunIds = []
   h.start.mockClear()
   h.openBatchRun.mockClear()
+  h.invalidate.mockClear()
 })
 
 const confirmButton = () => screen.getByRole('button', { name: /Record past builds/ })
@@ -193,5 +202,33 @@ describe('BackflushDialog', () => {
       '/app/inventory/setup?step=kinds'
     )
     expect((confirmButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('BackflushPanel', () => {
+  it('calls onFinished once when the run it follows completes, and refreshes the preview', async () => {
+    const onFinished = vi.fn()
+    h.run = { data: aRun({ status: 'COMPLETED', failures: [], failed: 0 }), isPending: false }
+    const { rerender } = render(<BackflushPanel onFinished={onFinished} />)
+    // A run already finished on open is not followed, so nothing fires yet.
+    expect(onFinished).not.toHaveBeenCalled()
+    fireEvent.click(confirmButton())
+    await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1))
+    rerender(<BackflushPanel onFinished={onFinished} />)
+    expect(onFinished).toHaveBeenCalledTimes(1)
+    expect(h.invalidate).toHaveBeenCalled()
+  })
+
+  it('does not call onFinished while the run is live', async () => {
+    const onFinished = vi.fn()
+    h.run = { data: aRun({ status: 'IN_PROGRESS' }), isPending: false }
+    render(<BackflushPanel onFinished={onFinished} />)
+    await screen.findByTestId('backflush-run')
+    expect(onFinished).not.toHaveBeenCalled()
+  })
+
+  it('never refetches the preview in the background', () => {
+    render(<BackflushPanel />)
+    expect(h.previewOptions).toMatchObject({ staleTime: 60_000, refetchOnWindowFocus: false })
   })
 })

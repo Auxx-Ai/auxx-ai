@@ -42,16 +42,19 @@ afterEach(() => {
 })
 
 describe('registerFieldSystemRules — declarations', () => {
-  it('declares exactly the 14 field triggers', () => {
+  it('declares exactly the 16 field triggers', () => {
     const decls = getSystemRuleDeclarations()
-    expect(decls).toHaveLength(14)
+    expect(decls).toHaveLength(16)
     expect(decls.map((d) => d.fieldRef?.systemAttribute).sort()).toEqual(
       [
         // Company enrichment's two field doors: a domain arriving or being corrected, and
         // a website the domain can be derived from.
         'company_domain',
         'company_website',
+        // Stock setup's cached status (plans/mrp/17 §5).
+        'part_kind',
         'part_reorder_point',
+        'part_standard_cost',
         // The agreed price on an order line IS the latest agreed price, and it
         // writes the vendor part's (73 §6.4).
         'purchase_order_line_expected_unit_price',
@@ -103,7 +106,7 @@ describe('registerFieldSystemRules — declarations', () => {
   it('is idempotent — a second call does not duplicate declarations', () => {
     __resetFieldSystemRulesLatch()
     registerFieldSystemRules()
-    expect(getSystemRuleDeclarations()).toHaveLength(14)
+    expect(getSystemRuleDeclarations()).toHaveLength(16)
   })
 })
 
@@ -207,6 +210,20 @@ describe('registerFieldSystemRules — native handlers wrap the trigger fns', ()
     ])
     await getNativeRuleHandler('invalidateSubpartEdges')!(batchEvent)
     expect(h.onCacheEvent).toHaveBeenCalledWith('subpart.changed', { orgId: 'org_1' })
+  })
+
+  it('a part kind or standard cost change busts the stock setup status', async () => {
+    const handlers = getSystemRuleDeclarations()
+      .filter((d) =>
+        ['part_kind', 'part_standard_cost'].includes(d.fieldRef?.systemAttribute ?? '')
+      )
+      .map((d) => [d.defSlug, (d.actions[0] as { handler: string }).handler])
+    expect(handlers).toEqual([
+      ['parts', 'invalidateStockSetup'],
+      ['parts', 'invalidateStockSetup'],
+    ])
+    await getNativeRuleHandler('invalidateStockSetup')!(batchEvent)
+    expect(h.onCacheEvent).toHaveBeenCalledWith('stock-setup.changed', { orgId: 'org_1' })
   })
 
   it('clearOtherPreferred + recalculateStockStatus wrap their functions', async () => {

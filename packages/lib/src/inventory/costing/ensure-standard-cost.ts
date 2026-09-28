@@ -12,7 +12,7 @@ import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { requestPartPricing } from '../../accounting/work-items/recovery'
 import { wakePricedParts } from '../../accounting/work-items/wake'
-import { getOrgCache } from '../../cache'
+import { getOrgCache, onCacheEvent } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
@@ -107,6 +107,8 @@ export async function ensureStandardCost(
       if (writtenPartIds.length > 0) {
         await wakePricedParts(db, organizationId, { partIds: writtenPartIds })
         await requestPartPricing(organizationId, writtenPartIds)
+        // A first standard is what moves a part out of Stock setup's "uncosted" count.
+        await onCacheEvent('stock-setup.changed', { orgId: organizationId })
       }
 
       logger.info('Ensured first standard cost', {

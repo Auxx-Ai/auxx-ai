@@ -7,15 +7,14 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { fixAccountsCopy } from './fix-accounts-copy'
 
-interface FixAccountsCardProps {
-  onFixed: () => void
-}
-
 /** Parts whose past movements carry the account of a kind they no longer have (plans/mrp/17 §5.2). */
-export function FixAccountsCard({ onFixed }: FixAccountsCardProps) {
+export function FixAccountsCard() {
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
-  const drift = api.builds.movementAccountDrift.useQuery()
+  const drift = api.builds.movementAccountDrift.useQuery(undefined, {
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
   const fix = api.builds.fixMovementAccounts.useMutation()
 
   const data = drift.data
@@ -35,9 +34,8 @@ export function FixAccountsCard({ onFixed }: FixAccountsCardProps) {
     } catch (error) {
       toastError({ title: 'Error fixing accounts', description: (error as Error).message })
     }
+    // A restamp moves accounts only; nothing in the stock setup status reads them.
     void utils.builds.movementAccountDrift.invalidate()
-    void utils.purchasing.stockSetupStatus.invalidate()
-    onFixed()
   }
 
   return (

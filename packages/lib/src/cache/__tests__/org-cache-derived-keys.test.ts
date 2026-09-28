@@ -73,4 +73,42 @@ describe('org cache — derived keys', () => {
     expect(order).toEqual(['resources', 'resourceNav'])
     expect(await cache.get('org1', 'resourceNav')).toEqual([{ id: 'v2' }])
   })
+
+  it('drops a lazy key on invalidation and recomputes it on the next read', async () => {
+    const cache = new OrganizationCacheService()
+    let edges = 1
+    let computes = 0
+    cache.register('subpartEdges', { compute: async () => [{ v: edges }] as never })
+    cache.register('stockSetupStatus', {
+      compute: async (orgId) => {
+        computes++
+        const [edge] = (await cache.get(orgId, 'subpartEdges')) as unknown as { v: number }[]
+        return { v: edge?.v } as never
+      },
+    })
+
+    expect(await cache.get('org1', 'stockSetupStatus')).toEqual({ v: 1 })
+    edges = 2
+    await cache.invalidateAndRecompute('org1', ['subpartEdges'])
+    expect(computes).toBe(1)
+
+    expect(await cache.get('org1', 'stockSetupStatus')).toEqual({ v: 2 })
+    expect(computes).toBe(2)
+  })
+
+  it('an org settings change drops the stock setup status too', async () => {
+    const cache = new OrganizationCacheService()
+    let computes = 0
+    cache.register('orgSettings', { compute: async () => ({}) as never })
+    cache.register('stockSetupStatus', {
+      compute: async () => {
+        computes++
+        return { n: computes } as never
+      },
+    })
+
+    expect(await cache.get('org1', 'stockSetupStatus')).toEqual({ n: 1 })
+    await cache.invalidateAndRecompute('org1', ['orgSettings'])
+    expect(await cache.get('org1', 'stockSetupStatus')).toEqual({ n: 2 })
+  })
 })

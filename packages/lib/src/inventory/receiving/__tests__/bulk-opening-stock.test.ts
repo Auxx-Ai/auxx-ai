@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, NotFoundError } from '../../../errors'
 
 const h = vi.hoisted(() => ({
+  onCacheEvent: vi.fn(async () => {}),
   setCount: vi.fn(),
   bulkSetFieldValueSpy: vi.fn(async () => ({ count: 0 })),
   materialised: new Set<string>(),
@@ -26,6 +27,7 @@ vi.mock('../../movements/initial-queries', () => ({
     new Map(ids.filter((id) => h.anchored.has(id)).map((id) => [id, { movementId: `mv_${id}` }])),
 }))
 vi.mock('../../../cache', () => ({
+  onCacheEvent: h.onCacheEvent,
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
     const id = h.defs.get(entityType)
@@ -423,6 +425,7 @@ describe('bulkSetPartKind', () => {
       'finished_good'
     )
     expect(result._unsafeUnwrap()).toEqual({ count: 2, failed: [] })
+    expect(h.onCacheEvent).toHaveBeenCalledWith('stock-setup.changed', { orgId: ORG })
   })
 
   it('de-duplicates the selection', async () => {
