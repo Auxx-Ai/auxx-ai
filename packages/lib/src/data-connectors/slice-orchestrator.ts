@@ -61,7 +61,7 @@ import {
   createStreamSyncStateStore,
   type RunStreamCursor,
 } from './sync-core-adapters'
-import type { ConnectorStreamQueryDecl, ConnectorStreamState } from './types'
+import type { ConnectorStreamQueryDecl, ConnectorStreamState, DataConnectorConfig } from './types'
 
 const logger = createScopedLogger('data-connector-slice-orchestrator')
 
@@ -748,9 +748,7 @@ export async function runBackfillSlice(
     allStreams: snapshot?.streams ?? [streamSnap],
     sweep: snapshot?.sweep ?? false,
     floor: snapshot?.floor,
-    backfilledBefore:
-      historyMaxRecordsOf(connector.config) !== undefined &&
-      (await streamBackfilledBefore(db, streamId)),
+    ...(await readLimitInputs(db, organizationId, streamId, connector.config, run.phase)),
     // A sample run that exhausts a stream before the cap parks via the source's
     // natural-completion path; thread the cap so it parks instead of going live.
     sampleLimit: run.sampleLimit,
@@ -991,6 +989,29 @@ export async function runBackfillSlice(
  * expiry in the run finds no steady stream and fails it. Never for a re-import.
  */
 /** Whether the stream has completed a backfill before the current one (`freshBackfillState`). */
+/**
+ * What the first-backfill limit needs: whether the stream backfilled before, and the org's
+ * Records headroom (plans/billing/06-records-limit.md). Only read on a backfill run.
+ */
+async function readLimitInputs(
+  db: Database,
+  organizationId: string,
+  streamId: string,
+  config: DataConnectorConfig | null | undefined,
+  phase: string | null
+): Promise<{ backfilledBefore: boolean; recordsHeadroom: number | null }> {
+  if (phase !== 'backfill') return { backfilledBefore: false, recordsHeadroom: null }
+  // Lazy: keeps the usage/billing graph out of every connector test that never limits.
+  const { readRecordsHeadroom } = await import('../usage/records-limit')
+  const headroom = await readRecordsHeadroom(db, organizationId)
+  const recordsHeadroom = headroom.isOk() ? headroom.value : null
+  const limited = historyMaxRecordsOf(config) !== undefined || recordsHeadroom !== null
+  return {
+    backfilledBefore: limited && (await streamBackfilledBefore(db, streamId)),
+    recordsHeadroom,
+  }
+}
+
 async function streamBackfilledBefore(db: Database, streamId: string): Promise<boolean> {
   const row = await db.query.DataConnectorStream.findFirst({
     where: eq(schema.DataConnectorStream.id, streamId),

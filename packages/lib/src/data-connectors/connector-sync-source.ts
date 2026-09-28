@@ -168,6 +168,8 @@ export interface ConnectorSyncSourceDeps {
   floor?: string
   /** The stream completed a backfill before this one, so the history limit does not apply. */
   backfilledBefore?: boolean
+  /** Room left under the org's Records hard limit at slice start; null/absent = unlimited. */
+  recordsHeadroom?: number | null
   /** The pinned stream this source drives (its own continuation chain). */
   stream: SyncSourceStream
   /**
@@ -254,6 +256,8 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   private readonly postFetchFilter?: ConditionGroup[]
   /** `historyMaxRecords` when it may stop this stream's backfill (§3.5); else undefined. */
   private readonly historyLimit?: number
+  /** First-backfill eligible for a limit at all (the config limit or the org's Records headroom). */
+  private readonly limitEligible: boolean
   /** Last record the current slice read; its `period` value is a capped stop's coverage. */
   private lastRecord?: ConnectorRecord
   /** Set when the history limit ended this slice's backfill. */
@@ -276,16 +280,15 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // First backfill only: never a re-import (D4), a sample (it must not commit a watermark),
     // a snapshot stream (a partial crawl would reconcile by absence), or a re-crawl (a re-sync
     // must re-project every record it synced before).
-    this.historyLimit =
+    this.limitEligible =
       !this.reimport &&
       !deps.backfilledBefore &&
       !deps.connector.resyncPending?.streamIds?.includes(deps.stream.streamId) &&
       deps.sampleLimit == null &&
       deps.run.phase === 'backfill' &&
       deps.stream.syncMode === 'incremental' &&
-      deps.stream.query?.limit
-        ? historyMaxRecordsOf(deps.config)
-        : undefined
+      !!deps.stream.query?.limit
+    this.historyLimit = this.limitEligible ? historyMaxRecordsOf(deps.config) : undefined
   }
 
   async fetchSlice(ctx: SyncSliceCtx): Promise<SliceResult> {
@@ -393,14 +396,24 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     ctx: SyncSliceCtx,
     page: { recordsProcessed: number; pendingSince?: string }
   ): boolean {
-    if (this.historyLimit === undefined) return false
+    if (!this.limitEligible) return false
+    const headroom = this.deps.recordsHeadroom
+    // Headroom is read at slice start, so the org cap is what was seen before it plus that room.
+    const orgLimit = headroom == null ? undefined : (ctx.recordsSeen ?? 0) + headroom
+    const limit =
+      this.historyLimit === undefined
+        ? orgLimit
+        : orgLimit === undefined
+          ? this.historyLimit
+          : Math.min(this.historyLimit, orgLimit)
+    if (limit === undefined) return false
     const seen = (ctx.recordsSeen ?? 0) + page.recordsProcessed
-    if (seen < this.historyLimit) return false
+    if (seen < limit) return false
     if (page.pendingSince === undefined) {
       logger.warn('history limit reached but the app reported no provisional since; crawling on', {
         sourceId: this.id,
         seen,
-        limit: this.historyLimit,
+        limit,
       })
       return false
     }

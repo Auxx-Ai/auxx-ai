@@ -3,6 +3,7 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback } from 'react'
+import { showUsageLimitDialog } from '~/components/subscriptions/usage-limit-dialog'
 import { api } from '~/trpc/react'
 
 /** Statuses the entity mutations stamp optimistically (subset of `DataConnectorStatus`). */
@@ -48,6 +49,7 @@ export function useConnectorMutations() {
       } catch (err) {
         utils.dataConnector.list.setData(undefined, prevList)
         utils.dataConnector.getById.setData({ id }, prevById)
+        if (showUsageLimitDialog(err)) return
         toastError({
           title: errorTitle,
           description: err instanceof Error ? err.message : 'Unknown error',

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { SYSTEM_ENTITIES } from '../../../seed/entity-seeder/constants'
 import {
   DEFAULTS,
+  METERED_SYSTEM_TYPES,
   resolveSystemEntityBehavior,
   resolveTableBackedBehavior,
   SYSTEM_ENTITY_BEHAVIOR,
@@ -149,8 +150,8 @@ describe('phase 1 is provably a no-op', () => {
 })
 
 describe('custom (user-authored) defs take pure DEFAULTS', () => {
-  /** `creatable` is not in DEFAULTS: it derives from `sidebar`, which is 'on'. */
-  const CUSTOM_DEF_BEHAVIOR = { ...DEFAULTS, creatable: true }
+  /** `creatable` and `metered` are not in DEFAULTS: both derive, and a custom def gets both. */
+  const CUSTOM_DEF_BEHAVIOR = { ...DEFAULTS, creatable: true, metered: true }
 
   it('resolves undefined to DEFAULTS', () => {
     expect(resolveSystemEntityBehavior(undefined)).toEqual(CUSTOM_DEF_BEHAVIOR)
@@ -246,5 +247,55 @@ describe('table-backed resources default restrictive', () => {
   it('the def-backed resolver stays permissive for a custom def', () => {
     // The two resolvers must not be confused: a user-authored def is reachable.
     expect(resolveSystemEntityBehavior(undefined).aiVisible).toBe(true)
+  })
+})
+
+describe('metered: the records plan limit counts main records only', () => {
+  // plans/billing/06-records-limit.md, the agreed table.
+  const METERED = [
+    'contact',
+    'company',
+    'order',
+    'product',
+    'part',
+    'ticket',
+    'quote',
+    'invoice',
+    'purchase_order',
+    'vendor_bill',
+    'vendor_credit',
+    'return',
+    'service_request',
+    'work_order',
+  ]
+
+  it('is true for exactly the agreed system defs', () => {
+    const metered = SYSTEM_ENTITIES.map((e) => e.entityType)
+      .filter((type) => resolveSystemEntityBehavior(type).metered)
+      .sort()
+    expect(metered).toEqual([...METERED].sort())
+    expect([...METERED_SYSTEM_TYPES].sort()).toEqual([...METERED].sort())
+  })
+
+  it.each([
+    'line_item',
+    'tax_line',
+    'stock_movement',
+    'build',
+    'credit_memo',
+    'fulfillment',
+    'journal_entry',
+    'gl_account',
+    'tag',
+    'thread',
+    'article',
+    'meeting',
+  ])('%s is not metered', (entityType) => {
+    expect(resolveSystemEntityBehavior(entityType).metered).toBe(false)
+  })
+
+  it('a custom def is metered; a table-backed resource is not', () => {
+    expect(resolveSystemEntityBehavior(undefined).metered).toBe(true)
+    expect(resolveTableBackedBehavior('dataset').metered).toBe(false)
   })
 })

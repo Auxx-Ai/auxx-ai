@@ -21,6 +21,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import React, { useCallback, useState } from 'react'
 import { DndStateProvider } from '~/app/context/dnd-state-context'
 import { OverageBanner } from '~/components/banner/overage-banner'
+import { RecordsLimitBanner } from '~/components/banner/records-limit-banner'
 import { SyncStatusCard } from '~/components/channels/ui/sync-status/sync-status-card'
 import { DemoBanner } from '~/components/demo/demo-banner'
 import { AppDragOverlay } from '~/components/global/app-drag-overlay'
@@ -32,6 +33,7 @@ import { isSidebarNodeDrag } from '~/components/global/sidebar/tree/sidebar-drop
 import { useSidebarDnd } from '~/components/global/sidebar/tree/use-sidebar-dnd'
 import { KopilotDock } from '~/components/kopilot/ui/kopilot-dock'
 import { KopilotRuntime } from '~/components/kopilot/ui/kopilot-runtime'
+import { UsageLimitDialogHost } from '~/components/subscriptions/usage-limit-dialog'
 import { useThreadMutation } from '~/components/threads/hooks'
 import type { SidebarPersistedState } from '~/hooks/sidebar-state-store'
 import { useOverages } from '~/hooks/use-overages'
@@ -258,6 +260,7 @@ export const Dashboard = ({
               <SidebarInset className='min-h-0 pt-safe pb-safe pl-safe pr-safe'>
                 <DemoBanner />
                 <OverageBanner overages={overages} />
+                <RecordsLimitBanner />
                 <SecondarySidebarPrefsProvider
                   defaultOpen={defaultSecondarySidebar?.open}
                   defaultWidth={defaultSecondarySidebar?.width}>
@@ -274,6 +277,7 @@ export const Dashboard = ({
           <AppDragOverlay />
         </DndContext>
         <NotificationPanelRoot />
+        <UsageLimitDialogHost />
         <SyncStatusCard />
       </SidebarProvider>
     </SidebarStateProvider>

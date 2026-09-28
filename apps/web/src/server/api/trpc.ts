@@ -112,6 +112,16 @@ const t = initTRPC.context<typeof createTRPCContext>().create({
       }
     }
 
+    // Lets the client tell a plan-limit 403 from a permission 403 and offer an upgrade.
+    if (error.cause?.name === AuxxErrorCodes.UsageLimitError) {
+      const { metric, current, limit } = error.cause as unknown as {
+        metric: string
+        current: number
+        limit: number
+      }
+      return { ...shape, data: { ...shape.data, usageLimit: { metric, current, limit } } }
+    }
+
     // Check for custom error codes from service layer
     const cause = error.cause as { code?: string; errors?: unknown[] } | undefined
     if (cause?.code) {

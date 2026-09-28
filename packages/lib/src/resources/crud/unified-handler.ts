@@ -30,6 +30,8 @@ import {
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
 import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
+import { noteMeteredRecordsCreated } from '../../usage/records-count'
+import { assertRecordRoom } from '../../usage/records-limit'
 import { queryEntityGroupSummary } from '../grouping/group-summary'
 import type { GroupAggregatesInput, GroupSummaryResult } from '../grouping/types'
 import { runSystemPreHooks } from '../hooks'
@@ -190,6 +192,13 @@ export interface UnifiedCrudHandlerOptions {
    * constructor's `userId` + `socketId`.
    */
   session?: WriteSession
+  /**
+   * Refuse creates of counted records past the org's `recordsHard`. Set ONLY at
+   * user-initiated doors: the session origin cannot say that, because system writers
+   * (auto-invoice, chat-widget contacts, workflows) default to `interactive` too.
+   * Not inherited by nested handlers. See plans/billing/06-records-limit.md.
+   */
+  enforceRecordLimit?: boolean
 }
 
 export class UnifiedCrudHandler {
@@ -206,6 +215,7 @@ export class UnifiedCrudHandler {
    * so hooks that construct their own handler mid-write inherit it ambiently.
    */
   private session: WriteSession
+  private enforceRecordLimit: boolean
 
   constructor(
     private organizationId: string,
@@ -229,6 +239,7 @@ export class UnifiedCrudHandler {
     // would read the whole org unscoped. Fail loudly instead.
     if (options.requestPath) assertRequestScoped(options.capabilities, 'UnifiedCrudHandler')
     this.capabilities = options.capabilities
+    this.enforceRecordLimit = options.enforceRecordLimit ?? false
     this.fieldValueService = new FieldValueService(organizationId, userId, this.db, socketId, {
       bypassFieldGuards: this.bypassFieldGuards,
       // S4: the field-value layer carries the session for later phases; no
@@ -256,6 +267,7 @@ export class UnifiedCrudHandler {
       bypassFieldGuards: this.bypassFieldGuards,
       capabilities: this.capabilities,
       session,
+      enforceRecordLimit: this.enforceRecordLimit,
     })
     return handler
   }
@@ -485,6 +497,7 @@ export class UnifiedCrudHandler {
     return this.inWriteSession(async () => {
       // Write enforcement (§2): absent capabilities ⇒ internal caller ⇒ unrestricted.
       this.capabilities?.assertEditEntity(entityDefinitionId)
+      const room = await this.assertRecordRoom(entityDefinitionId, 1)
       await this.warmCache(entityDefinitionId)
       // The `external_id` ARRAY attribute is retired (contact/company). Its writers
       // (browser extension) still send it under `values` as an array; peel it off
@@ -502,7 +515,20 @@ export class UnifiedCrudHandler {
       if (isRetiredArray) {
         await this.mirrorExternalIdentities(result.instance, external_id)
       }
+      if (room.metered) await noteMeteredRecordsCreated(this.organizationId, 1)
       return result
+    })
+  }
+
+  /** The records-limit gate, a no-op unless this handler was built with `enforceRecordLimit`. */
+  private async assertRecordRoom(
+    entityDefinitionId: string,
+    quantity: number
+  ): Promise<{ metered: boolean }> {
+    if (!this.enforceRecordLimit) return { metered: false }
+    return assertRecordRoom(this.db as Database, this.organizationId, {
+      entityDefinitionId,
+      quantity,
     })
   }
 
@@ -779,8 +805,16 @@ export class UnifiedCrudHandler {
     if (items.length === 0) return { created: [], errors: [] }
     return this.inWriteSession(async () => {
       this.capabilities?.assertEditEntity(entityDefinitionId)
+      const room = await this.assertRecordRoom(entityDefinitionId, items.length)
       await this.warmCache(entityDefinitionId)
-      return bulkCreateEntities(this.getMutationContext(), entityDefinitionId, items, options)
+      const result = await bulkCreateEntities(
+        this.getMutationContext(),
+        entityDefinitionId,
+        items,
+        options
+      )
+      if (room.metered) await noteMeteredRecordsCreated(this.organizationId, result.created.length)
+      return result
     })
   }
 
@@ -1331,8 +1365,15 @@ export class UnifiedCrudHandler {
   async createWithValues(entityDefinitionId: string, values: Record<string, unknown>) {
     return this.inWriteSession(async () => {
       this.capabilities?.assertEditEntity(entityDefinitionId)
+      const room = await this.assertRecordRoom(entityDefinitionId, 1)
       await this.warmCache(entityDefinitionId)
-      return createWithValuesImpl(this.getMutationContext(), entityDefinitionId, values)
+      const created = await createWithValuesImpl(
+        this.getMutationContext(),
+        entityDefinitionId,
+        values
+      )
+      if (room.metered) await noteMeteredRecordsCreated(this.organizationId, 1)
+      return created
     })
   }
 

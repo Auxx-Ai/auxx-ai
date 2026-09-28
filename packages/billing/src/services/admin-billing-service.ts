@@ -37,6 +37,8 @@ export interface CustomFeatureLimits {
   apiCallsPerMonthSoft?: number
   storageGbHard?: number
   storageGbSoft?: number
+  recordsHard?: number
+  recordsSoft?: number
   [key: string]: number | boolean | undefined // Extensible for future features
 }
 

@@ -144,6 +144,7 @@ async function runOnce(over: {
   floor?: string
   backfilledBefore?: boolean
   resyncPending?: string[]
+  headroom?: number | null
 }) {
   const deps = {
     db: {} as never,
@@ -168,6 +169,7 @@ async function runOnce(over: {
     allStreams: [],
     floor: over.floor,
     backfilledBefore: over.backfilledBefore,
+    recordsHeadroom: over.headroom,
     now: () => 0,
   } as unknown as ConnectorSyncSourceDeps
   const state = memoryStore(over.state ?? { phase: 'backfill' })
@@ -217,6 +219,29 @@ describe('history limit — capped stop', () => {
       state: { phase: 'backfill', cursor: { kind: 'token', value: 'p2' }, recordsSeen: 2 },
     })
     expect(state).toMatchObject({ phase: 'steady', recordsSeen: 4 })
+  })
+
+  it('stops at the org Records headroom with no connector limit set', async () => {
+    const { state } = await runOnce({ headroom: 3 })
+    expect(state).toMatchObject({ phase: 'steady', watermark: '"t0"', recordsSeen: 4 })
+  })
+
+  it('the lower of the connector limit and the org headroom wins', async () => {
+    const { state } = await runOnce({ limit: 100, headroom: 1 })
+    expect(state).toMatchObject({ phase: 'steady', recordsSeen: 2 })
+  })
+
+  it('headroom counts on from records seen in earlier slices', async () => {
+    const { state } = await runOnce({
+      headroom: 1,
+      state: { phase: 'backfill', cursor: { kind: 'token', value: 'p2' }, recordsSeen: 2 },
+    })
+    expect(state).toMatchObject({ phase: 'steady', recordsSeen: 4 })
+  })
+
+  it('unlimited headroom and no connector limit crawls to the end', async () => {
+    const { state } = await runOnce({ headroom: null })
+    expect(state).toMatchObject({ phase: 'steady', recordsSeen: 6 })
   })
 
   it('without a provisional since it keeps crawling to the end', async () => {

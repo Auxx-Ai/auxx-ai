@@ -130,6 +130,9 @@ vi.mock('@auxx/lib/cache', () => ({
   getCachedResource: cache.getCachedResource,
 }))
 
+// The records-limit pre-check is covered in lib; here it always has room.
+vi.mock('@auxx/lib/usage', () => ({ assertRecordRoom: vi.fn(async () => ({ metered: true })) }))
+
 vi.mock('@auxx/lib/identity', () => ({
   getRecordIdentityViews: identity.getRecordIdentityViews,
 }))

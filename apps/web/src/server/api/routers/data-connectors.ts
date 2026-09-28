@@ -47,6 +47,7 @@ import {
   READINESS_REASON,
   readConnectorCoverage,
   readDefaultHistoryStartDate,
+  readIsFirstImport,
   readRecordRefresh,
   removeMapping,
   removeStream,
@@ -67,6 +68,7 @@ import {
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { UnifiedCrudHandler } from '@auxx/lib/resources'
+import { assertRecordRoom } from '@auxx/lib/usage'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
@@ -816,6 +818,10 @@ export const dataConnectorRouter = createTRPCRouter({
       // Readiness backstop — block a half-built config from enqueuing a run that
       // would quietly do nothing (the worker's silent no-op). Authoritative gate.
       await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
+      // A first (or resumed first) import is gated; a manual sync of a live connector runs.
+      if (await readIsFirstImport(ctx.db, ctx.session.organizationId, input.id)) {
+        await assertRecordRoom(ctx.db, ctx.session.organizationId, {})
+      }
       await enqueueConnectorSync({
         connectorId: input.id,
         organizationId: ctx.session.organizationId,
@@ -851,6 +857,10 @@ export const dataConnectorRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
       await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
+      // A period re-import is a gap import; refreshing named records is not.
+      if ('period' in input.query) {
+        await assertRecordRoom(ctx.db, ctx.session.organizationId, {})
+      }
       const started = await requestReimport(ctx.db, {
         organizationId: ctx.session.organizationId,
         connectorId: input.connectorId,
@@ -1062,6 +1072,7 @@ export const dataConnectorRouter = createTRPCRouter({
       // `enqueueConnectorSync` (task 44 §7.11), and it had no readiness check at all.
       // A re-crawl is a sync, so it needs `canSync`, not just a connector that exists.
       await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {})
       await backfillPendingChange(ctx.db, ctx.session.organizationId, input.id)
       return { success: true }
     }),

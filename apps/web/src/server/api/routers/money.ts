@@ -80,6 +80,7 @@ import {
   recurrencePatternSchema,
 } from '@auxx/lib/recurrence'
 import { getOrganizationSetting } from '@auxx/lib/settings'
+import { assertRecordRoom, invalidateMeteredRecordCount } from '@auxx/lib/usage'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
@@ -147,11 +148,14 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ requestRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.requestRecordId)
-      return createQuoteFromRequest({
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, { entityDefinitionId: 'quote' })
+      const result = await createQuoteFromRequest({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         requestInstanceId: entityInstanceId,
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
+      return result
     }),
 
   markQuoteSent: moneyProcedure
@@ -191,11 +195,16 @@ export const moneyRouter = createTRPCRouter({
     .input(z.object({ quoteRecordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {
       const { entityInstanceId } = parseRecordId(input.quoteRecordId)
-      return convertQuoteToWorkOrder({
+      await assertRecordRoom(ctx.db, ctx.session.organizationId, {
+        entityDefinitionId: 'work_order',
+      })
+      const result = await convertQuoteToWorkOrder({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         quoteInstanceId: entityInstanceId,
       })
+      await invalidateMeteredRecordCount(ctx.session.organizationId)
+      return result
     }),
 
   reorderLines: moneyProcedure

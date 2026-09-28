@@ -73,6 +73,13 @@ export interface SystemEntityBehavior {
    * at least one of these features. Absent = no gate. Render-time only.
    */
   featureKeys?: string[]
+
+  /**
+   * Counts toward the org's `recordsSoft`/`recordsHard` plan limit. Derived like
+   * `creatable`: a custom def is metered, a system def only when listed in
+   * {@link METERED_SYSTEM_TYPES}. See plans/billing/06-records-limit.md.
+   */
+  metered: boolean
 }
 
 /**
@@ -82,7 +89,7 @@ export interface SystemEntityBehavior {
  * added system def being AI-visible unless someone writes down that it is not,
  * which is the opposite of the old `isVisible`-derived allowlist.
  */
-export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable'> = {
+export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable' | 'metered'> = {
   aiVisible: true,
   inPromptCatalog: true,
   searchable: true,
@@ -347,10 +354,27 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
 }
 
 /**
- * Resolve the behavior for a system `entityType`. A `null`/`undefined`
- * `entityType` names a user-authored def and gets pure {@link DEFAULTS} - there
- * is no rule to remember for a custom entity.
+ * The system defs that count as records for the plan limit: the main records a
+ * person or a channel brings in. Lines, system-minted rows and setup/reference
+ * defs stay out, so a new system def is unmetered until someone lists it here.
  */
+export const METERED_SYSTEM_TYPES: ReadonlySet<string> = new Set([
+  'contact',
+  'company',
+  'order',
+  'product',
+  'part',
+  'ticket',
+  'quote',
+  'invoice',
+  'purchase_order',
+  'vendor_bill',
+  'vendor_credit',
+  'return',
+  'service_request',
+  'work_order',
+])
+
 /**
  * The base for a TABLE-BACKED system resource (`RESOURCE_TABLE_REGISTRY`:
  * `thread`, `message`, `user`, `dataset`, `dashboard`, `workflow`, `kb`,
@@ -381,6 +405,7 @@ const TABLE_BACKED_BASE: SystemEntityBehavior = {
   creatable: false,
   sidebar: 'never',
   fieldsSettings: false,
+  metered: false,
 }
 
 /**
@@ -392,6 +417,11 @@ export function resolveTableBackedBehavior(tableId: string): SystemEntityBehavio
   return { ...TABLE_BACKED_BASE, ...(SYSTEM_ENTITY_BEHAVIOR[tableId] ?? {}) }
 }
 
+/**
+ * Resolve the behavior for a system `entityType`. A `null`/`undefined`
+ * `entityType` names a user-authored def and gets pure {@link DEFAULTS} - there
+ * is no rule to remember for a custom entity.
+ */
 export function resolveSystemEntityBehavior(
   entityType: string | null | undefined
 ): SystemEntityBehavior {
@@ -402,5 +432,6 @@ export function resolveSystemEntityBehavior(
     // Derived, and overridable. See the `creatable` docblock for why a flat
     // `true` would newly offer "Create GL Account" in the palette.
     creatable: override.creatable ?? merged.sidebar !== 'never',
+    metered: override.metered ?? (entityType ? METERED_SYSTEM_TYPES.has(entityType) : true),
   }
 }

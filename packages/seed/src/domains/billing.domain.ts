@@ -59,6 +59,8 @@ const STATIC_LIMITS = {
     entities: 5,
     importRowsLimit: 50,
     agentsLimit: 2,
+    recordsHard: 1_000,
+    recordsSoft: 800,
   },
   free: {
     teammates: 1,
@@ -78,6 +80,8 @@ const STATIC_LIMITS = {
     entities: 3,
     importRowsLimit: 50,
     agentsLimit: 0,
+    recordsHard: 1_000,
+    recordsSoft: 800,
   },
   starter: {
     teammates: -1,
@@ -93,6 +97,8 @@ const STATIC_LIMITS = {
     entities: 10,
     importRowsLimit: 500,
     agentsLimit: 5,
+    recordsHard: 50_000,
+    recordsSoft: 40_000,
   },
   growth: {
     teammates: -1,
@@ -108,6 +114,8 @@ const STATIC_LIMITS = {
     entities: -1,
     importRowsLimit: 1000,
     agentsLimit: -1,
+    recordsHard: 250_000,
+    recordsSoft: 200_000,
   },
   enterprise: {
     teammates: -1,
@@ -123,8 +131,16 @@ const STATIC_LIMITS = {
     entities: -1,
     importRowsLimit: -1,
     agentsLimit: -1,
+    recordsHard: -1,
+    recordsSoft: -1,
   },
 } as const
+
+/** Every trial gets the Starter records limit, whichever plan it trials. */
+const TRIAL_RECORD_LIMITS = {
+  recordsHard: STATIC_LIMITS.starter.recordsHard,
+  recordsSoft: STATIC_LIMITS.starter.recordsSoft,
+}
 
 /**
  * Boolean gates (on/off) keyed by plan tier.
@@ -528,7 +544,7 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
       USAGE_LIMITS.starter
     ),
     trialFeatureLimits: composeFeatureLimits(
-      STATIC_LIMITS.starter,
+      { ...STATIC_LIMITS.starter, ...TRIAL_RECORD_LIMITS },
       BOOLEAN_GATES.starter,
       USAGE_LIMITS.free
     ),
@@ -556,7 +572,7 @@ const PLAN_DEFINITIONS: PlanDefinition[] = [
       USAGE_LIMITS.growth
     ),
     trialFeatureLimits: composeFeatureLimits(
-      STATIC_LIMITS.growth,
+      { ...STATIC_LIMITS.growth, ...TRIAL_RECORD_LIMITS },
       BOOLEAN_GATES.growth,
       USAGE_LIMITS.free
     ),

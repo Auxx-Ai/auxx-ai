@@ -97,6 +97,9 @@ export enum FeatureKey {
   apiCallsPerMonthSoft = 'apiCallsPerMonthSoft',
   storageGbHard = 'storageGbHard',
   storageGbSoft = 'storageGbSoft',
+  /** Live counted records, a standing total (not per month). See plans/billing/06-records-limit.md. */
+  recordsHard = 'recordsHard',
+  recordsSoft = 'recordsSoft',
 
   // ── Velocity limits (per minute, enforced via RedisRateLimiter) ──
   appMutationsPerMinuteHard = 'appMutationsPerMinuteHard',
@@ -524,6 +527,31 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     variant: 'soft',
     pairedKey: FeatureKey.storageGbHard,
     unit: 'GB',
+  },
+
+  {
+    key: FeatureKey.recordsHard,
+    type: 'usage',
+    label: 'Records',
+    description:
+      'Live main records (contacts, companies, orders, products, parts, tickets, documents, custom entities). Lines and system-minted rows do not count.',
+    group: 'Data',
+    metric: 'records',
+    variant: 'hard',
+    pairedKey: FeatureKey.recordsSoft,
+    unit: 'records',
+  },
+  {
+    key: FeatureKey.recordsSoft,
+    type: 'usage',
+    label: 'Records',
+    description:
+      'Live main records (contacts, companies, orders, products, parts, tickets, documents, custom entities). Lines and system-minted rows do not count.',
+    group: 'Data',
+    metric: 'records',
+    variant: 'soft',
+    pairedKey: FeatureKey.recordsHard,
+    unit: 'records',
   },
 
   // ── Velocity limits (per minute) ──
