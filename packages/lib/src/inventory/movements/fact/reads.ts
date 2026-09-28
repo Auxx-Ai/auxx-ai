@@ -172,7 +172,8 @@ export async function readUsageBuckets(
         SELECT "partId", to_char(day, 'YYYY-MM') AS month,
                SUM(consumed)::float8 AS consumed,
                SUM(scrapped)::float8 AS scrapped,
-               COUNT(*) FILTER (WHERE "onHandEod" <= 0 AND consumed = 0)::int AS "stockoutDays"
+               -- As isStockoutDay: below zero is a ledger gap, not an empty shelf.
+               COUNT(*) FILTER (WHERE "onHandEod" = 0 AND consumed + scrapped = 0)::int AS "stockoutDays"
         FROM series
         GROUP BY 1, 2
         ORDER BY 1, 2
