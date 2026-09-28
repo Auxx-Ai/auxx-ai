@@ -85,7 +85,7 @@ describe('buildMrpPlanningTab', () => {
     expect(tab.widgets).toHaveLength(6)
     expect(dashboardLayoutDocSchema.safeParse({ tabs: [tab] }).success).toBe(true)
     for (const w of tab.widgets) {
-      expect((w.configuration as { link?: string }).link).toMatch(/^\/app\/parts\/manage\/plan/)
+      expect((w.configuration as { link?: string }).link).toMatch(/^\/app\/inventory\/plan/)
     }
     expect(hasMrpPlanWidget([{ tabs: [tab] }])).toBe(true)
     expect(hasMrpPlanWidget([emptyDoc()])).toBe(false)

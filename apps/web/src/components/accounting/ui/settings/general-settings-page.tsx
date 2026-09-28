@@ -18,7 +18,7 @@
 // be here. Brief 28 §3 moved them to Settings > Posting (decision 1: replace,
 // not duplicate), which renders every posting-type setting off `POSTING_POLICY`.
 // This page keeps what its nav description claims: period, export and setup
-// status. Standard cost lives on Parts > Manage > General.
+// status. Standard cost lives on Inventory > General.
 
 import { FieldType } from '@auxx/database/enums'
 import {

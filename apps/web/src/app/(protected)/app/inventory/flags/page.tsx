@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/parts/manage/flags/page.tsx
+// apps/web/src/app/(protected)/app/inventory/flags/page.tsx
 
 import { FlagsPage } from '~/components/mrp/ui/flags/flags-page'
 

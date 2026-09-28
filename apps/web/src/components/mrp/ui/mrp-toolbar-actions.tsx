@@ -38,7 +38,7 @@ export function mrpAsOfHint(run: MrpRun | null | undefined): string | undefined 
 
 /**
  * Starts a plan run and tracks it. `watch` polls `runStatus` while a run is in flight and
- * refreshes the MRP reads when it ends; only one mounted caller (the toolbar) should watch.
+ * refreshes the MRP reads when it ends; only one mounted caller (the header button) should watch.
  */
 export function useMrpRunNow({ watch = false }: { watch?: boolean } = {}) {
   const utils = api.useUtils()
@@ -108,21 +108,17 @@ export function MrpRunNowButton({
   )
 }
 
-/** The pinned-run chip and "Run now": the `right` every MRP page publishes. */
+/** The pinned-run chip, the `right` every MRP page publishes; "Run now" is in the header. */
 export function MrpToolbarActions() {
   const { run, isPinned, clear } = useMrpRun()
+  if (!isPinned) return null
   return (
-    <div className='flex items-center gap-1'>
-      {isPinned && (
-        <Tooltip content='Back to the latest run'>
-          <Button variant='ghost' size='sm' className='h-7 text-muted-foreground' onClick={clear}>
-            {run ? `Run of ${formatMrpRunStarted(run)}` : 'Pinned run'}
-            <X />
-          </Button>
-        </Tooltip>
-      )}
-      <MrpRunNowButton watch />
-    </div>
+    <Tooltip content='Back to the latest run'>
+      <Button variant='ghost' size='sm' className='h-7 text-muted-foreground' onClick={clear}>
+        {run ? `Run of ${formatMrpRunStarted(run)}` : 'Pinned run'}
+        <X />
+      </Button>
+    </Tooltip>
   )
 }
 

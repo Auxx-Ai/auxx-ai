@@ -29,6 +29,7 @@ export const DEFAULT_SIDEBAR_NAV_IDS = [
   'dashboards',
   'dispatch',
   'examples',
+  'inventory',
   'catalog',
   'resources',
   'schedule',

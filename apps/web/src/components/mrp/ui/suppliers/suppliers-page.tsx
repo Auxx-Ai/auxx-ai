@@ -43,7 +43,7 @@ function orderCards(cards: readonly SupplierCard[]): SupplierCard[] {
   )
 }
 
-/** `/app/parts/manage/suppliers`: one block per supplier, in order of next order date. */
+/** `/app/inventory/suppliers`: one block per supplier, in order of next order date. */
 export function SuppliersPage() {
   return (
     <ListSelectionProvider>

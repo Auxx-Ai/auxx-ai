@@ -148,7 +148,10 @@ export function KeyNumbers({ partId, recordId, runId }: KeyNumbersProps) {
 
   if (!loading && !data?.run) {
     return (
-      <EmptySection title='No plan run yet' description='Run MRP from Manage to plan this part.' />
+      <EmptySection
+        title='No plan run yet'
+        description='Run the plan from Inventory to plan this part.'
+      />
     )
   }
   if (!loading && !item) {

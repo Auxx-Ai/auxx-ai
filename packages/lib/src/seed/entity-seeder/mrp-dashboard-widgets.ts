@@ -26,7 +26,7 @@ const logger = createScopedLogger('mrp:dashboard-widgets')
 
 const SOURCE_TABLE = 'mrp_plan_item'
 const SOURCE: WidgetSource = { kind: 'system', tableId: SOURCE_TABLE }
-const PLAN_PATH = '/app/parts/manage/plan'
+const PLAN_PATH = '/app/inventory/plan'
 /** Order-by and stockout charts look this far ahead; the condition builder has no "next N days". */
 const LOOKAHEAD_DAYS = 84
 

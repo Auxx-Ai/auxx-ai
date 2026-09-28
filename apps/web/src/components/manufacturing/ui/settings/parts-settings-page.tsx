@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/parts-settings-page.tsx
 'use client'
 
-// Parts > Manage > General (25-parts-settings-tab.md §4; shape: plans/mrp/07-ui-plan.md §4.8).
+// Inventory > General (25-parts-settings-tab.md §4; shape: plans/mrp/07-ui-plan.md §4.8).
 //
 // A document page under the Manage shell: the toolbar title, then one
 // `ScrollArea` of two `SettingsSection` columns holding `FieldPanel` rows over one

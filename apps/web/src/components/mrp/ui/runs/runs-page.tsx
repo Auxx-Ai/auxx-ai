@@ -101,7 +101,7 @@ function toGridRow(run: RunRow): ReportGridRow {
   }
 }
 
-/** `/app/parts/manage/runs` (07 §4.4): every plan run, newest first; a completed row pins `?run=`. */
+/** `/app/inventory/runs` (07 §4.4): every plan run, newest first; a completed row pins `?run=`. */
 export function RunsPage() {
   const { runId, run, pin, clear } = useMrpRun()
   useMrpToolbar('Runs', mrpAsOfHint(run))

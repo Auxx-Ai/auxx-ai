@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/parts/manage/plan/page.tsx
+// apps/web/src/app/(protected)/app/inventory/plan/page.tsx
 
 import { PlanPage } from '~/components/mrp/ui/plan/plan-page'
 
