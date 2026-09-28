@@ -14,7 +14,8 @@
 // Pure over an injected driver + sink + clock, so it unit-tests with fakes (no network).
 
 import type { SliceResult, SyncSliceCtx } from '../../sync-core/contracts'
-import type { SliceSink } from '../connector-slice-loop'
+import { SINK_PAGE_MAX_RECORDS, type SlicePageSink, type SliceSink } from '../connector-slice-loop'
+import type { ConnectorRecord } from '../connectors/types'
 import type { AsyncExportDriver } from './types'
 import {
   type AsyncExportState,
@@ -27,6 +28,8 @@ import {
 export interface RunAsyncExportSliceArgs {
   driver: AsyncExportDriver
   sink: SliceSink
+  /** When set, records are sunk `SINK_PAGE_MAX_RECORDS` at a time instead of through `sink`. */
+  sinkPage?: SlicePageSink
   ctx: SyncSliceCtx
 }
 
@@ -51,7 +54,7 @@ function step(next: AsyncExportState, delayMs: number): Omit<SliceResult, 'count
 export async function runAsyncExportSlice(
   args: RunAsyncExportSliceArgs
 ): Promise<Omit<SliceResult, 'counters'>> {
-  const { driver, sink, ctx } = args
+  const { driver, sink, sinkPage, ctx } = args
   const state = decodeAsyncCursor(ctx.cursor)
 
   if (state.stage === 'init') {
@@ -92,6 +95,14 @@ export async function runAsyncExportSlice(
     return step({ stage: 'init', attempts: state.attempts }, 0)
   }
   let recordsProcessed = 0
+  let buffer: ConnectorRecord[] = []
+  const drain = async () => {
+    if (!sinkPage || buffer.length === 0) return
+    const page = buffer
+    buffer = []
+    await sinkPage(page)
+    recordsProcessed += page.length
+  }
   for await (const record of driver.download(state.url)) {
     if (ctx.signal.aborted) {
       // Graceful cancellation — re-enqueue the download. The signed URL re-fetches from
@@ -105,9 +116,15 @@ export async function runAsyncExportSlice(
         rateLimitWaitMs: 0,
       }
     }
+    if (sinkPage) {
+      buffer.push(record)
+      if (buffer.length >= SINK_PAGE_MAX_RECORDS) await drain()
+      continue
+    }
     await sink(record)
     recordsProcessed += 1
   }
+  await drain()
   // The whole file streamed — this phase is exhausted (the runner runs reconciliation
   // and flips to steady). The budget is advisory here: restitch needs the full file, so
   // a download isn't split mid-stream in v1 (resumable download deferred to Step 7b+).

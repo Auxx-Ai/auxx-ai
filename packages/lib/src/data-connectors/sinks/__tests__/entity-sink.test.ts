@@ -1,7 +1,9 @@
 // packages/lib/src/data-connectors/sinks/__tests__/entity-sink.test.ts
 
+import { stableHash } from '@auxx/utils/hash'
 import { describe, expect, it } from 'vitest'
-import { coerceListValue } from '../entity-sink'
+import { coerceListValue, contentHashOf } from '../entity-sink'
+import type { ProjectedRecord } from '../types'
 
 /**
  * A connector cannot source an array — the fan-out drops array-shaped source values
@@ -58,5 +60,39 @@ describe('coerceListValue', () => {
     // An array is already the target shape; the fan-out should never deliver one,
     // but if it does it must not be mangled further.
     expect(coerceListValue('TAGS', ['a', 'b'], false)).toEqual(['a', 'b'])
+  })
+})
+
+describe('contentHashOf', () => {
+  const record = (fields: Record<string, unknown>): ProjectedRecord => ({
+    externalId: 'e1',
+    displayName: 'Entry',
+    fields,
+    identityCandidates: [],
+    pendingRelations: [],
+  })
+  const acquired = 'def:acquired'
+
+  it('hashes what stableHash hashes when nothing is exempt', () => {
+    const r = record({ 'def:net': 100, [acquired]: '2026-09-01T00:00:00Z' })
+    expect(contentHashOf(r, new Set())).toBe(
+      stableHash({ fields: r.fields, displayName: r.displayName })
+    )
+  })
+
+  it('ignores acquisition metadata, so a re-fetch of unchanged evidence hashes the same', () => {
+    const first = record({ 'def:net': 100, [acquired]: '2026-09-01T00:00:00Z' })
+    const refetch = record({ 'def:net': 100, [acquired]: '2026-09-02T00:00:00Z' })
+    expect(contentHashOf(refetch, new Set([acquired]))).toBe(
+      contentHashOf(first, new Set([acquired]))
+    )
+  })
+
+  it('still changes when a real field changes', () => {
+    const first = record({ 'def:net': 100, [acquired]: 'a' })
+    const changed = record({ 'def:net': 101, [acquired]: 'a' })
+    expect(contentHashOf(changed, new Set([acquired]))).not.toBe(
+      contentHashOf(first, new Set([acquired]))
+    )
   })
 })

@@ -2,7 +2,7 @@
 
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm'
 import type { FindRecordByIdentityInput, RecordIdentityMatch } from './types'
 
 type DbHandle = Database | Transaction
@@ -25,25 +25,9 @@ export async function findRecordByIdentity(
   db: DbHandle = database
 ): Promise<RecordIdentityMatch | null> {
   const conditions = [
-    eq(schema.RecordIdentity.organizationId, input.organizationId),
-    eq(schema.RecordIdentity.entityDefinitionId, input.entityDefinitionId),
-    eq(schema.RecordIdentity.source, input.source),
+    ...scopeConditions(input),
     eq(schema.RecordIdentity.externalId, input.externalId),
   ]
-  if (input.connectionId !== undefined) {
-    conditions.push(
-      input.connectionId === null
-        ? isNull(schema.RecordIdentity.connectionId)
-        : eq(schema.RecordIdentity.connectionId, input.connectionId)
-    )
-  }
-  if (input.appFieldKey !== undefined) {
-    conditions.push(
-      input.appFieldKey === null
-        ? isNull(schema.RecordIdentity.appFieldKey)
-        : eq(schema.RecordIdentity.appFieldKey, input.appFieldKey)
-    )
-  }
 
   const [row] = await db
     .select({
@@ -64,4 +48,65 @@ export async function findRecordByIdentity(
     recordId: toRecordId(row.entityDefinitionId, row.entityInstanceId),
     displayName: row.displayName,
   }
+}
+
+/**
+ * `findRecordByIdentity` for many external ids of one scope in one query. An id with no
+ * identity is absent from the map; with several, any one of them wins, as in the single form.
+ */
+export async function findRecordsByIdentity(
+  input: Omit<FindRecordByIdentityInput, 'externalId'> & { externalIds: string[] },
+  db: DbHandle = database
+): Promise<Map<string, RecordIdentityMatch>> {
+  const out = new Map<string, RecordIdentityMatch>()
+  if (input.externalIds.length === 0) return out
+  const rows = await db
+    .select({
+      externalId: schema.RecordIdentity.externalId,
+      entityInstanceId: schema.RecordIdentity.entityInstanceId,
+      entityDefinitionId: schema.RecordIdentity.entityDefinitionId,
+      displayName: schema.EntityInstance.displayName,
+    })
+    .from(schema.RecordIdentity)
+    .innerJoin(
+      schema.EntityInstance,
+      eq(schema.EntityInstance.id, schema.RecordIdentity.entityInstanceId)
+    )
+    .where(
+      and(
+        ...scopeConditions(input),
+        inArray(schema.RecordIdentity.externalId, [...new Set(input.externalIds)])
+      )
+    )
+  for (const row of rows) {
+    if (out.has(row.externalId)) continue
+    out.set(row.externalId, {
+      recordId: toRecordId(row.entityDefinitionId, row.entityInstanceId),
+      displayName: row.displayName,
+    })
+  }
+  return out
+}
+
+function scopeConditions(input: Omit<FindRecordByIdentityInput, 'externalId'>): SQL[] {
+  const conditions = [
+    eq(schema.RecordIdentity.organizationId, input.organizationId),
+    eq(schema.RecordIdentity.entityDefinitionId, input.entityDefinitionId),
+    eq(schema.RecordIdentity.source, input.source),
+  ]
+  if (input.connectionId !== undefined) {
+    conditions.push(
+      input.connectionId === null
+        ? isNull(schema.RecordIdentity.connectionId)
+        : eq(schema.RecordIdentity.connectionId, input.connectionId)
+    )
+  }
+  if (input.appFieldKey !== undefined) {
+    conditions.push(
+      input.appFieldKey === null
+        ? isNull(schema.RecordIdentity.appFieldKey)
+        : eq(schema.RecordIdentity.appFieldKey, input.appFieldKey)
+    )
+  }
+  return conditions
 }

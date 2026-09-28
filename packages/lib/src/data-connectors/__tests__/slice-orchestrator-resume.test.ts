@@ -419,8 +419,8 @@ vi.mock('../reconciliation', async (importOriginal) => {
 })
 // The sink is the one seam that stays a spy: each fetched record counts as fetched
 // (what the ceiling reads), and the orphan diff's inputs/outputs are what we assert.
-vi.mock('../sink-source-record', () => ({
-  sinkSourceRecord: async (
+vi.mock('../sink-source-record', () => {
+  const sinkSourceRecord = async (
     ctx: { counters: { fetched: number } },
     _mappings: unknown,
     _record: unknown,
@@ -429,8 +429,22 @@ vi.mock('../sink-source-record', () => ({
   ) => {
     ctx.counters.fetched += 1
     world.sinkFilters.push(recordFilter)
-  },
-}))
+  }
+  return {
+    sinkSourceRecord,
+    sinkSourcePage: async (
+      ctx: { counters: { fetched: number } },
+      mappings: unknown,
+      records: unknown[],
+      updatedAtPath: unknown,
+      recordFilter: ConditionGroup[] | undefined
+    ) => {
+      for (const record of records) {
+        await sinkSourceRecord(ctx, mappings, record, updatedAtPath, recordFilter)
+      }
+    },
+  }
+})
 const listExistingItems = vi.fn()
 const archiveRecord = vi.fn()
 vi.mock('../sinks/entity-sink', () => ({

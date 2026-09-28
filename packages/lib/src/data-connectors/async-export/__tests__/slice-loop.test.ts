@@ -5,6 +5,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { SyncCursor, SyncSliceCtx, ThrottleHandle } from '../../../sync-core/contracts'
+import { SINK_PAGE_MAX_RECORDS } from '../../connector-slice-loop'
 import type { ConnectorRecord } from '../../connectors/types'
 import { runAsyncExportSlice } from '../slice-loop'
 import { type AsyncExportDriver, type AsyncExportStatus, decodeAsyncCursor } from '../types'
@@ -151,5 +152,27 @@ describe('runAsyncExportSlice', () => {
     expect(sink).not.toHaveBeenCalled()
     expect(out.hasMore).toBe(true)
     expect(decodeAsyncCursor(out.nextCursor)).toMatchObject({ stage: 'download' })
+  })
+
+  it('sinks the download a page at a time when given a page sink', async () => {
+    const records = Array.from({ length: SINK_PAGE_MAX_RECORDS + 2 }, (_, i) => rec(`r${i}`))
+    const driver = fakeDriver({ records })
+    const pages: number[] = []
+    const sink = vi.fn(() => Promise.resolve())
+    const dlCursor: SyncCursor = {
+      kind: 'token',
+      value: JSON.stringify({ stage: 'download', url: 'https://x/file.jsonl' }),
+    }
+    const out = await runAsyncExportSlice({
+      driver,
+      sink,
+      sinkPage: async (page) => {
+        pages.push(page.length)
+      },
+      ctx: ctx(dlCursor),
+    })
+    expect(pages).toEqual([SINK_PAGE_MAX_RECORDS, 2])
+    expect(sink).not.toHaveBeenCalled()
+    expect(out).toMatchObject({ recordsProcessed: SINK_PAGE_MAX_RECORDS + 2, hasMore: false })
   })
 })

@@ -25,6 +25,7 @@ import { NotFoundError, UniqueValueConflictError } from '../../errors'
 import { fieldValueSchemas } from '../../field-values/field-value-validator'
 import { enqueueRecordImageFetch } from '../../files/remote-image/enqueue'
 import { findRecordByIdentity, upsertRecordIdentity } from '../../identity'
+import { ACQUISITION_METADATA_ATTRIBUTES } from '../../resources/registry/resources/financial-source-fields'
 import { getInstanceId, toRecordId } from '../../resources/resource-id'
 import { buildWriteKeyToFieldId } from '../field-id-resolver'
 import { countOutcome } from '../run-counters'
@@ -49,9 +50,66 @@ import {
   type RowLevelField,
   type RowLevelWrite,
 } from './row-level-writes'
-import type { EntitySink, ProjectedRecord, SyncCtx } from './types'
+import {
+  createSinkPage,
+  type IdentityScope,
+  type ItemIo,
+  identityScope,
+  type SinkPage,
+} from './sink-page'
+import type { EntitySink, PageWrite, ProjectedRecord, SyncCtx } from './types'
 
 const logger = createScopedLogger('data-connector-entity-sink')
+
+/** The per-record lane: the service functions, forwarded with the caller's exact arguments. */
+const directIo: ItemIo = {
+  findItem: (...a) => findItem(...a),
+  findItemByDef: (...a) => findItemByDef(...a),
+  touchItem: (...a) => touchItem(...a),
+  setItemPendingRelations: (...a) => setItemPendingRelations(...a),
+  upsertItem: (...a) => upsertItem(...a),
+  findRecordByIdentity: (...a) => findRecordByIdentity(...a),
+  enqueueRecordImageFetch: (...a) => enqueueRecordImageFetch(...a),
+}
+
+/** The open page when `upsertRecords` is sinking one, else the database. */
+function io(ctx: SyncCtx): ItemIo {
+  return ctx.sinkPage ?? directIo
+}
+
+/**
+ * The content hash: the projected source minus acquisition metadata, which a financial source
+ * re-stamps on every fetch (`ACQUISITION_METADATA_ATTRIBUTES`). `exemptRefs` are raw refs.
+ */
+export function contentHashOf(record: ProjectedRecord, exemptRefs: ReadonlySet<string>): string {
+  const fields =
+    exemptRefs.size === 0
+      ? record.fields
+      : Object.fromEntries(Object.entries(record.fields).filter(([ref]) => !exemptRefs.has(ref)))
+  return stableHash({ fields, displayName: record.displayName })
+}
+
+/** The record's refs whose target field is acquisition metadata. */
+async function hashExemptRefs(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  record: ProjectedRecord,
+  refToConcrete: Map<string, ResourceFieldId>
+): Promise<Set<string>> {
+  const exempt = new Set<string>()
+  const fieldIds = new Map<string, string>()
+  for (const ref of Object.keys(record.fields)) {
+    const concrete = refToConcrete.get(ref)
+    if (concrete) fieldIds.set(ref, getFieldId(concrete))
+  }
+  if (fieldIds.size === 0) return exempt
+  const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
+  for (const [ref, id] of fieldIds) {
+    const attribute = fieldMap?.get(id)?.systemAttribute ?? id
+    if (ACQUISITION_METADATA_ATTRIBUTES.has(attribute)) exempt.add(ref)
+  }
+  return exempt
+}
 
 /** Normalize a match value the way the importer's find-existing path expects. */
 function normalizeMatch(value: unknown, normalize?: 'email' | 'phone' | 'domain' | 'none'): string {
@@ -383,7 +441,7 @@ async function findInstanceByRecordIdentity(
     const concrete = refToConcrete.get(fm.targetFieldRef!)
     const field = concrete ? fieldMap.get(getFieldId(concrete)) : undefined
     if (!field?.appSlug) continue
-    const match = await findRecordByIdentity(
+    const match = await io(ctx).findRecordByIdentity(
       {
         organizationId: ctx.orgId,
         entityDefinitionId: mapping.entityDefinitionId,
@@ -579,7 +637,12 @@ async function buildWriteSet(
       const hasImage = !isBlank(current ? rawOf(current.get(fieldUuid)) : undefined)
       if (strategy === 'fill_blank' && hasImage) continue
       if (strategy === 'connector_owned_only') {
-        const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+        const item = await io(ctx).findItem(
+          ctx.db,
+          ctx.connector.id,
+          mapping.row.id,
+          record.externalId
+        )
         if (item && !(item.managedFields ?? []).includes(rawRef)) continue
       }
       pendingImages.push({ fieldId: fieldUuid, url })
@@ -664,7 +727,12 @@ async function buildWriteSet(
     if (strategy === 'connector_owned_only') {
       // Write only if this connector created/owns the field on this record. An empty cell is
       // nobody's, so a field that was blank upstream until now is still taken.
-      const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+      const item = await io(ctx).findItem(
+        ctx.db,
+        ctx.connector.id,
+        mapping.row.id,
+        record.externalId
+      )
       const cur = current ? rawOf(current.get(fieldUuid ?? fieldId)) : undefined
       const owns = !item || (item.managedFields ?? []).includes(rawRef) || isBlank(cur)
       if (owns) write()
@@ -719,6 +787,10 @@ async function stampContributingProvenance(
     new Set(writeFieldKeys.map((k) => keyToId.get(k)).filter((v): v is string => !!v))
   )
   if (concreteIds.length === 0) return
+  if (ctx.sinkPage) {
+    ctx.sinkPage.stamp(instanceId, concreteIds)
+    return
+  }
 
   await ctx.db
     .update(schema.FieldValue)
@@ -775,6 +847,10 @@ async function mirrorIdentityWrites(
       },
       ctx.db
     )
+    ctx.sinkPage?.noteIdentityWrite(
+      identityScope(mapping.entityDefinitionId, { ...field, appSlug: field.appSlug }),
+      externalId
+    )
     if (!mirrored.ok) {
       logger.warn('Failed to mirror identity write into RecordIdentity', {
         connectorId: ctx.connector.id,
@@ -805,7 +881,11 @@ function driftedInstances(ctx: SyncCtx, mapping: DecodedMapping): Promise<Set<st
   const memo = (ctx.driftByMapping ??= new Map())
   let pending = memo.get(mapping.row.id)
   if (!pending) {
-    pending = computeDriftedInstances(ctx, mapping)
+    // The query reads items and cell markers, so a page's deferred writes land first.
+    const page = ctx.sinkPage
+    pending = page
+      ? page.flush().then(() => computeDriftedInstances(ctx, mapping))
+      : computeDriftedInstances(ctx, mapping)
     memo.set(mapping.row.id, pending)
   }
   return pending
@@ -952,6 +1032,7 @@ async function findSiblingBinding(
   const winner = ctx.sliceWriteWinners?.get(`${mappingId}::${instanceId}`)
   if (winner !== undefined && winner !== externalId) return winner
 
+  await ctx.sinkPage?.flushForItemReads()
   const row = await ctx.db.query.DataConnectorItem.findFirst({
     where: and(
       eq(schema.DataConnectorItem.dataConnectorId, ctx.connector.id),
@@ -1034,8 +1115,9 @@ export const entitySink: EntitySink = {
     // identity lookup and the write set key off this table (§3.3).
     const refToConcrete = await resolveFieldRefs(ctx, record)
 
+    const items = io(ctx)
     // 1. Resolve identity — exact bind, else strategy bootstrap.
-    const bound = await findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
+    const bound = await items.findItem(ctx.db, ctx.connector.id, mapping.row.id, record.externalId)
 
     // 1a. Out-of-order guard (§9 Q7). The high-concurrency webhook lane lets two
     //     events for one externalId race (A fetches v1, B fetches v2, A lands last);
@@ -1050,7 +1132,7 @@ export const entitySink: EntitySink = {
       record.upstreamUpdatedAt &&
       record.upstreamUpdatedAt.getTime() < bound.upstreamUpdatedAt.getTime()
     ) {
-      await touchItem(ctx.db, bound.id, ctx.runId)
+      await items.touchItem(ctx.db, bound.id, ctx.runId)
       countOutcome(ctx.counters, mapping.row.id, 'skipped')
       if (record.pendingRelations.length > 0) {
         await mergePendingRelations(
@@ -1072,7 +1154,7 @@ export const entitySink: EntitySink = {
     //     Best-effort (no lock): the rare concurrent first-contact still double-creates,
     //     same tolerance as Match (§9.3a).
     if (!instanceId) {
-      const shared = await findItemByDef(
+      const shared = await items.findItemByDef(
         ctx.db,
         ctx.connector.id,
         mapping.entityDefinitionId,
@@ -1166,6 +1248,9 @@ export const entitySink: EntitySink = {
       else if (winner !== record.externalId) lostSliceDedupe = true
     }
 
+    // A page defers provenance stamps; this instance's land before its cells are read or written.
+    if (instanceId) await ctx.sinkPage?.flushStampsFor(instanceId)
+
     // 1d. A binding THIS connector archived (item.archivedAt set) whose record is back
     //     in the crawl: restore the record, then let the normal path (touchItem or
     //     upsertItem) clear the item stamps. Only the connector's own archive is
@@ -1179,7 +1264,10 @@ export const entitySink: EntitySink = {
     //    SOURCE only, so a destination edit is invisible to it; without the drift
     //    guard an `overwrite` field silently never re-asserts the source value
     //    while the source is stable. Drift is detected in bulk, once per mapping.
-    const contentHash = stableHash({ fields: record.fields, displayName: record.displayName })
+    const contentHash = contentHashOf(
+      record,
+      await hashExemptRefs(ctx, mapping, record, refToConcrete)
+    )
     if (bound?.entityInstanceId && bound.contentHash === contentHash) {
       // Source is unchanged — skip, unless an overwrite cell drifted (hand-edited),
       // in which case fall through to re-assert the source value. Drift is only
@@ -1194,7 +1282,7 @@ export const entitySink: EntitySink = {
             record.upstreamUpdatedAt.getTime() > bound.upstreamUpdatedAt.getTime())
             ? record.upstreamUpdatedAt
             : undefined
-        await touchItem(ctx.db, bound.id, ctx.runId, newerStamp)
+        await items.touchItem(ctx.db, bound.id, ctx.runId, newerStamp)
         countOutcome(ctx.counters, mapping.row.id, 'skipped')
         // Still re-register pending relations so a later-arriving target resolves
         // (and a clear-on-empty edge fires even when the source is otherwise unchanged).
@@ -1223,7 +1311,7 @@ export const entitySink: EntitySink = {
         }
       )
       countOutcome(ctx.counters, mapping.row.id, 'skipped')
-      await upsertItem(ctx.db, {
+      await items.upsertItem(ctx.db, {
         dataConnectorId: ctx.connector.id,
         organizationId: ctx.orgId,
         mappingId: mapping.row.id,
@@ -1320,7 +1408,7 @@ export const entitySink: EntitySink = {
             columns: { archivedAt: true },
           })
           if (instance?.archivedAt) {
-            if (bound) await touchItem(ctx.db, bound.id, ctx.runId)
+            if (bound) await items.touchItem(ctx.db, bound.id, ctx.runId)
             countOutcome(ctx.counters, mapping.row.id, 'skipped')
             return
           }
@@ -1337,6 +1425,7 @@ export const entitySink: EntitySink = {
           if (resolved.instanceId === error.canonicalRecordId) {
             instanceId = resolved.instanceId
             matched = resolved.matched
+            if (instanceId) await ctx.sinkPage?.flushStampsFor(instanceId)
             ;({
               writeSet,
               rowWrites,
@@ -1433,7 +1522,7 @@ export const entitySink: EntitySink = {
     // 4d. Image URLs on FILE fields: fetched off the slice, after the record exists.
     if (!ignoredRevision && instanceId) {
       for (const image of pendingImages) {
-        await enqueueRecordImageFetch({
+        await items.enqueueRecordImageFetch({
           organizationId: ctx.orgId,
           entityDefinitionId: mapping.entityDefinitionId,
           instanceId,
@@ -1456,7 +1545,7 @@ export const entitySink: EntitySink = {
     const mergedManaged = Array.from(new Set([...(bound?.managedFields ?? []), ...written])).filter(
       (ref) => !cleared.has(ref)
     )
-    await upsertItem(ctx.db, {
+    await items.upsertItem(ctx.db, {
       dataConnectorId: ctx.connector.id,
       organizationId: ctx.orgId,
       mappingId: mapping.row.id,
@@ -1476,8 +1565,26 @@ export const entitySink: EntitySink = {
     })
   },
 
+  async upsertRecords(writes, ctx) {
+    const opened = !ctx.sinkPage
+    if (opened) await openSinkPage(ctx, writes)
+    try {
+      for (const w of writes) await entitySink.upsertRecord(ctx, w.mapping, w.record)
+    } catch (error) {
+      if (opened) await closeSinkPage(ctx).catch((e) => logFlushFailure(ctx, e))
+      throw error
+    }
+    if (opened) await closeSinkPage(ctx)
+  },
+
   async archiveRecord(ctx, item, behavior) {
     if (behavior === 'ignore' || !item.entityInstanceId) return
+
+    // A page's deferred writes to this item land before the archive, then memory lets go of it.
+    if (ctx.sinkPage) {
+      await ctx.sinkPage.flush()
+      ctx.sinkPage.forget(item.id)
+    }
 
     // `mark_deleted` leaves the record LIVE and flags the binding instead. This is the
     // safe answer whenever "gone upstream" is not authority to remove the record: a
@@ -1565,5 +1672,99 @@ async function mergePendingRelations(
   incoming: PendingRelation[],
   linkedRelations: Set<string>
 ): Promise<void> {
-  await setItemPendingRelations(ctx.db, itemId, mergePending(existing, incoming, linkedRelations))
+  await io(ctx).setItemPendingRelations(
+    ctx.db,
+    itemId,
+    mergePending(existing, incoming, linkedRelations)
+  )
+}
+
+/**
+ * Open a page on `ctx`: one read for the items every write binds by mapping or def, and one
+ * `RecordIdentity` read per scope for the writes with no bound instance. A failed read leaves
+ * no page, so the writes sink per record exactly as before.
+ */
+export async function openSinkPage(ctx: SyncCtx, writes: PageWrite[]): Promise<void> {
+  if (ctx.sinkPage) return
+  try {
+    const page = createSinkPage(ctx)
+    await page.loadItems(
+      writes.map((w) => ({
+        mappingId: w.mapping.row.id,
+        defId: w.mapping.entityDefinitionId,
+        externalId: w.record.externalId,
+      }))
+    )
+    const unbound: PageWrite[] = []
+    for (const w of writes) {
+      const args = [ctx.db, ctx.connector.id] as const
+      const bound = await page.findItem(...args, w.mapping.row.id, w.record.externalId)
+      if (bound?.entityInstanceId) continue
+      const shared = await page.findItemByDef(
+        ...args,
+        w.mapping.entityDefinitionId,
+        w.record.externalId
+      )
+      if (!shared?.entityInstanceId) unbound.push(w)
+    }
+    await loadUnboundIdentities(ctx, page, unbound)
+    ctx.sinkPage = page
+  } catch (error) {
+    logger.warn('page bind read failed — sinking this page per record', {
+      connectorId: ctx.connector.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/** Write what the open page deferred and close it. */
+export async function closeSinkPage(ctx: SyncCtx): Promise<void> {
+  const page = ctx.sinkPage
+  ctx.sinkPage = undefined
+  await page?.flush()
+}
+
+function logFlushFailure(ctx: SyncCtx, error: unknown): void {
+  logger.warn('page flush failed after a sink error', {
+    connectorId: ctx.connector.id,
+    error: error instanceof Error ? error.message : String(error),
+  })
+}
+
+/** `findInstanceByRecordIdentity`'s lookups for the page's unbound writes, one per scope. */
+async function loadUnboundIdentities(
+  ctx: SyncCtx,
+  page: SinkPage,
+  unbound: PageWrite[]
+): Promise<void> {
+  const connectionId = ctx.connector.credentialId ?? undefined
+  const scopes = new Map<string, { scope: IdentityScope; ids: Set<string> }>()
+  for (const { mapping, record: raw } of unbound) {
+    const identityRefs = mapping.fieldMappings.filter(
+      (fm) => fm.targetFieldRef != null && fm.identityRole?.kind === 'externalId'
+    )
+    if (identityRefs.length === 0) continue
+    const record = injectConnectionAppFields(ctx, mapping, raw)
+    const present = new Set([
+      ...Object.keys(record.fields),
+      ...record.identityCandidates.map((c) => c.targetFieldRef as string),
+    ])
+    const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
+    for (const fm of identityRefs) {
+      if (!present.has(fm.targetFieldRef!)) continue
+      const concrete = await resolveConnectorFieldRef(
+        fm.targetFieldRef as ResourceFieldId,
+        ctx.orgId,
+        connectionId
+      )
+      const field = concrete ? fieldMap.get(getFieldId(concrete)) : undefined
+      if (!field?.appSlug) continue
+      const scope = identityScope(mapping.entityDefinitionId, { ...field, appSlug: field.appSlug })
+      const key = JSON.stringify(scope)
+      const entry = scopes.get(key) ?? { scope, ids: new Set<string>() }
+      entry.ids.add(record.externalId)
+      scopes.set(key, entry)
+    }
+  }
+  for (const { scope, ids } of scopes.values()) await page.loadIdentities(scope, [...ids])
 }

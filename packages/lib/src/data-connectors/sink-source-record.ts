@@ -25,7 +25,7 @@ import type { ConditionGroup } from '../conditions/types'
 import { type ResourceField, resolveFieldRef } from '../resources'
 import { replaceChildSets } from './child-sets'
 import { ConnectorRateLimitError, type ConnectorRecord } from './connectors/types'
-import type { MappedWrite } from './map-record'
+import type { ChildSet, MappedWrite } from './map-record'
 import { mapRecord, mapRecordTree } from './map-record'
 import { archiveExternalId } from './reconciliation'
 import {
@@ -37,8 +37,8 @@ import {
 import { recordMatchesFilter } from './record-filter'
 import { countOutcome } from './run-counters'
 import type { DecodedMapping, PendingRelation } from './service'
-import { entitySink } from './sinks/entity-sink'
-import type { ProjectedRecord, SyncCtx } from './sinks/types'
+import { closeSinkPage, entitySink, openSinkPage } from './sinks/entity-sink'
+import type { PageWrite, ProjectedRecord, SyncCtx } from './sinks/types'
 
 const logger = createScopedLogger('data-connector-sink-source')
 
@@ -200,8 +200,64 @@ export async function sinkSourceRecord(
   updatedAtPath?: string,
   recordFilter?: ConditionGroup[] | null
 ): Promise<void> {
+  await withRecordBoundary(ctx, mappings, source, async () => {
+    const prepared = await prepareSourceRecord(mappings, source, ctx, updatedAtPath, recordFilter)
+    await applySourceRecord(ctx, mappings, prepared, false)
+  })
+}
+
+/**
+ * `sinkSourceRecord` for one fetched page: every record is mapped first, then the page's
+ * writes sink with page-scoped binds (plans/mrp/14 §4). Records apply in fetch order, each
+ * inside its own fault boundary, so counters, samples and the failure tally match the
+ * per-record lane. The backfill and steady slice chains only; webhooks stay per record.
+ */
+export async function sinkSourcePage(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  sources: ConnectorRecord[],
+  updatedAtPath?: string,
+  recordFilter?: ConditionGroup[] | null
+): Promise<void> {
+  const prepared: Prepared[] = []
+  for (const source of sources) {
+    prepared.push(
+      await prepareSourceRecord(mappings, source, ctx, updatedAtPath, recordFilter).catch(
+        (error: unknown): Prepared => ({ kind: 'error', error })
+      )
+    )
+  }
+  await openSinkPage(
+    ctx,
+    prepared.flatMap((p) => (p.kind === 'writes' ? p.writes : []))
+  )
   try {
-    await sinkOneSourceRecord(ctx, mappings, source, updatedAtPath, recordFilter)
+    for (const [i, source] of sources.entries()) {
+      await withRecordBoundary(ctx, mappings, source, () =>
+        applySourceRecord(ctx, mappings, prepared[i]!, true)
+      )
+    }
+  } catch (error) {
+    await closeSinkPage(ctx).catch((flushError) =>
+      logger.warn('page flush failed after the page stopped', {
+        connectorId: ctx.connector.id,
+        error: flushError instanceof Error ? flushError.message : String(flushError),
+      })
+    )
+    throw error
+  }
+  await closeSinkPage(ctx)
+}
+
+/** The per-record fault boundary: one bad record is counted and the sync continues. */
+async function withRecordBoundary(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  source: ConnectorRecord,
+  sink: () => Promise<void>
+): Promise<void> {
+  try {
+    await sink()
     tallySuccess(ctx.failureTally)
   } catch (error) {
     // The abort signal and a throttle are the SLICE's business, not this record's —
@@ -231,22 +287,29 @@ export async function sinkSourceRecord(
   }
 }
 
+/** One source record mapped and ready to apply; an `error` is thrown at its turn. */
+type Prepared =
+  | { kind: 'error'; error: unknown }
+  | { kind: 'tombstone'; mappings: DecodedMapping[]; externalIds: string[] }
+  | { kind: 'filtered'; diagnostics: ConditionDiagnostic[] }
+  | {
+      kind: 'writes'
+      diagnostics: ConditionDiagnostic[]
+      writes: PageWrite[]
+      childSets: ChildSet[]
+    }
+
 /**
- * The real work for one source record. Everything in here is per-record and may throw;
- * `sinkSourceRecord` owns the fault boundary. Before that boundary existed, ~11
- * unprotected DB calls per record (`resolveFieldRefs`, `resolveIdentity`, `findItem`,
- * `buildWriteSet`, …) sat outside the sink's one narrow try/catch, so ANY of them
- * escalated one bad row into a failed RUN — the slice loop rethrows whatever it does
- * not recognise. One malformed phone number in a 4222-contact Quo address book ended
- * the whole import that way.
+ * Map one source record: tombstone, filter verdict, or its projected writes with their edges
+ * stamped. Reads only cached fields, so a page can map every record before sinking any.
  */
-async function sinkOneSourceRecord(
-  ctx: SyncCtx,
+async function prepareSourceRecord(
   mappings: DecodedMapping[],
   source: ConnectorRecord,
+  ctx: SyncCtx,
   updatedAtPath?: string,
   recordFilter?: ConditionGroup[] | null
-): Promise<void> {
+): Promise<Prepared> {
   // Tombstone — an explicit upstream delete (event-feed `*.deleted`, a fixture
   // `deleted` flag). Archive every projected binding instead of upserting. We use the
   // per-mapping projected external id so a fan-out (parent + children) all archive.
@@ -258,11 +321,12 @@ async function sinkOneSourceRecord(
   // `orders_count` drops to 0, so an `orders_count > 0` filter would drop the delete
   // itself and orphan the already-synced contact forever.
   if (source.deleted) {
-    for (const w of mapRecord(mappings, source, updatedAtPath)) {
-      if (!w.projected) continue
-      await archiveExternalId(ctx, [w.mapping], w.projected.externalId)
+    const archives = mapRecord(mappings, source, updatedAtPath).filter((w) => w.projected)
+    return {
+      kind: 'tombstone',
+      mappings: archives.map((w) => w.mapping),
+      externalIds: archives.map((w) => w.projected!.externalId),
     }
-    return
   }
 
   // Per-stream record filter (v11) — evaluated on the RAW source payload, before the
@@ -271,11 +335,7 @@ async function sinkOneSourceRecord(
   // nothing else. It is NOT a failure and must never enter `errorSample` as one — a
   // fully-filtering stream has to report `completed`, not `partial`.
   const verdict = recordMatchesFilter(source, recordFilter)
-  if (verdict.diagnostics.length > 0) recordFilterCompileWarning(ctx, verdict.diagnostics)
-  if (!verdict.matched) {
-    countSourceOutcome(ctx, mappings, 'skipped')
-    return
-  }
+  if (!verdict.matched) return { kind: 'filtered', diagnostics: verdict.diagnostics }
 
   const { writes, childSets } = mapRecordTree(mappings, source, updatedAtPath)
 
@@ -321,10 +381,50 @@ async function sinkOneSourceRecord(
     target.pendingRelations.push(edge.pending)
   }
 
-  // Write in order (parents before children) so the parent exists for the edge.
-  for (const w of writes) {
-    if (!w.projected) continue
-    await entitySink.upsertRecord(ctx, w.mapping, w.projected)
+  return {
+    kind: 'writes',
+    diagnostics: verdict.diagnostics,
+    // Written in order (parents before children) so the parent exists for the edge.
+    writes: writes.flatMap((w) =>
+      w.projected ? [{ mapping: w.mapping, record: w.projected }] : []
+    ),
+    childSets,
   }
-  if (childSets.length > 0) await replaceChildSets(ctx, childSets)
+}
+
+/**
+ * Apply one prepared source record. Everything in here may throw; the caller's
+ * `withRecordBoundary` counts it. Before that boundary existed, ~11 unprotected DB calls
+ * per record escalated one bad row into a failed RUN — one malformed phone number in a
+ * 4222-contact Quo address book ended the whole import that way.
+ */
+async function applySourceRecord(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  prepared: Prepared,
+  page: boolean
+): Promise<void> {
+  if (prepared.kind === 'error') throw prepared.error
+  if (prepared.kind === 'tombstone') {
+    // `archiveExternalId` reads and writes items outside the page.
+    await ctx.sinkPage?.flush()
+    for (const [i, mapping] of prepared.mappings.entries()) {
+      await archiveExternalId(ctx, [mapping], prepared.externalIds[i]!)
+    }
+    return
+  }
+  if (prepared.diagnostics.length > 0) recordFilterCompileWarning(ctx, prepared.diagnostics)
+  if (prepared.kind === 'filtered') {
+    countSourceOutcome(ctx, mappings, 'skipped')
+    return
+  }
+  if (page) await entitySink.upsertRecords(prepared.writes, ctx)
+  else {
+    for (const w of prepared.writes) await entitySink.upsertRecord(ctx, w.mapping, w.record)
+  }
+  if (prepared.childSets.length > 0) {
+    // `replaceChildSets` reads the children's items and archives absent ones.
+    await ctx.sinkPage?.flushForItemReads()
+    await replaceChildSets(ctx, prepared.childSets)
+  }
 }
