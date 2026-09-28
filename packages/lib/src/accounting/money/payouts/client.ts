@@ -58,6 +58,8 @@ export interface PayoutSplit {
   netMinor: number
   /** Net of everything else in the payout. */
   unrecognisedNetMinor: number
+  /** Marketplace tax the channel withheld (`tax_withheld` lines, sign flipped); negative = returned. */
+  withheldTaxMinor: number
   /** How many items fell on the unrecognised side. */
   unrecognisedCount: number
 }
@@ -105,6 +107,7 @@ export function splitPayout(items: PayoutItem[], recognised: ReadonlySet<string>
     netMinor: grossMinor - feesMinor,
     unrecognisedNetMinor,
     unrecognisedCount,
+    withheldTaxMinor: 0,
   }
 }
 
@@ -141,8 +144,14 @@ export function splitStoredEntries(entries: readonly StoredPayoutEntry[]): Payou
   let feesMinor = 0
   let unrecognisedNetMinor = 0
   let unrecognisedCount = 0
+  let withheldTaxMinor = 0
 
   for (const entry of entries) {
+    // Known to the channel and booked against 2210, never matched (116).
+    if (entry.type === 'tax_withheld') {
+      withheldTaxMinor -= entry.netMinor
+      continue
+    }
     // The refund entry booked this chargeback's fee (91 D8) and credited clearing for it,
     // so clearing is relieved of the net and the payout books no second fee.
     if (entry.matchState === 'matched' && entry.feeOnRefund) {
@@ -164,6 +173,7 @@ export function splitStoredEntries(entries: readonly StoredPayoutEntry[]): Payou
     netMinor: grossMinor - feesMinor,
     unrecognisedNetMinor,
     unrecognisedCount,
+    withheldTaxMinor,
   }
 }
 
@@ -175,6 +185,7 @@ export function sumSplits(splits: readonly PayoutSplit[]): PayoutSplit {
     netMinor: 0,
     unrecognisedNetMinor: 0,
     unrecognisedCount: 0,
+    withheldTaxMinor: 0,
   }
   for (const split of splits) {
     total.grossMinor += split.grossMinor
@@ -182,6 +193,7 @@ export function sumSplits(splits: readonly PayoutSplit[]): PayoutSplit {
     total.netMinor += split.netMinor
     total.unrecognisedNetMinor += split.unrecognisedNetMinor
     total.unrecognisedCount += split.unrecognisedCount
+    total.withheldTaxMinor += split.withheldTaxMinor
   }
   return total
 }
@@ -201,6 +213,7 @@ export function totalsOnlySplit(totals: NonNullable<PayoutHeader['totals']>): Pa
     netMinor: totals.grossMinor - totals.feesMinor,
     unrecognisedNetMinor: 0,
     unrecognisedCount: 0,
+    withheldTaxMinor: 0,
   }
 }
 
@@ -211,8 +224,9 @@ export interface UnbookedPayoutLine {
 }
 
 /**
- * Why this payout cannot post however often it is retried, or `null`: a negative payout, or a
- * negative remainder made of lines auxx does not book yet. Neither is built here (brief 114).
+ * Why this payout cannot post as it stands, or `null`: a negative remainder - lines auxx does not
+ * book yet, or matched lines that exceed what the processor settled (117 🔀2). A negative payout
+ * with no negative remainder posts (116).
  */
 export function unpostablePayoutReason(input: {
   number: string
@@ -222,10 +236,9 @@ export function unpostablePayoutReason(input: {
 }): string | null {
   const { number, split, unbookedLines } = input
   const money = (minor: number) => formatCurrency(minor, { currencyCode: input.currency })
-  const deposit = split.netMinor + split.unrecognisedNetMinor
-  if (deposit < 0)
-    return `Payout ${number} is a negative payout (${money(deposit)} pulled back from the bank); auxx does not post negative payouts yet.`
-  if (split.unrecognisedNetMinor >= 0 || unbookedLines.length === 0) return null
+  if (split.unrecognisedNetMinor >= 0) return null
+  if (unbookedLines.length === 0)
+    return `Payout ${number} settled ${money(-split.unrecognisedNetMinor)} less than the lines auxx matched in it, so it waits for the rest of its lines to match.`
   const total = unbookedLines.reduce((sum, line) => sum + line.netMinor, 0)
   const types = [...new Set(unbookedLines.map((line) => line.type))].join(', ')
   const what =

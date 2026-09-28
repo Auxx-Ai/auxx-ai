@@ -5,10 +5,9 @@
  * storefront transaction (`plans/accounting/payout-links.md` §7).
  *
  * Keyed on `FinancialSourceAccount.providerKey`, because both ingest lanes carry
- * it and the `PayoutSource` contract is unreachable for Affirm. Nothing is
- * registered: no Affirm or Stripe-as-gateway feed exists to verify an
- * implementation against, and a `providerKey` with no resolver is the visible
- * absence `no_reference` names.
+ * it and the `PayoutSource` contract is unreachable for Affirm. The processor
+ * folders register theirs (`processors/register.ts`); a `providerKey` with no
+ * resolver is the visible absence `no_reference` names.
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -26,6 +25,8 @@ export interface UnreferencedEntry {
   sourceTransactionId: string | null
   sourceId: string | null
   sourceOrderId: string | null
+  /** The item's signed gross, integer minor units, for a resolver that must tell siblings apart. */
+  grossMinor?: number | null
 }
 
 /** Turns a feed's own item identifiers into the reference a receipt is filed under. */

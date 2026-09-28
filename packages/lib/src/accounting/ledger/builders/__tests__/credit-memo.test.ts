@@ -57,6 +57,39 @@ function lines(built: ReturnType<typeof buildCreditMemoEntry>, role: string) {
   return built.entry.lines.filter((row) => row.accountRole === role)
 }
 
+describe('tax the channel remits (116)', () => {
+  const amount = (built: ReturnType<typeof buildCreditMemoEntry>, role: string) =>
+    lines(built, role).reduce((sum, row) => sum + row.amount, 0)
+
+  it('debits marketplace tax collected for a channel-liable order', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      taxByRemitter: { merchantMinor: 0, marketplaceMinor: 28_257 },
+    })
+    expect(amount(built, ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)).toBe(990)
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toHaveLength(0)
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('splits the tax leg by the order mix, the merchant taking the rounding', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      taxByRemitter: { merchantMinor: 1, marketplaceMinor: 2 },
+    })
+    expect(amount(built, ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)).toBe(660)
+    expect(amount(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(330)
+    expect(built.entry.totalDebit).toBe(12_990)
+  })
+
+  it('is unchanged for a merchant-only order', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      taxByRemitter: { merchantMinor: 990, marketplaceMinor: 0 },
+    })
+    expect(built.entry).toEqual(buildCreditMemoEntry(BASE).entry)
+  })
+})
+
 describe('a memo whose one line shipped', () => {
   const built = buildCreditMemoEntry(BASE)
 

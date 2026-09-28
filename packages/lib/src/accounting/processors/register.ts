@@ -3,6 +3,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { registerEntryReferenceResolver } from '../money/payouts/reference-resolvers'
 import { registerPayoutSource } from '../money/payouts/source-registry'
+import { AFFIRM_ENTRY_REFERENCE_RESOLVER } from './affirm/resolver'
 import { AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER } from './authorize-net/resolver'
 import { SHOPIFY_PAYMENTS_PAYOUT_SOURCE } from './shopify-payments/source'
 import { STRIPE_CONNECT_PAYOUT_SOURCE } from './stripe-connect/source'
@@ -16,7 +17,10 @@ export const PROCESSOR_PAYOUT_SOURCES = [
 ] as const
 
 /** Every processor folder's `resolver.ts`. */
-export const PROCESSOR_ENTRY_REFERENCE_RESOLVERS = [AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER] as const
+export const PROCESSOR_ENTRY_REFERENCE_RESOLVERS = [
+  AUTHORIZE_NET_ENTRY_REFERENCE_RESOLVER,
+  AFFIRM_ENTRY_REFERENCE_RESOLVER,
+] as const
 
 /**
  * Fill the `PayoutSource` and `EntryReferenceResolver` registries from the processor folders

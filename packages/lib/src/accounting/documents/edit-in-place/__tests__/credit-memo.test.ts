@@ -54,6 +54,7 @@ vi.mock('../../../sales/credit-memos/reads', () => ({
   loadCreditMemoLines: async () => h.lines,
   sumCreditMemoApplications: async () => h.applied,
   sumReservedCreditMemoRefunds: async () => h.refunded,
+  readMemoTaxByRemitter: async () => ({ merchantMinor: 0, marketplaceMinor: 0 }),
   readShippedMemoLineIds: async (
     _db: unknown,
     _org: string,

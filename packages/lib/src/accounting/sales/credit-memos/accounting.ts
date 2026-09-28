@@ -29,6 +29,7 @@ import {
   CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoEntryLine,
   computeCreditMemoAmounts,
+  type TaxByRemitter,
 } from '../../ledger/builders/credit-memo'
 import { toAmountMinor } from '../../ledger/builders/fulfillment'
 import { LEDGER_CURRENCY, postEntry } from '../../ledger/post/post-entry'
@@ -57,6 +58,8 @@ export interface CreditMemoEntrySource {
   shippedLineIds: ShippedMemoLines
   /** How many times this memo has posted. 1 (the default) keys on the memo number. */
   generation?: number
+  /** The order's tax by remitter (`readMemoTaxByRemitter`); splits the tax leg (116). */
+  taxByRemitter?: TaxByRemitter
 }
 
 /**
@@ -89,6 +92,7 @@ export function buildEntryForCreditMemo(
     total: subtotal + taxTotal,
     contactInstanceId: memo.contactInstanceId,
     memo: `Credit memo ${memo.number} issued`,
+    taxByRemitter: source.taxByRemitter,
   })
 }
 

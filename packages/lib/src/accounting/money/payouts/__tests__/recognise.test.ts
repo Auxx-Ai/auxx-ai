@@ -107,6 +107,7 @@ describe('recognise: none', () => {
       netMinor: 0,
       unrecognisedNetMinor: 10_000 - 300 - 2_500,
       unrecognisedCount: 2,
+      withheldTaxMinor: 0,
     })
   })
 })

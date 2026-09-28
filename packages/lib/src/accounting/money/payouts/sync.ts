@@ -443,6 +443,7 @@ async function readUnbookedLines(
       (row) =>
         row.matchState !== 'matched' &&
         Number(row.netMinor) < 0 &&
+        row.type !== 'tax_withheld' &&
         !MATCHABLE_ENTRY_TYPES.includes(row.type)
     )
     .map((row) => ({ type: row.type, netMinor: Number(row.netMinor) }))
@@ -637,6 +638,7 @@ async function ingestOne(
       feesMinor: gathered.split.feesMinor,
       netMinor: gathered.split.netMinor,
       unrecognisedNetMinor: gathered.split.unrecognisedNetMinor,
+      marketplaceTaxWithheldMinor: gathered.split.withheldTaxMinor,
       feeTreatment: rail.feeTreatment,
       paidAt: gathered.paidAt,
       memo: `Payout ${number}`,

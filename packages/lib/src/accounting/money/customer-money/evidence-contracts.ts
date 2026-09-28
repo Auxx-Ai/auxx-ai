@@ -19,6 +19,8 @@ export const processorActivityKindSchema = z.enum([
   'adjustment',
   'outgoing_transfer',
   'returned_transfer',
+  /** Marketplace tax the channel withheld (or, positive, returned) - 116. */
+  'tax_withheld',
   'unknown',
 ])
 

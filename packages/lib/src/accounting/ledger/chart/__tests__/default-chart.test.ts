@@ -238,8 +238,8 @@ describe('the union of every pack', () => {
   // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
   // `clearing_affirm` role: a default chart must not name a vendor.
   // The number itself is not the point; being made to state it is.
-  it('totals sixty-three accounts: twenty-eight core, then three, three, eleven, seven, five, three and three', () => {
-    expect(codesOf('core')).toHaveLength(28)
+  it('totals sixty-four accounts: twenty-nine core, then three, three, eleven, seven, five, three and three', () => {
+    expect(codesOf('core')).toHaveLength(29)
     expect(codesOf('card_rail')).toHaveLength(3)
     expect(codesOf('prepayments')).toHaveLength(3)
     expect(codesOf('inventory')).toHaveLength(11)
@@ -247,7 +247,7 @@ describe('the union of every pack', () => {
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(63)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(64)
   })
 })
 
@@ -256,13 +256,15 @@ describe('the core', () => {
   // every one of these is reachable by an ENABLED posting type on any org that
   // sends an invoice, takes a payment, ships an order, issues a credit memo or
   // writes something off. Exact set.
-  it('carries exactly the twelve roles every org can reach', () => {
+  it('carries exactly the thirteen roles every org can reach', () => {
     expect([...rolesOf('core')].sort()).toEqual(
       [
         ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
         ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
         ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
         ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+        // 116: a channel-liable tax line reaches it on any org with a marketplace order.
+        ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED,
         ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS,
         // MIGRATION step 5: the opening STOCK run raises inventory against 3900
         // by ROLE, so the account carries one again.
@@ -289,6 +291,7 @@ describe('the core', () => {
       '1400',
       '2000',
       '2200',
+      '2210',
       '3000',
       '3010',
       '3020',

@@ -7,6 +7,7 @@
  *   Dr revenue_returns_allowances   the shipped goods lines' subtotal
  *   Dr revenue_shipping             the shipped shipping lines' subtotal (91 D8)
  *   Dr sales_tax_payable            the shipped lines' tax      (omitted when zero)
+ *   Dr marketplace_tax_collected    the share the channel remits, by the order's mix (116)
  *       Cr accounts_receivable        the three together
  * ```
  *
@@ -259,6 +260,19 @@ export function buildCreditMemoEntitlementEntry(
   }
 }
 
+/** An order's tax, summed by who remits it. Integer minor units. */
+export interface TaxByRemitter {
+  merchantMinor: number
+  marketplaceMinor: number
+}
+
+/** The marketplace part of `taxMinor`, in the order's own ratio; the merchant takes the rounding. */
+function marketplaceShare(taxMinor: number, weights: TaxByRemitter | undefined): number {
+  if (!weights || taxMinor <= 0 || weights.marketplaceMinor <= 0) return 0
+  const total = weights.marketplaceMinor + Math.max(0, weights.merchantMinor)
+  return Math.min(taxMinor, Math.round((taxMinor * weights.marketplaceMinor) / total))
+}
+
 export interface BuildCreditMemoEntryInput {
   /** The `credit_memo` EntityInstance id. Becomes every line's `sourceId`. */
   creditMemoId: string
@@ -297,6 +311,11 @@ export interface BuildCreditMemoEntryInput {
   lines: readonly CreditMemoEntryLine[]
   /** `credit_memo_total`, integer minor units, > 0. The sum of every line, asserted. */
   total: number | null | undefined
+  /**
+   * The order's tax by remitter, the weights the tax leg splits by (116). Absent, or no
+   * marketplace tax, debits `sales_tax_payable` alone.
+   */
+  taxByRemitter?: TaxByRemitter
   /**
    * The memo's own contact (`credit_memo_contact`), for the counterparty on
    * every `accounts_receivable` line this entry carries (brief 13 §1.2) - never
@@ -396,13 +415,24 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       sortOrder: lines.length,
     })
   }
-  if (taxTotalMinor > 0) {
+  const marketplaceTaxMinor = marketplaceShare(taxTotalMinor, input.taxByRemitter)
+  if (taxTotalMinor - marketplaceTaxMinor > 0) {
     lines.push({
       ...source,
       accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
       direction: 'debit',
-      amount: taxTotalMinor,
+      amount: taxTotalMinor - marketplaceTaxMinor,
       memo: `${lineMemo} sales tax`,
+      sortOrder: lines.length,
+    })
+  }
+  if (marketplaceTaxMinor > 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED,
+      direction: 'debit',
+      amount: marketplaceTaxMinor,
+      memo: `${lineMemo} sales tax (channel remits)`,
       sortOrder: lines.length,
     })
   }

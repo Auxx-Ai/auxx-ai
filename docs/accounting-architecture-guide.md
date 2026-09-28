@@ -429,6 +429,7 @@ Dr discounts_given          list − net on the shipped lines (store-scoped)
     Cr revenue_product        the shipped lines at list
     Cr gift_card_liability    gift card lines (line_item_category = 'gift_card'), at net
     Cr sales_tax_payable      by jurisdiction, cumulative by box sequence
+    Cr marketplace_tax_collected  the tax lines the channel remits (`tax_line_channel_liable`)
     Cr revenue_shipping       on the first box
 ```
 
@@ -1148,7 +1149,8 @@ refunds.
   order's own line items: `line_item_fulfilled_qty` / `_at` null means the channel said nothing
   and the line reverses; qty 0, or shipped after the memo date, means not shipped; a native memo
   treats every line as shipped. `Dr revenue_returns_allowances` for goods, `Dr revenue_shipping`
-  for a `credit_memo_line_disposition = 'shipping'` line, `Dr sales_tax_payable` for their tax,
+  for a `credit_memo_line_disposition = 'shipping'` line, `Dr sales_tax_payable` for their tax
+  (`Dr marketplace_tax_collected` for the share the channel remits, in the order's own mix),
   `/ Cr accounts_receivable`. A memo with no shipped line posts nothing and issues as
   `nothing_to_recognise`: there is no revenue to reverse, and the money is already a credit in A/R.
 - **The refund posts `Dr accounts_receivable / Cr <the endpoint>`**, sourced on the movement,
@@ -1350,6 +1352,19 @@ movement (`MATCHABLE_ENTRY_TYPES`, `match-entries.ts` — admitted in code; the 
 text); the refund carries the dispute fee as `Dr payment_processing_fees` (`feeMinor`), and the
 payout excludes a fee already on the refund (`feeOnRefund`). ⚠️ A payout that posts before its
 chargeback's refund books the fee twice.
+
+**Tax the channel withholds, and negative payouts** (116). A `tax_withheld` entry (Shopify's
+`tax_adjustment_debit`/`_credit`) is never matched: `splitStoredEntries` sums it into
+`withheldTaxMinor` and the entry debits `marketplace_tax_collected` (unscoped), clearing what the
+fulfillment credited. Bank and clearing take their side from their sign, so a payout of refunds
+larger than the day's charges posts `Dr clearing / Cr bank`. A negative *remainder* still refuses:
+`unpostablePayoutReason` parks it as `REFUSED` before the build. Both shapes export as journals.
+
+**A resolver names the reference an entry does not carry.** Affirm leaves `sourceReference` null;
+`processors/affirm/resolver.ts` joins `sourceOrderId` to the receipt's
+`customer_transaction_payment_id` (a refund: that receipt's child refund of the same amount). The
+matcher's own `unmatchable` (`matchedBy` null) stays rewritable under a live posting, so a resolver
+added later reverses and reposts the payouts it frees (117).
 
 **Keeping evidence current is two `defineParentReconciler`s, not a router.** A field-change mark
 hook *marks*; the drain rebuilds once per parent after commit, however many fields moved.

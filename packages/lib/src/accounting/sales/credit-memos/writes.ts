@@ -51,6 +51,7 @@ import {
   loadCreditMemoLines,
   loadInvoiceForCredit,
   loadInvoiceLinesForCredit,
+  readMemoTaxByRemitter,
   readShippedMemoLineIds,
   requireCreditMemo,
   sumCreditMemoApplications,
@@ -454,6 +455,7 @@ export async function resolveIssue(
     issuedAt,
     currency: await organizationCurrency(organizationId),
     shippedLineIds: await readShippedMemoLineIds(db, organizationId, memo, lines, issuedAt),
+    taxByRemitter: await readMemoTaxByRemitter(db, organizationId, memo.orderInstanceId),
   })
 
   return { memo, lines, issuedAt, built }

@@ -15,6 +15,7 @@
  *       Cr gift_card_liability                    the shipped gift card lines, at net
  *       Cr sales_tax_payable (jurisdiction dimension, when it ties)
  *                                                  this shipment's tax
+ *       Cr marketplace_tax_collected              the share the channel remits (116)
  *       Cr revenue_shipping                      the order's shipping, ONCE
  * ```
  *
@@ -559,11 +560,11 @@ export interface BuildFulfillmentEntryInput {
   /**
    * The order's own tax lines - one row per jurisdiction (brief 13 §5,
    * `tax_line` EntityInstances). When present and they SUM to
-   * `orderTaxTotalMinor`, the `sales_tax_payable` credit is split pro rata
-   * across them with a `jurisdiction` dimension per line - see
-   * {@link splitTaxByJurisdiction}. Absent, empty, or not tying to the order's
-   * own tax total falls back to today's single undimensioned line: a partial
-   * breakdown would read as a complete one.
+   * `orderTaxTotalMinor`, the tax credit is split pro rata across them with a
+   * `jurisdiction` dimension per line, and a marketplace-remitted line credits
+   * `marketplace_tax_collected` (116) - see {@link splitTaxByJurisdiction}.
+   * Otherwise one undimensioned `sales_tax_payable` line, unless some line is
+   * marketplace-remitted, which still splits by remitter.
    */
   taxLines?: readonly JurisdictionTaxLine[]
   /** The entry memo, carried onto every line with none of its own. */
@@ -818,17 +819,22 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       orderTaxTotalMinor: input.orderTaxTotalMinor,
     })
     if (split) {
-      for (const { jurisdiction, amountMinor } of split) {
+      for (const { jurisdiction, amountMinor, remitter } of split) {
+        const marketplace = remitter === 'marketplace'
+        const what = [
+          'sales tax',
+          jurisdiction ? `, ${jurisdiction}` : '',
+          ` (${taxLabel}${marketplace ? ', channel remits' : ''})`,
+        ].join('')
         push({
           ...source,
-          accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+          accountRole: marketplace
+            ? ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED
+            : ACCOUNT_ROLES.SALES_TAX_PAYABLE,
           direction: 'credit',
           amount: amountMinor,
-          memo: sourceFactsMemo(
-            facts,
-            `shipment ${sequence} - sales tax, ${jurisdiction} (${taxLabel})`
-          ),
-          dimensions: { jurisdiction },
+          memo: sourceFactsMemo(facts, `shipment ${sequence} - ${what}`),
+          ...(jurisdiction ? { dimensions: { jurisdiction } } : {}),
         })
       }
     } else {

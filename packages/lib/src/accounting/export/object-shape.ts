@@ -118,7 +118,9 @@ function toItemLines(lines: RoledLine[]) {
     amountMinor: line.amountMinor,
     sortOrder: index,
     ...(line.memo ? { memo: line.memo } : {}),
-    ...(line.role === 'sales_tax_payable' ? { taxCode: 'NON' as const } : {}),
+    ...(line.role === 'sales_tax_payable' || line.role === 'marketplace_tax_collected'
+      ? { taxCode: 'NON' as const }
+      : {}),
   }))
 }
 

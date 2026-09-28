@@ -53,6 +53,7 @@ vi.mock('../reads', () => ({
   loadCreditMemo: h.loadCreditMemo,
   loadCreditMemoLines: h.loadCreditMemoLines,
   readShippedMemoLineIds: h.readShippedMemoLineIds,
+  readMemoTaxByRemitter: async () => ({ merchantMinor: 0, marketplaceMinor: 0 }),
 }))
 
 import type { Database } from '@auxx/database'

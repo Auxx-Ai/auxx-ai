@@ -381,6 +381,11 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'Shipping charged, on the first shipment',
       },
       { side: 'credit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax collected' },
+      {
+        side: 'credit',
+        role: ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED,
+        what: 'Tax the sales channel collects and remits, which the business does not owe',
+      },
     ],
     settings: [],
     sentence:
@@ -769,6 +774,11 @@ export const POSTING_POLICY: Record<PostingType, PostingPolicy> = {
         what: 'Shipping given back, on a shipping line',
       },
       { side: 'debit', role: ACCOUNT_ROLES.SALES_TAX_PAYABLE, what: 'Tax given back' },
+      {
+        side: 'debit',
+        role: ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED,
+        what: 'Tax given back that the sales channel remits',
+      },
       {
         side: 'credit',
         role: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,

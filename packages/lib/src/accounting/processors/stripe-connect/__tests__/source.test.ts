@@ -250,6 +250,7 @@ const EXPECTED_ENTRY_INPUT = {
   feesMinor: 3_200,
   netMinor: 86_800,
   unrecognisedNetMinor: 55_500,
+  marketplaceTaxWithheldMinor: 0,
   feeTreatment: 'netted',
   paidAt: '2026-09-14',
   memo: 'Payout PAY-0001',

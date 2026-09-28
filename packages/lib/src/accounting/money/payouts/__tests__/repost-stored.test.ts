@@ -296,36 +296,27 @@ describe('repostStoredPayout', () => {
       expect(h.postPayoutEntry).not.toHaveBeenCalled()
     })
 
-    it('names a negative payout as one (PAY-0180)', async () => {
+    it('posts a negative payout of matched refunds (116, PAY-0180)', async () => {
       split({ grossMinor: -305_200, feesMinor: 0, netMinor: -305_200 })
 
-      const result = await repost()
+      await repost()
 
-      const reason =
-        'Payout PAY-0007 is a negative payout (-$3,052.00 pulled back from the bank); auxx does not post negative payouts yet.'
-      expect(result._unsafeUnwrap()).toEqual({ status: 'refused', reason })
-      expect(h.upsertWorkItem).toHaveBeenCalledWith(
-        db,
-        ORG,
-        expect.objectContaining({
-          reasonCode: 'REFUSED',
-          railId: 'pg_shop',
-          detail: { message: reason },
-        })
-      )
-      expect(h.listPayoutEntries).not.toHaveBeenCalled()
-      expect(h.postPayoutEntry).not.toHaveBeenCalled()
+      expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
+      expect(h.upsertWorkItem).not.toHaveBeenCalled()
     })
 
-    it('leaves a negative remainder with nothing unbooked to the builder', async () => {
+    it('parks a negative remainder of matched lines as REFUSED, never the builder (117)', async () => {
       split({ unrecognisedNetMinor: -50, unrecognisedCount: 1 })
       h.listPayoutEntries.mockResolvedValue([
         { type: 'refund', matchState: 'pending', netMinor: -50 },
       ])
 
-      await repost()
+      const result = await repost()
 
-      expect(h.postPayoutEntry).toHaveBeenCalledTimes(1)
+      const reason =
+        'Payout PAY-0007 settled $0.50 less than the lines auxx matched in it, so it waits for the rest of its lines to match.'
+      expect(result._unsafeUnwrap()).toEqual({ status: 'refused', reason })
+      expect(h.postPayoutEntry).not.toHaveBeenCalled()
     })
 
     it('still posts an ordinary payout without reading its lines', async () => {
