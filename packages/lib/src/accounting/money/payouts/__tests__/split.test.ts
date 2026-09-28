@@ -16,6 +16,7 @@ import {
   splitPayout,
   splitStoredEntries,
   totalsOnlySplit,
+  unpostablePayoutReason,
 } from '../client'
 
 function charge(id: string, gross: number, fee: number): PayoutItem {
@@ -197,5 +198,44 @@ describe('splitStoredEntries and a chargeback', () => {
       feesMinor: 300,
       unrecognisedNetMinor: -6_500,
     })
+  })
+})
+
+describe('unpostablePayoutReason', () => {
+  const ok = {
+    grossMinor: 1_000,
+    feesMinor: 30,
+    netMinor: 970,
+    unrecognisedNetMinor: 0,
+    unrecognisedCount: 0,
+  }
+  const reason = (
+    split: Partial<typeof ok>,
+    lines: Array<{ type: string; netMinor: number }> = []
+  ) =>
+    unpostablePayoutReason({
+      number: 'PAY-0001',
+      currency: 'USD',
+      split: { ...ok, ...split },
+      unbookedLines: lines,
+    })
+
+  it('passes an ordinary payout', () => {
+    expect(reason({})).toBeNull()
+  })
+
+  it('sums several unbooked lines and names their types once', () => {
+    expect(
+      reason({ grossMinor: 50_000, netMinor: 49_970, unrecognisedNetMinor: -12_696 }, [
+        { type: 'unknown', netMinor: -12_676 },
+        { type: 'unknown', netMinor: -20 },
+      ])
+    ).toBe(
+      'Payout PAY-0001 includes 2 adjustments totalling -$126.96 auxx does not book yet (type unknown), so it is not posted.'
+    )
+  })
+
+  it('ignores an unbooked line while the remainder is not negative', () => {
+    expect(reason({ unrecognisedNetMinor: 100 }, [{ type: 'unknown', netMinor: -618 }])).toBeNull()
   })
 })

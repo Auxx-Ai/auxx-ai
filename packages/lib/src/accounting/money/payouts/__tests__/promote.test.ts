@@ -50,7 +50,7 @@ vi.mock('../../../rails/reads', () => ({
 }))
 vi.mock('../reads', () => ({
   findPayoutByGatewayId: h.findPayoutByGatewayId,
-  listUnpromotedConnectorPayouts: h.listUnpromoted,
+  listPromotableConnectorPayouts: h.listUnpromoted,
 }))
 vi.mock('../sync', () => ({ reverseFailedPayout: h.reverseFailedPayout }))
 vi.mock('../../../../resources/crud/unified-handler', () => ({
@@ -278,6 +278,61 @@ describe('promoteConnectorPayouts', () => {
       gatewayPayoutId: 'dep_1',
       paymentGatewayId: 'pg_affirm',
       actorUserId: 'user_system',
+    })
+  })
+
+  describe('a stamped record left in transit (PAY-0308)', () => {
+    const STAMPED = {
+      ...RECORD,
+      payout_gateway_id: 'dep_1',
+      payout_payment_gateway: 'pg_affirm',
+      payout_currency: 'usd',
+      payout_deposited: 1_000,
+      payout_paid_at: '2026-03-04',
+      payout_status: 'in_transit',
+    }
+
+    it('advances to paid when the provider reports paid, and writes nothing else', async () => {
+      h.records = [STAMPED]
+      // It holds its own provider id, which is not a twin.
+      h.findPayoutByGatewayId.mockResolvedValue({ payoutId: 'inst_1' })
+      expect((await run())._unsafeUnwrap()).toEqual({ promoted: 1, reversed: 0, skipped: 0 })
+      expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', { payout_status: 'paid' })
+    })
+
+    it('takes paid_at from issued_on when the record has none', async () => {
+      h.records = [{ ...STAMPED, payout_paid_at: null }]
+      await run()
+      expect(h.update).toHaveBeenCalledWith('def_payout:inst_1', {
+        payout_status: 'paid',
+        payout_paid_at: '2026-03-04',
+      })
+    })
+
+    it('stays in transit while the provider has not paid', async () => {
+      h.records = [
+        {
+          ...STAMPED,
+          payout_source_provider_key: 'shopify_payments',
+          payout_source_status: 'scheduled',
+        },
+      ]
+      h.feeds = [{ ...FEED, providerKey: 'shopify_payments' }]
+      expect((await run())._unsafeUnwrap()).toMatchObject({ promoted: 0 })
+      expect(h.update).not.toHaveBeenCalled()
+    })
+
+    it('leaves a lib-written record with no connector evidence alone', async () => {
+      h.records = [
+        {
+          id: 'inst_1',
+          payout_gateway_id: 'dep_1',
+          payout_payment_gateway: 'pg_affirm',
+          payout_status: 'in_transit',
+        },
+      ]
+      expect((await run())._unsafeUnwrap()).toEqual({ promoted: 0, reversed: 0, skipped: 0 })
+      expect(h.update).not.toHaveBeenCalled()
     })
   })
 

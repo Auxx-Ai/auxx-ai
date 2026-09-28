@@ -29,7 +29,7 @@ import {
   findPayoutByGatewayId,
   hasConnectorPayouts,
   listPayouts,
-  listUnpromotedConnectorPayouts,
+  listPromotableConnectorPayouts,
 } from '../reads'
 import { fieldStubs } from './support/field-stubs'
 
@@ -434,7 +434,7 @@ describe('listPayouts', () => {
   })
 })
 
-describe('listUnpromotedConnectorPayouts (brief 114 P2)', () => {
+describe('listPromotableConnectorPayouts (brief 114 P2)', () => {
   const dialect = new PgDialect()
 
   async function render(input: { limit: number; sourceAccountId?: string }) {
@@ -443,10 +443,13 @@ describe('listUnpromotedConnectorPayouts (brief 114 P2)', () => {
       fieldStubs({
         payout_gateway_id: 'f_gw',
         payout_status: 'f_status',
+        payout_payment_gateway: 'f_rail',
         payout_source_provider_key: 'f_pk',
         payout_source_account_id: 'f_ac',
         payout_source_environment: 'f_en',
         payout_source_external_id: 'f_ex',
+        payout_source_status: 'f_ss',
+        payout_source_issued_on: 'f_io',
       })
     )
     const queries: Array<{ sql: string; params: unknown[] }> = []
@@ -456,7 +459,7 @@ describe('listUnpromotedConnectorPayouts (brief 114 P2)', () => {
         return { rows: [{ id: 'inst_1' }] }
       },
     } as unknown as Database
-    const ids = await listUnpromotedConnectorPayouts(db, ORG, input)
+    const ids = await listPromotableConnectorPayouts(db, ORG, input)
     return { ids, query: queries[0]! }
   }
 
@@ -473,8 +476,53 @@ describe('listUnpromotedConnectorPayouts (brief 114 P2)', () => {
   it("leaves out a record whose provider id another live record holds, a legacy twin's", async () => {
     const { query } = await render({ limit: 10 })
     expect(query.sql).toMatch(
-      /NOT EXISTS \(SELECT 1 FROM "FieldValue" gw[\s\S]*held."archivedAt" IS NULL[\s\S]*gw."entityId" = e.id OR gw."valueText" = ex."valueText"/
+      /NOT EXISTS \(SELECT 1 FROM "FieldValue" gw[\s\S]*held."archivedAt" IS NULL[\s\S]*gw."entityId" <> e.id AND gw."valueText" = ex."valueText"/
     )
+  })
+
+  it('also takes a record stamped with its own id and rail, in transit while the provider says paid', async () => {
+    const { query } = await render({ limit: 10 })
+    // Unstamped, OR (own id = evidence id AND in_transit AND a paid provider status AND a date
+    // AND no rail pointer naming another rail). One read, one page.
+    expect(query.sql).toMatch(
+      /AND \(NOT EXISTS \(SELECT 1 FROM "FieldValue" own[\s\S]*own."valueText" IS NOT NULL\) OR \(EXISTS \(SELECT 1 FROM "FieldValue" own[\s\S]*own."valueText" = ex."valueText"\)/
+    )
+    expect(query.sql).toContain(`st."optionId" = 'in_transit'`)
+    expect(query.sql).toMatch(/\(pk."valueText", ss."valueText"\) IN \(/)
+    expect(query.sql).toContain('io."valueText" IS NOT NULL')
+    expect(query.sql).toMatch(
+      /AND NOT EXISTS \(SELECT 1 FROM "FieldValue" rl[\s\S]*rl."relatedEntityId" <> a."paymentGatewayId"/
+    )
+    expect(query.params).toEqual(
+      expect.arrayContaining(['f_status', 'f_ss', 'f_io', 'f_rail', 'shopify_payments', 'affirm'])
+    )
+    // Every processor's paid status rides as a pair; an in-transit one never does.
+    expect(query.params).toContain('settledSuccessfully')
+    expect(query.params).not.toContain('scheduled')
+    expect(query.sql).toMatch(/ORDER BY e.id\s+LIMIT \$\d+/)
+  })
+
+  it('only takes unstamped records when the evidence status is not materialised', async () => {
+    h.getCachedEntityDefId.mockResolvedValue('def_payout')
+    h.bySystemAttributes.mockResolvedValue(
+      fieldStubs({
+        payout_gateway_id: 'f_gw',
+        payout_status: 'f_status',
+        payout_source_provider_key: 'f_pk',
+        payout_source_account_id: 'f_ac',
+        payout_source_environment: 'f_en',
+        payout_source_external_id: 'f_ex',
+      })
+    )
+    let rendered = ''
+    const db = {
+      execute: async (query: SQL) => {
+        rendered = dialect.sqlToQuery(query).sql
+        return { rows: [] }
+      },
+    } as unknown as Database
+    await listPromotableConnectorPayouts(db, ORG, { limit: 10 })
+    expect(rendered).toMatch(/own."valueText" IS NOT NULL\) OR FALSE\)/)
   })
 
   it('narrows to one feed when asked', async () => {

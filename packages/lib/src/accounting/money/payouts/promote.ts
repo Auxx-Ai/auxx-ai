@@ -20,7 +20,7 @@ import { exactEvidenceMinor } from '../customer-money/evidence-contracts'
 import { type PayoutStatus, resolvePayoutStatus } from './client'
 import { loadPayoutFieldContext, type PayoutAttribute } from './fields'
 import { guard } from './guard'
-import { findPayoutByGatewayId, listUnpromotedConnectorPayouts } from './reads'
+import { findPayoutByGatewayId, listPromotableConnectorPayouts } from './reads'
 import { reverseFailedPayout } from './sync'
 
 const logger = createScopedLogger('payouts:promote')
@@ -208,8 +208,9 @@ export async function promoteConnectorPayouts(
 }
 
 /**
- * Promote one page of connector payouts that carry no ledger id yet, optionally for one feed:
- * the catch-up for records written before the feed was linked or accounting went active.
+ * Promote one page of connector payouts that carry no ledger id yet, or are stamped but still in
+ * transit after the provider reported paid, optionally for one feed: the catch-up for records
+ * written before the feed was linked, before accounting went active, or before this code ran.
  */
 export async function promotePendingPayouts(
   db: Database,
@@ -218,7 +219,7 @@ export async function promotePendingPayouts(
   const { organizationId, limit, sourceAccountId, actorUserId } = input
   return guard(
     async () => {
-      const payoutIds = await listUnpromotedConnectorPayouts(db, organizationId, {
+      const payoutIds = await listPromotableConnectorPayouts(db, organizationId, {
         limit,
         sourceAccountId,
       })

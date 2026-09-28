@@ -11,6 +11,7 @@
  * `source.ts`'s (type imports only, erased at build).
  */
 
+import { formatCurrency } from '@auxx/utils/currency'
 import type { MatchState } from './match-reasons'
 import type { PayoutHeader, PayoutItem } from './source'
 
@@ -201,4 +202,35 @@ export function totalsOnlySplit(totals: NonNullable<PayoutHeader['totals']>): Pa
     unrecognisedNetMinor: 0,
     unrecognisedCount: 0,
   }
+}
+
+/** An unmatched negative line of a type the payout entry has no leg for (not a charge, refund or dispute). */
+export interface UnbookedPayoutLine {
+  type: string
+  netMinor: number
+}
+
+/**
+ * Why this payout cannot post however often it is retried, or `null`: a negative payout, or a
+ * negative remainder made of lines auxx does not book yet. Neither is built here (brief 114).
+ */
+export function unpostablePayoutReason(input: {
+  number: string
+  currency: string
+  split: PayoutSplit
+  unbookedLines: readonly UnbookedPayoutLine[]
+}): string | null {
+  const { number, split, unbookedLines } = input
+  const money = (minor: number) => formatCurrency(minor, { currencyCode: input.currency })
+  const deposit = split.netMinor + split.unrecognisedNetMinor
+  if (deposit < 0)
+    return `Payout ${number} is a negative payout (${money(deposit)} pulled back from the bank); auxx does not post negative payouts yet.`
+  if (split.unrecognisedNetMinor >= 0 || unbookedLines.length === 0) return null
+  const total = unbookedLines.reduce((sum, line) => sum + line.netMinor, 0)
+  const types = [...new Set(unbookedLines.map((line) => line.type))].join(', ')
+  const what =
+    unbookedLines.length === 1
+      ? `a ${money(total)} adjustment`
+      : `${unbookedLines.length} adjustments totalling ${money(total)}`
+  return `Payout ${number} includes ${what} auxx does not book yet (type ${types}), so it is not posted.`
 }
