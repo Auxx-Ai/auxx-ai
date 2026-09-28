@@ -10,14 +10,21 @@ import {
 } from '@auxx/lib/resources/grouping/client'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@auxx/ui/components/select'
+  Command,
+  CommandBreadcrumb,
+  CommandDetailItem,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandList,
+  CommandNavigableItem,
+  CommandNavigation,
+  CommandSeparator,
+  type NavigationItem,
+  useCommandNavigation,
+} from '@auxx/ui/components/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import type { SortingState } from '@tanstack/react-table'
 import {
@@ -28,13 +35,15 @@ import {
   ArrowUpAZ,
   CalendarArrowDown,
   CalendarArrowUp,
+  CalendarRange,
   Group,
   type LucideIcon,
   TriangleAlert,
+  X,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { type FieldDefinition, ResourceFieldSelector } from '~/components/conditions'
 import { Tooltip } from '~/components/global/tooltip'
+import { FieldItem } from '~/components/pickers/field-picker'
 import type { GroupByConfig, GroupDateGranularity } from '../../types'
 import { getSortOptionsForFieldType } from '../../utils/constants'
 
@@ -83,19 +92,156 @@ function groupDirectionOptions(
 
 function OrphanedNotice({ children }: { children: React.ReactNode }) {
   return (
-    <div className='flex items-start gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground'>
+    <div className='mx-1 mb-1 flex items-start gap-1.5 rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground'>
       <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
       <span>{children}</span>
     </div>
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+type SortGroupNavigationItem = NavigationItem & {
+  type: 'group-field' | 'sort-field' | 'granularity'
+}
+
+const GROUP_FIELD_ITEM: SortGroupNavigationItem = {
+  id: 'group-field',
+  label: 'Group by',
+  type: 'group-field',
+}
+const SORT_FIELD_ITEM: SortGroupNavigationItem = {
+  id: 'sort-field',
+  label: 'Sort by',
+  type: 'sort-field',
+}
+const GRANULARITY_ITEM: SortGroupNavigationItem = {
+  id: 'granularity',
+  label: 'Date grouping',
+  type: 'granularity',
+}
+
+/** Searchable field list; the same `FieldItem` rows as the column manager's "Add column". */
+function FieldStack({
+  fields,
+  fieldId,
+  value,
+  onSelect,
+}: {
+  fields: ResourceField[]
+  fieldId: (field: ResourceField) => string
+  value: string | undefined
+  onSelect: (fieldId: string) => void
+}) {
+  const { pop } = useCommandNavigation<SortGroupNavigationItem>()
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const matches = query
+    ? fields.filter((field) => field.label.toLowerCase().includes(query))
+    : fields
+
   return (
-    <div className='px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'>
-      {children}
-    </div>
+    <>
+      <CommandInput value={search} onValueChange={setSearch} placeholder='Search fields...' />
+      <CommandList>
+        <CommandEmpty>No matching fields</CommandEmpty>
+        <CommandGroup>
+          {matches.map((field) => {
+            const id = fieldId(field)
+            return (
+              <FieldItem
+                key={id}
+                field={field}
+                isSelected={id === value}
+                onSelect={() => {
+                  onSelect(id)
+                  pop()
+                }}
+              />
+            )
+          })}
+        </CommandGroup>
+      </CommandList>
+    </>
   )
+}
+
+/** Drill-in row showing the chosen field, like the column manager's "Add column". */
+function FieldRow({
+  item,
+  field,
+  icon: Icon,
+}: {
+  item: SortGroupNavigationItem
+  field?: ResourceField
+  icon: LucideIcon
+}) {
+  const { push } = useCommandNavigation<SortGroupNavigationItem>()
+  return (
+    <CommandNavigableItem item={item} hasChildren onSelect={push}>
+      <Icon />
+      <span className={cn('truncate', !field && 'text-muted-foreground')}>
+        {field ? field.label : 'Choose a field'}
+      </span>
+    </CommandNavigableItem>
+  )
+}
+
+function GranularityRow({ value }: { value: GroupDateGranularity }) {
+  const { push } = useCommandNavigation<SortGroupNavigationItem>()
+  const label = GROUP_DATE_GRANULARITIES.find((option) => option.value === value)?.label
+  return (
+    <CommandNavigableItem item={GRANULARITY_ITEM} hasChildren onSelect={push}>
+      <CalendarRange />
+      <span className='truncate'>By {label?.toLowerCase() ?? value}</span>
+    </CommandNavigableItem>
+  )
+}
+
+function GranularityStack({
+  value,
+  onSelect,
+}: {
+  value: GroupDateGranularity
+  onSelect: (granularity: GroupDateGranularity) => void
+}) {
+  const { pop } = useCommandNavigation<SortGroupNavigationItem>()
+  return (
+    <CommandList>
+      <CommandGroup>
+        {GROUP_DATE_GRANULARITIES.map((option) => (
+          <CommandDetailItem
+            key={option.value}
+            value={option.value}
+            title={option.label}
+            selectionMode='check'
+            selected={option.value === value}
+            onSelect={() => {
+              onSelect(option.value)
+              pop()
+            }}
+          />
+        ))}
+      </CommandGroup>
+    </CommandList>
+  )
+}
+
+/** Renders the root list, or the stack currently drilled into. */
+function SortGroupStack({
+  root,
+  groupStack,
+  sortStack,
+  granularityStack,
+}: {
+  root: React.ReactNode
+  groupStack: React.ReactNode
+  sortStack: React.ReactNode
+  granularityStack: React.ReactNode
+}) {
+  const { current } = useCommandNavigation<SortGroupNavigationItem>()
+  if (current?.type === 'group-field') return groupStack
+  if (current?.type === 'sort-field') return sortStack
+  if (current?.type === 'granularity') return granularityStack
+  return root
 }
 
 /**
@@ -138,26 +284,6 @@ export function TableSortGroupBuilder({
     [resourceType]
   )
 
-  const toDefinitions = useCallback(
-    (fields: ResourceField[]): FieldDefinition[] =>
-      fields.map((field) => ({
-        id: fieldSortId(field),
-        label: field.label,
-        type: field.type,
-        fieldType: field.fieldType,
-        fieldKey: field.key,
-      })),
-    [fieldSortId]
-  )
-  const sortDefinitions = useMemo(
-    () => toDefinitions(eligibleFields),
-    [toDefinitions, eligibleFields]
-  )
-  const groupDefinitions = useMemo(
-    () => toDefinitions(groupableFields),
-    [toDefinitions, groupableFields]
-  )
-
   const active = sorting[0]
   const activeField = active
     ? eligibleFields.find((field) => fieldSortId(field) === active.id)
@@ -176,10 +302,11 @@ export function TableSortGroupBuilder({
 
   const handleFieldChange = useCallback(
     (fieldId: string) => {
+      if (fieldId === active?.id) return
       // Keep the current direction when swapping fields; default to ascending.
       onSortingChange([{ id: fieldId, desc: active?.desc ?? false }])
     },
-    [onSortingChange, active?.desc]
+    [onSortingChange, active?.id, active?.desc]
   )
 
   const handleDirection = useCallback(
@@ -199,6 +326,7 @@ export function TableSortGroupBuilder({
     (fieldId: string) => {
       const field = groupableFields.find((candidate) => fieldSortId(candidate) === fieldId)
       if (!field) return
+      if (fieldId === activeGroup?.fieldId) return
       onGroupByChange({
         fieldId,
         desc: activeGroup?.desc ?? false,
@@ -218,13 +346,8 @@ export function TableSortGroupBuilder({
   )
 
   const handleGranularity = useCallback(
-    (dateGranularity: string) => {
-      if (activeGroup) {
-        onGroupByChange({
-          ...activeGroup,
-          dateGranularity: dateGranularity as GroupDateGranularity,
-        })
-      }
+    (dateGranularity: GroupDateGranularity) => {
+      if (activeGroup) onGroupByChange({ ...activeGroup, dateGranularity })
     },
     [activeGroup, onGroupByChange]
   )
@@ -275,133 +398,113 @@ export function TableSortGroupBuilder({
         </div>
       </PopoverTrigger>
 
-      <PopoverContent className='w-[280px] p-2' align='start'>
-        <div className='space-y-2'>
-          {allowGrouping && (
-            <>
-              <SectionLabel>Group by</SectionLabel>
-              {isOrphanedGroup && (
-                <OrphanedNotice>
-                  {activeGroupField
-                    ? `This field can no longer be grouped by (${groupError}), so grouping is not being applied.`
-                    : 'This view groups by a field that is no longer available, so it is not being applied.'}
-                </OrphanedNotice>
-              )}
-              {hasMoreGroups && !isOrphanedGroup && (
-                <p className='px-1 text-xs text-muted-foreground'>Showing the first 500 groups</p>
-              )}
-              <div className='px-1'>
-                <ResourceFieldSelector
-                  value={activeGroupField ? activeGroup!.fieldId : ''}
-                  onChange={handleGroupFieldChange}
-                  availableFields={groupDefinitions}
-                  placeholder='Select a field to group by'
-                  disabled={disabled}
-                />
-              </div>
-
-              {activeGroupField && (
-                <>
-                  <div className='flex flex-col'>
-                    {groupDirectionOptions(activeGroupField).map((option) => {
-                      const OptionIcon = option.icon
-                      const isActive = (activeGroup!.desc ?? false) === option.desc
-                      return (
-                        <Button
-                          key={String(option.desc)}
-                          variant='ghost'
-                          size='sm'
-                          className={cn('justify-start', isActive && 'bg-accent')}
-                          onClick={() => handleGroupDirection(option.desc)}>
-                          <OptionIcon />
-                          {option.label}
-                        </Button>
-                      )
-                    })}
-                  </div>
-
-                  {isDateGroupField(activeGroupField) && (
-                    <div className='px-1'>
-                      <Select
-                        value={activeGroup!.dateGranularity ?? 'day'}
-                        onValueChange={handleGranularity}>
-                        <SelectTrigger size='sm' className='w-full'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GROUP_DATE_GRANULARITIES.map((granularity) => (
-                            <SelectItem key={granularity.value} value={granularity.value}>
-                              {granularity.label}
-                            </SelectItem>
+      <PopoverContent className='w-[280px] p-0' align='start'>
+        <CommandNavigation<SortGroupNavigationItem>>
+          <Command shouldFilter={false}>
+            <CommandBreadcrumb rootLabel='Sort & group' />
+            <SortGroupStack
+              root={
+                <CommandList>
+                  {allowGrouping && (
+                    <>
+                      <CommandGroup heading='Group by'>
+                        {isOrphanedGroup && (
+                          <OrphanedNotice>
+                            {activeGroupField
+                              ? `This field can no longer be grouped by (${groupError}), so grouping is not being applied.`
+                              : 'This view groups by a field that is no longer available, so it is not being applied.'}
+                          </OrphanedNotice>
+                        )}
+                        {hasMoreGroups && !isOrphanedGroup && (
+                          <p className='px-2 pb-1 text-xs text-muted-foreground'>
+                            Showing the first 500 groups
+                          </p>
+                        )}
+                        <FieldRow item={GROUP_FIELD_ITEM} field={activeGroupField} icon={Group} />
+                        {activeGroupField &&
+                          groupDirectionOptions(activeGroupField).map((option) => (
+                            <CommandDetailItem
+                              key={String(option.desc)}
+                              value={`group-${option.desc ? 'desc' : 'asc'}`}
+                              icon={<option.icon />}
+                              title={option.label}
+                              selectionMode='check'
+                              selected={(activeGroup!.desc ?? false) === option.desc}
+                              onSelect={() => handleGroupDirection(option.desc)}
+                            />
                           ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        {activeGroupField && isDateGroupField(activeGroupField) && (
+                          <GranularityRow value={activeGroup!.dateGranularity ?? 'day'} />
+                        )}
+                        {activeGroup && (
+                          <CommandDetailItem
+                            value='group-clear'
+                            icon={<X />}
+                            title='Clear group'
+                            onSelect={handleClearGroup}
+                          />
+                        )}
+                      </CommandGroup>
+                      <CommandSeparator />
+                    </>
                   )}
-                </>
-              )}
 
-              {activeGroup && (
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='w-full justify-start'
-                  onClick={handleClearGroup}>
-                  Clear group
-                </Button>
-              )}
-
-              <div className='-mx-2 border-t' />
-              <SectionLabel>Sort by</SectionLabel>
-            </>
-          )}
-
-          {isOrphanedSort && (
-            <OrphanedNotice>
-              This view sorts by a field that is no longer available, so it is not being applied.
-            </OrphanedNotice>
-          )}
-
-          <div className='px-1'>
-            <ResourceFieldSelector
-              value={activeField ? active!.id : ''}
-              onChange={handleFieldChange}
-              availableFields={sortDefinitions}
-              placeholder='Select a field to sort by'
-              disabled={disabled}
+                  <CommandGroup heading='Sort by'>
+                    {isOrphanedSort && (
+                      <OrphanedNotice>
+                        This view sorts by a field that is no longer available, so it is not being
+                        applied.
+                      </OrphanedNotice>
+                    )}
+                    <FieldRow item={SORT_FIELD_ITEM} field={activeField} icon={ArrowDownUp} />
+                    {activeField &&
+                      directionOptions.map((option) => (
+                        <CommandDetailItem
+                          key={option.value}
+                          value={`sort-${option.value}`}
+                          icon={<option.icon />}
+                          title={option.label}
+                          selectionMode='check'
+                          selected={active!.desc === (option.value === 'desc')}
+                          onSelect={() => handleDirection(option.value === 'desc')}
+                        />
+                      ))}
+                    {active && (
+                      <CommandDetailItem
+                        value='sort-clear'
+                        icon={<X />}
+                        title='Clear sort'
+                        onSelect={handleClear}
+                      />
+                    )}
+                  </CommandGroup>
+                </CommandList>
+              }
+              groupStack={
+                <FieldStack
+                  fields={groupableFields}
+                  fieldId={fieldSortId}
+                  value={appliedGroupField ? activeGroup?.fieldId : undefined}
+                  onSelect={handleGroupFieldChange}
+                />
+              }
+              sortStack={
+                <FieldStack
+                  fields={eligibleFields}
+                  fieldId={fieldSortId}
+                  value={activeField ? active?.id : undefined}
+                  onSelect={handleFieldChange}
+                />
+              }
+              granularityStack={
+                <GranularityStack
+                  value={activeGroup?.dateGranularity ?? 'day'}
+                  onSelect={handleGranularity}
+                />
+              }
             />
-          </div>
-
-          {activeField && (
-            <div className='flex flex-col'>
-              {directionOptions.map((option) => {
-                const OptionIcon = option.icon
-                const isActive = active!.desc === (option.value === 'desc')
-                return (
-                  <Button
-                    key={option.value}
-                    variant='ghost'
-                    size='sm'
-                    className={cn('justify-start', isActive && 'bg-accent')}
-                    onClick={() => handleDirection(option.value === 'desc')}>
-                    <OptionIcon />
-                    {option.label}
-                  </Button>
-                )
-              })}
-            </div>
-          )}
-
-          {active && (
-            <Button
-              variant='ghost'
-              size='sm'
-              className='w-full justify-start'
-              onClick={handleClear}>
-              Clear sort
-            </Button>
-          )}
-        </div>
+          </Command>
+        </CommandNavigation>
       </PopoverContent>
     </Popover>
   )
