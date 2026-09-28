@@ -154,7 +154,14 @@ function rewritable(row: Stored & { matchedBy: string | null }, frozen: boolean)
   // silently undone by the next reconcile, which is every reconcile.
   if (row.matchedBy) return false
   if (!frozen) return true
-  return row.matchState === 'pending' || row.matchState === 'suggested' || row.matchState === null
+  // The matcher's own `unmatchable` (no `matchedBy`) is not an answer anyone gave: a resolver
+  // registered later must be able to lift it, or its posting never goes stale (117 F2).
+  return (
+    row.matchState === 'pending' ||
+    row.matchState === 'suggested' ||
+    row.matchState === 'unmatchable' ||
+    row.matchState === null
+  )
 }
 
 /**
@@ -211,6 +218,7 @@ export async function syncStoredMatches(
       sourceTransactionId: row.sourceTransactionId,
       sourceId: row.sourceId,
       sourceOrderId: row.sourceOrderId,
+      grossMinor: Number(row.grossMinor),
     })
     unreferenced.set(providerKey, list)
   }
@@ -358,7 +366,8 @@ export async function listTransfersWithOpenMatches(
         eq(schema.MoneyTransfer.externalId, schema.ProcessorBalanceEntry.payoutExternalId)
       )
     )
-    // Not `unmatchable`: that state is a person's answer, never retried by a sweep.
+    // Not `unmatchable`: nothing new to try until the transfer is reconciled; the nightly full
+    // walk re-grades the matcher's own, and a person's (`matchedBy`) stays theirs.
     .where(
       and(
         inArray(schema.ProcessorBalanceEntry.matchState, ['pending', 'suggested']),

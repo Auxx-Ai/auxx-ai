@@ -114,6 +114,7 @@ function summaries(split: Partial<PayoutSplit>, entryCount: number) {
           netMinor: 0,
           unrecognisedNetMinor: 0,
           unrecognisedCount: 0,
+          withheldTaxMinor: 0,
           ...split,
         },
       },
@@ -140,6 +141,7 @@ describe('gatherPayout over a feed with evidence rows', () => {
           netMinor: 96_800,
           unrecognisedNetMinor: 48_250,
           unrecognisedCount: 1,
+          withheldTaxMinor: 0,
         },
         2
       )
@@ -200,6 +202,7 @@ describe('gatherPayout over a totals-only source', () => {
       netMinor: 145_050,
       unrecognisedNetMinor: 0,
       unrecognisedCount: 0,
+      withheldTaxMinor: 0,
     })
     expect(h.recognise).not.toHaveBeenCalled()
   })
@@ -233,6 +236,7 @@ describe('gatherPayout over an itemised source', () => {
       netMinor: 96_800,
       unrecognisedNetMinor: 48_250,
       unrecognisedCount: 1,
+      withheldTaxMinor: 0,
     })
   })
 

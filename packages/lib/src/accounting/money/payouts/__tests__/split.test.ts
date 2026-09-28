@@ -41,6 +41,7 @@ describe('splitPayout', () => {
       netMinor: 145_050,
       unrecognisedNetMinor: 0,
       unrecognisedCount: 0,
+      withheldTaxMinor: 0,
     })
   })
 
@@ -120,6 +121,7 @@ describe('splitPayout', () => {
       netMinor: 0,
       unrecognisedNetMinor: 0,
       unrecognisedCount: 0,
+      withheldTaxMinor: 0,
     })
   })
 })
@@ -137,6 +139,7 @@ describe('totalsOnlySplit', () => {
       netMinor: 145_050,
       unrecognisedNetMinor: 0,
       unrecognisedCount: 0,
+      withheldTaxMinor: 0,
     })
   })
 
@@ -208,6 +211,7 @@ describe('unpostablePayoutReason', () => {
     netMinor: 970,
     unrecognisedNetMinor: 0,
     unrecognisedCount: 0,
+    withheldTaxMinor: 0,
   }
   const reason = (
     split: Partial<typeof ok>,
@@ -237,5 +241,43 @@ describe('unpostablePayoutReason', () => {
 
   it('ignores an unbooked line while the remainder is not negative', () => {
     expect(reason({ unrecognisedNetMinor: 100 }, [{ type: 'unknown', netMinor: -618 }])).toBeNull()
+  })
+  it('passes a negative payout of matched refunds (116, PAY-0180)', () => {
+    expect(reason({ grossMinor: -305_200, feesMinor: 0, netMinor: -305_200 })).toBeNull()
+  })
+
+  it('refuses a negative remainder of matched lines, waiting for the rest to match (117)', () => {
+    expect(reason({ unrecognisedNetMinor: -500 })).toBe(
+      'Payout PAY-0001 settled $5.00 less than the lines auxx matched in it, so it waits for the rest of its lines to match.'
+    )
+  })
+})
+
+describe('tax the channel withholds (116)', () => {
+  it('books a tax_withheld line as withheld tax, never as the remainder', () => {
+    const split = splitStoredEntries([
+      {
+        type: 'charge',
+        matchState: 'matched',
+        grossMinor: 2_157_673,
+        feeMinor: 59_424,
+        netMinor: 2_098_249,
+      },
+      { type: 'tax_withheld', matchState: null, grossMinor: -618, feeMinor: 0, netMinor: -618 },
+    ])
+    expect(split).toMatchObject({
+      grossMinor: 2_157_673,
+      feesMinor: 59_424,
+      unrecognisedNetMinor: 0,
+      unrecognisedCount: 0,
+      withheldTaxMinor: 618,
+    })
+  })
+
+  it('reads tax the channel returned as negative withheld tax', () => {
+    const split = splitStoredEntries([
+      { type: 'tax_withheld', matchState: null, grossMinor: 618, feeMinor: 0, netMinor: 618 },
+    ])
+    expect(split.withheldTaxMinor).toBe(-618)
   })
 })

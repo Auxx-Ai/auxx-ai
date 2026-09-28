@@ -112,9 +112,9 @@ describe('refusals', () => {
     )
   })
 
-  it('refuses a negative fee or net - direction carries the sign', () => {
+  it('refuses a negative fee - direction carries the sign', () => {
     expect(() => buildPayoutEntry({ ...BASE, feesMinor: -14_800, netMinor: 514_800 })).toThrowError(
-      /positive amounts/
+      /positive amount/
     )
   })
 
@@ -308,5 +308,81 @@ describe('a billed rail', () => {
     const withDefault = buildPayoutEntry(BASE)
     const explicit = buildPayoutEntry({ ...BASE, feeTreatment: 'netted' })
     expect(withDefault.entry.lines).toEqual(explicit.entry.lines)
+  })
+})
+
+describe('tax the channel withholds, and negative payouts (116)', () => {
+  it('debits marketplace tax collected for withheld tax, unscoped, and still balances (PAY-0167)', () => {
+    const built = buildPayoutEntry({
+      ...BASE,
+      grossMinor: 2_157_673,
+      feesMinor: 59_424,
+      netMinor: 2_098_249,
+      marketplaceTaxWithheldMinor: 618,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
+      direction: 'debit',
+      amount: 2_097_631,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)).toMatchObject({
+      direction: 'debit',
+      amount: 618,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)?.sourceScope).toBeUndefined()
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
+      direction: 'credit',
+      amount: 2_157_673,
+    })
+    expect(built.depositedMinor).toBe(2_097_631)
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('credits marketplace tax collected for tax the channel returned', () => {
+    const built = buildPayoutEntry({ ...BASE, marketplaceTaxWithheldMinor: -618 })
+    expect(line(built.entry, ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)).toMatchObject({
+      direction: 'credit',
+      amount: 618,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
+      direction: 'debit',
+      amount: 485_818,
+    })
+  })
+
+  it('posts a negative payout as Dr clearing / Cr bank (PAY-0180)', () => {
+    const built = buildPayoutEntry({
+      ...BASE,
+      grossMinor: -305_200,
+      feesMinor: 0,
+      netMinor: -305_200,
+    })
+    expect(built.entry.lines).toHaveLength(2)
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING)).toMatchObject({
+      direction: 'debit',
+      amount: 305_200,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.BANK)).toMatchObject({
+      direction: 'credit',
+      amount: 305_200,
+    })
+    expect(built.depositedMinor).toBe(-305_200)
+  })
+
+  it('still refuses a deposit of exactly zero', () => {
+    expect(() =>
+      buildPayoutEntry({
+        ...BASE,
+        grossMinor: 618,
+        feesMinor: 0,
+        netMinor: 618,
+        marketplaceTaxWithheldMinor: 618,
+      })
+    ).toThrowError(/moves nothing/)
+  })
+
+  it('is unchanged with no tax', () => {
+    expect(buildPayoutEntry({ ...BASE, marketplaceTaxWithheldMinor: 0 }).entry).toEqual(
+      buildPayoutEntry(BASE).entry
+    )
   })
 })

@@ -37,6 +37,7 @@ export const processorRecordEntrySchema = z
       'adjustment',
       'outgoing_transfer',
       'returned_transfer',
+      'tax_withheld',
       'unknown',
     ]),
     providerType: identity,

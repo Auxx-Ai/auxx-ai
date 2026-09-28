@@ -7,11 +7,16 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   Dr bank                     the whole deposit that reached the bank, [rail, currency]
- *   Dr payment_processing_fees  fees withheld on the RECOGNISED charges, [rail, currency]
- *       Cr clearing             RECOGNISED gross,                        [rail, currency]
+ *   Dr bank                       the whole deposit that reached the bank, [rail, currency]
+ *   Dr payment_processing_fees    fees withheld on the RECOGNISED charges, [rail, currency]
+ *   Dr marketplace_tax_collected  tax the channel withheld (116)
+ *       Cr clearing               RECOGNISED gross,                        [rail, currency]
  *       Cr unidentified_receipts  the unrecognised remainder, net
  * ```
+ *
+ * Bank, clearing and tax legs take their side from their sign: a negative payout (refunds
+ * larger than the day's charges) is `Dr clearing / Cr bank`, and tax the channel returns
+ * credits 2210. Fees and the remainder are never negative.
  *
  * This is the entry that makes clearing reconcilable. A card receipt DEBITS
  * the clearing account gross at the sale, and this entry credits it gross
@@ -147,6 +152,11 @@ export interface BuildPayoutEntryInput {
    */
   unrecognisedNetMinor?: number
   /**
+   * Marketplace tax the channel withheld from this payout, integer minor units (116). Positive
+   * debits `marketplace_tax_collected`; negative is tax returned and credits it. Defaults to 0.
+   */
+  marketplaceTaxWithheldMinor?: number
+  /**
    * How the rail charges for itself (brief 26 §4). Defaults to `netted`, which
    * is what this builder has always assumed.
    *
@@ -170,7 +180,11 @@ export interface BuiltPayoutEntry {
   feesMinor: number
   netMinor: number
   unrecognisedNetMinor: number
-  /** What hit the bank: `netMinor + unrecognisedNetMinor`. The bank-account debit leg. */
+  marketplaceTaxWithheldMinor: number
+  /**
+   * What hit the bank: `netMinor + unrecognisedNetMinor - marketplaceTaxWithheldMinor`. Negative
+   * when the processor pulled money back.
+   */
   depositedMinor: number
 }
 
@@ -193,9 +207,9 @@ function assertMinor(value: number, label: string, payoutNumber: string): number
  * gateway's is a mis-read payout, and posting it anyway leaves a clearing
  * account that can never reach zero for reasons nobody can reconstruct.
  *
- * @throws {UnprocessableEntityError} on a fractional or negative amount, an
+ * @throws {UnprocessableEntityError} on a fractional amount, a negative fee or remainder, an
  *   arithmetic disagreement, a withheld fee on a `billed` rail, an over-long
- *   payout number, or a missing rail or currency.
+ *   payout number, a zero deposit, or a missing rail or currency.
  */
 export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry {
   const { payoutId, payoutNumber, paidAt, memo } = input
@@ -230,6 +244,12 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     'unrecognised net',
     number
   )
+  const marketplaceTaxWithheldMinor = assertMinor(
+    input.marketplaceTaxWithheldMinor ?? 0,
+    'marketplace tax withheld',
+    number
+  )
+  const depositedMinor = netMinor + unrecognisedNetMinor - marketplaceTaxWithheldMinor
 
   // 🛑 The DEPOSIT is what decides whether there is an entry, not the recognised
   // gross. A payout none of whose items are matched yet is the ordinary case
@@ -237,18 +257,18 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   // and T26 says post it anyway with the whole deposit in
   // `unidentified_receipts`; refusing on `grossMinor` made that decision
   // unreachable for exactly the payout it was written for.
-  if (netMinor + unrecognisedNetMinor <= 0) {
+  // A negative deposit is a real payout (116): the processor pulled money back from the bank.
+  if (depositedMinor === 0) {
     throw new UnprocessableEntityError(
-      `Payout ${number} deposits ${netMinor + unrecognisedNetMinor}. A payout that moves nothing ` +
-        'has no entry.',
+      `Payout ${number} deposits 0. A payout that moves nothing has no entry.`,
       { payoutNumber: number, grossMinor: String(grossMinor) }
     )
   }
-  if (feesMinor < 0 || netMinor < 0) {
+  if (feesMinor < 0) {
     throw new UnprocessableEntityError(
-      `Payout ${number} has net ${netMinor} and fees ${feesMinor}. Both are positive amounts - ` +
-        'direction carries the sign.',
-      { payoutNumber: number, netMinor: String(netMinor), feesMinor: String(feesMinor) }
+      `Payout ${number} has fees ${feesMinor}. Fees are a positive amount - direction carries ` +
+        'the sign.',
+      { payoutNumber: number, feesMinor: String(feesMinor) }
     )
   }
   // 🛑 Negative is a REFUSAL rather than a clamp. A negative remainder means the
@@ -292,8 +312,6 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     )
   }
 
-  const depositedMinor = netMinor + unrecognisedNetMinor
-
   const source = { sourceType: PAYOUT_SOURCE_TYPE, sourceId: payoutId }
   /** Every leg reads its account through this same rail scope (task 58 §5.3). */
   const sourceScope: RoleSourceScope = { rail, currency }
@@ -306,9 +324,9 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       sourceScope,
       // 🛑 The WHOLE deposit, not the recognised net. This leg is what the bank
       // line matches against, and the bank shows one figure for the payout.
-      direction: 'debit',
-      amount: depositedMinor,
-      memo: memo ?? leg('deposited'),
+      direction: depositedMinor > 0 ? 'debit' : 'credit',
+      amount: Math.abs(depositedMinor),
+      memo: memo ?? leg(depositedMinor > 0 ? 'deposited' : 'pulled back from the bank'),
       sortOrder: 0,
     },
   ]
@@ -335,10 +353,23 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       ...source,
       accountRole: ACCOUNT_ROLES.CLEARING,
       sourceScope,
-      direction: 'credit',
-      amount: grossMinor,
+      direction: grossMinor > 0 ? 'credit' : 'debit',
+      amount: Math.abs(grossMinor),
       memo: leg('gross settled'),
       sortOrder: 2,
+    })
+  }
+  // Not rail-scoped: the role is one obligation per jurisdiction, never per rail.
+  if (marketplaceTaxWithheldMinor !== 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED,
+      direction: marketplaceTaxWithheldMinor > 0 ? 'debit' : 'credit',
+      amount: Math.abs(marketplaceTaxWithheldMinor),
+      memo: leg(
+        marketplaceTaxWithheldMinor > 0 ? 'tax the channel withheld' : 'tax the channel returned'
+      ),
+      sortOrder: 4,
     })
   }
   // Dropped when zero, like the fee leg: the ordinary payout recognises
@@ -370,6 +401,7 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     feesMinor,
     netMinor,
     unrecognisedNetMinor,
+    marketplaceTaxWithheldMinor,
     depositedMinor,
   }
 }

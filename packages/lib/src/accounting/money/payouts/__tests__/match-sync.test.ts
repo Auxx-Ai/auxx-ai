@@ -239,6 +239,36 @@ describe('syncStoredMatches', () => {
     expect(summaries.get('transfer-1')!.unmatchedCount).toBe(1)
   })
 
+  // ── 117 F2: the matcher's own `unmatchable` is not frozen ──────────────────
+
+  it("lifts the matcher's own unmatchable a live posting names, and names that posting stale", async () => {
+    const stored = row({ matchState: 'unmatchable', matchReason: 'no_reference' })
+    const { tx, statements } = transaction(
+      [[stored], accounts, gateways, [receipt]],
+      [{ sourceId: 'entry-1', glPostingId: 'glp-1' }],
+      [{ glPostingId: 'glp-1', amountMinor: 9700 }]
+    )
+    const summaries = await syncStoredMatches(tx, 'org', scope)
+    expect(mentions(statements[0], 'mt-1')).toBe(true)
+    expect(summaries.get('transfer-1')!.stalePostingIds).toEqual(['glp-1'])
+  })
+
+  it("keeps a person's unmatchable a live posting names", async () => {
+    const stored = row({
+      matchState: 'unmatchable',
+      matchReason: 'manual',
+      matchedBy: 'user-1',
+    })
+    const { tx, execute } = transaction(
+      [[stored], accounts, gateways, [receipt]],
+      [{ sourceId: 'entry-1', glPostingId: 'glp-1' }],
+      [{ glPostingId: 'glp-1', amountMinor: 9700 }]
+    )
+    const summaries = await syncStoredMatches(tx, 'org', scope)
+    expect(execute).not.toHaveBeenCalled()
+    expect(summaries.get('transfer-1')!.stalePostingIds).toEqual([])
+  })
+
   it('leaves an item with no reference unmatchable', async () => {
     const { tx, statements } = transaction([[row({ sourceReference: null })], accounts], [])
     const summaries = await syncStoredMatches(tx, 'org', scope)

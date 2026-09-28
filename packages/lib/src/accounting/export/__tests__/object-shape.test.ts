@@ -264,6 +264,48 @@ describe('shapeForPosting', () => {
     )
   })
 
+  it('a payout that withheld marketplace tax exports as a journal: a Deposit holds one negative line (116)', () => {
+    const { lines, roleByGlAccountId } = withLines(
+      line('acct_bank', 'bank', 'debit', 4682),
+      line('acct_fees', 'payment_processing_fees', 'debit', 300),
+      line('acct_mtax', 'marketplace_tax_collected', 'debit', 18),
+      line('acct_clearing', 'clearing', 'credit', 5000)
+    )
+    const result = shapeForPosting({
+      posting: posting({
+        id: 'glp_pay2',
+        postingType: 'payout',
+        totalMinor: 5000,
+        docNumber: 'PAY-2',
+      }),
+      lines,
+      roleByGlAccountId,
+      counterparty: null,
+    })
+
+    expect(result.objectType).not.toBe('deposit')
+  })
+
+  it('a negative payout has no bank debit, so it exports as a journal (116)', () => {
+    const { lines, roleByGlAccountId } = withLines(
+      line('acct_clearing', 'clearing', 'debit', 3052),
+      line('acct_bank', 'bank', 'credit', 3052)
+    )
+    const result = shapeForPosting({
+      posting: posting({
+        id: 'glp_pay3',
+        postingType: 'payout',
+        totalMinor: 3052,
+        docNumber: 'PAY-3',
+      }),
+      lines,
+      roleByGlAccountId,
+      counterparty: null,
+    })
+
+    expect(result.objectType).not.toBe('deposit')
+  })
+
   it('a bank deposit becomes a deposit with one positive line', () => {
     const { lines, roleByGlAccountId } = withLines(
       line('acct_bank', 'bank', 'debit', 1200),

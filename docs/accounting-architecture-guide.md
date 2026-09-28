@@ -1353,6 +1353,19 @@ text); the refund carries the dispute fee as `Dr payment_processing_fees` (`feeM
 payout excludes a fee already on the refund (`feeOnRefund`). ⚠️ A payout that posts before its
 chargeback's refund books the fee twice.
 
+**Tax the channel withholds, and negative payouts** (116). A `tax_withheld` entry (Shopify's
+`tax_adjustment_debit`/`_credit`) is never matched: `splitStoredEntries` sums it into
+`withheldTaxMinor` and the entry debits `marketplace_tax_collected` (unscoped), clearing what the
+fulfillment credited. Bank and clearing take their side from their sign, so a payout of refunds
+larger than the day's charges posts `Dr clearing / Cr bank`. A negative *remainder* still refuses:
+`unpostablePayoutReason` parks it as `REFUSED` before the build. Both shapes export as journals.
+
+**A resolver names the reference an entry does not carry.** Affirm leaves `sourceReference` null;
+`processors/affirm/resolver.ts` joins `sourceOrderId` to the receipt's
+`customer_transaction_payment_id` (a refund: that receipt's child refund of the same amount). The
+matcher's own `unmatchable` (`matchedBy` null) stays rewritable under a live posting, so a resolver
+added later reverses and reposts the payouts it frees (117).
+
 **Keeping evidence current is two `defineParentReconciler`s, not a router.** A field-change mark
 hook *marks*; the drain rebuilds once per parent after commit, however many fields moved.
 `customer-money/order-evidence-reconciler.ts` owns order payment evidence and
