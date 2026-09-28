@@ -1,13 +1,17 @@
 // apps/web/src/components/accounting/ui/settings/__tests__/payment-gateway-add-dialog.test.ts
 
-import type { PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
+import type { PaymentGatewayRow, RailFeedStatus } from '@auxx/lib/accounting/rails/client'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('~/trpc/react', () => ({ api: {} }))
+vi.mock('~/components/data-connectors/hooks/use-can-manage-connectors', () => ({
+  useCanManageConnectors: () => true,
+}))
 
 import { MINT_ACCOUNT_VALUE } from '../mapping-account-select'
-import { draftFor, findSiblingGateway } from '../payment-gateway-add-dialog'
+import { addDialogFeed, draftFor, findSiblingGateway } from '../payment-gateway-add-dialog'
 import { railReadinessLine } from '../payment-gateway-rail-rows'
+import { railFeedCopy } from '../rail-feed-note'
 
 function gateway(overrides: Partial<PaymentGatewayRow>): PaymentGatewayRow {
   return {
@@ -94,5 +98,66 @@ describe('railReadinessLine', () => {
     expect(railReadinessLine({ ...base, feed: { state: 'none', optional: false } }).text).toBe(
       'Ready to post.'
     )
+  })
+})
+
+describe('addDialogFeed', () => {
+  // DemoOrg1: Shopify installed and connected, its one feed linked to the Shopify Payments rail.
+  const shopCash: RailFeedStatus = {
+    state: 'linked_elsewhere',
+    feedApp: 'shopify',
+    feedAppTitle: 'Shopify',
+    processorLabel: 'Shopify Payments',
+    connectorId: 'dc_shop',
+    candidateSourceAccountId: null,
+    optional: false,
+    processorHandle: 'shop_cash',
+    linkedGateway: { id: 'pg_shop', name: 'Shopify Payments', handles: ['shopify_payments'] },
+  }
+
+  it('does not tell a person to connect Shopify when it is connected and its feed is linked', () => {
+    const feed = addDialogFeed(shopCash, false)
+    const copy = railFeedCopy(feed, true)
+    expect(copy?.sentence).toBe(
+      'The Shopify Payments feed is linked to Shopify Payments (shopify_payments). Payouts for shop_cash settle there - add shop_cash to that gateway instead.'
+    )
+    expect(copy?.sentence).not.toMatch(/connect/i)
+    expect(copy?.action).toMatchObject({ kind: 'href', label: 'Open Shopify Payments' })
+  })
+
+  it('leaves linked_elsewhere to the sibling suggestion when that is showing', () => {
+    expect(addDialogFeed(shopCash, true)).toBeNull()
+  })
+
+  it('says syncing rather than connect while the connector has not synced', () => {
+    const feed = addDialogFeed(
+      { ...shopCash, state: 'syncing', linkedGateway: null, processorHandle: 'shopify_payments' },
+      false
+    )
+    expect(railFeedCopy(feed, true)?.sentence).toBe(
+      'Shopify is connected and has not synced payouts yet.'
+    )
+  })
+
+  it('drops states with nothing to say', () => {
+    expect(addDialogFeed({ ...shopCash, state: 'none', linkedGateway: null }, false)).toBeNull()
+    expect(addDialogFeed(undefined, false)).toBeNull()
+  })
+})
+
+describe('railReadinessLine with a feed linked elsewhere', () => {
+  it('stays ready and names the gateway the payouts clear on', () => {
+    expect(
+      railReadinessLine({
+        clearingMapped: true,
+        bankMapped: false,
+        feedLinked: false,
+        feed: {
+          state: 'linked_elsewhere',
+          optional: false,
+          linkedGateway: { id: 'pg_shop', name: 'Shopify Payments', handles: [] },
+        },
+      })
+    ).toEqual({ ready: true, text: 'Ready to post, but its payouts clear on Shopify Payments.' })
   })
 })

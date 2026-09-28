@@ -326,10 +326,12 @@ export function matchGatewayRoute(
 /**
  * Where a rail's feed stands, most-settled first (brief 113 D2). `available` with a null
  * `candidateSourceAccountId` means two or more unlinked feeds match: the plain picker, no one-click Link.
+ * `linked_elsewhere`: the processor's feeds exist and every one is linked to another gateway.
  */
 export const RAIL_FEED_STATES = [
   'linked',
   'available',
+  'linked_elsewhere',
   'syncing',
   'not_connected',
   'not_installed',
@@ -352,6 +354,10 @@ export interface RailFeedStatus {
   candidateSourceAccountId: string | null
   /** A billed-fee processor wants no feed to post, so any nudge is optional, never a readiness gap. */
   optional: boolean
+  /** The rail's own handle that named the processor (`shop_cash`), or null. */
+  processorHandle: string | null
+  /** Set only in `linked_elsewhere`: the gateway the processor's feed is linked to. */
+  linkedGateway: { id: string; name: string; handles: string[] } | null
 }
 
 export type { RailFeeAccount, RailFeeStatus } from './rail-fee-status'

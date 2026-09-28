@@ -227,11 +227,13 @@ export function PaymentGatewaysList({
             getKey={(gateway: GatewayListRow) => gateway.id}
             renderRow={(gateway: GatewayListRow) => {
               const mapped = chartAccountById.get(gateway.clearingGlAccountId)
+              const feed = gateway.feed
               const feedHint =
-                gateway.feed &&
-                !gateway.feed.optional &&
-                (gateway.feed.state === 'not_installed' || gateway.feed.state === 'not_connected')
-                  ? railFeedCopy(gateway.feed, canManageConnectors)?.sentence
+                feed &&
+                (feed.state === 'linked_elsewhere' ||
+                  (!feed.optional &&
+                    (feed.state === 'not_installed' || feed.state === 'not_connected')))
+                  ? railFeedCopy(feed, canManageConnectors)?.sentence
                   : undefined
               return (
                 <TreeRow

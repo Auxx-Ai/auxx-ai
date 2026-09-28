@@ -16,6 +16,11 @@ export interface RailFeedInputs {
   linked: boolean
   /** Live unlinked feeds with activity (`listUnlinkedFeeds`), any provider. */
   unlinkedFeeds: readonly { processorAccountId: string; providerKey: string }[]
+  /** Live feeds linked to another gateway, with that gateway. */
+  linkedFeeds: readonly {
+    providerKey: string
+    gateway: { id: string; name: string; handles: string[] }
+  }[]
   /** The org's `DataConnector` rows, any type and status. */
   connectors: readonly { id: string; type: string; status: string }[]
   /** Installed app slug → title. */
@@ -33,12 +38,18 @@ export function feedProcessorForHandles(handles: readonly string[]): ProcessorDe
   return null
 }
 
+/** The processor a rail's feed state is about: one with a feed app first, then any. */
+export function railProcessorForHandles(handles: readonly string[]): ProcessorDescriptor | null {
+  return (
+    feedProcessorForHandles(handles) ??
+    handles.map(processorByHandle).find((p) => p !== null) ??
+    null
+  )
+}
+
 /** Decide one rail's feed state (brief 113 D2/D3). Never links anything. */
 export function decideRailFeedState(inputs: RailFeedInputs): RailFeedStatus {
-  const processor =
-    feedProcessorForHandles(inputs.handles) ??
-    inputs.handles.map(processorByHandle).find((p) => p !== null) ??
-    null
+  const processor = railProcessorForHandles(inputs.handles)
   const feedApp = processor?.feedApp ?? null
   const connector = feedApp
     ? inputs.connectors.find(
@@ -48,6 +59,9 @@ export function decideRailFeedState(inputs: RailFeedInputs): RailFeedStatus {
   const candidates = processor
     ? inputs.unlinkedFeeds.filter((feed) => feed.providerKey === processor.id)
     : []
+  const elsewhere = processor
+    ? inputs.linkedFeeds.find((feed) => feed.providerKey === processor.id)
+    : undefined
 
   const status = (state: RailFeedState): RailFeedStatus => ({
     state,
@@ -62,10 +76,15 @@ export function decideRailFeedState(inputs: RailFeedInputs): RailFeedStatus {
         ? (candidates[0]?.processorAccountId ?? null)
         : null,
     optional: processor?.feeTreatment === 'billed',
+    processorHandle: processor
+      ? (inputs.handles.find((handle) => processorByHandle(handle)?.id === processor.id) ?? null)
+      : null,
+    linkedGateway: state === 'linked_elsewhere' && elsewhere ? elsewhere.gateway : null,
   })
 
   if (inputs.linked) return status('linked')
   if (candidates.length > 0) return status('available')
+  if (elsewhere) return status('linked_elsewhere')
   if (!feedApp) return status('none')
   if (connector) return status('syncing')
   if (inputs.installedApps.has(feedApp)) return status('not_connected')

@@ -40,8 +40,14 @@ export {
   decideRailFeedState,
   feedProcessorForHandles,
   type RailFeedInputs,
+  railProcessorForHandles,
 } from './feed-state'
-export { listRailFeedStatuses, type RailFeedGateway, railFeedStatus } from './feed-status'
+export {
+  listRailFeedStatuses,
+  type RailFeedGateway,
+  railFeedStatus,
+  railFeedStatusesForHandles,
+} from './feed-status'
 export type { GatewayReadiness } from './feeds'
 export { linkFeed, readiness, unlinkFeed } from './feeds'
 // ── plans/accounting/tasks/26 §7: a clearing account per rail ───────────────
