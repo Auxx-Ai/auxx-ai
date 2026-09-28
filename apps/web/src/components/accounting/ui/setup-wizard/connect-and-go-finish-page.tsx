@@ -3,6 +3,7 @@
 
 import { Section } from '@auxx/ui/components/section'
 import { Boxes } from 'lucide-react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { ConnectAndGoBacklog } from './connect-and-go-backlog'
 import { ConnectAndGoStepList } from './connect-and-go-summary'
 import { OpeningInventoryDifference } from './opening-inventory-difference'
@@ -30,12 +31,13 @@ export function ConnectAndGoFinishPage({
       {flow.done ? (
         <>
           <p className='px-4 py-3 text-muted-foreground text-sm'>
-            Your opening is posted and the ledger is open. Everything after {draft.cutoffPeriod} now
-            posts and exports on its own.
+            Your opening is posted and the ledger is open. Everything from{' '}
+            {booksStartDate(draft.cutoffPeriod)}, when your books start, now posts and exports on
+            its own.
           </p>
           <Section
             title='Opening inventory'
-            description={`What ${providerLabel} says inventory was worth at the cutover, against your counted parts.`}
+            description={`What ${providerLabel} says inventory was worth when your books start, against your counted parts.`}
             icon={<Boxes className='size-4 text-muted-foreground' />}
             collapsible={false}>
             <OpeningInventoryDifference settingsHint />

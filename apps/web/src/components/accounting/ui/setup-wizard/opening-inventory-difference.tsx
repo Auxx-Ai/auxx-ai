@@ -2,7 +2,7 @@
 'use client'
 
 // The explicit, repeatable opening inventory difference screen (111 Q19/Q23): the books
-// against the parts at the cutover, the in-books question asked once, the uncounted parts,
+// against the parts when the books start, the in-books question asked once, the uncounted parts,
 // and the one press that posts the delta. It never posts on its own.
 
 import { FieldType } from '@auxx/database/enums'
@@ -35,6 +35,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { BookOpen, Boxes, PackageSearch, Scale } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { booksStartDateFromCutoverDay } from '~/components/accounting/books-start'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
 import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
@@ -78,13 +79,6 @@ export function creditAccountLabel(inBooks: InBooks): string {
   return account ? `${account.code} ${account.name}` : role
 }
 
-/** The entry's date: the day after the cutover, `YYYY-MM-DD`. */
-export function dayAfter(cutoverDate: string): string {
-  const date = new Date(`${cutoverDate}T00:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString().slice(0, 10)
-}
-
 /** Why the press is disabled, or `null` when it may post. */
 export function adjustDisabledReason(difference: Difference): string | null {
   if (difference.needsAnswer) return 'Answer whether this inventory was on your old books first.'
@@ -124,7 +118,14 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
   const [answering, setAnswering] = useState(false)
   const [adopting, setAdopting] = useState<Uncounted[] | null>(null)
 
-  if (read.isPending) return <Skeleton className='h-40 w-full' />
+  if (read.isPending) {
+    return (
+      <div className='flex flex-col gap-2'>
+        <p className='text-muted-foreground text-xs'>Adding up your parts…</p>
+        <Skeleton className='h-40 w-full' />
+      </div>
+    )
+  }
   if (read.isError) {
     return (
       <Alert variant='neutral'>
@@ -137,6 +138,7 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
   const disabledReason = adjustDisabledReason(difference)
   const booksMinor = difference.providerOpeningMinor + difference.postedDifferencesMinor
   const showQuestion = difference.needsAnswer || answering
+  const start = booksStartDateFromCutoverDay(difference.cutoverDate)
 
   const handleAdjust = async () => {
     if (!difference.inBooks) return
@@ -145,7 +147,7 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
       title: 'Adjust the books?',
       description:
         `Posts ${delta > 0 ? 'Dr' : 'Cr'} Inventory ${money(Math.abs(delta))} against ` +
-        `${creditAccountLabel(difference.inBooks)}, dated ${dayAfter(difference.cutoverDate)}, exported. ` +
+        `${creditAccountLabel(difference.inBooks)}, dated ${start}, exported. ` +
         'Only the difference since the last entry is posted; pressing again later posts the next delta.',
       confirmText: 'Post the difference',
       cancelText: 'Cancel',
@@ -168,7 +170,7 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
           <span className='font-medium tabular-nums'>{money(difference.deltaMinor)}</span>
         </p>
         <p className='text-muted-foreground text-xs'>
-          At the cutover, {difference.cutoverDate}.{' '}
+          When your books start, {start}.{' '}
           {difference.postedDifferenceCount === 0
             ? 'No difference entry has been posted yet.'
             : `${difference.postedDifferenceCount} ${difference.postedDifferenceCount === 1 ? 'entry' : 'entries'} posted so far, ${money(difference.postedDifferencesMinor)} in all.`}
@@ -180,7 +182,11 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
 
       {stock.visible && !stock.complete && (
         <StockSetupFirstLine
-          uncounted={difference.uncounted.length}
+          uncounted={
+            stock.status
+              ? stock.status.movedPartCount - stock.status.countedPartCount
+              : difference.uncounted.length
+          }
           uncosted={stock.status?.uncostedPartCount ?? 0}
           href={stockSetupHref(stock.firstOpen)}
           canManageStock={stock.canManageStock}
@@ -234,7 +240,9 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
               <TableHeader>
                 <TableRow className='hover:bg-transparent'>
                   <TableHead className='text-muted-foreground'>Part</TableHead>
-                  <TableHead className='text-right text-muted-foreground'>Qty at cutover</TableHead>
+                  <TableHead className='text-right text-muted-foreground'>
+                    Qty at books start
+                  </TableHead>
                   <TableHead className='text-right text-muted-foreground'>Value</TableHead>
                 </TableRow>
               </TableHeader>
@@ -260,7 +268,7 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
         <Section
           title='Uncounted parts'
           icon={<PackageSearch className='size-4 text-muted-foreground' />}
-          description='Sold before the cutover, never counted — count them to value them.'
+          description='Sold before your books start, never counted — count them to value them.'
           secondary={`${difference.uncounted.length}`}
           actions={
             <div className='flex items-center gap-1'>
@@ -281,9 +289,9 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
               <TableHeader>
                 <TableRow className='hover:bg-transparent'>
                   <TableHead className='text-muted-foreground'>Part</TableHead>
-                  <Tooltip content='What left the shelf before the cutover with nothing counted behind it. A negative replay is throughput, not stock.'>
+                  <Tooltip content='What left the shelf before your books start with nothing counted behind it. It is usage, not stock.'>
                     <TableHead className='cursor-default text-right text-muted-foreground'>
-                      Throughput at cutover
+                      Used before books start
                     </TableHead>
                   </Tooltip>
                   <TableHead className='w-px' />
@@ -433,8 +441,8 @@ function AdoptChannelCountsDialog({
         <DialogHeader>
           <DialogTitle>Adopt channel count</DialogTitle>
           <DialogDescription>
-            Type what the sales channel says is on hand today. Each part is anchored at that count,
-            dated today, and its history is reconstructed behind it.
+            Type what the sales channel says is on hand today. It becomes each part's first count,
+            dated today.
           </DialogDescription>
         </DialogHeader>
         <div className='max-h-72 overflow-y-auto rounded-md border'>

@@ -17,6 +17,7 @@ import { Boxes, ExternalLink, Lock, Scale } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { booksStartDateFromCutoverDay } from '~/components/accounting/books-start'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
 import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
@@ -41,7 +42,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'What every account was worth on the cutover date, inventory included, as one balanced entry.'
+  'What every account was worth when your books start, inventory included, as one balanced entry.'
 
 export function AccountingOpeningSettingsPage() {
   // `ledgerControl`: `ledgerOpening.save` and `.fillFromProvider` are gated on it.
@@ -67,9 +68,13 @@ export function AccountingOpeningSettingsPage() {
   // `?s=inventory` is what the close blocker and the Set counts result link to.
   const [section] = useQueryState('s')
   const inventoryRef = useRef<HTMLDivElement>(null)
+  // Waits for the grid above: scrolled on mount, the section is pushed off screen once it loads.
+  const scrolled = useRef(false)
   useEffect(() => {
-    if (section === 'inventory') inventoryRef.current?.scrollIntoView({ block: 'start' })
-  }, [section])
+    if (section !== 'inventory' || opening.isPending || scrolled.current) return
+    scrolled.current = true
+    inventoryRef.current?.scrollIntoView({ block: 'start' })
+  }, [section, opening.isPending])
 
   // `edited` holds only what somebody typed; a fresh server answer supersedes it.
   const [edited, setEdited] = useState<OpeningTrialBalanceRow[] | null>(null)
@@ -121,8 +126,8 @@ export function AccountingOpeningSettingsPage() {
           title='Opening trial balance'
           description={
             opening.data?.cutoverDate
-              ? `What every account held at the close of ${opening.data.cutoverDate}. Amounts are whole cents.`
-              : 'What every account held at the cutoff. Amounts are whole cents.'
+              ? `What every account held when your books start, ${booksStartDateFromCutoverDay(opening.data.cutoverDate)}. Amounts are whole cents.`
+              : 'What every account held when your books start. Amounts are whole cents.'
           }>
           <div className='flex flex-col gap-2'>
             <div className='flex flex-wrap items-center justify-end gap-3'>
@@ -229,7 +234,7 @@ export function AccountingOpeningSettingsPage() {
           <SettingsSection
             icon={Boxes}
             title='Opening inventory'
-            description='The books against your counted parts at the cutover. Never posted on its own: each press posts the difference since the last one.'>
+            description='The books against your counted parts when your books start. Never posted on its own: each press posts the difference since the last one.'>
             <OpeningInventoryDifference />
           </SettingsSection>
         </div>

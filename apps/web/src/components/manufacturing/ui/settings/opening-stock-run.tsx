@@ -13,12 +13,12 @@ import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2, PlayCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Fragment, useState } from 'react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import type {
-  OpeningStockCounts,
   OpeningStockExclusion,
   OpeningStockExclusionReason,
   OpeningStockRunResult,
@@ -54,7 +54,6 @@ interface OpeningStockRunProps {
   entryCount: number
   summary: OpeningStockRunSummaryCounts
   exclusions: OpeningStockExclusion[]
-  counts: OpeningStockCounts
   /** `YYYY-MM`, or `null` when nobody has set one. */
   cutoffPeriod: string | null
   occurredAt: string
@@ -102,7 +101,6 @@ export function OpeningStockRun({
   entryCount,
   summary,
   exclusions,
-  counts,
   cutoffPeriod,
   occurredAt,
   onOccurredAtChange,
@@ -172,7 +170,7 @@ export function OpeningStockRun({
             <p className='text-muted-foreground text-xs'>
               The day you looked at the shelf, for every part in this save.{' '}
               {cutoffPeriod
-                ? `Counts dated on or before your books start (${cutoffPeriod}) post nothing; later ones post the difference to Inventory Count Variance.`
+                ? `Counts before ${booksStartDate(cutoffPeriod)} post nothing; later ones post the difference to Inventory Count Variance.`
                 : 'Nothing posts to the books until accounting is set up; the count still sets your stock.'}
             </p>
           </section>
@@ -208,7 +206,7 @@ export function OpeningStockRun({
 
           <Separator />
 
-          <DoneCounting counts={counts} cutoffPeriod={cutoffPeriod} />
+          <DoneCounting cutoffPeriod={cutoffPeriod} />
         </div>
       </ScrollArea>
 
@@ -237,14 +235,26 @@ export function OpeningStockRun({
   )
 }
 
+/** "15 of 231 counted. The 216 others keep …", out of the stocked parts that moved. */
+export function doneCountingLine(counts: {
+  movedPartCount: number
+  countedPartCount: number
+  uncostedPartCount: number
+}): string {
+  const others = counts.movedPartCount - counts.countedPartCount
+  return [
+    `${counts.countedPartCount.toLocaleString('en-US')} of ${counts.movedPartCount.toLocaleString('en-US')} counted.`,
+    others > 0 &&
+      `The ${others.toLocaleString('en-US')} ${others === 1 ? 'other keeps its' : 'others keep their'} current numbers; you can count them any time.`,
+    counts.uncostedPartCount > 0 &&
+      `${plural(counts.uncostedPartCount, 'part', 'parts')} without a cost.`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 /** Q2: one org flag ends the first count; parts left uncounted keep their numbers. */
-function DoneCounting({
-  counts,
-  cutoffPeriod,
-}: {
-  counts: OpeningStockCounts
-  cutoffPeriod: string | null
-}) {
+function DoneCounting({ cutoffPeriod }: { cutoffPeriod: string | null }) {
   const utils = api.useUtils()
   const status = api.purchasing.stockSetupStatus.useQuery(undefined, { retry: false })
   const setFlag = api.purchasing.setStockSetupFlag.useMutation({
@@ -256,18 +266,14 @@ function DoneCounting({
       toastError({ title: 'Error saving the counting state', description: error.message }),
   })
   const done = setFlag.isPending ? setFlag.variables.value : !!status.data?.countingDone
-  const others = counts.all - counts.counted
   const setDone = (value: boolean) => setFlag.mutate({ flag: 'countingDone', value })
 
   return (
     <section className='flex flex-col gap-1.5'>
       <h3 className='font-medium text-foreground text-sm'>Done counting</h3>
-      <p className='text-muted-foreground text-xs'>
-        {counts.counted.toLocaleString('en-US')} of {counts.all.toLocaleString('en-US')} counted.
-        {others > 0 &&
-          ` The ${others.toLocaleString('en-US')} ${others === 1 ? 'other keeps its' : 'others keep their'} current numbers; you can count them any time.`}
-        {counts.uncosted > 0 && ` ${plural(counts.uncosted, 'part', 'parts')} without a cost.`}
-      </p>
+      {status.data && (
+        <p className='text-muted-foreground text-xs'>{doneCountingLine(status.data)}</p>
+      )}
       {done ? (
         <div className='flex flex-wrap items-center gap-2 text-xs'>
           <span className='flex items-center gap-1 text-foreground'>

@@ -52,7 +52,6 @@ function OpeningStockTabInner() {
       entryCount={opening.runSize}
       summary={opening.summary}
       exclusions={opening.exclusions}
-      counts={opening.counts}
       cutoffPeriod={opening.cutoffPeriod}
       occurredAt={opening.occurredAt}
       onOccurredAtChange={opening.setOccurredAt}

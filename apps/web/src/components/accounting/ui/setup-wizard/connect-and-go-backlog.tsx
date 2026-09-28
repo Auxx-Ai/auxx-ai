@@ -8,6 +8,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils'
 import { formatDistanceStrict } from 'date-fns'
 import { Clock, Package, Send, Wallet, Waypoints } from 'lucide-react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { api } from '~/trpc/react'
 
 /** What the catch-up after this cutover will post and export, and roughly how long it takes. */
@@ -35,7 +36,7 @@ export function ConnectAndGoBacklog({
       title: 'Shipments',
       body: (data?.shipments ?? 0).toLocaleString(),
       icon: <Package />,
-      description: 'Posted after the cutover',
+      description: `Posted from ${booksStartDate(cutoffPeriod)}`,
     },
     {
       title: 'Money movements',
@@ -62,7 +63,7 @@ export function ConnectAndGoBacklog({
 
   return (
     <Section
-      title='After the cutover'
+      title='After your books start'
       className='[&_[data-slot=section]]:border-b-0'
       description='What posts and exports once you finish.'
       icon={<Waypoints className='size-4 text-muted-foreground' />}

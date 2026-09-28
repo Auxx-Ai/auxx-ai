@@ -211,7 +211,7 @@ export function OpeningStockList({
                 <Tooltip content='A first cost for parts that have none. A part that already has one shows it; change it on the part.'>
                   <div className='cursor-default px-2 text-right'>Cost</div>
                 </Tooltip>
-                <Tooltip content='How much the count changes what is on record.'>
+                <Tooltip content="How much the count changes what is on record. A part's first count sets its starting stock; a recount is a correction.">
                   <div className='cursor-default px-2 text-right'>Change</div>
                 </Tooltip>
               </div>
@@ -447,7 +447,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           <span className='text-foreground text-sm'>{formatDelta(row.delta)}</span>
           {row.quantity != null && (
             <span className='text-[11px] text-muted-foreground'>
-              {outcome === 'first' ? 'first count' : 'correction'}
+              {outcome === 'first' ? 'first count' : 'recount'}
             </span>
           )}
         </span>,
@@ -548,12 +548,15 @@ function RowBadges({ row }: { row: OpeningStockRow }) {
         <Badge
           variant='green'
           size='xs'
-          title={`Counted before. Counting again corrects it by ${row.delta == null ? 'the difference' : delta} on the count day.`}>
+          title={`Counted before. A recount is a correction of ${row.delta == null ? 'the difference' : delta} on the count day.`}>
           Counted
         </Badge>
       )}
       {row.state === 'uncounted' && (
-        <Badge variant='amber' size='xs' title='Received, sold or used, but never counted.'>
+        <Badge
+          variant='amber'
+          size='xs'
+          title='Received, sold or used, but never counted. Its first count sets its starting stock.'>
           Never counted
         </Badge>
       )}

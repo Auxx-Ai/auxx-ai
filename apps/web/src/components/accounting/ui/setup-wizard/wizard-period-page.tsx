@@ -6,6 +6,7 @@ import { isValidTimeZone } from '@auxx/lib/accounting/ledger/client'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { forwardRef, useImperativeHandle } from 'react'
+import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
@@ -81,8 +82,8 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
     return (
       <div className='flex flex-col gap-4 p-4'>
         <p className='text-muted-foreground text-sm'>
-          Everything dated after the cutoff is valued by Auxx. Everything before it is covered by
-          the opening balances later in this setup.
+          Everything from the day your books start is valued by Auxx. Everything before it is
+          covered by the opening balances later in this setup.
         </p>
 
         <FieldPanel
@@ -94,7 +95,7 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
           <SettingsFieldRow
             settingKey={CUTOFF_KEY}
             title='Cutoff month'
-            description='The last month closed in your previous accounting system, as YYYY-MM.'
+            description={`The last month closed in your previous accounting system, as YYYY-MM.${cutoff && MONTH_KEY.test(cutoff) ? ` Books start ${booksStartDate(cutoff)}.` : ''}`}
             placeholder='2026-12'
             {...controlled(CUTOFF_KEY)}
           />

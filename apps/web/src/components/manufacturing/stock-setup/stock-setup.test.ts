@@ -1,7 +1,11 @@
 // apps/web/src/components/manufacturing/stock-setup/stock-setup.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { booksStartLabel } from './accounting-status-line'
+import {
+  booksStartDate,
+  booksStartDateFromCutoverDay,
+  formatBooksDay,
+} from '~/components/accounting/books-start'
 import { fixAccountsCopy, listPartNames, type MovementAccountDrift } from './fix-accounts-copy'
 import { STOCK_SETUP_HREF, stockSetupHref } from './stock-setup-href'
 import { firstOpenStep, resolveStepStates, type StockSetupStatus } from './use-stock-setup'
@@ -13,6 +17,8 @@ function status(overrides: Partial<StockSetupStatus> = {}): StockSetupStatus {
     unbuiltPartCount: 0,
     buildsSkipped: false,
     countingDone: false,
+    movedPartCount: 0,
+    countedPartCount: 0,
     uncostedPartCount: 0,
     hasStockedMovements: true,
     steps: { kinds: true, builds: true, count: false },
@@ -63,10 +69,25 @@ describe('resolveStepStates', () => {
   })
 })
 
-describe('booksStartLabel', () => {
-  it('names the month after the cutoff', () => {
-    expect(booksStartLabel('2025-11')).toBe('Dec 2025')
-    expect(booksStartLabel('2025-12')).toBe('Jan 2026')
+describe('booksStartDate', () => {
+  it('names the first day after the cutoff month', () => {
+    expect(booksStartDate('2025-11')).toBe('1 Dec 2025')
+    expect(booksStartDate('2025-12')).toBe('1 Jan 2026')
+    expect(booksStartDate('2026-08')).toBe('1 Sep 2026')
+  })
+
+  it('names the day after a closing day', () => {
+    expect(booksStartDateFromCutoverDay('2025-12-31')).toBe('1 Jan 2026')
+    expect(booksStartDateFromCutoverDay('2024-02-28')).toBe('29 Feb 2024')
+  })
+
+  it('formats any day the same way', () => {
+    expect(formatBooksDay('2026-01-15')).toBe('15 Jan 2026')
+  })
+
+  it('passes through what it cannot read', () => {
+    expect(booksStartDate('2025-12-31')).toBe('2025-12-31')
+    expect(booksStartDateFromCutoverDay('2025-12')).toBe('2025-12')
   })
 })
 

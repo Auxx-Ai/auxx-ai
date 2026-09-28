@@ -10,7 +10,7 @@ import { readKindConflictEdges, readKindConflicts } from '../builds/kind-conflic
 import { isServicePartKind } from '../costing/client'
 import { readPartNetThrough } from '../costing/dated-reads'
 import { guard } from './guard'
-import { readPartsWithMovements } from './movement-coverage'
+import { readPartsWithInitialMovement, readPartsWithMovements } from './movement-coverage'
 
 const PART_PICK = pickSystemAttributes(PART_FIELDS, [
   'part_kind',
@@ -28,6 +28,10 @@ export interface StockSetupStatus {
   unbuiltPartCount: number
   buildsSkipped: boolean
   countingDone: boolean
+  /** Stocked parts with any movement: the set step 3's "N of M counted" is out of. */
+  movedPartCount: number
+  /** Of those, the parts with a first count (an `initial`). */
+  countedPartCount: number
   /** Stocked parts that moved and have no standard, so their legs stay `pending`. */
   uncostedPartCount: number
   /** Any non-service part with a movement; without one the org has no stock to set up. */
@@ -50,9 +54,10 @@ export async function readStockSetupStatus(
 ): Promise<Result<StockSetupStatus, Error>> {
   return guard(
     async () => {
-      const [parts, moved, edges, conflictsResult, settings] = await Promise.all([
+      const [parts, moved, initials, edges, conflictsResult, settings] = await Promise.all([
         readStockedParts(db, organizationId),
         readPartsWithMovements(db, organizationId),
+        readPartsWithInitialMovement(db, organizationId),
         readKindConflictEdges(organizationId),
         readKindConflicts(db, organizationId),
         getOrgCache().get(organizationId, 'orgSettings'),
@@ -76,6 +81,7 @@ export async function readStockSetupStatus(
       const buildsSkipped = settings['inventory.stockSetup.buildsSkipped'] === true
       const countingDone = settings['inventory.stockSetup.countingDone'] === true
       const uncostedPartCount = movedParts.filter((p) => p.standardCost == null).length
+      const countedPartCount = movedParts.filter((p) => initials.has(p.partId)).length
 
       const kindConflictCount = conflictIds.size
       return {
@@ -84,6 +90,8 @@ export async function readStockSetupStatus(
         unbuiltPartCount,
         buildsSkipped,
         countingDone,
+        movedPartCount: movedParts.length,
+        countedPartCount,
         uncostedPartCount,
         hasStockedMovements: movedParts.length > 0,
         steps: {
