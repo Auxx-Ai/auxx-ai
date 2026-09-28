@@ -23,7 +23,20 @@ const h = vi.hoisted(() => ({
   lockedThroughMonth: null as string | null,
   /** The db the `chartAccounts` provider computes from - the one the test built. */
   db: null as unknown,
+  /** Thrown by `buildDocNumber` when set. */
+  docNumberThrows: null as Error | null,
 }))
+
+vi.mock('../../builders/doc-number', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../builders/doc-number')>()
+  return {
+    ...actual,
+    buildDocNumber: (input: Parameters<typeof actual.buildDocNumber>[0]) => {
+      if (h.docNumberThrows) throw h.docNumberThrows
+      return actual.buildDocNumber(input)
+    },
+  }
+})
 
 vi.mock('../../../../cache', () => ({
   getOrgCache: () => ({
@@ -44,6 +57,7 @@ vi.mock('../../../../cache', () => ({
   }),
 }))
 
+import { UnprocessableEntityError } from '../../../../errors'
 import {
   __resetAccountingProvidersForTests,
   setConnectedProviderResolver,
@@ -458,6 +472,7 @@ function receiptEntry(overrides: Partial<BuiltEntry> = {}): BuiltEntry {
 
 beforeEach(() => {
   h.lockedThroughMonth = null
+  h.docNumberThrows = null
   h.fields = new Map([
     ['gl_account_code', CODE_FIELD],
     ['gl_account_name', NAME_FIELD],
@@ -500,6 +515,46 @@ describe('postEntry into a reviewed month', () => {
 
     expect(result.status).toBe('posted')
     expect(fake.postings).toHaveLength(1)
+  })
+})
+
+// ── A throw's failure class: only io is retried as transient ────────────────
+
+describe('postEntry classifies a throw', () => {
+  it.each([
+    ['an AuxxError as data', new UnprocessableEntityError('bad period key'), 'data'],
+    ['anything else as transport', new Error('connection reset'), 'transport'],
+  ])('while numbering the entry: %s', async (_label, error, failureClass) => {
+    const fake = createFakeDb(CHART)
+    h.docNumberThrows = error
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      sources: [SUBJECT],
+    })
+
+    expect(result).toMatchObject({ status: 'error', failureClass, error: error.message })
+    expect(fake.postings).toHaveLength(0)
+  })
+
+  it.each([
+    ['an AuxxError as data', new UnprocessableEntityError('refused'), 'data'],
+    ['anything else as transport', new Error('statement timeout'), 'transport'],
+  ])('inside the transaction: %s', async (_label, error, failureClass) => {
+    const fake = createFakeDb(CHART)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      sources: [SUBJECT],
+      beforeCommit: async () => {
+        throw error
+      },
+    })
+
+    expect(result).toMatchObject({ status: 'error', failureClass, error: error.message })
+    expect(fake.postings).toHaveLength(0)
   })
 })
 

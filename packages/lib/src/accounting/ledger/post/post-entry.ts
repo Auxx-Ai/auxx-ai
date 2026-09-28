@@ -531,7 +531,7 @@ export async function prepareEntry(
         })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    refusal ??= { status: 'error', failureClass: 'data', error: message }
+    refusal ??= { status: 'error', failureClass: failureClassOf(error), error: message }
   }
 
   return {
@@ -540,6 +540,14 @@ export async function prepareEntry(
     totalMinor: totalDebit,
     refusal,
   }
+}
+
+/**
+ * A throw's class: an `AuxxError` is a deliberate refusal (`data`); anything else is
+ * overwhelmingly io - a dropped connection, a timed-out statement (`transport`).
+ */
+export function failureClassOf(error: unknown): PostFailureClass {
+  return error instanceof AuxxError ? 'data' : 'transport'
 }
 
 /** Postgres `unique_violation`, however Drizzle happens to have wrapped it. */
@@ -915,13 +923,13 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       periodKey: entry.periodKey,
       error: message,
     })
-    if (error instanceof AuxxError) {
-      return { status: 'error', failureClass: 'data', retryable: false, error: message }
+    // `retryable` is decided separately and conservatively: see `classifyProviderFailure`.
+    return {
+      status: 'error',
+      failureClass: failureClassOf(error),
+      retryable: false,
+      error: message,
     }
-    // `transport` because an unexpected throw on this path is overwhelmingly an
-    // io failure - a dropped connection, a timed-out statement. `retryable` is
-    // decided separately and conservatively: see `classifyProviderFailure`.
-    return { status: 'error', failureClass: 'transport', retryable: false, error: message }
   }
 
   const { pendingExport, ...posted } = result

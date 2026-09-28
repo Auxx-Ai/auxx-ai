@@ -277,14 +277,18 @@ describe('postFulfillmentAccounting', () => {
   })
 
   it('parks the ledger refusal as a coded work item', async () => {
-    h.postEntry.mockResolvedValue({ status: 'error', error: 'Cannot post: revenue_product' })
+    h.postEntry.mockResolvedValue({
+      status: 'error',
+      failureClass: 'data',
+      error: 'Cannot post: revenue_product',
+    })
     const result = await postFulfillmentAccounting(db(), { organizationId, fulfillmentId })
     expect(result).toEqual({ status: 'blocked', reason: 'Cannot post: revenue_product' })
     expect(h.setValues).toEqual([
       {
         park: {
           ...KEY,
-          reasonCode: 'TRANSIENT_ERROR',
+          reasonCode: 'REFUSED',
           detail: { message: 'Cannot post: revenue_product' },
         },
       },

@@ -121,7 +121,7 @@ export function refusalFromError(
 
 /** `postEntry`'s refusal as a code; the entry's rail is the wake key. */
 export function refusalFromPost(
-  post: Pick<PostResult, 'status' | 'error' | 'items'>,
+  post: Pick<PostResult, 'status' | 'error' | 'items' | 'failureClass'>,
   keys: { railId?: string | null } = {}
 ): WorkItemRefusal {
   switch (post.status) {
@@ -145,7 +145,11 @@ export function refusalFromPost(
     case 'nothing_to_recognise':
       return { reasonCode: 'NOTHING_TO_RECOGNISE' }
     case 'error':
-      return { reasonCode: 'TRANSIENT_ERROR', detail: { message: post.error } }
+      // Only io is worth retrying on a backoff; every poster classifies its `error`.
+      return {
+        reasonCode: post.failureClass === 'transport' ? 'TRANSIENT_ERROR' : 'REFUSED',
+        detail: { message: post.error },
+      }
     default:
       return {
         reasonCode: 'REFUSED',

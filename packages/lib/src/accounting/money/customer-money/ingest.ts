@@ -2,6 +2,7 @@
 
 import { type Database, schema, type Transaction, withAccountingCommitLock } from '@auxx/database'
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { AuxxError, NotFoundError } from '../../../errors'
 import { getOrganizationSetting } from '../../../settings/settings-service'
 import { accountingBasisHash } from '../../ledger/builders/basis-hash'
 import { periodKeyForDate } from '../../ledger/periods/periods'
@@ -147,9 +148,9 @@ export async function materializeImportedMoneyInTx(
       eq(schema.FinancialSourceObservation.id, acceptance.observationId)
     ),
   })
-  if (!observation) throw new Error('Source observation is missing')
+  if (!observation) throw new NotFoundError('Source observation is missing')
   const object = await readSourceObject(tx, organizationId, acceptance.sourceObjectId)
-  if (!object) throw new Error('Source object is missing')
+  if (!object) throw new NotFoundError('Source object is missing')
   const acquisition = {
     ...(observation.reportingInstallationSnapshot as {
       credentialId?: string
@@ -193,7 +194,7 @@ export async function materializeImportedMoneyInTx(
     return
   }
   const sourceAccount = await readSourceAccount(tx, organizationId, object.sourceAccountId)
-  if (!sourceAccount) throw new Error('Source account is outside this organization')
+  if (!sourceAccount) throw new NotFoundError('Source account is outside this organization')
   if (source.data.test || sourceAccount.environment === 'test') {
     // Test mode: no operational money is created.
     await settle()
@@ -606,7 +607,8 @@ export async function countImportedCustomerMoneyBacklog(
 
 /**
  * Bounded retry through the recovery job: acceptances never tried first, then due
- * `evidence` work items. A throw parks the acceptance as `blocked` with a transient row.
+ * `evidence` work items. A throw parks the acceptance as `blocked`: `REFUSED` for an
+ * `AuxxError`, `TRANSIENT_ERROR` for anything else.
  */
 export async function sweepImportedCustomerMoney(
   db: Database,
@@ -656,7 +658,8 @@ export async function sweepImportedCustomerMoney(
           await withAccountingCommitLock(tx, organizationId)
           await upsertWorkItem(tx, organizationId, {
             ...acceptanceWorkKey(acceptanceId),
-            reasonCode: 'TRANSIENT_ERROR',
+            // A deliberate refusal will answer the same on retry; only io backs off.
+            reasonCode: error instanceof AuxxError ? 'REFUSED' : 'TRANSIENT_ERROR',
             detail: { message },
           })
           await updateAcceptance(

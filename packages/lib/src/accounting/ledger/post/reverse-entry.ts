@@ -46,7 +46,7 @@ import type {
 import { withAccountingCommitLock } from './accounting-commit-lock'
 import { readDraftReasons, reverseAssertions } from './draft'
 import { didLedgerAccept } from './ledger-accepted'
-import { exportPostedEntry, type InTxPostResult, postEntryInTx } from './post-entry'
+import { exportPostedEntry, failureClassOf, type InTxPostResult, postEntryInTx } from './post-entry'
 
 const logger = createScopedLogger('postings:reverse-entry')
 
@@ -119,7 +119,12 @@ export async function reverseEntry(
       glPostingId: options.glPostingId,
       error: message,
     })
-    return { status: 'error', failureClass: 'transport', retryable: false, error: message }
+    return {
+      status: 'error',
+      failureClass: failureClassOf(error),
+      retryable: false,
+      error: message,
+    }
   }
 }
 
