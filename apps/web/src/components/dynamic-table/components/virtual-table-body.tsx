@@ -256,9 +256,22 @@ export function VirtualTableBody<TData>({
 
           if (item.kind !== 'row') {
             if (!grouping) return null
-            const GroupRow = item.kind === 'header' ? GroupHeaderRow : GroupAddRow
+            if (item.kind === 'header') {
+              return (
+                <GroupHeaderRow
+                  key={item.id}
+                  table={table}
+                  groupKey={item.key}
+                  firstRowIndex={item.firstRowIndex}
+                  lastRowIndex={item.lastRowIndex}
+                  grouping={grouping}
+                  virtualRow={virtualRow}
+                  rowVirtualizer={rowVirtualizer}
+                />
+              )
+            }
             return (
-              <GroupRow
+              <GroupAddRow
                 key={item.id}
                 table={table}
                 groupKey={item.key}

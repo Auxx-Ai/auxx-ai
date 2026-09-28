@@ -10,7 +10,11 @@ import {
   type RelationshipConfig,
   type ResourceField,
 } from '@auxx/lib/resources/client'
-import { isAggregatableField, isGroupableField } from '@auxx/lib/resources/grouping/client'
+import {
+  EMPTY_GROUP_KEY,
+  isAggregatableField,
+  isGroupableField,
+} from '@auxx/lib/resources/grouping/client'
 import { type ActorId, isActorId, parseActorId, toActorId } from '@auxx/types/actor'
 import { toFieldId, toResourceFieldId } from '@auxx/types/field'
 import Loader from '@auxx/ui/components/loader'
@@ -381,6 +385,18 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
 
   const collapsedKeySet = useMemo(() => new Set(collapsedKeys), [collapsedKeys])
 
+  // Collapsing drops the group's rows from the selection so a bulk action never hits hidden rows.
+  const onToggleCollapsed = useCallback(
+    (key: string | null) => {
+      if (!collapsedKeySet.has(key ?? EMPTY_GROUP_KEY)) {
+        const hidden = [...groupKeyById].filter(([, rowKey]) => rowKey === key).map(([id]) => id)
+        useSelectionStore.getState().deselectRows(tableId, hidden)
+      }
+      toggleCollapsed(key)
+    },
+    [collapsedKeySet, groupKeyById, tableId, toggleCollapsed]
+  )
+
   const grouping = useMemo<GroupingProps | undefined>(() => {
     if (!activeGroupBy || !groupField) return undefined
     return {
@@ -392,7 +408,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
       hasMoreGroups: groupSummary.hasMoreGroups,
       hasMoreRows: !!hasNextPage,
       collapsedKeys: collapsedKeySet,
-      onToggleCollapsed: toggleCollapsed,
+      onToggleCollapsed,
       presetForKey: (key) => groupPreset(groupField, key),
     }
   }, [
@@ -404,7 +420,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     groupSummary.hasMoreGroups,
     hasNextPage,
     collapsedKeySet,
-    toggleCollapsed,
+    onToggleCollapsed,
   ])
 
   const groupStatus = useMemo<GroupStatus | undefined>(() => {

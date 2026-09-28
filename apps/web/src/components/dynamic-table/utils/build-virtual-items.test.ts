@@ -2,7 +2,12 @@
 
 import { EMPTY_GROUP_KEY } from '@auxx/lib/resources/grouping/client'
 import { describe, expect, it } from 'vitest'
-import { buildVirtualItems, type TableVirtualItem, virtualItemSize } from './build-virtual-items'
+import {
+  buildVirtualItems,
+  hasGroupHeaders,
+  type TableVirtualItem,
+  virtualItemSize,
+} from './build-virtual-items'
 import { ADD_ROW_HEIGHT, GROUP_HEADER_HEIGHT, ROW_HEIGHT } from './constants'
 
 function rowsFor(keys: Array<string | null>) {
@@ -176,5 +181,55 @@ describe('buildVirtualItems', () => {
     )
     const ids = items.map((item) => item.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('gives each header the row range of its group, and -1 for a collapsed group', () => {
+    const { rows, keyForRow } = rowsFor(['a', 'a', 'c'])
+    const { items } = buildVirtualItems(
+      rows,
+      { keyForRow, orderedKeys: ['a', 'b', 'c'], collapsedKeys: new Set(['b']) },
+      { addRow: false }
+    )
+    const ranges = items.flatMap((item) =>
+      item.kind === 'header' ? [[item.key, item.firstRowIndex, item.lastRowIndex]] : []
+    )
+    expect(ranges).toEqual([
+      ['a', 0, 1],
+      ['b', -1, -1],
+      ['c', 2, 2],
+    ])
+  })
+
+  it('keeps the header of a just-expanded group whose rows have not loaded yet', () => {
+    const { rows, keyForRow } = rowsFor(['c'])
+    const { items } = buildVirtualItems(
+      rows,
+      { keyForRow, orderedKeys: ['a', 'b', 'c'], collapsedKeys: new Set(['a']) },
+      { addRow: true }
+    )
+    expect(shape(items)).toEqual(['header:a', 'header:b', 'header:c', 'row:0', 'add:c'])
+  })
+
+  it('with no rows and every group collapsed, emits one header per group in summary order', () => {
+    const { items } = buildVirtualItems(
+      [],
+      {
+        keyForRow: () => null,
+        orderedKeys: ['a', 'b', null],
+        collapsedKeys: new Set(['a', 'b', EMPTY_GROUP_KEY]),
+      },
+      { addRow: true }
+    )
+    expect(shape(items)).toEqual(['header:a', 'header:b', 'header:null'])
+  })
+})
+
+describe('hasGroupHeaders', () => {
+  it('is true when the summary lists groups, else when any key is collapsed', () => {
+    expect(hasGroupHeaders(undefined)).toBe(false)
+    expect(hasGroupHeaders({ orderedKeys: [], collapsedKeys: new Set(['a']) })).toBe(false)
+    expect(hasGroupHeaders({ orderedKeys: ['a'], collapsedKeys: new Set() })).toBe(true)
+    expect(hasGroupHeaders({ collapsedKeys: new Set(['a']) })).toBe(true)
+    expect(hasGroupHeaders({ collapsedKeys: new Set() })).toBe(false)
   })
 })

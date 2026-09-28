@@ -6,7 +6,7 @@ import { ADD_ROW_HEIGHT, GROUP_HEADER_HEIGHT, ROW_HEIGHT } from './constants'
 
 /** One virtualized line of the table body. `id` is unique and stable (the virtualizer key). */
 export type TableVirtualItem =
-  | { kind: 'header'; id: string; key: string | null; firstRowIndex: number }
+  | { kind: 'header'; id: string; key: string | null; firstRowIndex: number; lastRowIndex: number }
   | { kind: 'row'; id: string; rowIndex: number }
   | { kind: 'add'; id: string; key: string | null }
 
@@ -30,6 +30,15 @@ export function virtualItemSize(item: TableVirtualItem): number {
 
 function toStringKey(key: string | null): string {
   return key ?? EMPTY_GROUP_KEY
+}
+
+/** True when group headers must render even with no loaded rows. */
+export function hasGroupHeaders(
+  grouping: Pick<GroupingProps, 'orderedKeys' | 'collapsedKeys'> | undefined
+): boolean {
+  if (!grouping) return false
+  if (grouping.orderedKeys) return grouping.orderedKeys.length > 0
+  return grouping.collapsedKeys.size > 0
 }
 
 function fromStringKey(key: string): string | null {
@@ -65,19 +74,17 @@ export function buildVirtualItems(
 
   const loaded = new Set(segments.map((segment) => toStringKey(segment.key)))
 
-  // Collapsed groups have no loaded rows (excluded server-side) but still need a header.
-  let pendingCollapsed: Array<string | null>
+  // Summary groups without loaded rows still get a header: collapsed ones (excluded
+  // server-side) and just-expanded ones whose rows are still in flight.
+  let pendingHeaders: Array<string | null>
   let orderIndex: Map<string, number> | null = null
   if (orderedKeys) {
     orderIndex = new Map(orderedKeys.map((key, index) => [toStringKey(key), index]))
-    pendingCollapsed = orderedKeys.filter((key) => {
-      const k = toStringKey(key)
-      return collapsedKeys.has(k) && !loaded.has(k)
-    })
+    pendingHeaders = orderedKeys.filter((key) => !loaded.has(toStringKey(key)))
   } else {
     const extra = [...collapsedKeys].filter((k) => !loaded.has(k))
     extra.sort((a, b) => Number(a === EMPTY_GROUP_KEY) - Number(b === EMPTY_GROUP_KEY))
-    pendingCollapsed = extra.map(fromStringKey)
+    pendingHeaders = extra.map(fromStringKey)
   }
 
   const items: TableVirtualItem[] = []
@@ -85,33 +92,33 @@ export function buildVirtualItems(
   const headerCounts = new Map<string, number>()
   let top = 0
 
-  const pushHeader = (key: string | null, firstRowIndex: number) => {
+  const pushHeader = (key: string | null, firstRowIndex: number, lastRowIndex: number) => {
     const k = toStringKey(key)
     const seen = headerCounts.get(k) ?? 0
     headerCounts.set(k, seen + 1)
     // A repeated key (e.g. a just-created row appended out of order) needs a distinct id.
     const suffix = seen === 0 ? '' : `#${seen}`
-    items.push({ kind: 'header', id: `header:${k}${suffix}`, key, firstRowIndex })
+    items.push({ kind: 'header', id: `header:${k}${suffix}`, key, firstRowIndex, lastRowIndex })
     top += GROUP_HEADER_HEIGHT
     return suffix
   }
 
-  const flushCollapsedBefore = (limit: number) => {
-    while (pendingCollapsed.length > 0) {
-      const next = pendingCollapsed[0]!
+  const flushPendingBefore = (limit: number) => {
+    while (pendingHeaders.length > 0) {
+      const next = pendingHeaders[0]!
       const index = orderIndex?.get(toStringKey(next)) ?? Number.POSITIVE_INFINITY
       if (index >= limit) break
-      pendingCollapsed.shift()
-      pushHeader(next, -1)
+      pendingHeaders.shift()
+      pushHeader(next, -1, -1)
     }
   }
 
   segments.forEach((segment, index) => {
     const segmentIndex = orderIndex?.get(toStringKey(segment.key))
-    if (segmentIndex !== undefined) flushCollapsedBefore(segmentIndex)
+    if (segmentIndex !== undefined) flushPendingBefore(segmentIndex)
 
     const headerTop = top
-    const suffix = pushHeader(segment.key, segment.start)
+    const suffix = pushHeader(segment.key, segment.start, segment.end)
 
     // Rows of a group collapsed while its rows are still loaded stay hidden until the refetch lands.
     if (collapsedKeys.has(toStringKey(segment.key))) {
@@ -133,7 +140,7 @@ export function buildVirtualItems(
     }
   })
 
-  if (!hasMoreRows) for (const key of pendingCollapsed) pushHeader(key, -1)
+  if (!hasMoreRows) for (const key of pendingHeaders) pushHeader(key, -1, -1)
 
   return { items, rowTops }
 }

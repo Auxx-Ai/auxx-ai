@@ -16,6 +16,7 @@ import {
 import { isActorId, toActorId } from '@auxx/types/actor'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { cn } from '@auxx/ui/lib/utils'
 import type { Column, Table } from '@tanstack/react-table'
 import type { VirtualItem, Virtualizer } from '@tanstack/react-virtual'
@@ -26,6 +27,7 @@ import { useActorStore } from '~/components/resources/store/actor-store'
 import { ActorBadge, RecordBadge } from '~/components/resources/ui'
 import { TagsView } from '~/components/ui/tags-view'
 import { useTableConfig } from '../context/table-config-context'
+import { useSelectionStore } from '../stores/selection-store'
 import { useColumnAggregates, useColumnFormatting } from '../stores/store-selectors'
 import type {
   CheckboxColumnFormatting,
@@ -229,9 +231,72 @@ function GroupAggregateCell({
   )
 }
 
+type GroupSelectState = 'all' | 'some' | 'none'
+
+/** Selects the group's loaded rows; rows on unfetched pages are not reachable from here. */
+function GroupSelectCheckbox<TData>({
+  table,
+  firstRowIndex,
+  lastRowIndex,
+  isOpenTail,
+  disabled,
+}: {
+  table: Table<TData>
+  firstRowIndex: number
+  lastRowIndex: number
+  isOpenTail: boolean
+  disabled: boolean
+}) {
+  const { tableId } = useTableConfig<TData>()
+  const rowIds =
+    firstRowIndex === -1
+      ? []
+      : table
+          .getRowModel()
+          .rows.slice(firstRowIndex, lastRowIndex + 1)
+          .map((row) => row.id)
+
+  const state = useSelectionStore((store): GroupSelectState => {
+    const selection = store.tables[tableId]?.rowSelection
+    if (!selection || rowIds.length === 0) return 'none'
+    const selected = rowIds.filter((id) => selection[id]).length
+    if (selected === 0) return 'none'
+    return selected === rowIds.length ? 'all' : 'some'
+  })
+
+  const onCheckedChange = (checked: boolean) => {
+    table.setRowSelection((prev) => {
+      const next = { ...prev }
+      for (const id of rowIds) {
+        if (checked) next[id] = true
+        else delete next[id]
+      }
+      return next
+    })
+  }
+
+  return (
+    <div
+      className='flex h-full items-center justify-end pr-2'
+      style={{ width: 40 }}
+      title={isOpenTail ? `Selects the ${rowIds.length} loaded rows` : undefined}>
+      <Checkbox
+        checked={state === 'all' || (state === 'some' && 'indeterminate')}
+        onCheckedChange={(value) => onCheckedChange(!!value)}
+        disabled={disabled || rowIds.length === 0}
+        aria-label='Select group'
+        className='w-4 h-4 text-accent-500 bg-primary-100 border-primary-300 hover:border-primary-400 rounded transition-colors focus:ring-accent-400 cursor-pointer focus:ring-2'
+      />
+    </div>
+  )
+}
+
 interface GroupHeaderRowProps<TData> {
   table: Table<TData>
   groupKey: string | null
+  /** Loaded row range of this group in the row model; -1 when none are loaded. */
+  firstRowIndex: number
+  lastRowIndex: number
   grouping: GroupingProps
   virtualRow: VirtualItem
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>
@@ -241,11 +306,13 @@ interface GroupHeaderRowProps<TData> {
 export function GroupHeaderRow<TData>({
   table,
   groupKey,
+  firstRowIndex,
+  lastRowIndex,
   grouping,
   virtualRow,
   rowVirtualizer,
 }: GroupHeaderRowProps<TData>) {
-  const { tableId } = useTableConfig<TData>()
+  const { tableId, enableCheckbox } = useTableConfig<TData>()
   const columnFormatting = useColumnFormatting(tableId)
   const columnAggregates = useColumnAggregates(tableId)
   const { field, granularity, summary, collapsedKeys, onToggleCollapsed } = grouping
@@ -269,16 +336,9 @@ export function GroupHeaderRow<TData>({
       renderCell={(column, isPrimary) => {
         if (isPrimary) {
           return (
-            <div className='flex w-full min-w-0 items-center gap-1.5 pl-1.5 pr-2'>
-              <Button
-                variant='ghost'
-                size='icon-xs'
-                onClick={toggle}
-                aria-expanded={!isCollapsed}
-                aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}>
-                <ChevronRight className={cn('transition-transform', !isCollapsed && 'rotate-90')} />
-              </Button>
-              <div className='flex min-w-0 items-center overflow-hidden'>
+            <div className='flex w-full min-w-0 items-center gap-1.5 pl-3 pr-2'>
+              {/* p-px keeps badge rings (drawn outside the box) inside the truncating clip */}
+              <div className='flex min-w-0 items-center overflow-hidden p-px'>
                 <GroupLabel
                   field={field}
                   groupKey={groupKey}
@@ -289,10 +349,31 @@ export function GroupHeaderRow<TData>({
               <span className='shrink-0 rounded-full bg-primary-200/70 px-1.5 text-xs tabular-nums text-muted-foreground'>
                 {entry ? entry.count.toLocaleString() : '—'}
               </span>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                onClick={toggle}
+                aria-expanded={!isCollapsed}
+                aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}>
+                <ChevronRight className={cn('transition-transform', !isCollapsed && 'rotate-90')} />
+              </Button>
             </div>
           )
         }
-        if (column.id === '_checkbox') return null
+        if (column.id === '_checkbox') {
+          if (!enableCheckbox) return null
+          return (
+            <GroupSelectCheckbox
+              table={table}
+              firstRowIndex={firstRowIndex}
+              lastRowIndex={lastRowIndex}
+              isOpenTail={
+                !!grouping.hasMoreRows && lastRowIndex === table.getRowModel().rows.length - 1
+              }
+              disabled={isCollapsed}
+            />
+          )
+        }
         return (
           <GroupAggregateCell
             tableId={tableId}

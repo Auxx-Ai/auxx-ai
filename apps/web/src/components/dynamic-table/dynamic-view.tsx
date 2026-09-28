@@ -43,6 +43,7 @@ import type {
   ViewConfig,
   ViewType,
 } from './types'
+import { hasGroupHeaders } from './utils/build-virtual-items'
 import './styles/table.css'
 
 /**
@@ -197,7 +198,7 @@ function DynamicViewInner<TData extends object>({
 
   // Determine if we have any data
   const rowCount = table.getRowModel().rows.length
-  const hasData = rowCount > 0
+  const hasData = rowCount > 0 || hasGroupHeaders(grouping)
 
   // Unified initial loading state
   const isInitialLoading = !isViewsLoaded || (isLoading && !hasData)
