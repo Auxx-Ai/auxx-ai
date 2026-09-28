@@ -65,7 +65,7 @@ const SORT_LABEL: Record<MrpListSort, string> = {
   partName: 'Part name',
 }
 
-/** `/app/parts/manage/all-parts`: every part in the run as one grid (07 §4.3, D36). */
+/** `/app/inventory/all-parts`: every part in the run as one grid (07 §4.3, D36). */
 export function AllPartsPage() {
   const mrpRun = useMrpRun()
   const { runId, run, failedRun, isRunning } = mrpRun

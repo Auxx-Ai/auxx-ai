@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/standard-cost-section.tsx
 'use client'
 
-// The standard-cost section of Parts > Manage > General (money 52-parts-costing-page.md §2.2):
+// The standard-cost section of Inventory > General (money 52-parts-costing-page.md §2.2):
 // the caller's setting rows, then the org-wide roll.
 //
 // 🛑 A roll restates the balance sheet, so the preview (`builds.previewRoll`, the same plan the

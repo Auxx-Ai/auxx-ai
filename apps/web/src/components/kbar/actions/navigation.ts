@@ -373,6 +373,17 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/accounting'),
       })
     }
+    // Mirrors SIDEBAR_MENU's `anyPermissionKeys` on the inventory entry.
+    if (can('settings.manage') || can('mrp.view')) {
+      actions.push({
+        id: 'nav.inventory',
+        label: 'Inventory',
+        subtitle: 'What to order or build, and stock setup',
+        icon: 'warehouse',
+        keywords: 'inventory stock mrp reorder purchase build suppliers counts tariffs',
+        perform: () => nav('/inventory'),
+      })
+    }
     if (hasAccess('dispatch') && can('dispatch.board.view')) {
       actions.push({
         id: 'nav.dispatch',

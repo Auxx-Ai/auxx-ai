@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/parts/manage/all-parts/page.tsx
+// apps/web/src/app/(protected)/app/inventory/all-parts/page.tsx
 
 import { AllPartsPage } from '~/components/mrp/ui/all-parts/all-parts-page'
 

@@ -44,7 +44,7 @@ export const OPENING_STOCK_PAGE_SIZE = 50
 const PREFLIGHT_CHUNK = 500
 
 /** Where Set counts lives; `parts` and `job` prefilter it. */
-export const SET_COUNTS_HREF = '/app/parts/manage/costing'
+export const SET_COUNTS_HREF = '/app/inventory/costing'
 
 export function setCountsHrefForParts(partIds: readonly string[]): string {
   return `${SET_COUNTS_HREF}?parts=${encodeURIComponent(partIds.join(','))}`

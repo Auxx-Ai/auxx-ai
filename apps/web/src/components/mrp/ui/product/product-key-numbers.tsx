@@ -39,7 +39,7 @@ export function ProductKeyNumbers({ productId, runId }: ProductKeyNumbersProps) 
     return (
       <EmptySection
         title='No plan run yet'
-        description='Run MRP from Manage to plan this product.'
+        description='Run the plan from Inventory to plan this product.'
       />
     )
   }

@@ -79,6 +79,7 @@ function passesGates(item: SidebarProps, gates: NavGates): boolean {
   if (item.cloudOnly && gates.selfHosted) return false
   if (item.featureKey && !gates.hasAccess(item.featureKey)) return false
   if (item.permissionKey && !gates.can(item.permissionKey)) return false
+  if (item.anyPermissionKeys && !item.anyPermissionKeys.some(gates.can)) return false
   return true
 }
 

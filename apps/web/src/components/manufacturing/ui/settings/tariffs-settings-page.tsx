@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/ui/settings/tariffs-settings-page.tsx
 'use client'
 
-// Parts > Manage > Tariffs (money 29-tariff-schedule.md §6.1; shape: plans/mrp/07-ui-plan.md §4.8).
+// Inventory > Tariffs (money 29-tariff-schedule.md §6.1; shape: plans/mrp/07-ui-plan.md §4.8).
 //
 // Master-detail under the Manage shell: a `MasterDetailSplit` whose columns
 // scroll on their own, and whose right column is a PERSISTENT editor pane,

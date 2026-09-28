@@ -1,8 +1,8 @@
 // apps/web/src/components/manufacturing/ui/settings/costing-settings-page.tsx
 'use client'
 
-// Parts > Manage > Set counts (money 52-parts-costing-page.md §2.3; 111 D21). The standard-cost
-// roll lives on Parts > Manage > General.
+// Inventory > Set counts (money 52-parts-costing-page.md §2.3; 111 D21). The standard-cost
+// roll lives on Inventory > General.
 //
 // Gated on edit of the `part` def, not `settingsManage`: the count writes assert
 // `assertEditEntity(part def)` (`purchasing.ts:498`). An unresolved def id is not known rather than

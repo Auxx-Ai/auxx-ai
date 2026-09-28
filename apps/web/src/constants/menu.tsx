@@ -36,6 +36,7 @@ import {
   Users,
   UsersRound,
   Video,
+  Warehouse,
   Waypoints,
   Webhook,
   Zap,
@@ -57,6 +58,8 @@ export type SidebarProps = {
   featureKey?: string
   /** Layer-2 capability key required for this item to be visible (§7.3) */
   permissionKey?: string
+  /** Visible when the member holds any of these keys; for a module whose rail mixes areas. */
+  anyPermissionKeys?: string[]
   /**
    * When true, this item is visible to any member who administers ≥1 def
    * (OWNER/ADMIN or a def-`admin` grantee) — Custom Fields is *derived* from
@@ -176,6 +179,15 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         icon: <FileUp />,
       },
     ],
+  },
+  {
+    // MRP and the parts settings (plans/mrp/18-inventory-module.md). The rail hides
+    // whichever group the member cannot use, and each page guards itself.
+    id: 'inventory',
+    label: 'Inventory',
+    slug: 'inventory',
+    icon: <Warehouse />,
+    anyPermissionKeys: ['settings.manage', 'mrp.view'],
   },
   {
     // Pricing: catalog groups and tax rates (107 D9). Gates match the page's own

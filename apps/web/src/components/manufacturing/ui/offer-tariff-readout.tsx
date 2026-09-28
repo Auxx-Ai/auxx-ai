@@ -33,7 +33,7 @@ interface OfferTariffReadoutProps {
   unavailable?: boolean
 }
 
-const TARIFFS_HREF = '/app/parts/manage/tariffs'
+const TARIFFS_HREF = '/app/inventory/tariffs'
 
 /** One line, plus the per-authority components when the schedule produced the number. */
 export function OfferTariffReadout({

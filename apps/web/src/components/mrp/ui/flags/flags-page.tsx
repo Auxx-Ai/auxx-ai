@@ -27,7 +27,7 @@ import { FLAG_EXPLANATIONS, FLAG_GROUP_ORDER } from './flag-groups'
 
 const PAGE_SIZE = 100
 
-/** `/app/parts/manage/flags` (07 §4.4): the run's flagged parts, one group per flag. */
+/** `/app/inventory/flags` (07 §4.4): the run's flagged parts, one group per flag. */
 export function FlagsPage() {
   return (
     <ListSelectionProvider>

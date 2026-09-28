@@ -45,7 +45,7 @@ import { PlanToolbar } from './plan-toolbar'
 
 const PAGE_SIZE = 100
 
-/** `/app/parts/manage/plan`, the action list (07 §4.1). One selection per mount. */
+/** `/app/inventory/plan`, the action list (07 §4.1). One selection per mount. */
 export function PlanPage() {
   return (
     <ListSelectionProvider>

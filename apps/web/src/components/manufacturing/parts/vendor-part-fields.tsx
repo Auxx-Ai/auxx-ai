@@ -590,7 +590,7 @@ function TariffCodeHint({
       <p className='mt-1 text-muted-foreground text-xs'>
         No tariff codes yet.{' '}
         <Link
-          href='/app/parts/manage/tariffs'
+          href='/app/inventory/tariffs'
           className='underline underline-offset-2 hover:text-foreground'>
           Add them in Parts &rsaquo; Manage &rsaquo; Tariffs
         </Link>

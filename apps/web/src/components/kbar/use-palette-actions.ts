@@ -27,6 +27,7 @@ const SIDEBAR_TO_ACTION: Record<string, string> = {
   schedule: 'nav.schedule',
   accounting: 'nav.accounting',
   catalog: 'nav.catalog',
+  inventory: 'nav.inventory',
   dispatch: 'nav.dispatch',
 }
 

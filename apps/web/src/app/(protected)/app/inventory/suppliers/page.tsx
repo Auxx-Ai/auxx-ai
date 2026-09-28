@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/app/parts/manage/suppliers/page.tsx
+// apps/web/src/app/(protected)/app/inventory/suppliers/page.tsx
 
 import { SuppliersPage } from '~/components/mrp/ui/suppliers/suppliers-page'
 
