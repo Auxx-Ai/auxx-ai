@@ -73,10 +73,6 @@ describe('refusalFromError', () => {
 describe('refusalFromPost', () => {
   it('turns every ledger refusal into its code with the entry keys', () => {
     expect(refusalFromPost({ status: 'unbalanced' }).reasonCode).toBe('UNBALANCED')
-    expect(refusalFromPost({ status: 'error', error: 'db down' })).toEqual({
-      reasonCode: 'TRANSIENT_ERROR',
-      detail: { message: 'db down' },
-    })
     expect(
       refusalFromPost(
         {
@@ -94,5 +90,30 @@ describe('refusalFromPost', () => {
       railId: 'pg_1',
       detail: { roles: ['clearing', 'bank'] },
     })
+  })
+})
+
+describe('refusalFromPost on status error', () => {
+  const error = (failureClass?: 'data' | 'transport' | 'configuration') =>
+    refusalFromPost({ status: 'error', error: 'it broke', failureClass }, { railId: 'pg_1' })
+
+  it('retries only io on a backoff', () => {
+    expect(error('transport')).toEqual({
+      reasonCode: 'TRANSIENT_ERROR',
+      detail: { message: 'it broke' },
+    })
+  })
+
+  it('refuses a data or configuration failure with its message', () => {
+    for (const failureClass of ['data', 'configuration'] as const) {
+      expect(error(failureClass)).toEqual({
+        reasonCode: 'REFUSED',
+        detail: { message: 'it broke' },
+      })
+    }
+  })
+
+  it('refuses an unclassified error rather than retrying it forever', () => {
+    expect(error().reasonCode).toBe('REFUSED')
   })
 })

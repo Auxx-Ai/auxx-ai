@@ -13,14 +13,14 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { AuxxError, UnprocessableEntityError } from '../../../errors'
+import { UnprocessableEntityError } from '../../../errors'
 import { documentEntryKey } from '../../documents/document-entry-key'
 import {
   type BuiltInvoiceEntry,
   buildInvoiceEntry,
   INVOICE_SOURCE_TYPE,
 } from '../../ledger/builders/invoice'
-import { postEntry } from '../../ledger/post/post-entry'
+import { failureClassOf, postEntry } from '../../ledger/post/post-entry'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
@@ -159,7 +159,7 @@ export async function postInvoiceIssuanceEntry(
     })
     return {
       status: 'error',
-      failureClass: error instanceof AuxxError ? 'data' : 'transport',
+      failureClass: failureClassOf(error),
       retryable: false,
       error: message,
     }

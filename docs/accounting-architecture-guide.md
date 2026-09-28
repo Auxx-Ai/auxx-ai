@@ -1275,6 +1275,9 @@ sentence, the severity (`info` · `warning` · `error`) and the status (`waiting
 severity on every one. `refusal.ts` maps a thrown error to a code: `details.workItemCode` (set at
 the throw site with `withWorkItemCode`) → `unresolvedRoles` → `ROLE_UNMAPPED` → a `NotFoundError`
 → `SOURCE_NOT_FOUND` → `REFUSED`, which carries the thrower's words in `detail.message`.
+`refusalFromPost` maps a `status: 'error'` result by its `failureClass`: only `transport` is
+`TRANSIENT_ERROR`; `data` and `configuration` are `REFUSED` (a thrown `AuxxError` is `data`,
+anything else `transport` — `failureClassOf` in `post-entry.ts`).
 
 **Severity decides the retry, not the stage** (`nextAttemptDelayMs`): `info` after an hour,
 `error` after a day, transient codes (`TRANSIENT_ERROR`, `NOT_CONFIRMED`) doubling from a minute
