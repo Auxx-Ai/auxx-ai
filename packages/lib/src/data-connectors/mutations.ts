@@ -50,6 +50,7 @@ import {
   classifyStreamRequestChange,
   type StructuralImpact,
 } from './edit-impact'
+import { readDefaultHistoryStartDate } from './history-coverage-queries'
 import { materializeConnectorTargets } from './provisioning'
 import { assertRecordFilterCompiles } from './record-filter'
 import { requestConnectorPause } from './run-control'
@@ -342,7 +343,10 @@ export async function createConnectorFromTemplate(
     type: 'generic-rest',
     // definitionKind stays 'builtin' (default) — a template instance is generic-rest.
     templateId: template.id,
-    config: template.config,
+    config: {
+      historyStartDate: await readDefaultHistoryStartDate(organizationId),
+      ...template.config,
+    },
   })
   for (const stream of template.streams) {
     const s = await addStream(db, organizationId, connector.id, {
@@ -563,9 +567,12 @@ export async function createConnectorFromAppCatalog(
     catalogDeploymentId,
     // Stamp the webhook SIGNAL unconditionally; the dispatch job already gates on
     // `syncBehavior === 'webhook'`, so the user can flip modes later without a re-stamp.
-    config: catalog.webhookTrigger
-      ? { webhookTrigger: { triggerId: catalog.webhookTrigger.triggerId } }
-      : {},
+    config: {
+      historyStartDate: await readDefaultHistoryStartDate(organizationId),
+      ...(catalog.webhookTrigger
+        ? { webhookTrigger: { triggerId: catalog.webhookTrigger.triggerId } }
+        : {}),
+    },
   })
 
   // The app slug namespaces the late-bound `@app:` field refs the owned mappings carry

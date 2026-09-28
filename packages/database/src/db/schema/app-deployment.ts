@@ -392,6 +392,8 @@ export interface CatalogConnectorStreamQuery {
   /** Source path of the date that says when a record happened. */
   period?: string
   since?: true
+  /** Newest-first crawl with a provisional `since` per page, so a record limit may stop it. */
+  limit?: true
 }
 
 /** Mirror of the SDK stream `webhookTrigger`: a matched delivery fetches `{ ids: [value at idPath], idKind }`. */

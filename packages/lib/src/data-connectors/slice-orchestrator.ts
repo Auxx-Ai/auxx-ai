@@ -27,6 +27,7 @@ import { prepareConnectorFetch } from './connector-runtime'
 import { createConnectorStreamSyncSource, type SyncSourceStream } from './connector-sync-source'
 import { loadAppCatalogConnector } from './connectors/app-connector-adapter'
 import { isConnectorDeltaExpired } from './connectors/types'
+import { historyMaxRecordsOf } from './coverage'
 import {
   type BackfillSliceJobData,
   enqueueBackfillSlice,
@@ -140,7 +141,22 @@ export function freshBackfillState(
     backfillStartedAt: startedAtIso,
     recordsSeen: 0,
     watermark: undefined,
+    pendingSince: undefined,
+    stoppedAtRecords: undefined,
+    // Carried across resets, so the history limit caps only a stream's first backfill (§3.5).
+    ...(prev.phase === 'steady' || prev.coverageFrom !== undefined
+      ? { backfilledBefore: true }
+      : {}),
   }
+}
+
+/** A fresh backfill after the org's synced records were wiped: the next crawl is a first import again. */
+export function wipedStreamState(
+  prev: ConnectorStreamState,
+  startedAtIso: string
+): ConnectorStreamState {
+  const { backfilledBefore: _b, coverageFrom: _c, ...rest } = freshBackfillState(prev, startedAtIso)
+  return rest
 }
 
 /**
@@ -732,6 +748,9 @@ export async function runBackfillSlice(
     allStreams: snapshot?.streams ?? [streamSnap],
     sweep: snapshot?.sweep ?? false,
     floor: snapshot?.floor,
+    backfilledBefore:
+      historyMaxRecordsOf(connector.config) !== undefined &&
+      (await streamBackfilledBefore(db, streamId)),
     // A sample run that exhausts a stream before the cap parks via the source's
     // natural-completion path; thread the cap so it parks instead of going live.
     sampleLimit: run.sampleLimit,
@@ -820,6 +839,8 @@ export async function runBackfillSlice(
       return
     }
 
+    // The history limit (v15 §3.5) is not here: it ends the backfill as a completion from
+    // the source's page-boundary `shouldStop`, so the chain arrives as `complete`.
     // Trial-sync §4.2 per-stream sample cap: stop THIS stream's chain once it has seen
     // enough, BEFORE re-enqueuing. The slice already checkpointed the cursor, so the
     // chain is resumable — "Sync everything" continues mid-chain past the sample. The
@@ -969,6 +990,16 @@ export async function runBackfillSlice(
  * Only a steady stream sends `since`, and the reset leaves it in backfill, so a second
  * expiry in the run finds no steady stream and fails it. Never for a re-import.
  */
+/** Whether the stream has completed a backfill before the current one (`freshBackfillState`). */
+async function streamBackfilledBefore(db: Database, streamId: string): Promise<boolean> {
+  const row = await db.query.DataConnectorStream.findFirst({
+    where: eq(schema.DataConnectorStream.id, streamId),
+    columns: { state: true },
+  })
+  const state = (row?.state as ConnectorStreamState | null) ?? {}
+  return state.backfilledBefore === true || state.phase === 'steady'
+}
+
 async function restartExpiredDelta(
   db: Database,
   streamId: string,

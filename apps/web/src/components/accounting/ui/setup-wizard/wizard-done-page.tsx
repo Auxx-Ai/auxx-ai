@@ -13,6 +13,7 @@ import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Check, PartyPopper } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { ConnectorCoverageCheck } from '~/components/data-connectors/ui/connector-coverage-check'
 import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useSettings } from '~/hooks/use-settings'
 import {
@@ -143,6 +144,8 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
           className='mx-auto max-w-sm text-center'
         />
       )}
+
+      {!readiness.finalized && <ConnectorCoverageCheck className='mx-auto w-full max-w-sm' />}
 
       {/* With an accounting system connected, the opening is filled from its balance sheet. */}
       {!readiness.finalized && !fromNothing && (

@@ -31,6 +31,7 @@ import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDockedPanels } from '~/hooks/use-docked-panels'
 import { api, type RouterOutputs } from '~/trpc/react'
+import { useConnectorCatalogStreams } from '../hooks/use-connector-catalog-streams'
 import { useConnectorMutations } from '../hooks/use-connector-mutations'
 import { useConnectorSyncRealtime } from '../hooks/use-connector-sync-realtime'
 import { resolveSyncStatus } from '../lib/resolve-sync-status'
@@ -73,6 +74,9 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [, setTab] = useQueryState('tab')
+  const newestFirstStreamKeys = useConnectorCatalogStreams(connector)
+    .filter((s) => s.query?.limit)
+    .map((s) => s.key)
 
   // "Update available" (plans/money/tasks/41): derived at read time for app connectors
   // only. The dialog applies the diff; afterwards every connector read is refetched so
@@ -312,6 +316,7 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
       connectorId={connector.id}
       initialStatus={status}
       sourceLabel={connector.name}
+      newestFirstStreamKeys={newestFirstStreamKeys}
     />
   )
 

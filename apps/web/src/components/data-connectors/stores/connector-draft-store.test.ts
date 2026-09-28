@@ -121,6 +121,17 @@ describe('connector-level setters', () => {
     expect(selectIsDirty(getConnectorDraftState())).toBe(false)
   })
 
+  it('setHistoryMaxRecords sets the cap, and clearing it drops the key', () => {
+    seed()
+    getConnectorDraftState().setHistoryMaxRecords(50_000)
+    expect(
+      (getConnectorDraftState().draft.config as { historyMaxRecords?: number }).historyMaxRecords
+    ).toBe(50_000)
+    getConnectorDraftState().setHistoryMaxRecords(undefined)
+    expect('historyMaxRecords' in getConnectorDraftState().draft.config).toBe(false)
+    expect(selectIsDirty(getConnectorDraftState())).toBe(false)
+  })
+
   it('setScheduleConfig + setSyncBehavior dirty the draft', () => {
     seed()
     getConnectorDraftState().setSyncBehavior('scheduled')

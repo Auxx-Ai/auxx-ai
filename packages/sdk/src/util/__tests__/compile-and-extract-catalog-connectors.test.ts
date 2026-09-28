@@ -604,6 +604,21 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
     expect(streams[1]).not.toHaveProperty('query')
   })
 
+  it('carries query.limit and rejects it without query.since', async () => {
+    const ok = await runApp(queryApp(`query: { ids: true, since: true, limit: true },`))
+    if (!isComplete(ok) || !ok.value) throw new Error('expected a catalog')
+    expect(ok.value.dataConnectors?.[0]?.streams[0]?.query).toEqual({
+      ids: true,
+      since: true,
+      limit: true,
+    })
+    const bad = await runApp(queryApp(`query: { period: 'created_at', limit: true },`))
+    if (!isErrored(bad)) throw new Error('expected error')
+    expect((bad.error as { message: string }).message).toMatch(
+      /stream "order": query.limit needs query.since/
+    )
+  })
+
   it('rejects an empty query.period', async () => {
     const result = await runApp(queryApp(`query: { period: '  ' },`))
     if (!isErrored(result)) throw new Error('expected error')

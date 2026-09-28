@@ -71,14 +71,15 @@ export async function completeRunStream(
     const remaining = streams.filter((s) => !finished.has(s.streamId)).length
     const finalizingStreamId =
       progress.finalizingStreamId ?? (remaining === 0 ? input.streamId : undefined)
+    const patch = {
+      finishedStreams: [...finished],
+      ...(finalizingStreamId ? { finalizingStreamId } : {}),
+    }
     await tx
       .update(schema.DataConnectorRun)
       .set({
-        progress: {
-          ...progress,
-          finishedStreams: [...finished],
-          ...(finalizingStreamId ? { finalizingStreamId } : {}),
-        },
+        // Merge, not replace: other writers set sibling keys (`stopped`, `cursors`) with jsonb_set.
+        progress: sql`coalesce(${schema.DataConnectorRun.progress}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
         heartbeatAt: new Date(),
       })
       .where(eq(schema.DataConnectorRun.id, input.runId))

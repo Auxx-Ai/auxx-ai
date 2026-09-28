@@ -202,10 +202,20 @@ export class OrganizationSeeder {
       console.log('  ↳ Deleting field values...')
       await db.delete(schema.FieldValue).where(eq(schema.FieldValue.organizationId, organizationId))
 
+      // Before the instances: a surviving binding keeps its contentHash, so the next sync
+      // would hash-skip every record and recreate nothing.
+      console.log('  ↳ Deleting connector bindings...')
+      await db
+        .delete(schema.DataConnectorItem)
+        .where(eq(schema.DataConnectorItem.organizationId, organizationId))
+
       console.log('  ↳ Deleting entity instances...')
       await db
         .delete(schema.EntityInstance)
         .where(eq(schema.EntityInstance.organizationId, organizationId))
+
+      console.log('  ↳ Resetting connector streams to backfill...')
+      await OrganizationSeeder.resetConnectorStreams(organizationId)
 
       // 6. CRM domain (Participants)
       console.log('  ↳ Deleting participants...')
@@ -225,6 +235,34 @@ export class OrganizationSeeder {
       console.error(`❌ Failed to reset organization data for ${organizationId}:`, error)
       throw error
     }
+  }
+
+  /** Puts every connector stream back to a fresh backfill; connector config is kept. */
+  private static async resetConnectorStreams(organizationId: string): Promise<void> {
+    const { wipedStreamState } = await import('@auxx/lib/data-connectors')
+    const streams = await db
+      .select({ id: schema.DataConnectorStream.id, state: schema.DataConnectorStream.state })
+      .from(schema.DataConnectorStream)
+      .where(eq(schema.DataConnectorStream.organizationId, organizationId))
+
+    const startedAtIso = new Date().toISOString()
+    for (const stream of streams) {
+      await db
+        .update(schema.DataConnectorStream)
+        .set({
+          state: wipedStreamState(
+            stream.state as Parameters<typeof wipedStreamState>[0],
+            startedAtIso
+          ),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.DataConnectorStream.id, stream.id))
+    }
+
+    await db
+      .update(schema.DataConnector)
+      .set({ itemCount: 0, lastSyncedAt: null, updatedAt: new Date() })
+      .where(eq(schema.DataConnector.organizationId, organizationId))
   }
 
   /**

@@ -253,6 +253,10 @@ export interface DataConnectorSyncEvent {
       recordsSeen: number
       phase: 'backfill' | 'steady'
       done: boolean
+      /** How far back the last backfill reached (ISO); null = everything, undefined = unknown. */
+      coverageFrom: string | null | undefined
+      /** Set when the history limit ended that backfill. */
+      stoppedAtRecords: number | null
     }[]
   }
 }

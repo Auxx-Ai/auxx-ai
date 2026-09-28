@@ -195,14 +195,30 @@ function SweepCadenceSection({ connector }: { connector: Connector }) {
 }
 
 /**
- * The connector's one history floor (`config.historyStartDate`), applied to every stream
- * that can be bounded by a date. Absent = import everything.
+ * The connector's one history window: `config.historyStartDate` (every date-bounded stream;
+ * absent = everything) and `config.historyMaxRecords` (only streams declaring `query.limit`,
+ * which crawl newest first; absent = no limit).
  */
-function HistoryStartSection({ streamKeys }: { streamKeys: string[] }) {
+function HistoryStartSection({
+  streamKeys,
+  limitStreamKeys,
+}: {
+  streamKeys: string[]
+  limitStreamKeys: string[]
+}) {
   const setHistoryStartDate = useConnectorDraftStore((s) => s.setHistoryStartDate)
+  const setHistoryMaxRecords = useConnectorDraftStore((s) => s.setHistoryMaxRecords)
   const historyStartDate = useConnectorDraftStore(
     (s) => (s.draft.config as { historyStartDate?: string }).historyStartDate
   )
+  const historyMaxRecords = useConnectorDraftStore(
+    (s) => (s.draft.config as { historyMaxRecords?: number }).historyMaxRecords
+  )
+
+  const changeMax = (value: unknown) => {
+    const n = typeof value === 'number' ? value : Number(value)
+    setHistoryMaxRecords(Number.isInteger(n) && n > 0 ? n : undefined)
+  }
 
   return (
     <div className='flex flex-col gap-2 border-t pt-4'>
@@ -238,6 +254,27 @@ function HistoryStartSection({ streamKeys }: { streamKeys: string[] }) {
           Everything
         </Button>
       </div>
+      {limitStreamKeys.length > 0 && (
+        <div className='flex flex-col gap-1 pt-2'>
+          <div className='flex flex-wrap items-center gap-2 text-sm'>
+            <span>At most</span>
+            <div className='w-32'>
+              <FieldInputAdapter
+                fieldType={FieldType.NUMBER}
+                value={historyMaxRecords}
+                onChange={changeMax}
+                placeholder='No limit'
+              />
+            </div>
+            <span>records per stream</span>
+          </div>
+          <p className='text-xs text-muted-foreground'>
+            Applies to {limitStreamKeys.join(', ')}, which import newest first and stop at the date
+            or the limit, whichever comes first. Only a stream's first import stops at the limit.
+            Blank means no limit.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
@@ -288,13 +325,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
   // The history date only bounds a stream that can be queried by date: an app stream
   // declaring `query.period`, or a generic-REST stream with a `backfillWindow` param.
   const streams = api.dataConnector.listStreams.useQuery({ id: connector.id })
-  const periodStreamKeys = new Set(
-    isGenericRest
-      ? []
-      : (installation?.dataConnectors?.[0]?.streams ?? [])
-          .filter((s) => s.query?.period)
-          .map((s) => s.key)
-  )
+  const catalogStreams = isGenericRest ? [] : (installation?.dataConnectors?.[0]?.streams ?? [])
+  const periodStreamKeys = new Set(catalogStreams.filter((s) => s.query?.period).map((s) => s.key))
+  const limitCatalogKeys = new Set(catalogStreams.filter((s) => s.query?.limit).map((s) => s.key))
   const historyStreamKeys = (streams.data ?? [])
     .filter(
       (s) =>
@@ -302,6 +335,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
         periodStreamKeys.has(s.streamKey ?? '')
     )
     .flatMap((s) => (s.streamKey ? [s.streamKey] : []))
+  const limitStreamKeys = (streams.data ?? []).flatMap((s) =>
+    s.streamKey && limitCatalogKeys.has(s.streamKey) ? [s.streamKey] : []
+  )
 
   // Behavior + schedule + history date all edit the one connector draft (the unified
   // saving model, plans/data-connectors/v4) — committed together by the floating save bar.
@@ -461,7 +497,9 @@ export function ScheduleSection({ connector }: ScheduleSectionProps) {
               app connector), the self-heal for missed webhook deliveries (v9 Phase 6). */}
           {behavior === 'webhook' && <SweepCadenceSection connector={connector} />}
 
-          {historyStreamKeys.length > 0 && <HistoryStartSection streamKeys={historyStreamKeys} />}
+          {historyStreamKeys.length > 0 && (
+            <HistoryStartSection streamKeys={historyStreamKeys} limitStreamKeys={limitStreamKeys} />
+          )}
         </div>
       </Section>
 

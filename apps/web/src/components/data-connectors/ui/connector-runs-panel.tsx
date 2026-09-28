@@ -42,6 +42,8 @@ interface ConnectorRunsPanelProps {
   initialStatus: ConnectorStatus
   /** The source name, shown on the live "Importing from …" backfill card. */
   sourceLabel: string
+  /** Streams declaring `query.limit`, which import newest first. */
+  newestFirstStreamKeys?: string[]
 }
 
 /** The per-run delta counts, in render order. Each maps to a numeric field on the run. */
@@ -434,6 +436,7 @@ export function ConnectorRunsPanel({
   connectorId,
   initialStatus,
   sourceLabel,
+  newestFirstStreamKeys,
 }: ConnectorRunsPanelProps) {
   // Live run progress + lifecycle via the `dataConnector:sync` feed (self-sufficient
   // so the panel updates even when docked without the detail view). The polls below
@@ -519,6 +522,7 @@ export function ConnectorRunsPanel({
           startedAt={latestRun?.startedAt}
           perStream={perStream}
           sampleLimit={latestRun?.sampleLimit}
+          newestFirstKeys={newestFirstStreamKeys}
         />
       )}
 
@@ -545,6 +549,7 @@ export function ConnectorRunsPanel({
           cadenceLabel={statusData?.cadenceLabel ?? null}
           syncBehavior={statusData?.syncBehavior ?? 'manual'}
           latestRun={latestRun}
+          coverage={perStream}
         />
       )}
 

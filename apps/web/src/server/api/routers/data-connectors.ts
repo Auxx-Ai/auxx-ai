@@ -16,6 +16,7 @@ import {
   applyConnectorCatalogUpdate,
   archiveCapTrippedOf,
   backfillPendingChange,
+  type ConnectorStreamState,
   countMintedRecords,
   countPendingRelationsByTarget,
   createConnector,
@@ -34,6 +35,7 @@ import {
   getConnectorCatalogUpdate,
   getConnectorReadiness,
   getConnectorTemplateById,
+  importMissingHistory,
   listConnectors,
   listRecommendedAppConnectors,
   listRemovedUpstreamItems,
@@ -43,6 +45,8 @@ import {
   markItemArchived,
   projectConnectorOwnedTargets,
   READINESS_REASON,
+  readConnectorCoverage,
+  readDefaultHistoryStartDate,
   readRecordRefresh,
   removeMapping,
   removeStream,
@@ -80,6 +84,12 @@ import { assertNotInstanceAccessDefForWrite } from '~/server/lib/instance-access
 /** Extract socket ID from tRPC context headers for realtime self-event exclusion. */
 function getSocketId(ctx: { headers: Headers }): string | undefined {
   return ctx.headers.get('x-realtime-socket-id') ?? undefined
+}
+
+/** A connector's visual ref: the installed app's logo, a brand mark for built-ins, else null → plug. */
+function connectorIcon(type: string, logoBySlug: Map<string, string | null>): string | null {
+  if (type.startsWith('app:')) return logoBySlug.get(type.slice('app:'.length)) ?? null
+  return type === STRIPE_FC_CONNECTOR_TYPE ? 'brand:stripe' : null
 }
 
 /**
@@ -146,6 +156,8 @@ const connectorConfigSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
+    // Most records a first sync reads per `query.limit` stream; absent = no limit.
+    historyMaxRecords: z.number().int().positive().optional(),
     // Webhook-sync SIGNAL — which trigger/endpoint drives this connector (v7). One per
     // connector; per-stream topic/token steering lives on the stream's webhookTrigger.
     webhookTrigger: z
@@ -274,16 +286,38 @@ export const dataConnectorRouter = createTRPCRouter({
       getCachedInstalledApps(ctx.session.organizationId),
     ])
     const logoBySlug = new Map(installedApps.map((a) => [a.app.slug, a.app.avatarUrl]))
-    return rows.map((row) => ({
-      ...row,
-      // Visual ref: the installed app's logo, a brand mark for built-ins, else null → plug.
-      icon: row.type.startsWith('app:')
-        ? (logoBySlug.get(row.type.slice('app:'.length)) ?? null)
-        : row.type === STRIPE_FC_CONNECTOR_TYPE
-          ? 'brand:stripe'
-          : null,
-    }))
+    return rows.map((row) => ({ ...row, icon: connectorIcon(row.type, logoBySlug) }))
   }),
+
+  /**
+   * How far back each connector's history reaches, against the books start − 60 days
+   * (v15 §4 D). Open to members like `list`: accounting and stock setup show it read-only;
+   * the import below is gated.
+   */
+  coverage: protectedProcedure.query(async ({ ctx }) => {
+    const [report, installedApps] = await Promise.all([
+      readConnectorCoverage(ctx.db, ctx.session.organizationId),
+      getCachedInstalledApps(ctx.session.organizationId),
+    ])
+    if (report.isErr()) throw report.error
+    const logoBySlug = new Map(installedApps.map((a) => [a.app.slug, a.app.avatarUrl]))
+    return {
+      ...report.value,
+      rows: report.value.rows.map((row) => ({ ...row, icon: connectorIcon(row.type, logoBySlug) })),
+    }
+  }),
+
+  /** Fill the history gap on every short connector, or on one (v15 §4 D). Not capped. */
+  importMissingHistory: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ connectorId: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await importMissingHistory(ctx.db, ctx.session.organizationId, {
+        connectorId: input.connectorId,
+        userId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
   /**
    * What the "Connect a source" dialog lists (05c §3): the blank built-in, the
@@ -456,12 +490,16 @@ export const dataConnectorRouter = createTRPCRouter({
       // Per-stream live progress, read off each stream's durable state jsonb. `done`
       // = the stream has flipped to steady (its backfill exhausted).
       const perStream = streams.map((s) => {
-        const st = (s.state ?? {}) as { recordsSeen?: number; phase?: 'backfill' | 'steady' }
+        const st = (s.state ?? {}) as ConnectorStreamState
         return {
           streamKey: s.streamKey ?? '',
           recordsSeen: st.recordsSeen ?? 0,
           phase: st.phase ?? ('backfill' as const),
           done: st.phase === 'steady',
+          // How far back the last backfill reached (ISO); null = everything, undefined = unknown.
+          coverageFrom: st.coverageFrom,
+          // Set when the history limit ended that backfill.
+          stoppedAtRecords: st.stoppedAtRecords ?? null,
         }
       })
       const recordsSeen = perStream.reduce((n, s) => n + s.recordsSeen, 0)
@@ -661,7 +699,10 @@ export const dataConnectorRouter = createTRPCRouter({
       return createConnector(ctx.db, ctx.session.organizationId, {
         name: input.name,
         type: input.type as DataConnectorType,
-        config: input.config,
+        config: {
+          historyStartDate: await readDefaultHistoryStartDate(ctx.session.organizationId),
+          ...input.config,
+        },
         credentialId: input.credentialId,
         appInstallationId: input.appInstallationId,
         syncBehavior: input.syncBehavior,

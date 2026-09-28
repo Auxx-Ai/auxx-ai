@@ -137,6 +137,17 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
+// v15 §4 D — how far back each connector's history reaches, and the gap import
+export {
+  type HistoryImportOutcome,
+  importMissingHistory,
+} from './history-coverage-mutations'
+export {
+  type ConnectorCoverageReport,
+  type ConnectorCoverageRow,
+  readConnectorCoverage,
+  readDefaultHistoryStartDate,
+} from './history-coverage-queries'
 // Connector-managed field check — the totals stand-down (plans/money/tasks/37 §6)
 export {
   isFieldConnectorManaged,
@@ -350,6 +361,7 @@ export {
   startConnectorSync,
   sweepStaleConnectorRuns,
   sweepStrandedConnectors,
+  wipedStreamState,
 } from './slice-orchestrator'
 // §1 global stale-run sweep — maintenance-schedule handler
 export {

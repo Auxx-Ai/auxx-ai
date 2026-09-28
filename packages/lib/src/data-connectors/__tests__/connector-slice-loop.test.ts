@@ -168,6 +168,74 @@ describe('runConnectorSlice', () => {
     expect(result.watermark).toBe('"aaa"')
   })
 
+  it('backfill: a mid-crawl since becomes pendingSince, never the watermark', async () => {
+    const result = await runConnectorSlice({
+      fetch: fakeFetch([
+        rec('a'),
+        { __checkpoint: true, cursor: { kind: 'token', value: 'c1' }, since: '"t0"' },
+      ]),
+      sink: async () => {},
+      ctx: ctx({ budget: { ...BIG_BUDGET, maxPages: 1 } }),
+      now: () => 0,
+    })
+    expect(result).toMatchObject({ hasMore: true, pendingSince: '"t0"' })
+    expect(result.watermark).toBeUndefined()
+  })
+
+  it('steady: a mid-crawl since is ignored', async () => {
+    const result = await runConnectorSlice({
+      fetch: fakeFetch([
+        rec('a'),
+        { __checkpoint: true, cursor: { kind: 'token', value: 'c1' }, since: '"new"' },
+      ]),
+      sink: async () => {},
+      ctx: ctx({ phase: 'steady', watermark: '"old"', budget: { ...BIG_BUDGET, maxPages: 1 } }),
+      now: () => 0,
+    })
+    expect(result).toMatchObject({ hasMore: true, watermark: '"old"' })
+    expect(result.pendingSince).toBeUndefined()
+  })
+
+  it('the terminal since replaces the watermark and clears pendingSince', async () => {
+    const result = await runConnectorSlice({
+      fetch: fakeFetch([
+        rec('a'),
+        { __checkpoint: true, cursor: { kind: 'token', value: 'c1' }, since: '"t0"' },
+        rec('b'),
+        { __checkpoint: true, since: '"t0-final"' },
+      ]),
+      sink: async () => {},
+      ctx: ctx({ pendingSince: '"older"' }),
+      now: () => 0,
+    })
+    expect(result).toMatchObject({ hasMore: false, watermark: '"t0-final"' })
+    expect(result.pendingSince).toBeUndefined()
+  })
+
+  it("shouldStop 'complete' ends the phase with pendingSince as the watermark", async () => {
+    const nextPage = vi.fn()
+    const result = await runConnectorSlice({
+      fetch: async () => ({
+        records: (async function* () {
+          yield rec('a')
+          yield rec('b')
+          yield { __checkpoint: true, cursor: { kind: 'token', value: 'c1' }, since: '"t0"' }
+          nextPage()
+          yield rec('c')
+        })(),
+      }),
+      sink: async () => {},
+      ctx: ctx(),
+      now: () => 0,
+      shouldStop: async ({ recordsProcessed, pendingSince }) =>
+        recordsProcessed >= 2 && pendingSince ? 'complete' : false,
+    })
+    expect(nextPage).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ hasMore: false, watermark: '"t0"', recordsProcessed: 2 })
+    expect(result.nextCursor).toBeUndefined()
+    expect(result.pendingSince).toBeUndefined()
+  })
+
   it('H1: a 429 AFTER progress commits the slice and advances (hasMore)', async () => {
     const result = await runConnectorSlice({
       fetch: fakeFetch(

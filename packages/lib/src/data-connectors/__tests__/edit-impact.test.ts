@@ -194,6 +194,33 @@ describe('classifyConnectorChange', () => {
       classifyConnectorChange(prev, { config: { endpoint: { baseUrl: 'https://a' } } }).level
     ).toBe('cosmetic')
   })
+
+  it('a historyMaxRecords-only change is cosmetic (it caps the first backfill only)', () => {
+    const prev = connector({
+      config: { endpoint: { baseUrl: 'https://a' }, historyMaxRecords: 500 },
+    })
+    for (const historyMaxRecords of [5000, undefined]) {
+      expect(
+        classifyConnectorChange(prev, {
+          config: { endpoint: { baseUrl: 'https://a' }, historyMaxRecords },
+        }).level
+      ).toBe('cosmetic')
+    }
+  })
+
+  it('a historyStartDate change is still rebackfill', () => {
+    const prev = connector({
+      config: { endpoint: { baseUrl: 'https://a' }, historyStartDate: '2025-01-01' },
+    })
+    const out = classifyConnectorChange(prev, {
+      config: {
+        endpoint: { baseUrl: 'https://a' },
+        historyStartDate: '2024-01-01',
+        historyMaxRecords: 100,
+      },
+    })
+    expect(out.level).toBe('rebackfill')
+  })
 })
 
 describe('classifyStreamRequestChange', () => {

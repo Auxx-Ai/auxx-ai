@@ -42,6 +42,11 @@ vi.mock('../../realtime', () => ({
   publishRecordsInvalidated: async () => {},
   publishRunCompleted: async () => {},
 }))
+vi.mock('../coverage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../coverage')>()),
+  writeStreamCoverage: async () => {},
+  extendStreamCoverage: async () => {},
+}))
 vi.mock('../service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../service')>()
   return {
