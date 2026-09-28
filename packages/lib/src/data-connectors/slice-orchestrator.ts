@@ -771,7 +771,21 @@ export async function runBackfillSlice(
   // `phase === 'backfill'` would leave NOBODY closing a steady run.
   const ledger = createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId)
   const sliceLedger = {
-    recordSlice: (entry: SliceLedgerEntry) => ledger.recordSlice(entry),
+    recordSlice: (entry: SliceLedgerEntry) => {
+      const c = entry.counters ?? {}
+      logger.info('runBackfillSlice: slice', {
+        runId,
+        streamId,
+        pages: entry.pagesProcessed ?? 0,
+        fetched: c.fetched ?? 0,
+        fetchMs: c.fetchMs ?? 0,
+        sinkMs: c.sinkMs ?? 0,
+        created: c.created ?? 0,
+        updated: c.updated ?? 0,
+        skipped: c.skipped ?? 0,
+      })
+      return ledger.recordSlice(entry)
+    },
     finalize: async () => {},
     // An expired delta may restart the stream below instead of failing the run.
     fail: async (error: Error) => {

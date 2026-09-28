@@ -155,6 +155,8 @@ export interface SliceResult {
   commit: SliceCommit
   /** Counter deltas for this slice, folded into the run ledger. */
   counters?: Partial<SyncRunCounters>
+  /** Counter deltas split by a consumer-chosen key (data-connectors: mapping id). */
+  countersByKey?: Record<string, Partial<SyncRunCounters>>
   /** Dropped/failed records sampled this slice, appended onto the run's error sample. */
   errorSample?: SyncRunErrorSample[]
 }
@@ -166,6 +168,8 @@ export interface SliceResult {
 export interface SliceLedgerEntry {
   /** Entity counter deltas (created/updated/skipped/…). */
   counters?: Partial<SyncRunCounters>
+  /** Counter deltas split by a consumer-chosen key, folded under the same idempotency key. */
+  countersByKey?: Record<string, Partial<SyncRunCounters>>
   /** Dropped/failed records sampled this slice, jsonb-appended onto the run row. */
   errorSample?: SyncRunErrorSample[]
   /** Pages fetched this slice. */

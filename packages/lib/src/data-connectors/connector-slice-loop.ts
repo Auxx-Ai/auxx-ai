@@ -37,17 +37,24 @@ export interface RunConnectorSliceArgs {
 /**
  * Process exactly one bounded slice: drain the connector's page iterable, sinking
  * each record and honoring the slice budget at page (checkpoint) boundaries — never
- * mid-page, never sleeping on a throttle. Returns the `SliceResult` MINUS counters
- * (the caller folds in the sink's counter deltas). The cursor-safety `commit`:
+ * mid-page, never sleeping on a throttle. Returns the `SliceResult` whose `counters`
+ * carry only `fetchMs`/`sinkMs` (the caller merges in the sink's counter deltas).
+ * The cursor-safety `commit`:
  *   - `all`               — clean slice (exhausted, budget-yield, or a 429 AFTER
  *                           progress: advance + let the next slice re-hit the limit).
  *   - `partial-retriable` — a 429 with zero progress this slice: hold the cursor.
  */
-export async function runConnectorSlice(
-  args: RunConnectorSliceArgs
-): Promise<Omit<SliceResult, 'counters'>> {
+export async function runConnectorSlice(args: RunConnectorSliceArgs): Promise<SliceResult> {
   const { fetch, sink, ctx, now } = args
   const started = now()
+  // `mark` is when the current fetch wait began; page bookkeeping between them is neither.
+  let mark = started
+  let fetchMs = 0
+  let sinkMs = 0
+  const done = (r: Omit<SliceResult, 'counters'>): SliceResult => ({
+    ...r,
+    counters: { fetchMs, sinkMs },
+  })
   let recordsProcessed = 0
   let pages = 0
   let rateLimitWaitMs = 0
@@ -58,10 +65,11 @@ export async function runConnectorSlice(
     const { records } = await fetch({ backfillCursor: ctx.cursor, watermark: ctx.watermark })
 
     for await (const y of records) {
+      fetchMs += now() - mark
       // Graceful cancellation (cancellable-worker hook) — yield what we have so the
       // chain resumes later instead of failing the run.
       if (ctx.signal.aborted) {
-        return {
+        return done({
           recordsProcessed,
           pagesProcessed: pages,
           nextCursor,
@@ -69,7 +77,7 @@ export async function runConnectorSlice(
           watermark,
           commit: 'all',
           rateLimitWaitMs,
-        }
+        })
       }
 
       if (isConnectorCheckpoint(y)) {
@@ -80,7 +88,7 @@ export async function runConnectorSlice(
 
         // No cursor ⇒ the source is exhausted for this phase.
         if (y.cursor === undefined) {
-          return {
+          return done({
             recordsProcessed,
             pagesProcessed: pages,
             nextCursor: undefined,
@@ -88,7 +96,7 @@ export async function runConnectorSlice(
             watermark,
             commit: 'all',
             rateLimitWaitMs,
-          }
+          })
         }
         nextCursor = y.cursor
 
@@ -97,7 +105,7 @@ export async function runConnectorSlice(
           recordsProcessed >= ctx.budget.maxRecords ||
           now() - started >= ctx.budget.maxMs
         if (budgetHit || (await args.shouldStop?.())) {
-          return {
+          return done({
             recordsProcessed,
             pagesProcessed: pages,
             nextCursor,
@@ -105,21 +113,30 @@ export async function runConnectorSlice(
             watermark,
             commit: 'all',
             rateLimitWaitMs,
-          }
+          })
         }
+        mark = now()
         continue
       }
 
-      await sink(y)
+      const sinkStart = now()
+      try {
+        await sink(y)
+      } finally {
+        mark = now()
+        sinkMs += mark - sinkStart
+      }
       recordsProcessed += 1
     }
   } catch (error) {
+    // The wait that threw (a 429, an abort) was fetch time; after a sink throw this adds ~0.
+    fetchMs += now() - mark
     if (error instanceof ConnectorRateLimitError) {
       rateLimitWaitMs += error.retryAfterMs ?? 0
       // Made progress this slice → commit it and advance; the next slice resumes at
       // the last good page and re-hits the limit after the worker's backoff delay.
       if (pages > 0) {
-        return {
+        return done({
           recordsProcessed,
           pagesProcessed: pages,
           nextCursor,
@@ -127,21 +144,21 @@ export async function runConnectorSlice(
           watermark,
           commit: 'all',
           rateLimitWaitMs,
-        }
+        })
       }
       // Zero progress (throttled on the first page) → hold the cursor, back off.
-      return {
+      return done({
         recordsProcessed: 0,
         pagesProcessed: 0,
         hasMore: true,
         watermark,
         commit: 'partial-retriable',
         rateLimitWaitMs,
-      }
+      })
     }
     // A graceful abort that propagated as a thrown signal is not a real failure.
     if (ctx.signal.aborted) {
-      return {
+      return done({
         recordsProcessed,
         pagesProcessed: pages,
         nextCursor,
@@ -149,14 +166,14 @@ export async function runConnectorSlice(
         watermark,
         commit: 'all',
         rateLimitWaitMs,
-      }
+      })
     }
     throw error // permanent — the runner closes the run as failed.
   }
 
   // Generator ended with no terminal checkpoint (fixture/app connectors that don't
   // paginate) → exhausted for this phase.
-  return {
+  return done({
     recordsProcessed,
     pagesProcessed: pages,
     nextCursor: undefined,
@@ -164,5 +181,5 @@ export async function runConnectorSlice(
     watermark,
     commit: 'all',
     rateLimitWaitMs,
-  }
+  })
 }

@@ -450,6 +450,10 @@ describe('entitySink row-level multi-field writes (B1)', () => {
     expect(update.mock.calls[1]?.[1]).toEqual({}) // conflicting key dropped
     expect(ctx.counters.failed).toBe(0)
     expect(ctx.counters.updated).toBe(1)
+    // The retry ladder counts once, and the per-mapping split follows the total.
+    expect(ctx.counters.byMapping).toEqual({
+      m1: { created: 0, updated: 1, skipped: 0, failed: 0 },
+    })
     expect(upsertItem).toHaveBeenCalledTimes(1)
   })
 
@@ -463,6 +467,7 @@ describe('entitySink row-level multi-field writes (B1)', () => {
     expect(update).not.toHaveBeenCalled()
     expect(upsertItem).not.toHaveBeenCalled()
     expect(ctx.counters.failed).toBe(1)
+    expect(ctx.counters.byMapping.m1?.failed).toBe(1)
     expect(ctx.counters.errorSample[0]?.error).toMatch(/array-shaped/)
   })
 

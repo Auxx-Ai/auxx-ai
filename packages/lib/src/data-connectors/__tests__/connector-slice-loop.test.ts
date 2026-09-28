@@ -251,4 +251,51 @@ describe('runConnectorSlice', () => {
     expect(result).toMatchObject({ hasMore: true, commit: 'all' })
     expect(sink).not.toHaveBeenCalled()
   })
+
+  describe('fetch vs sink timing', () => {
+    /** A clock the fake fetch and sink advance by hand: each yield costs 100, each sink 30. */
+    function timedSlice(seq: ConnectorYield[], throwAtEnd?: Error) {
+      let t = 0
+      return {
+        now: () => t,
+        fetch: async () => ({
+          records: (async function* () {
+            for (const y of seq) {
+              t += 100
+              yield y
+            }
+            if (throwAtEnd) {
+              t += 100
+              throw throwAtEnd
+            }
+          })(),
+        }),
+        sink: async () => {
+          t += 30
+        },
+        // Page bookkeeping between yields is neither fetch nor sink.
+        shouldStop: async () => {
+          t += 7
+          return false
+        },
+      }
+    }
+
+    it('splits the iterator waits from the sink calls', async () => {
+      const result = await runConnectorSlice({
+        ...timedSlice([rec('a'), checkpoint('c1'), rec('b'), rec('c'), checkpoint()]),
+        ctx: ctx(),
+      })
+      expect(result.counters).toEqual({ fetchMs: 500, sinkMs: 90 })
+    })
+
+    it('counts the wait that threw a 429 as fetch time', async () => {
+      const result = await runConnectorSlice({
+        ...timedSlice([rec('a'), checkpoint('c1')], new ConnectorRateLimitError('slow down', 0)),
+        ctx: ctx(),
+      })
+      expect(result.commit).toBe('all')
+      expect(result.counters).toEqual({ fetchMs: 300, sinkMs: 30 })
+    })
+  })
 })

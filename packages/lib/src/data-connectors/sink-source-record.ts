@@ -35,6 +35,7 @@ import {
   tallySuccess,
 } from './record-failure-tally'
 import { recordMatchesFilter } from './record-filter'
+import { countOutcome } from './run-counters'
 import type { DecodedMapping, PendingRelation } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { ProjectedRecord, SyncCtx } from './sinks/types'
@@ -169,6 +170,17 @@ function recordFilterCompileWarning(ctx: SyncCtx, diagnostics: ConditionDiagnost
   })
 }
 
+/** A whole-source-record outcome has no single write, so it is booked to the root mapping. */
+function countSourceOutcome(
+  ctx: SyncCtx,
+  mappings: DecodedMapping[],
+  outcome: 'skipped' | 'failed'
+): void {
+  const root = mappings.find((m) => m.parentMappingId === null) ?? mappings[0]
+  if (root) countOutcome(ctx.counters, root.row.id, outcome)
+  else ctx.counters[outcome] += 1
+}
+
 /**
  * Map one connector payload across the mapping tree and sink each projected write.
  * `updatedAtPath` (the stream's `incremental.watermarkField`) seeds each root
@@ -199,7 +211,7 @@ export async function sinkSourceRecord(
     if (error instanceof SystemicSyncFailureError) throw error
 
     const message = error instanceof Error ? error.message : String(error)
-    ctx.counters.failed += 1
+    countSourceOutcome(ctx, mappings, 'failed')
     tallyFailure(ctx.failureTally, message)
     if (ctx.counters.errorSample.length < 50) {
       ctx.counters.errorSample.push({
@@ -261,7 +273,7 @@ async function sinkOneSourceRecord(
   const verdict = recordMatchesFilter(source, recordFilter)
   if (verdict.diagnostics.length > 0) recordFilterCompileWarning(ctx, verdict.diagnostics)
   if (!verdict.matched) {
-    ctx.counters.skipped += 1
+    countSourceOutcome(ctx, mappings, 'skipped')
     return
   }
 

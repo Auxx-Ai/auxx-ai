@@ -158,6 +158,8 @@ describe('sinkSourceRecord — per-record fault isolation', () => {
     await expect(sinkSourceRecord(c, [m], source)).resolves.toBeUndefined()
 
     expect(c.counters.failed).toBe(1)
+    // A whole-record failure is booked to the stream's root mapping.
+    expect(c.counters.byMapping).toEqual({ m1: { created: 0, updated: 0, skipped: 0, failed: 1 } })
     expect(c.counters.errorSample).toEqual([
       { externalId: 'c1', error: 'lookup exploded', tier: 'rejected' },
     ])
@@ -278,6 +280,7 @@ describe('sinkSourceRecord — record filter', () => {
     expect(upsertRecord).toHaveBeenCalledTimes(1)
     expect(upsertRecord.mock.calls[0]?.[2]?.externalId).toBe('c1')
     expect(c.counters.skipped).toBe(1)
+    expect(c.counters.byMapping.m1?.skipped).toBe(1)
     // A filtered record is a deliberate outcome, NOT a failure. `errorSample` staying
     // empty is what keeps a fully-filtering run `completed` rather than `partial`.
     expect(c.counters.failed).toBe(0)

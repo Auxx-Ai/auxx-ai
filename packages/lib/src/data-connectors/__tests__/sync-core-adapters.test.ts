@@ -1,8 +1,10 @@
 // packages/lib/src/data-connectors/__tests__/sync-core-adapters.test.ts
 
 import type { Database } from '@auxx/database'
+import type { SQL } from 'drizzle-orm'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import { describe, expect, it, vi } from 'vitest'
-import type { SyncRunErrorSample, SyncState } from '../../sync-core/contracts'
+import type { SliceLedgerEntry, SyncRunErrorSample, SyncState } from '../../sync-core/contracts'
 import {
   applySyncStateToStream,
   createConnectorRunLedger,
@@ -126,5 +128,76 @@ describe('ConnectorRunLedger.finalize — run status', () => {
     })
     await createConnectorRunLedger(db, run).finalize()
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'partial' }))
+  })
+})
+
+// ── Timing + per-mapping fold (plan 14a) ─────────────────────────────────────────
+
+/** Fake Database recording each `set` payload; the checkpoint update returns `folded` rows. */
+function ledgerDb(folded: { id: string }[]) {
+  const sets: Record<string, unknown>[] = []
+  const db = {
+    update: () => ({
+      set: (payload: Record<string, unknown>) => {
+        sets.push(payload)
+        const done = Promise.resolve(undefined)
+        return { where: () => Object.assign(done, { returning: async () => folded }) }
+      },
+    }),
+  } as unknown as Database
+  return { db, sets }
+}
+
+const render = (value: unknown) => new PgDialect().sqlToQuery(value as SQL)
+
+describe('ConnectorRunLedger.recordSlice — progress.timing and progress.byMapping', () => {
+  const run = { id: 'run1', startedAt: new Date(0) }
+  const entry: SliceLedgerEntry = {
+    counters: { created: 3, updated: 1, fetchMs: 1200, sinkMs: 3400 },
+    countersByKey: {
+      mapA: { created: 3, updated: 0, skipped: 0, failed: 0 },
+      mapB: { updated: 1 },
+    },
+    checkpointKey: 'token:page-2',
+  }
+
+  it('folds timing and byMapping in the same guarded update as the checkpoint stamp', async () => {
+    const { db, sets } = ledgerDb([{ id: 'run1' }])
+    await createConnectorRunLedger(db, run, 'stream1').recordSlice(entry)
+
+    expect(sets).toHaveLength(1)
+    const { sql, params } = render(sets[0]?.progress)
+    expect(sql).toContain(`'{timing}'`)
+    expect(sql).toContain(`'{byMapping}'`)
+    expect(sql).toContain(`'{checkpoints}'`)
+    expect(params).toEqual(expect.arrayContaining([1200, 3400, 'mapA', 'mapB', 'token:page-2']))
+  })
+
+  it('a replayed checkpoint folds nothing: only the heartbeat is touched', async () => {
+    const { db, sets } = ledgerDb([])
+    await createConnectorRunLedger(db, run, 'stream1').recordSlice(entry)
+
+    expect(sets).toHaveLength(2)
+    expect(Object.keys(sets[1] ?? {})).toEqual(['heartbeatAt'])
+  })
+
+  it('an unkeyed slice with no timing or mappings leaves progress alone', async () => {
+    const { db, sets } = ledgerDb([])
+    await createConnectorRunLedger(db, run).recordSlice({ counters: { archived: 2 } })
+
+    expect(sets).toHaveLength(1)
+    expect(sets[0]).not.toHaveProperty('progress')
+  })
+
+  it('an unkeyed slice with mappings still folds them', async () => {
+    const { db, sets } = ledgerDb([])
+    await createConnectorRunLedger(db, run).recordSlice({
+      countersByKey: { mapA: { skipped: 2 } },
+    })
+
+    const { sql, params } = render(sets[0]?.progress)
+    expect(sql).toContain(`'{byMapping}'`)
+    expect(sql).not.toContain(`'{timing}'`)
+    expect(params).toEqual(expect.arrayContaining(['mapA', 2]))
   })
 })

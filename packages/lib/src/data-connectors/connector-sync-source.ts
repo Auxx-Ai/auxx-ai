@@ -291,7 +291,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
       await this.persistManifest(syncCtx)
-      return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
+      return {
+        ...result,
+        counters: toSyncCounters(counters),
+        countersByKey: counters.byMapping,
+        errorSample: counters.errorSample,
+      }
     }
 
     // Generic REST's own delta mode; app connectors read only the query. A sweep runs an
@@ -333,7 +338,12 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
     await this.persistManifest(syncCtx)
-    return { ...result, counters: toSyncCounters(counters), errorSample: counters.errorSample }
+    return {
+      ...result,
+      counters: { ...result.counters, ...toSyncCounters(counters) },
+      countersByKey: counters.byMapping,
+      errorSample: counters.errorSample,
+    }
   }
 
   /** The bulk export a plain backfill runs instead of paging; never for a re-import. */
@@ -451,6 +461,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const ledger = createConnectorRunLedger(this.deps.db, this.deps.run, this.deps.stream.streamId)
     await ledger.recordSlice({
       counters: toSyncCounters(counters),
+      countersByKey: counters.byMapping,
       errorSample: counters.errorSample,
     })
     await this.persistManifest(syncCtx)
@@ -573,6 +584,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const ledger = createConnectorRunLedger(this.deps.db, this.deps.run, this.deps.stream.streamId)
     await ledger.recordSlice({
       counters: toSyncCounters(counters),
+      countersByKey: counters.byMapping,
       errorSample: counters.errorSample,
     })
 

@@ -40,6 +40,30 @@ vi.mock('../../field-values/field-value-mutations', () => ({
 // `buildEvent`: the store still holds exactly what this event wrote.
 vi.mock('../../field-values/field-value-queries', () => ({ getValue: vi.fn() }))
 
+// The write-back reads and restores the cell's connector marker around the set-write.
+const markerDb = vi.hoisted(() => {
+  const state = { marker: null as string | null, stamped: [] as unknown[] }
+  const db = {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: async () => [{ marker: state.marker }] }) }),
+    }),
+    update: () => ({
+      set: (values: unknown) => {
+        state.stamped.push(values)
+        return { where: async () => undefined }
+      },
+    }),
+  }
+  return { state, db }
+})
+vi.mock('../../field-values/field-value-helpers', () => ({
+  createFieldValueContext: (organizationId: string, userId?: string) => ({
+    db: markerDb.db,
+    organizationId,
+    userId,
+  }),
+}))
+
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
 import { getValue } from '../../field-values/field-value-queries'
 import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
@@ -117,6 +141,8 @@ describe('normalizeAddressOnChange', () => {
     mockedSetValue.mockReset()
     mockedPublish.mockReset()
     mockedGetValue.mockReset()
+    markerDb.state.marker = null
+    markerDb.state.stamped = []
     failingListener.mockReset()
     listener.mockReset()
     failingListener.mockResolvedValue(undefined)
@@ -163,6 +189,39 @@ describe('normalizeAddressOnChange', () => {
     expect(written._source).toBeUndefined()
     expect(written.lat).toBeUndefined()
     expect(written.city).toBe('Austin')
+  })
+
+  it('keeps the contributing connector marker the set-write would clear', async () => {
+    markerDb.state.marker = 'dc-shopify'
+    mockedGeocode.mockResolvedValue({
+      lat: 30.1,
+      lng: -97.1,
+      placeName: 'x',
+      relevance: 0.9,
+      components: {},
+    })
+    await normalizeAddressOnChange(
+      buildEvent({ newValue: jsonValue({ street1: '123 Main St', city: 'Austin' }) })
+    )
+    await flush()
+    expect(mockedSetValue).toHaveBeenCalledTimes(1)
+    expect(markerDb.state.stamped).toEqual([{ managedByConnectorId: 'dc-shopify' }])
+  })
+
+  it('restamps nothing when the cell carried no marker', async () => {
+    mockedGeocode.mockResolvedValue({
+      lat: 30.1,
+      lng: -97.1,
+      placeName: 'x',
+      relevance: 0.9,
+      components: {},
+    })
+    await normalizeAddressOnChange(
+      buildEvent({ newValue: jsonValue({ street1: '123 Main St', city: 'Austin' }) })
+    )
+    await flush()
+    expect(mockedSetValue).toHaveBeenCalledTimes(1)
+    expect(markerDb.state.stamped).toEqual([])
   })
 
   describe('_source: single', () => {
