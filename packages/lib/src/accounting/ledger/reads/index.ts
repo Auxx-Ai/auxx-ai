@@ -1,5 +1,10 @@
 // packages/lib/src/accounting/ledger/reads/index.ts
 
+export {
+  INVENTORY_ACCOUNT_FIX_SOURCE,
+  type InventoryAccountFixTotals,
+  readInventoryAccountFixTotals,
+} from './inventory-account-fix'
 // ── plans/accounting/tasks/28 §3.2: the newest posting of each type ─────────
 export { type LatestPostingByType, readLatestPostingsByType } from './latest-by-type'
 // TARGET §6: the summarised view over the detail ledger.

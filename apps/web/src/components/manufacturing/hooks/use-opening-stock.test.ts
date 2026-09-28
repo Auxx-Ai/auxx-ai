@@ -7,9 +7,11 @@ import { describe, expect, it } from 'vitest'
 import {
   excludeReason,
   exclusionDetail,
+  isCostOnly,
   isUncostedOrProvisional,
   needsBackflushFirst,
   type OpeningStockRow,
+  parseOpeningStockFilter,
   partKindLabel,
   previewDelta,
   resolveUnitCost,
@@ -40,10 +42,10 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     quantity: 4,
     unitCost: null,
     unitCostSuggested: false,
+    unitCostTyped: false,
     suggestion: null,
     sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
-    hasOwnDate: false,
     state: 'new',
     netToday: 0,
     hasBom: false,
@@ -80,6 +82,27 @@ describe('excludeReason', () => {
   it('refuses a missing or negative count', () => {
     expect(excludeReason(row({ quantity: null }))).toBe('no-quantity')
     expect(excludeReason(row({ quantity: -3 }))).toBe('no-quantity')
+  })
+
+  it('takes a first cost with no count (D6), but not a suggestion nobody took', () => {
+    const costOnly = row({
+      quantity: null,
+      standardCost: null,
+      unitCost: 900,
+      unitCostTyped: true,
+      sendsUnitCost: true,
+    })
+    expect(isCostOnly(costOnly)).toBe(true)
+    expect(excludeReason(costOnly)).toBeNull()
+    const suggested = row({
+      quantity: null,
+      standardCost: null,
+      unitCost: 900,
+      unitCostSuggested: true,
+      sendsUnitCost: true,
+    })
+    expect(isCostOnly(suggested)).toBe(false)
+    expect(excludeReason(suggested)).toBe('no-quantity')
   })
 
   it('reports the kind before the count', () => {
@@ -140,8 +163,8 @@ describe('needsBackflushFirst (111 Q25)', () => {
 
 describe('set counts links', () => {
   it('prefilters by part ids or by an import job', () => {
-    expect(setCountsHrefForParts(['a', 'b'])).toBe('/app/inventory/costing?parts=a%2Cb')
-    expect(setCountsHrefForJob('job_1')).toBe('/app/inventory/costing?job=job_1')
+    expect(setCountsHrefForParts(['a', 'b'])).toBe('/app/inventory/setup?step=count&parts=a%2Cb')
+    expect(setCountsHrefForJob('job_1')).toBe('/app/inventory/setup?step=count&job=job_1')
   })
 })
 
@@ -181,31 +204,57 @@ describe('resolveUnitCost (09 D-SC3/D-SC4)', () => {
     expect(resolveUnitCost({ hasBom: true, standardCost: null, suggestion, typed: 900 })).toEqual({
       unitCost: null,
       unitCostSuggested: false,
+      unitCostTyped: false,
       sendsUnitCost: false,
     })
   })
 
-  it('prefills the suggestion on an uncosted part and sends it', () => {
+  it('prefills the suggestion on an uncosted part and sends it with a count', () => {
     expect(
       resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: undefined })
-    ).toEqual({ unitCost: 420, unitCostSuggested: true, sendsUnitCost: true })
+    ).toEqual({ unitCost: 420, unitCostSuggested: true, unitCostTyped: false, sendsUnitCost: true })
   })
 
-  it('shows an existing standard and sends only a different typed value', () => {
-    expect(
-      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: undefined })
-    ).toEqual({ unitCost: 500, unitCostSuggested: false, sendsUnitCost: false })
-    expect(
-      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: 650 })
-    ).toMatchObject({ unitCost: 650, sendsUnitCost: true })
+  it('sends a typed first cost, and nothing once cleared', () => {
+    expect(resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: 650 })).toEqual({
+      unitCost: 650,
+      unitCostSuggested: false,
+      unitCostTyped: true,
+      sendsUnitCost: true,
+    })
     expect(
       resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: null })
-    ).toMatchObject({ unitCost: null, sendsUnitCost: false })
+    ).toMatchObject({ unitCost: null, unitCostTyped: false, sendsUnitCost: false })
+  })
+
+  it('shows an existing standard read-only and never sends a cost for it (D6)', () => {
+    const expected = {
+      unitCost: 500,
+      unitCostSuggested: false,
+      unitCostTyped: false,
+      sendsUnitCost: false,
+    }
+    expect(
+      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: undefined })
+    ).toEqual(expected)
+    expect(resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: 650 })).toEqual(
+      expected
+    )
   })
 
   it('filters no standard or a provisional one', () => {
     expect(isUncostedOrProvisional({ standardCost: null, standardSource: null })).toBe(true)
     expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'provisional' })).toBe(true)
     expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'confirmed' })).toBe(false)
+  })
+})
+
+describe('parseOpeningStockFilter', () => {
+  it('takes the filters a link may name and falls back to all', () => {
+    expect(parseOpeningStockFilter('uncosted')).toBe('uncosted')
+    expect(parseOpeningStockFilter('uncosted-or-provisional')).toBe('uncosted-or-provisional')
+    expect(parseOpeningStockFilter('kind:component')).toBe('all')
+    expect(parseOpeningStockFilter('nonsense')).toBe('all')
+    expect(parseOpeningStockFilter(null)).toBe('all')
   })
 })

@@ -277,6 +277,13 @@ export {
   sendTrialConversionEmailsJob,
   type TrialConversionStats,
 } from './maintenance/trial-conversion-job'
+// Undo past builds (plans/mrp/17 §8): every backflush batch run, or one run, as a sliced run.
+export {
+  enqueueUndoBackflushRun,
+  recoverStaleUndoBackflushRuns,
+  type UndoBackflushJobData,
+  undoBackflushJob,
+} from './maintenance/undo-backflush-job'
 export { vendorBillAgingJob } from './maintenance/vendor-bill-aging-job'
 export {
   type WebhookRenewalJobData,

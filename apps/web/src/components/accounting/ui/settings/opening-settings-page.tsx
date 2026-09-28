@@ -19,6 +19,7 @@ import { useQueryState } from 'nuqs'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage, { SettingsSection } from '~/components/global/settings-page'
+import { StockSetupProgressLine } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -148,6 +149,7 @@ export function AccountingOpeningSettingsPage() {
                 ? openingEvidenceInstruction(openingSource, opening.data.cutoverDate)
                 : 'Use the statement balance for every bank and card account. Do not use the tax return.'}
             </p>
+            <StockSetupProgressLine />
 
             {opening.isPending ? (
               <Skeleton className='h-64 w-full' />

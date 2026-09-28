@@ -7,8 +7,10 @@ import type { RecordId } from '@auxx/lib/resources/client'
 import { toActorId } from '@auxx/types/actor'
 import {
   createContext,
+  lazy,
   type ReactNode,
   type RefObject,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -104,6 +106,19 @@ interface PropertyContextValue {
 }
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined)
+
+// Lazy: only a part's `part_kind` editor needs it, and it pulls tRPC into this generic module.
+const PartKindCommitGuard = lazy(() =>
+  import('~/components/manufacturing/parts/part-kind-commit-guard').then((m) => ({
+    default: m.PartKindCommitGuard,
+  }))
+)
+
+/**
+ * Asks before a commit: `null` saves as usual; a promise resolves `false` to cancel, or to a
+ * callback run after the save lands.
+ */
+export type FieldCommitGuard = (newValue: unknown) => Promise<(() => Promise<void>) | false> | null
 
 interface PropertyProviderProps {
   field: any
@@ -325,6 +340,31 @@ export function PropertyProvider({
 
   // ─── Lifecycle Hooks ───
   const onBeforeClose = useRef<(() => void) | undefined>(undefined)
+  const commitGuard = useRef<FieldCommitGuard | null>(null)
+  const guardsPartKind = field.systemAttribute === 'part_kind'
+
+  /** Hands the save to `commitGuard` when it asks; `true` means the caller must not save. */
+  const saveThroughGuard = useCallback(
+    (newValue: any): boolean => {
+      const pending = commitGuard.current?.(newValue)
+      if (!pending) return false
+      const previous = serverValue
+      void pending.then(async (afterSave) => {
+        if (!afterSave) {
+          setCurrentValue(previous)
+          return
+        }
+        const result = await storeSaveAsync(recordId, field.id, newValue, field.fieldType, {
+          fieldOptions: field.options,
+        })
+        if (!result?.success) return
+        setServerValue(newValue)
+        await afterSave()
+      })
+      return true
+    },
+    [recordId, serverValue, storeSaveAsync, field.id, field.fieldType, field.options]
+  )
 
   // Sync local state when store value changes
   useEffect(() => {
@@ -355,6 +395,7 @@ export function PropertyProvider({
       // 1. Update local state SYNCHRONOUSLY (instant UI update)
       setCurrentValue(newValue)
       setIsDirty(false)
+      if (saveThroughGuard(newValue)) return
 
       // 2. Fire mutation in BACKGROUND (optimistic + background mutation).
       // `fieldOptions` keeps options.multi fields array-shaped through the
@@ -363,7 +404,16 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [recordId, serverValue, storeSave, field.id, field.fieldType, field.options, orderSensitive]
+    [
+      recordId,
+      serverValue,
+      storeSave,
+      field.id,
+      field.fieldType,
+      field.options,
+      orderSensitive,
+      saveThroughGuard,
+    ]
   )
 
   /**
@@ -409,6 +459,7 @@ export function PropertyProvider({
       setIsDirty(false)
       setIsOpen(false)
       isOutsideClick.current = false
+      if (saveThroughGuard(newValue)) return
 
       // Fire mutation in background (optimistic + background mutation)
       storeSave(recordId, field.id, newValue, field.fieldType, { fieldOptions: field.options })
@@ -423,6 +474,7 @@ export function PropertyProvider({
       field.fieldType,
       field.options,
       orderSensitive,
+      saveThroughGuard,
     ]
   )
 
@@ -556,7 +608,16 @@ export function PropertyProvider({
     onBeforeClose,
   }
 
-  return <PropertyContext.Provider value={contextValue}>{children}</PropertyContext.Provider>
+  return (
+    <PropertyContext.Provider value={contextValue}>
+      {children}
+      {guardsPartKind && !readOnly && (
+        <Suspense fallback={null}>
+          <PartKindCommitGuard recordId={recordId} guardRef={commitGuard} />
+        </Suspense>
+      )}
+    </PropertyContext.Provider>
+  )
 }
 
 /**

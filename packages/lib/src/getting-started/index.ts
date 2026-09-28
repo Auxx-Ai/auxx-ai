@@ -17,6 +17,9 @@ export {
   isGoalKey,
   MAIN_GOAL_KEYS,
   type MainGoalKey,
+  STOCK_GETTING_STARTED_SETTING_KEY,
+  STOCK_GOAL_KEYS,
+  type StockGoalKey,
 } from './client'
 export { getGettingStartedState, getGettingStartedStatus } from './get-status'
 export { GettingStartedService } from './getting-started-service'

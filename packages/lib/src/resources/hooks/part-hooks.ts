@@ -41,6 +41,17 @@ const defaultSellableFromKind: SystemHook = async ({ operation, field, values, a
   return { ...values, part_sellable: isSellableByDefault(kind) }
 }
 
+/** An update that writes `part_kind` drops the "keep it" confirmation unless it sets it too (plans/mrp/17 D3). */
+const resetKindConflictConfirmation: SystemHook = async ({ operation, values, allFields }) => {
+  if (operation !== 'update') return values
+  const flag = allFields.find((f) => f.systemAttribute === 'part_kind_conflict_confirmed')
+  if (!flag) return values
+  const keys = [flag.systemAttribute, flag.id, flag.name].filter(Boolean) as string[]
+  if (keys.some((key) => key in values)) return values
+  return { ...values, [flag.id]: false }
+}
+
 export const PART_HOOKS: SystemHookRegistry = {
   part_sellable: [defaultSellableFromKind],
+  part_kind: [resetKindConflictConfirmation],
 }

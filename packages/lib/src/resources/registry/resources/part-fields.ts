@@ -377,6 +377,32 @@ export const PART_FIELDS = defineResourceFields({
       'How this part is classified for build and sell purposes. Unset reads as a component',
   },
 
+  // "Sold as-is too, keep it" on a kind conflict (plans/mrp/17 D3). Cleared by the
+  // `part_kind` pre-hook whenever the kind is written without it.
+  kindConflictConfirmed: {
+    id: toFieldId('kindConflictConfirmed'),
+    key: 'kindConflictConfirmed',
+    label: 'Kind Conflict Confirmed',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'part_kind_conflict_confirmed',
+    systemSortOrder: 'a4b',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description: 'The part kind was confirmed as intended despite its bill-of-materials use',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

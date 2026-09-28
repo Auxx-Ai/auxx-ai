@@ -167,11 +167,11 @@ vi.mock('~/components/pickers/multi-select-picker', async () => {
 function Panel({
   filters,
   emptyTitle,
-  onSetCosts,
+  setCostsHref,
 }: {
   filters: { categories: string[]; search: string }
   emptyTitle?: string
-  onSetCosts?: () => void
+  setCostsHref?: string
 }) {
   const setItemIds = useListSelection((state) => state.setItemIds)
   const selected = useSelectionIds()
@@ -184,20 +184,15 @@ function Panel({
       <output data-testid='search'>{filters.search}</output>
       <output data-testid='selected'>{selected.length}</output>
       <output data-testid='empty-title'>{emptyTitle}</output>
-      {onSetCosts && (
-        <button type='button' onClick={onSetCosts}>
-          Set costs
-        </button>
-      )}
+      {setCostsHref && <a href={setCostsHref}>Set costs</a>}
     </>
   )
 }
 vi.mock('./blocked-panel', () => ({
   BlockedPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
 }))
-vi.mock('./set-costs-dialog', () => ({
-  SetCostsDialog: ({ open }: { open: boolean }) =>
-    open ? <div role='dialog'>Set costs</div> : null,
+vi.mock('~/components/manufacturing/stock-setup/stock-setup-progress', () => ({
+  useCanManageStock: () => true,
 }))
 vi.mock('./summary-panel', () => ({
   SummaryPanel: (props: Parameters<typeof Panel>[0]) => <Panel {...props} />,
@@ -575,11 +570,11 @@ describe('Outbox view dropdown', () => {
     expect(screen.queryByRole('button', { name: /^View:/ })).toBeNull()
   })
 
-  it('opens the Set costs grid from the Blocked reason row', () => {
+  it("links the Blocked reason row's Set costs to the uncosted parts in Stock setup", () => {
     render(<OutboxPanel {...props} tab='blocked' />)
-    expect(screen.queryByRole('dialog')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Set costs' }))
-    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('link', { name: 'Set costs' }).getAttribute('href')).toBe(
+      '/app/inventory/setup?step=count&filter=uncosted'
+    )
   })
 
   it('follows the export mode when the URL names no view', () => {

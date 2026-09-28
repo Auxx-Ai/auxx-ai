@@ -12,6 +12,13 @@ const h = vi.hoisted(() => ({
   post: vi.fn(),
   adopt: vi.fn(async () => ({ results: [{ partId: 'motor', ok: true }] })),
   invalidate: vi.fn(),
+  stock: {
+    visible: false,
+    complete: false,
+    canManageStock: true,
+    firstOpen: 'count' as string | undefined,
+    status: { uncostedPartCount: 30 } as Record<string, unknown> | undefined,
+  },
 }))
 
 vi.mock('next/link', () => ({ default: (props: ComponentProps<'a'>) => <a {...props} /> }))
@@ -42,6 +49,18 @@ vi.mock('~/components/fields/inputs/field-input-adapter', () => ({
       onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
     />
   ),
+}))
+vi.mock('~/components/manufacturing/stock-setup/stock-setup-progress', () => ({
+  useStockSetupProgress: () => h.stock,
+  StockSetupLink: ({
+    href,
+    canManageStock,
+    children,
+  }: {
+    href: string
+    canManageStock: boolean
+    children: ReactNode
+  }) => (canManageStock ? <a href={href}>{children}</a> : <span>Ask whoever manages stock</span>),
 }))
 vi.mock('~/trpc/react', () => ({
   api: {
@@ -84,6 +103,13 @@ function difference(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   h.data = difference()
+  h.stock = {
+    visible: false,
+    complete: false,
+    canManageStock: true,
+    firstOpen: 'count',
+    status: { uncostedPartCount: 30 },
+  }
 })
 
 function renderScreen() {
@@ -139,6 +165,36 @@ describe('OpeningInventoryDifference', () => {
         ),
       })
     )
+  })
+
+  it('sends each Set count link to the count step of Stock setup', () => {
+    renderScreen()
+    expect(screen.getByText('Set count').closest('a')?.getAttribute('href')).toBe(
+      '/app/inventory/setup?step=count&parts=motor'
+    )
+  })
+
+  it('says to finish stock setup first while it is open, linking the first open step', () => {
+    h.stock = { ...h.stock, visible: true, firstOpen: 'builds' }
+    renderScreen()
+    const line = screen.getByTestId('stock-setup-first')
+    expect(line.textContent).toContain('1 part not counted, 30 without a cost: finish stock setup')
+    expect(screen.getByText('Continue stock setup').getAttribute('href')).toBe(
+      '/app/inventory/setup?step=builds'
+    )
+  })
+
+  it('asks whoever manages stock instead of linking without part edit', () => {
+    h.stock = { ...h.stock, visible: true, canManageStock: false }
+    renderScreen()
+    expect(screen.getByText('Ask whoever manages stock')).toBeTruthy()
+    expect(screen.queryByText('Set count')).toBeNull()
+  })
+
+  it('hides the stock line once stock setup is done or for an org without stock', () => {
+    h.stock = { ...h.stock, visible: true, complete: true }
+    renderScreen()
+    expect(screen.queryByTestId('stock-setup-first')).toBeNull()
   })
 
   it('holds the press when the books and the parts agree', () => {

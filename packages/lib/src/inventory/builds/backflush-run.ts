@@ -18,6 +18,7 @@ import { recordNumbering } from '../../records/record-numbering'
 import { batchRecalculateQoH } from '../costing/qoh'
 import { backflushBuilds } from './backflush'
 import { BACKFLUSH_SLICE_DAYS, listBackflushDays, readBackflushGraph } from './backflush-planner'
+import { resolveBackflushRange } from './backflush-range'
 import {
   checkpointBackflushRun,
   claimBackflushRun,
@@ -29,6 +30,7 @@ import { publishBackflushRun } from './backflush-run-realtime'
 import type { BackflushRunFailure, BackflushRunMetadata } from './backflush-types'
 import { readBatchRunBuilds } from './batch-run-queries'
 import { guard } from './guard'
+import { readKindConflicts } from './kind-conflicts'
 import { publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:backflush-run')
@@ -39,22 +41,38 @@ const MAX_FAILURES = 20
 /** What the job enqueues next; `null` when the run is finished or another worker owns it. */
 export type BackflushStep = { kind: 'slice'; cursor: string | null } | { kind: 'finalize' }
 
-/** Claim a run over `from..to` and allocate its batch number; the caller enqueues the first slice. */
+/**
+ * Claim a run and allocate its batch number; the caller enqueues the first slice. An absent end
+ * is resolved by `resolveBackflushRange`. Refused while a kind conflict is left (plans/mrp/17 D3).
+ */
 export async function startBackflushRun(
   db: Database,
   organizationId: string,
-  input: { from: string; to: string; actorUserId: string; now?: Date }
+  input: { from?: string; to?: string; actorUserId: string; now?: Date }
 ): Promise<Result<{ runId: string; batchRun: number }, Error>> {
   return guard(
     async () => {
+      const conflicts = await readKindConflicts(db, organizationId)
+      if (conflicts.isErr()) throw conflicts.error
+      if (conflicts.value.length > 0) {
+        throw new UnprocessableEntityError(kindConflictMessage(conflicts.value.length))
+      }
+      const now = input.now ?? new Date()
       const timeZone = await readBookTimeZoneOrUtc(organizationId)
-      const days = listBackflushDays(input, timeZone, input.now ?? new Date())
+      const graph = input.from === undefined ? await readBackflushGraph(db, organizationId) : null
+      const range = await resolveBackflushRange(organizationId, input, {
+        timeZone,
+        now,
+        madePartIds: graph?.order ?? [],
+      })
+      if (!range) throw new UnprocessableEntityError('No made part has any stock movement yet')
+      const days = listBackflushDays(range, timeZone, now)
       if (days.length === 0) {
         throw new UnprocessableEntityError('No day in this range has ended yet')
       }
       return claimBackflushRun(db, organizationId, {
-        from: input.from,
-        to: input.to,
+        from: range.from,
+        to: range.to,
         actorUserId: input.actorUserId,
         totalDays: days.length,
         allocateBatchRun: async () =>
@@ -246,6 +264,12 @@ async function announce(organizationId: string, buildIds: string[], partIds: str
   } catch {
     // Best effort, as `publishQuietBuildWrites`.
   }
+}
+
+/** Why a backflush is refused while kinds conflict with parts lists. */
+export function kindConflictMessage(count: number): string {
+  const parts = count === 1 ? '1 part has a kind' : `${count} parts have a kind`
+  return `${parts} that doesn't match its parts list. Fix ${count === 1 ? 'it' : 'them'} in Check parts first.`
 }
 
 function isActive(row: BackflushRunRow): boolean {

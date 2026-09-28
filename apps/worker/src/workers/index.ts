@@ -650,8 +650,8 @@ export async function setupSchedules() {
     }
   )
 
-  // Backflush (111 D23): one completed build per made part for yesterday's shortfall, per org
-  // with `inventory.backflush` on. Runs before the MRP plan run once that exists.
+  // Backflush (111 D23): builds for any shortfall in the last 30 days, per org with
+  // `inventory.backflush` on (plans/mrp/17 Q3). Runs before the MRP plan run once that exists.
   await maintenanceQueue.upsertJobScheduler(
     'backflushJob',
     { pattern: '30 2 * * *', tz: 'UTC' },

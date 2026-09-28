@@ -8,9 +8,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Rocket, Wand2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
+import { useMemo } from 'react'
 import { ACCOUNTING_GETTING_STARTED_GOALS } from '~/components/accounting/getting-started'
 import type { GettingStartedGoal } from '~/components/getting-started/client'
 import { useGettingStarted } from '~/components/getting-started/hooks/use-getting-started'
+import { useStockSetupProgress } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useEnv } from '~/providers/dehydrated-state-provider'
 import { AccountingChecklistStep } from './accounting-checklist-step'
 
@@ -40,10 +42,16 @@ export function AccountingChecklistPanel({ className }: AccountingChecklistPanel
   const router = useRouter()
   const { docsUrl } = useEnv()
   const [, setSetupParam] = useQueryState('setup')
-  const { isLoading, goals, completed, done, total } = useGettingStarted(
-    'accounting',
-    ACCOUNTING_GETTING_STARTED_GOALS
+  // An org with no stocked movements never sees the stock goal (plans/mrp/17 §5.5).
+  const stock = useStockSetupProgress()
+  const catalog = useMemo(
+    () =>
+      stock.visible
+        ? ACCOUNTING_GETTING_STARTED_GOALS
+        : ACCOUNTING_GETTING_STARTED_GOALS.filter((goal) => goal.key !== 'set-up-stock'),
+    [stock.visible]
   )
+  const { isLoading, goals, completed, done, total } = useGettingStarted('accounting', catalog)
 
   const handleCTA = (goal: GettingStartedGoal) => {
     if (goal.external) {

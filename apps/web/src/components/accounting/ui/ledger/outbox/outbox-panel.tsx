@@ -32,6 +32,8 @@ import { ChevronDown, Layers, List, Loader } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { ListSelectionProvider, useListSelection } from '~/components/list-selection'
+import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
+import { useCanManageStock } from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useDebounce } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
@@ -40,10 +42,12 @@ import { formatAccountingDate } from '../format'
 import { BlockedPanel } from './blocked-panel'
 import { TAB_ICON, TAB_LABEL } from './outbox-tabs'
 import { EMPTY_OUTBOX_FILTERS, type OutboxFilters, OutboxToolbar } from './outbox-toolbar'
-import { SetCostsDialog } from './set-costs-dialog'
 import { SummaryPanel } from './summary-panel'
 import { TransactionsPanel } from './transactions-panel'
 import { type OutboxRun, useOutboxRealtime } from './use-outbox-realtime'
+
+/** The outbox's "Set costs": Stock setup's count list, filtered to parts waiting on a cost (17 D6). */
+const SET_COSTS_HREF = stockSetupHref('count', { filter: 'uncosted' })
 
 interface OutboxPanelProps {
   tab: OutboxTab
@@ -135,7 +139,7 @@ function OutboxBody({
   )
 
   const live = useOutboxRealtime()
-  const [setCostsOpen, setSetCostsOpen] = useState(false)
+  const canManageStock = useCanManageStock()
 
   // One SQL read for every badge - no tab's count rides on its rows.
   const countsQuery = api.ledger.outboxCounts.useQuery()
@@ -246,7 +250,7 @@ function OutboxBody({
                 onSelectShipment={onSelectShipment}
                 activeRecordId={activeRecordId}
                 onSelectRecord={onSelectRecord}
-                onSetCosts={() => setSetCostsOpen(true)}
+                setCostsHref={canManageStock ? SET_COSTS_HREF : undefined}
               />
             ) : view === 'transaction' ? (
               <TransactionsPanel
@@ -289,11 +293,6 @@ function OutboxBody({
           </div>
         )}
       </ScrollArea>
-      <SetCostsDialog
-        open={setCostsOpen}
-        onOpenChange={setSetCostsOpen}
-        currencyCode={currencyCode}
-      />
     </div>
   )
 }

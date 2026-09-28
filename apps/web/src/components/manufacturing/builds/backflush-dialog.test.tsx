@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   preview: {
     data: {
+      range: { from: '2021-07-16', to: '2026-09-24' },
+      kindConflicts: [] as Array<Record<string, unknown>>,
       dayCount: 3,
       buildCount: 3,
       unitCount: 6,
@@ -22,6 +24,7 @@ const h = vi.hoisted(() => ({
     error: null,
   },
   previewOptions: null as { enabled?: boolean } | null,
+  previewInputs: [] as unknown[],
   run: { data: null as Record<string, unknown> | null, isPending: false },
   runInputs: [] as unknown[],
   start: vi.fn(async () => ({ runId: 'run_1' })),
@@ -29,21 +32,11 @@ const h = vi.hoisted(() => ({
   openBatchRun: vi.fn(),
 }))
 
-vi.mock('~/components/fields/inputs/field-input-adapter', () => ({
-  FieldInputAdapter: ({ value }: { value: unknown }) => (
-    <input readOnly value={String(value ?? '')} />
+vi.mock('next/link', () => ({
+  default: ({ href, children }: { href: string; children: ReactNode }) => (
+    <a href={href}>{children}</a>
   ),
 }))
-vi.mock('~/components/global/forms/field-panel', () => ({
-  FieldPanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  FieldPanelRow: ({ title, children }: { title: string; children: ReactNode }) => (
-    <label>
-      {title}
-      {children}
-    </label>
-  ),
-}))
-vi.mock('~/components/workflow/types', () => ({ BaseType: { DATE: 'date' } }))
 vi.mock('./use-backflush-run-realtime', () => ({
   useBackflushRunRealtime: (runId: string | null) => h.realtimeRunIds.push(runId),
 }))
@@ -52,7 +45,8 @@ vi.mock('~/trpc/react', () => ({
   api: {
     builds: {
       previewBackflush: {
-        useQuery: (_input: unknown, options: { enabled?: boolean }) => {
+        useQuery: (input: unknown, options: { enabled?: boolean }) => {
+          h.previewInputs.push(input)
           h.previewOptions = options
           return h.preview
         },
@@ -95,6 +89,7 @@ function aRun(over: Record<string, unknown>) {
 beforeEach(() => {
   h.preview = FULL_PREVIEW
   h.previewOptions = null
+  h.previewInputs = []
   h.run = { data: null, isPending: false }
   h.runInputs = []
   h.realtimeRunIds = []
@@ -102,32 +97,32 @@ beforeEach(() => {
   h.openBatchRun.mockClear()
 })
 
-describe('BackflushDialog', () => {
-  it('previews per-part counts and starts the run on confirm', async () => {
-    const from = new Date('2026-09-20T12:00:00.000Z')
-    const to = new Date('2026-09-22T12:00:00.000Z')
-    render(
-      <BackflushDialog open onOpenChange={vi.fn()} range={{ from, to, partName: 'Attic Lift' }} />
-    )
+const confirmButton = () => screen.getByRole('button', { name: /Record past builds/ })
 
-    expect(screen.getByText('Backflush past sales for Attic Lift')).toBeTruthy()
+describe('BackflushDialog', () => {
+  it('previews the server range per part and starts the run with no dates', async () => {
+    render(<BackflushDialog open onOpenChange={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: 'Record past builds' })).toBeTruthy()
+    expect(screen.queryByText('From')).toBeNull()
     await waitFor(() =>
       expect(screen.getByTestId('backflush-summary').textContent).toContain(
-        'Would write 3 builds across 2 parts (6 units over 3 days)'
+        "We'll record 3 builds for 2 products from 16 Jul 2021 to yesterday"
       )
     )
+    expect(screen.getByText("Uses today's parts list for every past day.")).toBeTruthy()
     expect(screen.getByText('Bench')).toBeTruthy()
+    expect(h.previewInputs.at(-1)).toEqual({})
 
-    fireEvent.click(screen.getByText('Backflush'))
+    fireEvent.click(confirmButton())
     await waitFor(() => expect(h.start).toHaveBeenCalledTimes(1))
-    // Days, never instants: an instant at UTC midnight reads as the day before west of UTC.
-    expect(h.start.mock.calls[0]).toEqual([{ from: '2026-09-20', to: '2026-09-22' }])
+    expect(h.start.mock.calls[0]).toEqual([{}])
     // The dialog now follows that run by id, live.
     await waitFor(() => expect(h.runInputs.at(-1)).toEqual({ runId: 'run_1' }))
     expect(h.realtimeRunIds.at(-1)).toBe('run_1')
   })
 
-  it('reopens onto a live run instead of a new form', async () => {
+  it('reopens onto a live run instead of a new preview', async () => {
     h.run = { data: aRun({}), isPending: false }
     render(<BackflushDialog open onOpenChange={vi.fn()} />)
 
@@ -136,8 +131,7 @@ describe('BackflushDialog', () => {
     expect(counts.textContent).toContain('2 failed')
     expect(screen.getByText(/420 of 1,897 days walked/)).toBeTruthy()
     expect(screen.getByText(/period locked/)).toBeTruthy()
-    expect(screen.queryByText('From')).toBeNull()
-    expect(screen.queryByText('Backflush')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Record past builds/ })).toBeNull()
     expect(h.previewOptions?.enabled).toBe(false)
   })
 
@@ -153,9 +147,9 @@ describe('BackflushDialog', () => {
       isPending: false,
     }
     render(<BackflushDialog open onOpenChange={vi.fn()} />)
-    // A finished run is not live, so a fresh open shows the form; start one to follow it.
+    // A finished run is not live, so a fresh open shows the preview; start one to follow it.
     expect(screen.queryByTestId('backflush-run')).toBeNull()
-    fireEvent.click(screen.getByText('Backflush'))
+    fireEvent.click(confirmButton())
     const counts = await screen.findByTestId('backflush-run-counts')
     expect(counts.textContent).toContain('25,073 builds written')
     expect(screen.getByText(/Finished: 1,897 days walked/)).toBeTruthy()
@@ -170,9 +164,34 @@ describe('BackflushDialog', () => {
       data: { ...h.preview.data, parts: [], buildCount: 0, unitCount: 0 },
     }
     render(<BackflushDialog open onOpenChange={vi.fn()} />)
-    expect(screen.getByText(/Nothing to build in this range/)).toBeTruthy()
-    expect((screen.getByText('Backflush').closest('button') as HTMLButtonElement).disabled).toBe(
-      true
+    expect(screen.getByText(/All past sales are covered/)).toBeTruthy()
+    expect((confirmButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('lists kind conflicts and refuses to confirm until they are fixed', () => {
+    h.preview = {
+      ...h.preview,
+      data: {
+        ...h.preview.data,
+        kindConflicts: [
+          {
+            partId: 'nut',
+            partName: 'Square Nut M5',
+            kind: 'finished_good',
+            reason: 'finished_good_in_bom',
+            usedIn: [{ partId: 'lift', partName: 'Attic Lift' }],
+            suggestedKind: 'component',
+          },
+        ],
+      },
+    }
+    render(<BackflushDialog open onOpenChange={vi.fn()} />)
+    const alert = screen.getByTestId('backflush-kind-conflicts')
+    expect(alert.textContent).toContain('Square Nut M5')
+    expect(alert.textContent).toContain('Used inside Attic Lift, but marked Finished Good.')
+    expect(screen.getByText('Check parts').getAttribute('href')).toBe(
+      '/app/inventory/setup?step=kinds'
     )
+    expect((confirmButton() as HTMLButtonElement).disabled).toBe(true)
   })
 })

@@ -23,6 +23,7 @@ export type {
   ThreadDeletedEvent,
   ThreadMeta,
   ThreadUpdatedEvent,
+  UndoBackflushRunEvent,
   VisibilityChangedEvent,
 } from '../events'
 export { CHANNEL_LENSES, type ChannelLens, type RoomKind, rooms } from '../room-keys'

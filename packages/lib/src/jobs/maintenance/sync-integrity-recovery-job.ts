@@ -13,6 +13,7 @@ import type {
 } from '../../record-rules/sync-manifest-types'
 import type { JobContext } from '../types/job-context'
 import { recoverStaleBackflushRuns } from './backflush-job'
+import { recoverStaleUndoBackflushRuns } from './undo-backflush-job'
 
 const logger = createScopedLogger('sync-integrity-recovery')
 
@@ -25,6 +26,9 @@ export async function syncIntegrityRecoveryJob(_ctx: JobContext): Promise<void> 
   // Same heartbeat rule for backflush runs (plans/mrp/11 §4).
   await recoverStaleBackflushRuns().catch((error) =>
     logger.warn('backflush stale sweep failed', { error: String(error) })
+  )
+  await recoverStaleUndoBackflushRuns().catch((error) =>
+    logger.warn('undo backflush stale sweep failed', { error: String(error) })
   )
   const cutoff = new Date(Date.now() - STALE_AFTER_MS)
   for (const source of ['connector', 'import'] as const) {

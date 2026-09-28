@@ -19,6 +19,7 @@
 
 import { ACCOUNTING_GOAL_KEYS, type AccountingGoalKey } from '@auxx/lib/getting-started/client'
 import type { GettingStartedGoal } from '~/components/getting-started/client'
+import { STOCK_SETUP_HREF } from '~/components/manufacturing/stock-setup/stock-setup-href'
 
 const GOALS: Record<AccountingGoalKey, Omit<GettingStartedGoal, 'key'>> = {
   'set-accounting-period': {
@@ -60,6 +61,17 @@ const GOALS: Record<AccountingGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     ctaText: 'Set opening balances',
     href: '/app/accounting/settings/opening',
     docsPath: '/help/accounting/set-opening-balances',
+  },
+  // Met outright for an org with no stocked movements; the panel hides it there (17 §5.5).
+  'set-up-stock': {
+    label: 'Set up your stock',
+    description:
+      'Check what each part is, record past builds and count your stock. The inventory value in your opening balances is only complete once it is. A nudge, not a gate.',
+    iconId: 'warehouse',
+    color: 'orange',
+    ctaText: 'Continue stock setup',
+    href: STOCK_SETUP_HREF,
+    docsPath: '/help/inventory/stock-setup',
   },
   'finalize-setup': {
     label: 'Finalize your setup',

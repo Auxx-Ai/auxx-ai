@@ -45,6 +45,7 @@ import {
   listReceipts,
   openStockBalance,
   readSetCountPreflight,
+  readStockSetupStatus,
   receivePurchaseOrder,
   receiveStock,
 } from '@auxx/lib/inventory/receiving'
@@ -61,6 +62,7 @@ import {
   TARIFF_STARTERS_VERSION,
 } from '@auxx/lib/inventory/tariffs'
 import { PermissionKey } from '@auxx/lib/permissions'
+import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, type RecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -655,6 +657,34 @@ export const purchasingRouter = createTRPCRouter({
       const result = await readSetCountPreflight(ctx.db, organizationId, input.partIds)
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /** Where the three Stock setup steps stand (plans/mrp/17 §5); the `stock` checklist reads the same. */
+  stockSetupStatus: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const movementDefId = await requireDefId(organizationId, 'stock_movement')
+    ctx.capabilities.assertViewEntity(movementDefId)
+
+    const result = await readStockSetupStatus(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /** Stock setup's two flags (17 D5, Q2). Gated like the page, on part edit, not `settingsManage`. */
+  setStockSetupFlag: capabilityProcedure
+    .input(z.object({ flag: z.enum(['buildsSkipped', 'countingDone']), value: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const partDefId = await requireDefId(organizationId, 'part')
+      ctx.capabilities.assertEditEntity(partDefId)
+
+      await updateOrganizationSetting({
+        organizationId,
+        key: `inventory.stockSetup.${input.flag}`,
+        value: input.value,
+        db: ctx.db,
+      })
+      return { success: true }
     }),
 
   /**

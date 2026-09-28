@@ -339,6 +339,7 @@ other sends them to the invoice.
 | `reverseMovement` / `reverseBuild` | the negating row | quiet |
 | `fillPendingCost` | no row — fills the cost onto a `pending` row, once (§7.4) | quiet |
 | `pricePendingMovements` | no row — calls `fillPendingCost` for a part's pending rows and posts their documents (§7.2, §9.3) | quiet |
+| `restampMovementAccounts` (via `fixMovementAccounts`) | no row — rewrites `stock_movement_gl_account` on **unposted** rows whose part changed kind, under the commit lock; posted rows keep their stamp and the part gets one `inventory_account_fix` entry instead (plans/mrp/17 §5.2) | direct `FieldValue` update |
 
 **A correction is a reversal, never an edit.** `reverseMovement` exists for exactly this. The
 double-reversal guard is a read-then-write with no DB constraint available on a `FieldValue`,

@@ -32,6 +32,11 @@ export {
 export type { FilledStockMovement, PendingCostFill } from './fill-pending-cost'
 export { FILL_PENDING_COST_REASON, fillPendingCost } from './fill-pending-cost'
 export { type PartInitial, readPartInitials } from './initial-queries'
+export {
+  type MovementAccountRestamp,
+  RESTAMP_MOVEMENT_ACCOUNT_REASON,
+  restampMovementAccounts,
+} from './restamp-accounts'
 export type { ReverseMovementInput } from './reverse-movement'
 export { reverseMovement } from './reverse-movement'
 export type {

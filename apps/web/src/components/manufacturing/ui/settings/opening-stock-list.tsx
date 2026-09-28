@@ -1,13 +1,11 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-list.tsx
 'use client'
 
-// The left column of the Set counts tab (money 52 §2.3; 111 D21): one row for EVERY part,
-// counted or not, so the list is a checklist. Paged at 50 because every row mounts a
-// `RecordBadge` (202 rows put 400 ids on one GET and the dev server answered 431).
+// The count list of Stock setup step 3 (plans/mrp/17 §5.3): one row for EVERY part, counted or
+// not. Paged at 50 because every row mounts a `RecordBadge` (400 ids on one GET answered 431).
 
 import { FieldType } from '@auxx/database/enums'
 import { PartKind } from '@auxx/lib/resources/client'
-import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -17,7 +15,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import { GridTreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Check, Factory, Package, Sparkles } from 'lucide-react'
+import { Check, Package, Sparkles } from 'lucide-react'
+import Link from 'next/link'
+import { useQueryState } from 'nuqs'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
@@ -30,6 +30,7 @@ import {
   usePendingLabel,
 } from '~/components/list-selection'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
+import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import {
   isUncostedOrProvisional,
   needsBackflushFirst,
@@ -39,6 +40,7 @@ import {
   type OpeningStockKind,
   type OpeningStockRow,
   onHandNote,
+  parseOpeningStockFilter,
   partKindLabel,
   rowOutcome,
   toOpeningStockKind,
@@ -48,10 +50,10 @@ import { OpeningStockToolbar } from './opening-stock-toolbar'
 
 /**
  * One `grid-template-columns` for the header and every row, so the list reads as a table.
- * Columns: part | kind | account | on hand | count | date | unit cost | delta.
+ * Columns: part | kind | account | on hand | count | cost | change.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(7.5rem, 8.5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
@@ -64,9 +66,8 @@ interface OpeningStockListProps {
   onSetKind: (partIds: string[], kind: OpeningStockKind) => Promise<void>
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onDateChange: (partId: string, date: string | null) => void
-  /** The Q25 banner's button: backflush the org before counting the parts it lists. */
-  onBackflush: (rows: OpeningStockRow[]) => void
+  /** "Use suggestions": take the suggested first cost on these rows. */
+  onUseSuggestions?: (partIds: string[]) => void
 }
 
 export function OpeningStockList({
@@ -80,11 +81,14 @@ export function OpeningStockList({
   onSetKind,
   onQuantityChange,
   onUnitCostChange,
-  onDateChange,
-  onBackflush,
+  onUseSuggestions,
 }: OpeningStockListProps) {
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<OpeningStockFilter>('all')
+  // `?filter=` only seeds the list (the outbox links `uncosted`); changing it stays local.
+  const [filterParam] = useQueryState('filter')
+  const [filter, setFilter] = useState<OpeningStockFilter>(() =>
+    parseOpeningStockFilter(filterParam)
+  )
   const [limit, setLimit] = useState(OPENING_STOCK_PAGE_SIZE)
   const setItemIds = useListSelection((s) => s.setItemIds)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -122,7 +126,11 @@ export function OpeningStockList({
   )
 
   const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit])
-  const unbuilt = useMemo(() => rows.filter(needsBackflushFirst), [rows])
+  // Every filtered row, not only the mounted page: the button names the whole view.
+  const suggestable = useMemo(
+    () => filtered.filter((row) => row.unitCostSuggested).map((row) => row.partId),
+    [filtered]
+  )
 
   // The paged, filtered set: what Cmd+A and a shift-range resolve against.
   const selectableIds = useMemo(() => visible.map((row) => row.partId), [visible])
@@ -160,27 +168,17 @@ export function OpeningStockList({
         scrollbarClassName='w-1.5'
         noFade>
         <div className='flex flex-col gap-3 p-3 pb-16'>
-          {!isLoading && unbuilt.length > 0 && (
-            <Alert variant='warning' className='flex items-center gap-2 px-3 py-2'>
-              <Factory className='size-4' />
-              <AlertDescription className='flex flex-1 flex-wrap items-center justify-between gap-2 text-xs'>
-                <span>
-                  {unbuilt.length} made {unbuilt.length === 1 ? 'part has' : 'parts have'} unbuilt
-                  sales (sold, never built). Backflush before counting them, or the count hides
-                  them.
-                </span>
-                <span className='flex shrink-0 gap-2'>
-                  {filter !== 'unbuilt' && (
-                    <Button variant='ghost' size='xs' onClick={() => changeFilter('unbuilt')}>
-                      Show them
-                    </Button>
-                  )}
-                  <Button variant='outline' size='xs' onClick={() => onBackflush(unbuilt)}>
-                    Backflush past sales
-                  </Button>
-                </span>
-              </AlertDescription>
-            </Alert>
+          {!isLoading && onUseSuggestions && suggestable.length > 0 && (
+            <div className='flex flex-wrap items-center justify-between gap-2 px-1 text-muted-foreground text-xs'>
+              <span>
+                {suggestable.length} {suggestable.length === 1 ? 'part has' : 'parts have'} a
+                suggested first cost from its supplier or sales channel.
+              </span>
+              <Button variant='outline' size='xs' onClick={() => onUseSuggestions(suggestable)}>
+                <Sparkles />
+                Use suggestions
+              </Button>
+            </div>
           )}
           {isLoading ? (
             <EmptySection loading />
@@ -206,16 +204,15 @@ export function OpeningStockList({
                 <div className='flex items-center gap-1 pl-2'>Part</div>
                 <div className='px-2'>Kind</div>
                 <div>Account</div>
-                <Tooltip content='Net of every movement on the ledger to now.'>
+                <Tooltip content='What Auxx has on record today, from every receipt, sale and build.'>
                   <div className='cursor-default px-2 text-right'>On hand</div>
                 </Tooltip>
                 <div className='px-2 text-right'>Count</div>
-                <div className='px-2'>As of</div>
-                <Tooltip content="The part's standard cost, not dated by As of. A different value replaces it and revalues what is on hand; a part with a BOM rolls from its components.">
-                  <div className='cursor-default px-2 text-right'>Standard</div>
+                <Tooltip content='A first cost for parts that have none. A part that already has one shows it; change it on the part.'>
+                  <div className='cursor-default px-2 text-right'>Cost</div>
                 </Tooltip>
-                <Tooltip content='What the row writes: the count less what the ledger already reads. Against today; the run nets through the count day.'>
-                  <div className='cursor-default px-2 text-right'>Writes</div>
+                <Tooltip content='How much the count changes what is on record.'>
+                  <div className='cursor-default px-2 text-right'>Change</div>
                 </Tooltip>
               </div>
 
@@ -230,7 +227,6 @@ export function OpeningStockList({
                     onWriteKind={writeKind}
                     onQuantityChange={onQuantityChange}
                     onUnitCostChange={onUnitCostChange}
-                    onDateChange={onDateChange}
                   />
                 ))}
                 {/* Every row is already loaded; a "page" only mounts the next 50 rows. */}
@@ -273,7 +269,7 @@ function OnHandCell({ row }: { row: OpeningStockRow }) {
         <span
           data-testid='on-hand-note'
           className='whitespace-nowrap text-[11px] text-muted-foreground'>
-          {note === 'built' ? `${formatNumber(row.built)} built` : 'not received'}
+          {note === 'built' ? `${formatNumber(row.built)} built` : 'never received'}
         </span>
       )}
     </span>
@@ -283,8 +279,8 @@ function OnHandCell({ row }: { row: OpeningStockRow }) {
     <Tooltip
       content={
         note === 'built'
-          ? 'Builds cover every sale, so this is not shelf stock. Count what is on the shelf; the count adds it.'
-          : `At least ${formatNumber(-(row.netToday ?? 0))} arrived over time and none were recorded. Count what is on the shelf today; the count adds this on top.`
+          ? `${formatNumber(row.built)} built to cover sales. Count what is on the shelf.`
+          : `At least ${formatNumber(-(row.netToday ?? 0))} used over the years that were never logged as received. Count what is on the shelf; we'll add that on top.`
       }>
       {value}
     </Tooltip>
@@ -303,7 +299,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind,
   onQuantityChange,
   onUnitCostChange,
-  onDateChange,
 }: {
   row: OpeningStockRow
   currencyCode: string
@@ -312,7 +307,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind: (partIds: string[], kind: OpeningStockKind) => void
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onDateChange: (partId: string, date: string | null) => void
 }) {
   const bulkMode = useBulkMode()
   const selected = useIsSelected(row.partId)
@@ -405,7 +399,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           )}
           {row.kindIsUnconfirmed && canSetKind && (
             <Tooltip
-              content={`Set to ${partKindLabel(row.kind)}. Until it is stored, this part is held out of the run.`}>
+              content={`Set to ${partKindLabel(row.kind)}. Until you confirm it, this part can't be counted.`}>
               <Button
                 variant='transparent'
                 className='h-5.5 w-5.5 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
@@ -422,7 +416,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
 
         <Tooltip
           key='account'
-          content={`${row.accountLabel}. The inventory account the movement is stamped with, frozen on the row.`}>
+          content={`${row.accountLabel}. The inventory account this part's stock sits in, set by its kind.`}>
           <span className='cursor-default truncate text-xs tabular-nums'>
             {row.accountCode || row.accountLabel}
           </span>
@@ -436,18 +430,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
             value={row.quantity}
             onChange={(value) => onQuantityChange(row.partId, (value as number) ?? null)}
             placeholder='0'
-          />
-        </EditableCell>,
-
-        <EditableCell
-          key='date'
-          className={cn('w-full', !row.hasOwnDate && 'text-muted-foreground')}>
-          <FieldInputAdapter
-            fieldType={FieldType.DATE}
-            fieldOptions={{ format: 'short' }}
-            triggerProps={{ className: 'ps-1 pe-1 w-full text-xs' }}
-            value={row.date}
-            onChange={(value) => onDateChange(row.partId, typeof value === 'string' ? value : null)}
           />
         </EditableCell>,
 
@@ -465,7 +447,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           <span className='text-foreground text-sm'>{formatDelta(row.delta)}</span>
           {row.quantity != null && (
             <span className='text-[11px] text-muted-foreground'>
-              {outcome === 'first' ? 'first count' : 'adjusts'}
+              {outcome === 'first' ? 'first count' : 'correction'}
             </span>
           )}
         </span>,
@@ -474,7 +456,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   )
 })
 
-/** A BOM part's rolled standard (read-only, D-SC3), or the typed, standard or suggested cost. */
+/** D6: a first cost is typed here; a standard (typed or rolled from the BOM) is read-only. */
 function UnitCostCell({
   row,
   currencyCode,
@@ -500,6 +482,7 @@ function UnitCostCell({
       </Tooltip>
     )
   }
+  if (row.standardCost != null) return <StandardCostCell row={row} currencyCode={currencyCode} />
   const { suggestion } = row
   const other = suggestion?.other
   const hint = [
@@ -510,9 +493,6 @@ function UnitCostCell({
       : null,
     other
       ? `${other.source === 'supplier' ? 'Supplier' : 'Channel'}: ${formatCurrency(other.unitCost, { currencyCode })}`
-      : null,
-    row.standardCost != null && row.sendsUnitCost
-      ? `Replaces ${formatCurrency(row.standardCost, { currencyCode })}`
       : null,
   ].filter(Boolean)
   const cell = (
@@ -534,6 +514,25 @@ function UnitCostCell({
   )
 }
 
+/** The part's standard, read-only, with a link to change it on the part. */
+function StandardCostCell({ row, currencyCode }: { row: OpeningStockRow; currencyCode: string }) {
+  const href = useRecordLink(row.recordId)
+  return (
+    <span
+      data-testid='standard-cost'
+      className='flex w-full flex-col items-end pr-1 text-right tabular-nums leading-tight'>
+      <span className='text-foreground text-xs'>
+        {formatCurrency(row.standardCost ?? 0, { currencyCode })}
+      </span>
+      {href && (
+        <Link href={href} className='text-[11px] text-muted-foreground hover:underline'>
+          change on the part
+        </Link>
+      )}
+    </span>
+  )
+}
+
 /** The row's reading: counted before, sold before counted, unclassified, and the standard's source. */
 function RowBadges({ row }: { row: OpeningStockRow }) {
   const delta = formatDelta(row.delta)
@@ -549,15 +548,12 @@ function RowBadges({ row }: { row: OpeningStockRow }) {
         <Badge
           variant='green'
           size='xs'
-          title={`Counted before · adjusts by ${row.delta == null ? 'the difference' : delta}. A further count writes an adjustment dated the count day.`}>
+          title={`Counted before. Counting again corrects it by ${row.delta == null ? 'the difference' : delta} on the count day.`}>
           Counted
         </Badge>
       )}
       {row.state === 'uncounted' && (
-        <Badge
-          variant='amber'
-          size='xs'
-          title='Movements exist and none is a count. A count anchors the part at its ledger start so the replay reads the count on the count day.'>
+        <Badge variant='amber' size='xs' title='Received, sold or used, but never counted.'>
           Never counted
         </Badge>
       )}

@@ -6,7 +6,13 @@ import { describe, expect, it, vi } from 'vitest'
 import type { OpeningStockRow } from '../../hooks/use-opening-stock'
 
 vi.mock('~/trpc/react', () => ({ api: {} }))
-vi.mock('nuqs', () => ({ useQueryState: () => [null, vi.fn()] }))
+const queryState = vi.hoisted(() => ({ filter: null as string | null }))
+vi.mock('nuqs', () => ({
+  useQueryState: (key: string) => [key === 'filter' ? queryState.filter : null, vi.fn()],
+}))
+vi.mock('~/components/resources/utils/get-record-link', () => ({
+  useRecordLink: (recordId: string | null) => (recordId ? `/app/records/${recordId}` : null),
+}))
 vi.mock('~/components/fields/inputs/field-input-adapter', () => ({
   FieldInputAdapter: ({ value }: { value: unknown }) => (
     <input readOnly value={value == null ? '' : String(value)} />
@@ -52,13 +58,20 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     accountRole: 'inventory_finished_goods',
     isUnclassified: false,
     standardCost: 34696,
+    standardSource: null,
+    standardOrigin: null,
     quantity: 42,
-    unitCost: null,
+    unitCost: 34696,
+    unitCostSuggested: false,
+    unitCostTyped: false,
+    suggestion: null,
+    sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
-    hasOwnDate: false,
     state: 'uncounted',
     netToday: -830,
     hasBom: false,
+    uncostedLeafCount: 0,
+    usedIn: 0,
     unbuiltSales: 0,
     built: 0,
     earliest: new Date('2024-10-01T00:00:00.000Z'),
@@ -67,7 +80,7 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
   }
 }
 
-function renderList(rows: OpeningStockRow[], onBackflush = vi.fn()) {
+function renderList(rows: OpeningStockRow[], onUseSuggestions = vi.fn()) {
   render(
     <OpeningStockList
       rows={rows}
@@ -78,6 +91,8 @@ function renderList(rows: OpeningStockRow[], onBackflush = vi.fn()) {
         uncounted: 0,
         unclassified: 0,
         uncosted: 0,
+        uncostedOrProvisional: 0,
+        unbuilt: 0,
       }}
       kindCounts={new Map()}
       isLoading={false}
@@ -87,24 +102,25 @@ function renderList(rows: OpeningStockRow[], onBackflush = vi.fn()) {
       onSetKind={vi.fn(async () => {})}
       onQuantityChange={vi.fn()}
       onUnitCostChange={vi.fn()}
-      onDateChange={vi.fn()}
-      onBackflush={onBackflush}
+      onUseSuggestions={onUseSuggestions}
     />
   )
-  return { onBackflush }
+  return { onUseSuggestions }
 }
 
+const suggestion = { source: 'supplier', unitCost: 1250, other: null } as const
+
 describe('OpeningStockList', () => {
-  it('shows the delta the row writes and whether it is a first count', () => {
+  it('shows the change the row writes and whether it is a first count', () => {
     renderList([row()])
     expect(screen.getByTestId('on-hand').textContent).toBe('-830')
     expect(screen.getByTestId('delta').textContent).toBe('+872first count')
   })
 
-  it("reads a never-counted bought part's negative as not received, grouped", () => {
+  it("reads a never-counted bought part's negative as never received, grouped", () => {
     renderList([row({ netToday: -12756, delta: 13156 })])
     expect(screen.getByTestId('on-hand').textContent).toBe('-12,756')
-    expect(screen.getByTestId('on-hand-note').textContent).toBe('not received')
+    expect(screen.getByTestId('on-hand-note').textContent).toBe('never received')
   })
 
   it('shows what a never-counted made part built instead of reading its 0 as empty', () => {
@@ -118,36 +134,48 @@ describe('OpeningStockList', () => {
     expect(screen.queryByTestId('on-hand-note')).toBeNull()
   })
 
-  it('labels an anchored part as an adjustment', () => {
+  it('labels a counted part as a correction', () => {
     renderList([row({ state: 'counted', netToday: 40, delta: 2 })])
-    expect(screen.getByTestId('delta').textContent).toBe('+2adjusts')
+    expect(screen.getByTestId('delta').textContent).toBe('+2correction')
     expect(screen.getByText('Counted')).toBeTruthy()
   })
 
-  it('shows one Q25 banner for the BOM parts with unbuilt sales and backflushes them', () => {
-    const { onBackflush } = renderList([
-      row({ partId: 'lift', hasBom: true, unbuiltSales: 830 }),
-      row({ partId: 'motor', title: 'Motor', hasBom: false, unbuiltSales: 0, netToday: -830 }),
-      row({ partId: 'frame', title: 'Frame', hasBom: true, unbuiltSales: 0, netToday: 12 }),
-    ])
-    expect(screen.getByText(/1 made part has unbuilt/)).toBeTruthy()
-    fireEvent.click(screen.getByText('Backflush past sales'))
-    expect(onBackflush).toHaveBeenCalledWith([expect.objectContaining({ partId: 'lift' })])
+  it('shows an existing standard read-only with a link to change it on the part', () => {
+    renderList([row({ recordId: 'def:lift' as OpeningStockRow['recordId'] })])
+    const cell = screen.getByTestId('standard-cost')
+    expect(cell.textContent).toContain('$346.96')
+    expect(screen.getByText('change on the part').getAttribute('href')).toBe(
+      '/app/records/def:lift'
+    )
   })
 
-  it('filters the list to the parts the banner names', () => {
-    renderList([
-      row({ partId: 'lift', title: 'Lift', hasBom: true, unbuiltSales: 830 }),
-      row({ partId: 'frame', title: 'Frame', hasBom: true, unbuiltSales: 0, netToday: 12 }),
-    ])
-    fireEvent.click(screen.getByText('Show them'))
-    expect(screen.queryByText('Frame')).toBeNull()
-    expect(screen.queryByText('Show them')).toBeNull()
+  it('has no backflush banner for made parts with unbuilt sales', () => {
+    renderList([row({ partId: 'lift', hasBom: true, unbuiltSales: 830 })])
+    expect(screen.queryByText(/Backflush/)).toBeNull()
   })
 
-  it('shows no banner when nothing is unbuilt', () => {
-    renderList([row({ partId: 'frame', hasBom: true, unbuiltSales: 0, netToday: 12 })])
-    expect(screen.queryByText('Backflush past sales')).toBeNull()
+  it('offers "Use suggestions" for every uncosted row still on its suggestion', () => {
+    const { onUseSuggestions } = renderList([
+      row({ partId: 'a', standardCost: null, unitCost: 1250, unitCostSuggested: true, suggestion }),
+      row({ partId: 'b', standardCost: null, unitCost: 900, unitCostTyped: true, suggestion }),
+      row({ partId: 'c' }),
+    ])
+    fireEvent.click(screen.getByText('Use suggestions'))
+    expect(onUseSuggestions).toHaveBeenCalledWith(['a'])
+  })
+
+  it('opens on the filter a link names', () => {
+    queryState.filter = 'uncosted'
+    try {
+      renderList([
+        row({ partId: 'costed', title: 'Costed' }),
+        row({ partId: 'open', title: 'Open', standardCost: null }),
+      ])
+      expect(screen.queryByText('Costed')).toBeNull()
+      expect(screen.getByText('Open')).toBeTruthy()
+    } finally {
+      queryState.filter = null
+    }
   })
 })
 

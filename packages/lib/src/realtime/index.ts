@@ -55,6 +55,7 @@ export type {
   ThreadDeletedEvent,
   ThreadMeta,
   ThreadUpdatedEvent,
+  UndoBackflushRunEvent,
   VisibilityChangedEvent,
   WorkflowDraftUpdatedEvent,
   WorkflowKopilotTurnEvent,
@@ -90,6 +91,7 @@ export {
   publishThreadCreated,
   publishThreadDeleted,
   publishThreadUpdated,
+  publishUndoBackflushRunEvent,
   publishWorkflowDraftUpdated,
   publishWorkflowKopilotTurn,
 } from './publish-helpers'

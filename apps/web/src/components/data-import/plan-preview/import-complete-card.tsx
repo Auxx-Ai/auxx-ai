@@ -6,14 +6,14 @@ import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { AlertTriangle, Ban, CheckCircle2, Plus, RefreshCw, SearchX, XCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
-import { BackflushDialog } from '~/components/manufacturing/builds/backflush-dialog'
+import { useEffect, useRef } from 'react'
 import { setCountsHrefForJob } from '~/components/manufacturing/hooks/use-opening-stock'
+import { STOCK_SETUP_HREF } from '~/components/manufacturing/stock-setup/stock-setup-href'
 import { useAnalytics } from '~/hooks/use-analytics'
 import { api } from '~/trpc/react'
 
 /** Imports that change what a backflush would build (111 Q25): the parts and their BOMs. */
-const BACKFLUSH_DEFS = new Set(['part', 'subpart'])
+const STOCK_SETUP_DEFS = new Set(['part', 'subpart'])
 
 interface ImportCompleteCardProps {
   jobId: string
@@ -81,11 +81,10 @@ export function ImportCompleteCard({
   const posthog = useAnalytics()
   const trackedRef = useRef(false)
   const router = useRouter()
-  const [backflushOpen, setBackflushOpen] = useState(false)
 
   const landed = statistics.created + statistics.updated
-  // 111 Q24/Q25: a parts or BOM import offers Backflush before Set counts.
-  const offersBackflush = landed > 0 && BACKFLUSH_DEFS.has(entityDefinitionId)
+  // A parts or BOM import leads into Stock setup, which orders kinds, past builds and counts.
+  const offersStockSetup = landed > 0 && STOCK_SETUP_DEFS.has(entityDefinitionId)
   const offersSetCounts = landed > 0 && entityDefinitionId === 'part'
   const hasFailures = statistics.failed > 0
   // Nothing was written AND rows were rejected — the run achieved nothing.
@@ -190,12 +189,11 @@ export function ImportCompleteCard({
           </div>
         )}
 
-        {/* What to do next, in the order it should happen: backflush, then count */}
-        {(offersBackflush || offersSetCounts) && (
+        {(offersStockSetup || offersSetCounts) && (
           <div className='flex flex-col gap-2 px-4 py-3 border-t'>
-            {offersBackflush && (
-              <Button variant='outline' size='sm' onClick={() => setBackflushOpen(true)}>
-                Backflush past sales
+            {offersStockSetup && (
+              <Button variant='outline' size='sm' onClick={() => router.push(STOCK_SETUP_HREF)}>
+                Continue stock setup
               </Button>
             )}
             {offersSetCounts && (
@@ -205,11 +203,6 @@ export function ImportCompleteCard({
                 onClick={() => router.push(setCountsHrefForJob(jobId))}>
                 Set counts for these {landed.toLocaleString()} {landed === 1 ? 'part' : 'parts'}
               </Button>
-            )}
-            {offersBackflush && offersSetCounts && (
-              <p className='text-xs text-muted-foreground'>
-                Backflush first: a count taken before past sales are built hides them.
-              </p>
             )}
           </div>
         )}
@@ -221,7 +214,6 @@ export function ImportCompleteCard({
           </Button>
         </div>
       </div>
-      {offersBackflush && <BackflushDialog open={backflushOpen} onOpenChange={setBackflushOpen} />}
     </div>
   )
 }

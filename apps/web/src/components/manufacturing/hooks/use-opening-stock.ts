@@ -19,7 +19,7 @@ import { PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { createElement, Fragment, useCallback, useMemo, useState } from 'react'
 import {
   isPartKindUnclassified,
   shouldSuggestFinishedGood,
@@ -36,6 +36,13 @@ import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterInputs, type RouterOutputs } from '~/trpc/react'
 import { openingStockAccountCode, openingStockAccountLabel } from '../parts/opening-stock-input'
+import {
+  type KindConflictDecision,
+  type KindConflictPart,
+  kindConflictPrompt,
+  useKindConflictConfirm,
+} from '../parts/use-kind-conflict-confirm'
+import { stockSetupHref } from '../stock-setup/stock-setup-href'
 
 /** Fifty: every row mounts a `RecordBadge`, and 202 rows put 400 ids on one GET (431). */
 export const OPENING_STOCK_PAGE_SIZE = 50
@@ -43,15 +50,16 @@ export const OPENING_STOCK_PAGE_SIZE = 50
 /** `setCountPreflight` takes at most this many parts per call. */
 const PREFLIGHT_CHUNK = 500
 
-/** Where Set counts lives; `parts` and `job` prefilter it. */
-export const SET_COUNTS_HREF = '/app/inventory/costing'
+/** `builds.setStandardCosts` takes at most this many items per call. */
+const COST_CHUNK = 500
 
+/** Set counts is Stock setup's count step; `parts` and `job` prefilter it. */
 export function setCountsHrefForParts(partIds: readonly string[]): string {
-  return `${SET_COUNTS_HREF}?parts=${encodeURIComponent(partIds.join(','))}`
+  return stockSetupHref('count', { parts: partIds.join(',') })
 }
 
 export function setCountsHrefForJob(jobId: string): string {
-  return `${SET_COUNTS_HREF}?job=${encodeURIComponent(jobId)}`
+  return stockSetupHref('count', { job: jobId })
 }
 
 export type OpeningStockCandidate =
@@ -59,6 +67,13 @@ export type OpeningStockCandidate =
 export type SetCountPreflightRow = RouterOutputs['purchasing']['setCountPreflight'][number]
 export type OpeningStockKind = RouterInputs['purchasing']['bulkSetPartKind']['kind']
 export type OpeningStockRunSummary = RouterOutputs['purchasing']['runSetCounts']
+
+/** One press of the run: the count summary (`null` with no counts) and the cost-only first costs. */
+export interface OpeningStockRunResult {
+  counts: OpeningStockRunSummary | null
+  firstCosts: number
+  costFailures: { partId: string; detail: string }[]
+}
 type WorklistPart = RouterOutputs['builds']['standardCostWorklist'][number]
 
 /**
@@ -83,8 +98,6 @@ interface OpeningStockDraft {
   quantity?: number | null
   /** Present once typed, even as `null`; absent means the row shows the standard or the suggestion. */
   unitCost?: number | null
-  /** Calendar-day ISO. Absent: the row follows the run-wide date. */
-  date?: string
 }
 
 export interface OpeningStockRow {
@@ -104,16 +117,17 @@ export interface OpeningStockRow {
   standardSource: StandardCostSourceValue | null
   standardOrigin: StandardCostOriginValue | null
   quantity: number | null
-  /** What the Unit cost cell shows: typed, else the standard, else the D-SC4 suggestion. */
+  /** What the Cost cell shows: the standard, else typed, else the D-SC4 suggestion. */
   unitCost: number | null
   /** `unitCost` is the untouched suggestion. */
   unitCostSuggested: boolean
+  /** Somebody typed (or took the suggestion for) a first cost; the row runs even without a count. */
+  unitCostTyped: boolean
   suggestion: StandardCostSuggestion | null
-  /** The run sends `unitCost`: set, or different from the standard (which restates it). */
+  /** The run sends `unitCost` as a first cost; never true once the part has a standard (D6). */
   sendsUnitCost: boolean
-  /** Calendar-day ISO: the row's own date, or the run-wide one. */
+  /** Calendar-day ISO: the run's count date. */
   date: string
-  hasOwnDate: boolean
   state: OpeningStockRowState
   /** Net of every movement to now; `null` until the preflight lands. */
   netToday: number | null
@@ -205,9 +219,17 @@ export function needsBackflushFirst(
   return row.hasBom && row.unbuiltSales > 0
 }
 
+/** A cost-only row (D6): no count, but a first cost somebody typed or took from the suggestion. */
+export function isCostOnly(
+  row: Pick<OpeningStockRow, 'quantity' | 'unitCostTyped' | 'sendsUnitCost'>
+): boolean {
+  return row.quantity == null && row.unitCostTyped && row.sendsUnitCost
+}
+
 /** The one reason this row is out of the run, most disqualifying first. */
 export function excludeReason(row: OpeningStockRow): OpeningStockExclusionReason | null {
   if (row.kindIsUnconfirmed) return 'kind-unconfirmed'
+  if (isCostOnly(row)) return null
   if (row.quantity == null || !Number.isFinite(row.quantity) || row.quantity < 0) {
     return 'no-quantity'
   }
@@ -223,25 +245,41 @@ export function exclusionDetail(row: OpeningStockRow, reason: OpeningStockExclus
   }
 }
 
-/** The Unit cost cell (D-SC3/D-SC4): a BOM part takes none; a typed value wins over the standard. */
+/** The Cost cell (D6, D-SC3/D-SC4): a BOM part takes none, and a standard is read-only. */
 export function resolveUnitCost(input: {
   hasBom: boolean
   standardCost: number | null
   suggestion: StandardCostSuggestion | null
   /** `undefined`: never typed. */
   typed: number | null | undefined
-}): Pick<OpeningStockRow, 'unitCost' | 'unitCostSuggested' | 'sendsUnitCost'> {
-  if (input.hasBom) return { unitCost: null, unitCostSuggested: false, sendsUnitCost: false }
-  const suggested = input.typed === undefined && input.standardCost == null && !!input.suggestion
-  const unitCost =
-    input.typed !== undefined
-      ? input.typed
-      : (input.standardCost ?? input.suggestion?.unitCost ?? null)
+}): Pick<OpeningStockRow, 'unitCost' | 'unitCostSuggested' | 'unitCostTyped' | 'sendsUnitCost'> {
+  const none = { unitCostSuggested: false, unitCostTyped: false, sendsUnitCost: false }
+  if (input.hasBom) return { unitCost: null, ...none }
+  if (input.standardCost != null) return { unitCost: input.standardCost, ...none }
+  const typed = input.typed !== undefined
+  const unitCost = typed ? (input.typed ?? null) : (input.suggestion?.unitCost ?? null)
   return {
     unitCost,
-    unitCostSuggested: suggested,
-    sendsUnitCost: unitCost != null && unitCost !== input.standardCost,
+    unitCostSuggested: !typed && unitCost != null,
+    unitCostTyped: typed && unitCost != null,
+    sendsUnitCost: unitCost != null,
   }
+}
+
+/** Initial list filters a link may ask for with `?filter=`. */
+const LINKABLE_FILTERS: readonly OpeningStockFilter[] = [
+  'all',
+  'not-counted',
+  'counted',
+  'uncounted',
+  'unclassified',
+  'uncosted',
+  'uncosted-or-provisional',
+  'unbuilt',
+]
+
+export function parseOpeningStockFilter(value: string | null | undefined): OpeningStockFilter {
+  return LINKABLE_FILTERS.find((filter) => filter === value) ?? 'all'
 }
 
 /** No standard, or one nobody has confirmed. */
@@ -380,8 +418,7 @@ export function useOpeningStock() {
         quantity,
         ...cost,
         suggestion,
-        date: draft?.date ?? occurredAt,
-        hasOwnDate: draft?.date != null,
+        date: occurredAt,
         state: flight ? (flight.hasInitial ? 'counted' : rowState(candidate)) : rowState(candidate),
         netToday,
         hasBom,
@@ -443,13 +480,14 @@ export function useOpeningStock() {
     return out
   }, [rows])
 
-  /** Exactly the rows the run will write. */
+  /** Exactly the rows the run will write: counts, and first costs with no count. */
   const ready = useMemo(() => rows.filter((row) => excludeReason(row) === null), [rows])
+  const counted = useMemo(() => ready.filter((row) => !isCostOnly(row)), [ready])
 
   /** The mutation's own shape. The unit cost is a RATE, rounded to `RATE_DECIMALS`, never a cent. */
   const entries = useMemo(
     () =>
-      ready.map((row) => ({
+      counted.map((row) => ({
         partId: row.partId,
         quantity: row.quantity as number,
         ...(row.sendsUnitCost && row.unitCost != null
@@ -457,18 +495,28 @@ export function useOpeningStock() {
           : {}),
         day: calendarDayKey(row.date) ?? undefined,
       })),
+    [counted]
+  )
+  // No movement: `setStandardCosts` sets the first standard and wakes `pricePartsJob`.
+  const costEntries = useMemo(
+    () =>
+      ready
+        .filter(isCostOnly)
+        .map((row) => ({ partId: row.partId, unitCost: roundMinorUnits(row.unitCost as number) })),
     [ready]
   )
 
   const summary = useMemo(
     () => ({
-      firstCounts: ready.filter((row) => rowOutcome(row.state) === 'first').length,
-      adjustments: ready.filter((row) => rowOutcome(row.state) === 'adjust').length,
-      pending: ready.filter((row) => row.standardCost == null && !row.sendsUnitCost).length,
-      restates: ready.filter((row) => row.standardCost != null && row.sendsUnitCost).length,
-      backflushFirst: ready.filter(needsBackflushFirst).length,
+      firstCounts: counted.filter((row) => rowOutcome(row.state) === 'first').length,
+      adjustments: counted.filter((row) => rowOutcome(row.state) === 'adjust').length,
+      firstCosts: ready.filter((row) => row.sendsUnitCost).length,
+      pending: counted.filter((row) => row.standardCost == null && !row.sendsUnitCost).length,
+      unbuilt: counted
+        .filter(needsBackflushFirst)
+        .map((row) => ({ title: row.title, unbuiltSales: row.unbuiltSales })),
     }),
-    [ready]
+    [counted, ready]
   )
 
   // ── Drafts ──────────────────────────────────────────────────────────────
@@ -478,22 +526,54 @@ export function useOpeningStock() {
   const setUnitCost = useCallback((partId: string, unitCost: number | null) => {
     setDrafts((prev) => ({ ...prev, [partId]: { ...prev[partId], unitCost } }))
   }, [])
-  const setDate = useCallback((partId: string, date: string | null) => {
-    setDrafts((prev) => {
-      const next = { ...prev[partId] }
-      if (date) next.date = date
-      else delete next.date
-      return { ...prev, [partId]: next }
-    })
-  }, [])
+  /** "Use suggestions": take the suggested first cost on each named uncosted row. */
+  const applySuggestions = useCallback(
+    (partIds: readonly string[]) => {
+      const byId = new Map(rows.map((row) => [row.partId, row]))
+      setDrafts((prev) => {
+        const next = { ...prev }
+        for (const partId of partIds) {
+          const row = byId.get(partId)
+          if (!row?.unitCostSuggested || row.suggestion == null) continue
+          next[partId] = { ...next[partId], unitCost: row.suggestion.unitCost }
+        }
+        return next
+      })
+    },
+    [rows]
+  )
 
   // ── Writes ──────────────────────────────────────────────────────────────
   const bulkSetPartKind = api.purchasing.bulkSetPartKind.useMutation()
   const runSetCounts = api.purchasing.runSetCounts.useMutation()
-  const { ConfirmDialog: KindConfirmDialog, runBatch } = useBulkRunner()
+  const setStandardCosts = api.builds.setStandardCosts.useMutation()
+  const { ConfirmDialog: BulkKindConfirmDialog, runBatch } = useBulkRunner()
+  const { confirmKind, keepConfirmed, KindConflictDialog } = useKindConflictConfirm()
+  const KindConfirmDialog = () =>
+    createElement(
+      Fragment,
+      null,
+      createElement(BulkKindConfirmDialog),
+      createElement(KindConflictDialog)
+    )
 
-  const setKind = useCallback(
-    async (partIds: string[], kind: OpeningStockKind) => {
+  /** BOM facts for the D4 check (plans/mrp/17): `hasBom` off the row, the child edge off the candidate. */
+  const kindFacts = useCallback(
+    (partIds: string[]): KindConflictPart[] => {
+      const byId = new Map(rows.map((row) => [row.partId, row]))
+      const inBom = new Map((candidates.data ?? []).map((c) => [c.partId, c.isSubpartOfAssembly]))
+      return partIds.map((partId) => ({
+        partId,
+        title: byId.get(partId)?.title ?? '',
+        isSubpartOfAssembly: inBom.get(partId) ?? false,
+        hasBom: byId.get(partId)?.hasBom ?? false,
+      }))
+    },
+    [rows, candidates.data]
+  )
+
+  const writeKind = useCallback(
+    async (partIds: string[], kind: OpeningStockKind, decision?: KindConflictDecision) => {
       if (partIds.length === 0) return
       const { failed } = await bulkSetPartKind.mutateAsync({ partIds, kind })
       const failedIds = new Set(failed.map((skip) => skip.partId))
@@ -502,6 +582,10 @@ export function useOpeningStock() {
         for (const partId of partIds) if (!failedIds.has(partId)) next[partId] = kind
         return next
       })
+      if (decision) {
+        const confirmIds = decision.confirmIds.filter((partId) => !failedIds.has(partId))
+        await keepConfirmed({ ...decision, confirmIds })
+      }
       if (failed.length > 0) {
         const titles = new Map((candidates.data ?? []).map((row) => [row.partId, row.title]))
         toastError({
@@ -513,13 +597,39 @@ export function useOpeningStock() {
       }
       void candidates.refetch()
     },
-    [bulkSetPartKind, candidates]
+    [bulkSetPartKind, candidates, keepConfirmed]
+  )
+
+  /** The Kind column: asks first when the kind conflicts with the part's BOM (D4). */
+  const setKind = useCallback(
+    async (partIds: string[], kind: OpeningStockKind) => {
+      const decision = await confirmKind(kindFacts(partIds), kind)
+      if (!decision) return
+      await writeKind(decision.apply, kind, decision)
+    },
+    [confirmKind, kindFacts, writeKind]
   )
 
   const setSelectedKind = useCallback(
     (kind: OpeningStockKind) => {
       const partIds = selectedIds
-      void runBatch(partIds, () => setKind(partIds, kind), {
+      // A conflict's own confirm replaces the bulk runner's, so nobody is asked twice.
+      const facts = kindFacts(partIds)
+      if (kindConflictPrompt(facts, kind)) {
+        void (async () => {
+          const decision = await confirmKind(facts, kind)
+          if (!decision) return
+          await writeKind(decision.apply, kind, decision)
+          clearSelection()
+        })().catch((error: unknown) =>
+          toastError({
+            title: 'Error setting the part kind',
+            description: error instanceof Error ? error.message : undefined,
+          })
+        )
+        return
+      }
+      void runBatch(partIds, () => writeKind(partIds, kind), {
         title: setKindConfirmTitle(partIds.length, kind),
         description:
           'The kind decides which inventory account the movement is stamped with, and that stamp cannot be edited afterwards.',
@@ -531,23 +641,47 @@ export function useOpeningStock() {
         onDone: clearSelection,
       })
     },
-    [selectedIds, runBatch, setKind, clearSelection]
+    [selectedIds, runBatch, writeKind, clearSelection, kindFacts, confirmKind]
   )
 
-  /** One call, per-part isolation on the server. `adjustAnchored`: this page shows the delta. */
-  const run = useCallback(async (): Promise<OpeningStockRunSummary> => {
-    const result = await runSetCounts.mutateAsync({
-      day: calendarDayKey(occurredAt) ?? undefined,
-      adjustAnchored: true,
-      entries,
-    })
-    setDrafts({})
-    clearSelection()
-    void candidates.refetch()
-    void utils.purchasing.setCountPreflight.invalidate()
-    void utils.builds.standardCostWorklist.invalidate()
-    return result
-  }, [runSetCounts, occurredAt, entries, candidates, clearSelection, utils])
+  /** Counts in one call, first costs without a count in another; per-part isolation on the server. */
+  const run = useCallback(async (): Promise<OpeningStockRunResult> => {
+    try {
+      const counts =
+        entries.length > 0
+          ? await runSetCounts.mutateAsync({
+              day: calendarDayKey(occurredAt) ?? undefined,
+              adjustAnchored: true,
+              entries,
+            })
+          : null
+      let firstCosts = 0
+      const costFailures: { partId: string; detail: string }[] = []
+      for (const items of chunk(costEntries, COST_CHUNK)) {
+        for (const result of await setStandardCosts.mutateAsync({ items })) {
+          if (result.ok) firstCosts += 1
+          else costFailures.push({ partId: result.partId, detail: result.error ?? 'Not saved' })
+        }
+      }
+      setDrafts({})
+      clearSelection()
+      return { counts, firstCosts, costFailures }
+    } finally {
+      void candidates.refetch()
+      void utils.purchasing.setCountPreflight.invalidate()
+      void utils.builds.standardCostWorklist.invalidate()
+      void utils.purchasing.stockSetupStatus.invalidate()
+    }
+  }, [
+    runSetCounts,
+    setStandardCosts,
+    occurredAt,
+    entries,
+    costEntries,
+    candidates,
+    clearSelection,
+    utils,
+  ])
 
   return {
     rows,
@@ -555,6 +689,9 @@ export function useOpeningStock() {
     kindCounts,
     exclusions,
     entries,
+    costEntries,
+    /** Rows the run writes: counts plus cost-only first costs. */
+    runSize: entries.length + costEntries.length,
     summary,
     isLoading: candidates.isLoading || (!!jobParam && jobRecordIds.isLoading),
     isPreflightLoading: preflightResults.some((result) => result.isLoading),
@@ -564,7 +701,7 @@ export function useOpeningStock() {
     setOccurredAt,
     setQuantity,
     setUnitCost,
-    setDate,
+    applySuggestions,
     prefilter: prefilterIds ? { count: rows.length, fromJob: !!jobParam } : null,
     clearPrefilter,
     bulkMode,
@@ -577,6 +714,6 @@ export function useOpeningStock() {
     KindConfirmDialog,
     isSettingKind: bulkSetPartKind.isPending,
     run,
-    isRunning: runSetCounts.isPending,
+    isRunning: runSetCounts.isPending || setStandardCosts.isPending,
   }
 }

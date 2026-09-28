@@ -32,6 +32,11 @@ import { useResourceProperty } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import {
+  isUndoBackflushRunLive,
+  UndoBackflushRunProgress,
+  useUndoBackflushRun,
+} from './undo-backflush-panel'
 import { useOpenBatchRun } from './use-open-batch-run'
 
 export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
@@ -42,7 +47,7 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
   const movementDefId = useResourceProperty('stock_movement', 'id')
   const openBatchRun = useOpenBatchRun()
 
-  // The client mirror of what `builds.undoBatchRun` asserts (§11.5). Undo
+  // The client mirror of what `builds.startUndoBackflush` asserts (§11.5). Undo
   // cancels AND reverses, and the reversal arm appends stock movements, so it
   // takes both halves: edit on `build` and edit on `stock_movement`. The server
   // enforces regardless; this only avoids a click-then-403.
@@ -81,9 +86,15 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
     ])
   }
 
-  const undoBatchRun = api.builds.undoBatchRun.useMutation({
+  // The undo runs on the worker (plans/mrp/17 §8): a run of thousands is past any request.
+  const undo = useUndoBackflushRun({
+    enabled: canUndoRun && runNumber != null,
+    adopt: (live) =>
+      live.scope === 'run' && runNumber != null && live.runNumbers.includes(runNumber),
+    onFinished: () => void refresh(),
+  })
+  const startUndo = api.builds.startUndoBackflush.useMutation({
     onError: (error) => toastError({ title: 'Failed to undo the run', description: error.message }),
-    onSuccess: refresh,
   })
 
   // 🛑 §11.3's first rule, and the reason this returns before any skeleton: the
@@ -112,7 +123,13 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
       cancelText: 'Keep the run',
       destructive: true,
     })
-    if (confirmed) undoBatchRun.mutate({ runNumber })
+    if (!confirmed) return
+    try {
+      const started = await startUndo.mutateAsync({ runNumber })
+      undo.setRunId(started.runId)
+    } catch {
+      // Surfaced by the mutation's onError.
+    }
   }
 
   return (
@@ -170,7 +187,10 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
           Show all {summary.total} builds in run {runNumber}
         </Button>
 
+        {undo.run && <UndoBackflushRunProgress run={undo.run} />}
+
         {canUndoRun &&
+          !isUndoBackflushRunLive(undo.run) &&
           (nothingToUndo ? (
             <p className='px-1 text-muted-foreground text-xs'>
               Every build in this run has already been cancelled or reversed.
@@ -183,7 +203,7 @@ export function BuildBatchRunCard({ entityInstanceId }: DrawerTabProps) {
               variant='outline'
               size='xs'
               className='w-full justify-start text-destructive'
-              loading={undoBatchRun.isPending}
+              loading={startUndo.isPending || (!!undo.runId && !undo.run)}
               loadingText={`Undoing run ${runNumber}...`}
               onClick={handleUndo}>
               <Undo2 />

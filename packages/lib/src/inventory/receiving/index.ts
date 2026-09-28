@@ -44,6 +44,7 @@ export { receivePurchaseOrder } from './receive-purchase-order'
 export { receiveStock } from './receive-stock'
 export { anchorDayFor, setCount } from './set-count'
 export { readSetCountPreflight, type SetCountPreflight } from './set-count-preflight'
+export { readStockSetupStatus, type StockSetupStatus } from './stock-setup-status'
 export type {
   AdjustStockInput,
   BulkOpeningStockInput,

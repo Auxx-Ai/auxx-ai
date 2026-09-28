@@ -55,15 +55,15 @@ export function OpeningStockToolbar({
     { value: 'all', label: 'All parts', count: counts.all },
     { value: 'not-counted', label: 'Not counted', count: counts.notCounted },
     { value: 'counted', label: 'Counted', count: counts.counted },
-    { value: 'uncounted', label: 'Sold, never counted', count: counts.uncounted },
+    { value: 'uncounted', label: 'Moved, never counted', count: counts.uncounted },
     { value: 'unclassified', label: 'Unclassified', count: counts.unclassified },
-    { value: 'uncosted', label: 'No standard cost', count: counts.uncosted },
+    { value: 'uncosted', label: 'No cost yet', count: counts.uncosted },
     {
       value: 'uncosted-or-provisional',
-      label: 'Uncosted or provisional',
+      label: 'No cost or unconfirmed cost',
       count: counts.uncostedOrProvisional,
     },
-    { value: 'unbuilt', label: 'Unbuilt sales', count: counts.unbuilt },
+    { value: 'unbuilt', label: 'Sold, never built', count: counts.unbuilt },
   ]
   const kindOptions: FilterOption[] = [...kindCounts.entries()]
     .sort((a, b) => b[1] - a[1])

@@ -37,6 +37,11 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
+import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
+import {
+  StockSetupLink,
+  useStockSetupProgress,
+} from '~/components/manufacturing/stock-setup/stock-setup-progress'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -45,8 +50,10 @@ type Difference = RouterOutputs['ledger']['openingInventory']['read']
 type InBooks = NonNullable<Difference['inBooks']>
 type Uncounted = Difference['uncounted'][number]
 
-/** Where a count is set by hand; `parts` prefilters it (111 Q24). */
-const SET_COUNTS_HREF = '/app/inventory/costing'
+/** Stock setup's count step, prefiltered to these parts (111 Q24). */
+function setCountsHref(partIds: readonly string[]): string {
+  return stockSetupHref('count', { parts: partIds.join(',') })
+}
 
 /** 103 D2's two answers, and the account each one credits (111 Q19). */
 const IN_BOOKS_OPTIONS: { value: InBooks; label: string; description: string; role: string }[] = [
@@ -112,6 +119,7 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
       toastError({ title: 'The difference was not posted', description: error.message }),
   })
 
+  const stock = useStockSetupProgress()
   const [confirm, ConfirmDialog] = useConfirm()
   const [answering, setAnswering] = useState(false)
   const [adopting, setAdopting] = useState<Uncounted[] | null>(null)
@@ -169,6 +177,15 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
           {settingsHint && ' You can come back to this under Accounting › Settings › Opening.'}
         </p>
       </div>
+
+      {stock.visible && !stock.complete && (
+        <StockSetupFirstLine
+          uncounted={difference.uncounted.length}
+          uncosted={stock.status?.uncostedPartCount ?? 0}
+          href={stockSetupHref(stock.firstOpen)}
+          canManageStock={stock.canManageStock}
+        />
+      )}
 
       {showQuestion ? (
         <div className='flex flex-col gap-2'>
@@ -250,12 +267,13 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
               <Button variant='ghost' size='xs' onClick={() => setAdopting(difference.uncounted)}>
                 Adopt channel count for all
               </Button>
-              <Button variant='ghost' size='xs' asChild>
-                <Link
-                  href={`${SET_COUNTS_HREF}&parts=${encodeURIComponent(difference.uncounted.map((p) => p.partId).join(','))}`}>
-                  Set counts
-                </Link>
-              </Button>
+              {stock.canManageStock && (
+                <Button variant='ghost' size='xs' asChild>
+                  <Link href={setCountsHref(difference.uncounted.map((p) => p.partId))}>
+                    Set counts
+                  </Link>
+                </Button>
+              )}
             </div>
           }>
           <div className='rounded-md border'>
@@ -282,11 +300,11 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
                       <Button variant='ghost' size='xs' onClick={() => setAdopting([part])}>
                         Adopt channel count
                       </Button>
-                      <Button variant='ghost' size='xs' asChild>
-                        <Link href={`${SET_COUNTS_HREF}&parts=${encodeURIComponent(part.partId)}`}>
-                          Set count
-                        </Link>
-                      </Button>
+                      {stock.canManageStock && (
+                        <Button variant='ghost' size='xs' asChild>
+                          <Link href={setCountsHref([part.partId])}>Set count</Link>
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -319,6 +337,35 @@ export function OpeningInventoryDifference({ settingsHint = false }: { settingsH
         }}
       />
     </div>
+  )
+}
+
+/** "12 parts not counted, 30 without a cost: finish stock setup first" (plans/mrp/17 §5.5). */
+function StockSetupFirstLine({
+  uncounted,
+  uncosted,
+  href,
+  canManageStock,
+}: {
+  uncounted: number
+  uncosted: number
+  href: string
+  canManageStock: boolean
+}) {
+  const parts = [
+    uncounted > 0 && `${uncounted} ${uncounted === 1 ? 'part' : 'parts'} not counted`,
+    uncosted > 0 && `${uncosted} without a cost`,
+  ].filter(Boolean)
+  return (
+    <Alert variant='neutral' data-testid='stock-setup-first'>
+      <AlertDescription className='text-xs'>
+        {parts.length > 0 ? `${parts.join(', ')}: finish` : 'Finish'} stock setup first; the
+        difference is only complete once it is.{' '}
+        <StockSetupLink href={href} canManageStock={canManageStock}>
+          Continue stock setup
+        </StockSetupLink>
+      </AlertDescription>
+    </Alert>
   )
 }
 

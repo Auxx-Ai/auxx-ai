@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   integrityDoor: vi.fn(async () => {}),
   updateSet: vi.fn(),
   recoverBackflush: vi.fn(async () => 0),
+  recoverUndoBackflush: vi.fn(async () => 0),
 }))
 
 vi.mock('@auxx/database', () => {
@@ -38,6 +39,7 @@ vi.mock('../../../data-connectors/service', () => ({ getRunManifest: h.getRunMan
 vi.mock('../../../import', () => ({ getImportManifest: h.getImportManifest }))
 vi.mock('../../../events/handlers/sync-finalize', () => ({ integrityDoor: h.integrityDoor }))
 vi.mock('../backflush-job', () => ({ recoverStaleBackflushRuns: h.recoverBackflush }))
+vi.mock('../undo-backflush-job', () => ({ recoverStaleUndoBackflushRuns: h.recoverUndoBackflush }))
 vi.mock('../../../record-rules/sync-manifest-collector', () => ({
   upgradeManifestV1: (m: unknown) => m,
 }))

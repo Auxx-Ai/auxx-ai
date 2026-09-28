@@ -25,6 +25,10 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
+import {
+  readStockSetupStatus,
+  type StockSetupStatus,
+} from '../inventory/receiving/stock-setup-status'
 import type { ChecklistId, GoalKey } from './client'
 import type { GettingStartedContext } from './types'
 
@@ -298,6 +302,38 @@ async function hasPostedEntry(ctx: GettingStartedContext): Promise<boolean> {
   return rows.length > 0
 }
 
+// ── stock checklist signals ──
+// One read serves all three goals and the Stock setup page, so they cannot disagree.
+
+// Keyed on the ctx object, so the three goals of one status call share a single read.
+const stockStatusByCtx = new WeakMap<GettingStartedContext, Promise<StockSetupStatus | null>>()
+
+function stockSteps(ctx: GettingStartedContext): Promise<StockSetupStatus | null> {
+  let pending = stockStatusByCtx.get(ctx)
+  if (!pending) {
+    pending = readStockSetupStatus((ctx.db ?? database) as Database, ctx.organizationId).then(
+      (result) => (result.isOk() ? result.value : null)
+    )
+    stockStatusByCtx.set(ctx, pending)
+  }
+  return pending
+}
+
+const hasCheckedPartKinds = async (ctx: GettingStartedContext) =>
+  (await stockSteps(ctx))?.steps.kinds ?? false
+const hasRecordedPastBuilds = async (ctx: GettingStartedContext) =>
+  (await stockSteps(ctx))?.steps.builds ?? false
+const hasCountedAndCosted = async (ctx: GettingStartedContext) =>
+  (await stockSteps(ctx))?.steps.count ?? false
+
+/** Every stock goal met; met outright for an org with no stocked part that ever moved. */
+async function hasSetUpStock(ctx: GettingStartedContext): Promise<boolean> {
+  const status = await stockSteps(ctx)
+  if (!status) return false
+  if (!status.hasStockedMovements) return true
+  return status.steps.kinds && status.steps.builds && status.steps.count
+}
+
 /** Map of checklist → auto-inferred goal → signal. Manual-only goals have no entry. */
 const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
   main: {
@@ -322,8 +358,14 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'map-accounts': hasRequiredRoleAssignments,
     'route-payment-rails': hasRoutedPaymentRails,
     'set-opening-balances': hasOpeningBalances,
+    'set-up-stock': hasSetUpStock,
     'finalize-setup': isSetupFinalized,
     'post-first-entry': hasPostedEntry,
+  },
+  stock: {
+    'check-part-kinds': hasCheckedPartKinds,
+    'record-past-builds': hasRecordedPastBuilds,
+    'count-and-cost': hasCountedAndCosted,
   },
 }
 

@@ -1,9 +1,8 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-run.tsx
 'use client'
 
-// The right column of the Set counts tab (money 52 §2.3; 111 D21): THE RUN. The count date
-// every row without its own follows, what the run writes, the readiness line, and the result.
-// The books-versus-parts comparison lives on the server-read difference screen, linked below.
+// The run pane of Stock setup step 3 (plans/mrp/17 §5.3): the count date, what pressing the run
+// writes, the result, and "Done counting". The books comparison lives on the difference screen.
 
 import { FieldType } from '@auxx/database/enums'
 import { normalizeCalendarDayIso } from '@auxx/lib/field-values/client'
@@ -11,17 +10,18 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
-import { formatCurrency } from '@auxx/utils/currency'
-import { PlayCircle } from 'lucide-react'
+import { CheckCircle2, PlayCircle } from 'lucide-react'
 import Link from 'next/link'
 import { Fragment, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
 import type {
+  OpeningStockCounts,
   OpeningStockExclusion,
   OpeningStockExclusionReason,
-  OpeningStockRunSummary,
+  OpeningStockRunResult,
 } from '../../hooks/use-opening-stock'
 
 /** The explicit, repeatable books-versus-parts screen (111 Q19/Q23). */
@@ -30,7 +30,7 @@ export const OPENING_DIFFERENCE_HREF = '/app/accounting/settings/opening?s=inven
 const EXCLUSION_COPY: Record<OpeningStockExclusionReason, { label: string; detail: string }> = {
   'kind-unconfirmed': {
     label: 'Kind not confirmed',
-    detail: 'The kind decides the account, and the account is frozen on the movement.',
+    detail: "The kind decides which inventory account the part's stock sits in.",
   },
   'no-quantity': {
     label: 'No count',
@@ -40,58 +40,94 @@ const EXCLUSION_COPY: Record<OpeningStockExclusionReason, { label: string; detai
 
 export interface OpeningStockRunSummaryCounts {
   firstCounts: number
+  /** Counts on parts counted before: the difference is written on the count day. */
   adjustments: number
-  /** Rows on parts with no standard and no typed cost: written pending, valued later. */
+  /** Parts getting their first cost, with or without a count. */
+  firstCosts: number
+  /** Counts on parts with no cost yet: valued once one is set. */
   pending: number
-  /** Rows whose typed unit cost replaces the part's standard and revalues what is on hand. */
-  restates: number
-  /** Rows the Q25 banner is warning about. */
-  backflushFirst: number
+  /** Made parts in the run whose sales no build covers yet. */
+  unbuilt: { title: string; unbuiltSales: number }[]
 }
 
 interface OpeningStockRunProps {
   entryCount: number
   summary: OpeningStockRunSummaryCounts
   exclusions: OpeningStockExclusion[]
+  counts: OpeningStockCounts
   /** `YYYY-MM`, or `null` when nobody has set one. */
   cutoffPeriod: string | null
   occurredAt: string
   onOccurredAtChange: (next: string) => void
   canOpenStock: boolean
   isRunning: boolean
-  onRun: () => Promise<OpeningStockRunSummary>
-  currencyCode: string
+  onRun: () => Promise<OpeningStockRunResult>
+}
+
+const plural = (n: number, one: string, many: string) =>
+  `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
+
+/** `40 first counts · 3 corrections · 25 first costs`, dropping the zeros. */
+export function runSummaryLine(summary: OpeningStockRunSummaryCounts): string {
+  return [
+    summary.firstCounts > 0 && plural(summary.firstCounts, 'first count', 'first counts'),
+    summary.adjustments > 0 && plural(summary.adjustments, 'correction', 'corrections'),
+    summary.firstCosts > 0 && plural(summary.firstCosts, 'first cost', 'first costs'),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** D5: counting a made part with unbuilt sales is allowed, but says what it gives up. */
+export function unbuiltWarning(unbuilt: OpeningStockRunSummaryCounts['unbuilt']): string | null {
+  if (unbuilt.length === 0) return null
+  const who =
+    unbuilt.length === 1
+      ? `${unbuilt[0]!.title} has ${plural(unbuilt[0]!.unbuiltSales, 'unbuilt sale', 'unbuilt sales')}.`
+      : `${unbuilt.length} parts have unbuilt sales.`
+  return `${who} Counting now means backflush won't build them later.`
+}
+
+/** "today", or "on 26 Sep 2026", for a calendar-day ISO. */
+function countDayLabel(day: string): string {
+  const key = day.slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  if (key === today) return 'today'
+  const date = new Date(`${key}T00:00:00`)
+  return `on ${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
 export function OpeningStockRun({
   entryCount,
   summary,
   exclusions,
+  counts,
   cutoffPeriod,
   occurredAt,
   onOccurredAtChange,
   canOpenStock,
   isRunning,
   onRun,
-  currencyCode,
 }: OpeningStockRunProps) {
   const [confirm, ConfirmDialog] = useConfirm()
-  const [lastRun, setLastRun] = useState<OpeningStockRunSummary | null>(null)
-  const parts = (n: number) => `${n} ${n === 1 ? 'part' : 'parts'}`
+  const [lastRun, setLastRun] = useState<OpeningStockRunResult | null>(null)
+  const [editingDate, setEditingDate] = useState(false)
+  const line = runSummaryLine(summary)
+  const warning = unbuiltWarning(summary.unbuilt)
 
   const handleRun = async () => {
     const confirmed = await confirm({
-      title: `Set counts for ${parts(entryCount)}?`,
-      description:
-        `Writes one movement per part: ${summary.firstCounts} first ${summary.firstCounts === 1 ? 'count anchors' : 'counts anchor'} ` +
-        `the part at its ledger start, ${summary.adjustments} ${summary.adjustments === 1 ? 'adjustment writes' : 'adjustments write'} ` +
-        'the difference on the count day. Movements are append-only: a wrong count is corrected by counting again, never by editing.' +
-        (summary.backflushFirst > 0
-          ? ` ${parts(summary.backflushFirst)} still ${summary.backflushFirst === 1 ? 'has' : 'have'} unbuilt sales; counting them first hides those sales.`
-          : ''),
-      confirmText: 'Set counts',
+      title: `Save ${plural(entryCount, 'part', 'parts')}?`,
+      description: [
+        `${line}.`,
+        "Counts can't be edited later; a wrong one is fixed by counting again.",
+        warning,
+      ]
+        .filter(Boolean)
+        .join(' '),
+      confirmText: 'Save',
       cancelText: 'Cancel',
-      destructive: summary.backflushFirst > 0,
     })
     if (!confirmed) return
 
@@ -99,8 +135,8 @@ export function OpeningStockRun({
       setLastRun(await onRun())
     } catch (error) {
       toastError({
-        title: 'Error setting counts',
-        description: error instanceof Error ? error.message : 'Could not write the counts.',
+        title: 'Error saving counts',
+        description: error instanceof Error ? error.message : 'Could not save the counts.',
       })
     }
   }
@@ -111,86 +147,83 @@ export function OpeningStockRun({
         <div className='flex flex-col gap-4'>
           <section className='flex flex-col gap-1.5'>
             <h3 className='font-medium text-foreground text-sm'>Count date</h3>
-            <FieldInputAdapter
-              fieldType={FieldType.DATE}
-              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-              value={occurredAt}
-              onChange={(value) => {
-                if (typeof value === 'string' && value) onOccurredAtChange(value)
-              }}
-              disabled={isRunning}
-            />
+            {editingDate ? (
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                value={occurredAt}
+                onChange={(value) => {
+                  if (typeof value === 'string' && value) onOccurredAtChange(value)
+                }}
+                disabled={isRunning}
+              />
+            ) : (
+              <div className='flex items-center gap-1 text-sm'>
+                <span>Counted {countDayLabel(occurredAt)}</span>
+                <Button
+                  variant='ghost'
+                  size='xs'
+                  disabled={isRunning}
+                  onClick={() => setEditingDate(true)}>
+                  Change
+                </Button>
+              </div>
+            )}
             <p className='text-muted-foreground text-xs'>
-              Fills every row that has no date of its own.{' '}
+              The day you looked at the shelf, for every part in this save.{' '}
               {cutoffPeriod
-                ? `A count dated on or before the accounting cutoff (${cutoffPeriod}) posts nothing — the opening covers it; one dated after posts the difference to Inventory Count Variance.`
-                : 'Nothing posts until accounting is set up; the count still moves stock.'}
+                ? `Counts dated on or before your books start (${cutoffPeriod}) post nothing; later ones post the difference to Inventory Count Variance.`
+                : 'Nothing posts to the books until accounting is set up; the count still sets your stock.'}
             </p>
           </section>
 
           <Separator />
 
           <section className='flex flex-col gap-1.5'>
-            <h3 className='font-medium text-foreground text-sm'>What the run writes</h3>
+            <h3 className='font-medium text-foreground text-sm'>What gets saved</h3>
             {entryCount === 0 ? (
               <p className='rounded-md border border-dashed p-3 text-muted-foreground text-xs'>
-                Nothing is in the run yet. Type a count against a part on the left.
+                Nothing to save yet. Type a count or a first cost against a part on the left.
               </p>
             ) : (
-              <ul className='flex flex-col gap-1 text-muted-foreground text-xs'>
-                <li>
-                  <span className='font-medium text-foreground'>{summary.firstCounts}</span> first{' '}
-                  {summary.firstCounts === 1 ? 'count' : 'counts'} — an initial dated at the ledger
-                  start, so the replay reads the count on the count day.
-                </li>
-                <li>
-                  <span className='font-medium text-foreground'>{summary.adjustments}</span>{' '}
-                  {summary.adjustments === 1 ? 'adjustment' : 'adjustments'} — the difference, dated
-                  the count day.
-                </li>
+              <div className='flex flex-col gap-1 text-muted-foreground text-xs'>
+                <p data-testid='run-summary'>
+                  <span className='font-medium text-foreground'>{line}.</span> Counts can't be
+                  edited later; a wrong one is fixed by counting again.
+                </p>
                 {summary.pending > 0 && (
-                  <li>
-                    <span className='font-medium text-foreground'>{summary.pending}</span> with no
-                    standard cost — written now, valued when a cost is set.
-                  </li>
+                  <p>
+                    {plural(summary.pending, 'part has', 'parts have')} no cost yet: the count is
+                    saved now and valued once a cost is set.
+                  </p>
                 )}
-                {summary.restates > 0 && (
-                  <li>
-                    <span className='font-medium text-foreground'>{summary.restates}</span>{' '}
-                    {summary.restates === 1 ? 'replaces its' : 'replace their'} standard cost — what
-                    is on hand is revalued at the new cost.
-                  </li>
-                )}
-                {summary.backflushFirst > 0 && (
-                  <li className='text-yellow-700 dark:text-yellow-500'>
-                    <span className='font-medium'>{summary.backflushFirst}</span> with unbuilt sales
-                    — backflush first, or the count hides them.
-                  </li>
-                )}
-              </ul>
+                {warning && <p>{warning}</p>}
+              </div>
             )}
           </section>
 
           <Separator />
 
           <RunReadiness entryCount={entryCount} exclusions={exclusions} />
+
+          <Separator />
+
+          <DoneCounting counts={counts} cutoffPeriod={cutoffPeriod} />
         </div>
       </ScrollArea>
 
       <div className='mt-3 flex shrink-0 flex-col gap-1.5 border-t pt-3'>
-        {lastRun && !isRunning && (
-          <RunResult run={lastRun} cutoffPeriod={cutoffPeriod} currencyCode={currencyCode} />
-        )}
+        {lastRun && !isRunning && <RunResult run={lastRun} cutoffPeriod={cutoffPeriod} />}
         <Button
           variant='outline'
           size='sm'
           className='self-end'
           disabled={!canOpenStock || entryCount === 0}
           loading={isRunning}
-          loadingText='Counting...'
+          loadingText='Saving...'
           onClick={() => void handleRun()}>
           <PlayCircle />
-          Set counts for {parts(entryCount)}
+          Save {plural(entryCount, 'part', 'parts')}
         </Button>
         {!canOpenStock && (
           <p className='self-end text-muted-foreground text-xs'>
@@ -204,59 +237,124 @@ export function OpeningStockRun({
   )
 }
 
-/** The three numbers side by side, never as a fraction: excluded is correct, failed is somebody's. */
+/** Q2: one org flag ends the first count; parts left uncounted keep their numbers. */
+function DoneCounting({
+  counts,
+  cutoffPeriod,
+}: {
+  counts: OpeningStockCounts
+  cutoffPeriod: string | null
+}) {
+  const utils = api.useUtils()
+  const status = api.purchasing.stockSetupStatus.useQuery(undefined, { retry: false })
+  const setFlag = api.purchasing.setStockSetupFlag.useMutation({
+    onSuccess: () => {
+      void utils.purchasing.stockSetupStatus.invalidate()
+      void utils.gettingStarted.getStatus.invalidate()
+    },
+    onError: (error) =>
+      toastError({ title: 'Error saving the counting state', description: error.message }),
+  })
+  const done = setFlag.isPending ? setFlag.variables.value : !!status.data?.countingDone
+  const others = counts.all - counts.counted
+  const setDone = (value: boolean) => setFlag.mutate({ flag: 'countingDone', value })
+
+  return (
+    <section className='flex flex-col gap-1.5'>
+      <h3 className='font-medium text-foreground text-sm'>Done counting</h3>
+      <p className='text-muted-foreground text-xs'>
+        {counts.counted.toLocaleString('en-US')} of {counts.all.toLocaleString('en-US')} counted.
+        {others > 0 &&
+          ` The ${others.toLocaleString('en-US')} ${others === 1 ? 'other keeps its' : 'others keep their'} current numbers; you can count them any time.`}
+        {counts.uncosted > 0 && ` ${plural(counts.uncosted, 'part', 'parts')} without a cost.`}
+      </p>
+      {done ? (
+        <div className='flex flex-wrap items-center gap-2 text-xs'>
+          <span className='flex items-center gap-1 text-foreground'>
+            <CheckCircle2 className='size-3.5 text-green-600' />
+            Counting marked done.
+          </span>
+          {cutoffPeriod && (
+            <Link className='text-muted-foreground underline' href={OPENING_DIFFERENCE_HREF}>
+              Compare with your books
+            </Link>
+          )}
+          <Button
+            variant='ghost'
+            size='xs'
+            disabled={setFlag.isPending}
+            onClick={() => setDone(false)}>
+            Undo
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant='outline'
+          size='sm'
+          className='self-start'
+          disabled={status.isPending}
+          loading={setFlag.isPending}
+          loadingText='Saving...'
+          onClick={() => setDone(true)}>
+          <CheckCircle2 />
+          Done counting
+        </Button>
+      )}
+    </section>
+  )
+}
+
+/** Saved, unchanged and failed side by side, never as a fraction. */
 function RunResult({
   run,
   cutoffPeriod,
-  currencyCode,
 }: {
-  run: OpeningStockRunSummary
+  run: OpeningStockRunResult
   cutoffPeriod: string | null
-  currencyCode: string
 }) {
-  const first = run.opened.filter((row) => row.outcome === 'initial').length
-  const adjusts = run.opened.length - first
-  const unchanged = run.excluded.filter((skip) => skip.reason === 'unchanged').length
-  const changes = [...run.opened, ...run.excluded].flatMap((row) =>
-    row.standardCostChange ? [row.standardCostChange] : []
-  )
-  const setCount = changes.filter((change) => change.action === 'set').length
-  const restated = changes.length - setCount
-  const revalued = changes.reduce((sum, change) => sum + change.revaluationPostedMinor, 0)
+  const saved = run.counts?.opened ?? []
+  const first = saved.filter((row) => row.outcome === 'initial').length
+  const corrections = saved.length - first
+  const unchanged = (run.counts?.excluded ?? []).filter(
+    (skip) => skip.reason === 'unchanged'
+  ).length
+  const countCosts = [...saved, ...(run.counts?.excluded ?? [])].filter(
+    (row) => row.standardCostChange?.action === 'set'
+  ).length
+  const firstCosts = run.firstCosts + countCosts
+  const failed = [
+    ...(run.counts?.failed ?? []).map((skip) => ({ partId: skip.partId, detail: skip.detail })),
+    ...run.costFailures,
+  ]
+  const parts = [
+    first > 0 && plural(first, 'first count', 'first counts'),
+    corrections > 0 && plural(corrections, 'correction', 'corrections'),
+    firstCosts > 0 && plural(firstCosts, 'first cost', 'first costs'),
+    unchanged > 0 && `${unchanged.toLocaleString('en-US')} unchanged`,
+    failed.length > 0 && `${failed.length.toLocaleString('en-US')} failed`,
+  ].filter(Boolean)
   return (
     <div className='flex flex-col gap-1 text-muted-foreground text-xs'>
       <p>
-        Counted {run.opened.length} of {run.requested} ({first} first, {adjusts}{' '}
-        {adjusts === 1 ? 'adjustment' : 'adjustments'}){unchanged > 0 && `, ${unchanged} unchanged`}
-        {run.failed.length > 0 && `, ${run.failed.length} failed`}.
-        {cutoffPeriod && (
+        Saved: {parts.length > 0 ? parts.join(' · ') : 'nothing'}.
+        {cutoffPeriod && saved.length > 0 && (
           <>
             {' '}
             <Link className='underline' href={OPENING_DIFFERENCE_HREF}>
-              Review the opening inventory difference
+              Compare with your books
             </Link>
             .
           </>
         )}
       </p>
-      {changes.length > 0 && (
-        <p>
-          Standard cost: {setCount > 0 && `${setCount} set`}
-          {setCount > 0 && restated > 0 && ', '}
-          {restated > 0 && `${restated} replaced`}
-          {revalued !== 0 &&
-            ` · revalued on hand ${revalued > 0 ? '+' : ''}${formatCurrency(revalued, { currencyCode })}`}
-          .
-        </p>
-      )}
-      {run.failed.length > 0 && (
+      {failed.length > 0 && (
         <ul className='flex flex-col gap-0.5'>
-          {run.failed.slice(0, 5).map((skip) => (
+          {failed.slice(0, 5).map((skip) => (
             <li key={skip.partId} className='text-destructive'>
               {skip.detail}
             </li>
           ))}
-          {run.failed.length > 5 && <li>…and {run.failed.length - 5} more.</li>}
+          {failed.length > 5 && <li>…and {failed.length - 5} more.</li>}
         </ul>
       )}
     </div>

@@ -59,6 +59,7 @@ import {
   syncIntegrityRecoveryJob,
   taskDeadlineScannerJob,
   thumbnailCleanupJob,
+  undoBackflushJob,
   vendorBillAgingJob,
   webhookRenewalJob,
   webhookRenewalScannerJob,
@@ -277,9 +278,11 @@ export const jobMappings = {
   // Re-runs finalize integrity passes (relief, shipment posting) a killed worker left pending.
   syncIntegrityRecoveryJob,
 
-  // Backflush (111 D23/D24): nightly for yesterday per org with the switch on, or one org's
-  // range enqueued from `builds.runBackflush`.
+  // Backflush (111 D23/D24): nightly over the last 30 days per org with the switch on, or one
+  // org's run enqueued from `builds.runBackflush`.
   backflushJob,
+  // One step of an undo of past builds, from `builds.startUndoBackflush` (plans/mrp/17 §8).
+  undoBackflushJob,
 
   // Queued when an accounting provider connects (plans/accounting/tasks/105 §4).
   connectAndGoPrepareJob,
