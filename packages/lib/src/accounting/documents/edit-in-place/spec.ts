@@ -32,6 +32,7 @@ import {
 } from '../../sales/credit-memos/accounting'
 import {
   loadCreditMemoLines,
+  readMemoTaxByRemitter,
   readShippedMemoLineIds,
   requireCreditMemo,
   sumCreditMemoApplications,
@@ -326,6 +327,11 @@ const creditMemoRow: LedgerDocumentEditRow = {
           lines,
           issuedAt
         )
+        const taxByRemitter = await readMemoTaxByRemitter(
+          planDb,
+          organizationId,
+          memo.orderInstanceId
+        )
         return {
           build(generation) {
             const built = buildEntryForCreditMemo({
@@ -335,6 +341,7 @@ const creditMemoRow: LedgerDocumentEditRow = {
               currency,
               shippedLineIds,
               generation,
+              taxByRemitter,
             })
             // No shipped line: the lane reverses what stood and posts nothing (91 D4).
             if (!built)

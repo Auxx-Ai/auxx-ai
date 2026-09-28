@@ -250,6 +250,14 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     accountType: GlAccountType.LIABILITY,
     role: 'sales_tax_payable',
   },
+  {
+    // Tax a marketplace facilitator collects and remits. The merchant does not owe it, so it
+    // never sits in 2200; the channel's payout withholds it and clears it (plan 116).
+    code: '2210',
+    name: 'Marketplace Tax Collected',
+    accountType: GlAccountType.LIABILITY,
+    role: 'marketplace_tax_collected',
+  },
 
   // ── Equity ──────────────────────────────────────────────────────────────
   // Added 2026-09-04 (handoff decision 6.4). The opening trial balance needs an

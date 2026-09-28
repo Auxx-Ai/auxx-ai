@@ -105,6 +105,7 @@ vi.mock('../reads', () => ({
   requireCreditMemo: async () => h.memo,
   loadCreditMemoLines: async () => h.lines,
   readShippedMemoLineIds: h.readShipped,
+  readMemoTaxByRemitter: async () => ({ merchantMinor: 0, marketplaceMinor: 0 }),
   loadInvoiceForCredit: vi.fn(),
   loadInvoiceLinesForCredit: vi.fn(),
   sumCreditMemoApplications: h.sumCreditMemoApplications,

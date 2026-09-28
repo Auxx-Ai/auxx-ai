@@ -32,12 +32,14 @@ import {
   systemFields,
   systemValueJoin,
 } from '../../../resources/system-records'
+import type { TaxByRemitter } from '../../ledger/builders/credit-memo'
 import {
   listInvoiceApplications,
   listRefundSettlements,
   readMovements,
   selectLiveApplications,
 } from '../../money/reads'
+import { readOrderTaxLines } from '../orders/reads'
 import type {
   ContactCredit,
   ContactCreditMemo,
@@ -658,6 +660,24 @@ export interface OrderSpreadPart {
  */
 export interface ShippedMemoLines extends ReadonlySet<string> {
   readonly orderParts?: readonly OrderSpreadPart[]
+}
+
+/** The memo's order's tax by remitter, the weights its tax leg splits by (116). Zeroes with no order. */
+export async function readMemoTaxByRemitter(
+  db: Database | Transaction,
+  organizationId: string,
+  orderInstanceId: string | null | undefined
+): Promise<TaxByRemitter> {
+  const weights: TaxByRemitter = { merchantMinor: 0, marketplaceMinor: 0 }
+  if (!orderInstanceId) return weights
+  const taxLines = (await readOrderTaxLines(db, organizationId, [orderInstanceId])).get(
+    orderInstanceId
+  )
+  for (const line of taxLines ?? []) {
+    if (line.remitter === 'marketplace') weights.marketplaceMinor += line.priceMinor
+    else weights.merchantMinor += line.priceMinor
+  }
+  return weights
 }
 
 /**

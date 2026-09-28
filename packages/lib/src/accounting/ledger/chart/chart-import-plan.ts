@@ -36,6 +36,9 @@ export const ROLE_IMPORT_MATCH: Readonly<Partial<Record<AccountRole, RoleImportM
   accounts_payable: { subtype: 'accounts_payable' },
   undeposited_funds: { names: ['Undeposited Funds'] },
   sales_tax_payable: { names: ['Sales Tax Payable'] },
+  marketplace_tax_collected: {
+    names: ['Marketplace Tax Collected', 'Marketplace Facilitator Tax'],
+  },
   equity_retained_earnings: { names: ['Retained Earnings'] },
   equity_opening_balance: { names: ['Opening Balance Equity'] },
   bad_debt_expense: { names: ['Bad Debt', 'Bad Debts', 'Bad Debt Expense'] },

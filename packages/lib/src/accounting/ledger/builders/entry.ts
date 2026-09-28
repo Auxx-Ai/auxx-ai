@@ -337,6 +337,12 @@ export const ACCOUNT_ROLES = {
   /** Sales tax payable (default `2200`). A pass-through liability, never revenue. */
   SALES_TAX_PAYABLE: 'sales_tax_payable',
   /**
+   * Marketplace tax collected (default `2210`). Tax a marketplace facilitator collects and remits
+   * (`tax_line_channel_liable`); the merchant never owes it, so it never touches `sales_tax_payable`.
+   * The channel's payout withholds it, which clears the balance order by order (116 §0).
+   */
+  MARKETPLACE_TAX_COLLECTED: 'marketplace_tax_collected',
+  /**
    * Customer deposits (default `2350`). Money taken BEFORE delivery, a
    * liability. `money/payments/deposit.ts` is this concept; a BANK deposit is
    * `bank_deposit` and lands on `cash`, never here.
@@ -462,6 +468,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   bank: 'asset',
   unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
+  marketplace_tax_collected: 'liability',
   customer_deposits: 'liability',
   equity_retained_earnings: 'equity',
   equity_opening_balance: 'equity',
@@ -529,6 +536,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   bank: 'Bank',
   unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
+  marketplace_tax_collected: 'Marketplace Tax Collected',
   customer_deposits: 'Customer Deposits',
   equity_retained_earnings: 'Retained Earnings',
   equity_opening_balance: 'Opening Balance Equity',

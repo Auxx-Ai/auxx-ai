@@ -1,10 +1,10 @@
 // packages/lib/src/accounting/ledger/builders/split-tax-by-jurisdiction.ts
 
 /**
- * Split a `sales_tax_payable` credit across jurisdictions, pro rata to an
- * order's own `tax_line` rows (brief 13 §5.3 - jurisdiction becomes a
- * `dimensions` entry on the line, sourced from `tax_line` rather than a
- * second role).
+ * Split a shipment's tax credit across jurisdictions and remitters, pro rata to
+ * an order's own `tax_line` rows (brief 13 §5.3 - jurisdiction becomes a
+ * `dimensions` entry on the line; plan 116 - a marketplace-remitted share credits
+ * `marketplace_tax_collected`, never `sales_tax_payable`).
  *
  * PURE. No database, no clock, no chart - the same property every builder in
  * `postings/` has, which is what lets the largest-remainder rounding below be
@@ -19,18 +19,25 @@
 
 import { UnprocessableEntityError } from '../../../errors'
 
+/** Who remits a tax line: the merchant, or a marketplace facilitator (`tax_line_channel_liable`). */
+export type TaxRemitter = 'merchant' | 'marketplace'
+
 /** One order's tax line, as `tax-line-fields.ts` stores it. */
 export interface JurisdictionTaxLine {
   /** `tax_line_title` - the jurisdiction name, e.g. "CA State Tax". */
   title: string
   /** `tax_line_price`, integer minor units - this jurisdiction's share of the order's tax. */
   priceMinor: number
+  /** Absent reads as `merchant`: only a `true` channel-liable flag is stored. */
+  remitter?: TaxRemitter
 }
 
-/** One jurisdiction's share of a `sales_tax_payable` credit. */
+/** One share of a shipment's tax, and the account family it credits. */
 export interface TaxJurisdictionShare {
-  jurisdiction: string
+  /** Null when the lines did not tie and only the remitter split could be trusted. */
+  jurisdiction: string | null
   amountMinor: number
+  remitter: TaxRemitter
 }
 
 /**
@@ -59,32 +66,29 @@ function wholeMinor(value: number, label: string): number {
 
 /**
  * Split `taxMinor` across the jurisdictions named on `taxLines`, using
- * largest-remainder rounding so the shares sum EXACTLY to `taxMinor`.
+ * largest-remainder rounding so the shares sum EXACTLY to `taxMinor`, and keep
+ * each share's remitter so marketplace tax never reaches `sales_tax_payable` (116 §0).
  *
  * The weights are the order's tax lines, whatever `taxMinor` itself is - a
  * partial shipment's own tax is still split in the ratio the whole order's
  * jurisdictions established, because a `tax_line` carries no per-shipment
- * granularity of its own. Multiple lines sharing one jurisdiction (unusual, but
- * not forbidden by the registry) are summed before the split.
+ * granularity of its own. Lines sharing one jurisdiction and remitter are summed.
  *
- * Returns `null`, never throws, when the breakdown cannot be trusted:
+ * Returns `null` (the caller's single undimensioned merchant line) when:
  *
- * - `taxMinor` is zero (nothing to split),
- * - there are no tax lines, or every title is blank,
- * - the tax lines do NOT sum to the order's own `orderTaxTotalMinor`.
+ * - `taxMinor` is zero, or there are no titled tax lines;
+ * - the lines do NOT sum to `orderTaxTotalMinor` and none is marketplace-remitted.
  *
- * 🛑 **The tie check is the load-bearing rule (brief 13 §5).** An order whose
- * tax lines do not sum to its own total gets today's single undimensioned
- * line, on purpose: a partial jurisdiction breakdown reads as a complete one,
- * and a bookkeeper reading the P&L by jurisdiction has no way to tell the
- * difference from a line that is simply short.
+ * 🛑 **The tie check is the load-bearing rule (brief 13 §5)**: a partial
+ * jurisdiction breakdown reads as a complete one, so an untied order gets no
+ * jurisdiction dimension. An untied order WITH marketplace lines still splits by
+ * remitter alone (`jurisdiction: null`) - who owes the tax is not optional.
  *
  * @throws {UnprocessableEntityError} on a non-finite or fractional tax line
- *   price or order tax total - the same refusal `toAmountMinor` gives every
- *   other stored amount that turns out not to be whole cents.
+ *   price or order tax total.
  */
 export function splitTaxByJurisdiction(input: {
-  /** This shipment's (or this batch's) `sales_tax_payable` credit to split. */
+  /** This shipment's (or this batch's) tax credit to split. */
   taxMinor: number
   /** The order's own tax lines - one row per jurisdiction. */
   taxLines: readonly JurisdictionTaxLine[]
@@ -96,44 +100,67 @@ export function splitTaxByJurisdiction(input: {
 
   const orderTaxTotalMinor = wholeMinor(input.orderTaxTotalMinor, 'Order tax total')
 
-  const byTitle = new Map<string, number>()
+  const byKey = new Map<string, { jurisdiction: string; remitter: TaxRemitter; weight: number }>()
   for (const [index, line] of taxLines.entries()) {
     const title = line.title?.trim()
     if (!title) continue
     const priceMinor = wholeMinor(line.priceMinor, `Tax line ${index + 1} (${title})`)
-    byTitle.set(title, (byTitle.get(title) ?? 0) + priceMinor)
+    const remitter = line.remitter ?? 'merchant'
+    const key = `${remitter}\u0000${title}`
+    const group = byKey.get(key)
+    if (group) group.weight += priceMinor
+    else byKey.set(key, { jurisdiction: title, remitter, weight: priceMinor })
   }
-  if (byTitle.size === 0) return null
+  if (byKey.size === 0) return null
 
-  const totalWeight = [...byTitle.values()].reduce((sum, value) => sum + value, 0)
-  // A partial or mismatched breakdown reads as a complete one - see the file
-  // header - so anything that does not tie falls back to the single line
-  // rather than guessing at a split.
-  if (totalWeight !== orderTaxTotalMinor || totalWeight <= 0) return null
-
-  interface Share {
-    jurisdiction: string
-    amountMinor: number
-    remainder: number
+  const groups = [...byKey.values()]
+  const totalWeight = groups.reduce((sum, group) => sum + group.weight, 0)
+  if (totalWeight === orderTaxTotalMinor && totalWeight > 0) {
+    const amounts = largestRemainder(
+      taxMinor,
+      groups.map((group) => group.weight)
+    )
+    return groups
+      .map((group, index) => ({
+        jurisdiction: group.jurisdiction,
+        remitter: group.remitter,
+        amountMinor: amounts[index] ?? 0,
+      }))
+      .filter((share) => share.amountMinor !== 0)
   }
-  const shares: Share[] = [...byTitle.entries()].map(([jurisdiction, weight]) => {
-    const exact = (taxMinor * weight) / totalWeight
-    const floor = Math.floor(exact)
-    return { jurisdiction, amountMinor: floor, remainder: exact - floor }
-  })
 
-  // The remainder cents go to the largest fractional remainders first, ties
-  // broken by the order the jurisdictions were first seen in - deterministic,
-  // and the same idea `computeShipmentTotals` uses for the tax allocation.
-  let remaining = taxMinor - shares.reduce((sum, share) => sum + share.amountMinor, 0)
-  const byRemainderDesc = [...shares].sort((a, b) => b.remainder - a.remainder)
-  for (const share of byRemainderDesc) {
+  const marketplaceWeight = groups
+    .filter((group) => group.remitter === 'marketplace')
+    .reduce((sum, group) => sum + group.weight, 0)
+  if (marketplaceWeight <= 0 || totalWeight <= 0) return null
+  const [marketplaceMinor = 0, merchantMinor = 0] = largestRemainder(taxMinor, [
+    marketplaceWeight,
+    totalWeight - marketplaceWeight,
+  ])
+  return (
+    [
+      { jurisdiction: null, remitter: 'marketplace', amountMinor: marketplaceMinor },
+      { jurisdiction: null, remitter: 'merchant', amountMinor: merchantMinor },
+    ] satisfies TaxJurisdictionShare[]
+  ).filter((share) => share.amountMinor !== 0)
+}
+
+/**
+ * `total` split by `weights`, summing exactly. Remainder cents go to the largest fractional
+ * remainders first, ties broken by position - the idea `computeShipmentTotals` uses.
+ */
+function largestRemainder(total: number, weights: readonly number[]): number[] {
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
+  const exact = weights.map((weight) => (total * weight) / weightSum)
+  const amounts = exact.map((value) => Math.floor(value))
+  let remaining = total - amounts.reduce((sum, value) => sum + value, 0)
+  const order = exact
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .sort((a, b) => b.remainder - a.remainder)
+  for (const { index } of order) {
     if (remaining <= 0) break
-    share.amountMinor += 1
+    amounts[index] = (amounts[index] ?? 0) + 1
     remaining -= 1
   }
-
-  return shares
-    .filter((share) => share.amountMinor !== 0)
-    .map((share) => ({ jurisdiction: share.jurisdiction, amountMinor: share.amountMinor }))
+  return amounts
 }

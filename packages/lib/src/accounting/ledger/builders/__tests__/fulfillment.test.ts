@@ -321,6 +321,58 @@ describe('the jurisdiction split (brief 13 §5)', () => {
   })
 })
 
+describe('tax the channel remits (116)', () => {
+  const marketplaceLines = (entry: ReturnType<typeof buildFulfillmentEntry>['entry']) =>
+    entry.lines
+      .filter((line) => line.accountRole === ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED)
+      .map((line) => ({ jurisdiction: line.dimensions?.jurisdiction, amount: line.amount }))
+
+  it('credits marketplace tax collected, never sales tax payable, for a channel-liable order', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: WHOLE_ORDER,
+      taxLines: [
+        { title: 'TX State Tax', priceMinor: 6_000, remitter: 'marketplace' },
+        { title: 'Temple City Tax', priceMinor: 2_000, remitter: 'marketplace' },
+      ],
+    })
+    expect(jurisdictionLines(built.entry)).toEqual([])
+    expect(marketplaceLines(built.entry)).toEqual([
+      { jurisdiction: 'TX State Tax', amount: 6_000 },
+      { jurisdiction: 'Temple City Tax', amount: 2_000 },
+    ])
+    const memo = built.entry.lines.find(
+      (line) => line.accountRole === ACCOUNT_ROLES.MARKETPLACE_TAX_COLLECTED
+    )?.memo
+    expect(memo).toContain('channel remits')
+  })
+
+  it('credits both accounts for a mixed order', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: WHOLE_ORDER,
+      taxLines: [
+        { title: 'CO State Tax', priceMinor: 7_969, remitter: 'marketplace' },
+        { title: 'CO Retail Delivery Fee', priceMinor: 31 },
+      ],
+    })
+    expect(marketplaceLines(built.entry)).toEqual([{ jurisdiction: 'CO State Tax', amount: 7_969 }])
+    expect(jurisdictionLines(built.entry)).toEqual([
+      { jurisdiction: 'CO Retail Delivery Fee', amount: 31 },
+    ])
+  })
+
+  it('splits by remitter without a jurisdiction when the lines do not tie', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: WHOLE_ORDER,
+      taxLines: [{ title: 'WA State Tax', priceMinor: 5_000, remitter: 'marketplace' }],
+    })
+    expect(marketplaceLines(built.entry)).toEqual([{ jurisdiction: undefined, amount: 8_000 }])
+    expect(jurisdictionLines(built.entry)).toEqual([])
+  })
+})
+
 describe('partial fulfillment', () => {
   // $500 + $500, 8% tax, $15 shipping. Ship one line, then the other.
   const first = { lineId: 'l1', quantity: 1, unitPriceMinor: 50_000 }

@@ -429,6 +429,7 @@ Dr discounts_given          list − net on the shipped lines (store-scoped)
     Cr revenue_product        the shipped lines at list
     Cr gift_card_liability    gift card lines (line_item_category = 'gift_card'), at net
     Cr sales_tax_payable      by jurisdiction, cumulative by box sequence
+    Cr marketplace_tax_collected  the tax lines the channel remits (`tax_line_channel_liable`)
     Cr revenue_shipping       on the first box
 ```
 
@@ -1148,7 +1149,8 @@ refunds.
   order's own line items: `line_item_fulfilled_qty` / `_at` null means the channel said nothing
   and the line reverses; qty 0, or shipped after the memo date, means not shipped; a native memo
   treats every line as shipped. `Dr revenue_returns_allowances` for goods, `Dr revenue_shipping`
-  for a `credit_memo_line_disposition = 'shipping'` line, `Dr sales_tax_payable` for their tax,
+  for a `credit_memo_line_disposition = 'shipping'` line, `Dr sales_tax_payable` for their tax
+  (`Dr marketplace_tax_collected` for the share the channel remits, in the order's own mix),
   `/ Cr accounts_receivable`. A memo with no shipped line posts nothing and issues as
   `nothing_to_recognise`: there is no revenue to reverse, and the money is already a credit in A/R.
 - **The refund posts `Dr accounts_receivable / Cr <the endpoint>`**, sourced on the movement,

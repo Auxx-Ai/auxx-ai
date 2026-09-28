@@ -27,6 +27,7 @@ import {
   listCreditMemoIdsForOrder,
   loadCreditMemo,
   loadCreditMemoLines,
+  readMemoTaxByRemitter,
   readShippedMemoLineIds,
 } from './reads'
 
@@ -73,6 +74,7 @@ export async function repostCreditMemoEntry(
     currency: await organizationCurrency(organizationId),
     shippedLineIds,
     generation,
+    taxByRemitter: await readMemoTaxByRemitter(db, organizationId, memo.orderInstanceId),
   })
   const liveEntry = await readBuiltEntry(db, organizationId, live.value.id)
   if (rebuilt && entryLinesEqual(rebuilt.entry, liveEntry)) return 'unchanged'

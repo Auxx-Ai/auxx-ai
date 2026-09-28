@@ -41,6 +41,7 @@ import {
 // Leaf submodules, not the `../fulfillments` barrel - that barrel re-exports
 // `stamp-totals.ts`, which reads an order through THIS file, so importing the
 // barrel here would cycle back to it.
+import type { TaxRemitter } from '../../ledger/builders/split-tax-by-jurisdiction'
 import { requireFulfillmentFieldContext } from '../fulfillments/fields'
 import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type { Fulfillment } from '../fulfillments/types'
@@ -100,6 +101,7 @@ const FULFILLMENT_LINE_PICK = pickSystemAttributes(LINE_ITEM_FIELDS, [
 const TAX_LINE_PICK = pickSystemAttributes(TAX_LINE_FIELDS, [
   'tax_line_title',
   'tax_line_price',
+  'tax_line_channel_liable',
 ] as const)
 
 /** The relationship every `line_item` hangs off, and the filter {@link readOrderLines} applies. */
@@ -112,6 +114,8 @@ export type LineItemAttribute = DeclaredSystemAttributes<typeof LINE_ITEM_FIELDS
 export interface OrderTaxLine {
   title: string
   priceMinor: number
+  /** `marketplace` when `tax_line_channel_liable` is true; only `true` is ever stored. */
+  remitter: TaxRemitter
 }
 
 /**
@@ -233,9 +237,11 @@ export async function readOrderTaxLines(
     // A tax line missing either value cannot enter the split - it would
     // silently understate the total it has to tie to.
     if (!orderId || !title || priceMinor == null) continue
+    const remitter: TaxRemitter =
+      record.boolean('tax_line_channel_liable') === true ? 'marketplace' : 'merchant'
     const list = byOrder.get(orderId)
-    if (list) list.push({ title, priceMinor })
-    else byOrder.set(orderId, [{ title, priceMinor }])
+    if (list) list.push({ title, priceMinor, remitter })
+    else byOrder.set(orderId, [{ title, priceMinor, remitter }])
   }
   return byOrder
 }
