@@ -10,7 +10,11 @@
 // into is the one thing this screen exists to answer, and a state that can
 // only be discovered by selecting each row in turn stays unfinished.
 
-import type { ObservedGatewayHandle, PaymentGatewayRow } from '@auxx/lib/accounting/rails/client'
+import type {
+  ObservedGatewayHandle,
+  PaymentGatewayRow,
+  RailFeedStatus,
+} from '@auxx/lib/accounting/rails/client'
 import { PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS } from '@auxx/lib/accounting/rails/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -18,6 +22,7 @@ import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
@@ -25,11 +30,16 @@ import { CreditCard, Plus, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
+import { useCanManageConnectors } from '~/components/data-connectors/hooks/use-can-manage-connectors'
 import { EmptyState } from '~/components/global/empty-state'
 import { api } from '~/trpc/react'
+import { railFeedCopy } from './rail-feed-note'
+
+/** A list row: the gateway plus its feed state when the list was read `withFeed`. */
+type GatewayListRow = PaymentGatewayRow & { feed?: RailFeedStatus | null }
 
 interface PaymentGatewaysListProps {
-  gateways: PaymentGatewayRow[]
+  gateways: GatewayListRow[]
   isLoading: boolean
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -53,6 +63,7 @@ export function PaymentGatewaysList({
 }: PaymentGatewaysListProps) {
   const [search, setSearch] = useState('')
   const [handlesOpen, setHandlesOpen] = useState(false)
+  const canManageConnectors = useCanManageConnectors()
 
   // `clearingGlAccountId` is stored as the `gl_account` id (task 15 §4 shape),
   // so the badge below has to resolve it. One `ledger.chartAccounts` fetch for
@@ -200,9 +211,9 @@ export function PaymentGatewaysList({
           title='No payment gateways yet'
           description={
             <>
-              A payment gateway is a record for a rail this store has ever run - Shopify Payments,
-              Affirm, or any other. Add one to map its own clearing, fee and bank accounts instead
-              of falling through to the default clearing account.
+              A payment gateway is a processor such as Shopify Payments, Affirm or Authorize.net
+              that this store has taken payments through. Add one to map its own clearing, fee and
+              bank accounts instead of falling through to the default clearing account.
             </>
           }
           button={addButton}
@@ -213,9 +224,15 @@ export function PaymentGatewaysList({
         <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
           <TreeRowList
             items={visible}
-            getKey={(gateway: PaymentGatewayRow) => gateway.id}
-            renderRow={(gateway: PaymentGatewayRow) => {
+            getKey={(gateway: GatewayListRow) => gateway.id}
+            renderRow={(gateway: GatewayListRow) => {
               const mapped = chartAccountById.get(gateway.clearingGlAccountId)
+              const feedHint =
+                gateway.feed &&
+                !gateway.feed.optional &&
+                (gateway.feed.state === 'not_installed' || gateway.feed.state === 'not_connected')
+                  ? railFeedCopy(gateway.feed, canManageConnectors)?.sentence
+                  : undefined
               return (
                 <TreeRow
                   icon={<CreditCard className='size-4 text-muted-foreground' />}
@@ -252,6 +269,15 @@ export function PaymentGatewaysList({
                       <Badge variant='outline' size='xs'>
                         {PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[gateway.settlementSource]}
                       </Badge>
+                      {feedHint && (
+                        <SimpleTooltip content={feedHint}>
+                          <span
+                            role='img'
+                            aria-label={feedHint}
+                            className='size-1.5 shrink-0 rounded-full bg-muted-foreground/60'
+                          />
+                        </SimpleTooltip>
+                      )}
                     </span>
                   }
                 />

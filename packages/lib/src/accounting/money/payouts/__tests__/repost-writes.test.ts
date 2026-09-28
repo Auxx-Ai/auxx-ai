@@ -25,12 +25,6 @@ vi.mock('../../../work-items/write', () => ({ upsertWorkItem: h.upsertWorkItem }
 vi.mock('../../../rails/reads', () => ({
   listPaymentGateways: async () => ({ isErr: () => false, isOk: () => true, value: h.gateways }),
 }))
-vi.mock('../source-registry', () => ({
-  getPayoutSource: (id: string) =>
-    id === 'shopify_payments'
-      ? { isErr: () => false, isOk: () => true, value: { id } }
-      : { isErr: () => true, isOk: () => false, error: new Error('none') },
-}))
 
 import { ok } from 'neverthrow'
 import type { RepostTarget } from '../repost-reads'
@@ -107,6 +101,26 @@ describe('repostStoredPayouts', () => {
       providerPayoutId: 'po_7',
       actorUserId: 'user_1',
     })
+  })
+
+  it('re-posts an Affirm payout, which has no registered source (brief 114 P3)', async () => {
+    h.repostStoredPayout.mockResolvedValue(ok({ status: 'posted' }))
+
+    await repostStoredPayouts(db, {
+      organizationId: 'org_1',
+      targets: [{ ...target, providerKey: 'affirm' }],
+    })
+
+    expect(h.repostStoredPayout.mock.calls[0]![1].ctx.sourceId).toBe('affirm')
+  })
+
+  it('skips a provider key no processor knows', async () => {
+    await repostStoredPayouts(db, {
+      organizationId: 'org_1',
+      targets: [{ ...target, providerKey: 'mystery' }],
+    })
+
+    expect(h.repostStoredPayout).not.toHaveBeenCalled()
   })
 
   it('counts a refusal and reports nothing posted', async () => {

@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   linkedFeeds: [] as Record<string, unknown>[],
   mismatches: [] as { payoutId: string; number: string | null; message: string }[],
   updateCalls: [] as { table: string; values: unknown; wheres: unknown[] }[],
+  promotePendingPayouts: vi.fn(),
 }))
 
 function baseGateway(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow {
@@ -58,6 +59,14 @@ vi.mock('../../money/payouts/reads', () => ({
   listOpenDestinationMismatches: async () => state.mismatches,
 }))
 
+vi.mock('../../money/payouts/promote', () => ({
+  promotePendingPayouts: state.promotePendingPayouts,
+}))
+
+vi.mock('../feed-status', () => ({
+  railFeedStatus: async () => ({ isErr: () => false, isOk: () => true, value: { state: 'none' } }),
+}))
+
 /** A minimal Drizzle double: `.select().from(table).where()` and `.update(table).set().where().returning()`. */
 function fakeDb() {
   return {
@@ -90,6 +99,11 @@ beforeEach(() => {
   state.linkedFeeds = []
   state.mismatches = []
   state.updateCalls = []
+  state.promotePendingPayouts.mockReset()
+  state.promotePendingPayouts.mockResolvedValue({
+    isErr: () => false,
+    value: { promoted: 0, reversed: 0, skipped: 0 },
+  })
 })
 
 describe('linkFeed', () => {
@@ -129,6 +143,46 @@ describe('linkFeed', () => {
       expect(result.value).toEqual({ sourceAccountId: 'fsa_1', paymentGatewayId: 'pg_1' })
     }
     expect(state.updateCalls[0]?.values).toEqual({ paymentGatewayId: 'pg_1' })
+  })
+
+  it("wakes the feed's connector payouts onto the rail (brief 114 P2)", async () => {
+    await linkFeed(fakeDb(), {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      gatewayId: 'pg_1',
+      sourceAccountId: 'fsa_1',
+    })
+    expect(state.promotePendingPayouts).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      sourceAccountId: 'fsa_1',
+      limit: 200,
+      actorUserId: 'user_1',
+    })
+  })
+
+  it('keeps the link when promoting its payouts fails', async () => {
+    state.promotePendingPayouts.mockResolvedValue({
+      isErr: () => true,
+      error: new Error('boom'),
+    })
+    const result = await linkFeed(fakeDb(), {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      gatewayId: 'pg_1',
+      sourceAccountId: 'fsa_1',
+    })
+    expect(result.isOk()).toBe(true)
+  })
+
+  it('promotes nothing when the feed was not found', async () => {
+    state.updateRows = []
+    await linkFeed(fakeDb(), {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      gatewayId: 'pg_1',
+      sourceAccountId: 'fsa_gone',
+    })
+    expect(state.promotePendingPayouts).not.toHaveBeenCalled()
   })
 })
 

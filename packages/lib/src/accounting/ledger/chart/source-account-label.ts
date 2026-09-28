@@ -59,6 +59,12 @@ const SOURCE_PROVIDER_LABELS: Record<string, string> = {
   [MANUAL_SOURCE_PROVIDER_KEY]: MANUAL_SOURCE_LABEL,
 }
 
+/**
+ * Provider keys whose `externalAccountId` is already a human name: the Shopify store, whose
+ * id is its shop domain. No processor feed is here (`ProcessorDescriptor.accountLabel`).
+ */
+const EXTERNAL_ID_IS_NAME: ReadonlySet<string> = new Set(['shopify'])
+
 /** How long a single token may be before it reads as an id rather than a name. */
 const OPAQUE_ID_MIN_LENGTH = 24
 
@@ -148,9 +154,7 @@ export function sourceAccountLabel(account: SourceAccountSubject): string {
   const externalAccountId = account.externalAccountId?.trim() ?? ''
   if (!externalAccountId) return sourceProviderLabel(providerKey) || MANUAL_SOURCE_LABEL
 
-  // The store. `source-scope.ts` makes this call for every unnamed row, and
-  // for this one it is right: a shop domain is the account's name.
-  if (providerKey === 'shopify') return externalAccountId
+  if (EXTERNAL_ID_IS_NAME.has(providerKey)) return externalAccountId
 
   if (isOpaqueExternalId(externalAccountId)) {
     const tail = externalAccountId.split('/').filter(Boolean).at(-1) ?? externalAccountId

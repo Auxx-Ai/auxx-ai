@@ -36,7 +36,8 @@ import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
  * or overlap a boundary, and a second posting would relieve clearing twice with
  * both entries balancing. See `findPayoutByGatewayId` for why an unstamped row
  * (written before every context carried a rail) is adopted rather than
- * duplicated.
+ * duplicated. So is a connector's evidence record for the same payout, and a
+ * feed whose connector raises records waits for it (brief 114 P1).
  *
  * **A payout still in transit gets a RECORD but no entry.** The money has not
  * reached the bank, so there is nothing for cash to be debited. The record is
@@ -74,13 +75,13 @@ import { runInTxWrite } from '../../../resources/crud/tx-write-scope'
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, isNull, or, type SQL } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../../errors'
 import { UnifiedCrudHandler } from '../../../resources/crud/unified-handler'
 import { toRecordId } from '../../../resources/resource-id'
-import { systemValueJoin } from '../../../resources/system-records'
+import { systemRecordScope, systemValueJoin } from '../../../resources/system-records'
 import { SystemUserService } from '../../../users/system-user-service'
 import { ACCOUNT_ROLES } from '../../ledger/builders/entry'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
@@ -98,8 +99,12 @@ import { type PayoutFieldContext, requirePayoutFieldContext } from './fields'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
 import {
+  type ConnectorPayoutScope,
   countPayoutEntryAttempts,
+  findConnectorPayout,
   findPayoutByGatewayId,
+  hasConnectorPayouts,
+  listLinkedFeedAccounts,
   listPayoutFeedAccountIds,
   listPayoutMemberEntryIds,
   readBankAccountSettlementDestinations,
@@ -194,12 +199,14 @@ export async function syncPayouts(
         result.posted += run.posted
         result.alreadyPosted += run.alreadyPosted
         result.refused.push(...run.refused)
+        result.deferred.push(...run.deferred)
       }
 
       logger.info('Payout sync finished', {
         organizationId,
         ...result,
         refused: result.refused.length,
+        deferred: result.deferred.length,
         failed: result.failed.length,
       })
       return result
@@ -291,6 +298,7 @@ export async function repostStoredPayout(
       const source: PayoutSource = { id: ctx.sourceId, kind: 'file', listPayouts: async () => [] }
       const outcome = await ingestOne(db, { ctx, source, header, actorUserId, fieldCtx, now })
       if (outcome.refusal) return { status: 'refused', reason: outcome.refusal }
+      if (outcome.deferred) return { status: 'skipped', reason: outcome.deferred }
       if (outcome.heldReversed)
         return { status: 'skipped', reason: 'Its entry was reversed by a person' }
       return { status: outcome.posted ? 'posted' : 'live' }
@@ -301,7 +309,15 @@ export async function repostStoredPayout(
 }
 
 function emptyResult(): SyncPayoutsResult {
-  return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [], failed: [] }
+  return {
+    seen: 0,
+    created: 0,
+    posted: 0,
+    alreadyPosted: 0,
+    refused: [],
+    deferred: [],
+    failed: [],
+  }
 }
 
 /** List one context's payouts and ingest each. Throws only for the source itself. */
@@ -327,6 +343,9 @@ async function runSource(
     if (outcome.refusal) {
       result.refused.push({ payoutId: header.providerPayoutId, reason: outcome.refusal })
     }
+    if (outcome.deferred) {
+      result.deferred.push({ payoutId: header.providerPayoutId, reason: outcome.deferred })
+    }
   }
 
   logger.info('Payout source run finished', {
@@ -335,6 +354,7 @@ async function runSource(
     paymentGatewayId: ctx.rail.id,
     ...result,
     refused: result.refused.length,
+    deferred: result.deferred.length,
     failed: undefined,
   })
   return result
@@ -346,6 +366,8 @@ interface IngestOutcome {
   alreadyPosted: boolean
   heldReversed?: boolean
   refusal?: string
+  /** Not written: the feed's connector raises this payout's record, and has not yet. */
+  deferred?: string
 }
 
 /**
@@ -396,6 +418,20 @@ async function resolveMemberEntryIds(
   })
 }
 
+/** The context's feeds as a connector names them: provider key plus external account ids. */
+async function connectorPayoutScope(
+  db: Database,
+  ctx: PayoutSourceCtx
+): Promise<ConnectorPayoutScope> {
+  const feeds = await listLinkedFeedAccounts(db, ctx.organizationId, ctx.sourceId)
+  return {
+    providerKey: ctx.sourceId,
+    externalAccountIds: feeds
+      .filter((feed) => feed.paymentGatewayId === ctx.rail.id)
+      .map((feed) => feed.externalAccountId),
+  }
+}
+
 /**
  * Raise (or find) the record for one payout, and post its entry when the money
  * has actually landed.
@@ -416,7 +452,23 @@ async function ingestOne(
 
   // The rail this payout is read FOR is in the context, always. Half of the
   // idempotency key (brief 27 §6.4) and what the record is stamped with.
-  const existing = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
+  let existing = await findPayoutByGatewayId(db, organizationId, providerPayoutId, rail.id)
+  // One payout, one record (brief 114 P1): a connector's evidence record is adopted, and a feed
+  // whose connector raises records never gets a second one from here.
+  if (!existing) {
+    const scope = await connectorPayoutScope(db, ctx)
+    existing = await findConnectorPayout(db, organizationId, providerPayoutId, rail.id, scope)
+    if (!existing && (await hasConnectorPayouts(db, organizationId, scope))) {
+      return {
+        created: false,
+        posted: false,
+        alreadyPosted: false,
+        deferred:
+          `Payout ${providerPayoutId} waits for the ${ctx.sourceId} connector to sync it; ` +
+          'the next run posts that record.',
+      }
+    }
+  }
   // 🛑 Already posted is a SUCCESS and a full stop. The sync is a poll; this is
   // the branch every steady-state run takes. Read through `listPostingsForSource`
   // (TARGET §1), never the `payout_gl_posting_id` stamp. No record yet means no
@@ -644,8 +696,8 @@ function payoutValues(gathered: GatheredPayout, ctx: PayoutSourceCtx): Record<st
 /**
  * How far back this run reads, per rail (brief 27 §6.5).
  *
- * The floor is the rail's FIRST sync: the earliest payout record stamped with
- * this rail (or unstamped, which the pair lookup adopts - every pre-157 row).
+ * The floor is the rail's FIRST sync: the earliest live payout record stamped
+ * with this rail.
  * Everything before it is in the opening balances. Bounded by
  * `SYNC_LOOKBACK_DAYS`, so a worker that missed a few days catches up and a
  * re-run never walks an account's whole history.
@@ -681,11 +733,8 @@ async function resolveSince(
 }
 
 /**
- * When this rail's first payout record was written, or `null` for none.
- *
- * The pointer predicate is `findPayoutByGatewayId`'s: a row stamped with THIS
- * rail, or with no rail at all (every row written before a rail pointer was
- * ever stamped).
+ * When this rail's first payout record was written, or `null` for none. Only live rows stamped
+ * with this rail count: an unstamped row is another feed's connector evidence (brief 114 §3).
  */
 async function readEarliestPayoutCreatedAt(
   db: Database,
@@ -699,23 +748,16 @@ async function readEarliestPayoutCreatedAt(
     .from(schema.EntityInstance)
     .$dynamic()
 
-  const where: SQL[] = [
-    eq(schema.EntityInstance.organizationId, ctx.organizationId),
-    eq(schema.EntityInstance.entityDefinitionId, fieldCtx.defId),
-  ]
-
   if (railField) {
     const pointer = alias(schema.FieldValue, 'payout_payment_gateway_v')
-    query = query.leftJoin(pointer, systemValueJoin(pointer, railField.id))
-    const pointerMatches = or(
-      isNull(pointer.relatedEntityId),
-      eq(pointer.relatedEntityId, ctx.rail.id)
+    query = query.innerJoin(
+      pointer,
+      and(systemValueJoin(pointer, railField.id), eq(pointer.relatedEntityId, ctx.rail.id))
     )
-    if (pointerMatches) where.push(pointerMatches)
   }
 
   const [earliest] = await query
-    .where(and(...where))
+    .where(systemRecordScope(ctx.organizationId, fieldCtx.defId))
     .orderBy(asc(schema.EntityInstance.createdAt))
     .limit(1)
   return earliest?.createdAt ?? null
@@ -741,16 +783,27 @@ async function readEarliestPayoutCreatedAt(
  */
 export async function reverseFailedPayout(
   db: Database,
-  params: { organizationId: string; gatewayPayoutId: string; actorUserId?: string }
+  params: {
+    organizationId: string
+    gatewayPayoutId: string
+    actorUserId?: string
+    /** The rail, when the caller knows it (a promoted connector payout); otherwise id-only. */
+    paymentGatewayId?: string
+  }
 ): Promise<Result<{ reversed: boolean }, Error>> {
-  const { organizationId, gatewayPayoutId, actorUserId } = params
+  const { organizationId, gatewayPayoutId, actorUserId, paymentGatewayId } = params
 
   return guard(
     async () => {
       const ctx = await requirePayoutFieldContext(db, organizationId)
-      // Id-only: a `payout.failed` webhook names the provider's id and nothing
-      // else, so this matches on the id alone across every rail.
-      const record = await findPayoutByGatewayId(db, organizationId, gatewayPayoutId)
+      // Id-only unless the caller names a rail: a `payout.failed` webhook names the provider's id
+      // and nothing else.
+      const record = await findPayoutByGatewayId(
+        db,
+        organizationId,
+        gatewayPayoutId,
+        paymentGatewayId ?? null
+      )
       if (!record) {
         logger.info('A payout failed that auxx never ingested, nothing to reverse', {
           organizationId,

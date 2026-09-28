@@ -38,23 +38,11 @@ interface RailStripProps {
   currencyCode: string
 }
 
-/**
- * How a rail's clearing account is credited back, in two words.
- *
- * `manual` is the review queue: a deposit coded "Settlement of <rail>" by hand
- * or by rule (27 §8.1). Anything else is a source that reads the provider.
- * Fails closed: an unknown source claims nothing rather than "By hand".
- */
+/** How a rail's clearing account is credited back; a source outside the labels map claims nothing. */
 function relievedBy(source: PaymentGatewaySettlementSourceValue): string {
-  switch (source) {
-    case 'manual':
-      return 'Review queue'
-    case 'stripe':
-    case 'shopify_payments':
-      return `${PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[source]} sync`
-    default:
-      return EMPTY_CELL
-  }
+  if (source === 'manual') return 'Review queue'
+  const label = PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[source]
+  return label ? `${label} feed` : EMPTY_CELL
 }
 
 /** One template for the header and every row, so the four columns share widths. */

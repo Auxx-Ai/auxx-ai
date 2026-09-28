@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/sources/stripe-connect.ts
+// packages/lib/src/accounting/processors/stripe-connect/source.ts
 
 /**
  * Stripe Connect as a {@link PayoutSource}: what `gather.ts` and
@@ -34,12 +34,17 @@ import { createScopedLogger } from '@auxx/logger'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import type Stripe from 'stripe'
-import { BadRequestError } from '../../../../errors'
-import type { PaymentGatewayRow } from '../../../rails/client'
-import { getPaymentAccount } from '../../stripe-connect/account'
-import { getStripeConnectClient } from '../../stripe-connect/client'
-import { listLinkedFeedAccounts } from '../reads'
-import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
+import { BadRequestError } from '../../../errors'
+import { listLinkedFeedAccounts } from '../../money/payouts/reads'
+import type {
+  PayoutHeader,
+  PayoutItem,
+  PayoutSource,
+  PayoutSourceCtx,
+} from '../../money/payouts/source'
+import { getPaymentAccount } from '../../money/stripe-connect/account'
+import { getStripeConnectClient } from '../../money/stripe-connect/client'
+import type { PaymentGatewayRow } from '../../rails/client'
 
 const logger = createScopedLogger('payouts:stripe-connect')
 

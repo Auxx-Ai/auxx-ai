@@ -34,6 +34,7 @@ import {
   loadPayoutFieldContext,
   PAYOUT_SOURCE_ATTRIBUTES,
   type PayoutAttribute,
+  type PayoutFieldContext,
 } from './fields'
 import { guard } from './guard'
 import { loadPayoutSourceSummaries } from './source-reads'
@@ -224,6 +225,160 @@ export async function findPayoutByGatewayId(
   const records = await readSystemRecords(db, organizationId, ctx, { ids: [row.id] })
   const [record] = await hydrate(db, organizationId, records)
   return record ?? null
+}
+
+/** Which connector-written payout records count as one feed's (brief 114 P1). */
+export interface ConnectorPayoutScope {
+  /** `payout_source_provider_key`: the payout source's id, e.g. `shopify_payments`. */
+  providerKey: string
+  /** `payout_source_account_id`s of the context's linked feeds. Empty means any account. */
+  externalAccountIds: readonly string[]
+}
+
+/**
+ * The connector's evidence record for one provider payout, for the sync to adopt rather than
+ * duplicate (brief 114 P1). Same rail rule as {@link findPayoutByGatewayId}: null or this rail.
+ */
+export async function findConnectorPayout(
+  db: Database,
+  organizationId: string,
+  gatewayId: string,
+  paymentGatewayId: string,
+  scope: ConnectorPayoutScope
+): Promise<PayoutRecord | null> {
+  const ctx = await loadPayoutFieldContext(db, organizationId)
+  if (!ctx) return null
+  const query = connectorPayoutQuery(db, ctx, scope, gatewayId)
+  if (!query) return null
+
+  const railField = ctx.fields.payout_payment_gateway
+  let rows = query
+  const where: SQL[] = []
+  if (railField) {
+    const rail = alias(schema.FieldValue, 'connector_payout_rail_v')
+    rows = rows.leftJoin(rail, systemValueJoin(rail, railField.id))
+    const pointerMatches = or(
+      isNull(rail.relatedEntityId),
+      eq(rail.relatedEntityId, paymentGatewayId)
+    )
+    if (pointerMatches) where.push(pointerMatches)
+  }
+  const [row] = await rows
+    .where(and(systemRecordScope(organizationId, ctx.defId), ...where))
+    .limit(1)
+  if (!row) return null
+  const records = await readSystemRecords(db, organizationId, ctx, { ids: [row.id] })
+  const [record] = await hydrate(db, organizationId, records)
+  return record ?? null
+}
+
+/**
+ * Whether a connector has written ANY payout record for this feed - the evidence that the
+ * connector, not the sync, raises this feed's records (brief 114 P1). Needs a known account.
+ */
+export async function hasConnectorPayouts(
+  db: Database,
+  organizationId: string,
+  scope: ConnectorPayoutScope
+): Promise<boolean> {
+  if (scope.externalAccountIds.length === 0) return false
+  const ctx = await loadPayoutFieldContext(db, organizationId)
+  if (!ctx) return false
+  const query = connectorPayoutQuery(db, ctx, scope)
+  if (!query) return false
+  const [row] = await query.where(systemRecordScope(organizationId, ctx.defId)).limit(1)
+  return !!row
+}
+
+/** Payout instances carrying the scope's provider key (and account, when known). */
+function connectorPayoutQuery(
+  db: Database,
+  ctx: PayoutFieldContext,
+  scope: ConnectorPayoutScope,
+  externalId?: string
+) {
+  const providerField = ctx.fields.payout_source_provider_key
+  const accountField = ctx.fields.payout_source_account_id
+  const externalIdField = ctx.fields.payout_source_external_id
+  if (!providerField || !accountField || !externalIdField) return null
+
+  const provider = alias(schema.FieldValue, 'connector_payout_provider_v')
+  let query = db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      provider,
+      and(systemValueJoin(provider, providerField.id), eq(provider.valueText, scope.providerKey))
+    )
+    .$dynamic()
+  if (externalId !== undefined) {
+    const external = alias(schema.FieldValue, 'connector_payout_external_v')
+    query = query.innerJoin(
+      external,
+      and(systemValueJoin(external, externalIdField.id), eq(external.valueText, externalId))
+    )
+  }
+  if (scope.externalAccountIds.length > 0) {
+    const account = alias(schema.FieldValue, 'connector_payout_account_v')
+    query = query.innerJoin(
+      account,
+      and(
+        systemValueJoin(account, accountField.id),
+        inArray(account.valueText, [...scope.externalAccountIds])
+      )
+    )
+  }
+  return query
+}
+
+/**
+ * Connector payout records on a linked feed that carry no `payout_gateway_id` yet, for the
+ * promotion to stamp (brief 114 P2). A provider id another live record already holds is left out:
+ * that is a legacy twin, and stamping it would post the payout twice.
+ */
+export async function listUnpromotedConnectorPayouts(
+  db: Database,
+  organizationId: string,
+  input: { limit: number; sourceAccountId?: string }
+): Promise<string[]> {
+  const ctx = await loadPayoutFieldContext(db, organizationId)
+  if (!ctx) return []
+  const {
+    payout_source_provider_key: provider,
+    payout_source_account_id: account,
+    payout_source_environment: environment,
+    payout_source_external_id: external,
+    payout_gateway_id: gateway,
+  } = ctx.fields
+  if (!provider || !account || !environment || !external || !gateway) return []
+  const value = (alias: string, fieldId: string) =>
+    sql`JOIN "FieldValue" ${sql.raw(alias)} ON ${sql.raw(alias)}."organizationId" = e."organizationId"
+      AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}`
+  const result = await db.execute(sql`
+    SELECT e.id
+    FROM "EntityInstance" e
+    ${value('pk', provider.id)}
+    ${value('ac', account.id)}
+    ${value('en', environment.id)}
+    ${value('ex', external.id)} AND ex."valueText" IS NOT NULL
+    JOIN "FinancialSourceAccount" a ON a."organizationId" = e."organizationId"
+      AND a."providerKey" = pk."valueText" AND a."externalAccountId" = ac."valueText"
+      AND a."environment" = en."valueText" AND a."archivedAt" IS NULL
+      AND a."paymentGatewayId" IS NOT NULL
+      ${input.sourceAccountId ? sql`AND a.id = ${input.sourceAccountId}` : sql``}
+    WHERE e."organizationId" = ${organizationId}
+      AND e."entityDefinitionId" = ${ctx.defId}
+      AND e."archivedAt" IS NULL
+      AND NOT EXISTS (SELECT 1 FROM "FieldValue" gw
+        JOIN "EntityInstance" held ON held."organizationId" = gw."organizationId"
+          AND held.id = gw."entityId" AND held."archivedAt" IS NULL
+        WHERE gw."organizationId" = e."organizationId" AND gw."fieldId" = ${gateway.id}
+          AND gw."valueText" IS NOT NULL
+          AND (gw."entityId" = e.id OR gw."valueText" = ex."valueText"))
+    ORDER BY e.id
+    LIMIT ${input.limit}
+  `)
+  return (result.rows as Array<{ id: string }>).map((row) => row.id)
 }
 
 /**

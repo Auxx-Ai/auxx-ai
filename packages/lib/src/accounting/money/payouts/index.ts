@@ -95,13 +95,6 @@ export {
   listPayoutSources,
   registerPayoutSource,
 } from './source-registry'
-export {
-  SHOPIFY_APP_SLUG,
-  SHOPIFY_PAYMENTS_PAYOUT_SOURCE,
-  SHOPIFY_PAYMENTS_PAYOUTS_SCOPE,
-  SHOPIFY_PAYMENTS_SOURCE_ID,
-} from './sources/shopify-payments'
-export { STRIPE_CONNECT_PAYOUT_SOURCE, STRIPE_CONNECT_SOURCE_ID } from './sources/stripe-connect'
 export { listSweepingPayoutPostings, type SweepingPayoutPosting } from './sweep-reads'
 export { reverseFailedPayout, syncPayoutSource, syncPayouts } from './sync'
 export type { ListPayoutsFilters, PayoutRecord, SyncPayoutsResult } from './types'

@@ -55,25 +55,25 @@ describe('resolveSelectedPacks', () => {
 
 describe('defaultSelectedPacks', () => {
   it('is core alone with neither card rail signal present', () => {
-    expect(defaultSelectedPacks({ stripeConnect: false, shopify: false })).toEqual(['core'])
+    expect(defaultSelectedPacks({ stripeConnect: false, processorApp: false })).toEqual(['core'])
   })
 
   it('pre-checks card_rail when a Stripe Connect account exists', () => {
-    expect(defaultSelectedPacks({ stripeConnect: true, shopify: false })).toEqual([
+    expect(defaultSelectedPacks({ stripeConnect: true, processorApp: false })).toEqual([
       'core',
       'card_rail',
     ])
   })
 
-  it('pre-checks card_rail when the Shopify app is installed', () => {
-    expect(defaultSelectedPacks({ stripeConnect: false, shopify: true })).toEqual([
+  it('pre-checks card_rail when a processor feed app is installed', () => {
+    expect(defaultSelectedPacks({ stripeConnect: false, processorApp: true })).toEqual([
       'core',
       'card_rail',
     ])
   })
 
   it('pre-checks card_rail once when both signals are present', () => {
-    expect(defaultSelectedPacks({ stripeConnect: true, shopify: true })).toEqual([
+    expect(defaultSelectedPacks({ stripeConnect: true, processorApp: true })).toEqual([
       'core',
       'card_rail',
     ])

@@ -12,10 +12,14 @@
  */
 
 import { database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { defineParentReconciler } from '../../../reconcilers/parent-reconciler'
 import { bridgeFinancialRecords } from '../customer-money/bridge'
 import { assessPayouts } from './assess-payouts'
+import { promoteConnectorPayouts } from './promote'
+
+const logger = createScopedLogger('payouts:reconciler')
 
 export const PAYOUT_ASSESSMENT = 'money.payout-assessment'
 
@@ -59,6 +63,13 @@ const reconciler = defineParentReconciler<string>({
         actorUserId: userId ?? '',
         records,
       })
+    // After the sink and in the drain, so the record's evidence is complete (brief 114 P2).
+    const payoutIds = records.filter((record) => record.kind === 'payout').map(({ id }) => id)
+    if (payoutIds.length) {
+      const promoted = await promoteConnectorPayouts(database, { organizationId, payoutIds })
+      if (promoted.isErr())
+        logger.error('Payout promotion failed', { organizationId, error: promoted.error.message })
+    }
     await assessPayouts(database, organizationId, entityInstanceIds)
   },
 })

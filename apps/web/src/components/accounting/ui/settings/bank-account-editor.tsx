@@ -396,7 +396,7 @@ function BankAccountForm({
           title='Settlement destinations'
           type={BaseType.STRING}
           showIcon
-          description='The ids processors report a payout was sent to, confirmed here once, so a payout can say whether it landed where the mapping expects. Stripe: ba_… / card_…. Shopify: gid://shopify/ShopifyPaymentsBankAccount/….'>
+          description='The ids processors report a payout was sent to, confirmed here once, so a payout can say whether it landed where the mapping expects.'>
           <FieldInputAdapter
             fieldType={FieldType.TAGS}
             fieldOptions={{ options: settlementDestinationOptions }}

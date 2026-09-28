@@ -3,25 +3,32 @@
 /**
  * Posts payouts the sync imported while accounting was in draft (110 G7): the nightly sync
  * re-offers only its 30-day lookback, so an older stored payout would otherwise never post.
+ * It is also the only poster for a connector-fed payout promoted in place (brief 114 P2, P3).
  */
 
 import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { sql } from 'drizzle-orm'
 import { readSystemRecords } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
+import { processorByProviderKey } from '../../processors/client'
 import { listPaymentGateways } from '../../rails/reads'
 import { noWorkItem, runWorkItemSweep, type SweepCounts } from '../../work-items/sweep'
 import { upsertWorkItem } from '../../work-items/write'
 import { loadPayoutFieldContext } from './fields'
-import { getPayoutSource } from './source-registry'
+import { promotePendingPayouts } from './promote'
 import { repostStoredPayout } from './sync'
+
+const logger = createScopedLogger('payouts:sweep-stored')
 
 /** The lane `ingestOne` parks a refused payout on. */
 const LANE = { stage: 'post', sourceKind: 'payout' } as const
 
 /**
  * Paid payout records dated after the cutover month with no subject claim, no `post` work item
- * and no reversed entry (a person's reversal stands), oldest first.
+ * and no reversed entry (a person's reversal stands), oldest first. The cutover is the only
+ * floor (brief 114 §3), and a payout waits until its rail's feed holds its balance entries: the
+ * stored split is the only one a repost has.
  */
 export async function listStoredPayoutCandidates(
   db: Database,
@@ -67,6 +74,12 @@ export async function listStoredPayoutCandidates(
         WHERE p."organizationId" = ${organizationId} AND p."postingType" = 'payout'
           AND p."status" = 'reversed' AND nb."valueText" IS NOT NULL
           AND (p."periodKey" = nb."valueText" OR p."periodKey" LIKE nb."valueText" || '-R%'))
+      AND EXISTS (SELECT 1 FROM "ProcessorBalanceEntry" pbe
+        JOIN "FinancialSourceAccount" fa ON fa."organizationId" = pbe."organizationId"
+          AND fa.id = pbe."sourceAccountId"
+        WHERE pbe."organizationId" = ${organizationId} AND pbe."payoutExternalId" = gw."valueText"
+          AND pbe."isOutgoingTransfer" = false
+          AND fa."paymentGatewayId" = rl."relatedEntityId" AND fa."archivedAt" IS NULL)
       AND ${noWorkItem(organizationId, { ...LANE, sourceId: sql`e.id` })}
     ORDER BY pa."valueDate" ASC, e.id ASC
     LIMIT ${input.limit}
@@ -86,10 +99,18 @@ export async function sweepStoredPayoutEntries(
     listPaymentGateways(db, organizationId),
   ])
   if (gateways.isErr()) throw gateways.error
+  const limit = input.limit ?? 100
+  // Stamp first, so a payout promoted on this run is a candidate on this run.
+  const promoted = await promotePendingPayouts(db, { organizationId, limit })
+  if (promoted.isErr())
+    logger.warn('Could not promote connector payouts before the sweep', {
+      organizationId,
+      error: promoted.error.message,
+    })
   return runWorkItemSweep(db, {
     organizationId,
     ...LANE,
-    limit: input.limit ?? 100,
+    limit,
     timeBudgetMs: input.timeBudgetMs,
     listFresh: (limit) =>
       listStoredPayoutCandidates(db, organizationId, {
@@ -102,8 +123,11 @@ export async function sweepStoredPayoutEntries(
       const providerPayoutId = record?.text('payout_gateway_id')
       if (!record || !providerPayoutId) return { status: 'skipped' }
       const rail = gateways.value.find((row) => row.id === record.related('payout_payment_gateway'))
-      const source = rail ? getPayoutSource(rail.settlementSource) : null
-      if (!rail || !source || source.isErr()) {
+      // Any linked rail posts; the repost reads stored entries and needs no registered source.
+      const sourceId =
+        processorByProviderKey(record.text('payout_source_provider_key') ?? '')?.id ??
+        (rail && rail.settlementSource !== 'manual' ? rail.settlementSource : null)
+      if (!rail || !sourceId) {
         await upsertWorkItem(db, organizationId, {
           ...LANE,
           sourceId: payoutId,
@@ -113,7 +137,7 @@ export async function sweepStoredPayoutEntries(
         return { status: 'blocked' }
       }
       const outcome = await repostStoredPayout(db, {
-        ctx: { organizationId, sourceId: source.value.id, rail, handle: null },
+        ctx: { organizationId, sourceId, rail, handle: null },
         providerPayoutId,
       })
       if (outcome.isErr()) throw outcome.error

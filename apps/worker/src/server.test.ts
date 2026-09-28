@@ -29,7 +29,7 @@ const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'serve
 describe('worker boot sequence', () => {
   it('imports the shared accounting-provider registration from lib', () => {
     expect(source).toMatch(
-      /import \{ registerAccountingProviders \} from '@auxx\/lib\/money\/accounting-providers'/
+      /import \{ registerAccountingProviders \} from '@auxx\/lib\/accounting\/providers\/accounting-providers'/
     )
   })
 
@@ -54,18 +54,18 @@ describe('worker boot sequence', () => {
   // interface. `payoutSyncJob` runs here, and with an empty registry it finds
   // no context for any org and syncs nothing - silently, like the provider
   // registry above.
-  it('imports the shared payout-source registration from lib', () => {
+  it('imports the shared processor registration from lib', () => {
     expect(source).toMatch(
-      /import \{ registerPayoutSources \} from '@auxx\/lib\/money\/payout-sources'/
+      /import \{ registerProcessors \} from '@auxx\/lib\/accounting\/processors'/
     )
   })
 
-  it('calls registerPayoutSources() before startWorkers(), in the same boot step', () => {
-    const registration = source.indexOf('registerPayoutSources()')
+  it('calls registerProcessors() before startWorkers(), in the same boot step', () => {
+    const registration = source.indexOf('registerProcessors()')
     const workersStart = source.indexOf('await startWorkers()')
     expect(registration).toBeGreaterThan(-1)
     expect(registration).toBeLessThan(workersStart)
     const init = source.slice(source.indexOf('async function initializeApp'))
-    expect(init).toContain('registerPayoutSources()')
+    expect(init).toContain('registerProcessors()')
   })
 })

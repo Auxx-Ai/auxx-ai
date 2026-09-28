@@ -426,7 +426,7 @@ export async function syncInverseRelationships(
   if (removedIds.length > 0) {
     await batchRemoveFromInverse(ctx, {
       inverseFieldId: inverseInfo.inverseFieldId,
-      removals: new Map([[entityId, new Set(removedIds)]]),
+      removals: new Map(removedIds.map((targetId) => [targetId, new Set([entityId])])),
     })
   }
 

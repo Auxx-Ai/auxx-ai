@@ -2,6 +2,7 @@
 'use client'
 
 import type { GlAccountSubtypeValue, GlAccountTypeValue } from '@auxx/lib/accounting/ledger/client'
+import type { RailFeedState, RailFeedStatus } from '@auxx/lib/accounting/rails/client'
 import { useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { sourceAccountLabel } from '../source-account-label'
@@ -78,15 +79,27 @@ export function RailAccountRows({
   )
 }
 
+/** A feed an app could supply but does not yet, so posting by hand is a choice (brief 113 D4). */
+const BY_HAND_FEED_STATES: readonly RailFeedState[] = [
+  'not_installed',
+  'not_connected',
+  'syncing',
+  'available',
+]
+
 /** The readiness sentence both the editor and the add dialog show, from `readiness`'s rule. */
 export function railReadinessLine(state: {
   clearingMapped: boolean
   bankMapped: boolean
   feedLinked: boolean
+  feed?: Pick<RailFeedStatus, 'state' | 'optional'> | null
 }): { ready: boolean; text: string } {
   if (!state.clearingMapped) return { ready: false, text: 'Needs a clearing account.' }
   if (state.feedLinked && !state.bankMapped)
     return { ready: false, text: 'Needs a receiving bank account for its feed.' }
+  const { feed } = state
+  if (!state.feedLinked && feed && !feed.optional && BY_HAND_FEED_STATES.includes(feed.state))
+    return { ready: true, text: 'Ready to post by hand.' }
   return { ready: true, text: 'Ready to post.' }
 }
 

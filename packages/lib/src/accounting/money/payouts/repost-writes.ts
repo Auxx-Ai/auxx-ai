@@ -13,11 +13,11 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { didLedgerAccept } from '../../ledger/post/ledger-accepted'
 import { reverseEntry } from '../../ledger/post/reverse-entry'
+import { processorByProviderKey } from '../../processors/client'
 import { listPaymentGateways } from '../../rails/reads'
 import { upsertWorkItem } from '../../work-items/write'
 import { findPayoutByGatewayId } from './reads'
 import { type RepostTarget, STALE_REVERSAL_LINK } from './repost-reads'
-import { getPayoutSource } from './source-registry'
 import { repostStoredPayout } from './sync'
 
 const logger = createScopedLogger('payouts:repost')
@@ -99,9 +99,10 @@ export async function repostStoredPayouts(
     return summary
   }
   for (const target of targets) {
-    const source = getPayoutSource(target.providerKey)
-    if (source.isErr()) {
-      logger.error('A reversed payout has no registered source to re-post through', {
+    // The repost splits stored entries, so any known processor re-posts (brief 114 P3).
+    const processor = processorByProviderKey(target.providerKey)
+    if (!processor) {
+      logger.error('A reversed payout names no known processor to re-post through', {
         organizationId,
         transferId: target.transferId,
         providerKey: target.providerKey,
@@ -128,7 +129,7 @@ export async function repostStoredPayouts(
       continue
     }
     const result = await repostStoredPayout(db, {
-      ctx: { organizationId, sourceId: source.value.id, rail, handle: null },
+      ctx: { organizationId, sourceId: processor.id, rail, handle: null },
       providerPayoutId: target.payoutExternalId,
       actorUserId,
     })

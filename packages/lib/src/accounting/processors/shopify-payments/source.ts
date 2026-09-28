@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/sources/shopify-payments.ts
+// packages/lib/src/accounting/processors/shopify-payments/source.ts
 
 /**
  * Shopify Payments as a {@link PayoutSource}
@@ -45,20 +45,24 @@ import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { toDateKey } from '@auxx/utils/calendar-day'
 import { and, eq, isNull } from 'drizzle-orm'
-import { listOrganizationsWithApp } from '../../../../apps/installations/organizations'
-import { type AppToolContext, resolveAppToolContext } from '../../../../apps/invoke-app-tool'
-import { BadRequestError, ForbiddenError, UnprocessableEntityError } from '../../../../errors'
-import type { PaymentGatewayRow } from '../../../rails/client'
-import { listLinkedFeedAccounts } from '../reads'
-import type { PayoutHeader, PayoutItem, PayoutSource, PayoutSourceCtx } from '../source'
+import { listOrganizationsWithApp } from '../../../apps/installations/organizations'
+import { type AppToolContext, resolveAppToolContext } from '../../../apps/invoke-app-tool'
+import { BadRequestError, ForbiddenError, UnprocessableEntityError } from '../../../errors'
+import { listLinkedFeedAccounts } from '../../money/payouts/reads'
+import type {
+  PayoutHeader,
+  PayoutItem,
+  PayoutSource,
+  PayoutSourceCtx,
+} from '../../money/payouts/source'
+import type { PaymentGatewayRow } from '../../rails/client'
+import { SHOPIFY_APP_SLUG } from './client'
 
 const logger = createScopedLogger('payouts:shopify-payments')
 
 /** The registry id, and the `providerKey` a linked feed carries for this rail. */
 export const SHOPIFY_PAYMENTS_SOURCE_ID = 'shopify_payments' as const
 
-/** The installed app whose tools read Shopify Payments. */
-export const SHOPIFY_APP_SLUG = 'shopify'
 const SHOPIFY_APP_LABEL = 'Shopify'
 
 /** The Admin API scope the two tools need; the platform asks for it in `connections/providers/defs.ts`. */

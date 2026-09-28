@@ -1,4 +1,4 @@
-// packages/lib/src/accounting/money/payouts/__tests__/shopify-payments.test.ts
+// packages/lib/src/accounting/processors/shopify-payments/__tests__/source.test.ts
 //
 // brief 27 §5 and §13 test 2, the source half: Shopify Payments behind the
 // `PayoutSource` interface over a fake `callTool`. Pins how a tool row becomes
@@ -23,20 +23,25 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../../apps/invoke-app-tool', () => ({
   resolveAppToolContext: h.resolveAppToolContext,
 }))
-vi.mock('../reads', () => ({ listLinkedFeedAccounts: h.listLinkedFeedAccounts }))
+vi.mock('../../../money/payouts/reads', () => ({
+  listLinkedFeedAccounts: h.listLinkedFeedAccounts,
+}))
 
 import type { Database } from '@auxx/database'
 import { ForbiddenError } from '../../../../errors'
+import { getEntryReferenceResolver } from '../../../money/payouts/reference-resolvers'
+import type { PayoutSourceCtx } from '../../../money/payouts/source'
+import {
+  __resetPayoutSourcesForTests,
+  listPayoutSourceIds,
+} from '../../../money/payouts/source-registry'
 import type { PaymentGatewayRow } from '../../../rails/client'
-import { getEntryReferenceResolver } from '../reference-resolvers'
-import type { PayoutSourceCtx } from '../source'
-import { __resetPayoutSourcesForTests, listPayoutSourceIds } from '../source-registry'
-import { registerPayoutSources } from '../sources'
+import { registerProcessors } from '../../register'
 import {
   SHOPIFY_PAYMENTS_PAYOUT_SOURCE,
   SHOPIFY_PAYMENTS_PAYOUTS_SCOPE,
   toHeaderStatus,
-} from '../sources/shopify-payments'
+} from '../source'
 
 const ORG = 'org_1'
 const SINCE = new Date('2026-09-01T15:30:00.000Z')
@@ -198,10 +203,10 @@ beforeEach(() => {
   h.resolveAppToolContext.mockResolvedValue({ connected: true, context: APP_CONTEXT })
 })
 
-describe('registerPayoutSources', () => {
+describe('registerProcessors', () => {
   it('registers Stripe Connect and Shopify Payments, in that order', () => {
     __resetPayoutSourcesForTests()
-    registerPayoutSources()
+    registerProcessors()
 
     expect(listPayoutSourceIds()).toEqual(['stripe', 'shopify_payments'])
     __resetPayoutSourcesForTests()
@@ -210,7 +215,7 @@ describe('registerPayoutSources', () => {
   // The same boot call fills the reference-resolver seam; a process that filled
   // only the source registry would leave every Authorize.net item `no_reference`.
   it('fills the entry reference resolver seam in the same call', () => {
-    registerPayoutSources()
+    registerProcessors()
 
     expect(getEntryReferenceResolver('authorize_net')?.providerKey).toBe('authorize_net')
     __resetPayoutSourcesForTests()

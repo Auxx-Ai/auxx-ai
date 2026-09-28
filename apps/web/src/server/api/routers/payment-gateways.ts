@@ -20,6 +20,7 @@ import {
   listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
+  listRailFeedStatuses,
   listUnlinkedFeeds,
   PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_STATUSES,
@@ -65,8 +66,8 @@ const railAccountChoice = z.union([
 export const paymentGatewaysRouter = createTRPCRouter({
   /**
    * Whether a rail can post: `clearing` row present, `bank` row present when a feed is linked,
-   * and any open `payout_destination_mismatch` on its payouts (task 58 §6.2). Replaces
-   * `settlementReadiness`.
+   * and any open `payout_destination_mismatch` on its payouts (task 58 §6.2), plus `feed`, where
+   * its feed stands (brief 113 D2).
    */
   readiness: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ gatewayId: z.string().min(1) }))
@@ -110,15 +111,29 @@ export const paymentGatewaysRouter = createTRPCRouter({
       return result.value
     }),
 
-  /** Every payment gateway in the org, oldest first. */
+  /**
+   * Every payment gateway in the org, oldest first. `withFeed` adds each one's feed state
+   * (brief 113 D2); it is opt-in because it reads unlinked feeds and connectors.
+   */
   list: permissionProcedure(PermissionKey.ledgerView)
-    .input(z.object({ includeArchived: z.boolean().optional() }).optional())
+    .input(
+      z
+        .object({ includeArchived: z.boolean().optional(), withFeed: z.boolean().optional() })
+        .optional()
+    )
     .query(async ({ ctx, input }) => {
-      const result = await listPaymentGateways(ctx.db, ctx.session.organizationId, {
+      const { organizationId } = ctx.session
+      const result = await listPaymentGateways(ctx.db, organizationId, {
         includeArchived: input?.includeArchived,
       })
       if (result.isErr()) throw result.error
-      return result.value
+      if (!input?.withFeed) return result.value.map((gateway) => ({ ...gateway, feed: null }))
+      const feeds = await listRailFeedStatuses(ctx.db, organizationId, result.value)
+      if (feeds.isErr()) throw feeds.error
+      return result.value.map((gateway) => ({
+        ...gateway,
+        feed: feeds.value.get(gateway.id) ?? null,
+      }))
     }),
 
   /**

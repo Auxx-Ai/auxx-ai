@@ -129,6 +129,7 @@ packages/lib/src/
     mirror/      the raw copy of the provider's ledger, and the translation off it
     providers/   the AccountingProvider seam, book connections, quickbooks/
     rails/       payment rails, rail accounts, rail fee status
+    processors/  one folder per processor auxx can read: descriptor, payout source, reference resolver
     connect-and-go/  setup from a connected provider (brief 105): prepareConnectAndGo (posts
                  nothing; queued when a provider app connects), completeConnectAndGo (the
                  person's answers → activate, fill, finalize, adjust), previewConnectAndGoBacklog
@@ -1298,14 +1299,17 @@ finalize integrity pass or not at all (`inventory/relief/backfill.ts` is the man
 (`money/payouts/sweep-stored-entries.ts`) exists because payout records import in draft with no
 entry and the nightly sync re-offers only its 30-day lookback: it lists paid payouts dated after
 the cutover month with no subject claim, oldest first, and hands each to `repostStoredPayout`.
+Since brief 114 P3 it posts on any linked rail (Affirm, Authorize.net included; no registered
+`PayoutSource` needed), floors only on `cutoffPeriod`, waits until the rail's feed holds the
+payout's `ProcessorBalanceEntry` rows, and first promotes one page of unpromoted connector payouts.
 
 ### 8.5 Payouts
 
 `money/payouts/` raises a `payout` record per settled payout a source reports, posts its entry and
 links it. Provider-neutral behind `PayoutSource` (`source.ts`, a type-only contract), filled by
-`sources.ts` at boot.
+`accounting/processors/register.ts` at boot.
 
-🛑 **Every process that runs the payout sync must call `registerPayoutSources()` at boot** — web
+🛑 **Every process that runs the payout sync must call `registerProcessors()` at boot** — web
 and the worker, beside `registerAccountingProviders()`. With an empty registry `syncPayouts` finds
 no context for any org, lists nothing, and the clearing account keeps filling with nothing to say
 so.
@@ -1361,7 +1365,9 @@ be the obvious shape, but then an order and its own lines dirtied by one write d
 
 **Payout and balance-entry records reach the payout reconciler through mark hooks**
 (`customer-money/record-marks.ts`: `assessOnPayoutChange`, `assessOnProcessorBalanceEntryChange`,
-each watching its `BRIDGE_ATTRIBUTES` set) on all three write lanes. The sync lane replays them
+each watching its `BRIDGE_ATTRIBUTES` set) on all three write lanes. The drain also promotes a
+connector payout in place (`money/payouts/promote.ts`, brief 114 P2): ledger fields from its
+evidence, rail from the linked `FinancialSourceAccount`; `linkFeed` promotes that feed's payouts. The sync lane replays them
 from the manifest's `touched` keys in `events/handlers/finalize-integrity-passes.ts`, inside one
 `runWithDirtyParents`; archival fires no field change, so archived records are hand-marked there
 (`markArchivedFinancialRecords`). Both money reconcilers are batch, and a batch reconciler is exempt
@@ -1384,7 +1390,7 @@ endpoint the event arrives on:
 | Job | Who pays whom | Code | Webhook secret |
 | --- | --- | --- | --- |
 | **Platform billing** | the org pays auxx.ai | `@auxx/billing`, `apps/web/src/lib/stripe.ts` | `STRIPE_WEBHOOK_SECRET` |
-| **Stripe Connect** | the org's customers pay the org | `accounting/money/stripe-connect/`, `money/checkout/`, `accounting/sales/credit-memos/card-refund.ts`, `money/payouts/sources/stripe-connect.ts` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| **Stripe Connect** | the org's customers pay the org | `accounting/money/stripe-connect/`, `money/checkout/`, `accounting/sales/credit-memos/card-refund.ts`, `processors/stripe-connect/source.ts` | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 | **Financial Connections** | nobody; auxx reads the org's bank | `data-connectors/connectors/stripe-financial-connections*.ts`, `accounting/banking/feed/fc-*.ts` | `STRIPE_BANKING_WEBHOOK_SECRET` |
 
 A fourth meaning is not ours at all: **Stripe as a system the org uses** — the `stripe` rail in
@@ -1478,6 +1484,8 @@ naming one would need a role per gateway, and the vocabulary is closed (§6.1).
 | `rails/repoint.ts` | What moving a gateway's clearing account is about to strand. ⚠️ It reads what is *posted to the account*, which is not the same as what *this gateway put there*, and the transfer entry is deliberately not here |
 | `rails/rail-groups.ts` | The census grouped by rail (`buildRailGroups`) and the setup defaults (`defaultMintFeeAccount`, `isStaleRail`). Pure and client-safe; the wizard and `connect-and-go/auto-route-rails.ts` share it |
 | `rails/settlement-discovery.ts` | Live processor sources with settlement evidence and no rail linked yet |
+| `processors/<processor>/` | One folder per readable processor: `client.ts` descriptor (handles, rail name, fee treatment, `feedApp`), optional `source.ts` (`PayoutSource`) and `resolver.ts` (`EntryReferenceResolver`). `rail-catalogue.ts` builds its readable rows from the descriptors; `manual` rails stay literal rows there |
+| `processors/register.ts` | `registerProcessors()`: fills both payout registries from the folders; web and worker boot call it |
 
 **Netted vs billed.** A rail with a linked live `FinancialSourceAccount` is polled by its
 `PayoutSource` and settles **net** — the payout entry drains clearing and expenses the fee. A rail

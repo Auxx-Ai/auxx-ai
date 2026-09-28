@@ -16,6 +16,8 @@ export type {
   PaymentGatewayRow,
   PaymentGatewaySettlementSourceValue,
   PaymentGatewayStatusValue,
+  RailFeedState,
+  RailFeedStatus,
 } from './client'
 export {
   type GatewayRoute,
@@ -27,12 +29,19 @@ export {
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUS_LABELS,
   PAYMENT_GATEWAY_STATUSES,
+  RAIL_FEED_STATES,
   RESERVED_GATEWAY_HANDLES,
   resolvePaymentGatewayFeeTreatment,
   resolvePaymentGatewaySettlementSource,
   resolvePaymentGatewayStatus,
   toGatewayRoutes,
 } from './client'
+export {
+  decideRailFeedState,
+  feedProcessorForHandles,
+  type RailFeedInputs,
+} from './feed-state'
+export { listRailFeedStatuses, type RailFeedGateway, railFeedStatus } from './feed-status'
 export type { GatewayReadiness } from './feeds'
 export { linkFeed, readiness, unlinkFeed } from './feeds'
 // ── plans/accounting/tasks/26 §7: a clearing account per rail ───────────────

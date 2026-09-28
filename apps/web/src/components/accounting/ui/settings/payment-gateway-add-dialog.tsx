@@ -2,6 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { feedAppForHandles } from '@auxx/lib/accounting/processors/client'
 import {
   normaliseGatewayHandle,
   PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
@@ -38,6 +39,7 @@ import {
   useFeedOptions,
   useHandleOptions,
 } from './payment-gateway-rail-rows'
+import { ProcessorFeedHint } from './rail-feed-note'
 
 const FEE_TREATMENT_OPTIONS = PAYMENT_GATEWAY_FEE_TREATMENTS.map((value) => ({
   value,
@@ -172,6 +174,7 @@ export function PaymentGatewayAddDialog({
     [firstHandle, gateways.data]
   )
 
+  const hasFeedApp = feedAppForHandles(draft.handles) !== null
   const feeAccount = roleMap.data?.roles.find((r) => r.role === 'payment_processing_fees')?.account
   const name = draft.name.trim()
   const readiness = railReadinessLine({
@@ -339,24 +342,28 @@ export function PaymentGatewayAddDialog({
               icon={<PlugZap className='size-4 text-muted-foreground' />}
               showIcon
               description='The processor account that reports this rail’s payouts.'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: feeds.options }}
-                value={draft.feedId}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                placeholder={
-                  feeds.isPending
-                    ? 'Loading…'
-                    : feeds.options.length === 0
-                      ? 'No unclaimed feed'
-                      : 'Select a feed'
-                }
-                disabled={pending || feeds.options.length === 0}
-                onChange={(value) => {
-                  const next = Array.isArray(value) ? value[0] : value
-                  setDraft((prev) => ({ ...prev, feedId: (next as string | undefined) ?? null }))
-                }}
-              />
+              {!feeds.isPending && feeds.options.length === 0 && hasFeedApp ? (
+                <ProcessorFeedHint handles={draft.handles} className='min-h-8 py-1' />
+              ) : (
+                <FieldInputAdapter
+                  fieldType={FieldType.SINGLE_SELECT}
+                  fieldOptions={{ options: feeds.options }}
+                  value={draft.feedId}
+                  triggerProps={{ className: 'w-full ps-0 pe-1' }}
+                  placeholder={
+                    feeds.isPending
+                      ? 'Loading…'
+                      : feeds.options.length === 0
+                        ? 'No unclaimed feed'
+                        : 'Select a feed'
+                  }
+                  disabled={pending || feeds.options.length === 0}
+                  onChange={(value) => {
+                    const next = Array.isArray(value) ? value[0] : value
+                    setDraft((prev) => ({ ...prev, feedId: (next as string | undefined) ?? null }))
+                  }}
+                />
+              )}
             </FieldPanelRow>
           </FieldPanel>
 

@@ -30,6 +30,7 @@
  * `payment-gateways` barrel, which reaches Drizzle and the org cache.
  */
 
+import { PROCESSORS } from '../processors/client'
 import {
   normaliseGatewayHandle,
   type PaymentGatewayFeeTreatmentValue,
@@ -80,90 +81,50 @@ interface RailEntry {
 }
 
 /**
- * Handle -> rail, keyed by NORMALISED handle ({@link normaliseGatewayHandle}),
- * so `'Affirm'`, `' affirm '` and `'AFFIRM'` are one entry.
+ * The rails auxx names but cannot read, keyed by NORMALISED handle
+ * ({@link normaliseGatewayHandle}).
  *
- * Several handles deliberately map to ONE name. §2 settles the grain: a
- * clearing account earns its keep by reconciling to zero against one external
- * document, so Shopify Payments and Shop Pay Installments - which arrive in the
- * same Shopify deposit - suggest the same rail and therefore the same account.
- * Splitting them makes the deposit unsplittable. The record already holds a SET
- * of handles and one account, which is exactly this shape.
- *
- * ⚠️ `settlementSource` here is what auxx can actually READ, not who owns the
- * rail. `stripe`, `shopify_payments`, `affirm` and `authorize_net` are the four
- * rails a reader is being built for; `afterpay`, `klarna`, `paypal`,
- * `braintree`, `amazon_pay` and `square` all still suggest `manual` even
- * though every one of those processors plainly has an API - a settlement source
- * that promises a drain nobody wrote is worse than one that says "by hand".
- * A rail is promoted out of `manual` HERE only when its feed is being read, not
- * when somebody notices the vendor has documentation.
- *
- * ⚠️ `feeTreatment` is a SEPARATE question from `settlementSource` and does not
- * follow from it (§4). The clearest proof is two rails that share a settlement
- * source and disagree on fees: Affirm reads its own feed AND nets its discount
- * fee, while the acquirer behind Authorize.Net now reads a feed too and still
- * deposits GROSS and bills monthly. Two questions, two fields.
+ * ⚠️ `settlementSource` means what auxx can actually READ, not who owns the
+ * rail. Every one of these processors plainly has an API, and every one still
+ * suggests `manual`: a settlement source that promises a drain nobody wrote is
+ * worse than one that says "by hand". A rail is promoted out of `manual` only
+ * when its feed is being read, which means a folder under `accounting/processors/`.
  */
-const RAILS: Record<string, RailEntry> = {
-  stripe: { name: 'Stripe', settlementSource: 'stripe', feeTreatment: 'netted' },
-
-  // One rail, three handles: Shopify's own deposit carries all of it (§2).
-  shopify_payments: {
-    name: 'Shopify Payments',
-    settlementSource: 'shopify_payments',
-    feeTreatment: 'netted',
-  },
-  shop_pay_installments: {
-    name: 'Shopify Payments',
-    settlementSource: 'shopify_payments',
-    feeTreatment: 'netted',
-  },
-  shop_cash: {
-    name: 'Shopify Payments',
-    settlementSource: 'shopify_payments',
-    feeTreatment: 'netted',
-  },
-
-  // Authorize.Net is a gateway in front of an acquirer, and the ACQUIRER is
-  // what settles: a daily batch to the bank, gross, with the card fees billed
-  // on a monthly statement. Three spellings are in the wild (§1.5's census
-  // found two of them on one org).
-  // The settled-batch reader is `plans/apps/authorize-net/authorize-net-build-plan.md`
-  // §5.2; `billed` is unchanged by it, because a batch carries no fee (§4.1).
-  authorize_net: {
-    name: 'Authorize.Net',
-    settlementSource: 'authorize_net',
-    feeTreatment: 'billed',
-  },
-  'authorize.net': {
-    name: 'Authorize.Net',
-    settlementSource: 'authorize_net',
-    feeTreatment: 'billed',
-  },
-  authorizenet: {
-    name: 'Authorize.Net',
-    settlementSource: 'authorize_net',
-    feeTreatment: 'billed',
-  },
-
-  // ✔ Affirm settles to the bank on its own weekly `deposit_id`, and none of it
-  // rides inside a Shopify Payments deposit (`plans/apps/affirm/portal-probe-2026-09-15.md`
-  // §5: 31 Affirm-paid orders, 0 Shopify Payments balance entries). So it is a
-  // genuine second rail with a feed of its own, not the `manual` case.
-  // `netted` is confirmed by the same evidence and is unchanged: `fees`,
-  // `txn_fees` and `mdr_rate` ride on the settlement event itself, which is what
-  // netting means.
-  // 🛑 One key, lower-cased. Shopify reports the handle as `'Affirm'`, but the
-  // table is read through `normaliseGatewayHandle` - a second `'Affirm'` key
-  // would be dead code.
-  affirm: { name: 'Affirm', settlementSource: 'affirm', feeTreatment: 'netted' },
+const MANUAL_RAILS: Record<string, RailEntry> = {
   afterpay: { name: 'Afterpay', settlementSource: 'manual', feeTreatment: 'netted' },
   klarna: { name: 'Klarna', settlementSource: 'manual', feeTreatment: 'netted' },
   paypal: { name: 'PayPal', settlementSource: 'manual', feeTreatment: 'netted' },
   braintree: { name: 'Braintree', settlementSource: 'manual', feeTreatment: 'netted' },
   amazon_pay: { name: 'Amazon Pay', settlementSource: 'manual', feeTreatment: 'netted' },
   square: { name: 'Square', settlementSource: 'manual', feeTreatment: 'netted' },
+}
+
+/** The handles {@link MANUAL_RAILS} claims; no processor may claim one too. */
+export const MANUAL_RAIL_HANDLES: readonly string[] = Object.keys(MANUAL_RAILS)
+
+/**
+ * Handle -> rail. The readable rails come from the processor descriptors, so
+ * several handles deliberately map to ONE name: a clearing account reconciles
+ * to zero against one external document, and the record already holds a SET of
+ * handles and one account (§2).
+ *
+ * ⚠️ `feeTreatment` does not follow from `settlementSource` (§4): Affirm and
+ * Authorize.Net both read a feed, and one nets while the other is billed.
+ */
+const RAILS: Record<string, RailEntry> = {
+  ...Object.fromEntries(
+    PROCESSORS.flatMap((processor) =>
+      processor.handles.map((handle) => [
+        handle,
+        {
+          name: processor.railName,
+          settlementSource: processor.id,
+          feeTreatment: processor.feeTreatment,
+        },
+      ])
+    )
+  ),
+  ...MANUAL_RAILS,
 }
 
 /**

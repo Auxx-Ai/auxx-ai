@@ -8,7 +8,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
 import { Plug } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
@@ -17,6 +17,8 @@ import { api } from '~/trpc/react'
 interface SourceTemplateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Connector type to open on (e.g. `app:affirm`); ignored when no installed or recommended row matches. */
+  initialType?: string
 }
 
 /**
@@ -81,11 +83,17 @@ const CATEGORY_ORDER = ['custom', 'templates', 'apps']
  * route into their detail view; Custom REST drills into a detail page to name the
  * source first. See plans/data-connectors/v6/source-template-dialog-plan.md.
  */
-export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialogProps) {
+export function SourceTemplateDialog({
+  open,
+  onOpenChange,
+  initialType,
+}: SourceTemplateDialogProps) {
   const router = useRouter()
   const utils = api.useUtils()
   const [name, setName] = useState('')
   const [busyItemId, setBusyItemId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const appliedInitialType = useRef(false)
 
   const catalog = api.dataConnector.catalog.useQuery(undefined, { enabled: open })
 
@@ -162,6 +170,23 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
     ]
   }, [catalog.data])
 
+  // Pre-select once per open, after the catalog lands; installed rows sort ahead of recommended.
+  useEffect(() => {
+    if (!open) {
+      appliedInitialType.current = false
+      return
+    }
+    if (!initialType || appliedInitialType.current || !catalog.data) return
+    appliedInitialType.current = true
+    const match = items.find(
+      (i) =>
+        (i.kind === 'app' && i.type === initialType) ||
+        (i.kind === 'recommended-app' &&
+          (i.type === initialType || `app:${i.appSlug}` === initialType))
+    )
+    if (match) setSelectedId(match.id)
+  }, [open, initialType, catalog.data, items])
+
   const categories = useMemo<TemplateGalleryCategory[]>(() => {
     const present = new Set(items.flatMap((i) => i.categories))
     return [
@@ -215,6 +240,11 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
     create.mutate({ name: item.name, type: item.type })
   }
 
+  function createFromApp(item: Extract<SourceItem, { kind: 'app' }>) {
+    setBusyItemId(item.id)
+    create.mutate({ name: item.name, type: item.type })
+  }
+
   function createBlankRest() {
     create.mutate({ name: name.trim() || 'New REST source', type: 'generic-rest' })
   }
@@ -262,6 +292,8 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
         </>
       )}
       onSelectItem={handleSelect}
+      selectedId={selectedId}
+      onSelectedIdChange={setSelectedId}
       busyItemId={busyItemId}
       detailSize='lg'
       detailCrumb={(item) => (item.kind === 'builtin' ? 'Custom REST API' : item.name)}
@@ -317,6 +349,26 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
             </ScrollArea>
           )
         }
+        if (item.kind === 'app') {
+          return (
+            <ScrollArea className='max-h-[60vh]'>
+              <div className='flex flex-col gap-4 p-5'>
+                <div className='flex items-center gap-3'>
+                  <div className='flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-background'>
+                    <AppIcon iconId={item.appIconId} size='lg' />
+                  </div>
+                  <div className='truncate text-sm font-medium'>{item.name}</div>
+                </div>
+                <p className='text-sm text-muted-foreground'>{item.description}</p>
+                {item.requiresConnection && (
+                  <p className='text-xs text-muted-foreground'>
+                    You'll connect your account on the next screen, before the first sync.
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          )
+        }
         return null
       }}
       renderDetailFooter={(item) =>
@@ -339,6 +391,16 @@ export function SourceTemplateDialog({ open, onOpenChange }: SourceTemplateDialo
               Install &amp; add source <KbdSubmit variant='outline' size='sm' />
             </InlineAppInstallButton>
           )
+        ) : item.kind === 'app' ? (
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => createFromApp(item)}
+            loading={create.isPending}
+            loadingText='Adding source...'
+            data-dialog-submit>
+            Add source <KbdSubmit variant='outline' size='sm' />
+          </Button>
         ) : (
           <Button
             size='sm'
