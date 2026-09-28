@@ -210,6 +210,10 @@ export async function bulkSetPartKind(
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const recordIds = writable.map((partId) => toRecordId(partDefId, partId) as RecordId)
       const { count } = await crud.bulkSetFieldValue(recordIds, kindField.id, kind)
+      // A person chose it, so the finished-good suggestion stops re-offering another kind.
+      if (fields.part_kind_confirmed) {
+        await crud.bulkSetFieldValue(recordIds, fields.part_kind_confirmed.id, true)
+      }
       // The bulk write fires no field pre-hooks, so the kind's "keep it" reset happens here.
       await clearKindConflictConfirmations(db, organizationId, writable)
       await onCacheEvent('stock-setup.changed', { orgId: organizationId })
@@ -291,7 +295,10 @@ function dropWhere(
   }
 }
 
-const PART_KIND_PICK = pickSystemAttributes(PART_FIELDS, ['part_kind'] as const)
+const PART_KIND_PICK = pickSystemAttributes(PART_FIELDS, [
+  'part_kind',
+  'part_kind_confirmed',
+] as const)
 
 interface PartRow {
   displayName: string | null

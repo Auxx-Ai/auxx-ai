@@ -35,6 +35,7 @@ import type { OpeningStockCandidate } from './types'
 /** Every part-side attribute a candidate row is assembled from. */
 const PART_PICK = pickSystemAttributes(PART_FIELDS, [
   'part_kind',
+  'part_kind_confirmed',
   'part_standard_cost',
   'part_product',
 ] as const)
@@ -97,6 +98,7 @@ export async function listOpeningStockCandidates(
         title: row.displayName ?? '',
         sku: row.text('part_sku'),
         partKind: row.option('part_kind'),
+        kindConfirmed: row.boolean('part_kind_confirmed') === true,
         standardCost: row.number('part_standard_cost'),
         hasMovements: moved.has(row.id),
         hasInitialMovement: initials.has(row.id),

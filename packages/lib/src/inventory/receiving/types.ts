@@ -299,6 +299,8 @@ export interface OpeningStockCandidate {
    * proves a human chose it.
    */
   partKind: string | null
+  /** A person picked `partKind`, so the finished-good suggestion stays quiet. */
+  kindConfirmed: boolean
   /**
    * The frozen `part_standard_cost`, minor units at `RATE_DECIMALS`.
    *

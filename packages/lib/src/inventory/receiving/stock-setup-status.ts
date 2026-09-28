@@ -14,6 +14,7 @@ import { readPartsWithInitialMovement, readPartsWithMovements } from './movement
 
 const PART_PICK = pickSystemAttributes(PART_FIELDS, [
   'part_kind',
+  'part_kind_confirmed',
   'part_standard_cost',
   'part_product',
 ] as const)
@@ -70,6 +71,7 @@ export async function readStockSetupStatus(
           !conflictIds.has(p.partId) &&
           p.hasProduct &&
           !edges.children.has(p.partId) &&
+          !p.kindConfirmed &&
           isUnclassified(p.kind)
       ).length
 
@@ -111,7 +113,13 @@ async function readStockedParts(
   db: Database,
   organizationId: string
 ): Promise<
-  { partId: string; kind: string | null; standardCost: number | null; hasProduct: boolean }[]
+  {
+    partId: string
+    kind: string | null
+    kindConfirmed: boolean
+    standardCost: number | null
+    hasProduct: boolean
+  }[]
 > {
   const ctx = await systemFields(db, organizationId, 'part', PART_PICK)
   if (!ctx) return []
@@ -121,6 +129,7 @@ async function readStockedParts(
     .map((row) => ({
       partId: row.id,
       kind: row.option('part_kind'),
+      kindConfirmed: row.boolean('part_kind_confirmed') === true,
       standardCost: row.number('part_standard_cost'),
       hasProduct: row.related('part_product') != null,
     }))

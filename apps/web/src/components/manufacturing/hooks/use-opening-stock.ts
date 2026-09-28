@@ -377,6 +377,7 @@ export function useOpeningStock() {
       const suggested = shouldSuggestFinishedGood({
         hasProduct: candidate.hasProduct,
         partKind: storedKind,
+        kindConfirmed: candidate.kindConfirmed || candidate.partId in writtenKinds,
         subpartCheckLoaded: true,
         isSubpartOfAssembly: candidate.isSubpartOfAssembly,
       })

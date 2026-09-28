@@ -57,6 +57,8 @@ interface SuggestFinishedGoodInput {
    * the suggestion open; `subassembly` and `finished_good` block it.
    */
   partKind: unknown
+  /** A person picked the kind (`part_kind_confirmed`); a confirmed `component` is not re-asked. */
+  kindConfirmed: boolean
   /**
    * Whether the "is anybody's subpart?" read has actually completed. Until it
    * has, the answer is unknown and the suggestion must not flash on.
@@ -80,6 +82,7 @@ interface SuggestFinishedGoodInput {
 export function shouldSuggestFinishedGood(input: SuggestFinishedGoodInput): boolean {
   if (!input.hasProduct) return false
   if (!isPartKindUnclassified(input.partKind)) return false
+  if (input.kindConfirmed) return false
   if (!input.subpartCheckLoaded) return false
   return !input.isSubpartOfAssembly
 }
