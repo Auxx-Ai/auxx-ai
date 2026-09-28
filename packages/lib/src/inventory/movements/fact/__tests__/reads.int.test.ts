@@ -153,6 +153,27 @@ describe('readUsageBuckets', () => {
       { partId: 'p1', month: '2026-08', consumed: 0, scrapped: 0, stockoutDays: 31 },
     ])
   })
+
+  it('does not count days below zero as stockouts', async () => {
+    await fact({
+      partId: 'p1',
+      type: 'sale',
+      quantity: -5,
+      at: '2026-07-01T18:00:00Z',
+      consumptionClass: 'consumption',
+    })
+    const result = await readUsageBuckets(db(), organizationId, {
+      partIds: ['p1'],
+      from: '2026-07-01',
+      to: '2026-07-31',
+      zone: ZONE,
+      grain: 'month',
+    })
+    if (result.isErr()) throw result.error
+    expect(result.value).toEqual([
+      { partId: 'p1', month: '2026-07', consumed: 5, scrapped: 0, stockoutDays: 0 },
+    ])
+  })
 })
 
 describe('readReceiptsForPoLines', () => {

@@ -54,6 +54,20 @@ describe('computeSeasonalIndex', () => {
     expect(result.index).toBeNull()
   })
 
+  it('keeps every month once stockouts pass the cap (built to order)', () => {
+    const all = buckets([2025], LIFT_A).map((b) => b.month)
+    const result = computeSeasonalIndex(buckets([2025], LIFT_A, all))
+    expect(result.months).toBe(12)
+    expect(result.index).not.toBeNull()
+  })
+
+  it('does not count months before the first use as history', () => {
+    const before = buckets([2024], Array(12).fill(0), ['2024-01', '2024-02', '2024-03'])
+    const result = computeSeasonalIndex([...before, ...buckets([2025], LIFT_A).slice(0, 6)])
+    expect(result.months).toBe(6)
+    expect(result.index).toBeNull()
+  })
+
   it('reads a flat history as an all-ones index', () => {
     const { index } = computeSeasonalIndex(buckets([2024, 2025], Array(12).fill(10)))
     expect(index).toEqual(Array(12).fill(1))

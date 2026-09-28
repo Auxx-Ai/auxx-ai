@@ -2,13 +2,13 @@
 
 import { addDaysToDayKey, type DayKey, daysBetween, endOfMonthDay } from '@auxx/utils/calendar-day'
 import { mean } from '@auxx/utils/stats'
-import { MRP_SEASONAL_MONTHS } from '../client'
+import { MRP_MAX_STOCKOUT_SHARE, MRP_SEASONAL_MONTHS } from '../client'
 import type { MonthlyBucket, SeasonalIndex, WhereUsedShare } from '../types'
 
 export interface SeasonalIndexResult {
   /** Jan..Dec after shrinkage; null under the minimum clean months. */
   index: SeasonalIndex | null
-  /** Clean months used (stockout months dropped). */
+  /** Months used: stockout months dropped unless they pass `MRP_MAX_STOCKOUT_SHARE`. */
   months: number
   /** Shrinkage weight `months ÷ full`, capped at 1. */
   weight: number
@@ -26,10 +26,16 @@ export function computeSeasonalIndex(
   buckets: readonly MonthlyBucket[],
   measure: 'sold' | 'consumed' = 'sold'
 ): SeasonalIndexResult {
-  const recent = [...buckets]
+  const window = [...buckets]
     .sort((a, b) => (a.month < b.month ? 1 : -1))
     .slice(0, MRP_SEASONAL_MONTHS.full)
-    .filter((b) => b.stockoutDays === 0)
+  // Months before the part's first use are no history, not stockouts.
+  while (window.length > 0 && window[window.length - 1]?.[measure] === 0) window.pop()
+  const clean = window.filter((b) => b.stockoutDays === 0)
+  // As computeUsage: past the cap the shelf is built to order, not empty, so keep every month.
+  const capped =
+    window.length > 0 && (window.length - clean.length) / window.length > MRP_MAX_STOCKOUT_SHARE
+  const recent = capped ? window : clean
   const months = recent.length
   const weight = Math.min(1, months / MRP_SEASONAL_MONTHS.full)
   if (months < MRP_SEASONAL_MONTHS.min) return { index: null, months, weight }
