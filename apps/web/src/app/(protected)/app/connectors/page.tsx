@@ -40,7 +40,7 @@ function ConnectorsPageContent() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  // `?connect=<type>` (see connectSourceHref) opens the picker on that source, then leaves the URL.
+  // `?connect=<type>` opens the picker on that source, then leaves the URL.
   useEffect(() => {
     const connect = searchParams.get('connect')
     if (!connect) return

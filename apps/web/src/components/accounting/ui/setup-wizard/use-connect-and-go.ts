@@ -7,6 +7,7 @@ import type {
   ConnectAndGoPrepareReport,
 } from '@auxx/lib/accounting/connect-and-go/client'
 import { isMonthKey, isValidTimeZone } from '@auxx/lib/accounting/ledger/client'
+import { PROVIDER_SYNC_SCHEDULE_SETTING_KEY } from '@auxx/lib/accounting/mirror/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useRef, useState } from 'react'
@@ -16,6 +17,7 @@ import {
   useDehydratedStateContext,
 } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
+import { type ScheduleCadence, toCadence } from '../provider-sync/provider-sync-schedule-row'
 import { EXPORT_ROW_DRAFT_KEYS } from '../settings/posting-page-model'
 
 /** The person's answers across the import pages, held until Finish. */
@@ -26,6 +28,8 @@ export interface ConnectAndGoDraft {
   exportMode: 'transaction' | 'summary'
   /** `accounting.autoSend.*` / `accounting.summaryGrain.*`, keyed by setting key. */
   exportSettings: Partial<Record<string, SettingValue>>
+  /** How often the provider's ledger is read; written through its own door after Finish. */
+  syncCadence: ScheduleCadence
   railBanks: Record<string, string | null>
   acceptBankAccounts: string[]
 }
@@ -36,6 +40,7 @@ const EMPTY_DRAFT: ConnectAndGoDraft = {
   fiscalYearStartMonth: 1,
   exportMode: 'transaction',
   exportSettings: {},
+  syncCadence: 'off',
   railBanks: {},
   acceptBankAccounts: [],
 }
@@ -59,6 +64,10 @@ export function useConnectAndGo(providerLabel: string) {
   const [prepareFailed, setPrepareFailed] = useState(false)
   const complete = api.ledger.connectAndGo.complete.useMutation({
     onError: (error) => toastError({ title: 'Could not finish setup', description: error.message }),
+  })
+  const setSyncSchedule = api.ledger.setProviderSyncSchedule.useMutation({
+    onError: (error) =>
+      toastError({ title: 'Could not change the sync frequency', description: error.message }),
   })
 
   const [report, setReport] = useState<ConnectAndGoPrepareReport | null>(null)
@@ -103,6 +112,7 @@ export function useConnectAndGo(providerLabel: string) {
         exportSettings: Object.fromEntries(
           EXPORT_ROW_DRAFT_KEYS.map((key) => [key, savedSettings[key] ?? null])
         ),
+        syncCadence: toCadence(savedSettings[PROVIDER_SYNC_SCHEDULE_SETTING_KEY]),
       }))
     }
   }
@@ -154,6 +164,18 @@ export function useConnectAndGo(providerLabel: string) {
     setOutcome(result)
     // The run returns every setting it can touch, read back, so no page keeps a stale copy.
     if (organizationId) patchSettings(organizationId, result.settings)
+    // After complete, so the schedule fires in the book timezone Finish just wrote.
+    if (
+      result.completed &&
+      draft.syncCadence !== toCadence(savedSettings[PROVIDER_SYNC_SCHEDULE_SETTING_KEY])
+    ) {
+      const saved = await setSyncSchedule
+        .mutateAsync({ cadence: draft.syncCadence })
+        .catch(() => null)
+      if (saved && organizationId) {
+        patchSettings(organizationId, { [PROVIDER_SYNC_SCHEDULE_SETTING_KEY]: saved.config })
+      }
+    }
     // Finish touches the whole ledger (periods, balance, batches, roles, chart), so every
     // accounting page refetches rather than each one being listed here.
     await Promise.all([
@@ -182,7 +204,7 @@ export function useConnectAndGo(providerLabel: string) {
     preparing,
     prepareFailed,
     finish,
-    finishing: complete.isPending,
+    finishing: complete.isPending || setSyncSchedule.isPending,
     booksInvalid,
     done,
   }

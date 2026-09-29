@@ -42,9 +42,16 @@ export type CreditMemoRepostOutcome = 'unchanged' | 'reposted' | 'reversed'
  */
 export async function repostCreditMemoEntry(
   db: Database,
-  input: { organizationId: string; creditMemoInstanceId: string; actorUserId?: string }
+  input: {
+    organizationId: string
+    creditMemoInstanceId: string
+    actorUserId?: string
+    /** Why it re-posts, for the entries' memos; defaults to a cancelled shipment. */
+    reason?: string
+  }
 ): Promise<CreditMemoRepostOutcome | null> {
   const { organizationId, creditMemoInstanceId, actorUserId } = input
+  const reason = input.reason ?? 'its shipment cancelled'
   const memo = await loadCreditMemo(db, organizationId, creditMemoInstanceId)
   if (!memo?.issuedAt || memo.status === 'draft' || memo.status === 'void') return null
   if (await readEditStamp(db, organizationId, memo.id)) return null
@@ -88,7 +95,7 @@ export async function repostCreditMemoEntry(
       organizationId,
       glPostingId: live.value!.id,
       actorUserId,
-      memo: `Reversal of ${docNumber} - credit memo ${memo.number}, its shipment cancelled`,
+      memo: `Reversal of ${docNumber} - credit memo ${memo.number}, ${reason}`,
     })
     if (!didLedgerAccept(reversal))
       throw new UnprocessableEntityError(
@@ -102,7 +109,7 @@ export async function repostCreditMemoEntry(
         orderInstanceId: memo.orderInstanceId,
         entry: rebuilt.entry,
         actorUserId,
-        memo: `Credit memo ${memo.number} re-posted after its shipment was cancelled`,
+        memo: `Credit memo ${memo.number} re-posted, ${reason}`,
       })
       if (!didLedgerAccept(post))
         throw new UnprocessableEntityError(

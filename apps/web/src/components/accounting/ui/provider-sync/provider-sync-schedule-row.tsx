@@ -27,10 +27,14 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
+import {
+  useDehydratedOrganizationId,
+  useDehydratedStateContext,
+} from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
 
 /** What the mutation takes. `off` is a cadence switched off, which is not "never set". */
-type ScheduleCadence = 'off' | 'twice-daily' | 'daily'
+export type ScheduleCadence = 'off' | 'twice-daily' | 'daily'
 
 const CHOICES = [
   { value: 'off', label: 'Manual only' },
@@ -54,8 +58,15 @@ export function ProviderSyncScheduleRow() {
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const { can } = useAccess()
   const utils = api.useUtils()
+  const organizationId = useDehydratedOrganizationId()
+  const { patchSettings } = useDehydratedStateContext()
   const setSchedule = api.ledger.setProviderSyncSchedule.useMutation({
-    onSuccess: () => utils.setting.getAllUserSettings.invalidate(),
+    onSuccess: ({ config }) => {
+      if (organizationId) {
+        patchSettings(organizationId, { [PROVIDER_SYNC_SCHEDULE_SETTING_KEY]: config })
+      }
+      void utils.setting.getAllUserSettings.invalidate()
+    },
     onError: (error) =>
       toastError({ title: 'Could not change the sync frequency', description: error.message }),
   })
@@ -66,19 +77,38 @@ export function ProviderSyncScheduleRow() {
     <FieldPanelRow
       title='Sync frequency'
       description='How often the ledger is read without anybody pressing anything. Manual only is the default - the first runs against a real company file want a person watching them.'>
-      <FieldInputAdapter
-        fieldType={FieldType.SINGLE_SELECT}
-        fieldOptions={{ options: CHOICES }}
-        triggerProps={{ className: 'w-full ps-0 pe-1' }}
-        value={[cadence]}
+      <ProviderSyncCadenceSelect
+        value={cadence}
         // 🛑 `ledgerControl`, the rung the press itself takes: a cadence decides
         // when prior months get restated with nobody watching.
         disabled={!can(PermissionKey.ledgerControl) || setSchedule.isPending}
-        onChange={(next) => {
-          const picked = (Array.isArray(next) ? next[0] : next) as ScheduleCadence | undefined
-          setSchedule.mutate({ cadence: picked ?? 'off' })
-        }}
+        onChange={(next) => setSchedule.mutate({ cadence: next })}
       />
     </FieldPanelRow>
+  )
+}
+
+/** The cadence picker alone; the settings row autosaves it, the setup wizard drafts it. */
+export function ProviderSyncCadenceSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ScheduleCadence
+  onChange: (next: ScheduleCadence) => void
+  disabled?: boolean
+}) {
+  return (
+    <FieldInputAdapter
+      fieldType={FieldType.SINGLE_SELECT}
+      fieldOptions={{ options: CHOICES }}
+      triggerProps={{ className: 'w-full ps-0 pe-1' }}
+      value={[value]}
+      disabled={disabled}
+      onChange={(next) => {
+        const picked = (Array.isArray(next) ? next[0] : next) as ScheduleCadence | undefined
+        onChange(picked ?? 'off')
+      }}
+    />
   )
 }

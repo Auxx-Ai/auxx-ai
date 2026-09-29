@@ -4,10 +4,17 @@
 import { Section } from '@auxx/ui/components/section'
 import { Boxes } from 'lucide-react'
 import { booksStartDate } from '~/components/accounting/books-start'
+import type { ScheduleCadence } from '../provider-sync/provider-sync-schedule-row'
 import { ConnectAndGoBacklog } from './connect-and-go-backlog'
 import { ConnectAndGoStepList } from './connect-and-go-summary'
 import { OpeningInventoryDifference } from './opening-inventory-difference'
 import type { ConnectAndGoFlow } from './use-connect-and-go'
+
+const SYNC_SUMMARY: Record<ScheduleCadence, (provider: string) => string> = {
+  off: (provider) => `Reads ${provider} only when you press Sync now.`,
+  'twice-daily': (provider) => `Reads ${provider} twice a day.`,
+  daily: (provider) => `Reads ${provider} daily.`,
+}
 
 /**
  * The backlog after the cutover and what each finish step did; Finish is in the shell's
@@ -51,6 +58,9 @@ export function ConnectAndGoFinishPage({
             exportMode={draft.exportMode}
             providerLabel={providerLabel}
           />
+          <p className='px-4 pt-3 text-muted-foreground text-sm'>
+            {SYNC_SUMMARY[draft.syncCadence](providerLabel)}
+          </p>
           {flow.booksInvalid && (
             <p className='px-4 pt-3 text-muted-foreground text-xs'>{flow.booksInvalid}</p>
           )}
