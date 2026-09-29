@@ -230,9 +230,9 @@ export async function sweepSummaryBuckets(
 }
 
 /**
- * Transaction mode's build half (101 E5): posted postings at or after the export floor, on an
- * `autoSend` avenue, in no live batch, oldest first - built for the send half to pick up.
- * The safety net behind `exportPostedEntry`; a held avenue is never built here.
+ * Transaction mode's build half (101 E5): posted postings at or after the export floor, in no
+ * live batch, oldest first. The safety net behind `exportPostedEntry`; a held avenue's batch is
+ * built too and waits in Ready, since the send half only sends `autoSend` avenues.
  */
 export async function sweepTransactionPostings(
   db: Database,
@@ -242,8 +242,6 @@ export async function sweepTransactionPostings(
   try {
     const { settings, floor } = await readExportFloor(db, organizationId)
     if (settings.mode !== 'transaction' || !floor) return []
-    const avenues = EXPORT_AVENUES.filter((avenue) => settings.autoSend[avenue])
-    if (avenues.length === 0) return []
 
     const postings = await db
       .select({ id: schema.GlPosting.id, txnDate: schema.GlPosting.txnDate })
@@ -252,7 +250,7 @@ export async function sweepTransactionPostings(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
           eq(schema.GlPosting.status, 'posted'),
-          inArray(schema.GlPosting.avenue, avenues),
+          inArray(schema.GlPosting.avenue, [...EXPORT_AVENUES]),
           gte(schema.GlPosting.txnDate, floor),
           // The builder skips a posting with no number; reading it would re-pick it every pass.
           isNotNull(schema.GlPosting.docNumber),

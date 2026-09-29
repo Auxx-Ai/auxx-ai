@@ -12,8 +12,10 @@ import { createScopedLogger } from '@auxx/logger'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
+import { dayKeyInZone } from '@auxx/utils/calendar-day'
 import { stableHash } from '@auxx/utils/hash'
 import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import {
   FinancialSourceIdentityConflictError,
   recordStaleFinancialObservation,
@@ -223,6 +225,37 @@ export function coerceListValue(
     .map((v) => v.trim())
     .filter(Boolean)
   return parts
+}
+
+/** An ISO datetime: date, clock time, optional offset. */
+const ISO_DATETIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?$/
+
+/**
+ * The calendar day a connector's datetime falls on in `timeZone`, for a DATE field.
+ *
+ * The DATE converter rounds an instant to the nearest UTC midnight, which is right for a
+ * midnight-encoded day but a day late for any real event after 12:00 UTC (a Shopify refund
+ * at 15:21 PDT became the next day). A midnight or offset-less value keeps the day it names.
+ */
+export function coerceCalendarDay(value: unknown, timeZone: string): unknown {
+  if (typeof value !== 'string') return value
+  const match = ISO_DATETIME.exec(value.trim())
+  if (!match) return value
+  const [, day, time, offset] = match
+  if (!offset || /^00:00(:00(\.0+)?)?$/.test(time!)) return day
+  const instant = new Date(value.trim())
+  return Number.isNaN(instant.getTime()) ? value : dayKeyInZone(instant, timeZone)
+}
+
+/** The book zone, read once per run and only when a DATE field receives a datetime. */
+const bookZoneByCtx = new WeakMap<SyncCtx, Promise<string>>()
+function bookZone(ctx: SyncCtx): Promise<string> {
+  let zone = bookZoneByCtx.get(ctx)
+  if (!zone) {
+    zone = readBookTimeZoneOrUtc(ctx.orgId)
+    bookZoneByCtx.set(ctx, zone)
+  }
+  return zone
 }
 
 /**
@@ -658,7 +691,11 @@ async function buildWriteSet(
     // connector cannot source an array. Split it into the list form the write path
     // understands — otherwise a multi-tag source writes ONE compound tag. Every
     // reference to `value` below is post-coercion by design.
-    const listValue = coerceListValue(fieldRow?.type, sourceValue, isMulti)
+    const dayValue =
+      fieldRow?.type === 'DATE' && typeof sourceValue === 'string' && sourceValue.includes('T')
+        ? coerceCalendarDay(sourceValue, await bookZone(ctx))
+        : sourceValue
+    const listValue = coerceListValue(fieldRow?.type, dayValue, isMulti)
     // Option labels become option keys, minted on the field when allowed — an
     // identity value is matched verbatim and must not be rewritten.
     const value = identityRefs.has(rawRef)
