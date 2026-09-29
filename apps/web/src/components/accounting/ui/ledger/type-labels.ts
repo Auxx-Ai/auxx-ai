@@ -66,4 +66,5 @@ export const WORK_SOURCE_LABEL: Record<WorkItemSourceKind, string> = {
   provider_ledger_entry: 'Connected books',
   build: 'Build',
   stock_movement: 'Stock movement',
+  order: 'Order',
 }

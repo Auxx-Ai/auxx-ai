@@ -9,6 +9,7 @@ import { sweepImportedCustomerMoney } from '../../accounting/money/customer-mone
 import { sweepStoredPayoutEntries } from '../../accounting/money/payouts/sweep-stored-entries'
 import { sweepChannelCreditMemos } from '../../accounting/sales/credit-memos/issue-pass'
 import { sweepFulfillmentAccounting } from '../../accounting/sales/fulfillments/accounting-sweep'
+import { checkMarketplaceTax } from '../../accounting/sales/marketplace-tax/check'
 import { listOrganizationsForSweep } from '../../accounting/work-items/sweep'
 import { sweepPendingPricing } from '../../inventory/relief/relief-sweep'
 import type { JobContext } from '../types/job-context'
@@ -72,6 +73,11 @@ export async function accountingRecoveryJob(
         sweep(database, { organizationId, limit: 100, timeBudgetMs: deadline - Date.now() })
       )
     }
+    // After the posting sweeps, so a shipment or memo posted this run is counted (116 §6).
+    await attempt('Marketplace tax check', organizationId, async () => {
+      const checked = await checkMarketplaceTax(database, { organizationId })
+      if (checked.isErr()) throw checked.error
+    })
     // Gate 2's scheduled half: batches whose avenue auto-sends, and failed ones
     // past their backoff. A held batch is never touched here.
     await attempt('Export batch', organizationId, () =>

@@ -9,7 +9,10 @@ export type WorkItemStatus = 'waiting' | 'blocked' | 'warning' | 'skipped' | 're
 /** Mirrors `ACCOUNTING_WORK_STAGES` in the schema, restated so this file stays client-safe. */
 export type WorkItemStage = 'evidence' | 'money' | 'post' | 'issue' | 'relieve' | 'price'
 
-/** The `sourceKind` values a work item names. `build` and `stock_movement` park at `price` only (111 Q21). */
+/**
+ * The `sourceKind` values a work item names. `build` and `stock_movement` park at `price` only
+ * (111 Q21); `order` carries only the marketplace-tax warnings (116 §6).
+ */
 export const WORK_ITEM_SOURCE_KINDS = [
   'money_transaction',
   'fulfillment',
@@ -19,6 +22,7 @@ export const WORK_ITEM_SOURCE_KINDS = [
   'provider_ledger_entry',
   'build',
   'stock_movement',
+  'order',
 ] as const
 export type WorkItemSourceKind = (typeof WORK_ITEM_SOURCE_KINDS)[number]
 
@@ -222,6 +226,36 @@ export const WORK_ITEM_CODES = {
     severity: 'warning',
     status: 'warning',
     sentence: () => 'The refund is larger than the credit memo it settles.',
+  },
+  MARKETPLACE_TAX_NOT_RETURNED: {
+    severity: 'warning',
+    status: 'warning',
+    sentence: (item) => {
+      const order = detailText(item, 'orderNumber') ?? item.externalRef
+      const amount = detailText(item, 'difference')
+      return `${order ? `Order ${order}` : 'An order'} was refunded, but the sales channel has not returned the ${amount ? `${amount} ` : ''}tax it withheld. Ask the channel to return it.`
+    },
+  },
+  MARKETPLACE_TAX_MISMATCH: {
+    severity: 'warning',
+    status: 'warning',
+    sentence: (item) => {
+      const order = detailText(item, 'orderNumber') ?? item.externalRef ?? 'An order'
+      const withheld = detailText(item, 'withheld')
+      const held = detailText(item, 'held')
+      if (!withheld || !held)
+        return `The tax the sales channel withheld on ${order} does not match the tax it remits for it.`
+      return `The sales channel withheld ${withheld} tax on ${order}; the order's channel-remitted tax is ${held}.`
+    },
+  },
+  MARKETPLACE_TAX_NOT_WITHHELD: {
+    severity: 'warning',
+    status: 'warning',
+    sentence: (item) => {
+      const order = detailText(item, 'orderNumber') ?? item.externalRef
+      const held = detailText(item, 'held')
+      return `${order ? `Order ${order}` : 'An order'} has ${held ?? 'tax'} the sales channel remits, but no payout has withheld it yet.`
+    },
   },
   NOTHING_TO_RECOGNISE: {
     severity: 'info',
