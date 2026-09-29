@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { isTransientCode, nextAttemptDelayMs, type WorkItemStage } from './codes'
+import { requestRailRouting } from './recovery'
 import type { WorkItemRefusal } from './refusal'
 
 const logger = createScopedLogger('accounting-work-items')
@@ -76,6 +77,7 @@ export async function upsertWorkItem(
       : isTransientCode(input.reasonCode)
         ? sql`now() + make_interval(secs => LEAST(60 * power(2, ${attempts} - 1), 21600))`
         : values.nextAttemptAt
+  if (input.reasonCode === 'GATEWAY_UNMAPPED') void requestRailRouting(organizationId)
   return guarded('Could not record a work item', values, async () => {
     await db
       .insert(t)
@@ -135,6 +137,7 @@ export async function upsertWorkItems(
       : isTransientCode(reasonCode)
         ? sql`now() + make_interval(secs => LEAST(60 * power(2, ${attempts} - 1), 21600))`
         : nextAttemptAt
+  if (reasonCode === 'GATEWAY_UNMAPPED') void requestRailRouting(organizationId)
   return guarded(
     'Could not record work items',
     { organizationId, count: rows.length },

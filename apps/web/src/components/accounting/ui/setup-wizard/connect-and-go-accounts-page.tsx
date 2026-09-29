@@ -9,13 +9,12 @@ import type { ConnectAndGoFlow } from './use-connect-and-go'
 /** Does the accounts page have anything to show? The shell skips it when not. */
 export function hasAccountQuestions(report: ConnectAndGoPrepareReport | null): boolean {
   if (!report) return true
-  const { rails, bankAccounts } = report.questions
   return (
-    rails.length + bankAccounts.length > 0 || (report.providerAccountsToCreate?.length ?? 0) > 0
+    report.questions.bankAccounts.length > 0 || (report.providerAccountsToCreate?.length ?? 0) > 0
   )
 }
 
-/** The rail banks and bank accounts only a person can answer, and what Finish creates in the provider. */
+/** The bank accounts only a person can answer, and what Finish creates in the provider. */
 export function ConnectAndGoAccountsPage({
   flow,
   providerLabel,

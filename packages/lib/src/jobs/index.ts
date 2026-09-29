@@ -260,6 +260,7 @@ export {
   enqueueReseedConnectionProviders,
   reseedConnectionProvidersJob,
 } from './maintenance/reseed-connection-providers-job'
+export { routeRailsJob } from './maintenance/route-rails-job'
 // Client-notifications sequence enrollment hourly sweep (plan 19 §4.3, decision #13)
 export { sequenceEnrollmentSweepJob } from './maintenance/sequence-enrollment-sweep-job'
 export {

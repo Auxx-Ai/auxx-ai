@@ -724,6 +724,11 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     if (opts.clearResync && !this.reimport) {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
+    // A backfill may bring the org's first orders, and with them its payment rails (118 §2).
+    if (opts.clearResync) {
+      const { requestRailRouting } = await import('../accounting/work-items/recovery')
+      await requestRailRouting(this.deps.organizationId)
+    }
 
     // B2: fold this finalize's writes (orphan archival, relationship resolution) into
     // the run manifest, THEN publish ONE pointer event for the whole run. This runs

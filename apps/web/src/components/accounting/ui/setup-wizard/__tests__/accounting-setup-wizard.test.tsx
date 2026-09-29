@@ -76,6 +76,9 @@ vi.mock('../connect-and-go-books-page', () => ({
 vi.mock('../connect-and-go-mapping-page', () => ({
   ConnectAndGoMappingPage: () => <div>mapping page</div>,
 }))
+vi.mock('../connect-and-go-rails-page', () => ({
+  ConnectAndGoRailsPage: () => <div>payment rails page</div>,
+}))
 vi.mock('../connect-and-go-posting-page', () => ({
   ConnectAndGoPostingPage: () => <div>posting page</div>,
 }))
@@ -146,6 +149,7 @@ describe('AccountingSetupWizard', () => {
 
     await next('books page')
     await next('mapping page')
+    await next('payment rails page')
     await next('posting page')
     fireEvent.click(continueButton())
     await screen.findByRole('button', { name: /Finish setup/ })

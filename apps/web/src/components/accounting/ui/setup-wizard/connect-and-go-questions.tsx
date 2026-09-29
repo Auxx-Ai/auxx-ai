@@ -9,12 +9,8 @@ import { Section } from '@auxx/ui/components/section'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { pluralize } from '@auxx/utils'
-import { CreditCard, Landmark } from 'lucide-react'
-import Link from 'next/link'
+import { Landmark } from 'lucide-react'
 import { useState } from 'react'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { BaseType } from '~/components/workflow/types'
-import { MappingAccountSelect } from '../settings/mapping-account-select'
 import type { ConnectAndGoDraft } from './use-connect-and-go'
 
 interface ConnectAndGoQuestionsProps {
@@ -25,7 +21,7 @@ interface ConnectAndGoQuestionsProps {
   disabled?: boolean
 }
 
-/** Rail banks and bank accounts prepare could not settle on its own; roles are the Mapping page. */
+/** Bank accounts prepare could not settle on its own; roles and rail banks have their own pages. */
 export function ConnectAndGoQuestions({
   report,
   draft,
@@ -33,85 +29,16 @@ export function ConnectAndGoQuestions({
   providerLabel,
   disabled,
 }: ConnectAndGoQuestionsProps) {
-  const { rails, bankAccounts } = report.questions
-
+  const { bankAccounts } = report.questions
+  if (bankAccounts.length === 0) return null
   return (
-    <>
-      {rails.length > 0 && (
-        <Section
-          title='Where each payment rail pays out'
-          description='The bank account each processor deposits into.'
-          icon={<CreditCard className='size-4 text-muted-foreground' />}
-          collapsible={false}>
-          <FieldPanel
-            orientation='responsive'
-            breakpoint='md'
-            resizeId='accounting-connect-and-go'
-            defaultLabelWidth={170}
-            className='p-0'>
-            {rails.map((question) =>
-              question.kind === 'rail_bank' ? (
-                <FieldPanelRow
-                  key={`bank:${question.gatewayId}`}
-                  title={question.name}
-                  type={BaseType.ENUM}
-                  showIcon
-                  description={
-                    question.candidateAccountIds.length === 0
-                      ? 'Your chart has no bank account yet.'
-                      : undefined
-                  }>
-                  <MappingAccountSelect
-                    triggerClassName='w-full ps-0 pe-1'
-                    value={draft.railBanks[question.gatewayId] ?? null}
-                    filterTypes={['asset']}
-                    subtypePin='bank'
-                    disabled={disabled}
-                    onChange={(value) =>
-                      onChange({
-                        railBanks: {
-                          ...draft.railBanks,
-                          [question.gatewayId]: value === 'inherit' ? null : value,
-                        },
-                      })
-                    }
-                  />
-                </FieldPanelRow>
-              ) : (
-                <FieldPanelRow
-                  key={`split:${question.name}`}
-                  title={question.name}
-                  type={BaseType.STRING}
-                  showIcon>
-                  <p className='py-1.5 text-muted-foreground text-xs'>
-                    Split across {question.gatewayIds.length} gateways
-                    {question.unclaimedHandles.length > 0
-                      ? `; ${question.unclaimedHandles.join(', ')} unrouted`
-                      : ''}
-                    .{' '}
-                    <Link
-                      href='/app/accounting/settings/payment-gateways'
-                      className='underline underline-offset-2'>
-                      Review in payment gateways
-                    </Link>
-                  </p>
-                </FieldPanelRow>
-              )
-            )}
-          </FieldPanel>
-        </Section>
-      )}
-
-      {bankAccounts.length > 0 && (
-        <BankAccountProposals
-          proposals={bankAccounts}
-          accepted={draft.acceptBankAccounts}
-          onChange={(acceptBankAccounts) => onChange({ acceptBankAccounts })}
-          providerLabel={providerLabel}
-          disabled={disabled}
-        />
-      )}
-    </>
+    <BankAccountProposals
+      proposals={bankAccounts}
+      accepted={draft.acceptBankAccounts}
+      onChange={(acceptBankAccounts) => onChange({ acceptBankAccounts })}
+      providerLabel={providerLabel}
+      disabled={disabled}
+    />
   )
 }
 
