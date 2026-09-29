@@ -126,7 +126,7 @@ async function prepareLocked(
     else chart = { mode: empty ? 'full' : 'refresh', suggestionsLinked, result: imported.value }
   }
 
-  // 3. Rails, before the account list: a rail mints clearing and fee accounts of ours.
+  // 3. Rails: routed only onto accounts that already exist by name; the rest are questions.
   const rails = await autoRouteRails(db, { organizationId, actorUserId, today: params.today })
   if (rails.isErr()) fail('rails', rails.error)
 

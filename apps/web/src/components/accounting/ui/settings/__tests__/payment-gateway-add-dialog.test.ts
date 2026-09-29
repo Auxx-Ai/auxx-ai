@@ -48,6 +48,12 @@ describe('draftFor', () => {
     expect(draft.handles).toEqual([])
     expect(draft.name).toBe('')
   })
+
+  it('seeds every spelling of a rail group, named from the first', () => {
+    const draft = draftFor(['shopify_payments', 'shop_cash', ''])
+    expect(draft.handles).toEqual(['shopify_payments', 'shop_cash'])
+    expect(draft.name).toBe('Shopify Payments')
+  })
 })
 
 describe('findSiblingGateway', () => {

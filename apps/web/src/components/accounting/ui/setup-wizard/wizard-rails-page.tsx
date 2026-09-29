@@ -1,12 +1,10 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-rails-page.tsx
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
 import { ACCOUNT_ROLES } from '@auxx/lib/accounting/ledger/client'
 import { processorByHandle } from '@auxx/lib/accounting/processors/client'
 import {
   buildRailGroups,
-  defaultMintFeeAccount,
   isStaleRail,
   type RailGroup,
   type RailGroupState,
@@ -17,18 +15,15 @@ import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { PaymentGatewayAddDialog } from '../settings/payment-gateway-add-dialog'
 import { RailFeedNote } from '../settings/rail-feed-note'
 
 const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
@@ -40,16 +35,6 @@ const STATE_BADGE: Record<
   routed: { label: 'Routed', variant: 'green' },
   split: { label: 'Partly routed', variant: 'amber' },
   unrouted: { label: 'Not routed', variant: 'destructive' },
-}
-
-/** The create form's fields, while a rail's row is expanded. */
-interface CreateDraft {
-  key: string
-  name: string
-  clearingAccountName: string
-  mintFeeAccount: boolean
-  feeAccountName: string
-  markClosed: boolean
 }
 
 /**
@@ -77,8 +62,8 @@ interface CreateDraft {
  *    `authorize.net` are one rail, and routing them separately is how a rail's
  *    money ends up in two accounts.
  * 3. **A shared-account warning at the moment of choosing.**
- * 4. **The create button**, which is the point of the step: it mints the rail's
- *    accounts and writes the record in one call (§7.4's composed procedure).
+ * 4. **The set-up button**, which is the point of the step: it opens the gateway
+ *    dialog, where each account is picked from the chart or created new.
  */
 export function WizardRailsPage() {
   const census = api.paymentGateway.handleCensus.useQuery()
@@ -88,7 +73,7 @@ export function WizardRailsPage() {
   const { can } = useAccess()
   const canControl = can(PermissionKey.ledgerControl)
 
-  const [draft, setDraft] = useState<CreateDraft | null>(null)
+  const [setUpGroup, setSetUpGroup] = useState<RailGroup | null>(null)
 
   const groups = useMemo(() => buildRailGroups(census.data ?? []), [census.data])
   const gatewayRows = useMemo(() => gateways.data ?? [], [gateways.data])
@@ -143,49 +128,12 @@ export function WizardRailsPage() {
     ])
   }
 
-  const createRail = api.paymentGateway.setUp.useMutation({
-    onSuccess: async () => {
-      setDraft(null)
-      await refresh()
-    },
-    onError: (error) => {
-      toastError({ title: 'Error creating the rail', description: error.message })
-    },
-  })
-
   const mergeRail = api.paymentGateway.update.useMutation({
     onSuccess: refresh,
     onError: (error) => {
       toastError({ title: 'Error merging the handles', description: error.message })
     },
   })
-
-  function openDraft(group: RailGroup) {
-    setDraft({
-      key: group.key,
-      name: group.name,
-      clearingAccountName: group.suggestion.clearingAccountName,
-      mintFeeAccount: defaultMintFeeAccount(group.suggestion.feeTreatment),
-      feeAccountName: group.suggestion.feeAccountName,
-      markClosed: isStaleRail(group.lastSeenAt),
-    })
-  }
-
-  function submitDraft(group: RailGroup) {
-    if (!draft) return
-    createRail.mutate({
-      handles: group.handles.map((handle) => handle.handle),
-      name: draft.name.trim() || group.name,
-      clearing: {
-        mint: draft.clearingAccountName.trim() || group.suggestion.clearingAccountName,
-      },
-      fee: draft.mintFeeAccount
-        ? { mint: draft.feeAccountName.trim() || group.suggestion.feeAccountName }
-        : null,
-      feeTreatment: group.suggestion.feeTreatment,
-      status: draft.markClosed ? 'closed' : 'active',
-    })
-  }
 
   function mergeGroup(group: RailGroup) {
     const target = group.mergeInto ? gatewaysById.get(group.mergeInto) : undefined
@@ -261,7 +209,6 @@ export function WizardRailsPage() {
               {groups.map((group) => {
                 const claiming = group.claimedBy[0] ? gatewaysById.get(group.claimedBy[0]) : null
                 const badge = STATE_BADGE[group.state]
-                const isDrafting = draft?.key === group.key
                 return (
                   <li key={group.key} className='flex flex-col border-b last:border-b-0'>
                     <div className='flex flex-wrap items-center justify-between gap-2 px-3 py-2'>
@@ -315,141 +262,13 @@ export function WizardRailsPage() {
                             Merge {group.mergeHandles.join(', ')}
                           </Button>
                         )}
-                        {group.state === 'unrouted' && !isDrafting && (
-                          <Button variant='outline' size='sm' onClick={() => openDraft(group)}>
-                            Create account
+                        {group.state === 'unrouted' && (
+                          <Button variant='outline' size='sm' onClick={() => setSetUpGroup(group)}>
+                            Set up
                           </Button>
                         )}
                       </div>
                     </div>
-
-                    {isDrafting && draft && (
-                      <div className='flex flex-col gap-2 border-t bg-muted/40 px-3 py-3'>
-                        <FieldPanel
-                          orientation='responsive'
-                          breakpoint='md'
-                          resizeId='accounting-wizard-rail'
-                          defaultLabelWidth={150}
-                          className='bg-background p-0'>
-                          <FieldPanelRow
-                            title='Rail name'
-                            type={BaseType.STRING}
-                            showIcon
-                            isRequired>
-                            <FieldInputAdapter
-                              fieldType={FieldType.TEXT}
-                              value={draft.name}
-                              disabled={createRail.isPending}
-                              onChange={(value) =>
-                                setDraft({ ...draft, name: (value as string) ?? '' })
-                              }
-                            />
-                          </FieldPanelRow>
-                          <FieldPanelRow
-                            title='Clearing account'
-                            type={BaseType.STRING}
-                            showIcon
-                            isRequired
-                            description='A new asset account, minted with the next free code in the clearing band and no role - an account reached by id, through this record.'>
-                            <FieldInputAdapter
-                              fieldType={FieldType.TEXT}
-                              value={draft.clearingAccountName}
-                              disabled={createRail.isPending}
-                              onChange={(value) =>
-                                setDraft({
-                                  ...draft,
-                                  clearingAccountName: (value as string) ?? '',
-                                })
-                              }
-                            />
-                          </FieldPanelRow>
-                        </FieldPanel>
-
-                        <label className='flex items-start gap-2 rounded-md p-1'>
-                          <Checkbox
-                            className='mt-0.5'
-                            checked={draft.mintFeeAccount}
-                            onCheckedChange={(value) =>
-                              setDraft({ ...draft, mintFeeAccount: value === true })
-                            }
-                          />
-                          <span className='flex min-w-0 flex-col'>
-                            <span className='text-sm'>Give this rail its own fee account</span>
-                            {/* 🛑 §5's defaults are asymmetric and each side has its
-                                own reason. Say the reason rather than the default. */}
-                            <span className='text-muted-foreground text-xs'>
-                              {group.suggestion.feeTreatment === 'billed'
-                                ? 'This rail bills its fees separately, so its own account is what makes "has it billed us this month" a one-line answer.'
-                                : 'This rail withholds its fee from every deposit, so it is booked automatically and your shared processor-fees account is usually enough.'}
-                            </span>
-                          </span>
-                        </label>
-
-                        {draft.mintFeeAccount && (
-                          <FieldPanel
-                            orientation='responsive'
-                            breakpoint='md'
-                            resizeId='accounting-wizard-rail'
-                            defaultLabelWidth={150}
-                            className='bg-background p-0'>
-                            <FieldPanelRow
-                              title='Fee account'
-                              type={BaseType.STRING}
-                              showIcon
-                              isRequired>
-                              <FieldInputAdapter
-                                fieldType={FieldType.TEXT}
-                                value={draft.feeAccountName}
-                                disabled={createRail.isPending}
-                                onChange={(value) =>
-                                  setDraft({ ...draft, feeAccountName: (value as string) ?? '' })
-                                }
-                              />
-                            </FieldPanelRow>
-                          </FieldPanel>
-                        )}
-
-                        <label className='flex items-start gap-2 rounded-md p-1'>
-                          <Checkbox
-                            className='mt-0.5'
-                            checked={draft.markClosed}
-                            onCheckedChange={(value) =>
-                              setDraft({ ...draft, markClosed: value === true })
-                            }
-                          />
-                          <span className='flex min-w-0 flex-col'>
-                            <span className='text-sm'>Mark this rail closed</span>
-                            <span className='text-muted-foreground text-xs'>
-                              Its history keeps posting to this same account so the balance still
-                              winds down. It just stops being offered for a new order.
-                            </span>
-                          </span>
-                        </label>
-
-                        <div className='flex items-center gap-2'>
-                          <Button
-                            variant='outline'
-                            size='sm'
-                            loading={createRail.isPending}
-                            loadingText='Creating...'
-                            disabled={
-                              !draft.name.trim() ||
-                              !draft.clearingAccountName.trim() ||
-                              (draft.mintFeeAccount && !draft.feeAccountName.trim())
-                            }
-                            onClick={() => submitDraft(group)}>
-                            Create account and route it
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            disabled={createRail.isPending}
-                            onClick={() => setDraft(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                   </li>
                 )
               })}
@@ -466,6 +285,16 @@ export function WizardRailsPage() {
         </Link>
         .
       </p>
+
+      <PaymentGatewayAddDialog
+        open={setUpGroup !== null}
+        onOpenChange={(open) => {
+          if (!open) setSetUpGroup(null)
+        }}
+        onCreated={() => void refresh()}
+        initialHandles={setUpGroup?.handles.map((handle) => handle.handle)}
+        status={setUpGroup && isStaleRail(setUpGroup.lastSeenAt) ? 'closed' : 'active'}
+      />
 
       <div>
         <Button variant='outline' size='sm' asChild>

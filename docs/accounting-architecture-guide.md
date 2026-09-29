@@ -762,7 +762,8 @@ subtype pin in `ROLE_ACCOUNT_SUBTYPES`, checked by `assertMappableAccount` befor
 written. The A/R pin is what lets aging and the statement split find every receivable account,
 per-store ones included, by subtype (§13.2). `clearing` is not pinned: nothing downstream reads it,
 and QuickBooks has no clearing subtype, so an imported clearing account would be unmappable. Accounts
-auxx mints still carry `subtype: 'clearing'`, which `auto-route-rails` uses to reuse its own.
+auxx mints still carry `subtype: 'clearing'`, but reuse (`findReusableRailAccount`) accepts one without
+it: an account exported to QuickBooks comes back through the import with no subtype.
 
 The four newest are the buy side's: `cogs_direct_labor` (`5010`, the labour share of a relieved
 unit, beside `cogs_product_cost` and `applied_overhead`), `purchase_tax` (`5040`, tax a vendor
@@ -1500,7 +1501,8 @@ naming one would need a role per gateway, and the vocabulary is closed (§6.1).
 | `rails/rail-fee-status.ts` | What the close can honestly say about a rail's processor fees. 🛑 **A fact, never an alarm and never a refusal** — it produces a date, and `prepareClose` does not call it |
 | `rails/feeds.ts` | Linking a processor feed to a rail (`FinancialSourceAccount.paymentGatewayId`) and whether a rail is ready to post |
 | `rails/repoint.ts` | What moving a gateway's clearing account is about to strand. ⚠️ It reads what is *posted to the account*, which is not the same as what *this gateway put there*, and the transfer entry is deliberately not here |
-| `rails/rail-groups.ts` | The census grouped by rail (`buildRailGroups`) and the setup defaults (`defaultMintFeeAccount`, `isStaleRail`). Pure and client-safe; the wizard and `connect-and-go/auto-route-rails.ts` share it |
+| `rails/rail-groups.ts` | The census grouped by rail (`buildRailGroups`), the setup defaults (`defaultMintFeeAccount`, `isStaleRail`) and `findReusableRailAccount`, the same-name match. Pure and client-safe; the wizard, the gateway dialog and `connect-and-go/auto-route-rails.ts` share it |
+| `connect-and-go/auto-route-rails.ts` | Routes an unrouted rail only onto accounts that already exist by name. 🛑 **It never mints**: a rail without them is a `rail_accounts` question, answered in the gateway dialog, where each account is picked from the chart or created |
 | `rails/settlement-discovery.ts` | Live processor sources with settlement evidence and no rail linked yet |
 | `processors/<processor>/` | One folder per readable processor: `client.ts` descriptor (handles, rail name, fee treatment, `feedApp`), optional `source.ts` (`PayoutSource`) and `resolver.ts` (`EntryReferenceResolver`). `rail-catalogue.ts` builds its readable rows from the descriptors; `manual` rails stay literal rows there |
 | `processors/register.ts` | `registerProcessors()`: fills both payout registries from the folders; web and worker boot call it |

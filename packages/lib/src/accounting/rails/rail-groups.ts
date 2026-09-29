@@ -122,6 +122,44 @@ export function isStaleRail(lastSeenAt: string | null, today: Date = new Date())
   return today.getTime() - seen > STALE_RAIL_DAYS * 24 * 60 * 60 * 1000
 }
 
+/** The chart fields {@link findReusableRailAccount} reads. */
+export interface RailAccountCandidate {
+  id: string
+  name: string
+  accountType: string
+  subtype: string | null
+  isActive: boolean
+}
+
+/**
+ * The one live chart account named `name` that can serve as a rail's clearing or fee account,
+ * else null. A clearing match may carry no subtype: QuickBooks has no clearing type, so an
+ * account that went out and came back through its import returns without one.
+ */
+export function findReusableRailAccount(
+  chart: readonly RailAccountCandidate[],
+  name: string,
+  kind: 'clearing' | 'fee',
+  /** Clearing accounts another gateway already holds; never offered as a match. */
+  heldClearingIds: ReadonlySet<string> = new Set()
+): string | null {
+  const wanted = name.trim().toLowerCase()
+  if (!wanted) return null
+  const matches = chart.filter((row) => {
+    if (!row.isActive || row.name.trim().toLowerCase() !== wanted) return false
+    if (kind === 'fee') return row.accountType === 'expense'
+    return (
+      row.accountType === 'asset' &&
+      (row.subtype === null || row.subtype === 'clearing') &&
+      !heldClearingIds.has(row.id)
+    )
+  })
+  // An org that already has both copies of a clearing account keeps the one we created.
+  const narrowed =
+    matches.length > 1 ? matches.filter((row) => row.subtype === 'clearing') : matches
+  return narrowed.length === 1 ? (narrowed[0]?.id ?? null) : null
+}
+
 /** Clearing account id -> the gateways sharing it, for accounts held by more than one gateway. Legal, but unreconcilable. */
 export function sharedClearingAccounts(
   gateways: readonly PaymentGatewayRow[]
