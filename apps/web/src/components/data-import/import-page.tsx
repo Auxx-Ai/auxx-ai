@@ -220,7 +220,7 @@ export function ImportPage({
             jobId={actualJobId!}
             onComplete={() => navigateToStep('review-values')}
             onMappingChange={handleMappingChange}
-            defaultMappingView={importTarget ? 'fields' : 'columns'}
+            isNamedImporter={!!importTarget}
           />
         )
       case 'review-values':

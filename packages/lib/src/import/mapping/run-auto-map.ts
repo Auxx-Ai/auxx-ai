@@ -2,9 +2,11 @@
 
 import type { Database } from '@auxx/database'
 import { getCachedResource } from '../../cache'
+import { getImportAuthorityDefId } from '../../resources/registry/field-utils'
 import type { Resource } from '../../resources/registry/types'
 import { type ColumnHeaderWithSamples, orchestrateAutoMap } from '../fields/auto-map-orchestrator'
 import { getImportableFields } from '../fields/get-importable-fields'
+import { getDefaultMappingView, getGuidedFields, type MappingView } from '../fields/import-tier'
 import { buildRelationColumnPolicy } from '../resolution/relation-policy'
 import { getMappablePropertiesWithSamples } from './get-mappable-properties'
 import { getNaturalKeyFieldKeys } from './natural-key'
@@ -22,6 +24,8 @@ export interface RunAutoMapInput {
   userId: string
   /** Auto-map strategy: 'ai' | 'fallback' | 'auto' */
   strategy?: AutoMapStrategy
+  /** The view the user is mapping in; omitted = the target's default view. */
+  mappingView?: MappingView
 }
 
 /** Result from runAutoMap */
@@ -56,6 +60,7 @@ export async function runAutoMap(
     organizationId,
     userId,
     strategy = 'auto',
+    mappingView,
   } = input
 
   // 1. Get mappable properties with samples
@@ -69,7 +74,11 @@ export async function runAutoMap(
   }))
 
   // 3. Get importable fields (include identifiers for id column matching)
-  const fields = getImportableFields(resource, { includeIdentifiers: true })
+  const allFields = getImportableFields(resource, { includeIdentifiers: true })
+  const isNamedImporter = getImportAuthorityDefId(entityDefinitionId) !== entityDefinitionId
+  const view = mappingView ?? getDefaultMappingView(allFields, isNamedImporter)
+  // In the Fields view auto-map stays within the rows that view lists up front.
+  const fields = view === 'fields' ? getGuidedFields(allFields) : allFields
 
   // 4. Run orchestrated auto-mapping
   const mappingResult = await orchestrateAutoMap(

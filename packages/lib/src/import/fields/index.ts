@@ -27,7 +27,13 @@ export {
   sortByIdentifierPreference,
   TIER_2_IDENTIFIER_NOTE,
 } from './identifier-eligibility'
-export { getImportTier, type ImportTier } from './import-tier'
+export {
+  getDefaultMappingView,
+  getGuidedFields,
+  getImportTier,
+  type ImportTier,
+  type MappingView,
+} from './import-tier'
 export {
   getResolutionTypeLabel,
   RESOLUTION_TYPE_LABELS,
