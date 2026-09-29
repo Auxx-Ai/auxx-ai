@@ -94,6 +94,14 @@ export function renameInLayout(
   return patchNode(layout, key, (n) => (n.kind === 'ITEM' ? n : { ...n, title }))
 }
 
+export function setIconInLayout(
+  layout: ResolvedSidebarLayout,
+  key: string,
+  icon: string | null
+): ResolvedSidebarLayout {
+  return patchNode(layout, key, (n) => (n.kind === 'FOLDER' ? { ...n, icon } : n))
+}
+
 /** Delete like the server: folder items go to the folder's group, a group's items to their home group. */
 export function removeFromLayout(
   layout: ResolvedSidebarLayout,
@@ -162,6 +170,7 @@ export function addFolderInLayout(
   if (!group) return layout
   const folder: ResolvedSidebarFolder = {
     kind: 'FOLDER',
+    icon: null,
     key,
     nodeId: null,
     title,

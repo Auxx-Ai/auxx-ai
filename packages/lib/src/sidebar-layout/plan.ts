@@ -100,6 +100,7 @@ export function materializeDraft(draft: LayoutDraft, env: LayoutEnv): KeyMap {
         parentId: groupRow.id,
         sortOrder,
         title: child.title,
+        icon: child.icon,
         isHidden: child.isHidden,
       })
       keyMap.set(child.key, folderRow.id)
@@ -404,6 +405,22 @@ export function planRenameNode(
   if (node.isErr()) return err(node.error)
   if (node.value.nodeType === 'ITEM') return err(new BadRequestError('Items cannot be renamed'))
   draftUpdate(draft, node.value.id, { title })
+  return ok(node.value.id)
+}
+
+/** Set or clear a folder's icon. Like rename, a favorites folder doesn't materialize. */
+export function planSetFolderIcon(
+  draft: LayoutDraft,
+  env: LayoutEnv,
+  input: { nodeId: string; icon: string | null }
+): PlanResult {
+  const favoritesOnly =
+    !isDraftCustomized(draft) && draft.rows.get(input.nodeId)?.nodeType === 'FOLDER'
+  const keyMap = favoritesOnly ? new Map<string, string>() : materializeDraft(draft, env)
+  const node = requireRef(draft, env, keyMap, input.nodeId, 'Sidebar node')
+  if (node.isErr()) return err(node.error)
+  if (node.value.nodeType !== 'FOLDER') return err(new BadRequestError('Only folders have icons'))
+  if (node.value.icon !== input.icon) draftUpdate(draft, node.value.id, { icon: input.icon })
   return ok(node.value.id)
 }
 

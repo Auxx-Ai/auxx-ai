@@ -3,7 +3,6 @@
 
 import type { FavoriteEntity } from '@auxx/lib/favorites/client'
 import { Button } from '@auxx/ui/components/button'
-import { DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
 import { SidebarMenuItem, SidebarMenuSkeleton } from '@auxx/ui/components/sidebar'
 import { cn } from '@auxx/ui/lib/utils'
 import { Eye } from 'lucide-react'
@@ -13,7 +12,7 @@ import { FavoriteItemSkeleton } from '~/components/favorites/ui/favorite-item-sk
 import { SidebarRowMenuContext } from '../sidebar-row-menu-context'
 import { EntityRow } from './entity-row'
 import { LayoutMenuItems } from './layout-menu-items'
-import { NavCollapsibleRow, NavLeafRow } from './nav-row'
+import { NavLeafRow } from './nav-row'
 import type { RenderItem } from './sidebar-access'
 import { useSidebarNodes } from './sidebar-nodes-provider'
 import { useSidebarTree } from './sidebar-tree-context'
@@ -66,25 +65,6 @@ export function SidebarTreeItem({ item }: { item: RenderItem }) {
   }
 
   const own = item.nav ? navActions[item.nav.id]?.() : undefined
-  if (item.nav?.items?.length) {
-    const actions: ReactNode = (
-      <>
-        {own}
-        {own && <DropdownMenuSeparator />}
-        {layoutItems}
-      </>
-    )
-    return (
-      <NavCollapsibleRow
-        entry={item.nav}
-        actions={actions}
-        rootRef={sortable.setNodeRef}
-        rootProps={rootProps}
-        rootAddon={item.ownHidden && <UnhideButton nodeKey={item.key} />}
-      />
-    )
-  }
-
   let row: ReactNode
   if (item.nav) row = <NavLeafRow entry={item.nav} isSubmenu={item.inFolder} editItems={own} />
   else if (item.entity) row = <EntityRow def={item.entity} isSubmenu={item.inFolder} />

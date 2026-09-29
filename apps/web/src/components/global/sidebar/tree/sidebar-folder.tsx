@@ -11,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
+import { IconPicker } from '@auxx/ui/components/icon-picker'
+import { getIcon } from '@auxx/ui/components/icons'
 import {
   SidebarGroupCollapse,
   SidebarMenuButton,
@@ -20,8 +22,8 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Folder, MoreVertical, Pencil, Trash2 } from 'lucide-react'
-import { useCallback, useContext, useState } from 'react'
+import { Folder, MoreVertical, Pencil, Shapes, Trash2, Undo2 } from 'lucide-react'
+import { useCallback, useContext, useRef, useState } from 'react'
 import { useSidebarSectionOpen, useSidebarStateActions } from '~/hooks/use-sidebar-state'
 import { LayoutMenuItems } from './layout-menu-items'
 import type { RenderFolder } from './sidebar-access'
@@ -52,6 +54,10 @@ export function SidebarFolder({ folder }: { folder: RenderFolder }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draftTitle, setDraftTitle] = useState(folder.title)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  // The picker opens once the menu has closed, or the menu's focus return dismisses it.
+  const pickerQueued = useRef(false)
+  const FolderIcon = (folder.icon && getIcon(folder.icon)?.icon) || Folder
   const childIds = folder.children.map((c) => sidebarSortableId(c.key))
 
   const sortable = useSidebarSortable(
@@ -122,7 +128,17 @@ export function SidebarFolder({ folder }: { folder: RenderFolder }) {
           }}>
           {folder.ownHidden && <UnhideButton nodeKey={folder.key} />}
           <div className='flex min-w-0 grow items-center'>
-            <Folder className='mr-2 size-4 shrink-0' />
+            <IconPicker
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              value={folder.icon ? { icon: folder.icon, color: 'gray' } : undefined}
+              onChange={({ icon }) => void mutations.setIcon(folder.key, icon)}
+              hideColors>
+              {/* preventDefault keeps a click on the icon a plain row click, not a picker toggle. */}
+              <span className='mr-2 flex shrink-0' onClick={(e) => e.preventDefault()}>
+                <FolderIcon className='size-4' />
+              </span>
+            </IconPicker>
             {editing ? (
               <input
                 data-no-toggle
@@ -185,7 +201,15 @@ export function SidebarFolder({ folder }: { folder: RenderFolder }) {
                     <span className='sr-only'>Folder options</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className='w-50' align='start'>
+                <DropdownMenuContent
+                  className='w-50'
+                  align='start'
+                  onCloseAutoFocus={(e) => {
+                    if (!pickerQueued.current) return
+                    e.preventDefault()
+                    pickerQueued.current = false
+                    setPickerOpen(true)
+                  }}>
                   <DropdownMenuGroup>
                     <DropdownMenuItem
                       onClick={() => {
@@ -194,6 +218,14 @@ export function SidebarFolder({ folder }: { folder: RenderFolder }) {
                       }}>
                       <Pencil /> Rename
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => (pickerQueued.current = true)}>
+                      <Shapes /> Change icon
+                    </DropdownMenuItem>
+                    {folder.icon && (
+                      <DropdownMenuItem onClick={() => void mutations.setIcon(folder.key, null)}>
+                        <Undo2 /> Reset icon
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       variant='destructive'
                       onClick={() => void mutations.remove(folder.key)}>

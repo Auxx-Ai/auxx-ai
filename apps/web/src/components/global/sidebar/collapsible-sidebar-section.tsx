@@ -19,16 +19,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { MoreVertical } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import {
-  type HTMLAttributes,
-  type MouseEvent,
-  memo,
-  type ReactNode,
-  type Ref,
-  useCallback,
-  useEffect,
-  useState,
-} from 'react'
+import { type MouseEvent, memo, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useSidebarSectionOpen, useSidebarStateActions } from '~/hooks/use-sidebar-state'
 
 interface CollapsibleSidebarSectionProps {
@@ -52,11 +43,6 @@ interface CollapsibleSidebarSectionProps {
   isVisible?: boolean
   /** Called when the edit-mode visibility checkbox is toggled. */
   onToggleVisibility?: () => void
-  /** Ref + props for the root `<li>` (sortable bindings). */
-  rootRef?: Ref<HTMLLIElement>
-  rootProps?: HTMLAttributes<HTMLLIElement>
-  /** Extra node rendered first inside the root `<li>` (e.g. an absolutely positioned button). */
-  rootAddon?: ReactNode
 }
 
 function CollapsibleSidebarSectionComponent({
@@ -74,9 +60,6 @@ function CollapsibleSidebarSectionComponent({
   actions,
   isVisible = true,
   onToggleVisibility,
-  rootRef,
-  rootProps,
-  rootAddon,
 }: CollapsibleSidebarSectionProps) {
   const router = useRouter()
 
@@ -138,8 +121,7 @@ function CollapsibleSidebarSectionComponent({
   const showActionsButton = !!actions && !isEditMode
 
   return (
-    <SidebarMenuItem ref={rootRef} {...rootProps}>
-      {rootAddon}
+    <SidebarMenuItem>
       <SidebarMenuButton asChild className='h-7 py-0 pe-[3px]' tooltip={title}>
         <div
           onClick={handleContainerClick}

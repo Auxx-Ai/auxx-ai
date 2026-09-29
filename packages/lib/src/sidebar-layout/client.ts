@@ -5,6 +5,8 @@ export {
   compareSidebarNodes,
   countFavoriteBudget,
   DEFAULT_SIDEBAR_NAV_IDS,
+  DEFAULT_SIDEBAR_WORKSPACE,
+  type DefaultSidebarNavFolder,
   isFavoriteItem,
   isFavoriteTargetType,
   isSystemGroupKey,

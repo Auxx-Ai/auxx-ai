@@ -17,25 +17,49 @@ export const SIDEBAR_SYSTEM_GROUP_TITLES: Record<SidebarSystemGroupKey, string> 
   records: 'Records',
 }
 
+/** A folder of nav items in the default Workspace group. */
+export interface DefaultSidebarNavFolder {
+  folder: string
+  title: string
+  /** Icon id from the UI icon registry. */
+  icon: string
+  navIds: readonly string[]
+}
+
 /**
- * Default order of the Workspace nav items, by `SIDEBAR_MENU` id
- * (apps/web/src/constants/menu.tsx). The web catalog must carry every id here.
+ * The default Workspace group, by `SIDEBAR_MENU` id (apps/web/src/constants/menu.tsx).
+ * Folders are ordinary layout folders once materialized; their items move freely.
  */
-export const DEFAULT_SIDEBAR_NAV_IDS = [
+export const DEFAULT_SIDEBAR_WORKSPACE: readonly (string | DefaultSidebarNavFolder)[] = [
   'accounting',
   'agents',
   'calls',
   'chats',
   'dashboards',
   'dispatch',
-  'examples',
+  {
+    folder: 'examples',
+    title: 'Examples',
+    icon: 'code',
+    navIds: ['examples-apps', 'examples-designs', 'examples-file-upload'],
+  },
   'inventory',
   'catalog',
-  'resources',
+  {
+    folder: 'resources',
+    title: 'Resources',
+    icon: 'layers',
+    navIds: ['connectors', 'datasets', 'files', 'kb'],
+  },
   'schedule',
   'tasks',
   'workflows',
-] as const
+]
+
+/** Every Workspace nav id in default order. The web catalog must carry every id here. */
+export const DEFAULT_SIDEBAR_NAV_IDS: readonly string[] = DEFAULT_SIDEBAR_WORKSPACE.flatMap(
+  (entry) => (typeof entry === 'string' ? [entry] : entry.navIds)
+)
 
 /** Max characters in a group or folder title. */
 export const SIDEBAR_TITLE_MAX = 60

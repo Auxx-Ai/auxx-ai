@@ -13,6 +13,7 @@ import {
   planMoveNode,
   planRenameNode,
   planResetLayout,
+  planSetFolderIcon,
   planSetHidden,
 } from '../plan'
 import { resolveSidebarLayout } from '../resolve'
@@ -143,6 +144,26 @@ describe('planMoveNode', () => {
       'entity:def_contact',
       'nav:dispatch',
       'nav:workflows',
+    ])
+  })
+
+  it('moves an item out of a default nav folder on its own', () => {
+    const env: LayoutEnv = { snapshot: null, resources: RESOURCES }
+    const draft = draftOf([])
+    const result = planMoveNode(draft, env, {
+      nodeId: 'nav:files',
+      parentId: 'group:workspace',
+      beforeId: 'nav:agents',
+    })
+    expect(result.isOk()).toBe(true)
+    const workspace = outline(resolveSidebarLayout({ nodes: draftRows(draft), ...env })).Workspace!
+    expect(workspace.slice(0, 3)).toEqual(['nav:accounting', 'nav:agents', 'nav:files'])
+    const folderAt = workspace.indexOf('folder:Resources')
+    expect(workspace.slice(folderAt, folderAt + 4)).toEqual([
+      'folder:Resources',
+      '  nav:connectors',
+      '  nav:datasets',
+      '  nav:kb',
     ])
   })
 
@@ -321,6 +342,13 @@ describe('other planners', () => {
     const draft = draftOf([])
     expect(planSetHidden(draft, ENV, { nodeId: 'nav:dispatch', isHidden: true }).isOk()).toBe(true)
     expect(navRow(draft, 'dispatch').isHidden).toBe(true)
+  })
+
+  it('sets a favorites folder icon without materializing, and refuses non-folders', () => {
+    const draft = draftOf([folder('fold', 'a0')])
+    expect(planSetFolderIcon(draft, ENV, { nodeId: 'fold', icon: 'star' }).isOk()).toBe(true)
+    expect(draft.ops).toEqual([{ type: 'update', id: 'fold', set: { icon: 'star' } }])
+    expect(planSetFolderIcon(draft, ENV, { nodeId: 'nav:agents', icon: 'star' }).isErr()).toBe(true)
   })
 
   it('renames a system group', () => {

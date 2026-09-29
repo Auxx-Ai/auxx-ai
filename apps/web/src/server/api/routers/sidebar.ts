@@ -15,6 +15,7 @@ import {
   resolveLayout,
   type SidebarMember,
   saveOrgDefault,
+  setFolderIcon,
   setNodeHidden,
 } from '@auxx/lib/sidebar-layout'
 import { SIDEBAR_TITLE_MAX } from '@auxx/lib/sidebar-layout/client'
@@ -94,6 +95,13 @@ export const sidebarRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const member = await loadMember(ctx.session.userId, ctx.session.organizationId)
       return unwrap(await renameNode(ctx.db, member, input))
+    }),
+
+  setIcon: protectedProcedure
+    .input(z.object({ nodeId: nodeRef, icon: z.string().min(1).max(64).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const member = await loadMember(ctx.session.userId, ctx.session.organizationId)
+      return unwrap(await setFolderIcon(ctx.db, member, input))
     }),
 
   delete: protectedProcedure

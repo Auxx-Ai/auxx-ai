@@ -9,10 +9,9 @@ import type {
 } from '@auxx/lib/sidebar-layout/client'
 import type { SidebarProps } from '~/constants/menu'
 
-/** A `SIDEBAR_MENU` entry after gating, with computed urls. */
+/** A `SIDEBAR_MENU` entry after gating, with its computed url. */
 export interface NavEntry extends Omit<SidebarProps, 'items'> {
   url: string
-  items?: NavEntry[]
 }
 
 export interface NavGates {
@@ -46,6 +45,7 @@ export interface RenderFolder {
   key: string
   nodeId: string | null
   title: string
+  icon: string | null
   parentKey: string
   hidden: boolean
   ownHidden: boolean
@@ -83,7 +83,7 @@ function passesGates(item: SidebarProps, gates: NavGates): boolean {
   return true
 }
 
-/** Gate a `SIDEBAR_MENU` entry by id; collapsibles keep only reachable children and drop when empty. */
+/** Gate a `SIDEBAR_MENU` entry by id. */
 export function resolveNavEntry(
   menu: readonly SidebarProps[],
   navId: string,
@@ -91,18 +91,7 @@ export function resolveNavEntry(
 ): NavEntry | null {
   const item = menu.find((m) => m.id === navId)
   if (!item || !passesGates(item, gates)) return null
-  if (item.items?.length) {
-    const items: NavEntry[] = item.items
-      .filter((sub) => passesGates(sub, gates))
-      .map(({ items: _nested, ...sub }) => ({
-        ...sub,
-        url: item.skipParentSlug ? `/app/${sub.slug}` : `/app/${item.slug}/${sub.slug}`,
-      }))
-    if (items.length === 0) return null
-    const { items: _raw, ...rest } = item
-    return { ...rest, items, url: item.url ?? items[0]!.url }
-  }
-  const { items: _raw, ...rest } = item
+  const { items: _items, ...rest } = item
   return { ...rest, url: `/app/${item.slug}` }
 }
 
@@ -127,16 +116,12 @@ export function isPathActive(pathname: string, url: string | undefined): boolean
   return pathname === url || pathname.startsWith(`${url}/`)
 }
 
-/** Active state for a nav entry; leaves match their base segment so `/app/kopilot/<id>` lights Chats. */
+/** Active anywhere under `/app/<activeSlug>`, so `/app/kopilot/<id>` lights Chats. */
 export function isNavEntryActive(pathname: string, entry: NavEntry): boolean {
-  if (entry.items?.length) {
-    return (
-      entry.items.some((sub) => isPathActive(pathname, sub.url)) ||
-      isPathActive(pathname, entry.url)
-    )
-  }
-  const base = `/app/${entry.slug?.split('/')[0]}`
-  return isPathActive(pathname, base) || pathname === entry.url
+  return (
+    isPathActive(pathname, entry.url) ||
+    (!!entry.activeSlug && isPathActive(pathname, `/app/${entry.activeSlug}`))
+  )
 }
 
 /** Apply access + hidden filtering to a resolved layout. Never mutates the layout. */
@@ -198,6 +183,7 @@ export function filterSidebarLayout(
       key: node.key,
       nodeId: node.nodeId,
       title: node.title,
+      icon: node.icon,
       parentKey,
       hidden,
       ownHidden: node.isHidden,

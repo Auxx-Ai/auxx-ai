@@ -26,6 +26,7 @@ import {
   planMoveNode,
   planRenameNode,
   planResetLayout,
+  planSetFolderIcon,
   planSetHidden,
 } from './plan'
 import { resolveSidebarLayout } from './resolve'
@@ -91,6 +92,7 @@ async function applyLayoutOps(tx: Transaction, ops: readonly LayoutOp[]): Promis
           userId: row.userId,
           nodeType: row.nodeType,
           title: row.title,
+          icon: row.icon,
           systemKey: row.systemKey,
           targetType: row.targetType,
           targetIds: row.targetIds,
@@ -168,6 +170,14 @@ export function renameNode(
   input: { nodeId: string; title: string }
 ): Promise<Result<SidebarMutationResult, Error>> {
   return runLayoutMutation(db, member, (draft, env) => planRenameNode(draft, env, input))
+}
+
+export function setFolderIcon(
+  db: Database,
+  member: SidebarMember,
+  input: { nodeId: string; icon: string | null }
+): Promise<Result<SidebarMutationResult, Error>> {
+  return runLayoutMutation(db, member, (draft, env) => planSetFolderIcon(draft, env, input))
 }
 
 export function deleteNode(

@@ -24,6 +24,7 @@ export function node(partial: Partial<SidebarNodeEntity> & { id: string }): Side
     userId: MEMBER.userId,
     nodeType: 'ITEM',
     title: null,
+    icon: null,
     systemKey: null,
     targetType: null,
     targetIds: null,

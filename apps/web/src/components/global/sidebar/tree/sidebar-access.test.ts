@@ -26,19 +26,10 @@ const MENU: SidebarProps[] = [
     permissionKey: 'agents.view',
   },
   { id: 'tasks', label: 'Tasks', slug: 'tasks' },
-  { id: 'chats', label: 'Chats', slug: 'kopilot/new' },
+  { id: 'chats', label: 'Chats', slug: 'kopilot/new', activeSlug: 'kopilot' },
   { id: 'billing', label: 'Billing', slug: 'billing', cloudOnly: true },
-  {
-    id: 'resources',
-    label: 'Resources',
-    slug: 'resources',
-    skipParentSlug: true,
-    preventNavigation: true,
-    items: [
-      { id: 'files', label: 'Files', slug: 'files', permissionKey: 'files.view' },
-      { id: 'kb', label: 'KB', slug: 'kb', featureKey: 'knowledgeBase' },
-    ],
-  },
+  { id: 'examples-apps', label: 'Apps', slug: 'examples/apps' },
+  { id: 'examples-designs', label: 'Designs', slug: 'examples/designs' },
 ]
 
 const allow: NavGates = { hasAccess: () => true, can: () => true, selfHosted: false }
@@ -180,17 +171,8 @@ describe('resolveNavEntry', () => {
     expect(resolveNavEntry(MENU, 'nope', allow)).toBeNull()
   })
 
-  it('filters sub-items, drops an emptied collapsible, and uses the first child as its url', () => {
-    const noKb = { ...allow, hasAccess: (k: string) => k !== 'knowledgeBase' }
-    const entry = resolveNavEntry(MENU, 'resources', noKb)
-    expect(entry?.items?.map((i) => [i.id, i.url])).toEqual([['files', '/app/files']])
-    expect(entry?.url).toBe('/app/files')
-    expect(resolveNavEntry(MENU, 'resources', { ...noKb, can: () => false })).toBeNull()
-  })
-
-  it('never mutates the catalog', () => {
-    resolveNavEntry(MENU, 'resources', { ...allow, can: () => false })
-    expect(MENU[4]?.items).toHaveLength(2)
+  it('builds the url from the full slug', () => {
+    expect(resolveNavEntry(MENU, 'examples-apps', allow)?.url).toBe('/app/examples/apps')
   })
 })
 
@@ -311,9 +293,15 @@ describe('active matching', () => {
     expect(isPathActive('/app/agents-foo', '/app/agents')).toBe(false)
   })
 
-  it('lights a leaf on its base segment', () => {
+  it('lights a leaf anywhere under its activeSlug', () => {
     const chats = resolveNavEntry(MENU, 'chats', allow)!
     expect(isNavEntryActive('/app/kopilot/session-1', chats)).toBe(true)
     expect(isNavEntryActive('/app/kopilotx', chats)).toBe(false)
+  })
+
+  it('lights only the matching sibling under a shared prefix', () => {
+    const apps = resolveNavEntry(MENU, 'examples-apps', allow)!
+    expect(isNavEntryActive('/app/examples/apps', apps)).toBe(true)
+    expect(isNavEntryActive('/app/examples/designs', apps)).toBe(false)
   })
 })

@@ -25,6 +25,8 @@ export interface SidebarNodeEntity {
   userId: string
   nodeType: SidebarNodeType
   title: string | null
+  /** FOLDER only: icon id from the UI icon registry. */
+  icon: string | null
   systemKey: SidebarSystemGroupKey | null
   targetType: string | null
   targetIds: Record<string, string> | null
@@ -59,6 +61,7 @@ export type SidebarSnapshotNode =
       type: 'FOLDER'
       key: string
       title: string
+      icon?: string
       isHidden?: boolean
       children: SidebarSnapshotItem[]
     }
@@ -95,6 +98,7 @@ export interface ResolvedSidebarFolder {
   key: string
   nodeId: string | null
   title: string
+  icon: string | null
   isHidden: boolean
   children: ResolvedSidebarItem[]
 }

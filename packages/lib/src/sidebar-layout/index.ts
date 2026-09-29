@@ -14,6 +14,7 @@ export {
   resetLayout,
   runLayoutMutation,
   saveOrgDefault,
+  setFolderIcon,
   setNodeHidden,
 } from './sidebar-mutations'
 export {
