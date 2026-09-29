@@ -42,14 +42,14 @@ describe('railFeedCopy', () => {
     expect(railFeedCopy(feed({ state: 'available' }), true)?.action).toBeNull()
   })
 
-  it('points connector states at the picker or the connector', () => {
+  it('opens the connect picker, or points at the connector', () => {
     expect(railFeedCopy(feed({ state: 'not_installed' }), true)).toEqual({
       sentence: 'Affirm can read and post these payouts.',
-      action: { kind: 'href', href: '/app/connectors?connect=app:affirm', label: 'Install Affirm' },
+      action: { kind: 'connect', appSlug: 'affirm', label: 'Install Affirm' },
     })
     expect(railFeedCopy(feed({ state: 'not_connected' }), true)?.action).toEqual({
-      kind: 'href',
-      href: '/app/connectors?connect=app:affirm',
+      kind: 'connect',
+      appSlug: 'affirm',
       label: 'Connect Affirm',
     })
     expect(railFeedCopy(feed({ state: 'syncing', connectorId: 'dc_1' }), true)?.action).toEqual({

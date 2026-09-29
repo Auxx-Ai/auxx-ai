@@ -7,8 +7,9 @@ import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { useCanManageConnectors } from '~/components/data-connectors/hooks/use-can-manage-connectors'
-import { connectSourceHref } from '~/components/data-connectors/lib/connect-source-href'
+import { SourceTemplateDialog } from '~/components/data-connectors/ui/source-template-dialog'
 import { api } from '~/trpc/react'
 
 /** What a feed note says and which action sits beside it; null when there is nothing to say. */
@@ -17,6 +18,7 @@ export interface RailFeedCopy {
   action:
     | { kind: 'link'; sourceAccountId: string }
     | { kind: 'href'; href: string; label: string }
+    | { kind: 'connect'; appSlug: string; label: string }
     | { kind: 'ask'; text: string }
     | null
 }
@@ -74,7 +76,7 @@ export function railFeedCopy(
         sentence: `${prefix}${app} is installed. Connect it so auxx reads and posts ${label} payouts.`,
         action:
           canManageConnectors && feed.feedApp
-            ? { kind: 'href', href: connectSourceHref(feed.feedApp), label: `Connect ${app}` }
+            ? { kind: 'connect', appSlug: feed.feedApp, label: `Connect ${app}` }
             : ask,
       }
     case 'not_installed':
@@ -82,7 +84,7 @@ export function railFeedCopy(
         sentence: `${prefix}${app} can read and post these payouts.`,
         action:
           canManageConnectors && feed.feedApp
-            ? { kind: 'href', href: connectSourceHref(feed.feedApp), label: `Install ${app}` }
+            ? { kind: 'connect', appSlug: feed.feedApp, label: `Install ${app}` }
             : ask,
       }
   }
@@ -135,6 +137,9 @@ export function RailFeedNote({ feed, gatewayId, canControl, className }: RailFee
         </Button>
       )}
       {action?.kind === 'href' && <FeedHrefButton href={action.href} label={action.label} />}
+      {action?.kind === 'connect' && (
+        <FeedConnectButton appSlug={action.appSlug} label={action.label} />
+      )}
       {action?.kind === 'ask' && <span>{action.text}</span>}
     </div>
   )
@@ -148,5 +153,17 @@ function FeedHrefButton({ href, label }: { href: string; label: string }) {
         <ArrowUpRight />
       </Link>
     </Button>
+  )
+}
+
+function FeedConnectButton({ appSlug, label }: { appSlug: string; label: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button variant='outline' size='xs' onClick={() => setOpen(true)}>
+        {label}
+      </Button>
+      <SourceTemplateDialog open={open} onOpenChange={setOpen} initialType={`app:${appSlug}`} />
+    </>
   )
 }
