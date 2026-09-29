@@ -725,9 +725,17 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
     // A backfill may bring the org's first orders, and with them its payment rails (118 §2).
+    // Not awaited: BullMQ's add() blocks until Redis answers, and finalize must not stall on it.
     if (opts.clearResync) {
-      const { requestRailRouting } = await import('../accounting/work-items/recovery')
-      await requestRailRouting(this.deps.organizationId)
+      const organizationId = this.deps.organizationId
+      void import('../accounting/work-items/recovery')
+        .then(({ requestRailRouting }) => requestRailRouting(organizationId))
+        .catch((error) => {
+          logger.warn('failed to request rail routing', {
+            organizationId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
     }
 
     // B2: fold this finalize's writes (orphan archival, relationship resolution) into

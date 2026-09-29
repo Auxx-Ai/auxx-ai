@@ -521,6 +521,9 @@ function fixtureDefinition(): DataConnectorDefinition {
     },
   }
 }
+vi.mock('../../accounting/work-items/recovery', () => ({
+  requestRailRouting: vi.fn(async () => {}),
+}))
 vi.mock('../connector-runtime', () => ({
   prepareConnectorFetch: async () => ({ definition: fixtureDefinition(), credential: null }),
 }))

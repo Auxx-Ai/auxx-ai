@@ -24,9 +24,6 @@ import { useDehydratedSubscription } from '~/providers/dehydrated-state-provider
 import { api, type RouterOutputs } from '~/trpc/react'
 import { type Plan, PlanComparison } from './plan-comparison'
 
-/** Initialize Stripe */
-const stripePromise = getStripePromise()
-
 /** Billing address form data type */
 type BillingAddressFormData = {
   email: string
@@ -118,7 +115,7 @@ export function PlanChangeSummary({ open, onOpenChange, initialPlan }: PlanChang
         {view === 'plan-selection' ? (
           <PlanComparison inDialog onPlanSelect={handlePlanSelect} />
         ) : (
-          <Elements stripe={stripePromise}>
+          <Elements stripe={getStripePromise()}>
             <PlanChangeSummaryContent
               selectedPlan={selectedPlan}
               currentSubscription={subscription}

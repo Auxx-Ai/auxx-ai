@@ -3,8 +3,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { APP_ROOT } from './app-root'
 
-const APP_DIR = join(process.cwd(), 'src/app/(protected)/app')
+const APP_DIR = join(APP_ROOT, 'src/app/(protected)/app')
 
 /**
  * Every records page must ship an import route.

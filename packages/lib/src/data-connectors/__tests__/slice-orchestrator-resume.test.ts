@@ -435,6 +435,9 @@ vi.mock('../../record-rules/sync-manifest-collector', async (importOriginal) => 
   return { ...actual, loadManifestCollector: async () => actual.createManifestCollector({}) }
 })
 vi.mock('../relationship-pass', () => ({ resolveRelationships: spies.resolveRelationships }))
+vi.mock('../../accounting/work-items/recovery', () => ({
+  requestRailRouting: vi.fn(async () => {}),
+}))
 vi.mock('../reconciliation', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../reconciliation')>()
   spies.reconcileOrphans.mockImplementation(actual.reconcileOrphans)

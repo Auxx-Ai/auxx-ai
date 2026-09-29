@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
   denyView: false,
 }))
 
-vi.mock('@auxx/lib/returns/intake', () => ({
+vi.mock('@auxx/lib/returns/intake/draft-queries', () => ({
   getReturnIntakeDraft: vi.fn(async (organizationId: string, draftId: string) => {
     // The org id is IN THE KEY — there is no row predicate behind it, so this
     // fake has to be keyed the same way or it would test nothing.
