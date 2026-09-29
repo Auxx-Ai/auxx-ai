@@ -45,7 +45,7 @@ export interface CreatePaymentGatewayInput {
   handles: string[]
   /**
    * The `gl_account` id this rail's `clearing` role maps to (task 58 §3), written through
-   * `setRoleAssignment` - an active asset account with subtype `clearing`.
+   * `setRoleAssignment` - any active asset account; `clearing` pins no subtype.
    */
   clearingAccountId: string
   /** Like {@link clearingAccountId}, for the rail's `payment_processing_fees` role, or null. */

@@ -143,7 +143,7 @@ export async function mintRailAccounts(
     code: clearingCode.value,
     name: clearingAccountName,
     accountType: GlAccountType.ASSET,
-    // The `clearing` role only maps to a `clearing` subtype (`assertMappableAccount`).
+    // Not required by `assertMappableAccount`; it lets `findReusableRailAccount` prefer ours.
     subtype: GlAccountSubtype.CLEARING,
   })
   if (clearing.isErr()) return err(clearing.error)

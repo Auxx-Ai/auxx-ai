@@ -2,20 +2,24 @@
 
 import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
-import { GlAccountSubtype, GlAccountType } from '../../resources/registry/enum-values'
+import { GlAccountSubtype } from '../../resources/registry/enum-values'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { listChartAccounts, listRoleMap, setRoleAssignment } from '../ledger/roles/role-map'
-import type { ChartAccountRow } from '../ledger/types'
-import { buildRailGroups, defaultMintFeeAccount, isStaleRail } from '../rails/rail-groups'
+import {
+  buildRailGroups,
+  defaultMintFeeAccount,
+  findReusableRailAccount,
+  isStaleRail,
+} from '../rails/rail-groups'
 import { listGatewayHandleCensus, listPaymentGateways } from '../rails/reads'
-import { type RailAccountChoice, setUpPaymentGateway } from '../rails/set-up'
+import { setUpPaymentGateway } from '../rails/set-up'
 import type { RailRouteReport } from './client'
 import { guard } from './guard'
 
 /**
- * Give every unrouted rail on the org's orders a gateway with the wizard's defaults, and each
- * rail the rail-scoped `bank` when the chart has exactly one bank-subtype account. Anything else
- * comes back as a question. Idempotent: a routed rail is skipped.
+ * Give every unrouted rail whose accounts already exist by name a gateway, and each rail the
+ * rail-scoped `bank` when the chart has exactly one bank-subtype account. It never mints an
+ * account; anything else comes back as a question. Idempotent: a routed rail is skipped.
  * No permission checks - the router asserts.
  */
 export async function autoRouteRails(
@@ -103,22 +107,21 @@ export async function autoRouteRails(
           continue
         }
 
-        // Reuse an account a previous partial run minted under the same name, rather than a second.
-        const clearing = reuseOrMint(
+        // Never mint: reuse same-name accounts, else ask. The wizard offers create or pick.
+        const clearingId = findReusableRailAccount(
           chart.value,
           group.suggestion.clearingAccountName,
-          (row) =>
-            row.accountType === GlAccountType.ASSET &&
-            row.subtype === GlAccountSubtype.CLEARING &&
-            !heldClearing.has(row.id)
+          'clearing',
+          heldClearing
         )
-        const fee = defaultMintFeeAccount(group.suggestion.feeTreatment)
-          ? reuseOrMint(
-              chart.value,
-              group.suggestion.feeAccountName,
-              (row) => row.accountType === GlAccountType.EXPENSE
-            )
+        const wantsFee = defaultMintFeeAccount(group.suggestion.feeTreatment)
+        const feeId = wantsFee
+          ? findReusableRailAccount(chart.value, group.suggestion.feeAccountName, 'fee')
           : null
+        if (!clearingId || (wantsFee && !feeId)) {
+          report.questions.push({ kind: 'rail_accounts', name: group.name, handles })
+          continue
+        }
         const status = isStaleRail(group.lastSeenAt, params.today) ? 'closed' : 'active'
 
         const setUp = await setUpPaymentGateway(db, {
@@ -128,8 +131,8 @@ export async function autoRouteRails(
           handles,
           feeTreatment: group.suggestion.feeTreatment,
           status,
-          clearing,
-          fee,
+          clearing: { accountId: clearingId },
+          fee: feeId ? { accountId: feeId } : null,
           bankAccountId,
         })
         if (setUp.isErr()) {
@@ -166,15 +169,4 @@ export async function autoRouteRails(
     'Failed to route payment rails automatically',
     { organizationId }
   )
-}
-
-/** The one live account with this name that `fits`, else a mint under that name. */
-function reuseOrMint(
-  chart: readonly ChartAccountRow[],
-  name: string,
-  fits: (row: ChartAccountRow) => boolean
-): RailAccountChoice {
-  const wanted = name.trim().toLowerCase()
-  const matches = chart.filter((row) => row.name.trim().toLowerCase() === wanted && fits(row))
-  return matches.length === 1 && matches[0] ? { accountId: matches[0].id } : { mint: name }
 }

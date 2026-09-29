@@ -12,7 +12,10 @@ import {
   type RailFeedStatus,
 } from '@auxx/lib/accounting/rails/client'
 import { suggestRail } from '@auxx/lib/accounting/rails/rail-catalogue'
-import { defaultMintFeeAccount } from '@auxx/lib/accounting/rails/rail-groups'
+import {
+  defaultMintFeeAccount,
+  findReusableRailAccount,
+} from '@auxx/lib/accounting/rails/rail-groups'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -59,9 +62,11 @@ export interface AddDraft {
   touched: { name: boolean; feeTreatment: boolean; fee: boolean; feed: boolean }
 }
 
-/** A fresh draft, seeded from the catalogue's guess for `handle`. */
-export function draftFor(handle?: string): AddDraft {
-  const handles = handle?.trim() ? [handle.trim()] : []
+/** A fresh draft, seeded from the catalogue's guess for the first handle. */
+export function draftFor(initial?: string | readonly string[]): AddDraft {
+  const handles = (typeof initial === 'string' ? [initial] : (initial ?? []))
+    .map((handle) => handle.trim())
+    .filter(Boolean)
   const suggestion = suggestRail(handles[0] ?? '')
   return {
     name: handles.length > 0 ? suggestion.name : '',
@@ -123,6 +128,10 @@ export interface PaymentGatewayAddDialogProps {
   onCreated?: (gateway: PaymentGatewayRow) => void
   /** A handle as seen on the order, e.g. from a Blocked row; seeds handles, name and treatment. */
   initialHandle?: string
+  /** Every spelling of one rail, e.g. a wizard rail group. Takes precedence over `initialHandle`. */
+  initialHandles?: readonly string[]
+  /** Written with the gateway; the wizard closes a rail that has gone quiet. */
+  status?: 'active' | 'closed'
 }
 
 /** Sets a rail up with the same rows the gateway editor shows: accounts, bank and feed included. */
@@ -131,14 +140,18 @@ export function PaymentGatewayAddDialog({
   onOpenChange,
   onCreated,
   initialHandle,
+  initialHandles,
+  status,
 }: PaymentGatewayAddDialogProps) {
   const utils = api.useUtils()
-  const [draft, setDraft] = useState<AddDraft>(() => draftFor(initialHandle))
+  // A string key, so a caller's inline array does not reseed the draft on every render.
+  const initialKey = (initialHandles ?? (initialHandle ? [initialHandle] : [])).join('\n')
+  const [draft, setDraft] = useState<AddDraft>(() => draftFor(initialKey.split('\n')))
 
   // Reseed on every open, so a Blocked row's handle is not left over from the last one.
   useEffect(() => {
-    if (open) setDraft(draftFor(initialHandle))
-  }, [open, initialHandle])
+    if (open) setDraft(draftFor(initialKey.split('\n')))
+  }, [open, initialKey])
 
   const invalidate = () =>
     Promise.all([
@@ -179,6 +192,7 @@ export function PaymentGatewayAddDialog({
   const pending = setUp.isPending || extend.isPending
 
   const gateways = api.paymentGateway.list.useQuery(undefined, { enabled: open })
+  const chart = api.ledger.chartAccounts.useQuery(undefined, { enabled: open })
   const roleMap = api.ledger.roleMap.useQuery(undefined, { enabled: open })
   const handleOptions = useHandleOptions(draft.handles, open)
   const feeds = useFeedOptions(open)
@@ -204,6 +218,33 @@ export function PaymentGatewayAddDialog({
       prev.feedId === null && !prev.touched.feed ? { ...prev, feedId: candidateFeedId } : prev
     )
   }, [open, candidateFeedId])
+
+  // An account already named for this rail is preselected over minting a second copy of it.
+  const railName = draft.name.trim()
+  const reusable = useMemo(() => {
+    if (!chart.data || !gateways.data || !railName) return null
+    const held = new Set(gateways.data.map((row) => row.clearingGlAccountId))
+    return {
+      clearing: findReusableRailAccount(chart.data, `${railName} Clearing`, 'clearing', held),
+      fee: findReusableRailAccount(chart.data, `${railName} Fees`, 'fee'),
+    }
+  }, [chart.data, gateways.data, railName])
+  useEffect(() => {
+    if (!open || !reusable) return
+    setDraft((prev) => {
+      const clearing =
+        prev.accounts.clearing === MINT_ACCOUNT_VALUE && reusable.clearing
+          ? reusable.clearing
+          : prev.accounts.clearing
+      const fee =
+        prev.accounts.payment_processing_fees === MINT_ACCOUNT_VALUE && reusable.fee
+          ? reusable.fee
+          : prev.accounts.payment_processing_fees
+      if (clearing === prev.accounts.clearing && fee === prev.accounts.payment_processing_fees)
+        return prev
+      return { ...prev, accounts: { ...prev.accounts, clearing, payment_processing_fees: fee } }
+    })
+  }, [open, reusable])
 
   const feeAccount = roleMap.data?.roles.find((r) => r.role === 'payment_processing_fees')?.account
   const name = draft.name.trim()
@@ -269,6 +310,7 @@ export function PaymentGatewayAddDialog({
       name,
       handles: draft.handles,
       feeTreatment: draft.feeTreatment,
+      status,
       clearing,
       fee: choice(draft.accounts.payment_processing_fees, `${name} Fees`),
       bankAccountId:

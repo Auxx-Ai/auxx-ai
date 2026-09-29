@@ -11,6 +11,7 @@ import type { GatewayHandleCensusRow, PaymentGatewayRow } from '../client'
 import {
   buildRailGroups,
   defaultMintFeeAccount,
+  findReusableRailAccount,
   isStaleRail,
   sharedClearingAccounts,
   warnsAboutFeeFallback,
@@ -237,5 +238,64 @@ describe('warnsAboutFeeFallback', () => {
         groups: buildRailGroups([census('authorize_net')]),
       })
     ).toBe(false)
+  })
+})
+
+describe('findReusableRailAccount', () => {
+  const row = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    accountType: 'asset',
+    subtype: null as string | null,
+    isActive: true,
+    ...over,
+  })
+
+  it('matches a clearing account by name, case-insensitively, with or without the subtype', () => {
+    expect(
+      findReusableRailAccount([row('a', 'Affirm Clearing')], 'affirm clearing', 'clearing')
+    ).toBe('a')
+    expect(
+      findReusableRailAccount(
+        [row('a', 'Affirm Clearing', { subtype: 'clearing' })],
+        'Affirm Clearing',
+        'clearing'
+      )
+    ).toBe('a')
+  })
+
+  it('prefers the clearing-subtype copy of a duplicated name, and refuses a true tie', () => {
+    const imported = row('imp', 'Affirm Clearing')
+    const ours = row('ours', 'Affirm Clearing', { subtype: 'clearing' })
+    expect(findReusableRailAccount([imported, ours], 'Affirm Clearing', 'clearing')).toBe('ours')
+    expect(
+      findReusableRailAccount(
+        [imported, row('imp2', 'Affirm Clearing')],
+        'Affirm Clearing',
+        'clearing'
+      )
+    ).toBeNull()
+  })
+
+  it('skips inactive, held, wrong-type and wrong-subtype accounts', () => {
+    const name = 'Stripe Clearing'
+    expect(
+      findReusableRailAccount([row('a', name, { isActive: false })], name, 'clearing')
+    ).toBeNull()
+    expect(findReusableRailAccount([row('a', name)], name, 'clearing', new Set(['a']))).toBeNull()
+    expect(
+      findReusableRailAccount([row('a', name, { subtype: 'bank' })], name, 'clearing')
+    ).toBeNull()
+    expect(
+      findReusableRailAccount([row('a', name, { accountType: 'expense' })], name, 'clearing')
+    ).toBeNull()
+  })
+
+  it('matches a fee account only when it is an expense', () => {
+    const fees = row('f', 'Authorize.Net Fees', { accountType: 'expense' })
+    expect(findReusableRailAccount([fees], 'Authorize.Net Fees', 'fee')).toBe('f')
+    expect(
+      findReusableRailAccount([row('x', 'Authorize.Net Fees')], 'Authorize.Net Fees', 'fee')
+    ).toBeNull()
   })
 })

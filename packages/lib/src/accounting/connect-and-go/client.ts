@@ -69,6 +69,12 @@ export type RailRouteQuestion =
       /** The one gateway a merge would extend, or null when two gateways split the rail. */
       mergeInto: string | null
     }
+  | {
+      /** No existing account to reuse; a person picks one or creates it. */
+      kind: 'rail_accounts'
+      name: string
+      handles: string[]
+    }
 
 /** A group whose set-up refused. The rest of the run carries on. */
 export interface RailRouteFailed {

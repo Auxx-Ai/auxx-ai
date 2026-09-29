@@ -99,9 +99,9 @@ beforeEach(() => {
 })
 
 describe('autoRouteRails', () => {
-  it('creates one gateway per rail group with the suggested defaults and the one bank', async () => {
+  it('routes a rail to its existing same-name clearing account and the one bank', async () => {
     h.census = [census('shopify_payments', { orderCount: 900 }), census('shop_cash')]
-    h.chart = [checking]
+    h.chart = [checking, account('gl_spc', 'Shopify Payments Clearing', { subtype: 'clearing' })]
 
     const report = (await autoRouteRails(db, base))._unsafeUnwrap()
 
@@ -113,7 +113,7 @@ describe('autoRouteRails', () => {
         handles: ['shopify_payments', 'shop_cash'],
         feeTreatment: 'netted',
         status: 'active',
-        clearing: { mint: 'Shopify Payments Clearing' },
+        clearing: { accountId: 'gl_spc' },
         fee: null,
         bankAccountId: 'gl_bank',
       },
@@ -122,9 +122,13 @@ describe('autoRouteRails', () => {
     expect(report.questions).toEqual([])
   })
 
-  it('mints a fee account for a billed rail and closes a stale one', async () => {
+  it("reuses a billed rail's fee account and closes a stale rail", async () => {
     h.census = [census('authorize_net', { lastSeenAt: '2025-01-01' })]
-    h.chart = [checking]
+    h.chart = [
+      checking,
+      account('gl_anc', 'Authorize.Net Clearing'),
+      account('gl_anf', 'Authorize.Net Fees', { accountType: 'expense' }),
+    ]
 
     await autoRouteRails(db, base)
 
@@ -132,13 +136,32 @@ describe('autoRouteRails', () => {
       name: 'Authorize.Net',
       feeTreatment: 'billed',
       status: 'closed',
-      fee: { mint: 'Authorize.Net Fees' },
+      clearing: { accountId: 'gl_anc' },
+      fee: { accountId: 'gl_anf' },
     })
+  })
+
+  it('never mints: a rail without its accounts is a question', async () => {
+    h.census = [census('stripe'), census('authorize_net')]
+    // Authorize.Net is billed and wants a fee account too; only its clearing exists.
+    h.chart = [checking, account('gl_anc', 'Authorize.Net Clearing')]
+
+    const report = (await autoRouteRails(db, base))._unsafeUnwrap()
+
+    expect(h.setUps).toEqual([])
+    expect(report.questions).toEqual([
+      { kind: 'rail_accounts', name: 'Authorize.Net', handles: ['authorize_net'] },
+      { kind: 'rail_accounts', name: 'Stripe', handles: ['stripe'] },
+    ])
   })
 
   it('asks which bank when there are several, and when there is none', async () => {
     h.census = [census('stripe')]
-    h.chart = [checking, account('gl_sav', 'Savings', { subtype: 'bank' })]
+    h.chart = [
+      checking,
+      account('gl_sav', 'Savings', { subtype: 'bank' }),
+      account('gl_sc', 'Stripe Clearing'),
+    ]
 
     const several = (await autoRouteRails(db, base))._unsafeUnwrap()
     expect(h.setUps[0]?.bankAccountId).toBeNull()
@@ -152,14 +175,14 @@ describe('autoRouteRails', () => {
     ])
 
     h.census = [census('affirm')]
-    h.chart = []
+    h.chart = [account('gl_ac', 'Affirm Clearing')]
     const none = (await autoRouteRails(db, base))._unsafeUnwrap()
     expect(none.questions).toEqual([expect.objectContaining({ candidateAccountIds: [] })])
   })
 
   it('is idempotent: a second run creates nothing', async () => {
     h.census = [census('stripe'), census('affirm')]
-    h.chart = [checking]
+    h.chart = [checking, account('gl_sc', 'Stripe Clearing'), account('gl_ac', 'Affirm Clearing')]
 
     await autoRouteRails(db, base)
     const second = (await autoRouteRails(db, base))._unsafeUnwrap()
@@ -184,7 +207,7 @@ describe('autoRouteRails', () => {
     expect(report.banked).toEqual([{ gatewayId: 'pg_old', bankAccountId: 'gl_bank' }])
   })
 
-  it('reuses a clearing account a previous run minted under the same name', async () => {
+  it('prefers the clearing-subtype copy when two accounts share the name', async () => {
     h.census = [census('stripe')]
     h.chart = [
       checking,
@@ -202,9 +225,21 @@ describe('autoRouteRails', () => {
     h.chart = [checking, account('gl_clr', 'Stripe Clearing', { subtype: 'clearing' })]
     h.gateways = [{ id: 'pg_x', clearingGlAccountId: 'gl_clr' }]
 
+    const report = (await autoRouteRails(db, base))._unsafeUnwrap()
+
+    expect(h.setUps).toEqual([])
+    expect(report.questions).toEqual([
+      { kind: 'rail_accounts', name: 'Stripe', handles: ['stripe'] },
+    ])
+  })
+
+  it('reuses an imported clearing account that lost its subtype', async () => {
+    h.census = [census('affirm')]
+    h.chart = [checking, account('gl_imp', 'Affirm Clearing')]
+
     await autoRouteRails(db, base)
 
-    expect(h.setUps[0]?.clearing).toEqual({ mint: 'Stripe Clearing' })
+    expect(h.setUps[0]?.clearing).toEqual({ accountId: 'gl_imp' })
   })
 
   it('reports a split rail as a question and leaves it alone', async () => {
@@ -229,7 +264,7 @@ describe('autoRouteRails', () => {
     const { setUpPaymentGateway } = await import('../../rails/set-up')
     vi.mocked(setUpPaymentGateway).mockResolvedValueOnce(err(new BadRequestError('band full')))
     h.census = [census('stripe', { orderCount: 50 }), census('affirm')]
-    h.chart = [checking]
+    h.chart = [checking, account('gl_sc', 'Stripe Clearing'), account('gl_ac', 'Affirm Clearing')]
 
     const report = (await autoRouteRails(db, base))._unsafeUnwrap()
 

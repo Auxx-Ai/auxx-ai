@@ -4,17 +4,24 @@
 import { ACCOUNT_ROLES } from '@auxx/lib/accounting/ledger/client'
 import { PROCESSORS } from '@auxx/lib/accounting/processors/client'
 import { normaliseGatewayHandle } from '@auxx/lib/accounting/rails/client'
+import {
+  buildRailGroups,
+  isStaleRail,
+  type RailGroup,
+} from '@auxx/lib/accounting/rails/rail-groups'
 import { PermissionKey } from '@auxx/lib/permissions/client'
+import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { CreditCard, Store } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { AccountLabel } from '../account-label'
 import { MappingAccountSelect } from '../settings/mapping-account-select'
+import { PaymentGatewayAddDialog } from '../settings/payment-gateway-add-dialog'
 import { RailFeedNote } from '../settings/rail-feed-note'
 import type { ConnectAndGoFlow } from './use-connect-and-go'
 
@@ -24,8 +31,9 @@ const GATEWAYS_HREF = '/app/accounting/settings/payment-gateways'
 const INSTALLABLE_PROCESSORS = PROCESSORS.filter((processor) => processor.feedApp)
 
 /**
- * Every payment gateway and where it pays out, and the processors not set up yet. Never blocks:
- * rails wait on orders, and are routed automatically after the first order sync (118 §2).
+ * Every payment gateway and where it pays out, the rails still to set up, and the processors not
+ * connected yet. Never blocks: a rail is only auto-routed onto accounts that already exist by name,
+ * and every other one is set up here, picking or creating its accounts.
  */
 export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
   const { can } = useAccess()
@@ -35,6 +43,13 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
   const processorFeeds = api.paymentGateway.feedStateForHandles.useQuery({
     groups: INSTALLABLE_PROCESSORS.map((processor) => [...processor.handles]),
   })
+
+  const census = api.paymentGateway.handleCensus.useQuery()
+  const [setUpGroup, setSetUpGroup] = useState<RailGroup | null>(null)
+  const unrouted = useMemo(
+    () => buildRailGroups(census.data ?? []).filter((group) => group.state === 'unrouted'),
+    [census.data]
+  )
 
   const questions = flow.report?.questions.rails ?? []
   const bankQuestions = new Set(
@@ -72,10 +87,10 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
         collapsible={false}>
         {gateways.isPending ? (
           <EmptySection loading />
-        ) : rows.length === 0 && splits.length === 0 ? (
+        ) : rows.length === 0 && splits.length === 0 && unrouted.length === 0 ? (
           <EmptySection
             title='No payment gateways yet'
-            description='Rails are set up automatically after the first order sync.'
+            description='The rails on your orders show up here after the first order sync.'
           />
         ) : (
           <FieldPanel
@@ -124,12 +139,43 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
                       </>
                     )}
                     {gateway.status === 'closed' && <span>· closed</span>}
+                    {canControl && (
+                      <Link
+                        href={`${GATEWAYS_HREF}?gateway=${gateway.id}`}
+                        className='underline underline-offset-2'>
+                        Change accounts
+                      </Link>
+                    )}
                   </span>
                   <RailFeedNote
                     feed={gateway.feed}
                     gatewayId={gateway.id}
                     canControl={canControl}
                   />
+                </div>
+              </FieldPanelRow>
+            ))}
+            {unrouted.map((group) => (
+              <FieldPanelRow
+                key={`unrouted:${group.key}`}
+                title={group.name}
+                type={BaseType.ENUM}
+                showIcon>
+                <div className='flex min-w-0 flex-wrap items-center justify-between gap-2 py-1'>
+                  <span className='text-muted-foreground text-xs'>
+                    Not routed: {group.orderCount.toLocaleString()}{' '}
+                    {group.orderCount === 1 ? 'order' : 'orders'} land in the shared clearing
+                    account.
+                  </span>
+                  {canControl && (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={flow.finishing}
+                      onClick={() => setSetUpGroup(group)}>
+                      Set up
+                    </Button>
+                  )}
                 </div>
               </FieldPanelRow>
             ))}
@@ -161,7 +207,7 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
       <Section
         title='Sales channels and payment apps'
         className='[&_[data-slot=section]]:border-b-0'
-        description='Connect the apps your payments run through. Their rails are set up automatically after the first order sync.'
+        description='Connect the apps your payments run through. Their rails appear above after the first order sync.'
         icon={<Store className='size-4 text-muted-foreground' />}
         collapsible={false}>
         <FieldPanel
@@ -187,7 +233,7 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
                   ) : processorFeeds.isPending ? (
                     'Checking...'
                   ) : feed?.state === 'linked' || feed?.state === 'syncing' ? (
-                    'Connected. Its rail is set up after the first order sync.'
+                    'Connected. Its rail appears above after the first order sync.'
                   ) : feed?.state === 'none' ? (
                     'No app for it is available yet.'
                   ) : (
@@ -199,6 +245,15 @@ export function ConnectAndGoRailsPage({ flow }: { flow: ConnectAndGoFlow }) {
           })}
         </FieldPanel>
       </Section>
+      <PaymentGatewayAddDialog
+        open={setUpGroup !== null}
+        onOpenChange={(open) => {
+          if (!open) setSetUpGroup(null)
+        }}
+        onCreated={() => void census.refetch()}
+        initialHandles={setUpGroup?.handles.map((handle) => handle.handle)}
+        status={setUpGroup && isStaleRail(setUpGroup.lastSeenAt) ? 'closed' : 'active'}
+      />
     </div>
   )
 }

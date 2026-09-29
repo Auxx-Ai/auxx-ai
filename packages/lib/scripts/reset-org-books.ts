@@ -317,6 +317,17 @@ const SETTING_RESETS = [
   { key: 'inventory.backflush' as const, value: false },
   // The difference screen's answer about the opening; the opening is gone.
   { key: 'accounting.openingInventoryInBooks' as const, value: null },
+  // A standing `wizardCompletedAt` stops `SetupWizardGate` from auto-opening the wizard.
+  {
+    key: 'onboarding.accountingGettingStarted' as const,
+    value: { dismissedAt: null, manualCompletions: [], wizardCompletedAt: null },
+  },
+  // Every movement is wiped, so the first count is no longer done.
+  { key: 'inventory.stockSetup.countingDone' as const, value: false },
+  {
+    key: 'onboarding.stockGettingStarted' as const,
+    value: { dismissedAt: null, manualCompletions: [] },
+  },
 ]
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
