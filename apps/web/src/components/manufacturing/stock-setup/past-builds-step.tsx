@@ -5,6 +5,7 @@ import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2 } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { BackflushPanel } from '~/components/manufacturing/builds/backflush-panel'
 import { UndoBackflushPanel } from '~/components/manufacturing/builds/undo-backflush-panel'
 import { api } from '~/trpc/react'
@@ -22,6 +23,7 @@ interface PastBuildsStepProps {
 export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
   const hasBuilds = api.builds.hasBackflushBuilds.useQuery()
   const setFlag = api.purchasing.setStockSetupFlag.useMutation()
+  const [running, setRunning] = useState(false)
 
   const setSkipped = async (value: boolean) => {
     try {
@@ -69,8 +71,8 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
               </Button>
             </div>
           )}
-          <BackflushPanel onFinished={onChanged} />
-          {!skipped && (
+          <BackflushPanel onFinished={onChanged} onLiveChange={setRunning} />
+          {!skipped && !running && (
             <div className='flex flex-col gap-1 border-t pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
               <span className='text-muted-foreground text-xs'>
                 Sales of made parts stay unbuilt, and their parts show no usage before today.

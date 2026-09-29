@@ -38,6 +38,8 @@ interface BackflushPanelProps {
   actions?: (controls: BackflushPanelControls) => ReactNode
   /** Called once when the followed run completes or fails. */
   onFinished?: () => void
+  /** Called whenever the shown run turns live or stops being live. */
+  onLiveChange?: (live: boolean) => void
 }
 
 /** A day key as "16 Jul 2021"; UTC so the day never shifts in the viewer's zone. */
@@ -63,7 +65,12 @@ function conflictLine(conflict: KindConflict): string {
 }
 
 /** Preview and run of an org-wide backflush over the server's range (plans/mrp/17 §5.2). */
-export function BackflushPanel({ enabled = true, actions, onFinished }: BackflushPanelProps) {
+export function BackflushPanel({
+  enabled = true,
+  actions,
+  onFinished,
+  onLiveChange,
+}: BackflushPanelProps) {
   const utils = api.useUtils()
   // The run shown: one this panel started, or a live one found on open.
   const [runId, setRunId] = useState<string | null>(null)
@@ -83,6 +90,11 @@ export function BackflushPanel({ enabled = true, actions, onFinished }: Backflus
   useBackflushRunRealtime(runId)
   const shownRun = runId && run.data?.runId === runId ? run.data : null
   const busy = !!runId || run.isPending
+  // A just-started run counts as live before its first read lands.
+  const live = !!runId && (!shownRun || isBackflushRunLive(shownRun))
+  useEffect(() => {
+    onLiveChange?.(live)
+  }, [live, onLiveChange])
 
   const finishedRef = useRef<string | null>(null)
   useEffect(() => {
