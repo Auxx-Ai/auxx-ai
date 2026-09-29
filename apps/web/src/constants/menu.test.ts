@@ -14,4 +14,8 @@ describe('SIDEBAR_MENU', () => {
     expect(dispatch?.items).toBeUndefined()
     expect(dispatch?.skipParentSlug).toBeUndefined()
   })
+
+  it('has no sub-items, so every destination is its own movable row', () => {
+    expect(SIDEBAR_MENU.filter((item) => item.items?.length).map((item) => item.id)).toEqual([])
+  })
 })

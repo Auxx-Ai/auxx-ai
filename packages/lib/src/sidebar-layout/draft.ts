@@ -13,7 +13,7 @@ export interface SidebarMember {
 }
 
 type MutableFields = Partial<
-  Pick<SidebarNodeEntity, 'parentId' | 'sortOrder' | 'isHidden' | 'title'>
+  Pick<SidebarNodeEntity, 'parentId' | 'sortOrder' | 'isHidden' | 'title' | 'icon'>
 >
 
 export type LayoutOp =
@@ -49,6 +49,7 @@ export interface DraftInsertInput {
   parentId: string | null
   sortOrder: string
   title?: string | null
+  icon?: string | null
   systemKey?: SidebarSystemGroupKey | null
   targetType?: string | null
   targetIds?: Record<string, string> | null
@@ -63,6 +64,7 @@ export function draftInsert(draft: LayoutDraft, input: DraftInsertInput): Sideba
     userId: draft.member.userId,
     nodeType: input.nodeType,
     title: input.title ?? null,
+    icon: input.icon ?? null,
     systemKey: input.systemKey ?? null,
     targetType: input.targetType ?? null,
     targetIds: input.targetIds ?? null,

@@ -4,6 +4,7 @@
 import { z } from 'zod'
 import {
   DEFAULT_SIDEBAR_NAV_IDS,
+  DEFAULT_SIDEBAR_WORKSPACE,
   SIDEBAR_SYSTEM_GROUP_KEYS,
   SIDEBAR_SYSTEM_GROUP_TITLES,
 } from './constants'
@@ -27,6 +28,7 @@ const snapshotFolderSchema = z.object({
   type: z.literal('FOLDER'),
   key: z.string().min(1),
   title: z.string(),
+  icon: z.string().min(1).optional(),
   isHidden: z.boolean().optional(),
   children: z.array(snapshotItemSchema),
 })
@@ -65,10 +67,34 @@ export function codeDefaultSnapshot(
       key: systemKey,
       systemKey,
       title: SIDEBAR_SYSTEM_GROUP_TITLES[systemKey],
-      children:
-        systemKey === 'workspace' ? navIds.map((navId) => ({ type: 'NAV' as const, navId })) : [],
+      children: systemKey === 'workspace' ? defaultWorkspaceChildren(navIds) : [],
     })),
   }
+}
+
+/** {@link DEFAULT_SIDEBAR_WORKSPACE} limited to `navIds`; ids it doesn't place append flat. */
+function defaultWorkspaceChildren(navIds: readonly string[]): SidebarSnapshotNode[] {
+  const wanted = new Set(navIds)
+  const nav = (navId: string): SidebarSnapshotItem => ({ type: 'NAV', navId })
+  const children: SidebarSnapshotNode[] = []
+  for (const entry of DEFAULT_SIDEBAR_WORKSPACE) {
+    if (typeof entry === 'string') {
+      if (wanted.delete(entry)) children.push(nav(entry))
+      continue
+    }
+    const items = entry.navIds.filter((id) => wanted.delete(id)).map(nav)
+    if (items.length > 0) {
+      children.push({
+        type: 'FOLDER',
+        key: entry.folder,
+        title: entry.title,
+        icon: entry.icon,
+        children: items,
+      })
+    }
+  }
+  for (const navId of wanted) children.push(nav(navId))
+  return children
 }
 
 /**
@@ -111,6 +137,7 @@ export function snapshotFromLayout(layout: ResolvedSidebarLayout): SidebarLayout
           type: 'FOLDER',
           key: child.nodeId ?? child.key,
           title: child.title,
+          ...(child.icon ? { icon: child.icon } : {}),
           ...(child.isHidden ? { isHidden: true } : {}),
           children: items,
         })

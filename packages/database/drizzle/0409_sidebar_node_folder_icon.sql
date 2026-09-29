@@ -1,0 +1,1 @@
+ALTER TABLE "SidebarNode" ADD COLUMN "icon" text;

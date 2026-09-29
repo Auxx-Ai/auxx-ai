@@ -29,13 +29,20 @@ const SIDEBAR_TO_ACTION: Record<string, string> = {
   catalog: 'nav.catalog',
   inventory: 'nav.inventory',
   dispatch: 'nav.dispatch',
+  connectors: 'nav.connectors',
+  datasets: 'nav.datasets',
+  files: 'nav.files',
+  kb: 'nav.kb',
 }
+
+/** Dev-only sidebar pages with no palette action. */
+const NOT_IN_PALETTE = new Set(['examples-apps', 'examples-designs', 'examples-file-upload'])
 
 /** Warn (once per render that trips it) about uncovered top-level sidebar items. */
 function assertNoNavDrift(allActionIds: Set<string>): void {
   for (const item of SIDEBAR_MENU) {
     // Skip group containers and non-navigating headers.
-    if (item.preventNavigation || item.items || !item.slug) continue
+    if (item.preventNavigation || item.items || !item.slug || NOT_IN_PALETTE.has(item.id)) continue
     const actionId = SIDEBAR_TO_ACTION[item.id]
     if (!actionId) {
       console.warn(

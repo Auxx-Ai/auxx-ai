@@ -90,6 +90,7 @@ export function resolveSidebarLayout(input: ResolveSidebarLayoutInput): Resolved
       key: row.id,
       nodeId: row.id,
       title: row.title ?? '',
+      icon: row.icon,
       isHidden: row.isHidden,
       children,
     }
@@ -163,6 +164,7 @@ export function resolveSidebarLayout(input: ResolveSidebarLayoutInput): Resolved
             key: sidebarRef.folder(child.key),
             nodeId: null,
             title: child.title,
+            icon: child.icon ?? null,
             isHidden: child.isHidden ?? false,
             children: child.children
               .map(snapshotItem)

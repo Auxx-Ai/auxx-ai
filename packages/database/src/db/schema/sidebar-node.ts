@@ -46,6 +46,9 @@ export const SidebarNode = pgTable(
     /** GROUP + FOLDER display title. */
     title: text(),
 
+    /** FOLDER only: icon id from the UI icon registry; null = the default folder icon. */
+    icon: text(),
+
     /** GROUP only: 'favorites' | 'workspace' | 'records'. */
     systemKey: text(),
 

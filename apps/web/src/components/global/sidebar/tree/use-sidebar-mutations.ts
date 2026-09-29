@@ -15,6 +15,7 @@ import {
   removeFromLayout,
   renameInLayout,
   setHiddenInLayout,
+  setIconInLayout,
 } from './splice-layout'
 
 type Position = { beforeId?: string; afterId?: string }
@@ -40,6 +41,7 @@ export function useSidebarMutations() {
   const { mutateAsync: createGroup } = api.sidebar.createGroup.useMutation()
   const { mutateAsync: createFolder } = api.sidebar.createFolder.useMutation()
   const { mutateAsync: rename } = api.sidebar.rename.useMutation()
+  const { mutateAsync: setIcon } = api.sidebar.setIcon.useMutation()
   const { mutateAsync: remove } = api.sidebar.delete.useMutation()
   const { mutateAsync: reset } = api.sidebar.reset.useMutation()
   const { mutateAsync: saveOrgDefault } = api.sidebar.saveOrgDefault.useMutation()
@@ -113,6 +115,12 @@ export function useSidebarMutations() {
           (ref) => rename({ nodeId: ref(nodeId), title }),
           (l) => renameInLayout(l, nodeId, title)
         ),
+      setIcon: (nodeId: string, icon: string | null) =>
+        run(
+          'Could not change icon',
+          (ref) => setIcon({ nodeId: ref(nodeId), icon }),
+          (l) => setIconInLayout(l, nodeId, icon)
+        ),
       remove: (nodeId: string) =>
         run(
           'Could not delete',
@@ -146,7 +154,18 @@ export function useSidebarMutations() {
       reset: () => run('Could not reset sidebar', () => reset()),
       saveOrgDefault: () => saveOrgDefault(),
     }),
-    [run, move, setHidden, rename, remove, createGroup, createFolder, reset, saveOrgDefault]
+    [
+      run,
+      move,
+      setHidden,
+      rename,
+      setIcon,
+      remove,
+      createGroup,
+      createFolder,
+      reset,
+      saveOrgDefault,
+    ]
   )
 }
 

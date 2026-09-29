@@ -348,6 +348,16 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/datasets'),
       })
     }
+    if (hasAccess('dataConnectors') && can('connectors.manage')) {
+      actions.push({
+        id: 'nav.connectors',
+        label: 'Connectors',
+        subtitle: 'Sync data from Shopify, REST and apps',
+        icon: 'cable',
+        keywords: 'connectors sync import integrations',
+        perform: () => nav('/connectors'),
+      })
+    }
     if (hasAccess('files') && can('files.view')) {
       actions.push({
         id: 'nav.files',

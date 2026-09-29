@@ -17,7 +17,6 @@ import {
   Import,
   Inbox,
   Landmark,
-  Layers,
   LayoutDashboard,
   Map,
   MessagesSquare,
@@ -52,6 +51,8 @@ export type SidebarProps = {
   selectFirst?: boolean
   skipParentSlug?: boolean
   preventNavigation?: boolean
+  /** Sidebar row is active anywhere under `/app/<activeSlug>` (defaults to `slug`). */
+  activeSlug?: string
   /** Hidden in self-hosted mode */
   cloudOnly?: boolean
   /** Feature key required for this menu item to be visible */
@@ -131,6 +132,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     id: 'chats',
     label: 'Chats',
     slug: 'kopilot/new',
+    activeSlug: 'kopilot',
     icon: <MessagesSquare />,
     featureKey: 'kopilot',
     // Kopilot chat is agents.view territory — Read on agents means "see the agent
@@ -153,32 +155,27 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'dispatch',
     permissionKey: 'dispatch.board.view',
   },
+  // Dev-only examples; the default layout groups them in an "Examples" folder.
   {
-    id: 'examples',
-    label: 'Examples',
-    slug: 'examples',
-    icon: <ComponentIcon />,
+    id: 'examples-apps',
+    label: 'Apps',
+    slug: 'examples/apps',
+    icon: <AppWindow />,
     featureKey: 'devTools',
-    items: [
-      {
-        id: 'examples-apps',
-        label: 'Apps',
-        slug: 'apps',
-        icon: <AppWindow />,
-      },
-      {
-        id: 'examples-designs',
-        label: 'Designs',
-        slug: 'designs',
-        icon: <Palette />,
-      },
-      {
-        id: 'examples-file-upload',
-        label: 'File Upload',
-        slug: 'file-upload',
-        icon: <FileUp />,
-      },
-    ],
+  },
+  {
+    id: 'examples-designs',
+    label: 'Designs',
+    slug: 'examples/designs',
+    icon: <Palette />,
+    featureKey: 'devTools',
+  },
+  {
+    id: 'examples-file-upload',
+    label: 'File Upload',
+    slug: 'examples/file-upload',
+    icon: <FileUp />,
+    featureKey: 'devTools',
   },
   {
     // MRP and the parts settings (plans/mrp/18-inventory-module.md). The rail hides
@@ -199,47 +196,38 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     featureKey: 'dispatch',
     permissionKey: 'settings.manage',
   },
+  // The default layout groups these four in a "Resources" folder.
   {
-    id: 'resources',
-    label: 'Resources',
-    slug: 'resources',
-    icon: <Layers />,
-    skipParentSlug: true,
-    preventNavigation: true,
-    items: [
-      {
-        id: 'connectors',
-        label: 'Connectors',
-        slug: 'connectors',
-        icon: <Cable />,
-        featureKey: 'dataConnectors',
-        permissionKey: 'connectors.manage',
-      },
-      {
-        id: 'datasets',
-        label: 'Datasets',
-        slug: 'datasets',
-        icon: <Database />,
-        featureKey: 'datasets',
-        permissionKey: 'datasets.view',
-      },
-      {
-        id: 'files',
-        label: 'Files',
-        slug: 'files',
-        icon: <Folder />,
-        featureKey: 'files',
-        permissionKey: 'files.view',
-      },
-      {
-        id: 'kb',
-        label: 'Knowledge Base',
-        slug: 'kb',
-        icon: <BookOpen />,
-        featureKey: 'knowledgeBase',
-        permissionKey: 'knowledgeBase.view',
-      },
-    ],
+    id: 'connectors',
+    label: 'Connectors',
+    slug: 'connectors',
+    icon: <Cable />,
+    featureKey: 'dataConnectors',
+    permissionKey: 'connectors.manage',
+  },
+  {
+    id: 'datasets',
+    label: 'Datasets',
+    slug: 'datasets',
+    icon: <Database />,
+    featureKey: 'datasets',
+    permissionKey: 'datasets.view',
+  },
+  {
+    id: 'files',
+    label: 'Files',
+    slug: 'files',
+    icon: <Folder />,
+    featureKey: 'files',
+    permissionKey: 'files.view',
+  },
+  {
+    id: 'kb',
+    label: 'Knowledge Base',
+    slug: 'kb',
+    icon: <BookOpen />,
+    featureKey: 'knowledgeBase',
+    permissionKey: 'knowledgeBase.view',
   },
   {
     id: 'schedule',

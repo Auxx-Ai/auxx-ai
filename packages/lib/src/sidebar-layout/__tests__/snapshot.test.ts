@@ -57,6 +57,36 @@ describe('snapshotFromLegacyEntitySettings', () => {
   })
 })
 
+describe('codeDefaultSnapshot', () => {
+  it('groups Examples and Resources into folders in Workspace', () => {
+    const workspace = codeDefaultSnapshot().groups.find((g) => g.systemKey === 'workspace')!
+    const resources = workspace.children.find((c) => c.type === 'FOLDER' && c.key === 'resources')
+    expect(resources).toEqual({
+      type: 'FOLDER',
+      key: 'resources',
+      title: 'Resources',
+      icon: 'layers',
+      children: ['connectors', 'datasets', 'files', 'kb'].map((navId) => ({ type: 'NAV', navId })),
+    })
+    expect(workspace.children.some((c) => c.type === 'FOLDER' && c.key === 'examples')).toBe(true)
+  })
+
+  it('drops folders with no wanted ids and appends ids it does not place', () => {
+    const workspace = codeDefaultSnapshot(['files', 'agents', 'extra']).groups[0]!
+    expect(workspace.children).toEqual([
+      { type: 'NAV', navId: 'agents' },
+      {
+        type: 'FOLDER',
+        key: 'resources',
+        title: 'Resources',
+        icon: 'layers',
+        children: [{ type: 'NAV', navId: 'files' }],
+      },
+      { type: 'NAV', navId: 'extra' },
+    ])
+  })
+})
+
 describe('parseSidebarLayoutSnapshot', () => {
   it('reads malformed values as no org default', () => {
     expect(parseSidebarLayoutSnapshot(null)).toBeNull()

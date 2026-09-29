@@ -15,6 +15,7 @@ export function toSidebarNodeEntity(row: SidebarNodeRow): SidebarNodeEntity {
     userId: row.userId,
     nodeType: row.nodeType,
     title: row.title,
+    icon: row.icon,
     systemKey: isSystemGroupKey(row.systemKey) ? row.systemKey : null,
     targetType: row.targetType,
     targetIds: (row.targetIds as Record<string, string> | null) ?? null,
