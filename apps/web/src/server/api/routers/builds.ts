@@ -117,7 +117,7 @@ const runQuantity = z.number().finite().positive().max(1_000_000)
  * allowed and means "we did not use this at all" — `planBuildComponents` drops
  * the line rather than writing a zero-quantity movement. A part that is NOT on
  * the bill of materials is an off-BOM substitution and its movement carries
- * `qtyPerUnit: null`, which is the marker `stock_movement_qty_per_unit` exists
+ * `qtyPerUnit: null`, which is the marker the movement's `qtyPerUnit` column exists
  * to make visible instead of silent.
  */
 const componentOverride = z.object({
@@ -192,8 +192,8 @@ const completionShape = {
  * | `standardCostWorklist`                 | view on `part`                            |
  * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `hasBackflushBuilds`, `fixMovementAccounts` | edit on `build` AND edit on `stock_movement` |
- * | `movementAccountDrift`                 | view on `part` AND view on `stock_movement` |
+ * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `startUndoBackflush`, `getUndoBackflushRun`, `hasBackflushBuilds`, `fixMovementAccounts` | edit on `build`                  |
+ * | `movementAccountDrift`                 | view on `part`                            |
  *
  * Three notes on why those, and not something coarser:
  *
@@ -201,13 +201,8 @@ const completionShape = {
  *    server mirror of the `canEditEntity(defId)` the cards run to decide whether
  *    to render a button, so the button the UI hides and the door the server
  *    closes are the same door.
- * 2. **`complete`, `reverse` and `startUndoBackflush` assert BOTH.** They are paths in
- *    this router that write a `stock_movement`, and `stock_movement` is where
- *    the rest of manufacturing puts that authority — `purchasing.receiveStock`,
- *    `adjustStock` and `reverseMovement` all gate on exactly that def. A person
- *    who may raise a build but may not move stock must not be able to post a
- *    ledger entry through the completion form, and gating on `build` alone would
- *    let them.
+ * 2. **Movement writes gate on the document acted on** (plans/mrp/20-stock-movement-table.md S4):
+ *    a build's consume and produce rows are authorised by edit on the `build`.
  * 3. **`previewCompletion` is gated as the write, not as a read.** Same argument
  *    as `previewRoll`: the preview exists solely to be the first half of a
  *    write, it discloses the standard costs that write will freeze, and a reader
@@ -249,7 +244,7 @@ export const buildsRouter = createTRPCRouter({
    *
    * The revaluation delta lands as one `inventory_movement` entry of kind
    * `revalue` over cost-only movements — quantity 0, so nothing here touches a
-   * count or an existing `stock_movement`: a mid-period standard change
+   * count or an existing movement: a mid-period standard change
    * revalues on-hand inventory, it never restates history (73 §6.2 rule 2).
    */
   roll: capabilityProcedure.input(rollInput).mutation(async ({ ctx, input }) => {
@@ -471,9 +466,7 @@ export const buildsRouter = createTRPCRouter({
   /**
    * Raise a run. Always lands `planned`, and writes NO stock movements (B2).
    *
-   * Gated on `build` alone, not on `stock_movement`: that is the whole point of
-   * B2 — planning a run is not moving stock, so planning must not require the
-   * authority to move it.
+   * Gated on edit on `build`: planning a run is not moving stock (B2).
    */
   create: capabilityProcedure
     .input(
@@ -660,7 +653,7 @@ export const buildsRouter = createTRPCRouter({
    * Undo a completed build by writing its negation (B6).
    *
    * Not an edit and not a delete. A completed build is never edited: every
-   * `stock_movement` field is `updatable: false` on purpose, so a correction is
+   * `StockMovement` row is append-only on purpose, so a correction is
    * a second build whose movements carry the ORIGINAL's frozen costs. Re-pricing
    * a reversal at today's standard nets a build and its undo to a non-zero
    * amount of inventory value out of nothing.
@@ -914,12 +907,7 @@ export const buildsRouter = createTRPCRouter({
   /** Parts whose movements carry an account their current kind no longer maps to (17 §5.2). */
   movementAccountDrift: capabilityProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const [partDefId, movementDefId] = await Promise.all([
-      requireDefId(organizationId, 'part'),
-      requireDefId(organizationId, 'stock_movement'),
-    ])
-    ctx.capabilities.assertViewEntity(partDefId)
-    ctx.capabilities.assertViewEntity(movementDefId)
+    ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
     const result = await readMovementAccountDrift(ctx.db, organizationId)
     if (result.isErr()) throw result.error
@@ -1097,14 +1085,7 @@ async function readEntityNames(
   return names
 }
 
-/**
- * The gate on both halves of the backfill.
- *
- * EDIT on `build` always, because builds are raised. Plus EDIT on
- * `stock_movement` when the run lands `completed`, because that is the arm that
- * appends consume and produce rows — the same split
- * {@link assertCanPostBuildLedger} makes for a single completion.
- */
+/** The gate on both halves of the backfill: EDIT on `build`, via {@link assertCanPostBuildLedger} when it completes. */
 async function assertCanRunBackfill(
   ctx: {
     session: { organizationId: string }
@@ -1119,27 +1100,12 @@ async function assertCanRunBackfill(
   ctx.capabilities.assertEditEntity(await requireDefId(ctx.session.organizationId, 'build'))
 }
 
-/**
- * The gate on every path that writes a build's ledger.
- *
- * Both halves, in one place so the three procedures cannot drift: EDIT on
- * `build` because the run's own status and cost fields are rewritten, and EDIT
- * on `stock_movement` because consume and produce rows are appended. The rest of
- * manufacturing puts movement authority on `stock_movement` — `receiveStock`,
- * `adjustStock` and `reverseMovement` all assert exactly that def — and a build
- * completion is a stock movement by any other name.
- */
+/** The gate on every path that writes a build's ledger: EDIT on `build`, which authorises its movements too. */
 async function assertCanPostBuildLedger(ctx: {
   session: { organizationId: string }
   capabilities: { assertEditEntity: (defId: string) => void }
 }): Promise<void> {
-  const { organizationId } = ctx.session
-  const [buildDefId, movementDefId] = await Promise.all([
-    requireDefId(organizationId, 'build'),
-    requireDefId(organizationId, 'stock_movement'),
-  ])
-  ctx.capabilities.assertEditEntity(buildDefId)
-  ctx.capabilities.assertEditEntity(movementDefId)
+  ctx.capabilities.assertEditEntity(await requireDefId(ctx.session.organizationId, 'build'))
 }
 
 /**

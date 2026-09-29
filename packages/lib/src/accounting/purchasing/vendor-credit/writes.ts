@@ -18,7 +18,7 @@ import {
 import { FieldValueService } from '../../../field-values/field-value-service'
 import { readPartKinds } from '../../../inventory/builds/build-queries'
 import { isServicePartKind } from '../../../inventory/costing/client'
-import { batchRecalculateQoH } from '../../../inventory/costing/qoh'
+import { settleStockMovements } from '../../../inventory/movements'
 import { UnifiedCrudHandler } from '../../../resources/crud'
 import {
   type VendorCreditLineInput as BuilderLineInput,
@@ -387,13 +387,8 @@ export async function issueVendorCredit(
   // index tuple for the length of an HTTP call.
   if ('pendingExport' in post && post.pendingExport) await exportPostedEntry(db, post.pendingExport)
   await exportInventoryMovement(db, stock.post)
-  if (stock.affectedPartIds.length > 0) {
-    await batchRecalculateQoH(organizationId, stock.affectedPartIds)
-  }
-  await settleReturnRollups(organizationId, {
-    received: stock.purchaseOrderLineIds,
-    billed: purchaseOrderLineIdsOf(lines),
-  })
+  await settleStockMovements(organizationId, stock.touched)
+  await settleBilledRollups(organizationId, purchaseOrderLineIdsOf(lines))
 
   const writes: Array<{ fieldId: string; value: unknown }> = [
     { fieldId: 'vendor_credit_status', value: 'issued' },
@@ -486,7 +481,7 @@ export async function voidVendorCredit(
   // The billed roll-up nets this credit's lines and skips a VOID credit's
   // (73 §8.2), so the order lines have to be re-summed now that it is one.
   const lines = await loadVendorCreditLines(db, organizationId, credit.lineIds)
-  await settleReturnRollups(organizationId, { received: [], billed: purchaseOrderLineIdsOf(lines) })
+  await settleBilledRollups(organizationId, purchaseOrderLineIdsOf(lines))
 }
 
 /** The distinct order lines a credit's lines point at. */
@@ -501,31 +496,23 @@ function purchaseOrderLineIdsOf(lines: readonly VendorCreditLineRecord[]): strin
 }
 
 /**
- * Re-SUM the order lines a credit touched, now that its lines are committed.
+ * Re-SUM the billed roll-up on the order lines a credit touched, now that its lines are committed.
  *
  * The lifecycle rules behind the credit-line writes do the same work; this gets
  * there first so the match sees the netted figure in the same breath as the
  * issue. A failure is logged and swallowed — the credit is the primary fact and
  * is already committed, and the rules are the fallback.
  */
-async function settleReturnRollups(
-  organizationId: string,
-  lines: { received: readonly string[]; billed: readonly string[] }
-): Promise<void> {
-  const passes = [
-    { ids: lines.received, spec: PURCHASE_ORDER_LINE_ROLLUPS.received },
-    { ids: lines.billed, spec: PURCHASE_ORDER_LINE_ROLLUPS.billed },
-  ]
-  for (const { ids, spec } of passes) {
-    if (ids.length === 0) continue
-    try {
-      await recalculatePurchaseOrderLineRollups(organizationId, [...ids], spec)
-    } catch (error) {
-      logger.error('Failed to settle purchase order line roll-ups after a vendor credit', {
-        organizationId,
-        target: spec.targetAttr,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
+async function settleBilledRollups(organizationId: string, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return
+  const spec = PURCHASE_ORDER_LINE_ROLLUPS.billed
+  try {
+    await recalculatePurchaseOrderLineRollups(organizationId, [...ids], spec)
+  } catch (error) {
+    logger.error('Failed to settle purchase order line roll-ups after a vendor credit', {
+      organizationId,
+      target: spec.targetAttr,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
 }

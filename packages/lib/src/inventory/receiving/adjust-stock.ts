@@ -16,31 +16,21 @@
  * "because it looks like data", and claims the rule "generalises to every
  * movement writer". This file is what makes that claim true.
  *
- * Nothing else happens here - quantity on hand is maintained by the existing
- * `mfg-stock-movements-created` rule (`recalculatePartQoH` in
- * `field-hooks/post/inventory-triggers.ts`), and a second writer for it would
- * give the same number two owners.
- *
- * No permission checks: `purchasing.adjustStock` asserts write access on the
- * `stock_movement` def before calling, the same contract the sibling writers
- * state.
+ * No permission checks: `purchasing.adjustStock` asserts edit on the part
+ * before calling, the same contract the sibling writers state.
  */
 
-import type { Database } from '@auxx/database'
+import type { Database, Transaction } from '@auxx/database'
 import { roundMinorUnits } from '@auxx/utils/currency'
 import type { Result } from 'neverthrow'
 import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inventory-document'
 import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { upsertWorkItem } from '../../accounting/work-items/write'
-import { requireCachedEntityDefId } from '../../cache'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { systemDefId } from '../../resources/system-records'
-import { batchRecalculateQoH } from '../costing/qoh'
-import { writeStockMovements } from '../movements'
+import { settleStockMovements, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { assertCostFieldsMaterialized } from '../movements/cost-fields'
-import type { MovementRecord } from '../movements/types'
+import type { MovementRecord, StockMovementTouched } from '../movements/types'
 import { guard } from './guard'
 import { readPartKind, readPartStandardCost } from './receipt-queries'
 import type { AdjustStockInput } from './types'
@@ -50,7 +40,7 @@ interface AdjustmentCost {
   /** The part's frozen `part_standard_cost`, rounded, minor units; `null` when it has none (pending, 111 Q18). */
   unitCost: number | null
   /** The inventory account ROLE ('inventory_raw_materials'), never a code and never a provider id. */
-  glAccount: string
+  glRole: string
   /** For the work item a pending adjustment parks. */
   displayName: string | null
 }
@@ -91,8 +81,8 @@ interface AdjustmentCost {
  * section 11, rule 2); a zero is the exact defect `receiveStock` refuses. The
  * count moves now, the cost lands once on the same row when the standard does.
  *
- * ⚠️ **This is a write-path change on an append-only ledger.** Every field on
- * `stock_movement` is `updatable: false`, so movements written before this
+ * ⚠️ **This is a write-path change on an append-only ledger.** A
+ * `StockMovement` row is never updated, so movements written before this
  * carry the old costing - a positive `adjust` at a hand-typed `actual` cost, a
  * negative one at no cost at all - and they CANNOT be back-filled. That is the
  * price of the append-only rule, and reversing them would change quantities
@@ -109,27 +99,19 @@ export async function adjustStock(
     async () => {
       assertAdjustableQuantity(input.quantity)
 
-      const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-
       const cost = await resolveAdjustmentCost(db, organizationId, input.partId)
 
       // The movement and its entry commit together: an adjustment whose row
       // landed and whose entry did not is a count variance nobody can see.
-      const { written, post } = await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        const record = await writeAdjustMovement(txDb, organizationId, userId, {
-          movementDefId,
-          partDefId,
+      const { written, touched, post } = await db.transaction(async (tx) => {
+        const { record, touched } = await writeAdjustMovement(tx, organizationId, userId, {
           input,
           cost,
           occurredAt: input.occurredAt ?? new Date(),
         })
         return {
           written: record,
+          touched,
           // The adjustment movement IS the document (`G12`: its counter-leg is count variance,
           // never purchase price variance). A pending row posts nothing; the pricer posts it.
           post:
@@ -139,12 +121,12 @@ export async function adjustStock(
                   organizationId,
                   [
                     {
-                      movementId: record.movementId,
+                      id: record.id,
                       partInstanceId: record.partInstanceId,
                       type: StockMovementType.ADJUST,
                       quantity: record.quantity,
                       extendedCost: record.extendedCost,
-                      glAccount: record.glAccount,
+                      glRole: record.glRole,
                       occurredAt: record.occurredAt,
                     },
                   ],
@@ -154,9 +136,7 @@ export async function adjustStock(
         }
       })
 
-      // Belt on the plain lane's own recalculation, which fired against a
-      // pre-commit snapshot from inside the transaction above.
-      await batchRecalculateQoH(organizationId, [written.partInstanceId])
+      await settleStockMovements(organizationId, touched)
       await exportInventoryMovement(db, post)
       if (written.unitCost == null) await parkPendingAdjustment(db, organizationId, written, cost)
       return written
@@ -199,25 +179,17 @@ function assertAdjustableQuantity(quantity: number): void {
  * cost is rejected here rather than stored as a zero the ledger cannot explain -
  * the same ordering `resolveReceiptPrice` uses, and for the same reason.
  *
- * Runs for a REMOVAL as well as an addition, which is why the cost-field
- * pre-flight is unconditional now: `G12` values both directions, so an org whose
- * movement cost fields are not materialised cannot adjust in either direction
- * rather than being able to adjust in the one that recorded nothing.
+ * Runs for a REMOVAL as well as an addition: `G12` values both directions.
  */
 async function resolveAdjustmentCost(
   db: Database,
   organizationId: string,
   partId: string
 ): Promise<AdjustmentCost> {
-  await assertCostFieldsMaterialized(
-    organizationId,
-    'Adjusting stock is not available until the stock movement cost fields are provisioned'
-  )
-
   // First, so a service refuses as a service rather than as a part missing a standard.
   const kind = await readPartKind(db, organizationId, partId)
   if (kind.isErr()) throw kind.error
-  const glAccount = resolveInventoryRoleForPartKind(kind.value)
+  const glRole = resolveInventoryRoleForPartKind(kind.value)
 
   const standard = await readPartStandardCost(db, organizationId, partId)
   if (standard.isErr()) throw standard.error
@@ -226,7 +198,7 @@ async function resolveAdjustmentCost(
   const partLabel = displayName ? `"${displayName}"` : `part ${partId}`
 
   // No standard yet: the row goes pending, and the pricer values it when one lands (111 Q18).
-  if (standardCost == null) return { unitCost: null, glAccount, displayName }
+  if (standardCost == null) return { unitCost: null, glRole, displayName }
   if (!Number.isFinite(standardCost)) {
     throw new UnprocessableEntityError(
       `Cannot adjust ${partLabel}: its standard cost is not a number. Roll standard cost for this part first.`,
@@ -243,7 +215,7 @@ async function resolveAdjustmentCost(
     )
   }
 
-  return { unitCost, glAccount, displayName }
+  return { unitCost, glRole, displayName }
 }
 
 /** The Blocked surface for a pending adjustment: one `price` item on the movement, grouped by its part. */
@@ -255,21 +227,19 @@ async function parkPendingAdjustment(
 ): Promise<void> {
   await upsertWorkItem(db, organizationId, {
     sourceKind: 'stock_movement',
-    sourceId: written.movementId,
+    sourceId: written.id,
     stage: 'price',
     reasonCode: 'STANDARD_COST_MISSING',
     externalRef: written.partInstanceId,
     detail: {
       partIds: [written.partInstanceId],
-      pendingMovementIds: [written.movementId],
+      pendingMovementIds: [written.id],
       ...(cost.displayName ? { partName: cost.displayName } : {}),
     },
   })
 }
 
 interface WriteAdjustMovementArgs {
-  movementDefId: string
-  partDefId: string
   input: AdjustStockInput
   /** `G12` values a removal exactly as it values an addition; a null cost is pending in both directions. */
   cost: AdjustmentCost
@@ -277,20 +247,11 @@ interface WriteAdjustMovementArgs {
 }
 
 /**
- * Step 3: write the one movement, through the shared
- * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
- * §2) - the same writer `writeReceiveMovement` and `writeReversal` go through,
- * and what makes the post-commit triggers (QoH recalculation, timeline,
- * realtime) fire at all. A direct insert writes rows the rest of the system
- * never hears about, which is precisely how the popover this replaces got
- * away with writing no cost.
- *
- * The cost fields are stamped together or not at all: a part with no standard
+ * Step 3: write the one movement. The cost fields are stamped together or not at all: a part with no standard
  * writes `cost_basis: pending` and no cost keys (111 Q18), never a zero.
  *
- * 🛑 **`adjustSubparts` is never set here, which is what keeps it `false`.**
- * `explodeBomMovement` inherits the parent movement's type AND its sign, so an
- * adjustment with the flag set would cascade the correction through the bill of
+ * 🛑 **`adjustSubparts` is never set here.** The BOM explosion inherits the
+ * parent movement's type AND its sign, so an adjustment with the flag set would cascade the correction through the bill of
  * materials: "add 10" of a finished good would increase every component's stock
  * as well, so the assembly and the parts it consumed both go up - the opposite
  * of what building one does. An adjustment is a count correction and must never
@@ -298,52 +259,49 @@ interface WriteAdjustMovementArgs {
  * (plans/products/11-costing-and-stock-improvements.md section 5.3).
  */
 async function writeAdjustMovement(
-  db: Database,
+  tx: Transaction,
   organizationId: string,
   userId: string,
   args: WriteAdjustMovementArgs
-): Promise<MovementRecord> {
-  const { movementDefId, partDefId, input, cost, occurredAt } = args
+): Promise<{ record: MovementRecord; touched: StockMovementTouched }> {
+  const { input, cost, occurredAt } = args
   const quantity = input.quantity
 
-  const written = await writeStockMovements(
-    { db, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-    [
-      {
-        partInstanceId: input.partId,
-        type: StockMovementType.ADJUST,
-        quantity,
-        unitCost: cost.unitCost,
-        // `standard`, not `actual`: this is the part's frozen
-        // `part_standard_cost`, read by the server. An adjustment has no
-        // supplier and no invoice, so there is no ACTUAL for it to record
-        // (`G12`).
-        costBasis:
-          cost.unitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
-        glAccount: cost.glAccount,
-        occurredAt,
-        reason: input.reason,
-        reference: input.reference,
-      },
-    ]
-  )
+  const written = await writeStockMovements({ db: tx, organizationId, userId }, [
+    {
+      partInstanceId: input.partId,
+      type: StockMovementType.ADJUST,
+      quantity,
+      unitCost: cost.unitCost,
+      // `standard`, not `actual`: this is the part's frozen
+      // `part_standard_cost`, read by the server. An adjustment has no
+      // supplier and no invoice, so there is no ACTUAL for it to record
+      // (`G12`).
+      costBasis:
+        cost.unitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
+      glRole: cost.glRole,
+      occurredAt,
+      reason: input.reason,
+      reference: input.reference,
+    },
+  ])
   if (written.isErr()) throw written.error
   const record = written.value.records[0]!
 
   return {
-    movementId: record.movementId,
-    recordId: record.recordId,
-    partInstanceId: input.partId,
-    quantity,
-    unitCost: cost.unitCost,
-    extendedCost: record.extendedCost,
-    // An adjustment has no supplier and no purchase order: it is a count
-    // correction, not a purchase. Nothing here is withheld - there is nothing
-    // to state.
-    vendorUnitPrice: null,
-    vendorPartId: null,
-    glAccount: cost.glAccount,
-    occurredAt,
-    purchaseOrderLineId: null,
+    record: {
+      id: record.id,
+      partInstanceId: input.partId,
+      quantity,
+      unitCost: cost.unitCost,
+      extendedCost: record.extendedCost,
+      // A count correction, not a purchase: no supplier, no order.
+      vendorUnitPrice: null,
+      vendorPartId: null,
+      glRole: cost.glRole,
+      occurredAt,
+      purchaseOrderLineId: null,
+    },
+    touched: written.value.touched,
   }
 }

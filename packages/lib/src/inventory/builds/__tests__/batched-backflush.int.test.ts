@@ -140,7 +140,7 @@ async function seedScenario(options: {
       ? [{ partId: crate, quantity: -2, occurredAt: at(day, 13) }]
       : []),
   ])
-  await insertRawMovements(f.organizationId, f.movementDefId, sales)
+  await insertRawMovements(f.organizationId, sales)
   return { f, parts: { lift: f.producedPartId, motor, bolt, coil, cart, wheel, crate } }
 }
 
@@ -187,7 +187,6 @@ async function snapshot(s: Scenario): Promise<unknown> {
     .from(schema.EntityInstance)
     .where(eq(schema.EntityInstance.entityDefinitionId, s.f.buildDefId))
     .orderBy(asc(schema.EntityInstance.displayName))
-  const movementsField = await fieldId(org, 'build_movements')
   const startedField = await fieldId(org, 'build_started_at')
   const partField = await fieldId(org, 'build_part')
   const completedField = await fieldId(org, 'build_completed_at')
@@ -209,18 +208,19 @@ async function snapshot(s: Scenario): Promise<unknown> {
     labels.set(build.id, label)
     if (build.displayName) labels.set(build.displayName, `NUM:${label}`)
     const legs = await db()
-      .select({ id: schema.FieldValue.relatedEntityId })
-      .from(schema.FieldValue)
-      .where(
-        and(eq(schema.FieldValue.entityId, build.id), eq(schema.FieldValue.fieldId, movementsField))
-      )
-      .orderBy(asc(schema.FieldValue.sortKey))
-    legs.forEach((leg, j) => {
-      labels.set(leg.id!, `${label}.${j}`)
-      movementIds.push(leg.id!)
-    })
+      .select({ id: schema.StockMovement.id, partId: schema.StockMovement.partId })
+      .from(schema.StockMovement)
+      .where(eq(schema.StockMovement.buildId, build.id))
+    for (const leg of legs) {
+      labels.set(leg.id, `${label}.${labels.get(leg.partId)}`)
+      movementIds.push(leg.id)
+    }
   }
-  const recordIds = [...builds.map((b) => b.id), ...movementIds]
+  const recordIds = builds.map((b) => b.id)
+  const movements = await db()
+    .select()
+    .from(schema.StockMovement)
+    .where(inArray(schema.StockMovement.id, movementIds))
   const instances = await db()
     .select()
     .from(schema.EntityInstance)
@@ -263,7 +263,7 @@ async function snapshot(s: Scenario): Promise<unknown> {
     .from(schema.AccountingWorkItem)
     .where(eq(schema.AccountingWorkItem.organizationId, org))
   const posts = h.posts.filter((post) =>
-    recordIds.includes((post.subject as { sourceId: string }).sourceId)
+    [...recordIds, ...movementIds].includes((post.subject as { sourceId: string }).sourceId)
   )
 
   const data = {
@@ -280,6 +280,7 @@ async function snapshot(s: Scenario): Promise<unknown> {
     workItems: workItems.map(
       ({ id: _i, createdAt: _c, updatedAt: _u, nextAttemptAt: _n, ...rest }) => rest
     ),
+    movements: movements.map(({ createdAt: _c, effectiveAt: _e, ...rest }) => rest),
     posts,
   }
   let text = JSON.stringify(data)
@@ -290,27 +291,25 @@ async function snapshot(s: Scenario): Promise<unknown> {
   const canonical = (rows: Array<Record<string, unknown>>) =>
     rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
   // Mirror order across two orgs depends on their part ids; `expectMirrorsInWalkOrder` checks it.
-  for (const key of ['instances', 'values', 'mirrors', 'facts', 'qoh', 'workItems', 'posts']) {
+  for (const key of [
+    'instances',
+    'values',
+    'mirrors',
+    'facts',
+    'qoh',
+    'workItems',
+    'movements',
+    'posts',
+  ]) {
     canonical(relabelled[key]!)
   }
   return relabelled
 }
 
-/** Every part's lists name this run's builds and legs in the order the run wrote them. */
+/** Every part's lists name this run's builds in the order the run wrote them. */
 async function expectMirrorsInWalkOrder(s: Scenario, written: Array<{ buildId: string }>) {
-  const movementsField = await fieldId(s.f.organizationId, 'build_movements')
   const position = new Map<string, number>()
-  for (const [index, { buildId }] of written.entries()) {
-    position.set(buildId, index * 100)
-    const legs = await db()
-      .select({ id: schema.FieldValue.relatedEntityId })
-      .from(schema.FieldValue)
-      .where(
-        and(eq(schema.FieldValue.entityId, buildId), eq(schema.FieldValue.fieldId, movementsField))
-      )
-      .orderBy(asc(schema.FieldValue.sortKey))
-    legs.forEach((leg, j) => position.set(leg.id!, index * 100 + j + 1))
-  }
+  for (const [index, { buildId }] of written.entries()) position.set(buildId, index)
   const rows = await db()
     .select()
     .from(schema.FieldValue)
@@ -357,7 +356,7 @@ async function countStatements(fn: () => Promise<unknown>): Promise<number> {
 }
 
 describe('a batched backflush slice stores what one completion per build stores', () => {
-  it('builds, legs, mirrors, facts, QoH, parking and postings; contiguous numbers in walk order', async () => {
+  it('builds, movements, mirrors, facts, QoH, parking and postings; contiguous numbers in walk order', async () => {
     const perBuild = await seedScenario({ refusal: false })
     h.perBuild = true
     const one = await backflush(perBuild)

@@ -447,58 +447,6 @@ export const RETURN_PART_LINE_FIELDS = defineResourceFields({
       'between two rows without renumbering anything',
   },
 
-  /**
-   * The `return_in` movement this row produced, if it produced one. Set only on
-   * rows the salvage writer actually acted on, which is the highest `good` node
-   * in each branch and nothing else.
-   *
-   * One-sided on purpose: the `stock_movement` ledger is append-only and
-   * carries no field pointing back here. That also keeps this edge out of the
-   * ledger's own link set.
-   *
-   * 🛑 A salvage movement carries NO `stock_movement_fulfillment_line`, however
-   * tempting it is to record which dispatch a part came back from. That link is
-   * the whole of sale relief's netting, and a stray one is a single predicate
-   * away from reading as un-relief. If a salvage ever needs to name its
-   * dispatch, that is a field on `return_line` - never the movement's ledger
-   * link.
-   *
-   * ⚠️ `stock_movement_adjust_subparts` must also be FALSE on every salvage
-   * movement: the BOM trigger explodes any movement carrying that flag into
-   * child movements for every leaf, which would restock the subassembly AND its
-   * leaves, the same material twice on an append-only ledger. It would also
-   * make the row invisible to the on-hand SUM, which excludes flagged rows.
-   */
-  movement: {
-    id: toFieldId('movement'),
-    key: 'movement',
-    label: 'Movement',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'return_part_line_movement',
-    showInPanel: false,
-    showInTable: false,
-    showInDialogs: false,
-    systemSortOrder: 'a9',
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: null,
-      relationshipType: 'belongs_to',
-      isInverse: false,
-    },
-    description:
-      'The return_in movement this row produced, on the rows that produced one. Nullable and ' +
-      'ONE-SIDED: the append-only ledger carries no field pointing back here',
-  },
-
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

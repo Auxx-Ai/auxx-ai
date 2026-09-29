@@ -50,11 +50,8 @@ import { createFieldLifecycleStatusGuard } from './lifecycle-status-guard'
  * like an update. Both carry the bypass so the exemption belongs to the sanctioned WRITER
  * rather than to today's value set, the same reasoning that put one on `declineQuote`.
  *
- * ⚠️ **`completeBuild` and `reverseBuild` share their handler with the stock-movement
- * writes,** so those inherit the bypass too. That is safe only because the set names
- * `build_status` and nothing else, and `stock_movement` has no such attribute — the same
- * narrowness that keeps `markQuoteSent`'s mirror write onto `service_request` safe (§7.1).
- * Pinned by a test.
+ * The set names `build_status` and nothing else — the same narrowness that keeps
+ * `markQuoteSent`'s mirror write onto `service_request` safe (§7.1). Pinned by a test.
  *
  * 🛑 **There is deliberately no system-hook twin, unlike the other three.** See
  * `resources/hooks/build-hooks.ts` for the argument: `SystemHook`s do not consult

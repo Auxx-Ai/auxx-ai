@@ -34,7 +34,11 @@ import {
 import { INTAKE_TIERS } from '@auxx/lib/accounting/purchasing/intake/client'
 import { getCachedEntityDefId, getOrgCache } from '@auxx/lib/cache'
 import { NotFoundError, UnprocessableEntityError } from '@auxx/lib/errors'
-import { computeExtendedCost, reverseMovement } from '@auxx/lib/inventory/movements'
+import {
+  computeExtendedCost,
+  listPartMovements,
+  reverseMovement,
+} from '@auxx/lib/inventory/movements'
 import {
   adjustStock,
   bulkOpenStockBalance,
@@ -158,7 +162,7 @@ const signedRateMinorUnits = z
     message: 'must have at most five decimal places',
   })
 
-/** A movement quantity is a `doublePrecision` column, so fractions are legal; zero is not. */
+/** A movement quantity is a `numeric(20,6)` column, so fractions are legal; zero is not. */
 const receiptQuantity = z.number().finite().positive()
 
 const allocationBasis = z.enum(['value', 'quantity', 'weight'])
@@ -335,9 +339,10 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * | procedure                          | gate                                  |
  * | ---------------------------------- | ------------------------------------- |
  * | `markPurchaseOrderSent`            | edit on `purchase_order`              |
- * | `receiveStock`, `receivePurchaseOrder`, `adjustStock`, `reverseMovement` | edit on `stock_movement` |
- * | `listReceipts`, `partReceiptHistory`, `lastReceiptCost` | view on `stock_movement` |
- * | `previewLandedCost`                | edit on `stock_movement`              |
+ * | `receiveStock`, `adjustStock`, `reverseMovement`, `setCount`, `runSetCounts` | edit on `part` (+ `purchase_order` when a receipt names a PO line) |
+ * | `receivePurchaseOrder`, `previewLandedCost` | edit on `purchase_order`     |
+ * | `listMovements`, `listReceipts`, `partReceiptHistory`, `lastReceiptCost`, `setCountPreflight`, `stockSetupStatus`, `listOpeningStockCandidates` | view on `part` |
+ * | `readLandedCostByBill` / `readLandedCostByVendorPart` | view on `vendor_bill` / `vendor_part` |
  * | `previewMatch`                     | edit on `vendor_bill`                 |
  * | `intakeModelCapability`, `startQuoteIntake`, `getIntakeDraft`, `saveIntakeDraft`, `discardIntakeDraft` | **view** on `purchase_order` |
  * | `commitIntakeDraft`                | edit on `purchase_order`              |
@@ -366,7 +371,7 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * nothing.
  *
  * `assertEditEntity` (not the coarser `assertWriteEntity`) is deliberate: it is
- * the server mirror of the `canEditEntity(stockMovementDefId)` the part drawer's
+ * the server mirror of the `canEditEntity(partDefId)` the part drawer's
  * inventory tab already runs, so the button the UI hides and the door the server
  * closes are the same door. A second authority disagreeing with the record path
  * is the defect this avoids.
@@ -390,8 +395,7 @@ export const purchasingRouter = createTRPCRouter({
    * pre-hook refuses the manual write that would otherwise claim an order went out
    * that never did (plans/purchasing/07-purchase-order-send-and-status.md §3.4).
    *
-   * Gated on EDIT of `purchase_order`, not of `stock_movement`: this writes the
-   * order, and nothing about a receipt.
+   * Gated on EDIT of `purchase_order`: this writes the order, and nothing about a receipt.
    *
    * `markPurchaseOrderSent` throws its `AuxxError` directly rather than returning a
    * `Result` — it is a `@auxx/lib/accounting/purchasing` lifecycle mutation and follows that
@@ -492,7 +496,7 @@ export const purchasingRouter = createTRPCRouter({
    * 🛑 **There is no `unitCost` on this input, and there must never be one.**
    * The cost frozen onto a movement is a fact the server holds; a client that
    * could assert it could value inventory at any number it liked, and because
-   * every field on `stock_movement` is `updatable: false` the wrong figure would
+   * a `StockMovement` row is append-only the wrong figure would
    * be frozen forever with nothing thrown. Dropping it from this schema is what
    * makes that a fact rather than a convention
    * (plans/purchasing/05-receiving-cost-and-corrections.md section 4.1).
@@ -520,8 +524,10 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+      if (input.purchaseOrderLineId) {
+        ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
+      }
 
       const { day, ...rest } = input
       const occurredAt = day ? await instantForBookDay(organizationId, day) : undefined
@@ -561,8 +567,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
 
       const { day, ...rest } = input
       const occurredAt = day ? await instantForBookDay(organizationId, day) : undefined
@@ -578,7 +583,7 @@ export const purchasingRouter = createTRPCRouter({
    * Correct a part's on-hand count by a signed delta.
    *
    * The THIRD movement door, and until now the only one that wrote a
-   * `stock_movement` through the generic `record.create` — which meant it
+   * movement through the generic `record.create` — which meant it
    * bypassed the zero-cost guard entirely and could add stock valued at nothing
    * (plans/purchasing/05-receiving-cost-and-corrections.md section 1.5).
    *
@@ -605,8 +610,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
 
       const result = await adjustStock(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -620,8 +624,8 @@ export const purchasingRouter = createTRPCRouter({
    *
    * 🛑 A typed unit cost here does NOT reopen `G12`: `adjustStock` still takes no cost.
    *
-   * Gated on edit for `stock_movement`, the same door `receiveStock`, `adjustStock` and
-   * `reverseMovement` go through, because this writes the ledger.
+   * Gated on edit for `part`, the same door `receiveStock`, `adjustStock` and
+   * `reverseMovement` go through, because this writes the part's ledger.
    */
   setCount: capabilityProcedure
     .input(
@@ -638,8 +642,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
 
       const result = await openStockBalance(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -651,8 +654,7 @@ export const purchasingRouter = createTRPCRouter({
     .input(z.object({ partIds: z.array(z.string().min(1)).min(1).max(500) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertViewEntity(movementDefId)
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
       const result = await readSetCountPreflight(ctx.db, organizationId, input.partIds)
       if (result.isErr()) throw result.error
@@ -662,8 +664,7 @@ export const purchasingRouter = createTRPCRouter({
   /** Where the three Stock setup steps stand (plans/mrp/17 §5); the `stock` checklist reads the same. */
   stockSetupStatus: capabilityProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const movementDefId = await requireDefId(organizationId, 'stock_movement')
-    ctx.capabilities.assertViewEntity(movementDefId)
+    ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
     return getOrgCache().get(organizationId, 'stockSetupStatus')
   }),
@@ -693,8 +694,7 @@ export const purchasingRouter = createTRPCRouter({
    * the org this exists for has 495 parts, and asking the single-part door's
    * five questions of each of them is roughly 2,500 queries.
    *
-   * 🛑 Read-gated on `stock_movement`, not on `part`, and deliberately the same
-   * def the RUN writes. The answer is a preview of what `runOpeningStock` will
+   * 🛑 Read-gated on `part`, the def the RUN is gated on. The answer is a preview of what `runOpeningStock` will
    * do; showing it to somebody the mutation then refuses is the affordance-that-
    * fails pattern the Costing page's gate exists to avoid.
    *
@@ -704,8 +704,7 @@ export const purchasingRouter = createTRPCRouter({
    */
   listOpeningStockCandidates: capabilityProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-    const movementDefId = await requireDefId(organizationId, 'stock_movement')
-    ctx.capabilities.assertViewEntity(movementDefId)
+    ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
     const result = await listOpeningStockCandidates(ctx.db, organizationId)
     if (result.isErr()) throw result.error
@@ -719,7 +718,7 @@ export const purchasingRouter = createTRPCRouter({
    * (the Set counts page, which shows the delta), an invalid entry FAILS, and the run returns
    * a summary naming both with the reason per part.
    *
-   * Gated on edit for `stock_movement`, the same door `setCount` goes through.
+   * Gated on edit for `part`, the same door `setCount` goes through.
    */
   runSetCounts: capabilityProcedure
     .input(
@@ -743,8 +742,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
 
       const result = await bulkOpenStockBalance(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -754,10 +752,7 @@ export const purchasingRouter = createTRPCRouter({
   /**
    * Set `part_kind` across a selection — the confirm that must precede the run.
    *
-   * 🛑 **Gated on `part`, not on `stock_movement`.** The two definitions carry
-   * their own per-def grants, and this writes a part field; borrowing the
-   * ledger's gate would let somebody who may move stock reclassify parts they
-   * have no rights to.
+   * Gated on edit for `part`: this writes a part field.
    *
    * ⚠️ The kind decides the inventory account, and the account is frozen onto an
    * `updatable: false` movement (§6.3) — which is why the confirm is a write of
@@ -802,8 +797,7 @@ export const purchasingRouter = createTRPCRouter({
   /**
    * Undo a movement by writing its negation — the correction path that did not exist.
    *
-   * Not an edit and not a delete. Every field on `stock_movement` is
-   * `updatable: false` on purpose, because a cost frozen onto a movement can only
+   * Not an edit and not a delete. A `StockMovement` row is append-only on purpose, because a cost frozen onto a movement can only
    * be trusted years later if nothing can rewrite it, so a correction is a second
    * row that cancels the first (section 5.1).
    *
@@ -826,8 +820,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
 
       const result = await reverseMovement(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
@@ -900,6 +893,24 @@ export const purchasingRouter = createTRPCRouter({
       return { existingPartInstanceIds: [...result.value.keys()] }
     }),
 
+  /** A part's stock movements, newest first, keyset-paged: the part inventory card and tab. */
+  listMovements: capabilityProcedure
+    .input(
+      z.object({
+        partId: z.string().min(1),
+        cursor: z.string().nullish(),
+        limit: z.number().int().min(1).max(200).default(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await listPartMovements(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
   /** Receipts across the org, newest accounting date first, paginated in SQL. */
   listReceipts: capabilityProcedure
     .input(
@@ -916,8 +927,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertViewEntity(movementDefId)
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
       const result = await listReceipts(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
@@ -937,8 +947,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertViewEntity(movementDefId)
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
       const { partInstanceId, ...filters } = input
       const result = await getPartReceiptHistory(ctx.db, organizationId, partInstanceId, filters)
@@ -956,8 +965,7 @@ export const purchasingRouter = createTRPCRouter({
     .input(z.object({ partInstanceId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertViewEntity(movementDefId)
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'part'))
 
       const result = await getLastReceiptCost(ctx.db, organizationId, input.partInstanceId)
       if (result.isErr()) throw result.error
@@ -992,8 +1000,7 @@ export const purchasingRouter = createTRPCRouter({
     )
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
-      const movementDefId = await requireDefId(organizationId, 'stock_movement')
-      ctx.capabilities.assertEditEntity(movementDefId)
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
 
       const unitCosts = allocateLandedCost(
         input.lines.map((line) => ({
@@ -1615,7 +1622,6 @@ export const purchasingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_bill'))
-      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'stock_movement'))
 
       const result = await readLandedCostByBill(ctx.db, organizationId, input.vendorBillInstanceId)
       if (result.isErr()) throw result.error
@@ -1628,7 +1634,6 @@ export const purchasingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_part'))
-      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'stock_movement'))
 
       const result = await readLandedCostByVendorPart(
         ctx.db,

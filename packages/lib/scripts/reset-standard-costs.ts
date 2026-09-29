@@ -17,7 +17,6 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { withAccountingCommitLock } from '../src/accounting/ledger/post/accounting-commit-lock'
 import { getOrgCache } from '../src/cache'
 import { deleteEntityInstances } from '../src/entity-instances'
-import { batchRecalculateQoH } from '../src/inventory/costing/qoh'
 import { syncReliefWorkItems } from '../src/inventory/relief/relieve'
 import { readOrganizationSettings } from '../src/settings/read'
 
@@ -32,20 +31,6 @@ if (!ORG_ARG) {
   process.exit(1)
 }
 
-const MOVEMENT_ATTRS = [
-  'stock_movement_type',
-  'stock_movement_cost_basis',
-  'stock_movement_build',
-  'stock_movement_part',
-  'stock_movement_fulfillment_line',
-  'stock_movement_parent_movement',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-] as const
-
-/** Exactly the keys `fillPendingCost` writes beside the basis; a pending row carries neither. */
-const MOVEMENT_COST_ATTRS = ['stock_movement_unit_cost', 'stock_movement_extended_cost'] as const
-
 const PART_STANDARD_ATTRS = [
   'part_standard_cost',
   'part_standard_material_cost',
@@ -58,10 +43,7 @@ const PART_STANDARD_ATTRS = [
 
 const OTHER_ATTRS = ['build_source', 'build_status', 'fulfillment_line_fulfillment'] as const
 
-type Attr =
-  | (typeof MOVEMENT_ATTRS)[number]
-  | (typeof PART_STANDARD_ATTRS)[number]
-  | (typeof OTHER_ATTRS)[number]
+type Attr = (typeof PART_STANDARD_ATTRS)[number] | (typeof OTHER_ATTRS)[number]
 
 /** A 121k-id `inArray` overflows the SQL builder's stack; chunk any whole-org id list. */
 function* chunked<T>(items: readonly T[], size = 5000): Generator<T[]> {
@@ -108,7 +90,7 @@ async function resolveOrg(): Promise<{ id: string; name: string | null }> {
 }
 
 async function readFieldIds(organizationId: string): Promise<Map<Attr, string>> {
-  const attrs: Attr[] = [...MOVEMENT_ATTRS, ...PART_STANDARD_ATTRS, ...OTHER_ATTRS]
+  const attrs: Attr[] = [...PART_STANDARD_ATTRS, ...OTHER_ATTRS]
   const rows = await db
     .select({ id: schema.CustomField.id, attribute: schema.CustomField.systemAttribute })
     .from(schema.CustomField)
@@ -172,63 +154,31 @@ async function readValues(organizationId: string, fieldIds: string[]): Promise<V
 
 interface Movement {
   id: string
-  type: string | null
+  type: string
   basis: string | null
   buildId: string | null
-  partId: string | null
+  partId: string
   lineId: string | null
   parentId: string | null
-  costRows: number
+  hasCost: boolean
 }
 
-async function readMovements(
-  organizationId: string,
-  fields: Map<Attr, string>
-): Promise<Map<string, Movement>> {
-  const ids = await readInstanceIds(organizationId, 'stock_movement')
-  const movements = new Map<string, Movement>(
-    ids.map((id) => [
-      id,
-      {
-        id,
-        type: null,
-        basis: null,
-        buildId: null,
-        partId: null,
-        lineId: null,
-        parentId: null,
-        costRows: 0,
-      },
-    ])
-  )
-  const attrByField = new Map(MOVEMENT_ATTRS.map((a) => [fields.get(a)!, a]))
-  for (const row of await readValues(organizationId, [...attrByField.keys()])) {
-    const m = movements.get(row.entityId)
-    if (!m) continue
-    switch (attrByField.get(row.fieldId)) {
-      case 'stock_movement_type':
-        m.type = row.optionId
-        break
-      case 'stock_movement_cost_basis':
-        m.basis = row.optionId
-        break
-      case 'stock_movement_build':
-        m.buildId = row.relatedEntityId
-        break
-      case 'stock_movement_part':
-        m.partId = row.relatedEntityId
-        break
-      case 'stock_movement_fulfillment_line':
-        m.lineId = row.relatedEntityId
-        break
-      case 'stock_movement_parent_movement':
-        m.parentId = row.relatedEntityId
-        break
-      default:
-        m.costRows++
-    }
-  }
-  return movements
+async function readMovements(organizationId: string): Promise<Map<string, Movement>> {
+  const t = schema.StockMovement
+  const rows = await db
+    .select({
+      id: t.id,
+      type: t.type,
+      basis: t.costBasis,
+      buildId: t.buildId,
+      partId: t.partId,
+      lineId: t.fulfillmentLineId,
+      parentId: t.parentMovementId,
+      hasCost: sql<boolean>`${t.unitCostMinor} IS NOT NULL OR ${t.extendedCostMinor} IS NOT NULL`,
+    })
+    .from(t)
+    .where(eq(t.organizationId, organizationId))
+  return new Map(rows.map((row) => [row.id, row]))
 }
 
 /** `deleteEntityInstances`, exiting with the Postgres error when it fails. */
@@ -396,21 +346,22 @@ async function main() {
     )
   }
 
-  const movements = await readMovements(orgId, fields)
+  const movements = await readMovements(orgId)
   const legIds = new Set(
     [...movements.values()].filter((m) => m.buildId && backflushSet.has(m.buildId)).map((m) => m.id)
   )
   // Exploded children of a leg go with it.
   for (const m of movements.values()) if (m.parentId && legIds.has(m.parentId)) legIds.add(m.id)
   const legs = [...legIds].map((id) => movements.get(id)!)
-  const touchedPartIds = [...new Set(legs.flatMap((m) => (m.partId ? [m.partId] : [])))]
+  const touchedPartIds = [...new Set(legs.map((m) => m.partId))]
 
   console.log(
     `\nstock_movement legs  ${legs.length}  ${tally(legs.map((m) => `${m.type}/${m.basis}`))}`
   )
-  console.log(`parts touched        ${touchedPartIds.length} (QoH recalculated in step 6)`)
+  console.log(`parts touched        ${touchedPartIds.length} (QoH re-derived by the build delete)`)
 
-  const deletedIds = [...legIds, ...backflushBuilds]
+  // Legs are table rows: only the builds carry rule runs and bindings.
+  const deletedIds = [...backflushBuilds]
   let ruleRuns = 0
   let bindings = 0
   for (const chunk of chunked(deletedIds)) {
@@ -460,15 +411,13 @@ async function main() {
   )
   const leftAlone = remaining.filter((m) => !sales.includes(m))
   const toRebase = sales.filter((m) => m.basis === 'standard')
-  const withCost = sales.filter((m) => m.costRows > 0)
+  const withCost = sales.filter((m) => m.hasCost)
 
   console.log(
     `remaining            ${remaining.length}  ${tally(remaining.map((m) => `${m.type}/${m.basis}`))}`
   )
   console.log(`sale basis -> pending      ${toRebase.length}`)
-  console.log(
-    `sale rows with cost keys   ${withCost.length} (${withCost.reduce((a, m) => a + m.costRows, 0)} FieldValue rows deleted)`
-  )
+  console.log(`sale rows with a cost       ${withCost.length} (cleared)`)
   console.log(
     `left alone (not sale/standard|pending) ${leftAlone.length}  ${tally(leftAlone.map((m) => `${m.type}/${m.basis}`))}`
   )
@@ -510,7 +459,7 @@ async function main() {
     .from(schema.AccountingWorkItem)
     .where(eq(schema.AccountingWorkItem.organizationId, orgId))
   const priceItems = items.filter((i) => i.stage === 'price')
-  const deletedSet = new Set(deletedIds)
+  const deletedSet = new Set([...legIds, ...backflushBuilds])
   const orphanItems = items.filter(
     (i) =>
       i.stage !== 'price' &&
@@ -594,7 +543,8 @@ async function main() {
     `1. deleted ${postingIds.length} inventory_movement posting(s) with their lines and sources`
   )
 
-  // 2. Builds and legs: side rows, then movements before builds.
+  // 2. Builds: side rows, then the builds; `deleteEntityInstances` deletes their legs (with
+  // exploded children and reversals) and re-derives the touched parts' QoH.
   for (const chunk of chunked(deletedIds)) {
     await db
       .delete(schema.RecordRuleRun)
@@ -613,9 +563,8 @@ async function main() {
         )
       )
   }
-  const movedDeleted = await deleteInstancesOrExit(orgId, [...legIds], 'movement delete failed')
   const buildsDeleted = await deleteInstancesOrExit(orgId, backflushBuilds, 'build delete failed')
-  console.log(`2. deleted ${movedDeleted} leg movement(s), ${buildsDeleted} backflush build(s)`)
+  console.log(`2. deleted ${buildsDeleted} backflush build(s) and their ${legIds.size} leg(s)`)
 
   // 3. Un-price sale rows in bulk: a costed row becomes indistinguishable from a fresh pending one.
   const saleIds = sales.map((m) => m.id)
@@ -623,23 +572,12 @@ async function main() {
     await withAccountingCommitLock(tx, orgId)
     for (const chunk of chunked(saleIds)) {
       await tx
-        .update(schema.FieldValue)
-        .set({ optionId: 'pending', updatedAt: new Date() })
+        .update(schema.StockMovement)
+        .set({ costBasis: 'pending', unitCostMinor: null, extendedCostMinor: null })
         .where(
           and(
-            eq(schema.FieldValue.organizationId, orgId),
-            eq(schema.FieldValue.fieldId, fid('stock_movement_cost_basis')),
-            eq(schema.FieldValue.optionId, 'standard'),
-            inArray(schema.FieldValue.entityId, chunk)
-          )
-        )
-      await tx
-        .delete(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, orgId),
-            inArray(schema.FieldValue.fieldId, MOVEMENT_COST_ATTRS.map(fid)),
-            inArray(schema.FieldValue.entityId, chunk)
+            eq(schema.StockMovement.organizationId, orgId),
+            inArray(schema.StockMovement.id, chunk)
           )
         )
     }
@@ -704,12 +642,8 @@ async function main() {
     `5. deleted ${priceItems.length} price + ${orphanItems.length} orphan item(s); ${parked?.n ?? 0} price item(s) now parked`
   )
 
-  // 6. QoH for the parts the deleted legs moved; sale rows are unchanged so relieved quantities hold.
-  await batchRecalculateQoH(orgId, touchedPartIds)
-  console.log(`6. recalculated QoH for ${touchedPartIds.length} part(s)`)
-
   await getOrgCache().invalidateAndRecompute(orgId, ['resources', 'customFields'])
-  console.log('7. org cache invalidated\n\ndone.\n')
+  console.log('6. org cache invalidated\n\ndone.\n')
 }
 
 main()

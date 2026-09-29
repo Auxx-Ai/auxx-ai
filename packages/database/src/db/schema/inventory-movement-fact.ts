@@ -1,8 +1,7 @@
 // packages/database/src/db/schema/inventory-movement-fact.ts
-// A derived, rebuildable mirror of `stock_movement` for charts and usage; never read by QoH, costing or the GL. See plans/mrp/02-data-structures.md §3.
+// A derived, rebuildable mirror of `StockMovement` for charts and usage; never read by QoH, costing or the GL. See plans/mrp/02-data-structures.md §3.
 
 import { type AnyPgColumn, index, numeric, pgEnum, pgTable, text, timestamp } from './_shared'
-import { EntityInstance } from './entity-instance'
 import { Organization } from './organization'
 
 /** How a movement counts for planning (plans/mrp/01-consumption-from-the-ledger.md §2). */
@@ -17,14 +16,8 @@ export const inventoryConsumptionClass = pgEnum('InventoryConsumptionClass', [
 export const InventoryMovementFact = pgTable(
   'InventoryMovementFact',
   {
-    /** The `stock_movement` EntityInstance id. 1:1, so the insert is idempotent; the cascade is the delete door. */
-    id: text()
-      .primaryKey()
-      .notNull()
-      .references((): AnyPgColumn => EntityInstance.id, {
-        onUpdate: 'cascade',
-        onDelete: 'cascade',
-      }),
+    /** The `StockMovement` id. 1:1, so the insert is idempotent; no FK, the movements seam deletes it. */
+    id: text().primaryKey().notNull(),
     organizationId: text()
       .notNull()
       .references((): AnyPgColumn => Organization.id, { onUpdate: 'cascade', onDelete: 'cascade' }),

@@ -396,7 +396,12 @@ export async function readReturnPartLines(
   const records = await readSystemRecords(db, organizationId, ctx, {
     by: { attribute: 'return_part_line_return_line', in: [returnLineId] },
   })
-  return records.map((record) => toReturnPartLineRecord(ctx, record))
+  const movements = await readSalvageMovementIds(
+    db,
+    organizationId,
+    records.map((record) => record.id)
+  )
+  return records.map((record) => toReturnPartLineRecord(ctx, record, movements))
 }
 
 /** One materialized part line, or null. Used by the write paths to re-read a row. */
@@ -408,7 +413,30 @@ export async function readReturnPartLine(
   const ctx = await loadReturnPartLineFieldContext(db, organizationId)
   if (!ctx) return null
   const [record] = await readSystemRecords(db, organizationId, ctx, { ids: [partLineId] })
-  return record ? toReturnPartLineRecord(ctx, record) : null
+  if (!record) return null
+  const movements = await readSalvageMovementIds(db, organizationId, [record.id])
+  return toReturnPartLineRecord(ctx, record, movements)
+}
+
+/** Part line id -> the `return_in` it produced; its reversal carries the same link, so it is skipped. */
+async function readSalvageMovementIds(
+  db: Database | Transaction,
+  organizationId: string,
+  partLineIds: string[]
+): Promise<Map<string, string>> {
+  if (partLineIds.length === 0) return new Map()
+  const t = schema.StockMovement
+  const rows = await db
+    .select({ partLineId: t.returnPartLineId, id: t.id })
+    .from(t)
+    .where(
+      and(
+        eq(t.organizationId, organizationId),
+        inArray(t.returnPartLineId, partLineIds),
+        isNull(t.reversesMovementId)
+      )
+    )
+  return new Map(rows.map((row) => [row.partLineId as string, row.id]))
 }
 
 // ─── The over-return guard's two inputs ─────────────────────────────
@@ -1010,7 +1038,8 @@ function toReturnLineRecord(
 
 function toReturnPartLineRecord(
   ctx: ReturnPartLineFieldContext,
-  record: SystemRecord<ReturnPartLineAttribute>
+  record: SystemRecord<ReturnPartLineAttribute>,
+  movements: ReadonlyMap<string, string>
 ): ReturnPartLineRecord {
   return {
     id: record.id,
@@ -1025,7 +1054,7 @@ function toReturnPartLineRecord(
     salvagePercent: record.number('return_part_line_salvage_percent') ?? 100,
     sortOrder: record.text('return_part_line_sort_order'),
     unitCost: record.number('return_part_line_unit_cost'),
-    movementId: record.related('return_part_line_movement'),
+    movementId: movements.get(record.id) ?? null,
     createdAt: record.createdAt,
   }
 }

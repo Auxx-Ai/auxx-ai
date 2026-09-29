@@ -1,6 +1,6 @@
 // packages/lib/src/field-hooks/system-entity-rules.ts
 // B2 §9 (unification): the manufacturing ENTITY_TRIGGERS (BOM cost on vendor-part/subpart
-// change, stock-movement BOM explosion + QoH, company website enrichment), re-expressed as
+// change, company website enrichment), re-expressed as
 // server-declared lifecycle record rules with native actions. Replaces the legacy
 // ENTITY_TRIGGERS registry (deleted in the same cut-over). Declared + handlers registered
 // from `registerAllHooks()`.
@@ -8,8 +8,7 @@
 // The native handlers receive `eventDataByRecordId` (raw create/delete-time values threaded
 // from the dispatching door — interactive `event.data.eventData`, sync `manifest.createdValues`)
 // so the wrapped trigger functions see the SAME raw `values` they always did, with NO DB
-// refetch (a refetch is wrong for the transient `stock_movement_adjust_subparts` flag — see
-// plans/events/b2-phase9-option-a-plan.md Part 1).
+// refetch (plans/events/b2-phase9-option-a-plan.md Part 1).
 //
 // Keep top-level imports light — the trigger functions (bom/realtime/http/db) are lazy-imported
 // inside the wrappers so loading this module never drags those in (rule 2 — barrels break vi.mock).
@@ -24,15 +23,10 @@ import type { EntityTriggerEvent, EntityTriggerHandler } from './types'
 const ENTITY_COST_RECALC_VENDOR = 'entityCostRecalcVendor'
 const ENTITY_COST_RECALC_SUBPART = 'entityCostRecalcSubpart'
 const DERIVE_PART_KIND = 'derivePartKind'
-const EXPLODE_BOM_MOVEMENT = 'explodeBomMovement'
-const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
-const RECALC_PO_LINE_RECEIVED = 'recalculatePurchaseOrderLineReceived'
 const RECALC_PO_LINE_BILLED = 'recalculatePurchaseOrderLineBilled'
 /** 73 §8.2 — the netting half of the billed roll-up, off the vendor credit's lines. */
 const RECALC_PO_LINE_BILLED_FROM_CREDIT = 'recalculatePurchaseOrderLineBilledFromCredit'
-/** plans/money/tasks/50-batch-inventory-relief.md §1 - the sell-side mirror of RECALC_PO_LINE_RECEIVED. */
-const RECALC_FULFILLMENT_LINE_RELIEVED = 'recalculateFulfillmentLineRelieved'
 /** Lifecycle twin of the field handler in `system-record-rules.ts`; same key on purpose. */
 const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
 /** Busts the `subpartEdges` org cache (plans/mrp/08 D42); the field twin in `system-record-rules.ts` shares the key. */
@@ -122,27 +116,8 @@ export function registerEntitySystemRules(): void {
     })
   })
 
-  // Stock movement explosion + QoH — per-record (each movement resolves its own part). Order
-  // within the created rule is [explode, qoh]; explode clears the parent adjust-subparts flag,
-  // and because we thread the ORIGINAL create values, qoh's `adjust_subparts` skip stays correct.
-  registerNativeRuleHandler(EXPLODE_BOM_MOVEMENT, async (event) => {
-    const { explodeBomMovement } = await import('./post/bom-movement-triggers')
-    await fanOutEntityHandler(event, 'stock-movements', explodeBomMovement)
-  })
-  registerNativeRuleHandler(RECALC_PART_QOH, async (event) => {
-    const { recalculatePartQoH } = await import('./post/inventory-triggers')
-    await fanOutEntityHandler(event, 'stock-movements', recalculatePartQoH)
-  })
-
-  // Purchase order line subledger roll-ups (plans/purchasing/01-build-plan.md §4.2) —
-  // per-record, each child resolves its own PO line. Both re-SUM whole and are the ONLY
-  // writers of the two `computed: true` fields; a child carrying no PO line is a no-op.
-  registerNativeRuleHandler(RECALC_PO_LINE_RECEIVED, async (event) => {
-    const { recalculatePurchaseOrderLineReceived } = await import(
-      './post/purchase-order-line-rollups'
-    )
-    await fanOutEntityHandler(event, 'stock-movements', recalculatePurchaseOrderLineReceived)
-  })
+  // Purchase order line billed roll-up (plans/purchasing/01-build-plan.md §4.2) — per-record,
+  // each child resolves its own PO line; a child carrying no PO line is a no-op.
   registerNativeRuleHandler(RECALC_PO_LINE_BILLED, async (event) => {
     const { recalculatePurchaseOrderLineBilled } = await import(
       './post/purchase-order-line-rollups'
@@ -159,16 +134,6 @@ export function registerEntitySystemRules(): void {
       'vendor-credit-lines',
       recalculatePurchaseOrderLineBilledFromCredit
     )
-  })
-
-  // Fulfillment line subledger roll-up (plans/money/tasks/50-batch-inventory-relief.md
-  // §1) - the sell-side mirror of RECALC_PO_LINE_RECEIVED, per-record, scoped to
-  // `sale`-type movements only (a `return_in` reversal or customer return must
-  // NOT read as un-relief - see the module header). Dormant until a later wave
-  // of the same brief starts writing `sale` movements.
-  registerNativeRuleHandler(RECALC_FULFILLMENT_LINE_RELIEVED, async (event) => {
-    const { recalculateFulfillmentLineRelieved } = await import('./post/fulfillment-line-rollups')
-    await fanOutEntityHandler(event, 'stock-movements', recalculateFulfillmentLineRelieved)
   })
 
   // The tariff schedule (29 §7) — BATCH. A rate row appearing or disappearing
@@ -255,36 +220,6 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     actions: [
       { type: 'native', handler: ENTITY_COST_RECALC_SUBPART },
       { type: 'native', handler: INVALIDATE_SUBPART_EDGES },
-    ],
-  },
-  {
-    key: 'mfg-stock-movements-created',
-    name:
-      'Explode BOM movement, recalculate QoH, PO line qty received and fulfillment line qty ' +
-      'relieved on stock movement create',
-    defSlug: 'stock-movements',
-    on: 'created',
-    // ORDER MATTERS — explode child movements BEFORE recalculating the parent's QoH.
-    // The two line roll-ups (received / relieved) are independent of each other and
-    // of QoH, so their relative order does not matter.
-    actions: [
-      { type: 'native', handler: EXPLODE_BOM_MOVEMENT },
-      { type: 'native', handler: RECALC_PART_QOH },
-      { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
-      { type: 'native', handler: RECALC_FULFILLMENT_LINE_RELIEVED },
-    ],
-  },
-  {
-    key: 'mfg-stock-movements-deleted',
-    name:
-      'Recalculate QoH, PO line qty received and fulfillment line qty relieved on stock ' +
-      'movement delete',
-    defSlug: 'stock-movements',
-    on: 'deleted',
-    actions: [
-      { type: 'native', handler: RECALC_PART_QOH },
-      { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
-      { type: 'native', handler: RECALC_FULFILLMENT_LINE_RELIEVED },
     ],
   },
   {

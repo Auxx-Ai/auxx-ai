@@ -8,7 +8,7 @@ export interface DriftedMovement {
   id: string
   /** The role stamped on the movement. */
   role: string
-  /** Signed `stock_movement_extended_cost`, minor units; null when unvalued. */
+  /** Signed extended cost, minor units; null when unvalued. */
   extendedCostMinor: number | null
   /** A member of a standing `inventory_movement` entry. */
   posted: boolean

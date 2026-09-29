@@ -3,8 +3,8 @@
 // One entry per inventory DOCUMENT, at the movements' own frozen cost.
 //
 // PURE. No database, no clock, no settings. It takes the `stock_movement` rows a
-// document just wrote - their signed `stock_movement_extended_cost` and their
-// frozen `stock_movement_gl_account` role - sums them by role, and adds the one
+// document just wrote - their signed `StockMovement.extendedCostMinor` and their
+// frozen `StockMovement.glRole` role - sums them by role, and adds the one
 // counter-leg the document kind implies. `stock_movement` is the subledger and
 // the GL carries one entry per document with member links to it (TARGET §5).
 //
@@ -85,17 +85,17 @@ export interface ReliefCogsSplit {
 
 /** One `stock_movement` this document wrote, as the entry reads it. */
 export interface InventoryMovementLine {
-  /** The `stock_movement` EntityInstance id. Becomes a `member` source link. */
+  /** The `StockMovement` id. Becomes a `member` source link. */
   id: string
   /**
-   * SIGNED `stock_movement_extended_cost`, integer minor units.
+   * SIGNED `StockMovement.extendedCostMinor`, integer minor units.
    *
    * The movement's TYPE is deliberately not an input: the sign and the frozen
    * account already say everything the entry needs, and a builder that branched
    * on the type could disagree with the row it is booking.
    */
   extendedCostMinor: number
-  /** The movement's frozen `stock_movement_gl_account` - an inventory ROLE. */
+  /** The movement's frozen `StockMovement.glRole` - an inventory ROLE. */
   glAccountRole: string
   /**
    * `kind: 'receive'` only. Absent means nothing was accrued and `grni` takes

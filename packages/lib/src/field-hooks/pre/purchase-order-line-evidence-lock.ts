@@ -2,7 +2,7 @@
 
 import { database, schema } from '@auxx/database'
 import { parseRecordId } from '@auxx/types/resource'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { ConflictError } from '../../errors'
 import type { FieldPreHookHandler } from '../types'
@@ -16,12 +16,6 @@ export const EVIDENCE_LOCKED_LINE_ATTRS = [
   'purchase_order_line_expected_unit_price',
 ] as const
 
-/** The two links that constitute evidence something has happened against a line. */
-const EVIDENCE_ATTRS = [
-  'stock_movement_purchase_order_line',
-  'vendor_bill_line_purchase_order_line',
-] as const
-
 /** Unwrap a pre-hook value to its scalar — arrays and typed envelopes both flatten. */
 function scalarOf(value: unknown): unknown {
   if (Array.isArray(value)) return scalarOf(value[0])
@@ -32,36 +26,38 @@ function scalarOf(value: unknown): unknown {
   return value
 }
 
-/** What has already happened against a line, in one query. */
+/** What has already happened against a line: a receipt movement, or a bill line naming it. */
 async function readEvidence(
   organizationId: string,
   lineInstanceId: string
 ): Promise<{ hasReceipt: boolean; hasBillLine: boolean }> {
+  const t = schema.StockMovement
+  const [receipt] = await database
+    .select({ id: t.id })
+    .from(t)
+    .where(and(eq(t.organizationId, organizationId), eq(t.purchaseOrderLineId, lineInstanceId)))
+    .limit(1)
+
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes([...EVIDENCE_ATTRS])
-
-  const movementRelField = cf.stock_movement_purchase_order_line
+    .bySystemAttributes(['vendor_bill_line_purchase_order_line'])
   const billLineRelField = cf.vendor_bill_line_purchase_order_line
-  const fieldIds = [movementRelField?.id, billLineRelField?.id].filter((id): id is string => !!id)
-  if (fieldIds.length === 0) return { hasReceipt: false, hasBillLine: false }
-
-  const rows = await database
-    .selectDistinct({ fieldId: schema.FieldValue.fieldId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.fieldId, fieldIds),
-        eq(schema.FieldValue.relatedEntityId, lineInstanceId)
+  let hasBillLine = false
+  if (billLineRelField) {
+    const [bill] = await database
+      .select({ id: schema.FieldValue.id })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.FieldValue.fieldId, billLineRelField.id),
+          eq(schema.FieldValue.relatedEntityId, lineInstanceId)
+        )
       )
-    )
-
-  const seen = new Set(rows.map((row) => row.fieldId))
-  return {
-    hasReceipt: !!movementRelField && seen.has(movementRelField.id),
-    hasBillLine: !!billLineRelField && seen.has(billLineRelField.id),
+      .limit(1)
+    hasBillLine = !!bill
   }
+  return { hasReceipt: !!receipt, hasBillLine }
 }
 
 /** The line's currently stored number for this field, or `null` when it has none. */
@@ -102,7 +98,7 @@ function describeEvidence(evidence: { hasReceipt: boolean; hasBillLine: boolean 
  * loose, because §6.1 lets a `draft` order carry receipts (a vendor ships against a phone
  * call and the paperwork is keyed afterwards) and that order is genuinely unsafe to edit,
  * while an `issued` order nobody has shipped against is perfectly safe. So the lock keys off
- * `purchase_order_line_stock_movements` and `purchase_order_line_vendor_bill_lines` instead.
+ * the line's receipt movements and `purchase_order_line_vendor_bill_lines` instead.
  * Adding new lines, and editing lines nothing has happened to, stays open at any status.
  *
  * The two concrete corruptions this prevents:

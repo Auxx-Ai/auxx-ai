@@ -1,21 +1,12 @@
 // packages/lib/src/inventory/movements/fact/drift-check.ts
 
 import { type Database, schema } from '@auxx/database'
-import { count, sum } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { count, eq, sum } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { STOCK_MOVEMENT_FIELDS } from '../../../resources/registry/resources/stock-movement-fields'
-import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
-import { systemFields, systemRecordScope, systemValueJoin } from '../../../resources/system-records'
 import { guard } from '../guard'
 import { type FactTotals, readFactTotalsByPart } from './reads'
 
-const LEDGER_PICK = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
-  'stock_movement_part',
-  'stock_movement_quantity',
-] as const)
-
-/** A part whose mirror disagrees with the entity ledger on row count or quantity. */
+/** A part whose mirror disagrees with the `StockMovement` ledger on row count or quantity. */
 export interface MovementFactDrift {
   partId: string
   ledgerCount: number
@@ -26,7 +17,7 @@ export interface MovementFactDrift {
 
 const EPSILON = 1e-9
 
-/** Every part where the mirror's count or signed sum differs from the `stock_movement` ledger (the `mirror_drift` signal). */
+/** Every part where the mirror's count or signed sum differs from the `StockMovement` ledger (the `mirror_drift` signal). */
 export async function compareFactsToLedger(
   db: Database,
   organizationId: string
@@ -57,36 +48,16 @@ export async function compareFactsToLedger(
   )
 }
 
-/**
- * Count and SUM of quantity per part over every `stock_movement`, archived included like `qoh.ts`.
- * Unlike `qoh.ts` it keeps an unexploded `adjust_subparts` row: the mirror stores every row, so like compares with like.
- */
+/** Count and SUM of quantity per part over every movement; unlike `qoh.ts` it keeps `adjustSubparts` rows, as the mirror does. */
 async function readLedgerTotals(
   db: Database,
   organizationId: string
 ): Promise<Map<string, FactTotals>> {
-  const ctx = await systemFields(db, organizationId, 'stock_movement', LEDGER_PICK, {
-    required: ['stock_movement_part', 'stock_movement_quantity'],
-  })
-  if (!ctx) return new Map()
-  const partValue = alias(schema.FieldValue, 'fv_part')
-  const quantityValue = alias(schema.FieldValue, 'fv_quantity')
-  // Aggregate: a grouped count and SUM per part has no system-records reader.
+  const t = schema.StockMovement
   const rows = await db
-    .select({
-      partId: partValue.relatedEntityId,
-      n: count(),
-      total: sum(quantityValue.valueNumber),
-    })
-    .from(schema.EntityInstance)
-    .innerJoin(partValue, systemValueJoin(partValue, ctx.fields.stock_movement_part!.id))
-    .leftJoin(quantityValue, systemValueJoin(quantityValue, ctx.fields.stock_movement_quantity!.id))
-    .where(systemRecordScope(organizationId, ctx.defId, { includeArchived: true }))
-    .groupBy(partValue.relatedEntityId)
-  const out = new Map<string, FactTotals>()
-  for (const row of rows) {
-    if (!row.partId) continue
-    out.set(row.partId, { count: row.n, sum: Number(row.total ?? 0) })
-  }
-  return out
+    .select({ partId: t.partId, n: count(), total: sum(t.quantity) })
+    .from(t)
+    .where(eq(t.organizationId, organizationId))
+    .groupBy(t.partId)
+  return new Map(rows.map((row) => [row.partId, { count: row.n, sum: Number(row.total ?? 0) }]))
 }

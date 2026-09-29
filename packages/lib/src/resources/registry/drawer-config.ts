@@ -459,7 +459,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           value: 'ledger',
           label: 'Ledger',
           icon: 'arrow-left-right',
-          recordResource: 'stock_movement',
+          recordResource: 'build',
         },
         // The batch run this build belongs to (plans/money/tasks/45 §11). Its own
         // card and never folded into `run`: every verb on `run` acts on this one

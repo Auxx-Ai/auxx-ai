@@ -77,13 +77,6 @@ const RESOURCES = [
     plural: 'Vendor Parts',
   },
   {
-    id: 'entitydefcuidstockmovemen',
-    entityType: 'stock_movement',
-    apiSlug: 'stock-movements',
-    label: 'Stock Movement',
-    plural: 'Stock Movements',
-  },
-  {
     id: 'entitydefcuidworkorder000',
     entityType: 'work_order',
     apiSlug: 'work-orders',

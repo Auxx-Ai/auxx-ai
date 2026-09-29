@@ -35,11 +35,11 @@ import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { useBulkMode, useListSelection, useSelectionIds } from '~/components/list-selection'
 import { useProviderName } from '~/components/money/ui/provider-payment-notice'
 import { useRecord, useResourceProperty } from '~/components/resources'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useOrgChannel } from '~/realtime/hooks'
 import { api, type RouterOutputs } from '~/trpc/react'
 import { formatAccountingDate, formatMinor } from '../format'
+import { StockMovementBadge, useStockMovementHref } from '../stock-movement-badge'
 import { MOVEMENT_PURPOSE_LABEL, WORK_SOURCE_LABEL } from '../type-labels'
 import {
   type BlockedGroupKey as GroupKey,
@@ -495,15 +495,6 @@ function BlockedGroupItems({ group, depth, query, ...targets }: BlockedGroupItem
   )
 }
 
-/** What a count row shows: the item read names no `stock_movement`, so its fields are read here. */
-const MOVEMENT_ATTRIBUTES = [
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_reason',
-  'stock_movement_reference',
-  'stock_movement_occurred_at',
-] as const
-
 const MOVEMENT_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   StockMovementType.values.map((type) => [type.value, type.label])
 )
@@ -527,21 +518,17 @@ function BlockedItemRow({
   onRetry,
 }: BlockedItemRowProps) {
   const providerName = useProviderName()
+  const router = useRouter()
   const buildDefId = useResourceProperty('build', 'id')
-  const movementDefId = useResourceProperty('stock_movement', 'id')
   const buildRecordId =
     item.sourceKind === 'build' && buildDefId ? toRecordId(buildDefId, item.sourceId) : null
-  const movementRecordId =
-    item.sourceKind === 'stock_movement' && movementDefId
-      ? toRecordId(movementDefId, item.sourceId)
-      : null
   const { record: build } = useRecord({ recordId: buildRecordId, enabled: !!buildRecordId })
-  const { values: movement } = useSystemValues(movementRecordId, MOVEMENT_ATTRIBUTES, {
-    autoFetch: true,
-    enabled: !!movementRecordId,
-  })
+  // A count row: the item read joins its `StockMovement`; it opens the part's Inventory tab.
+  const movement = item.sourceKind === 'stock_movement' ? item.movement : null
+  const movementRef = movement ? { ...movement, id: item.sourceId } : null
+  const movementHref = useStockMovementHref(movementRef)
 
-  const documentRecordId = buildRecordId ?? movementRecordId
+  const documentRecordId = buildRecordId
   const recordId =
     documentRecordId ??
     (item.recordDefinitionId ? toRecordId(item.recordDefinitionId, item.sourceId) : null)
@@ -555,34 +542,28 @@ function BlockedItemRow({
   } else if (documentRecordId) {
     onOpen = onSelectRecord ? () => onSelectRecord(documentRecordId) : undefined
     active = activeRecordId === documentRecordId
+  } else if (movementHref) {
+    onOpen = () => router.push(movementHref)
   } else if (moneyId) {
     onOpen = () => onSelectMovement(moneyId)
     active = activeMovementId === moneyId
   }
 
-  const quantity = movement.stock_movement_quantity as number | null | undefined
-  const movementType = movement.stock_movement_type as string | undefined
-  const occurredAt = movement.stock_movement_occurred_at
-  const note = (movement.stock_movement_reason || movement.stock_movement_reference) as
-    | string
-    | undefined
+  const note = movement?.reason || movement?.reference
 
-  const typeLabel = movementRecordId
-    ? (movementType && MOVEMENT_TYPE_LABEL[movementType]) || sourceLabel(item.sourceKind)
+  const typeLabel = movement
+    ? MOVEMENT_TYPE_LABEL[movement.type] || sourceLabel(item.sourceKind)
     : item.purpose
       ? (MOVEMENT_PURPOSE_LABEL[item.purpose as keyof typeof MOVEMENT_PURPOSE_LABEL] ??
         sourceLabel(item.sourceKind))
       : sourceLabel(item.sourceKind)
   const title = buildRecordId
     ? (build?.displayName ?? item.label ?? sourceLabel(item.sourceKind))
-    : movementRecordId
-      ? quantity != null
-        ? `${quantity > 0 ? '+' : ''}${quantity}${note ? ` · ${note}` : ''}`
-        : (item.label ?? sourceLabel(item.sourceKind))
+    : movement
+      ? `${movement.quantity > 0 ? '+' : ''}${movement.quantity}${note ? ` · ${note}` : ''}`
       : (item.label ?? item.externalRef ?? item.sourceId)
   // A count is dated when it happened; the others carry no document date on the item read.
-  const dateIso =
-    movementRecordId && typeof occurredAt === 'string' ? occurredAt : item.updatedAt.toISOString()
+  const dateIso = (movement?.occurredAt ?? item.updatedAt).toISOString()
 
   return (
     <OutboxRow
@@ -594,7 +575,9 @@ function BlockedItemRow({
       title={title}
       description={workItemSentence(item.reasonCode, item)}
       secondary={
-        recordId ? (
+        movementRef ? (
+          <StockMovementBadge movement={movementRef} size='sm' link={false} />
+        ) : recordId ? (
           <RecordBadge recordId={recordId} size='sm' link={!!documentRecordId && !onOpen} />
         ) : undefined
       }

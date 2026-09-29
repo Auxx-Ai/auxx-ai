@@ -8,10 +8,8 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, gt, isNotNull, ne, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../../cache'
 import { StockMovementCostBasis, StockMovementType } from '../../../resources/registry/enum-values'
-import { systemDefId, systemFieldMap } from '../../../resources/system-records'
 import { readOrganizationSettings } from '../../../settings/read'
 import { cutoverDateFor } from '../builders/opening-balance'
 import { OPENING_BASELINE_SETTING_KEYS } from '../setup/setup-readiness'
@@ -63,7 +61,7 @@ export async function sweepUnpostedInventory(
       counts.failed++
       logger.warn('An unposted inventory document could not be posted', {
         organizationId,
-        movementIds: document.map((row) => row.movementId),
+        movementIds: document.map((row) => row.id),
         error: error instanceof Error ? error.message : String(error),
       })
     }
@@ -74,7 +72,7 @@ export async function sweepUnpostedInventory(
 }
 
 /**
- * Valued (`cost_basis <> pending`, non-zero cost) movements dated after the cutover, in no posted
+ * Valued (`costBasis <> pending`, non-zero cost) movements dated after the cutover, in no posted
  * `inventory_movement` entry, oldest first. A `return_out` is excluded: its entry is the vendor
  * credit's, and one that never posted is that document's problem, not a movement's.
  */
@@ -83,37 +81,11 @@ async function listUnpostedMovementIds(
   organizationId: string,
   limit: number
 ): Promise<string[]> {
-  const defId = await systemDefId(db, organizationId, 'stock_movement')
-  const fields = await systemFieldMap(db, organizationId, [
-    'stock_movement_occurred_at',
-    'stock_movement_extended_cost',
-    'stock_movement_cost_basis',
-    'stock_movement_type',
-  ] as const)
-  const occurredAt = fields.stock_movement_occurred_at
-  const extendedCost = fields.stock_movement_extended_cost
-  const costBasis = fields.stock_movement_cost_basis
-  const type = fields.stock_movement_type
-  if (!defId || !occurredAt || !extendedCost || !costBasis || !type) return []
-
   const K = OPENING_BASELINE_SETTING_KEYS
   const settings = await readOrganizationSettings(organizationId, [K.cutoffPeriod] as const)
   const cutoff = settings[K.cutoffPeriod]?.trim()
   const cutoverDate = cutoff ? cutoverDateFor(cutoff) : null
 
-  const optionRows = (fieldId: string, optionId: string) =>
-    db
-      .select({ entityId: schema.FieldValue.entityId })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.optionId, optionId)
-        )
-      )
-  const pending = optionRows(costBasis.id, StockMovementCostBasis.PENDING)
-  const returnOut = optionRows(type.id, StockMovementType.RETURN_OUT)
   const posted = db
     .select({ sourceId: schema.GlPostingSource.sourceId })
     .from(schema.GlPostingSource)
@@ -127,40 +99,23 @@ async function listUnpostedMovementIds(
       )
     )
 
-  const cost = alias(schema.FieldValue, 'movement_cost')
+  const t = schema.StockMovement
   const rows = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, defId),
-        sql`${schema.EntityInstance.archivedAt} IS NULL`
-      )
-    )
-    .innerJoin(
-      cost,
-      and(
-        eq(cost.entityId, schema.FieldValue.entityId),
-        eq(cost.fieldId, extendedCost.id),
-        isNotNull(cost.valueNumber),
-        ne(cost.valueNumber, 0)
-      )
-    )
+    .select({ id: t.id })
+    .from(t)
     .where(
       and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, occurredAt.id),
-        isNotNull(schema.FieldValue.valueDate),
-        ...(cutoverDate ? [gt(sql`${schema.FieldValue.valueDate}::date`, cutoverDate)] : []),
-        sql`${schema.FieldValue.entityId} NOT IN ${pending}`,
-        sql`${schema.FieldValue.entityId} NOT IN ${returnOut}`,
-        sql`${schema.FieldValue.entityId} NOT IN ${posted}`
+        eq(t.organizationId, organizationId),
+        isNotNull(t.occurredAt),
+        ...(cutoverDate ? [gt(sql`${t.occurredAt}::date`, cutoverDate)] : []),
+        isNotNull(t.extendedCostMinor),
+        ne(t.extendedCostMinor, 0),
+        sql`${t.costBasis} IS DISTINCT FROM ${StockMovementCostBasis.PENDING}`,
+        ne(t.type, StockMovementType.RETURN_OUT),
+        sql`${t.id} NOT IN ${posted}`
       )
     )
-    .orderBy(asc(schema.FieldValue.valueDate), asc(schema.EntityInstance.createdAt))
+    .orderBy(asc(t.occurredAt), asc(t.createdAt))
     .limit(Math.max(1, limit))
   return rows.map((row) => row.id)
 }

@@ -3,14 +3,9 @@
 /**
  * The single-line receipt write (plans/purchasing/01-build-plan.md section 3.2).
  *
- * One receipt is one `stock_movement` row: `type: 'receive'`, a positive
- * quantity, and a frozen landed cost. Nothing else happens here - quantity on
- * hand is maintained by the existing `mfg-stock-movements-created` rule
- * (`recalculatePartQoH` in `field-hooks/post/inventory-triggers.ts`), and adding
- * a second writer for it would give the same number two owners.
- *
- * No permission checks: `receiving.receiveStock` asserts write access on the
- * `stock_movement` def before calling (build plan section 3.3).
+ * One receipt is one `StockMovement` row: `type: 'receive'`, a positive
+ * quantity, and a frozen landed cost. No permission checks: the router asserts
+ * edit on the part before calling.
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -23,18 +18,15 @@ import {
   exportInventoryMovement,
   postInventoryMovementInTx,
 } from '../../accounting/ledger/post/post-inventory-movement'
-import { getOrgCache, requireCachedEntityDefId } from '../../cache'
+import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
-import { systemDefId } from '../../resources/system-records'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
 import { replaceProvisionalStandard } from '../costing/provisional-standard'
-import { batchRecalculateQoH } from '../costing/qoh'
 import { rollUnvaluedAncestors } from '../costing/roll-unvalued-ancestors'
 import { readStandardCost } from '../costing/standard-cost-queries'
-import { writeStockMovements } from '../movements'
+import { settleStockMovements, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { assertCostFieldsMaterialized } from '../movements/cost-fields'
-import type { MovementRecord } from '../movements/types'
+import type { MovementRecord, StockMovementTouched } from '../movements/types'
 import { computeReceiptAccrual } from './accruals'
 import { computeReceiptLandedCost, type ReceiptCostInputs } from './client'
 import { guard } from './guard'
@@ -77,15 +69,8 @@ export async function receiveStock(
     async () => {
       assertReceivableQuantity(input.quantity)
 
-      const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-      await assertCostFieldsMaterialized(organizationId)
-
       // Resolved before any write: a service has no inventory role and refuses here.
-      const glAccount = resolveInventoryRoleForPartKind(
+      const glRole = resolveInventoryRoleForPartKind(
         await unwrap(readPartKind(db, organizationId, input.partId))
       )
       const priced = await resolveReceiptPrice(db, organizationId, input)
@@ -127,28 +112,24 @@ export async function receiveStock(
       // receipt whose row landed and whose entry did not is exactly the state
       // the close's `inventory_unposted` blocker exists to catch, and it should
       // be unreachable rather than merely detectable.
-      const { written, post } = await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        const record = await writeReceiveMovement(txDb, organizationId, userId, {
-          movementDefId,
-          partDefId,
+      const { written, touched, post } = await db.transaction(async (tx) => {
+        const { record, touched } = await writeReceiveMovement(tx, organizationId, userId, {
           input,
           unitCost: unitValue,
           vendorUnitPrice: priced.vendorUnitPrice,
           tariffRate: priced.terms?.tariffRate ?? undefined,
           accrual,
-          glAccount,
+          glRole,
           occurredAt: input.occurredAt ?? new Date(),
         })
         return {
           written: record,
+          touched,
           post: await postReceipt(tx, organizationId, userId, record, accrual),
         }
       })
 
-      // Belt on the plain lane's own recalculation, which fired against a
-      // pre-commit snapshot from inside the transaction above.
-      await batchRecalculateQoH(organizationId, [written.partInstanceId])
+      await settleStockMovements(organizationId, touched)
       await exportInventoryMovement(db, post)
       return written
     },
@@ -208,8 +189,8 @@ interface ResolvedPrice {
  * form shows the supplier's terms and lets the person keying the receipt replace
  * the price with what the packing slip in front of them actually says. Reading
  * `vendor_part.unitPrice` as the base after that would value the stock from the
- * number the user just *replaced* - and because every field on `stock_movement`
- * is `updatable: false`, the wrong cost is frozen forever with nothing thrown.
+ * number the user just *replaced* - and because a stock movement is append-only,
+ * the wrong cost is frozen forever with nothing thrown.
  * `apps/web/src/components/manufacturing/parts/receipt-input.ts` documents that
  * hazard, and compensated for it client-side by sending a pre-computed
  * `unitCost`. That compensation existed because of this function; taking the
@@ -311,8 +292,6 @@ async function resolveReceiptPrice(
 }
 
 interface WriteReceiveMovementArgs {
-  movementDefId: string
-  partDefId: string
   input: ReceiveStockInput
   /** The part's frozen standard, or the landed estimate when it has none. */
   unitCost: number
@@ -320,7 +299,7 @@ interface WriteReceiveMovementArgs {
   /** The resolved duty PERCENTAGE, frozen with the accrual it produced. */
   tariffRate?: number
   accrual?: ReceiveAccrualInput
-  glAccount: string
+  glRole: string
   occurredAt: Date
 }
 
@@ -399,75 +378,61 @@ export async function setFirstStandardCostFromReceipt(
 }
 
 /**
- * Step 5: write the one movement, through the shared
- * `inventory/movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
- * §2). That is what makes the post-commit triggers (QoH, timeline, realtime)
- * fire at all - a direct insert writes rows the rest of the system never
- * hears about - and it is also what resolves `vendorPartId` /
- * `purchaseOrderLineId` into links, refusing with `UnprocessableEntityError`
- * when this org has no such definition yet.
- *
- * 🛑 **`adjustSubparts` is never set here, which is what keeps it `false`.**
- * `explodeBomMovement` inherits the parent movement's type AND its sign, so a
- * receipt with the flag set would create a `receive` movement for every
- * descendant in the BOM - receiving 10 motors would ADD 10 of every screw,
- * bracket and wire harness inside them. Receiving 10 motors adds 10 motors and
- * consumes nothing: a purchase brings a finished item through the door, it does
- * not manufacture its own components.
+ * Step 5: write the one movement. `adjustSubparts` is never set: an exploded
+ * receipt would ADD every descendant in the BOM, and a purchase manufactures nothing.
  */
 async function writeReceiveMovement(
-  db: Database,
+  tx: Transaction,
   organizationId: string,
   userId: string,
   args: WriteReceiveMovementArgs
-): Promise<MovementRecord> {
-  const { movementDefId, partDefId, input, unitCost, vendorUnitPrice, glAccount, occurredAt } = args
+): Promise<{ record: MovementRecord; touched: StockMovementTouched }> {
+  const { input, unitCost, vendorUnitPrice, glRole, occurredAt } = args
   const quantity = input.quantity
   const { accrual, tariffRate } = args
 
-  const written = await writeStockMovements(
-    { db, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-    [
-      {
-        partInstanceId: input.partId,
-        type: 'receive',
-        quantity,
-        unitCost,
-        // 73 §6.2 rule 1: a receipt freezes the STANDARD, and the difference
-        // from what was paid is the receipt's `ppv`.
-        costBasis: 'standard',
-        glAccount,
-        occurredAt,
-        vendorUnitPrice: vendorUnitPrice ?? undefined,
-        accrued: {
-          freightMinor: accrual?.freightMinor,
-          dutiesMinor: accrual?.dutiesMinor,
-          tariffRate,
-        },
-        reference: input.reference,
-        reason: input.reason,
-        links: {
-          vendorPartId: input.vendorPartId,
-          purchaseOrderLineId: input.purchaseOrderLineId,
-        },
+  const written = await writeStockMovements({ db: tx, organizationId, userId }, [
+    {
+      partInstanceId: input.partId,
+      type: 'receive',
+      quantity,
+      unitCost,
+      // 73 §6.2 rule 1: a receipt freezes the STANDARD, and the difference
+      // from what was paid is the receipt's `ppv`.
+      costBasis: 'standard',
+      glRole,
+      occurredAt,
+      vendorUnitPrice: vendorUnitPrice ?? undefined,
+      accrued: {
+        freightMinor: accrual?.freightMinor,
+        dutiesMinor: accrual?.dutiesMinor,
+        tariffRate,
       },
-    ]
-  )
+      reference: input.reference,
+      reason: input.reason,
+      links: {
+        vendorPartId: input.vendorPartId,
+        purchaseOrderLineId: input.purchaseOrderLineId,
+      },
+    },
+  ])
   if (written.isErr()) throw written.error
   const record = written.value.records[0]!
 
   return {
-    movementId: record.movementId,
-    recordId: record.recordId,
-    partInstanceId: input.partId,
-    quantity,
-    unitCost,
-    extendedCost: record.extendedCost,
-    vendorUnitPrice,
-    vendorPartId: input.vendorPartId ?? null,
-    glAccount,
-    occurredAt,
-    purchaseOrderLineId: input.purchaseOrderLineId ?? null,
+    record: {
+      id: record.id,
+      partInstanceId: input.partId,
+      quantity,
+      unitCost,
+      extendedCost: record.extendedCost,
+      vendorUnitPrice,
+      vendorPartId: input.vendorPartId ?? null,
+      glRole,
+      occurredAt,
+      purchaseOrderLineId: input.purchaseOrderLineId ?? null,
+    },
+    touched: written.value.touched,
   }
 }
 
@@ -501,11 +466,11 @@ async function postReceipt(
   record: MovementRecord,
   accrual?: ReceiveAccrualInput
 ): Promise<InTxPostResult | null> {
-  if (record.extendedCost == null || record.glAccount == null) return null
+  if (record.extendedCost == null || record.glRole == null) return null
   return postInventoryMovementInTx(tx, {
     organizationId,
     kind: 'receive',
-    subject: { sourceKind: 'stock_movement', sourceId: record.movementId },
+    subject: { sourceKind: 'stock_movement', sourceId: record.id },
     // The PO LINE, not the order: it is what the receipt was against and what
     // the three-way match reads, and the order is one hop from it.
     ...(record.purchaseOrderLineId
@@ -514,9 +479,9 @@ async function postReceipt(
     occurredAt: record.occurredAt,
     movements: [
       {
-        id: record.movementId,
+        id: record.id,
         extendedCostMinor: record.extendedCost,
-        glAccountRole: record.glAccount,
+        glAccountRole: record.glRole,
         ...(accrual ? { accrual } : {}),
       },
     ],

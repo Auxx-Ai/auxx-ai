@@ -195,11 +195,6 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     creatable: false,
     sidebar: 'never',
   },
-  stock_movement: {
-    searchable: false,
-    inPromptCatalog: false,
-    sidebar: 'never',
-  }, // new to AI; append-only ledger
   vendor_part: {
     searchable: false,
     inPromptCatalog: false,

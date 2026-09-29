@@ -217,7 +217,7 @@ export interface CancelBuildInput {
  * A part that IS on the bill of materials keeps its `qtyPerUnit` snapshot — the
  * BOM was followed, just not to the letter. A part that is NOT on it is an
  * off-BOM substitution and its movement carries `qtyPerUnit: null`, which is
- * the marker `stock_movement_qty_per_unit` exists to make visible instead of
+ * the marker `StockMovement.qtyPerUnit` exists to make visible instead of
  * silent.
  */
 export interface BuildComponentOverride {
@@ -269,8 +269,8 @@ export interface BuildComponentLine {
   unitCost: number | null
   /** `round(unitCost x quantityConsumed)`, POSITIVE. The movement stores its negation. */
   extendedCost: number | null
-  /** Resolved from the component's `part_kind`, exactly as a receipt resolves it. */
-  glAccount: string
+  /** The inventory role, from the component's `part_kind`, exactly as a receipt resolves it. */
+  glRole: string
   /** True when this line came from an override for a part with no BOM edge. */
   offBom: boolean
 }
@@ -314,7 +314,7 @@ export interface CompleteBuildResult {
   varianceAmount: number | null
   /** Parts with no standard whose legs were written `pending`; empty on a priced build (111 Q18). */
   pendingPartIds: string[]
-  /** Every `stock_movement` written, consumes first then the single produce. */
+  /** Every movement written, consumes first then the single produce. */
   movementIds: string[]
   /** The parts whose quantity on hand was recalculated AFTER the commit. */
   recalculatedPartIds: string[]
@@ -353,7 +353,7 @@ export interface ListBuildsFilters {
   offset?: number
 }
 
-/** One `stock_movement` a build wrote, as the reversal reads it back. */
+/** One movement a build wrote, as the reversal reads it back. */
 export interface BuildMovementRow {
   movementId: string
   partId: string
@@ -363,7 +363,7 @@ export interface BuildMovementRow {
   /** The ORIGINAL's frozen unit cost, or `null` on a `pending` leg. Never re-priced (B6). */
   unitCost: number | null
   extendedCost: number | null
-  glAccount: string | null
+  glRole: string | null
   /** The as-built snapshot; `null` on an off-BOM row and on the produce row. */
   qtyPerUnit: number | null
   /** `standard` on every row a build writes. Copied, never re-decided. */

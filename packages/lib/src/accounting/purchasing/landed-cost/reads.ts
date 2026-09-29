@@ -6,8 +6,8 @@
  *
  * Two readings of the same pair of facts:
  *
- * - the receipts' own stamps (`stock_movement_freight_accrued` /
- *   `_duties_accrued`), written by 73 U5 when the goods were valued at standard;
+ * - the receipts' own stamps (`StockMovement.freightAccruedMinor` /
+ *   `dutiesAccruedMinor`), written by 73 U5 when the goods were valued at standard;
  * - the landed-cost lines other vendors' bills carry, joined back through
  *   `vendor_bill_line_landed_bill` and split by the account each is coded to.
  *
@@ -19,10 +19,10 @@
  * No permission checks. The router asserts (`docs/lib-module-guide.md` §6).
  */
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
+import { and, eq, inArray, or, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../../resources/registry/resources/purchase-order-line-fields'
-import { STOCK_MOVEMENT_FIELDS } from '../../../resources/registry/resources/stock-movement-fields'
 import { VENDOR_BILL_LINE_FIELDS } from '../../../resources/registry/resources/vendor-bill-line-fields'
 import { pickSystemAttributes } from '../../../resources/registry/system-attributes'
 import { readSystemRecords, systemFields } from '../../../resources/system-records'
@@ -39,14 +39,6 @@ const BILL_LINE_ATTRIBUTES = pickSystemAttributes(VENDOR_BILL_LINE_FIELDS, [
   'vendor_bill_line_landed_bill',
   'vendor_bill_line_line_total',
   'vendor_bill_line_gl_account',
-] as const)
-
-const MOVEMENT_ATTRIBUTES = pickSystemAttributes(STOCK_MOVEMENT_FIELDS, [
-  'stock_movement_purchase_order_line',
-  'stock_movement_vendor_part',
-  'stock_movement_freight_accrued',
-  'stock_movement_duties_accrued',
-  'stock_movement_tariff_rate',
 ] as const)
 
 const ORDER_LINE_ATTRIBUTES = pickSystemAttributes(PURCHASE_ORDER_LINE_FIELDS, [
@@ -221,28 +213,31 @@ async function loadReceiptAccruals(
   organizationId: string,
   scope: { purchaseOrderLineIds?: string[]; vendorPartIds?: string[] }
 ): Promise<ReceiptAccrual[]> {
-  const by =
+  const t = schema.StockMovement
+  const [column, ids] =
     scope.vendorPartIds !== undefined
-      ? ({ attribute: 'stock_movement_vendor_part', in: scope.vendorPartIds } as const)
-      : ({
-          attribute: 'stock_movement_purchase_order_line',
-          in: scope.purchaseOrderLineIds ?? [],
-        } as const)
-  if (by.in.length === 0) return []
+      ? [t.vendorPartId, scope.vendorPartIds]
+      : [t.purchaseOrderLineId, scope.purchaseOrderLineIds ?? []]
+  if (ids.length === 0) return []
 
-  const ctx = await systemFields(db, organizationId, 'stock_movement', MOVEMENT_ATTRIBUTES)
-  if (!ctx) return []
-
-  const movements = await readSystemRecords(db, organizationId, ctx, { by })
-  return movements
-    .map((movement) => ({
-      purchaseOrderLineId: movement.related('stock_movement_purchase_order_line'),
-      vendorPartId: movement.related('stock_movement_vendor_part'),
-      freightMinor: movement.number('stock_movement_freight_accrued') ?? 0,
-      dutiesMinor: movement.number('stock_movement_duties_accrued') ?? 0,
-      tariffRate: movement.number('stock_movement_tariff_rate') ?? 0,
-    }))
-    .filter((receipt) => receipt.freightMinor !== 0 || receipt.dutiesMinor !== 0)
+  const rows = await db
+    .select({
+      purchaseOrderLineId: t.purchaseOrderLineId,
+      vendorPartId: t.vendorPartId,
+      freightMinor: sql<number>`COALESCE(${t.freightAccruedMinor}, 0)`.mapWith(Number),
+      dutiesMinor: sql<number>`COALESCE(${t.dutiesAccruedMinor}, 0)`.mapWith(Number),
+      tariffRate: sql<number>`COALESCE(${t.tariffRate}, 0)`.mapWith(Number),
+    })
+    .from(t)
+    .where(
+      and(
+        eq(t.organizationId, organizationId),
+        inArray(column, ids),
+        or(sql`${t.freightAccruedMinor} <> 0`, sql`${t.dutiesAccruedMinor} <> 0`)
+      )
+    )
+    .orderBy(t.effectiveAt, t.createdAt, t.id)
+  return rows
 }
 
 /** `purchase_order_line` id -> its `vendor_part` instance id. */

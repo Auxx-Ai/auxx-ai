@@ -6,8 +6,8 @@
  *
  * Everything that touches the database or another module's write lane is
  * mocked: this file is about WHICH nodes produce a movement, WHAT is on it, and
- * which refusals stop the whole run - not about `writeStockMovementsBatch`,
- * `batchRecalculateQoH` or `reverseMovement`, each of which has its own tests.
+ * which refusals stop the whole run - not about `writeStockMovements`,
+ * `settleStockMovements` or `reverseMovement`, each of which has its own tests.
  *
  * The TREE is real. `buildSalvageTree`, `selectSalvageMovementNodes`,
  * `checkSalvageTree` and `computeSalvageUnitCost` all run unmocked over a real
@@ -18,7 +18,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  defIds: { stock_movement: 'def_movement', part: 'def_part' } as Record<string, string>,
   fieldsByAttr: {} as Record<string, { id: string } | undefined>,
   /** Rows the two private `db.select` reads answer with, in call order. */
   selectRows: [] as unknown[][],
@@ -30,8 +29,8 @@ const h = vi.hoisted(() => ({
   partLine: null as unknown,
   handlers: [] as Array<{ options?: { session?: unknown } }>,
   bulkUpdate: vi.fn(async () => ({ updated: 0, errors: [] as unknown[] })),
-  writeStockMovementsBatch: vi.fn(),
-  batchRecalculateQoH: vi.fn(async () => {}),
+  writeStockMovements: vi.fn(),
+  settleStockMovements: vi.fn(async () => {}),
   publishRecordsChanged: vi.fn(
     async (_service: unknown, _organizationId: string, _payload: { entityDefinitionId: string }) =>
       undefined
@@ -56,12 +55,6 @@ vi.mock('../../cache', () => ({
       },
     }),
   }),
-  requireCachedEntityDefId: async (_orgId: string, entityType: string) => {
-    const id = h.defIds[entityType]
-    if (!id) throw new Error(`no def for ${entityType}`)
-    return id
-  },
-  getCachedEntityDefId: async (_orgId: string, entityType: string) => h.defIds[entityType] ?? null,
 }))
 
 vi.mock('../fields', () => ({
@@ -91,10 +84,6 @@ vi.mock('../../inventory/bom/subpart-graph', () => ({
   loadSubpartGraph: async () => h.graph,
 }))
 
-vi.mock('../../inventory/costing/qoh', () => ({
-  batchRecalculateQoH: h.batchRecalculateQoH,
-}))
-
 vi.mock('../../inventory/costing', () => ({
   readStandardCost: async (_db: unknown, _orgId: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
@@ -113,7 +102,8 @@ vi.mock('../../inventory/movements', async () => {
   )
   return {
     ...actual,
-    writeStockMovementsBatch: h.writeStockMovementsBatch,
+    writeStockMovements: h.writeStockMovements,
+    settleStockMovements: h.settleStockMovements,
     reverseMovement: h.reverseMovement,
   }
 })
@@ -251,8 +241,8 @@ function unwrap(result: { isOk(): boolean; _unsafeUnwrap(): WriteSalvageMovement
 
 /** The `StockMovementInput[]` handed to the shared writer on the only call. */
 function writtenInputs(): Array<Record<string, unknown>> {
-  expect(h.writeStockMovementsBatch).toHaveBeenCalledTimes(1)
-  return h.writeStockMovementsBatch.mock.calls[0]![1] as Array<Record<string, unknown>>
+  expect(h.writeStockMovements).toHaveBeenCalledTimes(1)
+  return h.writeStockMovements.mock.calls[0]![1] as Array<Record<string, unknown>>
 }
 
 beforeEach(() => {
@@ -268,21 +258,25 @@ beforeEach(() => {
   ])
   h.partLine = null
   h.bulkUpdate.mockResolvedValue({ updated: 0, errors: [] })
-  h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+  h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
     ok({
       records: (inputs as Array<{ partInstanceId: string }>).map((input, index) => ({
-        movementId: `mv_${index}`,
-        recordId: `def_movement:mv_${index}`,
+        id: `mv_${index}`,
         partInstanceId: input.partInstanceId,
         quantity: 0,
         unitCost: 0,
         extendedCost: 0,
-        glAccount: null,
+        glRole: null,
         occurredAt: new Date(),
       })),
-      affectedPartIds: [
-        ...new Set((inputs as Array<{ partInstanceId: string }>).map((i) => i.partInstanceId)),
-      ],
+      touched: {
+        partIds: [
+          ...new Set((inputs as Array<{ partInstanceId: string }>).map((i) => i.partInstanceId)),
+        ],
+        purchaseOrderLineIds: [],
+        fulfillmentLineIds: [],
+        buildIds: [],
+      },
     })
   )
 })
@@ -297,8 +291,8 @@ describe('writeSalvageMovements - what writes and what does not', () => {
 
     expect(result.movements).toEqual([])
     expect(result.affectedPartIds).toEqual([])
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
-    expect(h.batchRecalculateQoH).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
+    expect(h.settleStockMovements).not.toHaveBeenCalled()
   })
 
   it('invariant 1 - only the HIGHEST good node in a branch writes', async () => {
@@ -373,7 +367,7 @@ describe('writeSalvageMovements - what writes and what does not', () => {
     )
 
     expect(result.skippedZeroQuantity).toBe(1)
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('skips a row that already carries a movement - the ledger is append-only', async () => {
@@ -393,7 +387,7 @@ describe('writeSalvageMovements - what writes and what does not', () => {
 })
 
 describe('writeSalvageMovements - what is on the movement', () => {
-  it('never sets adjustSubparts and never sets any link, fulfillmentLine least of all', async () => {
+  it('never sets adjustSubparts, and links only its return part line', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
@@ -402,7 +396,7 @@ describe('writeSalvageMovements - what is on the movement', () => {
     // 🛑 Not `false` - ABSENT. The contract types it `?: true`, and a flagged
     // row would explode into every leaf subpart AND vanish from the on-hand SUM.
     expect(input).not.toHaveProperty('adjustSubparts')
-    expect(input).not.toHaveProperty('links')
+    expect(input?.links).toEqual({ returnPartLineId: 'r_mast' })
   })
 
   it('is a return_in of a POSITIVE quantity at standard x percent, stamped with the role', async () => {
@@ -421,9 +415,10 @@ describe('writeSalvageMovements - what is on the movement', () => {
       quantity: 2,
       unitCost: 18_000,
       costBasis: 'standard',
-      glAccount: 'inventory_raw_materials',
+      glRole: 'inventory_raw_materials',
       occurredAt: new Date('2026-10-02T00:00:00.000Z'),
       reason: 'RMA-0007 salvage',
+      links: { returnPartLineId: 'r_mast' },
     })
   })
 
@@ -442,10 +437,7 @@ describe('writeSalvageMovements - what is on the movement', () => {
     expect(h.bulkUpdate).toHaveBeenCalledWith([
       {
         recordId: 'def_return_part_line:r_mast',
-        values: {
-          return_part_line_unit_cost: 899.4,
-          return_part_line_movement: 'def_movement:mv_0',
-        },
+        values: { return_part_line_unit_cost: 899.4 },
       },
     ])
   })
@@ -471,7 +463,7 @@ describe('writeSalvageMovements - the refusals', () => {
     const error = result._unsafeUnwrapErr() as { reason?: string; message: string }
     expect(error.reason).toBe('missing_standard_cost')
     expect(error.message).toContain('Mast assembly')
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('salvages a part whose standard cost is $0 at $0 (103 §5a)', async () => {
@@ -500,7 +492,7 @@ describe('writeSalvageMovements - the refusals', () => {
     expect((result._unsafeUnwrapErr() as { reason?: string }).reason).toBe(
       'quantity_exceeds_allowance'
     )
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('refuses a salvage percentage above 100 - salvage is never worth more than new', async () => {
@@ -512,7 +504,7 @@ describe('writeSalvageMovements - the refusals', () => {
     expect((result._unsafeUnwrapErr() as { reason?: string }).reason).toBe(
       'salvage_percent_out_of_range'
     )
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
   })
 
   it('refuses a salvage percentage of zero - a worthless part is scrap, which writes nothing', async () => {
@@ -538,13 +530,13 @@ describe('writeSalvageMovements - the refusals', () => {
     expect(result.isErr()).toBe(true)
     // The whole write is inside one transaction, so the caller's rollback is
     // what undoes the movement. Nothing post-commit may have run.
-    expect(h.batchRecalculateQoH).not.toHaveBeenCalled()
+    expect(h.settleStockMovements).not.toHaveBeenCalled()
     expect(h.publishRecordsChanged).not.toHaveBeenCalled()
   })
 })
 
 describe('writeSalvageMovements - the quiet lane and its obligations', () => {
-  it('writes the movements and the freeze through one declared quiet session', async () => {
+  it('writes the freeze through one declared quiet session', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
@@ -552,14 +544,9 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
     expect(h.handlers).toHaveLength(1)
     const session = h.handlers[0]?.options?.session as { mode?: { kind?: string } }
     expect(session.mode?.kind).toBe('quiet')
-
-    const [ctx] = h.writeStockMovementsBatch.mock.calls[0]!
-    expect(ctx.lane.kind).toBe('quiet')
-    expect(ctx.lane.session).toBe(session)
-    expect(ctx.handler).toBeUndefined()
   })
 
-  it('discharges ONE post-commit recalc, over the affectedPartIds the writer returned', async () => {
+  it('settles ONCE after commit, over what the writer touched', async () => {
     withRows([
       row('r_mast', 'part_mast', { status: 'good' }),
       row('r_pump', 'part_pump', { status: 'good' }),
@@ -569,37 +556,44 @@ describe('writeSalvageMovements - the quiet lane and its obligations', () => {
       await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
     )
 
-    expect(h.batchRecalculateQoH).toHaveBeenCalledTimes(1)
-    expect(h.batchRecalculateQoH).toHaveBeenCalledWith(ORG, ['part_mast', 'part_pump'])
+    expect(h.settleStockMovements).toHaveBeenCalledTimes(1)
+    expect(h.settleStockMovements).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ partIds: ['part_mast', 'part_pump'] })
+    )
     expect(result.affectedPartIds).toEqual(['part_mast', 'part_pump'])
   })
 
-  it('self-announces the movement rows, the return part line rows and the parts', async () => {
+  it('self-announces the return part line rows; settle announces the parts', async () => {
     withRows([row('r_mast', 'part_mast', { status: 'good' })])
 
     await writeSalvageMovements(stubDb(), ORG, USER, { returnLineId: 'rl_1' })
 
     const defs = h.publishRecordsChanged.mock.calls.map((call) => call[2].entityDefinitionId)
-    expect(defs).toEqual(['def_movement', 'def_return_part_line', 'def_part'])
+    expect(defs).toEqual(['def_return_part_line'])
   })
 })
 
 describe('writeSalvageMovements - the entry each run posts', () => {
   it('gives two lines of one return two entries with distinct document numbers', async () => {
     let minted = 0
-    h.writeStockMovementsBatch.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
+    h.writeStockMovements.mockImplementation(async (_ctx: unknown, inputs: unknown[]) =>
       ok({
         records: (inputs as Array<{ partInstanceId: string }>).map((input) => ({
-          movementId: `mv_${minted++}`,
-          recordId: `def_movement:mv_${minted}`,
+          id: `mv_${minted++}`,
           partInstanceId: input.partInstanceId,
           quantity: 1,
           unitCost: 30_000,
           extendedCost: 30_000,
-          glAccount: 'inventory_raw_materials',
+          glRole: 'inventory_raw_materials',
           occurredAt: new Date(),
         })),
-        affectedPartIds: ['part_mast'],
+        touched: {
+          partIds: ['part_mast'],
+          purchaseOrderLineIds: [],
+          fulfillmentLineIds: [],
+          buildIds: [],
+        },
       })
     )
 
@@ -629,7 +623,7 @@ describe('writeSalvageMovements - the entry each run posts', () => {
 describe('reverseSalvageMovement', () => {
   it('reverses the frozen movement and touches nothing else', async () => {
     h.partLine = row('r_mast', 'part_mast', { status: 'good', movementId: 'mv_old' })
-    h.reverseMovement.mockResolvedValue(ok({ movementId: 'mv_rev' }))
+    h.reverseMovement.mockResolvedValue(ok({ id: 'mv_rev' }))
 
     const result = await reverseSalvageMovement(stubDb(), ORG, USER, { partLineId: 'r_mast' })
 
@@ -645,7 +639,7 @@ describe('reverseSalvageMovement', () => {
       movementId: 'mv_old',
       reason: 'Salvage decision corrected',
     })
-    expect(h.writeStockMovementsBatch).not.toHaveBeenCalled()
+    expect(h.writeStockMovements).not.toHaveBeenCalled()
     expect(h.bulkUpdate).not.toHaveBeenCalled()
   })
 

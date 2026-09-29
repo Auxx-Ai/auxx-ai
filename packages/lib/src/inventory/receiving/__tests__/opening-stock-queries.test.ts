@@ -124,18 +124,13 @@ const ALL_ATTRS = [
   'part_standard_cost',
   'part_product',
   'subpart_child_part',
-  'stock_movement_part',
-  'stock_movement_type',
 ]
 
 beforeEach(() => {
   vi.clearAllMocks()
   h.queries = 0
   h.materialised = new Set(ALL_ATTRS)
-  h.defs = new Map([
-    ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
-  ])
+  h.defs = new Map([['part', 'def_part']])
   h.partRows = [part('part_1', 'Widget 9000'), part('part_2', null)]
   h.partValueRows = [
     value('part_1', 'fld_part_sku', { valueText: 'W-9000' }),

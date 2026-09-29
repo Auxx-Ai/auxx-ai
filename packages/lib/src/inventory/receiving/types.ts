@@ -233,22 +233,18 @@ export interface ReceivePurchaseOrderInput {
 /** One `receive` movement as the read path returns it. */
 export interface ReceiptRow {
   movementId: string
-  recordId: string
-  partInstanceId: string | null
+  partInstanceId: string
   quantity: number
-  /** `null` for a pre-phase-1 movement, which is non-postable and stays that way. */
+  /** `null` while pending. */
   unitCost: number | null
   extendedCost: number | null
   vendorUnitPrice: number | null
   vendorPartId: string | null
-  glAccount: string | null
+  /** The frozen inventory role. */
+  glRole: string | null
   purchaseOrderLineId: string | null
   reference: string | null
-  /**
-   * The accounting date, falling back to `createdAt` when the movement predates
-   * `occurredAt` existing. The fallback is a READ-time convenience only — build
-   * plan section 2.5 is explicit that historic rows are never backfilled.
-   */
+  /** The accounting date, `effectiveAt`. */
   occurredAt: Date
   createdAt: Date
 }
@@ -311,7 +307,7 @@ export interface OpeningStockCandidate {
    */
   standardCost: number | null
   /**
-   * The part has at least one `stock_movement`, archived ones included, so
+   * The part has at least one stock movement, so
    * `bulkOpenStockBalance` will EXCLUDE it. Opening is once.
    */
   hasMovements: boolean
@@ -408,10 +404,8 @@ export interface OpenedOpeningStockRow {
   partId: string
   /** `initial` for a first count, `adjust` for a further one (111 D21). */
   outcome: Exclude<SetCountOutcome, 'unchanged'>
-  /** `EntityInstance.id` of the created `stock_movement`. */
+  /** The created `StockMovement.id`. */
   movementId: string
-  /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
-  recordId: string
   /** The row's SIGNED quantity: the counted quantity less what the ledger already read on the count day. */
   quantity: number
   /** This part's count day, `YYYY-MM-DD` in the book time zone. */
@@ -420,11 +414,8 @@ export interface OpenedOpeningStockRow {
   unitCost: number | null
   /** `round(unitCost x quantity)`, exactly as stored; `null` on a pending row. */
   extendedCost: number | null
-  /**
-   * The inventory account ROLE ('inventory_raw_materials'), never an account
-   * code and never a provider id (decision `G8`).
-   */
-  glAccount: string
+  /** The inventory account ROLE ('inventory_raw_materials'), never a code (decision `G8`). */
+  glRole: string
   /** The part had no standard: the row carries no cost until the pricer fills it (111 Q18). */
   pending: boolean
   /** What the typed unit cost did to the standard; `null` when none was typed or it matched. */
@@ -451,5 +442,5 @@ export interface BulkOpeningStockSummary {
    * The sum of every opening balance IS the opening inventory on the balance
    * sheet, and nobody can check the run without the per-account split.
    */
-  totalsByGlAccount: Array<{ glAccount: string; partCount: number; extendedCost: number }>
+  totalsByGlRole: Array<{ glRole: string; partCount: number; extendedCost: number }>
 }

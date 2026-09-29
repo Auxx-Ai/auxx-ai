@@ -22,11 +22,9 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
-import { UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { systemFieldMap } from '../../resources/system-records'
 import { guard } from './guard'
 import type { FulfillmentLineRelievedAverage, PartLedgerAverage } from './types'
 
@@ -59,30 +57,9 @@ export interface ReadPartLedgerAveragesParams {
 }
 
 /**
- * The signed sum of `stock_movement_extended_cost` and `stock_movement_quantity`
- * per part, over every movement EXCEPT one flagged `stock_movement_adjust_subparts`
- * - the same exclusion `batchRecalculateQoH` applies (`bom/qoh.ts`, its grouped
- * SUM), because those rows exist to be exploded into child movements and are
- * not the part's own consumption.
- *
- * 🛑 §3.4 is why this predicate is copied verbatim from `bom/qoh.ts` rather
- * than approximated: the numerator (value) and denominator (quantity) MUST be
- * computed from the identical row set QoH itself uses, in one statement under
- * one predicate, or a part with an exploded movement in its history gets a
- * wrong average. `part_quantity_on_hand` is deliberately NOT read as the
- * denominator - it is a cached re-SUM written after commit by a different
- * lane, one recalc behind during a batch (§3.4).
- *
- * ⚠️ A part whose `part_kind` changed has mixed accounts in its history; the
- * average is over the whole part regardless (§3.4). Accepted - the
- * alternative is lot costing by another name.
- *
- * Batched: one query for the whole `partInstanceIds` set (chunked only if the
- * set is large enough to risk Postgres' parameter ceiling - see
- * {@link MAX_IDS_PER_QUERY}). Empty input returns an empty Map without
- * touching the database. A part with no movements at all (never received,
- * never built) is ABSENT from the Map, not a zero row - the caller decides
- * what absence means (§3.6: fall back to `part_standard_cost` and warn).
+ * Signed `Σ extendedCostMinor` and `Σ quantity` per part over the rows QoH sums (`adjustSubparts`
+ * excluded), in one statement so value and quantity share a row set (§3.4). A part with no
+ * movements is absent from the Map.
  */
 export async function readPartLedgerAverages(
   db: Database,
@@ -95,74 +72,24 @@ export async function readPartLedgerAverages(
       const result = new Map<string, PartLedgerAverage>()
       if (uniqueIds.length === 0) return result
 
-      const fields = await systemFieldMap(db, organizationId, [
-        'stock_movement_part',
-        'stock_movement_quantity',
-        'stock_movement_extended_cost',
-        'stock_movement_adjust_subparts',
-      ] as const)
-
-      const partField = fields.stock_movement_part
-      const quantityField = fields.stock_movement_quantity
-      const extendedCostField = fields.stock_movement_extended_cost
-      // `adjust_subparts` is treated the same way `bom/qoh.ts` treats it: not
-      // required to run the query. An org without the field provisioned has
-      // no movement that could carry it flagged `true`, so the exclusion
-      // predicate below degenerates to "flag join matches nothing" and every
-      // movement counts - which is correct, not a silent gap.
-      const flagFieldId = fields.stock_movement_adjust_subparts?.id ?? ''
-
-      if (!partField || !quantityField || !extendedCostField) {
-        throw new UnprocessableEntityError(
-          'This organization has no stock_movement part/quantity/extended-cost fields provisioned'
-        )
-      }
-
+      const t = schema.StockMovement
       for (const idChunk of chunk(uniqueIds, MAX_IDS_PER_QUERY)) {
-        const idList = sql.join(
-          idChunk.map((id) => sql`${id}`),
-          sql`, `
-        )
-
-        // Base row = the movement's `fv_part` relationship, restricted to this
-        // chunk's ids; `fv_cost` is the same movement's `extended_cost`
-        // FieldValue, joined so both sums come from ONE grouped statement - a LEFT JOIN, so a `pending`
-        // row with no cost yet (111 Q18) still counts in the quantity the
-        // negative-QoH prediction reads; `fv_flag` is a LEFT JOIN so a
-        // movement with no `adjust_subparts` row at all still counts (NULL
-        // reads as not-flagged) - exactly `bom/qoh.ts`'s shape and its exact
-        // `(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
-        // predicate.
+        // A `pending` row (111 Q18) has no cost yet but still counts in the quantity.
         const rows = await db
           .select({
-            partId: sql<string>`fv_part."relatedEntityId"`,
-            quantity: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-            valueMinor: sql<string>`COALESCE(SUM(fv_cost."valueNumber"), 0)`,
+            partId: t.partId,
+            quantity: sql<string>`COALESCE(SUM(${t.quantity}), 0)`,
+            valueMinor: sql<string>`COALESCE(SUM(${t.extendedCostMinor}), 0)`,
           })
-          // entityId-only joins; see dated-reads.ts aggregatePerPart.
-          .from(sql`"FieldValue" fv_part`)
-          .innerJoin(
-            schema.FieldValue,
-            sql`${schema.FieldValue.entityId} = fv_part."entityId"
-              AND ${schema.FieldValue.fieldId} = ${quantityField.id}`
-          )
-          .leftJoin(
-            sql`"FieldValue" fv_cost`,
-            sql`fv_cost."entityId" = fv_part."entityId"
-              AND fv_cost."fieldId" = ${extendedCostField.id}`
-          )
-          .leftJoin(
-            sql`"FieldValue" fv_flag`,
-            sql`fv_flag."entityId" = fv_part."entityId"
-              AND fv_flag."fieldId" = ${flagFieldId}`
-          )
+          .from(t)
           .where(
-            sql`fv_part."organizationId" = ${organizationId}
-              AND fv_part."fieldId" = ${partField.id}
-              AND fv_part."relatedEntityId" IN (${idList})
-              AND (fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
+            and(
+              eq(t.organizationId, organizationId),
+              inArray(t.partId, idChunk),
+              eq(t.adjustSubparts, false)
+            )
           )
-          .groupBy(sql`fv_part."relatedEntityId"`)
+          .groupBy(t.partId)
 
         for (const row of rows) {
           const quantity = signedNumber(row.quantity)
@@ -189,32 +116,9 @@ export interface ReadFulfillmentLineRelievedAveragesParams {
 }
 
 /**
- * What each fulfillment line has already been relieved at: `Σ extended_cost /
- * Σ quantity` over that line's own `sale`-typed movements (§3.5).
- *
- * 🛑 Scoped to `stock_movement_type = 'sale'` as an INNER JOIN, matching
- * `field-hooks/post/fulfillment-line-rollups.ts`'s `readTotalsByLine`
- * predicate exactly (same `fv_line` join shape, same `fv_type` join scoping
- * to {@link StockMovementType.SALE}). `receiving/reverse-movement.ts` maps a
- * reversed `sale` to `return_in` - the same label brief 54's customer returns
- * will use - and a `return_in` row must never read as un-relief or a customer
- * return would silently re-relieve the same units on the next sync. Scoping
- * this at the SQL join, never as a post-filter, is what keeps this read and
- * the quantity roll-up from ever disagreeing about which rows count.
- *
- * ⚠️ A `sale` movement's `stock_movement_quantity` AND `stock_movement_extended_cost`
- * are both NEGATIVE (units and value leaving the shelf). Both outputs here
- * are POSITIVE, so both sums are negated - and each negation is guarded
- * against `-0` (a net-zero SUM negates to `-0` in JS, which is deep-unequal
- * to `0`), the exact bug `fulfillment-line-rollups.ts` documents and fixes
- * the same way.
- *
- * Batched: one query for the whole `fulfillmentLineIds` set (chunked only for
- * very large sets - see {@link MAX_IDS_PER_QUERY}). Empty input returns an
- * empty Map without touching the database. A line with no `sale` movements at
- * all is ABSENT from the Map, not a zero row - the caller decides what
- * absence means. A line whose sales net to exactly zero (fully un-relieved)
- * IS present, with `relievedQuantity: 0` and `unitCostMinor: null`.
+ * What each fulfillment line has already been relieved at: `Σ extended cost / Σ quantity` over
+ * its priced `sale` movements (§3.5), negated to positive. A reversed sale is `return_in` and never
+ * counts, matching `fulfillment-line-rollups.ts`. A line with no sale rows is absent.
  */
 export async function readFulfillmentLineRelievedAverages(
   db: Database,
@@ -227,78 +131,26 @@ export async function readFulfillmentLineRelievedAverages(
       const result = new Map<string, FulfillmentLineRelievedAverage>()
       if (uniqueIds.length === 0) return result
 
-      const fields = await systemFieldMap(db, organizationId, [
-        'stock_movement_fulfillment_line',
-        'stock_movement_type',
-        'stock_movement_quantity',
-        'stock_movement_extended_cost',
-        'stock_movement_cost_basis',
-      ] as const)
-
-      const lineRelField = fields.stock_movement_fulfillment_line
-      const typeField = fields.stock_movement_type
-      const quantityField = fields.stock_movement_quantity
-      const extendedCostField = fields.stock_movement_extended_cost
-      // Optional like the flag in `readPartLedgerAverages`: an org without the
-      // basis field has no pending row, so the exclusion below matches nothing.
-      const basisFieldId = fields.stock_movement_cost_basis?.id ?? ''
-
-      if (!lineRelField || !typeField || !quantityField || !extendedCostField) {
-        throw new UnprocessableEntityError(
-          'This organization has no stock_movement fulfillment-line/type/quantity/extended-cost fields provisioned'
-        )
-      }
-
+      const t = schema.StockMovement
       for (const idChunk of chunk(uniqueIds, MAX_IDS_PER_QUERY)) {
-        const idList = sql.join(
-          idChunk.map((id) => sql`${id}`),
-          sql`, `
-        )
-
-        // Base row = the movement's `fv_line` relationship, restricted to this
-        // chunk's fulfillment lines; `fv_type` is the INNER JOIN that
-        // excludes every non-`sale` row (a `return_in` reversal included) at
-        // the join itself; `fv_cost` is the same movement's `extended_cost`,
-        // joined so both sums come from one grouped statement, mirroring
-        // `fulfillment-line-rollups.ts`'s `readTotalsByLine` plus the added
-        // cost sum. A `pending` row (111 Q18) is excluded on its basis: it has
-        // no cost to average, and its quantity must not dilute the priced rows'.
+        // A `pending` row (111 Q18) has no cost to average, so its quantity must not dilute the priced rows'.
         const rows = await db
           .select({
-            lineId: sql<string>`fv_line."relatedEntityId"`,
-            quantity: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-            valueMinor: sql<string>`COALESCE(SUM(fv_cost."valueNumber"), 0)`,
+            lineId: sql<string>`${t.fulfillmentLineId}`,
+            quantity: sql<string>`COALESCE(SUM(${t.quantity}), 0)`,
+            valueMinor: sql<string>`COALESCE(SUM(${t.extendedCostMinor}), 0)`,
           })
-          // entityId-only joins; see dated-reads.ts aggregatePerPart.
-          .from(sql`"FieldValue" fv_line`)
-          .innerJoin(
-            schema.FieldValue,
-            sql`${schema.FieldValue.entityId} = fv_line."entityId"
-              AND ${schema.FieldValue.fieldId} = ${quantityField.id}`
-          )
-          .innerJoin(
-            sql`"FieldValue" fv_type`,
-            sql`fv_type."entityId" = fv_line."entityId"
-              AND fv_type."fieldId" = ${typeField.id}
-              AND fv_type."optionId" = ${StockMovementType.SALE}`
-          )
-          .innerJoin(
-            sql`"FieldValue" fv_cost`,
-            sql`fv_cost."entityId" = fv_line."entityId"
-              AND fv_cost."fieldId" = ${extendedCostField.id}`
-          )
-          .leftJoin(
-            sql`"FieldValue" fv_basis`,
-            sql`fv_basis."entityId" = fv_line."entityId"
-              AND fv_basis."fieldId" = ${basisFieldId}`
-          )
+          .from(t)
           .where(
-            sql`fv_line."organizationId" = ${organizationId}
-              AND fv_line."fieldId" = ${lineRelField.id}
-              AND fv_line."relatedEntityId" IN (${idList})
-              AND (fv_basis."optionId" IS NULL OR fv_basis."optionId" <> ${StockMovementCostBasis.PENDING})`
+            and(
+              eq(t.organizationId, organizationId),
+              inArray(t.fulfillmentLineId, idChunk),
+              eq(t.type, StockMovementType.SALE),
+              isNotNull(t.extendedCostMinor),
+              or(isNull(t.costBasis), ne(t.costBasis, StockMovementCostBasis.PENDING))
+            )
           )
-          .groupBy(sql`fv_line."relatedEntityId"`)
+          .groupBy(t.fulfillmentLineId)
 
         for (const row of rows) {
           const relievedQuantity = -signedNumber(row.quantity) || 0

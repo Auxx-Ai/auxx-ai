@@ -10,7 +10,6 @@ import { getEntityPreCreateHooks, hasFieldPreHooks } from '../../../field-hooks/
 import { DISPLAY_FIELD_CONFIG, SYSTEM_ENTITIES } from '../../../seed/entity-seeder/constants'
 import { getCommonHooks, getSystemHooks } from '../../hooks'
 import { BUILD_FIELDS } from '../../registry/resources/build-fields'
-import { STOCK_MOVEMENT_FIELDS } from '../../registry/resources/stock-movement-fields'
 import type { Resource } from '../../registry/types'
 import { BATCH_CREATE_AUDITS, planBatchCreate } from '../batch-create-audit'
 import { batchCreateLane } from '../create-entities-batch'
@@ -18,7 +17,6 @@ import { interactiveSession, quietSession, seedSession, type WriteSession } from
 
 /** The registry fields of every audited def; an audit entry without one fails below. */
 const REGISTRY_FIELDS: Record<string, object> = {
-  stock_movement: STOCK_MOVEMENT_FIELDS,
   build: BUILD_FIELDS,
 }
 

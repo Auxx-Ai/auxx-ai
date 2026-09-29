@@ -12,7 +12,7 @@ import { ENTITY_BASE_AREAS, ENTITY_WRITE_KEYS } from '../seat-policy'
 /**
  * Task 12 §4.1: `journal_entry`, `gl_account`, `bank_account`, `bank_transaction`,
  * `bank_deposit`, `bank_rule` and `payout` route through `Area.ledger` instead of
- * `Area.records`, and `stock_movement` deliberately stays out of both maps. These
+ * `Area.records`. These
  * tests pin `effectiveRecordLevel`'s behavior for a def with (and without) a base
  * override, and that the two maps stay aligned.
  */
@@ -71,22 +71,6 @@ describe('journal_entry resolves through Area.ledger, not Area.records', () => {
       'journal_entry'
     )
     expect(effectiveRecordLevel(caps, 'je-def')).toBe('edit')
-  })
-})
-
-describe('stock_movement stays on Area.records (deliberate §4.1 exclusion)', () => {
-  it('is absent from both ENTITY_BASE_AREAS and ENTITY_WRITE_KEYS', () => {
-    expect(ENTITY_BASE_AREAS.stock_movement).toBeUndefined()
-    expect(ENTITY_WRITE_KEYS.stock_movement).toBeUndefined()
-  })
-
-  it('still resolves through the Records area, unaffected by ledger', () => {
-    const caps = buildCaps(
-      { [Area.records]: Level.Edit, [Area.ledger]: Level.None },
-      'sm-def',
-      'stock_movement'
-    )
-    expect(effectiveRecordLevel(caps, 'sm-def')).toBe('edit')
   })
 })
 

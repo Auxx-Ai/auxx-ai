@@ -8,8 +8,6 @@ import type { RecordId } from '@auxx/types/resource'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  explodeBomMovement: vi.fn(async () => {}),
-  recalculatePartQoH: vi.fn(async () => {}),
   enrichCompanyOnCreate: vi.fn(async () => {}),
   recalculatePartCostForEntityBatch: vi.fn(async () => {}),
   derivePartKindForSubpartBatch: vi.fn(async () => {}),
@@ -17,8 +15,6 @@ const h = vi.hoisted(() => ({
   onCacheEvent: vi.fn(async () => {}),
 }))
 
-vi.mock('../post/bom-movement-triggers', () => ({ explodeBomMovement: h.explodeBomMovement }))
-vi.mock('../post/inventory-triggers', () => ({ recalculatePartQoH: h.recalculatePartQoH }))
 vi.mock('../post/company-triggers', () => ({
   enrichCompanyOnCreate: h.enrichCompanyOnCreate,
   enqueueCompanyEnrichmentForRecords: h.enqueueCompanyEnrichmentForRecords,
@@ -60,8 +56,6 @@ describe('registerEntitySystemRules — declarations', () => {
         'vendor-parts:deleted',
         'subparts:created',
         'subparts:deleted',
-        'stock-movements:created',
-        'stock-movements:deleted',
         'companies:created',
         // The tariff schedule (29 §7): a rate row appearing or disappearing
         // reprices every offer behind its code.
@@ -71,25 +65,6 @@ describe('registerEntitySystemRules — declarations', () => {
     )
     // No lifecycle rule declares a fieldRef.
     expect(getSystemRuleDeclarations().every((d) => !d.fieldRef)).toBe(true)
-  })
-
-  it('keeps explode BEFORE qoh on stock-movement create', () => {
-    const smCreated = getSystemRuleDeclarations().find(
-      (d) => d.defSlug === 'stock-movements' && d.on === 'created'
-    )!
-    const handlers = smCreated.actions.map((a) => (a as { handler?: string }).handler)
-    // The PO-line and fulfillment-line roll-ups ride the same door but are
-    // order-independent - they re-SUM committed rows and neither reads nor
-    // writes what explode/qoh touch.
-    expect(handlers).toEqual([
-      'explodeBomMovement',
-      'recalculatePartQoH',
-      'recalculatePurchaseOrderLineReceived',
-      'recalculateFulfillmentLineRelieved',
-    ])
-    expect(handlers.indexOf('explodeBomMovement')).toBeLessThan(
-      handlers.indexOf('recalculatePartQoH')
-    )
   })
 
   // `derivePartKind` promotes the parent first so the recalc reads the promoted kind (23 §4.1).
@@ -163,22 +138,22 @@ describe('native handlers — fan-out + batch adaptation', () => {
   })
 
   it('a record with no threaded values fans out with empty values', async () => {
-    const handler = getNativeRuleHandler('recalculatePartQoH')!
+    const handler = getNativeRuleHandler('enrichCompanyOnCreate')!
     await handler({
-      recordIds: [RID('smDef:s1')],
+      recordIds: [RID('companyDef:c1')],
       organizationId: 'org_1',
-      action: 'deleted',
+      action: 'created',
     })
-    expect(h.recalculatePartQoH).toHaveBeenCalledTimes(1)
-    expect(h.recalculatePartQoH).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'deleted', entityInstanceId: 's1', values: {} })
+    expect(h.enrichCompanyOnCreate).toHaveBeenCalledTimes(1)
+    expect(h.enrichCompanyOnCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'created', entityInstanceId: 'c1', values: {} })
     )
   })
 
   it('ignores a firing with no lifecycle action (field-change firing)', async () => {
-    const handler = getNativeRuleHandler('explodeBomMovement')!
-    await handler({ recordIds: [RID('smDef:s1')], organizationId: 'org_1' })
-    expect(h.explodeBomMovement).not.toHaveBeenCalled()
+    const handler = getNativeRuleHandler('enrichCompanyOnCreate')!
+    await handler({ recordIds: [RID('companyDef:c1')], organizationId: 'org_1' })
+    expect(h.enrichCompanyOnCreate).not.toHaveBeenCalled()
   })
 
   it('cost recalc BATCHES the whole firing (one call, records mapped from recordIds+values)', async () => {

@@ -13,12 +13,7 @@ import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { StockMovementType } from '../../resources/registry/enum-values'
 import type { RecordId } from '../../resources/resource-id'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
-import {
-  getBuild,
-  readBuildMovements,
-  requireBuildContext,
-  requireBuildMovementContext,
-} from './build-queries'
+import { getBuild, readBuildMovements, requireBuildContext } from './build-queries'
 import { summarizeBuildCompletion } from './client'
 import { publishBuildUpdate } from './complete-build'
 import { buildWriteSession } from './write-lane'
@@ -41,11 +36,8 @@ export async function finishPricedBuild(
   organizationId: string,
   buildId: string
 ): Promise<FinishPricedBuildResult> {
-  const [ctx, movementCtx] = await Promise.all([
-    requireBuildContext(organizationId),
-    requireBuildMovementContext(organizationId),
-  ])
-  const legs = await readBuildMovements(db, organizationId, movementCtx, buildId)
+  const ctx = await requireBuildContext(organizationId)
+  const legs = await readBuildMovements(db, organizationId, buildId)
   if (legs.length === 0 || legs.some((leg) => leg.extendedCost == null)) {
     return { finished: false, post: null }
   }
@@ -109,12 +101,12 @@ export async function finishPricedBuild(
     db,
     organizationId,
     legs.map((leg) => ({
-      movementId: leg.movementId,
+      id: leg.movementId,
       partInstanceId: leg.partId,
       type: leg.type,
       quantity: leg.quantity,
       extendedCost: leg.extendedCost as number,
-      glAccount: leg.glAccount,
+      glRole: leg.glRole,
       occurredAt: record.completedAt ?? new Date(),
       buildId,
     })),

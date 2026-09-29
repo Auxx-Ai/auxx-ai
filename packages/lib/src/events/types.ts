@@ -73,8 +73,6 @@ export type Events =
   | 'entity:field:updated'
   | 'signal:recorded'
   | 'ticket:field:updated'
-  | 'stock_movement:created'
-  | 'stock_movement:deleted'
   | 'vendor_part:created'
   | 'vendor_part:deleted'
   | 'subpart:created'
@@ -874,30 +872,6 @@ export type EntityInstanceDeletedEvent = AuxxEventGeneric<
   }
 >
 
-// Stock Movement Events
-export type StockMovementCreatedEvent = AuxxEventGeneric<
-  'stock_movement:created',
-  {
-    recordId: RecordId
-    entityDefinitionId: string
-    entitySlug: string
-    organizationId: string
-    userId: string
-    eventData: Record<string, unknown>
-  }
->
-export type StockMovementDeletedEvent = AuxxEventGeneric<
-  'stock_movement:deleted',
-  {
-    recordId: RecordId
-    entityDefinitionId: string
-    entitySlug: string
-    organizationId: string
-    userId: string
-    eventData: Record<string, unknown>
-  }
->
-
 // Vendor Part Events
 export type VendorPartCreatedEvent = AuxxEventGeneric<
   'vendor_part:created',
@@ -1168,8 +1142,6 @@ export type AuxxEvent =
   | EntityInstanceDeletedEvent
   | EntityInstanceFieldUpdatedEvent
   | SignalRecordedEvent
-  | StockMovementCreatedEvent
-  | StockMovementDeletedEvent
   | VendorPartCreatedEvent
   | VendorPartDeletedEvent
   | SubpartCreatedEvent
@@ -1291,8 +1263,6 @@ export interface IEventsHandlers {
   'entity:deleted': EventHandlerEntry<EntityInstanceDeletedEvent>
   'entity:field:updated': EventHandlerEntry<EntityInstanceFieldUpdatedEvent>
   'signal:recorded': EventHandlerEntry<SignalRecordedEvent>
-  'stock_movement:created': EventHandlerEntry<StockMovementCreatedEvent>
-  'stock_movement:deleted': EventHandlerEntry<StockMovementDeletedEvent>
   'vendor_part:created': EventHandlerEntry<VendorPartCreatedEvent>
   'vendor_part:deleted': EventHandlerEntry<VendorPartDeletedEvent>
   'subpart:created': EventHandlerEntry<SubpartCreatedEvent>

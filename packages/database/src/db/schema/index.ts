@@ -123,9 +123,8 @@ export * from './inbox-integration'
 export * from './insight-template'
 export * from './integration'
 export * from './integration-tag-label'
-// The stock_movement mirror for planning — plans/mrp/02-data-structures.md §3
+// The StockMovement mirror for planning — plans/mrp/02-data-structures.md §3
 export * from './inventory-movement-fact'
-// Inventory table dropped — inventory now tracked via entity system (stock_movement + field triggers)
 export * from './invoice'
 export * from './key-value-pair'
 export * from './knowledge-base'
@@ -201,6 +200,8 @@ export * from './sidebar-node'
 // Signature table was retired; its only writer was the stubbed SignatureService.
 export * from './snippet'
 export * from './snippet-folder'
+export type { CreateStockMovementInput, StockMovementEntity } from './stock-movement'
+export { StockMovement, stockMovementCostBasis, stockMovementType } from './stock-movement'
 export * from './storage-location'
 // Subpart table dropped — subparts now use EntityInstance + FieldValue
 export * from './suggestion-dismissal'

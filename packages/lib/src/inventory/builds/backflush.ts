@@ -11,7 +11,7 @@
  * slice is walked again build by build, so one refusal is one failed build.
  *
  * Never throws for one part or day — `executeBackfill`'s discipline. No permission checks;
- * the router asserts both halves (build and stock_movement), as for `completeBuild`.
+ * the router asserts edit on `build`, as for `completeBuild`.
  */
 
 import type { Database } from '@auxx/database'

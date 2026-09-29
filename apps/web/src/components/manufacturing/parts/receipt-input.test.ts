@@ -29,6 +29,7 @@ describe('receiptBreakdown', () => {
       freight: 120,
       tariff: 189,
       tariffRate: 4.3,
+      tariffSource: null,
       other: 0,
       landed: 4709,
     })

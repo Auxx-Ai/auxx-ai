@@ -8,7 +8,7 @@
 // The work-order Billing card's shape: a summary strip of figures, then one TreeRow
 // per line. It is the only surface anywhere that answers "what is still outstanding
 // on this order" — `purchase_order_line_quantity_received` is a post-commit re-SUM
-// over `stock_movement` (`purchasing-hooks.ts`), so it is already maintained; nothing
+// over `StockMovement` (`settleStockMovements`), so it is already maintained; nothing
 // had ever read it back.
 //
 // 🛑 The line set comes from `usePurchaseOrderLines`, the shared read the picker

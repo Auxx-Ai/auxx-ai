@@ -521,35 +521,7 @@ export const BUILD_FIELDS = defineResourceFields({
     description: 'When the build was posted to the general ledger',
   },
 
-  // ─── Relationship inverses and the reversal pair ───────────────────
-
-  movements: {
-    id: toFieldId('movements'),
-    key: 'movements',
-    label: 'Stock Movements',
-    type: BaseType.RELATION,
-    fieldType: FieldType.RELATIONSHIP,
-    isSystem: true,
-    systemAttribute: 'build_movements',
-    systemSortOrder: 'aI',
-    nullable: true,
-    showInPanel: false, // has_many; a card lists them
-    showInDialogs: false,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: false,
-      updatable: false,
-      configurable: false,
-    },
-    relationship: {
-      inverseResourceFieldId: 'stock_movement:build' as ResourceFieldId,
-      relationshipType: 'has_many',
-      onDelete: 'cascade',
-      isInverse: true,
-    },
-    description: 'Inventory movements created by this build',
-  },
+  // ─── The reversal pair ─────────────────────────────────────────────
 
   reversalOf: {
     id: toFieldId('reversalOf'),

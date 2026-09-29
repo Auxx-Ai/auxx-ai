@@ -146,7 +146,7 @@ export const ACCOUNT_ROLES = {
    * receipt can debit, when the part received is a finished good.
    *
    * ⚠️ Which of the two applies is NOT decided by a builder. It is the
-   * movement's own frozen `stock_movement_gl_account`, resolved from `partKind`
+   * movement's own frozen `StockMovement.glRole`, resolved from `partKind`
    * at write time and summed by role in `build-inventory-movement-entry.ts`.
    */
   INVENTORY_FINISHED_GOODS: 'inventory_finished_goods',
@@ -504,7 +504,7 @@ export const ROLES_WITHOUT_DEFAULT = ['bank'] as const
 /**
  * A human label per role, for the one place a role is ever shown to a person:
  * the build ledger card, which renders a movement's frozen
- * `stock_movement_gl_account`.
+ * `StockMovement.glRole`.
  *
  * Lives here rather than in the resource registry because the registry copy
  * (`GlAccountRole`) is gone - it existed only to supply a SINGLE_SELECT's

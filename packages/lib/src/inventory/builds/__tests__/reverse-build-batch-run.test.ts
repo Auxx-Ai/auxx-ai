@@ -21,7 +21,7 @@
 // correct; this pins it.
 //
 // Harness copied from `build-event.test.ts`: the org cache, the CRUD handler,
-// the quantity-on-hand batch and realtime are doubles, and a db stand-in routes
+// the movement seam and realtime are doubles, and a db stand-in routes
 // the reads by table identity, by whether the query joined or projected, and by
 // the literals its `WHERE` bound. `src/test/setup.ts` mocks `@auxx/database`
 // wholesale, so no assertion here can name a COLUMN — but with the columns gone
@@ -34,7 +34,6 @@ const ORG = 'org_1'
 const USER = 'user_1'
 const BUILD = 'bld_1'
 const PART_LIFT = 'part_lift'
-const PART_ASM = 'part_asm'
 const CREATED_AT = new Date('2026-08-01T00:00:00.000Z')
 const BATCH_RUN = 7
 
@@ -72,20 +71,11 @@ const FIELD_TYPES: Record<string, string> = {
   build_produced_value: 'NUMBER',
   build_variance_amount: 'NUMBER',
   build_batch_run: 'NUMBER',
-  stock_movement_build: 'RELATIONSHIP',
-  stock_movement_part: 'RELATIONSHIP',
-  stock_movement_type: 'SINGLE_SELECT',
-  stock_movement_cost_basis: 'SINGLE_SELECT',
-  stock_movement_quantity: 'NUMBER',
-  stock_movement_unit_cost: 'NUMBER',
-  stock_movement_extended_cost: 'NUMBER',
-  stock_movement_qty_per_unit: 'NUMBER',
   part_kind: 'SINGLE_SELECT',
 }
 
 const h = vi.hoisted(() => ({
   instanceRows: [] as { id: string; createdAt: Date; displayName: string | null }[],
-  movementInstances: [] as { id: string }[],
   valueRows: [] as ValueRow[],
   reversalRows: [] as { id: string }[],
   materialised: new Set<string>(),
@@ -116,9 +106,47 @@ vi.mock('../../../cache', () => ({
   }),
 }))
 
-vi.mock('../../costing/qoh', () => ({
-  batchRecalculateQoH: vi.fn(async () => {}),
-  recalculatePartQoH: vi.fn(async () => {}),
+vi.mock('../../movements/write-movements', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../movements/write-movements')>()
+  const { ok } = await import('neverthrow')
+  return {
+    ...actual,
+    writeStockMovements: vi.fn(async (_ctx: unknown, inputs: Array<{ partInstanceId: string }>) =>
+      ok({
+        records: inputs.map((input, i) => ({ id: `mv_new_${i}`, ...input })),
+        touched: { partIds: [], purchaseOrderLineIds: [], fulfillmentLineIds: [], buildIds: [] },
+      })
+    ),
+    settleStockMovements: vi.fn(async () => {}),
+  }
+})
+
+/** The two movements the completion wrote, with their frozen costs. */
+vi.mock('../../movements/reads', () => ({
+  readMovementsByBuilds: vi.fn(async () => [
+    {
+      id: 'mv_1',
+      partId: 'part_asm',
+      type: 'build_consume',
+      quantity: -20,
+      unitCostMinor: 3661,
+      extendedCostMinor: -73220,
+      glRole: null,
+      qtyPerUnit: null,
+      costBasis: 'standard',
+    },
+    {
+      id: 'mv_2',
+      partId: 'part_lift',
+      type: 'build_produce',
+      quantity: 10,
+      unitCostMinor: 8022,
+      extendedCostMinor: 80220,
+      glRole: null,
+      qtyPerUnit: null,
+      costBasis: 'standard',
+    },
+  ]),
 }))
 
 vi.mock('../../../realtime', () => ({
@@ -131,7 +159,7 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     async create(defId: string, values: Record<string, unknown>) {
       h.nextId += 1
-      const id = defId === h.defs.get('build') ? `bld_new_${h.nextId}` : `mv_new_${h.nextId}`
+      const id = `bld_new_${h.nextId}`
       h.created.push({ defId, id, values })
       return { instance: { id }, recordId: `${defId}:${id}`, values }
     }
@@ -189,24 +217,13 @@ function makeChain(columns: unknown) {
     // `findSystemRecordIdsByValue` is the only read projecting a `key` beside
     // the instance id - the reader's child-by-parent lookup.
     if (keyed) {
-      if (bound.includes('fld_stock_movement_build')) {
-        return h.movementInstances.map((row) => ({ entityId: row.id, key: 'k' }))
-      }
       if (bound.includes('fld_build_reversal_of')) {
         return h.reversalRows.map((row) => ({ entityId: row.id, key: 'k' }))
       }
       return []
     }
-    if (state.table === schema.EntityInstance) {
-      if (state.joined) return h.movementInstances
-      const movementDefId = h.defs.get('stock_movement')
-      if (movementDefId && bound.includes(movementDefId)) return h.movementInstances
-      return h.instanceRows
-    }
+    if (state.table === schema.EntityInstance) return h.instanceRows
     if (state.joined) return h.reversalRows
-    if (columns && bound.includes('fld_stock_movement_build')) {
-      return h.movementInstances.map((row) => ({ entityId: row.id }))
-    }
     if (columns && bound.includes('fld_build_reversal_of')) {
       return h.reversalRows.map((row) => ({ entityId: row.id }))
     }
@@ -268,18 +285,6 @@ const BUILD_ATTRS = [
   'build_batch_run',
 ]
 
-const MOVEMENT_ATTRS = [
-  'stock_movement_build',
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_qty_per_unit',
-  'stock_movement_cost_basis',
-]
-
 function value(entityId: string, attr: string, over: Partial<ValueRow>): ValueRow {
   return {
     entityId,
@@ -311,31 +316,12 @@ function batchBuildRows(): ValueRow[] {
   ]
 }
 
-/** The two movements the completion wrote, with their frozen costs. */
-function movementRows(): ValueRow[] {
-  return [
-    value('mv_1', 'stock_movement_part', { relatedEntityId: PART_ASM }),
-    value('mv_1', 'stock_movement_type', { optionId: 'build_consume' }),
-    value('mv_1', 'stock_movement_quantity', { valueNumber: -20 }),
-    value('mv_1', 'stock_movement_unit_cost', { valueNumber: 3661 }),
-    value('mv_1', 'stock_movement_extended_cost', { valueNumber: -73220 }),
-    value('mv_1', 'stock_movement_cost_basis', { optionId: 'standard' }),
-    value('mv_2', 'stock_movement_part', { relatedEntityId: PART_LIFT }),
-    value('mv_2', 'stock_movement_type', { optionId: 'build_produce' }),
-    value('mv_2', 'stock_movement_quantity', { valueNumber: 10 }),
-    value('mv_2', 'stock_movement_unit_cost', { valueNumber: 8022 }),
-    value('mv_2', 'stock_movement_extended_cost', { valueNumber: 80220 }),
-    value('mv_2', 'stock_movement_cost_basis', { optionId: 'standard' }),
-  ]
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set([...BUILD_ATTRS, ...MOVEMENT_ATTRS])
+  h.materialised = new Set(BUILD_ATTRS)
   h.defs = new Map([
     ['build', 'def_build'],
     ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
   ])
   // The build row FIRST: the double ignores `WHERE`, and every detail read takes
   // `[instance]`, so position is what identifies it.
@@ -343,9 +329,8 @@ beforeEach(() => {
     { id: BUILD, createdAt: CREATED_AT, displayName: null },
     { id: PART_LIFT, createdAt: CREATED_AT, displayName: 'Auxx Lift 400lbs 4x8' },
   ]
-  h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
   h.reversalRows = []
-  h.valueRows = [...batchBuildRows(), ...movementRows()]
+  h.valueRows = batchBuildRows()
   h.created = []
   h.nextId = 0
 })

@@ -34,14 +34,12 @@ import { postInventoryDocumentInTx } from '../../accounting/ledger/post/post-inv
 import { exportInventoryMovement } from '../../accounting/ledger/post/post-inventory-movement'
 import { readBookTimeZoneOrUtc } from '../../accounting/ledger/setup/book-time-zone'
 import { upsertWorkItem } from '../../accounting/work-items/write'
-import { getOrgCache, onCacheEvent, requireCachedEntityDefId } from '../../cache'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
+import { getOrgCache, onCacheEvent } from '../../cache'
+import { BadRequestError, UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { systemDefId } from '../../resources/system-records'
 import { isServicePartKind } from '../costing/client'
 import { readEarliestMovementAt, readPartNetThrough } from '../costing/dated-reads'
 import { ensureStandardCost } from '../costing/ensure-standard-cost'
-import { batchRecalculateQoH } from '../costing/qoh'
 import { rollUnvaluedAncestors } from '../costing/roll-unvalued-ancestors'
 import {
   bomRefusal,
@@ -49,9 +47,8 @@ import {
   type StandardCostWrite,
   setStandardCost,
 } from '../costing/set-standard-cost'
-import { writeStockMovements } from '../movements'
+import { settleStockMovements, writeStockMovements } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
-import { assertCostFieldsMaterialized } from '../movements/cost-fields'
 import { readPartInitials } from '../movements/initial-queries'
 import type { MovementRecord } from '../movements/types'
 import { guard } from './guard'
@@ -87,16 +84,6 @@ export async function setCount(
       }
       if (input.unitCost != null) assertCountUnitCost(input.unitCost)
 
-      const partDefId = await requireCachedEntityDefId(organizationId, 'part')
-      const movementDefId = await systemDefId(db, organizationId, 'stock_movement')
-      if (!movementDefId) {
-        throw new NotFoundError('This organization has no stock_movement entity definition')
-      }
-      await assertCostFieldsMaterialized(
-        organizationId,
-        'Set count is not available until the stock movement cost fields are provisioned'
-      )
-
       const kind = await readPartKind(db, organizationId, input.partId)
       if (kind.isErr()) throw kind.error
       if (isServicePartKind(kind.value)) {
@@ -104,7 +91,7 @@ export async function setCount(
           partId: input.partId,
         })
       }
-      const glAccount = resolveInventoryRoleForPartKind(kind.value)
+      const glRole = resolveInventoryRoleForPartKind(kind.value)
 
       const zone = await readBookTimeZoneOrUtc(organizationId)
       const countDate = input.day ?? todayInZone(zone)
@@ -151,31 +138,28 @@ export async function setCount(
             count: { quantity: input.quantity, date: countDate },
           }
 
-      const { written, post } = await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        const result = await writeStockMovements(
-          { db: txDb, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
-          [
-            {
-              partInstanceId: input.partId,
-              type: row.type,
-              quantity: delta,
-              unitCost: standard.unitCost,
-              costBasis:
-                standard.unitCost == null
-                  ? StockMovementCostBasis.PENDING
-                  : StockMovementCostBasis.STANDARD,
-              glAccount,
-              occurredAt: row.occurredAt,
-              reason: input.notes,
-              ...('count' in row ? { count: row.count } : {}),
-            },
-          ]
-        )
+      const { written, touched, post } = await db.transaction(async (tx) => {
+        const result = await writeStockMovements({ db: tx, organizationId, userId }, [
+          {
+            partInstanceId: input.partId,
+            type: row.type,
+            quantity: delta,
+            unitCost: standard.unitCost,
+            costBasis:
+              standard.unitCost == null
+                ? StockMovementCostBasis.PENDING
+                : StockMovementCostBasis.STANDARD,
+            glRole,
+            occurredAt: row.occurredAt,
+            reason: input.notes,
+            ...('count' in row ? { count: row.count } : {}),
+          },
+        ])
         if (result.isErr()) throw result.error
         const record = result.value.records[0]!
         return {
           written: record,
+          touched: result.value.touched,
           // A pending row posts nothing; the pricer posts it once the standard lands.
           post:
             record.extendedCost != null
@@ -184,12 +168,12 @@ export async function setCount(
                   organizationId,
                   [
                     {
-                      movementId: record.movementId,
+                      id: record.id,
                       partInstanceId: input.partId,
                       type: row.type,
                       quantity: delta,
                       extendedCost: record.extendedCost,
-                      glAccount,
+                      glRole,
                       occurredAt: row.occurredAt,
                     },
                   ],
@@ -199,34 +183,33 @@ export async function setCount(
         }
       })
 
-      await batchRecalculateQoH(organizationId, [input.partId])
+      await settleStockMovements(organizationId, touched)
       await exportInventoryMovement(db, post)
       const pending = written.unitCost == null
       if (pending) {
         await upsertWorkItem(db, organizationId, {
           sourceKind: 'stock_movement',
-          sourceId: written.movementId,
+          sourceId: written.id,
           stage: 'price',
           reasonCode: 'STANDARD_COST_MISSING',
           externalRef: input.partId,
           detail: {
             partIds: [input.partId],
-            pendingMovementIds: [written.movementId],
+            pendingMovementIds: [written.id],
             ...(standard.displayName ? { partName: standard.displayName } : {}),
           },
         })
       }
 
       const movement: MovementRecord = {
-        movementId: written.movementId,
-        recordId: written.recordId,
+        id: written.id,
         partInstanceId: input.partId,
         quantity: delta,
         unitCost: written.unitCost,
         extendedCost: written.extendedCost,
         vendorUnitPrice: null,
         vendorPartId: null,
-        glAccount,
+        glRole,
         occurredAt: row.occurredAt,
         purchaseOrderLineId: null,
       }

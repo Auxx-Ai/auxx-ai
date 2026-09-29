@@ -13,7 +13,7 @@ interface Leg {
   quantity: number
   unitCost: number | null
   extendedCost: number | null
-  glAccount: string | null
+  glRole: string | null
 }
 
 const h = vi.hoisted(() => ({
@@ -34,7 +34,6 @@ vi.mock('../post-inventory-movement', () => ({
 vi.mock('../../../../inventory/builds/build-queries', () => ({
   getBuild: async () => ({ isErr: () => false, value: h.build }),
   readBuildMovements: async () => h.legs,
-  requireBuildMovementContext: async () => ({ defId: 'def_mv', partDefId: 'def_part', fields: {} }),
 }))
 vi.mock('../../../../inventory/costing/standard-cost-queries', () => ({
   readStandardCost: async (_db: unknown, _org: string, partIds: string[]) => ({
@@ -51,7 +50,6 @@ vi.mock('../../../sales/fulfillments/fields', () => ({
   }),
 }))
 vi.mock('../../../../resources/system-records', () => ({
-  systemFields: async () => ({ defId: 'def_mv', fields: {} }),
   readSystemRecords: async (
     _db: unknown,
     _org: string,
@@ -82,13 +80,13 @@ const TX = {} as never
 const SHIPPED = new Date('2026-08-18T12:00:00Z')
 
 function row(
-  movementId: string,
+  id: string,
   extra: Partial<{
     partInstanceId: string
     type: string
     quantity: number
     extendedCost: number
-    glAccount: string | null
+    glRole: string | null
     fulfillmentLineId: string | null
     buildId: string | null
     vendorUnitPrice: number | null
@@ -97,12 +95,12 @@ function row(
   }> = {}
 ) {
   return {
-    movementId,
+    id,
     partInstanceId: 'part_1',
     type: 'sale',
     quantity: -2,
     extendedCost: -2_000,
-    glAccount: 'inventory_finished_goods',
+    glRole: 'inventory_finished_goods',
     occurredAt: SHIPPED,
     ...extra,
   }
@@ -300,7 +298,7 @@ describe('the single-row documents', () => {
 
   it('refuses a row with no frozen account', async () => {
     await expect(
-      postInventoryDocumentInTx(TX, ORG, [row('mv_a', { type: 'adjust', glAccount: null })])
+      postInventoryDocumentInTx(TX, ORG, [row('mv_a', { type: 'adjust', glRole: null })])
     ).rejects.toThrow(/no frozen inventory account/)
   })
 })
@@ -322,7 +320,7 @@ function leg(
   quantity: number,
   unitCost: number | null,
   extendedCost: number | null,
-  glAccount: string
+  glRole: string
 ): Leg {
-  return { movementId, partId: 'part_x', type, quantity, unitCost, extendedCost, glAccount }
+  return { movementId, partId: 'part_x', type, quantity, unitCost, extendedCost, glRole }
 }

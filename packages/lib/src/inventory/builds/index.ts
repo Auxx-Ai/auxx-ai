@@ -118,7 +118,6 @@ export { type BuildNowInput, type BuildNowOutcome, buildNow } from './build-now'
 export {
   type BuildComponentPlanInput,
   type BuildContext,
-  type BuildMovementContext,
   explodeBuildComponents,
   getBuild,
   listBuilds,

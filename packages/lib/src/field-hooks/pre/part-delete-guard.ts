@@ -10,52 +10,15 @@ import type { EntityPreDeleteHandler } from '../types'
 import { readMovementsByRelation } from './guarded-movements'
 
 /**
- * Pre-delete guard for `parts` (plans/money/tasks/20-part-delete-safety.md).
- * Fires inside `deleteEntity` for EVERY delete path, generic `record.delete`,
- * bulk delete, drawers, Kopilot and the API, because `parts` is
- * `isVisible: true` and therefore carries an ordinary records table with an
- * ordinary delete button that no money code has ever seen.
- *
- * **One refusal: a stock movement in a settled period.** "Settled" is
- * `settledPeriodsFor` (`postings/settled-periods.ts`), which owns the three
- * predicates and the reason each one is needed. The movement ledger is
- * append-only and a mistake is corrected by reversing, never by editing, so
- * hard-deleting the ledger's SUBJECT after it has been posted is an accounting
- * problem rather than a referential one. `part_quantity_on_hand` also lives on
- * the part, so the running total would vanish while the ledger it summarises
- * stays.
- *
- * Archived movements count. `readMovementsByRelation` applies no
- * `archivedAt` predicate on purpose: an archived movement is still in the
- * ledger and still under whatever entry was filed for its month.
- *
- * **What is NOT here, and why.** Everything else deleting a part used to do by
- * hand is now declared on the registry and run by the delete engine:
- *
- *   - `part_stock_movements`, `part_subparts`, `part_used_in_assemblies` and
- *     `part_vendor_parts` carry `onDelete: 'cascade'`. The engine collects the
- *     closure, runs this guard over the movements before writing anything, and
- *     publishes a lifecycle event per cascaded row, so `mfg-subparts-deleted`,
- *     `mfg-vendor-parts-deleted` and `mfg-stock-movements-deleted` still fire
- *     and still recompute their roll-ups on the SURVIVING parent.
- *   - `purchase_order_line`, `vendor_bill_line` and `line_item`
- *     carry `onDelete: 'unlink'`. Those are somebody else's document: a vendor
- *     really did bill us for that thing, and a bill's totals are transcribed,
- *     never computed (`docs/inventory-costing-architecture-guide.md`). They
- *     survive with an empty part cell, which is correct and not a defect.
- *
- * **No admin gate**, following the `orders`/`quotes` precedent rather than the
- * `invoices` one: a part carries no payment ledger and no RESTRICT foreign key,
- * so the per-row permission `record.delete` already asserts is the whole
- * authorization story.
+ * Refuses a part delete while any of its stock movements sits in a settled period; open-period
+ * movements are then deleted with the part by `deleteEntityInstances` (plans/mrp/20 S9).
+ * Fires for every delete path, generic `record.delete`, bulk delete, Kopilot and the API.
  */
 export const guardPartDelete: EntityPreDeleteHandler = async (event) => {
   const { organizationId, recordId } = event
   const { entityInstanceId: partInstanceId } = parseRecordId(recordId)
 
-  const movements = await readMovementsByRelation(organizationId, 'stock_movement_part', [
-    partInstanceId,
-  ])
+  const movements = await readMovementsByRelation(organizationId, 'partId', [partInstanceId])
   if (movements.length === 0) return
 
   const settled = await settledPeriodsFor(

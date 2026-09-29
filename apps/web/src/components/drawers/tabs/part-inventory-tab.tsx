@@ -1,10 +1,7 @@
 // apps/web/src/components/drawers/tabs/part-inventory-tab.tsx
 'use client'
 
-import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, StockMovementType } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
-import type { RecordId } from '@auxx/types/resource'
 import type { Variant } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -20,22 +17,25 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Factory, Package, PackagePlus, Undo2 } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useQueryState } from 'nuqs'
 import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { stockSetupHref } from '~/components/manufacturing/stock-setup/stock-setup-href'
-import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
+import { useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useFieldValueStore } from '~/components/resources/store/field-value-store'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+
+type MovementItem = RouterOutputs['purchasing']['listMovements']['items'][number]
 
 /** Map movement type values to badge color variants */
 const TYPE_COLOR_MAP: Record<string, Variant> = Object.fromEntries(
@@ -72,23 +72,6 @@ const STATUS_LABEL_MAP: Record<string, string> = {
 
 const PART_ATTRIBUTES = ['part_title', 'part_quantity_on_hand', 'part_stock_status'] as const
 
-const MOVEMENT_ATTRIBUTES = [
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_reason',
-  'stock_movement_reference',
-  // plans/purchasing/01-build-plan.md §3.5. A receipt's whole point is the cost
-  // it froze, and `occurredAt` is the ACCOUNTING date — when the goods actually
-  // arrived, which is not when somebody got round to keying them.
-  'stock_movement_unit_cost',
-  'stock_movement_occurred_at',
-  // The two halves of the reversal link (entity migration 108). A row that already
-  // has a reversal must not get a second one, and a row that IS a reversal is not
-  // itself reversible — the correction for a bad correction is a fresh movement.
-  'stock_movement_reverses_movement',
-  'stock_movement_reversed_by_movements',
-] as const
-
 /** Inventory tab for the part detail view */
 export function PartInventoryTab({ recordId }: DrawerTabProps) {
   const { entityInstanceId: partId } = parseRecordId(recordId)
@@ -98,13 +81,13 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   // `useSystemValues` has no refetch — drop the cached values for this record and
   // its `autoFetch` re-pulls the recalculated on-hand quantity.
   const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
-  const stockMovementDefId = useResourceProperty('stock_movement', 'id')
-  // The tab itself is NOT `recordResource`-gated — it leads with the part's own
-  // on-hand quantity — so the stock_movement gate sits on the write action.
+  const partDefId = useResourceProperty('part', 'id')
   const { canEditEntity } = useAccess()
-  const canAdjustStock = !!stockMovementDefId && canEditEntity(stockMovementDefId)
+  const canAdjustStock = !!partDefId && canEditEntity(partDefId)
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+  // Set by a ledger `StockMovementBadge`: the row to mark once it is loaded.
+  const [focusedMovementId] = useQueryState('movement')
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
@@ -117,58 +100,17 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   )
   const flight = preflight.data?.[0]
 
-  const filters: ConditionGroup[] = useMemo(
-    () => [
-      {
-        id: 'part-filter',
-        logicalOperator: 'AND' as const,
-        conditions: [
-          {
-            id: 'part-match',
-            fieldId: 'stock_movement:part' as ResourceFieldId,
-            operator: 'is' as const,
-            value: partId,
-          },
-        ],
-      },
-    ],
-    [partId]
+  const movements = api.purchasing.listMovements.useInfiniteQuery(
+    { partId, limit: MOVEMENT_PAGE_SIZE },
+    { enabled: !!partId, getNextPageParam: (page) => page.nextCursor }
   )
+  const records = movements.data?.pages.flatMap((page) => page.items) ?? []
+  const total = movements.data?.pages[0]?.total ?? 0
 
-  const sorting = useMemo(() => [{ id: 'createdAt', desc: true }], [])
-
-  const {
-    records,
-    recordIds,
-    total,
-    isLoading: isLoadingMovements,
-    isLoadingRecords,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-    refresh,
-  } = useRecordList({
-    entityDefinitionId: stockMovementDefId ?? '',
-    filters,
-    sorting,
-    limit: MOVEMENT_PAGE_SIZE,
-    enabled: !!partId && !!stockMovementDefId,
-  })
-
-  // 🛑 `isLoadingRecords` belongs in this gate, not just `isLoadingMovements`.
-  // The rows below need `RecordMeta` (`createdAt`), which `useRecordList`
-  // resolves in a SECOND wave — and a list served from the store cache reports
-  // `isLoading: false` with `records` still empty, so without this the tab
-  // renders "Stock Movements (0)" and the "No stock movements yet" placeholder
-  // over a part that has plenty.
-  //
-  // Only when NOTHING is rendered yet, though: `isLoadingRecords` goes true
-  // again for each "Load more" page, and an unqualified gate would swap the
-  // whole tab back to a skeleton every time the user asked for more.
-  const isLoading = isLoadingPart || isLoadingMovements || (isLoadingRecords && !records.length)
+  const isLoading = isLoadingPart || movements.isLoading
 
   const handleAdjustSuccess = () => {
-    refresh()
+    void movements.refetch()
     invalidateResource(recordId)
   }
 
@@ -231,7 +173,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
             </div>
           ) : undefined
         }>
-        {recordIds.length === 0 ? (
+        {records.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Package className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No stock movements yet</p>
@@ -253,11 +195,11 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((record) => (
+                {records.map((movement) => (
                   <MovementRow
-                    key={record.id}
-                    recordId={toRecordId(stockMovementDefId!, record.id)}
-                    createdAt={record.createdAt}
+                    key={movement.id}
+                    movement={movement}
+                    focused={movement.id === focusedMovementId}
                     currencyCode={currencyCode}
                     canReverse={canAdjustStock}
                     onReversed={handleAdjustSuccess}
@@ -265,14 +207,14 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                 ))}
               </TableBody>
             </Table>
-            {hasNextPage && (
+            {movements.hasNextPage && (
               <div className='flex justify-center border-t p-1'>
                 <Button
                   variant='ghost'
                   size='xs'
-                  loading={isFetchingNextPage}
+                  loading={movements.isFetchingNextPage}
                   loadingText='Loading...'
-                  onClick={() => fetchNextPage()}>
+                  onClick={() => movements.fetchNextPage()}>
                   Load more
                 </Button>
               </div>
@@ -287,14 +229,14 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 // ─── Row Component ──────────────────────────────────────────────────────
 
 function MovementRow({
-  recordId,
-  createdAt,
+  movement,
+  focused,
   currencyCode,
   canReverse,
   onReversed,
 }: {
-  recordId: RecordId
-  createdAt?: string | Date
+  movement: MovementItem
+  focused: boolean
   currencyCode: string
   canReverse: boolean
   onReversed: () => void
@@ -305,26 +247,21 @@ function MovementRow({
       toastError({ title: 'Could not reverse movement', description: error.message })
     },
   })
-  const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
-  const type = values.stock_movement_type as string | undefined
-  const quantity = values.stock_movement_quantity as number | undefined
-  const reason = values.stock_movement_reason as string | undefined
-  const reference = values.stock_movement_reference as string | undefined
-  const unitCost = values.stock_movement_unit_cost as number | null | undefined
-  const occurredAt = values.stock_movement_occurred_at as string | undefined
+  const { type, quantity, reason, reference, unitCostMinor: unitCost } = movement
   // COALESCE(occurredAt, createdAt) — an adjustment carries no accounting date, so
   // it falls back to when it was written. A receipt has one and it is the truth.
-  const shownAt = occurredAt ?? createdAt
+  const shownAt = movement.effectiveAt
 
   // A movement with no frozen cost cannot be reversed: the negation would be the
   // zero-cost row `receiveStock` refuses to write in the first place. A row that
   // already has a reversal, or that IS one, is equally out — the server enforces
   // all three, this only keeps the menu honest.
-  const alreadyReversed =
-    ((values.stock_movement_reversed_by_movements as unknown[]) ?? []).length > 0
-  const isReversal = values.stock_movement_reverses_movement != null
-  const canReverseThis = canReverse && unitCost != null && !alreadyReversed && !isReversal
+  const canReverseThis =
+    canReverse &&
+    unitCost != null &&
+    movement.reversedById == null &&
+    movement.reversesMovementId == null
 
   const handleReverse = async () => {
     const confirmed = await confirm({
@@ -336,8 +273,7 @@ function MovementRow({
       destructive: true,
     })
     if (!confirmed) return
-    const { entityInstanceId } = parseRecordId(recordId)
-    await reverseMovement.mutateAsync({ movementId: entityInstanceId })
+    await reverseMovement.mutateAsync({ movementId: movement.id })
     onReversed()
   }
 
@@ -346,7 +282,9 @@ function MovementRow({
   const color = type ? TYPE_COLOR_MAP[type] : undefined
 
   return (
-    <TableRow>
+    <TableRow
+      ref={focused ? (row) => row?.scrollIntoView({ block: 'center' }) : undefined}
+      className={cn(focused && 'bg-primary-100')}>
       <TableCell>
         <Badge variant={color} size='xs'>
           {label}

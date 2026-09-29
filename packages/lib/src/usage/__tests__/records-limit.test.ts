@@ -94,7 +94,6 @@ beforeEach(() => {
   h.resources = [
     def('def_contact', 'contact'),
     def('def_line', 'line_item'),
-    def('def_movement', 'stock_movement'),
     def('def_custom'),
     def('def_conn_order', undefined, 'conn_1'),
     def('def_conn_line', undefined, 'conn_1'),
@@ -104,7 +103,7 @@ beforeEach(() => {
 })
 
 describe('metered classification', () => {
-  it('counts main system records and custom defs, not lines, movements or table-backed rows', async () => {
+  it('counts main system records and custom defs, not lines or table-backed rows', async () => {
     const ids = await readMeteredDefIds(db, 'org_1')
     expect(ids.sort()).toEqual(['def_conn_line', 'def_conn_order', 'def_contact', 'def_custom'])
   })

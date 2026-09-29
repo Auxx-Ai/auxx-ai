@@ -111,7 +111,6 @@ interface Snapshot {
  */
 const REFERENCE_ATTRIBUTES = [
   // → part
-  'stock_movement_part',
   'purchase_order_line_part',
   'vendor_bill_line_part',
   'vendor_part_part',
@@ -120,7 +119,6 @@ const REFERENCE_ATTRIBUTES = [
   'line_item_part',
   'product_parts',
   // → build
-  'stock_movement_build',
   'build_reversal_of',
   // → purchase_order
   'purchase_order_line_purchase_order',
@@ -148,6 +146,8 @@ interface ParentSpec {
   /** Metric prefix — the apiSlug, so a key reads the way the guard registers. */
   slug: string
   children: readonly { entityType: string; attribute: string; disposition: Disposition }[]
+  /** The `StockMovement` column naming this parent, when movements hang off it. */
+  movementColumn?: 'partId' | 'buildId'
 }
 
 /**
@@ -155,22 +155,15 @@ interface ParentSpec {
  * (`docs/inventory-costing-architecture-guide.md` §3), each with the children
  * that hang off it and what its guard does with them.
  *
- * ⚠️ **`purchase_order`'s receipts are deliberately absent from its `children`.**
- * A `stock_movement` names the purchase order LINE, never the order, so it is
- * not an inbound reference to the parent at all — which is exactly why
- * `sweepEntityFieldValues` never touched receipts and an unguarded order delete
- * looked harmless. The line's own total is what moves.
+ * `purchase_order`'s receipts are absent: a movement names the LINE, never the order.
+ * Movements are a table whose parent FKs cannot dangle, so they are counted, never orphaned.
  */
 const PARENTS: readonly ParentSpec[] = [
   {
     entityType: 'part',
     slug: 'parts',
+    movementColumn: 'partId',
     children: [
-      {
-        entityType: 'stock_movement',
-        attribute: 'stock_movement_part',
-        disposition: 'refuse-or-cascade',
-      },
       { entityType: 'subpart', attribute: 'subpart_child_part', disposition: 'cascade' },
       { entityType: 'vendor_part', attribute: 'vendor_part_part', disposition: 'cascade' },
       {
@@ -185,14 +178,8 @@ const PARENTS: readonly ParentSpec[] = [
   {
     entityType: 'build',
     slug: 'builds',
-    children: [
-      {
-        entityType: 'stock_movement',
-        attribute: 'stock_movement_build',
-        disposition: 'refuse-or-cascade',
-      },
-      { entityType: 'build', attribute: 'build_reversal_of', disposition: 'refuse' },
-    ],
+    movementColumn: 'buildId',
+    children: [{ entityType: 'build', attribute: 'build_reversal_of', disposition: 'refuse' }],
   },
   {
     entityType: 'purchase_order',
@@ -298,55 +285,19 @@ async function inboundByAttribute(
 }
 
 /**
- * Stock movements by accounting month.
- *
- * ⚠️ The accounting date is `stock_movement_occurred_at` **coalesced onto
- * `EntityInstance.createdAt`** — the documented fallback (`receipt-queries.ts`).
- * The guard in task 20 §2a must derive its period the same way or a movement can
- * be judged under one date and posted under another.
- *
- * Explosion parents (`stock_movement_adjust_subparts`) are excluded, matching
- * `gather-month-end-inventory.ts`: they carry no quantity of their own and
- * legitimately carry no cost, so counting them would report phantom "uncosted"
- * movements.
+ * Stock movements by accounting month (`effectiveAt`, the date they post under). Explosion
+ * parents (`adjustSubparts`) are excluded: they legitimately carry no cost.
  */
 async function movementsByPeriod(
   organizationId: string
 ): Promise<{ period: string; movements: number; uncosted: number }[]> {
   const { rows } = await db.execute<{ period: string; movements: number; uncosted: number }>(sql`
-    WITH mv AS (
-      SELECT ei.id,
-             coalesce(occurred."valueDate", ei."createdAt") AS accounting_date,
-             cost."valueNumber" AS unit_cost
-      FROM "EntityInstance" ei
-      JOIN "EntityDefinition" ed
-        ON ed.id = ei."entityDefinitionId" AND ed."entityType" = 'stock_movement'
-      LEFT JOIN "FieldValue" occurred
-        ON occurred."entityId" = ei.id
-       AND occurred."fieldId" IN (
-             SELECT id FROM "CustomField"
-             WHERE "entityDefinitionId" = ed.id
-               AND "systemAttribute" = 'stock_movement_occurred_at')
-      LEFT JOIN "FieldValue" cost
-        ON cost."entityId" = ei.id
-       AND cost."fieldId" IN (
-             SELECT id FROM "CustomField"
-             WHERE "entityDefinitionId" = ed.id
-               AND "systemAttribute" = 'stock_movement_unit_cost')
-      LEFT JOIN "FieldValue" explode
-        ON explode."entityId" = ei.id
-       AND explode."fieldId" IN (
-             SELECT id FROM "CustomField"
-             WHERE "entityDefinitionId" = ed.id
-               AND "systemAttribute" = 'stock_movement_adjust_subparts')
-      WHERE ei."organizationId" = ${organizationId}
-        AND ei."archivedAt" IS NULL
-        AND coalesce(explode."valueBoolean", false) = false
-    )
-    SELECT to_char(accounting_date, 'YYYY-MM') AS period,
+    SELECT to_char("effectiveAt", 'YYYY-MM') AS period,
            count(*)::int AS movements,
-           count(*) FILTER (WHERE unit_cost IS NULL)::int AS uncosted
-    FROM mv GROUP BY 1 ORDER BY 1
+           count(*) FILTER (WHERE "unitCostMinor" IS NULL)::int AS uncosted
+    FROM "StockMovement"
+    WHERE "organizationId" = ${organizationId} AND "adjustSubparts" = false
+    GROUP BY 1 ORDER BY 1
   `)
   return rows.map((r) => ({
     period: r.period,
@@ -418,6 +369,17 @@ async function snapshotOrg(org: { id: string; name: string }): Promise<OrgSnapsh
       WHERE ei."entityDefinitionId" = ${defId}`),
       'left behind deliberately'
     )
+
+    if (parent.movementColumn) {
+      push(
+        `children.${parent.slug}.stock_movement.total`,
+        'strand',
+        await scalar(sql`
+        SELECT count(*)::int AS n FROM "StockMovement"
+        WHERE "organizationId" = ${org.id} AND ${sql.identifier(parent.movementColumn)} IS NOT NULL`),
+        'refuse-or-cascade'
+      )
+    }
 
     // ── children: total, and how many have lost their parent ────────────────
     for (const child of parent.children) {
@@ -578,11 +540,8 @@ async function snapshotOrg(org: { id: string; name: string }): Promise<OrgSnapsh
     'subledger.movementExtendedCost',
     'strand',
     await scalar(sql`
-    SELECT coalesce(sum(fv."valueNumber"), 0)::float8 AS n
-    FROM "FieldValue" fv
-    JOIN "CustomField" cf ON cf.id = fv."fieldId"
-    WHERE fv."organizationId" = ${org.id}
-      AND cf."systemAttribute" = 'stock_movement_extended_cost'`)
+    SELECT coalesce(sum("extendedCostMinor"), 0)::float8 AS n
+    FROM "StockMovement" WHERE "organizationId" = ${org.id}`)
   )
 
   push(

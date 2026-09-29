@@ -62,6 +62,16 @@ export interface WorkItemGroup extends WorkItemGroupKey {
   refLabel: string | null
 }
 
+/** A `stock_movement` item's own row, for the count line and the badge that opens its part. */
+export interface WorkItemMovement {
+  partId: string
+  type: string
+  quantity: number
+  reason: string | null
+  reference: string | null
+  occurredAt: Date | null
+}
+
 /** One item inside a group, with enough of its source to render and open it. */
 export interface WorkItemListRow extends WorkItemRow {
   /** The record's display name, or the movement's party; a nameless count reads "Adjustment · -3". */
@@ -75,13 +85,15 @@ export interface WorkItemListRow extends WorkItemRow {
   purpose: string | null
   amountMinor: number | null
   currency: string | null
+  /** Set for a `stock_movement` item whose row still exists. */
+  movement: WorkItemMovement | null
 }
 
 const SKIPPED_CODES = (Object.keys(WORK_ITEM_CODES) as WorkItemCode[]).filter(
   (code) => workItemStatus(code) === 'skipped'
 )
 
-/** The joins every list read needs: the movement, the acceptance, the record, the party. */
+/** The joins every list read needs: the money movement, the acceptance, the record, the stock movement, the party. */
 function fromItems() {
   return sql`"AccountingWorkItem" w
     LEFT JOIN "FinancialSourceAcceptance" acc ON w."sourceKind" = 'financial_source_acceptance'
@@ -89,8 +101,10 @@ function fromItems() {
     LEFT JOIN "MoneyTransaction" mt ON mt."organizationId" = w."organizationId"
       AND mt."id" = CASE WHEN w."sourceKind" = 'money_transaction' THEN w."sourceId"
         ELSE acc."moneyTransactionId" END
-    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','stock_movement','order')
+    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','order')
       AND rec."organizationId" = w."organizationId" AND rec."id" = w."sourceId"
+    LEFT JOIN "StockMovement" sm ON w."sourceKind" = 'stock_movement'
+      AND sm."organizationId" = w."organizationId" AND sm."id" = w."sourceId"
     LEFT JOIN "EntityInstance" party ON party."organizationId" = w."organizationId"
       AND party."id" = mt."partyInstanceId"`
 }
@@ -127,7 +141,7 @@ function whereItems(organizationId: string, filters: WorkItemFilters, extra: SQL
   if (filters.to) conditions.push(sql`${day} <= ${filters.to}::date`)
   if (filters.search)
     conditions.push(
-      sql`strpos(lower(concat_ws(' ', w."reasonCode", w."role", w."externalRef", rec."displayName", party."displayName", mt."reference", w."detail"::text)), lower(${filters.search})) > 0`
+      sql`strpos(lower(concat_ws(' ', w."reasonCode", w."role", w."externalRef", rec."displayName", party."displayName", mt."reference", sm."reason", sm."reference", w."detail"::text)), lower(${filters.search})) > 0`
     )
   return sql.join(conditions, sql` AND `)
 }
@@ -289,19 +303,14 @@ export async function listWorkItemGroups(
   })
 }
 
-/**
- * A build's or count's own fields, one indexed lookup per such row (the `sourceKind` test is a
- * one-time filter for every other kind): the movement's type and quantity, and the document date.
- */
+/** A build's completion date, one indexed lookup per build row (the `sourceKind` test filters every other kind). */
 function documentFields(): SQL {
   return sql`LEFT JOIN LATERAL (
-      SELECT max(fv."optionId") FILTER (WHERE cf."systemAttribute" = 'stock_movement_type') AS "movementType",
-        max(fv."valueNumber") FILTER (WHERE cf."systemAttribute" = 'stock_movement_quantity') AS "movementQuantity",
-        max(fv."valueDate") FILTER (WHERE cf."systemAttribute" IN ('stock_movement_occurred_at','build_completed_at')) AS "documentDate"
+      SELECT max(fv."valueDate") AS "documentDate"
       FROM "FieldValue" fv JOIN "CustomField" cf ON cf."id" = fv."fieldId"
-      WHERE w."sourceKind" IN ('build','stock_movement')
+      WHERE w."sourceKind" = 'build'
         AND fv."entityId" = w."sourceId"
-        AND cf."systemAttribute" IN ('stock_movement_type','stock_movement_quantity','stock_movement_occurred_at','build_completed_at')
+        AND cf."systemAttribute" = 'build_completed_at'
     ) doc ON TRUE`
 }
 
@@ -329,9 +338,11 @@ export async function listWorkItemsInGroup(
     SELECT w.*, COALESCE(rec."displayName", party."displayName", acc."orderExternalId") AS "label",
       rec."entityDefinitionId" AS "recordDefinitionId", mt."id" AS "moneyTransactionId",
       mt."purpose" AS "purpose", mt."amountMinor" AS "amountMinor", mt."currency" AS "currency",
-      doc."movementType", doc."movementQuantity",
-      CASE WHEN w."sourceKind" IN ('build','stock_movement')
-        THEN COALESCE(doc."documentDate", rec."createdAt") END AS "documentDate"
+      sm."partId" AS "movementPartId", sm."type" AS "movementType",
+      sm."quantity" AS "movementQuantity", sm."reason" AS "movementReason",
+      sm."reference" AS "movementReference", sm."occurredAt" AS "movementOccurredAt",
+      CASE WHEN w."sourceKind" = 'build' THEN COALESCE(doc."documentDate", rec."createdAt")
+        WHEN w."sourceKind" = 'stock_movement' THEN sm."effectiveAt" END AS "documentDate"
     FROM ${fromItems()}
     ${documentFields()}
     WHERE ${whereItems(organizationId, options, [groupWhere(group)])}
@@ -377,6 +388,16 @@ function toListRow(row: Record<string, unknown>): WorkItemListRow {
     amountMinor:
       row.amountMinor === null || row.amountMinor === undefined ? null : Number(row.amountMinor),
     currency: (row.currency as string | null) ?? null,
+    movement: row.movementPartId
+      ? {
+          partId: row.movementPartId as string,
+          type: row.movementType as string,
+          quantity: Number(row.movementQuantity),
+          reason: (row.movementReason as string | null) ?? null,
+          reference: (row.movementReference as string | null) ?? null,
+          occurredAt: toDate(row.movementOccurredAt),
+        }
+      : null,
   }
 }
 

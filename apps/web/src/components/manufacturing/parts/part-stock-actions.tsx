@@ -79,18 +79,14 @@ export function PartStockActions({
   /** The run `Plan and open...` raised, waiting for the completion dialog. */
   const [completing, setCompleting] = useState<PlannedBuild | null>(null)
 
-  const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const buildDefId = useResourceProperty('build', 'id')
   const subpartDefId = useResourceProperty('subpart', 'id')
 
-  // The client mirror of what `routers/builds.ts` asserts, so the item the UI
-  // hides and the door the server closes are the same door. `Plan` needs `build`
-  // alone (B2 — planning is not moving stock); `Build now` also needs
-  // `stock_movement`, which is where the rest of manufacturing puts that
-  // authority.
+  // The client mirror of what `routers/builds.ts` asserts: `Plan` and `Build now`
+  // both need edit on `build`, which authorises the build's movements too.
   const { canEditEntity } = useAccess()
   const canPlanBuild = !!buildDefId && canEditEntity(buildDefId)
-  const canPostLedger = canPlanBuild && !!stockMovementDefId && canEditEntity(stockMovementDefId)
+  const canPostLedger = canPlanBuild
 
   // Whether the part has a bill of materials at all. Same filter shape as
   // `part-costing-card.tsx`'s `hasSubparts` check, deliberately — same read,

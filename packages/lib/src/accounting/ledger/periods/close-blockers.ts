@@ -215,7 +215,7 @@ export interface InventoryCloseCounts {
   cutoverValueChangedMinor?: number | null
   /** Valued movements dated in the month with no member link to a posted inventory entry. */
   unpostedMovements: number
-  /** Σ frozen `stock_movement_extended_cost` through the last day of the month. */
+  /** Σ frozen `StockMovement.extendedCostMinor` through the last day of the month. */
   subledgerMinor: number
   /** The three inventory accounts' balance through the same day. */
   ledgerMinor: number

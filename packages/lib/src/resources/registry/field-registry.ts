@@ -48,7 +48,6 @@ import { RETURN_PART_LINE_FIELDS } from './resources/return-part-line-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SHIPMENT_FIELDS } from './resources/shipment-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
-import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
 import { SUBPART_FIELDS } from './resources/subpart-fields'
 import { TARIFF_CODE_FIELDS } from './resources/tariff-code-fields'
 import { TARIFF_RATE_FIELDS } from './resources/tariff-rate-fields'
@@ -147,7 +146,6 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   signature: SIGNATURE_FIELDS,
   vendor_part: VENDOR_PART_FIELDS,
   subpart: SUBPART_FIELDS,
-  stock_movement: STOCK_MOVEMENT_FIELDS,
   company: COMPANY_FIELDS,
   meeting: MEETING_FIELDS,
   article: ARTICLE_FIELDS,

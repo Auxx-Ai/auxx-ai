@@ -1,25 +1,22 @@
 // packages/lib/src/inventory/receiving/__tests__/set-count.test.ts
 //
 // The one count door (111 D21, Q15, Q19, Q26): what a first count anchors, what a further
-// count adjusts, and what posts. The org cache, the CRUD handler, the dated reads and the
-// part reads are mocked; the movement writer and the document poster's call are real.
+// count adjusts, and what posts. The org cache, the write seam, the dated reads and the
+// part reads are mocked; the row mapper and the document poster's call are real.
 
+import type { CreateStockMovementInput } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, UnprocessableEntityError } from '../../../errors'
+import { fakeSeam } from './support/fake-seam'
 
 const h = vi.hoisted(() => ({
   onCacheEvent: vi.fn(async () => {}),
-  createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
-    instance: { id: 'mv_new' },
-  })),
   ensureSpy: vi.fn(),
   rollSpy: vi.fn(),
   setStandardSpy: vi.fn(),
   withBom: new Set<string>(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
-  batchQohSpy: vi.fn(async () => {}),
   upsertWorkItem: vi.fn(async () => ({ isOk: () => true })),
-  materialised: new Set<string>(),
   partKind: null as string | null,
   standardCost: null as number | null,
   /** net(through) per part, as the dated read answers. */
@@ -50,25 +47,11 @@ vi.mock('../../../cache', () => ({
   onCacheEvent: h.onCacheEvent,
   getCachedEntityDefId: vi.fn(async () => undefined),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => `def_${entityType}`),
-  getOrgCache: () => ({
-    get: async () => 'user_system',
-    from: () => ({
-      bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
-        ),
-    }),
-  }),
+  getOrgCache: () => ({ get: async () => 'user_system' }),
 }))
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    create = h.createSpy
-  },
-}))
-vi.mock('../../../resources/system-records', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  systemDefId: async () => 'def_stock_movement',
-}))
+vi.mock('../../movements', async (importOriginal) =>
+  (await import('./support/fake-seam')).movementsMock(importOriginal)
+)
 vi.mock('../../builds/build-queries', () => ({
   readPartKinds: async (_db: unknown, _org: string, ids: string[]) =>
     new Map(h.partKind ? ids.map((id) => [id, h.partKind as string]) : []),
@@ -93,7 +76,6 @@ vi.mock('../../costing/set-standard-cost', async () => {
     bomRefusal: () => new BadRequestError('rolls from its bill of materials'),
   }
 })
-vi.mock('../../costing/qoh', () => ({ batchRecalculateQoH: h.batchQohSpy }))
 vi.mock('../../costing/dated-reads', () => ({
   readPartNetThrough: async (_org: string, ids: string[]) => new Map(ids.map((id) => [id, h.net])),
   readEarliestMovementAt: async (_org: string, ids: string[]) =>
@@ -112,21 +94,13 @@ const D = '2026-03-10'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set([
-    'stock_movement_part',
-    'stock_movement_unit_cost',
-    'stock_movement_cost_basis',
-    'stock_movement_extended_cost',
-    'stock_movement_gl_account',
-    'stock_movement_occurred_at',
-  ])
+  fakeSeam.reset()
   h.partKind = null
   h.standardCost = null
   h.net = 0
   h.earliest = null
   h.initial = null
   h.zone = 'UTC'
-  h.createSpy.mockResolvedValue({ instance: { id: 'mv_new' } })
   h.withBom = new Set()
   h.rollSpy.mockImplementation(async () => (await import('neverthrow')).ok([]))
   h.setStandardSpy.mockImplementation(async (_db: unknown, _org: string, entry) => {
@@ -141,9 +115,8 @@ beforeEach(() => {
   })
 })
 
-function written(): Record<string, unknown> {
-  expect(h.createSpy).toHaveBeenCalledTimes(1)
-  return h.createSpy.mock.calls[0]![1]
+function written(): CreateStockMovementInput {
+  return fakeSeam.only()
 }
 
 async function count(input: Partial<Parameters<typeof setCount>[2]> = {}) {
@@ -167,16 +140,16 @@ describe('a first count on a part with history reconstructs the opening', () => 
     })
     const values = written()
     expect(values).toMatchObject({
-      stock_movement_type: 'initial',
-      stock_movement_quantity: 872,
-      stock_movement_occurred_at: '2026-01-14T00:00:00.000Z',
-      stock_movement_count_quantity: 42,
-      stock_movement_count_date: '2026-03-10T00:00:00.000Z',
-      stock_movement_cost_basis: 'standard',
-      stock_movement_unit_cost: 500,
-      stock_movement_extended_cost: 436_000,
-      stock_movement_gl_account: 'inventory_raw_materials',
-      stock_movement_adjust_subparts: false,
+      type: 'initial',
+      quantity: 872,
+      occurredAt: new Date('2026-01-14T00:00:00.000Z'),
+      countQuantity: 42,
+      countDate: '2026-03-10',
+      costBasis: 'standard',
+      unitCostMinor: 500,
+      extendedCostMinor: 436_000,
+      glRole: 'inventory_raw_materials',
+      adjustSubparts: false,
     })
   })
 
@@ -184,7 +157,7 @@ describe('a first count on a part with history reconstructs the opening', () => 
     h.earliest = new Date('2026-06-01T00:00:00.000Z')
     h.standardCost = 500
     await count()
-    expect(written().stock_movement_occurred_at).toBe('2026-03-10T00:00:00.000Z')
+    expect(written().occurredAt).toEqual(new Date('2026-03-10T00:00:00.000Z'))
     expect(anchorDayFor('2026-03-10', new Date('2026-06-01T00:00:00.000Z'), 'UTC')).toBe(
       '2026-03-10'
     )
@@ -201,7 +174,7 @@ describe('a first count on a part with history reconstructs the opening', () => 
     h.standardCost = 100
     const result = await count({ quantity: 0 })
     expect(result.outcome).toBe('initial')
-    expect(written().stock_movement_quantity).toBe(5)
+    expect(written().quantity).toBe(5)
   })
 
   it('reads net through the END of the count day in the book zone', () => {
@@ -218,16 +191,16 @@ describe('a first count on a part with no history', () => {
     h.standardCost = 500
     await count({ quantity: 10 })
     const values = written()
-    expect(values.stock_movement_type).toBe('initial')
-    expect(values.stock_movement_quantity).toBe(10)
-    expect(values.stock_movement_occurred_at).toBe('2026-03-10T00:00:00.000Z')
-    expect(values.stock_movement_count_date).toBe('2026-03-10T00:00:00.000Z')
+    expect(values.type).toBe('initial')
+    expect(values.quantity).toBe(10)
+    expect(values.occurredAt).toEqual(new Date('2026-03-10T00:00:00.000Z'))
+    expect(values.countDate).toBe('2026-03-10')
   })
 
   it('refuses a bare zero: there is nothing to anchor', async () => {
     const result = await setCount(db, ORG, { partId: 'part_1', quantity: 0, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
     expect(h.onCacheEvent).not.toHaveBeenCalled()
   })
 })
@@ -251,10 +224,10 @@ describe('a further count on an anchored part', () => {
     expect(result.outcome).toBe('adjust')
     expect(result.delta).toBe(-5)
     const values = written()
-    expect(values.stock_movement_type).toBe('adjust')
-    expect(values.stock_movement_quantity).toBe(-5)
-    expect(values.stock_movement_occurred_at).toBe('2026-03-10T00:00:00.000Z')
-    expect(values).not.toHaveProperty('stock_movement_count_quantity')
+    expect(values.type).toBe('adjust')
+    expect(values.quantity).toBe(-5)
+    expect(values.occurredAt).toEqual(new Date('2026-03-10T00:00:00.000Z'))
+    expect(values.countQuantity).toBeNull()
     expect(h.onCacheEvent).toHaveBeenCalledWith('stock-setup.changed', { orgId: ORG })
   })
 
@@ -264,14 +237,14 @@ describe('a further count on an anchored part', () => {
     const result = await count({ day: '2026-02-01' })
     expect(result.outcome).toBe('adjust')
     expect(result.delta).toBe(2)
-    expect(written().stock_movement_occurred_at).toBe('2026-02-01T00:00:00.000Z')
+    expect(written().occurredAt).toEqual(new Date('2026-02-01T00:00:00.000Z'))
   })
 
   it('writes nothing for a zero delta and says so', async () => {
     h.net = 42
     const result = await count()
     expect(result).toMatchObject({ outcome: 'unchanged', delta: 0, movement: null })
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
     expect(h.ensureSpy).not.toHaveBeenCalled()
   })
 })
@@ -287,8 +260,8 @@ describe('the count day west of UTC', () => {
     const result = await count({ quantity: 10, day: '2026-09-22' })
     expect(result.countDate).toBe('2026-09-22')
     expect(written()).toMatchObject({
-      stock_movement_occurred_at: '2026-09-22T07:00:00.000Z',
-      stock_movement_count_date: '2026-09-22T00:00:00.000Z',
+      occurredAt: new Date('2026-09-22T07:00:00.000Z'),
+      countDate: '2026-09-22',
     })
   })
 
@@ -302,7 +275,7 @@ describe('the count day west of UTC', () => {
     }
     h.net = 4
     await count({ quantity: 3, day: '2026-09-22' })
-    expect(written().stock_movement_occurred_at).toBe('2026-09-22T07:00:00.000Z')
+    expect(written().occurredAt).toEqual(new Date('2026-09-22T07:00:00.000Z'))
     expect(h.postSpy.mock.calls[0]![2]).toEqual([
       expect.objectContaining({ occurredAt: new Date('2026-09-22T07:00:00.000Z') }),
     ])
@@ -333,7 +306,7 @@ describe('what it refuses', () => {
     h.partKind = 'service'
     const result = await setCount(db, ORG, { partId: 'part_1', quantity: 1, day: D })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('a negative count', async () => {
@@ -363,9 +336,9 @@ describe('cost', () => {
       unitCost: 1200,
     })
     expect(written()).toMatchObject({
-      stock_movement_unit_cost: 1200,
-      stock_movement_extended_cost: 3600,
-      stock_movement_cost_basis: 'standard',
+      unitCostMinor: 1200,
+      extendedCostMinor: 3600,
+      costBasis: 'standard',
     })
   })
 
@@ -379,8 +352,8 @@ describe('cost', () => {
     const result = await count({ quantity: 3, unitCost: 0 })
     expect(result.pending).toBe(false)
     expect(written()).toMatchObject({
-      stock_movement_unit_cost: 0,
-      stock_movement_cost_basis: 'standard',
+      unitCostMinor: 0,
+      costBasis: 'standard',
     })
     expect(h.upsertWorkItem).not.toHaveBeenCalled()
   })
@@ -411,7 +384,7 @@ describe('cost', () => {
       action: 'restated',
       revaluationPostedMinor: 700,
     })
-    expect(written()).toMatchObject({ stock_movement_unit_cost: 1200 })
+    expect(written()).toMatchObject({ unitCostMinor: 1200 })
   })
 
   it('leaves a standard that matches the typed cost alone', async () => {
@@ -444,23 +417,23 @@ describe('cost', () => {
     }
     expect(h.ensureSpy).not.toHaveBeenCalled()
     expect(h.setStandardSpy).not.toHaveBeenCalled()
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('writes a PENDING row with no cost keys and parks it when the part has no standard', async () => {
     const result = await count({ quantity: 3 })
     expect(result.pending).toBe(true)
     const values = written()
-    expect(values.stock_movement_cost_basis).toBe('pending')
-    expect(values).not.toHaveProperty('stock_movement_unit_cost')
+    expect(values.costBasis).toBe('pending')
+    expect(values.unitCostMinor).toBeNull()
     expect(h.postSpy).not.toHaveBeenCalled()
     expect(h.upsertWorkItem).toHaveBeenCalledWith(db, ORG, {
       sourceKind: 'stock_movement',
-      sourceId: 'mv_new',
+      sourceId: 'mv_1',
       stage: 'price',
       reasonCode: 'STANDARD_COST_MISSING',
       externalRef: 'part_1',
-      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_new'], partName: 'Widget 9000' },
+      detail: { partIds: ['part_1'], pendingMovementIds: ['mv_1'], partName: 'Widget 9000' },
     })
   })
 })
@@ -482,21 +455,24 @@ describe('posting and QoH', () => {
     expect(org).toBe(ORG)
     expect(rows).toEqual([
       expect.objectContaining({
-        movementId: 'mv_new',
+        id: 'mv_1',
         type: 'adjust',
         quantity: 2,
         extendedCost: 1000,
-        glAccount: 'inventory_raw_materials',
+        glRole: 'inventory_raw_materials',
         occurredAt: new Date('2026-03-10T00:00:00.000Z'),
       }),
     ])
     expect(options).toMatchObject({ actorUserId: 'user_system' })
   })
 
-  it('recalculates QoH after the write', async () => {
+  it('settles the part after the write', async () => {
     h.standardCost = 500
     await count({ quantity: 3 })
-    expect(h.batchQohSpy).toHaveBeenCalledWith(ORG, ['part_1'])
+    expect(fakeSeam.settle).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ partIds: ['part_1'] })
+    )
   })
 
   it('attributes the write to the actor when one is named', async () => {

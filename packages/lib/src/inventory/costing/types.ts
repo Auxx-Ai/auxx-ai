@@ -214,9 +214,9 @@ export interface RollStandardCostInput {
  */
 export interface PartLedgerAverage {
   partInstanceId: string
-  /** Signed sum of stock_movement_extended_cost, minor units. */
+  /** Signed sum of extended cost, minor units. */
   valueMinor: number
-  /** Signed sum of stock_movement_quantity. */
+  /** Signed sum of quantity. */
   quantity: number
   /**
    * `valueMinor / quantity`, rounded, or NULL when `quantity <= 0`.

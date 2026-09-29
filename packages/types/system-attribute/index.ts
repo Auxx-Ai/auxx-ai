@@ -261,16 +261,6 @@ export const SYSTEM_ATTRIBUTES = [
   'subpart_quantity',
   'subpart_notes',
 
-  // ─── Stock Movement fields ─────────────────────────────────────
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_reason',
-  'stock_movement_reference',
-  'stock_movement_adjust_subparts',
-  'stock_movement_parent_movement',
-  'stock_movement_child_movements',
-
   // ─── Part inventory fields ────────────────────────────────────
   'part_quantity_on_hand',
   'part_stock_status',
@@ -287,7 +277,6 @@ export const SYSTEM_ATTRIBUTES = [
   // A person picked the kind, so no finished-good suggestion
   'part_kind_confirmed',
   'part_line_items', // inverse of line_item_part
-  'part_stock_movements',
 
   // ─── Contact inverse fields ────────────────────────────────────
   'contact_vendor_parts',
@@ -741,43 +730,6 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_credit_application_applied_at',
   'vendor_credit_application_operation',
 
-  // ─── Receiving: cost, date and provenance on stock_movement ──────
-  // plans/purchasing/01-build-plan.md §2. Every one of these is
-  // `updatable: false` — the ledger is append-only by construction, which is
-  // the only reason a frozen cost can be trusted.
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_cost_basis',
-  // 🛑 An account ROLE ('inventory_raw_materials'), NOT a code and never a
-  // provider id. `P2` keeps provider ids out of the ledger; `G8` keeps ORG
-  // NUMBERING out of it too, because `G7` makes the chart an editable
-  // default. A movement is append-only and frozen at write time, so a code
-  // stamped here is silently reinterpreted the day the org renumbers — and
-  // the posting still balances, so nothing downstream can detect it.
-  // `resolveInventoryRoleForPartKind` is the only writer;
-  // `buildReceiptEntry` is the reader (`inventoryAccountRole`).
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at', // the ACCOUNTING date; createdAt is when it was typed
-  'stock_movement_vendor_part',
-  'stock_movement_vendor_unit_price', // raw invoice price, before landed adders
-  // What a receipt accrued to parties other than the goods vendor, and the rate
-  // that produced the duty (73 §7.2). Stamped so the two accrual accounts can be
-  // reconciled to the movements that raised them without re-reading the supplier
-  // row, which moves.
-  'stock_movement_freight_accrued',
-  'stock_movement_duties_accrued',
-  'stock_movement_tariff_rate',
-  'stock_movement_purchase_order_line',
-  'stock_movement_reverses_movement', // NOT parentMovement — that means BOM explosion
-  'stock_movement_reversed_by_movements',
-  // Nullable, updatable: false, filterable: true - all of task 50's netting
-  // (plans/money/tasks/55). Mirrors stock_movement_purchase_order_line.
-  'stock_movement_fulfillment_line',
-  // The count fact behind a reconstructed opening (111 Q26): set on `initial` rows only.
-  'stock_movement_count_quantity',
-  'stock_movement_count_date',
-  'vendor_part_stock_movements', // inverse of stock_movement_vendor_part
-
   // ─── Purchase order ─────────────────────────────────────────────
   // plans/purchasing/01-build-plan.md §4. The header's shipping/tax/discount
   // totals plus allocationBasis are why no separate `goods_receipt` header is
@@ -830,7 +782,6 @@ export const SYSTEM_ATTRIBUTES = [
   'purchase_order_line_line_total',
   'purchase_order_line_weight',
   'purchase_order_line_sort_order',
-  'purchase_order_line_stock_movements',
   'purchase_order_line_vendor_bill_lines',
   'part_purchase_order_lines', // inverse of purchase_order_line_part
   'vendor_part_purchase_order_lines', // inverse of purchase_order_line_vendor_part
@@ -892,7 +843,7 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_line_unit_price', // a BUY price
   'vendor_bill_line_line_total',
   // A CODE ('2160'), and deliberately NOT a role like
-  // `stock_movement_gl_account`. This is the bookkeeper's own coding of a
+  // `StockMovement.glRole`. This is the bookkeeper's own coding of a
   // bill line against THEIR chart, and most of a chart carries no auxx role
   // at all (16 of the 28 seeded accounts have none) — so a role here would
   // make the majority of an org's accounts uncodeable. It is typed by a
@@ -962,7 +913,6 @@ export const SYSTEM_ATTRIBUTES = [
   'build_overhead_cost',
   'build_produced_value', // quantityProduced x part_standard_cost
   'build_variance_amount', // (mat+lab+ovh) - producedValue -> account 5090
-  'build_movements', // inverse of stock_movement_build
   'build_reversal_of', // set on the REVERSING build (B6)
   'build_reversed_by', // inverse of build_reversal_of
   'build_posted_at', // denormalized convenience ONLY — never gate on it
@@ -999,8 +949,6 @@ export const SYSTEM_ATTRIBUTES = [
   'part_labor_cost_per_unit',
   'part_overhead_cost_per_unit',
   'part_builds', // inverse of build_part
-  'stock_movement_build', // nullable; `reference` stays as-is
-  'stock_movement_qty_per_unit', // as-built BOM snapshot; NULL on a consume row = off-BOM
   'order_cancelled_at', // set, never cleared — a Shopify order can arrive cancelled
   'order_builds', // inverse of build_order
   // The drift pair (plans/products/13 Model A+). The order carries its CURRENT
@@ -1388,10 +1336,9 @@ export const SYSTEM_ATTRIBUTES = [
   'fulfillment_line_fulfillment', // owning side; inverse of fulfillment_lines
   'fulfillment_line_line_item', // owning side; inverse of line_item_fulfillment_lines
   'fulfillment_line_quantity', // units shipped in THIS dispatch, never cumulative
-  // COMPUTED, re-SUMmed over stock_movement_fulfillment_line - the exact
+  // COMPUTED, re-SUMmed over StockMovement.fulfillmentLineId - the exact
   // mirror of purchase_order_line_quantity_received.
   'fulfillment_line_quantity_relieved',
-  'fulfillment_line_stock_movements', // inverse of stock_movement_fulfillment_line
 
   // Returned material, the damage evidence and the salvage
   // (plans/money/tasks/54-returns.md section 3). Three grains: one `return`
@@ -1447,7 +1394,6 @@ export const SYSTEM_ATTRIBUTES = [
   'return_part_line_salvage_percent', // the input to the frozen unit cost
   'return_part_line_unit_cost', // standard x percent, frozen; the standard is re-rolled
   'return_part_line_sort_order',
-  'return_part_line_movement', // set only on rows that produced a return_in
 
   // Inverse halves on existing definitions. Both sides are declared because an
   // unlinked relationship accepts writes and reads empty forever (migration 149).

@@ -11,36 +11,10 @@ import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 import { readMovementsByRelation } from './guarded-movements'
 
 /**
- * Pre-delete guard for `builds` (plans/money/tasks/21-money-parent-delete-safety.md §3).
- * Fires inside `deleteEntity` for EVERY delete path, generic `record.delete`,
- * bulk delete, drawers, Kopilot and the API, because `builds` is
- * `isVisible: true` and therefore carries an ordinary records table with an
- * ordinary delete button that no money code has ever seen.
- *
- * Two refusals, both conditional on state the registry cannot see:
- *
- *   1. **REFUSE when this build IS a reversal.** `build_reversal_of` is a value
- *      on the dying row. Deleting the reversal leaves the original's negation
- *      explaining nothing. The registry's `restrict` covers only the other
- *      direction (below), because `onDelete` is declared on the has_many side.
- *   2. **REFUSE when any movement sits in a settled period.** `settledPeriodsFor`
- *      owns the three predicates.
- *
- * **What is NOT here, and why.**
- *
- *   - "This build HAS BEEN reversed" is `onDelete: 'restrict'` on
- *     `build_reversed_by`. The delete engine refuses it from the declaration,
- *     archived reversals included.
- *   - The `build_consume` / `build_produce` movements are `onDelete: 'cascade'`
- *     on `build_movements`. The engine collects them into the closure, runs this
- *     guard before writing anything, and publishes a lifecycle event per row, so
- *     `mfg-stock-movements-deleted` still recomputes `recalculatePartQoH` on
- *     every SURVIVING part the build touched.
- *
- * **The refusal points at `reverseBuild`, not at archive.** Unlike a part, a
- * build has a sanctioned correction path (`builds/reverse-build.ts`) that
- * already writes the negation with the type carried verbatim, so the message
- * names it.
+ * Refuses a build delete when the build is itself a reversal or any of its movements sits in a
+ * settled period; open-period movements are then deleted with the build by
+ * `deleteEntityInstances`, which re-derives QoH on the component parts (plans/mrp/20 S9).
+ * "Has been reversed" is `onDelete: 'restrict'` on `build_reversed_by`, refused by the engine.
  */
 export const guardBuildDelete: EntityPreDeleteHandler = async (event) => {
   const { organizationId, recordId } = event
@@ -49,9 +23,7 @@ export const guardBuildDelete: EntityPreDeleteHandler = async (event) => {
   // The cheap check first: it reads nothing.
   refuseIfReversal(event)
 
-  const movements = await readMovementsByRelation(organizationId, 'stock_movement_build', [
-    buildInstanceId,
-  ])
+  const movements = await readMovementsByRelation(organizationId, 'buildId', [buildInstanceId])
   if (movements.length === 0) return
 
   const settled = await settledPeriodsFor(

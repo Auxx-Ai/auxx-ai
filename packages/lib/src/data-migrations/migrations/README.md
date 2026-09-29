@@ -36,7 +36,8 @@ existing organization.
 
 1. **Ids are permanent ledger keys and are never reused.** 001 to 150 are retired,
    and so are 184 and 185 (the posting-marker fields that 186 drops, brief 91; 187 adds
-   `journal_entry_line`). `registry.ts` throws at module load if you reuse one. Take the
+   `journal_entry_line`), and 153, 175 and 193 (they wrote `stock_movement` fields; 201 moved
+   movements to a table). `registry.ts` throws at module load if you reuse one. Take the
    next free number.
 2. **`run`/`up` must throw on failure.** The ledger only records what the runner sees.
 3. **Be idempotent.** The ledger gives exactly-once across the fleet, but a run that

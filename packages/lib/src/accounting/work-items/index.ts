@@ -28,6 +28,7 @@ export {
   type WorkItemFilters,
   type WorkItemGroup,
   type WorkItemListRow,
+  type WorkItemMovement,
   type WorkItemRow,
 } from './reads'
 export { requestAccountingRecovery, requestRailRouting } from './recovery'

@@ -20,7 +20,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../../cache'
 import { UnifiedCrudHandler } from '../../../../resources/crud/unified-handler'
 import { PartKind } from '../../../../resources/registry/enum-values'
@@ -34,7 +34,7 @@ import type { EntityDefMap } from '../../../../seed/entity-seeder/types'
 const db = () => getTestDb() as unknown as Database
 
 /** The only defs whose registry fields a build path ever reads or writes. */
-const BUILD_ENTITY_TYPES = ['build', 'part', 'subpart', 'stock_movement'] as const
+const BUILD_ENTITY_TYPES = ['build', 'part', 'subpart'] as const
 
 /** Everything the build tests need to address the seeded org. */
 export interface BuildFixture {
@@ -43,7 +43,6 @@ export interface BuildFixture {
   buildDefId: string
   partDefId: string
   subpartDefId: string
-  movementDefId: string
   /** The finished good the build produces. */
   producedPartId: string
   /** The BOM components, in BOM order. */
@@ -60,7 +59,7 @@ export interface SeedBuildOrgOptions {
 }
 
 /**
- * Seed an organization whose `build`, `part`, `subpart` and `stock_movement`
+ * Seed an organization whose `build`, `part` and `subpart`
  * definitions and fields are the registry's own, then give it one buildable
  * finished good with a priced bill of materials.
  */
@@ -82,7 +81,7 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
   // whole org, and defs are one cheap insert each.
   const entityDefMap = await createEntityDefinitions(db(), org.id)
 
-  // ...but only the four defs a build actually touches get their ~1,000
+  // ...but only the three defs a build actually touches get their ~1,000
   // registry fields materialised. `createAllFields` keys off the map it is
   // handed, so narrowing it here is the difference between a ~1.2s fixture and
   // a ~12s one, repeated once per test because `per-test-setup` truncates every
@@ -107,7 +106,6 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
   const buildDefId = defId('build')
   const partDefId = defId('part')
   const subpartDefId = defId('subpart')
-  const movementDefId = defId('stock_movement')
 
   const crud = new UnifiedCrudHandler(org.id, user.id, db())
 
@@ -153,7 +151,6 @@ export async function seedBuildOrg(options: SeedBuildOrgOptions = {}): Promise<B
     buildDefId,
     partDefId,
     subpartDefId,
-    movementDefId,
     producedPartId,
     componentPartIds,
     standardCosts,
@@ -221,19 +218,11 @@ export async function freezeStandardCost(
   }
 }
 
-/** Every `stock_movement` instance in the org — archived rows included, on purpose. */
-export async function listMovementInstanceIds(
-  organizationId: string,
-  movementDefId: string
-): Promise<string[]> {
+/** Every `StockMovement` id in the org. */
+export async function listMovementIds(organizationId: string): Promise<string[]> {
   const rows = await db()
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, movementDefId)
-      )
-    )
+    .select({ id: schema.StockMovement.id })
+    .from(schema.StockMovement)
+    .where(eq(schema.StockMovement.organizationId, organizationId))
   return rows.map((row) => row.id)
 }

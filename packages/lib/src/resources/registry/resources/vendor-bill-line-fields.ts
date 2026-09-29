@@ -314,7 +314,7 @@ export const VENDOR_BILL_LINE_FIELDS = defineResourceFields({
    *
    * 🛑 Deliberately NOT a role, and this is the one place in the purchasing
    * subsystem where a bookkeeper's own pick is the right answer - so the
-   * difference from `stock_movement.glAccount` (which stores a `G8` ROLE) is
+   * difference from `StockMovement.glRole` (which stores a `G8` ROLE) is
    * stated here rather than left to be rediscovered.
    *
    * Two things separate them:

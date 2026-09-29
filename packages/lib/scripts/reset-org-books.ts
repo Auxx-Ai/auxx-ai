@@ -80,11 +80,10 @@
 //
 // ── Quantity on hand is re-derived here, not by the trigger ─────────────────
 //
-// `recalculatePartQoH` resolves the affected part from the movement's own
-// `FieldValue` rows, and `deleteEntityInstances` has already swept them by the
-// time the lifecycle event lands — the handler warns out and QoH keeps the
-// number the deleted ledger produced. Since EVERY movement goes, the answer is
-// known without a re-SUM: zero, and `out_of_stock` by `deriveStockStatus`.
+// The `StockMovement` rows are cleared as a side table, which fires nothing, so
+// QoH would keep the number the deleted ledger produced. Since EVERY movement
+// goes, the answer is known without a re-SUM: zero, and `out_of_stock` by
+// `deriveStockStatus`.
 
 import { inspect } from 'node:util'
 import { database as db, schema } from '@auxx/database'
@@ -138,9 +137,7 @@ if (!ORG_ARG) {
  * The instance waves, deepest first.
  *
  * Within a wave nothing points at anything else, so order is free; between
- * waves it is not. `stock_movement`'s self-relations (parent/child,
- * reverses/reversed-by) are `FieldValue` rows rather than foreign keys and the
- * sweep clears both ends, so the whole type goes in one wave.
+ * waves it is not.
  */
 const DELETE_WAVES: readonly (readonly string[])[] = [
   // Order children, the credit-memo closure, and the leaf children of wave-4 documents.
@@ -164,8 +161,8 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
   // The shipment and return families, children first; all hang off the order.
   ['fulfillment', 'shipment', 'return_line'],
   ['return'],
-  // The inventory ledger, then what wrote it.
-  ['stock_movement', 'build'],
+  // What wrote the inventory ledger; the ledger itself is a side table.
+  ['build'],
   // Purchasing: lines before documents.
   ['purchase_order_line', 'vendor_bill_line', 'purchase_order', 'vendor_bill', 'vendor_credit'],
   // The accounting documents.
@@ -239,7 +236,8 @@ const SIDE_TABLES = [
   { name: 'InvoiceVisitAllocation', table: schema.InvoiceVisitAllocation },
   { name: 'WorkOrderBillingInstallment', table: schema.WorkOrderBillingInstallment },
   { name: 'WorkOrderVisit', table: schema.WorkOrderVisit },
-  // The stock_movement mirror; the instance delete would sweep it too, listed so the dry run counts it.
+  // The inventory ledger: its part/build/line FKs are NO ACTION, so it goes before the waves.
+  { name: 'StockMovement', table: schema.StockMovement },
   { name: 'InventoryMovementFact', table: schema.InventoryMovementFact },
   // Planned from the movements and documents above; `MrpPlanRunItem` cascades.
   { name: 'MrpPlanRun', table: schema.MrpPlanRun },

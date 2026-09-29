@@ -213,16 +213,40 @@ async function hydrateSources<
     organizationId,
     rows.filter((row) => row.sourceKind === 'money_transaction').map((row) => row.sourceId)
   )
+  const stockMovementIds = rows
+    .filter((row) => row.sourceKind === 'stock_movement')
+    .map((row) => row.sourceId)
+  const stockMovements = new Map(
+    stockMovementIds.length
+      ? (
+          await db
+            .select({
+              id: schema.StockMovement.id,
+              partId: schema.StockMovement.partId,
+              type: schema.StockMovement.type,
+              quantity: schema.StockMovement.quantity,
+            })
+            .from(schema.StockMovement)
+            .where(
+              and(
+                eq(schema.StockMovement.organizationId, organizationId),
+                inArray(schema.StockMovement.id, [...new Set(stockMovementIds)])
+              )
+            )
+        ).map((row) => [row.id, row])
+      : []
+  )
   // A `sourceKind` that is an entity type becomes a `RecordId` so the client
-  // renders a badge, a `money_transaction` a `MovementBadge`; the remaining
-  // ledger-only kinds (`gl_posting`, `payout`, …) stay text.
+  // renders a badge, a `money_transaction` a `MovementBadge`, a `stock_movement` a
+  // `StockMovementBadge`; the remaining ledger-only kinds (`gl_posting`, `payout`, …) stay text.
   const hydrated = await Promise.all(
     rows.map(async (row) => {
       const defId = await getCachedEntityDefId(organizationId, row.sourceKind)
       const movement = movements.get(row.sourceId)
       return {
         ...row,
-        recordId: defId ? toRecordId(defId, row.sourceId) : null,
+        recordId:
+          defId && row.sourceKind !== 'stock_movement' ? toRecordId(defId, row.sourceId) : null,
         movement:
           row.sourceKind === 'money_transaction' && movement
             ? {
@@ -234,6 +258,8 @@ async function hydrateSources<
                 currencyExponent: movement.currencyExponent,
               }
             : null,
+        stockMovement:
+          row.sourceKind === 'stock_movement' ? (stockMovements.get(row.sourceId) ?? null) : null,
       }
     })
   )

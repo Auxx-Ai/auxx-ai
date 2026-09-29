@@ -25,7 +25,7 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@auxx/database', () => ({
-  schema: { FieldValue: { relatedEntityId: 'r', organizationId: 'o', fieldId: 'f' } },
+  schema: { StockMovement: { partId: 'p', organizationId: 'o' } },
 }))
 vi.mock('../standard-cost-queries', () => ({
   loadStandardCostWriteContext: async () => h.context,
@@ -41,9 +41,6 @@ vi.mock('../../../accounting/work-items/recovery', () => ({
 }))
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async () => ({ stock_movement_part: { id: 'f_mv_part' } }),
-    }),
     get: async () => 'user_system',
   }),
 }))

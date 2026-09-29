@@ -281,7 +281,6 @@ async function announce(organizationId: string) {
   const defIds = await Promise.all([
     getCachedEntityDefId(organizationId, 'build'),
     getCachedEntityDefId(organizationId, 'part'),
-    getCachedEntityDefId(organizationId, 'stock_movement'),
   ])
   const entityDefinitionIds = defIds.filter((id): id is string => !!id)
   if (entityDefinitionIds.length === 0) return

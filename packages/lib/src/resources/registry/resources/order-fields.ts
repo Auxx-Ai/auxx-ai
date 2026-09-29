@@ -843,7 +843,7 @@ export const ORDER_FIELDS = defineResourceFields({
    * inverse of `fulfillment_order`. The JSON choice was reasoned from two
    * premises this migration invalidates: "a shipment has no independent
    * identity" (Shopify assigns every fulfillment an id) and "nothing links to
-   * it" (`stock_movement` now does, via `stock_movement_fulfillment_line` -
+   * it" (`StockMovement` now does, via `fulfillmentLineId` -
    * that link is the whole of task 50's inventory-relief netting). Revenue
    * posts from these records now, not from a collapsed min/max/sum over a
    * JSON array - see `fulfillment-fields.ts` for what replaced it.

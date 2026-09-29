@@ -2,15 +2,9 @@
 // The guard that stops a purchase order being hard-deleted out from under a
 // receipt in a settled month.
 //
-// plans/money/tasks/21-money-parent-delete-safety.md §4. Note the two-hop read
-// the cases exercise: a `stock_movement` names the LINE, never the order, which
-// is why `sweepEntityFieldValues` never touched receipts and why an unguarded
-// delete looked harmless.
-//
-// The vendor-bill refusal and the line/receipt cascades are no longer here: they
-// are `onDelete: 'restrict'` on `purchase_order_bills` and `onDelete: 'cascade'`
-// on `purchase_order_lines` / `purchase_order_line_stock_movements`, run by the
-// delete engine.
+// plans/money/tasks/21-money-parent-delete-safety.md §4. A movement names the LINE,
+// never the order, so the guard reads the lines first. The receipts themselves are
+// deleted with their lines by `deleteEntityInstances` (plans/mrp/20 S9).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../../types'
@@ -82,8 +76,9 @@ function lines(...ids: string[]): void {
   h.findRelated.mockResolvedValue(ids)
 }
 
-function movement(id: string, occurredAt: string | null, createdAt = new Date('2026-08-15')) {
-  return { id, occurredAt, createdAt }
+/** A movement row as the guard's select shapes it; `accountingDate` is `effectiveAt`. */
+function movement(id: string, occurredAt: string) {
+  return { id, accountingDate: new Date(occurredAt) }
 }
 
 function settings(values: Record<string, string | null>): void {
@@ -94,11 +89,6 @@ function settings(values: Record<string, string | null>): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.getCachedEntityDefId.mockResolvedValue('movement-def')
-  h.bySystemAttributes.mockResolvedValue({
-    stock_movement_purchase_order_line: { id: 'f-line' },
-    stock_movement_occurred_at: { id: 'f-occurred' },
-  })
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.movementRows.mockResolvedValue([])

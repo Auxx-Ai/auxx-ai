@@ -4,9 +4,10 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 
-/** Relations that make a part a stocked thing, in the order their reason wins. */
+const MOVEMENT_REASON = 'it has stock movements'
+
+/** Relations after movements that make a part a stocked thing, in the order their reason wins. */
 const BLOCKERS = [
-  ['stock_movement_part', 'it has stock movements'],
   ['build_part', 'it has builds'],
   ['subpart_parent_part', 'it has a bill of materials'],
   ['subpart_child_part', "it is a component in another part's bill of materials"],
@@ -24,6 +25,13 @@ export async function readServiceKindBlockers(
   const blockers = new Map<string, string>()
   const unique = [...new Set(partIds.filter(Boolean))]
   if (unique.length === 0) return blockers
+
+  const t = schema.StockMovement
+  const moved = await db
+    .selectDistinct({ partId: t.partId })
+    .from(t)
+    .where(and(eq(t.organizationId, organizationId), inArray(t.partId, unique)))
+  for (const row of moved) blockers.set(row.partId, MOVEMENT_REASON)
 
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
@@ -58,6 +66,7 @@ export async function readServiceKindBlockers(
     found.set(row.partId, set)
   }
   for (const [partId, fieldIds] of found) {
+    if (blockers.has(partId)) continue
     const reason = [...reasonByFieldId].find(([fieldId]) => fieldIds.has(fieldId))?.[1]
     if (reason) blockers.set(partId, reason)
   }

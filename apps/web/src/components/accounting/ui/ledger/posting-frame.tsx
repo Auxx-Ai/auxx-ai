@@ -47,6 +47,7 @@ import { formatAuditTimestamp, formatPeriodLabel } from './format'
 import { LedgerSourceLink } from './ledger-source-link'
 import { ExportBatchStateBadge } from './outbox/export-batch-badge'
 import { ExportFailureRemedy } from './outbox/export-failure-remedy'
+import { StockMovementBadge } from './stock-movement-badge'
 import { readStoredAssertions, readStoredReasons } from './stored-draft'
 
 /** What `LedgerDrawerHost` puts in its one `DrawerHeader` while a posting is on top. */
@@ -406,13 +407,9 @@ export function PostingFrame({
                   <TreeRow
                     title={
                       recordId ? (
-                        <RecordBadge
-                          recordId={recordId}
-                          size='sm'
-                          showResourceLabel={source.sourceKind === 'stock_movement'}
-                          link
-                          openInStack
-                        />
+                        <RecordBadge recordId={recordId} size='sm' link openInStack />
+                      ) : source.stockMovement ? (
+                        <StockMovementBadge movement={source.stockMovement} size='sm' />
                       ) : movement ? (
                         <MovementBadge
                           movement={movement}

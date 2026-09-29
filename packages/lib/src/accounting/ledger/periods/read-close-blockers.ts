@@ -55,7 +55,7 @@ function monthBounds(periodKey: string): { first: string; next: string; last: st
 
 /**
  * Movements dated inside the month, split into those still waiting for a standard
- * cost (`cost_basis = pending`, 111 Q18) and those valued but linked as a member
+ * cost (`costBasis = pending`, 111 Q18) and those valued but linked as a member
  * by no POSTED `inventory_movement` entry.
  *
  * The link, never a stamp field on the movement: `GlPostingSource` is the one
@@ -68,30 +68,8 @@ async function countUnpostedMovements(
   organizationId: string,
   bounds: { first: string; next: string }
 ): Promise<{ pending: number; unposted: number }> {
-  const fields = await systemFieldMap(db, organizationId, [
-    'stock_movement_occurred_at',
-    'stock_movement_extended_cost',
-    'stock_movement_cost_basis',
-  ] as const)
-  const occurredAt = fields.stock_movement_occurred_at
-  const extendedCost = fields.stock_movement_extended_cost
-  const costBasis = fields.stock_movement_cost_basis
-  if (!occurredAt || !extendedCost) return { pending: 0, unposted: 0 }
-
-  // An org without the field predates pending rows: nothing is pending.
-  const pending = costBasis
-    ? db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, costBasis.id),
-            eq(schema.FieldValue.optionId, 'pending')
-          )
-        )
-    : null
-  const isPending = pending ? sql`${schema.FieldValue.entityId} IN ${pending}` : sql`FALSE`
+  const t = schema.StockMovement
+  const isPending = sql`${t.costBasis} IS NOT DISTINCT FROM 'pending'`
 
   const posted = db
     .select({ sourceId: schema.GlPostingSource.sourceId })
@@ -109,23 +87,15 @@ async function countUnpostedMovements(
   const [row] = await db
     .select({
       pending: sql<string>`count(*) FILTER (WHERE ${isPending})`,
-      unposted: sql<string>`count(*) FILTER (WHERE NOT ${isPending} AND ${schema.FieldValue.entityId} NOT IN ${posted})`,
+      unposted: sql<string>`count(*) FILTER (WHERE NOT ${isPending} AND ${t.id} NOT IN ${posted})`,
     })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.EntityInstance,
-      and(
-        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
-        eq(schema.EntityInstance.organizationId, schema.FieldValue.organizationId)
-      )
-    )
+    .from(t)
     .where(
       and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, occurredAt.id),
-        isNotNull(schema.FieldValue.valueDate),
-        gte(sql`${schema.FieldValue.valueDate}::date`, bounds.first),
-        lt(sql`${schema.FieldValue.valueDate}::date`, bounds.next)
+        eq(t.organizationId, organizationId),
+        isNotNull(t.occurredAt),
+        gte(sql`${t.occurredAt}::date`, bounds.first),
+        lt(sql`${t.occurredAt}::date`, bounds.next)
       )
     )
 
@@ -223,13 +193,13 @@ async function countUnpostedShipments(
 }
 
 /**
- * The opening baseline plus Σ frozen `stock_movement_extended_cost` for every
+ * The opening baseline plus Σ frozen `extendedCostMinor` for every
  * movement dated after the cutover and on or before the month's last day.
  *
  * Movements at or before the cutover are the old system's; the opening baseline
  * replaces that history, and it is what the ledger side holds for the same days.
  *
- * `adjust_subparts` rows are excluded, the same population every other cost read
+ * `adjustSubparts` rows are excluded, the same population every other cost read
  * excludes: an exploded child row is a second copy of a value its parent already
  * carries.
  */
@@ -239,51 +209,17 @@ async function readSubledgerValue(
   window: { cutoverDate: string | null; openingMinor: number; lastDay: string }
 ): Promise<number> {
   const { cutoverDate, openingMinor, lastDay } = window
-  const fields = await systemFieldMap(db, organizationId, [
-    'stock_movement_occurred_at',
-    'stock_movement_extended_cost',
-    'stock_movement_adjust_subparts',
-  ] as const)
-  const occurredAt = fields.stock_movement_occurred_at
-  const extendedCost = fields.stock_movement_extended_cost
-  const adjustSubparts = fields.stock_movement_adjust_subparts
-  if (!occurredAt || !extendedCost) return openingMinor
-
-  const dated = db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, occurredAt.id),
-        isNotNull(schema.FieldValue.valueDate),
-        ...(cutoverDate ? [gt(sql`${schema.FieldValue.valueDate}::date`, cutoverDate)] : []),
-        lte(sql`${schema.FieldValue.valueDate}::date`, lastDay)
-      )
-    )
-
-  const exploded = adjustSubparts
-    ? db
-        .select({ entityId: schema.FieldValue.entityId })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.fieldId, adjustSubparts.id),
-            eq(schema.FieldValue.valueBoolean, true)
-          )
-        )
-    : null
-
+  const t = schema.StockMovement
   const [row] = await db
-    .select({ total: sql<string>`coalesce(sum(${schema.FieldValue.valueNumber}), 0)` })
-    .from(schema.FieldValue)
+    .select({ total: sql<string>`coalesce(sum(${t.extendedCostMinor}), 0)` })
+    .from(t)
     .where(
       and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, extendedCost.id),
-        sql`${schema.FieldValue.entityId} IN ${dated}`,
-        ...(exploded ? [sql`${schema.FieldValue.entityId} NOT IN ${exploded}`] : [])
+        eq(t.organizationId, organizationId),
+        isNotNull(t.occurredAt),
+        ...(cutoverDate ? [gt(sql`${t.occurredAt}::date`, cutoverDate)] : []),
+        lte(sql`${t.occurredAt}::date`, lastDay),
+        eq(t.adjustSubparts, false)
       )
     )
 

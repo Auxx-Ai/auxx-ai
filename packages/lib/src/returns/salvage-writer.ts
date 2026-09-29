@@ -6,21 +6,17 @@
  * One `return_in` `stock_movement` per **highest `good` node in each branch** of
  * a return line's salvage tree, valued at
  * `round(part_standard_cost x salvagePercent / 100)`, with that unit cost frozen
- * back onto the `return_part_line` row alongside a link to the movement it
- * produced (section 6.3 and section 6.4).
+ * back onto the `return_part_line` row; the movement carries `returnPartLineId`
+ * (section 6.3 and section 6.4).
  *
  * ## What this is NOT
  *
- * 🔧 **A caller of `writeStockMovementsBatch`, never a ninth hand-rolled insert.**
- * `inventory/movements/` is the one writer (task 50 section 2), and three of the
- * rules this brief used to spell out are now properties of its contract rather
- * than things this file must remember: `adjustSubparts` is typed `?: true` so
- * silence is safe, `affectedPartIds` comes back from the call, and the link set
- * has one definition so a reversal copies all of it.
+ * 🔧 **A caller of `writeStockMovements`, never a hand-rolled insert.**
+ * `inventory/movements/` is the one writer (task 50 section 2).
  *
  * ## The four things a salvage movement must not do
  *
- * 1. 🛑 **Never set `adjustSubparts`.** `field-hooks/post/bom-movement-triggers.ts`
+ * 1. 🛑 **Never set `adjustSubparts`.** The movement seam
  *    explodes a flagged movement into one child per LEAF subpart, so a flagged
  *    subassembly restock would put the subassembly and all of its leaves back:
  *    the same material twice, on an append-only ledger. `bom/qoh.ts` also
@@ -60,16 +56,11 @@
  * movement putting a manufactured part INTO an account values it at standard.
  * There is deliberately no ledger-average read in this file.
  *
- * ## The quiet lane and its two obligations
+ * ## After the commit
  *
- * `quietSession`, not `skipEvents` - `builds/write-lane.ts` has the full
- * argument (two doors onto `explodeBomMovement`, and `skipEvents` closes one).
- * Silencing `mfg-stock-movements-created` also silences `recalculatePartQoH`, so
- * this file owes `batchRecalculateQoH` over the returned `affectedPartIds`
- * **after COMMIT** (`bom/qoh.ts` reads the global `database`, not the
- * transaction), and it owes the self-announce that the lane suppressed - for the
- * movement rows AND for the `return_part_line` rows whose frozen cost was
- * written on the same silent handler.
+ * `settleStockMovements` re-derives QoH for the restocked parts, and
+ * {@link announceQuietSalvageWrites} announces the `return_part_line` rows whose
+ * frozen cost was written on the quiet handler.
  *
  * ## Two private reads live here
  *
@@ -92,17 +83,17 @@ import {
   exportInventoryMovement,
   postInventoryMovementInTx,
 } from '../accounting/ledger/post/post-inventory-movement'
-import { getOrgCache, requireCachedEntityDefId } from '../cache'
+import { getOrgCache } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { loadSubpartGraph } from '../inventory/bom/subpart-graph'
 import { readStandardCost } from '../inventory/costing'
 import { isServicePartKind } from '../inventory/costing/client'
-import { batchRecalculateQoH } from '../inventory/costing/qoh'
 import {
   reverseMovement,
   type StockMovementInput,
-  type StockMovementsCtx,
-  writeStockMovementsBatch,
+  type StockMovementTouched,
+  settleStockMovements,
+  writeStockMovements,
 } from '../inventory/movements'
 import { resolveInventoryRoleForPartKind } from '../inventory/movements/client'
 import { getRealtimeService, publishRecordsChanged } from '../realtime'
@@ -132,14 +123,7 @@ export const SALVAGE_WRITE_LANE_REASON =
   'the salvage writer posts its own return_in movements, freezes their unit cost onto the ' +
   'return part lines, and recalculates QoH after commit'
 
-/**
- * The session both the movements and the `return_part_line` freeze writes go
- * through.
- *
- * One session for the whole call: the batched movement writer and the freeze's
- * `UnifiedCrudHandler` both write through it. Covered: {@link announceQuietSalvageWrites}
- * announces the movements, the part lines and the parts after commit.
- */
+/** The session the `return_part_line` freeze writes through; {@link announceQuietSalvageWrites} covers it. */
 export function salvageWriteSession(): WriteSession {
   return quietSession(SALVAGE_WRITE_LANE_REASON, { coveredBy: 'announceQuietSalvageWrites' })
 }
@@ -148,10 +132,8 @@ export function salvageWriteSession(): WriteSession {
  * Announce rows this writer wrote silently - the frame the quiet lane
  * suppressed.
  *
- * `builds/write-lane.ts`'s self-announce obligation, and it applies to both
- * definitions here: the ledger card renders the `stock_movement` rows and the
- * salvage card renders the `return_part_line` rows, and neither learns about a
- * silent write on its own.
+ * The salvage card renders the `return_part_line` rows and does not learn about
+ * a silent write on its own.
  *
  * Tier-2 (`records:changed`), fire-and-forget, after the commit. No
  * `excludeSocketId`: the tab that pressed the button is the one most likely to
@@ -348,7 +330,7 @@ export async function writeSalvageMovements(
       const reason = await salvageMovementReason(db, organizationId, line.returnId)
       const occurredAt = input.occurredAt ?? new Date()
 
-      const inputs: StockMovementInput[] = pending.map(({ node, unitCost }) => ({
+      const inputs: StockMovementInput[] = pending.map(({ node, row, unitCost }) => ({
         partInstanceId: node.partId,
         type: StockMovementType.RETURN_IN,
         // POSITIVE: a `return_in` puts units back on the shelf, which is also
@@ -359,50 +341,32 @@ export async function writeSalvageMovements(
         // so `standard` is the honest one of the two basis values - the same
         // reading `adjustStock` and `completeBuild` take.
         costBasis: StockMovementCostBasis.STANDARD,
-        glAccount: resolveInventoryRoleForPartKind(partKinds.get(node.partId) ?? null),
+        glRole: resolveInventoryRoleForPartKind(partKinds.get(node.partId) ?? null),
         occurredAt,
         reason,
-        // 🛑 `adjustSubparts` omitted - the contract types it `?: true`, so
-        //    silence is the safe answer and the only correct one here.
-        // 🛑 `links` omitted entirely - a salvage carries no
-        //    `stock_movement_fulfillment_line`, and there is nothing else on a
-        //    return for the ledger's link set to point at.
+        // 🛑 No `adjustSubparts` and no `fulfillmentLineId` (points 1 and 2 above).
+        links: { returnPartLineId: row.id },
       }))
-
-      const [movementDefId, partDefId] = await Promise.all([
-        requireCachedEntityDefId(organizationId, 'stock_movement'),
-        requireCachedEntityDefId(organizationId, 'part'),
-      ])
 
       const session = salvageWriteSession()
       let movements: SalvageMovementWritten[] = []
-      let affectedPartIds: string[] = []
+      let touched: StockMovementTouched | undefined
       let post: InTxPostResult | null = null
 
-      // This function owns the transaction boundary - `writeStockMovementsBatch`
-      // never opens one of its own - so the movements and the freeze writes
-      // land or roll back together. A frozen cost without its movement, or a
-      // movement nothing points at, are both worse than neither.
+      // The movements and the freeze writes land or roll back together. A frozen
+      // cost without its movement, or a movement nothing points at, are both
+      // worse than neither.
       await db.transaction(async (tx) => {
         const txDb = tx as unknown as Database
-        const movementCtx: StockMovementsCtx = {
-          db: txDb,
-          organizationId,
-          userId,
-          movementDefId,
-          partDefId,
-          lane: { kind: 'quiet', session },
-        }
-
-        const written = await writeStockMovementsBatch(movementCtx, inputs)
+        const written = await writeStockMovements({ db: tx, organizationId, userId }, inputs)
         if (written.isErr()) throw written.error
-        affectedPartIds = written.value.affectedPartIds
+        touched = written.value.touched
 
         // `records` comes back in the same order as `inputs`, which is
         // `pending`'s order.
         movements = written.value.records.map((record, index) => {
           const entry = pending[index]
-          if (!entry) throw new Error('writeStockMovementsBatch returned more records than inputs')
+          if (!entry) throw new Error('writeStockMovements returned more records than inputs')
           return {
             partLineId: entry.row.id,
             partId: entry.node.partId,
@@ -410,7 +374,7 @@ export async function writeSalvageMovements(
             quantity: entry.node.quantity,
             salvagePercent: entry.node.salvagePercent,
             unitCost: entry.unitCost,
-            movementId: record.movementId,
+            movementId: record.id,
           }
         })
 
@@ -422,10 +386,7 @@ export async function writeSalvageMovements(
         const freeze = await crud.bulkUpdate(
           movements.map((movement) => ({
             recordId: toRecordId(ctx.defId, movement.partLineId) as RecordId,
-            values: {
-              return_part_line_unit_cost: movement.unitCost,
-              return_part_line_movement: toRecordId(movementDefId, movement.movementId),
-            },
+            values: { return_part_line_unit_cost: movement.unitCost },
           }))
         )
         // The run's own entry, inside the same transaction: restocked units go
@@ -433,11 +394,11 @@ export async function writeSalvageMovements(
         // can be salvaged in more than one run, so each run claims its first
         // movement (its own doc number) and the return and line are parents.
         const booked = written.value.records
-          .filter((record) => record.glAccount && record.extendedCost)
+          .filter((record) => record.glRole && record.extendedCost)
           .map((record) => ({
-            id: record.movementId,
+            id: record.id,
             extendedCostMinor: record.extendedCost as number,
-            glAccountRole: record.glAccount as string,
+            glAccountRole: record.glRole as string,
           }))
         post = booked[0]
           ? await postInventoryMovementInTx(tx, {
@@ -455,9 +416,7 @@ export async function writeSalvageMovements(
             })
           : null
 
-        // `bulkUpdate` tolerates per-row failures; this caller must not. A row
-        // that did not take its link points at no movement, and the next run
-        // would restock the same material again.
+        // `bulkUpdate` tolerates per-row failures; this caller must not.
         if (freeze.errors.length > 0) {
           const first = freeze.errors[0]
           throw new UnprocessableEntityError(
@@ -466,24 +425,14 @@ export async function writeSalvageMovements(
         }
       })
 
-      // ── Post-commit, both obligations ────────────────────────────────
-      // The quiet lane silenced `recalculatePartQoH`, so this is the ONLY thing
-      // that moves quantity on hand for these movements, and `bom/qoh.ts` reads
-      // the global `database` rather than the transaction, so it must run here.
-      await batchRecalculateQoH(organizationId, affectedPartIds)
+      if (touched) await settleStockMovements(organizationId, touched)
       await exportInventoryMovement(db, post)
-      announceQuietSalvageWrites(
-        organizationId,
-        movementDefId,
-        movements.map((movement) => movement.movementId)
-      )
       announceQuietSalvageWrites(
         organizationId,
         ctx.defId,
         movements.map((movement) => movement.partLineId)
       )
-      // The covered lane sends no inverse frames: the parts' movement lists.
-      announceQuietSalvageWrites(organizationId, partDefId, affectedPartIds)
+      const affectedPartIds = touched?.partIds ?? []
 
       logger.info('Wrote salvage movements for a return line', {
         organizationId,
@@ -528,13 +477,11 @@ export async function writeSalvageMovements(
  * and touch the row. The correction is the reversal, and then the warehouse
  * changes the row's status. Nothing else moves.
  *
- * 🛑 The row keeps its `movement` link and its frozen `unitCost`, which is why
+ * 🛑 The row keeps its movement and its frozen `unitCost`, which is why
  * {@link writeSalvageMovements} keeps skipping it. Re-salvaging a row after a
- * correction is not a case this brief defines; it would need the row's link
- * cleared, and inventing that here would be designing rather than building.
+ * correction is not a case this brief defines.
  *
- * The reversal runs on the ORDINARY lane, so `recalculatePartQoH` fires from the
- * rule and this function owes no post-commit recalculation of its own.
+ * `reverseMovement` settles its own write, so this owes nothing after it.
  */
 export async function reverseSalvageMovement(
   db: Database,
@@ -560,13 +507,13 @@ export async function reverseSalvageMovement(
         organizationId,
         partLineId: row.id,
         movementId: row.movementId,
-        reversalId: reversal.value.movementId,
+        reversalId: reversal.value.id,
       })
 
       return {
         partLineId: row.id,
         reversedMovementId: row.movementId,
-        movementId: reversal.value.movementId,
+        movementId: reversal.value.id,
       }
     },
     'Failed to reverse a salvage movement',
@@ -645,11 +592,8 @@ async function readSalvagePartKinds(
 /**
  * `RMA-000N salvage` - section 6.3's reason string, verbatim.
  *
- * The movement carries NO link back to the return (the `return_part_line` owns
- * that edge, one-sided, so the append-only ledger holds no pointer into the
- * returns tree), which makes this string the only human trace on the ledger row
- * of where the stock came from. A return with no minted number yet still gets a
- * reason that says what the row is.
+ * The human trace on the ledger row of where the stock came from. A return with
+ * no minted number yet still gets a reason that says what the row is.
  */
 async function salvageMovementReason(
   db: Database,

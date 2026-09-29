@@ -352,6 +352,14 @@ export function useResourceSync() {
 
       scheduleListInvalidate(entityDefinitionId)
 
+      // A part's movements are table rows with no def of their own; the seam announces them on the part.
+      const def = useResourceStore.getState().getResourceById(entityDefinitionId)
+      if (def?.entityType === 'part') {
+        for (const { recordId } of entries) {
+          utils.purchasing.listMovements.invalidate({ partId: recordId })
+        }
+      }
+
       // Lane 2 — record meta, listed ids we already hold only. Each frame is
       // capped at 100 entries by the publisher, matching `getByIds`' input cap.
       const held = getRecordStoreState().records[entityDefinitionId]

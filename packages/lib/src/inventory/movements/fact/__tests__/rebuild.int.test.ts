@@ -55,50 +55,19 @@ async function facts() {
     .sort((a, b) => a.id.localeCompare(b.id))
 }
 
-async function fieldId(systemAttribute: string): Promise<string> {
-  const [field] = await db()
-    .select({ id: schema.CustomField.id })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, f.organizationId),
-        eq(schema.CustomField.systemAttribute, systemAttribute)
-      )
-    )
-  if (!field) throw new Error(`fixture: no ${systemAttribute} field`)
-  return field.id
-}
-
 /** A reversal written straight to the ledger, bypassing the writer and so the mirror. */
 async function rawReversal(originalId: string, partId: string, quantity: number): Promise<string> {
-  const [instance] = await db()
-    .insert(schema.EntityInstance)
+  const [row] = await db()
+    .insert(schema.StockMovement)
     .values({
       organizationId: f.organizationId,
-      entityDefinitionId: f.movementDefId,
-      updatedAt: new Date(),
+      partId,
+      type: 'return_in',
+      quantity,
+      reversesMovementId: originalId,
     })
-    .returning({ id: schema.EntityInstance.id })
-  const id = instance!.id
-  const base = {
-    organizationId: f.organizationId,
-    entityId: id,
-    entityDefinitionId: f.movementDefId,
-    updatedAt: new Date(),
-  }
-  await db()
-    .insert(schema.FieldValue)
-    .values([
-      { ...base, fieldId: await fieldId('stock_movement_part'), relatedEntityId: partId },
-      { ...base, fieldId: await fieldId('stock_movement_type'), optionId: 'return_in' },
-      { ...base, fieldId: await fieldId('stock_movement_quantity'), valueNumber: quantity },
-      {
-        ...base,
-        fieldId: await fieldId('stock_movement_reverses_movement'),
-        relatedEntityId: originalId,
-      },
-    ])
-  return id
+    .returning({ id: schema.StockMovement.id })
+  return row!.id
 }
 
 beforeEach(async () => {

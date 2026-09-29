@@ -1,7 +1,7 @@
 // packages/lib/src/accounting/ledger/periods/__tests__/read-close-blockers.int.test.ts
 //
 // 88 D8: the close counts the shipments the month recognised nothing for.
-// Real rows, because the count is one SQL over `FieldValue` and the claim.
+// Real rows, because each count is one SQL over the records (or `StockMovement`) and the claim.
 
 import { type Database, schema } from '@auxx/database'
 import { createTestOrganization, createTestUser, getTestDb } from '@auxx/test-utils'
@@ -173,21 +173,30 @@ describe('unposted_shipments', () => {
 
 /** A movement dated in the month: valued at standard, or written pending (111 Q18). */
 async function movement(overrides: { occurredAt?: string; pending?: boolean } = {}) {
-  const [row] = await db()
+  const [part] = await db()
     .insert(schema.EntityInstance)
     .values({
       organizationId,
-      entityDefinitionId: defs.get('stock_movement')!.id,
+      entityDefinitionId: defs.get('part')!.id,
       createdById: userId,
       updatedAt: new Date(),
     })
     .returning()
-  const id = row!.id
   const { occurredAt = '2026-03-15T12:00:00.000Z', pending = false } = overrides
-  await value(id, 'stock_movement_occurred_at', { valueDate: occurredAt })
-  await value(id, 'stock_movement_cost_basis', { optionId: pending ? 'pending' : 'standard' })
-  if (!pending) await value(id, 'stock_movement_extended_cost', { valueNumber: 1200 })
-  return id
+  const [row] = await db()
+    .insert(schema.StockMovement)
+    .values({
+      organizationId,
+      partId: part!.id,
+      type: 'adjust',
+      quantity: 1,
+      occurredAt: new Date(occurredAt),
+      ...(pending
+        ? { costBasis: 'pending' as const }
+        : { costBasis: 'standard' as const, unitCostMinor: 1200, extendedCostMinor: 1200 }),
+    })
+    .returning()
+  return row!.id
 }
 
 /** The member link a posted inventory entry holds over a movement. */

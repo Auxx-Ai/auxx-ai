@@ -1,46 +1,10 @@
 // packages/lib/src/inventory/builds/complete-build.ts
 
 /**
- * `completeBuild` - the ONLY function in this module that writes a stock
- * movement, and the one heavy write in the whole directory.
- *
- * plans/products/build/01-build-plan.md section 3.4, README B2/B4/B7/B8.
- *
- * ## What it produces
- *
- * ```
- * -20  400Lbs motor Assembly   @ its frozen standard cost   (build_consume)
- * +10  Auxx Lift 400lbs 4x8    @ its frozen standard cost   (build_produce)
- * ```
- *
- * That pair is the event the system could not record before this file existed,
- * and it is why margin was unavailable: not because parts had no cost, but
- * because nothing ever wrote a cost DOWN. `part_cost` is a live mirror - a
- * vendor raising the motor price in March silently restates January's COGS.
- * Every number this function writes is read from `part_standard_cost`, frozen
- * onto an append-only row, and never recomputed.
- *
- * ## The four traps, and where each is handled
- *
- * 1. **The transaction boundary.** Record-rule handlers use the module-level
- *    `database` and `publishEvent` is not awaited, so a quantity-on-hand recalc
- *    fired from inside `db.transaction()` reads a PRE-BUILD snapshot. The
- *    recalc therefore runs {@link recalculateAfterCommit}, after the
- *    transaction returns, never inside it.
- * 2. **The write lane.** One quiet session, decided in `write-lane.ts` and
- *    nowhere else. Read that file before changing it - `skipEvents: true` closes
- *    only one of the two dispatch doors.
- * 3. **Batch the recalc.** Quantity on hand is a full re-SUM per part on every
- *    movement write; a build writing 51 movements would make that 51x worse in a
- *    loop. ONE `batchRecalculateQoH` over the produced part and every consumed
- *    part. Under the quiet lane this call is the only thing recalculating them
- *    at all, so it is load-bearing rather than an optimisation.
- * 4. **`adjustSubparts: false` on every row.** The build does its own explosion.
- *    `explodeBomMovement` guards on this flag before any query, on every lane,
- *    which makes it the belt that keeps this safe if the lane ever changes.
- *
- * No permission checks. The router asserts (`docs/lib-module-guide.md`
- * section 6).
+ * `completeBuild`: consume the components and produce the good units at their frozen standard
+ * costs, and post the build's entry. plans/products/build/01-build-plan.md section 3.4, README
+ * B2/B4/B7/B8. The movements are written in the completion's transaction; QoH and the realtime
+ * frames settle after the commit. No permission checks (`docs/lib-module-guide.md` section 6).
  */
 
 import type { Database, Transaction } from '@auxx/database'
@@ -56,14 +20,12 @@ import {
 import type { WorkItemRefusal } from '../../accounting/work-items/refusal'
 import { upsertWorkItem, type WorkItemKey } from '../../accounting/work-items/write'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
-import { flushInstanceDerived } from '../../field-values/instance-derived'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import type { WriteSession } from '../../resources/crud/write-origin'
 import {
   BuildStatus,
   StockMovementCostBasis,
@@ -71,25 +33,24 @@ import {
 } from '../../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { isServicePartKind } from '../costing/client'
-import { batchRecalculateQoH } from '../costing/qoh'
 import { loadPartAbsorptionRates } from '../costing/standard-cost-queries'
 import type { AbsorptionRates } from '../costing/types'
 import {
   type StockMovementInput,
+  type StockMovementTouched,
+  settleStockMovements,
   type WriteStockMovementsResult,
-  writeStockMovementsBatch,
+  writeStockMovements,
 } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { BUILD_STATUS_BYPASS, raiseBuildValues } from './build-mutations'
 import {
   assertBuildStatus,
   type BuildContext,
-  type BuildMovementContext,
   lockBuild,
   planBuildComponents,
   readPartKinds,
   requireBuildContext,
-  requireBuildMovementContext,
 } from './build-queries'
 import {
   absorbedRunCost,
@@ -141,17 +102,12 @@ export async function completeBuild(
       const quantityScrapped = input.quantityScrapped ?? 0
       assertQuantities(quantityProduced, quantityScrapped)
 
-      const [ctx, movementCtx] = await Promise.all([
-        requireBuildContext(organizationId),
-        requireBuildMovementContext(organizationId),
-      ])
-
+      const ctx = await requireBuildContext(organizationId)
       const completedAt = input.completedAt ?? new Date()
 
       const written = await db.transaction(async (tx) =>
         writeCompletion(tx, organizationId, userId, {
           ctx,
-          movementCtx,
           input,
           quantityProduced,
           quantityScrapped,
@@ -159,7 +115,7 @@ export async function completeBuild(
         })
       )
 
-      await finishCompletion(db, organizationId, { ctx, movementCtx, written, completedAt })
+      await finishCompletion(db, organizationId, { ctx, written, completedAt })
       return written.result
     },
     'Failed to complete build',
@@ -173,25 +129,16 @@ async function finishCompletion(
   organizationId: string,
   args: {
     ctx: BuildContext
-    movementCtx: BuildMovementContext
     written: WrittenCompletion
     completedAt: Date
   }
 ): Promise<void> {
-  const { ctx, movementCtx, written, completedAt } = args
-  // 🛑 Trap 1 and trap 3, both discharged here and NOWHERE else. Inside the
-  // transaction this would re-SUM a ledger that does not yet contain the
-  // rows above; per movement it would be 51 full re-SUMs.
-  await recalculateAfterCommit(organizationId, written.result.recalculatedPartIds)
+  const { ctx, written, completedAt } = args
+  // After the commit, so QoH re-sums a ledger that holds the rows; also announces the parts.
+  await settleStockMovements(organizationId, written.touched)
   await exportInventoryMovement(db, written.post)
   await parkPendingBuild(db, organizationId, written)
   publishBuildUpdate(organizationId, ctx, written.result, completedAt)
-  // The ledger's own frame. `publishBuildUpdate` covers the build ROW; the
-  // movement rows are silent without this and `build-ledger-card` goes on
-  // rendering "Nothing posted yet" until the drawer remounts.
-  publishQuietBuildWrites(organizationId, movementCtx.defId, written.result.movementIds)
-  // The covered lane sends no inverse frames: the parts' and the build's movement lists.
-  publishQuietBuildWrites(organizationId, movementCtx.partDefId, written.result.recalculatedPartIds)
   publishQuietBuildWrites(organizationId, ctx.defId, [written.result.buildId])
 
   logger.info('Completed build', {
@@ -208,7 +155,6 @@ async function finishCompletion(
 
 interface WriteCompletionArgs {
   ctx: BuildContext
-  movementCtx: BuildMovementContext
   input: CompleteBuildInput
   quantityProduced: number
   quantityScrapped: number
@@ -223,6 +169,8 @@ export interface WrittenCompletion {
   /** The legs written `pending`, and the name of the first uncosted part, for the park. */
   pendingMovementIds: string[]
   pendingPartName: string | null
+  /** For `settleStockMovements` after the commit. */
+  touched: StockMovementTouched
 }
 
 /** Steps 2 and 3 plus the run's absorbed costs: everything the writes need, read on `tx`. */
@@ -231,7 +179,7 @@ export interface PricedCompletion {
   pendingPartIds: string[]
   summary: BuildCompletionSummary | null
   /** The produced part's inventory role, from its own `part_kind`. */
-  produceGlAccount: string
+  produceGlRole: string
   laborCost: number
   overheadCost: number
 }
@@ -249,7 +197,7 @@ async function writeCompletion(
   userId: string,
   args: WriteCompletionArgs
 ): Promise<WrittenCompletion> {
-  const { ctx, movementCtx, input, quantityProduced, quantityScrapped, completedAt } = args
+  const { ctx, input, quantityProduced, quantityScrapped, completedAt } = args
   const txDb = tx as unknown as Database
 
   // Step 1. The lock IS B8's enforcement - see `lockBuild`.
@@ -281,11 +229,9 @@ async function writeCompletion(
     bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
   const buildRecordId = toRecordId(ctx.defId, build.buildId)
-  const movements = await writeCompletionMovements(txDb, organizationId, userId, {
-    movementCtx,
-    session,
+  const movements = await writeCompletionMovements(tx, organizationId, userId, {
     priced,
-    buildRecordId,
+    buildId: build.buildId,
     quantityProduced,
     completedAt,
   })
@@ -391,7 +337,7 @@ export function priceFromPlan(
     summary,
     // From the produced part's OWN `part_kind`, not hard-coded to 1330: a subassembly
     // stamped 1330 would put raw-materials stock into Finished Goods.
-    produceGlAccount: resolveInventoryRoleForPartKind(producedKind),
+    produceGlRole: resolveInventoryRoleForPartKind(producedKind),
     laborCost: absorbedRunCost(args.laborCost, rates.laborCostPerUnit, started),
     overheadCost: absorbedRunCost(args.overheadCost, rates.overheadCostPerUnit, started),
   }
@@ -402,27 +348,18 @@ export function priceFromPlan(
  * quantity, then the single `build_produce`. `CompleteBuildResult.movementIds` keeps that order.
  */
 async function writeCompletionMovements(
-  txDb: Database,
+  tx: Transaction,
   organizationId: string,
   userId: string,
   args: {
-    movementCtx: BuildMovementContext
-    session: WriteSession
     priced: PricedCompletion
-    buildRecordId: RecordId
+    buildId: string
     quantityProduced: number
     completedAt: Date
   }
 ): Promise<WriteStockMovementsResult> {
-  const written = await writeStockMovementsBatch(
-    {
-      db: txDb,
-      organizationId,
-      userId,
-      movementDefId: args.movementCtx.defId,
-      partDefId: args.movementCtx.partDefId,
-      lane: { kind: 'quiet', session: args.session, bypassFieldGuards: BUILD_STATUS_BYPASS },
-    },
+  const written = await writeStockMovements(
+    { db: tx, organizationId, userId },
     completionMovementInputs(args.priced, args)
   )
   if (written.isErr()) throw written.error
@@ -432,9 +369,9 @@ async function writeCompletionMovements(
 /** A completion's legs, consumes in plan order then the produce. */
 export function completionMovementInputs(
   priced: PricedCompletion,
-  args: { buildRecordId: RecordId; quantityProduced: number; completedAt: Date }
+  args: { buildId: string; quantityProduced: number; completedAt: Date }
 ): StockMovementInput[] {
-  const { buildRecordId, completedAt } = args
+  const { buildId, completedAt } = args
   const consumeInputs: StockMovementInput[] = priced.plan.components.map((line) => ({
     partInstanceId: line.partId,
     type: StockMovementType.BUILD_CONSUME,
@@ -445,14 +382,14 @@ export function completionMovementInputs(
     // disagree by a rounding step (`Math.round` breaks ties toward +infinity). Absent on a
     // pending leg.
     extendedCost: line.extendedCost == null ? undefined : -line.extendedCost,
-    glAccount: line.glAccount,
+    glRole: line.glRole,
     costBasis:
       line.unitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
     occurredAt: completedAt,
     // NULL is the OFF-BOM marker, written as an absence: a stamped 0 would claim the BOM
     // calls for none of this component.
     qtyPerUnit: line.qtyPerUnit,
-    links: { buildId: buildRecordId },
+    links: { buildId },
   }))
   const produceUnitCost = priced.plan.producedUnitCost
   const produceInput: StockMovementInput = {
@@ -463,11 +400,11 @@ export function completionMovementInputs(
     quantity: args.quantityProduced,
     unitCost: produceUnitCost,
     extendedCost: priced.summary?.producedValue,
-    glAccount: priced.produceGlAccount,
+    glRole: priced.produceGlRole,
     costBasis:
       produceUnitCost == null ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
     occurredAt: completedAt,
-    links: { buildId: buildRecordId },
+    links: { buildId },
   }
   return [...consumeInputs, produceInput]
 }
@@ -516,13 +453,11 @@ export async function postCompletion(
   const { buildId, orderId, priced, movements, completedAt } = args
   const { summary, pendingPartIds } = priced
   const movementLines: InventoryMovementLine[] = movements.records
-    .filter(
-      (record) => record.glAccount && record.extendedCost != null && record.extendedCost !== 0
-    )
+    .filter((record) => record.glRole && record.extendedCost != null && record.extendedCost !== 0)
     .map((record) => ({
-      id: record.movementId,
+      id: record.id,
       extendedCostMinor: record.extendedCost as number,
-      glAccountRole: record.glAccount as string,
+      glAccountRole: record.glRole as string,
     }))
   const post = summary
     ? await postInventoryMovementInTx(tx, {
@@ -542,9 +477,10 @@ export async function postCompletion(
     post,
     pendingMovementIds: movements.records
       .filter((record) => record.unitCost == null)
-      .map((record) => record.movementId),
+      .map((record) => record.id),
     pendingPartName:
       priced.plan.components.find((line) => line.partId === firstPendingPartId)?.partName ?? null,
+    touched: movements.touched,
     result: {
       buildId,
       recordId: args.buildRecordId,
@@ -556,9 +492,8 @@ export async function postCompletion(
       producedValue: summary?.producedValue ?? null,
       varianceAmount: summary?.varianceAmount ?? null,
       pendingPartIds,
-      movementIds: movements.records.map((record) => record.movementId),
-      // Returned by the writer, not re-derived: the quiet lane's recalc obligation is structural.
-      recalculatedPartIds: movements.affectedPartIds,
+      movementIds: movements.records.map((record) => record.id),
+      recalculatedPartIds: movements.touched.partIds,
     },
   }
 }
@@ -589,10 +524,7 @@ export async function recordCompletedBuild(
   return guard(
     async () => {
       assertQuantities(input.quantity, 0)
-      const [ctx, movementCtx] = await Promise.all([
-        requireBuildContext(organizationId),
-        requireBuildMovementContext(organizationId),
-      ])
+      const ctx = await requireBuildContext(organizationId)
       const { completedAt } = input
       // `startBuild` stamps the wall clock, not the completion date; kept so both paths agree.
       const startedAt = new Date()
@@ -630,18 +562,11 @@ export async function recordCompletedBuild(
         const created = await crud.create(ctx.defId, values)
         const buildRecordId = toRecordId(ctx.defId, created.instance.id)
 
-        const movements = await writeCompletionMovements(txDb, organizationId, userId, {
-          movementCtx,
-          session,
+        const movements = await writeCompletionMovements(tx, organizationId, userId, {
           priced,
-          buildRecordId,
+          buildId: created.instance.id,
           quantityProduced: input.quantity,
           completedAt,
-        })
-        // The build's searchText folds its movement list, which did not exist at create time.
-        await flushInstanceDerived(txDb, organizationId, created.instance.id, {
-          stampUpdatedAt: true,
-          refreshSearchText: true,
         })
         return postCompletion(tx, organizationId, userId, {
           buildId: created.instance.id,
@@ -655,25 +580,12 @@ export async function recordCompletedBuild(
         })
       })
 
-      await finishCompletion(db, organizationId, { ctx, movementCtx, written, completedAt })
+      await finishCompletion(db, organizationId, { ctx, written, completedAt })
       return written.result
     },
     'Failed to record a completed build',
     { organizationId, partId: input.partId }
   )
-}
-
-/**
- * ONE batched recalculation, after the commit.
- *
- * Extracted so the ordering is a named step a test can assert against rather
- * than a line in the middle of a long function. See traps 1 and 3.
- */
-export async function recalculateAfterCommit(
-  organizationId: string,
-  partIds: string[]
-): Promise<void> {
-  await batchRecalculateQoH(organizationId, [...new Set(partIds)])
 }
 
 /**

@@ -602,8 +602,8 @@ streams: [{
 }]
 ```
 
-`part_quantity_on_hand` is deliberately never a target: `recalculatePartQoH` re-sums the whole
-movement ledger on every movement write, so a sink write into that column would be overwritten by
+`part_quantity_on_hand` is deliberately never a target: `batchRecalculateQoH` re-sums the whole
+movement ledger after every movement write, so a sink write into that column would be overwritten by
 the next movement. Shopify's own count goes to the app field `externalQuantity` instead, and a drift
 check becomes a plain column comparison.
 

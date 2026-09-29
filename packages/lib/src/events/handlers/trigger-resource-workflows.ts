@@ -59,7 +59,6 @@ export function getResourceTriggerMatch(event: AuxxEvent): RawResourceTriggerMat
     // Modern shape — entityDefinitionId on payload
     case 'entity:created':
     case 'company:created':
-    case 'stock_movement:created':
     case 'vendor_part:created':
     case 'subpart:created':
       return payloadEntityDefinitionId
@@ -71,7 +70,6 @@ export function getResourceTriggerMatch(event: AuxxEvent): RawResourceTriggerMat
         : null
     case 'entity:deleted':
     case 'company:deleted':
-    case 'stock_movement:deleted':
     case 'vendor_part:deleted':
     case 'subpart:deleted':
       return payloadEntityDefinitionId

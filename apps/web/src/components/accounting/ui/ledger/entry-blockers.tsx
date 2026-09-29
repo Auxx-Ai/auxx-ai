@@ -369,10 +369,11 @@ export const ITEM_REMEDIES: Record<CloseBlockerItemKey, ItemRemedy> = {
   // The three checks a close is, now that it posts nothing (MIGRATION step 5):
   // a document whose entry never landed, the ledger disagreeing with the rows
   // themselves, and the ledger disagreeing with the parts list (73 §6.2 rule 4).
+  // Movements have no list of their own; each part's Inventory tab shows its rows.
   inventory_unposted: {
     icon: PackagePlus,
-    actionLabel: 'Open movements',
-    href: () => '/app/records/stock_movement',
+    actionLabel: 'Open parts',
+    href: () => '/app/records/part',
   },
   inventory_balance: {
     icon: Scale,

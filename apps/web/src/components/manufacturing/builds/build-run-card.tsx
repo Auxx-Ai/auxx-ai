@@ -61,17 +61,13 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
   const buildDefId = useResourceProperty('build', 'id')
-  const movementDefId = useResourceProperty('stock_movement', 'id')
   const utils = api.useUtils()
 
-  // The client mirror of what `builds.ts` asserts, so the button the UI hides and
-  // the door the server closes are the same door. Raising and abandoning a run
-  // needs `build` alone (B2: a planned build writes no movements); completing and
-  // reversing also need `stock_movement`, because that is where the rest of
-  // manufacturing puts the authority to move stock.
+  // The client mirror of what `builds.ts` asserts: every run action, completing and
+  // reversing included, needs edit on `build`.
   const { canEditEntity } = useAccess()
   const canManageRun = !!buildDefId && canEditEntity(buildDefId)
-  const canPostLedger = canManageRun && !!movementDefId && canEditEntity(movementDefId)
+  const canPostLedger = canManageRun
   const build = api.builds.get.useQuery(
     { buildId: entityInstanceId },
     { enabled: !!entityInstanceId, retry: false }
@@ -89,15 +85,12 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
    * its own realtime events. Either way the tab that pressed the button is the
    * one that has to invalidate — which is what this does, in the one place all
    * four mutations funnel through.
-   *
-   * Builds only. The movement rows a completion or a reversal writes are
-   * announced by `publishBuildMovements` on the server, so the ledger card
-   * repaints from realtime and nothing here needs to touch `stock_movement`.
    */
   const refresh = async () => {
     await Promise.all([
       utils.builds.get.invalidate(),
       utils.builds.list.invalidate(),
+      utils.purchasing.listMovements.invalidate(),
       buildDefId
         ? utils.record.listFiltered.invalidate({ entityDefinitionId: buildDefId })
         : Promise.resolve(),

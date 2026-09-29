@@ -1,7 +1,6 @@
 // packages/lib/src/inventory/receiving/__tests__/adjust-stock.test.ts
-// The hand-keyed count correction — the third movement writer. The org cache,
-// the CRUD handler and the two part reads are mocked, so nothing here needs a
-// database.
+// The hand-keyed count correction — the third movement writer. The write seam
+// and the two part reads are mocked, so nothing here needs a database.
 //
 // What is asserted is the CONTRACT after decision `G12`, which reversed both of
 // the asymmetries the first version of this file pinned:
@@ -19,17 +18,12 @@
 // writes a PENDING row with no cost keys and parks at stage `price` (111 Q18);
 // it never falls back to `part_cost` and never writes a zero.
 
+import type { CreateStockMovementInput } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../../errors'
+import { fakeSeam } from './support/fake-seam'
 
 const h = vi.hoisted(() => ({
-  createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
-    instance: { id: 'mv_1' },
-  })),
-  /** systemAttributes the org has materialised. */
-  materialised: new Set<string>(),
-  /** entityType -> def id; a missing key models a def the org does not have. */
-  defs: new Map<string, string>(),
   partKind: null as string | null,
   /** What `readPartStandardCost` answers. `null` = the part was never rolled. */
   standardCost: 4400 as number | null,
@@ -41,28 +35,9 @@ vi.mock('../../../accounting/work-items/write', () => ({
   upsertWorkItem: h.upsertWorkItem,
 }))
 
-vi.mock('../../../cache', () => ({
-  getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
-  requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
-    const id = h.defs.get(entityType)
-    if (!id) throw new Error(`EntityDefinition not found for entityType: ${entityType}`)
-    return id
-  }),
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(
-          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
-        ),
-    }),
-  }),
-}))
-
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    create = h.createSpy
-  },
-}))
+vi.mock('../../movements', async (importOriginal) =>
+  (await import('./support/fake-seam')).movementsMock(importOriginal)
+)
 
 vi.mock('../receipt-queries', async () => {
   const { ok } = await import('neverthrow')
@@ -81,40 +56,20 @@ const USER = 'user_1'
 // The write and its posting share one transaction, so the stub has to run it.
 const db = { transaction: async (fn: (tx: unknown) => unknown) => fn(db) } as never
 
-/** Every systemAttribute a fully migrated org has for this write path. */
-const ALL_MOVEMENT_ATTRS = [
-  'stock_movement_unit_cost',
-  'stock_movement_cost_basis',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-]
-
-/** The four fields a costed movement must stamp — now in BOTH directions. */
-const COST_FIELDS = [
-  'stock_movement_unit_cost',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_cost_basis',
-] as const
+/** The four cost columns a costed movement must stamp — now in BOTH directions. */
+const COST_FIELDS = ['unitCostMinor', 'extendedCostMinor', 'glRole', 'costBasis'] as const
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set(ALL_MOVEMENT_ATTRS)
-  h.defs = new Map([
-    ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
-  ])
+  fakeSeam.reset()
   h.partKind = null
   h.standardCost = 4400
   h.displayName = 'Widget 9000'
-  h.createSpy.mockResolvedValue({ instance: { id: 'mv_1' } })
 })
 
-/** The value bag handed to `UnifiedCrudHandler.create` on the single write. */
-function writtenValues(): Record<string, unknown> {
-  expect(h.createSpy).toHaveBeenCalledTimes(1)
-  return h.createSpy.mock.calls[0]![1]
+/** The row handed to the write seam on the single write. */
+function writtenValues(): CreateStockMovementInput {
+  return fakeSeam.only()
 }
 
 async function expectErr(promise: ReturnType<typeof adjustStock>) {
@@ -125,7 +80,7 @@ async function expectErr(promise: ReturnType<typeof adjustStock>) {
 
 async function adjustAndRead(
   input: Parameters<typeof adjustStock>[3]
-): Promise<Record<string, unknown>> {
+): Promise<CreateStockMovementInput> {
   const result = await adjustStock(db, ORG, USER, input)
   expect(result.isOk()).toBe(true)
   return writtenValues()
@@ -135,7 +90,7 @@ describe('adjustStock — step 1, the quantity guard', () => {
   it('refuses a zero adjustment rather than writing a row that changes nothing', async () => {
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 0 }))
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it.each([
@@ -147,22 +102,14 @@ describe('adjustStock — step 1, the quantity guard', () => {
     // every later SUM; NaN passes `=== 0` as false.
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity }))
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('runs the quantity guard before anything else', async () => {
-    // No defs at all: if the quantity check ran second this would surface as a
-    // NotFound and the caller would fix the wrong problem.
-    h.defs = new Map()
+    h.partKind = 'service'
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 0 }))
     expect(error).toBeInstanceOf(BadRequestError)
-  })
-
-  it('fails with NotFound when the org has no stock_movement definition', async () => {
-    h.defs.delete('stock_movement')
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
-    expect(error).toBeInstanceOf(NotFoundError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(error.message).toMatch(/zero/)
   })
 })
 
@@ -172,9 +119,9 @@ describe('adjustStock — every adjustment carries the part standard cost', () =
     // wrote none of, and what the NEGATIVE branch still wrote none of before
     // `G12`.
     const values = await adjustAndRead({ partId: 'part_1', quantity })
-    for (const field of COST_FIELDS) expect(values).toHaveProperty(field)
-    expect(values.stock_movement_unit_cost).toBe(4400)
-    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
+    for (const field of COST_FIELDS) expect(values[field]).not.toBeNull()
+    expect(values.unitCostMinor).toBe(4400)
+    expect(values.glRole).toBe('inventory_raw_materials')
   })
 
   // 🛑 `standard`, never `actual`. An adjustment has no supplier and no invoice,
@@ -182,32 +129,28 @@ describe('adjustStock — every adjustment carries the part standard cost', () =
   // standard cost, read by the server.
   it.each([5, -3])('stamps cost_basis STANDARD (quantity %s)', async (quantity) => {
     const values = await adjustAndRead({ partId: 'part_1', quantity })
-    expect(values.stock_movement_cost_basis).toBe('standard')
+    expect(values.costBasis).toBe('standard')
   })
 
   it('signs the extended cost like the quantity, so a removal nets out', async () => {
-    expect(
-      (await adjustAndRead({ partId: 'part_1', quantity: 5 })).stock_movement_extended_cost
-    ).toBe(22000)
-    h.createSpy.mockClear()
-    expect(
-      (await adjustAndRead({ partId: 'part_1', quantity: -3 })).stock_movement_extended_cost
-    ).toBe(-13200)
+    expect((await adjustAndRead({ partId: 'part_1', quantity: 5 })).extendedCostMinor).toBe(22000)
+    fakeSeam.reset()
+    expect((await adjustAndRead({ partId: 'part_1', quantity: -3 })).extendedCostMinor).toBe(-13200)
   })
 
   it('keeps a fractional standard cost at RATE precision, not rounded to a whole cent', async () => {
     h.standardCost = 4442.975
     const values = await adjustAndRead({ partId: 'part_1', quantity: 10 })
-    expect(values.stock_movement_unit_cost).toBe(4442.975)
+    expect(values.unitCostMinor).toBe(4442.975)
     // Rounded AFTER multiplying, never as a sum of rounded units. This IS an
     // AMOUNT, so it still collapses to a whole minor unit.
-    expect(values.stock_movement_extended_cost).toBe(44430)
+    expect(values.extendedCostMinor).toBe(44430)
   })
 
   it('stamps the GL account resolved from the part kind', async () => {
     h.partKind = 'finished_good'
     const values = await adjustAndRead({ partId: 'part_1', quantity: 1 })
-    expect(values.stock_movement_gl_account).toBe('inventory_finished_goods')
+    expect(values.glRole).toBe('inventory_finished_goods')
   })
 
   // The caller has no say in the valuation at all. There is no `unitCost` on
@@ -219,7 +162,7 @@ describe('adjustStock — every adjustment carries the part standard cost', () =
       // @ts-expect-error — `unitCost` was removed from AdjustStockInput by `G12`
       unitCost: 999_999,
     })
-    expect(values.stock_movement_unit_cost).toBe(4400)
+    expect(values.unitCostMinor).toBe(4400)
   })
 })
 
@@ -229,13 +172,13 @@ describe('adjustStock — a part with no standard cost writes PENDING (111 Q18)'
   ])('writes the row with no cost keys and basis pending (quantity %s)', async (quantity) => {
     h.standardCost = null
     const values = await adjustAndRead({ partId: 'part_1', quantity })
-    expect(values.stock_movement_quantity).toBe(quantity)
-    expect(values.stock_movement_cost_basis).toBe('pending')
+    expect(values.quantity).toBe(quantity)
+    expect(values.costBasis).toBe('pending')
     // Absent, never 0: a zero would read as a valuation.
-    expect(values).not.toHaveProperty('stock_movement_unit_cost')
-    expect(values).not.toHaveProperty('stock_movement_extended_cost')
+    expect(values.unitCostMinor).toBeNull()
+    expect(values.extendedCostMinor).toBeNull()
     // The account is known now, whatever the cost turns out to be.
-    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
+    expect(values.glRole).toBe('inventory_raw_materials')
   })
 
   it('parks the movement at stage price, grouped by the part it needs a cost for', async () => {
@@ -283,68 +226,60 @@ describe('adjustStock — a part with no standard cost writes PENDING (111 Q18)'
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(error.message).toMatch(/rounds to zero/i)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('accepts a sub-cent standard cost that used to round to zero, at five places', async () => {
     h.standardCost = 0.4
     const values = await adjustAndRead({ partId: 'part_1', quantity: 5 })
-    expect(values.stock_movement_unit_cost).toBe(0.4)
-    expect(values.stock_movement_extended_cost).toBe(2) // round(0.4 x 5)
+    expect(values.unitCostMinor).toBe(0.4)
+    expect(values.extendedCostMinor).toBe(2) // round(0.4 x 5)
   })
 
   // The reader has already dropped an origin-less legacy zero, so a 0 here is deliberate (103 §5a).
   it('adjusts a part standing at a $0 standard at $0', async () => {
     h.standardCost = 0
     const values = await adjustAndRead({ partId: 'part_1', quantity: 5 })
-    expect(values.stock_movement_unit_cost).toBe(0)
-    expect(values.stock_movement_extended_cost).toBe(0)
+    expect(values.unitCostMinor).toBe(0)
+    expect(values.extendedCostMinor).toBe(0)
   })
 
   it('refuses a negative standard cost', async () => {
     h.standardCost = -100
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('refuses a non-finite standard cost', async () => {
     h.standardCost = Number.POSITIVE_INFINITY
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  // Both directions now stamp cost fields, so the pre-flight applies to both.
-  // Before `G12` a removal wrote none of them and was allowed through.
-  it.each([
-    5, -3,
-  ])('refuses to write before the cost fields are provisioned (quantity %s)', async (quantity) => {
-    h.materialised.delete('stock_movement_unit_cost')
-    const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity }))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 })
 
 describe('adjustStock — the movement it writes', () => {
-  it('writes ONE movement, on the stock_movement definition', async () => {
+  it('writes ONE movement and settles what it touched', async () => {
     await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
-    expect(h.createSpy).toHaveBeenCalledTimes(1)
-    expect(h.createSpy.mock.calls[0]![0]).toBe('def_mv')
+    expect(fakeSeam.rows).toHaveLength(1)
+    expect(fakeSeam.settle).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ partIds: ['part_1'] })
+    )
   })
 
   it('is an `adjust` against the part', async () => {
     const values = await adjustAndRead({ partId: 'part_1', quantity: 5 })
-    expect(values.stock_movement_type).toBe('adjust')
-    expect(values.stock_movement_part).toBe('def_part:part_1')
+    expect(values.type).toBe('adjust')
+    expect(values.partId).toBe('part_1')
   })
 
   it.each([5, -5])('NEVER sets adjustSubparts (quantity %s)', async (quantity) => {
     // Load-bearing. explodeBomMovement inherits the parent's type AND sign, so
     // "add 10" of a finished good would raise every component's stock too.
     const values = await adjustAndRead({ partId: 'part_1', quantity })
-    expect(values.stock_movement_adjust_subparts).toBe(false)
+    expect(values.adjustSubparts).toBe(false)
   })
 
   it('carries the reason and the reference through', async () => {
@@ -354,14 +289,14 @@ describe('adjustStock — the movement it writes', () => {
       reason: 'Damaged goods',
       reference: 'RMA-567',
     })
-    expect(values.stock_movement_reason).toBe('Damaged goods')
-    expect(values.stock_movement_reference).toBe('RMA-567')
+    expect(values.reason).toBe('Damaged goods')
+    expect(values.reference).toBe('RMA-567')
   })
 
   it('omits the reason and the reference when they are empty', async () => {
     const values = await adjustAndRead({ partId: 'part_1', quantity: -2 })
-    expect(values).not.toHaveProperty('stock_movement_reason')
-    expect(values).not.toHaveProperty('stock_movement_reference')
+    expect(values.reason).toBeNull()
+    expect(values.reference).toBeNull()
   })
 
   it('never links a supplier part or a purchase order line', async () => {
@@ -369,8 +304,8 @@ describe('adjustStock — the movement it writes', () => {
     // it cannot be used to fix a PO mistake.
     const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
     const values = writtenValues()
-    expect(values).not.toHaveProperty('stock_movement_vendor_part')
-    expect(values).not.toHaveProperty('stock_movement_purchase_order_line')
+    expect(values.vendorPartId).toBeNull()
+    expect(values.purchaseOrderLineId).toBeNull()
     expect(result._unsafeUnwrap()).toMatchObject({
       vendorPartId: null,
       vendorUnitPrice: null,
@@ -381,13 +316,13 @@ describe('adjustStock — the movement it writes', () => {
   it('stamps the supplied accounting date, not the moment it was keyed', async () => {
     const occurredAt = new Date('2026-01-04T09:30:00.000Z')
     const values = await adjustAndRead({ partId: 'part_1', quantity: -1, occurredAt })
-    expect(values.stock_movement_occurred_at).toBe('2026-01-04T09:30:00.000Z')
+    expect(values.occurredAt).toEqual(occurredAt)
   })
 
   it('defaults the accounting date to now when none is given', async () => {
     const before = Date.now()
     const values = await adjustAndRead({ partId: 'part_1', quantity: -1 })
-    const stamped = new Date(values.stock_movement_occurred_at as string).getTime()
+    const stamped = (values.occurredAt as Date).getTime()
     expect(stamped).toBeGreaterThanOrEqual(before)
     expect(stamped).toBeLessThanOrEqual(Date.now())
   })
@@ -396,13 +331,12 @@ describe('adjustStock — the movement it writes', () => {
     h.standardCost = 4442.975
     const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 10 })
     expect(result._unsafeUnwrap()).toMatchObject({
-      movementId: 'mv_1',
-      recordId: 'def_mv:mv_1',
+      id: 'mv_1',
       partInstanceId: 'part_1',
       quantity: 10,
       unitCost: 4442.975,
       extendedCost: 44430,
-      glAccount: 'inventory_raw_materials',
+      glRole: 'inventory_raw_materials',
     })
   })
 
@@ -412,13 +346,8 @@ describe('adjustStock — the movement it writes', () => {
       quantity: -3,
       unitCost: 4400,
       extendedCost: -13200,
-      glAccount: 'inventory_raw_materials',
+      glRole: 'inventory_raw_materials',
     })
-  })
-
-  it('adds no trigger of its own — QoH is left to the existing rule', async () => {
-    await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
-    expect(h.createSpy).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -1,42 +1,8 @@
 // packages/lib/src/inventory/movements/types.ts
 
-/**
- * Input and output shapes for the shared `stock_movement` writer.
- *
- * plans/money/tasks/50-batch-inventory-relief.md §2.3 gives this contract
- * verbatim, with two additive deviations, both required to make the
- * extraction a zero-behaviour-change refactor of the five existing callers
- * (§2.6: "if a test needs editing, the refactor changed behaviour and is
- * wrong") rather than a literal transcription of the brief:
- *
- * 1. **`vendorUnitPrice` on the input.** The brief's contract has no slot for
- *    it, but `receive-stock.ts` stamps `stock_movement_vendor_unit_price` - a
- *    plain scalar, three-way-match provenance - distinct from the
- *    `vendorPartId` RELATIONSHIP in `links`. Every other caller leaves it
- *    undefined.
- * 2. **`costBasis` and `glAccount` are optional, not required.** The brief
- *    types both as required strings. `reverse-movement.ts` omits `costBasis`
- *    entirely when the original movement never carried one (a pre-migration
- *    row), and `reverse-build.ts` omits `glAccount` the same way. Making
- *    either required here would force every caller to invent a value where
- *    the current code deliberately writes no key at all.
- */
+import type { Database, Transaction } from '@auxx/database'
 
-import type { Database } from '@auxx/database'
-import type { SystemAttribute } from '@auxx/types/system-attribute'
-import type { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import type { WriteSession } from '../../resources/crud/write-origin'
-
-/**
- * The typed links a `stock_movement` may carry, per §2.4 item 4: one
- * definition, so a reversal (or any other writer) copies the whole set
- * instead of a hand-listed subset.
- *
- * Every value is a BARE `EntityInstance.id` - never a pre-built `RecordId` -
- * except where a caller already holds a `RecordId` (a `defId:id` string) for
- * one, which is accepted as-is so a caller that already resolved its own def
- * id (a build's own context, for instance) is not made to resolve it twice.
- */
+/** The links a movement may carry; every value is a BARE `EntityInstance` / `StockMovement` id. */
 export interface StockMovementLinks {
   vendorPartId?: string
   purchaseOrderLineId?: string
@@ -44,9 +10,10 @@ export interface StockMovementLinks {
   reversesMovementId?: string
   parentMovementId?: string
   fulfillmentLineId?: string
+  returnPartLineId?: string
 }
 
-/** One `stock_movement` row to write. §2.3, plus the two deviations above. */
+/** One `StockMovement` row to write. */
 export interface StockMovementInput {
   /** `EntityInstance.id` of the `part` this movement is against. */
   partInstanceId: string
@@ -54,45 +21,25 @@ export interface StockMovementInput {
   type: string
   /** SIGNED. The sign convention lives here and nowhere else. */
   quantity: number
-  /**
-   * Minor units, at `RATE_DECIMALS`. `null` only with `costBasis: 'pending'` (111 Q18):
-   * the part has no standard yet and `fillPendingCost` writes the cost later, once.
-   */
+  /** Minor units, up to 3 decimals. `null` exactly when `costBasis` is `pending` (111 Q18). */
   unitCost: number | null
-  /** A `StockMovementCostBasis` value. Omit only to omit the key entirely (see above). */
+  /** A `StockMovementCostBasis` value; omit only for a reversal of a row that carried none. */
   costBasis?: string
-  /** An inventory ROLE (`resolveInventoryRoleForPartKind`), never a code. Omit only to omit the key (see above). */
-  glAccount?: string
+  /** An inventory ROLE (`resolveInventoryRoleForPartKind`), never a code. */
+  glRole?: string
   occurredAt: Date
-  /**
-   * Override for `computeExtendedCost(unitCost, quantity)`, for a caller that
-   * already has the signed amount and must not risk a rounding-tiebreak
-   * disagreement by recomputing it - `complete-build.ts`'s negated
-   * `build_consume` row is the case this exists for (§2.2).
-   */
+  /** Override for `computeExtendedCost(unitCost, quantity)`; must be whole minor units. */
   extendedCost?: number
-  /**
-   * Opt-IN, and it must carry a `reason`. `false` (the default you get by
-   * saying nothing) is what every one of the six existing callers writes,
-   * always - §2.4 item 1.
-   */
+  /** Explode this movement through the part's BOM (§8.2). No current writer opts in. */
   adjustSubparts?: true
   reason?: string
   reference?: string
   links?: StockMovementLinks
   /** The as-built BOM snapshot. `null`/absent is the OFF-BOM marker - never write a 0. */
   qtyPerUnit?: number | null
-  /**
-   * Not part of the brief's contract - see the file header, deviation 1.
-   * Three-way-match provenance, `receive-stock.ts` only.
-   */
+  /** Three-way-match provenance, receipts only. Minor units, up to 3 decimals. */
   vendorUnitPrice?: number
-  /**
-   * A receipt's audit trail for the two accrual legs its entry posts (73 §7.2):
-   * what it credited `freight_accrual` and `duties_accrual`, extended, and the
-   * duty rate in force when it was valued. The two receiving doors are the only
-   * writers; every other caller leaves it undefined.
-   */
+  /** What a receipt credited `freight_accrual` / `duties_accrual` (73 §7.2); whole minor units. */
   accrued?: {
     freightMinor?: number
     dutiesMinor?: number
@@ -110,121 +57,58 @@ export interface StockMovementCountFact {
   date: string
 }
 
-/** One `stock_movement` this call wrote, back to the caller. */
+/** One movement a write produced, in input order. BOM children are not listed here. */
 export interface WrittenStockMovement {
-  movementId: string
-  /** `<entityDefinitionId>:<instanceId>`. */
-  recordId: string
+  /** The `StockMovement.id`. */
+  id: string
   partInstanceId: string
   quantity: number
-  /** `null` on a pending row; the builder must never see one (filter `== null` first). */
+  /** `null` on a pending row; the entry builder must never see one. */
   unitCost: number | null
   extendedCost: number | null
-  glAccount: string | null
+  glRole: string | null
   occurredAt: Date
+}
+
+/** What a write or delete changed, for {@link settleStockMovements} after the commit. */
+export interface StockMovementTouched {
+  partIds: string[]
+  purchaseOrderLineIds: string[]
+  fulfillmentLineIds: string[]
+  buildIds: string[]
 }
 
 /** What a `writeStockMovements` call did. */
 export interface WriteStockMovementsResult {
   /** In the same order as the `inputs` array. */
   records: WrittenStockMovement[]
-  /**
-   * Distinct `partInstanceId`s across every input. The quiet lane's caller
-   * MUST pass this to `batchRecalculateQoH` after its transaction commits -
-   * §2.4 item 3 is what makes that a structural fact instead of a comment.
-   */
-  affectedPartIds: string[]
+  /** Includes the parts of any BOM children. Hand it to `settleStockMovements` after the commit. */
+  touched: StockMovementTouched
 }
 
-/**
- * Which write lane the movements land on (§2.2 - "must be a parameter and
- * not a branch"):
- *
- * - `'plain'`: the ordinary interactive lane. `mfg-stock-movements-created`
- *   fires per row and `recalculatePartQoH` updates quantity on hand. Used by
- *   `receive-stock.ts`, `adjust-stock.ts` and `reverse-movement.ts`.
- * - `'quiet'`: `txDb` + a `quietSession` + the post-commit recalc obligation
- *   (`affectedPartIds` above). Used by `complete-build.ts` and
- *   `reverse-build.ts`, both inside `db.transaction()`.
- */
-export type StockMovementsLane =
-  | { kind: 'plain' }
-  | {
-      kind: 'quiet'
-      session: WriteSession
-      /**
-       * Builds-only (§2.2): the guard `stock_movement` has no attribute of its
-       * own, so forwarding a build's `bypassFieldGuards` here is inert for
-       * every field this module writes and exists only so the ONE
-       * `UnifiedCrudHandler` a caller might otherwise need per write stays a
-       * single construction site. See `complete-build.ts`'s note on
-       * `bypassFieldGuards`, reproduced verbatim there.
-       */
-      bypassFieldGuards?: ReadonlySet<SystemAttribute>
-    }
-
-/**
- * `db | tx, organizationId, userId, lane` (50 §2.3), plus the two def ids
- * every one of the six existing callers already resolves for its own
- * pre-checks before it ever reaches a write. Passing them in here (rather
- * than re-resolving inside this module) avoids a second cache round trip and
- * keeps each caller's own "this organization has no X definition" refusal -
- * worded and timed exactly as it is today - outside this module entirely.
- */
+/** Where a movement write runs; pass the caller's transaction so rows and postings commit together. */
 export interface StockMovementsCtx {
-  /** A pool connection for the `'plain'` lane, `tx as unknown as Database` for `'quiet'`. */
-  db: Database
+  db: Database | Transaction
   organizationId: string
   userId: string
-  /** `EntityInstance.id` of the org's `stock_movement` entity definition. */
-  movementDefId: string
-  /** `EntityInstance.id` of the org's `part` entity definition. */
-  partDefId: string
-  lane: StockMovementsLane
-  /**
-   * A `UnifiedCrudHandler` this call MUST write through, instead of
-   * constructing its own.
-   *
-   * A quiet-lane caller routes its movements through the SAME handler it updates its own row
-   * with, so `bypassFieldGuards` has one construction site. Omit it and this function
-   * constructs its own. `writeStockMovementsBatch` writes without a handler and ignores it.
-   */
-  handler?: UnifiedCrudHandler
 }
 
-/**
- * What a write returns: enough to render the row that was just created and to
- * link to it, without a second read.
- *
- * Every money field is the value actually STORED — already rounded — so a caller
- * that echoes this back to the user is showing the ledger, not its own
- * arithmetic.
- */
+/** What a receive / adjust door returns: enough to render and link the new row without a re-read. */
 export interface MovementRecord {
-  /** `EntityInstance.id` of the created `stock_movement`. */
-  movementId: string
-  /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
-  recordId: string
+  /** The `StockMovement.id`. */
+  id: string
   partInstanceId: string
   /** Positive for a receipt; negative for a reversal or a removal. */
   quantity: number
-  /**
-   * Landed cost per unit, whole minor units.
-   *
-   * `null` on a pre-migration row and on a `pending` row (111 Q18); the
-   * `costBasis` on the stored movement is what tells the two apart.
-   */
+  /** Landed cost per unit in minor units; `null` on a pending row. */
   unitCost: number | null
   /** `round(unitCost x quantity)`, signed like `quantity`; `null` with the cost. */
   extendedCost: number | null
-  /** Raw supplier price per unit, whole minor units; `null` when not known. */
+  /** Raw supplier price per unit in minor units; `null` when not known. */
   vendorUnitPrice: number | null
   vendorPartId: string | null
-  /**
-   * The inventory account ROLE ('inventory_raw_materials'), never an account
-   * code and never a provider id (decision `G8` — the field name predates it).
-   */
-  glAccount: string | null
+  /** The inventory account ROLE (decision G8). */
+  glRole: string | null
   occurredAt: Date
   purchaseOrderLineId: string | null
 }

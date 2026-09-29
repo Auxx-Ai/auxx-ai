@@ -56,7 +56,7 @@ export async function fixMovementAccounts(
         movementsRestamped: 0,
         reclassEntries: 0,
       }
-      if (!detail.accountFieldId || detail.parts.length === 0) return outcome
+      if (detail.parts.length === 0) return outcome
 
       outcome.movementsRestamped = await restampUnposted(db, organizationId, detail)
 
@@ -91,8 +91,6 @@ async function restampUnposted(
   organizationId: string,
   detail: MovementAccountDriftDetail
 ): Promise<number> {
-  const accountFieldId = detail.accountFieldId
-  if (!accountFieldId) return 0
   const groups = new Map<string, MovementAccountRestamp & { movementIds: string[] }>()
   for (const part of detail.parts) {
     for (const { fromRole, movementIds } of part.plan.restamps) {
@@ -116,7 +114,7 @@ async function restampUnposted(
       ...group,
       movementIds: group.movementIds.filter((id) => !posted.has(id)),
     }))
-    return restampMovementAccounts(tx, organizationId, accountFieldId, restamps)
+    return restampMovementAccounts(tx, organizationId, restamps)
   })
 }
 

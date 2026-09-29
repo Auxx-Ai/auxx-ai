@@ -1,14 +1,15 @@
 // packages/lib/src/inventory/costing/__tests__/reanchor-initials.test.ts
 //
 // The count anchor (111 Q26): the one movement allowed to move. `planReanchor` is pure; the
-// lane around it is exercised with the reads, the handler and the mirror seam stubbed.
+// lane around it is exercised with the reads, the row update and the mirror seam stubbed.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PartInitial } from '../../movements/initial-queries'
 
 const h = vi.hoisted(() => ({
-  updateSpy: vi.fn(async (_recordId: string, _values: Record<string, unknown>) => ({})),
-  constructions: [] as (Record<string, unknown> | undefined)[],
+  updateSpy: vi.fn(
+    async (_tx: unknown, _org: string, _id: string, _anchor: Record<string, unknown>) => {}
+  ),
   initials: new Map<string, PartInitial>(),
   earliest: new Map<string, Date | null>(),
   earliestExcludes: [] as (readonly string[] | undefined)[],
@@ -20,26 +21,11 @@ const h = vi.hoisted(() => ({
 vi.mock('@auxx/database', () => ({
   database: { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({ tx: true }) },
 }))
-vi.mock('../../../cache', () => ({
-  requireCachedEntityDefId: async () => 'def_mv',
-  getOrgCache: () => ({ get: async () => 'user_system' }),
-}))
 vi.mock('../../../accounting/ledger/setup/book-time-zone', () => ({
   readBookTimeZoneOrUtc: async () => 'UTC',
 }))
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    constructor(
-      _org: string,
-      _user: string,
-      _db: unknown,
-      _socket: unknown,
-      options?: Record<string, unknown>
-    ) {
-      h.constructions.push(options)
-    }
-    update = h.updateSpy
-  },
+vi.mock('../../movements/update-movements', () => ({
+  reanchorInitialMovement: h.updateSpy,
 }))
 vi.mock('../../movements/initial-queries', () => ({
   readPartInitials: async (_db: unknown, _org: string, ids: string[]) =>
@@ -61,12 +47,7 @@ vi.mock('../dated-reads', () => ({
     new Map(ids.map((id) => [id, h.nets.get(id) ?? 0])),
 }))
 
-import {
-  anchorSeam,
-  planReanchor,
-  REANCHOR_INITIAL_REASON,
-  reanchorInitials,
-} from '../reanchor-initials'
+import { anchorSeam, planReanchor, reanchorInitials } from '../reanchor-initials'
 
 const ORG = 'org_1'
 
@@ -85,7 +66,6 @@ function anchored(over: Partial<PartInitial> = {}): PartInitial {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.constructions = []
   h.initials = new Map()
   h.earliest = new Map()
   h.earliestExcludes = []
@@ -149,7 +129,7 @@ describe('planReanchor', () => {
 })
 
 describe('reanchorInitials', () => {
-  it('rewrites the initial on the quiet lane, calls the mirror seam, and reports the move', async () => {
+  it('rewrites the initial row, calls the mirror seam, and reports the move', async () => {
     h.initials.set('part_1', anchored())
     h.earliest.set('part_1', new Date('2025-12-20T09:00:00Z'))
     h.nets.set('part_1', 39)
@@ -165,12 +145,9 @@ describe('reanchorInitials', () => {
         quantity: 875,
       },
     ])
-    expect(h.updateSpy).toHaveBeenCalledWith('def_mv:mv_initial', {
-      stock_movement_occurred_at: '2025-12-19T00:00:00.000Z',
-      stock_movement_quantity: 875,
-    })
-    expect(h.constructions[0]).toMatchObject({
-      session: { mode: { kind: 'quiet', reason: REANCHOR_INITIAL_REASON } },
+    expect(h.updateSpy).toHaveBeenCalledWith({ tx: true }, ORG, 'mv_initial', {
+      occurredAt: new Date('2025-12-19T00:00:00.000Z'),
+      quantity: 875,
     })
     expect(seam).toHaveBeenCalledWith({ tx: true }, 'mv_initial', {
       occurredAt: new Date('2025-12-19T00:00:00.000Z'),

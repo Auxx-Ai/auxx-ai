@@ -7,12 +7,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError } from '../../../errors'
+import { fakeSeam } from './support/fake-seam'
 
 const h = vi.hoisted(() => ({
   setCount: vi.fn(),
-  createSpy: vi.fn(async (_defId: string, _values: Record<string, unknown>) => ({
-    instance: { id: 'mv_1' },
-  })),
   partKind: null as string | null,
   standardCost: null as number | null,
 }))
@@ -29,15 +27,9 @@ vi.mock('../../../cache', () => ({
     }),
   }),
 }))
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    create = h.createSpy
-  },
-}))
-vi.mock('../../../resources/system-records', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  systemDefId: async () => 'def_stock_movement',
-}))
+vi.mock('../../movements', async (importOriginal) =>
+  (await import('./support/fake-seam')).movementsMock(importOriginal)
+)
 vi.mock('../../builds/build-queries', () => ({
   readPartKinds: async (_db: unknown, _org: string, ids: string[]) =>
     new Map(h.partKind ? ids.map((id) => [id, h.partKind as string]) : []),
@@ -51,7 +43,6 @@ vi.mock('../receipt-queries', async () => {
     ),
   }
 })
-vi.mock('../../costing/qoh', () => ({ batchRecalculateQoH: vi.fn() }))
 vi.mock('../../../accounting/ledger/post/post-inventory-document', () => ({
   postInventoryDocumentInTx: async () => null,
 }))
@@ -69,6 +60,7 @@ const db = { transaction: async (fn: (tx: unknown) => unknown) => fn(db) } as ne
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  fakeSeam.reset()
   h.partKind = null
   h.standardCost = null
   const { ok } = await import('neverthrow')
@@ -126,13 +118,13 @@ describe('adjustStock still has no unit-cost input', () => {
       unitCost: 999_999,
     })
     expect(result.isOk()).toBe(true)
-    expect(h.createSpy.mock.calls[0]![1].stock_movement_unit_cost).toBe(4400)
+    expect(fakeSeam.only().unitCostMinor).toBe(4400)
   })
 
   it('refuses a service as a service, not as a part missing a standard (107-D10)', async () => {
     h.partKind = 'service'
     const result = await adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 })
     expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 })

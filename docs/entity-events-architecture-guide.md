@@ -175,8 +175,8 @@ public API is doubly blocked from creating native rules.
 Native handlers are registered with `registerNativeRuleHandler(key, handler)` and receive a
 `NativeRuleHandlerEvent`: `{ recordIds, organizationId, userId?, action?, eventDataByRecordId? }`.
 `eventDataByRecordId` carries **raw** create/delete-time values threaded from the dispatching door
-(interactive `event.data.eventData`, sync `manifest.createdValues`) — never refetched (a refetch is
-wrong for transient flags like `stock_movement_adjust_subparts`).
+(interactive `event.data.eventData`, sync `manifest.createdValues`) — never refetched (a refetch
+sees a value a hook has since changed, not the one the event was about).
 
 ---
 
@@ -228,7 +228,7 @@ preferred flag). Batches under bulk operations (one recalc per bulk edit, not N)
 ### Door 2 — record lifecycle bus
 `events/handlers/handle-record-rules.ts`, registered on **all** lifecycle keys —
 `entity:created`/`entity:deleted` **and** the prefixed variants (`ticket:created`, `contact:*`,
-`stock_movement:*`, `company:*`, …; `eventPrefix = entityType || 'entity'`). Handles `on:
+`company:*`, `vendor_part:*`, …; `eventPrefix = entityType || 'entity'`). Handles `on:
 created|deleted` rules (both user and native/system). `deleted` firings evaluate against the event
 payload (last-known values — the record is archived).
 
@@ -417,12 +417,12 @@ B2's sync visibility for free.
   ids (def by slug or entityType; field by systemAttribute within the def) and drops unresolvable
   ones. **No declarations ⇒ zero extra work / byte-identical cache.**
 - **The manufacturing rules** live in `field-hooks/system-record-rules.ts` (7 field rules — cost,
-  preferred, subpart qty, reorder point) and `field-hooks/system-entity-rules.ts` (7 lifecycle
-  rules — BOM cost on vendor-part/subpart create/delete, stock-movement **explode → QoH** [order
-  matters], company enrichment). Their native handlers are thin wrappers that lazy-import and call
+  preferred, subpart qty, reorder point) and `field-hooks/system-entity-rules.ts` (lifecycle
+  rules — BOM cost on vendor-part/subpart create/delete [kind derivation first], tariff-rate
+  reprice, PO-line billed roll-ups, company enrichment). Stock movements are a table and fire none. Their native handlers are thin wrappers that lazy-import and call
   the **unchanged** trigger functions, adapting the batch event to the legacy per-record shape.
 - **Why the inventory rule can't be a system rule:** system rules key off a **stable** `defSlug`
-  (`stock-movements`, `vendor-parts` — auxx's own defs, same in every org). An inventory source
+  (`vendor-parts`, `subparts` — auxx's own defs, same in every org). An inventory source
   (`shopify_variants`) is a **per-org, per-connector owned def** with a different id everywhere, so
   its rule must be a **DB row** referencing that org's real def+field. This is why the planned
   inventory feature introduces a `managed` marker on `RecordRule` (a DB row that may carry a native
@@ -527,9 +527,8 @@ misses + 1 deduped recalc, not 500×).
   `registerReactHooks` (`field-hooks/registry.ts:216-241`); a mark runs on every lane, a derive
   reaches sync only with a `batch` core, a react never does. A derive with no `batch` is dead on
   connector/import writes — say so in its registration comment or add the core.
-- **Order matters in action arrays.** `[explodeBomMovement, recalculatePartQoH]` must stay ordered
-  — explosion writes child movements before the parent QoH is recomputed. QoH correctness also
-  depends on the **threaded original create values** (`eventData`), never a refetch.
+- **Order matters in action arrays.** `[derivePartKind, entityCostRecalcSubpart]` must stay ordered
+  — the kind is promoted before the cost roll reads it.
 - **Cache staleness on deploy.** New/changed **system-rule declarations** need a cache flush (§10)
   — otherwise they silently don't fire for up to a day.
 - **`RecordRuleRun` has no FKs** on `ruleId`/`entityInstanceId` (system rules aren't rows; deleted

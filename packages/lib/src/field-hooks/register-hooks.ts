@@ -90,6 +90,7 @@ import {
   stampOrderOnOrderChange,
 } from '../inventory/builds/drift-hooks'
 import { registerOrderDriftReconcilers } from '../inventory/builds/drift-reconciler'
+import { registerMovementSettleReconcilers } from '../inventory/movements/settle-after-delete'
 import { derivePhoneGeoBatch, derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
@@ -213,7 +214,7 @@ export function registerAllHooks(): void {
   // registered here so both web and worker see them once the bootstrap runs.
   registerFieldSystemRules()
 
-  // BOM cost / stock explode+QoH / company enrichment ENTITY triggers migrated onto the
+  // BOM cost / stock QoH / company enrichment ENTITY triggers migrated onto the
   // record-rules engine as lifecycle system rules with native actions (B2 §9). They now
   // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
   // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
@@ -271,6 +272,10 @@ export function registerAllHooks(): void {
   // which is a drift signal that lies. Writes one field on the ORDER and never
   // touches a build.
   registerOrderDriftReconcilers()
+
+  // A part/build/PO line/FL delete removes its movements; these re-derive the surviving parts and
+  // lines after the delete commits (plans/mrp/20 S9).
+  registerMovementSettleReconcilers()
 
   // Global field-change post-hook: handleRecordRulesOnFieldChange dispatches
   // org-configured RecordRules (it no-ops fast when the org has none and
@@ -704,16 +709,17 @@ export function registerAllHooks(): void {
   //
   // The delete engine (`resources/crud`) does two things from the registry's
   // has_many `onDelete` declarations, before any hook runs: it collects the
-  // `cascade` closure set-based (order lines, invoice lines, PO lines and their
-  // receipts, bill lines, BOM rows, supplier prices, movements, tariff rates,
-  // ...), and it refuses on `restrict` while a related row exists (invoice
+  // `cascade` closure set-based (order lines, invoice lines, PO lines, bill
+  // lines, BOM rows, supplier prices, tariff rates, ...), and it refuses on
+  // `restrict` while a related row exists (invoice
   // payments, work-order invoices, PO bills, bill payment allocations, a build's
   // reversal, a tariff code's offers, a tag's threads/articles/children).
   // Archived rows count in both. It then runs the pre-delete hooks below over
   // EVERY record in the closure, still one record per call, before writing
   // anything, and publishes a lifecycle event per cascaded row, so the system
-  // record rules (`mfg-subparts-deleted`, `mfg-stock-movements-deleted`, ...)
-  // keep recomputing their roll-ups on the surviving parents.
+  // record rules (`mfg-subparts-deleted`, ...) keep recomputing their roll-ups
+  // on the surviving parents. Stock movements are a table, not a closure edge:
+  // `deleteEntityInstances` deletes them with their part, build, PO line or FL.
   //
   // So a pre-delete hook is now ONLY a refusal the registry cannot express: one
   // conditional on accounting state, a status, a Drizzle table, or a
@@ -747,13 +753,9 @@ export function registerAllHooks(): void {
   // it inherits its order's contact, falling back to the guest.
   registerEntityPreCreateHooks('credit-memos', [fillGuestCreditMemoContact])
 
-  // Inventory and purchasing (plans/money/tasks/20-part-delete-safety.md and
-  // 21-money-parent-delete-safety.md). All four refuse on the same threshold,
-  // `settledPeriodsFor`: a stock movement (part, build), a receipt under a line
-  // (purchase order) or the bill's own accounting date (vendor bill) in a month
-  // that is locked, posted or at/before the cutoff. `builds` also refuses a
-  // reversal and `vendor-bills` a posted/part-paid status, both read off the
-  // captured values.
+  // Inventory and purchasing: all four refuse on `settledPeriodsFor`, a stock movement (part,
+  // build), a receipt under a line (purchase order) or the bill's own date (vendor bill) in a
+  // settled month. Open-period movements are then deleted by `deleteEntityInstances` (plan 20 S9).
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
   registerFieldPreHooks('parts', 'part_kind', [guardPartKindService, resetKindConflictConfirmation])
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])

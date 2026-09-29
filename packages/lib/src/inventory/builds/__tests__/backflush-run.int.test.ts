@@ -85,7 +85,6 @@ beforeEach(async () => {
   // A few sales of the finished good every day; nothing in stock.
   await insertRawMovements(
     f.organizationId,
-    f.movementDefId,
     DAYS.flatMap((day, i) => [
       { partId: f.producedPartId, quantity: -(i + 1), occurredAt: new Date(`${day}T15:00:00Z`) },
       { partId: f.producedPartId, quantity: -2, occurredAt: new Date(`${day}T18:00:00Z`) },

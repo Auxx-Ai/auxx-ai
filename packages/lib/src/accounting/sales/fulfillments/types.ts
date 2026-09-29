@@ -66,7 +66,7 @@ export interface FulfillmentLine {
   /** Units of the line shipped in THIS dispatch only - never cumulative. */
   quantity: number
   /**
-   * Re-SUMmed from `stock_movement_fulfillment_line` by task 50's post-hook,
+   * Re-SUMmed from `StockMovement.fulfillmentLineId` by task 50's post-hook,
    * never incremented in place. `null` until relief has run at all for this
    * line - not the same as zero, which means relief ran and relieved nothing.
    */

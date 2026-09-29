@@ -16,78 +16,26 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
-import { unwrapRelationId } from '../../resources/events/captured-values'
 import { StockMovementType } from '../../resources/registry/enum-values'
-import type { EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:fulfillment-line-rollups')
 
 /**
- * `fulfillment_line_quantity_relieved` (plans/money/tasks/50-batch-inventory-relief.md
- * §1) - the sell-side mirror of `purchase_order_line_quantity_received`:
+ * `fulfillment_line_quantity_relieved` (plans/money/tasks/50-batch-inventory-relief.md §1), the
+ * sell-side mirror of `purchase_order_line_quantity_received`. This module is its ONLY writer, and
+ * it re-SUMs whole rather than incrementing.
  *
- * ```
- * buy    purchase_order_line -> receive movement -> purchase_order_line_quantity_received
- * sell   fulfillment_line    -> sale movement    -> fulfillment_line_quantity_relieved
- * ```
+ * 🛑 Scoped to `type = 'sale'`: a reversed sale is `return_in` (as is a customer return) and must
+ * never read as un-relief, or the next sync relieves the same units again. The sign is flipped: a
+ * `sale` quantity is negative and `quantity_relieved` is a positive count.
  *
- * `creatable: false, updatable: false, computed: true` on the registry - this
- * module is its ONLY writer, and it is re-SUMMED whole rather than incremented,
- * for the exact reason `purchase-order-line-rollups.ts`'s header states:
- * *"the subledger is the truth and a hand-maintained copy of it diverges
- * silently."*
- *
- * Two things this roll-up does that the buy side's does not, both load-bearing:
- *
- * 1. 🛑 **Scoped to `stock_movement_type = 'sale'`, never every movement
- *    pointing at the line.** `reverse-movement.ts`'s `REVERSAL_TYPE_BY_ORIGINAL`
- *    maps a reversed `sale` to `return_in` - the label brief 54 (returns) will
- *    also use for an actual customer return. Both kinds of row can carry this
- *    same `stock_movement_fulfillment_line` link. If a `return_in` row were
- *    counted here, a customer return would read as UN-relief and the next sync
- *    would relieve the same units a second time. The buy side has no equivalent
- *    hazard: nothing else points a `stock_movement` at a `purchase_order_line`.
- * 2. **The sign is flipped.** A `sale` movement's `stock_movement_quantity` is
- *    NEGATIVE - units leaving the shelf, the same sign `part_quantity_on_hand`
- *    sums. `quantity_relieved` is a POSITIVE count of units relieved, so the
- *    raw SUM (itself negative, or less negative once a correction nets against
- *    it) is negated before it is written or compared to the stored total.
- *
- * ⚠️ Like the buy side, this runs POST-COMMIT off the lifecycle record rules -
- * never inside the caller's transaction. The SUM reads the module-level
- * `database` connection and cannot see uncommitted rows, so a writer that
- * needs the roll-up to reflect its own transaction must use `skipEvents: true`
- * (or the quiet lane - see the brief §1.7) and call
- * {@link recalculateFulfillmentLineQuantityRelieved} / the batch form
- * explicitly after `COMMIT`.
- *
- * ⚠️ No edit door, deliberately, for the same reason the RECEIVED roll-up has
- * none: `stock_movement` declares every field `updatable: false`, and the only
- * legitimate correction is a new row (a reversal), which is a create the
- * lifecycle trigger already sees.
- *
- * Nothing writes a `sale` movement yet (`relieveFulfillmentLines` is a later
- * wave of this brief), so this hook is correct and dormant until that lands.
+ * POST-COMMIT only: the SUM reads the module-level `database` connection, so the movement seam
+ * calls it from `settleStockMovements` after commit.
  */
-const RELIEF_ATTRS = {
-  /** The child entity whose rows are summed. */
-  quantity: 'stock_movement_quantity' as SystemAttribute,
-  /** What scopes the SUM to the relief lane's own rows. */
-  type: 'stock_movement_type' as SystemAttribute,
-  /** The movement's relationship field pointing at the fulfillment line. */
-  lineRel: 'stock_movement_fulfillment_line' as SystemAttribute,
-  /** The fulfillment line field the SUM is written to. */
-  target: 'fulfillment_line_quantity_relieved' as SystemAttribute,
-} as const
+const TARGET_ATTR = 'fulfillment_line_quantity_relieved' as SystemAttribute
 
-/** Test/caller convenience - the attribute names this module is built on. */
-export const FULFILLMENT_LINE_RELIEF_ATTRS = RELIEF_ATTRS
-
-/** The four fields this roll-up needs, or `undefined` when the org lacks one. */
+/** The target field, or `undefined` when the org lacks it. */
 interface RollupFields {
-  quantityFieldId: string
-  typeFieldId: string
-  lineRelFieldId: string
   targetFieldId: string
   targetFieldType: StoredFieldType
 }
@@ -95,35 +43,23 @@ interface RollupFields {
 async function resolveRollupFields(organizationId: string): Promise<RollupFields | undefined> {
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([
-      RELIEF_ATTRS.quantity,
-      RELIEF_ATTRS.type,
-      RELIEF_ATTRS.lineRel,
-      RELIEF_ATTRS.target,
-    ])
-
-  const quantityField = fields[RELIEF_ATTRS.quantity]
-  const typeField = fields[RELIEF_ATTRS.type]
-  const lineRelField = fields[RELIEF_ATTRS.lineRel]
-  const targetField = fields[RELIEF_ATTRS.target]
-
-  if (!quantityField || !typeField || !lineRelField || !targetField) {
-    logger.warn('Missing custom fields for fulfillment line relief roll-up', {
-      quantityField: !!quantityField,
-      typeField: !!typeField,
-      lineRelField: !!lineRelField,
-      targetField: !!targetField,
-    })
+    .bySystemAttributes<SystemAttribute>([TARGET_ATTR])
+  const targetField = fields[TARGET_ATTR]
+  if (!targetField) {
+    logger.warn('Missing custom fields for fulfillment line relief roll-up', { targetField: false })
     return undefined
   }
+  return { targetFieldId: targetField.id, targetFieldType: targetField.type }
+}
 
-  return {
-    quantityFieldId: quantityField.id,
-    typeFieldId: typeField.id,
-    lineRelFieldId: lineRelField.id,
-    targetFieldId: targetField.id,
-    targetFieldType: targetField.type,
-  }
+/** `sale` movements of these lines. */
+function saleRowsOf(organizationId: string, lineIds: string[]) {
+  const t = schema.StockMovement
+  return and(
+    eq(t.organizationId, organizationId),
+    inArray(t.fulfillmentLineId, lineIds),
+    eq(t.type, StockMovementType.SALE)
+  )
 }
 
 /** The line's stored roll-up total, as an uncorrelated scalar subquery. */
@@ -155,10 +91,6 @@ function publishRollupValues(
  * Re-SUM `fulfillment_line_quantity_relieved` for one fulfillment line and
  * write the result.
  *
- * Exported so a writer that needs the roll-up to reflect its own transaction
- * (the future `relieveFulfillmentLines`) can call it explicitly after `COMMIT`
- * rather than waiting for the lifecycle rule.
- *
  * ⚡ Reads the stored total in the same statement as the SUM and returns early
  * when they agree, exactly as the buy side does - a no-op write here still
  * fires the field-hook chain and a realtime publish, so short-circuiting it is
@@ -171,42 +103,16 @@ export async function recalculateFulfillmentLineQuantityRelieved(
   const fields = await resolveRollupFields(organizationId)
   if (!fields) return
 
-  // Three-way join, the buy side's shape plus the type scope: SUM the
-  // movement's quantity where its fulfillment-line relationship points at
-  // this line AND its type is 'sale'. `return_in` (a reversal of a sale, or a
-  // future customer return) is excluded by the INNER JOIN condition itself,
-  // not filtered after the fact - a movement of any other type never even
-  // reaches the SUM.
+  const t = schema.StockMovement
   const [sumRow] = await database
     .select({
-      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
+      total: sql<string>`COALESCE(SUM(${t.quantity}), 0)`,
       current: storedTotalSql(organizationId, fulfillmentLineInstanceId, fields.targetFieldId),
     })
-    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
-    .from(sql`"FieldValue" fv_line`)
-    .innerJoin(
-      schema.FieldValue,
-      sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
-    )
-    .innerJoin(
-      sql`"FieldValue" fv_type`,
-      sql`fv_type."entityId" = fv_line."entityId"
-        AND fv_type."fieldId" = ${fields.typeFieldId}
-        AND fv_type."optionId" = ${StockMovementType.SALE}`
-    )
-    .where(
-      sql`fv_line."organizationId" = ${organizationId}
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" = ${fulfillmentLineInstanceId}`
-    )
+    .from(t)
+    .where(saleRowsOf(organizationId, [fulfillmentLineInstanceId]))
 
-  // The raw SUM is negative (or less negative, once a correction nets against
-  // it) because a `sale` movement's quantity is negative. `quantity_relieved`
-  // is a positive count of units relieved, so it is the NEGATION of the sum.
-  // 🛑 `|| 0` normalizes `-0` (a net-zero SUM negates to `-0` in JS) back to a
-  // plain `0` - `-0 === 0` arithmetically but not under `Object.is`/deep-equal,
-  // and a `-0` stored value would compare unequal to itself on every future run.
+  // `|| 0` normalizes the `-0` a net-zero SUM negates to, which would never compare equal again.
   const relieved = -Number(sumRow?.total ?? 0) || 0
   const stored = sumRow?.current
 
@@ -255,42 +161,15 @@ export async function recalculateFulfillmentLineQuantityRelieved(
 async function readTotalsByLine(
   db: Database | Transaction,
   organizationId: string,
-  lineIds: string[],
-  fields: RollupFields
+  lineIds: string[]
 ): Promise<Map<string, number>> {
-  const idList = sql.join(
-    lineIds.map((id) => sql`${id}`),
-    sql`, `
-  )
-
+  const t = schema.StockMovement
   const rows = await db
-    .select({
-      lineId: sql<string>`fv_line."relatedEntityId"`,
-      total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
-    })
-    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
-    .from(sql`"FieldValue" fv_line`)
-    .innerJoin(
-      schema.FieldValue,
-      sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
-    )
-    .innerJoin(
-      sql`"FieldValue" fv_type`,
-      sql`fv_type."entityId" = fv_line."entityId"
-        AND fv_type."fieldId" = ${fields.typeFieldId}
-        AND fv_type."optionId" = ${StockMovementType.SALE}`
-    )
-    .where(
-      sql`fv_line."organizationId" = ${organizationId}
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" IN (${idList})`
-    )
-    .groupBy(sql`fv_line."relatedEntityId"`)
-
-  // Negated per line here, once, rather than at every call site below. `|| 0`
-  // normalizes `-0` the same way the single-line function does.
-  return new Map(rows.map((row) => [row.lineId, -Number(row.total ?? 0) || 0]))
+    .select({ lineId: t.fulfillmentLineId, total: sql<string>`COALESCE(SUM(${t.quantity}), 0)` })
+    .from(t)
+    .where(saleRowsOf(organizationId, lineIds))
+    .groupBy(t.fulfillmentLineId)
+  return new Map(rows.map((row) => [row.lineId as string, -Number(row.total ?? 0) || 0]))
 }
 
 /**
@@ -304,9 +183,7 @@ export async function readRelievedQuantities(
 ): Promise<Map<string, number>> {
   const ids = [...new Set(lineIds)].filter(Boolean)
   if (ids.length === 0) return new Map()
-  const fields = await resolveRollupFields(organizationId)
-  if (!fields) return new Map()
-  return readTotalsByLine(db, organizationId, ids, fields)
+  return readTotalsByLine(db, organizationId, ids)
 }
 
 /** The stored roll-up total of every line in the set, keyed by line. */
@@ -343,12 +220,6 @@ async function readStoredTotals(
  * in one sync, and firing the per-line function once per movement would run
  * dozens of full re-SUMs where one grouped query and one grouped read suffice.
  *
- * ⚠️ It does not suppress anything. The per-movement lifecycle rule still
- * fires afterwards for each movement it fanned out to; it simply finds each
- * line's total already correct and returns before writing (see
- * {@link recalculateFulfillmentLineQuantityRelieved}). A batch call that never
- * runs just leaves the slower per-movement path to produce the same answer.
- *
  * ⚠️ POST-COMMIT only, like the single-line form: the SUM runs on the
  * module-level `database` connection and cannot see a caller's open
  * transaction.
@@ -368,7 +239,7 @@ export async function recalculateFulfillmentLineQuantityRelievedBatch(
   if (!fields) return
 
   const [relievedByLine, stored] = await Promise.all([
-    readTotalsByLine(database, organizationId, lineIds, fields),
+    readTotalsByLine(database, organizationId, lineIds),
     readStoredTotals(organizationId, lineIds, fields.targetFieldId),
   ])
 
@@ -405,44 +276,4 @@ export async function recalculateFulfillmentLineQuantityRelievedBatch(
     lineCount: lineIds.length,
     changedCount: published.length,
   })
-}
-
-/**
- * Re-SUM `fulfillment_line_quantity_relieved` after a stock movement
- * create/delete. Registered as a native handler off the `mfg-stock-movements-
- * created` / `mfg-stock-movements-deleted` system rules, beside the RECEIVED
- * roll-up - see `system-entity-rules.ts`.
- *
- * Resolves the affected fulfillment line from the threaded event values
- * first, falling back to the movement's own field value - the create path has
- * the row, the delete path only has the values (the same fallback
- * `purchase-order-line-rollups.ts`'s trigger uses, for the same reason).
- *
- * A movement with no fulfillment line is the common case (a receipt, an
- * adjustment, a build movement) and is a silent no-op, not a warning.
- */
-export const recalculateFulfillmentLineRelieved: EntityTriggerHandler = async (event) => {
-  const { organizationId, entityInstanceId, values } = event
-
-  let lineInstanceId = unwrapRelationId(values[RELIEF_ATTRS.lineRel])
-
-  if (!lineInstanceId) {
-    const [row] = await database
-      .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
-      .from(schema.FieldValue)
-      .innerJoin(schema.CustomField, eq(schema.FieldValue.fieldId, schema.CustomField.id))
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, entityInstanceId),
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.CustomField.systemAttribute, RELIEF_ATTRS.lineRel)
-        )
-      )
-      .limit(1)
-    lineInstanceId = row?.relatedEntityId ?? undefined
-  }
-
-  if (!lineInstanceId) return
-
-  await recalculateFulfillmentLineQuantityRelieved(organizationId, lineInstanceId)
 }

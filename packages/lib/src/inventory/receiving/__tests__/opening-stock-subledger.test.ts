@@ -7,10 +7,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  materialised: new Set<string>(),
   defs: new Map<string, string>(),
   rows: [] as Array<{
-    partId: string | null
+    partId: string
     role: string | null
     hasInitial: boolean
     netQty: string | number
@@ -25,10 +24,6 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../resources/system-records', () => ({
   systemDefId: async (_db: unknown, _org: string, entityType: string) =>
     h.defs.get(entityType) ?? null,
-  systemFieldMap: async (_db: unknown, _org: string, attrs: readonly string[]) =>
-    Object.fromEntries(attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])),
-  systemValueJoin: () => undefined,
-  optionalFieldId: (field: { id: string } | null) => field?.id ?? '__unmaterialised__',
   readSystemRecords: async (
     _db: unknown,
     _org: string,
@@ -51,32 +46,15 @@ const db = { select: () => chain() } as never
 function chain() {
   h.queries += 1
   const link: Record<string, unknown> = {}
-  for (const step of ['from', 'leftJoin', 'innerJoin', 'where', 'groupBy']) link[step] = () => link
+  for (const step of ['from', 'where', 'groupBy']) link[step] = () => link
   // biome-ignore lint/suspicious/noThenProperty: the double stands in for a drizzle query builder, which IS awaitable
   link.then = (resolve: (rows: unknown[]) => unknown, reject: (error: unknown) => unknown) =>
     Promise.resolve(h.rows as unknown[]).then(resolve, reject)
   return link
 }
 
-const REQUIRED = [
-  'stock_movement_part',
-  'stock_movement_type',
-  'stock_movement_quantity',
-  'stock_movement_extended_cost',
-  'stock_movement_gl_account',
-  'stock_movement_occurred_at',
-]
-
 beforeEach(() => {
-  h.materialised = new Set([
-    ...REQUIRED,
-    'stock_movement_cost_basis',
-    'stock_movement_adjust_subparts',
-  ])
-  h.defs = new Map([
-    ['stock_movement', 'def_mv'],
-    ['part', 'def_part'],
-  ])
+  h.defs = new Map([['part', 'def_part']])
   h.rows = []
   h.names = new Map([
     ['p_bolt', 'Bolt'],
@@ -208,43 +186,5 @@ describe('readPartsValueAtCutover', () => {
       await readPartsValueAtCutover(db, ORG, { onOrBefore: '2026-12-31' })
     )._unsafeUnwrap()
     expect(value.byPart[0]?.name).toBe('p_unknown')
-  })
-
-  it('answers empty for an org with no stock_movement definition, without a query', async () => {
-    h.defs.delete('stock_movement')
-    const value = (
-      await readPartsValueAtCutover(db, ORG, { onOrBefore: '2026-12-31' })
-    )._unsafeUnwrap()
-    expect(value).toEqual({
-      byRole: { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 },
-      totalMinor: 0,
-      byPart: [],
-      uncounted: [],
-      pendingRows: 0,
-    })
-    expect(h.queries).toBe(0)
-  })
-
-  it('refuses when a required movement field is unprovisioned', async () => {
-    h.materialised.delete('stock_movement_extended_cost')
-    const result = await readPartsValueAtCutover(db, ORG, { onOrBefore: '2026-12-31' })
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('stock_movement_extended_cost')
-  })
-
-  it('refuses a fractional value rather than rounding a row written around the cost helper', async () => {
-    h.rows = [
-      {
-        partId: 'p_bolt',
-        role: 'inventory_raw_materials',
-        hasInitial: true,
-        netQty: 1,
-        valueMinor: '100.5',
-        unvalued: 0,
-      },
-    ]
-    const result = await readPartsValueAtCutover(db, ORG, { onOrBefore: '2026-12-31' })
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('not a whole number')
   })
 })

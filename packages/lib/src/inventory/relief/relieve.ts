@@ -1,8 +1,7 @@
 // packages/lib/src/inventory/relief/relieve.ts
 
 /**
- * `relieveFulfillmentLines` - the ~40-line seventh caller of
- * `writeStockMovementsBatch` (plans/money/tasks/50-batch-inventory-relief.md §1).
+ * `relieveFulfillmentLines` (plans/money/tasks/50-batch-inventory-relief.md §1).
  *
  * One `sale` movement per `fulfillment_line`, for `quantity -
  * quantity_relieved`, written automatically at the dispatch's own date. §1.5
@@ -47,7 +46,7 @@
  *    a zero cost" is the same rule `complete-build.ts` enforces from the build
  *    side; a pending row is not a zero, it is an absence with a marker.
  * 4. **The unit cost is rounded to `RATE_DECIMALS`** via `roundMinorUnits`
- *    before it is handed to `writeStockMovementsBatch`, defensively - `V / Q` and
+ *    before it is handed to `writeStockMovements`, defensively - `V / Q` and
  *    `Σcost / Σqty` are both arbitrary-precision divisions and this module
  *    does not assume `cost-reads.ts` already rounded its output.
  */
@@ -70,29 +69,28 @@ import {
 } from '../../accounting/ledger/post/post-inventory-movement'
 import type { PostResult } from '../../accounting/ledger/types'
 import { deleteWorkItemsAtStage, upsertWorkItem } from '../../accounting/work-items/write'
-import { requireCachedEntityDefId } from '../../cache'
 import { ConflictError } from '../../errors'
 import {
   readRelievedQuantities,
   recalculateFulfillmentLineQuantityRelievedBatch,
 } from '../../field-hooks/post/fulfillment-line-rollups'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
-import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
+import { systemFieldMap } from '../../resources/system-records'
 import { readStandardCost } from '../costing'
 import { isServicePartKind } from '../costing/client'
 import { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from '../costing/cost-reads'
-import { batchRecalculateQoH } from '../costing/qoh'
 import type { PartStandardCost } from '../costing/types'
-import type { WrittenStockMovement } from '../movements'
 import {
+  readMovementsByFulfillmentLines,
   type StockMovementInput,
-  type StockMovementsCtx,
-  writeStockMovementsBatch,
+  type StockMovementTouched,
+  settleStockMovements,
+  type WrittenStockMovement,
+  writeStockMovements,
 } from '../movements'
 import { resolveInventoryRoleForPartKind } from '../movements/client'
 import { type ReliefSplitLine, sumReliefCogsSplit } from './cogs-split'
 import { guard } from './guard'
-import { announceQuietReliefWrites, reliefWriteSession } from './write-lane'
 
 const logger = createScopedLogger('relief')
 
@@ -132,7 +130,7 @@ export interface RelieveFulfillmentLinesInput {
  * once per run, not once per movement").
  */
 export interface RelieveFulfillmentLinesResult {
-  /** The `stock_movement` records this run created. */
+  /** The `StockMovement` ids this run created. */
   movementIds: string[]
   /** Distinct parts whose QoH this run recalculated. */
   affectedPartIds: string[]
@@ -239,8 +237,7 @@ async function readPartKindsLocal(
 
 /**
  * Relieve inventory for a set of fulfillment lines: one `sale` movement per
- * line with a non-zero delta, written through the quiet lane, with both
- * post-commit recalculations discharged before this returns.
+ * line with a non-zero delta, settled (QoH, relieved roll-up) before this returns.
  *
  * Never refuses on a pricing or QoH problem (§3.6, §4.2) - a line that
  * genuinely cannot be priced is skipped and counted, and a part that goes
@@ -432,9 +429,7 @@ async function relieveLines(
           })
         }
 
-        const glAccount = resolveInventoryRoleForPartKind(
-          partKinds.get(line.partInstanceId) ?? null
-        )
+        const glRole = resolveInventoryRoleForPartKind(partKinds.get(line.partInstanceId) ?? null)
 
         inputs.push({
           partInstanceId: line.partInstanceId,
@@ -449,7 +444,7 @@ async function relieveLines(
           quantity: -line.delta,
           unitCost: unitCostMinor == null ? null : roundMinorUnits(unitCostMinor),
           costBasis: pending ? StockMovementCostBasis.PENDING : StockMovementCostBasis.STANDARD,
-          glAccount,
+          glRole,
           occurredAt: line.occurredAt,
           // adjustSubparts omitted - defaults to false (§1.5, always).
           links: { fulfillmentLineId: line.fulfillmentLineId },
@@ -495,21 +490,10 @@ async function relieveLines(
         }
       }
 
-      const [movementDefId, partDefId, lineDefId] = await Promise.all([
-        requireCachedEntityDefId(organizationId, 'stock_movement'),
-        requireCachedEntityDefId(organizationId, 'part'),
-        requireCachedEntityDefId(organizationId, 'fulfillment_line'),
-      ])
-
-      // §1.7: quietSession(reason) -> N movements in one tx -> (AFTER COMMIT)
-      // batchRecalculateQoH. This function owns the transaction boundary -
-      // `writeStockMovementsBatch` never opens one of its own -
-      // exactly as `complete-build.ts`'s `db.transaction` wraps `writeCompletion`.
-      // A run that throws here leaves nothing: the movements' ids are minted inside it, and a
-      // field that fails to convert fails the whole batch rather than being dropped.
-      const session = reliefWriteSession()
+      // A run that throws here leaves nothing: rows and entries commit together; QoH and the
+      // relieved roll-up settle after the commit.
       let movementIds: string[] = []
-      let affectedPartIds: string[] = []
+      let touched: StockMovementTouched | undefined
       let pending: Array<InTxPostResult | null> = []
       try {
         await db.transaction(async (tx) => {
@@ -518,18 +502,10 @@ async function relieveLines(
           // run that committed first and a second run cannot write the same units again.
           await withAccountingCommitLock(tx, organizationId)
           await assertReliefUnchanged(txDb, organizationId, inputLines)
-          const ctx: StockMovementsCtx = {
-            db: txDb,
-            organizationId,
-            userId,
-            movementDefId,
-            partDefId,
-            lane: { kind: 'quiet', session },
-          }
-          const written = await writeStockMovementsBatch(ctx, inputs)
+          const written = await writeStockMovements({ db: tx, organizationId, userId }, inputs)
           if (written.isErr()) throw written.error
-          movementIds = written.value.records.map((record) => record.movementId)
-          affectedPartIds = written.value.affectedPartIds
+          movementIds = written.value.records.map((record) => record.id)
+          touched = written.value.touched
 
           // One entry per fulfillment per RUN: a dispatch relieved twice (a standard priced
           // later) posts twice. The run's first movement is the subject, so each run claims its
@@ -570,13 +546,8 @@ async function relieveLines(
         if (exported) posts.push(exported)
       }
 
-      // ── Post-commit, both obligations (write-lane.ts's header) ──────────
-      await batchRecalculateQoH(organizationId, affectedPartIds)
-      await recalculateFulfillmentLineQuantityRelievedBatch(organizationId, relievedLineIds)
-      announceQuietReliefWrites(organizationId, movementDefId, movementIds)
-      // The covered lane sends no inverse frames: the parts' and lines' movement lists.
-      announceQuietReliefWrites(organizationId, partDefId, affectedPartIds)
-      announceQuietReliefWrites(organizationId, lineDefId, [...new Set(relievedLineIds)])
+      if (touched) await settleStockMovements(organizationId, touched)
+      const affectedPartIds = touched?.partIds ?? []
 
       logger.info('Relieved inventory for fulfillment lines', {
         organizationId,
@@ -684,7 +655,7 @@ function groupByFulfillment(
   for (const [index, line] of inputLines.entries()) {
     const record = records[index]
     if (!record) continue
-    if (!record.glAccount || record.extendedCost == null || record.extendedCost === 0) continue
+    if (!record.glRole || record.extendedCost == null || record.extendedCost === 0) continue
     const document = documents.get(line.fulfillmentId) ?? {
       fulfillmentId: line.fulfillmentId,
       orderId: line.orderId,
@@ -694,9 +665,9 @@ function groupByFulfillment(
       splitLines: [],
     }
     document.movements.push({
-      id: record.movementId,
+      id: record.id,
       extendedCostMinor: record.extendedCost,
-      glAccountRole: record.glAccount,
+      glAccountRole: record.glRole,
     })
     document.splitLines.push({
       extendedCost: record.extendedCost,
@@ -727,7 +698,7 @@ export async function syncReliefWorkItems(
   unpricedParts: ReadonlyMap<string, string[]>
 ): Promise<void> {
   const offered = [...new Set(lines.map((line) => line.fulfillmentId))]
-  const pendingByFulfillment = await readPendingMovements(db, organizationId, lines)
+  const pendingByFulfillment = await readPendingByFulfillment(db, organizationId, lines)
   await deleteWorkItemsAtStage(db, organizationId, {
     sourceKind: 'fulfillment',
     sourceIds: offered.filter((id) => !pendingByFulfillment.has(id)),
@@ -759,7 +730,7 @@ export async function syncReliefWorkItems(
 }
 
 /** Every `pending` movement on the offered lines, grouped by dispatch, in ledger order. */
-async function readPendingMovements(
+async function readPendingByFulfillment(
   db: Database,
   organizationId: string,
   lines: readonly Pick<FulfillmentLineToRelieve, 'fulfillmentLineId' | 'fulfillmentId'>[]
@@ -769,29 +740,18 @@ async function readPendingMovements(
   const fulfillmentByLine = new Map(
     lines.map((line) => [line.fulfillmentLineId, line.fulfillmentId])
   )
-  const defId = await requireCachedEntityDefId(organizationId, 'stock_movement')
-  const fields = await systemFieldMap(db, organizationId, [
-    'stock_movement_fulfillment_line',
-    'stock_movement_cost_basis',
-    'stock_movement_part',
-  ] as const)
-  if (!fields.stock_movement_fulfillment_line || !fields.stock_movement_cost_basis) return result
-
-  const records = await readSystemRecords(
-    db,
-    organizationId,
-    { defId, fields },
-    { by: { attribute: 'stock_movement_fulfillment_line', in: [...fulfillmentByLine.keys()] } }
-  )
-  for (const record of records) {
-    if (record.option('stock_movement_cost_basis') !== StockMovementCostBasis.PENDING) continue
-    const lineId = record.related('stock_movement_fulfillment_line')
-    const fulfillmentId = lineId ? fulfillmentByLine.get(lineId) : undefined
+  const rows = await readMovementsByFulfillmentLines(db, organizationId, [
+    ...fulfillmentByLine.keys(),
+  ])
+  for (const row of rows) {
+    if (row.costBasis !== StockMovementCostBasis.PENDING) continue
+    const fulfillmentId = row.fulfillmentLineId
+      ? fulfillmentByLine.get(row.fulfillmentLineId)
+      : undefined
     if (!fulfillmentId) continue
     const pending = result.get(fulfillmentId) ?? { movementIds: [], partIds: [] }
-    pending.movementIds.push(record.id)
-    const partId = record.related('stock_movement_part')
-    if (partId && !pending.partIds.includes(partId)) pending.partIds.push(partId)
+    pending.movementIds.push(row.id)
+    if (!pending.partIds.includes(row.partId)) pending.partIds.push(row.partId)
     result.set(fulfillmentId, pending)
   }
   return result

@@ -1,18 +1,18 @@
 // packages/lib/src/inventory/receiving/__tests__/receive-purchase-order.test.ts
-// The multi-line receipt. `UnifiedCrudHandler`, the org cache, the part-kind
-// read, `ensureStandardCost` and the posting seam are all mocked, so nothing
+// The multi-line receipt. The write seam, the part-kind read, `ensureStandardCost` and the posting seam are all mocked, so nothing
 // here needs a database — what is asserted is the CONTRACT: the price comes
 // from the purchase order line and nowhere else, the whole set is validated
 // before the first movement, nothing is allocated any more, and the WHOLE
 // receipt posts ONE inventory entry with every line's movement as a member —
 // never one entry per line (the bug this file now guards against).
 
+import type { CreateStockMovementInput } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../../errors'
+import { BadRequestError, UnprocessableEntityError } from '../../../errors'
 import type { ReceivePurchaseOrderLineInput } from '../types'
+import { fakeSeam } from './support/fake-seam'
 
 const h = vi.hoisted(() => ({
-  createSpy: vi.fn(async (..._args: unknown[]) => ({ instance: { id: 'mv_1' } })),
   /** One call per `readSystemRecords`, so the read stays batched. */
   readRecords: vi.fn(),
   /** systemAttributes the org has materialised. */
@@ -34,17 +34,12 @@ const h = vi.hoisted(() => ({
   replaceSpy: vi.fn(),
   postSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
   exportSpy: vi.fn(async (..._args: unknown[]) => null as unknown),
-  /** The batched roll-up this door runs once the whole receipt is committed. */
-  settleSpy: vi.fn(),
-  /** The post-commit QoH recalculation, which the hook also performs. */
-  qohSpy: vi.fn(async (..._args: unknown[]) => {}),
 }))
 
-vi.mock('../../costing/qoh', () => ({
-  batchRecalculateQoH: (...args: unknown[]) => h.qohSpy(...args),
-}))
+vi.mock('../../movements', async (importOriginal) =>
+  (await import('./support/fake-seam')).movementsMock(importOriginal)
+)
 
-// `inventory/movements` still reads the cache directly; this door does not.
 vi.mock('../../../cache', () => ({
   getCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => h.defs.get(entityType)),
   requireCachedEntityDefId: vi.fn(async (_org: string, entityType: string) => {
@@ -80,12 +75,6 @@ vi.mock('../../../resources/system-records', () => ({
   systemFieldMap: async (_db: unknown, _org: string, attrs: string[]) =>
     Object.fromEntries(attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])),
   readSystemRecords: (...args: unknown[]) => h.readRecords(...args),
-}))
-
-vi.mock('../../../resources/crud/unified-handler', () => ({
-  UnifiedCrudHandler: class {
-    create = h.createSpy
-  },
 }))
 
 vi.mock('../../builds/build-queries', () => ({
@@ -135,13 +124,6 @@ vi.mock('../../costing/roll-unvalued-ancestors', async () => {
   return { rollUnvaluedAncestors: async () => ok([]) }
 })
 
-vi.mock('../../../field-hooks/post/purchase-order-line-rollups', () => ({
-  PURCHASE_ORDER_LINE_ROLLUPS: {
-    received: { targetAttr: 'purchase_order_line_quantity_received' },
-  },
-  recalculatePurchaseOrderLineRollups: (...args: unknown[]) => h.settleSpy(...args),
-}))
-
 // The posting seam has its own tests (`postings/__tests__/post-inventory-movement.test.ts`);
 // this file is about how MANY times it is called, and with what members.
 vi.mock('../../../accounting/ledger/post/post-inventory-movement', () => ({
@@ -157,7 +139,6 @@ const ORG = 'org_1'
 const USER = 'user_1'
 const PRICE_ATTR = 'purchase_order_line_expected_unit_price'
 const ORDER_ATTR = 'purchase_order_line_purchase_order'
-const COST_ATTRS = ['stock_movement_unit_cost', 'stock_movement_cost_basis']
 
 /** The write and its posting share one transaction, so the stub has to run it. */
 const db = {
@@ -187,10 +168,10 @@ const line = (
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.materialised = new Set([PRICE_ATTR, ORDER_ATTR, ...COST_ATTRS])
+  fakeSeam.reset()
+  h.materialised = new Set([PRICE_ATTR, ORDER_ATTR])
   h.defs = new Map([
     ['part', 'def_part'],
-    ['stock_movement', 'def_mv'],
     ['vendor_part', 'def_vp'],
     ['purchase_order_line', 'def_pol'],
   ])
@@ -217,15 +198,12 @@ beforeEach(() => {
       revaluationPostedMinor: 0,
     })
   })
-  h.settleSpy.mockResolvedValue(undefined)
   h.postSpy.mockResolvedValue(null)
   h.exportSpy.mockResolvedValue(null)
   h.ensureSpy.mockImplementation(async (_db: unknown, _org: string, partIds: string[]) => {
     const { ok } = await import('neverthrow')
     return ok({ writtenPartIds: partIds })
   })
-  let counter = 0
-  h.createSpy.mockImplementation(async () => ({ instance: { id: `mv_${++counter}` } }))
 })
 
 async function expectErr(promise: ReturnType<typeof receivePurchaseOrder>) {
@@ -234,16 +212,16 @@ async function expectErr(promise: ReturnType<typeof receivePurchaseOrder>) {
   return result._unsafeUnwrapErr()
 }
 
-/** The values bag handed to `UnifiedCrudHandler.create` for movement `index`. */
-function writtenValues(index: number): Record<string, unknown> {
-  return h.createSpy.mock.calls[index]![1] as Record<string, unknown>
+/** The row handed to the write seam for movement `index`. */
+function writtenValues(index: number): CreateStockMovementInput {
+  return fakeSeam.rows[index]!
 }
 
 describe('receivePurchaseOrder — validation', () => {
   it('refuses a receipt with no lines', async () => {
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [] }))
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('refuses a line with no part', async () => {
@@ -278,27 +256,14 @@ describe('receivePurchaseOrder — validation', () => {
       })
     )
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('refuses to write before the purchase order price field is provisioned', async () => {
     h.materialised.delete(PRICE_ATTR)
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('refuses to write before the stock movement cost fields are provisioned', async () => {
-    h.materialised.delete('stock_movement_unit_cost')
-    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
-  })
-
-  it('fails with NotFound when the org has no stock_movement definition', async () => {
-    h.defs.delete('stock_movement')
-    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
-    expect(error).toBeInstanceOf(NotFoundError)
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 })
 
@@ -309,7 +274,7 @@ describe('receivePurchaseOrder — a service is never received (107-D10)', () =>
       lines: [line(), line({ partId: 'part_svc', purchaseOrderLineId: 'pol_2' })],
     })
     expect(result._unsafeUnwrap().map((record) => record.purchaseOrderLineId)).toEqual(['pol_1'])
-    expect(h.createSpy).toHaveBeenCalledTimes(1)
+    expect(fakeSeam.rows).toHaveLength(1)
   })
 
   it('refuses a receipt of services only, writing nothing', async () => {
@@ -318,7 +283,7 @@ describe('receivePurchaseOrder — a service is never received (107-D10)', () =>
       receivePurchaseOrder(db, ORG, USER, { lines: [line({ partId: 'part_svc' })] })
     )
     expect(error).toBeInstanceOf(BadRequestError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 })
 
@@ -326,8 +291,8 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
   it('values the movement at the stored expected unit price of its line', async () => {
     h.prices = new Map([['pol_1', 1250]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 4 })] })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
-    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1250)
+    expect(writtenValues(0).unitCostMinor).toBe(1250)
+    expect(writtenValues(0).vendorUnitPriceMinor).toBe(1250)
   })
 
   it('🛑 ignores a price asserted by the client', async () => {
@@ -339,8 +304,8 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
       // it; the runtime must not honour it either.
       lines: [{ ...line(), unitPrice: 20_000, weight: 12 } as ReceivePurchaseOrderLineInput],
     })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
-    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1250)
+    expect(writtenValues(0).unitCostMinor).toBe(1250)
+    expect(writtenValues(0).vendorUnitPriceMinor).toBe(1250)
   })
 
   it('prices each line from its OWN purchase order line', async () => {
@@ -351,8 +316,8 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
     })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1250)
-    expect(writtenValues(1).stock_movement_unit_cost).toBe(99)
+    expect(writtenValues(0).unitCostMinor).toBe(1250)
+    expect(writtenValues(1).unitCostMinor).toBe(99)
   })
 
   it('reads every line in ONE read, not one per line', async () => {
@@ -366,7 +331,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     // One read for the whole set: the price and the parent order come off the
     // same records, so neither scales with the line count.
     expect(h.readRecords).toHaveBeenCalledTimes(1)
-    expect(h.createSpy).toHaveBeenCalledTimes(3)
+    expect(fakeSeam.rows).toHaveLength(3)
   })
 
   it.each([
@@ -386,7 +351,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     // The whole set is priced before the first movement, so the GOOD line is not
     // written either — a half-received shipment is worse than a rejected one.
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 
   it('names the offending line in the refusal', async () => {
@@ -408,7 +373,7 @@ describe('receivePurchaseOrder — the price comes from the purchase order line'
       receivePurchaseOrder(db, ORG, USER, { lines: [line({ vendorPartId: 'vp_1' })] })
     )
     expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
   })
 })
 
@@ -419,7 +384,7 @@ describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
     // bill's number now (section 4.2).
     h.prices = new Map([['pol_1', 1000]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 10 })] })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1000)
+    expect(writtenValues(0).unitCostMinor).toBe(1000)
   })
 
   it('values two receipts of the same line identically', async () => {
@@ -427,10 +392,10 @@ describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
     // receipts of one line, three of them carrying the whole freight charge.
     h.prices = new Map([['pol_1', 1250]])
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 99_997 })] })
-    const firstReceiptCost = writtenValues(0).stock_movement_unit_cost
+    const firstReceiptCost = writtenValues(0).unitCostMinor
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 1 })] })
     expect(firstReceiptCost).toBe(1250)
-    expect(writtenValues(1).stock_movement_unit_cost).toBe(1250)
+    expect(writtenValues(1).unitCostMinor).toBe(1250)
   })
 })
 
@@ -448,18 +413,18 @@ describe('receivePurchaseOrder — the standard is frozen and the landed parts a
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
     })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1_600)
-    expect(writtenValues(0).stock_movement_vendor_unit_price).toBe(1_200)
-    expect(writtenValues(0).stock_movement_cost_basis).toBe('standard')
+    expect(writtenValues(0).unitCostMinor).toBe(1_600)
+    expect(writtenValues(0).vendorUnitPriceMinor).toBe(1_200)
+    expect(writtenValues(0).costBasis).toBe('standard')
   })
 
   it('stamps what it accrued, and the rate behind it', async () => {
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
     })
-    expect(writtenValues(0).stock_movement_freight_accrued).toBe(1_000)
-    expect(writtenValues(0).stock_movement_duties_accrued).toBe(3_000)
-    expect(writtenValues(0).stock_movement_tariff_rate).toBe(25)
+    expect(writtenValues(0).freightAccruedMinor).toBe(1_000)
+    expect(writtenValues(0).dutiesAccruedMinor).toBe(3_000)
+    expect(writtenValues(0).tariffRate).toBe(25)
   })
 
   it('hands the posting the three credit amounts: 120 goods, 10 freight, 30 duty', async () => {
@@ -486,7 +451,7 @@ describe('receivePurchaseOrder — the standard is frozen and the landed parts a
       freightMinor: 1_000,
       dutiesMinor: 0,
     })
-    expect(writtenValues(0).stock_movement_duties_accrued).toBeUndefined()
+    expect(writtenValues(0).dutiesAccruedMinor).toBeNull()
   })
 
   it('accrues nothing when the line names no supplier row', async () => {
@@ -544,7 +509,7 @@ describe('receivePurchaseOrder — the standard is frozen and the landed parts a
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
     })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(0)
+    expect(writtenValues(0).unitCostMinor).toBe(0)
     const input = h.postSpy.mock.calls[0]![1] as {
       movements: Array<{ extendedCostMinor: number; accrual: ReceiveAccrualInput }>
     }
@@ -558,7 +523,7 @@ describe('receivePurchaseOrder — the standard is frozen and the landed parts a
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line({ quantity: 10, vendorPartId: 'vp_1' })],
     })
-    expect(writtenValues(0).stock_movement_unit_cost).toBe(1_600)
+    expect(writtenValues(0).unitCostMinor).toBe(1_600)
   })
 })
 
@@ -575,8 +540,8 @@ describe('receivePurchaseOrder — one movement per line', () => {
     expect(records).toHaveLength(2)
     expect(records[0]!.purchaseOrderLineId).toBe('pol_1')
     expect(records[1]!.purchaseOrderLineId).toBe('pol_2')
-    expect(writtenValues(0).stock_movement_purchase_order_line).toBe('def_pol:pol_1')
-    expect(writtenValues(1).stock_movement_purchase_order_line).toBe('def_pol:pol_2')
+    expect(writtenValues(0).purchaseOrderLineId).toBe('pol_1')
+    expect(writtenValues(1).purchaseOrderLineId).toBe('pol_2')
   })
 
   it('stamps one shared accounting date across every line', async () => {
@@ -596,41 +561,43 @@ describe('receivePurchaseOrder — one movement per line', () => {
       reference: 'PS-4471',
       reason: 'Split delivery',
     })
-    expect(writtenValues(1).stock_movement_reference).toBe('PS-4471')
-    expect(writtenValues(1).stock_movement_reason).toBe('Split delivery')
+    expect(writtenValues(1).reference).toBe('PS-4471')
+    expect(writtenValues(1).reason).toBe('Split delivery')
   })
 
   it('passes the supplier part through when the line names one', async () => {
     await receivePurchaseOrder(db, ORG, USER, { lines: [line({ vendorPartId: 'vp_1' })] })
-    expect(writtenValues(0).stock_movement_vendor_part).toBe('def_vp:vp_1')
+    expect(writtenValues(0).vendorPartId).toBe('vp_1')
   })
 
   it("stamps the GL account resolved from the line's own part kind", async () => {
     h.partKind = 'finished_good'
     await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
-    expect(writtenValues(0).stock_movement_gl_account).toBe('inventory_finished_goods')
+    expect(writtenValues(0).glRole).toBe('inventory_finished_goods')
   })
 })
 
 describe('receivePurchaseOrder — failure propagation', () => {
-  it('surfaces a per-line failure with its own status, not as a generic 500', async () => {
-    h.createSpy.mockRejectedValueOnce(
-      new UnprocessableEntityError('Refusing to write a receipt at zero cost.')
-    )
+  it('surfaces a write failure with its own status, not as a generic 500', async () => {
+    fakeSeam.onWrite = () => {
+      throw new UnprocessableEntityError('Refusing to write a receipt at zero cost.')
+    }
     const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
   })
 
-  it('stops at the first failing line rather than writing or posting the rest', async () => {
-    h.createSpy.mockRejectedValueOnce(new UnprocessableEntityError('nope'))
+  it('posts and settles nothing when the batched write is refused', async () => {
+    fakeSeam.onWrite = () => {
+      throw new UnprocessableEntityError('nope')
+    }
     await expectErr(
       receivePurchaseOrder(db, ORG, USER, {
         lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
       })
     )
-    expect(h.createSpy).toHaveBeenCalledTimes(1)
+    expect(fakeSeam.rows).toHaveLength(0)
     expect(h.postSpy).not.toHaveBeenCalled()
-    expect(h.settleSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.settle).not.toHaveBeenCalled()
   })
 })
 
@@ -695,7 +662,7 @@ describe('receivePurchaseOrder — one posting for the whole receipt', () => {
     expect(error).toBeInstanceOf(BadRequestError)
     // Refused before anything is written — a receipt naming two orders has
     // nowhere honest to put a single `parent` link.
-    expect(h.createSpy).not.toHaveBeenCalled()
+    expect(fakeSeam.rows).toHaveLength(0)
     expect(h.postSpy).not.toHaveBeenCalled()
   })
 
@@ -716,15 +683,14 @@ describe('receivePurchaseOrder — one posting for the whole receipt', () => {
 
   it('posts before the roll-up settles, both after every movement is written', async () => {
     const order: string[] = []
-    h.createSpy.mockImplementation(async () => {
-      order.push('movement')
-      return { instance: { id: `mv_${order.length}` } }
-    })
+    fakeSeam.onWrite = (inputs) => {
+      for (const _ of inputs) order.push('movement')
+    }
     h.postSpy.mockImplementation(async () => {
       order.push('post')
       return null
     })
-    h.settleSpy.mockImplementation(async () => {
+    fakeSeam.settle.mockImplementation(async () => {
       order.push('settle')
     })
 
@@ -736,64 +702,24 @@ describe('receivePurchaseOrder — one posting for the whole receipt', () => {
   })
 })
 
-describe('receivePurchaseOrder — the roll-up is settled once, not once per line', () => {
-  it('🛑 rolls the WHOLE line set up in one call after the last movement', async () => {
-    // The amplifier this exists to remove: `stock_movement` create fires a
-    // lifecycle rule per row, and that rule derives the entire purchase order.
-    // Ten lines meant ten identical derivations. One batched call knows the
-    // whole set and does it once.
+describe('receivePurchaseOrder — settled once, not once per line', () => {
+  it('🛑 settles the WHOLE receipt in one call after the last movement', async () => {
     await receivePurchaseOrder(db, ORG, USER, {
       lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
     })
 
-    expect(h.settleSpy).toHaveBeenCalledTimes(1)
-    expect(h.settleSpy).toHaveBeenCalledWith(
-      ORG,
-      ['pol_1', 'pol_2'],
-      expect.objectContaining({ targetAttr: 'purchase_order_line_quantity_received' })
-    )
+    expect(fakeSeam.settle).toHaveBeenCalledTimes(1)
+    expect(fakeSeam.settle).toHaveBeenCalledWith(ORG, {
+      partIds: ['part_1', 'part_2'],
+      purchaseOrderLineIds: ['pol_1', 'pol_2'],
+      fulfillmentLineIds: [],
+      buildIds: [],
+    })
   })
 
   it('does not settle when the receipt was refused before writing anything', async () => {
     h.prices = new Map()
     await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
-    expect(h.settleSpy).not.toHaveBeenCalled()
-  })
-
-  it('🛑 still reports the receipt as written when the roll-up fails', async () => {
-    // The movements are the primary fact and are already committed. Throwing
-    // here would report a receipt that happened as a receipt that failed — and
-    // the per-movement lifecycle rules are the fallback, so the quantity still
-    // lands.
-    h.settleSpy.mockRejectedValue(new Error('roll-up exploded'))
-
-    const result = await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
-
-    expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toHaveLength(1)
-  })
-})
-
-describe('receivePurchaseOrder — the post-commit QoH recalculation', () => {
-  it('🛑 still reports the receipt as written when the recalculation fails', async () => {
-    // The movements are committed by then, and the per-movement hook writes the
-    // same rows behind this call. The receipt that reported "failed" while the
-    // order showed the goods received is the bug this pins.
-    h.qohSpy.mockRejectedValue(new Error('FieldValue_entity_field_sortKey_key'))
-
-    const result = await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
-
-    expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toHaveLength(1)
-    h.qohSpy.mockResolvedValue(undefined)
-  })
-
-  it('recalculates each received part exactly once', async () => {
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
-    })
-
-    expect(h.qohSpy).toHaveBeenCalledTimes(1)
-    expect(h.qohSpy).toHaveBeenCalledWith(ORG, ['part_1', 'part_2'])
+    expect(fakeSeam.settle).not.toHaveBeenCalled()
   })
 })
