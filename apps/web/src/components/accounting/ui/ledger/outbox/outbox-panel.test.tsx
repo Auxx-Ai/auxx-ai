@@ -573,7 +573,7 @@ describe('Outbox view dropdown', () => {
   it("links the Blocked reason row's Set costs to the uncosted parts in Stock setup", () => {
     render(<OutboxPanel {...props} tab='blocked' />)
     expect(screen.getByRole('link', { name: 'Set costs' }).getAttribute('href')).toBe(
-      '/app/inventory/setup?step=count&filter=uncosted'
+      '/app/inventory/setup?step=costs&filter=no-cost'
     )
   })
 

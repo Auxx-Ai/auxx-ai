@@ -80,7 +80,12 @@ export const ACCOUNTING_GOAL_KEYS = [
 ] as const
 
 /** Stock setup (plans/mrp/17 §5): the three steps of the Stock setup page, in order. */
-export const STOCK_GOAL_KEYS = ['check-part-kinds', 'record-past-builds', 'count-and-cost'] as const
+export const STOCK_GOAL_KEYS = [
+  'check-part-kinds',
+  'set-costs',
+  'record-past-builds',
+  'count-stock',
+] as const
 
 export type MainGoalKey = (typeof MAIN_GOAL_KEYS)[number]
 export type DispatchGoalKey = (typeof DISPATCH_GOAL_KEYS)[number]

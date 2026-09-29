@@ -10,6 +10,7 @@ import { BackflushPanel } from '~/components/manufacturing/builds/backflush-pane
 import { UndoBackflushPanel } from '~/components/manufacturing/builds/undo-backflush-panel'
 import { api } from '~/trpc/react'
 import { FixAccountsCard } from './fix-accounts-card'
+import { stockSetupHref } from './stock-setup-href'
 import type { StockSetupStatus } from './use-stock-setup'
 
 const BUILD_MODE_HREF = '/app/inventory/general'
@@ -19,7 +20,7 @@ interface PastBuildsStepProps {
   onChanged: () => void
 }
 
-/** Step 2 (plans/mrp/17 §5.2): backflush all history, or skip it (D5). */
+/** Step 3 (plans/mrp/17 §5.2, 22 F1): backflush all history, or skip it (D5). */
 export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
   const hasBuilds = api.builds.hasBackflushBuilds.useQuery()
   const setFlag = api.purchasing.setStockSetupFlag.useMutation()
@@ -36,10 +37,26 @@ export function PastBuildsStep({ status, onChanged }: PastBuildsStepProps) {
 
   const covered = status?.unbuiltPartCount === 0
   const skipped = !covered && (status?.buildsSkipped ?? false)
+  const uncosted = status?.neededUncostedCount ?? 0
 
   return (
     <div className='mx-auto flex w-full max-w-3xl flex-col gap-4 p-4 sm:p-6'>
       <FixAccountsCard />
+
+      {!covered && uncosted > 0 && (
+        <div className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-4 py-3 text-sm'>
+          <span className='text-muted-foreground'>
+            {uncosted.toLocaleString('en-US')} {uncosted === 1 ? 'part' : 'parts'} these builds use{' '}
+            {uncosted === 1 ? 'has' : 'have'} no cost yet. Their builds are valued once a cost is
+            set.
+          </span>
+          <Link
+            href={stockSetupHref('costs', { filter: 'no-cost' })}
+            className='text-muted-foreground underline-offset-2 hover:text-foreground hover:underline'>
+            Set costs first →
+          </Link>
+        </div>
+      )}
 
       {covered ? (
         <div className='flex flex-col gap-2 rounded-lg border px-4 py-6 text-sm'>

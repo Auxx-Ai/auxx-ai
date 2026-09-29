@@ -2,7 +2,7 @@
 
 export const STOCK_SETUP_HREF = '/app/inventory/setup'
 
-export type StockSetupStep = 'kinds' | 'builds' | 'count'
+export type StockSetupStep = 'kinds' | 'costs' | 'builds' | 'count'
 
 /** Link to the Stock setup page, optionally on a step with extra query params (e.g. `parts`, `job`). */
 export function stockSetupHref(step?: StockSetupStep, extra?: Record<string, string>): string {

@@ -16,6 +16,16 @@ const GOALS: Record<StockGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     href: stockSetupHref('kinds'),
     docsPath: '/help/inventory/stock-setup',
   },
+  'set-costs': {
+    label: 'Set your part costs',
+    description:
+      'Give each part you buy a cost before recording past builds, so the builds are valued as they are written.',
+    iconId: 'circle-dollar-sign',
+    color: 'amber',
+    ctaText: 'Set costs',
+    href: stockSetupHref('costs'),
+    docsPath: '/help/inventory/stock-setup',
+  },
   'record-past-builds': {
     label: 'Record past builds',
     description:
@@ -26,9 +36,9 @@ const GOALS: Record<StockGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     href: stockSetupHref('builds'),
     docsPath: '/help/inventory/stock-setup',
   },
-  'count-and-cost': {
-    label: 'Count and cost your stock',
-    description: 'Count what is on the shelf and give each part without a standard its first cost.',
+  'count-stock': {
+    label: 'Count your stock',
+    description: 'Count what is on the shelf. Parts you do not count keep their current numbers.',
     iconId: 'clipboard-check',
     color: 'green',
     ctaText: 'Count stock',

@@ -74,6 +74,8 @@ describe('rollUnvaluedAncestors', () => {
     expect(h.roll).toHaveBeenCalledTimes(1)
     expect(h.roll.mock.calls[0]![2]).toBe('u1')
     expect(h.roll.mock.calls[0]![3].partIds).toEqual(['sub', 'fg'])
+    // Only the ready parents: widening up would reach a grandparent's uncosted leaves (22).
+    expect(h.roll.mock.calls[0]![3].widenToAncestors).toBe(false)
   })
 
   it('rolls nothing while another leaf has no standard, so no leaf cost is inferred', async () => {

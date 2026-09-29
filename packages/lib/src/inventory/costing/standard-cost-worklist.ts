@@ -6,6 +6,7 @@ import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { requireCachedEntityDefId } from '../../cache'
 import { readSystemRecords, systemFieldMap } from '../../resources/system-records'
+import { readPartsWithMovements } from '../receiving/movement-coverage'
 import {
   isServicePartKind,
   isUsableStoredStandard,
@@ -15,6 +16,7 @@ import {
 } from './client'
 import { loadOrgSubpartEdges, type SubpartRow } from './cost-calculator'
 import { guard } from './guard'
+import { readPartSuppliers } from './part-suppliers'
 
 const WORKLIST_ATTRIBUTES = [
   'part_sku',
@@ -24,6 +26,7 @@ const WORKLIST_ATTRIBUTES = [
   'part_standard_cost_origin',
   'part_purchase_cost',
   'part_channel_cost',
+  'part_quantity_on_hand',
 ] as const
 
 /** One part's standard-cost state. Money is minor units at rate precision. */
@@ -40,12 +43,22 @@ export interface StandardCostWorklistPart {
   standardCostOrigin: StandardCostOriginValue | null
   purchaseCost: number | null
   channelCost: number | null
+  quantityOnHand: number
+  /** The supplier behind `purchaseCost` (the winning offer), or `null`. */
+  supplierId: string | null
+  supplierName: string | null
   /** Distinct live BOM parents across the org. */
   usedIn: number
   /** BOM parts: distinct uncosted leaves below, walking through unvalued subassemblies. */
   uncostedLeafCount: number
+  /** BOM parts: the ids behind `uncostedLeafCount`. */
+  uncostedLeafIds: string[]
   /** Not asked for: an uncosted leaf under a requested BOM part without a standard. */
   isLeaf: boolean
+  /** Has any stock movement. */
+  moved: boolean
+  /** Moved, or sits (at any depth) under a part that moved, so a build will consume it. */
+  needed: boolean
 }
 
 /** The stored facts {@link buildStandardCostWorklist} joins with the BOM. */
@@ -59,6 +72,10 @@ export interface WorklistPartFacts {
   standardCostOrigin: StandardCostOriginValue | null
   purchaseCost: number | null
   channelCost: number | null
+  quantityOnHand: number
+  moved: boolean
+  supplierId: string | null
+  supplierName: string | null
 }
 
 /**
@@ -74,9 +91,11 @@ export async function readStandardCostWorklist(
     async () => {
       const partDefId = await requireCachedEntityDefId(organizationId, 'part')
       const fields = await systemFieldMap(db, organizationId, WORKLIST_ATTRIBUTES)
-      const [records, edges] = await Promise.all([
+      const [records, edges, moved, suppliers] = await Promise.all([
         readSystemRecords(db, organizationId, { defId: partDefId, fields }),
         loadOrgSubpartEdges(db, organizationId),
+        readPartsWithMovements(db, organizationId),
+        readPartSuppliers(db, organizationId),
       ])
       const facts: WorklistPartFacts[] = records.map((row) => {
         const origin = row.option('part_standard_cost_origin')
@@ -91,6 +110,10 @@ export async function readStandardCostWorklist(
           standardCostOrigin: (origin as StandardCostOriginValue | null) ?? null,
           purchaseCost: row.number('part_purchase_cost'),
           channelCost: row.number('part_channel_cost'),
+          quantityOnHand: row.number('part_quantity_on_hand') ?? 0,
+          moved: moved.has(row.id),
+          supplierId: suppliers.get(row.id)?.supplierId ?? null,
+          supplierName: suppliers.get(row.id)?.supplierName ?? null,
         }
       })
       return buildStandardCostWorklist(facts, edges, input.partIds)
@@ -98,6 +121,28 @@ export async function readStandardCostWorklist(
     'Failed to read the standard cost worklist',
     { organizationId, partIds: input.partIds?.length ?? 'all' }
   )
+}
+
+/** The moved parts plus every part below them in a BOM: what a build will consume. */
+export function neededPartIds(
+  edges: readonly SubpartRow[],
+  movedPartIds: Iterable<string>
+): Set<string> {
+  const children = new Map<string, string[]>()
+  for (const edge of edges) {
+    const list = children.get(edge.parentPartId)
+    if (list) list.push(edge.childPartId)
+    else children.set(edge.parentPartId, [edge.childPartId])
+  }
+  const needed = new Set<string>()
+  const stack = [...movedPartIds]
+  while (stack.length > 0) {
+    const partId = stack.pop() as string
+    if (needed.has(partId)) continue
+    needed.add(partId)
+    for (const childId of children.get(partId) ?? []) stack.push(childId)
+  }
+  return needed
 }
 
 /** The pure join behind {@link readStandardCostWorklist}. */
@@ -137,13 +182,23 @@ export function buildStandardCostWorklist(
     return leaves
   }
 
-  const toRow = (part: WorklistPartFacts, isLeaf: boolean): StandardCostWorklistPart => ({
-    ...part,
-    hasBom: children.has(part.partId),
-    usedIn: parents.get(part.partId)?.size ?? 0,
-    uncostedLeafCount: children.has(part.partId) ? uncostedLeaves(part.partId, new Set()).size : 0,
-    isLeaf,
-  })
+  const needed = neededPartIds(
+    edges,
+    facts.filter((part) => part.moved).map((part) => part.partId)
+  )
+
+  const toRow = (part: WorklistPartFacts, isLeaf: boolean): StandardCostWorklistPart => {
+    const leafIds = children.has(part.partId) ? [...uncostedLeaves(part.partId, new Set())] : []
+    return {
+      ...part,
+      hasBom: children.has(part.partId),
+      usedIn: parents.get(part.partId)?.size ?? 0,
+      uncostedLeafCount: leafIds.length,
+      uncostedLeafIds: leafIds,
+      isLeaf,
+      needed: needed.has(part.partId),
+    }
+  }
 
   if (!requested) {
     return facts.filter((part) => !isServicePartKind(part.kind)).map((part) => toRow(part, false))

@@ -14,6 +14,7 @@ import { useResourceProperty } from '~/components/resources'
 import { useRequireEntityEdit } from '~/providers/capabilities-provider'
 import { AccountingStatusLine } from './accounting-status-line'
 import { CheckKindsStep } from './check-kinds-step'
+import { CostsStep } from './costs-step'
 import { CountStep } from './count-step'
 import { PastBuildsStep } from './past-builds-step'
 import { StockSetupSteps } from './stock-setup-steps'
@@ -44,6 +45,8 @@ export function StockSetupPage() {
         </div>
       ) : selected === 'count' ? (
         <CountStep status={status} />
+      ) : selected === 'costs' ? (
+        <CostsStep status={status} onChanged={refresh} />
       ) : (
         <ScrollArea className='min-h-0 flex-1'>
           {selected === 'kinds' ? (

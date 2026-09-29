@@ -1499,7 +1499,15 @@ export const SETTINGS_CATALOG = {
     defaultValue: false,
     description: 'Stock setup: past builds were skipped, so counting opens without them.',
   },
-  // Stock setup step 3 closed by "Done counting" (plans/mrp/17 Q2); one flag, no per-part mark.
+  // Stock setup costs step skipped (plans/mrp/22 F1): build without costs; legs stay pending.
+  'inventory.stockSetup.costsSkipped': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    defaultValue: false,
+    description: 'Stock setup: first costs were skipped, so past builds write pending legs.',
+  },
+  // Stock setup count step closed by "Done counting" (plans/mrp/17 Q2); one flag, no per-part mark.
   'inventory.stockSetup.countingDone': {
     scope: 'GENERAL',
     access: 'org',

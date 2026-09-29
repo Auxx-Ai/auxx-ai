@@ -5,20 +5,17 @@
 // not. Paged at 50 because every row mounts a `RecordBadge` (400 ids on one GET answered 431).
 
 import { FieldType } from '@auxx/database/enums'
-import { PartKind } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
-import { toastError } from '@auxx/ui/components/toast'
 import { GridTreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatCurrency } from '@auxx/utils/currency'
-import { Check, Package, Sparkles } from 'lucide-react'
+import { AlertTriangle, Package } from 'lucide-react'
 import Link from 'next/link'
 import { useQueryState } from 'nuqs'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { InfiniteListTail } from '~/components/global/infinite-list-tail'
 import { Tooltip } from '~/components/global/tooltip'
@@ -30,61 +27,47 @@ import {
   usePendingLabel,
 } from '~/components/list-selection'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import {
-  isUncostedOrProvisional,
   needsBackflushFirst,
   OPENING_STOCK_PAGE_SIZE,
   type OpeningStockCounts,
   type OpeningStockFilter,
-  type OpeningStockKind,
   type OpeningStockRow,
   onHandNote,
   parseOpeningStockFilter,
-  partKindLabel,
   rowOutcome,
-  toOpeningStockKind,
 } from '../../hooks/use-opening-stock'
-import { StandardSourceBadge } from '../../parts/standard-source-badge'
+import { stockSetupHref } from '../../stock-setup/stock-setup-href'
 import { OpeningStockToolbar } from './opening-stock-toolbar'
 
 /**
  * One `grid-template-columns` for the header and every row, so the list reads as a table.
- * Columns: part | kind | account | on hand | count | cost | change.
+ * Columns: part | on hand | count | change.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(7rem, 8rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
   counts: OpeningStockCounts
-  kindCounts: Map<string, number>
   isLoading: boolean
-  currencyCode: string
-  canSetKind: boolean
-  isSettingKind: boolean
-  onSetKind: (partIds: string[], kind: OpeningStockKind) => Promise<void>
+  /** Rows take a checkbox for the bulk bar. */
+  canSelect: boolean
   onQuantityChange: (partId: string, quantity: number | null) => void
-  onUnitCostChange: (partId: string, unitCost: number | null) => void
-  /** Accept the suggested first cost on these rows. */
-  onAcceptSuggestion?: (partIds: string[]) => void
+  /** Extra toolbar buttons, at the right end (e.g. reopening the save pane). */
+  toolbarActions?: React.ReactNode
 }
 
 export function OpeningStockList({
   rows,
   counts,
-  kindCounts,
   isLoading,
-  currencyCode,
-  canSetKind,
-  isSettingKind,
-  onSetKind,
+  canSelect,
   onQuantityChange,
-  onUnitCostChange,
-  onAcceptSuggestion,
+  toolbarActions,
 }: OpeningStockListProps) {
   const [search, setSearch] = useState('')
-  // `?filter=` only seeds the list (the outbox links `uncosted`); changing it stays local.
+  // `?filter=` only seeds the list; changing it stays local.
   const [filterParam] = useQueryState('filter')
   const [filter, setFilter] = useState<OpeningStockFilter>(() =>
     parseOpeningStockFilter(filterParam)
@@ -112,11 +95,7 @@ export function OpeningStockList({
         if (filter === 'not-counted' && row.state === 'counted') return false
         if (filter === 'counted' && row.state !== 'counted') return false
         if (filter === 'uncounted' && row.state !== 'uncounted') return false
-        if (filter === 'unclassified' && !row.isUnclassified) return false
-        if (filter === 'uncosted' && row.standardCost != null) return false
-        if (filter === 'uncosted-or-provisional' && !isUncostedOrProvisional(row)) return false
         if (filter === 'unbuilt' && !needsBackflushFirst(row)) return false
-        if (filter.startsWith('kind:') && row.kind !== filter.slice('kind:'.length)) return false
         if (!query) return true
         return (
           row.title.toLowerCase().includes(query) || (row.sku ?? '').toLowerCase().includes(query)
@@ -131,18 +110,6 @@ export function OpeningStockList({
   const selectableIds = useMemo(() => visible.map((row) => row.partId), [visible])
   useEffect(() => setItemIds(selectableIds), [selectableIds, setItemIds])
 
-  const writeKind = useCallback(
-    (partIds: string[], kind: OpeningStockKind) => {
-      onSetKind(partIds, kind).catch((error: unknown) => {
-        toastError({
-          title: 'Error setting the part kind',
-          description: error instanceof Error ? error.message : 'Could not save the kind.',
-        })
-      })
-    },
-    [onSetKind]
-  )
-
   return (
     <>
       <div className='shrink-0'>
@@ -152,8 +119,8 @@ export function OpeningStockList({
           filter={filter}
           onFilterChange={changeFilter}
           counts={counts}
-          kindCounts={kindCounts}
-          canSetKind={canSetKind}
+          canSelect={canSelect}
+          actions={toolbarActions}
         />
       </div>
       {/* `noFade`: the table header sticks inside this viewport. */}
@@ -185,15 +152,10 @@ export function OpeningStockList({
                 className='sticky top-0 z-10 grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
                 style={{ gridTemplateColumns: OPENING_STOCK_COLS }}>
                 <div className='flex items-center gap-1 pl-2'>Part</div>
-                <div className='px-2'>Kind</div>
-                <div>Account</div>
                 <Tooltip content='What Auxx has on record today, from every receipt, sale and build.'>
                   <div className='cursor-default px-2 text-right'>On hand</div>
                 </Tooltip>
                 <div className='px-2 text-right'>Count</div>
-                <Tooltip content='A first cost for parts that have none. A part that already has one shows it; change it on the part.'>
-                  <div className='cursor-default px-2 text-right'>Cost</div>
-                </Tooltip>
                 <Tooltip content="How much the count changes what is on record. A part's first count sets its starting stock; a recount is a correction.">
                   <div className='cursor-default px-2 text-right'>Change</div>
                 </Tooltip>
@@ -204,13 +166,8 @@ export function OpeningStockList({
                   <OpeningStockRowLine
                     key={row.partId}
                     row={row}
-                    currencyCode={currencyCode}
-                    canSetKind={canSetKind}
-                    isSettingKind={isSettingKind}
-                    onWriteKind={writeKind}
+                    canSelect={canSelect}
                     onQuantityChange={onQuantityChange}
-                    onUnitCostChange={onUnitCostChange}
-                    onAcceptSuggestion={onAcceptSuggestion}
                   />
                 ))}
                 {/* Every row is already loaded; a "page" only mounts the next 50 rows. */}
@@ -277,22 +234,12 @@ function OnHandCell({ row }: { row: OpeningStockRow }) {
  */
 const OpeningStockRowLine = memo(function OpeningStockRowLine({
   row,
-  currencyCode,
-  canSetKind,
-  isSettingKind,
-  onWriteKind,
+  canSelect,
   onQuantityChange,
-  onUnitCostChange,
-  onAcceptSuggestion,
 }: {
   row: OpeningStockRow
-  currencyCode: string
-  canSetKind: boolean
-  isSettingKind: boolean
-  onWriteKind: (partIds: string[], kind: OpeningStockKind) => void
+  canSelect: boolean
   onQuantityChange: (partId: string, quantity: number | null) => void
-  onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onAcceptSuggestion?: (partIds: string[]) => void
 }) {
   const bulkMode = useBulkMode()
   const selected = useIsSelected(row.partId)
@@ -300,7 +247,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   const pendingLabel = usePendingLabel()
   const toggle = useListSelection((s) => s.toggle)
 
-  const selectable = canSetKind && !pending
+  const selectable = canSelect && !pending
   const selecting = bulkMode && selectable
   const outcome = rowOutcome(row.state)
 
@@ -347,7 +294,12 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
         // `min-w-0` is load-bearing: the badge refuses to shrink without it.
         <span className='flex min-w-0 items-center gap-1.5'>
           {row.recordId ? (
-            <RecordBadge recordId={row.recordId} showIcon={false} className='min-w-0' />
+            <RecordBadge
+              recordId={row.recordId}
+              variant='link'
+              showIcon={false}
+              className='min-w-0'
+            />
           ) : (
             <span className='min-w-0 truncate'>{row.title}</span>
           )}
@@ -358,56 +310,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
         </span>
       }
       cells={[
-        <div key='kind' className='flex w-full min-w-0 items-center gap-1'>
-          <span className='w-32 shrink-0'>
-            <FieldInputAdapter
-              fieldType={FieldType.SINGLE_SELECT}
-              fieldOptions={{ options: PartKind.values }}
-              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
-              value={row.kind}
-              onChange={(value) => {
-                const next = toOpeningStockKind(value)
-                if (next) onWriteKind([row.partId], next)
-              }}
-              placeholder='Select a kind...'
-              disabled={!canSetKind || isSettingKind}
-            />
-          </span>
-          {row.kindIsUnconfirmed && (
-            <Tooltip content='A suggested kind nobody has confirmed. It is never written for you.'>
-              <Badge
-                variant='amber'
-                size='xs'
-                className='h-5.5 shrink-0 items-center justify-center px-1'>
-                <Sparkles />
-              </Badge>
-            </Tooltip>
-          )}
-          {row.kindIsUnconfirmed && canSetKind && (
-            <Tooltip
-              content={`Set to ${partKindLabel(row.kind)}. Until you confirm it, this part can't be counted.`}>
-              <Button
-                variant='transparent'
-                className='h-5.5 w-5.5 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
-                disabled={isSettingKind}
-                onClick={() => {
-                  const kind = toOpeningStockKind(row.kind)
-                  if (kind) onWriteKind([row.partId], kind)
-                }}>
-                <Check />
-              </Button>
-            </Tooltip>
-          )}
-        </div>,
-
-        <Tooltip
-          key='account'
-          content={`${row.accountLabel}. The inventory account this part's stock sits in, set by its kind.`}>
-          <span className='cursor-default truncate text-xs tabular-nums'>
-            {row.accountCode || row.accountLabel}
-          </span>
-        </Tooltip>,
-
         <OnHandCell key='on-hand' row={row} />,
 
         <EditableCell key='quantity' className='w-full'>
@@ -418,14 +320,6 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
             placeholder='0'
           />
         </EditableCell>,
-
-        <UnitCostCell
-          key='unit-cost'
-          row={row}
-          currencyCode={currencyCode}
-          onUnitCostChange={onUnitCostChange}
-          onAcceptSuggestion={onAcceptSuggestion}
-        />,
 
         <span
           key='delta'
@@ -443,113 +337,20 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   )
 })
 
-/** D6: a first cost is typed here; a standard (typed or rolled from the BOM) is read-only. */
-function UnitCostCell({
-  row,
-  currencyCode,
-  onUnitCostChange,
-  onAcceptSuggestion,
-}: {
-  row: OpeningStockRow
-  currencyCode: string
-  onUnitCostChange: (partId: string, unitCost: number | null) => void
-  onAcceptSuggestion?: (partIds: string[]) => void
-}) {
-  if (row.hasBom) {
-    return (
-      <Tooltip content='Rolls from its bill of materials. Cost its components, or set a cost on the part itself.'>
-        <span className='w-full cursor-default pr-1 text-right text-muted-foreground text-xs tabular-nums leading-tight'>
-          {row.standardCost != null ? (
-            formatCurrency(row.standardCost, { currencyCode })
-          ) : (
-            <>
-              Rolls from BOM
-              <span className='block text-[11px]'>{row.uncostedLeafCount} uncosted</span>
-            </>
-          )}
-        </span>
-      </Tooltip>
-    )
-  }
-  if (row.standardCost != null) return <StandardCostCell row={row} currencyCode={currencyCode} />
-  const { suggestion } = row
-  const other = suggestion?.other
-  // A prefilled suggestion reads exactly like a saved cost without this line.
-  const note =
-    row.unitCostSuggested && suggestion
-      ? `suggested · ${suggestion.source === 'supplier' ? 'supplier' : 'channel'}`
-      : row.unitCostTyped
-        ? 'not saved'
-        : null
-  const cell = (
-    <div className='flex w-full flex-col items-end leading-tight'>
-      <div className='flex w-full items-center gap-1'>
-        <EditableCell
-          className={cn('min-w-0 flex-1', row.unitCostSuggested && 'text-muted-foreground')}>
-          <FieldInputAdapter
-            fieldType={FieldType.CURRENCY}
-            fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-            value={row.unitCost}
-            onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
-            placeholder='later'
-          />
-        </EditableCell>
-        {row.unitCostSuggested && onAcceptSuggestion && (
-          <Button
-            variant='transparent'
-            aria-label='Accept suggested cost'
-            className='h-5.5 w-5.5 shrink-0 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
-            onClick={() => onAcceptSuggestion([row.partId])}>
-            <Check />
-          </Button>
-        )}
-      </div>
-      {note && (
-        <span data-testid='unit-cost-note' className='pr-1 text-[11px] text-muted-foreground'>
-          {note}
-        </span>
-      )}
-    </div>
-  )
-  if (!other) return cell
-  return (
-    <Tooltip
-      content={`${other.source === 'supplier' ? 'Supplier' : 'Channel'}: ${formatCurrency(other.unitCost, { currencyCode })}`}
-      allowInteraction>
-      {cell}
-    </Tooltip>
-  )
-}
-
-/** The part's standard, read-only, with a link to change it on the part. */
-function StandardCostCell({ row, currencyCode }: { row: OpeningStockRow; currencyCode: string }) {
-  const href = useRecordLink(row.recordId)
-  return (
-    <span
-      data-testid='standard-cost'
-      className='flex w-full flex-col items-end pr-1 text-right tabular-nums leading-tight'>
-      <span className='text-foreground text-xs'>
-        {formatCurrency(row.standardCost ?? 0, { currencyCode })}
-      </span>
-      {href && (
-        <Link href={href} className='text-[11px] text-muted-foreground hover:underline'>
-          change on the part
-        </Link>
-      )}
-    </span>
-  )
-}
-
-/** The row's reading: counted before, sold before counted, unclassified, and the standard's source. */
+/** The row's reading: a kind step 1 still flags, counted before or not, and no cost yet. */
 function RowBadges({ row }: { row: OpeningStockRow }) {
   const delta = formatDelta(row.delta)
   return (
     <span className='flex shrink-0 items-center gap-1'>
-      {row.standardCost != null && (
-        <StandardSourceBadge source={row.standardSource} origin={row.standardOrigin} />
-      )}
-      {row.usedIn > 0 && !row.hasBom && (
-        <span className='text-muted-foreground text-xs'>Used in {row.usedIn}</span>
+      {row.kindWarning && (
+        <Tooltip
+          content={`Kind not checked: ${row.kindWarning} A count is filed under the kind it has now. Click to check kinds.`}>
+          <Link href={stockSetupHref('kinds')} data-testid='kind-warning' className='shrink-0'>
+            <Badge variant='amber' size='xs' className='h-5 px-1'>
+              <AlertTriangle />
+            </Badge>
+          </Link>
+        </Tooltip>
       )}
       {row.state === 'counted' && (
         <Badge
@@ -564,16 +365,15 @@ function RowBadges({ row }: { row: OpeningStockRow }) {
           variant='amber'
           size='xs'
           title='Received, sold or used, but never counted. Its first count sets its starting stock.'>
-          Never counted
+          No count
         </Badge>
       )}
-      {row.state !== 'counted' && row.isUnclassified && !row.kindIsUnconfirmed && (
-        <Badge
-          variant='outline'
-          size='xs'
-          title='Nobody has said what this part is, so it lands in Raw Materials by default.'>
-          Unclassified
-        </Badge>
+      {row.standardCost == null && (
+        <Tooltip content='The count is saved now and valued once Set costs gives this part a cost.'>
+          <Badge variant='outline' size='xs' className='cursor-default'>
+            No cost
+          </Badge>
+        </Tooltip>
       )}
     </span>
   )
@@ -583,7 +383,13 @@ function RowBadges({ row }: { row: OpeningStockRow }) {
  * A bordered 28px cell so an editable field reads as one. The cell carries the border,
  * never the input (it is chromeless on purpose); the number stepper's arrows are hidden.
  */
-function EditableCell({ className, children }: { className?: string; children: React.ReactNode }) {
+export function EditableCell({
+  className,
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
   return (
     <div
       className={cn(

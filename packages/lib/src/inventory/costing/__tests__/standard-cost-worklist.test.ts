@@ -25,6 +25,12 @@ vi.mock('../../../resources/system-records', () => ({
 vi.mock('../cost-calculator', () => ({
   loadOrgSubpartEdges: vi.fn(async () => h.edges),
 }))
+vi.mock('../part-suppliers', () => ({
+  readPartSuppliers: vi.fn(async () => new Map()),
+}))
+vi.mock('../../receiving/movement-coverage', () => ({
+  readPartsWithMovements: vi.fn(async () => new Set<string>()),
+}))
 
 import {
   buildStandardCostWorklist,
@@ -42,6 +48,10 @@ const part = (partId: string, over: Partial<WorklistPartFacts> = {}): WorklistPa
   standardCostOrigin: null,
   purchaseCost: null,
   channelCost: null,
+  quantityOnHand: 0,
+  moved: false,
+  supplierId: null,
+  supplierName: null,
   ...over,
 })
 const edge = (parentPartId: string, childPartId: string) => ({
@@ -85,6 +95,16 @@ describe('buildStandardCostWorklist', () => {
     const fg = rows[0]
     expect(fg).toMatchObject({ hasBom: true, uncostedLeafCount: 2, usedIn: 0 })
     expect(rows.find((row) => row.partId === 'A')).toMatchObject({ usedIn: 2, hasBom: false })
+  })
+
+  it('marks a part needed when it or any part above it has moved', () => {
+    const moved = facts.map((f) =>
+      f.partId === 'FG2' || f.partId === 'D' ? { ...f, moved: true } : f
+    )
+    const rows = buildStandardCostWorklist(moved, edges)
+    const needed = Object.fromEntries(rows.map((row) => [row.partId, row.needed]))
+    expect(needed).toMatchObject({ FG2: true, A: true, D: true, FG: false, SUB: false, B: false })
+    expect(rows.find((row) => row.partId === 'SUB')?.uncostedLeafIds.sort()).toEqual(['A', 'B'])
   })
 
   it('stops at a costed child and never lists a service', () => {

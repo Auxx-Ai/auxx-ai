@@ -7,53 +7,16 @@ import { toastError } from '@auxx/ui/components/toast'
 import { CheckCircle2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { booksStartDate } from '~/components/accounting/books-start'
-import { isPartKindUnclassified } from '~/components/drawers/cards/part-family-suggestion'
+import { useConfirm } from '~/hooks/use-confirm'
+import { api } from '~/trpc/react'
+import { useAccountingSetupState } from './accounting-status-line'
 import {
+  type KindRow,
+  kindCheckRows,
   type OpeningStockKind,
   partKindLabel,
   toOpeningStockKind,
-} from '~/components/manufacturing/hooks/use-opening-stock'
-import { useConfirm } from '~/hooks/use-confirm'
-import { api, type RouterOutputs } from '~/trpc/react'
-import { useAccountingSetupState } from './accounting-status-line'
-
-type KindConflict = RouterOutputs['builds']['kindConflicts'][number]
-
-interface KindRow {
-  partId: string
-  name: string
-  currentKind: string | null
-  suggestedKind: OpeningStockKind
-  /** Why the kind looks wrong, in plain words. */
-  reason: string
-  /** Label of the "this kind is intended" action. */
-  keepLabel: string
-  /** A BOM conflict (17 D3) keeps via the conflict flag; the rest re-write their kind. */
-  isConflict: boolean
-}
-
-function listNames(names: string[]): string {
-  if (names.length <= 3) return names.join(', ')
-  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
-}
-
-function conflictRow(conflict: KindConflict): KindRow {
-  const suggestedKind = toOpeningStockKind(conflict.suggestedKind) ?? 'component'
-  const suggested = partKindLabel(suggestedKind)
-  const reason =
-    conflict.reason === 'component_with_bom'
-      ? `Has its own parts list, but marked Component. Parts built from other parts are usually ${suggested}s.`
-      : `Used inside ${listNames(conflict.usedIn.map((p) => p.partName ?? p.partId)) || 'another part'}, but marked Finished Good. Parts used inside another part are usually ${suggested}s.`
-  return {
-    partId: conflict.partId,
-    name: conflict.partName ?? conflict.partId,
-    currentKind: conflict.kind,
-    suggestedKind,
-    reason,
-    keepLabel: conflict.reason === 'finished_good_in_bom' ? 'Sold as-is too, keep it' : 'Keep it',
-    isConflict: true,
-  }
-}
+} from './kind-check'
 
 interface CheckKindsStepProps {
   onChanged: () => void
@@ -76,31 +39,10 @@ export function CheckKindsStep({ onChanged }: CheckKindsStepProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
 
-  const rows = useMemo<KindRow[]>(() => {
-    const conflictRows = (conflicts.data ?? []).map(conflictRow)
-    const seen = new Set(conflictRows.map((row) => row.partId))
-    // The Set counts suggestion: sold as a product, inside nothing, still on the default kind.
-    const unconfirmed = (candidates.data ?? [])
-      .filter(
-        (c) =>
-          !seen.has(c.partId) &&
-          c.hasProduct &&
-          !c.isSubpartOfAssembly &&
-          !c.kindConfirmed &&
-          isPartKindUnclassified(c.partKind)
-      )
-      .map<KindRow>((c) => ({
-        partId: c.partId,
-        name: c.title || c.sku || c.partId,
-        currentKind: toOpeningStockKind(c.partKind),
-        suggestedKind: 'finished_good',
-        reason:
-          'Sold as a product and used inside nothing, but marked Component. Parts sold as they are are usually Finished Goods.',
-        keepLabel: `Keep ${partKindLabel(toOpeningStockKind(c.partKind) ?? 'component')}`,
-        isConflict: false,
-      }))
-    return [...conflictRows, ...unconfirmed]
-  }, [conflicts.data, candidates.data])
+  const rows = useMemo<KindRow[]>(
+    () => kindCheckRows(conflicts.data ?? [], candidates.data ?? []),
+    [conflicts.data, candidates.data]
+  )
 
   // `onChanged` refreshes the status. Drift and preview are step 2's and refetch when it opens.
   const refresh = (kindsWritten: boolean) => {

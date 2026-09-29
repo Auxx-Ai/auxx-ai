@@ -15,13 +15,15 @@ function status(overrides: Partial<StockSetupStatus> = {}): StockSetupStatus {
     kindConflictCount: 0,
     unconfirmedKindCount: 0,
     unbuiltPartCount: 0,
+    neededUncostedCount: 0,
+    costsSkipped: false,
     buildsSkipped: false,
     countingDone: false,
     movedPartCount: 0,
     countedPartCount: 0,
     uncostedPartCount: 0,
     hasStockedMovements: true,
-    steps: { kinds: true, builds: true, count: false },
+    steps: { kinds: true, costs: true, builds: true, count: false },
     ...overrides,
   }
 }
@@ -37,33 +39,53 @@ describe('stockSetupHref', () => {
 })
 
 describe('resolveStepStates', () => {
-  it('reads a skipped builds step as skipped, not done', () => {
+  it('reads a skipped builds or costs step as skipped, not done', () => {
     const states = resolveStepStates(
       status({
         unbuiltPartCount: 3,
         buildsSkipped: true,
-        steps: { kinds: true, builds: true, count: false },
+        neededUncostedCount: 4,
+        costsSkipped: true,
+        steps: { kinds: true, costs: true, builds: true, count: false },
       })
     )
-    expect(states).toEqual({ kinds: 'done', builds: 'skipped', count: 'todo' })
+    expect(states).toEqual({ kinds: 'done', costs: 'skipped', builds: 'skipped', count: 'todo' })
   })
 
-  it('opens on the first step still to do', () => {
+  it('opens on the first step still to do, costs before builds (22 F1)', () => {
     expect(
       firstOpenStep(
-        resolveStepStates(status({ steps: { kinds: false, builds: true, count: false } }))
+        resolveStepStates(
+          status({ steps: { kinds: false, costs: true, builds: true, count: false } })
+        )
       )
     ).toBe('kinds')
     expect(
       firstOpenStep(
         resolveStepStates(
-          status({ unbuiltPartCount: 2, steps: { kinds: true, builds: false, count: false } })
+          status({
+            neededUncostedCount: 5,
+            unbuiltPartCount: 2,
+            steps: { kinds: true, costs: false, builds: false, count: false },
+          })
+        )
+      )
+    ).toBe('costs')
+    expect(
+      firstOpenStep(
+        resolveStepStates(
+          status({
+            unbuiltPartCount: 2,
+            steps: { kinds: true, costs: true, builds: false, count: false },
+          })
         )
       )
     ).toBe('builds')
     expect(
       firstOpenStep(
-        resolveStepStates(status({ steps: { kinds: true, builds: true, count: true } }))
+        resolveStepStates(
+          status({ steps: { kinds: true, costs: true, builds: true, count: true } })
+        )
       )
     ).toBe('count')
   })

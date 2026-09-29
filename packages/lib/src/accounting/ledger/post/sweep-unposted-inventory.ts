@@ -7,7 +7,8 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, asc, eq, gt, isNotNull, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../../cache'
 import { StockMovementCostBasis, StockMovementType } from '../../../resources/registry/enum-values'
 import { readOrganizationSettings } from '../../../settings/read'
@@ -99,6 +100,20 @@ async function listUnpostedMovementIds(
       )
     )
 
+  // A build posts as one document once every leg is valued (`price-build.ts` posts it then); its
+  // valued legs left in here would be refused on every run and hold the oldest-first page forever.
+  const pendingLeg = alias(schema.StockMovement, 'pending_leg')
+  const buildsWaitingOnACost = db
+    .selectDistinct({ buildId: pendingLeg.buildId })
+    .from(pendingLeg)
+    .where(
+      and(
+        eq(pendingLeg.organizationId, organizationId),
+        isNotNull(pendingLeg.buildId),
+        eq(pendingLeg.costBasis, StockMovementCostBasis.PENDING)
+      )
+    )
+
   const t = schema.StockMovement
   const rows = await db
     .select({ id: t.id })
@@ -112,6 +127,7 @@ async function listUnpostedMovementIds(
         ne(t.extendedCostMinor, 0),
         sql`${t.costBasis} IS DISTINCT FROM ${StockMovementCostBasis.PENDING}`,
         ne(t.type, StockMovementType.RETURN_OUT),
+        or(isNull(t.buildId), notInArray(t.buildId, buildsWaitingOnACost)),
         sql`${t.id} NOT IN ${posted}`
       )
     )

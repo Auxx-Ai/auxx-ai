@@ -1,6 +1,6 @@
 // apps/web/src/components/manufacturing/ui/settings/opening-stock-list.test.tsx
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { OpeningStockRow } from '../../hooks/use-opening-stock'
@@ -9,9 +9,6 @@ vi.mock('~/trpc/react', () => ({ api: {} }))
 const queryState = vi.hoisted(() => ({ filter: null as string | null }))
 vi.mock('nuqs', () => ({
   useQueryState: (key: string) => [key === 'filter' ? queryState.filter : null, vi.fn()],
-}))
-vi.mock('~/components/resources/utils/get-record-link', () => ({
-  useRecordLink: (recordId: string | null) => (recordId ? `/app/records/${recordId}` : null),
 }))
 vi.mock('~/components/fields/inputs/field-input-adapter', () => ({
   FieldInputAdapter: ({ value }: { value: unknown }) => (
@@ -50,28 +47,13 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     recordId: null,
     title: 'Attic Lift',
     sku: 'AL-1',
-    storedKind: 'finished_good',
-    kind: 'finished_good',
-    kindIsUnconfirmed: false,
-    accountLabel: '1330 Finished Goods',
-    accountCode: '1330',
-    accountRole: 'inventory_finished_goods',
-    isUnclassified: false,
     standardCost: 34696,
-    standardSource: null,
-    standardOrigin: null,
+    kindWarning: null,
     quantity: 42,
-    unitCost: 34696,
-    unitCostSuggested: false,
-    unitCostTyped: false,
-    suggestion: null,
-    sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
     state: 'uncounted',
     netToday: -830,
     hasBom: false,
-    uncostedLeafCount: 0,
-    usedIn: 0,
     unbuiltSales: 0,
     built: 0,
     earliest: new Date('2024-10-01T00:00:00.000Z'),
@@ -80,7 +62,7 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
   }
 }
 
-function renderList(rows: OpeningStockRow[], onAcceptSuggestion = vi.fn()) {
+function renderList(rows: OpeningStockRow[]) {
   render(
     <OpeningStockList
       rows={rows}
@@ -89,26 +71,14 @@ function renderList(rows: OpeningStockRow[], onAcceptSuggestion = vi.fn()) {
         notCounted: 0,
         counted: 0,
         uncounted: 0,
-        unclassified: 0,
-        uncosted: 0,
-        uncostedOrProvisional: 0,
         unbuilt: 0,
       }}
-      kindCounts={new Map()}
       isLoading={false}
-      currencyCode='USD'
-      canSetKind
-      isSettingKind={false}
-      onSetKind={vi.fn(async () => {})}
+      canSelect
       onQuantityChange={vi.fn()}
-      onUnitCostChange={vi.fn()}
-      onAcceptSuggestion={onAcceptSuggestion}
     />
   )
-  return { onAcceptSuggestion }
 }
-
-const suggestion = { source: 'supplier', unitCost: 1250, other: null } as const
 
 describe('OpeningStockList', () => {
   it('shows the change the row writes and whether it is a first count', () => {
@@ -140,12 +110,15 @@ describe('OpeningStockList', () => {
     expect(screen.getByText('Counted')).toBeTruthy()
   })
 
-  it('shows an existing standard read-only with a link to change it on the part', () => {
-    renderList([row({ recordId: 'def:lift' as OpeningStockRow['recordId'] })])
-    const cell = screen.getByTestId('standard-cost')
-    expect(cell.textContent).toContain('$346.96')
-    expect(screen.getByText('change on the part').getAttribute('href')).toBe(
-      '/app/records/def:lift'
+  it('marks a part with no cost yet, and none with one', () => {
+    renderList([row({ partId: 'a', standardCost: null }), row({ partId: 'b' })])
+    expect(screen.getAllByText('No cost')).toHaveLength(1)
+  })
+
+  it('flags a part whose kind step 1 still lists, linking to it', () => {
+    renderList([row({ partId: 'a', kindWarning: 'Used inside Lift, but marked Finished Good.' })])
+    expect(screen.getByTestId('kind-warning').getAttribute('href')).toBe(
+      '/app/inventory/setup?step=kinds'
     )
   })
 
@@ -154,31 +127,15 @@ describe('OpeningStockList', () => {
     expect(screen.queryByText(/Backflush/)).toBeNull()
   })
 
-  it('offers an accept button only on a row still showing its suggestion', () => {
-    const { onAcceptSuggestion } = renderList([
-      row({ partId: 'a', standardCost: null, unitCost: 1250, unitCostSuggested: true, suggestion }),
-      row({ partId: 'b', standardCost: null, unitCost: 900, unitCostTyped: true, suggestion }),
-      row({ partId: 'c' }),
-    ])
-    const accept = screen.getAllByLabelText('Accept suggested cost')
-    expect(accept).toHaveLength(1)
-    fireEvent.click(accept[0]!)
-    expect(onAcceptSuggestion).toHaveBeenCalledWith(['a'])
-    expect(screen.getAllByTestId('unit-cost-note').map((n) => n.textContent)).toEqual([
-      'suggested · supplier',
-      'not saved',
-    ])
-  })
-
   it('opens on the filter a link names', () => {
-    queryState.filter = 'uncosted'
+    queryState.filter = 'counted'
     try {
       renderList([
-        row({ partId: 'costed', title: 'Costed' }),
-        row({ partId: 'open', title: 'Open', standardCost: null }),
+        row({ partId: 'counted', title: 'Counted part', state: 'counted' }),
+        row({ partId: 'open', title: 'Open' }),
       ])
-      expect(screen.queryByText('Costed')).toBeNull()
-      expect(screen.getByText('Open')).toBeTruthy()
+      expect(screen.queryByText('Open')).toBeNull()
+      expect(screen.getByText('Counted part')).toBeTruthy()
     } finally {
       queryState.filter = null
     }

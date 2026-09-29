@@ -16,7 +16,7 @@ import { getAutoInferredGoals } from '../signals'
 
 const ctx = { organizationId: 'org_1' }
 
-function status(steps: { kinds: boolean; builds: boolean; count: boolean }) {
+function status(steps: { kinds: boolean; costs: boolean; builds: boolean; count: boolean }) {
   return { hasStockedMovements: true, steps }
 }
 
@@ -26,9 +26,9 @@ beforeEach(() => {
 
 describe('stock checklist signals', () => {
   it('read the cached stock setup status, never the loader', async () => {
-    h.get.mockResolvedValue(status({ kinds: true, builds: false, count: true }))
+    h.get.mockResolvedValue(status({ kinds: true, costs: true, builds: false, count: true }))
     const goals = await getAutoInferredGoals(ctx, 'stock')
-    expect(goals.sort()).toEqual(['check-part-kinds', 'count-and-cost'])
+    expect(goals.sort()).toEqual(['check-part-kinds', 'count-stock', 'set-costs'])
     expect(
       h.get.mock.calls.every(([org, key]) => org === 'org_1' && key === 'stockSetupStatus')
     ).toBe(true)

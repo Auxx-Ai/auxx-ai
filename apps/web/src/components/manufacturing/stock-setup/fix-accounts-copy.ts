@@ -1,7 +1,7 @@
 // apps/web/src/components/manufacturing/stock-setup/fix-accounts-copy.ts
 
-import { partKindLabel } from '~/components/manufacturing/hooks/use-opening-stock'
 import type { RouterOutputs } from '~/trpc/react'
+import { partKindLabel } from './kind-check'
 
 export type MovementAccountDrift = RouterOutputs['builds']['movementAccountDrift']
 

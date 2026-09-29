@@ -310,9 +310,11 @@ function stockSteps(ctx: GettingStartedContext): Promise<StockSetupStatus | null
 
 const hasCheckedPartKinds = async (ctx: GettingStartedContext) =>
   (await stockSteps(ctx))?.steps.kinds ?? false
+const hasSetCosts = async (ctx: GettingStartedContext) =>
+  (await stockSteps(ctx))?.steps.costs ?? false
 const hasRecordedPastBuilds = async (ctx: GettingStartedContext) =>
   (await stockSteps(ctx))?.steps.builds ?? false
-const hasCountedAndCosted = async (ctx: GettingStartedContext) =>
+const hasCountedStock = async (ctx: GettingStartedContext) =>
   (await stockSteps(ctx))?.steps.count ?? false
 
 /** Every stock goal met; met outright for an org with no stocked part that ever moved. */
@@ -320,7 +322,7 @@ async function hasSetUpStock(ctx: GettingStartedContext): Promise<boolean> {
   const status = await stockSteps(ctx)
   if (!status) return false
   if (!status.hasStockedMovements) return true
-  return status.steps.kinds && status.steps.builds && status.steps.count
+  return status.steps.kinds && status.steps.costs && status.steps.builds && status.steps.count
 }
 
 /** Map of checklist → auto-inferred goal → signal. Manual-only goals have no entry. */
@@ -353,8 +355,9 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
   },
   stock: {
     'check-part-kinds': hasCheckedPartKinds,
+    'set-costs': hasSetCosts,
     'record-past-builds': hasRecordedPastBuilds,
-    'count-and-cost': hasCountedAndCosted,
+    'count-stock': hasCountedStock,
   },
 }
 

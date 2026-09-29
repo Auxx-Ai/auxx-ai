@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMedia } from '~/hooks/use-media'
 
 const STORAGE_PREFIX = 'master-detail-width'
+const COLLAPSED_PREFIX = 'master-detail-collapsed'
 
 /** Below this the split collapses to one column and the detail moves into a drawer. */
 const DESKTOP_QUERY = '(min-width: 1024px)'
@@ -50,7 +51,27 @@ type MasterDetailSplitProps = {
    *   page-level scroll container for a sticky child to travel in.
    */
   scroll?: 'page' | 'columns'
+  /** Desktop only: hide the pane and give the list the full width. See `useCollapsedPane`. */
+  collapsed?: boolean
   className?: string
+}
+
+/** Whether a split's pane is collapsed, remembered per split `id` like its width. */
+export function useCollapsedPane(id: string) {
+  const [collapsed, setCollapsedState] = useState(false)
+  // Effect, not initial state: localStorage is unavailable during SSR.
+  useEffect(() => {
+    setCollapsedState(window.localStorage.getItem(`${COLLAPSED_PREFIX}:${id}`) === '1')
+  }, [id])
+  const setCollapsed = useCallback(
+    (next: boolean) => {
+      setCollapsedState(next)
+      if (next) window.localStorage.setItem(`${COLLAPSED_PREFIX}:${id}`, '1')
+      else window.localStorage.removeItem(`${COLLAPSED_PREFIX}:${id}`)
+    },
+    [id]
+  )
+  return [collapsed, setCollapsed] as const
 }
 
 /**
@@ -83,6 +104,7 @@ export function MasterDetailSplit({
   minWidth = 320,
   maxWidth = 720,
   scroll = 'page',
+  collapsed = false,
   className,
 }: MasterDetailSplitProps) {
   const isDesktop = useMedia(DESKTOP_QUERY)
@@ -173,7 +195,8 @@ export function MasterDetailSplit({
       <div
         ref={containerRef}
         className={cn(
-          'relative grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_var(--detail-pane-col)]',
+          'relative grid min-h-0 flex-1 grid-cols-1',
+          !collapsed && 'lg:grid-cols-[minmax(0,1fr)_var(--detail-pane-col)]',
           className
         )}
         style={
@@ -197,7 +220,10 @@ export function MasterDetailSplit({
           onMouseDown={handleDragStart}
           onDoubleClick={handleReset}
           style={{ right: 'var(--detail-pane-col)' }}
-          className='absolute inset-y-0 z-20 hidden w-2 translate-x-1/2 cursor-ew-resize lg:block'>
+          className={cn(
+            'absolute inset-y-0 z-20 hidden w-2 translate-x-1/2 cursor-ew-resize',
+            !collapsed && 'lg:block'
+          )}>
           <div
             className={cn(
               'mx-auto h-full w-px transition-colors',
@@ -211,7 +237,12 @@ export function MasterDetailSplit({
             `border-l` would then stop dead at the editor's bottom edge instead of
             dividing the whole list. A stretched column also gives the sticky child
             room to travel, which an already-full-height element does not have. */}
-        <div className={cn('hidden border-l lg:block', scroll === 'columns' && 'overflow-y-auto')}>
+        <div
+          className={cn(
+            'hidden border-l',
+            !collapsed && 'lg:block',
+            scroll === 'columns' && 'overflow-y-auto'
+          )}>
           {scroll === 'page' ? (
             /* `--settings-sticky-top` is published by `SettingsPage`, which owns the
                sticky title/tabs block above — pinning at a hardcoded `0` would slide
