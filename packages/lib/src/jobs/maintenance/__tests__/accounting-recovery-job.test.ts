@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   payouts: vi.fn(),
   pricing: vi.fn(),
   unposted: vi.fn(),
+  marketplaceTax: vi.fn(),
 }))
 vi.mock('@auxx/database', () => ({ database: {} }))
 vi.mock('../../../accounting/work-items/sweep', () => ({ listOrganizationsForSweep: h.orgs }))
@@ -39,6 +40,9 @@ vi.mock('../../../inventory/relief/relief-sweep', () => ({ sweepPendingPricing: 
 vi.mock('../../../accounting/ledger/post/sweep-unposted-inventory', () => ({
   sweepUnpostedInventory: h.unposted,
 }))
+vi.mock('../../../accounting/sales/marketplace-tax/check', () => ({
+  checkMarketplaceTax: h.marketplaceTax,
+}))
 
 import type { JobContext } from '../../types/job-context'
 import { accountingRecoveryJob } from '../accounting-recovery-job'
@@ -61,6 +65,10 @@ beforeEach(() => {
   h.payouts.mockImplementation(record('payouts'))
   h.pricing.mockImplementation(record('pricing'))
   h.unposted.mockImplementation(record('unposted'))
+  h.marketplaceTax.mockImplementation(async (db: unknown, input: { organizationId: string }) => {
+    await record('marketplaceTax')(db, input)
+    return { isErr: () => false }
+  })
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -77,6 +85,7 @@ describe('accounting recovery job', () => {
         'pricing',
         'unposted',
         'payouts',
+        'marketplaceTax',
         'delivery',
       ])
         expect(h.events).toContain(`${lane}:${org}`)

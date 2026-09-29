@@ -89,7 +89,7 @@ function fromItems() {
     LEFT JOIN "MoneyTransaction" mt ON mt."organizationId" = w."organizationId"
       AND mt."id" = CASE WHEN w."sourceKind" = 'money_transaction' THEN w."sourceId"
         ELSE acc."moneyTransactionId" END
-    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','stock_movement')
+    LEFT JOIN "EntityInstance" rec ON w."sourceKind" IN ('fulfillment','credit_memo','payout','build','stock_movement','order')
       AND rec."organizationId" = w."organizationId" AND rec."id" = w."sourceId"
     LEFT JOIN "EntityInstance" party ON party."organizationId" = w."organizationId"
       AND party."id" = mt."partyInstanceId"`
