@@ -2,7 +2,7 @@
 
 import type { ChartAccountRow } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
-import { groupAccountsByType } from './gl-account-picker'
+import { groupAccountsByType } from './gl-account-groups'
 
 function account(overrides: Partial<ChartAccountRow>): ChartAccountRow {
   return {

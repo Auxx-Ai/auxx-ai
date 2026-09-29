@@ -7,7 +7,7 @@ import type { ConnectionVariable } from '@auxx/database'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
-import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-method'
 import {
   optionalScopesHeld,
   shouldOpenConnectDialog,

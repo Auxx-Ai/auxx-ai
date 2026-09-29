@@ -15,7 +15,7 @@ import { Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
-import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-method'
 import { api } from '~/trpc/react'
 
 interface ConnectionExpiredDialogProps {

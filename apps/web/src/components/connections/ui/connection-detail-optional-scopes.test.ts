@@ -1,7 +1,7 @@
 // apps/web/src/components/connections/ui/connection-detail-optional-scopes.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { type DetailMethod, shouldOfferOptionalScopes } from './connection-detail-page'
+import { type DetailMethod, shouldOfferOptionalScopes } from './connection-detail-method'
 
 function method(overrides: Partial<DetailMethod> = {}): DetailMethod {
   return {

@@ -1,6 +1,7 @@
 // apps/web/src/test/setup.ts
 
 import { cleanup } from '@testing-library/react'
+import type { ComponentType } from 'react'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import '@testing-library/jest-dom'
 
@@ -67,13 +68,26 @@ vi.mock('next/navigation', () => ({
 //   },
 // }))
 
-// Mock Next.js dynamic imports
-vi.mock('next/dynamic', () => ({
-  default: (dynamicFunction: any, options: any) => {
-    const Component = dynamicFunction()
-    return Component
-  },
-}))
+// Load on render, never at module scope: an eager loader leaves an unawaited import in flight when
+// the file finishes, which vitest reports as "Closing rpc while fetch was pending".
+vi.mock('next/dynamic', async () => {
+  const { createElement, lazy, Suspense } = await import('react')
+  type Loaded = ComponentType<Record<string, unknown>> | { default: ComponentType }
+  return {
+    default: (
+      loader: () => Promise<Loaded>,
+      options?: { loading?: ComponentType<Record<string, unknown>> }
+    ) => {
+      const Lazy = lazy(async () => {
+        const loaded = await loader()
+        return { default: 'default' in loaded ? loaded.default : loaded }
+      })
+      const fallback = options?.loading ? createElement(options.loading) : null
+      return (props: Record<string, unknown>) =>
+        createElement(Suspense, { fallback }, createElement(Lazy, props))
+    },
+  }
+})
 
 // Mock environment variables (NODE_ENV is already set to 'test' by Vitest)
 process.env.APP_URL = 'http://localhost:3000'
