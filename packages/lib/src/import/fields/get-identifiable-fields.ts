@@ -4,6 +4,7 @@ import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import type { ImportableField } from './get-importable-fields'
 import { getIdentifierEligibility, sortByIdentifierPreference } from './identifier-eligibility'
+import { getImportTier } from './import-tier'
 
 /**
  * Every field this resource may use as an import match key, graded.
@@ -53,6 +54,7 @@ export function getIdentifiableFields(resource: Resource): ImportableField[] {
       identifierTier: eligibility.tier,
       identifierCompositeOnly: eligibility.compositeOnly,
       identifierNote: eligibility.note,
+      importTier: getImportTier(field),
     })
   }
 

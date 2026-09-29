@@ -10,6 +10,7 @@ import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
 import { getIdentifierEligibility, type IdentifierTier } from './identifier-eligibility'
+import { getImportTier, type ImportTier } from './import-tier'
 
 /** Field group type for organizing fields in the UI */
 export type FieldGroup = 'identifier' | 'system' | 'custom' | 'relationship'
@@ -59,6 +60,8 @@ export interface ImportableField {
    * drifts from the writer that enforces it.
    */
   canCreateOptions?: boolean
+  /** `required` = `capabilities.required` or a natural-key leg; `recommended` = `importHint`. */
+  importTier?: ImportTier
   /** FILE fields only: the field's `options.file` limits. */
   fileOptions?: { allowedFileTypes?: string[]; maxFiles?: number; allowMultiple?: boolean }
 }
@@ -173,6 +176,7 @@ export function getImportableFields(
         identifierTier: eligibility?.tier,
         identifierCompositeOnly: eligibility?.compositeOnly,
         identifierNote: eligibility?.note,
+        importTier: getImportTier(field),
         fileOptions: readFileOptions(field),
       }
     })
@@ -199,6 +203,7 @@ export function getImportableFields(
           identifierTier: eligibility?.tier,
           identifierCompositeOnly: eligibility?.compositeOnly,
           identifierNote: eligibility?.note,
+          importTier: getImportTier(field),
           relationConfig: {
             relatedEntityDefinitionId:
               getRelatedEntityDefinitionId(field.relationship as RelationshipConfig) ?? '',

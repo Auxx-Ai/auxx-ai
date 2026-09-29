@@ -82,6 +82,7 @@ export const PART_FIELDS = defineResourceFields({
     // all. Still unique when set, and still the import/connector match key.
     nullable: true,
     isIdentifier: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -106,6 +107,7 @@ export const PART_FIELDS = defineResourceFields({
     systemSortOrder: 'a3',
     dbColumn: 'description',
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: false,
@@ -153,6 +155,7 @@ export const PART_FIELDS = defineResourceFields({
     systemSortOrder: 'a4',
     nullable: true,
     options: { options: [] },
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: false,
@@ -321,6 +324,7 @@ export const PART_FIELDS = defineResourceFields({
     systemSortOrder: 'a4',
     nullable: true,
     options: { options: [...LINE_ITEM_UNIT_OPTIONS] },
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -364,6 +368,7 @@ export const PART_FIELDS = defineResourceFields({
     systemSortOrder: 'a4a',
     nullable: true,
     options: { options: PartKind.values },
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -877,6 +882,7 @@ export const PART_FIELDS = defineResourceFields({
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
