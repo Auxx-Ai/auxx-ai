@@ -105,7 +105,7 @@ function OpeningStockTabInner() {
             onSetKind={opening.setKind}
             onQuantityChange={opening.setQuantity}
             onUnitCostChange={opening.setUnitCost}
-            onUseSuggestions={opening.applySuggestions}
+            onAcceptSuggestion={opening.applySuggestions}
           />
         </div>
       </MasterDetailSplit>

@@ -99,7 +99,7 @@ describe('excludeReason', () => {
       standardCost: null,
       unitCost: 900,
       unitCostSuggested: true,
-      sendsUnitCost: true,
+      sendsUnitCost: false,
     })
     expect(isCostOnly(suggested)).toBe(false)
     expect(excludeReason(suggested)).toBe('no-quantity')
@@ -209,10 +209,15 @@ describe('resolveUnitCost (09 D-SC3/D-SC4)', () => {
     })
   })
 
-  it('prefills the suggestion on an uncosted part and sends it with a count', () => {
+  it('prefills the suggestion on an uncosted part but sends it only once accepted', () => {
     expect(
       resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: undefined })
-    ).toEqual({ unitCost: 420, unitCostSuggested: true, unitCostTyped: false, sendsUnitCost: true })
+    ).toEqual({
+      unitCost: 420,
+      unitCostSuggested: true,
+      unitCostTyped: false,
+      sendsUnitCost: false,
+    })
   })
 
   it('sends a typed first cost, and nothing once cleared', () => {

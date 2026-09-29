@@ -53,7 +53,7 @@ import { OpeningStockToolbar } from './opening-stock-toolbar'
  * Columns: part | kind | account | on hand | count | cost | change.
  */
 export const OPENING_STOCK_COLS =
-  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(5.5rem, 6.5rem) minmax(5rem, 6rem)'
+  'minmax(8rem, 1fr) minmax(9rem, 10rem) 2.75rem minmax(4.5rem, 5.5rem) minmax(4rem, 5rem) minmax(7rem, 8rem) minmax(5rem, 6rem)'
 
 interface OpeningStockListProps {
   rows: OpeningStockRow[]
@@ -66,8 +66,8 @@ interface OpeningStockListProps {
   onSetKind: (partIds: string[], kind: OpeningStockKind) => Promise<void>
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
-  /** "Use suggestions": take the suggested first cost on these rows. */
-  onUseSuggestions?: (partIds: string[]) => void
+  /** Accept the suggested first cost on these rows. */
+  onAcceptSuggestion?: (partIds: string[]) => void
 }
 
 export function OpeningStockList({
@@ -81,7 +81,7 @@ export function OpeningStockList({
   onSetKind,
   onQuantityChange,
   onUnitCostChange,
-  onUseSuggestions,
+  onAcceptSuggestion,
 }: OpeningStockListProps) {
   const [search, setSearch] = useState('')
   // `?filter=` only seeds the list (the outbox links `uncosted`); changing it stays local.
@@ -126,11 +126,6 @@ export function OpeningStockList({
   )
 
   const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit])
-  // Every filtered row, not only the mounted page: the button names the whole view.
-  const suggestable = useMemo(
-    () => filtered.filter((row) => row.unitCostSuggested).map((row) => row.partId),
-    [filtered]
-  )
 
   // The paged, filtered set: what Cmd+A and a shift-range resolve against.
   const selectableIds = useMemo(() => visible.map((row) => row.partId), [visible])
@@ -168,18 +163,6 @@ export function OpeningStockList({
         scrollbarClassName='w-1.5'
         noFade>
         <div className='flex flex-col gap-3 p-3 pb-16'>
-          {!isLoading && onUseSuggestions && suggestable.length > 0 && (
-            <div className='flex flex-wrap items-center justify-between gap-2 px-1 text-muted-foreground text-xs'>
-              <span>
-                {suggestable.length} {suggestable.length === 1 ? 'part has' : 'parts have'} a
-                suggested first cost from its supplier or sales channel.
-              </span>
-              <Button variant='outline' size='xs' onClick={() => onUseSuggestions(suggestable)}>
-                <Sparkles />
-                Use suggestions
-              </Button>
-            </div>
-          )}
           {isLoading ? (
             <EmptySection loading />
           ) : filtered.length === 0 ? (
@@ -227,6 +210,7 @@ export function OpeningStockList({
                     onWriteKind={writeKind}
                     onQuantityChange={onQuantityChange}
                     onUnitCostChange={onUnitCostChange}
+                    onAcceptSuggestion={onAcceptSuggestion}
                   />
                 ))}
                 {/* Every row is already loaded; a "page" only mounts the next 50 rows. */}
@@ -299,6 +283,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind,
   onQuantityChange,
   onUnitCostChange,
+  onAcceptSuggestion,
 }: {
   row: OpeningStockRow
   currencyCode: string
@@ -307,6 +292,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
   onWriteKind: (partIds: string[], kind: OpeningStockKind) => void
   onQuantityChange: (partId: string, quantity: number | null) => void
   onUnitCostChange: (partId: string, unitCost: number | null) => void
+  onAcceptSuggestion?: (partIds: string[]) => void
 }) {
   const bulkMode = useBulkMode()
   const selected = useIsSelected(row.partId)
@@ -438,6 +424,7 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
           row={row}
           currencyCode={currencyCode}
           onUnitCostChange={onUnitCostChange}
+          onAcceptSuggestion={onAcceptSuggestion}
         />,
 
         <span
@@ -461,10 +448,12 @@ function UnitCostCell({
   row,
   currencyCode,
   onUnitCostChange,
+  onAcceptSuggestion,
 }: {
   row: OpeningStockRow
   currencyCode: string
   onUnitCostChange: (partId: string, unitCost: number | null) => void
+  onAcceptSuggestion?: (partIds: string[]) => void
 }) {
   if (row.hasBom) {
     return (
@@ -485,31 +474,49 @@ function UnitCostCell({
   if (row.standardCost != null) return <StandardCostCell row={row} currencyCode={currencyCode} />
   const { suggestion } = row
   const other = suggestion?.other
-  const hint = [
+  // A prefilled suggestion reads exactly like a saved cost without this line.
+  const note =
     row.unitCostSuggested && suggestion
-      ? suggestion.source === 'supplier'
-        ? 'From supplier'
-        : 'From channel'
-      : null,
-    other
-      ? `${other.source === 'supplier' ? 'Supplier' : 'Channel'}: ${formatCurrency(other.unitCost, { currencyCode })}`
-      : null,
-  ].filter(Boolean)
+      ? `suggested · ${suggestion.source === 'supplier' ? 'supplier' : 'channel'}`
+      : row.unitCostTyped
+        ? 'not saved'
+        : null
   const cell = (
-    <EditableCell className={cn('w-full', row.unitCostSuggested && 'text-muted-foreground')}>
-      <FieldInputAdapter
-        fieldType={FieldType.CURRENCY}
-        fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-        value={row.unitCost}
-        onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
-        placeholder='later'
-      />
-    </EditableCell>
+    <div className='flex w-full flex-col items-end leading-tight'>
+      <div className='flex w-full items-center gap-1'>
+        <EditableCell
+          className={cn('min-w-0 flex-1', row.unitCostSuggested && 'text-muted-foreground')}>
+          <FieldInputAdapter
+            fieldType={FieldType.CURRENCY}
+            fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+            value={row.unitCost}
+            onChange={(value) => onUnitCostChange(row.partId, (value as number) ?? null)}
+            placeholder='later'
+          />
+        </EditableCell>
+        {row.unitCostSuggested && onAcceptSuggestion && (
+          <Button
+            variant='transparent'
+            aria-label='Accept suggested cost'
+            className='h-5.5 w-5.5 shrink-0 rounded-[6px] px-1 text-green-600 dark:text-green-500! bg-green-400/40 hover:bg-green-400/60 dark:bg-green-900!'
+            onClick={() => onAcceptSuggestion([row.partId])}>
+            <Check />
+          </Button>
+        )}
+      </div>
+      {note && (
+        <span data-testid='unit-cost-note' className='pr-1 text-[11px] text-muted-foreground'>
+          {note}
+        </span>
+      )}
+    </div>
   )
-  if (hint.length === 0) return cell
+  if (!other) return cell
   return (
-    <Tooltip content={hint.join(' · ')} allowInteraction>
-      <div className='w-full'>{cell}</div>
+    <Tooltip
+      content={`${other.source === 'supplier' ? 'Supplier' : 'Channel'}: ${formatCurrency(other.unitCost, { currencyCode })}`}
+      allowInteraction>
+      {cell}
     </Tooltip>
   )
 }

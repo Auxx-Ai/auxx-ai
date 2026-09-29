@@ -262,7 +262,8 @@ export function resolveUnitCost(input: {
     unitCost,
     unitCostSuggested: !typed && unitCost != null,
     unitCostTyped: typed && unitCost != null,
-    sendsUnitCost: unitCost != null,
+    // A suggestion is only sent once accepted; a count never takes it silently.
+    sendsUnitCost: typed && unitCost != null,
   }
 }
 
@@ -527,7 +528,7 @@ export function useOpeningStock() {
   const setUnitCost = useCallback((partId: string, unitCost: number | null) => {
     setDrafts((prev) => ({ ...prev, [partId]: { ...prev[partId], unitCost } }))
   }, [])
-  /** "Use suggestions": take the suggested first cost on each named uncosted row. */
+  /** Accept: take the suggested first cost on each named uncosted row. */
   const applySuggestions = useCallback(
     (partIds: readonly string[]) => {
       const byId = new Map(rows.map((row) => [row.partId, row]))

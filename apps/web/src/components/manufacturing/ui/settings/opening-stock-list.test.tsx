@@ -80,7 +80,7 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
   }
 }
 
-function renderList(rows: OpeningStockRow[], onUseSuggestions = vi.fn()) {
+function renderList(rows: OpeningStockRow[], onAcceptSuggestion = vi.fn()) {
   render(
     <OpeningStockList
       rows={rows}
@@ -102,10 +102,10 @@ function renderList(rows: OpeningStockRow[], onUseSuggestions = vi.fn()) {
       onSetKind={vi.fn(async () => {})}
       onQuantityChange={vi.fn()}
       onUnitCostChange={vi.fn()}
-      onUseSuggestions={onUseSuggestions}
+      onAcceptSuggestion={onAcceptSuggestion}
     />
   )
-  return { onUseSuggestions }
+  return { onAcceptSuggestion }
 }
 
 const suggestion = { source: 'supplier', unitCost: 1250, other: null } as const
@@ -154,14 +154,20 @@ describe('OpeningStockList', () => {
     expect(screen.queryByText(/Backflush/)).toBeNull()
   })
 
-  it('offers "Use suggestions" for every uncosted row still on its suggestion', () => {
-    const { onUseSuggestions } = renderList([
+  it('offers an accept button only on a row still showing its suggestion', () => {
+    const { onAcceptSuggestion } = renderList([
       row({ partId: 'a', standardCost: null, unitCost: 1250, unitCostSuggested: true, suggestion }),
       row({ partId: 'b', standardCost: null, unitCost: 900, unitCostTyped: true, suggestion }),
       row({ partId: 'c' }),
     ])
-    fireEvent.click(screen.getByText('Use suggestions'))
-    expect(onUseSuggestions).toHaveBeenCalledWith(['a'])
+    const accept = screen.getAllByLabelText('Accept suggested cost')
+    expect(accept).toHaveLength(1)
+    fireEvent.click(accept[0]!)
+    expect(onAcceptSuggestion).toHaveBeenCalledWith(['a'])
+    expect(screen.getAllByTestId('unit-cost-note').map((n) => n.textContent)).toEqual([
+      'suggested · supplier',
+      'not saved',
+    ])
   })
 
   it('opens on the filter a link names', () => {

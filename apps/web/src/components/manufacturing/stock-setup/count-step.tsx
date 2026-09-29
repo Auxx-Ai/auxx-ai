@@ -27,7 +27,7 @@ export function CountStep({ status }: CountStepProps) {
             <CheckCircle2 className='size-4 text-good-500' />
             {uncosted === 0
               ? 'Counting is done.'
-              : `Counting is done. ${uncosted} ${uncosted === 1 ? 'part' : 'parts'} without a cost.`}
+              : `Counting is done. ${uncosted} ${uncosted === 1 ? 'part' : 'parts'} with stock movements ${uncosted === 1 ? 'has' : 'have'} no cost.`}
           </span>
           {accounting.enabled && accounting.canManage && (
             <Link

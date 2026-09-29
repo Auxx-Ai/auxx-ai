@@ -247,7 +247,7 @@ export function doneCountingLine(counts: {
     others > 0 &&
       `The ${others.toLocaleString('en-US')} ${others === 1 ? 'other keeps its' : 'others keep their'} current numbers; you can count them any time.`,
     counts.uncostedPartCount > 0 &&
-      `${plural(counts.uncostedPartCount, 'part', 'parts')} without a cost.`,
+      `${counts.uncostedPartCount.toLocaleString('en-US')} of the ${counts.movedPartCount.toLocaleString('en-US')} ${counts.uncostedPartCount === 1 ? 'has' : 'have'} no cost.`,
   ]
     .filter(Boolean)
     .join(' ')
