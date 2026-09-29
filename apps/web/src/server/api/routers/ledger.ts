@@ -88,6 +88,7 @@ import {
   enqueueProviderSync,
   PROVIDER_SYNC_RUN_STALE_MS,
   PROVIDER_SYNC_SCHEDULE_SETTING_KEY,
+  readOpeningBalanceEquity,
   readProviderSyncRunState,
   syncProviderSyncScheduler,
 } from '@auxx/lib/accounting/mirror'
@@ -1896,6 +1897,13 @@ export const ledgerRouter = createTRPCRouter({
       /** The open run has gone quiet past the takeover threshold; a press may restart it. */
       stale: Boolean(currentRun) && !(silentMs < PROVIDER_SYNC_RUN_STALE_MS),
     }
+  }),
+
+  /** Net minor units on Opening Balance Equity, or null when the role is unmapped (118 #5). */
+  openingBalanceEquity: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await readOpeningBalanceEquity(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return { netMinor: result.value }
   }),
 
   /**

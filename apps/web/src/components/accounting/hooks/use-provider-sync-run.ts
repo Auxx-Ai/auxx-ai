@@ -56,6 +56,7 @@ export function useProviderSyncRun(): UseProviderSyncRunResult {
       utils.ledgerReports.providerSyncMarker.invalidate()
       utils.ledger.listPostings.invalidate()
       utils.ledger.verifyBalance.invalidate()
+      utils.ledger.openingBalanceEquity.invalidate()
     }
     wasRunning.current = isRunning
   }, [isRunning, utils])

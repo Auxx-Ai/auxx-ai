@@ -68,6 +68,7 @@ export {
   type ReadOurPostedEntriesInput,
   readActiveBookId,
   readMirrorForTranslation,
+  readOpeningBalanceEquity,
   readOurDocNumbers,
   readOurPostedEntries,
   readOurProviderEntryIds,

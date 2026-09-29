@@ -31,6 +31,7 @@ import {
 import type { Result } from 'neverthrow'
 import { readLiveBatchMemberships } from '../export/queue-reads'
 import { findLiveSubjectPostings } from '../ledger/reads/list-postings'
+import { standingLineFilter } from '../ledger/reads/standing-lines'
 import { readActiveBookConnection } from '../providers/book-connections'
 import type { OurPostedEntry, OurPostedLine, ProviderLedgerLine, ProviderSyncRange } from './client'
 import { PROVIDER_LEDGER_SOURCE_KIND, PROVIDER_SYNC_POSTING_TYPE } from './client'
@@ -325,5 +326,41 @@ export async function readMirrorForTranslation(
     },
     'Failed to read the provider ledger mirror for translation',
     { organizationId, bookId: input.bookId, from: input.from, to: input.to }
+  )
+}
+
+/**
+ * Net debit (positive) or credit (negative) on the accounts mapped to `equity_opening_balance`,
+ * or null when the role is unmapped. The provider posts opening balances there (118 #5).
+ */
+export async function readOpeningBalanceEquity(
+  db: Database,
+  organizationId: string
+): Promise<Result<number | null, Error>> {
+  return guard(
+    async () => {
+      const assignments = await db
+        .select({ glAccountId: schema.GlRoleAssignment.glAccountId })
+        .from(schema.GlRoleAssignment)
+        .where(
+          and(
+            eq(schema.GlRoleAssignment.organizationId, organizationId),
+            eq(schema.GlRoleAssignment.role, 'equity_opening_balance')
+          )
+        )
+      const glAccountIds = [...new Set(assignments.map((row) => row.glAccountId))]
+      if (glAccountIds.length === 0) return null
+
+      const [row] = await db
+        .select({
+          netMinor: sql<string>`coalesce(sum(case when ${schema.GlPostingLine.direction} = 'debit' then ${schema.GlPostingLine.amountMinor} else -${schema.GlPostingLine.amountMinor} end), 0)`,
+        })
+        .from(schema.GlPostingLine)
+        .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+        .where(standingLineFilter(organizationId, { glAccountIds }))
+      return Number(row?.netMinor ?? 0)
+    },
+    'Failed to read the Opening Balance Equity balance',
+    { organizationId }
   )
 }
