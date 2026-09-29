@@ -6,8 +6,9 @@ import { RESOURCE_FIELD_REGISTRY } from '../../../resources/registry/field-regis
 import type { ResourceField } from '../../../resources/registry/field-types'
 import type { Resource } from '../../../resources/registry/types'
 import { BaseType } from '../../../resources/types'
+import { autoMapColumns } from '../auto-map-columns'
 import { getImportableFields } from '../get-importable-fields'
-import { getImportTier } from '../import-tier'
+import { getDefaultMappingView, getGuidedFields, getImportTier } from '../import-tier'
 
 function field(overrides: Partial<ResourceField> = {}): ResourceField {
   return {
@@ -130,5 +131,45 @@ describe('registry import hints', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+})
+
+describe('getDefaultMappingView', () => {
+  it('is fields for a named importer, even without recommended fields', () => {
+    expect(getDefaultMappingView([{ importTier: 'required' }], true)).toBe('fields')
+  })
+
+  it('is fields when the target declares recommended fields', () => {
+    expect(getDefaultMappingView([{ importTier: 'recommended' }, {}], false)).toBe('fields')
+  })
+
+  it('is columns otherwise', () => {
+    expect(getDefaultMappingView([{ importTier: 'required' }, {}], false)).toBe('columns')
+  })
+})
+
+describe('getGuidedFields', () => {
+  it('keeps only required and recommended fields', () => {
+    const fields = [{ key: 'a', importTier: 'required' as const }, { key: 'b' }]
+    expect(getGuidedFields(fields).map((f) => f.key)).toEqual(['a'])
+  })
+
+  it('falls back to every field when none is guided', () => {
+    const fields: Array<{ key: string; importTier?: 'required' }> = [{ key: 'a' }, { key: 'b' }]
+    expect(getGuidedFields(fields)).toBe(fields)
+  })
+
+  it('keeps a parts "Unit Cost" column off Labor Cost Per Unit', () => {
+    const headers = ['Title', 'SKU', 'Kind', 'Unit Cost'].map((name, index) => ({ name, index }))
+    const all = getImportableFields(registryResource('part'), { includeIdentifiers: true })
+    const label = (fields: typeof all) =>
+      Object.fromEntries(
+        autoMapColumns(headers, fields).map((m) => [m.columnName, m.matchedField?.label ?? null])
+      )
+
+    expect(label(all)['Unit Cost']).toBe('Labor Cost Per Unit')
+    const guided = label(getGuidedFields(all))
+    expect(guided).toMatchObject({ Title: 'Title', SKU: 'SKU', Kind: 'Part Kind' })
+    expect(guided['Unit Cost']).not.toBe('Labor Cost Per Unit')
   })
 })

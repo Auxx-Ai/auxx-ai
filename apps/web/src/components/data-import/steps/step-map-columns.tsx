@@ -4,9 +4,11 @@
 
 import {
   buildRelationColumnPolicy,
+  getDefaultMappingView,
   getValidResolutionTypes,
   type ImportableField,
   type ImportStrategyMode,
+  type MappingView,
   type ResolutionType,
   suggestResolutionType,
 } from '@auxx/lib/import/client'
@@ -37,11 +39,9 @@ interface StepMapColumnsProps {
   onComplete: () => void
   /** Called when mapping counts change (for step card display) */
   onMappingChange?: (mappedCount: number, totalColumns: number) => void
-  /** Initial view: one row per target field, or one row per file column. */
-  defaultMappingView?: MappingView
+  /** Opened through a named importer (supplier prices, BOM); decides the default view. */
+  isNamedImporter?: boolean
 }
-
-type MappingView = 'fields' | 'columns'
 
 const listFormat = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
 
@@ -78,9 +78,9 @@ export function StepMapColumns({
   jobId,
   onComplete,
   onMappingChange,
-  defaultMappingView = 'columns',
+  isNamedImporter = false,
 }: StepMapColumnsProps) {
-  const [view, setView] = useState<MappingView>(defaultMappingView)
+  const [chosenView, setChosenView] = useState<MappingView | null>(null)
   const [mappings, setMappings] = useState<ColumnMappingUI[]>([])
   const [selectedColumn, setSelectedColumn] = useState<number | null>(null)
   const [savingColumns, setSavingColumns] = useState<ReadonlySet<number>>(new Set())
@@ -108,6 +108,9 @@ export function StepMapColumns({
    * flagged and back to `create` when the last one is cleared; a second local
    * derivation of that rule would be a second thing to keep in sync.
    */
+  // Same rule `runAutoMap` applies to the auto-map that runs on upload.
+  const view = chosenView ?? getDefaultMappingView(fields ?? [], isNamedImporter)
+
   const mode: ImportStrategyMode = job?.importMapping?.defaultStrategy ?? 'create'
   const identifierFieldKeys = useMemo(
     () => job?.importMapping?.identifierFieldKeys ?? [],
@@ -538,7 +541,7 @@ export function StepMapColumns({
 
   const handleAutoMap = async () => {
     try {
-      const result = await autoMapColumns.mutateAsync({ jobId })
+      const result = await autoMapColumns.mutateAsync({ jobId, mappingView: view })
 
       // Immediate feedback; the invalidation below replaces this with the
       // server's own view, including the identity flags auto-map just set.
@@ -639,7 +642,7 @@ export function StepMapColumns({
             size='sm'
             variant='outline'
             value={view}
-            onValueChange={(next) => next && setView(next as MappingView)}>
+            onValueChange={(next) => next && setChosenView(next as MappingView)}>
             <ToggleGroupItem value='fields'>Fields</ToggleGroupItem>
             <ToggleGroupItem value='columns'>File columns</ToggleGroupItem>
           </ToggleGroup>

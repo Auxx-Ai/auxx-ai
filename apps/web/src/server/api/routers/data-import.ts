@@ -424,6 +424,7 @@ export const dataImportRouter = createTRPCRouter({
       z.object({
         jobId: z.string(),
         strategy: z.enum(['ai', 'fallback', 'auto']).optional(),
+        mappingView: z.enum(['fields', 'columns']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -450,6 +451,7 @@ export const dataImportRouter = createTRPCRouter({
         organizationId,
         userId,
         strategy: input.strategy,
+        mappingView: input.mappingView,
       })
 
       // Auto-map retargets every column, so it also clears stale identity flags
