@@ -9,14 +9,14 @@
  * No permission checks here. The router asserts (docs/lib-module-guide.md §6).
  */
 
-import { type Database, schema, type Transaction } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import type { Database, Transaction } from '@auxx/database'
 import { ConflictError, UnprocessableEntityError } from '../../../errors'
 import { readOrganizationSettings } from '../../../settings/read'
 import { toLedgerMinor } from '../../ledger/builders/basis-hash'
 import { buildRefundEntry } from '../../ledger/builders/refund'
 import { insertSourceLinksInTx } from '../../ledger/post/insert-posting'
 import { findLiveSubjectPosting } from '../../ledger/reads/list-postings'
+import { readPostingSourceIds } from '../../ledger/reads/read-posting'
 import {
   type CreditMemoRecord,
   loadCreditMemo,
@@ -33,6 +33,7 @@ import {
 } from '../post-movement'
 import { listRefundSettlements, type MoneyRefundSettlementRow } from '../reads'
 import { readCustomerReceiptAccountingSource } from './receipt-accounting'
+import { listAcceptancesForMovement } from './source-reads'
 
 type Db = Database | Transaction
 
@@ -64,15 +65,7 @@ async function prepareRefund(
   loaded: LoadedMovement
 ): Promise<PreparedMovement> {
   const money = loaded.money
-  const acceptances = await tx
-    .select({ orderInstanceId: schema.FinancialSourceAcceptance.orderInstanceId })
-    .from(schema.FinancialSourceAcceptance)
-    .where(
-      and(
-        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
-        eq(schema.FinancialSourceAcceptance.moneyTransactionId, money.id)
-      )
-    )
+  const acceptances = await listAcceptancesForMovement(tx, organizationId, money.id)
   // A channel refund resolves its rail from its own gateway handle, as a receipt does.
   const source = acceptances.length
     ? await readCustomerReceiptAccountingSource(tx, organizationId, money.id, 'customer_refund')
@@ -161,18 +154,12 @@ export async function linkRefundPostingToMemos(
   const { memos } = await readSettledMemos(db, organizationId, refundTransactionId)
   if (memos.length === 0) return
 
-  const linked = await db
-    .select({ sourceId: schema.GlPostingSource.sourceId })
-    .from(schema.GlPostingSource)
-    .where(
-      and(
-        eq(schema.GlPostingSource.organizationId, organizationId),
-        eq(schema.GlPostingSource.glPostingId, glPostingId),
-        eq(schema.GlPostingSource.sourceKind, 'credit_memo'),
-        eq(schema.GlPostingSource.linkRole, 'parent')
-      )
-    )
-  const has = new Set(linked.map((row) => row.sourceId))
+  const linked = await readPostingSourceIds(db, organizationId, {
+    glPostingId,
+    sourceKind: 'credit_memo',
+    linkRole: 'parent',
+  })
+  const has = new Set(linked)
   const missing = memos.filter((memo) => !has.has(memo.id))
   if (missing.length)
     await insertSourceLinksInTx(db, {

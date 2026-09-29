@@ -2,7 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { findSystemRecordIdsByValue, systemFields } from '../../resources/system-records'
 
 const MOVEMENT_REASON = 'it has stock movements'
 
@@ -33,42 +33,50 @@ export async function readServiceKindBlockers(
     .where(and(eq(t.organizationId, organizationId), inArray(t.partId, unique)))
   for (const row of moved) blockers.set(row.partId, MOVEMENT_REASON)
 
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(BLOCKERS.map(([attribute]) => attribute))
-  const reasonByFieldId = new Map<string, string>()
-  for (const [attribute, reason] of BLOCKERS) {
-    const field = fields[attribute]
-    if (field) reasonByFieldId.set(field.id, reason)
-  }
-  if (reasonByFieldId.size === 0) return blockers
-
-  const rows = await db
-    .selectDistinct({
-      partId: schema.FieldValue.relatedEntityId,
-      fieldId: schema.FieldValue.fieldId,
-    })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.fieldId, [...reasonByFieldId.keys()]),
-        inArray(schema.FieldValue.relatedEntityId, unique)
-      )
-    )
-
-  const found = new Map<string, Set<string>>()
-  for (const row of rows) {
-    if (!row.partId) continue
-    const set = found.get(row.partId) ?? new Set<string>()
-    set.add(row.fieldId)
-    found.set(row.partId, set)
-  }
-  for (const [partId, fieldIds] of found) {
-    if (blockers.has(partId)) continue
-    const reason = [...reasonByFieldId].find(([fieldId]) => fieldIds.has(fieldId))?.[1]
-    if (reason) blockers.set(partId, reason)
+  const [build, subpart] = await Promise.all([
+    systemFields(db, organizationId, 'build', ['build_part'] as const),
+    systemFields(db, organizationId, 'subpart', [
+      'subpart_parent_part',
+      'subpart_child_part',
+    ] as const),
+  ])
+  // Archived builds and BOM lines count, so each lookup includes them.
+  const archived = { includeArchived: true }
+  const none = new Map<string, string[]>()
+  const found = await Promise.all([
+    build
+      ? findSystemRecordIdsByValue(
+          db,
+          organizationId,
+          build,
+          { attribute: 'build_part', related: unique },
+          archived
+        )
+      : none,
+    subpart
+      ? findSystemRecordIdsByValue(
+          db,
+          organizationId,
+          subpart,
+          { attribute: 'subpart_parent_part', related: unique },
+          archived
+        )
+      : none,
+    subpart
+      ? findSystemRecordIdsByValue(
+          db,
+          organizationId,
+          subpart,
+          { attribute: 'subpart_child_part', related: unique },
+          archived
+        )
+      : none,
+  ])
+  // `found` is in BLOCKERS order, so the first reason set wins.
+  for (const [index, [, reason]] of BLOCKERS.entries()) {
+    for (const partId of found[index]!.keys()) {
+      if (!blockers.has(partId)) blockers.set(partId, reason)
+    }
   }
   return blockers
 }

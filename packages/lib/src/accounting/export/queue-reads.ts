@@ -358,3 +358,37 @@ export async function readLiveBatchMemberships(
       )
     )
 }
+
+/** The newest live batch holding one posting, or `null` when it is in none. */
+export async function readLiveBatchForPosting(
+  db: Database,
+  organizationId: string,
+  glPostingId: string
+) {
+  const [batch] = await db
+    .select({
+      batchState: schema.ExportBatch.state,
+      providerObjectId: schema.ExportBatch.providerObjectId,
+      objectType: schema.ExportBatch.objectType,
+      bookId: schema.ExportBatch.bookId,
+      sentAt: schema.ExportBatch.sentAt,
+    })
+    .from(schema.ExportBatchPosting)
+    .innerJoin(
+      schema.ExportBatch,
+      and(
+        eq(schema.ExportBatch.organizationId, organizationId),
+        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.ExportBatchPosting.organizationId, organizationId),
+        eq(schema.ExportBatchPosting.glPostingId, glPostingId),
+        isNull(schema.ExportBatchPosting.withdrawnAt)
+      )
+    )
+    .orderBy(desc(schema.ExportBatch.createdAt))
+    .limit(1)
+  return batch ?? null
+}

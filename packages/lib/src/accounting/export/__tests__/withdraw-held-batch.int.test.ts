@@ -1,9 +1,9 @@
-// packages/lib/src/accounting/ledger/post/__tests__/withdraw-held-batch.int.test.ts
+// packages/lib/src/accounting/export/__tests__/withdraw-held-batch.int.test.ts
 import { type Database, schema, type Transaction } from '@auxx/database'
 import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { withdrawHeldBatchInTx } from '../reverse-entry'
+import { withdrawHeldBatchInTx } from '../withdraw-held-batch'
 
 const db = () => getTestDb() as Database
 

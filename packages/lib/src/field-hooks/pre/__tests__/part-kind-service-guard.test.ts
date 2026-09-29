@@ -7,14 +7,8 @@ const h = vi.hoisted(() => {
     moved: [] as { partId: string }[],
     rows: [] as { partId: string | null; fieldId: string }[],
   }
-  // The movement read ends at `.where()`; the relation read goes through `.innerJoin()`.
   const db = {
-    selectDistinct: () => ({
-      from: () => ({
-        where: async () => state.moved,
-        innerJoin: () => ({ where: async () => state.rows }),
-      }),
-    }),
+    selectDistinct: () => ({ from: () => ({ where: async () => state.moved }) }),
   }
   return { state, db }
 })
@@ -24,13 +18,24 @@ vi.mock('@auxx/database', async (importOriginal) => ({
   database: h.db,
 }))
 
-vi.mock('../../../cache', () => ({
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async (attrs: string[]) =>
-        Object.fromEntries(attrs.map((a) => [a, { id: `f_${a}` }])),
-    }),
+vi.mock('../../../resources/system-records', () => ({
+  systemFields: async (_db: unknown, _org: string, entityType: string, attrs: string[]) => ({
+    defId: `def_${entityType}`,
+    fields: Object.fromEntries(attrs.map((a) => [a, { id: `f_${a}` }])),
   }),
+  findSystemRecordIdsByValue: async (
+    _db: unknown,
+    _org: string,
+    ctx: { fields: Record<string, { id: string }> },
+    where: { attribute: string; related: string[] }
+  ) => {
+    const out = new Map<string, string[]>()
+    for (const row of h.state.rows) {
+      if (row.fieldId !== ctx.fields[where.attribute]?.id) continue
+      if (row.partId && where.related.includes(row.partId)) out.set(row.partId, ['child_1'])
+    }
+    return out
+  },
 }))
 
 import { BadRequestError } from '../../../errors'

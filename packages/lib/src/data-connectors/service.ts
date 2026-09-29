@@ -1556,6 +1556,29 @@ export async function listConnectorIdsForCredential(
   return rows.map((row) => row.id)
 }
 
+/** An org's connectors of the given types, oldest first, with their status. */
+export async function listConnectorStatusesByType(
+  db: DbOrTx,
+  organizationId: string,
+  types: readonly DataConnectorType[]
+) {
+  if (types.length === 0) return []
+  return db
+    .select({
+      id: schema.DataConnector.id,
+      type: schema.DataConnector.type,
+      status: schema.DataConnector.status,
+    })
+    .from(schema.DataConnector)
+    .where(
+      and(
+        eq(schema.DataConnector.organizationId, organizationId),
+        inArray(schema.DataConnector.type, [...types])
+      )
+    )
+    .orderBy(schema.DataConnector.createdAt)
+}
+
 /**
  * The run columns the UI reads. `manifest`, `chainSnapshot` and the cursors are
  * excluded on purpose — a single manifest reaches ~16MB, so a `SELECT *` over 50

@@ -130,6 +130,23 @@ export async function readAcceptance(
   return row ?? null
 }
 
+/** The acceptances that settled into one money movement. */
+export async function listAcceptancesForMovement(
+  db: Db,
+  organizationId: string,
+  moneyTransactionId: string
+): Promise<SourceAcceptanceRow[]> {
+  return db
+    .select()
+    .from(schema.FinancialSourceAcceptance)
+    .where(
+      and(
+        eq(schema.FinancialSourceAcceptance.organizationId, organizationId),
+        eq(schema.FinancialSourceAcceptance.moneyTransactionId, moneyTransactionId)
+      )
+    )
+}
+
 /**
  * The one definition of "the current observation of a source object": no newer
  * `(observedAt, id)` exists. A batch write stamps one `new Date()` across every

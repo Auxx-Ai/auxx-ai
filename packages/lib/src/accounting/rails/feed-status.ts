@@ -1,10 +1,10 @@
 // packages/lib/src/accounting/rails/feed-status.ts
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
 import { getCachedInstalledApps } from '../../cache'
 import { listRecommendedAppConnectors } from '../../data-connectors/recommended-app-connectors'
+import { listConnectorStatusesByType } from '../../data-connectors/service'
 import type { PaymentGatewayRow, RailFeedStatus } from './client'
 import {
   decideRailFeedState,
@@ -51,23 +51,11 @@ export async function listRailFeedStatuses(
         open.length > 0 ? listUnlinkedFeeds(db, organizationId) : [],
         processorIds.size > 0 ? listLinkedFeeds(db, organizationId) : [],
         feedApps.length > 0
-          ? db
-              .select({
-                id: schema.DataConnector.id,
-                type: schema.DataConnector.type,
-                status: schema.DataConnector.status,
-              })
-              .from(schema.DataConnector)
-              .where(
-                and(
-                  eq(schema.DataConnector.organizationId, organizationId),
-                  inArray(
-                    schema.DataConnector.type,
-                    feedApps.map((slug) => `app:${slug}` as const)
-                  )
-                )
-              )
-              .orderBy(schema.DataConnector.createdAt)
+          ? listConnectorStatusesByType(
+              db,
+              organizationId,
+              feedApps.map((slug) => `app:${slug}` as const)
+            )
           : [],
         feedApps.length > 0 ? getCachedInstalledApps(organizationId) : [],
       ])

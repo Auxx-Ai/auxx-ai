@@ -3,11 +3,10 @@
 // The lock state of the families with no ledger of their own (66 U5/U7). Kept
 // free of the ledger graph: the field pre-hooks import it.
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, inArray } from 'drizzle-orm'
-import { getOrgCache } from '../../../cache'
 import { isRecordConnectorManaged } from '../../../data-connectors/managed-fields'
+import { readSystemRecords, systemFields } from '../../../resources/system-records'
 
 /** The families whose lock is `field-hooks/pre/document-edit-lock.ts`. */
 export type LockedDocumentFamily = 'quote' | 'purchase_order' | 'order'
@@ -67,34 +66,15 @@ export async function readDocumentLockState(
 ): Promise<DocumentLockState | null> {
   const attrs: SystemAttribute[] = [STATUS_ATTR[family], NUMBER_ATTR[family]]
   if (family === 'order') attrs.push('order_cancelled_at')
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>(attrs)
-
-  const fieldIds = attrs.map((attr) => fields[attr]?.id).filter((id): id is string => !!id)
-  const rows =
-    fieldIds.length === 0
-      ? []
-      : await db
-          .select({
-            fieldId: schema.FieldValue.fieldId,
-            optionId: schema.FieldValue.optionId,
-            valueText: schema.FieldValue.valueText,
-            valueDate: schema.FieldValue.valueDate,
-          })
-          .from(schema.FieldValue)
-          .where(
-            and(
-              eq(schema.FieldValue.organizationId, organizationId),
-              eq(schema.FieldValue.entityId, entityInstanceId),
-              inArray(schema.FieldValue.fieldId, fieldIds)
-            )
-          )
-  const byField = new Map(rows.map((row) => [row.fieldId, row]))
-  const read = (attr: SystemAttribute) => {
-    const id = fields[attr]?.id
-    return id ? byField.get(id) : undefined
-  }
+  const ctx = await systemFields(db, organizationId, family, attrs)
+  // Archived too: the lock reads the stored values whatever the instance's state.
+  const [record] = ctx
+    ? await readSystemRecords(db, organizationId, ctx, {
+        ids: [entityInstanceId],
+        includeArchived: true,
+      })
+    : []
+  const read = (attr: SystemAttribute) => record?.rows(attr)[0]
   const label = read(NUMBER_ATTR[family])?.valueText ?? ''
 
   if (family !== 'order') {
