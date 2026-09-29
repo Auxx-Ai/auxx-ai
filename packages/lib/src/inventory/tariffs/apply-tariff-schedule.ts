@@ -91,18 +91,13 @@ export async function applyTariffSchedule(
       codeValue,
       and(
         eq(codeValue.entityId, schema.EntityInstance.id),
-        eq(codeValue.organizationId, schema.EntityInstance.organizationId),
         eq(codeValue.fieldId, codeField.id),
         isNotNull(codeValue.relatedEntityId)
       )
     )
     .innerJoin(
       partValue,
-      and(
-        eq(partValue.entityId, schema.EntityInstance.id),
-        eq(partValue.organizationId, schema.EntityInstance.organizationId),
-        eq(partValue.fieldId, partField.id)
-      )
+      and(eq(partValue.entityId, schema.EntityInstance.id), eq(partValue.fieldId, partField.id))
     )
     .where(
       and(

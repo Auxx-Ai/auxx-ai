@@ -415,14 +415,12 @@ async function readOrderStatusInputs(
       : sql`(SELECT fv_anchor."relatedEntityId" FROM "FieldValue" fv_anchor
           WHERE fv_anchor."entityId" = ${anchor.purchaseOrderLineInstanceId}
             AND fv_anchor."fieldId" = ${orderRelFieldId}
-            AND fv_anchor."organizationId" = ${organizationId}
           LIMIT 1)`
 
   const currentOption = (fieldId: string | undefined): SQL<string | null> =>
     sql<string | null>`(SELECT fv_opt."optionId" FROM "FieldValue" fv_opt
       WHERE fv_opt."entityId" = ${schema.FieldValue.relatedEntityId}
         AND fv_opt."fieldId" = ${fieldId ?? ''}
-        AND fv_opt."organizationId" = ${organizationId}
         AND fv_opt."optionId" IS NOT NULL
       LIMIT 1)`
 
@@ -438,30 +436,25 @@ async function readOrderStatusInputs(
       partKind: sql<string | null>`(SELECT fv_kind."optionId" FROM "FieldValue" fv_part
         JOIN "FieldValue" fv_kind ON fv_kind."entityId" = fv_part."relatedEntityId"
           AND fv_kind."fieldId" = ${fields.partKindField?.id ?? ''}
-          AND fv_kind."organizationId" = ${organizationId}
         WHERE fv_part."entityId" = ${schema.FieldValue.entityId}
           AND fv_part."fieldId" = ${fields.partRelField?.id ?? ''}
-          AND fv_part."organizationId" = ${organizationId}
         LIMIT 1)`,
     })
     .from(schema.FieldValue)
     .leftJoin(
       sql`"FieldValue" fv_ordered`,
       sql`${schema.FieldValue.entityId} = fv_ordered."entityId"
-        AND fv_ordered."fieldId" = ${fields.orderedField.id}
-        AND fv_ordered."organizationId" = ${organizationId}`
+        AND fv_ordered."fieldId" = ${fields.orderedField.id}`
     )
     .leftJoin(
       sql`"FieldValue" fv_received`,
       sql`${schema.FieldValue.entityId} = fv_received."entityId"
-        AND fv_received."fieldId" = ${fields.receivedField.id}
-        AND fv_received."organizationId" = ${organizationId}`
+        AND fv_received."fieldId" = ${fields.receivedField.id}`
     )
     .leftJoin(
       sql`"FieldValue" fv_billed`,
       sql`${schema.FieldValue.entityId} = fv_billed."entityId"
-        AND fv_billed."fieldId" = ${fields.billedField.id}
-        AND fv_billed."organizationId" = ${organizationId}`
+        AND fv_billed."fieldId" = ${fields.billedField.id}`
     )
     .where(
       and(

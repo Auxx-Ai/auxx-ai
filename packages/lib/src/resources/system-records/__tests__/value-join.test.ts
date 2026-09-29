@@ -21,7 +21,8 @@ describe('systemValueJoin', () => {
     expect(sql).toBeDefined()
     const refs = columnNames(sql)
     expect(refs).toContain('entityId')
-    expect(refs).toContain('organizationId')
+    // An org predicate here lets the planner filter entityId per row on stale stats.
+    expect(refs).not.toContain('organizationId')
     expect(refs).toContain('fieldId')
     expect(tableNames(sql)).toContain('EntityInstance')
   })

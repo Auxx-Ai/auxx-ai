@@ -7,19 +7,18 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 /** The record a `FieldValue` hangs off: `EntityInstance` itself, or an alias of it a query already joined. */
 export interface ValueOwner {
   id: AnyPgColumn
-  organizationId: AnyPgColumn
 }
 
 /** `FieldValue` or an alias of it; structural because a generated column makes the two types differ. */
 export interface ValueColumns {
   entityId: AnyPgColumn
-  organizationId: AnyPgColumn
   fieldId: AnyPgColumn
 }
 
 /**
- * The `FieldValue` alias join on `(entityId, organizationId, fieldId)`, for the
- * reads that filter or sort on a value in SQL.
+ * The `FieldValue` alias join on `(entityId, fieldId)`, for the reads that filter or sort
+ * on a value in SQL. No org predicate: the owner is already org-scoped, and one lets the
+ * planner pick the (org, field) index and filter entityId per row — quadratic on stale stats.
  *
  * `owner` is the record the value belongs to. Pass an `alias(schema.EntityInstance, …)`
  * when the value hangs off a record the query joined rather than the one it selects from
@@ -30,11 +29,7 @@ export function systemValueJoin(
   fieldId: string,
   owner: ValueOwner = schema.EntityInstance
 ): SQL | undefined {
-  return and(
-    eq(table.entityId, owner.id),
-    eq(table.organizationId, owner.organizationId),
-    eq(table.fieldId, fieldId)
-  )
+  return and(eq(table.entityId, owner.id), eq(table.fieldId, fieldId))
 }
 
 /**

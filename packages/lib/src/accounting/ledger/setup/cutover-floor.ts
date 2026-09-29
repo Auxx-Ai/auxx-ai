@@ -131,8 +131,7 @@ async function countStranded(
       : sql`link."occurrence" LIKE ${spec.occurrence.like}`
   const status =
     spec.status && fieldIds.status
-      ? sql`JOIN "FieldValue" s ON s."organizationId" = d."organizationId"
-          AND s."entityId" = d."entityId" AND s."fieldId" = ${fieldIds.status}
+      ? sql`JOIN "FieldValue" s ON s."entityId" = d."entityId" AND s."fieldId" = ${fieldIds.status}
           AND s."optionId" IN (${sql.join(
             spec.status.values.map((value) => sql`${value}`),
             sql`, `
@@ -148,8 +147,7 @@ async function countStranded(
       FROM "FieldValue" d
       JOIN "EntityInstance" e ON e.id = d."entityId" AND e."organizationId" = d."organizationId"
         AND e."archivedAt" IS NULL
-      JOIN "FieldValue" t ON t."organizationId" = d."organizationId"
-        AND t."entityId" = d."entityId" AND t."fieldId" = ${fieldIds.positive}
+      JOIN "FieldValue" t ON t."entityId" = d."entityId" AND t."fieldId" = ${fieldIds.positive}
         AND t."valueNumber" > 0
       ${status}
       WHERE d."organizationId" = ${organizationId}

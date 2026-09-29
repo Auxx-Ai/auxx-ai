@@ -288,17 +288,12 @@ async function loadTariffCodeRows(
     .from(schema.EntityInstance)
     .innerJoin(
       codeValue,
-      and(
-        eq(codeValue.entityId, schema.EntityInstance.id),
-        eq(codeValue.organizationId, organizationId),
-        eq(codeValue.fieldId, codeField.id)
-      )
+      and(eq(codeValue.entityId, schema.EntityInstance.id), eq(codeValue.fieldId, codeField.id))
     )
     .innerJoin(
       countryValue,
       and(
         eq(countryValue.entityId, schema.EntityInstance.id),
-        eq(countryValue.organizationId, organizationId),
         eq(countryValue.fieldId, countryField.id)
       )
     )

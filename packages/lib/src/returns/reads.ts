@@ -702,7 +702,6 @@ async function readShippedQuantities(
         statusValue,
         and(
           eq(statusValue.entityId, fulfillmentValue.relatedEntityId),
-          eq(statusValue.organizationId, fulfillmentValue.organizationId),
           eq(statusValue.fieldId, statusField.id)
         )
       )

@@ -123,9 +123,9 @@ describe('searchTextExpressionSql', () => {
     expect(expression).toContain('NOT cf."isIdentity"')
   })
 
-  it('scopes the field-value lookup to the same record and org', () => {
+  it('scopes the field-value lookup to the record by entityId only, related rows to the org', () => {
     expect(expression).toContain('fv."entityId" = ei.id')
-    expect(expression).toContain('fv."organizationId" = ei."organizationId"')
+    expect(expression).not.toContain('fv."organizationId" = ei."organizationId"')
     expect(expression).toContain('rel."organizationId" = fv."organizationId"')
   })
 

@@ -22,7 +22,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { StockMovementCostBasis, StockMovementType } from '../../resources/registry/enum-values'
@@ -124,10 +124,9 @@ export async function readPartLedgerAverages(
           sql`, `
         )
 
-        // Base row = the movement's `quantity` FieldValue. `fv_part` carries
-        // the part relationship and restricts to this chunk's ids; `fv_cost`
-        // is the same movement's `extended_cost` FieldValue, joined so both
-        // sums come from ONE grouped statement - a LEFT JOIN, so a `pending`
+        // Base row = the movement's `fv_part` relationship, restricted to this
+        // chunk's ids; `fv_cost` is the same movement's `extended_cost`
+        // FieldValue, joined so both sums come from ONE grouped statement - a LEFT JOIN, so a `pending`
         // row with no cost yet (111 Q18) still counts in the quantity the
         // negative-QoH prediction reads; `fv_flag` is a LEFT JOIN so a
         // movement with no `adjust_subparts` row at all still counts (NULL
@@ -140,32 +139,28 @@ export async function readPartLedgerAverages(
             quantity: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
             valueMinor: sql<string>`COALESCE(SUM(fv_cost."valueNumber"), 0)`,
           })
-          .from(schema.FieldValue)
+          // entityId-only joins; see dated-reads.ts aggregatePerPart.
+          .from(sql`"FieldValue" fv_part`)
           .innerJoin(
-            sql`"FieldValue" fv_part`,
+            schema.FieldValue,
             sql`${schema.FieldValue.entityId} = fv_part."entityId"
-              AND fv_part."fieldId" = ${partField.id}
-              AND fv_part."relatedEntityId" IN (${idList})
-              AND fv_part."organizationId" = ${organizationId}`
+              AND ${schema.FieldValue.fieldId} = ${quantityField.id}`
           )
           .leftJoin(
             sql`"FieldValue" fv_cost`,
-            sql`${schema.FieldValue.entityId} = fv_cost."entityId"
-              AND fv_cost."fieldId" = ${extendedCostField.id}
-              AND fv_cost."organizationId" = ${organizationId}`
+            sql`fv_cost."entityId" = fv_part."entityId"
+              AND fv_cost."fieldId" = ${extendedCostField.id}`
           )
           .leftJoin(
             sql`"FieldValue" fv_flag`,
-            sql`${schema.FieldValue.entityId} = fv_flag."entityId"
-              AND fv_flag."fieldId" = ${flagFieldId}
-              AND fv_flag."organizationId" = ${organizationId}`
+            sql`fv_flag."entityId" = fv_part."entityId"
+              AND fv_flag."fieldId" = ${flagFieldId}`
           )
           .where(
-            and(
-              eq(schema.FieldValue.fieldId, quantityField.id),
-              eq(schema.FieldValue.organizationId, organizationId),
-              sql`(fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
-            )
+            sql`fv_part."organizationId" = ${organizationId}
+              AND fv_part."fieldId" = ${partField.id}
+              AND fv_part."relatedEntityId" IN (${idList})
+              AND (fv_flag."valueBoolean" IS NULL OR fv_flag."valueBoolean" = false)`
           )
           .groupBy(sql`fv_part."relatedEntityId"`)
 
@@ -260,8 +255,8 @@ export async function readFulfillmentLineRelievedAverages(
           sql`, `
         )
 
-        // Base row = the movement's `quantity` FieldValue. `fv_line` restricts
-        // to this chunk's fulfillment lines; `fv_type` is the INNER JOIN that
+        // Base row = the movement's `fv_line` relationship, restricted to this
+        // chunk's fulfillment lines; `fv_type` is the INNER JOIN that
         // excludes every non-`sale` row (a `return_in` reversal included) at
         // the join itself; `fv_cost` is the same movement's `extended_cost`,
         // joined so both sums come from one grouped statement, mirroring
@@ -274,39 +269,34 @@ export async function readFulfillmentLineRelievedAverages(
             quantity: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
             valueMinor: sql<string>`COALESCE(SUM(fv_cost."valueNumber"), 0)`,
           })
-          .from(schema.FieldValue)
+          // entityId-only joins; see dated-reads.ts aggregatePerPart.
+          .from(sql`"FieldValue" fv_line`)
           .innerJoin(
-            sql`"FieldValue" fv_line`,
+            schema.FieldValue,
             sql`${schema.FieldValue.entityId} = fv_line."entityId"
-              AND fv_line."fieldId" = ${lineRelField.id}
-              AND fv_line."relatedEntityId" IN (${idList})
-              AND fv_line."organizationId" = ${organizationId}`
+              AND ${schema.FieldValue.fieldId} = ${quantityField.id}`
           )
           .innerJoin(
             sql`"FieldValue" fv_type`,
-            sql`${schema.FieldValue.entityId} = fv_type."entityId"
+            sql`fv_type."entityId" = fv_line."entityId"
               AND fv_type."fieldId" = ${typeField.id}
-              AND fv_type."organizationId" = ${organizationId}
               AND fv_type."optionId" = ${StockMovementType.SALE}`
           )
           .innerJoin(
             sql`"FieldValue" fv_cost`,
-            sql`${schema.FieldValue.entityId} = fv_cost."entityId"
-              AND fv_cost."fieldId" = ${extendedCostField.id}
-              AND fv_cost."organizationId" = ${organizationId}`
+            sql`fv_cost."entityId" = fv_line."entityId"
+              AND fv_cost."fieldId" = ${extendedCostField.id}`
           )
           .leftJoin(
             sql`"FieldValue" fv_basis`,
-            sql`${schema.FieldValue.entityId} = fv_basis."entityId"
-              AND fv_basis."fieldId" = ${basisFieldId}
-              AND fv_basis."organizationId" = ${organizationId}`
+            sql`fv_basis."entityId" = fv_line."entityId"
+              AND fv_basis."fieldId" = ${basisFieldId}`
           )
           .where(
-            and(
-              eq(schema.FieldValue.fieldId, quantityField.id),
-              eq(schema.FieldValue.organizationId, organizationId),
-              sql`(fv_basis."optionId" IS NULL OR fv_basis."optionId" <> ${StockMovementCostBasis.PENDING})`
-            )
+            sql`fv_line."organizationId" = ${organizationId}
+              AND fv_line."fieldId" = ${lineRelField.id}
+              AND fv_line."relatedEntityId" IN (${idList})
+              AND (fv_basis."optionId" IS NULL OR fv_basis."optionId" <> ${StockMovementCostBasis.PENDING})`
           )
           .groupBy(sql`fv_line."relatedEntityId"`)
 

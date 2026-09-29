@@ -301,7 +301,6 @@ export async function listGatewayHandleCensus(
           placedAtFieldId
             ? and(
                 eq(placedAt.entityId, schema.FieldValue.entityId),
-                eq(placedAt.organizationId, schema.FieldValue.organizationId),
                 eq(placedAt.fieldId, placedAtFieldId)
               )
             : sql`false`

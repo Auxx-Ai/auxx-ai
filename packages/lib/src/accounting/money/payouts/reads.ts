@@ -365,12 +365,11 @@ export async function listPromotableConnectorPayouts(
   } = ctx.fields
   if (!provider || !account || !environment || !external || !gateway) return []
   const value = (alias: string, fieldId: string) =>
-    sql`JOIN "FieldValue" ${sql.raw(alias)} ON ${sql.raw(alias)}."organizationId" = e."organizationId"
-      AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}`
+    sql`JOIN "FieldValue" ${sql.raw(alias)} ON ${sql.raw(alias)}."entityId" = e.id
+      AND ${sql.raw(alias)}."fieldId" = ${fieldId}`
   const has = (alias: string, fieldId: string, condition: SQL) =>
     sql`EXISTS (SELECT 1 FROM "FieldValue" ${sql.raw(alias)}
-      WHERE ${sql.raw(alias)}."organizationId" = e."organizationId"
-        AND ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}
+      WHERE ${sql.raw(alias)}."entityId" = e.id AND ${sql.raw(alias)}."fieldId" = ${fieldId}
         AND ${condition})`
   const behind =
     sourceStatus && issuedOn && status && railField && PAID_PROVIDER_STATUSES.length

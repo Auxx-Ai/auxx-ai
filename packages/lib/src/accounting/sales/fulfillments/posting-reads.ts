@@ -106,20 +106,17 @@ async function candidateFrom(
   const zone = window?.bookTimeZone ?? 'UTC'
   return sql`
     FROM "FieldValue" ship
-    JOIN "FieldValue" tot ON tot."organizationId" = ship."organizationId"
-      AND tot."entityId" = ship."entityId" AND tot."fieldId" = ${total}
+    JOIN "FieldValue" tot ON tot."entityId" = ship."entityId" AND tot."fieldId" = ${total}
     WHERE ship."organizationId" = ${organizationId}
       AND ship."entityDefinitionId" = ${defId}
       AND ship."fieldId" = ${shippedAt}
       AND ship."valueDate" IS NOT NULL
       AND tot."valueNumber" IS NOT NULL AND tot."valueNumber" <> 0
       AND EXISTS (SELECT 1 FROM "FieldValue" sub
-        WHERE sub."organizationId" = ${organizationId}
-          AND sub."entityId" = ship."entityId" AND sub."fieldId" = ${subtotal}
+        WHERE sub."entityId" = ship."entityId" AND sub."fieldId" = ${subtotal}
           AND sub."valueNumber" IS NOT NULL)
       AND NOT EXISTS (SELECT 1 FROM "FieldValue" st
-        WHERE st."organizationId" = ${organizationId}
-          AND st."entityId" = ship."entityId" AND st."fieldId" = ${status}
+        WHERE st."entityId" = ship."entityId" AND st."fieldId" = ${status}
           AND st."optionId" = 'cancelled')
       ${
         window?.cutoffPeriod
@@ -185,16 +182,12 @@ export async function readShipmentDetail(
       ord."id" AS "orderId", ord."entityDefinitionId" AS "orderDefinitionId",
       ord."displayName" AS "orderName", cur."valueText" AS "currency"
     FROM "EntityInstance" f
-    LEFT JOIN "FieldValue" ship ON ship."organizationId" = f."organizationId"
-      AND ship."entityId" = f."id" AND ship."fieldId" = ${shippedAt}
-    LEFT JOIN "FieldValue" tot ON tot."organizationId" = f."organizationId"
-      AND tot."entityId" = f."id" AND tot."fieldId" = ${total}
-    LEFT JOIN "FieldValue" rel ON rel."organizationId" = f."organizationId"
-      AND rel."entityId" = f."id" AND rel."fieldId" = ${orderRel}
+    LEFT JOIN "FieldValue" ship ON ship."entityId" = f."id" AND ship."fieldId" = ${shippedAt}
+    LEFT JOIN "FieldValue" tot ON tot."entityId" = f."id" AND tot."fieldId" = ${total}
+    LEFT JOIN "FieldValue" rel ON rel."entityId" = f."id" AND rel."fieldId" = ${orderRel}
     LEFT JOIN "EntityInstance" ord ON ord."id" = rel."relatedEntityId"
       AND ord."organizationId" = f."organizationId"
-    LEFT JOIN "FieldValue" cur ON cur."organizationId" = f."organizationId"
-      AND cur."entityId" = ord."id" AND cur."fieldId" = ${currency}
+    LEFT JOIN "FieldValue" cur ON cur."entityId" = ord."id" AND cur."fieldId" = ${currency}
     WHERE f."organizationId" = ${organizationId}
       AND f."entityDefinitionId" = ${defId}
       AND f."id" = ${fulfillmentId}

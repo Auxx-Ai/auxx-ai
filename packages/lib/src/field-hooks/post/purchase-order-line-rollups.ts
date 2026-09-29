@@ -246,20 +246,16 @@ async function resolveParentVoidFields(
  * row the enclosing statement is summing. `undefined` when the org has no such
  * fields, which drops the predicate rather than the roll-up.
  */
-function notUnderVoidParent(
-  organizationId: string,
-  parent: ParentVoidFields | undefined
-): SQL | undefined {
+function notUnderVoidParent(parent: ParentVoidFields | undefined): SQL | undefined {
   if (!parent) return undefined
+  // entityId-keyed, no org predicate: the outer row is org-scoped; see inventory/costing/dated-reads.ts.
   return sql`NOT EXISTS (
     SELECT 1 FROM "FieldValue" fv_doc
     JOIN "FieldValue" fv_doc_status
       ON fv_doc_status."entityId" = fv_doc."relatedEntityId"
      AND fv_doc_status."fieldId" = ${parent.parentStatusFieldId}
-     AND fv_doc_status."organizationId" = ${organizationId}
     WHERE fv_doc."entityId" = ${schema.FieldValue.entityId}
       AND fv_doc."fieldId" = ${parent.parentRelFieldId}
-      AND fv_doc."organizationId" = ${organizationId}
       AND fv_doc_status."optionId" = ${parent.voidStatus})`
 }
 
@@ -316,19 +312,19 @@ async function readMinusTotalsByLine(
       lineId: sql<string>`fv_line."relatedEntityId"`,
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
     })
-    .from(schema.FieldValue)
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
     .innerJoin(
-      sql`"FieldValue" fv_line`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND fv_line."fieldId" = ${minus.lineRelFieldId}
-        AND fv_line."relatedEntityId" IN (${idList})
-        AND fv_line."organizationId" = ${organizationId}`
+        AND ${schema.FieldValue.fieldId} = ${minus.quantityFieldId}`
     )
     .where(
       and(
-        eq(schema.FieldValue.fieldId, minus.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId),
-        notUnderVoidParent(organizationId, minus.parent)
+        sql`fv_line."organizationId" = ${organizationId}
+          AND fv_line."fieldId" = ${minus.lineRelFieldId}
+          AND fv_line."relatedEntityId" IN (${idList})`,
+        notUnderVoidParent(minus.parent)
       )
     )
     .groupBy(sql`fv_line."relatedEntityId"`)
@@ -364,19 +360,19 @@ export async function recalculatePurchaseOrderLineRollup(
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
       current: storedTotalSql(organizationId, purchaseOrderLineInstanceId, fields.targetFieldId),
     })
-    .from(schema.FieldValue)
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
     .innerJoin(
-      sql`"FieldValue" fv_line`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" = ${purchaseOrderLineInstanceId}
-        AND fv_line."organizationId" = ${organizationId}`
+        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
     )
     .where(
       and(
-        eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId),
-        notUnderVoidParent(organizationId, fields.parent)
+        sql`fv_line."organizationId" = ${organizationId}
+          AND fv_line."fieldId" = ${fields.lineRelFieldId}
+          AND fv_line."relatedEntityId" = ${purchaseOrderLineInstanceId}`,
+        notUnderVoidParent(fields.parent)
       )
     )
 
@@ -617,19 +613,19 @@ async function readTotalsByLine(
       lineId: sql<string>`fv_line."relatedEntityId"`,
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
     })
-    .from(schema.FieldValue)
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
     .innerJoin(
-      sql`"FieldValue" fv_line`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" IN (${idList})
-        AND fv_line."organizationId" = ${organizationId}`
+        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
     )
     .where(
       and(
-        eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId),
-        notUnderVoidParent(organizationId, fields.parent)
+        sql`fv_line."organizationId" = ${organizationId}
+          AND fv_line."fieldId" = ${fields.lineRelFieldId}
+          AND fv_line."relatedEntityId" IN (${idList})`,
+        notUnderVoidParent(fields.parent)
       )
     )
     .groupBy(sql`fv_line."relatedEntityId"`)
@@ -938,8 +934,7 @@ export const recalculateBilledRollupOnBillStatusChange: MarkHandler = async (eve
     .innerJoin(
       sql`"FieldValue" fv_po`,
       sql`fv_po."entityId" = ${schema.FieldValue.entityId}
-        AND fv_po."fieldId" = ${orderLineRelField.id}
-        AND fv_po."organizationId" = ${event.organizationId}`
+        AND fv_po."fieldId" = ${orderLineRelField.id}`
     )
     .where(
       and(

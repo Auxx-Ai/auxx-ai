@@ -191,49 +191,43 @@ async function aggregatePerPart<T>(
   const movedAt = sql`COALESCE(${occurred.valueDate}, ${schema.EntityInstance.createdAt})`
   const bucket = shape.bucket?.(movedAt)
 
+  // Driven from the part rows, and the other fields joined on entityId alone: with an org
+  // predicate the planner can pick the (org, field) index and filter entityId per row, which
+  // goes quadratic when stats are stale (a fresh import) and hits the 30 s statement timeout.
   return database
     .select({
       partId: part.relatedEntityId,
       value: shape.aggregate(qty, movedAt),
       ...(bucket ? { bucket } : {}),
     })
-    .from(qty)
+    .from(part)
     .innerJoin(
       schema.EntityInstance,
       and(
-        eq(schema.EntityInstance.id, qty.entityId),
+        eq(schema.EntityInstance.id, part.entityId),
         eq(schema.EntityInstance.organizationId, organizationId)
       )
     )
-    .innerJoin(
-      part,
-      and(
-        eq(part.entityId, qty.entityId),
-        eq(part.fieldId, partField.id),
-        eq(part.organizationId, organizationId),
-        inArray(part.relatedEntityId, partIds)
-      )
-    )
+    .innerJoin(qty, and(eq(qty.entityId, part.entityId), eq(qty.fieldId, qtyField.id)))
     .leftJoin(
       flag,
       and(
-        eq(flag.entityId, qty.entityId),
-        eq(flag.fieldId, fields.stock_movement_adjust_subparts?.id ?? ''),
-        eq(flag.organizationId, organizationId)
+        eq(flag.entityId, part.entityId),
+        eq(flag.fieldId, fields.stock_movement_adjust_subparts?.id ?? '')
       )
     )
     .leftJoin(
       occurred,
       and(
-        eq(occurred.entityId, qty.entityId),
-        eq(occurred.fieldId, fields.stock_movement_occurred_at?.id ?? ''),
-        eq(occurred.organizationId, organizationId)
+        eq(occurred.entityId, part.entityId),
+        eq(occurred.fieldId, fields.stock_movement_occurred_at?.id ?? '')
       )
     )
     .where(
       and(
-        eq(qty.fieldId, qtyField.id),
-        eq(qty.organizationId, organizationId),
+        eq(part.fieldId, partField.id),
+        eq(part.organizationId, organizationId),
+        inArray(part.relatedEntityId, partIds),
         sql`(${flag.valueBoolean} IS NULL OR ${flag.valueBoolean} = false)`,
         shape.where(movedAt, qty)
       )

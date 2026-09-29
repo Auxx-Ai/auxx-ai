@@ -300,7 +300,7 @@ function documentFields(): SQL {
         max(fv."valueDate") FILTER (WHERE cf."systemAttribute" IN ('stock_movement_occurred_at','build_completed_at')) AS "documentDate"
       FROM "FieldValue" fv JOIN "CustomField" cf ON cf."id" = fv."fieldId"
       WHERE w."sourceKind" IN ('build','stock_movement')
-        AND fv."organizationId" = w."organizationId" AND fv."entityId" = w."sourceId"
+        AND fv."entityId" = w."sourceId"
         AND cf."systemAttribute" IN ('stock_movement_type','stock_movement_quantity','stock_movement_occurred_at','build_completed_at')
     ) doc ON TRUE`
 }

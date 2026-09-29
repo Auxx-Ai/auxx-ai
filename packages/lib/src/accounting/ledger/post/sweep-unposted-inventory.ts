@@ -143,7 +143,6 @@ async function listUnpostedMovementIds(
     .innerJoin(
       cost,
       and(
-        eq(cost.organizationId, organizationId),
         eq(cost.entityId, schema.FieldValue.entityId),
         eq(cost.fieldId, extendedCost.id),
         isNotNull(cost.valueNumber),

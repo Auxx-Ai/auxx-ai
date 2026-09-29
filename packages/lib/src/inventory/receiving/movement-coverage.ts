@@ -66,11 +66,7 @@ export async function readPartsWithInitialMovement(
     .from(typeValue)
     .innerJoin(
       partValue,
-      and(
-        eq(partValue.entityId, typeValue.entityId),
-        eq(partValue.organizationId, organizationId),
-        eq(partValue.fieldId, partFieldId)
-      )
+      and(eq(partValue.entityId, typeValue.entityId), eq(partValue.fieldId, partFieldId))
     )
     .where(
       and(

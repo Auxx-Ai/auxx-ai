@@ -803,7 +803,7 @@ const FIELD_VALUE_LATERAL = sql`
   LEFT JOIN LATERAL (
     SELECT max(v."updatedAt") AS "maxAt"
     FROM "FieldValue" v
-    WHERE v."entityId" = ei."id" AND v."organizationId" = ei."organizationId"
+    WHERE v."entityId" = ei."id"
   ) fv ON TRUE
 `
 

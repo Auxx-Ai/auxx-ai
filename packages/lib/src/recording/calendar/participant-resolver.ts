@@ -264,20 +264,16 @@ async function findContactEntityInstanceIdByEmail(
       return ok(null)
     }
 
+    // Driven from the value: joining it per contact goes quadratic on stale stats.
     const [match] = await db
       .select({ entityId: schema.EntityInstance.id })
-      .from(schema.EntityInstance)
-      .innerJoin(
-        schema.FieldValue,
-        and(
-          eq(schema.FieldValue.entityId, schema.EntityInstance.id),
-          eq(schema.FieldValue.organizationId, organizationId),
-          eq(schema.FieldValue.fieldId, emailField.id),
-          eq(schema.FieldValue.valueText, email)
-        )
-      )
+      .from(schema.FieldValue)
+      .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
       .where(
         and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.FieldValue.fieldId, emailField.id),
+          eq(schema.FieldValue.valueText, email),
           eq(schema.EntityInstance.organizationId, organizationId),
           eq(schema.EntityInstance.entityDefinitionId, contactDefId),
           isNull(schema.EntityInstance.archivedAt)

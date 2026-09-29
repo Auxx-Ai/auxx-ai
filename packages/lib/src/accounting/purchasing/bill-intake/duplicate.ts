@@ -93,7 +93,6 @@ export async function findExistingBill(
           vendorValue,
           and(
             eq(vendorValue.entityId, schema.EntityInstance.id),
-            eq(vendorValue.organizationId, schema.EntityInstance.organizationId),
             eq(vendorValue.fieldId, vendorField.id),
             eq(vendorValue.relatedEntityId, vendorInstanceId)
           )
@@ -102,7 +101,6 @@ export async function findExistingBill(
           numberValue,
           and(
             eq(numberValue.entityId, schema.EntityInstance.id),
-            eq(numberValue.organizationId, schema.EntityInstance.organizationId),
             eq(numberValue.fieldId, numberField.id)
           )
         )
@@ -110,7 +108,6 @@ export async function findExistingBill(
           internalValue,
           and(
             eq(internalValue.entityId, schema.EntityInstance.id),
-            eq(internalValue.organizationId, schema.EntityInstance.organizationId),
             eq(internalValue.fieldId, internalField?.id ?? '')
           )
         )
