@@ -14,7 +14,10 @@ vi.mock('../geocoder', () => ({ geocodeStructured: vi.fn() }))
 // import-cycle gotcha with vi.mock (project memory); mocking the file the barrel re-exports
 // from is enough, matching the pattern in
 // field-values/__tests__/batched-realtime-publish.test.ts.
-vi.mock('../../realtime/publish-helpers', () => ({ publishFieldValueUpdates: vi.fn() }))
+vi.mock('../../realtime/publish-helpers', () => ({
+  publishFieldValueUpdates: vi.fn(),
+  publishRecordsChanged: vi.fn(),
+}))
 
 // Stub the DB-backed `setValueWithBuiltIn` so the write-back is observable without a real
 // database, and hand-roll a minimal `buildPublishEntry` (same shaping the real one does — array
@@ -66,7 +69,7 @@ vi.mock('../../field-values/field-value-helpers', () => ({
 
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
 import { getValue } from '../../field-values/field-value-queries'
-import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
+import { publishFieldValueUpdates, publishRecordsChanged } from '../../realtime/publish-helpers'
 import {
   normalizeAddressBatch,
   normalizeAddressOnChange,
@@ -78,6 +81,7 @@ const mockedGeocode = geocodeStructured as unknown as ReturnType<typeof vi.fn>
 const mockedSetValue = setValueWithBuiltIn as unknown as ReturnType<typeof vi.fn>
 const mockedGetValue = getValue as unknown as ReturnType<typeof vi.fn>
 const mockedPublish = publishFieldValueUpdates as unknown as ReturnType<typeof vi.fn>
+const mockedPublishChanged = publishRecordsChanged as unknown as ReturnType<typeof vi.fn>
 
 // There is no unregister (production never needs one), so both listeners stay subscribed for the
 // whole suite and are reset per test. `failingListener` is registered FIRST to prove a throwing
@@ -596,8 +600,10 @@ describe('normalizeAddressBatch', () => {
     mockedGeocode.mockReset()
     mockedSetValue.mockReset()
     mockedPublish.mockReset()
+    mockedPublishChanged.mockReset()
     mockedGetValue.mockReset()
     mockedPublish.mockResolvedValue(undefined)
+    mockedPublishChanged.mockResolvedValue(undefined)
     mockedGeocode.mockResolvedValue(null)
     mockedGetValue.mockResolvedValue(jsonValue({ street1: '123 Fresh St', city: 'Austin' }))
   })
@@ -643,6 +649,64 @@ describe('normalizeAddressBatch', () => {
 
     expect(mockedGeocode).toHaveBeenCalledTimes(10)
     expect(maxInflight).toBe(4)
+  })
+
+  it('announces the batch as one records:changed per def, never per record', async () => {
+    mockedGeocode.mockResolvedValue({ lat: 30.2, lng: -97.7, relevance: 0.9, components: {} })
+    mockedSetValue.mockResolvedValue({ values: [{ id: 'fv-1' }] })
+    // Stale-write guard: the re-read inside the write-back sees the same components.
+    mockedGetValue.mockResolvedValue(jsonValue({ street1: '123 Fresh St', city: 'Austin' }))
+
+    await batch([target('inst-1'), target('inst-2'), target('inst-3')])
+
+    expect(mockedSetValue).toHaveBeenCalledTimes(3)
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged).toHaveBeenCalledTimes(1)
+    expect(mockedPublishChanged.mock.calls[0]![2]).toEqual({
+      entityDefinitionId: 'contact',
+      entries: ['inst-1', 'inst-2', 'inst-3'].map((id) => ({
+        recordId: id,
+        fieldIds: ['contact:field-address'],
+      })),
+    })
+  })
+
+  it('leaves records the batch did not write out of the announcement', async () => {
+    mockedGeocode.mockResolvedValue({ lat: 30.2, lng: -97.7, relevance: 0.9, components: {} })
+    mockedSetValue.mockResolvedValue({ values: [{ id: 'fv-1' }] })
+    const fresh = jsonValue({ street1: '123 Fresh St', city: 'Austin' })
+    const stamped = jsonValue({
+      street1: '1 Done St',
+      lat: 1,
+      lng: 2,
+      geocodedAt: '2026-01-01T00:00:00Z',
+    })
+    // inst-1 written; inst-2 already stamped; inst-3 edited while its geocode was in flight.
+    mockedGetValue.mockImplementation(async (_ctx: unknown, ref: { recordId: string }) => {
+      if (ref.recordId.endsWith('inst-2')) return stamped
+      if (ref.recordId.endsWith('inst-3')) {
+        const calls = mockedGetValue.mock.calls.filter(
+          (c) => (c[1] as { recordId: string }).recordId === ref.recordId
+        ).length
+        return calls > 1 ? jsonValue({ street1: 'Edited St' }) : fresh
+      }
+      return fresh
+    })
+
+    await batch([target('inst-1'), target('inst-2'), target('inst-3')])
+
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged).toHaveBeenCalledTimes(1)
+    expect(mockedPublishChanged.mock.calls[0]![2].entries).toEqual([
+      { recordId: 'inst-1', fieldIds: ['contact:field-address'] },
+    ])
+  })
+
+  it('publishes nothing when the batch wrote nothing', async () => {
+    await batch([target('inst-1')])
+
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged).not.toHaveBeenCalled()
   })
 
   it('one failing record never starves the rest, and never rejects', async () => {

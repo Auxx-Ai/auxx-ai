@@ -16,7 +16,7 @@
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
-import type { FieldId } from '@auxx/types/field'
+import { type FieldId, toResourceFieldId } from '@auxx/types/field'
 import { type AddressStructValue, formatAddressForGeocode } from '@auxx/utils/address'
 import { stableHash } from '@auxx/utils/hash'
 import { and, eq } from 'drizzle-orm'
@@ -32,7 +32,7 @@ import {
 } from '../field-values/field-value-helpers'
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
 import { getValue } from '../field-values/field-value-queries'
-import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import { getRealtimeService, publishFieldValueUpdates, publishRecordsChanged } from '../realtime'
 import { quietSession } from '../resources/crud/write-origin'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import { geocodeStructured } from './geocoder'
@@ -203,6 +203,32 @@ export const normalizeAddressOnChange: EntityFieldChangeHandler = async (event) 
  */
 const ADDRESS_GEOCODE_CONCURRENCY = 4
 
+/** defId → entityInstanceId → client fieldRefKeys written; the batch's one announcement. */
+type NormalizeAnnouncements = Map<string, Map<string, Set<string>>>
+
+/** One `records:changed` per def for everything the batch wrote. Fire-and-forget. */
+function publishNormalizeAnnouncements(
+  organizationId: string,
+  announcements: NormalizeAnnouncements
+): void {
+  for (const [entityDefinitionId, byInstance] of announcements) {
+    const entries = [...byInstance].map(([recordId, fieldIds]) => ({
+      recordId,
+      fieldIds: [...fieldIds],
+    }))
+    publishRecordsChanged(getRealtimeService(), organizationId, {
+      entityDefinitionId,
+      entries,
+    }).catch((error) => {
+      logger.warn('Address normalize batch publish failed', {
+        organizationId,
+        entityDefinitionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }
+}
+
 /**
  * The sync lane's core (plans/events/10 §4.4): normalize every ADDRESS_STRUCT target of one
  * finalize under a pool of {@link ADDRESS_GEOCODE_CONCURRENCY} workers.
@@ -218,6 +244,7 @@ export const normalizeAddressBatch: BatchCore = async ({ organizationId, userId,
   })
 
   let normalized = 0
+  const announcements: NormalizeAnnouncements = new Map()
   await runWithPool(targets, ADDRESS_GEOCODE_CONCURRENCY, async (target) => {
     try {
       const stored = await getValue(
@@ -228,7 +255,7 @@ export const normalizeAddressBatch: BatchCore = async ({ organizationId, userId,
       const current = extractStruct(stored)
       if (!isNonEmptyStruct(current)) return
       if (hasStampedGeocode(current)) return
-      await runNormalize(refToEvent(target, stored), current)
+      await runNormalize(refToEvent(target, stored), current, announcements)
       normalized++
     } catch (error) {
       logger.error('Address normalize batch: record failed', {
@@ -239,6 +266,9 @@ export const normalizeAddressBatch: BatchCore = async ({ organizationId, userId,
       })
     }
   })
+
+  // Sync lane only: one frame per def replaces a `fieldValues:updated` per record.
+  publishNormalizeAnnouncements(organizationId, announcements)
 
   logger.info('address normalize batch done', {
     organizationId,
@@ -256,10 +286,12 @@ export const normalizeAddressBatch: BatchCore = async ({ organizationId, userId,
  * `userId`, `recordId`, and `field` are read here; listeners additionally see
  * `field.systemAttribute`. `struct` must be the value the caller wants normalized — the
  * write-back re-reads and bails unless the stored components still match it.
+ * With `announcements`, the write-back records into it instead of publishing.
  */
 export async function runNormalize(
   event: EntityFieldChangeEvent,
-  struct: AddressStructLike
+  struct: AddressStructLike,
+  announcements?: NormalizeAnnouncements
 ): Promise<void> {
   const source = typeof struct._source === 'string' ? struct._source : undefined
 
@@ -273,13 +305,13 @@ export async function runNormalize(
     // storage, though, so still strip it when present — cheapest correct write: skip the write
     // entirely when there's nothing to strip.
     if (source !== undefined) {
-      await writeBack(event, struct, stripSource(struct))
+      await writeBack(event, struct, stripSource(struct), announcements)
     }
     return
   }
 
   const merged = mergeAddress(struct, geocoded, source)
-  if (await writeBack(event, struct, merged)) {
+  if (await writeBack(event, struct, merged, announcements)) {
     await notifyAddressNormalized(event, merged)
   }
 }
@@ -368,7 +400,8 @@ async function readConnectorMarker(
 async function writeBack(
   event: EntityFieldChangeEvent,
   original: AddressStructLike,
-  merged: AddressStructLike
+  merged: AddressStructLike,
+  announcements?: NormalizeAnnouncements
 ): Promise<boolean> {
   const ctx = createFieldValueContext(event.organizationId, event.userId, undefined, undefined, {
     skipPreHooks: true,
@@ -415,6 +448,22 @@ async function writeBack(
   const publishRecordId = event.field.entityDefinitionId
     ? toRecordId(event.field.entityDefinitionId, entityInstanceId)
     : event.recordId
+
+  if (announcements) {
+    const { entityDefinitionId } = parseRecordId(publishRecordId)
+    let byInstance = announcements.get(entityDefinitionId)
+    if (!byInstance) {
+      byInstance = new Map()
+      announcements.set(entityDefinitionId, byInstance)
+    }
+    let fieldIds = byInstance.get(entityInstanceId)
+    if (!fieldIds) {
+      fieldIds = new Set()
+      byInstance.set(entityInstanceId, fieldIds)
+    }
+    fieldIds.add(toResourceFieldId(entityDefinitionId, event.field.id))
+    return true
+  }
 
   const entry = buildPublishEntry({
     publishRecordId,
