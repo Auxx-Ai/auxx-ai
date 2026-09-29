@@ -12,7 +12,15 @@ export interface AccountingProviderCatalogueEntry {
   shortLabel: string
   /** One line for a choose-a-system list. */
   description: string
+  /** The `RecordIdentity.appFieldKey` its app writes a Customer (`contact`) and Vendor (`company`) id under. */
+  partyIdFieldKeys: { customer: string; vendor: string }
 }
+
+/** QuickBooks' id-map fields; the adapter reads the same constants. */
+export const QUICKBOOKS_PARTY_ID_FIELD_KEYS = {
+  customer: 'qboCustomerId',
+  vendor: 'qboVendorId',
+} as const
 
 /** Every accounting system Auxx can export to. Adding one is one entry here plus its adapter. */
 export const ACCOUNTING_PROVIDER_CATALOGUE: readonly AccountingProviderCatalogueEntry[] = [
@@ -22,6 +30,7 @@ export const ACCOUNTING_PROVIDER_CATALOGUE: readonly AccountingProviderCatalogue
     label: 'QuickBooks Online',
     shortLabel: 'QuickBooks',
     description: 'Mirror posted entries into QuickBooks Online and import its chart of accounts.',
+    partyIdFieldKeys: QUICKBOOKS_PARTY_ID_FIELD_KEYS,
   },
 ]
 

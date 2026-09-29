@@ -8,13 +8,14 @@ import { UnprocessableEntityError } from '../../../errors'
 import { getRelatedDisplayName } from '../../../field-values/field-value-helpers'
 import type { UnifiedCrudHandler } from '../../../resources/crud'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
+import { QUICKBOOKS_PARTY_ID_FIELD_KEYS } from '../catalogue'
 import { readQuickbooksIdField, writeQuickbooksIdField } from './identity-field'
 import type { QuickbooksToolContext } from './invoke-quickbooks-tool'
 import { quickbooksName } from './objects/shared'
 
 const logger = createScopedLogger('quickbooks-upsert-customer')
 
-const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
+const QBO_CUSTOMER_ID_FIELD_KEY = QUICKBOOKS_PARTY_ID_FIELD_KEYS.customer
 
 /**
  * Intuit's fault code for a `DisplayName` that is already taken.

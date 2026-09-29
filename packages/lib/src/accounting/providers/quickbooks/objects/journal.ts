@@ -21,6 +21,7 @@ import {
   ProviderPostError,
   type WithdrawResult,
 } from '../../../ledger/types'
+import { QUICKBOOKS_PARTY_ID_FIELD_KEYS } from '../../catalogue'
 import type {
   ProviderObjectContext,
   ReadObjectRef,
@@ -52,7 +53,7 @@ const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
 const TOOL_DELETE_JOURNAL_ENTRY = 'delete_quickbooks_journal_entry'
 
 /** The QuickBooks id-map field for a `contact` synced as a `Customer`. */
-const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
+const QBO_CUSTOMER_ID_FIELD_KEY = QUICKBOOKS_PARTY_ID_FIELD_KEYS.customer
 /**
  * The QuickBooks id-map field for a `company` synced as a `Vendor`.
  *
@@ -62,7 +63,7 @@ const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
  * payable line refuses with the "not synced" sentence below - intended
  * behaviour, not a bug in this file.
  */
-const QBO_VENDOR_ID_FIELD_KEY = 'qboVendorId'
+const QBO_VENDOR_ID_FIELD_KEY = QUICKBOOKS_PARTY_ID_FIELD_KEYS.vendor
 
 /** What `resolveOrCreateCounterparties` resolves one line's counterparty TO. */
 interface QuickbooksEntity {

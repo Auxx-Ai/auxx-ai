@@ -15,6 +15,13 @@ describe('accounting provider catalogue', () => {
     expect(getAccountingProviderByAppSlug('quickbooks')?.id).toBe(QUICKBOOKS_PROVIDER_ID)
   })
 
+  it('names the id fields the QuickBooks app writes parties under', () => {
+    expect(getAccountingProviderEntry(QUICKBOOKS_PROVIDER_ID)?.partyIdFieldKeys).toEqual({
+      customer: 'qboCustomerId',
+      vendor: 'qboVendorId',
+    })
+  })
+
   it('has unique ids and never the null provider', () => {
     const ids = ACCOUNTING_PROVIDER_CATALOGUE.map((entry) => entry.id)
     expect(new Set(ids).size).toBe(ids.length)

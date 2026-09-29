@@ -10,7 +10,12 @@
 
 import { describe, expect, it } from 'vitest'
 import type { ProviderSyncRun } from '../../../hooks/use-provider-sync-run'
-import { describeProviderSyncRun, elapsedLabel, splitErrorSample } from '../provider-sync-report'
+import {
+  describeProviderSyncRun,
+  elapsedLabel,
+  runTimeLabel,
+  splitErrorSample,
+} from '../provider-sync-report'
 
 const STARTED = '2026-09-16T10:00:00.000Z'
 const NOW = Date.parse('2026-09-16T10:04:05.000Z')
@@ -137,6 +142,35 @@ describe('splitErrorSample', () => {
     expect(split.diverged.map((s) => s.externalId)).toEqual(['JNL-0006'])
     expect(split.deferred.map((s) => s.externalId)).toEqual(['2026-02'])
     expect(split.refused).toHaveLength(1)
+  })
+})
+
+describe('runTimeLabel', () => {
+  it('reads a recent run relative to now, and a future stamp as just now', () => {
+    expect(runTimeLabel('2026-09-16T10:02:00.000Z', NOW, 'UTC')).toBe('2 minutes ago')
+    expect(runTimeLabel('2026-09-16T07:00:00.000Z', NOW, 'UTC')).toBe('3 hours ago')
+    expect(runTimeLabel('2026-09-16T10:09:00.000Z', NOW, 'UTC')).toBe('just now')
+  })
+
+  // A day or more back, the date and time in the book's zone, not UTC.
+  it('dates an older run in the book timezone', () => {
+    expect(runTimeLabel('2026-09-14T23:30:00.000Z', NOW, 'America/Los_Angeles')).toBe(
+      'on 14 Sep 2026, 16:30 PDT'
+    )
+  })
+
+  it('never shows the raw ISO stamp in a headline', () => {
+    const reading = describeProviderSyncRun(
+      {
+        currentRun: null,
+        lastRun: run({ status: 'succeeded', finishedAt: '2026-09-16T10:00:00.000Z' }),
+        stale: false,
+      },
+      'QuickBooks',
+      NOW,
+      'UTC'
+    )
+    expect(reading.headline).toBe('Last read 4 minutes ago')
   })
 })
 

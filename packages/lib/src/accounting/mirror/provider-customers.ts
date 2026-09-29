@@ -3,16 +3,14 @@
 import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../cache'
+import { getAccountingProviderEntry } from '../providers/catalogue'
 
 export type ProviderPartyKind = 'customer' | 'vendor'
 
-/** Which of our records a provider party maps to, and the identity key its app writes the id under. */
-const PARTY_IDENTITY: Record<
-  ProviderPartyKind,
-  { entitySlug: string; fieldKeyByProvider: Record<string, string> }
-> = {
-  customer: { entitySlug: 'contact', fieldKeyByProvider: { quickbooks: 'qboCustomerId' } },
-  vendor: { entitySlug: 'company', fieldKeyByProvider: { quickbooks: 'qboVendorId' } },
+/** Which of our records a provider party maps to; the id field comes from the provider catalogue. */
+const PARTY_ENTITY_SLUG: Record<ProviderPartyKind, string> = {
+  customer: 'contact',
+  vendor: 'company',
 }
 
 /**
@@ -27,10 +25,9 @@ export async function resolveProviderParties(
   providerPartyIds: readonly string[]
 ): Promise<Map<string, string>> {
   const byParty = new Map<string, string>()
-  const identity = PARTY_IDENTITY[kind]
-  const appFieldKey = identity.fieldKeyByProvider[providerId]
+  const appFieldKey = getAccountingProviderEntry(providerId)?.partyIdFieldKeys[kind]
   if (!appFieldKey || providerPartyIds.length === 0) return byParty
-  const entityDefId = await getCachedEntityDefId(organizationId, identity.entitySlug)
+  const entityDefId = await getCachedEntityDefId(organizationId, PARTY_ENTITY_SLUG[kind])
   if (!entityDefId) return byParty
 
   const rows = await db

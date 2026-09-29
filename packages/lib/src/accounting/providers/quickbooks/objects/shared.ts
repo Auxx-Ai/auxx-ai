@@ -7,6 +7,7 @@
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
+import { APP_TOOL_MISSING } from '../../../../apps/invoke-app-tool'
 import { getCachedProviderChart } from '../../../../cache'
 import { UnprocessableEntityError } from '../../../../errors'
 import type { ExportFailureItem } from '../../../export/client'
@@ -119,6 +120,7 @@ export function classifyQuickbooksFailure(error: unknown): {
     code === 'CONNECTION_NOT_FOUND' ||
     code === 'CONNECTION_REQUIRED' ||
     code === 'INSUFFICIENT_PERMISSIONS' ||
+    code === APP_TOOL_MISSING ||
     /connection expired|reconnect|insufficient permission|not connected/.test(message)
   ) {
     return { failureClass: 'configuration', faultCode }

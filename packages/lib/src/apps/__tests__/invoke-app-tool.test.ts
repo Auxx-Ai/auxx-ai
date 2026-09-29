@@ -16,7 +16,7 @@ const h = vi.hoisted(() => ({
       value: {
         serverBundleSha: 'sha_1',
         installation: { id: 'inst_1' },
-        deployment: { catalog: { tools: [] } },
+        deployment: { catalog: { tools: [{ id: 'list_shopify_payouts' }] } },
       },
     })
   ),
@@ -56,7 +56,7 @@ vi.mock('../lambda', () => ({
   invokeLambdaExecutor: h.invokeLambdaExecutor,
 }))
 
-import { resolveAppToolContext } from '../invoke-app-tool'
+import { APP_TOOL_MISSING, resolveAppToolContext } from '../invoke-app-tool'
 
 const ORG = 'org_1'
 const SHOPIFY_INSTALL = {
@@ -162,5 +162,33 @@ describe('resolveAppToolContext', () => {
       statusCode: 403,
       details: { requiredScopes: ['read_shopify_payments_payouts'] },
     })
+  })
+
+  it('refuses a tool the installed deployment does not ship, without calling the Lambda', async () => {
+    const result = await resolveAppToolContext({
+      organizationId: ORG,
+      appSlug: 'shopify',
+      appLabel: 'Shopify',
+    })
+    if (!result.connected) throw new Error('expected a connection')
+
+    const attempt = result.context.callTool('get_shopify_company_settings', {})
+
+    await expect(attempt).rejects.toThrow(
+      'The installed Shopify app is out of date: it has no get_shopify_company_settings tool.'
+    )
+    await expect(attempt).rejects.toMatchObject({ code: APP_TOOL_MISSING, statusCode: 422 })
+    expect(h.invokeLambdaExecutor).not.toHaveBeenCalled()
+  })
+
+  it('skips the check when the deployment carries no catalogue', async () => {
+    h.getInstallationDeployment.mockResolvedValueOnce({
+      isErr: () => false,
+      value: { serverBundleSha: 'sha_1', installation: { id: 'inst_1' }, deployment: {} },
+    })
+    const result = await resolveAppToolContext({ organizationId: ORG, appSlug: 'shopify' })
+    if (!result.connected) throw new Error('expected a connection')
+
+    await expect(result.context.callTool('anything', {})).resolves.toEqual({ payouts: [] })
   })
 })

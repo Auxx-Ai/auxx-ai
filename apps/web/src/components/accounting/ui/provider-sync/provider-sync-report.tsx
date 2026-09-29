@@ -32,6 +32,7 @@
 import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import { formatInTimezone } from '@auxx/utils'
 import { CircleAlert, Clock, Lock, TriangleAlert, Unlink } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ProviderSyncRun } from '../../hooks/use-provider-sync-run'
@@ -61,6 +62,17 @@ export function elapsedLabel(ms: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/** When a run happened: relative within a day, else the date and time in the book's zone. */
+export function runTimeLabel(iso: string, now: number, timeZone: string): string {
+  const seconds = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000))
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+  return `on ${formatInTimezone(iso, timeZone, 'd MMM yyyy, HH:mm zzz')}`
+}
+
 /**
  * Turn a run into the sentence the `Sync now` row renders.
  *
@@ -72,11 +84,13 @@ export function elapsedLabel(ms: number): string {
  *
  * @param now epoch ms, passed in so the elapsed clock is the caller's tick
  *   rather than a `Date.now()` this function reaches for on every render
+ * @param timeZone the book's zone, for a run older than a day
  */
 export function describeProviderSyncRun(
   input: { currentRun: ProviderSyncRun | null; lastRun: ProviderSyncRun | null; stale: boolean },
   providerLabel: string,
-  now: number
+  now: number,
+  timeZone = 'UTC'
 ): ProviderSyncRunReading {
   const { currentRun, lastRun, stale } = input
 
@@ -97,8 +111,8 @@ export function describeProviderSyncRun(
       tone: 'alarm',
       headline: 'The last sync stopped without finishing',
       detail:
-        `It started at ${currentRun.startedAt} and then went quiet - a worker restart mid-walk ` +
-        'leaves a run with nothing to close it. Everything already brought across stays. Press ' +
+        `It started ${runTimeLabel(currentRun.startedAt, now, timeZone)} and then went quiet - ` +
+        'a worker restart mid-walk leaves a run with nothing to close it. Everything already brought across stays. Press ' +
         'Sync now to start again; it resumes from where the walk got to, not from the beginning.',
     }
   }
@@ -113,14 +127,14 @@ export function describeProviderSyncRun(
     }
   }
 
-  const finished = lastRun.finishedAt ?? lastRun.heartbeatAt
+  const finished = runTimeLabel(lastRun.finishedAt ?? lastRun.heartbeatAt, now, timeZone)
   const chunks = lastRun.pagesProcessed
   const read = `Read ${chunks} ${chunks === 1 ? 'month' : 'months'}, wrote ${lastRun.counters.created}`
 
   if (lastRun.status === 'failed') {
     return {
       tone: 'alarm',
-      headline: `The last sync failed at ${finished}`,
+      headline: `The last sync failed ${finished}`,
       detail: lastRun.error ?? 'No reason was recorded. The details are below.',
     }
   }
