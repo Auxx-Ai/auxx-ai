@@ -987,6 +987,7 @@ export class ResourceRegistryService {
           // column carries one. It rides the relation field so the target def is
           // read off `relationship.inverseResourceFieldId` rather than restated.
           namedImporter: staticField.namedImporter,
+          importHint: staticField.importHint,
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
           relationship: baseRelationship

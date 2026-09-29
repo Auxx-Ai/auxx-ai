@@ -9,18 +9,14 @@ import { EntityIcon } from '@auxx/ui/components/icons'
 import { Popover, PopoverTrigger } from '@auxx/ui/components/popover'
 import { SmartBreadcrumb } from '@auxx/ui/components/smart-breadcrumb'
 import { cn } from '@auxx/ui/lib/utils'
-import { AlertTriangle, ArrowRight, ChevronsUpDown, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowRight, ChevronsUpDown } from 'lucide-react'
 import { useState } from 'react'
 import { useResource } from '~/components/resources'
 import type { ColumnMappingUI } from '../types'
-import {
-  type ColumnPolicyPatch,
-  ColumnPolicyPopover,
-  hasColumnPolicy,
-} from './column-policy-popover'
+import type { ColumnPolicyPatch } from './column-policy-popover'
 import { FieldPicker } from './field-picker'
-import { canFlagAsIdentifier, IdentifierToggle, UniquenessSignal } from './identifier-toggle'
-import { hasResolutionChoice, ResolutionTypePopover } from './resolution-type-popover'
+import { UniquenessSignal } from './identifier-toggle'
+import { MappingControls } from './mapping-controls'
 
 /**
  * A relation mapped with no match field is UNRESOLVABLE.
@@ -99,9 +95,6 @@ export function ColumnMappingRow({
 
   const isIncomplete = isMappingIncomplete(mapping, selectedField)
   const isFlagged = mapping.identityRole?.kind === 'match'
-  const showIdentifierToggle = canFlagAsIdentifier(selectedField)
-  const showPolicy = hasColumnPolicy(selectedField, mode)
-  const showResolutionType = hasResolutionChoice(selectedField)
 
   // Build display label including match field for relationships
   const getDisplayContent = () => {
@@ -145,11 +138,6 @@ export function ColumnMappingRow({
 
   const handleChange = (fieldKey: string | null, matchField?: string) => {
     onChange(fieldKey, matchField)
-  }
-
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    onChange(null)
   }
 
   return (
@@ -218,54 +206,19 @@ export function ColumnMappingRow({
             </Popover>
           </div>
 
-          {/* how the cells are READ, offered only where the field has a choice */}
-          {selectedField && showResolutionType && (
-            <ResolutionTypePopover
-              field={selectedField}
-              value={mapping.resolutionType}
-              decimalSeparator={mapping.numberDecimalSeparator}
-              disabled={isSaving}
-              onChange={onResolutionTypeChange}
-              onDecimalSeparatorChange={onDecimalSeparatorChange}
-            />
-          )}
-
-          {/* identity, offered whenever the mapped field carries a tier */}
-          {selectedField && showIdentifierToggle && (
-            <IdentifierToggle
-              field={selectedField}
-              isFlagged={isFlagged}
-              otherFlaggedCount={otherIdentifierCount}
-              disabled={isSaving}
-              onToggle={onToggleIdentifier}
-            />
-          )}
-
-          {/* policy */}
-          {selectedField && showPolicy && (
-            <ColumnPolicyPopover
-              field={selectedField}
-              targetResource={targetResource}
-              matchField={mapping.matchField}
-              mergeStrategy={mapping.mergeStrategy}
-              onNoMatch={mapping.onNoMatch}
-              linkMode={mapping.linkMode}
-              mode={mode}
-              disabled={isSaving}
-              onChange={onPolicyChange}
-            />
-          )}
-
-          {/* Clear button */}
-          {mapping.targetFieldKey && (
-            <Button
-              variant='outline'
-              size='icon-sm'
-              className='rounded-l-none bg-linear-0 shadow-none hover:inset-shadow-none hover:border-destructive/20 hover:from-destructive/5 hover:to-destructive/5 hover:text-destructive hover:shadow-xs'
-              onClick={handleClear}>
-              <Trash2 />
-            </Button>
-          )}
+          <MappingControls
+            mapping={mapping}
+            field={selectedField}
+            targetResource={targetResource}
+            mode={mode}
+            otherIdentifierCount={otherIdentifierCount}
+            isSaving={isSaving}
+            onClear={() => onChange(null)}
+            onToggleIdentifier={onToggleIdentifier}
+            onPolicyChange={onPolicyChange}
+            onResolutionTypeChange={onResolutionTypeChange}
+            onDecimalSeparatorChange={onDecimalSeparatorChange}
+          />
         </div>
 
         {/* Per-FILE uniqueness, beside the identity toggle that made it matter */}

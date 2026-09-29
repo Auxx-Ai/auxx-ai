@@ -19,6 +19,7 @@ import {
   EmptyTitle,
 } from '@auxx/ui/components/empty'
 import { toastError } from '@auxx/ui/components/toast'
+import { ToggleGroup, ToggleGroupItem } from '@auxx/ui/components/toggle-group'
 import { AlertTriangle, Loader2, Wand2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useResources } from '~/components/resources'
@@ -26,6 +27,7 @@ import { api } from '~/trpc/react'
 import { isMappingIncomplete } from '../column-mapping/column-mapping-row'
 import { ColumnMappingTable } from '../column-mapping/column-mapping-table'
 import type { ColumnPolicyPatch } from '../column-mapping/column-policy-popover'
+import { FieldMappingTable } from '../column-mapping/field-mapping-table'
 import { ImportModeSelector } from '../column-mapping/import-mode-selector'
 import { SampleValuesPanel } from '../column-mapping/sample-values-panel'
 import type { ColumnMappingUI } from '../types'
@@ -35,7 +37,13 @@ interface StepMapColumnsProps {
   onComplete: () => void
   /** Called when mapping counts change (for step card display) */
   onMappingChange?: (mappedCount: number, totalColumns: number) => void
+  /** Initial view: one row per target field, or one row per file column. */
+  defaultMappingView?: MappingView
 }
+
+type MappingView = 'fields' | 'columns'
+
+const listFormat = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
 
 /** Everything `saveColumnMapping` needs beyond the job + column index. */
 interface ColumnSavePayload {
@@ -66,7 +74,13 @@ interface ColumnSavePayload {
  * optimistically and leaving the other alone is how the mode selector and the
  * preview go stale while looking authoritative.
  */
-export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapColumnsProps) {
+export function StepMapColumns({
+  jobId,
+  onComplete,
+  onMappingChange,
+  defaultMappingView = 'columns',
+}: StepMapColumnsProps) {
+  const [view, setView] = useState<MappingView>(defaultMappingView)
   const [mappings, setMappings] = useState<ColumnMappingUI[]>([])
   const [selectedColumn, setSelectedColumn] = useState<number | null>(null)
   const [savingColumns, setSavingColumns] = useState<ReadonlySet<number>>(new Set())
@@ -573,7 +587,30 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
       ),
     [mappings, fields]
   )
-  const canContinue = mappedCount > 0 && incompleteMappings.length === 0
+
+  // Update-only skips this: the client cannot tell natural-key legs from plain required fields.
+  const missingRequired = useMemo(() => {
+    if (mode === 'update') return []
+    const mapped = new Set(mappings.filter((m) => m.isMapped).map((m) => m.targetFieldKey))
+    return (fields ?? []).filter((f) => f.importTier === 'required' && !mapped.has(f.key))
+  }, [mode, mappings, fields])
+
+  const canContinue =
+    mappedCount > 0 && incompleteMappings.length === 0 && missingRequired.length === 0
+
+  const tableProps = {
+    mappings,
+    availableFields: fields ?? [],
+    activeColumn,
+    mode,
+    savingColumns,
+    onSelectColumn: setSelectedColumn,
+    onChange: handleMappingChange,
+    onToggleIdentifier: handleToggleIdentifier,
+    onPolicyChange: handlePolicyChange,
+    onResolutionTypeChange: handleResolutionTypeChange,
+    onDecimalSeparatorChange: handleDecimalSeparatorChange,
+  }
 
   if (jobLoading || fieldsLoading) {
     return (
@@ -595,8 +632,17 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     <div className=''>
       {/* Header with mode selector and auto-map */}
       <div className='flex sm:items-center justify-between sticky top-0 px-4 border-b bg-muted/80 backdrop-blur py-3 sm:py-0 sm:h-12 z-10 flex-col sm:flex-row space-y-2 sm:space-y-0'>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
           <h3 className='font-medium'>Column Mappings</h3>
+          <ToggleGroup
+            type='single'
+            size='sm'
+            variant='outline'
+            value={view}
+            onValueChange={(next) => next && setView(next as MappingView)}>
+            <ToggleGroupItem value='fields'>Fields</ToggleGroupItem>
+            <ToggleGroupItem value='columns'>File columns</ToggleGroupItem>
+          </ToggleGroup>
           <p className='text-sm text-muted-foreground'>
             {mappedCount} of {mappings.length} columns mapped
           </p>
@@ -604,6 +650,13 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             <span className='flex items-center gap-1 text-sm text-amber-600 dark:text-amber-500'>
               <AlertTriangle className='size-3.5' />
               {incompleteMappings.length} need a match field
+            </span>
+          )}
+          {missingRequired.length > 0 && (
+            <span className='flex items-center gap-1 text-sm text-amber-600 dark:text-amber-500'>
+              <AlertTriangle className='size-3.5' />
+              {listFormat.format(missingRequired.map((f) => f.label))}{' '}
+              {missingRequired.length === 1 ? 'needs' : 'need'} a column
             </span>
           )}
         </div>
@@ -631,21 +684,12 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
 
       {/* Two-panel layout: mapping table + sample values preview */}
       <div className='flex gap-4 flex-col sm:flex-row'>
-        {/* Left: Mapping table (CSV Column | Maps To) */}
         <div className='flex-1 min-w-0 shrink-0'>
-          <ColumnMappingTable
-            mappings={mappings}
-            availableFields={fields ?? []}
-            activeColumn={activeColumn}
-            mode={mode}
-            savingColumns={savingColumns}
-            onSelectColumn={setSelectedColumn}
-            onChange={handleMappingChange}
-            onToggleIdentifier={handleToggleIdentifier}
-            onPolicyChange={handlePolicyChange}
-            onResolutionTypeChange={handleResolutionTypeChange}
-            onDecimalSeparatorChange={handleDecimalSeparatorChange}
-          />
+          {view === 'fields' ? (
+            <FieldMappingTable {...tableProps} />
+          ) : (
+            <ColumnMappingTable {...tableProps} />
+          )}
         </div>
 
         {/* Right: Sample values panel (shows on hover/click, defaults to first column) */}

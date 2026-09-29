@@ -54,6 +54,7 @@ export {
   sortByIdentifierPreference,
   TIER_2_IDENTIFIER_NOTE,
 } from './fields/identifier-eligibility'
+export { getImportTier, type ImportTier } from './fields/import-tier'
 // Picker labels. `currency:major` and `number:integer` are both offered on a
 // money field and both accept `1234`, meaning $12.34 and $1,234.00 — the hints
 // are what make that difference visible before the import runs.

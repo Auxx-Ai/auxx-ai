@@ -123,6 +123,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     // Optional: under the (part, supplier) natural key the vendor's own SKU is
     // metadata, not identity, and real price lists routinely omit the column.
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -145,6 +146,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     nullable: true,
     // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: { decimals: RATE_DECIMALS },
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -287,6 +289,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     systemAttribute: 'vendor_part_lead_time',
     systemSortOrder: 'a5',
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -308,6 +311,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     systemAttribute: 'vendor_part_min_order_qty',
     systemSortOrder: 'a6',
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -334,6 +338,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     systemAttribute: 'vendor_part_purchase_unit',
     systemSortOrder: 'a6a',
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,
@@ -356,6 +361,7 @@ export const VENDOR_PART_FIELDS = defineResourceFields({
     systemAttribute: 'vendor_part_purchase_ratio',
     systemSortOrder: 'a6b',
     nullable: true,
+    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,

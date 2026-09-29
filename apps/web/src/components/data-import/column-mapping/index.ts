@@ -7,10 +7,13 @@ export {
   ColumnPolicyPopover,
   hasColumnPolicy,
 } from './column-policy-popover'
+export { FieldMappingRow } from './field-mapping-row'
+export { FieldMappingTable } from './field-mapping-table'
 export { FieldPicker } from './field-picker'
 // Legacy: kept for backward compatibility, prefer FieldPicker
 export { FieldSelector } from './field-selector'
 export { canFlagAsIdentifier, IdentifierToggle, UniquenessSignal } from './identifier-toggle'
 export { ImportModeSelector } from './import-mode-selector'
+export { MappingControls } from './mapping-controls'
 export { hasResolutionChoice, ResolutionTypePopover } from './resolution-type-popover'
 export { SampleValuesPanel } from './sample-values-panel'

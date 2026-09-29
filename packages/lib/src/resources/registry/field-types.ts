@@ -323,6 +323,9 @@ export interface ResourceField {
     label: string
   }
 
+  /** Import guidance, registry-only: `recommended` lists the field by default in the field-first mapping view. */
+  importHint?: 'recommended'
+
   // ─────────────────────────────────────────────────────────────
   // CONVENIENCE PROPERTIES (for unified consumption, avoid transforms)
   // ─────────────────────────────────────────────────────────────
