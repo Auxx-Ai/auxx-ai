@@ -2,7 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { ResolutionConfig } from '../../../types/resolution'
-import { parseCurrencyMajorToMinor, resolveCurrencyMajor } from '../currency'
+import { withInferredDecimalSeparator } from '../../process-column-values'
+import { inferDecimalSeparator, parseCurrencyMajorToMinor, resolveCurrencyMajor } from '../currency'
 
 const usd: ResolutionConfig = { currencyCode: 'USD' }
 const jpy: ResolutionConfig = { currencyCode: 'JPY' }
@@ -232,5 +233,50 @@ describe('resolveCurrencyMajor: rate fields (decimals: RATE_DECIMALS), the per-t
 
   it('negatives round-trip through the fractional-minor-unit path', () => {
     expect(minor('-0.01594', rate)).toBe(-1.594)
+  })
+})
+
+describe('resolveCurrencyMajor — a leading zero is never grouping', () => {
+  it('reads 0.906 as a decimal, since no grouping starts with 0', () => {
+    expect(minor('0.906', { currencyCode: 'USD', decimals: 5 })).toBe(90.6)
+    expect(minor('.246', { currencyCode: 'USD', decimals: 5 })).toBe(24.6)
+  })
+})
+
+describe('inferDecimalSeparator', () => {
+  it('reads "." from a price list with mixed decimal counts', () => {
+    expect(inferDecimalSeparator(['2.69', '15.143', '10.45248932', '0.906'])).toBe('.')
+  })
+
+  it('reads "," from a European column', () => {
+    expect(inferDecimalSeparator(['2,69', '15,143', '1.234,50'])).toBe(',')
+    expect(inferDecimalSeparator(['1.234.567', '12'])).toBe(',')
+  })
+
+  it('stays silent when nothing settles it', () => {
+    expect(inferDecimalSeparator(['15.143', '1,234', '12', ''])).toBeNull()
+  })
+
+  it('stays silent when the column contradicts itself', () => {
+    expect(inferDecimalSeparator(['2.69', '2,69'])).toBeNull()
+  })
+})
+
+describe('withInferredDecimalSeparator', () => {
+  const rate: ResolutionConfig = { currencyCode: 'USD', decimals: 5 }
+  const column = ['2.69', '15.143', '10.45248932']
+
+  it('settles 15.143 from the rest of a money column', () => {
+    const config = withInferredDecimalSeparator('currency:major', column, rate)
+    expect(minor('15.143', config)).toBe(1514.3)
+  })
+
+  it('never overrides a separator the user chose', () => {
+    const chosen = { ...rate, numberDecimalSeparator: ',' }
+    expect(withInferredDecimalSeparator('currency:major', column, chosen)).toBe(chosen)
+  })
+
+  it('leaves non-money columns alone', () => {
+    expect(withInferredDecimalSeparator('number:decimal', column, usd)).toBe(usd)
   })
 })

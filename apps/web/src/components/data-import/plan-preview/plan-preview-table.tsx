@@ -18,6 +18,10 @@ interface PlanPreviewTableProps {
   isPlanning?: boolean
   /** Whether data is loading */
   isLoading?: boolean
+  /** More saved rows exist beyond those loaded */
+  hasMore?: boolean
+  isFetchingMore?: boolean
+  onLoadMore?: () => void
 }
 
 /**
@@ -29,6 +33,9 @@ export function PlanPreviewTable({
   mappings,
   isPlanning = false,
   isLoading = false,
+  hasMore = false,
+  isFetchingMore = false,
+  onLoadMore,
 }: PlanPreviewTableProps) {
   // Generate columns from mappings
   const columns = usePlanPreviewColumns({ mappings })
@@ -68,7 +75,14 @@ export function PlanPreviewTable({
         standalone
         emptyState={emptyState}
         getRowId={(row) => String(row.rowIndex)}
+        onScrollToBottom={hasMore ? onLoadMore : undefined}
       />
+      {isFetchingMore && (
+        <div className='flex items-center justify-center gap-2 border-t py-2 text-sm text-muted-foreground'>
+          <Loader2 className='size-3.5 animate-spin' />
+          Loading more rows...
+        </div>
+      )}
     </div>
   )
 }

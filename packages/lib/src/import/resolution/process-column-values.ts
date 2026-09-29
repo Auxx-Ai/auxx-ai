@@ -12,6 +12,7 @@ import { batchCacheResolutions } from './cache/batch-cache-resolutions'
 import { getCachedResolutions } from './cache/get-cached-resolutions'
 import type { ResolutionStatus } from './effective-status'
 import { resolveValue } from './resolve-value'
+import { inferDecimalSeparator } from './resolvers/currency'
 
 /**
  * Derive resolution status from resolved value type.
@@ -42,6 +43,17 @@ export interface ProcessColumnValuesOptions {
   onProgress?: (processed: number, total: number) => void
 }
 
+/** A money column with no chosen separator reads it off its own unambiguous cells. */
+export function withInferredDecimalSeparator(
+  resolutionType: ResolutionType,
+  values: string[],
+  config: ResolutionConfig
+): ResolutionConfig {
+  if (resolutionType !== 'currency:major' || config.numberDecimalSeparator) return config
+  const inferred = inferDecimalSeparator(values)
+  return inferred ? { ...config, numberDecimalSeparator: inferred } : config
+}
+
 /**
  * Process all values for a column, resolving each unique value.
  * Uses caching to avoid re-resolving duplicate values.
@@ -52,7 +64,8 @@ export interface ProcessColumnValuesOptions {
 export async function processColumnValues(
   options: ProcessColumnValuesOptions
 ): Promise<Map<string, ValueResolution>> {
-  const { db, jobPropertyId, values, resolutionType, config = {}, onProgress } = options
+  const { db, jobPropertyId, values, resolutionType, onProgress } = options
+  const config = withInferredDecimalSeparator(resolutionType, values, options.config ?? {})
 
   // Count unique values with occurrences
   const uniqueValues = countOccurrences(values)

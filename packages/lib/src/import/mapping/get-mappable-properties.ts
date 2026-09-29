@@ -3,6 +3,8 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, asc, eq, sql } from 'drizzle-orm'
+import { getColumnUniqueValues } from '../raw-data/get-column-values'
+import { inferDecimalSeparator } from '../resolution/resolvers/currency'
 import type { MappablePropertyWithSamples } from '../types/mapping'
 import { parseResolutionConfig } from './resolution-config'
 
@@ -84,6 +86,13 @@ export async function getMappablePropertiesWithSamples(
       const savedMapping = mappingByIndex.get(prop.columnIndex)
       const config = parseResolutionConfig(savedMapping?.resolutionConfig)
       const counts = valueCounts.get(prop.columnIndex)
+      const resolutionType = savedMapping?.resolutionType ?? 'text:value'
+      const detectedDecimalSeparator =
+        resolutionType === 'currency:major' && !config.numberDecimalSeparator
+          ? inferDecimalSeparator(
+              (await getColumnUniqueValues(db, jobId, prop.columnIndex)).map((v) => v.value)
+            )
+          : null
 
       return {
         id: prop.id,
@@ -93,7 +102,7 @@ export async function getMappablePropertiesWithSamples(
         targetType: savedMapping?.targetType ?? 'skip',
         targetFieldKey: savedMapping?.targetFieldKey ?? null,
         customFieldId: savedMapping?.customFieldId ?? null,
-        resolutionType: savedMapping?.resolutionType ?? 'text:value',
+        resolutionType,
         matchField: config.relationConfig?.matchField ?? null,
         identityRole: config.identityRole ?? null,
         mergeStrategy: config.mergeStrategy ?? null,
@@ -103,6 +112,7 @@ export async function getMappablePropertiesWithSamples(
         onNoMatch: config.relationConfig?.onNoMatch ?? null,
         linkMode: config.relationConfig?.linkMode ?? null,
         numberDecimalSeparator: config.numberDecimalSeparator ?? null,
+        detectedDecimalSeparator,
         distinctValueCount: counts?.distinct ?? 0,
         totalValueCount: counts?.total ?? 0,
       }

@@ -1,6 +1,7 @@
 // packages/lib/src/import/planning/analyze-row.ts
 
 import { createScopedLogger } from '@auxx/logger'
+import { isValuePresent } from '../../resources/crud/create-defaults'
 import { resolutionKey } from '../hashing/resolution-key'
 import type { ImportMappingProperty, ImportStrategyMode } from '../types/mapping'
 import type { RowAnalysis, StrategyType } from '../types/plan'
@@ -35,6 +36,8 @@ export interface AnalyzeRowContext {
    * unique constraint lands) has its identifier STRIPPED and imports anyway.
    */
   seenIdentifiers?: Map<string, number>
+  /** Fields a create must carry, as `assertRequiredFieldsPresent` enforces at write time. */
+  requiredFields?: Array<{ key: string; label: string }>
 }
 
 /** Values of one identifier field on one row (a split cell yields several). */
@@ -231,6 +234,13 @@ export async function analyzeRow(
         })
         errors.push(`Identifier lookup failed: ${reason}`)
       }
+    }
+  }
+
+  if (strategy === 'create' && ctx.requiredFields) {
+    const missing = ctx.requiredFields.filter((f) => !isValuePresent(resolvedData[f.key]))
+    if (missing.length > 0) {
+      errors.push(`Missing required fields: ${missing.map((f) => f.label).join(', ')}`)
     }
   }
 

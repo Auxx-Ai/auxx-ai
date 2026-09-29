@@ -2,10 +2,7 @@
 
 import type { StrategyType } from '@auxx/lib/import/client'
 
-/**
- * Row data for plan preview table.
- * Used both for SSE streaming during planning and DB hydration after refresh.
- */
+/** A saved plan row, as the preview table lists it. */
 export interface PlanPreviewRow {
   /** Row index from original CSV (0-based) */
   rowIndex: number
@@ -15,33 +12,16 @@ export interface PlanPreviewRow {
   existingRecordId?: string
   /** Resolved field values for display */
   fields: Record<string, unknown>
-  /** Error messages (for skip strategy) - from SSE */
+  /** Error messages (for skip strategy) */
   errors?: string[]
-  /** Single error message - from DB query */
+  /** Single error message, as stored on the plan row */
   errorMessage?: string
   /** Non-fatal warnings — the row still imports */
   warnings?: string[]
-  /** Single warning message - from DB query */
+  /** Single warning message, as stored on the plan row */
   warningMessage?: string
   /** Row execution status */
   status?: 'planned' | 'executing' | 'completed' | 'failed'
-}
-
-/**
- * Strategy counts for footer display.
- *
- * Keyed by the full {@link StrategyType} union so a new outcome cannot be
- * counted into nothing. `unmatched` is a separate bucket from `skip`, a row
- * with no error that update-only mode had nothing to update.
- */
-export type StrategyCounts = Record<StrategyType, number>
-
-/** Every bucket at zero, the reduce seed, and the shape of "nothing planned". */
-export const EMPTY_STRATEGY_COUNTS: StrategyCounts = {
-  create: 0,
-  update: 0,
-  skip: 0,
-  unmatched: 0,
 }
 
 /**

@@ -4,7 +4,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { isOptionResolutionType } from '@auxx/lib/import/client'
-import { getFieldOutputKey } from '@auxx/lib/resources/client'
+import { getFieldOutputKey, isRecordId } from '@auxx/lib/resources/client'
 import { Input } from '@auxx/ui/components/input'
 import { minorToMajorString, parseMajorToMinor } from '@auxx/utils/currency'
 import { useEffect, useMemo, useState } from 'react'
@@ -63,6 +63,7 @@ export function EditingInput({
 
   const resolutionType = fieldConfig?.resolutionType ?? 'text:value'
   const isOptionColumn = isOptionResolutionType(resolutionType)
+  const isRelationColumn = resolutionType.startsWith('relation:')
 
   // The field's REAL type (SINGLE_SELECT vs MULTI_SELECT vs TAGS — they differ
   // on multi/canAdd). Resolved from the resource store by output key; the
@@ -70,12 +71,12 @@ export function EditingInput({
   // field. `useFieldByKey` is deliberately not used — its custom-field arm
   // expects the CustomField UUID, not the output key.
   const { fields } = useResourceFields(
-    isOptionColumn ? (fieldConfig?.entityDefinitionId ?? null) : null
+    isOptionColumn || isRelationColumn ? (fieldConfig?.entityDefinitionId ?? null) : null
   )
   const storeField = useMemo(() => {
-    if (!isOptionColumn || !fieldConfig) return undefined
+    if ((!isOptionColumn && !isRelationColumn) || !fieldConfig) return undefined
     return fields.find((f) => getFieldOutputKey(f) === fieldConfig.key)
-  }, [fields, fieldConfig, isOptionColumn])
+  }, [fields, fieldConfig, isOptionColumn, isRelationColumn])
   const optionFieldType =
     storeField?.fieldType ??
     (resolutionType.startsWith('multiselect:') ? FieldType.MULTI_SELECT : FieldType.SINGLE_SELECT)
@@ -168,6 +169,39 @@ export function EditingInput({
     onSave(keys.map((value) => ({ type: 'value' as const, value })))
   }
 
+  // ── Relation editor ────────────────────────────────────────────────
+  // A value is a record only once planning has matched it; before that the
+  // resolver holds the cell it will match on, which is shown as the hint.
+  const matchedIds = useMemo(
+    () =>
+      isRelationColumn && resolvedValue
+        ? resolvedValue.split(',').filter((id) => isRecordId(id))
+        : [],
+    [isRelationColumn, resolvedValue]
+  )
+  const pickedIds = useMemo(() => {
+    if (isOverridden && !isSkipped && overrideValues) {
+      return overrideValues.map((ov) => ov.id ?? ov.value).filter((id) => isRecordId(id))
+    }
+    return matchedIds
+  }, [isOverridden, isSkipped, overrideValues, matchedIds])
+
+  const handleRelationChange = (next: unknown) => {
+    const ids = (Array.isArray(next) ? next : next ? [next] : []).filter(
+      (id): id is string => typeof id === 'string' && isRecordId(id)
+    )
+    if (ids.length === 0) {
+      if (pickedIds.length === 0 && !isOverridden) return
+      onSave([{ type: 'skip', value: '' }])
+      return
+    }
+    if (sameKeys(ids, matchedIds)) {
+      if (isOverridden) onSave(null)
+      return
+    }
+    onSave(ids.map((id) => ({ type: 'value' as const, value: id, id })))
+  }
+
   // ── Money editor ───────────────────────────────────────────────────
   // The input works in minor units (what the resolver produced). What is
   // SAVED is text the column's own resolver reads back: a major-unit string
@@ -224,6 +258,21 @@ export function EditingInput({
           // hint for what to type.
           placeholder={value === undefined ? rawValue : undefined}
           triggerProps={{ className: 'h-7' }}
+        />
+      </div>
+    )
+  }
+
+  if (isRelationColumn && storeField?.relationship) {
+    return (
+      <div className='min-w-0 flex-1' title={rawValue}>
+        <FieldInputAdapter
+          fieldType={FieldType.RELATIONSHIP}
+          fieldOptions={{ relationship: storeField.relationship }}
+          value={pickedIds}
+          onChange={handleRelationChange}
+          placeholder={pickedIds.length === 0 ? resolvedValue || rawValue : undefined}
+          triggerProps={{ className: 'h-7', showClear: false }}
         />
       </div>
     )

@@ -789,8 +789,10 @@ export const dataImportRouter = createTRPCRouter({
         // `unmatched` is "update-only mode found no record", a filter that
         // cannot name the second hides a whole class of unimported rows.
         strategy: z.enum(['create', 'update', 'skip', 'unmatched']).optional(),
-        limit: z.number().default(50),
-        offset: z.number().default(0),
+        limit: z.number().int().min(1).max(500).default(50),
+        offset: z.number().int().min(0).default(0),
+        /** `useInfiniteQuery`'s page param; an offset, and wins over `offset`. */
+        cursor: z.number().int().min(0).nullish(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -798,12 +800,14 @@ export const dataImportRouter = createTRPCRouter({
 
       await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
-      return getPlanPreviewRows(ctx.db, {
+      const offset = input.cursor ?? input.offset
+      const result = await getPlanPreviewRows(ctx.db, {
         jobId: input.jobId,
         strategy: input.strategy,
         limit: input.limit,
-        offset: input.offset,
+        offset,
       })
+      return { ...result, nextCursor: result.hasMore ? offset + result.rows.length : null }
     }),
 
   /**

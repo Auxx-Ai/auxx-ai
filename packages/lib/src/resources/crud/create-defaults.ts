@@ -12,7 +12,7 @@ type CustomFieldEntity = typeof schema.CustomField.$inferSelect
  * True if a value is considered present for required-field validation.
  * Null, undefined, empty string, and empty arrays count as missing.
  */
-function isValuePresent(value: unknown): boolean {
+export function isValuePresent(value: unknown): boolean {
   if (value === null || value === undefined) return false
   if (typeof value === 'string' && value.trim() === '') return false
   if (Array.isArray(value) && value.length === 0) return false

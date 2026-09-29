@@ -225,6 +225,15 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     mode,
     findExistingRecord: batchedLookup?.find ?? findExistingRecord,
     seenIdentifiers: new Map<string, number>(),
+    // Defaults are applied before the write-time check, so a field with one is never missing.
+    requiredFields: resource?.fields
+      .filter(
+        (f) =>
+          f.capabilities.required &&
+          f.capabilities.creatable &&
+          (f.defaultValue === undefined || f.defaultValue === null || f.defaultValue === '')
+      )
+      .map((f) => ({ key: getFieldOutputKey(f), label: f.label })),
   }
 
   // Track strategy counts

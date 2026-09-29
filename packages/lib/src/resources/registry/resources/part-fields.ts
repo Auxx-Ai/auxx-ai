@@ -882,7 +882,6 @@ export const PART_FIELDS = defineResourceFields({
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
-    importHint: 'recommended',
     capabilities: {
       filterable: true,
       sortable: true,

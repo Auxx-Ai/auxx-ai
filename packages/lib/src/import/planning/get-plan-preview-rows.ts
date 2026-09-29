@@ -2,9 +2,10 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm'
+import { isRecordId } from '../../resources/resource-id'
 import { resolutionKey } from '../hashing/resolution-key'
-import { getRawDataAsMap } from '../raw-data'
+import { getBatchRowData } from '../raw-data'
 import { getAllJobResolutions } from '../resolution'
 import type { StrategyType } from '../types/plan'
 
@@ -17,7 +18,7 @@ export interface PlanPreviewRow {
   errorMessage?: string
   /** Non-fatal issues — the row still imports */
   warningMessage?: string
-  /** Resolved field values for display */
+  /** Resolved field values for display; a matched relation is its RecordId */
   fields: Record<string, unknown>
 }
 
@@ -38,7 +39,7 @@ export interface PlanPreviewResult {
 
 /**
  * Get paginated preview rows for an import plan.
- * Loads raw data and applies resolutions to get field values.
+ * Safe to call while planning runs: rows are inserted in batches, so this pages over what has landed.
  */
 export async function getPlanPreviewRows(
   db: Database,
@@ -46,7 +47,6 @@ export async function getPlanPreviewRows(
 ): Promise<PlanPreviewResult> {
   const { jobId, strategy, limit, offset } = options
 
-  // 1. Get the plan for this job
   const plan = await db.query.ImportPlan.findFirst({
     where: eq(schema.ImportPlan.importJobId, jobId),
     orderBy: desc(schema.ImportPlan.createdAt),
@@ -56,7 +56,6 @@ export async function getPlanPreviewRows(
     return { rows: [], total: 0, hasMore: false }
   }
 
-  // 2. Get strategies (filtered if strategy specified)
   const strategies = await db.query.ImportPlanStrategy.findMany({
     where: strategy
       ? and(
@@ -72,46 +71,39 @@ export async function getPlanPreviewRows(
 
   const strategyIds = strategies.map((s) => s.id)
   const strategyById = new Map(strategies.map((s) => [s.id, s.strategy as StrategyType]))
+  const inPlan = inArray(schema.ImportPlanRow.importPlanStrategyId, strategyIds)
 
-  // 3. Get ImportPlanRow records with pagination (across all filtered strategies)
-  const allPlanRows = await db.query.ImportPlanRow.findMany({
-    where: (row, { inArray }) => inArray(row.importPlanStrategyId, strategyIds),
-    orderBy: (row, { asc }) => [asc(row.rowIndex)],
+  const [countRow] = await db.select({ total: count() }).from(schema.ImportPlanRow).where(inPlan)
+  const total = countRow?.total ?? 0
+
+  const pageRows = await db.query.ImportPlanRow.findMany({
+    where: inPlan,
+    orderBy: asc(schema.ImportPlanRow.rowIndex),
+    limit,
+    offset,
   })
 
-  const total = allPlanRows.length
-  const paginatedRows = allPlanRows.slice(offset, offset + limit)
-
-  if (paginatedRows.length === 0) {
+  if (pageRows.length === 0) {
     return { rows: [], total, hasMore: false }
   }
 
-  // 4. Load raw data for the row indices
-  const rawData = await getRawDataAsMap(db, jobId)
-
-  // 5. Load resolutions for applying to raw values
+  const rawData = await getBatchRowData(
+    db,
+    jobId,
+    pageRows.map((r) => r.rowIndex)
+  )
   const resolutions = await getAllJobResolutions(db, jobId)
 
-  // 6. Get mappings for field keys
   const job = await db.query.ImportJob.findFirst({
     where: eq(schema.ImportJob.id, jobId),
-    with: {
-      importMapping: {
-        with: {
-          properties: true,
-        },
-      },
-    },
+    with: { importMapping: { with: { properties: true } } },
   })
-
   const mappings = job?.importMapping?.properties ?? []
 
-  // 7. Build preview rows with resolved fields
-  const previewRows: PlanPreviewRow[] = paginatedRows.map((planRow) => {
+  const previewRows: PlanPreviewRow[] = pageRows.map((planRow) => {
     const rowData = rawData.get(planRow.rowIndex) ?? {}
     const fields: Record<string, unknown> = {}
 
-    // Apply resolutions to get field values
     for (const mapping of mappings) {
       if (!mapping.targetFieldKey || mapping.targetType === 'skip') continue
 
@@ -120,13 +112,16 @@ export async function getPlanPreviewRows(
 
       // Keyed exactly as `analyzeRow` and `buildRecordData` read it.
       const resolution = resolutions.get(resolutionKey(mapping.id, cellValue))
+      const value = resolution?.resolvedValues?.[0]?.value
 
-      // A relation column resolves to a record id (or, before planning, a
-      // pending-lookup envelope). Neither means anything to a reviewer; the
-      // cell it was matched on does, so it is what the preview shows.
+      // A matched relation shows as the record it matched; anything else (a
+      // pending-lookup envelope, no match) falls back to the cell it was read from.
       const isRelation = mapping.resolutionType?.startsWith('relation:') ?? false
-      const first = resolution?.resolvedValues?.[0]
-      fields[mapping.targetFieldKey] = isRelation ? cellValue : (first?.value ?? cellValue)
+      fields[mapping.targetFieldKey] = isRelation
+        ? isRecordId(value)
+          ? value
+          : cellValue
+        : (value ?? cellValue)
     }
 
     return {
@@ -143,6 +138,6 @@ export async function getPlanPreviewRows(
   return {
     rows: previewRows,
     total,
-    hasMore: offset + limit < total,
+    hasMore: offset + pageRows.length < total,
   }
 }

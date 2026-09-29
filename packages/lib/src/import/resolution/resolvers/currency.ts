@@ -69,6 +69,35 @@ function hasValidGrouping(intPart: string, groupSep: string): boolean {
 }
 
 /**
+ * The decimal separator a column's unambiguous cells agree on, or null when they
+ * say nothing or contradict each other. Settles cells like `15.143` from the rest
+ * of the column; `0.906` counts as decimal since grouping never starts with `0`.
+ */
+export function inferDecimalSeparator(values: Iterable<string>): '.' | ',' | null {
+  let point = false
+  let comma = false
+  for (const raw of values) {
+    const text = raw.replace(/[^0-9.,]/g, '')
+    const dots = (text.match(/\./g) ?? []).length
+    const commas = (text.match(/,/g) ?? []).length
+    if (dots > 0 && commas > 0) {
+      if (text.lastIndexOf('.') > text.lastIndexOf(',')) point = true
+      else comma = true
+    } else if (dots > 1) comma = true
+    else if (commas > 1) point = true
+    else if (dots === 1 || commas === 1) {
+      const sep = dots === 1 ? '.' : ','
+      const at = text.indexOf(sep)
+      const decimal = text.length - at - 1 !== 3 || /^0*$/.test(text.slice(0, at))
+      if (decimal && sep === '.') point = true
+      if (decimal && sep === ',') comma = true
+    }
+    if (point && comma) return null
+  }
+  return point ? '.' : comma ? ',' : null
+}
+
+/**
  * Read a human-written MAJOR-unit money string as integer MINOR units.
  *
  * The exponent comes from `currencyCode` via `minorUnitExponent` — never a
@@ -96,7 +125,7 @@ function hasValidGrouping(intPart: string, groupSep: string): boolean {
  * ### Rejected (as a row error, never a guess)
  * - A currency code in the cell that disagrees with the field's
  *   (`12.34 EUR` into a USD field) — importing euros as dollars is silent.
- * - `1.234` — a lone DOT with three digits behind it. `.` is the en-US decimal
+ * - `1.234` — a lone DOT with three digits behind it (not `0.234`, which cannot be grouping). `.` is the en-US decimal
  *   point, so that is plausibly a three-decimal unit cost, and it is equally
  *   plausibly `1,234`. The readings differ by 1000×, so it refuses. Same for
  *   `1,234` under a three-decimal currency, where both readings are valid.
@@ -208,7 +237,7 @@ export function parseCurrencyMajorToMinor(
       // `1.234.567` — repeated separators can only be grouping.
       decSep = null
       groupSep = sep
-    } else if (rightDigits === 3) {
+    } else if (rightDigits === 3 && !/^0*$/.test(text.slice(0, text.lastIndexOf(sep)))) {
       // Three digits after a lone separator is the one genuinely undecidable
       // shape, and the two readings differ by 1000x. The separator settles it
       // only for a comma under a currency with fewer than three decimals:

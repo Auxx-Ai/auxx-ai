@@ -2,9 +2,13 @@
 
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { api } from '~/trpc/react'
-import { EMPTY_STRATEGY_COUNTS, type PlanPreviewRow, type StrategyCounts } from './types'
+import type { PlanPreviewRow } from './types'
+
+const PAGE_SIZE = 200
+/** How often the saved plan is re-read while planning is still inserting rows. */
+const PLANNING_REFRESH_MS = 1500
 
 interface UsePlanPreviewDataOptions {
   jobId: string
@@ -13,78 +17,62 @@ interface UsePlanPreviewDataOptions {
 }
 
 interface UsePlanPreviewDataResult {
-  /** Combined rows from SSE and/or query */
   rows: PlanPreviewRow[]
-  /** Total row count (from SSE or query) */
+  /** Rows saved to the plan so far */
   total: number
-  /** Whether data is loading */
   isLoading: boolean
-  /** Whether planning is in progress (receiving SSE) */
+  /** Planning is still running, so `rows` and `total` are partial */
   isPlanning: boolean
-  /** Add a row from SSE event */
-  addRow: (row: PlanPreviewRow) => void
-  /** Clear SSE rows (when planning restarts) */
-  clearRows: () => void
-  /** Strategy counts */
-  strategyCounts: StrategyCounts
+  hasMore: boolean
+  isFetchingMore: boolean
+  loadMore: () => void
 }
 
-/**
- * Hook to manage plan preview data from both SSE (real-time) and API (hydration).
- *
- * During planning: Accumulates rows from SSE events
- * After refresh: Loads rows from getPlanPreview query
- */
+/** The saved plan's rows, paged; re-read while planning so rows appear as each batch lands. */
 export function usePlanPreviewData(options: UsePlanPreviewDataOptions): UsePlanPreviewDataResult {
   const { jobId, jobStatus } = options
-
-  // SSE-accumulated rows
-  const [sseRows, setSseRows] = useState<PlanPreviewRow[]>([])
   const isPlanning = jobStatus === 'planning'
+  const enabled = isPlanning || jobStatus === 'ready'
 
-  // Query for hydration (only when planning complete and no SSE rows)
-  const shouldFetchFromDb = jobStatus === 'ready' && sseRows.length === 0
-  const { data: dbData, isLoading: isLoadingDb } = api.dataImport.getPlanPreview.useQuery(
-    { jobId, limit: 500 },
-    { enabled: shouldFetchFromDb }
+  const query = api.dataImport.getPlanPreview.useInfiniteQuery(
+    { jobId, limit: PAGE_SIZE },
+    {
+      enabled,
+      getNextPageParam: (last) => last.nextCursor,
+      refetchInterval: isPlanning ? PLANNING_REFRESH_MS : false,
+    }
   )
 
-  // Add row from SSE
-  const addRow = useCallback((row: PlanPreviewRow) => {
-    setSseRows((prev) => [...prev, row])
-  }, [])
+  // One last read once planning ends, so the final batch is not left to the next interval.
+  const { refetch } = query
+  useEffect(() => {
+    if (jobStatus === 'ready') void refetch()
+  }, [jobStatus, refetch])
 
-  // Clear rows (when planning restarts)
-  const clearRows = useCallback(() => {
-    setSseRows([])
-  }, [])
-
-  // Determine which rows to use, normalizing DB rows to frontend format
-  const dbRows: PlanPreviewRow[] =
-    dbData?.rows.map((row) => ({
-      ...row,
-      errors: row.errorMessage ? [row.errorMessage] : [],
-      warnings: row.warningMessage ? [row.warningMessage] : [],
-    })) ?? []
-  const rows = sseRows.length > 0 ? sseRows : dbRows
-  const total = sseRows.length > 0 ? sseRows.length : (dbData?.total ?? 0)
-
-  // Calculate strategy counts
-  const strategyCounts = rows.reduce<StrategyCounts>(
-    (acc, row) => {
-      acc[row.strategy]++
-      return acc
-    },
-    { ...EMPTY_STRATEGY_COUNTS }
+  const rows = useMemo<PlanPreviewRow[]>(
+    () =>
+      query.data?.pages.flatMap((page) =>
+        page.rows.map((row) => ({
+          ...row,
+          errors: row.errorMessage ? [row.errorMessage] : [],
+          warnings: row.warningMessage ? [row.warningMessage] : [],
+        }))
+      ) ?? [],
+    [query.data]
   )
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return {
     rows,
-    total,
-    isLoading: shouldFetchFromDb && isLoadingDb,
+    total: query.data?.pages[0]?.total ?? 0,
+    isLoading: enabled && query.isLoading,
     isPlanning,
-    addRow,
-    clearRows,
-    strategyCounts,
+    hasMore: !!hasNextPage,
+    isFetchingMore: isFetchingNextPage,
+    loadMore,
   }
 }

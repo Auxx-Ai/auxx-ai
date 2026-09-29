@@ -3,10 +3,12 @@
 'use client'
 
 import type { FieldType } from '@auxx/database/types'
+import { isRecordId } from '@auxx/lib/resources/client'
 import { Hash } from 'lucide-react'
 import { useMemo } from 'react'
 import type { ExtendedColumnDef } from '~/components/dynamic-table'
 import { FormattedCell } from '~/components/dynamic-table'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { StrategyCell } from './strategy-cell'
 import type { PlanPreviewRow, PreviewColumnMapping } from './types'
 
@@ -85,6 +87,7 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
       // them; everything else (an ISO date string, a relation's pending
       // lookup, an option key) stays text, which is what it is at this point.
       const previewType = renderableType(mapping.fieldType)
+      const isRelation = mapping.fieldType?.toUpperCase() === 'RELATIONSHIP'
       const options =
         previewType === 'CURRENCY'
           ? { currencyCode: mapping.currencyCode, decimals: mapping.decimals }
@@ -105,6 +108,14 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
           const value = getValue()
           if (value === null || value === undefined) {
             return <div className='px-3 text-muted-foreground text-sm'>—</div>
+          }
+          // A matched relation arrives as its RecordId; an unmatched one as the cell text.
+          if (isRelation && isRecordId(value)) {
+            return (
+              <div className='px-3 min-w-0'>
+                <RecordBadge recordId={value} size='sm' />
+              </div>
+            )
           }
           return (
             <FormattedCell

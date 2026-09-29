@@ -14,6 +14,7 @@ import { useImportSSE } from '../hooks/use-import-sse'
 import type { PreviewColumnMapping } from '../plan-preview'
 import { ImportPlanSummary, PlanPreviewTable, usePlanPreviewData } from '../plan-preview'
 import { ImportCompleteCard } from '../plan-preview/import-complete-card'
+import { PlanningBanner } from '../plan-preview/planning-banner'
 import { ExecutionProgress } from '../progress/execution-progress'
 
 interface StepConfirmImportProps {
@@ -80,10 +81,12 @@ export function StepConfirmImport({
   // Preview data hook (SSE + query)
   const {
     rows: previewRows,
+    total: previewTotal,
     isLoading: isLoadingPreview,
     isPlanning,
-    addRow,
-    clearRows,
+    hasMore,
+    isFetchingMore,
+    loadMore,
   } = usePlanPreviewData({
     jobId,
     jobStatus: job?.status,
@@ -116,7 +119,6 @@ export function StepConfirmImport({
     if (planRequestedForJob.current === jobId) return
     planRequestedForJob.current = jobId
 
-    clearRows() // Clear any stale SSE rows
     generatePlan.mutateAsync({ jobId }).then(() => {
       utils.dataImport.getPlan.invalidate({ jobId })
       utils.dataImport.getJob.invalidate({ jobId })
@@ -126,7 +128,6 @@ export function StepConfirmImport({
     job?.status,
     jobId,
     generatePlan.mutateAsync,
-    clearRows,
     utils.dataImport.getPlan,
     utils.dataImport.getJob,
   ])
@@ -140,9 +141,6 @@ export function StepConfirmImport({
   const { progress: sseProgress, isConnected } = useImportSSE({
     jobId,
     enabled: job?.status === 'planning' || isExecuting,
-    onPlanningRow: (row) => {
-      addRow(row)
-    },
     onPlanningComplete: () => {
       utils.dataImport.getPlan.invalidate({ jobId })
       utils.dataImport.getJob.invalidate({ jobId })
@@ -252,6 +250,14 @@ export function StepConfirmImport({
       {/* Plan Summary - fixed at top */}
       {plan && <ImportPlanSummary plan={plan} jobId={jobId} />}
 
+      {isPlanning && (
+        <PlanningBanner
+          processed={sseProgress.rowsProcessed ?? 0}
+          total={sseProgress.totalRows ?? 0}
+          shown={previewTotal}
+        />
+      )}
+
       {/* Preview Table - scrolls independently with sticky header */}
       <div className='flex-1 min-h-0 min-w-0'>
         <PlanPreviewTable
@@ -259,6 +265,9 @@ export function StepConfirmImport({
           mappings={mappings}
           isPlanning={isPlanning}
           isLoading={isLoadingPreview}
+          hasMore={hasMore}
+          isFetchingMore={isFetchingMore}
+          onLoadMore={loadMore}
         />
       </div>
 

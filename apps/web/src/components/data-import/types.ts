@@ -8,7 +8,6 @@ import type {
   RelationLinkMode,
   RelationOnNoMatch,
   ResolutionStatus,
-  StrategyType,
 } from '@auxx/lib/import/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import type { ReactNode } from 'react'
@@ -75,6 +74,8 @@ export interface ColumnMappingUI {
   linkMode: RelationLinkMode | null
   /** How this column's cells mark decimals, `.` or `,`; null means per-cell detection. */
   numberDecimalSeparator: string | null
+  /** What detection settles on for a money column with no separator chosen. */
+  detectedDecimalSeparator?: '.' | ',' | null
   /**
    * Distinct raw values in THIS column of THIS file. `distinctValueCount <
    * totalValueCount` on a identifier column is the failure field-level `isUnique`
@@ -245,20 +246,4 @@ export interface MappedColumn {
   uniqueCount: number
   errorCount: number
   warningCount?: number
-}
-
-/** Plan preview row (from SSE during planning) */
-export interface PlanPreviewRow {
-  /** Row index from original CSV (0-based) */
-  rowIndex: number
-  /** Determined strategy for this row, four outcomes, not three. */
-  strategy: StrategyType
-  /** ID of existing record (for update strategy) */
-  existingRecordId?: string
-  /** Resolved field values for display */
-  fields: Record<string, unknown>
-  /** Error messages (for skip strategy) */
-  errors: string[]
-  /** Non-fatal warnings — the row still imports */
-  warnings?: string[]
 }

@@ -592,3 +592,63 @@ describe('analyzeRow, relation identifier legs use the resolved id', () => {
     expect(seen).toEqual([{ part_sku: 'M400L' }])
   })
 })
+
+describe('analyzeRow — required fields', () => {
+  const supplier = mapping({
+    id: 'prop-supplier',
+    sourceColumnName: 'Vendor Name',
+    targetFieldKey: 'vendor_part_contact',
+    resolutionType: 'relation:create',
+  })
+  const requiredFields = [{ key: 'vendor_part_contact', label: 'Supplier' }]
+  const blank = new Map([
+    [resolutionKey('prop-supplier', ''), resolution('', { type: 'value', value: null })],
+  ])
+
+  it('skips a create whose required field is blank, as the write would refuse it', async () => {
+    const result = await analyzeRow(
+      0,
+      { 0: '' },
+      { mappings: [supplier], resolutions: blank, requiredFields, mode: 'create' }
+    )
+    expect(result.strategy).toBe('skip')
+    expect(result.errors).toEqual(['Missing required fields: Supplier'])
+  })
+
+  it('creates when the required field carries a value', async () => {
+    const resolutions = new Map([
+      [
+        resolutionKey('prop-supplier', 'Acme'),
+        resolution('Acme', { type: 'value', value: 'company:abc' }),
+      ],
+    ])
+    const result = await analyzeRow(
+      0,
+      { 0: 'Acme' },
+      { mappings: [supplier], resolutions, requiredFields, mode: 'create' }
+    )
+    expect(result.strategy).toBe('create')
+  })
+
+  it('does not require the field on an update', async () => {
+    const result = await analyzeRow(
+      0,
+      { 0: 'a@x.com', 1: '' },
+      {
+        mappings: [mapping({}), { ...supplier, sourceColumnIndex: 1 }],
+        resolutions: new Map([
+          [
+            resolutionKey('prop-1', 'a@x.com'),
+            resolution('a@x.com', { type: 'value', value: 'a@x.com' }),
+          ],
+          [resolutionKey('prop-supplier', ''), resolution('', { type: 'value', value: null })],
+        ]),
+        identifierFieldKeys: ['primary_email'],
+        findExistingRecord: byEmail(() => 'record-1'),
+        requiredFields,
+        mode: 'create-or-update',
+      }
+    )
+    expect(result.strategy).toBe('update')
+  })
+})
