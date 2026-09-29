@@ -28,6 +28,8 @@ interface ResolutionTypePopoverProps {
   value: string
   /** The column's stored decimal separator, when one was chosen. */
   decimalSeparator: string | null
+  /** What detection settles on for this column, shown on the Detect option. */
+  detectedDecimalSeparator?: '.' | ',' | null
   /** Disables the control while a save is in flight. */
   disabled?: boolean
   onChange: (next: ResolutionType) => void
@@ -78,10 +80,10 @@ const SEPARATOR_OPTIONS: Array<{
 }> = [
   {
     value: 'auto',
-    label: 'Detect per cell',
+    label: 'Detect',
     description:
-      'Point or comma, read from each cell. A lone separator with three digits after it ' +
-      '(1.234) is refused as ambiguous.',
+      'Point or comma, worked out from the column. A value like 1.234 is refused as ' +
+      'ambiguous only when the rest of the column does not settle it.',
   },
   { value: '.', label: 'Point', description: '1,234.56 → 1234.56' },
   { value: ',', label: 'Comma', description: '1.234,56 → 1234.56' },
@@ -114,6 +116,7 @@ export function ResolutionTypePopover({
   field,
   value,
   decimalSeparator,
+  detectedDecimalSeparator,
   disabled,
   onChange,
   onDecimalSeparatorChange,
@@ -135,10 +138,14 @@ export function ResolutionTypePopover({
       : 'auto'
   const isCustomised = active !== suggested || separator !== 'auto'
   const activeLabel = getResolutionTypeLabel(active)
-  const separatorLabel = SEPARATOR_OPTIONS.find((o) => o.value === separator)?.label ?? ''
+  const detectedLabel = SEPARATOR_OPTIONS.find((o) => o.value === detectedDecimalSeparator)?.label
+  const separatorLabel =
+    separator === 'auto'
+      ? detectedLabel && `${detectedLabel} (detected)`
+      : SEPARATOR_OPTIONS.find((o) => o.value === separator)?.label
   const tooltip =
     `Read as: ${activeLabel.label}. ${activeLabel.hint}` +
-    (showSeparator && separator !== 'auto' ? ` Decimal separator: ${separatorLabel}.` : '')
+    (showSeparator && separatorLabel ? ` Decimal separator: ${separatorLabel}.` : '')
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -209,7 +216,13 @@ export function ResolutionTypePopover({
                     id={`separator-${field.key}-${option.value}`}
                     value={option.value}
                     label={option.label}
-                    sublabel={option.value === 'auto' ? 'default' : undefined}
+                    sublabel={
+                      option.value !== 'auto'
+                        ? undefined
+                        : detectedLabel
+                          ? `detected: ${detectedLabel.toLowerCase()}`
+                          : 'default'
+                    }
                     description={option.description}
                   />
                 ))}

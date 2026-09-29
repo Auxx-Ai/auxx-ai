@@ -2,42 +2,60 @@
 
 'use client'
 
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { AlertTriangle, Info } from 'lucide-react'
 import { api } from '~/trpc/react'
+import { SummaryTreeRow } from './summary-tree-row'
+
+const PREVIEW_LIMIT = 5
+
+interface RowIssuesProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  issues: Array<{ rowIndex: number; message: string }>
+}
+
+/** A summary row whose children are the sampled issues, each with its row number. */
+function RowIssues({ icon, title, description, issues }: RowIssuesProps) {
+  return (
+    <SummaryTreeRow icon={icon} title={title} description={description}>
+      {issues.length > 0 &&
+        issues.map((issue, i) => (
+          <TreeRow
+            key={`${issue.rowIndex}-${i}`}
+            depth={1}
+            title={issue.message}
+            actions={
+              <span className='shrink-0 pe-1 text-xs text-muted-foreground tabular-nums'>
+                Row {issue.rowIndex + 1}
+              </span>
+            }
+          />
+        ))}
+    </SummaryTreeRow>
+  )
+}
 
 interface ErrorSummaryProps {
   errorCount: number
   planId: string
 }
 
-/**
- * Summary of rows with errors.
- */
+/** Summary of rows with errors. */
 export function ErrorSummary({ errorCount, planId }: ErrorSummaryProps) {
   const { data: errors } = api.dataImport.getPlanErrors.useQuery(
-    { planId, limit: 5 },
+    { planId, limit: PREVIEW_LIMIT },
     { enabled: errorCount > 0 }
   )
 
   return (
-    <Alert variant='destructive'>
-      <AlertTriangle className='h-4 w-4' />
-      <AlertTitle>
-        {errorCount} {errorCount === 1 ? 'row has' : 'rows have'} errors
-      </AlertTitle>
-      <AlertDescription className='mt-2'>
-        <p className='mb-2'>These rows will be skipped during import:</p>
-        <ul className='text-sm space-y-1'>
-          {errors?.map((error, i) => (
-            <li key={i} className='font-mono'>
-              Row {error.rowIndex + 1}: {error.error}
-            </li>
-          ))}
-        </ul>
-        {errorCount > 5 && <p className='text-sm mt-2'>...and {errorCount - 5} more</p>}
-      </AlertDescription>
-    </Alert>
+    <RowIssues
+      icon={<AlertTriangle className='size-4 text-destructive' />}
+      title={`${errorCount.toLocaleString()} ${errorCount === 1 ? 'row has' : 'rows have'} errors`}
+      description='These rows will be skipped.'
+      issues={(errors ?? []).map((e) => ({ rowIndex: e.rowIndex, message: e.error }))}
+    />
   )
 }
 
@@ -50,27 +68,16 @@ interface WarningSummaryProps {
  * from a multi-value cell, values already owned by another record).
  */
 export function WarningSummary({ planId }: WarningSummaryProps) {
-  const { data } = api.dataImport.getPlanWarnings.useQuery({ planId, limit: 5 })
+  const { data } = api.dataImport.getPlanWarnings.useQuery({ planId, limit: PREVIEW_LIMIT })
 
   if (!data || data.total === 0) return null
 
   return (
-    <Alert>
-      <Info className='h-4 w-4' />
-      <AlertTitle>
-        {data.total} {data.total === 1 ? 'row has' : 'rows have'} warnings
-      </AlertTitle>
-      <AlertDescription className='mt-2'>
-        <p className='mb-2'>These rows still import, but some values were skipped:</p>
-        <ul className='text-sm space-y-1'>
-          {data.warnings.map((warning, i) => (
-            <li key={i} className='font-mono'>
-              Row {warning.rowIndex + 1}: {warning.warning}
-            </li>
-          ))}
-        </ul>
-        {data.total > 5 && <p className='text-sm mt-2'>...and {data.total - 5} more</p>}
-      </AlertDescription>
-    </Alert>
+    <RowIssues
+      icon={<Info className='size-4 text-info' />}
+      title={`${data.total.toLocaleString()} ${data.total === 1 ? 'row has' : 'rows have'} warnings`}
+      description='These rows still import, but some values were skipped.'
+      issues={data.warnings.map((w) => ({ rowIndex: w.rowIndex, message: w.warning }))}
+    />
   )
 }

@@ -69,7 +69,7 @@ export function ImportPlanSummary({ plan, jobId, loading = false }: ImportPlanSu
   ]
 
   return (
-    <div className='flex flex-col space-y-6'>
+    <div className='flex flex-col'>
       {/* Overview stats */}
       <StatCards cards={cards} loading={loading} columns={{ md: 'md:grid-cols-5' }} />
 

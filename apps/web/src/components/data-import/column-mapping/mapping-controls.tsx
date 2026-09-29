@@ -55,6 +55,7 @@ export function MappingControls({
           field={field}
           value={mapping.resolutionType}
           decimalSeparator={mapping.numberDecimalSeparator}
+          detectedDecimalSeparator={mapping.detectedDecimalSeparator}
           disabled={isSaving}
           onChange={onResolutionTypeChange}
           onDecimalSeparatorChange={onDecimalSeparatorChange}

@@ -2,8 +2,10 @@
 
 'use client'
 
+import { TreeRow } from '@auxx/ui/components/tree-row'
 import { ImageDown } from 'lucide-react'
 import { api } from '~/trpc/react'
+import { SummaryTreeRow } from './summary-tree-row'
 
 interface FileFetchSummaryProps {
   jobId: string
@@ -16,22 +18,22 @@ export function FileFetchSummary({ jobId }: FileFetchSummaryProps) {
   if (!data || data.total === 0) return null
 
   return (
-    <div className='mx-4 rounded-2xl border bg-muted/40 px-3 py-2'>
-      <div className='flex items-center gap-2'>
-        <ImageDown className='size-4 text-info' />
-        <span className='text-sm font-medium'>
-          {data.total.toLocaleString()} image{data.total === 1 ? '' : 's'} will be downloaded
-        </span>
-      </div>
-      {data.byColumn.length > 1 && (
-        <div className='mt-2 flex flex-col gap-1 text-sm text-muted-foreground'>
-          {data.byColumn.map((column) => (
-            <span key={column.jobPropertyId}>
-              {column.sourceColumnName ?? column.targetFieldKey}: {column.count.toLocaleString()}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
+    <SummaryTreeRow
+      icon={<ImageDown className='size-4 text-info' />}
+      title={`${data.total.toLocaleString()} image${data.total === 1 ? '' : 's'} will be downloaded`}>
+      {data.byColumn.length > 1 &&
+        data.byColumn.map((column) => (
+          <TreeRow
+            key={column.jobPropertyId}
+            depth={1}
+            title={column.sourceColumnName ?? column.targetFieldKey}
+            actions={
+              <span className='shrink-0 pe-1 text-xs text-muted-foreground tabular-nums'>
+                {column.count.toLocaleString()}
+              </span>
+            }
+          />
+        ))}
+    </SummaryTreeRow>
   )
 }

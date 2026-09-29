@@ -139,6 +139,7 @@ export function StepMapColumns({
         onNoMatch: prop.onNoMatch ?? null,
         linkMode: prop.linkMode ?? null,
         numberDecimalSeparator: prop.numberDecimalSeparator ?? null,
+        detectedDecimalSeparator: prop.detectedDecimalSeparator ?? null,
         distinctValueCount: prop.distinctValueCount ?? 0,
         totalValueCount: prop.totalValueCount ?? 0,
         createdAt: new Date(),

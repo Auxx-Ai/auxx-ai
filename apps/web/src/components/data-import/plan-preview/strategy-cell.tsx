@@ -4,6 +4,7 @@
 
 import type { StrategyType } from '@auxx/lib/import/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { Ban, Plus, RefreshCw, SearchX } from 'lucide-react'
 
 /**
@@ -20,7 +21,7 @@ const STRATEGY_CONFIG: Record<
 > = {
   create: { label: 'Create', icon: Plus, variant: 'emerald' },
   update: { label: 'Update', icon: RefreshCw, variant: 'blue' },
-  skip: { label: 'Skip', icon: Ban, variant: 'amber' },
+  skip: { label: 'Skipped', icon: Ban, variant: 'amber' },
   unmatched: {
     label: 'Unmatched',
     icon: SearchX,
@@ -34,30 +35,26 @@ interface StrategyCellProps {
   errors?: string[]
 }
 
-/**
- * Displays the strategy badge for a preview row.
- * Shows tooltip with errors for skipped rows.
- */
+/** The strategy badge for a preview row; the reason a row is skipped or unmatched sits in its tooltip. */
 export function StrategyCell({ strategy, errors = [] }: StrategyCellProps) {
   const { label, icon: Icon, variant, hint } = STRATEGY_CONFIG[strategy]
-  const errorText = errors.join(', ')
-  const showErrors = strategy === 'skip' && errors.length > 0
+  const reason = strategy === 'skip' && errors.length > 0 ? errors.join('\n') : hint
+
+  const badge = (
+    <Badge variant={variant}>
+      <Icon />
+      {label}
+    </Badge>
+  )
 
   return (
-    <div className='flex items-center gap-2 px-3'>
-      <Badge variant={variant} title={showErrors ? errorText : hint}>
-        <Icon />
-        {label}
-      </Badge>
-      {showErrors && (
-        <span className='text-xs text-muted-foreground truncate max-w-[200px]' title={errorText}>
-          {errors[0]}
-        </span>
-      )}
-      {strategy === 'unmatched' && (
-        <span className='text-xs text-muted-foreground truncate max-w-[200px]' title={hint}>
-          No matching record
-        </span>
+    <div className='flex items-center px-3'>
+      {reason ? (
+        <SimpleTooltip content={reason}>
+          <span className='inline-flex'>{badge}</span>
+        </SimpleTooltip>
+      ) : (
+        badge
       )}
     </div>
   )

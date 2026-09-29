@@ -856,7 +856,8 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // v9: + `metered` (the records plan limit, plans/billing/06-records-limit.md).
   // v10: - `stock_movement` (a table now, plans/mrp/20-stock-movement-table.md).
   // v11: + `importHint` on fields (plans/importer/10-field-first-mapping.md).
-  resources: { prefix: 'org:resources:v11', ttlSeconds: ONE_DAY },
+  // v12: - `importHint` on `part.sellPrice`.
+  resources: { prefix: 'org:resources:v12', ttlSeconds: ONE_DAY },
   resourceNav: { prefix: 'org:resource-nav', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },

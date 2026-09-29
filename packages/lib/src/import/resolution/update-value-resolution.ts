@@ -4,6 +4,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../errors'
+import { getDefinitionId, isRecordId } from '../../resources/resource-id'
 import { reopenPlannedJobs } from '../job/reopen-planned-job'
 import { parseResolutionConfig } from '../mapping/resolution-config'
 import type { OverrideValue, ResolvedValue } from '../types'
@@ -60,6 +61,23 @@ interface UserOverrideData {
 function overrideNeedsResolving(resolutionType: string): boolean {
   if (isOptionResolutionType(resolutionType)) return false
   return !resolutionType.startsWith('relation:')
+}
+
+/** A relation override is stored as given, so it must already be a record of the column's target. */
+function assertRelationOverrides(
+  overrides: Array<OverrideValue & { type: 'value' | 'create' }>,
+  targetDefinitionId: string | undefined
+): void {
+  for (const override of overrides) {
+    if (override.type !== 'value') continue
+    const value = override.id ?? override.value
+    if (
+      !isRecordId(value) ||
+      (targetDefinitionId && getDefinitionId(value) !== targetDefinitionId)
+    ) {
+      throw new UnprocessableEntityError(`"${override.value}" is not a record this column links to`)
+    }
+  }
 }
 
 /**
@@ -264,6 +282,11 @@ export async function updateValueResolution(
   // Every executor reads `resolvedValues[0]` only — N separate entries would
   // import exactly the first option and silently drop the rest.
   const isMultiValued = mappingProp.resolutionType.startsWith('multiselect:')
+
+  if (!isSkip && mappingProp.resolutionType.startsWith('relation:')) {
+    const config = parseResolutionConfig(mappingProp.resolutionConfig as string | null | undefined)
+    assertRelationOverrides(overrides, config.relationConfig?.relatedEntityDefinitionId)
+  }
 
   const resolvedValues: ResolvedValue[] = isSkip
     ? [] // Empty for skip

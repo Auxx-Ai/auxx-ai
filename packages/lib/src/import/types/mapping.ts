@@ -134,6 +134,8 @@ export interface MappablePropertyWithSamples {
   linkMode: RelationLinkMode | null
   /** How this column's cells mark decimals, `.` or `,`; null means per-cell detection. */
   numberDecimalSeparator: string | null
+  /** What detection settles on for a money column with no separator chosen; null = none. */
+  detectedDecimalSeparator: '.' | ',' | null
   /**
    * Distinct raw values in THIS column of THIS file.
    *

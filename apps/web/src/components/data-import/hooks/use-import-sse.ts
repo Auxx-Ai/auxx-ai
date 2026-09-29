@@ -3,7 +3,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ExecutionProgress, PlanPreviewRow, SSEResolutionProgress } from '../types'
+import type { ExecutionProgress, SSEResolutionProgress } from '../types'
 
 /** Planning progress from SSE */
 interface PlanningProgress {
@@ -23,8 +23,6 @@ interface UseImportSSEOptions {
   onResolutionComplete?: () => void
   /** Called on each resolution progress update */
   onResolutionProgress?: (progress: SSEResolutionProgress) => void
-  /** Called on each planning row analyzed */
-  onPlanningRow?: (row: PlanPreviewRow) => void
   /** Called on planning progress update */
   onPlanningProgress?: (progress: PlanningProgress) => void
   /** Called when planning completes */
@@ -42,7 +40,6 @@ export function useImportSSE({
   onError,
   onResolutionComplete,
   onResolutionProgress,
-  onPlanningRow,
   onPlanningProgress,
   onPlanningComplete,
 }: UseImportSSEOptions) {
@@ -71,7 +68,6 @@ export function useImportSSE({
     onError,
     onResolutionComplete,
     onResolutionProgress,
-    onPlanningRow,
     onPlanningProgress,
     onPlanningComplete,
   })
@@ -80,7 +76,6 @@ export function useImportSSE({
     onError,
     onResolutionComplete,
     onResolutionProgress,
-    onPlanningRow,
     onPlanningProgress,
     onPlanningComplete,
   }
@@ -137,23 +132,6 @@ export function useImportSSE({
         callbacksRef.current.onResolutionProgress?.(resProgress)
       } catch (e) {
         console.error('Failed to parse resolution:progress event:', e)
-      }
-    })
-
-    // --- Planning Row Event (real-time row data) ---
-    eventSource.addEventListener('planning:row', (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        callbacksRef.current.onPlanningRow?.({
-          rowIndex: data.rowIndex,
-          strategy: data.strategy,
-          existingRecordId: data.existingRecordId,
-          fields: data.fields,
-          errors: data.errors,
-          warnings: data.warnings,
-        })
-      } catch (e) {
-        console.error('Failed to parse planning:row event:', e)
       }
     })
 

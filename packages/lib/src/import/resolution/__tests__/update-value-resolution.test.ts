@@ -291,9 +291,44 @@ describe('updateValueResolution free-text overrides', () => {
   it('leaves a relation override alone — it carries the target record id', async () => {
     const db = new FakeDb('relation:match', 'supplier')
 
-    await override(db, [{ type: 'value', value: 'Acme', id: 'rec_acme' }])
+    await override(db, [{ type: 'value', value: 'Acme', id: 'company:acme' }])
 
-    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'rec_acme' }])
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'company:acme' }])
+  })
+
+  it('refuses typed text on a relation column — it would be stored as the link', async () => {
+    const db = new FakeDb('relation:match', 'supplier')
+
+    await expect(override(db, [{ type: 'value', value: '011B' }])).rejects.toThrow(
+      /not a record this column links to/
+    )
+    expect(db.captured.values).toBeNull()
+  })
+
+  it("refuses a record from another definition than the column's target", async () => {
+    const db = new FakeDb('relation:match', 'supplier')
+    Object.assign(db.mappingProp, {
+      resolutionConfig: JSON.stringify({
+        relationConfig: { relatedEntityDefinitionId: 'company' },
+      }),
+    })
+
+    await expect(override(db, [{ type: 'value', value: 'part:abc' }])).rejects.toThrow(
+      /not a record this column links to/
+    )
+  })
+
+  it('accepts a record of the target definition', async () => {
+    const db = new FakeDb('relation:match', 'supplier')
+    Object.assign(db.mappingProp, {
+      resolutionConfig: JSON.stringify({
+        relationConfig: { relatedEntityDefinitionId: 'company' },
+      }),
+    })
+
+    await override(db, [{ type: 'value', value: 'company:acme' }])
+
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'company:acme' }])
   })
 })
 
