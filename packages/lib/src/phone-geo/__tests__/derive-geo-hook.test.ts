@@ -15,6 +15,7 @@ vi.mock('../../cache/org-cache-helpers', () => ({ getCachedCustomFields: vi.fn()
 // ever reaching the publish.
 vi.mock('../../realtime/publish-helpers', () => ({
   publishFieldValueUpdates: vi.fn(() => Promise.resolve()),
+  publishRecordsChanged: vi.fn(() => Promise.resolve()),
 }))
 
 // Plain synchronous factories (not `importOriginal`) — an async factory does not reliably apply
@@ -36,7 +37,7 @@ import { getCachedCustomFields } from '../../cache/org-cache-helpers'
 import type { FieldChangeRef } from '../../field-hooks/types'
 import { setValueWithBuiltIn } from '../../field-values/field-value-mutations'
 import { getValue, getValues } from '../../field-values/field-value-queries'
-import { publishFieldValueUpdates } from '../../realtime/publish-helpers'
+import { publishFieldValueUpdates, publishRecordsChanged } from '../../realtime/publish-helpers'
 import { derivePhoneGeoBatch, derivePhoneGeoOnChange } from '../derive-geo-hook'
 
 const mockedFields = getCachedCustomFields as unknown as ReturnType<typeof vi.fn>
@@ -44,6 +45,7 @@ const mockedSetValue = setValueWithBuiltIn as unknown as ReturnType<typeof vi.fn
 const mockedGetValues = getValues as unknown as ReturnType<typeof vi.fn>
 const mockedGetValue = getValue as unknown as ReturnType<typeof vi.fn>
 const mockedPublish = publishFieldValueUpdates as unknown as ReturnType<typeof vi.fn>
+const mockedPublishChanged = publishRecordsChanged as unknown as ReturnType<typeof vi.fn>
 
 const CONTACT_DEF = 'contact'
 
@@ -82,6 +84,7 @@ function writtenValues(): Record<string, unknown> {
 beforeEach(() => {
   vi.clearAllMocks()
   mockedPublish.mockResolvedValue(undefined)
+  mockedPublishChanged.mockResolvedValue(undefined)
   mockedFields.mockResolvedValue(CONTACT_GEO_FIELDS)
   // Nothing filled in yet.
   mockedGetValues.mockResolvedValue(new Map())
@@ -255,6 +258,55 @@ describe('derivePhoneGeoBatch', () => {
     await batch([target('inst1')])
 
     expect(mockedSetValue).not.toHaveBeenCalled()
+  })
+
+  it('announces the batch as one records:changed per def, never per record', async () => {
+    await batch([target('inst1'), target('inst2')])
+
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged).toHaveBeenCalledTimes(1)
+    const fieldIds = ['fld_city', 'fld_region', 'fld_country', 'fld_timezone'].map(
+      (id) => `${CONTACT_DEF}:${id}`
+    )
+    expect(mockedPublishChanged.mock.calls[0]![2]).toEqual({
+      entityDefinitionId: CONTACT_DEF,
+      entries: [
+        { recordId: 'inst1', fieldIds },
+        { recordId: 'inst2', fieldIds },
+      ],
+    })
+  })
+
+  it('names only the fields it filled, and leaves out records it did not write', async () => {
+    mockedGetValues.mockImplementation(async (_ctx: unknown, args: { recordId: string }) =>
+      args.recordId.endsWith('inst2')
+        ? new Map(
+            ['fld_city', 'fld_region', 'fld_country', 'fld_timezone'].map((id) => [
+              id,
+              { type: 'text', value: 'set' },
+            ])
+          )
+        : new Map([['fld_city', { type: 'text', value: 'Denver' }]] as Array<[string, unknown]>)
+    )
+
+    await batch([target('inst1'), target('inst2')])
+
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged.mock.calls[0]![2].entries).toEqual([
+      {
+        recordId: 'inst1',
+        fieldIds: ['fld_region', 'fld_country', 'fld_timezone'].map((id) => `${CONTACT_DEF}:${id}`),
+      },
+    ])
+  })
+
+  it('publishes nothing when the batch wrote nothing', async () => {
+    mockedGetValue.mockResolvedValue(null)
+
+    await batch([target('inst1')])
+
+    expect(mockedPublish).not.toHaveBeenCalled()
+    expect(mockedPublishChanged).not.toHaveBeenCalled()
   })
 
   it('one failing record never starves the rest, and never rejects', async () => {

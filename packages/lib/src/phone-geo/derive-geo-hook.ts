@@ -15,7 +15,7 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { extractValue, type TypedFieldValue } from '@auxx/types'
-import type { FieldId } from '@auxx/types/field'
+import { type FieldId, toResourceFieldId } from '@auxx/types/field'
 import { getCachedCustomFields } from '../cache/org-cache-helpers'
 import { refToEvent } from '../field-hooks/batch-helpers'
 import type {
@@ -27,7 +27,7 @@ import { createFieldValueContext, getField } from '../field-values/field-value-h
 import { buildPublishEntry, setValueWithBuiltIn } from '../field-values/field-value-mutations'
 import { getValue, getValues } from '../field-values/field-value-queries'
 import type { CachedField } from '../field-values/types'
-import { getRealtimeService, publishFieldValueUpdates } from '../realtime'
+import { getRealtimeService, publishFieldValueUpdates, publishRecordsChanged } from '../realtime'
 import { quietSession } from '../resources/crud/write-origin'
 import { parseRecordId, toRecordId } from '../resources/resource-id'
 import { lookupPhoneGeo } from './lookup'
@@ -80,6 +80,29 @@ function isBlank(value: unknown): boolean {
   return typeof extracted === 'string' ? extracted.trim().length === 0 : false
 }
 
+/** defId → entityInstanceId → client fieldRefKeys written; the batch's one announcement. */
+type GeoAnnouncements = Map<string, Map<string, Set<string>>>
+
+/** One `records:changed` per def for everything the batch wrote. Fire-and-forget. */
+function publishGeoAnnouncements(organizationId: string, announcements: GeoAnnouncements): void {
+  for (const [entityDefinitionId, byInstance] of announcements) {
+    const entries = [...byInstance].map(([recordId, fieldIds]) => ({
+      recordId,
+      fieldIds: [...fieldIds],
+    }))
+    publishRecordsChanged(getRealtimeService(), organizationId, {
+      entityDefinitionId,
+      entries,
+    }).catch((error) => {
+      logger.warn('Phone geo batch publish failed', {
+        organizationId,
+        entityDefinitionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }
+}
+
 /**
  * Fill blank geo fields on the record whose phone number just changed.
  *
@@ -118,6 +141,7 @@ export const derivePhoneGeoBatch: BatchCore = async ({ organizationId, userId, d
   })
 
   let derived = 0
+  const announcements: GeoAnnouncements = new Map()
   for (const target of targets) {
     try {
       const stored = await getValue(
@@ -129,7 +153,7 @@ export const derivePhoneGeoBatch: BatchCore = async ({ organizationId, userId, d
       if (!phone) continue
       const geo = lookupPhoneGeo(phone)
       if (!geo) continue
-      await fillBlankGeoFields(refToEvent(target, stored), geo)
+      await fillBlankGeoFields(refToEvent(target, stored), geo, announcements)
       derived++
     } catch (error) {
       logger.error('Phone geo batch: record failed', {
@@ -141,6 +165,9 @@ export const derivePhoneGeoBatch: BatchCore = async ({ organizationId, userId, d
     }
   }
 
+  // Sync lane only: one frame per def replaces a `fieldValues:updated` per record.
+  publishGeoAnnouncements(organizationId, announcements)
+
   logger.info('phone geo batch done', { organizationId, targets: targets.length, derived })
 }
 
@@ -150,10 +177,12 @@ export const derivePhoneGeoBatch: BatchCore = async ({ organizationId, userId, d
  * The inline hook wraps this in its own try/catch; {@link derivePhoneGeoBatch} calls it with a
  * synthesized event — only `organizationId`, `entityDefinitionId`, `userId`, `recordId`, and
  * `field.entityDefinitionId` are read. Fill-only-if-blank makes it idempotent by construction.
+ * With `announcements`, the writes are recorded into it instead of published.
  */
 export async function fillBlankGeoFields(
   event: EntityFieldChangeEvent,
-  geo: PhoneGeo
+  geo: PhoneGeo,
+  announcements?: GeoAnnouncements
 ): Promise<void> {
   // Resolve targets within THIS entity definition rather than through `resolveFieldIds`, whose
   // systemAttribute map is global across every definition in the org and would happily hand back
@@ -193,6 +222,7 @@ export async function fillBlankGeoFields(
     ? toRecordId(event.field.entityDefinitionId, entityInstanceId)
     : event.recordId
   const entries = []
+  const written: string[] = []
 
   for (const write of writes) {
     // C4 (plan 04 §3): the reason is declared on the session, not asserted in a
@@ -208,6 +238,8 @@ export async function fillBlankGeoFields(
       }
     )
     if (result.values.length === 0) continue
+    written.push(write.fieldId)
+    if (announcements) continue
 
     let field: CachedField | undefined
     try {
@@ -225,6 +257,18 @@ export async function fillBlankGeoFields(
     )
   }
 
+  if (announcements && written.length > 0) {
+    const { entityDefinitionId } = parseRecordId(publishRecordId)
+    let byInstance = announcements.get(entityDefinitionId)
+    if (!byInstance) {
+      byInstance = new Map()
+      announcements.set(entityDefinitionId, byInstance)
+    }
+    const fieldIds = byInstance.get(entityInstanceId) ?? new Set<string>()
+    for (const fieldId of written) fieldIds.add(toResourceFieldId(entityDefinitionId, fieldId))
+    byInstance.set(entityInstanceId, fieldIds)
+    return
+  }
   if (entries.length === 0) return
 
   // Publish ourselves, since the quiet writes above skipped it — an open contact drawer should
