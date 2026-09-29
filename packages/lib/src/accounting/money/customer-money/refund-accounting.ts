@@ -174,6 +174,8 @@ export async function linkRefundPostingToMemos(
 
   const exceeded: string[] = []
   for (const memo of memos) {
+    // A draft's total is not final until issue recomputes it; issue re-runs this step.
+    if (memo.status === 'draft') continue
     const [applied, reserved] = await Promise.all([
       sumCreditMemoApplications(db, organizationId, memo.id),
       sumReservedCreditMemoRefunds(db, organizationId, memo),
@@ -192,6 +194,19 @@ export async function linkRefundPostingToMemos(
       detail: { creditMemoInstanceIds: exceeded },
     })
   else await deleteWorkItem(db, organizationId, key)
+}
+
+/** Re-run {@link linkRefundPostingToMemos} for every refund that settles one memo. */
+export async function relinkRefundsToMemo(
+  db: Db,
+  organizationId: string,
+  creditMemoInstanceId: string
+): Promise<void> {
+  const settlements = await listRefundSettlements(db, organizationId, {
+    customerCreditMemoInstanceId: creditMemoInstanceId,
+  })
+  const refundIds = new Set(settlements.map((row) => row.refundTransactionId))
+  for (const refundId of refundIds) await linkRefundPostingToMemos(db, organizationId, refundId)
 }
 
 /**

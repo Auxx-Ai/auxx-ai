@@ -225,7 +225,7 @@ export const WORK_ITEM_CODES = {
   REFUND_EXCEEDS_MEMO: {
     severity: 'warning',
     status: 'warning',
-    sentence: () => 'The refund is larger than the credit memo it settles.',
+    sentence: () => 'More has been refunded or applied from this credit memo than it holds.',
   },
   MARKETPLACE_TAX_NOT_RETURNED: {
     severity: 'warning',
