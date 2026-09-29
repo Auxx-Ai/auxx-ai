@@ -852,9 +852,8 @@ export async function postEntryInTx(
  * **Never throws.** Called AFTER the claim's transaction commits - see
  * {@link postEntryInTx}'s 🛑.
  *
- * Only the Transaction-mode, `autoSend`-on case does anything here. Everything
- * else is the sweep's and the export queue's work: a summary batch cannot be
- * built from one posting, and a held avenue is waiting for a person (TARGET §4).
+ * Transaction mode only: a summary batch cannot be built from one posting. A held
+ * avenue's batch is built and waits in Ready for a person (TARGET §4).
  */
 export async function exportPostedEntry(
   db: Database,
@@ -866,7 +865,7 @@ export async function exportPostedEntry(
     const avenue = avenueOfPostingType(postingType)
     if (!avenue) return posted
     const settings = await readExportSettings(organizationId)
-    if (settings.mode !== 'transaction' || !settings.autoSend[avenue]) return posted
+    if (settings.mode !== 'transaction') return posted
 
     const built = await buildExportBatches(db, {
       organizationId,
@@ -882,8 +881,9 @@ export async function exportPostedEntry(
       })
       return posted
     }
-    for (const batchId of built.value.batchIds)
-      await sendExportBatch(db, { organizationId, batchId })
+    if (settings.autoSend[avenue])
+      for (const batchId of built.value.batchIds)
+        await sendExportBatch(db, { organizationId, batchId })
     return posted
   } catch (error) {
     logger.error('Exporting a posted entry failed; the sweep will pick it up', {

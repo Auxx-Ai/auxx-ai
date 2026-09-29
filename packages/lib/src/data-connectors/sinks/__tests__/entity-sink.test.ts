@@ -2,7 +2,7 @@
 
 import { stableHash } from '@auxx/utils/hash'
 import { describe, expect, it } from 'vitest'
-import { coerceListValue, contentHashOf } from '../entity-sink'
+import { coerceCalendarDay, coerceListValue, contentHashOf } from '../entity-sink'
 import type { ProjectedRecord } from '../types'
 
 /**
@@ -94,5 +94,30 @@ describe('contentHashOf', () => {
     expect(contentHashOf(changed, new Set([acquired]))).not.toBe(
       contentHashOf(first, new Set([acquired]))
     )
+  })
+})
+
+describe('coerceCalendarDay', () => {
+  const LA = 'America/Los_Angeles'
+
+  it('dates an afternoon event by its book-zone day, not the next UTC midnight', () => {
+    expect(coerceCalendarDay('2026-09-21T22:21:12Z', LA)).toBe('2026-09-21')
+    expect(coerceCalendarDay('2026-09-21T15:21:12-07:00', LA)).toBe('2026-09-21')
+    expect(coerceCalendarDay('2026-09-29T00:14:53Z', LA)).toBe('2026-09-28')
+  })
+
+  it('keeps the day a midnight-encoded value names, from either side of UTC', () => {
+    expect(coerceCalendarDay('2026-05-10T00:00:00+02:00', LA)).toBe('2026-05-10')
+    expect(coerceCalendarDay('2026-05-10T00:00:00.000Z', LA)).toBe('2026-05-10')
+  })
+
+  it('takes an offset-less datetime at its written day', () => {
+    expect(coerceCalendarDay('2026-09-21T23:30:00', 'UTC')).toBe('2026-09-21')
+  })
+
+  it('passes bare days and non-dates through', () => {
+    expect(coerceCalendarDay('2026-09-21', LA)).toBe('2026-09-21')
+    expect(coerceCalendarDay('not a date', LA)).toBe('not a date')
+    expect(coerceCalendarDay(null, LA)).toBeNull()
   })
 })

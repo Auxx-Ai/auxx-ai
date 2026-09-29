@@ -365,24 +365,25 @@ describe('sweepTransactionPostings - the build half (101 E5)', () => {
     h.connection.mockResolvedValue({ id: 'conn_1', exportFromDate: '2026-01-01' })
   })
 
-  it('builds a posting held while autoSend was off, and sends it in the same pass once on', async () => {
+  it('builds a held avenue into Ready without sending, and sends it once autoSend is on', async () => {
     const store = { postings: [{ id: 'p_1', txnDate: '2026-09-01' }], batches: [] as DueBatch[] }
     buildInto(store)
     h.settings.mockResolvedValue(exportSettings('transaction', { receipt: false }))
 
     await sweepExportBatches(routedDb(store).db, { organizationId: 'org_1' })
-    expect(h.build).not.toHaveBeenCalled()
-    expect(h.send).not.toHaveBeenCalled()
-
-    h.settings.mockResolvedValue(exportSettings('transaction', { receipt: true }))
-    const swept = await sweepExportBatches(routedDb(store).db, { organizationId: 'org_1' })
-
     expect(h.build).toHaveBeenCalledWith(expect.anything(), {
       organizationId: 'org_1',
       from: '2026-09-01',
       to: '2026-09-01',
       glPostingIds: ['p_1'],
     })
+    expect(store.batches.map((b) => [b.id, b.state])).toEqual([['b_p_1', 'ready']])
+    expect(h.send).not.toHaveBeenCalled()
+
+    store.postings = []
+    h.settings.mockResolvedValue(exportSettings('transaction', { receipt: true }))
+    const swept = await sweepExportBatches(routedDb(store).db, { organizationId: 'org_1' })
+
     expect(h.send).toHaveBeenCalledWith(expect.anything(), {
       organizationId: 'org_1',
       batchId: 'b_p_1',
@@ -417,7 +418,7 @@ describe('sweepTransactionPostings - the build half (101 E5)', () => {
     })
   })
 
-  it('reads only autoSend avenues, and never sends a held batch', async () => {
+  it('builds every avenue, and never sends a held batch', async () => {
     h.settings.mockResolvedValue(
       exportSettings('transaction', { receipt: false, fulfillment: true })
     )
@@ -433,19 +434,22 @@ describe('sweepTransactionPostings - the build half (101 E5)', () => {
 
     const candidateWhere = sqlText(fake.postingReads()[0]!.where)
     expect(candidateWhere).toContain('fulfillment')
-    expect(candidateWhere).not.toContain('receipt')
+    expect(candidateWhere).toContain('receipt')
     const dueWhere = sqlText(fake.reads.find((r) => r.table === schema.ExportBatch)!.where)
     expect(dueWhere).toContain('fulfillment')
     expect(dueWhere).not.toContain('receipt')
     expect(h.send).not.toHaveBeenCalled()
   })
 
-  it('builds nothing when no avenue auto-sends', async () => {
+  it('still builds when no avenue auto-sends, so a person can release from Ready', async () => {
     h.settings.mockResolvedValue(exportSettings('transaction', { receipt: false }))
-    const fake = routedDb({ postings: [{ id: 'p_1', txnDate: '2026-09-01' }], batches: [] })
+    const store = { postings: [{ id: 'p_1', txnDate: '2026-09-01' }], batches: [] as DueBatch[] }
+    buildInto(store)
 
-    expect(await sweepTransactionPostings(fake.db, { organizationId: 'org_1' })).toEqual([])
-    expect(fake.postingReads()).toHaveLength(0)
+    expect(await sweepTransactionPostings(routedDb(store).db, { organizationId: 'org_1' })).toEqual(
+      ['b_p_1']
+    )
+    expect(h.send).not.toHaveBeenCalled()
   })
 
   it('builds nothing without an active book connection', async () => {

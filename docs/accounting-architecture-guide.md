@@ -1608,6 +1608,10 @@ until the throttle question (93 Q2) is answered on the sandbox.
 `sweep.ts` is the scheduled half: due means `ready` on an avenue whose `autoSend` is on, or
 `failed` past its `nextAttemptAt` and inside `MAX_AUTO_ATTEMPTS = 3` (backoff 60s / 5m / 30m). A
 **held** batch — `ready` with `autoSend` off — is never touched: releasing it is a person's act.
+In Transaction mode every posting is still **built** (at post and by the sweep's build half) whatever
+`autoSend` says, so a held posting waits in Ready with a Send button rather than unbuilt. Reversing
+a posting whose batch is still held withdraws that batch (`withdrawHeldBatchInTx`), so neither
+half of the pair leaves.
 
 `send.ts` leases one batch (`LEASE_MS = 5 min`), and the lease is claimed **in the WHERE clause,
 not in JS**: two workers reading the same free lease must not both win, and only the update can
