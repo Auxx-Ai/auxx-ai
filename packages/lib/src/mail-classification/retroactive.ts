@@ -1463,7 +1463,6 @@ export async function undoMailReclassifyRun(
                SELECT count(*)
                FROM "FieldValue" tv
                WHERE tv."entityId" = m."threadId"
-                 AND tv."organizationId" = ${input.organizationId}
                  AND tv."relatedEntityId" IN (${eligibleList})
              )                                                        AS "eligibleTagCount"
       FROM "Message" m

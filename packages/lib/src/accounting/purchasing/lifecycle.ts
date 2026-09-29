@@ -108,14 +108,12 @@ async function readMaxLineLeadTimeDays(
     .innerJoin(
       sql`"FieldValue" vp`,
       sql`vp."entityId" = ${schema.FieldValue.entityId}
-        AND vp."fieldId" = ${vendorPartRelField.id}
-        AND vp."organizationId" = ${organizationId}`
+        AND vp."fieldId" = ${vendorPartRelField.id}`
     )
     .innerJoin(
       sql`"FieldValue" lead`,
       sql`lead."entityId" = vp."relatedEntityId"
-        AND lead."fieldId" = ${leadTimeField.id}
-        AND lead."organizationId" = ${organizationId}`
+        AND lead."fieldId" = ${leadTimeField.id}`
     )
     .where(
       and(

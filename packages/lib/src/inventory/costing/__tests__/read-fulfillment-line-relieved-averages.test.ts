@@ -113,10 +113,11 @@ function routeSum(
 function chain(route: (params: string[]) => unknown[]) {
   const params: string[] = []
   const node: Record<string, unknown> = {}
-  for (const key of ['select', 'from', 'where', 'groupBy']) node[key] = () => node
-  for (const key of ['innerJoin', 'leftJoin']) {
-    node[key] = (_alias: unknown, condition: unknown) => {
-      boundStrings(condition, params)
+  for (const key of ['select', 'from', 'groupBy']) node[key] = () => node
+  // The line ids sit in the WHERE: the query is driven from the line rows.
+  for (const key of ['innerJoin', 'leftJoin', 'where']) {
+    node[key] = (...args: unknown[]) => {
+      boundStrings(args.at(-1), params)
       return node
     }
   }

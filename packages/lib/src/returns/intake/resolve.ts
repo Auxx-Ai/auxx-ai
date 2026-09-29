@@ -239,7 +239,6 @@ async function matchByAddress(
       contactValue,
       and(
         eq(contactValue.entityId, addressValue.entityId),
-        eq(contactValue.organizationId, addressValue.organizationId),
         eq(contactValue.fieldId, fields.order_contact?.id ?? '')
       )
     )
@@ -247,7 +246,6 @@ async function matchByAddress(
       numberValue,
       and(
         eq(numberValue.entityId, addressValue.entityId),
-        eq(numberValue.organizationId, addressValue.organizationId),
         eq(numberValue.fieldId, fields.order_number?.id ?? '')
       )
     )
@@ -318,7 +316,6 @@ async function matchByName(
       firstValue,
       and(
         eq(firstValue.entityId, schema.EntityInstance.id),
-        eq(firstValue.organizationId, schema.EntityInstance.organizationId),
         eq(firstValue.fieldId, fields.first_name?.id ?? '')
       )
     )
@@ -326,7 +323,6 @@ async function matchByName(
       cityValue,
       and(
         eq(cityValue.entityId, schema.EntityInstance.id),
-        eq(cityValue.organizationId, schema.EntityInstance.organizationId),
         eq(cityValue.fieldId, fields.city?.id ?? '')
       )
     )
@@ -334,7 +330,6 @@ async function matchByName(
       regionValue,
       and(
         eq(regionValue.entityId, schema.EntityInstance.id),
-        eq(regionValue.organizationId, schema.EntityInstance.organizationId),
         eq(regionValue.fieldId, fields.region?.id ?? '')
       )
     )
@@ -342,7 +337,6 @@ async function matchByName(
       countryValue,
       and(
         eq(countryValue.entityId, schema.EntityInstance.id),
-        eq(countryValue.organizationId, schema.EntityInstance.organizationId),
         eq(countryValue.fieldId, fields.country?.id ?? '')
       )
     )
@@ -643,7 +637,6 @@ export async function readOrderOptionsForContact(
           numberValue,
           and(
             eq(numberValue.entityId, schema.EntityInstance.id),
-            eq(numberValue.organizationId, schema.EntityInstance.organizationId),
             eq(numberValue.fieldId, fields.order_number?.id ?? '')
           )
         )
@@ -651,7 +644,6 @@ export async function readOrderOptionsForContact(
           statusValue,
           and(
             eq(statusValue.entityId, schema.EntityInstance.id),
-            eq(statusValue.organizationId, schema.EntityInstance.organizationId),
             eq(statusValue.fieldId, fields.order_fulfillment_status?.id ?? '')
           )
         )

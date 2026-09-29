@@ -61,12 +61,9 @@ function identityJoin(
   if (!external || !provider || !account || !environment) return null
   return {
     from: sql`"FieldValue" ex
-    JOIN "FieldValue" pk ON pk."organizationId" = ex."organizationId"
-      AND pk."entityId" = ex."entityId" AND pk."fieldId" = ${provider}
-    JOIN "FieldValue" ac ON ac."organizationId" = ex."organizationId"
-      AND ac."entityId" = ex."entityId" AND ac."fieldId" = ${account}
-    JOIN "FieldValue" en ON en."organizationId" = ex."organizationId"
-      AND en."entityId" = ex."entityId" AND en."fieldId" = ${environment}`,
+    JOIN "FieldValue" pk ON pk."entityId" = ex."entityId" AND pk."fieldId" = ${provider}
+    JOIN "FieldValue" ac ON ac."entityId" = ex."entityId" AND ac."fieldId" = ${account}
+    JOIN "FieldValue" en ON en."entityId" = ex."entityId" AND en."fieldId" = ${environment}`,
     where: sql`ex."organizationId" = ${organizationId}
       AND ex."fieldId" = ${external}
       AND ex."valueText" IS NOT NULL`,
@@ -146,7 +143,7 @@ export async function countUnmaterializedCustomerTransactions(
     THEN (pa."valueText"::timestamptz AT TIME ZONE ${bookTimeZone})::date END)`
   const notTest = test
     ? sql`AND NOT EXISTS (SELECT 1 FROM "FieldValue" te
-        WHERE te."organizationId" = ex."organizationId" AND te."entityId" = ex."entityId"
+        WHERE te."entityId" = ex."entityId"
           AND te."fieldId" = ${test} AND te."valueBoolean" = TRUE)`
     : sql``
   const result = await db.execute(sql`
@@ -156,14 +153,11 @@ export async function countUnmaterializedCustomerTransactions(
     FROM (
       SELECT ${day} AS day
       FROM ${identity.from}
-      JOIN "FieldValue" ki ON ki."organizationId" = ex."organizationId"
-        AND ki."entityId" = ex."entityId" AND ki."fieldId" = ${kind}
+      JOIN "FieldValue" ki ON ki."entityId" = ex."entityId" AND ki."fieldId" = ${kind}
         AND ki."valueText" IN ('receipt', 'refund')
-      JOIN "FieldValue" st ON st."organizationId" = ex."organizationId"
-        AND st."entityId" = ex."entityId" AND st."fieldId" = ${status}
+      JOIN "FieldValue" st ON st."entityId" = ex."entityId" AND st."fieldId" = ${status}
         AND st."valueText" = 'confirmed'
-      JOIN "FieldValue" pa ON pa."organizationId" = ex."organizationId"
-        AND pa."entityId" = ex."entityId" AND pa."fieldId" = ${processedAt}
+      JOIN "FieldValue" pa ON pa."entityId" = ex."entityId" AND pa."fieldId" = ${processedAt}
       WHERE ${identity.where}
         AND en."valueText" = 'live'
         ${notTest}

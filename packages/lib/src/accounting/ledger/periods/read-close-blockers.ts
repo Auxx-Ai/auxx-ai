@@ -194,7 +194,6 @@ async function countUnpostedShipments(
     .innerJoin(
       subtotalValue,
       and(
-        eq(subtotalValue.organizationId, schema.FieldValue.organizationId),
         eq(subtotalValue.entityId, schema.FieldValue.entityId),
         eq(subtotalValue.fieldId, subtotal.id),
         isNotNull(subtotalValue.valueNumber)
@@ -203,7 +202,6 @@ async function countUnpostedShipments(
     .innerJoin(
       totalValue,
       and(
-        eq(totalValue.organizationId, schema.FieldValue.organizationId),
         eq(totalValue.entityId, schema.FieldValue.entityId),
         eq(totalValue.fieldId, total.id),
         gt(totalValue.valueNumber, 0)
@@ -353,7 +351,6 @@ async function readPartsListStandardValue(
     .innerJoin(
       standardValue,
       and(
-        eq(standardValue.organizationId, schema.FieldValue.organizationId),
         eq(standardValue.entityId, schema.FieldValue.entityId),
         eq(standardValue.fieldId, standard.id)
       )

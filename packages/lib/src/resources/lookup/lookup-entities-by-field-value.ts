@@ -220,10 +220,10 @@ export function buildLookupCondition(
  * qualified, a correlated subquery in a SELECT *projection* would lose its
  * table qualifier and silently bind to the inner table instead.
  */
-function fieldValueExists(organizationId: string, fieldId: string, condition: SQL): SQL {
+function fieldValueExists(fieldId: string, condition: SQL): SQL {
+  // No org predicate: the outer EntityInstance is org-scoped, and one invites the (org, field) index.
   return sql`exists (select 1 from ${schema.FieldValue} where ${and(
     eq(schema.FieldValue.entityId, schema.EntityInstance.id),
-    eq(schema.FieldValue.organizationId, organizationId),
     eq(schema.FieldValue.fieldId, fieldId),
     condition
   )})`
@@ -363,7 +363,7 @@ export async function lookupEntitiesByFieldValue(
         })
         return ok({ items: [], hasMore: false })
       }
-      existsConditions.push(fieldValueExists(organizationId, field.id, condition))
+      existsConditions.push(fieldValueExists(field.id, condition))
     }
 
     if (existsConditions.length === 0) return ok({ items: [], hasMore: false })

@@ -192,7 +192,6 @@ export async function listForReview(
             searchValue,
             and(
               eq(searchValue.entityId, schema.EntityInstance.id),
-              eq(searchValue.organizationId, schema.EntityInstance.organizationId),
               inArray(searchValue.fieldId, searchable),
               sql`${searchValue.valueText} ILIKE ${`%${search}%`}`
             )
@@ -666,7 +665,6 @@ async function readEntityCandidates(params: {
       dateValue,
       and(
         eq(dateValue.entityId, schema.EntityInstance.id),
-        eq(dateValue.organizationId, schema.EntityInstance.organizationId),
         eq(dateValue.fieldId, dateFieldId),
         gte(dateValue.valueDate, bounds.from),
         lte(dateValue.valueDate, bounds.to)

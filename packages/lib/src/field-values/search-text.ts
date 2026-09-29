@@ -254,7 +254,6 @@ export function searchTextExpressionSql(alias = 'ei'): string {
               ON rel.id = fv."relatedEntityId"
              AND rel."organizationId" = fv."organizationId"
             WHERE fv."entityId" = ${alias}.id
-              AND fv."organizationId" = ${alias}."organizationId"
               /* Definition-level exclusions, independent of type:
                    active=false   retired field
                    isHidden       invisible in every user-facing surface, so it

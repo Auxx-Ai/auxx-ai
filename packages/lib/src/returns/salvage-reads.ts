@@ -166,7 +166,6 @@ export async function readSalvagePartInfos(
       skuValue,
       and(
         eq(skuValue.entityId, schema.EntityInstance.id),
-        eq(skuValue.organizationId, schema.EntityInstance.organizationId),
         eq(skuValue.fieldId, fields.part_sku?.id ?? '')
       )
     )

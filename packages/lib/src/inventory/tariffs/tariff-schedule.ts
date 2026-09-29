@@ -67,13 +67,7 @@ export async function loadTariffSchedule(
       relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.EntityInstance)
-    .innerJoin(
-      schema.FieldValue,
-      and(
-        eq(schema.FieldValue.entityId, schema.EntityInstance.id),
-        eq(schema.FieldValue.organizationId, schema.EntityInstance.organizationId)
-      )
-    )
+    .innerJoin(schema.FieldValue, eq(schema.FieldValue.entityId, schema.EntityInstance.id))
     .where(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),

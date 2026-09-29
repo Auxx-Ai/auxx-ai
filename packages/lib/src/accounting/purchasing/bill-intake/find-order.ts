@@ -74,7 +74,6 @@ export async function findOrderByReference(
           vendorValue,
           and(
             eq(vendorValue.entityId, schema.EntityInstance.id),
-            eq(vendorValue.organizationId, schema.EntityInstance.organizationId),
             eq(vendorValue.fieldId, vendorField.id),
             eq(vendorValue.relatedEntityId, vendorInstanceId)
           )
@@ -83,7 +82,6 @@ export async function findOrderByReference(
           statusValue,
           and(
             eq(statusValue.entityId, schema.EntityInstance.id),
-            eq(statusValue.organizationId, schema.EntityInstance.organizationId),
             eq(statusValue.fieldId, statusFieldId)
           )
         )

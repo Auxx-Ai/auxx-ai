@@ -72,10 +72,10 @@ function boundStrings(node: unknown, out: string[] = []): string[] {
 function chain(projection: Record<string, unknown> | undefined, route: (q: Query) => unknown[]) {
   const query: Query = { projection: projection ?? {}, params: [] }
   const node: Record<string, unknown> = {}
-  for (const key of ['from', 'where', 'limit', 'groupBy', 'orderBy']) node[key] = () => node
-  for (const key of ['innerJoin', 'leftJoin']) {
-    node[key] = (_alias: unknown, condition: unknown) => {
-      boundStrings(condition, query.params)
+  for (const key of ['from', 'limit', 'groupBy', 'orderBy']) node[key] = () => node
+  for (const key of ['innerJoin', 'leftJoin', 'where']) {
+    node[key] = (...args: unknown[]) => {
+      boundStrings(args.at(-1), query.params)
       return node
     }
   }
@@ -126,7 +126,7 @@ function routeModuleSelect(query: Query): unknown[] {
     case 'billed,billingStatusOption,orderId,ordered,partKind,receiptStatusOption,received,statusOption':
       return statusRows()
     // recalculatePurchaseOrderLineRollup — one line's SUM plus its stored total.
-    // The line is named in the join predicate, not the projection.
+    // The line is named in the predicate, not the projection.
     case 'current,total': {
       const lineId = query.params.find((param) => h.lineIds.includes(param)) ?? ''
       return [

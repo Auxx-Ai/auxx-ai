@@ -116,7 +116,12 @@ function chain(route: (params: string[], leftJoined: string[]) => unknown[]) {
   const params: string[] = []
   const leftJoined: string[] = []
   const node: Record<string, unknown> = {}
-  for (const key of ['select', 'from', 'where', 'groupBy']) node[key] = () => node
+  for (const key of ['select', 'from', 'groupBy']) node[key] = () => node
+  // The part ids sit in the WHERE: the query is driven from the part rows.
+  node.where = (condition: unknown) => {
+    boundStrings(condition, params)
+    return node
+  }
   node.innerJoin = (_alias: unknown, condition: unknown) => {
     boundStrings(condition, params)
     return node

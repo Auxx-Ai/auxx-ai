@@ -58,11 +58,9 @@ export async function loadSubpartGraph(
       JOIN ${schema.FieldValue} child_fv
         ON child_fv."entityId" = ei.id
         AND child_fv."fieldId" = ${spChildField.id}
-        AND child_fv."organizationId" = ${organizationId}
       JOIN ${schema.FieldValue} qty_fv
         ON qty_fv."entityId" = ei.id
         AND qty_fv."fieldId" = ${spQtyField.id}
-        AND qty_fv."organizationId" = ${organizationId}
       WHERE ei."organizationId" = ${organizationId}
         AND ei."entityDefinitionId" = ${subpartDefId}
         AND ei."archivedAt" IS NULL
@@ -89,11 +87,9 @@ export async function loadSubpartGraph(
       JOIN ${schema.FieldValue} child_fv
         ON child_fv."entityId" = ei.id
         AND child_fv."fieldId" = ${spChildField.id}
-        AND child_fv."organizationId" = ${organizationId}
       JOIN ${schema.FieldValue} qty_fv
         ON qty_fv."entityId" = ei.id
         AND qty_fv."fieldId" = ${spQtyField.id}
-        AND qty_fv."organizationId" = ${organizationId}
       WHERE st.depth < ${MAX_BOM_DEPTH}
     )
     SELECT parent_id, child_id, qty FROM subtree
@@ -173,19 +169,11 @@ export async function loadDirectSubparts(
     )
     .innerJoin(
       childFv,
-      and(
-        eq(childFv.entityId, schema.EntityInstance.id),
-        eq(childFv.fieldId, spChildField.id),
-        eq(childFv.organizationId, organizationId)
-      )
+      and(eq(childFv.entityId, schema.EntityInstance.id), eq(childFv.fieldId, spChildField.id))
     )
     .innerJoin(
       qtyFv,
-      and(
-        eq(qtyFv.entityId, schema.EntityInstance.id),
-        eq(qtyFv.fieldId, spQtyField.id),
-        eq(qtyFv.organizationId, organizationId)
-      )
+      and(eq(qtyFv.entityId, schema.EntityInstance.id), eq(qtyFv.fieldId, spQtyField.id))
     )
     .where(
       and(

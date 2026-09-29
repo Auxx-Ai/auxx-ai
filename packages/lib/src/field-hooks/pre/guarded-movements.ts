@@ -93,7 +93,6 @@ export async function readMovementsByRelation(
         occurredValue,
         and(
           eq(occurredValue.entityId, schema.EntityInstance.id),
-          eq(occurredValue.organizationId, schema.EntityInstance.organizationId),
           eq(occurredValue.fieldId, occurredField.id)
         )
       )

@@ -49,15 +49,15 @@ export async function listStoredPayoutCandidates(
   const result = await db.execute(sql`
     SELECT e.id
     FROM "EntityInstance" e
-    JOIN "FieldValue" st ON st."organizationId" = e."organizationId" AND st."entityId" = e.id
+    JOIN "FieldValue" st ON st."entityId" = e.id
       AND st."fieldId" = ${payout_status.id} AND st."optionId" = 'paid'
-    JOIN "FieldValue" pa ON pa."organizationId" = e."organizationId" AND pa."entityId" = e.id
+    JOIN "FieldValue" pa ON pa."entityId" = e.id
       AND pa."fieldId" = ${payout_paid_at.id} AND pa."valueDate" IS NOT NULL
-    JOIN "FieldValue" gw ON gw."organizationId" = e."organizationId" AND gw."entityId" = e.id
+    JOIN "FieldValue" gw ON gw."entityId" = e.id
       AND gw."fieldId" = ${payout_gateway_id.id} AND gw."valueText" IS NOT NULL
-    JOIN "FieldValue" rl ON rl."organizationId" = e."organizationId" AND rl."entityId" = e.id
+    JOIN "FieldValue" rl ON rl."entityId" = e.id
       AND rl."fieldId" = ${payout_payment_gateway.id} AND rl."relatedEntityId" IS NOT NULL
-    LEFT JOIN "FieldValue" nb ON nb."organizationId" = e."organizationId" AND nb."entityId" = e.id
+    LEFT JOIN "FieldValue" nb ON nb."entityId" = e.id
       AND nb."fieldId" = ${numberField}
     WHERE e."organizationId" = ${organizationId}
       AND e."entityDefinitionId" = ${ctx.defId}

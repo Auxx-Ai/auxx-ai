@@ -182,26 +182,23 @@ export async function recalculateFulfillmentLineQuantityRelieved(
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
       current: storedTotalSql(organizationId, fulfillmentLineInstanceId, fields.targetFieldId),
     })
-    .from(schema.FieldValue)
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
     .innerJoin(
-      sql`"FieldValue" fv_line`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" = ${fulfillmentLineInstanceId}
-        AND fv_line."organizationId" = ${organizationId}`
+        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
     )
     .innerJoin(
       sql`"FieldValue" fv_type`,
-      sql`${schema.FieldValue.entityId} = fv_type."entityId"
+      sql`fv_type."entityId" = fv_line."entityId"
         AND fv_type."fieldId" = ${fields.typeFieldId}
-        AND fv_type."organizationId" = ${organizationId}
         AND fv_type."optionId" = ${StockMovementType.SALE}`
     )
     .where(
-      and(
-        eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId)
-      )
+      sql`fv_line."organizationId" = ${organizationId}
+        AND fv_line."fieldId" = ${fields.lineRelFieldId}
+        AND fv_line."relatedEntityId" = ${fulfillmentLineInstanceId}`
     )
 
   // The raw SUM is negative (or less negative, once a correction nets against
@@ -271,26 +268,23 @@ async function readTotalsByLine(
       lineId: sql<string>`fv_line."relatedEntityId"`,
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
     })
-    .from(schema.FieldValue)
+    // Driven from the line rows with entityId-only joins; see inventory/costing/dated-reads.ts.
+    .from(sql`"FieldValue" fv_line`)
     .innerJoin(
-      sql`"FieldValue" fv_line`,
+      schema.FieldValue,
       sql`${schema.FieldValue.entityId} = fv_line."entityId"
-        AND fv_line."fieldId" = ${fields.lineRelFieldId}
-        AND fv_line."relatedEntityId" IN (${idList})
-        AND fv_line."organizationId" = ${organizationId}`
+        AND ${schema.FieldValue.fieldId} = ${fields.quantityFieldId}`
     )
     .innerJoin(
       sql`"FieldValue" fv_type`,
-      sql`${schema.FieldValue.entityId} = fv_type."entityId"
+      sql`fv_type."entityId" = fv_line."entityId"
         AND fv_type."fieldId" = ${fields.typeFieldId}
-        AND fv_type."organizationId" = ${organizationId}
         AND fv_type."optionId" = ${StockMovementType.SALE}`
     )
     .where(
-      and(
-        eq(schema.FieldValue.fieldId, fields.quantityFieldId),
-        eq(schema.FieldValue.organizationId, organizationId)
-      )
+      sql`fv_line."organizationId" = ${organizationId}
+        AND fv_line."fieldId" = ${fields.lineRelFieldId}
+        AND fv_line."relatedEntityId" IN (${idList})`
     )
     .groupBy(sql`fv_line."relatedEntityId"`)
 

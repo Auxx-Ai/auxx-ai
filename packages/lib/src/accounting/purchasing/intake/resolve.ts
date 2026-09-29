@@ -130,7 +130,6 @@ export async function resolveQuoteVendor(
             nameValue,
             and(
               eq(nameValue.entityId, schema.EntityInstance.id),
-              eq(nameValue.organizationId, schema.EntityInstance.organizationId),
               eq(nameValue.fieldId, nameField?.id ?? '')
             )
           )

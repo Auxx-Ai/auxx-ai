@@ -131,7 +131,6 @@ async function hasDuplicate(params: {
       countryValue,
       and(
         eq(countryValue.entityId, schema.EntityInstance.id),
-        eq(countryValue.organizationId, params.organizationId),
         eq(countryValue.fieldId, params.countryFieldId),
         eq(countryValue.optionId, params.country)
       )
