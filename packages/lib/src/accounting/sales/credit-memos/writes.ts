@@ -33,6 +33,7 @@ import { previewEntry } from '../../ledger/post/post-entry'
 import { isAccountingActive } from '../../ledger/setup/accounting-enabled'
 import { todayInBookTimeZone } from '../../ledger/setup/book-time-zone'
 import type { EntryPreview, PostResult } from '../../ledger/types'
+import { relinkRefundsToMemo } from '../../money/customer-money/refund-accounting'
 import { roundCents } from '../totals/totals'
 import { recomputeTotals } from '../totals/totals-hooks'
 import {
@@ -568,6 +569,8 @@ export async function issueCreditMemo(
   await writer.write(creditMemoInstanceId, writes)
 
   const settled = await settleCreditMemo(db, { organizationId, userId, creditMemoInstanceId })
+  // Refunds that posted against the draft skipped the exceeds check; the total is final now.
+  await relinkRefundsToMemo(db, organizationId, creditMemoInstanceId)
 
   return {
     postingId: post.glPostingId ?? null,

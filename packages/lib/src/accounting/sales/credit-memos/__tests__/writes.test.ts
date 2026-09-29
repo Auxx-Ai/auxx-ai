@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   setValuesForEntity: vi.fn(),
   settleCreditMemo: vi.fn(async () => ({ status: 'issued' })),
   recomputeTotals: vi.fn(async () => {}),
+  relinkRefundsToMemo: vi.fn(async () => {}),
   sumCreditMemoApplications: vi.fn(async () => 0),
   sumSucceededCreditMemoRefunds: vi.fn(async () => 0),
   readEditStamp: vi.fn(async (): Promise<{ openedAt: string; byUserId: string } | null> => null),
@@ -116,6 +117,9 @@ vi.mock('../reads', () => ({
 vi.mock('../../../../entity-instances/edit-snapshot', () => ({
   readEditStamp: h.readEditStamp,
 }))
+vi.mock('../../../money/customer-money/refund-accounting', () => ({
+  relinkRefundsToMemo: h.relinkRefundsToMemo,
+}))
 vi.mock('../settle', () => ({
   CREDIT_MEMO_STATUS_BYPASS: new Set(['credit_memo_status']),
   settleCreditMemo: h.settleCreditMemo,
@@ -199,6 +203,15 @@ describe('issueCreditMemo', () => {
     })
     expect(result.postingId).toBe('gl_1')
     expect(result.docNumber).toBe('CM-0001')
+  })
+
+  it('re-runs the link step for its refunds once the total is final', async () => {
+    await issueCreditMemo(db, input)
+
+    expect(h.relinkRefundsToMemo).toHaveBeenCalledWith(db, ORG, MEMO_ID)
+    expect(h.recomputeTotals.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.relinkRefundsToMemo.mock.invocationCallOrder[0]!
+    )
   })
 
   it('writes the status with no posting stamp beside it', async () => {

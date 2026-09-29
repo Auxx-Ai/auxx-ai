@@ -74,7 +74,7 @@ vi.mock('@auxx/logger', () => ({
 }))
 
 import { type Database, schema } from '@auxx/database'
-import { postCustomerRefundAccounting } from '../refund-accounting'
+import { postCustomerRefundAccounting, relinkRefundsToMemo } from '../refund-accounting'
 
 const ORG = 'org_1'
 const MOVEMENT = 'mt_refund'
@@ -369,6 +369,43 @@ describe('the memo, where one exists', () => {
       stage: 'post',
       reasonCode: 'REFUND_EXCEEDS_MEMO',
       detail: { creditMemoInstanceIds: [MEMO] },
+    })
+  })
+
+  it('does not judge a draft memo, whose total is not final until issue', async () => {
+    h.sumCreditMemoApplications.mockResolvedValue(1)
+    h.loadCreditMemo.mockResolvedValue({
+      id: MEMO,
+      status: 'draft',
+      orderInstanceId: ORDER,
+      invoiceInstanceId: null,
+      issuedAt: '2026-09-01',
+      totalMinor: 0,
+      amountRefundedMinor: 20_000,
+      source: 'channel',
+    })
+
+    expect(await post()).toEqual({ status: 'accepted', glPostingId: 'gl_refund' })
+
+    expect(h.insertLinks).toHaveBeenCalledOnce()
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    expect(h.deleteWorkItem).toHaveBeenCalled()
+  })
+
+  it('re-judges every refund on a memo, clearing a stale warning', async () => {
+    h.posted = 'gl_refund'
+    h.memoLinks = [{ sourceId: MEMO }]
+    h.settlements = [
+      { ...settlement, refundTransactionId: MOVEMENT, customerCreditMemoInstanceId: MEMO },
+    ]
+
+    await relinkRefundsToMemo(db(), ORG, MEMO)
+
+    expect(h.upsertWorkItem).not.toHaveBeenCalled()
+    expect(h.deleteWorkItem).toHaveBeenCalledWith(expect.anything(), ORG, {
+      sourceKind: 'money_transaction',
+      sourceId: MOVEMENT,
+      stage: 'post',
     })
   })
 
