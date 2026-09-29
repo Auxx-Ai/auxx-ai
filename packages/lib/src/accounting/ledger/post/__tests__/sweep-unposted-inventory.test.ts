@@ -37,6 +37,8 @@ vi.mock('@auxx/database', async () => {
   return {
     schema: {
       StockMovement: actual.schema.StockMovement,
+      CustomField: actual.schema.CustomField,
+      FieldValue: actual.schema.FieldValue,
       GlPostingSource: pgTable('GlPostingSource', {
         organizationId: text().notNull(),
         glPostingId: text().notNull(),
@@ -129,10 +131,12 @@ describe('the candidate statement', () => {
     // A pending row, a return to the vendor and a row already in a posted entry are excluded.
     expect(sql).toMatch(/"costBasis" IS DISTINCT FROM \$\d+/)
     expect(sql).toMatch(/"type" <> \$\d+/)
-    expect(sql.match(/not in \(select/gi)).toHaveLength(2)
+    expect(sql.match(/not in \(select/gi)).toHaveLength(4)
+    // A build whose entry would be empty is never retried either (22 §8).
+    expect(sql).toMatch(/not in \(select "np_build_id" from \(select/)
     // A build with a leg still waiting for a cost is left for the pricer, never retried here.
     expect(sql).toMatch(
-      /"buildId" is null or "StockMovement"\."buildId" not in \(select distinct "buildId" from "StockMovement" "pending_leg"/
+      /"buildId" is null or \("StockMovement"\."buildId" not in \(select distinct "buildId" from "StockMovement" "pending_leg"/
     )
     expect(params).toContain('pending')
     expect(params).toContain('return_out')

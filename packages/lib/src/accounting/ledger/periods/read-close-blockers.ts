@@ -23,6 +23,7 @@ import { readOrganizationSettings } from '../../../settings/read'
 import { readTrialBalance } from '../../reports/trial-balance'
 import { countUnissuedChannelCreditMemos } from '../../sales/credit-memos/reads'
 import { cutoverDateFor } from '../builders/opening-balance'
+import { buildsWaitingOnACost, buildsWithNothingToPost } from '../post/nothing-to-post'
 import { readOpeningInventoryLedger } from '../reads/opening-inventory'
 import { INVENTORY_ROLES } from '../roles/regime'
 import { readRoleAssignments } from '../roles/role-assignments'
@@ -84,10 +85,14 @@ async function countUnpostedMovements(
       )
     )
 
+  // A $0 row and a build whose entry would be empty never gain a posting; a build waiting on a
+  // cost is already counted by its pending legs (plans/mrp/22 §8).
+  const nothingToPost = buildsWithNothingToPost(db, organizationId)
+  const waitingOnACost = buildsWaitingOnACost(db, organizationId)
   const [row] = await db
     .select({
       pending: sql<string>`count(*) FILTER (WHERE ${isPending})`,
-      unposted: sql<string>`count(*) FILTER (WHERE NOT ${isPending} AND ${t.id} NOT IN ${posted})`,
+      unposted: sql<string>`count(*) FILTER (WHERE NOT ${isPending} AND ${t.extendedCostMinor} IS DISTINCT FROM 0 AND (${t.buildId} IS NULL OR (${t.buildId} NOT IN ${nothingToPost} AND ${t.buildId} NOT IN ${waitingOnACost})) AND ${t.id} NOT IN ${posted})`,
     })
     .from(t)
     .where(
