@@ -130,12 +130,16 @@ export function ProviderSyncNowRow({ todayInBooks, cutoverPeriod }: ProviderSync
 export function ProviderSyncRunDetail({ className }: { className?: string }) {
   const provider = useAccountingProviderStatus()
   const run = useProviderSyncRun()
+  const { getSetting } = useSettings({})
+  const obe = api.ledger.openingBalanceEquity.useQuery(undefined, { retry: false })
   return (
     <ProviderSyncReport
       currentRun={run.currentRun}
       lastRun={run.lastRun}
       stale={run.stale}
       providerLabel={provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL}
+      openingBalanceEquityMinor={obe.data?.netMinor ?? null}
+      currencyCode={(getSetting('organization.currency') as string) || 'USD'}
       className={className}
     />
   )

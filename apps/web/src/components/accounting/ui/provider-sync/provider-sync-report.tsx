@@ -33,9 +33,10 @@ import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatInTimezone } from '@auxx/utils'
-import { CircleAlert, Clock, Lock, TriangleAlert, Unlink } from 'lucide-react'
+import { CircleAlert, Clock, Lock, Scale, TriangleAlert, Unlink } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ProviderSyncRun } from '../../hooks/use-provider-sync-run'
+import { formatMinor } from '../ledger/format'
 
 export interface ProviderSyncReportProps {
   /** The open walk, or null. Takes precedence over `lastRun` - it is happening now. */
@@ -45,6 +46,9 @@ export interface ProviderSyncReportProps {
   stale: boolean
   /** `'QuickBooks Online'`, or whatever is connected. */
   providerLabel: string
+  /** Net debit (+) or credit (-) on Opening Balance Equity; null when unmapped or unread. */
+  openingBalanceEquityMinor?: number | null
+  currencyCode?: string
   className?: string
 }
 
@@ -215,6 +219,8 @@ export function ProviderSyncReport({
   lastRun,
   stale,
   providerLabel,
+  openingBalanceEquityMinor,
+  currencyCode = 'USD',
   className,
 }: ProviderSyncReportProps) {
   // A stale open run is history, not progress - `describeProviderSyncRun` says
@@ -328,6 +334,20 @@ export function ProviderSyncReport({
           </ul>
         </ReportCard>
       )}
+
+      {/* Mirrored as-is so the books match the provider; the reclass belongs there (118 #5). */}
+      {openingBalanceEquityMinor ? (
+        <ReportCard
+          tone='warn'
+          icon={<Scale className='size-4' />}
+          title={`Opening Balance Equity holds ${formatMinor(Math.abs(openingBalanceEquityMinor), currencyCode)} ${openingBalanceEquityMinor > 0 ? 'debit' : 'credit'}`}>
+          <p className='text-sm text-muted-foreground'>
+            {providerLabel} posts an account's opening balance here. Your accountant should move it
+            to owner's equity or retained earnings in {providerLabel}; the next sync brings the
+            correction across.
+          </p>
+        </ReportCard>
+      ) : null}
 
       {/* ── 4. What is waiting on a person ──────────────────────────────── */}
       {deferredCount > 0 && (
