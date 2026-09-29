@@ -1,9 +1,8 @@
 // packages/lib/src/inventory/receiving/set-count-preflight.ts
 
-import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
-import { getOrgCache } from '../../cache'
+import { findSystemRecordIdsByValue, systemFields } from '../../resources/system-records'
 import {
   readEarliestMovementAt,
   readPartBuiltTotal,
@@ -67,26 +66,13 @@ async function readPartsWithBom(
   organizationId: string,
   partIds: readonly string[]
 ): Promise<Set<string>> {
-  const parents = new Set<string>()
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['subpart_parent_part'] as const)
-  const parentField = fields.subpart_parent_part
-  if (!parentField) return parents
-
-  const rows = await db
-    .selectDistinct({ partId: schema.FieldValue.relatedEntityId })
-    .from(schema.FieldValue)
-    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, parentField.id),
-        inArray(schema.FieldValue.relatedEntityId, [...partIds]),
-        isNotNull(schema.FieldValue.relatedEntityId),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-  for (const row of rows) if (row.partId) parents.add(row.partId)
-  return parents
+  const ctx = await systemFields(db, organizationId, 'subpart', ['subpart_parent_part'] as const, {
+    required: ['subpart_parent_part'],
+  })
+  if (!ctx) return new Set()
+  const byParent = await findSystemRecordIdsByValue(db, organizationId, ctx, {
+    attribute: 'subpart_parent_part',
+    related: partIds,
+  })
+  return new Set(byParent.keys())
 }

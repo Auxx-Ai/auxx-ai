@@ -2,7 +2,7 @@
 
 import type { ChartAccountRow } from '@auxx/lib/accounting/ledger/client'
 import { describe, expect, it } from 'vitest'
-import { chartGroupTree, flattenAccountIds } from '../chart-list'
+import { chartGroupTree, flattenAccountIds } from '../chart-tree'
 
 function account(overrides: Partial<ChartAccountRow>): ChartAccountRow {
   return {

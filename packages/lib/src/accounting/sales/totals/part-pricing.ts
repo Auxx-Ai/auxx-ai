@@ -17,6 +17,7 @@ import type { EntityFieldChangeHandler } from '../../../field-hooks/types'
 import { firstTyped } from '../../../field-values/client'
 import { createFieldValueContext } from '../../../field-values/field-value-helpers'
 import { setValueWithType } from '../../../field-values/field-value-mutations'
+import { readFieldScalars } from '../../../field-values/read-field-scalars'
 import { getRealtimeService, publishFieldValueUpdates } from '../../../realtime'
 
 const logger = createScopedLogger('money:part-pricing')
@@ -109,34 +110,25 @@ interface PartPriceValues {
   price: number | null
 }
 
-/** One query for cost, markup and price across `partIds`. */
+/** Cost, markup and price across `partIds`; a part with none stored is absent. */
 async function readPartPriceValues(
   organizationId: string,
   partIds: readonly string[],
   fields: PartPricingFields
 ): Promise<Map<string, PartPriceValues>> {
-  const rows = await database
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueNumber: schema.FieldValue.valueNumber,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.fieldId, [fields.cost.id, fields.markup.id, fields.price.id]),
-        inArray(schema.FieldValue.entityId, [...partIds])
-      )
-    )
-
+  const scalars = await readFieldScalars(database, organizationId, partIds, [
+    fields.cost.id,
+    fields.markup.id,
+    fields.price.id,
+  ])
+  const num = (value: unknown) => (typeof value === 'number' ? value : null)
   const out = new Map<string, PartPriceValues>()
-  for (const row of rows) {
-    const entry = out.get(row.entityId) ?? { cost: null, markup: null, price: null }
-    if (row.fieldId === fields.cost.id) entry.cost = row.valueNumber
-    else if (row.fieldId === fields.markup.id) entry.markup = row.valueNumber
-    else if (row.fieldId === fields.price.id) entry.price = row.valueNumber
-    out.set(row.entityId, entry)
+  for (const [partId, byField] of scalars) {
+    out.set(partId, {
+      cost: num(byField.get(fields.cost.id)),
+      markup: num(byField.get(fields.markup.id)),
+      price: num(byField.get(fields.price.id)),
+    })
   }
   return out
 }

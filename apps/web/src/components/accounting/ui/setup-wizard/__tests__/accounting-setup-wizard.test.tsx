@@ -34,6 +34,7 @@ vi.mock('~/trpc/react', () => {
         gettingStarted: { getStatus: { setData: vi.fn(), invalidate } },
         ledgerOpening: { invalidate, get: { invalidate } },
         ledger: { invalidate, roleMap: { invalidate }, chartAccounts: { invalidate } },
+        paymentGateway: { invalidate },
       }),
       gettingStarted: { setWizardCompleted: { useMutation: () => ({ mutate: vi.fn() }) } },
       ledger: {
@@ -48,6 +49,7 @@ vi.mock('~/trpc/react', () => {
           },
           complete: { useMutation: () => ({ mutateAsync: vi.fn(), isPending: false }) },
         },
+        setProviderSyncSchedule: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
       },
     },
   }
@@ -57,6 +59,7 @@ vi.mock('~/providers/dehydrated-state-provider', () => ({
   useDehydratedOrganizationId: () => 'org_1',
   useDehydratedSettings: () => ({}),
   useDehydratedStateContext: () => ({ patchSettings: vi.fn() }),
+  getEnv: () => undefined,
 }))
 
 // The pages behind the choice have their own concerns; here only which one shows matters.

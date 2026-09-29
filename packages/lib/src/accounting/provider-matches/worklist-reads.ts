@@ -8,6 +8,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError } from '../../errors'
 import { systemValueJoin } from '../../resources/system-records'
+import { readLiveBatchForPosting } from '../export/queue-reads'
 import { ACCOUNT_ROLES } from '../ledger/builders/entry'
 import { findLiveSubjectPostings } from '../ledger/reads/list-postings'
 import { LEDGER_CURRENCY } from '../ledger/setup/ledger-currency'
@@ -292,31 +293,7 @@ async function readPayoutDeposit(
   const posting = live.get(payoutId)
   if (!posting) return null
 
-  const [batch] = await db
-    .select({
-      batchState: schema.ExportBatch.state,
-      providerObjectId: schema.ExportBatch.providerObjectId,
-      objectType: schema.ExportBatch.objectType,
-      bookId: schema.ExportBatch.bookId,
-      sentAt: schema.ExportBatch.sentAt,
-    })
-    .from(schema.ExportBatchPosting)
-    .innerJoin(
-      schema.ExportBatch,
-      and(
-        eq(schema.ExportBatch.organizationId, organizationId),
-        eq(schema.ExportBatch.id, schema.ExportBatchPosting.batchId)
-      )
-    )
-    .where(
-      and(
-        eq(schema.ExportBatchPosting.organizationId, organizationId),
-        eq(schema.ExportBatchPosting.glPostingId, posting.glPostingId),
-        isNull(schema.ExportBatchPosting.withdrawnAt)
-      )
-    )
-    .orderBy(desc(schema.ExportBatch.createdAt))
-    .limit(1)
+  const batch = await readLiveBatchForPosting(db, organizationId, posting.glPostingId)
   if (!batch) return null
 
   const mirrorTxnType = MIRROR_TXN_TYPE[batch.objectType]

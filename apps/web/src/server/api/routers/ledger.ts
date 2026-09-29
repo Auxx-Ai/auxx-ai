@@ -284,7 +284,6 @@ async function hydrateSources<
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `syncExports` | `ledger.post` |
- * | `unsyncExports` | `ledger.control` |
  * | `verifyBalance`   | `ledger.view` |
  * | `reverse`         | `ledger.post` |
  * | `reverseMany`     | `ledger.post` |
@@ -580,8 +579,7 @@ export const ledgerRouter = createTRPCRouter({
   /**
    * Reverse several postings in one press - the outbox's bulk Reverse.
    *
-   * 🛑 A LEDGER operation, unlike `unsyncExports` beside it in the same bulk
-   * bar. Every accepted row writes a NEW entry into the books and flips its
+   * A LEDGER operation. Every accepted row writes a NEW entry into the books and flips its
    * original to `reversed`; nothing is edited and nothing is deleted, but an
    * effect-backed original's accepted effect IS released so its source can be
    * posted again (plans/accounting/tasks/done/62-correcting-an-effect-backed-posting.md).

@@ -10,6 +10,14 @@ const h = vi.hoisted(() => ({
   lock: vi.fn(async (..._args: unknown[]) => {
     throw new Error('reached')
   }),
+  getCachedEntityDefId: vi.fn(async (..._args: unknown[]) => undefined as string | undefined),
+}))
+
+// The leaf, not the `cache` barrel: a partial barrel mock does not reach bridge.ts's import.
+vi.mock('../../../../cache/org-cache-helpers', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  getCachedEntityDefId: h.getCachedEntityDefId,
+  getCachedCustomFields: vi.fn(async () => []),
 }))
 
 vi.mock('../../../ledger/setup/accounting-enabled', () => ({
@@ -95,6 +103,7 @@ describe('once finalized, the same calls proceed', () => {
     })
     // The test org has no payout def, so reaching the lookup shows as a skip.
     expect(result.payout.reasons).toEqual({ 'resource is not installed for this organization': 1 })
+    expect(h.getCachedEntityDefId).toHaveBeenCalledWith(ORG, 'payout')
   })
 
   it('reconcileOrderPaymentEvidence reads the acceptances', async () => {

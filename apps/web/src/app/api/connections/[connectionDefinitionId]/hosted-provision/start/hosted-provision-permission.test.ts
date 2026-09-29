@@ -81,9 +81,11 @@ vi.mock('@auxx/lib/accounting/banking', () => ({
   BANK_FEED_PROVIDER_KEY: 'stripeFinancialConnections',
 }))
 
-vi.mock('@auxx/database', () => ({
-  database: { query: { ConnectionDefinition: { findFirst: findConnectionDefinition } } },
-}))
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: { query: { ConnectionDefinition: { findFirst: findConnectionDefinition } } },
+  })
+)
 
 vi.mock('@auxx/redis', () => ({
   getRedisClient: async () => getRedisClient(),

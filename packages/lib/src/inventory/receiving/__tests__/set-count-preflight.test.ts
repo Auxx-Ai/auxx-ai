@@ -11,14 +11,18 @@ const h = vi.hoisted(() => ({
   parentField: true,
 }))
 
-vi.mock('../../../cache', () => ({
-  getOrgCache: () => ({
-    from: () => ({
-      bySystemAttributes: async () => ({
-        subpart_parent_part: h.parentField ? { id: 'fld_parent' } : null,
-      }),
-    }),
-  }),
+vi.mock('../../../resources/system-records', () => ({
+  // `required` makes a missing parent field read as no context at all.
+  systemFields: async () =>
+    h.parentField
+      ? { defId: 'def_subpart', fields: { subpart_parent_part: { id: 'fld_parent' } } }
+      : null,
+  findSystemRecordIdsByValue: async (
+    _db: unknown,
+    _org: string,
+    _ctx: unknown,
+    where: { related: string[] }
+  ) => new Map(where.related.filter((id) => h.bomParents.has(id)).map((id) => [id, [`sp_${id}`]])),
 }))
 vi.mock('../../costing/dated-reads', () => ({
   readPartNetThrough: async (_org: string, ids: string[]) =>
@@ -34,15 +38,7 @@ vi.mock('../../movements/initial-queries', () => ({
 
 import { readSetCountPreflight } from '../set-count-preflight'
 
-const db = {
-  selectDistinct: () => {
-    const link: Record<string, unknown> = {}
-    link.from = () => link
-    link.innerJoin = () => link
-    link.where = async () => [...h.bomParents].map((partId) => ({ partId }))
-    return link
-  },
-} as never
+const db = {} as never
 
 beforeEach(() => {
   h.nets = new Map()

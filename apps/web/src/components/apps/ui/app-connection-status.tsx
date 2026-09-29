@@ -8,7 +8,7 @@ import { CheckCircle, Clock, XCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
-import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
+import type { DetailMethod } from '~/components/connections/ui/connection-detail-method'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 

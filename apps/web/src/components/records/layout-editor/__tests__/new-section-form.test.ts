@@ -1,7 +1,7 @@
 // apps/web/src/components/records/layout-editor/__tests__/new-section-form.test.ts
 
 import { describe, expect, it } from 'vitest'
-import { firstSelected } from '../new-section-form'
+import { firstSelected } from '../first-selected'
 
 // `select-input-field.tsx` calls `onChange(selected: string[])` for BOTH modes,
 // so a single-select still reports an array. Reading it as a string dropped

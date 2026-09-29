@@ -15,9 +15,6 @@ import { useEffect, useState } from 'react'
 import { getStripePromise } from '~/lib/stripe'
 import { api } from '~/trpc/react'
 
-/** Initialize Stripe */
-const stripePromise = getStripePromise()
-
 /** Props for add payment method dialog */
 type AddPaymentMethodDialogProps = {
   /** Controls whether the dialog is open */
@@ -39,7 +36,7 @@ export function AddPaymentMethodDialog({ open, onOpenChange }: AddPaymentMethodD
           <DialogDescription>Add a new card to your account for billing purposes</DialogDescription>
         </DialogHeader>
 
-        <Elements stripe={stripePromise}>
+        <Elements stripe={getStripePromise()}>
           <PaymentMethodForm onSuccess={() => onOpenChange(false)} />
         </Elements>
       </DialogContent>

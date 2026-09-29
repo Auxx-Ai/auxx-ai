@@ -63,6 +63,7 @@ import type {
   PostingDetail,
   PostingDetailLine,
   PostingDirection,
+  PostingLinkRole,
   PostingStatus,
   PostingType,
 } from '../types'
@@ -363,4 +364,49 @@ export async function countPostingsForLineSource(
       )
     )
   return rows.length
+}
+
+/** The `sourceId`s one posting links as `sourceKind` in `linkRole`. */
+export async function readPostingSourceIds(
+  db: Database | Transaction,
+  organizationId: string,
+  params: { glPostingId: string; sourceKind: string; linkRole: PostingLinkRole }
+): Promise<string[]> {
+  const rows = await db
+    .select({ sourceId: schema.GlPostingSource.sourceId })
+    .from(schema.GlPostingSource)
+    .where(
+      and(
+        eq(schema.GlPostingSource.organizationId, organizationId),
+        eq(schema.GlPostingSource.glPostingId, params.glPostingId),
+        eq(schema.GlPostingSource.sourceKind, params.sourceKind),
+        eq(schema.GlPostingSource.linkRole, params.linkRole)
+      )
+    )
+  return rows.map((row) => row.sourceId)
+}
+
+/** Every line of a set of postings with its account snapshot, oldest first. */
+export async function readLinesOfPostings(
+  db: Database | Transaction,
+  organizationId: string,
+  glPostingIds: readonly string[]
+) {
+  if (glPostingIds.length === 0) return []
+  return db
+    .select({
+      glAccountId: schema.GlPostingLine.glAccountId,
+      accountCode: schema.GlPostingLine.accountCode,
+      accountName: schema.GlPostingLine.accountName,
+      direction: schema.GlPostingLine.direction,
+      amountMinor: schema.GlPostingLine.amountMinor,
+    })
+    .from(schema.GlPostingLine)
+    .where(
+      and(
+        eq(schema.GlPostingLine.organizationId, organizationId),
+        inArray(schema.GlPostingLine.glPostingId, [...glPostingIds])
+      )
+    )
+    .orderBy(schema.GlPostingLine.createdAt)
 }

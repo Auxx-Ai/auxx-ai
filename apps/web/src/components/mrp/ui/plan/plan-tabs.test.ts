@@ -89,7 +89,7 @@ describe('mrp filters', () => {
       supplierIds: ['s1'],
       buffered: undefined,
       sort: 'priority',
-      direction: 'asc',
+      order: 'asc',
       limit: undefined,
     })
   })

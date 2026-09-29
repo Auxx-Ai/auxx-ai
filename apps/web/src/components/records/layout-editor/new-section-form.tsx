@@ -16,6 +16,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceFields } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
+import { firstSelected } from './first-selected'
 
 /**
  * Stage 4's two block creators (`plans/drawer/record-layout-system.md` §9.4).
@@ -92,18 +93,6 @@ function useFieldGroupChoices(entityDefinitionId: string): SourceChoice[] {
       label: group.label,
     }))
   }, [panelView])
-}
-
-/**
- * The chosen option id, from whatever the select handed back.
- *
- * Single-select still reports an array (`select-input-field.tsx` calls
- * `onChange(selected: string[])` for both modes), and an empty array is a
- * cleared selection.
- */
-export function firstSelected(value: unknown): string {
-  if (Array.isArray(value)) return typeof value[0] === 'string' ? value[0] : ''
-  return typeof value === 'string' ? value : ''
 }
 
 /** The create form for a related list or a promoted field group. */

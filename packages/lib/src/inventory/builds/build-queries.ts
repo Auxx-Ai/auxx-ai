@@ -23,6 +23,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { batchGetRelatedDisplayNames } from '../../field-values/field-value-helpers'
+import { readFieldScalars } from '../../field-values/read-field-scalars'
 import { StockMovementCostBasis } from '../../resources/registry/enum-values'
 import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
@@ -690,25 +691,13 @@ export async function readAbsorptionRates(
   )
   if (fieldIds.length === 0 || partIds.length === 0) return rates
 
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueNumber: schema.FieldValue.valueNumber,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, [...new Set(partIds)]),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-  for (const row of rows) {
-    const part = rates.get(row.entityId)
+  const scalars = await readFieldScalars(db, organizationId, partIds, fieldIds)
+  const num = (value: unknown) => (typeof value === 'number' ? value : null)
+  for (const [partId, byField] of scalars) {
+    const part = rates.get(partId)
     if (!part) continue
-    if (row.fieldId === fields.laborRate?.id) part.laborCostPerUnit = row.valueNumber
-    else if (row.fieldId === fields.overheadRate?.id) part.overheadCostPerUnit = row.valueNumber
+    if (fields.laborRate) part.laborCostPerUnit = num(byField.get(fields.laborRate.id))
+    if (fields.overheadRate) part.overheadCostPerUnit = num(byField.get(fields.overheadRate.id))
   }
   return rates
 }

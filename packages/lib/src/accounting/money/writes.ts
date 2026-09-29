@@ -2,10 +2,12 @@
 
 /**
  * The one `MoneyApplication` insert every writer shares (plans/accounting/LIB-READS.md
- * §2.1), beside `commands/insert-movement.ts`'s row for the movement itself.
+ * §2.1), beside `commands/insert-movement.ts`'s row for the movement itself, and the
+ * provider-match stamp on a movement.
  */
 
-import { schema, type Transaction } from '@auxx/database'
+import { type Database, schema, type Transaction } from '@auxx/database'
+import { and, eq, isNull } from 'drizzle-orm'
 import { BadRequestError } from '../../errors'
 
 export interface InsertApplicationInput {
@@ -64,4 +66,25 @@ export async function insertApplication(
     .returning({ id: schema.MoneyApplication.id })
   if (!row) throw new Error('Money application insert returned no row')
   return row
+}
+
+/** Stamp a movement as the provider entry's own; `false` when another entry already holds it. */
+export async function markMovementProviderEntry(
+  db: Database | Transaction,
+  organizationId: string,
+  moneyTransactionId: string,
+  providerLedgerEntryId: string
+): Promise<boolean> {
+  const marked = await db
+    .update(schema.MoneyTransaction)
+    .set({ providerLedgerEntryId })
+    .where(
+      and(
+        eq(schema.MoneyTransaction.organizationId, organizationId),
+        eq(schema.MoneyTransaction.id, moneyTransactionId),
+        isNull(schema.MoneyTransaction.providerLedgerEntryId)
+      )
+    )
+    .returning({ id: schema.MoneyTransaction.id })
+  return marked.length > 0
 }

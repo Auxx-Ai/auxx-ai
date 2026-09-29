@@ -3,10 +3,11 @@
 // (plans/accounting/tasks/95-the-summary-is-the-row.md §3.2).
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
 import { type LedgerSummaryLine, sumSummaryLines } from '../ledger/reads/ledger-summary'
+import { readLinesOfPostings } from '../ledger/reads/read-posting'
 import type { ExportBatchState, UnbuiltGroupKey } from './client'
 import { exportJournalSchema } from './payloads'
 import { type ExportBatchMember, type ExportBatchRow, listExportBatches } from './queue-reads'
@@ -88,7 +89,8 @@ export async function readSummaryBucket(
     }
 
     const members = batch ? batch.members : unbuilt.value
-    const stored = await readMemberLines(
+    // Oldest first, so the name map ends on each account's newest snapshot.
+    const stored = await readLinesOfPostings(
       db,
       organizationId,
       members.map((member) => member.glPostingId)
@@ -117,25 +119,4 @@ export async function readSummaryBucket(
     if (error instanceof AuxxError) return err(error)
     return err(error instanceof Error ? error : new Error(String(error)))
   }
-}
-
-/** Oldest first, so the name map ends on each account's newest snapshot. */
-async function readMemberLines(db: Database, organizationId: string, glPostingIds: string[]) {
-  if (glPostingIds.length === 0) return []
-  return db
-    .select({
-      glAccountId: schema.GlPostingLine.glAccountId,
-      accountCode: schema.GlPostingLine.accountCode,
-      accountName: schema.GlPostingLine.accountName,
-      direction: schema.GlPostingLine.direction,
-      amountMinor: schema.GlPostingLine.amountMinor,
-    })
-    .from(schema.GlPostingLine)
-    .where(
-      and(
-        eq(schema.GlPostingLine.organizationId, organizationId),
-        inArray(schema.GlPostingLine.glPostingId, glPostingIds)
-      )
-    )
-    .orderBy(schema.GlPostingLine.createdAt)
 }

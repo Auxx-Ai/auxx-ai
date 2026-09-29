@@ -28,7 +28,6 @@ on:
         type: choice
         options:
           - all
-          - web
           - api
           - build
           - worker
@@ -49,17 +48,13 @@ concurrency:
 jobs:
   build-and-publish:
     name: ${{ matrix.name }}
-    # PR builds are async can-it-build checks — everything stays on free standard
-    # runners here. Only the release build (release-please.yml) pays for the
-    # 16-core runner on web. See plans/docker/web-image-build-speed.md.
+    # web is omitted: next build OOMs on a 16 GB runner; release-please.yml builds it
+    # on ubuntu-16-core. See plans/docker/web-image-build-speed.md.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: web
-            file: apps/web/Dockerfile
-            image: ghcr.io/auxx-ai/web
           - name: api
             file: apps/api/Dockerfile
             image: ghcr.io/auxx-ai/api

@@ -22,6 +22,9 @@ vi.mock('../reconciliation', async (importOriginal) => {
   }
 })
 vi.mock('../relationship-pass', () => ({ resolveRelationships: async () => {} }))
+vi.mock('../../accounting/work-items/recovery', () => ({
+  requestRailRouting: vi.fn(async () => {}),
+}))
 vi.mock('../cross-connector-links', async () => {
   const { ok } = await import('neverthrow')
   return { resolveCrossConnectorLinks: async () => ok(undefined) }

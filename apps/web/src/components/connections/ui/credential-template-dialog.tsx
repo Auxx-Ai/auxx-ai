@@ -11,11 +11,11 @@ import { AppIcon } from '~/components/apps/ui/app-icon'
 import { type TemplateGalleryCategory, TemplateGalleryDialog } from '~/components/templates/ui'
 import {
   applyOwnClientDisclosure,
-  ConnectionDetailPage,
   methodIsBareSecret,
   methodNeedsFields,
   methodOffersOwnClient,
-} from './connection-detail-page'
+} from './connection-detail-method'
+import { ConnectionDetailPage } from './connection-detail-page'
 import { appTarget, type ProviderRow, platformTarget } from './connection-targets'
 import { validateConnectionVariables } from './connection-variable-validation'
 

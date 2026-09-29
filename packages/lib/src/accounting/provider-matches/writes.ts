@@ -3,12 +3,13 @@
 // No permission checks: the router asserts (docs/lib-module-guide.md §6).
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { BadRequestError, ConflictError, NotFoundError } from '../../errors'
 import { didLedgerAccept } from '../ledger/post/ledger-accepted'
 import { reverseEntry } from '../ledger/post/reverse-entry'
 import { findLiveSubjectPosting } from '../ledger/reads/list-postings'
+import { markMovementProviderEntry } from '../money/writes'
 import { upsertWorkItem } from '../work-items/write'
 import type { MatchState, ProviderMatchKind, ProviderMatchReason } from './client'
 
@@ -105,18 +106,13 @@ export async function acceptProviderMatch(
   if (entry.matchedKind === 'money_transaction' && reason === 'ours_unsent') {
     // The marker first: the reversal releases the claim, and an unmarked movement with no
     // live posting is exactly what the sweep re-posts.
-    const marked = await db
-      .update(schema.MoneyTransaction)
-      .set({ providerLedgerEntryId: entry.id })
-      .where(
-        and(
-          eq(schema.MoneyTransaction.organizationId, input.organizationId),
-          eq(schema.MoneyTransaction.id, entry.matchedId),
-          isNull(schema.MoneyTransaction.providerLedgerEntryId)
-        )
-      )
-      .returning({ id: schema.MoneyTransaction.id })
-    if (marked.length === 0)
+    const marked = await markMovementProviderEntry(
+      db,
+      input.organizationId,
+      entry.matchedId,
+      entry.id
+    )
+    if (!marked)
       return err(new ConflictError('That receipt is already matched to another transaction'))
     const live = await findLiveSubjectPosting(db, {
       organizationId: input.organizationId,

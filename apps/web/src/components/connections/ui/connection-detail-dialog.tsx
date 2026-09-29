@@ -18,12 +18,12 @@ import { useCredentialForm } from '~/components/connections/hooks/use-credential
 import { api } from '~/trpc/react'
 import {
   applyOwnClientDisclosure,
-  ConnectionDetailPage,
   type DetailMethod,
   methodIsBareSecret,
   methodOffersOwnClient,
   shouldOfferOptionalScopes,
-} from './connection-detail-page'
+} from './connection-detail-method'
+import { ConnectionDetailPage } from './connection-detail-page'
 import { validateConnectionVariables } from './connection-variable-validation'
 
 interface ConnectionDetailDialogProps {
