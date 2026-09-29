@@ -31,6 +31,7 @@ import type {
   SyncState,
 } from '../../sync-core/contracts'
 import type { ScheduledTriggerConfig } from '../../workflows/cron-pattern'
+import { getAccountingProviderEntry } from '../providers/catalogue'
 
 /**
  * One line of a provider's general ledger, already flattened by the apps-repo
@@ -445,12 +446,9 @@ export interface ProviderSyncReading {
   detail: string | null
 }
 
-/** `quickbooks` reads as QuickBooks. Anything unregistered reads as itself. */
-const PROVIDER_LABELS: Record<string, string> = { quickbooks: 'QuickBooks' }
-
-/** The connected provider's name as a person writes it. */
+/** The connected provider's name as a person writes it; an id nothing ships reads as itself. */
 export function providerDisplayName(providerId: string): string {
-  return PROVIDER_LABELS[providerId] ?? providerId
+  return getAccountingProviderEntry(providerId)?.shortLabel ?? providerId
 }
 
 /**

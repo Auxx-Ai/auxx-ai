@@ -14,8 +14,12 @@
 import { type CatalogTool, database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getCachedInstalledApps, getOrgCache } from '../cache'
+import { UnprocessableEntityError } from '../errors'
 
 const logger = createScopedLogger('apps:invoke-app-tool')
+
+/** `code` on the error `callTool` throws when the installed deployment has no such tool. */
+export const APP_TOOL_MISSING = 'APP_TOOL_MISSING'
 
 /**
  * Caller identity threaded through `invokeLambdaExecutor`'s HMAC signature + allowlist.
@@ -163,7 +167,19 @@ export async function resolveAppToolContext(
     includeEntitiesScope,
   })
 
+  const tools = deploymentResult.value.deployment.catalog?.tools
+
   const callTool = async (toolId: string, inputs: Record<string, unknown>): Promise<any> => {
+    // An app older than lib otherwise fails inside the Lambda as a bare "Tool not found".
+    if (tools && !tools.some((tool) => tool.id === toolId)) {
+      throw Object.assign(
+        new UnprocessableEntityError(
+          `The installed ${appLabel} app is out of date: it has no ${toolId} tool. Update the app and try again.`
+        ),
+        { code: APP_TOOL_MISSING }
+      )
+    }
+
     const result = await invokeLambdaExecutor({
       caller: APP_TOOL_CALLER,
       payload: {
@@ -221,7 +237,7 @@ export async function resolveAppToolContext(
       installationId: installation.id,
       connectionId: connection.id,
       userId,
-      tools: deploymentResult.value.deployment.catalog?.tools,
+      tools,
       serverBundleSha,
       connectionMetadata: isRecord(connection.metadata) ? connection.metadata : undefined,
       callTool,

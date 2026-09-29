@@ -6,14 +6,8 @@
 // (plans/accounting/tasks/20-two-authors-one-ledger.md §5-§7, §7.4;
 // plans/accounting/tasks/55-the-inbound-sync-runs-in-a-worker.md §2.2, §4.8).
 //
-// 🛑 A BUTTON THAT ENQUEUES. Still no cron, no run-on-mount and no auto-run
-// after the agreement check - what changed is only WHERE the walk happens.
-// 20 §8.3 ("cadence: at close, plus on demand, not continuous") is an argument
-// against a SCHEDULE, and this file used to collapse it into "no background job"
-// as well. Those are separable: nine months is nine sequential app-runtime round
-// trips and the transport gives up before the walk does (55 §2), so the press
-// hands the walk to a worker and this reads the run back. The press is still the
-// only trigger that exists.
+// The press enqueues a worker walk (55 §2); the org's sync schedule (`ProviderSyncScheduleRow`)
+// can start one too, so the run is always read back, never assumed from the press.
 //
 // 🛑 THE RANGE PICKER IS GONE (MK, 2026-09-17). The sync always runs the cutover
 // floor -> today. Re-reading one month by hand was the recovery path for a bad
@@ -34,6 +28,7 @@ import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
+import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import {
@@ -63,6 +58,7 @@ export function ProviderSyncNowRow({ todayInBooks, cutoverPeriod }: ProviderSync
   const { can } = useAccess()
   const utils = api.useUtils()
   const run = useProviderSyncRun()
+  const { getSetting } = useSettings({})
   const [pressError, setPressError] = useState<string | null>(null)
 
   /**
@@ -85,7 +81,8 @@ export function ProviderSyncNowRow({ todayInBooks, cutoverPeriod }: ProviderSync
   const isRunning = Boolean(run.currentRun) && !run.stale
   const now = useTicker(isRunning)
   const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
-  const reading = describeProviderSyncRun(run, providerLabel, now)
+  const bookTimeZone = (getSetting('accounting.bookTimeZone') as string | null) ?? 'UTC'
+  const reading = describeProviderSyncRun(run, providerLabel, now, bookTimeZone)
 
   return (
     <FieldPanelRow
@@ -144,18 +141,12 @@ export function ProviderSyncRunDetail({ className }: { className?: string }) {
   )
 }
 
-/**
- * A once-a-second clock, and only while a walk is open.
- *
- * The one honest thing a poll can add between slices: that time is passing. A
- * run that has been going for four minutes must not look like one that started.
- */
+/** A clock: every second while a walk is open, every 30 s otherwise so "2 minutes ago" ages. */
 function useTicker(active: boolean): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!active) return
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
+    const timer = setInterval(() => setNow(Date.now()), active ? 1000 : 30_000)
     return () => clearInterval(timer)
   }, [active])
   return now

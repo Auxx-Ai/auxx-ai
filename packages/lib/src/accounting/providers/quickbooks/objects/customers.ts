@@ -11,14 +11,15 @@ import { and, eq } from 'drizzle-orm'
 import { UnprocessableEntityError } from '../../../../errors'
 import { UnifiedCrudHandler } from '../../../../resources/crud'
 import { readSourceAccounts } from '../../../money/customer-money/source-reads'
+import { QUICKBOOKS_PARTY_ID_FIELD_KEYS } from '../../catalogue'
 import { readQuickbooksIdField } from '../identity-field'
 import type { QuickbooksToolContext } from '../invoke-quickbooks-tool'
 import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from '../upsert-customer'
 import { memoised, quickbooksName } from './shared'
 
-const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
+const QBO_CUSTOMER_ID_FIELD_KEY = QUICKBOOKS_PARTY_ID_FIELD_KEYS.customer
 /** Not provisioned by the app yet (brief 13 DECIDED, unit 1) - a vendor line always refuses below. */
-const QBO_VENDOR_ID_FIELD_KEY = 'qboVendorId'
+const QBO_VENDOR_ID_FIELD_KEY = QUICKBOOKS_PARTY_ID_FIELD_KEYS.vendor
 
 /**
  * A payload's `customer: { type: 'customer', id }` -> QuickBooks Customer id,
