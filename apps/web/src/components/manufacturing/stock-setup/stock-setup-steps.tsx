@@ -18,10 +18,10 @@ interface StockSetupStepsProps {
   onSelect: (step: StockSetupStep) => void
 }
 
-/** The three steps across the top of Stock setup: number, name and state. */
+/** The four steps across the top of Stock setup: number, name and state. */
 export function StockSetupSteps({ states, selected, onSelect }: StockSetupStepsProps) {
   return (
-    <nav aria-label='Stock setup steps' className='grid shrink-0 grid-cols-3 border-b'>
+    <nav aria-label='Stock setup steps' className='grid shrink-0 grid-cols-4 border-b'>
       {STOCK_SETUP_STEPS.map((step, index) => {
         const state = states[step.id]
         const active = step.id === selected

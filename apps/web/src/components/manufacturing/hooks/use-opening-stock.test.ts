@@ -5,20 +5,16 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  excludeReason,
-  exclusionDetail,
-  isCostOnly,
-  isUncostedOrProvisional,
+  isRunnable,
   needsBackflushFirst,
   type OpeningStockRow,
   parseOpeningStockFilter,
+  parseStoredDrafts,
   partKindLabel,
   previewDelta,
-  resolveUnitCost,
   rowOutcome,
   setCountsHrefForJob,
   setCountsHrefForParts,
-  setKindConfirmTitle,
   toOpeningStockKind,
 } from './use-opening-stock'
 
@@ -29,28 +25,13 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
     recordId: null,
     title: 'Motor 460# 50Nm',
     sku: 'M-460-50',
-    storedKind: 'component',
-    kind: 'component',
-    kindIsUnconfirmed: false,
-    accountLabel: '1310 Raw Materials / Parts',
-    accountCode: '1310',
-    accountRole: 'inventory_raw_materials',
-    isUnclassified: true,
     standardCost: 2050,
-    standardSource: 'provisional',
-    standardOrigin: 'manual',
+    kindWarning: null,
     quantity: 4,
-    unitCost: null,
-    unitCostSuggested: false,
-    unitCostTyped: false,
-    suggestion: null,
-    sendsUnitCost: false,
     date: '2026-09-25T00:00:00.000Z',
     state: 'new',
     netToday: 0,
     hasBom: false,
-    uncostedLeafCount: 0,
-    usedIn: 0,
     unbuiltSales: 0,
     built: 0,
     earliest: null,
@@ -59,78 +40,39 @@ function row(overrides: Partial<OpeningStockRow> = {}): OpeningStockRow {
   }
 }
 
-describe('excludeReason', () => {
+describe('isRunnable', () => {
   it('takes a complete row, whatever its anchor state', () => {
-    expect(excludeReason(row())).toBeNull()
-    expect(excludeReason(row({ state: 'counted' }))).toBeNull()
-    expect(excludeReason(row({ state: 'uncounted' }))).toBeNull()
+    expect(isRunnable(row())).toBe(true)
+    expect(isRunnable(row({ state: 'counted' }))).toBe(true)
+    expect(isRunnable(row({ state: 'uncounted' }))).toBe(true)
   })
 
   it('takes a count of zero and an uncosted part', () => {
-    expect(excludeReason(row({ quantity: 0 }))).toBeNull()
-    expect(excludeReason(row({ standardCost: null, unitCost: null }))).toBeNull()
-  })
-
-  it('refuses a row whose kind is still only a suggestion', () => {
-    expect(
-      excludeReason(
-        row({ storedKind: 'component', kind: 'finished_good', kindIsUnconfirmed: true })
-      )
-    ).toBe('kind-unconfirmed')
+    expect(isRunnable(row({ quantity: 0 }))).toBe(true)
+    expect(isRunnable(row({ standardCost: null, unitCost: null }))).toBe(true)
   })
 
   it('refuses a missing or negative count', () => {
-    expect(excludeReason(row({ quantity: null }))).toBe('no-quantity')
-    expect(excludeReason(row({ quantity: -3 }))).toBe('no-quantity')
+    expect(isRunnable(row({ quantity: null }))).toBe(false)
+    expect(isRunnable(row({ quantity: -3 }))).toBe(false)
   })
 
-  it('takes a first cost with no count (D6), but not a suggestion nobody took', () => {
-    const costOnly = row({
-      quantity: null,
-      standardCost: null,
-      unitCost: 900,
-      unitCostTyped: true,
-      sendsUnitCost: true,
-    })
-    expect(isCostOnly(costOnly)).toBe(true)
-    expect(excludeReason(costOnly)).toBeNull()
-    const suggested = row({
-      quantity: null,
-      standardCost: null,
-      unitCost: 900,
-      unitCostSuggested: true,
-      sendsUnitCost: false,
-    })
-    expect(isCostOnly(suggested)).toBe(false)
-    expect(excludeReason(suggested)).toBe('no-quantity')
-  })
-
-  it('reports the kind before the count', () => {
-    expect(
-      excludeReason(row({ kindIsUnconfirmed: true, kind: 'finished_good', quantity: null }))
-    ).toBe('kind-unconfirmed')
+  it('takes a part with a kind warning: the warning never holds a count back (22 F3)', () => {
+    expect(isRunnable(row({ kindWarning: 'Used inside Lift, but marked Finished Good.' }))).toBe(
+      true
+    )
   })
 })
 
-describe('exclusionDetail', () => {
-  it('names the suggestion and the account it would produce', () => {
-    const detail = exclusionDetail(
-      row({
-        storedKind: 'component',
-        kind: 'finished_good',
-        kindIsUnconfirmed: true,
-        accountLabel: '1330 Finished Goods',
-      }),
-      'kind-unconfirmed'
-    )
-    expect(detail).toContain('Finished Good')
-    expect(detail).toContain('1330 Finished Goods')
-    expect(detail).toContain('Component')
+describe('parseStoredDrafts', () => {
+  it('keeps finite, non-negative counts and drops the rest', () => {
+    expect(parseStoredDrafts('{"a":4,"b":0,"c":-1,"d":"x","e":null}')).toEqual({ a: 4, b: 0 })
   })
 
-  it('carries the count that proves a no-quantity refusal', () => {
-    expect(exclusionDetail(row({ quantity: null }), 'no-quantity')).toContain('No count')
-    expect(exclusionDetail(row({ quantity: -1 }), 'no-quantity')).toContain('-1')
+  it('reads nothing from a missing or broken value', () => {
+    expect(parseStoredDrafts(null)).toEqual({})
+    expect(parseStoredDrafts('not json')).toEqual({})
+    expect(parseStoredDrafts('[1,2]')).toEqual({})
   })
 })
 
@@ -183,13 +125,6 @@ describe('toOpeningStockKind', () => {
   })
 })
 
-describe('setKindConfirmTitle', () => {
-  it('names the count and the kind, with the label the field carries', () => {
-    expect(setKindConfirmTitle(34, 'finished_good')).toBe('Set 34 parts to Finished Good?')
-    expect(setKindConfirmTitle(1, 'component')).toBe('Set 1 part to Component?')
-  })
-})
-
 describe('partKindLabel', () => {
   it("reads the label off the field's own option list", () => {
     expect(partKindLabel('finished_good')).toBe('Finished Good')
@@ -197,68 +132,11 @@ describe('partKindLabel', () => {
   })
 })
 
-describe('resolveUnitCost (09 D-SC3/D-SC4)', () => {
-  const suggestion = { unitCost: 420, source: 'supplier' as const, other: null }
-
-  it('takes no cost on a BOM part', () => {
-    expect(resolveUnitCost({ hasBom: true, standardCost: null, suggestion, typed: 900 })).toEqual({
-      unitCost: null,
-      unitCostSuggested: false,
-      unitCostTyped: false,
-      sendsUnitCost: false,
-    })
-  })
-
-  it('prefills the suggestion on an uncosted part but sends it only once accepted', () => {
-    expect(
-      resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: undefined })
-    ).toEqual({
-      unitCost: 420,
-      unitCostSuggested: true,
-      unitCostTyped: false,
-      sendsUnitCost: false,
-    })
-  })
-
-  it('sends a typed first cost, and nothing once cleared', () => {
-    expect(resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: 650 })).toEqual({
-      unitCost: 650,
-      unitCostSuggested: false,
-      unitCostTyped: true,
-      sendsUnitCost: true,
-    })
-    expect(
-      resolveUnitCost({ hasBom: false, standardCost: null, suggestion, typed: null })
-    ).toMatchObject({ unitCost: null, unitCostTyped: false, sendsUnitCost: false })
-  })
-
-  it('shows an existing standard read-only and never sends a cost for it (D6)', () => {
-    const expected = {
-      unitCost: 500,
-      unitCostSuggested: false,
-      unitCostTyped: false,
-      sendsUnitCost: false,
-    }
-    expect(
-      resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: undefined })
-    ).toEqual(expected)
-    expect(resolveUnitCost({ hasBom: false, standardCost: 500, suggestion, typed: 650 })).toEqual(
-      expected
-    )
-  })
-
-  it('filters no standard or a provisional one', () => {
-    expect(isUncostedOrProvisional({ standardCost: null, standardSource: null })).toBe(true)
-    expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'provisional' })).toBe(true)
-    expect(isUncostedOrProvisional({ standardCost: 5, standardSource: 'confirmed' })).toBe(false)
-  })
-})
-
 describe('parseOpeningStockFilter', () => {
   it('takes the filters a link may name and falls back to all', () => {
-    expect(parseOpeningStockFilter('uncosted')).toBe('uncosted')
-    expect(parseOpeningStockFilter('uncosted-or-provisional')).toBe('uncosted-or-provisional')
-    expect(parseOpeningStockFilter('kind:component')).toBe('all')
+    expect(parseOpeningStockFilter('counted')).toBe('counted')
+    expect(parseOpeningStockFilter('uncosted')).toBe('all')
+    expect(parseOpeningStockFilter('unclassified')).toBe('all')
     expect(parseOpeningStockFilter('nonsense')).toBe('all')
     expect(parseOpeningStockFilter(null)).toBe('all')
   })

@@ -8,13 +8,14 @@ import {
   OPENING_INVENTORY_DIFFERENCE_HREF,
   useAccountingSetupState,
 } from './accounting-status-line'
+import { stockSetupHref } from './stock-setup-href'
 import type { StockSetupStatus } from './use-stock-setup'
 
 interface CountStepProps {
   status: StockSetupStatus | undefined
 }
 
-/** Step 3 (plans/mrp/17 §5.3): the Set counts list and run; "Done counting" lives in the run pane. */
+/** Step 4 (plans/mrp/17 §5.3, 22 F1): the count list and run; "Done counting" lives in the run pane. */
 export function CountStep({ status }: CountStepProps) {
   const accounting = useAccountingSetupState()
   const uncosted = status?.uncostedPartCount ?? 0
@@ -29,6 +30,13 @@ export function CountStep({ status }: CountStepProps) {
               ? 'Counting is done.'
               : `Counting is done. ${uncosted} ${uncosted === 1 ? 'part' : 'parts'} with stock movements ${uncosted === 1 ? 'has' : 'have'} no cost.`}
           </span>
+          {uncosted > 0 && (
+            <Link
+              href={stockSetupHref('costs', { filter: 'no-cost' })}
+              className='text-muted-foreground underline-offset-2 hover:text-foreground hover:underline'>
+              Set costs →
+            </Link>
+          )}
           {accounting.enabled && accounting.canManage && (
             <Link
               href={OPENING_INVENTORY_DIFFERENCE_HREF}

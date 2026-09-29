@@ -87,6 +87,8 @@ selectProto.then = function (
 const db = {
   select: (fields?: Parameters<QueryBuilder['select']>[0]) =>
     fields ? qb.select(fields) : qb.select(),
+  selectDistinct: (fields: Parameters<QueryBuilder['selectDistinct']>[0]) =>
+    qb.selectDistinct(fields),
   transaction: async (run: (tx: unknown) => unknown) => run({}),
 } as never
 
@@ -127,7 +129,11 @@ describe('the candidate statement', () => {
     // A pending row, a return to the vendor and a row already in a posted entry are excluded.
     expect(sql).toMatch(/"costBasis" IS DISTINCT FROM \$\d+/)
     expect(sql).toMatch(/"type" <> \$\d+/)
-    expect(sql.match(/not in \(select/gi)).toHaveLength(1)
+    expect(sql.match(/not in \(select/gi)).toHaveLength(2)
+    // A build with a leg still waiting for a cost is left for the pricer, never retried here.
+    expect(sql).toMatch(
+      /"buildId" is null or "StockMovement"\."buildId" not in \(select distinct "buildId" from "StockMovement" "pending_leg"/
+    )
     expect(params).toContain('pending')
     expect(params).toContain('return_out')
     expect(params).toContain('member')

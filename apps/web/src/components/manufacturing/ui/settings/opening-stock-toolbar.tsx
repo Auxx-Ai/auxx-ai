@@ -15,11 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/pop
 import { ChevronDown, CircleX, ListFilter } from 'lucide-react'
 import { useState } from 'react'
 import { SelectAllCheckbox } from '~/components/list-selection'
-import {
-  type OpeningStockCounts,
-  type OpeningStockFilter,
-  partKindLabel,
-} from '../../hooks/use-opening-stock'
+import type { OpeningStockCounts, OpeningStockFilter } from '../../hooks/use-opening-stock'
 
 /** The list's `p-3`, which `SelectAllCheckbox` aligns its box against. */
 const OPENING_STOCK_LIST_PADDING = 12
@@ -36,8 +32,8 @@ interface OpeningStockToolbarProps {
   filter: OpeningStockFilter
   onFilterChange: (filter: OpeningStockFilter) => void
   counts: OpeningStockCounts
-  kindCounts: Map<string, number>
-  canSetKind: boolean
+  canSelect: boolean
+  actions?: React.ReactNode
 }
 
 export function OpeningStockToolbar({
@@ -46,8 +42,8 @@ export function OpeningStockToolbar({
   filter,
   onFilterChange,
   counts,
-  kindCounts,
-  canSetKind,
+  canSelect,
+  actions,
 }: OpeningStockToolbarProps) {
   const [open, setOpen] = useState(false)
 
@@ -55,21 +51,10 @@ export function OpeningStockToolbar({
     { value: 'all', label: 'All parts', count: counts.all },
     { value: 'not-counted', label: 'Not counted', count: counts.notCounted },
     { value: 'counted', label: 'Counted', count: counts.counted },
-    { value: 'uncounted', label: 'Moved, never counted', count: counts.uncounted },
-    { value: 'unclassified', label: 'Unclassified', count: counts.unclassified },
-    { value: 'uncosted', label: 'No cost yet', count: counts.uncosted },
-    {
-      value: 'uncosted-or-provisional',
-      label: 'No cost or unconfirmed cost',
-      count: counts.uncostedOrProvisional,
-    },
+    { value: 'uncounted', label: 'Moved, no count', count: counts.uncounted },
     { value: 'unbuilt', label: 'Sold, never built', count: counts.unbuilt },
   ]
-  const kindOptions: FilterOption[] = [...kindCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([kind, count]) => ({ value: `kind:${kind}`, label: partKindLabel(kind), count }))
-
-  const active = [...stateOptions, ...kindOptions].find((o) => o.value === filter)
+  const active = stateOptions.find((o) => o.value === filter)
   const isDirty = filter !== 'all' || search !== ''
 
   const select = (value: OpeningStockFilter) => {
@@ -91,7 +76,7 @@ export function OpeningStockToolbar({
 
   return (
     <ListToolbar sticky={false}>
-      <SelectAllCheckbox listPadding={OPENING_STOCK_LIST_PADDING} disabled={!canSetKind} />
+      <SelectAllCheckbox listPadding={OPENING_STOCK_LIST_PADDING} disabled={!canSelect} />
       <ListToolbarGroup className='min-w-40 flex-1'>
         <InputSearch
           value={search}
@@ -116,9 +101,6 @@ export function OpeningStockToolbar({
               <CommandInput placeholder='Search filters…' />
               <CommandList>
                 <CommandGroup heading='Count'>{stateOptions.map(renderOption)}</CommandGroup>
-                {kindOptions.length > 0 && (
-                  <CommandGroup heading='Kind'>{kindOptions.map(renderOption)}</CommandGroup>
-                )}
               </CommandList>
             </Command>
           </PopoverContent>
@@ -134,6 +116,7 @@ export function OpeningStockToolbar({
           }}>
           <CircleX />
         </Button>
+        {actions}
       </ListToolbarGroup>
     </ListToolbar>
   )

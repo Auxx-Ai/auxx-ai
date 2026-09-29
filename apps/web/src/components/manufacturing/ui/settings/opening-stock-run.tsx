@@ -10,42 +10,26 @@ import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Separator } from '@auxx/ui/components/separator'
 import { toastError } from '@auxx/ui/components/toast'
-import { CheckCircle2, PlayCircle } from 'lucide-react'
+import { CheckCircle2, PanelRightClose, PlayCircle } from 'lucide-react'
 import Link from 'next/link'
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import { booksStartDate } from '~/components/accounting/books-start'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { Tooltip } from '~/components/global/tooltip'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import type {
-  OpeningStockExclusion,
-  OpeningStockExclusionReason,
-  OpeningStockRunResult,
-} from '../../hooks/use-opening-stock'
+import type { OpeningStockRunResult } from '../../hooks/use-opening-stock'
 
 /** The explicit, repeatable books-versus-parts screen (111 Q19/Q23). */
 export const OPENING_DIFFERENCE_HREF = '/app/accounting/settings/opening?s=inventory'
-
-const EXCLUSION_COPY: Record<OpeningStockExclusionReason, { label: string; detail: string }> = {
-  'kind-unconfirmed': {
-    label: 'Kind not confirmed',
-    detail: "The kind decides which inventory account the part's stock sits in.",
-  },
-  'no-quantity': {
-    label: 'No count',
-    detail: 'Nobody has typed a count for this part yet.',
-  },
-}
 
 export interface OpeningStockRunSummaryCounts {
   firstCounts: number
   /** Counts on parts counted before: the difference is written on the count day. */
   adjustments: number
-  /** Parts getting their first cost, with or without a count. */
-  firstCosts: number
   /** Counts on parts with no cost yet: valued once one is set. */
   pending: number
+  /** Counts on parts whose kind step 1 still flags (plans/mrp/22 F3). */
+  kindWarnings: number
   /** Made parts in the run whose sales no build covers yet. */
   unbuilt: { title: string; unbuiltSales: number }[]
 }
@@ -53,25 +37,27 @@ export interface OpeningStockRunSummaryCounts {
 interface OpeningStockRunProps {
   entryCount: number
   summary: OpeningStockRunSummaryCounts
-  exclusions: OpeningStockExclusion[]
   /** `YYYY-MM`, or `null` when nobody has set one. */
   cutoffPeriod: string | null
   occurredAt: string
   onOccurredAtChange: (next: string) => void
   canOpenStock: boolean
   isRunning: boolean
-  onRun: () => Promise<OpeningStockRunResult>
+  onRun: () => Promise<OpeningStockRunResult | null>
+  /** Throws away every typed count not saved yet. */
+  onClearDrafts: () => void
+  /** Desktop only: hide the pane; absent in the mobile drawer, which has its own close. */
+  onCollapse?: () => void
 }
 
 const plural = (n: number, one: string, many: string) =>
   `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`
 
-/** `40 first counts · 3 corrections · 25 first costs`, dropping the zeros. */
+/** `40 first counts · 3 corrections`, dropping the zeros. */
 export function runSummaryLine(summary: OpeningStockRunSummaryCounts): string {
   return [
     summary.firstCounts > 0 && plural(summary.firstCounts, 'first count', 'first counts'),
     summary.adjustments > 0 && plural(summary.adjustments, 'correction', 'corrections'),
-    summary.firstCosts > 0 && plural(summary.firstCosts, 'first cost', 'first costs'),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -100,19 +86,24 @@ function countDayLabel(day: string): string {
 export function OpeningStockRun({
   entryCount,
   summary,
-  exclusions,
   cutoffPeriod,
   occurredAt,
   onOccurredAtChange,
   canOpenStock,
   isRunning,
   onRun,
+  onClearDrafts,
+  onCollapse,
 }: OpeningStockRunProps) {
   const [confirm, ConfirmDialog] = useConfirm()
   const [lastRun, setLastRun] = useState<OpeningStockRunResult | null>(null)
   const [editingDate, setEditingDate] = useState(false)
   const line = runSummaryLine(summary)
   const warning = unbuiltWarning(summary.unbuilt)
+  const kindLine =
+    summary.kindWarnings > 0
+      ? `${plural(summary.kindWarnings, 'part has', 'parts have')} a kind Check parts still flags; ${summary.kindWarnings === 1 ? 'its count is' : 'their counts are'} filed under the kind ${summary.kindWarnings === 1 ? 'it has' : 'they have'} now.`
+      : null
 
   const handleRun = async () => {
     const confirmed = await confirm({
@@ -120,6 +111,7 @@ export function OpeningStockRun({
       description: [
         `${line}.`,
         "Counts can't be edited later; a wrong one is fixed by counting again.",
+        kindLine,
         warning,
       ]
         .filter(Boolean)
@@ -144,7 +136,18 @@ export function OpeningStockRun({
       <ScrollArea className='min-h-0 flex-1' allowScrollChaining>
         <div className='flex flex-col gap-4'>
           <section className='flex flex-col gap-1.5'>
-            <h3 className='font-medium text-foreground text-sm'>Count date</h3>
+            <div className='flex items-center justify-between gap-2'>
+              <h3 className='font-medium text-foreground text-sm'>Count date</h3>
+              {onCollapse && (
+                <Button
+                  variant='ghost'
+                  size='icon-sm'
+                  aria-label='Hide this panel'
+                  onClick={onCollapse}>
+                  <PanelRightClose />
+                </Button>
+              )}
+            </div>
             {editingDate ? (
               <FieldInputAdapter
                 fieldType={FieldType.DATE}
@@ -181,7 +184,7 @@ export function OpeningStockRun({
             <h3 className='font-medium text-foreground text-sm'>What gets saved</h3>
             {entryCount === 0 ? (
               <p className='rounded-md border border-dashed p-3 text-muted-foreground text-xs'>
-                Nothing to save yet. Type a count or a first cost against a part on the left.
+                Nothing to save yet. Type a count against a part on the left.
               </p>
             ) : (
               <div className='flex flex-col gap-1 text-muted-foreground text-xs'>
@@ -195,14 +198,22 @@ export function OpeningStockRun({
                     saved now and valued once a cost is set.
                   </p>
                 )}
+                {kindLine && <p>{kindLine}</p>}
                 {warning && <p>{warning}</p>}
+                <p>
+                  Typed counts stay in this browser until you save.{' '}
+                  <Button
+                    variant='link'
+                    size='xs'
+                    className='h-auto p-0 text-xs'
+                    disabled={isRunning}
+                    onClick={onClearDrafts}>
+                    Clear them
+                  </Button>
+                </p>
               </div>
             )}
           </section>
-
-          <Separator />
-
-          <RunReadiness entryCount={entryCount} exclusions={exclusions} />
 
           <Separator />
 
@@ -318,24 +329,13 @@ function RunResult({
   run: OpeningStockRunResult
   cutoffPeriod: string | null
 }) {
-  const saved = run.counts?.opened ?? []
-  const first = saved.filter((row) => row.outcome === 'initial').length
-  const corrections = saved.length - first
-  const unchanged = (run.counts?.excluded ?? []).filter(
-    (skip) => skip.reason === 'unchanged'
-  ).length
-  const countCosts = [...saved, ...(run.counts?.excluded ?? [])].filter(
-    (row) => row.standardCostChange?.action === 'set'
-  ).length
-  const firstCosts = run.firstCosts + countCosts
-  const failed = [
-    ...(run.counts?.failed ?? []).map((skip) => ({ partId: skip.partId, detail: skip.detail })),
-    ...run.costFailures,
-  ]
+  const first = run.opened.filter((row) => row.outcome === 'initial').length
+  const corrections = run.opened.length - first
+  const unchanged = run.excluded.filter((skip) => skip.reason === 'unchanged').length
+  const failed = run.failed
   const parts = [
     first > 0 && plural(first, 'first count', 'first counts'),
     corrections > 0 && plural(corrections, 'correction', 'corrections'),
-    firstCosts > 0 && plural(firstCosts, 'first cost', 'first costs'),
     unchanged > 0 && `${unchanged.toLocaleString('en-US')} unchanged`,
     failed.length > 0 && `${failed.length.toLocaleString('en-US')} failed`,
   ].filter(Boolean)
@@ -343,7 +343,7 @@ function RunResult({
     <div className='flex flex-col gap-1 text-muted-foreground text-xs'>
       <p>
         Saved: {parts.length > 0 ? parts.join(' · ') : 'nothing'}.
-        {cutoffPeriod && saved.length > 0 && (
+        {cutoffPeriod && run.opened.length > 0 && (
           <>
             {' '}
             <Link className='underline' href={OPENING_DIFFERENCE_HREF}>
@@ -364,52 +364,6 @@ function RunResult({
         </ul>
       )}
     </div>
-  )
-}
-
-const HELD_BACK_REASONS = (Object.keys(EXCLUSION_COPY) as OpeningStockExclusionReason[]).filter(
-  // Before anybody types, every part is held back for this; counting it reports the resting state.
-  (reason) => reason !== 'no-quantity'
-)
-
-/** `34 parts ready · 6 held back (6 kind not confirmed)`. */
-function RunReadiness({
-  entryCount,
-  exclusions,
-}: {
-  entryCount: number
-  exclusions: OpeningStockExclusion[]
-}) {
-  const counts = new Map<OpeningStockExclusionReason, number>()
-  for (const exclusion of exclusions) {
-    counts.set(exclusion.reason, (counts.get(exclusion.reason) ?? 0) + 1)
-  }
-  const held = HELD_BACK_REASONS.filter((reason) => (counts.get(reason) ?? 0) > 0)
-  const heldTotal = held.reduce((sum, reason) => sum + (counts.get(reason) ?? 0), 0)
-
-  return (
-    <p className='text-muted-foreground text-xs'>
-      <span className='font-medium text-foreground'>
-        {entryCount} {entryCount === 1 ? 'part' : 'parts'} ready
-      </span>
-      {heldTotal > 0 && (
-        <>
-          {' · '}
-          {heldTotal} held back (
-          {held.map((reason, index) => (
-            <Fragment key={reason}>
-              {index > 0 && ', '}
-              <Tooltip content={EXCLUSION_COPY[reason].detail}>
-                <span className='cursor-default underline decoration-dotted'>
-                  {counts.get(reason)} {EXCLUSION_COPY[reason].label.toLowerCase()}
-                </span>
-              </Tooltip>
-            </Fragment>
-          ))}
-          )
-        </>
-      )}
-    </p>
   )
 }
 

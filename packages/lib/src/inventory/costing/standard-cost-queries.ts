@@ -374,7 +374,10 @@ export async function planStandardCostRoll(
   let scope: Set<string>
   let kept: string[]
   if (input.partIds && input.partIds.length > 0) {
-    const upward = widenToAncestors(requested, parentGraph, manual)
+    const upward =
+      input.widenToAncestors === false
+        ? new Set(requested)
+        : widenToAncestors(requested, parentGraph, manual)
     const downward = widenToUnvaluedDescendants(upward, subpartGraph, usableStandards)
     scope = new Set([...upward, ...downward].filter((id) => allPartIds.has(id)))
     kept = [...manual].filter((id) =>

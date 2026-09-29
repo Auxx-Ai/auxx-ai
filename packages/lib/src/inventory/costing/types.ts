@@ -199,6 +199,12 @@ export interface RollStandardCostInput {
    * A `manual`-origin standard is rolled only when named here (D-SC3).
    */
   partIds?: string[]
+  /**
+   * `false`: skip the upward walk, so only `partIds` and their unvalued descendants roll. For a
+   * caller that already named every ready parent; widening up reaches a grandparent whose
+   * other uncosted leaves would then take a vendor-price standard nobody accepted (09 D-SC1).
+   */
+  widenToAncestors?: boolean
   /** When the new standards take effect; the roll refuses one outside the plan's `dateRange`. */
   effectiveAt: Date
 }

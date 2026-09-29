@@ -669,9 +669,14 @@ export const purchasingRouter = createTRPCRouter({
     return getOrgCache().get(organizationId, 'stockSetupStatus')
   }),
 
-  /** Stock setup's two flags (17 D5, Q2). Gated like the page, on part edit, not `settingsManage`. */
+  /** Stock setup's flags (17 D5, Q2; 22 F1). Gated like the page, on part edit, not `settingsManage`. */
   setStockSetupFlag: capabilityProcedure
-    .input(z.object({ flag: z.enum(['buildsSkipped', 'countingDone']), value: z.boolean() }))
+    .input(
+      z.object({
+        flag: z.enum(['costsSkipped', 'buildsSkipped', 'countingDone']),
+        value: z.boolean(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const partDefId = await requireDefId(organizationId, 'part')

@@ -47,7 +47,7 @@ import { TransactionsPanel } from './transactions-panel'
 import { type OutboxRun, useOutboxRealtime } from './use-outbox-realtime'
 
 /** The outbox's "Set costs": Stock setup's count list, filtered to parts waiting on a cost (17 D6). */
-const SET_COSTS_HREF = stockSetupHref('count', { filter: 'uncosted' })
+const SET_COSTS_HREF = stockSetupHref('costs', { filter: 'no-cost' })
 
 interface OutboxPanelProps {
   tab: OutboxTab

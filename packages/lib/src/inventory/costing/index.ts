@@ -13,6 +13,7 @@ export {
   type StandardCostOriginValue,
   type StandardCostSourceValue,
 } from './client'
+export { type ConfirmStandardCostEntry, confirmStandardCosts } from './confirm-standard-cost'
 export {
   buildParentGraph,
   buildSubpartGraph,

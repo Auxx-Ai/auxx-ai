@@ -58,6 +58,7 @@ export async function rollUnvaluedAncestors(
 
       const rolled = await rollStandardCost(db, organizationId, userId, {
         partIds: toRoll,
+        widenToAncestors: false,
         effectiveAt: new Date(),
       })
       if (rolled.isErr()) throw rolled.error

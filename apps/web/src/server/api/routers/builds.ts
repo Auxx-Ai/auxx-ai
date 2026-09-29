@@ -45,6 +45,7 @@ import type {
   BackfillStatus,
 } from '@auxx/lib/inventory/builds/client'
 import {
+  confirmStandardCosts,
   loadPartAbsorptionRates,
   previewStandardCostRoll,
   readMovedPartIds,
@@ -86,6 +87,8 @@ const standardCostItem = z.object({
   kind: z.string().min(1).optional(),
   /** "Set cost instead" on a part with a BOM (D-SC3). */
   overrideBom: z.boolean().optional(),
+  /** Mark the written standard confirmed, stamped with this origin (plans/mrp/22 §3.3). */
+  confirmAs: z.enum(['manual', 'supplier_price', 'channel']).optional(),
 })
 
 /** Per-item answer of `setStandardCosts`. `action` is absent when only the kind was written. */
@@ -313,6 +316,16 @@ export const buildsRouter = createTRPCRouter({
       if (costs.isErr()) throw costs.error
       const outcomes = new Map(costs.value.map((outcome) => [outcome.partId, outcome]))
 
+      const toConfirm = costItems.flatMap((item) =>
+        item.confirmAs && outcomes.get(item.partId)?.ok
+          ? [{ partId: item.partId, origin: item.confirmAs }]
+          : []
+      )
+      if (toConfirm.length > 0) {
+        const confirmed = await confirmStandardCosts(ctx.db, organizationId, toConfirm)
+        if (confirmed.isErr()) throw confirmed.error
+      }
+
       const seen = new Set<string>()
       const results: SetStandardCostItemResult[] = []
       for (const item of input.items) {
@@ -332,6 +345,22 @@ export const buildsRouter = createTRPCRouter({
         } else results.push({ partId: item.partId, ok: false, error: outcome.error.message })
       }
       return results
+    }),
+
+  /** Mark existing standards confirmed without changing the amount (plans/mrp/22 §3.3). */
+  confirmStandardCosts: capabilityProcedure
+    .input(z.object({ partIds: z.array(z.string().min(1)).min(1).max(5000) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+      const result = await confirmStandardCosts(
+        ctx.db,
+        organizationId,
+        input.partIds.map((partId) => ({ partId }))
+      )
+      if (result.isErr()) throw result.error
+      return { confirmed: result.value.length }
     }),
 
   /** Whether a provisional standard may still be restated: the part has no stock movement. */

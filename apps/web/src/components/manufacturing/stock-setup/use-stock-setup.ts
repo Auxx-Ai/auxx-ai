@@ -11,21 +11,23 @@ export type StockSetupStepState = 'todo' | 'done' | 'skipped'
 
 export const STOCK_SETUP_STEPS: { id: StockSetupStep; name: string }[] = [
   { id: 'kinds', name: 'Check parts' },
+  { id: 'costs', name: 'Set costs' },
   { id: 'builds', name: 'Record past builds' },
-  { id: 'count', name: 'Count and cost' },
+  { id: 'count', name: 'Count stock' },
 ]
 
 function isStep(value: string | null): value is StockSetupStep {
-  return value === 'kinds' || value === 'builds' || value === 'count'
+  return STOCK_SETUP_STEPS.some((step) => step.id === value)
 }
 
-/** Step states for a status; `skipped` only when the builds step is done by skipping it. */
+/** Step states for a status; `skipped` only when a step is done by skipping it. */
 export function resolveStepStates(
   status: StockSetupStatus | undefined
 ): Record<StockSetupStep, StockSetupStepState> {
-  if (!status) return { kinds: 'todo', builds: 'todo', count: 'todo' }
+  if (!status) return { kinds: 'todo', costs: 'todo', builds: 'todo', count: 'todo' }
   return {
     kinds: status.steps.kinds ? 'done' : 'todo',
+    costs: status.neededUncostedCount === 0 ? 'done' : status.costsSkipped ? 'skipped' : 'todo',
     builds: status.unbuiltPartCount === 0 ? 'done' : status.buildsSkipped ? 'skipped' : 'todo',
     count: status.steps.count ? 'done' : 'todo',
   }
